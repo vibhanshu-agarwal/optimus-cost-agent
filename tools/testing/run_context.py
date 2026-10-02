@@ -151,6 +151,10 @@ def _declared_agent(branch: str | None) -> str | None:
     return parts[1] if len(parts) >= 3 and parts[0] == "agent" else None
 
 
+def _whole_number(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def _discover_parent_run(run_id: str) -> dict[str, object]:
     """Which registered active run, if any, this process descends from.
 
@@ -168,9 +172,13 @@ def _discover_parent_run(run_id: str) -> dict[str, object]:
     chain, stopped = native.ancestors()
     roots: dict[tuple[int, int], str] = {}
     for entry in records.registry_entries(run_id):
+        # The reader guarantees a complete root identity. An entry that still lacks one, or whose
+        # creation time was never read, names no ancestor and is passed over, never raised on.
         root = entry.get("root")
-        if entry.get("mode") == ACTIVE and isinstance(root, dict) and isinstance(root.get("creation_time"), int):
-            roots[(int(root["pid"]), int(root["creation_time"]))] = str(entry["run_id"])
+        pid, created = (root.get("pid"), root.get("creation_time")) if isinstance(root, dict) else (None, None)
+        named = entry.get("run_id")
+        if entry.get("mode") == ACTIVE and _whole_number(pid) and _whole_number(created) and isinstance(named, str):
+            roots[(pid, created)] = named
     for ancestor in chain:
         found = roots.get((ancestor.pid, ancestor.creation_time or -1)) if ancestor.live is True else None
         if found is not None:

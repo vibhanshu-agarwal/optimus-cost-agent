@@ -21,6 +21,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.support import child_tripwire
 from tools.testing import run_context, run_context_records, run_context_windows
 
 _ROOT = Path(__file__).resolve().parents[3]
@@ -203,9 +204,11 @@ def test_real_ancestry_lists_only_running_processes_created_before_their_child()
         ({"Process32NextW": _fail(5)}, "snapshot_incomplete"),
         ({"OpenProcess": _fail(5)}, "access_denied"),
         ({"OpenProcess": _fail(31)}, "identity_failed"),
-        ({"GetExitCodeProcess": _fail(31)}, "identity_failed"),
+        ({"WaitForSingleObject": _fail(31, 0xFFFFFFFF)}, "identity_failed"),
+        ({"WaitForSingleObject": _fail(87, 0xFFFFFFFF)}, "identity_failed"),
+        ({"WaitForSingleObject": lambda _handle, _timeout: 0x80}, "identity_failed"),
     ],
-    ids=["snapshot", "first-entry", "iteration", "open-denied", "open-error", "liveness"],
+    ids=["snapshot", "first-entry", "iteration", "open-denied", "open-error", "liveness", "liveness-87", "liveness-odd-answer"],
 )
 def test_a_failed_native_query_makes_the_parent_unknown(
     monkeypatch: pytest.MonkeyPatch, replaced: dict[str, object], stopped: str
@@ -237,14 +240,16 @@ def test_a_listing_cut_short_after_this_process_was_listed_is_still_unknown(monk
 
 
 @_windows
-def test_a_failed_creation_time_read_is_not_taken_for_an_exited_parent(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("code", [31, 87])
+def test_a_failed_creation_time_read_is_not_taken_for_an_exited_parent(monkeypatch: pytest.MonkeyPatch, code: int) -> None:
+    """The handle opened, so even error 87 from the query is a failed query, not a vanished process."""
     real = run_context_windows._kernel32()  # noqa: SLF001
     own = real.GetCurrentProcess()
 
     def times(handle: object, *rest: object) -> int:
         if handle == own:
             return real.GetProcessTimes(handle, *rest)
-        ctypes.set_last_error(31)
+        ctypes.set_last_error(code)
         return 0
 
     _inject(monkeypatch, GetProcessTimes=times)
@@ -253,18 +258,49 @@ def test_a_failed_creation_time_read_is_not_taken_for_an_exited_parent(monkeypat
 
 
 @_windows
-@pytest.mark.parametrize("how", ["no_such_process", "exit_code_read"])
+@pytest.mark.parametrize("how", ["open_reports_no_such_process", "wait_reports_terminated"])
 def test_an_exited_ancestor_ends_the_chain_without_proving_absence(monkeypatch: pytest.MonkeyPatch, how: str) -> None:
-    if how == "no_such_process":
+    if how == "open_reports_no_such_process":
         _inject(monkeypatch, OpenProcess=_fail(87))
     else:
-        def exited(_handle: object, code: object) -> int:
-            code._obj.value = 0  # noqa: SLF001 - the DWORD behind ctypes.byref
-            return 1
-
-        _inject(monkeypatch, GetExitCodeProcess=exited)
+        _inject(monkeypatch, WaitForSingleObject=lambda _handle, _timeout: 0)
     assert run_context_windows.ancestors() == ([], "ancestor_exited")
     assert _parent_status() == {"status": "not_found", "reason": "ancestor_exited", "method": "validated_process_ancestry"}
+
+
+@_windows
+def test_a_refused_wait_right_leaves_the_live_state_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    real = run_context_windows._kernel32()  # noqa: SLF001
+
+    def open_process(access: int, inherit: int, pid: int) -> object:
+        if access & 0x00100000:
+            ctypes.set_last_error(5)
+            return 0
+        return real.OpenProcess(access, inherit, pid)
+
+    _inject(monkeypatch, OpenProcess=open_process)
+    parent = run_context_windows.process_identity(os.getppid())
+    assert parent.opened is True and parent.creation_time is not None and parent.live is None and parent.error == 5
+    assert run_context_windows.ancestors() == ([], "access_denied")
+    assert _parent_status()["status"] == "UNKNOWN"
+
+
+@_windows
+def test_live_state_does_not_depend_on_the_exit_code() -> None:
+    """A process that exited with 259, the 'still active' number, is reported as exited."""
+    exited = subprocess.Popen([sys.executable, "-c", "import os; os._exit(259)"])
+    running = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+    try:
+        assert exited.wait(timeout=60) == 259
+        # Popen keeps its own handle, so the PID cannot be reused while these are read.
+        gone = run_context_windows.process_identity(exited.pid)
+        alive = run_context_windows.process_identity(running.pid)
+        assert (gone.opened, gone.live, gone.error) == (True, False, None) and gone.creation_time is not None
+        assert (alive.opened, alive.live, alive.error) == (True, True, None) and alive.creation_time is not None
+    finally:
+        running.kill()
+        running.wait(timeout=60)
+    assert run_context_windows.process_identity(running.pid).live is False
 
 
 _COLLISION_SCRIPT = '''
@@ -355,6 +391,12 @@ _BREAKERS = {
     "flag-as-number": lambda record: record["native"].update(supported=1),
     "list-for-a-table": lambda record: record.update(native=["enrolled"]),
     "unknown-mode": lambda record: record.update(mode="observer"),
+    "root-missing": lambda record: record.pop("root"),
+    "root-without-pid": lambda record: record["root"].pop("pid"),
+    "root-without-creation-time": lambda record: record["root"].pop("creation_time"),
+    "member-without-creation-time": lambda record: record.update(
+        members={"ok": True, "complete": True, "identities": [{"pid": 1}]}),
+    "parent-run-without-status": lambda record: record.update(parent_run={}),
 }
 
 
@@ -377,6 +419,92 @@ def test_the_reader_refuses_a_stored_record_outside_the_field_table(request: pyt
     stored = tmp_path / "stored.json"
     stored.write_text(json.dumps({"schema": run_context_records.SCHEMA, **record}), encoding="utf-8")
     assert run_context_records.read_record(stored) is None
+
+
+def test_an_incomplete_registry_identity_is_refused_and_cannot_abort_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A well-formed entry, filed under its own run ID, whose root has no process ID."""
+    run_id = f"20000101T000000-123-{secrets.token_hex(3)}"
+    incomplete = {"schema": run_context_records.SCHEMA, "checkpoint": "start", "run_id": run_id, "mode": "active",
+                  "reason": "default_selection", "root": {"creation_time": 1}}
+    assert run_context_records.violation(incomplete) == "record.root.pid"
+    assert run_context_records.violation({**incomplete, "root": {"pid": 123, "creation_time": None}}) is None
+    planted = run_context_records.registry_root() / f"{run_id}.json"
+    try:
+        planted.write_text(json.dumps(incomplete), encoding="utf-8")
+        assert run_context_records.read_record(planted) is None
+        assert run_id not in [entry["run_id"] for entry in run_context_records.registry_entries("none")]
+        first = _parent_status()
+    finally:
+        planted.unlink(missing_ok=True)
+    assert first["status"] in {"parent", "none", "not_found", "UNKNOWN"}
+
+    # Even if such entries reached discovery, none names an ancestor and none raises.
+    unusable = [
+        {"mode": "active", "run_id": run_id, "root": {"creation_time": 1}},
+        {"mode": "active", "run_id": run_id, "root": {"pid": os.getppid()}},
+        {"mode": "active", "run_id": run_id, "root": {"pid": True, "creation_time": 1}},
+        {"mode": "active", "run_id": run_id, "root": "text"},
+        {"mode": "active", "run_id": run_id},
+        {"mode": "active", "root": {"pid": 1, "creation_time": 1}},
+        {},
+    ]
+    monkeypatch.setattr(run_context_records, "registry_entries", lambda _exclude: unusable)
+    second = _parent_status() if sys.platform == "win32" else {"status": "unsupported"}
+    assert second["status"] in {"none", "not_found", "UNKNOWN", "unsupported"} and second.get("run_id") != run_id
+
+
+# --- A4: the child tripwire used at the two rebuilt-environment launch sites is itself sensitive.
+
+_TRIPWIRE_PROGRAM = '''
+import sys
+from optimus.acp import trusted_paths
+try:
+    trusted_paths.resolve_trusted_operator_roots(platform_name="win32")
+    print("RESOLVED")
+except BaseException as error:
+    print("REFUSED=" + type(error).__name__)
+'''
+
+
+def _tripwire_child(tmp_path: Path, program: str) -> tuple[str, Path]:
+    """Launch a script file the way the two product sites do: this interpreter, a rebuilt PYTHONPATH."""
+    script, record = tmp_path / "child.py", tmp_path / "tripwire.jsonl"
+    script.write_text(program, encoding="utf-8")
+    environment = {**os.environ, "PYTHONPATH": os.pathsep.join([str(_ROOT / "src"), str(_ROOT)])}
+    completed = subprocess.run(
+        [sys.executable, str(script)], cwd=_ROOT, env=child_tripwire.environment(environment, record),
+        capture_output=True, text=True, timeout=120, check=False,
+    )
+    return completed.stdout + completed.stderr, record
+
+
+@pytest.mark.skipif(getattr(sys, "_main5_guard_activated", False), reason="the MAIN-5 guard owns the child's adapter there")
+def test_the_child_tripwire_records_and_refuses_a_real_adapter_request(tmp_path: Path) -> None:
+    output, record = _tripwire_child(tmp_path, child_tripwire.PRELUDE + _TRIPWIRE_PROGRAM)
+    assert "REFUSED=" in output and "RESOLVED" not in output, output
+    assert child_tripwire.observed(record) == {
+        "loaded": 1, "loaded_after_product_import": 0, "trusted_paths_imported": True, "real_adapter_calls": 1,
+    }
+    with pytest.raises(AssertionError, match="asked for the real known folders"):
+        child_tripwire.assert_no_real_adapter_access(record)
+
+
+@pytest.mark.skipif(getattr(sys, "_main5_guard_activated", False), reason="the MAIN-5 guard owns the child's adapter there")
+def test_a_tripwire_that_is_missing_or_late_never_counts_as_a_clean_child(tmp_path: Path) -> None:
+    with pytest.raises(AssertionError, match="tripwire did not load first"):
+        child_tripwire.assert_no_real_adapter_access(tmp_path / "never-written.jsonl")
+    late = "from optimus.acp import trusted_paths\n" + child_tripwire.PRELUDE + "print('RAN')\n"
+    output, record = _tripwire_child(tmp_path, late)
+    assert "RAN" in output, output
+    assert child_tripwire.observed(record)["loaded_after_product_import"] == 1
+    with pytest.raises(AssertionError, match="tripwire did not load first"):
+        child_tripwire.assert_no_real_adapter_access(record)
+    unconfigured = subprocess.run(
+        [sys.executable, "-c", child_tripwire.PRELUDE + "print('RAN')"], cwd=_ROOT, capture_output=True, text=True,
+        timeout=120, check=False, env={name: value for name, value in os.environ.items() if name != child_tripwire.FILE_VARIABLE},
+    )
+    assert unconfigured.returncode != 0 and "RAN" not in unconfigured.stdout
+    assert "TEST_CHILD_TRIPWIRE_NOT_CONFIGURED" in unconfigured.stderr
 
 
 def test_checkout_text_that_is_not_fit_to_persist_is_withheld_by_name(request: pytest.FixtureRequest, tmp_path: Path) -> None:

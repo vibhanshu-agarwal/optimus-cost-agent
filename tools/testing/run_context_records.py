@@ -44,6 +44,14 @@ _TOKEN = re.compile(r"[A-Za-z0-9_]{1,48}")
 _Check = Callable[[object], bool]
 
 
+class _Table(dict):  # type: ignore[type-arg]
+    """A table of fields, with the names that must be present."""
+
+    def __init__(self, fields: dict[str, object], required: tuple[str, ...] = ()) -> None:
+        super().__init__(fields)
+        self.required = required
+
+
 def _text(pattern: re.Pattern[str]) -> _Check:
     return lambda value: isinstance(value, str) and pattern.fullmatch(value) is not None
 
@@ -68,11 +76,13 @@ def _seconds(value: object) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value < 1e12
 
 
-_IDENTITY: dict[str, object] = {
+# An identity always names its process and always states its creation time, even when that time
+# could not be read (null). A consumer may therefore index both without checking.
+_IDENTITY = _Table({
     "pid": _count, "creation_time": _optional(_count), "image": _optional(_text(IMAGE)),
     "error": _optional(_count), "live": _optional(_flag),
-}
-_FIELDS: dict[str, object] = {
+}, required=("pid", "creation_time"))
+_FIELDS = _Table({
     "schema": _one_of(SCHEMA),
     "checkpoint": _one_of("start", "terminal"),
     "run_id": _text(RUN_ID),
@@ -89,10 +99,10 @@ _FIELDS: dict[str, object] = {
     "platform": _text(_TOKEN),
     "root": _IDENTITY,
     "root_parent": _IDENTITY,
-    "parent_run": {
+    "parent_run": _Table({
         "status": _one_of("parent", "none", "not_found", "UNKNOWN", "same_interpreter", "unsupported"),
         "run_id": _text(RUN_ID), "method": _one_of("validated_process_ancestry"), "reason": _text(_TOKEN),
-    },
+    }, required=("status",)),
     "native": {
         "supported": _flag, "attempted": _flag, "enrolled": _flag, "valid": _flag, "job_name": _text(JOB_NAME),
         "reused_from_earlier_session": _flag, "created": _flag, "create_error": _optional(_count),
@@ -110,8 +120,7 @@ _FIELDS: dict[str, object] = {
             "read_operations", "write_operations", "other_operations", "read_bytes", "write_bytes", "other_bytes")},
     },
     "members": {"ok": _flag, "complete": _flag, "error": _optional(_count), "identities": [_IDENTITY]},
-}
-_REQUIRED = ("schema", "checkpoint", "run_id", "mode", "reason")
+}, required=("schema", "checkpoint", "run_id", "mode", "reason", "root"))
 
 
 def _violation(value: object, rule: object, place: str) -> str | None:
@@ -125,6 +134,9 @@ def _violation(value: object, rule: object, place: str) -> str | None:
             found = _violation(item, rule[name], f"{place}.{name}")
             if found is not None:
                 return found
+        for name in getattr(rule, "required", ()):
+            if name not in value:
+                return f"{place}.{name}"
         return None
     if isinstance(rule, list):
         if not isinstance(value, list) or len(value) > MAX_MEMBERS:
@@ -143,12 +155,9 @@ def violation(record: object) -> str | None:
     if found is not None:
         return found
     assert isinstance(record, dict)
-    missing = [name for name in _REQUIRED if name not in record]
-    if missing:
-        return f"record.{missing[0]}"
     # A run ID carries its root's process ID; an entry whose two halves disagree is not a run's own.
-    root, matched = record.get("root"), RUN_ID.fullmatch(str(record["run_id"]))
-    if isinstance(root, dict) and "pid" in root and matched is not None and int(matched.group("pid")) != root["pid"]:
+    matched = RUN_ID.fullmatch(record["run_id"])
+    if matched is None or int(matched.group("pid")) != record["root"]["pid"]:
         return "record.run_id"
     return None
 

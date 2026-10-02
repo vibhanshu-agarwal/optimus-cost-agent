@@ -19,12 +19,14 @@ _KILL_ON_JOB_CLOSE = 0x2000
 _BREAKAWAY_OK = 0x0800
 _SILENT_BREAKAWAY_OK = 0x1000
 _QUERY_LIMITED_INFORMATION = 0x1000
+_SYNCHRONIZE = 0x00100000
+_WAIT_OBJECT_0 = 0
+_WAIT_TIMEOUT = 258
 _SNAPSHOT_PROCESSES = 0x00000002
 _ERROR_ACCESS_DENIED = 5
 _ERROR_NO_MORE_FILES = 18
 _ERROR_INVALID_PARAMETER = 87
 _ERROR_ALREADY_EXISTS = 183
-_STILL_ACTIVE = 259
 _EXTENDED_LIMIT_CLASS = 9
 _ACCOUNTING_AND_IO_CLASS = 8
 _PROCESS_ID_LIST_CLASS = 3
@@ -36,9 +38,10 @@ _IO_FIELDS = ("read_operations", "write_operations", "other_operations", "read_b
 class ProcessIdentity:
     """One process: PID plus creation time. `error` is the native error when a query failed.
 
-    `live` is True or False only when the operating system answered the question; None means the
-    answer is not known. A process that exited with code 259 would read as live: the creation
-    time, read through the same handle, still rules out a reused PID.
+    `opened` says whether a handle to the process was obtained at all; `error` belongs to the open
+    when it is False and to a later query when it is True. `live` is True or False only when the
+    operating system answered through a zero-time wait on that same handle, which does not depend
+    on the exit code; None means the answer is not known.
     """
 
     pid: int
@@ -46,6 +49,7 @@ class ProcessIdentity:
     image: str | None = None
     error: int | None = None
     live: bool | None = None
+    opened: bool = False
 
 
 @dataclass
@@ -91,8 +95,8 @@ def _kernel32():  # noqa: ANN202 - ctypes library object, Windows only
     api.CloseHandle.argtypes = [handle]
     api.GetProcessTimes.argtypes = [handle] + [ctypes.POINTER(wintypes.FILETIME)] * 4
     api.GetProcessTimes.restype = wintypes.BOOL
-    api.GetExitCodeProcess.argtypes = [handle, ctypes.POINTER(wintypes.DWORD)]
-    api.GetExitCodeProcess.restype = wintypes.BOOL
+    api.WaitForSingleObject.argtypes = [handle, wintypes.DWORD]
+    api.WaitForSingleObject.restype = wintypes.DWORD
     api.GetHandleInformation.argtypes = [handle, ctypes.POINTER(wintypes.DWORD)]
     api.GetHandleInformation.restype = wintypes.BOOL
     api.QueryFullProcessImageNameW.argtypes = [handle, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
@@ -157,14 +161,19 @@ def _creation_time(api: object, handle: object) -> tuple[int | None, int | None]
 
 
 def _is_live(api: object, handle: object) -> tuple[bool | None, int | None]:
-    """Whether the process behind an open handle is still running, or None with the native error."""
-    import ctypes
-    from ctypes import wintypes
+    """Whether the process behind an open handle is still running, or None with the native error.
 
-    code = wintypes.DWORD()
-    if not api.GetExitCodeProcess(handle, ctypes.byref(code)):
-        return None, ctypes.get_last_error()
-    return code.value == _STILL_ACTIVE, None
+    A zero-time wait returns at once: the handle is signalled exactly when the process has
+    terminated, whatever its exit code. Any other answer, including a failed wait, is unknown.
+    """
+    import ctypes
+
+    result = api.WaitForSingleObject(handle, 0)
+    if result == _WAIT_TIMEOUT:
+        return True, None
+    if result == _WAIT_OBJECT_0:
+        return False, None
+    return None, ctypes.get_last_error()
 
 
 def process_identity(pid: int) -> ProcessIdentity:
@@ -173,17 +182,23 @@ def process_identity(pid: int) -> ProcessIdentity:
     from ctypes import wintypes
 
     api = _kernel32()
-    handle = api.OpenProcess(_QUERY_LIMITED_INFORMATION, False, pid)
+    waitable = True
+    handle = api.OpenProcess(_QUERY_LIMITED_INFORMATION | _SYNCHRONIZE, False, pid)
+    if not handle and ctypes.get_last_error() == _ERROR_ACCESS_DENIED:
+        # The wait right was refused. Identity can still be read; the live state stays unknown.
+        waitable = False
+        handle = api.OpenProcess(_QUERY_LIMITED_INFORMATION, False, pid)
     if not handle:
         return ProcessIdentity(pid=pid, creation_time=None, error=ctypes.get_last_error())
     try:
         created, error = _creation_time(api, handle)
-        live, live_error = _is_live(api, handle)
+        live, live_error = _is_live(api, handle) if waitable else (None, _ERROR_ACCESS_DENIED)
         size = wintypes.DWORD(1024)
         buffer = ctypes.create_unicode_buffer(size.value)
         image = os.path.basename(buffer.value) if api.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)) else None
         return ProcessIdentity(
             pid=pid, creation_time=created, image=image, error=error if error is not None else live_error, live=live,
+            opened=True,
         )
     finally:
         api.CloseHandle(handle)
@@ -194,6 +209,7 @@ def current_identity() -> ProcessIdentity:
     created, error = _creation_time(api, api.GetCurrentProcess())
     return ProcessIdentity(
         pid=os.getpid(), creation_time=created, image=os.path.basename(sys.executable), error=error, live=True,
+        opened=True,
     )
 
 
@@ -202,7 +218,7 @@ def parent_identity() -> ProcessIdentity:
     parent = process_identity(os.getppid())
     own = current_identity()
     if parent.creation_time is None or own.creation_time is None or parent.creation_time > own.creation_time:
-        return ProcessIdentity(pid=parent.pid, creation_time=None, error=parent.error, live=parent.live)
+        return ProcessIdentity(pid=parent.pid, creation_time=None, error=parent.error, live=parent.live, opened=parent.opened)
     return parent
 
 
@@ -263,8 +279,10 @@ def ancestors(max_hops: int = 32) -> tuple[list[ProcessIdentity], str]:
 
     - `root_reached`: the chain was followed to a process with no parent. Only this ending means
       the list is every ancestor.
-    - `ancestor_exited`: the next parent has exited or its PID was reused. The chain above it
-      cannot be seen, so nothing is known about earlier ancestors.
+    - `ancestor_exited`: the next parent has exited or its PID was reused. That is concluded only
+      from the open itself failing with "no such process", from the zero-time wait reporting
+      termination, or from a creation time later than the child's. The chain above it cannot be
+      seen, so nothing is known about earlier ancestors.
     - `access_denied`, `identity_failed`, `snapshot_failed`, `snapshot_incomplete`, `hop_limit`:
       a query failed or was cut short. The result is unknown, not "no ancestor".
 
@@ -286,7 +304,9 @@ def ancestors(max_hops: int = 32) -> tuple[list[ProcessIdentity], str]:
             return chain, "root_reached"
         parent = process_identity(parent_pid)
         if parent.creation_time is None or parent.live is None:
-            if parent.error == _ERROR_INVALID_PARAMETER:
+            # Only the open itself can say "no such process". The same number from a later query
+            # on an opened handle is a failed query, not evidence that the process is gone.
+            if not parent.opened and parent.error == _ERROR_INVALID_PARAMETER:
                 return chain, "ancestor_exited"
             return chain, "access_denied" if parent.error == _ERROR_ACCESS_DENIED else "identity_failed"
         if not parent.live or parent.creation_time > current.creation_time:
