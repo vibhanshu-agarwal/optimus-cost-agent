@@ -94,7 +94,8 @@ def test_records_hold_identifiers_only_and_are_bounded(request: pytest.FixtureRe
         "guard_mode", "exit_status", "finished_utc", "accounting", "members",
     }
     assert sorted(set(record) - allowed) == []
-    for identity in (record["root"], record["root_parent"]):
+    # A platform without native identity records no parent process.
+    for identity in (record["root"], record.get("root_parent", {})):
         assert sorted(set(identity) - {"pid", "creation_time", "image", "error", "live"}) == []
     # No command line, argument vector or environment value is ever a record field or value.
     leaked = [word for word in ("argv", "command_line", "environ", "--cov", "-m pytest", sys.argv[0]) if word and word in text]
