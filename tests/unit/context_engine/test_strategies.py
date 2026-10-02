@@ -27,8 +27,19 @@ from context_engine import (
     history_digest,
     turn_source_digest,
 )
-from context_engine.engine import ContextEngine
+from context_engine.engine import PRIOR_SUMMARY_HEADER, ContextEngine
 from context_engine.selection import render_ordinary_turn, render_protected_state
+from context_engine.summary import SECTIONS
+
+
+def summary_text(label: str, *, length: int | None = None) -> str:
+    """A valid `context-summary-v1` summary, optionally padded to exactly `length` characters."""
+    bodies = [label, "-", "-", "-", "-", "-"]
+    text = "\n".join(f"## {name}\n{body}" for name, body in zip(SECTIONS, bodies, strict=True))
+    if length is not None:
+        assert len(text) <= length
+        text += "x" * (length - len(text))
+    return text
 
 
 def chars(text: str) -> int:
@@ -86,7 +97,7 @@ class FakeMaintenance:
 
     def __call__(self, request: MaintenanceRequest) -> MaintenanceResult:
         self.requests.append(request)
-        text = None if self._text is None else f"{self._text} {request.covered_turn_ids}"
+        text = None if self._text is None else summary_text(f"{self._text} {request.covered_turn_ids}")
         return MaintenanceResult(summary_text=text, attempt_ids=(f"attempt-{len(self.requests)}",), status=self._status, finish_status=self._finish)
 
 
@@ -167,8 +178,8 @@ def test_the_tail_never_cuts_a_turn_and_stops_at_the_first_that_does_not_fit() -
 
 def test_the_tail_shrinks_to_leave_room_for_the_summary() -> None:
     snap = make_snapshot([30, 30, 30])
-    p = params(compaction_tail_input_tokens=cost(snap, 2, 3), summary_output_tokens=100)
-    budget = authority(snap) + cost(snap, 2, 3) + 99  # one token short of tail + summary
+    p = params(compaction_tail_input_tokens=cost(snap, 2, 3), summary_output_tokens=160)
+    budget = authority(snap) + cost(snap, 2, 3) + 159  # one token short of tail + summary
     v = view(snap, "compaction", p, lim=limits(history=budget))
     assert v.available and v.tail_turn_ids == (3,) and v.covered_turn_ids == (1, 2)
 
@@ -256,32 +267,44 @@ def test_maintenance_input_holds_whole_turns() -> None:
         assert render_ordinary_turn(turn) in text
 
 
+RESERVE = 160  # room for a short valid six-section summary
+
+
+def two_turn_chunks(snap: HistorySnapshot) -> int:
+    """A maintenance input that holds two whole turns, or one with a prior summary at full length."""
+    assert cost(snap, 1) > len(PRIOR_SUMMARY_HEADER) + RESERVE + 2, "a third turn must not fit"
+    return cost(snap, 1, 2) + len(PRIOR_SUMMARY_HEADER) + RESERVE + 2
+
+
 def test_older_history_is_chunked_within_maintenance_input() -> None:
-    snap = make_snapshot([40, 40, 40, 40, 40])
+    snap = make_snapshot([200, 200, 200, 200, 200])
     maintenance = FakeMaintenance()
-    lim = limits(maintenance_input_tokens=cost(snap, 1, 2) + 60)
-    v = view(snap, "compaction", params(compaction_tail_input_tokens=cost(snap, 5), summary_output_tokens=20), lim=lim, maintenance=maintenance)
+    lim = limits(maintenance_input_tokens=two_turn_chunks(snap))
+    v = view(snap, "compaction", params(compaction_tail_input_tokens=cost(snap, 5), summary_output_tokens=RESERVE), lim=lim, maintenance=maintenance)
     assert v.available and v.covered_turn_ids == (1, 2, 3, 4)
     assert [r.covered_turn_ids for r in maintenance.requests] == [(1, 2), (1, 2, 3, 4)]
     assert all(chars(r.input_text) <= lim.maintenance_input_tokens for r in maintenance.requests)
 
 
 def test_chunks_are_planned_for_the_longest_allowed_prior_summary() -> None:
-    """A later chunk carries the previous summary; planning counts it at its maximum length, so a
-    summary that uses its whole allowance still leaves every input within bounds."""
-    snap = make_snapshot([40, 40, 40, 40, 40])
+    """A later chunk carries the previous summary. Planning counts it at its maximum length, so a
+    summary that uses its whole allowance still leaves every input within bounds. Planning by a
+    shorter guess would overfill a chunk, and the call-time check would refuse it."""
+    snap = make_snapshot([37] * 19)
 
     class LongSummary(FakeMaintenance):
         def __call__(self, request: MaintenanceRequest) -> MaintenanceResult:
             self.requests.append(request)
-            return MaintenanceResult(summary_text="S" * request.max_output_tokens, attempt_ids=("a",), status="completed", finish_status="stop")
+            return MaintenanceResult(summary_text=summary_text("L", length=request.max_output_tokens), attempt_ids=("a",), status="completed", finish_status="stop")
 
     maintenance = LongSummary()
-    lim = limits(maintenance_input_tokens=cost(snap, 1, 2) + 30, maintenance_output_tokens=40)
-    v = view(snap, "compaction", params(compaction_tail_input_tokens=cost(snap, 5), summary_output_tokens=60), lim=lim, maintenance=maintenance)
+    lim = limits(maintenance_input_tokens=9 * cost(snap, 1) + 8, maintenance_output_tokens=300)
+    p = params(compaction_tail_input_tokens=cost(snap, 19), summary_output_tokens=400, max_maintenance_calls=3)
+    v = view(snap, "compaction", p, lim=lim, maintenance=maintenance)
     assert v.available, v.reason
+    assert len(maintenance.requests) == 3
     assert all(chars(r.input_text) <= lim.maintenance_input_tokens for r in maintenance.requests)
-    assert {r.max_output_tokens for r in maintenance.requests} == {40}, "the smaller of the summary and route output bounds"
+    assert {r.max_output_tokens for r in maintenance.requests} == {300}, "the smaller of the summary and route output bounds"
 
 
 def test_an_input_the_estimator_prices_above_its_plan_is_refused_before_the_call() -> None:
@@ -321,10 +344,11 @@ def test_a_summary_over_its_bound_makes_the_view_unavailable() -> None:
 
 
 def test_needing_more_calls_than_allowed_is_unavailable_before_any_call() -> None:
-    snap = make_snapshot([40, 40, 40, 40, 40])
+    snap = make_snapshot([200, 200, 200, 200, 200])
     maintenance = FakeMaintenance()
-    lim = limits(maintenance_input_tokens=cost(snap, 1) + 60)
-    v = view(snap, "compaction", params(compaction_tail_input_tokens=cost(snap, 5), max_maintenance_calls=2, summary_output_tokens=20), lim=lim, maintenance=maintenance)
+    lim = limits(maintenance_input_tokens=cost(snap, 1) + len(PRIOR_SUMMARY_HEADER) + RESERVE + 6)
+    p = params(compaction_tail_input_tokens=cost(snap, 5), max_maintenance_calls=2, summary_output_tokens=RESERVE)
+    v = view(snap, "compaction", p, lim=lim, maintenance=maintenance)
     assert (v.available, v.reason, maintenance.requests) == (False, "maintenance allowance exceeded", [])
 
 
@@ -389,13 +413,13 @@ def test_cancellation_before_maintenance_makes_no_call() -> None:
 
 
 def test_cancellation_between_chunks_stops_further_calls() -> None:
-    snap = make_snapshot([40, 40, 40, 40, 40])
+    snap = make_snapshot([200, 200, 200, 200, 200])
     maintenance = FakeMaintenance()
     v = view(
         snap,
         "compaction",
-        params(compaction_tail_input_tokens=cost(snap, 5), summary_output_tokens=20),
-        lim=limits(maintenance_input_tokens=cost(snap, 1, 2) + 60),
+        params(compaction_tail_input_tokens=cost(snap, 5), summary_output_tokens=RESERVE),
+        lim=limits(maintenance_input_tokens=two_turn_chunks(snap)),
         maintenance=maintenance,
         cancelled=lambda: len(maintenance.requests) >= 1,
     )

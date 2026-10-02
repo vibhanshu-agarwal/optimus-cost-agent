@@ -28,7 +28,10 @@ from optimus_model_policy.binding import WIRE_QUANTIZATIONS, WIRE_REASONING_EFFO
 from optimus_model_policy.registry import (
     DORMANT_ROLES,
     IMPLEMENTER_ROLES,
+    SUMMARY_FIXTURE_DIGEST,
     SUMMARY_FORMAT,
+    SUMMARY_PROMPT_DIGEST,
+    SUMMARY_VALIDATOR,
     ModelEntry,
     Origin,
     RegistrySnapshot,
@@ -120,9 +123,15 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
         receipt.format == SUMMARY_FORMAT
         and receipt.providers == entry.route.providers
         and receipt.reasoning == entry.default_reasoning
+        and receipt.fixture_digest == SUMMARY_FIXTURE_DIGEST
+        and receipt.prompt_digest == SUMMARY_PROMPT_DIGEST
+        and receipt.validator == SUMMARY_VALIDATOR
         for receipt in entry.summary_receipts
     ):
-        issue("SUMMARIZER_UNQUALIFIED", f"no passing {SUMMARY_FORMAT} receipt for this route and reasoning setting")
+        issue(
+            "SUMMARIZER_UNQUALIFIED",
+            f"no passing {SUMMARY_FORMAT} receipt for this route, reasoning setting, fixture, prompt and validator",
+        )
     return issues
 
 

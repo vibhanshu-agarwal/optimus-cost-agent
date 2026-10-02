@@ -3799,6 +3799,38 @@
       "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
       "test_node": "tests/unit/context_engine/test_selection.py::test_protected_state_renders_every_fact_verbatim",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:evaluate_summary:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: evaluate_summary puts str() of a SummaryFormatError into the fact report; every such message is a fixed format-rule string from context_engine.summary (for example 'wrapper delimiter in summary'), never summary text, a credential or a local diagnostic.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evaluate_context_summarizer.py::test_each_negative_control_fails_on_its_own_check",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:fixture_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: fixture_digest canonicalizes the synthetic, non-sensitive calculator-constraints-v1 fixture solely as a SHA-256 input and returns only the digest.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evaluate_context_summarizer.py::test_the_fixture_digest_is_its_canonical_content_not_its_bytes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main serializes either the paid-call envelope (registry model IDs, routes, prices, token and cost bounds, digests) or a fact report over a saved summary of the synthetic fixture; no credential, prompt beyond the fixture, or local diagnostic is serialized.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evaluate_context_summarizer.py::test_the_command_line_checks_a_saved_summary",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints only the envelope or the fact report described for its json_serialization surface, for the operator reviewing qualification before any paid call; the tool makes no network call and reads no credential.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evaluate_context_summarizer.py::test_the_command_line_checks_a_saved_summary",
+      "evidence_tier": "unit"
     }
   ]
 }

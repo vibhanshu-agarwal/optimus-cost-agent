@@ -60,6 +60,15 @@ MAX_CONTEXT_CEILING_TOKENS = 262_144
 SUMMARY_FORMAT = "context-summary-v1"
 """The accepted host-wrapped plain-text summary format (Task 1 contracts §3)."""
 
+# The rest of a summarizer qualification key (Task 1 contracts §3; Plan 12.2 Task 8). A receipt
+# qualifies a route only for these exact values: a changed prompt, validator or fixture invalidates
+# every receipt until the check is run and reviewed again. They are pinned here so this neutral package
+# need not import the engine; a cross-check test keeps them equal to the engine's prompt, its
+# validator version and the fixture's canonical digest.
+SUMMARY_PROMPT_DIGEST = "6d1b4e77d77f1a7331932633dbc39ae4f1c3bf5c4a79acf8aed9873b410902db"  # pragma: allowlist secret - public prompt digest
+SUMMARY_VALIDATOR = "context-summary-validator-v1"
+SUMMARY_FIXTURE_DIGEST = "696203ab47ab68e474abbe9d28c31cb9fb32137764841236532f4ba243aeb271"  # pragma: allowlist secret - public fixture digest
+
 
 class RegistryError(Exception):
     """The registry could not be loaded. ``code`` is ``YAML_REJECTED`` or ``SCHEMA_INVALID``."""
@@ -261,12 +270,18 @@ class Route(BaseModel):
 
 
 class SummaryReceipt(BaseModel):
+    """A reviewed passing summary-quality check for one route and setting (Plan 12.2 Task 8). It
+    binds the format, route, reasoning, fixture, prompt and validator; request IDs and date record
+    the run."""
+
     model_config = _FROZEN
 
     format: str
     providers: tuple[str, ...]
     reasoning: str | None
     fixture_digest: str
+    prompt_digest: str
+    validator: str
     request_ids: tuple[str, ...]
     recorded_on: str
     result: Literal["pass"]

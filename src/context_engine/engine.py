@@ -38,6 +38,7 @@ from .contracts import (
     turn_source_digest,
 )
 from .selection import newest_suffix_start, render_ordinary_turn, render_protected_state
+from .summary import SUMMARY_FORMAT, SummaryFormatError, parse_summary
 
 PRIOR_SUMMARY_HEADER = "prior summary:\n"
 _SEPARATOR = "\n"
@@ -76,6 +77,8 @@ class ContextEngine:
             raise ContractError(f"unknown strategy {strategy!r}")
         if not isinstance(parameters, StrategyParameters) or not isinstance(limits, ViewLimits):
             raise ContractError("prepare_view needs StrategyParameters and ViewLimits")
+        if parameters.format_version != SUMMARY_FORMAT:
+            raise ContractError(f"unsupported summary format {parameters.format_version!r}")
         if checkpoint is not None and not isinstance(checkpoint, SummaryCheckpoint):
             raise ContractError("checkpoint must be a SummaryCheckpoint or None")
         try:
@@ -229,4 +232,8 @@ class ContextEngine:
             raise _Unavailable("maintenance failed")
         if estimate(result.summary_text) > reserve:
             raise _Unavailable("summary exceeds bound")
+        try:
+            parse_summary(result.summary_text)
+        except SummaryFormatError as exc:
+            raise _Unavailable("summary malformed") from exc
         return result.summary_text

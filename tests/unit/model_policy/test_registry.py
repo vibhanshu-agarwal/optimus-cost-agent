@@ -339,6 +339,56 @@ def test_a_summarizer_without_a_receipt_is_not_eligible(tmp_path: Path) -> None:
     assert ordered_assignments(snapshot, Role.SUMMARIZER) == ("cn/alpha",)
 
 
+def _receipt(**changes: str) -> str:
+    from optimus_model_policy.registry import SUMMARY_FIXTURE_DIGEST, SUMMARY_PROMPT_DIGEST, SUMMARY_VALIDATOR
+
+    fields = {
+        "format": "context-summary-v1",
+        "providers": "[alpha-cloud/fp8]",
+        "reasoning": "high",
+        "fixture_digest": f'"{SUMMARY_FIXTURE_DIGEST}"',
+        "prompt_digest": f'"{SUMMARY_PROMPT_DIGEST}"',
+        "validator": SUMMARY_VALIDATOR,
+        "request_ids": "[req-1, req-2]",
+        "recorded_on": '"2026-10-02"',
+        "result": "pass",
+    }
+    fields.update(changes)
+    return "    summary_receipts:\n      - {" + ", ".join(f"{key}: {value}" for key, value in fields.items()) + "}\n"
+
+
+def _with_receipt(tmp_path: Path, receipt: str):
+    """cn/alpha assigned the summarizer role, with `receipt` as its only summary receipt."""
+    text = _edited("roles:\n  medium: [us/beta, cn/alpha]\n", "roles:\n  medium: [us/beta, cn/alpha]\n  summarizer: [cn/alpha]\n")
+    anchor = "      - {provider: alpha-cloud/fp8, quantization: fp8, context_window_tokens: 300000, max_output_tokens: 32768, verified: true}\n"
+    assert text.count(anchor) == 1
+    return load_registry(_write(tmp_path, "defaults.yaml", text.replace(anchor, anchor + receipt, 1)), None)
+
+
+def test_a_receipt_bound_to_every_qualification_key_makes_the_summarizer_eligible(tmp_path: Path) -> None:
+    snapshot = _with_receipt(tmp_path, _receipt())
+    assert _issues(snapshot, "SUMMARIZER_UNQUALIFIED") == []
+    assert select_eligible_models(snapshot, Role.SUMMARIZER) == ("cn/alpha",)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"format": "context-summary-v0"},
+        {"providers": "[alpha-cloud/bf16]"},
+        {"reasoning": "low"},
+        {"fixture_digest": '"' + "0" * 64 + '"'},
+        {"prompt_digest": '"' + "0" * 64 + '"'},
+        {"validator": "context-summary-validator-v0"},
+    ],
+    ids=["format", "route", "reasoning", "fixture", "prompt", "validator"],
+)
+def test_changing_any_qualification_key_withdraws_eligibility(tmp_path: Path, changes) -> None:
+    snapshot = _with_receipt(tmp_path, _receipt(**changes))
+    assert [(i.model_id, i.role) for i in _issues(snapshot, "SUMMARIZER_UNQUALIFIED")] == [("cn/alpha", Role.SUMMARIZER)]
+    assert select_eligible_models(snapshot, Role.SUMMARIZER) == ()
+
+
 def test_dormant_roles_are_never_eligible(tmp_path: Path) -> None:
     text = _edited("roles:\n  medium: [us/beta, cn/alpha]\n", "roles:\n  medium: [us/beta, cn/alpha]\n  reviewer: [us/beta]\n  classifier: [cn/alpha]\n")
     snapshot = load_registry(_write(tmp_path, "defaults.yaml", text), None)
