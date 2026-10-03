@@ -673,28 +673,43 @@ def test_strict_reader_fails_closed_instead_of_yielding_nothing(adapter, tmp_pat
         list(adapter._strict_reader()(relpath))
 
 
-def _scan_in_process(adapter, repo: Path, relpath: str, *, before_scan=None, deny: Path | None = None) -> tuple[int, str]:
+def _scan_in_process(
+    adapter, repo: Path, relpath: str, *, before_scan=None, deny: Path | None = None, vanish_after_check: Path | None = None
+) -> tuple[int, str]:
     """Run the adapter with its real delegate (the pinned scanner, in process) in a staged fixture repo.
 
     ``before_scan`` runs after validation succeeded and before the scanner starts, which is the
     window Codex's R1 reproduction exercises; ``deny`` makes every open of that path raise
-    PermissionError for the duration of the scan. The UTF-8-mode gate is satisfied as the other
-    adapter unit tests satisfy it (the configured entry passes ``-X utf8``; the test process, on
-    Linux in particular, need not), so what is exercised is the scan-time read, not that gate.
+    PermissionError for the duration of the scan; ``vanish_after_check`` deletes that path right
+    after the wrapper's own scan-time read returns, before the scanner's existence filter sees it
+    (Codex's second residual case). The UTF-8-mode gate is satisfied as the other adapter unit tests
+    satisfy it (the configured entry passes ``-X utf8``; the test process, on Linux in particular,
+    need not), so what is exercised is the scan-time read, not that gate.
     """
     parity.stage_fixture_files(repo)
     real_open = open
+    real_read = adapter._read_strictly
+    vanished = False
 
     def denied_open(path, *args, **kwargs):
         if deny is not None and Path(path).resolve() == deny.resolve():
             raise PermissionError(13, "Permission denied")
         return real_open(path, *args, **kwargs)
 
+    def read_then_vanish(filename: str) -> str:
+        nonlocal vanished
+        text = real_read(filename)
+        if vanish_after_check is not None and not vanished and Path(filename).resolve() == vanish_after_check.resolve():
+            vanish_after_check.unlink()
+            vanished = True
+        return text
+
     def delegate(argv: list[str]) -> int:
         if before_scan is not None:
             before_scan()
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr("builtins.open", denied_open)
+            patch.setattr(adapter, "_read_strictly", read_then_vanish)
             return adapter._delegate(argv)
 
     err = io.StringIO()
@@ -743,16 +758,30 @@ def _replace_with(path: Path, data: bytes):
     return lambda: path.write_bytes(data)
 
 
+def _replace_with_directory(path: Path):
+    def replace() -> None:
+        path.unlink()
+        path.mkdir()
+
+    return replace
+
+
+UTF16_CANARY = _utf16(CANARY_LINE)
+UTF8_CANARY = CANARY_LINE.encode("utf-8")
 SCAN_TIME_FAILURES = [
     ("report-denied", REPORT_RELPATH, _utf16(CLEAN_ASCII_LINE), "deny", "permission denied"),
     ("report-deleted", REPORT_RELPATH, _utf16(CLEAN_ASCII_LINE), "delete", "file not found"),
     ("report-to-invalid-utf8", REPORT_RELPATH, _utf16(CLEAN_ASCII_LINE), INVALID_UTF8_BYTES, "as UTF-8 at byte offset 10"),
     ("report-to-utf32-canary", REPORT_RELPATH, _utf16(CLEAN_ASCII_LINE), CANARY_LINE.encode("utf-32"), "NUL character"),
     ("report-to-malformed-utf16", REPORT_RELPATH, _utf16(CLEAN_ASCII_LINE), _utf16("a") + b"\x00\xdc", "illegal encoding"),
+    ("report-to-directory", REPORT_RELPATH, UTF16_CANARY, "directory", "unexpected directory argument"),
+    ("report-vanishes-after-scan-check", REPORT_RELPATH, UTF16_CANARY, "vanish-after-check", "file not found"),
     ("source-denied", "src/probe.py", CLEAN_ASCII_LINE.encode("utf-8"), "deny", "permission denied"),
     ("source-deleted", "src/probe.py", CLEAN_ASCII_LINE.encode("utf-8"), "delete", "file not found"),
-    ("source-to-invalid-utf8", "src/probe.py", CLEAN_ASCII_LINE.encode("utf-8"), INVALID_UTF8_BYTES + CANARY_LINE.encode(), "as UTF-8 at byte offset 10"),
-    ("source-to-utf16-canary", "src/probe.py", CLEAN_ASCII_LINE.encode("utf-8"), _utf16(CANARY_LINE), "as UTF-8 at byte offset 0"),
+    ("source-to-invalid-utf8", "src/probe.py", CLEAN_ASCII_LINE.encode("utf-8"), INVALID_UTF8_BYTES + UTF8_CANARY, "as UTF-8 at byte offset 10"),
+    ("source-to-utf16-canary", "src/probe.py", CLEAN_ASCII_LINE.encode("utf-8"), UTF16_CANARY, "as UTF-8 at byte offset 0"),
+    ("source-to-directory", "src/probe.py", UTF8_CANARY, "directory", "unexpected directory argument"),
+    ("source-vanishes-after-scan-check", "src/probe.py", UTF8_CANARY, "vanish-after-check", "file not found"),
 ]
 
 
@@ -768,12 +797,50 @@ def test_a_file_that_fails_to_read_or_decode_at_scan_time_cannot_be_reported_cle
         status, text = _scan_in_process(adapter, repo, relpath, deny=target)
     elif change == "delete":
         status, text = _scan_in_process(adapter, repo, relpath, before_scan=target.unlink)
+    elif change == "directory":
+        status, text = _scan_in_process(adapter, repo, relpath, before_scan=_replace_with_directory(target))
+    elif change == "vanish-after-check":
+        status, text = _scan_in_process(adapter, repo, relpath, vanish_after_check=target)
+        assert not target.exists(), "the fixture must have vanished after the wrapper's scan-time read"
     else:
         status, text = _scan_in_process(adapter, repo, relpath, before_scan=_replace_with(target, change))
     assert status == 2, (status, text)
     assert f"{ADAPTER_PROGRAM}:" in text and relpath.split("/")[-1] in text.replace("\\", "/") and fragment in text, text
     assert "Secret Type:" not in text and "baseline file was updated" not in text, text
     assert _baseline_bytes(repo) == before, "no baseline write on a scan-time failure"
+
+
+@pytest.mark.parametrize(
+    ("relpath", "content"),
+    [("src/package-lock.json", UTF8_CANARY), (".secrets.baseline", None)],
+    ids=["lock-file-filter", "baseline-file-filter"],
+)
+def test_a_configured_filename_exclusion_is_still_honoured_not_mistaken_for_a_vanished_file(
+    adapter, tmp_path: Path, relpath: str, content: bytes | None
+):
+    """The scanner's own filename filters still skip what they are configured to skip, silently and clean."""
+    repo = _make_hook_repo(tmp_path, "configured-exclusion")
+    if content is not None:
+        _write(repo / relpath, content)
+    before = _baseline_bytes(repo)
+    status, text = _scan_in_process(adapter, repo, relpath)
+    assert status == 0 and "Secret Type:" not in text and ADAPTER_PROGRAM not in text, text
+    assert _baseline_bytes(repo) == before
+
+
+def test_only_the_literal_directory_marker_is_left_to_the_scanner(adapter, tmp_path: Path):
+    """A directory under any other name is a validation failure at scan time, not a silent skip."""
+    reads: list[str] = []
+    wrapped = adapter._strict_scan_file(lambda filename: iter(()), reads)
+    (tmp_path / "src").mkdir()
+    (tmp_path / "other").mkdir()
+    with pytest.MonkeyPatch.context() as patch:
+        patch.chdir(tmp_path)
+        assert list(wrapped("src")) == []
+        with pytest.raises(adapter.ValidationError, match="unexpected directory argument: other"):
+            list(wrapped("other"))
+        _write(tmp_path / "src" / "filtered.py", CLEAN_ASCII_LINE)
+        assert list(wrapped(str(Path("src") / "filtered.py"))) == [], "a regular file the scanner filtered is not an error"
 
 
 def test_adapter_reports_a_validation_failure_raised_during_delegation(adapter, tmp_path: Path, monkeypatch):

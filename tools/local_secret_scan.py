@@ -36,9 +36,9 @@ It does not enumerate directories, rewrite or re-encode any file on disk, or dec
 replacement characters. A UTF-16 file outside the custody namespace, or one without a byte-order
 mark, is not recognised as UTF-16: it is validated as UTF-8 like any other selected file. There is no
 snapshot: a file is read for validation and read again for the scan, and each read is validated
-on its own, so the scanner never sees bytes that were not; a file removed in the instant between
-the scan-time check and the scanner's own existence filter is the one case the hook does not see.
-The literal ``src`` argument that the configured
+on its own, so the scanner never sees bytes that were not; and a selected file the scanner's own
+filters dropped without the reader ever reading it fails the hook unless it is still a regular
+file (a configured filename exclusion). The literal ``src`` argument that the configured
 entry carries is a compatibility marker for the scanner's positional interface: it is validated as
 an existing directory and passed through, never scanned recursively by this adapter (pre-commit
 supplies the selected filenames).
@@ -80,8 +80,9 @@ def _delegate(argv: list[str]) -> int:
     from detect_secrets.pre_commit_hook import main as hook_main
 
     if not getattr(scan.scan_file, "strict", False):
-        scan.scan_file = _strict_scan_file(scan.scan_file)
-        scan._get_lines_from_file = _strict_reader()
+        read_by_reader: list[str] = []
+        scan._get_lines_from_file = _strict_reader(read_by_reader)
+        scan.scan_file = _strict_scan_file(scan.scan_file, read_by_reader)
     result = hook_main(argv)
     return int(result or 0)
 
@@ -108,37 +109,53 @@ class _NamedText(io.StringIO):
         self.name = name
 
 
-def _strict_scan_file(pinned_scan_file: Callable[[str], Iterator[object]]) -> Callable[[str], Iterator[object]]:
-    """Check readability and decodability of a file right before the scanner's own filters see it.
+def _strict_scan_file(
+    pinned_scan_file: Callable[[str], Iterator[object]], read_by_reader: list[str]
+) -> Callable[[str], Iterator[object]]:
+    """Make sure a selected file is either read by the strict reader or fails the hook.
 
-    ``scan_file`` first runs filename filters, one of which drops a path that is no longer a file,
-    before any reader is involved; this check turns that silent drop into a failure. The one path
-    that is meant to be dropped is the compatibility directory marker, which the scanner has
-    always received and skipped as "not a file".
+    ``scan_file`` first runs filename filters before any reader is involved. One of them,
+    ``is_invalid_file``, drops a path that is not a regular file, so a selected file that vanished
+    or turned into a directory would be skipped as if clean. Two checks close that: the file is
+    read and validated right before the scanner sees it, and after the scanner is done the wrapper
+    confirms the strict reader actually read it; if it did not and the path is not a regular file
+    any more, the hook fails. A path the reader did not read but that is still a regular file was
+    skipped by a configured filename filter (the baseline, lock files, swagger paths), which is
+    honoured. The one path meant to be dropped is the literal compatibility directory marker,
+    which the scanner has always received and skipped as "not a file".
     """
 
     def scan_file(filename: str) -> Iterator[object]:
-        if not os.path.isdir(filename):
-            _read_strictly(filename)
+        if filename == DIRECTORY_MARKER:
+            yield from pinned_scan_file(filename)
+            return
+        _read_strictly(filename)
+        read_by_reader.clear()
         yield from pinned_scan_file(filename)
+        if filename not in read_by_reader and not os.path.isfile(filename):
+            reason = "unexpected directory argument" if os.path.isdir(filename) else "file not found"
+            raise ValidationError(f"cannot read {filename}: {reason} when the scanner looked for it")
 
     scan_file.strict = True  # type: ignore[attr-defined]  # marks the wrapper; keeps installation idempotent
     return scan_file
 
 
-def _strict_reader() -> LineReader:
+def _strict_reader(read_by_reader: list[str] | None = None) -> LineReader:
     """The scanner's file reader, built on ``_read_strictly``.
 
     Mirrors the pinned reader of detect-secrets 1.5.0 (``detect_secrets.core.scan._get_lines_from_file``:
     the file's transformer, else its lines, then the eager transformers) and differs only in how the
     text is obtained: bytes read once and validated by the rules above, newlines translated as the
     pinned ``open`` did, instead of a locale-codec ``open`` whose decode failure the pinned reader
-    swallows as "no lines".
+    swallows as "no lines". Each file it read is recorded in ``read_by_reader`` for ``scan_file``.
     """
     from detect_secrets.transformers import get_transformed_file
 
     def _lines_from_file(filename: str) -> Iterator[list[str]]:
-        handle = _NamedText(_read_strictly(filename).replace("\r\n", "\n").replace("\r", "\n"), filename)
+        text = _read_strictly(filename)
+        if read_by_reader is not None:
+            read_by_reader.append(filename)
+        handle = _NamedText(text.replace("\r\n", "\n").replace("\r", "\n"), filename)
         yield get_transformed_file(handle) or handle.readlines()
         handle.seek(0)
         lines = get_transformed_file(handle, use_eager_transformers=True)
