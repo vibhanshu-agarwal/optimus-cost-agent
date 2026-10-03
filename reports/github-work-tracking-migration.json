@@ -1,0 +1,4416 @@
+{
+ "schema": "optimus-work-tracking-migration-v1",
+ "baseline": {
+  "commit": "39803f8d8e3b2a11cc16024e46e6074fb1e18e7d", "commit_pin": "# pragma: allowlist secret - baseline git commit id, not a secret",
+  "sources": {
+   "pool": {"path": "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md", "blob": "58958f8c6acd5f86b81e20d6a7a9a164f5884f04", "pin": "# pragma: allowlist secret - git blob id of this source at the baseline commit, not a secret"},
+   "masterplan": {"path": "docs/superpowers/plans/hardening-runtime-quality-masterplan.md", "blob": "bd51f1f8a7daebb452e0769bbb5f852c67121c9c", "pin": "# pragma: allowlist secret - git blob id of this source at the baseline commit, not a secret"},
+   "roadmap": {"path": "docs/superpowers/plans/2026-07-01-phase-1-roadmap.md", "blob": "e9d9fa075dd8860e2d4bc30fde04089d01805c3c", "pin": "# pragma: allowlist secret - git blob id of this source at the baseline commit, not a secret"}
+  }
+ },
+ "sections": [
+  {
+   "source": "pool",
+   "title": "Purpose",
+   "classification": "not-work",
+   "rationale": "pool governance prose; replaced by the cutover authority statement"
+  },
+  {
+   "source": "pool",
+   "title": "How to use this document",
+   "classification": "not-work",
+   "rationale": "pool usage rules; replaced by the issue maintenance contract"
+  },
+  {
+   "source": "pool",
+   "title": "Live implementation plan registry",
+   "classification": "migrated",
+   "rationale": "each live plan becomes a kind:plan tracking issue"
+  },
+  {
+   "source": "pool",
+   "title": "Frozen approval bytes and live-status authority",
+   "classification": "migrated",
+   "rationale": "each frozen artifact's live-owner mapping is carried into the manifest"
+  },
+  {
+   "source": "pool",
+   "title": "Feature slices",
+   "classification": "mixed",
+   "rationale": "open/partial features become parent issues; closed/retired rows are history"
+  },
+  {
+   "source": "pool",
+   "title": "Plan 12 Context Engine package A custody",
+   "classification": "migrated",
+   "rationale": "section-level custody record of Plan 12.2 Package A (duplicate of the plan issue)"
+  },
+  {
+   "source": "pool",
+   "title": "Plan 11.26 reviewed disposition and remediation custody",
+   "classification": "migrated",
+   "rationale": "ACCEPTED_OPEN candidates and UNRUN obligations are open work"
+  },
+  {
+   "source": "pool",
+   "title": "MAIN-5 residuals under existing 11.x owners",
+   "classification": "mixed",
+   "rationale": "open residual entries migrate; closed ones are history"
+  },
+  {
+   "source": "pool",
+   "title": "Plan 11.x resource-lifetime and live-evidence residuals from FU33",
+   "classification": "migrated",
+   "rationale": "P11-FU-38..41 are open"
+  },
+  {
+   "source": "pool",
+   "title": "Plan 11.26 H4 verifier follow-ups from Seam 2 checkpoint A",
+   "classification": "migrated",
+   "rationale": "section-level open follow-up record"
+  },
+  {
+   "source": "pool",
+   "title": "Plan 11.26 Task 13 reviewed duplication disposition",
+   "classification": "migrated",
+   "rationale": "ACCEPTED_OPEN duplication candidates are open work"
+  },
+  {
+   "source": "pool",
+   "title": "Follow-up status index",
+   "classification": "mixed",
+   "rationale": "index rows are projections of their entries; unresolved rows migrate with the entry"
+  },
+  {
+   "source": "pool",
+   "title": "Evidence and handoff feature registry",
+   "classification": "mixed",
+   "rationale": "open evidence/A2A features migrate; closed rows are history"
+  },
+  {
+   "source": "pool",
+   "title": "A2A ledger audit obligations",
+   "classification": "mixed",
+   "rationale": "open obligations migrate; M17 closed is history"
+  },
+  {
+   "source": "pool",
+   "title": "Settled risks and historical entries",
+   "classification": "history",
+   "rationale": "accepted risk and closed historical rows; no unresolved work"
+  },
+  {
+   "source": "pool",
+   "title": "Open items",
+   "classification": "mixed",
+   "rationale": "unresolved entries migrate; closed entries are history"
+  },
+  {
+   "source": "pool",
+   "title": "Accepted risks and warnings",
+   "classification": "not-work",
+   "rationale": "operator-accepted limitation, recorded warning, not open work"
+  },
+  {
+   "source": "pool",
+   "title": "P9.96 Task 9 Disclosed Follow-Ups (Closed; historical Plan 10 custody)",
+   "classification": "history",
+   "rationale": "closed by Plan 10"
+  },
+  {
+   "source": "pool",
+   "title": "Closed Historical Follow-Ups (formerly tracked lightweight notes)",
+   "classification": "history",
+   "rationale": "closed historical notes"
+  },
+  {
+   "source": "pool",
+   "title": "Closed custody excluded from the open pool",
+   "classification": "history",
+   "rationale": "P9.85-FU-7 and P9.9-FU-1 closed with Plan 9.96 Task 9"
+  },
+  {
+   "source": "masterplan",
+   "title": "Authority chain",
+   "classification": "not-work",
+   "rationale": "masterplan governance prose"
+  },
+  {
+   "source": "masterplan",
+   "title": "Prerequisites",
+   "classification": "not-work",
+   "rationale": "the masterplan's own prerequisites table, not work items"
+  },
+  {
+   "source": "masterplan",
+   "title": "Global constraints",
+   "classification": "not-work",
+   "rationale": "governance prose"
+  },
+  {
+   "source": "masterplan",
+   "title": "Source-of-truth map",
+   "classification": "not-work",
+   "rationale": "authority map; superseded by the issue authority at cutover"
+  },
+  {
+   "source": "masterplan",
+   "title": "Program inventory boundary",
+   "classification": "not-work",
+   "rationale": "scope boundary statement"
+  },
+  {
+   "source": "masterplan",
+   "title": "New-work custody register",
+   "classification": "migrated",
+   "rationale": "each HARDENING-ITEM is open work under its track"
+  },
+  {
+   "source": "masterplan",
+   "title": "Existing candidate sequence",
+   "classification": "migrated",
+   "rationale": "projection of pool candidates (sequence only; status lives in the pool)"
+  },
+  {
+   "source": "masterplan",
+   "title": "Child-plan status board",
+   "classification": "migrated",
+   "rationale": "each HARDENING-TRACK becomes a tracking issue"
+  },
+  {
+   "source": "masterplan",
+   "title": "What is actually usable today",
+   "classification": "not-work",
+   "rationale": "current-capability statements, not work items"
+  },
+  {
+   "source": "masterplan",
+   "title": "Existing obligation sequence",
+   "classification": "not-work",
+   "rationale": "ordering of existing obligations owned elsewhere"
+  },
+  {
+   "source": "masterplan",
+   "title": "Program waves",
+   "classification": "not-work",
+   "rationale": "sequencing narrative"
+  },
+  {
+   "source": "masterplan",
+   "title": "Logging child-plan boundary",
+   "classification": "not-work",
+   "rationale": "boundary prose"
+  },
+  {
+   "source": "masterplan",
+   "title": "Child-plan pickup contract",
+   "classification": "not-work",
+   "rationale": "process contract"
+  },
+  {
+   "source": "masterplan",
+   "title": "Promotion mechanics",
+   "classification": "not-work",
+   "rationale": "process prose"
+  },
+  {
+   "source": "masterplan",
+   "title": "Verification for promotion",
+   "classification": "not-work",
+   "rationale": "process prose"
+  },
+  {
+   "source": "masterplan",
+   "title": "Program completion",
+   "classification": "not-work",
+   "rationale": "completion criteria prose"
+  },
+  {
+   "source": "masterplan",
+   "title": "Reviewer checklist",
+   "classification": "not-work",
+   "rationale": "review checklist"
+  },
+  {
+   "source": "roadmap",
+   "title": "Roadmap Rules",
+   "classification": "not-work",
+   "rationale": "roadmap governance/narrative"
+  },
+  {
+   "source": "roadmap",
+   "title": "Operator Provenance",
+   "classification": "not-work",
+   "rationale": "roadmap governance/narrative"
+  },
+  {
+   "source": "roadmap",
+   "title": "Cross-Cutting: Context Window Optimization & Intelligent Selection",
+   "classification": "not-work",
+   "rationale": "roadmap governance/narrative"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 1: Core Runtime, ACP Transport, and Test Harness",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 2: Mode, State Machine, and Mutation Guard",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 3: Gateway-Only Configuration and Gateway Client",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 4: Tool Policy and Evidence Acquisition",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 5: Permission Engine, Pre-Tool Guard, and Shell Safety",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 6: Prompt-Injection, MCP Trust, and CI Guardrail Parity",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 6.5: Guardrail Hardening and MCP Runtime Trust Wiring",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 7: Usage Accounting, Evidence Ledger, and Observability",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 8: Retry, Fitness Gates, Golden Tasks, and Release Gate",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 8.5: Release-Gate Hardening and Golden-Harness Wiring",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 9: Bounded Goal Loops and Curated Workflow Skills",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 9.5: Agent Orchestration and End-to-End Coding Workflow",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 9.6: Live Verification and LLD Alignment",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 9.7: Local Dev Infra Auto-Start and Keychain-Based Setup",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 9.75 (Complete)",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 9.8: Task-Aware Workspace Context for Planning",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 9.85: Multi-Turn Read-Observe-Replan Workflow",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 9.87 (Closed): Model-Initiated Replanning and Live Refusal Evidence",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 9.88 (Closed): FU-4B Evidence Remediation and Plan 9.87 Closure",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 9.9 (Implemented and Live-Verified): Operator Packaging and Credential Diagnostics",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 9.95 (Implemented): Usage, Telemetry, and Evidence-Tooling Correctness",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 9.96 (Implemented): Operator-Controlled Debug and Launch Trust",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 9.98 (Implemented): Real ACPX Session Evidence for Plan 9.96 Task 9",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 9.99 (Implemented): Credential URI Security-Snapshot Canonicalization",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 10 (Retired): Consolidated Deferred Follow-Ups Pool",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Backlog: Re-pin FU-4A/FU-5 Live Evidence",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Backlog: NDJSON Session Initial-Send Broken-Pipe Race (Resolved)",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Backlog: Windows Subprocess Handle-Duplication Flake, WinError 6/50",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 11 (v1.0 Milestone; Unified Gateway Capabilities Broker and ACP Release)",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Plan 12 (Post-v1.0 v1.x Phase; Context Window Optimization and Intelligent Selection)",
+   "classification": "history",
+   "rationale": "plan history; live state is owned by the pool (and issues after cutover)"
+  },
+  {
+   "source": "roadmap",
+   "title": "Recommended Sequence",
+   "classification": "not-work",
+   "rationale": "roadmap governance/narrative"
+  }
+ ],
+ "records": [
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "live plan registry row; Medium is the operator default where the source has no priority",
+   "id": "plan:11.29",
+   "kind": "plan",
+   "status": "Active",
+   "disposition": "migrate",
+   "units": [
+    "pool:58"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "Plan 12",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "live plan registry row; Medium is the operator default where the source has no priority",
+   "id": "plan:12.2",
+   "kind": "plan",
+   "status": "Blocked",
+   "disposition": "migrate",
+   "units": [
+    "pool:59"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "Plan 12",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "Plan 12 slice; its registry backlog owner P12-FU-1 is its own child item, so the parent is the Plan 12 feature",
+   "id": "plan:12.1",
+   "kind": "plan",
+   "status": "Blocked",
+   "disposition": "migrate",
+   "units": [
+    "pool:60"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ACP-RUNTIME-HARDENING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "live plan registry row; Medium is the operator default where the source has no priority",
+   "id": "plan:local-hook-utf-8-decoding-repair",
+   "kind": "plan",
+   "status": "Blocked",
+   "disposition": "migrate",
+   "units": [
+    "pool:61"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ACP-RUNTIME-HARDENING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "live plan registry row; Medium is the operator default where the source has no priority",
+   "id": "plan:11.27",
+   "kind": "plan",
+   "status": "Blocked",
+   "disposition": "migrate",
+   "units": [
+    "pool:62"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "live plan registry row; Medium is the operator default where the source has no priority",
+   "id": "plan:p11-fu-6-bounded-early-post-rejection",
+   "kind": "plan",
+   "status": "Blocked",
+   "disposition": "migrate",
+   "units": [
+    "pool:63"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ZED-RESUME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "live plan registry row; Medium is the operator default where the source has no priority",
+   "id": "plan:11.7",
+   "kind": "plan",
+   "status": "Blocked",
+   "disposition": "migrate",
+   "units": [
+    "pool:64"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ZED-RESUME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "live plan registry row; Medium is the operator default where the source has no priority",
+   "id": "plan:11.24",
+   "kind": "plan",
+   "status": "Blocked",
+   "disposition": "migrate",
+   "units": [
+    "pool:65"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": 222,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "live plan registry row; Medium is the operator default where the source has no priority",
+   "id": "plan:11.23",
+   "kind": "plan",
+   "status": "Blocked",
+   "disposition": "migrate",
+   "units": [
+    "pool:66"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "live plan registry row; Medium is the operator default where the source has no priority",
+   "id": "plan:evidence-collector",
+   "kind": "plan",
+   "status": "Blocked",
+   "disposition": "migrate",
+   "units": [
+    "pool:67"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "hardening child-plan track",
+   "id": "HARDENING-TRACK-RUFF-LINT",
+   "kind": "track",
+   "status": "Not drafted",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:266"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "hardening child-plan track",
+   "id": "HARDENING-TRACK-RUFF-FORMAT",
+   "kind": "track",
+   "status": "Not drafted",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:267"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "hardening child-plan track",
+   "id": "HARDENING-TRACK-CI-GUARDRAILS",
+   "kind": "track",
+   "status": "Active",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:268"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "hardening child-plan track",
+   "id": "HARDENING-TRACK-DEPENDENCY-WORKFLOW",
+   "kind": "track",
+   "status": "Not drafted",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:269"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "hardening child-plan track",
+   "id": "HARDENING-TRACK-TEST-DOUBLES",
+   "kind": "track",
+   "status": "Not drafted",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:270"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "hardening child-plan track",
+   "id": "HARDENING-TRACK-STATIC-TYPING",
+   "kind": "track",
+   "status": "Not drafted",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:271"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "hardening child-plan track",
+   "id": "HARDENING-TRACK-AUDIT-TOOLING",
+   "kind": "track",
+   "status": "Not drafted",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:272"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "hardening child-plan track",
+   "id": "HARDENING-TRACK-ANALYSIS-ORACLE",
+   "kind": "track",
+   "status": "Not drafted",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:273"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "hardening child-plan track",
+   "id": "HARDENING-TRACK-LIFECYCLE-SIGNALS",
+   "kind": "track",
+   "status": "Not drafted",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:274"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "hardening child-plan track",
+   "id": "HARDENING-TRACK-LOGGING-TELEMETRY",
+   "kind": "track",
+   "status": "Not drafted",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:275"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "hardening child-plan track",
+   "id": "HARDENING-TRACK-SEMANTIC-ERRORS",
+   "kind": "track",
+   "status": "Not drafted",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:276"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "hardening child-plan track",
+   "id": "HARDENING-TRACK-QUEUE-BACKPRESSURE",
+   "kind": "track",
+   "status": "Not drafted",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:277"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "hardening child-plan track",
+   "id": "HARDENING-TRACK-REPEATABILITY",
+   "kind": "track",
+   "status": "Not drafted",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:278"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "hardening child-plan track",
+   "id": "HARDENING-TRACK-PUBLIC-API-DOCS",
+   "kind": "track",
+   "status": "Not drafted",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:279"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "hardening child-plan track",
+   "id": "HARDENING-TRACK-DUPLICATION",
+   "kind": "track",
+   "status": "Not drafted",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:280"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "layout heading 'Runtime candidates', not a work record",
+   "id": "structure:masterplan:203",
+   "kind": "structure",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "masterplan:203"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "layout heading 'Duplication candidates', not a work record",
+   "id": "structure:masterplan:213",
+   "kind": "structure",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "masterplan:213"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FEAT-GATEWAY-CORE",
+   "kind": "feature",
+   "status": "Closed",
+   "disposition": "history",
+   "units": [
+    "pool:342"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FEAT-GATEWAY-TOOLS",
+   "kind": "feature",
+   "status": "Closed",
+   "disposition": "history",
+   "units": [
+    "pool:343"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FEAT-GATEWAY-COST-OBS",
+   "kind": "feature",
+   "status": "Closed",
+   "disposition": "history",
+   "units": [
+    "pool:344"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FEAT-GATEWAY-MCP",
+   "kind": "feature",
+   "status": "Retired",
+   "disposition": "history",
+   "units": [
+    "pool:345"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FEAT-ZED-RESUME",
+   "kind": "feature",
+   "status": "Partially implemented",
+   "disposition": "migrate",
+   "units": [
+    "pool:346"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FEAT-MULTI-TURN-CONVERSATION",
+   "kind": "feature",
+   "status": "Closed",
+   "disposition": "history",
+   "units": [
+    "pool:347"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "HIGH",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FEAT-ACP-RUNTIME-HARDENING",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:348"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "HIGH",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "HARDENING-FEAT-RUNTIME-QUALITY",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:349"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "LOW",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FEAT-REGISTRY",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:350"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "LOW",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FEAT-IDE",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:351"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "LOW",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "Plan 12",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:352"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ACP-RUNTIME-HARDENING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11.26-CAND-1-RESOURCE-LIFETIME",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:412",
+    "masterplan:207"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ACP-RUNTIME-HARDENING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11.26-CAND-2-TELEMETRY-CONTRACT",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:413",
+    "masterplan:208"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ACP-RUNTIME-HARDENING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11.26-CAND-3-SEMANTIC-ERROR-SELECTION",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:414",
+    "masterplan:209"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ACP-RUNTIME-HARDENING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11.26-CAND-4-QUEUE-BACKPRESSURE",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:415",
+    "masterplan:210"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ACP-RUNTIME-HARDENING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11.26-CAND-5-REPEATABILITY-ATTRIBUTION",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:416",
+    "masterplan:211"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ZED-RESUME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11.26-UNRUN-BINDING",
+   "kind": "obligation",
+   "status": "UNRUN_BINDING",
+   "disposition": "migrate",
+   "units": [
+    "pool:417"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ACP-RUNTIME-HARDENING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11.26-UNRUN-REDIS",
+   "kind": "obligation",
+   "status": "UNRUN",
+   "disposition": "migrate",
+   "units": [
+    "pool:418"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ACP-RUNTIME-HARDENING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11.26-UNRUN-ZED",
+   "kind": "obligation",
+   "status": "UNRUN",
+   "disposition": "migrate",
+   "units": [
+    "pool:419"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ACP-RUNTIME-HARDENING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-31",
+   "kind": "follow-up",
+   "status": "Open.",
+   "disposition": "migrate",
+   "units": [
+    "pool:432",
+    "pool:818"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ACP-RUNTIME-HARDENING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-32",
+   "kind": "follow-up",
+   "status": "Open.",
+   "disposition": "migrate",
+   "units": [
+    "pool:443",
+    "pool:819"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-33",
+   "kind": "follow-up",
+   "status": "Closed. Through [PR #219](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/219),",
+   "disposition": "history",
+   "units": [
+    "pool:456",
+    "pool:820"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11.26-CAND-2-TELEMETRY-CONTRACT",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-34",
+   "kind": "follow-up",
+   "status": "Open.",
+   "disposition": "migrate",
+   "units": [
+    "pool:539",
+    "pool:821"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-35",
+   "kind": "follow-up",
+   "status": "Closed. Through [PR #217](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/217),",
+   "disposition": "history",
+   "units": [
+    "pool:549",
+    "pool:822"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ACP-RUNTIME-HARDENING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-36",
+   "kind": "follow-up",
+   "status": "Open.",
+   "disposition": "migrate",
+   "units": [
+    "pool:563",
+    "pool:823"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11.26-CAND-1-RESOURCE-LIFETIME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-38",
+   "kind": "follow-up",
+   "status": "Open.",
+   "disposition": "migrate",
+   "units": [
+    "pool:587",
+    "pool:825"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11.26-CAND-1-RESOURCE-LIFETIME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-39",
+   "kind": "follow-up",
+   "status": "Open.",
+   "disposition": "migrate",
+   "units": [
+    "pool:618",
+    "pool:826"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11.26-CAND-1-RESOURCE-LIFETIME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": 224,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-40",
+   "kind": "follow-up",
+   "status": "Open.",
+   "disposition": "migrate",
+   "units": [
+    "pool:657",
+    "pool:827"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11.26-CAND-1-RESOURCE-LIFETIME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-41",
+   "kind": "follow-up",
+   "status": "Open.",
+   "disposition": "migrate",
+   "units": [
+    "pool:675",
+    "pool:828"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-DUPLICATION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "T13-CAND-RUNNER-CONTRACTS",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:720",
+    "masterplan:222"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-DUPLICATION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "T13-CAND-AUDIT-PRIMITIVES",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:721",
+    "masterplan:223"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-DUPLICATION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "T13-CAND-CREDENTIAL-CONTRACTS",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:722",
+    "masterplan:224"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-DUPLICATION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "T13-CAND-SECURITY-TEXT",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:723",
+    "masterplan:225"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-DUPLICATION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "T13-CAND-DOMAIN-HTTPS",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:724",
+    "masterplan:226"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-DUPLICATION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "T13-CAND-LEDGER-ACCOUNTING",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:725",
+    "masterplan:227"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-DUPLICATION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "T13-CAND-REDACTION-LIFETIME",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:726",
+    "masterplan:228"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-DUPLICATION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "T13-CAND-DIRECTIVE-GRAMMAR",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:727",
+    "masterplan:229"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-DUPLICATION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "T13-CAND-EVIDENCE-SERVICE",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:728",
+    "masterplan:230"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-DUPLICATION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "T13-CAND-SHARED-DEFAULTS",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:729",
+    "masterplan:231"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-DUPLICATION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "T13-CAND-REDIS-HEALTH",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:730",
+    "masterplan:232"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-DUPLICATION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "T13-CAND-RETRY-TIMING",
+   "kind": "candidate",
+   "status": "ACCEPTED_OPEN",
+   "disposition": "migrate",
+   "units": [
+    "pool:731",
+    "masterplan:233"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "Plan 12",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P9.8-FU-2",
+   "kind": "follow-up",
+   "status": "Open. The bounded Plan 11.7 current-Zed evidence/correction cycle reached its reviewed",
+   "disposition": "migrate",
+   "units": [
+    "pool:770",
+    "pool:912"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "Plan 12",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P9.8-FU-3",
+   "kind": "follow-up",
+   "status": "Open. Not yet scheduled.",
+   "disposition": "migrate",
+   "units": [
+    "pool:771",
+    "pool:929"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "plan:11.7",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P9.8-FU-5",
+   "kind": "follow-up",
+   "status": "Promoted -> [Plan 11.7 v3](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md).",
+   "disposition": "migrate",
+   "units": [
+    "pool:772",
+    "pool:941"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "Plan 12",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P9.85-FU-1",
+   "kind": "follow-up",
+   "status": "Open. Not yet scheduled.",
+   "disposition": "migrate",
+   "units": [
+    "pool:773",
+    "pool:977"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "Plan 12",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P9.85-FU-2",
+   "kind": "follow-up",
+   "status": "Open. Not yet scheduled.",
+   "disposition": "migrate",
+   "units": [
+    "pool:774",
+    "pool:990"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P9.85-FU-3",
+   "kind": "follow-up",
+   "status": "Open. Not yet scheduled.",
+   "disposition": "migrate",
+   "units": [
+    "pool:775",
+    "pool:1002"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P9.87-FU-1",
+   "kind": "follow-up",
+   "status": "Open. Not yet scheduled. This pool records promotion and disposition when this item is",
+   "disposition": "migrate",
+   "units": [
+    "pool:776",
+    "pool:1030"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "plan:11.7",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "HIGH",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-1",
+   "kind": "follow-up",
+   "status": "Promoted -> [Plan 11.7 v3](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md).",
+   "disposition": "migrate",
+   "units": [
+    "pool:777",
+    "pool:1050"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-2",
+   "kind": "follow-up",
+   "status": "Closed. Implemented by PR #88 / merge 4590dbf; the dedicated package/advisory routes and their",
+   "disposition": "history",
+   "units": [
+    "pool:778",
+    "pool:1110"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-3",
+   "kind": "follow-up",
+   "status": "Closed. On 2026-08-06, both acceptance criteria were met. Later pickup produced the",
+   "disposition": "history",
+   "units": [
+    "pool:779",
+    "pool:1148"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ZED-RESUME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-4",
+   "kind": "follow-up",
+   "status": "Open. Tracked, not yet scheduled; no implementation plan exists. Evidence-freshness class.",
+   "disposition": "migrate",
+   "units": [
+    "pool:780",
+    "pool:1186"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "LOW",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-5",
+   "kind": "follow-up",
+   "status": "Open. Reproduced, context known; root cause remains unestablished after Plan 11.17.",
+   "disposition": "migrate",
+   "units": [
+    "pool:781",
+    "pool:1210"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "LOW",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-6",
+   "kind": "follow-up",
+   "status": "Open. Reproduced, root cause unestablished after Plan 11.17 process 5 failed at the",
+   "disposition": "migrate",
+   "units": [
+    "pool:782",
+    "pool:1294"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-7",
+   "kind": "follow-up",
+   "status": "Partially implemented. Plan 11.16 is a terminal partial outcome: test-only",
+   "disposition": "migrate",
+   "units": [
+    "pool:783",
+    "pool:1427"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11.5-FU-1",
+   "kind": "follow-up",
+   "status": "Closed. Plan 11.21 live Phoenix collector path passed (2 passed). Raising",
+   "disposition": "history",
+   "units": [
+    "pool:784",
+    "pool:1493"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "LOW",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-8",
+   "kind": "follow-up",
+   "status": "Open. Tracked, not yet scheduled; needs deeper investigation / migration design before",
+   "disposition": "migrate",
+   "units": [
+    "pool:785",
+    "pool:1554"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-9",
+   "kind": "follow-up",
+   "status": "Closed. All nine tasks were implemented and independently reviewed, then merged to",
+   "disposition": "history",
+   "units": [
+    "pool:786",
+    "pool:1621"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "HIGH",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-10",
+   "kind": "follow-up",
+   "status": "Closed. Implemented through [Plan 11.18](archive/2026-08-15-plan-11-18-acp-error-code-registry-audit-implementation.md)",
+   "disposition": "history",
+   "units": [
+    "pool:787",
+    "pool:1663"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "HIGH",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11.7-FU-1",
+   "kind": "follow-up",
+   "status": "Closed. Implemented and merged to main through PR #123 (implementation commit d0253be, merge commit 11448fe). All Plan 11.9 Definition-of-Done gates were independently re-verified on Windows (focused tests, full suite, coverage ≥80%, Ruff, diff-check, --help); no dedicated reports/ evidence bundle is required for this single-commit CLI-only follow-up.",
+   "disposition": "history",
+   "units": [
+    "pool:788",
+    "pool:1707"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11.7-FU-2",
+   "kind": "follow-up",
+   "status": "Closed. Misfiled duplicate; P11-FU-6 retains the live Gateway harness custody.",
+   "disposition": "history",
+   "units": [
+    "pool:789",
+    "pool:1746"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "plan:11.7",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11.7-FU-3",
+   "kind": "follow-up",
+   "status": "Open. Tracked, not yet scheduled. Does not block Task 3 classifications.",
+   "disposition": "migrate",
+   "units": [
+    "pool:790",
+    "pool:1762"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "plan:11.7",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "HIGH",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-11",
+   "kind": "follow-up",
+   "status": "Partially implemented. Work on agent/cursor/p11-feat-zed-resume reached Task 5 Path A",
+   "disposition": "migrate",
+   "units": [
+    "pool:791",
+    "pool:1779"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-12",
+   "kind": "follow-up",
+   "status": "Closed. Won't-do because Plan 11.12 retired the Gateway MCP feature. This follow-up",
+   "disposition": "history",
+   "units": [
+    "pool:792",
+    "pool:1842"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-13",
+   "kind": "follow-up",
+   "status": "Closed. Won't-do because Plan 11.12 retired the Gateway MCP feature. This follow-up",
+   "disposition": "history",
+   "units": [
+    "pool:793",
+    "pool:1857"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-14",
+   "kind": "follow-up",
+   "status": "Closed. Won't-do because Plan 11.12 retired the Gateway MCP feature. This follow-up",
+   "disposition": "history",
+   "units": [
+    "pool:794",
+    "pool:1874"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-15",
+   "kind": "follow-up",
+   "status": "Closed. Won't-do because Plan 11.12 retired the Gateway MCP feature. This follow-up",
+   "disposition": "history",
+   "units": [
+    "pool:795",
+    "pool:1890"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-16",
+   "kind": "follow-up",
+   "status": "Open. Tracked, not yet scheduled.",
+   "disposition": "migrate",
+   "units": [
+    "pool:796",
+    "pool:1904"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-22",
+   "kind": "follow-up",
+   "status": "Closed. Won't-do because Plan 11.12 retired the Gateway MCP feature. This follow-up",
+   "disposition": "history",
+   "units": [
+    "pool:797",
+    "pool:1922"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-23",
+   "kind": "follow-up",
+   "status": "Open. Tracked, not yet scheduled.",
+   "disposition": "migrate",
+   "units": [
+    "pool:798",
+    "pool:1940"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-24",
+   "kind": "follow-up",
+   "status": "Open. Tracked, not yet scheduled.",
+   "disposition": "migrate",
+   "units": [
+    "pool:799",
+    "pool:1954"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-25",
+   "kind": "follow-up",
+   "status": "Open. Tracked, not yet scheduled.",
+   "disposition": "migrate",
+   "units": [
+    "pool:800",
+    "pool:1968"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-26",
+   "kind": "follow-up",
+   "status": "Closed. Obsolete-by-retirement: Plan 11.12 removed the Gateway MCP transport and test",
+   "disposition": "history",
+   "units": [
+    "pool:801",
+    "pool:1982"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-27",
+   "kind": "follow-up",
+   "status": "Closed. Plan 11.22 reconciled only the historical Task 10 Steps 1-7 and stale",
+   "disposition": "history",
+   "units": [
+    "pool:802",
+    "pool:2000"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-28",
+   "kind": "follow-up",
+   "status": "Closed. Obsolete for supported native-clone gates; the exception rule remains in the",
+   "disposition": "history",
+   "units": [
+    "pool:803",
+    "pool:2097"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-29",
+   "kind": "follow-up",
+   "status": "Closed. Plan 11.15 SHA 12b881a28b4a736a0d18ccdf1c02c49b94167e41. Own evidence:",
+   "disposition": "history",
+   "units": [
+    "pool:804",
+    "pool:1264"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11.26-CAND-2-TELEMETRY-CONTRACT",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "HIGH",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-30",
+   "kind": "follow-up",
+   "status": "Open. Not yet scheduled.",
+   "disposition": "migrate",
+   "units": [
+    "pool:805",
+    "pool:2677"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-17",
+   "kind": "follow-up",
+   "status": "Closed. Native WSL clone decision accepted and demonstrated; no test assertion or",
+   "disposition": "history",
+   "units": [
+    "pool:806",
+    "pool:2027"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-18",
+   "kind": "follow-up",
+   "status": "Closed. Plan 11.15 SHA 12b881a28b4a736a0d18ccdf1c02c49b94167e41. Own evidence: st_ctime_ns",
+   "disposition": "history",
+   "units": [
+    "pool:807",
+    "pool:2123"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-19",
+   "kind": "follow-up",
+   "status": "Closed. Plan 11.16 production correction: SDK open/discover/call/streamed-byte",
+   "disposition": "history",
+   "units": [
+    "pool:808",
+    "pool:2194"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "plan:11.23",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": 223,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-20",
+   "kind": "follow-up",
+   "status": "Partially implemented. Plan 11.20 is a terminal intermediate slice: unit adapter wiring",
+   "disposition": "migrate",
+   "units": [
+    "pool:809",
+    "pool:2242"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11-FU-21",
+   "kind": "follow-up",
+   "status": "Closed. Plan 11.14 implemented the known-exit versus unknown-pipe discriminator; PR #128",
+   "disposition": "history",
+   "units": [
+    "pool:810",
+    "pool:2294"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "HIGH",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11.5-FU-2",
+   "kind": "follow-up",
+   "status": "Closed. On 2026-07-29, Plan 11.6 implemented on",
+   "disposition": "history",
+   "units": [
+    "pool:811",
+    "pool:2348"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "plan:12.1",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11.25-FU-1",
+   "kind": "follow-up",
+   "status": "Promoted -> [Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md).",
+   "disposition": "migrate",
+   "units": [
+    "pool:812",
+    "pool:2446"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P11.25-FU-2",
+   "kind": "follow-up",
+   "status": "Open. Not yet scheduled.",
+   "disposition": "migrate",
+   "units": [
+    "pool:813",
+    "pool:2470"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "plan:12.1",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P12-FU-1",
+   "kind": "follow-up",
+   "status": "Promoted -> [Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md).",
+   "disposition": "migrate",
+   "units": [
+    "pool:814",
+    "pool:2492"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "Plan 12",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P12-FU-2",
+   "kind": "follow-up",
+   "status": "Open.",
+   "disposition": "migrate",
+   "units": [
+    "pool:815",
+    "pool:2563"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P12.1-FU-1",
+   "kind": "follow-up",
+   "status": "Open.",
+   "disposition": "migrate",
+   "units": [
+    "pool:816",
+    "pool:2597"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity",
+   "id": "P12.1-FU-2",
+   "kind": "follow-up",
+   "status": "Open.",
+   "disposition": "migrate",
+   "units": [
+    "pool:817",
+    "pool:2640"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "grouped source units with one identity; source owner EVIDENCE-HANDOFF-FEAT-REDACTION-GATE is history, so this issue has no parent",
+   "id": "P11-FU-37",
+   "kind": "follow-up",
+   "status": "Open.",
+   "disposition": "migrate",
+   "units": [
+    "pool:824",
+    "pool:856"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "EVIDENCE-HANDOFF-FEAT-ZED-RENDER-OBSERVATION",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:839"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "EVIDENCE-HANDOFF-FEAT-REDACTION-GATE",
+   "kind": "feature",
+   "status": "Closed",
+   "disposition": "history",
+   "units": [
+    "pool:840"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR",
+   "kind": "feature",
+   "status": "Partially implemented",
+   "disposition": "migrate",
+   "units": [
+    "pool:841"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "Reviewed disposition: not shipped/not supported/not trusted after the NOT SOUND audit; closure plan archived. Open work continues under the LEDGER-* slices and A2A obligations; this umbrella stays history and remains the live owner of the frozen v1 design.",
+   "id": "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER",
+   "kind": "feature",
+   "status": "Reviewed disposition",
+   "disposition": "history",
+   "units": [
+    "pool:842"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER-DESIGN-REFRESH",
+   "kind": "feature",
+   "status": "Closed",
+   "disposition": "history",
+   "units": [
+    "pool:843"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "EVIDENCE-HANDOFF-FEAT-A2A-CHANNEL",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:844"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:845"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:846"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "EVIDENCE-HANDOFF-FEAT-LEDGER-DATAPATH",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:847"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:848"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "EVIDENCE-HANDOFF-FEAT-LEDGER-AUDIT-WIRING",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:849"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:850"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "EVIDENCE-HANDOFF-FEAT-APPROVAL-RECORD",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:851"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "EVIDENCE-HANDOFF-FEAT-PEER-LIVENESS-SIGNAL",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:852"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "HIGH",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:853"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "EVIDENCE-HANDOFF-FEAT-AT-REST-INTEGRITY",
+   "kind": "feature",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:854"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": 225,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-C1",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:876"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-C2",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:877"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-C3",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:878"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-DATAPATH",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-H4",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:879"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-DATAPATH",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-H5",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:880"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-DATAPATH",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-H6",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:881"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-H7",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:882"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-H8",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:883"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-H9",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:884"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-H10",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:885"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-H11",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:886"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-H12a",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:887"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-H12b",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:888"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-H13",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:889"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-M14",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:890"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-M15",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:891"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-AUDIT-WIRING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-M16a",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:892"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-M16b",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:893"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-M16c",
+   "kind": "obligation",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "pool:894"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "evidence-a2a",
+   "rationale": "grouped source units with one identity",
+   "id": "A2A-M17",
+   "kind": "obligation",
+   "status": "Closed",
+   "disposition": "history",
+   "units": [
+    "pool:895"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-RUFF-LINT",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-RUFF-LINT-RATCHET",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:181"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-RUFF-FORMAT",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-RUFF-FORMAT-MIGRATION",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:182"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-CI-GUARDRAILS",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-COVERAGE-SOURCE-SCOPE",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:183"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-CI-GUARDRAILS",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-LOCKFILE-CI-ENFORCEMENT",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:184"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-CI-GUARDRAILS",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-SECRET-SCAN-SCOPE",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:185"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-CI-GUARDRAILS",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-BANDIT-B310",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:186"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-DEPENDENCY-WORKFLOW",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-DEPENDENCY-CVE-SCAN",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:187"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-DEPENDENCY-WORKFLOW",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-WORKFLOW-LINT-SECURITY",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:188"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-TEST-DOUBLES",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-AUTOSPEC-BOUNDARIES",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:189"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-STATIC-TYPING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-MYPY-SRC-RATCHET",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:190"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-AUDIT-TOOLING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-AUDIT-INVENTORY-REDERIVATION",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:191"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-AUDIT-TOOLING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-AUDIT-TOOL-TYPING",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:192"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-ANALYSIS-ORACLE",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-PYSCN-EVALUATION",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:193"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-LIFECYCLE-SIGNALS",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-SIGNAL-ADAPTER",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:194"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-SEMANTIC-ERRORS",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-EXCEPTION-SITE-DISPOSITION",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:195"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "HARDENING-TRACK-PUBLIC-API-DOCS",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "masterplan omits item status by design (its track reports it); open until its track delivers",
+   "id": "HARDENING-ITEM-PUBLIC-API-DOCSTRINGS",
+   "kind": "item",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": [
+    "masterplan:196"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": "plan:12.2",
+   "duplicate_rationale": "Package A custody prose for the same Plan 12.2 plan; the plan issue carries it",
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "section-level custody record",
+   "id": "custody:plan-12.2-package-a",
+   "kind": "item",
+   "status": "Open. Package A is selected but its product code remains behind docs-first merge/base gates;",
+   "disposition": "duplicate",
+   "units": [
+    "pool:354"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ACP-RUNTIME-HARDENING",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "section-level open follow-up with no ID",
+   "id": "H4-VERIFIER-FOLLOW-UPS",
+   "kind": "follow-up",
+   "status": "Open. Filing is commissioned; verifier implementation is not. These are deferred verifier issues, not reopened blockers for the merged seam 2 delivery. Next gate: a scoped implementation plan and operator scheduling, followed by independent review and compatibility/negative controls. The separate 37-test P11.26-UNRUN-BINDING obligation, unexplained H5 incident, live-service acceptance and broader track closure are unaffected. This entry does not commission replay-performance changes.",
+   "disposition": "migrate",
+   "units": [
+    "pool:691"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P9.96-FU-7 disposition](#p996-task-9-disclosed-follow-ups-closed-historical-plan-10-custody).",
+   "id": "frozen:2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:289"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [Plan 10.3 historical correction](#plan-103-frozen-plan-status-correction-historical).",
+   "id": "frozen:2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:290"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-GATEWAY-CORE",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FEAT-GATEWAY-CORE](#feature-slices).",
+   "id": "frozen:2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:291"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-GATEWAY-TOOLS",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FEAT-GATEWAY-TOOLS](#feature-slices).",
+   "id": "frozen:2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:292"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-GATEWAY-COST-OBS",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FEAT-GATEWAY-COST-OBS](#feature-slices).",
+   "id": "frozen:2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:293"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ZED-RESUME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
+   "id": "frozen:2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:294"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ZED-RESUME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
+   "id": "frozen:2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:295"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ZED-RESUME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
+   "id": "frozen:2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:296"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FU-11",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FU-11](#p11-fu-11-plan-117-retry-preflight-and-live-session-proof).",
+   "id": "frozen:2026-08-04-plan-11-7-retry-preflight-gate-amendment.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:297"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ZED-RESUME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
+   "id": "frozen:2026-08-18-plan-11-24-zed-guided-session-load-probe.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:298"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ZED-RESUME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
+   "id": "frozen:2026-08-18-plan-11-24-zed-guided-session-load-probe_v2.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:299"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ZED-RESUME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
+   "id": "frozen:2026-08-18-plan-11-24-zed-guided-session-load-probe_v3.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:300"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ZED-RESUME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
+   "id": "frozen:2026-08-18-plan-11-24-zed-guided-session-load-probe_v4.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:301"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-ZED-RESUME",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
+   "id": "frozen:2026-08-18-plan-11-24-zed-guided-session-load-probe_v5.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:302"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P9.96 historical summary and disposition](#p996-task-9-disclosed-follow-ups-closed-historical-plan-10-custody).",
+   "id": "frozen:2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:303"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-GATEWAY-TOOLS",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FEAT-GATEWAY-TOOLS](#feature-slices).",
+   "id": "frozen:2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:304"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FU-11",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FU-11](#p11-fu-11-plan-117-retry-preflight-and-live-session-proof).",
+   "id": "frozen:2026-08-04-plan-11-7-retry-preflight-gate-design.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:305"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FEAT-GATEWAY-MCP",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FEAT-GATEWAY-MCP](#feature-slices).",
+   "id": "frozen:2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:306",
+    "pool:331"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "P11-FU-18",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; [P11-FU-18](#p11-fu-18-workspace-identity-ctime-coalescing-fail-open) and [P11-FU-29](#p11-fu-29-durable-approval-identity-instability-on-transient-git-probe-failure).",
+   "id": "frozen:2026-08-15-p11-fu-18-29-durable-approval-workspace-identity-design.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:307"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER",
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "evidence-a2a",
+   "rationale": "frozen artifact; [EVIDENCE-HANDOFF-FEAT-A2A-LEDGER](#evidence-and-handoff-feature-registry).",
+   "id": "frozen:evidence-handoff-a2a-ledger-design.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:308"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; historical provenance (no live owner)",
+   "id": "frozen:2026-07-23-plan-10-1-p9-96-follow-up-remediation.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:329"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; historical provenance (no live owner)",
+   "id": "frozen:2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-design.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:330"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": null,
+   "priority": null,
+   "product": "optimus",
+   "rationale": "frozen artifact; historical provenance (no live owner)",
+   "id": "frozen:2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-design.md",
+   "kind": "frozen-mapping",
+   "status": null,
+   "disposition": "not-work",
+   "units": [
+    "pool:332"
+   ]
+  },
+  {
+   "aliases": [],
+   "parent": null,
+   "duplicate_of": null,
+   "duplicate_rationale": null,
+   "status_conflict_disposition": null,
+   "terminal_disposition": null,
+   "mitigation_outstanding": false,
+   "target_issue": 33,
+   "priority": "MEDIUM",
+   "product": "optimus",
+   "rationale": "pre-existing GitHub issue (Zed ACP prompt hang, 2026-07-09); kept as-is, applicability to be reconciled with the Zed owner at Checkpoint 1",
+   "id": "issue:33",
+   "kind": "external-issue",
+   "status": "Open",
+   "disposition": "migrate",
+   "units": []
+  }
+ ]
+}

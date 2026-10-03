@@ -1697,6 +1697,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.github_work_tracking:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main serializes only the inventory validation summary (an ok flag, the problem count and per-disposition record and unit counts) computed from a reviewed planning manifest and committed planning documents; no runtime secrets, credentials or production payloads are read.",
+      "sanitizer": "fixed summary schema of counts",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_validate_reports_problems_with_a_nonzero_exit",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints inventory validation problems (record ids, source unit keys and status text taken from committed planning documents) and the count summary; its inputs are governance documents read at a pinned commit, never runtime secrets or production payloads, and nothing is persisted.",
+      "sanitizer": "governance-only inputs and fixed validation vocabulary",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_validate_reports_problems_with_a_nonzero_exit",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan117_custody_contract:_parse_manifest:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: _parse_manifest uses exception text only to choose among fixed reason codes (invalid_manifest_schema / sha256_not_lowercase) and never persists or exports raw exception bodies.",
