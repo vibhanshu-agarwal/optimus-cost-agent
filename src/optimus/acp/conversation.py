@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
+from types import MappingProxyType
 from urllib.parse import unquote, urlparse
 
 from optimus.acp.settlement import EffectState
@@ -230,6 +231,10 @@ class ConversationState:
     # `prepare_commit` and `commit_after_final_flush` stay byte-identical for engine-absent sessions.
     _source_max_bytes: int = CONVERSATION_MAX_BYTES
     _record_reservation_bytes: int = 0
+    # Plan 12.2 Task 11 (Codex CP3 ruling R2): each turn's cost as projected from its settled
+    # receipts, keyed by turn id. Replaced, never mutated in place, so a reader on another thread
+    # always sees one consistent mapping; class-level so the H4-pinned `__init__` stays unchanged.
+    _projected_costs: Mapping[str, tuple[Decimal, bool]] = MappingProxyType({})
 
     def __init__(self, sanitizer: ConversationSanitizer) -> None:
         self._sanitizer = sanitizer
@@ -257,7 +262,7 @@ class ConversationState:
     @property
     def known_cost_usd(self) -> Decimal:
         """Every known cost applied so far, a subtotal when `cost_complete` is False."""
-        return self._session_cost
+        return self._cost_totals()[0]
 
     @property
     def source_max_bytes(self) -> int:
@@ -279,7 +284,21 @@ class ConversationState:
 
     @property
     def cost_complete(self) -> bool:
-        return self._cost_complete
+        return self._cost_totals()[1]
+
+    def project_turn_cost(self, turn_id: str, *, known_usd: Decimal, complete: bool) -> None:
+        """Set one turn's cost from its settled receipts (Codex CP3 ruling R2).
+
+        A projection, never a debit: the turn's entry is replaced, so the same facts applied twice
+        change nothing, and facts that arrive later - after the turn's terminal finalization, from a
+        worker left behind by transport teardown - update it to the truth, known subtotal and
+        incompleteness alike. Callers serialize projections of one session (its settlement's lock)."""
+        self._projected_costs = MappingProxyType({**self._projected_costs, turn_id: (known_usd, complete)})
+
+    def _cost_totals(self) -> tuple[Decimal, bool]:
+        projected = self._projected_costs  # one consistent snapshot
+        known = self._session_cost + sum((cost for cost, _ in projected.values()), Decimal("0"))
+        return known, self._cost_complete and all(complete for _, complete in projected.values())
 
     def sanitize_text(self, text: str) -> str:
         return self._sanitizer.sanitize(text)
@@ -428,8 +447,8 @@ class ConversationState:
     def usage_gauge(self) -> UsageGauge:
         used = self.used_bytes // 4
         size = self._source_max_bytes // 4
-        cost = self._session_cost if self._cost_complete else None
-        return UsageGauge(used=used, size=size, cost=cost)
+        known, complete = self._cost_totals()
+        return UsageGauge(used=used, size=size, cost=known if complete else None)
 
     def planner_envelope(self) -> str:
         return render_model_conversation(self._records)

@@ -33,9 +33,12 @@ from typing import Any, Protocol
 from context_engine import MaintenanceRequest, MaintenanceResult
 from context_engine.summary import PROMPT_VERSION, SUMMARY_FORMAT, build_summary_prompt
 from optimus.acp.conversation import ConversationSanitizer
-from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
-from optimus.gateway.models import GatewayRouteAttempt, GatewayUsage
+from optimus.gateway.attempts import PREFLIGHT_REFUSAL_CODES, ProviderAttempt, attempts_from_failure, attempts_from_response
+from optimus.gateway.models import GatewayUsage
 from optimus_model_policy.binding import RouteBinding
+
+# Re-exported: the one preflight classifier every stage uses lives in optimus.gateway.attempts.
+__all__ = ["PREFLIGHT_REFUSAL_CODES"]
 
 ATTEMPT_OUTCOMES = frozenset({"completed", "not_sent", "rejected", "uncertain"})
 
@@ -53,6 +56,8 @@ class SummarizerAttempt:
     provider: str | None = None
     resolved_provider: str | None = None
     resolved_model: str | None = None
+    gateway_usage: GatewayUsage | None = None
+    """The Gateway's original normalized usage, on the attempt that settled the request only."""
 
     def __post_init__(self) -> None:
         if not self.attempt_id or self.outcome not in ATTEMPT_OUTCOMES:
@@ -86,7 +91,8 @@ class SummarizerFactory(Protocol):
 @dataclass(frozen=True, slots=True)
 class MaintenanceIdentity:
     """Who and what a maintenance call serves, captured with the turn's settings: the exact role,
-    model, route, reasoning setting and quantizations it was approved for (CP3 carried obligation)."""
+    model, route, reasoning setting and quantizations it was approved for (CP3 carried obligation),
+    and the trusted registry snapshot they come from (Codex CP3 ruling R5)."""
 
     session_id: str
     turn_seq: int
@@ -97,6 +103,7 @@ class MaintenanceIdentity:
     quantizations: tuple[str | None, ...]
     strategy: str
     revision_digest: str
+    registry_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +124,7 @@ class MaintenanceReceipt:
     provider: str | None = None
     resolved_provider: str | None = None
     resolved_model: str | None = None
+    gateway_usage: GatewayUsage | None = None
 
 
 def _utc_now() -> datetime:
@@ -166,6 +174,7 @@ class HostMaintenance:
                     provider=attempt.provider,
                     resolved_provider=attempt.resolved_provider,
                     resolved_model=attempt.resolved_model,
+                    gateway_usage=attempt.gateway_usage,
                 )
             )
         attempt_ids = tuple(attempt.attempt_id for attempt in response.attempts)
@@ -194,52 +203,13 @@ class SummarizerRoute:
     quantizations: tuple[str | None, ...]
 
 
-# Gateway model-policy refusals raised before any upstream attempt (optimus_gateway.model_policy
-# admit_request/parse_route_binding and optimus_model_policy.capacity.guard_request). A refusal with one
-# of these codes, no route attempts and no usage is a proven zero-upstream rejection, never an unknown
-# billed attempt. FINISH_STATUS_UNVERIFIED is raised after a completed, billed attempt and always
-# carries its usage, so it is not here. A test keeps this set equal to the Gateway's codes.
-PREFLIGHT_REFUSAL_CODES = frozenset(
-    {
-        "BINDING_MALFORMED",
-        "BINDING_REQUIRED",
-        "BINDING_UNSUPPORTED",
-        "BINDING_VERSION_UNSUPPORTED",
-        "CAPACITY_REFUSED",
-        "DISCLOSURE_INVALID",
-        "DISCLOSURE_REQUIRED",
-        "ESTIMATOR_UNKNOWN",
-        "ESTIMATOR_UNVERIFIED",
-        "INPUT_EXCEEDS_CAPACITY",
-        "MODEL_NOT_ELIGIBLE",
-        "OUTPUT_RESERVE_EXCEEDS_ROUTE",
-        "OUTPUT_RESERVE_EXCEEDS_TOTAL",
-        "OUTPUT_RESERVE_INVALID",
-        "REGISTRY_HASH_MISMATCH",
-        "ROUTE_UNVERIFIED",
-        "SNAPSHOT_NOT_APPROVED",
-        "UNKNOWN_MODEL",
-    }
-)
-
-
-def _preflight_refusal(exc: GatewayHttpError) -> bool:
-    return (
-        exc.gateway_code in PREFLIGHT_REFUSAL_CODES
-        and exc.retryable is False
-        and not exc.route_attempts
-        and exc.gateway_usage is None
-    )
-
-
 class GatewaySummarizerCall:
     """The production `SummarizerCall`: one summarizer request through the Optimus Gateway.
 
-    It never raises. Every attempt the Gateway reports becomes a `SummarizerAttempt`; the cost the
-    Gateway settled goes to the completed attempt, a proven unsent or refused attempt costs nothing,
-    and an `uncertain` one stays unknown. A failure with no attempt list is one attempt: completed with
-    its reported cost when the Gateway reported usage, otherwise `uncertain` with an unknown cost,
-    since the request may have run and been billed. Nothing is retried here.
+    It never raises. Every attempt the Gateway reports becomes a `SummarizerAttempt`, classified by
+    the one host classifier every stage uses (`optimus.gateway.attempts`): the cost the Gateway settled
+    goes to the completed attempt, with its original usage; a proven unsent or refused attempt costs
+    nothing; an `uncertain` one stays unknown. Nothing is retried here.
 
     `bind(request_id, input_text, output_cap)` returns the request's route binding (with its
     Contributor disclosure, noticed first, where required) or None when a required notice was not
@@ -274,77 +244,28 @@ class GatewaySummarizerCall:
             response = self._client.create_response(
                 model=self._model_id, input_text=prompt, metadata=metadata, route_binding=binding
             )
-        except GatewayHttpError as exc:
-            if _preflight_refusal(exc):
-                # Refused before any upstream attempt: nothing ran and nothing was billed (Fable CP3
-                # review MAJOR-2; Task 1 contracts 6).
-                refused = SummarizerAttempt(
-                    attempt_id=f"{request_id}:1", gateway_request_id=None, outcome="rejected", cost_usd=Decimal("0"), http_status=exc.status_code
-                )
-                return SummarizerResponse(text=None, finish_status=None, attempts=(refused,))
-            attempts = _attempts(request_id, exc.route_attempts, exc.gateway_usage, http_status=exc.status_code)
-            return SummarizerResponse(text=None, finish_status=None, attempts=attempts)
-        except GatewayResponseError as exc:
-            return SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, (), exc.gateway_usage))
-        except Exception:  # noqa: BLE001 - transport loss after dispatch: may have run and been billed
-            return SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, (), None))
-        attempts = _attempts(request_id, response.route_attempts, response.gateway_usage)
+        except Exception as exc:  # noqa: BLE001 - every failure is classified; transport loss stays unknown
+            return SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, attempts_from_failure(exc)))
+        attempts = _attempts(request_id, attempts_from_response(response))
         return SummarizerResponse(text=response.output_text, finish_status=response.finish_reason, attempts=attempts)
 
 
-def _attempts(
-    request_id: str,
-    route_attempts: tuple[GatewayRouteAttempt, ...],
-    usage: GatewayUsage | None,
-    *,
-    http_status: int | None = None,
-) -> tuple[SummarizerAttempt, ...]:
-    if route_attempts:
-        # The settled usage belongs to the final completed attempt only; never counted twice.
-        settled = max((item.attempt for item in route_attempts if item.outcome == "completed"), default=None)
-        return tuple(
-            SummarizerAttempt(
-                attempt_id=f"{request_id}:{item.attempt}",
-                gateway_request_id=item.gateway_request_id,
-                outcome=item.outcome,
-                cost_usd=_attempt_cost(item.outcome, usage if item.attempt == settled else None),
-                provider_request_id=item.provider_request_id,
-                http_status=item.http_status,
-                **(_usage_facts(usage) if item.attempt == settled else {}),
-            )
-            for item in route_attempts
-        )
-    if usage is not None:
-        return (
-            SummarizerAttempt(
-                attempt_id=f"{request_id}:1",
-                gateway_request_id=usage.gateway_request_id,
-                outcome="completed",
-                cost_usd=usage.cost_usd,
-                provider_request_id=usage.provider_request_id,
-                http_status=http_status,
-                **_usage_facts(usage),
-            ),
-        )
-    return (
+def _attempts(request_id: str, attempts: tuple[ProviderAttempt, ...]) -> tuple[SummarizerAttempt, ...]:
+    return tuple(
         SummarizerAttempt(
-            attempt_id=f"{request_id}:1", gateway_request_id=None, outcome="uncertain", cost_usd=None, http_status=http_status
-        ),
+            attempt_id=f"{request_id}:{attempt.number}",
+            gateway_request_id=attempt.gateway_request_id,
+            outcome=attempt.outcome,
+            cost_usd=attempt.cost_usd,
+            provider_request_id=attempt.provider_request_id,
+            http_status=attempt.http_status,
+            provider=attempt.gateway_usage.provider if attempt.gateway_usage else None,
+            resolved_provider=attempt.gateway_usage.resolved_provider if attempt.gateway_usage else None,
+            resolved_model=attempt.gateway_usage.resolved_model if attempt.gateway_usage else None,
+            gateway_usage=attempt.gateway_usage,
+        )
+        for attempt in attempts
     )
-
-
-def _usage_facts(usage: GatewayUsage | None) -> dict[str, str | None]:
-    if usage is None:
-        return {}
-    return {"provider": usage.provider, "resolved_provider": usage.resolved_provider, "resolved_model": usage.resolved_model}
-
-
-def _attempt_cost(outcome: str, usage: GatewayUsage | None) -> Decimal | None:
-    if outcome in {"not_sent", "rejected"}:
-        return Decimal("0")
-    if outcome == "completed" and usage is not None:
-        return usage.cost_usd
-    return None
 
 
 def gateway_summarizer_factory(
@@ -360,10 +281,27 @@ def gateway_summarizer_factory(
     for a Contributor route, the turn's notice is delivered before its disclosure is issued; without
     them (registry enforcement inactive) no binding is sent. Request identities, and so attempt
     identities, are minted here per turn and call: session, turn, call ordinal and a random part, so
-    two turns can never claim one attempt (Fable CP3 review MAJOR-3)."""
+    two turns can never claim one attempt (Fable CP3 review MAJOR-3).
+
+    The identity a turn captured must be the route actually bound (Codex CP3 ruling R5): its model,
+    role, endpoints, reasoning and quantizations must equal `route`, and with a snapshot, `route` must
+    be what the snapshot gives that model and the identity's registry hash the snapshot's. Anything
+    else raises `RouteIdentityError` before a request exists, so no attempt is ever relabelled."""
     from optimus.gateway.disclosure import ContributorDisclosure
+    from optimus.gateway.route_binding import RouteIdentityError, registry_route_identity
+
+    configured = (route.model_id, route.role, route.route, route.reasoning, route.quantizations)
+    if snapshot is not None:
+        trusted = registry_route_identity(snapshot, model_id=route.model_id, role=route.role)
+        if configured != (trusted.model_id, trusted.role, trusted.route, trusted.reasoning, trusted.quantizations):
+            raise RouteIdentityError("the summarizer route does not match the trusted registry")
 
     def bind_turn(identity: MaintenanceIdentity, deliver_notice: Callable[[str], bool]) -> SummarizerCall:
+        captured = (identity.model_id, identity.role, identity.route, identity.reasoning, identity.quantizations)
+        if captured != configured:
+            raise RouteIdentityError("the turn's summarizer identity is not the route this summarizer binds")
+        if snapshot is not None and identity.registry_hash != snapshot.effective_hash:
+            raise RouteIdentityError("the turn's registry identity is not the trusted snapshot")
         ordinal = itertools.count(1)
 
         def request_ids() -> str:

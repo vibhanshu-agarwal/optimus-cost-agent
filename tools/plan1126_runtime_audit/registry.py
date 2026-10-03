@@ -44,6 +44,8 @@ _H5_PROBE_EXECUTES = (
     "src/optimus/acp/session_config.py",
     "src/optimus/acp/spec.py",
     "src/optimus/agent/state_store.py",
+    # Plan 12.2 CP3 correction: the summarizer host imports the one shared attempt classifier.
+    "src/optimus/gateway/attempts.py",
     "src/optimus/mcp/client_catalog.py",
     "src/optimus/mcp/client_disposition.py",
     "src/optimus/mcp/client_sdk.py",

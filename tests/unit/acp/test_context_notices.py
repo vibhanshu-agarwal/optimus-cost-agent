@@ -419,14 +419,15 @@ def test_the_production_summarizer_notices_a_contributor_route_before_it_sends()
             usage = GatewayUsage(gateway_request_id="gw", provider="p", billing_units=1, cost_usd=Decimal("0.0001"))
             return GatewayResponse(output_text="x", gateway_usage=usage, raw={}, finish_reason="stop")
 
-    route = SummarizerRoute(model_id=CONTRIBUTOR, role="summarizer", route=("p",), reasoning=None, quantizations=(None,))
+    route = SummarizerRoute(model_id=CONTRIBUTOR, role="summarizer", route=("meta",), reasoning=None, quantizations=(None,))
     factory = gateway_summarizer_factory(
         gateway_client=Client(), route=route, snapshot=load_registry(packaged_defaults(), None),
         disclosure_key=disclosure_key("launch-secret"),
     )  # fmt: skip
     identity = MaintenanceIdentity(
-        session_id="s", turn_seq=1, model_id=CONTRIBUTOR, role="summarizer", route=("p",), reasoning=None,
+        session_id="s", turn_seq=1, model_id=CONTRIBUTOR, role="summarizer", route=("meta",), reasoning=None,
         quantizations=(None,), strategy="compaction", revision_digest="d" * 64,
+        registry_hash=load_registry(packaged_defaults(), None).effective_hash,
     )  # fmt: skip
 
     def deliver(text: str) -> bool:
@@ -448,11 +449,10 @@ def _contributor_attachment(client):
     from optimus_model_policy import load_registry
     from optimus_model_policy.binding import disclosure_key, packaged_defaults
 
+    snapshot = load_registry(packaged_defaults(), None)
     route = SummarizerRoute(model_id=CONTRIBUTOR, role="summarizer", route=("meta",), reasoning=None, quantizations=(None,))
-    factory = gateway_summarizer_factory(
-        gateway_client=client, route=route, snapshot=load_registry(packaged_defaults(), None), disclosure_key=disclosure_key("launch-secret")
-    )
-    return dataclasses.replace(make_attachment(), summarizer=factory, summarizer_route=route)
+    factory = gateway_summarizer_factory(gateway_client=client, route=route, snapshot=snapshot, disclosure_key=disclosure_key("launch-secret"))
+    return dataclasses.replace(make_attachment(), summarizer=factory, summarizer_route=route, registry_hash=snapshot.effective_hash)
 
 
 class _ObservingClient:

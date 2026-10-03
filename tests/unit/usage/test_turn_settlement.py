@@ -482,3 +482,91 @@ def test_a_daily_alert_policy_is_refused_by_a_host_without_a_reconciled_ledger(t
             outbound=RecordingOutboundChannel(),
             alert_policies=(AlertPolicy(scope="day", thresholds_usd=(Decimal("1"),), day_timezone="Asia/Kolkata"),),
         )
+
+
+# --- Codex CP3 ruling M1: every authoritative fact, one at a time ---------------------------------------
+
+
+def _full_receipt(**changes) -> StageReceipt:
+    from optimus.gateway.models import GatewayUsage
+
+    usage = GatewayUsage(
+        gateway_request_id="gw-full", provider="provider-a", provider_request_id="pr-1", resolved_provider="Provider A",
+        resolved_model="model-a-0901", billing_units=18, cost_usd=Decimal("0.002"), input_tokens=7, output_tokens=11, cached_tokens=3,
+    )  # fmt: skip
+    fields = dict(
+        session_id="s", turn_id="s:1", stage="planning", attempt_id="full", gateway_request_id="gw-full", outcome="completed",
+        reported_cost_usd=Decimal("0.002"), recorded_at=AT, requested_model="model-a", role="medium", route=("endpoint-a",),
+        reasoning="high", quantizations=("fp8",), strategy="compaction", revision_digest="b" * 64, registry_hash="a" * 64,
+        http_status=None, gateway_usage=usage,
+    )  # fmt: skip
+    return StageReceipt(**{**fields, **changes})
+
+
+def _divergent_values():
+    """One alternative value for every reported or captured fact, the usage-carried ones included."""
+    from optimus.gateway.models import GatewayUsage
+
+    base = _full_receipt().gateway_usage
+    return {
+        "session_id": "other-session",
+        "stage": "answer",
+        "requested_model": "model-b",
+        "role": "complex",
+        "route": ("endpoint-b",),
+        "reasoning": "low",
+        "quantizations": ("bf16",),
+        "strategy": "hybrid",
+        "revision_digest": "c" * 64,
+        "registry_hash": "d" * 64,
+        "http_status": 200,
+        "gateway_usage": GatewayUsage(**{**base.model_dump(), "billing_units": 19}),
+        "turn_id": "s:2",
+    }
+
+
+def test_every_fact_but_arrival_bookkeeping_is_authoritative():
+    import dataclasses
+
+    names = {field.name for field in dataclasses.fields(StageReceipt)}
+    covered = set(_divergent_values()) | {"attempt_id", "gateway_request_id", "outcome", "reported_cost_usd"}
+    usage_carried = {"provider", "resolved_provider", "resolved_model", "input_tokens", "output_tokens", "cached_tokens", "provider_request_id"}
+    # Each fact is either changed one at a time below, or repeats the usage it carries (changing it
+    # alone is refused at construction), or is the receipt's own identity or arrival bookkeeping.
+    assert names == covered | usage_carried | {"recorded_at", "post_teardown"}
+
+
+@pytest.mark.parametrize("field", sorted(_divergent_values()))
+def test_a_duplicate_that_changes_one_fact_is_an_integrity_error(field):
+    settlement = TurnSettlement()
+    settlement.record_attempt(_full_receipt())
+
+    with pytest.raises(ReceiptConflictError):
+        settlement.record_attempt(_full_receipt(**{field: _divergent_values()[field]}))
+
+
+@pytest.mark.parametrize("field", sorted(set(_divergent_values()) - {"turn_id", "session_id", "stage"}))
+def test_another_attempt_settling_the_same_gateway_request_with_one_fact_changed_is_refused(field):
+    settlement = TurnSettlement()
+    settlement.record_attempt(_full_receipt())
+
+    with pytest.raises(ReceiptConflictError):
+        settlement.record_attempt(_full_receipt(attempt_id="another-host-attempt", **{field: _divergent_values()[field]}))
+
+
+@pytest.mark.parametrize("name", ["provider", "resolved_provider", "resolved_model", "input_tokens", "output_tokens", "cached_tokens", "provider_request_id"])
+def test_a_flattened_fact_cannot_contradict_the_usage_it_carries(name):
+    with pytest.raises(ValueError):
+        _full_receipt(**{name: 99 if "tokens" in name else "relabelled"})
+
+
+def test_arrival_bookkeeping_differs_idempotently_and_the_first_arrival_is_kept():
+    settlement = TurnSettlement()
+    first = _full_receipt()
+    settlement.record_attempt(first)
+
+    settlement.record_attempt(_full_receipt(recorded_at=datetime(2026, 10, 4, tzinfo=UTC), post_teardown=True))
+    settlement.record_attempt(_full_receipt(attempt_id="replayed-host-attempt", recorded_at=datetime(2026, 10, 4, tzinfo=UTC)))
+
+    assert settlement.receipts("s:1") == (first,)
+    assert settlement.settle_turn("s:1").known_subtotal_usd == Decimal("0.002")

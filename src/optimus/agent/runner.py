@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import subprocess
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from functools import partial
@@ -20,9 +21,10 @@ from optimus.agent.state_store import (
 )
 from optimus.agent.tools import AgentToolbox
 from optimus.agent.workspace_context import WorkspaceContextResult, assemble_workspace_context_for_prompt
+from optimus.gateway.attempts import ProviderAttempt, attempts_from_failure, attempts_from_response, is_preflight_refusal
 from optimus.gateway.client import GatewayClient
-from optimus.gateway.errors import GatewayError
 from optimus.gateway.models import GatewayUsage
+from optimus.gateway.route_binding import BoundRequest, RouteIdentity, RouteIdentityError, TurnRouteBinder
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.loops.completion import DeterministicCompletionEvaluator
 from optimus.loops.controller import GoalLoopController, IterationRunner
@@ -50,6 +52,14 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
     "CHAT_GATEWAY_COST_UNKNOWN": (
         "Chat stopped because the model gateway failed without reporting the call's cost. Please try again."
     ),
+    "CHAT_GATEWAY_REFUSED": (
+        "Chat could not answer: the model gateway refused the request before sending it to any model, "
+        "so nothing was charged."
+    ),
+    "CHAT_NOTICE_UNDELIVERED": (
+        "Chat could not answer: the required notice for this model could not be shown, so the request "
+        "was not sent."
+    ),
     "BUDGET_EXHAUSTED": (
         "Chat's answer exceeded this prompt's cost limit, so it is not shown. Try a narrower question."
     ),
@@ -68,6 +78,20 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class _RunScope:
+    """What one `run` invocation owns: the sink its attempt receipts go to, the control its receipts
+    are classified against (post-teardown) and the binder for its requests (Codex CP3 ruling R1/R4).
+    It is passed down explicitly and never stored on the runner, which concurrent sessions share."""
+
+    stage_receipts: Callable[[StageReceipt], None] | None = None
+    operation_control: TurnOperationControl | None = None
+    route: TurnRouteBinder | None = None
+
+    def transport_abandoned(self) -> bool:
+        return self.operation_control is not None and self.operation_control.transport_abandoned()
+
+
 def _selection_text(request: AgentRunRequest) -> str:
     """What selects workspace files and skills (Plan 12.2 Task 9): an attached turn's exact selection
     text, never its summarized history; otherwise the task, as before."""
@@ -75,13 +99,14 @@ def _selection_text(request: AgentRunRequest) -> str:
 
 
 class _AgentLoopIterationRunner:
-    def __init__(self, agent_runner: AgentRunner, request: AgentRunRequest) -> None:
+    def __init__(self, agent_runner: AgentRunner, request: AgentRunRequest, scope: _RunScope) -> None:
         self._agent_runner = agent_runner
         self._request = request
+        self._scope = scope
         self.last_result: AgentRunResult | None = None
 
     def run_iteration(self, state: IterationState, tools: GuardedLoopToolExecutor) -> IterationOutcome:
-        result = self._agent_runner._run_once(self._request)
+        result = self._agent_runner._run_once(self._request, scope=self._scope)
         self.last_result = result
         return IterationOutcome(
             summary=result.output_text,
@@ -236,8 +261,6 @@ class AgentRunner:
         self._usage_accounting = usage_accounting
         self._planning_progress_observer = planning_progress_observer
         self._transition_validator = TransitionValidator()
-        self._active_operation_control: TurnOperationControl | None = None
-        self._active_stage_receipts: Callable[[StageReceipt], None] | None = None
 
     @property
     def event_sink(self) -> Callable[[TelemetryEvent], None] | None:
@@ -254,26 +277,31 @@ class AgentRunner:
         operation_control: TurnOperationControl | None = None,
         context_packer: ContextPacker | None = None,
         stage_receipts: Callable[[StageReceipt], None] | None = None,
+        route_binder: TurnRouteBinder | None = None,
     ) -> AgentRunResult:
+        """`stage_receipts` receives every model attempt of this run, known or unknown, once (Plan 12.2
+        Task 11). `route_binder` binds each request to the turn's captured trusted route; without it
+        no binding is sent (registry enforcement inactive). Both belong to this invocation alone."""
         observer = (
             planning_progress_observer
             if planning_progress_observer is not None
             else self._planning_progress_observer
         )
+        if route_binder is not None and route_binder.identity.model_id != self._model:
+            raise RouteIdentityError("the turn's route is bound to a different model than this runner sends")
         matched_skills = self._match_skills(request)
-        self._active_operation_control = operation_control
-        # Plan 12.2 Task 11: every model attempt of this run, known or unknown, is reported once here.
-        self._active_stage_receipts = stage_receipts
+        scope = _RunScope(stage_receipts=stage_receipts, operation_control=operation_control, route=route_binder)
         try:
             if request.completion_condition and request.execution_mode is ExecutionMode.CHAT:
                 # Chat is one Gateway call. The goal loop would repeat it outside the
                 # turn's halt and directive gates, so the combination is refused up front.
                 result = self._chat_failure(request, stop_reason="CHAT_COMPLETION_CONDITION_UNSUPPORTED")
             elif request.completion_condition:
-                result = self._run_bounded_loop(request, matched_skills=matched_skills)
+                result = self._run_bounded_loop(request, matched_skills=matched_skills, scope=scope)
             else:
                 result = self._run_once(
                     request,
+                    scope=scope,
                     planning_progress_observer=observer,
                     client_mcp_service=client_mcp_service,
                     mcp_permission_broker=mcp_permission_broker,
@@ -289,8 +317,6 @@ class AgentRunner:
             )
             return result
         finally:
-            self._active_operation_control = None
-            self._active_stage_receipts = None
             # Narrow flush() protocol: flush a batching event sink (e.g. TelemetryFanout)
             # after the final agent_run event, and also on a controlled failure that
             # raises out of this method, so buffered telemetry is not silently dropped.
@@ -315,11 +341,11 @@ class AgentRunner:
         )
         return tuple(match.manifest.name for match in matches)
 
-    def _run_bounded_loop(self, request: AgentRunRequest, *, matched_skills: tuple[str, ...]) -> AgentRunResult:
+    def _run_bounded_loop(self, request: AgentRunRequest, *, matched_skills: tuple[str, ...], scope: _RunScope) -> AgentRunResult:
         del matched_skills
         workspace_root = request.workspace_root
         guard = self._guard or PreToolGuard.for_workspace(workspace_root=workspace_root, allowed_network_hosts=())
-        iteration_runner = self._loop_iteration_runner or _AgentLoopIterationRunner(self, request)
+        iteration_runner = self._loop_iteration_runner or _AgentLoopIterationRunner(self, request, scope)
         evaluator = self._loop_evaluator or DeterministicCompletionEvaluator(completed=False, reason="goal not complete")
         controller = GoalLoopController(
             policy=LoopBudgetPolicy(
@@ -364,6 +390,7 @@ class AgentRunner:
         self,
         request: AgentRunRequest,
         *,
+        scope: _RunScope,
         planning_progress_observer: PlanningProgressObserver | None = None,
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
@@ -396,6 +423,7 @@ class AgentRunner:
         if request.execution_mode is ExecutionMode.CHAT:
             return self._run_chat_answer(
                 request=request,
+                scope=scope,
                 context=context,
                 halt_requested=halt_requested,
                 operation_control=operation_control,
@@ -414,6 +442,7 @@ class AgentRunner:
             ):
                 return self._run_multi_turn_planning(
                     request=request,
+                    scope=scope,
                     context=context,
                     toolbox=toolbox,
                     initial_workspace_context="",
@@ -437,6 +466,7 @@ class AgentRunner:
         if request.execution_mode is ExecutionMode.AGENT:
             return self._run_multi_turn_planning(
                 request=request,
+                scope=scope,
                 context=context,
                 toolbox=toolbox,
                 initial_workspace_context=workspace_context.text,
@@ -452,23 +482,43 @@ class AgentRunner:
                 context_packer=context_packer,
             )
         planner_input = build_agent_planner_input(request.task, workspace_context=workspace_context.text)
-        response = self._gateway_client.create_response(
-            model=self._model,
-            input_text=planner_input,
-            metadata={
-                "run_id": request.run_id,
-                "session_id": request.session_id,
-                "purpose": "agent_plan",
-                "task": request.task,
-            },
-        )
-        self._record_gateway_usage(
-            request,
-            gateway_usage=response.gateway_usage,
-            settled_turn=1,
-            wire_attempt=1,
-        )
+        bound = None
+        if scope.route is not None:
+            bound = scope.route.bind(stage="planning", input_text=planner_input)
+            if bound is None:
+                self._report_attempts(request, scope, settled_turn=1, wire_attempt=1, attempts=(_NOT_SENT,), identity=scope.route.identity)
+                from optimus.agent.planning_loop import planning_corrective_text
+
+                return self._build_result(
+                    request=request,
+                    status=AgentRunStatus.FAILED,
+                    final_state="FAILED",
+                    output_text=planning_corrective_text("PLANNING_NOTICE_UNDELIVERED"),
+                    tool_calls=(),
+                    total_cost_usd=Decimal("0"),
+                    stop_reason="PLANNING_NOTICE_UNDELIVERED",
+                )
+        try:
+            response = self._gateway_client.create_response(
+                model=self._model,
+                input_text=planner_input,
+                metadata=_with_request_id(
+                    {"run_id": request.run_id, "session_id": request.session_id, "purpose": "agent_plan", "task": request.task},
+                    bound,
+                ),
+                **_binding_kwargs(bound),
+            )
+        except Exception as exc:
+            # Every attempt is reported, known or not, before the failure propagates as it always has.
+            attempts = attempts_from_failure(exc)
+            self._report_attempts(request, scope, settled_turn=1, wire_attempt=1, attempts=attempts, identity=_identity(bound))
+            self._record_ledger_usage(request, scope, attempts=attempts, settled_turn=1, wire_attempt=1)
+            raise
+        attempts = attempts_from_response(response)
+        self._report_attempts(request, scope, settled_turn=1, wire_attempt=1, attempts=attempts, identity=_identity(bound))
+        self._record_ledger_usage(request, scope, attempts=attempts, settled_turn=1, wire_attempt=1)
         total_cost_usd = response.gateway_usage.cost_usd
+        unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)
         unfinished_reason = None
         if response.length_limited:
             # A plan cut off at the output limit is never a candidate (Plan 12.2 Task 5).
@@ -487,6 +537,8 @@ class AgentRunner:
                 tool_calls=(),
                 total_cost_usd=total_cost_usd,
                 stop_reason=unfinished_reason,
+                cost_complete=not unknown,
+                unknown_cost_attempt_count=unknown,
             )
         output_text = response.output_text
         return self._finish_agent_planning(
@@ -500,12 +552,15 @@ class AgentRunner:
             gateway_request_ids=(response.gateway_usage.gateway_request_id,),
             planning_turns=1,
             provider=response.gateway_usage.provider,
+            cost_complete=not unknown,
+            unknown_cost_attempt_count=unknown,
         )
 
     def _run_multi_turn_planning(
         self,
         *,
         request: AgentRunRequest,
+        scope: _RunScope,
         context: RuntimeContext,
         toolbox: AgentToolbox,
         initial_workspace_context: str = "",
@@ -529,15 +584,14 @@ class AgentRunner:
         )
 
         def usage_callback(gateway_usage: GatewayUsage, settled_turn: int, wire_attempt: int) -> None:
-            self._record_gateway_usage(
-                request,
-                gateway_usage=gateway_usage,
-                settled_turn=settled_turn,
-                wire_attempt=wire_attempt,
-            )
+            self._record_ledger_entry(request, scope, gateway_usage, settled_turn=settled_turn, wire_attempt=wire_attempt)
 
-        def unknown_attempt_callback(settled_turn: int, wire_attempt: int) -> None:
-            self._report_stage_receipt(request, settled_turn=settled_turn, wire_attempt=wire_attempt, gateway_usage=None)
+        def attempt_callback(
+            settled_turn: int, wire_attempt: int, attempts: tuple[ProviderAttempt, ...], identity: RouteIdentity | None
+        ) -> None:
+            self._report_attempts(
+                request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity
+            )
 
         planner = PlanningLoopRunner(
             gateway_client=self._gateway_client,
@@ -548,7 +602,8 @@ class AgentRunner:
             max_cost_usd=request.max_cost_usd,
             guard=guard,
             usage_callback=usage_callback,
-            unknown_attempt_callback=unknown_attempt_callback,
+            attempt_callback=attempt_callback,
+            route_binder=scope.route,
             progress_observer=progress_observer,
             client_mcp_service=client_mcp_service,
             mcp_permission_broker=mcp_permission_broker,
@@ -798,25 +853,32 @@ class AgentRunner:
             candidate_plan_text=candidate_plan_text,
         )
 
-    def _record_gateway_usage(
+    def _record_ledger_usage(
         self,
         request: AgentRunRequest,
+        scope: _RunScope,
         *,
-        gateway_usage: GatewayUsage,
+        attempts: tuple[ProviderAttempt, ...],
         settled_turn: int,
         wire_attempt: int,
     ) -> None:
-        control = self._active_operation_control
-        post_teardown = bool(control is not None and control.transport_abandoned())
-        self._report_stage_receipt(
-            request,
-            settled_turn=settled_turn,
-            wire_attempt=wire_attempt,
-            gateway_usage=gateway_usage,
-            post_teardown=post_teardown,
-        )
+        for attempt in attempts:
+            if attempt.gateway_usage is not None:
+                self._record_ledger_entry(request, scope, attempt.gateway_usage, settled_turn=settled_turn, wire_attempt=wire_attempt)
+
+    def _record_ledger_entry(
+        self,
+        request: AgentRunRequest,
+        scope: _RunScope,
+        gateway_usage: GatewayUsage,
+        *,
+        settled_turn: int,
+        wire_attempt: int,
+    ) -> None:
+        """Record one settled usage in the existing usage ledger, if this runner has one."""
         if self._usage_accounting is None:
             return
+        post_teardown = scope.transport_abandoned()
         turn_seq: int | None = None
         if post_teardown:
             try:
@@ -836,46 +898,50 @@ class AgentRunner:
             post_teardown=post_teardown,
         )
 
-    def _report_stage_receipt(
+    def _report_attempts(
         self,
         request: AgentRunRequest,
+        scope: _RunScope,
         *,
         settled_turn: int,
         wire_attempt: int,
-        gateway_usage: GatewayUsage | None,
-        post_teardown: bool | None = None,
+        attempts: tuple[ProviderAttempt, ...],
+        identity: RouteIdentity | None,
     ) -> None:
-        """Report one planning/answer attempt to this run's receipt sink, if any: its reported usage,
-        or an unknown cost (never zero) when the Gateway reported none (Plan 12.2 Task 11). An attempt
-        settled after transport teardown is flagged so, known or unknown."""
-        sink = self._active_stage_receipts
+        """Report each provider attempt of one host request to this invocation's receipt sink, if any:
+        settled usage on the attempt that settled it, an unknown cost (never zero) where the Gateway
+        reported none, exactly 0 for a proven unsent or refused attempt (Plan 12.2 Task 11; Codex CP3
+        ruling R1, R3 and R4). Receipts settled after transport teardown are flagged so."""
+        sink = scope.stage_receipts
         if sink is None:
             return
-        if post_teardown is None:
-            control = self._active_operation_control
-            post_teardown = bool(control is not None and control.transport_abandoned())
+        post_teardown = scope.transport_abandoned()
         stage = "answer" if request.execution_mode is ExecutionMode.CHAT else "planning"
-        known = gateway_usage is not None
-        sink(
-            StageReceipt(
-                session_id=request.session_id,
-                turn_id=request.run_id,
-                stage=stage,
-                attempt_id=f"{request.run_id}:{stage}:{settled_turn}:{wire_attempt}",
-                gateway_request_id=gateway_usage.gateway_request_id if known else None,
-                outcome="completed" if known else "uncertain",
-                reported_cost_usd=gateway_usage.cost_usd if known else None,
-                recorded_at=datetime.now(tz=UTC),
-                requested_model=self._model,
-                resolved_model=gateway_usage.resolved_model if known else None,
-                provider=gateway_usage.provider if known else None,
-                resolved_provider=gateway_usage.resolved_provider if known else None,
-                input_tokens=gateway_usage.input_tokens if known else None,
-                output_tokens=gateway_usage.output_tokens if known else None,
-                cached_tokens=gateway_usage.cached_tokens if known else None,
-                post_teardown=post_teardown,
+        base = f"{request.run_id}:{stage}:{settled_turn}:{wire_attempt}"
+        for attempt in attempts:
+            sink(
+                StageReceipt(
+                    session_id=request.session_id,
+                    turn_id=request.run_id,
+                    stage=stage,
+                    # A Gateway-routed attempt is numbered within its host request.
+                    attempt_id=f"{base}:{attempt.number}" if attempt.routed else base,
+                    gateway_request_id=attempt.gateway_request_id,
+                    outcome=attempt.outcome,
+                    reported_cost_usd=attempt.cost_usd,
+                    recorded_at=datetime.now(tz=UTC),
+                    requested_model=identity.model_id if identity is not None else self._model,
+                    role=identity.role if identity is not None else None,
+                    route=identity.route if identity is not None else (),
+                    reasoning=identity.reasoning if identity is not None else None,
+                    quantizations=identity.quantizations if identity is not None else (),
+                    registry_hash=identity.registry_hash if identity is not None else None,
+                    provider_request_id=attempt.provider_request_id,
+                    http_status=attempt.http_status,
+                    gateway_usage=attempt.gateway_usage,
+                    post_teardown=post_teardown,
+                )
             )
-        )
 
     def _run_approved_from_store(
         self,
@@ -1245,6 +1311,7 @@ class AgentRunner:
         self,
         *,
         request: AgentRunRequest,
+        scope: _RunScope,
         context: RuntimeContext,
         halt_requested: Callable[[], bool] | None = None,
         operation_control: TurnOperationControl | None = None,
@@ -1259,7 +1326,9 @@ class AgentRunner:
 
         The Gateway call runs under the turn's GATEWAY directive lifecycle, as a
         planning call does: it is not started once the turn is halted, and its
-        terminal state feeds the turn settlement's cost completeness.
+        terminal state feeds the turn settlement's cost completeness. A bound request is bound to the
+        complete final input, after its notice where the route needs one; an undelivered notice sends
+        nothing. Every provider attempt is reported, classified as every stage classifies it.
         """
         if request.selection_text is not None:
             # Plan 12.2 Task 9: an attached turn selects from its exact text, never from a summary.
@@ -1297,6 +1366,14 @@ class AgentRunner:
             chat_input = fitted
         if halt_requested is not None and halt_requested():
             return self._chat_failure(request, stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
+        bound = None
+        if scope.route is not None:
+            # Bound before the Gateway lease, so a request whose notice was not delivered is never a
+            # started provider attempt.
+            bound = scope.route.bind(stage="answer", input_text=chat_input)
+            if bound is None:
+                self._report_attempts(request, scope, settled_turn=1, wire_attempt=1, attempts=(_NOT_SENT,), identity=scope.route.identity)
+                return self._chat_failure(request, stop_reason="CHAT_NOTICE_UNDELIVERED")
         from optimus.acp.lifecycle import DirectiveKind
 
         op_id = "gateway:1:1"
@@ -1312,41 +1389,54 @@ class AgentRunner:
         if context_packer is not None:
             # Plan 12.2 Task 10: the attached meter reads only inputs actually sent.
             context_packer.record_dispatch(chat_input)
+        identity = _identity(bound)
         try:
             response = self._gateway_client.create_response(
                 model=self._model,
                 input_text=chat_input,
-                metadata={
-                    "run_id": request.run_id,
-                    "session_id": request.session_id,
-                    "purpose": "advisory_answer",
-                    "task": request.task,
-                },
+                metadata=_with_request_id(
+                    {
+                        "run_id": request.run_id,
+                        "session_id": request.session_id,
+                        "purpose": "advisory_answer",
+                        "task": request.task,
+                    },
+                    bound,
+                ),
+                **_binding_kwargs(bound),
             )
-        except GatewayError as exc:
-            usage = getattr(exc, "gateway_usage", None)
-            if usage is None:
-                complete("cost_unknown")
-                self._report_stage_receipt(request, settled_turn=1, wire_attempt=1, gateway_usage=None)
-                return self._chat_failure(request, stop_reason="CHAT_GATEWAY_COST_UNKNOWN", cost_complete=False)
-            complete("failed")
-            self._record_gateway_usage(request, gateway_usage=usage, settled_turn=1, wire_attempt=1)
-            return self._chat_failure(request, stop_reason="CHAT_GATEWAY_FAILURE", total_cost_usd=usage.cost_usd)
-        except Exception:
-            # Same rule as the planning loop: an unexpected transport failure has unknown cost.
-            complete("cost_unknown")
-            self._report_stage_receipt(request, settled_turn=1, wire_attempt=1, gateway_usage=None)
-            return self._chat_failure(request, stop_reason="CHAT_GATEWAY_COST_UNKNOWN", cost_complete=False)
+        except Exception as exc:
+            # One classifier for every stage (Codex CP3 ruling R3): a proven preflight refusal cost
+            # nothing; transport loss or any failure without settled usage stays unknown.
+            attempts = attempts_from_failure(exc)
+            unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)
+            known = sum((attempt.cost_usd for attempt in attempts if attempt.cost_usd is not None), Decimal("0"))
+            complete("cost_unknown" if unknown else "failed")
+            self._report_attempts(request, scope, settled_turn=1, wire_attempt=1, attempts=attempts, identity=identity)
+            self._record_ledger_usage(request, scope, attempts=attempts, settled_turn=1, wire_attempt=1)
+            if unknown:
+                return self._chat_failure(
+                    request, stop_reason="CHAT_GATEWAY_COST_UNKNOWN", total_cost_usd=known, cost_complete=False, unknown_cost_attempt_count=unknown
+                )
+            if is_preflight_refusal(exc):
+                return self._chat_failure(request, stop_reason="CHAT_GATEWAY_REFUSED")
+            return self._chat_failure(request, stop_reason="CHAT_GATEWAY_FAILURE", total_cost_usd=known)
 
         complete("succeeded")
-        self._record_gateway_usage(request, gateway_usage=response.gateway_usage, settled_turn=1, wire_attempt=1)
+        attempts = attempts_from_response(response)
+        self._report_attempts(request, scope, settled_turn=1, wire_attempt=1, attempts=attempts, identity=identity)
+        self._record_ledger_usage(request, scope, attempts=attempts, settled_turn=1, wire_attempt=1)
         total_cost_usd = response.gateway_usage.cost_usd
+        # A routed success can follow an earlier attempt whose cost is unknown; it stays unknown.
+        unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)
         if total_cost_usd > request.max_cost_usd:
             return self._chat_failure(
                 request,
                 stop_reason="BUDGET_EXHAUSTED",
                 status=AgentRunStatus.TERMINATED,
                 total_cost_usd=total_cost_usd,
+                cost_complete=not unknown,
+                unknown_cost_attempt_count=unknown,
             )
         answer = response.output_text.strip()
         if response.length_limited:
@@ -1357,13 +1447,19 @@ class AgentRunner:
                 stop_reason="CHAT_OUTPUT_TRUNCATED",
                 output_text=f"{answer}\n\n{notice}" if answer else notice,
                 total_cost_usd=total_cost_usd,
+                cost_complete=not unknown,
+                unknown_cost_attempt_count=unknown,
             )
         if response.stopped_unfinished:
             # Ended by a content filter or provider error: not shown as an answer at all (operator
             # decision 2026-10-02, Claude and Codex concurring). The receipt above is kept.
-            return self._chat_failure(request, stop_reason="CHAT_OUTPUT_UNFINISHED", total_cost_usd=total_cost_usd)
+            return self._chat_failure(
+                request, stop_reason="CHAT_OUTPUT_UNFINISHED", total_cost_usd=total_cost_usd, cost_complete=not unknown, unknown_cost_attempt_count=unknown
+            )
         if not answer:
-            return self._chat_failure(request, stop_reason="CHAT_EMPTY_ANSWER", total_cost_usd=total_cost_usd)
+            return self._chat_failure(
+                request, stop_reason="CHAT_EMPTY_ANSWER", total_cost_usd=total_cost_usd, cost_complete=not unknown, unknown_cost_attempt_count=unknown
+            )
         # Plan 2's validated path for a non-AGENT result: PLANNING -> PLAN_READY -> CHAT_ONLY.
         context = self._transition(context, AgentState.PLAN_READY)
         self._transition(context, AgentState.CHAT_ONLY)
@@ -1374,6 +1470,8 @@ class AgentRunner:
             output_text=answer,
             tool_calls=(),
             total_cost_usd=total_cost_usd,
+            cost_complete=not unknown,
+            unknown_cost_attempt_count=unknown,
         )
 
     def _chat_failure(
@@ -1385,6 +1483,7 @@ class AgentRunner:
         status: AgentRunStatus = AgentRunStatus.FAILED,
         total_cost_usd: Decimal = Decimal("0"),
         cost_complete: bool = True,
+        unknown_cost_attempt_count: int | None = None,
     ) -> AgentRunResult:
         return self._build_result(
             request=request,
@@ -1395,7 +1494,9 @@ class AgentRunner:
             total_cost_usd=total_cost_usd,
             stop_reason=stop_reason,
             cost_complete=cost_complete,
-            unknown_cost_attempt_count=0 if cost_complete else 1,
+            unknown_cost_attempt_count=(
+                unknown_cost_attempt_count if unknown_cost_attempt_count is not None else 0 if cost_complete else 1
+            ),
         )
 
     @staticmethod
@@ -1435,6 +1536,23 @@ class AgentRunner:
 
 def _epoch_ms() -> int:
     return int(datetime.now(tz=UTC).timestamp() * 1000)
+
+
+# A request whose required notice was not delivered: never sent, so it certainly cost nothing.
+_NOT_SENT = ProviderAttempt(number=1, outcome="not_sent", cost_usd=Decimal("0"))
+
+
+def _identity(bound: BoundRequest | None) -> RouteIdentity | None:
+    return bound.identity if bound is not None else None
+
+
+def _binding_kwargs(bound: BoundRequest | None) -> dict[str, Any]:
+    """The binding to send, only when one exists: an unbound request is today's request, unchanged."""
+    return {"route_binding": bound.binding} if bound is not None else {}
+
+
+def _with_request_id(metadata: dict[str, Any], bound: BoundRequest | None) -> dict[str, Any]:
+    return {**metadata, "request_id": bound.request_id} if bound is not None else metadata
 
 
 def _record_matches_request(record: AgentPlanRecord, request: AgentRunRequest) -> bool:

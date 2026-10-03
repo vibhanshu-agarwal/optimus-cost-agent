@@ -4,12 +4,13 @@ import asyncio
 import contextlib
 import inspect
 import itertools
+import sys
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from context_engine import SummaryCheckpoint
 from optimus.acp.conversation import (
@@ -81,7 +82,10 @@ from optimus.mcp.client_config import ClientMcpConfigError
 from optimus.mcp.client_disposition import AcpMcpPermissionBroker, ClientMcpRuntime, ClientMcpSessionState
 from optimus.runtime.modes import ExecutionMode
 from optimus.usage.cost_alerts import AlertPolicy, AlertTracker, CostScopeSummary
-from optimus.usage.turn_settlement import TurnSettlement, receipt_from_maintenance
+from optimus.usage.turn_settlement import TurnCostSummary, TurnSettlement, receipt_from_maintenance
+
+if TYPE_CHECKING:
+    from optimus.gateway.route_binding import RoutePolicy, TurnRouteBinder
 
 ACP_PROTOCOL_VERSION = 1
 
@@ -210,6 +214,15 @@ class AcpSpecSession:
     cost_settlement: TurnSettlement = field(default_factory=TurnSettlement, repr=False, compare=False)
     alert_tracker: AlertTracker = field(default_factory=AlertTracker, repr=False, compare=False)
 
+    def __post_init__(self) -> None:
+        # The conversation's cost is one projection over this session's receipts, updated whenever a
+        # receipt arrives - including after a turn's terminal finalization (Codex CP3 ruling R2).
+        self.cost_settlement.subscribe(self._project_turn_cost)
+
+    def _project_turn_cost(self, turn_id: str, summary: TurnCostSummary) -> None:
+        if self.conversation is not None:
+            self.conversation.project_turn_cost(turn_id, known_usd=summary.known_subtotal_usd, complete=summary.complete)
+
 
 @dataclass
 class AcpPromptTurn:
@@ -223,6 +236,9 @@ class AcpPromptTurn:
     permission_handle: Any | None = None
     # Plan 12.2: an attached turn's captured context, its packer and its dispatch readings.
     attached: AttachedTurn | None = None
+    # Codex CP3 ruling R4: the turn's request binder for the trusted planning/answer route, captured
+    # before any await. None while no route policy is configured (registry enforcement inactive).
+    route_binder: TurnRouteBinder | None = None
 
     @property
     def run_id(self) -> str:
@@ -350,6 +366,7 @@ class AcpDuplexAdapter:
         settlement_sink: Any | None = None,
         context_attachment: ContextAttachment | None = None,
         alert_policies: tuple[AlertPolicy, ...] = (),
+        route_policy: RoutePolicy | None = None,
     ) -> None:
         self._runner = runner
         self._workspace_root = Path(workspace_root).resolve()
@@ -376,6 +393,9 @@ class AcpDuplexAdapter:
         if any(policy.scope == "day" for policy in alert_policies):
             raise ValueError("daily cost alerts need a reconciled durable ledger (P9.85-FU-3); this host has none")
         self._alert_policies = tuple(alert_policies)
+        # Codex CP3 ruling R4: the injected trusted planning/answer route policy. None keeps today's
+        # unbound requests; nothing attaches one at startup (activation hold).
+        self._route_policy = route_policy
         self._closed = False
 
     def _remove_active_turn(self, session_id: str, turn_seq: int, control: TurnControl) -> bool:
@@ -872,6 +892,10 @@ class AcpDuplexAdapter:
             else None
         )
         turn.attached = attached_turn
+        if self._route_policy is not None:
+            turn.route_binder = self._route_policy.capture(
+                session_id=session_id, turn_seq=turn_seq, deliver_notice=self._blocking_notice(session_id, asyncio.get_running_loop())
+            )
         try:
             if admission.crosses_warning and conversation.note_warning_threshold_for_attempt(
                 admission.projected_bytes
@@ -936,7 +960,9 @@ class AcpDuplexAdapter:
                     loop,
                 )
 
-            planning_result = await asyncio.to_thread(
+            planning_result = await self._in_worker(
+                session,
+                turn,
                 self._runner.run,
                 planning_request,
                 **self._runner_runtime_kwargs(
@@ -946,6 +972,7 @@ class AcpDuplexAdapter:
                     operation_control=turn.turn_control,
                     context_packer=attached_turn,
                     stage_receipts=session.cost_settlement.record_attempt,
+                    route_binder=turn.route_binder,
                 ),
             )
             self._apply_turn_cost(
@@ -1096,13 +1123,16 @@ class AcpDuplexAdapter:
                     )
                 }
             )
-            approved_result = await asyncio.to_thread(
+            approved_result = await self._in_worker(
+                session,
+                turn,
                 self._runner.run,
                 approved_request,
                 **self._runner_runtime_kwargs(
                     session=session,
                     operation_control=turn.turn_control,
                     stage_receipts=session.cost_settlement.record_attempt,
+                    route_binder=turn.route_binder,
                 ),
             )
             # region agent log
@@ -1143,6 +1173,8 @@ class AcpDuplexAdapter:
                 hypothesis_id="H1",
             )
             # endregion
+            # A live exit still reports any threshold this turn crossed (Codex CP3 ruling R2).
+            await self._emit_exit_cost_alerts(turn)
             return self._turn(
                 error_response(
                     request_id=request.get("id"),
@@ -1151,10 +1183,16 @@ class AcpDuplexAdapter:
                 turn_control,
                 ownership_slot,
             )
+        except Exception:
+            # An exception after a paid attempt is still a live exit: its crossings are reported
+            # once, in this turn, before the failure propagates as it always has (Codex CP3 ruling R2).
+            await self._emit_exit_cost_alerts(turn)
+            raise
         finally:
-            # Every exit applies what this turn's receipts settled; idempotent when a normal exit has
-            # already applied its cost (Plan 12.2 Task 11; Fable CP3 review MINOR-2).
+            # Every exit projects what this turn's receipts settled; the projection is idempotent and
+            # later receipts keep updating it (Plan 12.2 Task 11; Codex CP3 ruling R2).
             self._apply_settled_cost(session, turn)
+            self._report_context_faults(turn)
             # Recompute after any cancellation so settlement telemetry is exact even for a turn that
             # ends without a commit (Plan 12.2 Task 2). After transport teardown this is a no-op.
             turn.turn_control.refresh_effect_state()
@@ -1215,11 +1253,12 @@ class AcpDuplexAdapter:
         is over the floor is refused with zero planning/answer calls and no commit: the thread stays
         OPEN and the next turn tries again. Every maintenance attempt was already recorded.
         """
-        outcome = await asyncio.to_thread(attached_turn.prepare)
+        outcome = await self._in_worker(session, turn, attached_turn.prepare)
+        self._report_context_faults(turn, outcome=outcome.kind)
         halted = turn.turn_control.halt_requested()
         if outcome.kind in {"cancelled", "unavailable"} or halted:
             # No planning or answer call follows; any summaries already paid for still count.
-            self._apply_turn_cost(session, turn, planning_cost=Decimal("0"), planning_complete=True)
+            self._apply_settled_cost(session, turn)
         strategy = _STRATEGY_LABELS[attached_turn.strategy]  # captured; a setter during maintenance never changes it
         if outcome.kind == "cancelled" or halted:
             await self._commit_turn(
@@ -1411,21 +1450,69 @@ class AcpDuplexAdapter:
     def _apply_turn_cost(
         self, session: AcpSpecSession, turn: AcpPromptTurn, *, planning_cost: Decimal, planning_complete: bool
     ) -> None:
-        """Apply a turn's cost to the conversation once: its planning/answer cost as the runner reports
-        it, plus every summarization attempt it paid for (Plan 12.2 Task 11). An unknown summary cost
-        leaves the total incomplete; known costs still count."""
-        summaries = [r for r in session.cost_settlement.receipts(turn.run_id) if r.stage == "summarization"]
-        known = sum((r.reported_cost_usd for r in summaries if r.reported_cost_usd is not None), Decimal("0"))
-        complete = planning_complete and all(r.reported_cost_usd is not None for r in summaries)
-        session.conversation.apply_planning_cost_once(turn.turn_seq, cost_usd=planning_cost + known, cost_complete=complete)
+        """A runner's own reported total, kept only for a runner that reports no planning or answer
+        receipt for the turn (one that does not report its attempts). Receipts, when present, are the
+        turn's cost and its projection never adds this claim: no second debit (Codex CP3 ruling R2)."""
+        self._apply_settled_cost(session, turn)
+        if any(r.stage in {"planning", "answer"} for r in session.cost_settlement.receipts(turn.run_id)):
+            return
+        session.conversation.apply_planning_cost_once(turn.turn_seq, cost_usd=planning_cost, cost_complete=planning_complete)
 
     @staticmethod
     def _apply_settled_cost(session: AcpSpecSession, turn: AcpPromptTurn) -> None:
-        """Apply the turn's settled receipts (every stage) once, for an exit that applied nothing."""
-        summary = session.cost_settlement.settle_turn(turn.run_id)
-        session.conversation.apply_planning_cost_once(
-            turn.turn_seq, cost_usd=summary.known_subtotal_usd, cost_complete=summary.complete
+        """Project the turn's settled receipts (every stage) into the conversation, ordered with every
+        other projection of this session. Idempotent: the turn's entry is replaced, never added to."""
+        conversation = session.conversation
+        session.cost_settlement.project(
+            turn.run_id,
+            lambda turn_id, summary: conversation.project_turn_cost(
+                turn_id, known_usd=summary.known_subtotal_usd, complete=summary.complete
+            ),
         )
+
+    async def _in_worker(self, session: AcpSpecSession, turn: AcpPromptTurn, function: Any, *args: Any, **kwargs: Any) -> Any:
+        """Run `function` off the event loop as one invocation of this turn: the turn's cost stays
+        incomplete while the worker runs, even after this coroutine stops waiting for it (transport
+        teardown), and a worker that never started can never start later (Codex CP3 ruling R2)."""
+        invocation = session.cost_settlement.open_invocation(turn.run_id)
+
+        def call() -> Any:
+            if not invocation.start():
+                return None  # its turn already stopped waiting; nothing may run now
+            try:
+                return function(*args, **kwargs)
+            finally:
+                invocation.end()
+
+        try:
+            return await asyncio.to_thread(call)
+        finally:
+            invocation.abandon_unstarted()
+
+    async def _emit_exit_cost_alerts(self, turn: AcpPromptTurn) -> None:
+        """Alerts for a live exit that did not commit. Never after transport teardown: the facts stay
+        in the settlement, and no live send is attempted (Codex CP3 ruling R2)."""
+        if turn.turn_control.transport_abandoned():
+            return
+        with contextlib.suppress(Exception):
+            await self._emit_cost_alerts(turn)
+
+    def _report_context_faults(self, turn: AcpPromptTurn, *, outcome: str | None = None) -> None:
+        """One content-free operator line per attached-view fault (Codex CP3 ruling M2): the turn's
+        run id, the phase and a bounded category, never exception text, history, summary, credential or
+        engine reason. Best-effort: it never fails the turn."""
+        attached = turn.attached
+        if attached is None:
+            return
+        try:
+            for fault in attached.take_faults():
+                print(
+                    f"optimus.acp: context fault run_id={turn.run_id} phase={fault.phase} "
+                    f"category={fault.category} outcome={outcome or 'repack_refused'}",
+                    file=sys.stderr,
+                )
+        except Exception:  # noqa: BLE001 - a diagnostic never fails the turn
+            return
 
     async def _emit_cost_alerts(self, turn: AcpPromptTurn) -> None:
         """Report each configured cost threshold this turn or session has newly reached, once, as a
@@ -1555,6 +1642,7 @@ class AcpDuplexAdapter:
         operation_control: Any | None = None,
         context_packer: Any | None = None,
         stage_receipts: Any | None = None,
+        route_binder: Any | None = None,
     ) -> dict[str, Any]:
         """Pass client-MCP runtime kwargs only when the runner accepts them."""
         kwargs: dict[str, Any] = {}
@@ -1578,6 +1666,8 @@ class AcpDuplexAdapter:
             _maybe("context_packer", context_packer)
         if stage_receipts is not None:
             _maybe("stage_receipts", stage_receipts)
+        if route_binder is not None:
+            _maybe("route_binder", route_binder)
         _maybe("client_mcp_service", _client_mcp_service(session))
         _maybe("mcp_permission_broker", self._mcp_permission_broker_for(session))
         return kwargs
@@ -1734,6 +1824,8 @@ _PLANNING_TERMINAL_STOP_REASONS = frozenset(
     {
         "PLANNING_GATEWAY_FAILURE",
         "PLANNING_GATEWAY_COST_UNKNOWN",
+        "PLANNING_GATEWAY_REFUSED",
+        "PLANNING_NOTICE_UNDELIVERED",
         "PLANNING_REPEATED_READ_REQUEST",
         "PLANNING_UNPARSEABLE_RESPONSE",
         "PLANNING_OUTPUT_TRUNCATED",

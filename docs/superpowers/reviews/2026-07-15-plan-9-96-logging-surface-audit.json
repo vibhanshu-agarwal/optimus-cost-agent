@@ -3839,6 +3839,14 @@
       "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
       "test_node": "tests/unit/agent/test_context_selection.py::test_the_rendered_view_wraps_the_summary_inert_and_keeps_plans_inert",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:AcpDuplexAdapter._report_context_faults:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Content-free by construction (Codex CP3 ruling M2): one operator line per attached-view fault naming only the host-minted turn run id, the phase ('prepare' or 'repack'), a category from the bounded ContextFault vocabulary (validated at construction; an unlisted engine reason maps to 'other') and the turn outcome. No exception text, history, summary, credential or engine reason string is formatted or retained; a send failure is contained.",
+      "sanitizer": "content-free by construction: generated run id and allowlisted phase/category/outcome codes",
+      "test_node": "tests/unit/acp/test_late_receipts.py::test_a_view_fault_leaves_one_content_free_operator_line",
+      "evidence_tier": "unit"
     }
   ]
 }

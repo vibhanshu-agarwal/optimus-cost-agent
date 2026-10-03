@@ -26,6 +26,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol
@@ -67,6 +68,7 @@ __all__ = [
     "AdmittedContext",
     "AttachedTurn",
     "ContextAttachment",
+    "ContextFault",
     "ContextOutcome",
     "DispatchReading",
     "SummarizerRoute",
@@ -250,6 +252,37 @@ class DispatchReading:
         return max(readings, key=lambda reading: (reading.tokens, -reading.capacity))
 
 
+# The engine's fixed unavailable reasons, mapped to a bounded diagnostic vocabulary. A reason not
+# listed here is reported as "other", never verbatim (Codex CP3 ruling M2).
+_REASON_CATEGORIES = {
+    "source exceeds limit": "capacity",
+    "exact authority exceeds history capacity": "capacity",
+    "history capacity too small for a summary": "capacity",
+    "maintenance input exceeded": "capacity",
+    "turn exceeds maintenance input": "capacity",
+    "maintenance unavailable": "maintenance_unavailable",
+    "maintenance allowance exceeded": "maintenance_unavailable",
+    "maintenance failed": "maintenance_failed",
+    "summary exceeds bound": "summary_rejected",
+    "summary malformed": "summary_rejected",
+}
+FAULT_CATEGORIES = frozenset({*_REASON_CATEGORIES.values(), "config_error", "engine_error", "maintenance_error", "other"})
+
+
+@dataclass(frozen=True, slots=True)
+class ContextFault:
+    """Why an attached view was not built, content-free (Codex CP3 ruling M2): the phase (`prepare`
+    for the admitted view, `repack` for a smaller one) and a bounded category. It never carries
+    exception text, history, a summary, a credential or the engine's reason string."""
+
+    phase: Literal["prepare", "repack"]
+    category: str
+
+    def __post_init__(self) -> None:
+        if self.phase not in {"prepare", "repack"} or self.category not in FAULT_CATEGORIES:
+            raise ValueError("a context fault needs a known phase and category")
+
+
 @dataclass(frozen=True, slots=True)
 class ContextOutcome:
     """How preparing a turn's context ended. `unavailable` and `cancelled` dispatch nothing."""
@@ -314,6 +347,7 @@ class _TurnMaintenance:
         self._host = host
         self._allowance = allowance
         self.calls = 0
+        self.raised = False
 
     def __call__(self, request: MaintenanceRequest) -> MaintenanceResult:
         if self._host is None:
@@ -321,7 +355,12 @@ class _TurnMaintenance:
         if self.calls >= self._allowance:
             return MaintenanceResult(summary_text=None, attempt_ids=(), status="allowance_exhausted", finish_status=None)
         self.calls += 1
-        return self._host(request)
+        try:
+            return self._host(request)
+        except BaseException:
+            # Lets the engine boundary tell a host maintenance failure from an engine fault.
+            self.raised = True
+            raise
 
 
 class AttachedTurn:
@@ -370,6 +409,8 @@ class AttachedTurn:
         self._view: PreparedView | None = None
         self._envelope = ""
         self._fallback = False
+        self._faults: list[ContextFault] = []
+        self._faults_lock = threading.Lock()
         self.admitted: AdmittedContext | None = None
         self.candidate: SummaryCheckpoint | None = None
         self.repacks = 0
@@ -426,6 +467,16 @@ class AttachedTurn:
     def fallback(self) -> bool:
         return self._fallback
 
+    def take_faults(self) -> tuple[ContextFault, ...]:
+        """The faults recorded since the last call, for the host's content-free diagnostic."""
+        with self._faults_lock:
+            faults, self._faults = tuple(self._faults), []
+        return faults
+
+    def _fault(self, phase: Literal["prepare", "repack"], category: str) -> None:
+        with self._faults_lock:
+            self._faults.append(ContextFault(phase, category))
+
     def prepare(self) -> ContextOutcome:
         """Build the snapshot and the turn's view. Synchronous: call it off the event loop."""
         snapshot = make_history_snapshot(
@@ -450,18 +501,26 @@ class AttachedTurn:
                 quantizations=route.quantizations,
                 strategy=self._strategy,
                 revision_digest=snapshot.revision.digest,
+                registry_hash=attachment.registry_hash,
             )
-            host = HostMaintenance(
-                call=attachment.summarizer(identity, self._deliver_notice),
-                sanitizer=self._sanitizer,
-                identity=identity,
-                record_receipt=self._receipt_sink,
-                cancelled=self._cancelled,
-            )
+            try:
+                call = attachment.summarizer(identity, self._deliver_notice)
+            except Exception:  # noqa: BLE001 - a summarizer that cannot bind this identity makes no call
+                # Nothing was sent, so nothing is owed; the turn proceeds without summaries and the
+                # operator sees a content-free config fault (Codex CP3 ruling R5 and M2).
+                self._fault("prepare", "config_error")
+            else:
+                host = HostMaintenance(
+                    call=call,
+                    sanitizer=self._sanitizer,
+                    identity=identity,
+                    record_receipt=self._receipt_sink,
+                    cancelled=self._cancelled,
+                )
         self._maintenance = _TurnMaintenance(host, attachment.parameters.max_maintenance_calls)
         if self._cancelled():
             return ContextOutcome("cancelled")
-        view = self._prepare_view(attachment.limits.history_input_tokens, self._checkpoint)
+        view = self._prepare_view(attachment.limits.history_input_tokens, self._checkpoint, phase="prepare")
         if self._cancelled():
             return ContextOutcome("cancelled")
         if view.available:
@@ -475,9 +534,12 @@ class AttachedTurn:
         self._admit("full_history", full_history_view(snapshot))
         return ContextOutcome("fallback", reason=view.reason, floor_bytes=floor)
 
-    def _prepare_view(self, history_tokens: int, checkpoint: SummaryCheckpoint | None) -> PreparedView:
+    def _prepare_view(
+        self, history_tokens: int, checkpoint: SummaryCheckpoint | None, *, phase: Literal["prepare", "repack"]
+    ) -> PreparedView:
         assert self._snapshot is not None and self._maintenance is not None
         limits = dataclasses.replace(self._attachment.limits, history_input_tokens=history_tokens)
+        self._maintenance.raised = False
         try:
             view = self._attachment.engine.prepare_view(
                 self._snapshot,
@@ -493,9 +555,12 @@ class AttachedTurn:
                 # Recording a paid attempt failed (for example a conflicting receipt): an accounting
                 # integrity error, surfaced rather than hidden as a fallback (Fable CP3 review MAJOR-3).
                 raise self._sink_error from exc
-            return PreparedView((), (), None, self._snapshot.protected, (), (), False, f"engine fault: {type(exc).__name__}")
+            self._fault(phase, "maintenance_error" if self._maintenance.raised else "engine_error")
+            return PreparedView((), (), None, self._snapshot.protected, (), (), False, "engine fault")
         if self._sink_error is not None:
             raise self._sink_error  # an engine that swallowed the failure still cannot hide it
+        if not view.available and view.reason != "cancelled":  # a cancelled turn is not a fault
+            self._fault(phase, _REASON_CATEGORIES.get(view.reason or "", "other"))
         return view
 
     def _admit(self, applied: str, view: PreparedView) -> None:
@@ -567,7 +632,7 @@ class AttachedTurn:
             if budget < 0:
                 return None
             self.repacks += 1
-            view = self._prepare_view(budget, view.checkpoint or self._checkpoint)
+            view = self._prepare_view(budget, view.checkpoint or self._checkpoint, phase="repack")
             if not view.available:
                 return None
             assert self._snapshot is not None

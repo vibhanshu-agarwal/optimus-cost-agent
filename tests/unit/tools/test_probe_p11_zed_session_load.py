@@ -3986,6 +3986,13 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     task11_committed = b"from optimus.usage.turn_settlement import" in head_spec
     if not task11_committed:
         expected -= task11_paths
+    # The CP3 correction adds the one shared attempt classifier and the route binding the summarizer
+    # factory verifies identities with (two paths), keyed on HEAD's maintenance host.
+    correction_paths = frozenset({"src/optimus/gateway/attempts.py", "src/optimus/gateway/route_binding.py"})
+    head_maintenance = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/context/maintenance.py") if task9_committed else b""
+    correction_committed = b"from optimus.gateway.attempts import" in head_maintenance
+    if not correction_committed:
+        expected -= correction_paths
     if not task9_committed:
         expected -= task9_paths
     if not task10_committed:
@@ -3996,8 +4003,11 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     assert (task9_paths <= closure) is task9_committed
     assert (task10_paths <= closure) is task10_committed
     assert (task11_paths <= closure) is task11_committed
+    assert (correction_paths <= closure) is correction_committed
     base = 136 if seam2_committed else 134 if seam3_committed else 133
-    assert len(closure) == base + (4 if task9_committed else 0) + (2 if task10_committed else 0) + (2 if task11_committed else 0)
+    assert len(closure) == base + (4 if task9_committed else 0) + (2 if task10_committed else 0) + (2 if task11_committed else 0) + (
+        2 if correction_committed else 0
+    )
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base
