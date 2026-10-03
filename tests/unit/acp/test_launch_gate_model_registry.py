@@ -88,3 +88,20 @@ def test_an_untrustworthy_registry_blocks_launch(tmp_path: Path, monkeypatch: py
     with pytest.raises(LaunchGateError) as caught:
         _candidate(workspace, FakeKeyring())
     assert (caught.value.code, caught.value.detail) == ("MODEL_REGISTRY_INVALID", "YAML_REJECTED")
+
+
+# Plan 12.2 CP3 carried obligation (Codex CP2 clearance): the approval successor pins the SHIPPED registry
+# by value, not only by recomputation, so any change to the packaged defaults is a deliberate, reviewed
+# approval change rather than a silent one.
+SHIPPED_EFFECTIVE_HASH = "ff83663147980a0950a590e8f0a84d157fbc63dcc277b48adbde450a50945136"  # pragma: allowlist secret - shipped registry identity, not a credential
+
+
+def test_an_activated_launch_approves_exactly_the_shipped_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert compose_trusted_snapshot(packaged_defaults()).effective_hash == SHIPPED_EFFECTIVE_HASH
+
+    monkeypatch.setattr(binding_module, "ENFORCEMENT_ACTIVE", True)
+    active, _ = _candidate(tmp_path, FakeKeyring())
+
+    literal = active.security_literals[APPROVAL_LITERAL_NAME]
+    assert literal.endswith(SHIPPED_EFFECTIVE_HASH)
+    assert literal == approval_literal(compose_trusted_snapshot(packaged_defaults()))
