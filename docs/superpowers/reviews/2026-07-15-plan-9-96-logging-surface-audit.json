@@ -1713,6 +1713,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.github_work_tracking:main:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the draft command writes the derived inventory manifest bytes to stdout; the manifest is built only from committed planning documents read at a named commit and holds record ids, statuses, titles and git blob ids, never runtime secrets, credentials or production payloads.",
+      "sanitizer": "governance-only inputs; fixed manifest schema",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_draft_writes_the_manifest_bytes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:render_manifest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: render_manifest serializes the inventory manifest (schema, baseline pins, section classifications and records derived from committed planning documents) with a fixed layout; it reads no runtime state or secrets.",
+      "sanitizer": "fixed manifest schema",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_draft_reproduces_the_committed_manifest_byte_for_byte",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan117_custody_contract:_parse_manifest:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: _parse_manifest uses exception text only to choose among fixed reason codes (invalid_manifest_schema / sha256_not_lowercase) and never persists or exports raw exception bodies.",
