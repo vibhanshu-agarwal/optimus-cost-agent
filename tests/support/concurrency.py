@@ -13,17 +13,23 @@ Rules every helper keeps:
   ("still alive after a bounded join: yes/no"); it can never turn an observed leak into a pass.
 * Reports carry names, ids, flags, qualified names and frame locations (``file:line in function``)
   only -- never local-variable values, source text, credentials or process command lines.
+* Rows are rendered by ``safe_view`` only, never by ``repr``: see its policy.
 """
 
 from __future__ import annotations
 
 import asyncio
+import dataclasses
+import enum
+import functools
+import re
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from optimus_security.sanitization import EVIDENCE_REDACTION_POLICY, sanitize_for_persistence
 from tools.concurrency_capture import (
     FrameLocation,
     ProcessSnapshot,
@@ -209,7 +215,10 @@ class DescendantRecorder:
                 try:
                     self._watches[role] = ProcessWatch(pid)
                 except ProcessLookupError:
-                    self._exit_seen[role] = now  # gone before it could be pinned: exited by now at the latest
+                    # The platform positively reported no such process: it exited by now at the latest.
+                    # Any other failure (access denied) propagates and stops the recorder, which the
+                    # verdict reports -- an unobservable process is never recorded as gone.
+                    self._exit_seen[role] = now
         with self._lock:
             for role, watch in self._watches.items():
                 if role not in self._exit_seen and not watch.snapshot().running:
@@ -288,12 +297,87 @@ def assert_descendants_killed(
         )
 
 
+# Keys whose values are never shown: command lines, environments, payloads, streams, locals.
+_WITHHELD_KEY = re.compile(
+    r"(?i)(?:^|[_\-.])(?:argv|args|cmd|cmdline|command|command_line|env|environ|environment|payload|body"
+    r"|content|headers|stdin|stdout|stderr|locals)(?:$|[_\-.])"
+)
+_MAX_DEPTH = 4
+_MAX_ITEMS = 12
+_MAX_TEXT = 300
+
+
+@functools.lru_cache(maxsize=1024)
+def _is_secret_key(key: str) -> bool:
+    """Whether the project's evidence policy treats ``key`` as naming a secret value."""
+    return sanitize_for_persistence({key: "probe"}, policy=EVIDENCE_REDACTION_POLICY).value != {key: "probe"}
+
+
+def _safe_text(text: str) -> str:
+    redacted = sanitize_for_persistence(text, policy=EVIDENCE_REDACTION_POLICY).value
+    text = redacted if isinstance(redacted, str) else "<redacted>"
+    return text if len(text) <= _MAX_TEXT else f"{text[:_MAX_TEXT]}...(+{len(text) - _MAX_TEXT} chars)"
+
+
+def _capped(items: list[Any]) -> tuple[list[Any], str]:
+    extra = len(items) - _MAX_ITEMS
+    return items[:_MAX_ITEMS], (f", ...+{extra} more" if extra > 0 else "")
+
+
+def _safe_entry(key: Any, value: Any, depth: int) -> str:
+    if isinstance(key, str):
+        if _WITHHELD_KEY.search(key):
+            return "'<withheld>'"
+        if _is_secret_key(key):
+            return "'<redacted>'"
+    return safe_view(value, _depth=depth + 1)
+
+
+def safe_view(value: Any, *, _depth: int = 0) -> str:
+    """Render a diagnostic value under the credential-free policy (Codex review R4, P11-FU-33 batch).
+
+    Scalars, enums and strings keep their identity; strings pass through the project's evidence
+    redaction (``optimus_security.sanitization``: secret-named keys, bearer headers, known token
+    prefixes, high-entropy tokens) and are truncated. Values under secret-named keys are
+    ``<redacted>``; under command, environment, payload, stream or locals keys ``<withheld>``.
+    Dataclasses show their fields under the same rules; any other object is ``<TypeName>`` and
+    its ``repr`` is never called. Depth and item counts are capped. A string that looks like an
+    ordinary identifier under an ordinary key cannot be told from one and is shown.
+    """
+    if value is None or isinstance(value, (bool, int, float)):
+        return repr(value)
+    if isinstance(value, enum.Enum):
+        return f"{type(value).__name__}.{value.name}"
+    if isinstance(value, str):
+        return repr(_safe_text(value))
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return f"<{type(value).__name__} len={len(value)}>"
+    if _depth >= _MAX_DEPTH:
+        return f"<{type(value).__name__}>"
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        fields, more = _capped([(field.name, getattr(value, field.name)) for field in dataclasses.fields(value)])
+        return f"{type(value).__name__}(" + ", ".join(f"{k}={_safe_entry(k, v, _depth)}" for k, v in fields) + more + ")"
+    if isinstance(value, Mapping):
+        entries, more = _capped(list(value.items()))
+        return "{" + ", ".join(f"{safe_view(k, _depth=_depth + 1)}: {_safe_entry(k, v, _depth)}" for k, v in entries) + more + "}"
+    if isinstance(value, (list, tuple, set, frozenset)):
+        items, more = _capped(sorted(value, key=repr) if isinstance(value, (set, frozenset)) else list(value))
+        body = ", ".join(safe_view(item, _depth=_depth + 1) for item in items) + more
+        if isinstance(value, tuple):
+            return f"({body},)" if len(items) == 1 and not more else f"({body})"
+        return f"[{body}]" if isinstance(value, list) else "{" + body + "}"
+    return f"<{type(value).__name__}>"
+
+
 def _render_row(row: Any, fields: Sequence[str] | None) -> str:
+    """One row under the credential-free policy; with ``fields``, only those that the row has."""
     if fields is None:
-        return repr(row)
+        return safe_view(row)
     if isinstance(row, Mapping):
-        return repr({field: row.get(field) for field in fields})
-    return repr({field: getattr(row, field, None) for field in fields})
+        chosen = {field: row[field] for field in fields if field in row}
+    else:
+        chosen = {field: getattr(row, field) for field in fields if hasattr(row, field)}
+    return safe_view(chosen)
 
 
 def assert_no_offending_rows(

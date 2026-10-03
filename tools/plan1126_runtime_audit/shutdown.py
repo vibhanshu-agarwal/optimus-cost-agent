@@ -1092,12 +1092,15 @@ def _run_schedule(observations, applicable, repeats, source, control_thread_name
                     outcome = "ERROR"
                 elapsed = time.perf_counter() - started
                 after_counts = Counter(thread.name for thread in threading.enumerate())
+                # Real task state for THIS row, captured at detection -- before the thread
+                # diagnostic join below, which can let a task finish and erase its evidence. A leak
+                # is reported once, on the repeat that left it, and then joins the baseline so
+                # later rows are not charged with it.
+                leftovers = _leftover_tasks(task_baseline)
+                task_descriptions = _describe_tasks(leftovers)
+                task_baseline.update(leftovers)
                 persistent_counts = after_counts - control_counts
                 persistent = _describe_persistent_threads(persistent_counts) if persistent_counts else ()
-                # Real task state for THIS row; a leak is reported once, on the repeat that left
-                # it, and then joins the baseline so later rows are not charged with it.
-                leftovers = _leftover_tasks(task_baseline)
-                task_baseline.update(leftovers)
                 observations.append(
                     ShutdownScheduleObservation(
                         close_path_id=record.close_path_id,
@@ -1106,7 +1109,7 @@ def _run_schedule(observations, applicable, repeats, source, control_thread_name
                         close_invocation_count=3,
                         control_thread_names=control_thread_names,
                         unexpected_persistent_threads=persistent,
-                        unexpected_persistent_tasks=_describe_tasks(leftovers),
+                        unexpected_persistent_tasks=task_descriptions,
                         repeat_latency_class="WITHIN_100MS" if elapsed <= 0.1 else "ABOVE_100MS",
                         underlying_close_count=underlying_count,
                         close_outcome=outcome,

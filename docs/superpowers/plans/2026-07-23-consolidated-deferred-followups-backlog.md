@@ -488,6 +488,23 @@ client-MCP local IPC listener stop (2 s); custody `P11.26-CAND-1-RESOURCE-LIFETI
 Proposed closure: Closed when the fix lands on `main`, citing the merge, with this entry
 escalated per its criteria to `P11.26-CAND-1-RESOURCE-LIFETIME`.
 
+**Same batch, round 2 (2026-10-02/03):** the batch's guarded full run then failed a test
+outside its diff. The plan1126 offline timeout used `taskkill /T`, which walks parent
+pids at the moment it runs, so a descendant started during the walk, or one whose parent
+had already exited, escaped the kill and kept the capture pipes open. `tools/process_tree.py`
+now owns whole-tree kills (Windows: the child starts suspended inside a job object; POSIX:
+its own process group), and all four `taskkill /T` sites in `tools/` use it. Tests that used
+elapsed time as a proxy for a tree kill now name the surviving process. Remaining under
+custody `P11.26-CAND-1-RESOURCE-LIFETIME`, not changed by this batch: on timeout
+`tools/evidence_gather_support/acp.py::spawn_acpx` kills only its direct child and then
+reads the pipes without a bound; the Plan 9.96 ordinary capture timeout kills only its
+direct child (its plain-child spawn is pinned); and the live-only Zed investigation test
+`tests/investigation/evidence/test_zed_user_data_live.py` still uses `taskkill /T`.
+Consolidation obligation: the unmerged parallel-test-context work
+(`tools/testing/run_context_windows.py`) owns a second set of Windows job-object bindings;
+the two are to become one owner once both are on `main`. Real Zed under a no-breakaway job
+is unverified until the next authorized live probe.
+
 ### P11-FU-34: MAIN-5 settlement telemetry truth
 
 **Status:** Open.

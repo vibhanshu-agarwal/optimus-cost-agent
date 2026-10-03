@@ -146,6 +146,7 @@ _SYNCHRONIZE = 0x00100000
 _QUERY_LIMITED_INFORMATION = 0x1000
 _WAIT_OBJECT_0 = 0
 _WAIT_TIMEOUT = 0x102
+_ERROR_INVALID_PARAMETER = 87
 
 
 class ProcessWatch:
@@ -154,7 +155,9 @@ class ProcessWatch:
     It is pinned while it runs, so a recycled pid is never mistaken for it: Windows holds a
     SYNCHRONIZE | QUERY_LIMITED_INFORMATION handle, Linux a pidfd. Elsewhere it falls back to an
     unpinned signal-0 probe. (On Windows `os.kill(pid, 0)` is not a probe at all.) Watch a
-    process while it is known to be running; `ProcessLookupError` means it could not be opened.
+    process while it is known to be running. `ProcessLookupError` means the platform positively
+    reported that no process has this pid; any other failure (access denied above all) is raised
+    with its native error, because it says nothing about whether the process exists.
     The exit code is reported where the platform exposes it for a non-child (Windows), else None.
     """
 
@@ -164,9 +167,14 @@ class ProcessWatch:
         self._pidfd: int | None = None
         self._closed = False
         if sys.platform == "win32":
+            import ctypes
+
             handle = _kernel32().OpenProcess(_SYNCHRONIZE | _QUERY_LIMITED_INFORMATION, False, pid)
             if not handle:
-                raise ProcessLookupError(pid)
+                error = ctypes.get_last_error()
+                if error == _ERROR_INVALID_PARAMETER:  # what OpenProcess reports for a pid nobody holds
+                    raise ProcessLookupError(pid)
+                raise ctypes.WinError(error)
             self._handle = handle
         elif hasattr(os, "pidfd_open"):
             self._pidfd = os.pidfd_open(pid)  # raises ProcessLookupError when the pid is gone

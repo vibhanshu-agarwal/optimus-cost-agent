@@ -8,6 +8,8 @@ report would not have named the cause is not done.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
+import enum
 import subprocess
 import sys
 import threading
@@ -30,6 +32,10 @@ from tests.support.concurrency import (
     thread_baseline,
 )
 from tools.concurrency_capture import ProcessWatch
+
+
+class Classification(enum.Enum):
+    CANONICAL = "canonical"
 
 
 def test_a_stuck_thread_is_named_with_its_target_and_stack():
@@ -198,6 +204,54 @@ def test_a_recorder_that_stopped_watching_is_named_not_read_as_a_verdict(tmp_pat
     assert "timeout cleanup: the descendant recorder stopped watching: OSError('injected: cannot watch" in str(caught.value)
 
 
+def _refusing_kernel32(error: int):
+    """A stand-in kernel32 whose OpenProcess fails with `error` (5 = access denied, 87 = no such pid)."""
+    import ctypes
+
+    class _Refusing:
+        def OpenProcess(self, *_args):  # noqa: N802 - mirrors the Win32 name
+            ctypes.set_last_error(error)
+            return None
+
+    return _Refusing()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the Windows OpenProcess path")
+def test_a_process_the_watch_may_not_open_is_an_error_not_a_missing_process(monkeypatch):
+    """Codex review R1: access denied says nothing about whether the process exists."""
+    import tools.concurrency_capture as capture
+
+    monkeypatch.setattr(capture, "_kernel32", lambda: _refusing_kernel32(5))
+    with pytest.raises(PermissionError) as caught:
+        ProcessWatch(4242)
+    assert caught.value.winerror == 5
+    monkeypatch.setattr(capture, "_kernel32", lambda: _refusing_kernel32(87))
+    with pytest.raises(ProcessLookupError):
+        ProcessWatch(4242)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the Windows OpenProcess path")
+def test_an_access_denied_descendant_is_a_recorder_failure_never_an_exit(tmp_path, monkeypatch):
+    """Codex review R1, through the recorder: the role is never recorded as gone, and the verdict
+    names the access-denied error instead of passing."""
+    import tools.concurrency_capture as capture
+
+    monkeypatch.setattr(capture, "_kernel32", lambda: _refusing_kernel32(5))
+    with DescendantRecorder(tmp_path, ["grandchild"]) as recorder:
+        process = _announcing_child(tmp_path, "grandchild", "import time; time.sleep(30)")
+        try:
+            deadline = time.monotonic() + 30
+            while recorder.error is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            with pytest.raises(AssertionError) as caught:
+                assert_descendants_killed(recorder, ["grandchild"], deadline=time.monotonic(), what="timeout cleanup")
+        finally:
+            process.kill()
+            process.wait(10)
+    assert recorder.outcome("grandchild")[2] is None, "an unobservable descendant was recorded as gone"
+    assert "timeout cleanup: the descendant recorder stopped watching: PermissionError(" in str(caught.value)
+
+
 def test_a_watched_process_is_pinned_and_reports_its_exit(tmp_path):
     process = subprocess.Popen([sys.executable, "-c", "import sys, time; time.sleep(0.3); sys.exit(3)"])
     watch = ProcessWatch(process.pid)
@@ -235,6 +289,70 @@ def test_offending_rows_are_printed_with_their_index_and_chosen_fields():
     assert report.startswith("persistent threads: 1 of 2 row(s) offend; first 1:")
     assert "[1] {'close_path_id': 'h5-b', 'terminal_cause': 'transport_failure'" in report
     assert "h5-a" not in report
+
+
+_SENTINEL = "REVIEW_FAKE_SECRET_VALUE"  # pragma: allowlist secret - a fake sentinel; it must never be printed
+
+
+class _Opaque:
+    """An arbitrary object whose repr would leak the sentinel."""
+
+    def __repr__(self) -> str:
+        return f"Opaque(secret={_SENTINEL})"
+
+
+@dataclasses.dataclass
+class _Record:
+    close_path_id: str
+    terminal_cause: str
+    password: str
+    context: object
+
+
+def _leaky_rows() -> list[object]:
+    return [
+        {"close_path_id": "h5-a", "terminal_cause": "orderly_eof", "api_key": _SENTINEL},
+        {"close_path_id": "h5-b", "nested": {"inner": [{"access_token": _SENTINEL}]}, "argv": ["tool", _SENTINEL]},
+        {"close_path_id": "h5-c", "note": f"Authorization: Bearer {_SENTINEL}abcdef0123456789abcdef"},
+        {"close_path_id": "h5-d", "locals": {"x": _SENTINEL}, "object": _Opaque()},
+        _Record("h5-e", "transport_failure", _SENTINEL, _Opaque()),
+    ]
+
+
+@pytest.mark.parametrize("fields", [None, ("close_path_id", "api_key", "nested", "argv", "note", "locals", "object",
+                                           "terminal_cause", "password", "context")])
+def test_offending_rows_never_print_credential_values_payloads_or_object_reprs(fields):
+    """Codex review R4: the row report names each row by index and safe identity only."""
+    with pytest.raises(AssertionError) as caught:
+        assert_no_offending_rows(_leaky_rows(), lambda _row: True, "rows", fields=fields)
+    report = str(caught.value)
+    assert _SENTINEL not in report, report
+    assert "Opaque(" not in report, report
+    for index, identity in enumerate(("h5-a", "h5-b", "h5-c", "h5-d", "h5-e")):
+        assert f"[{index}]" in report and identity in report, report
+    assert "'api_key': '<redacted>'" in report
+    assert "'password': '<redacted>'" in report or "password='<redacted>'" in report
+    assert "<_Opaque>" in report
+
+
+def test_a_missing_row_report_never_prints_credential_values_payloads_or_object_reprs():
+    with pytest.raises(AssertionError) as caught:
+        assert_some_row(_leaky_rows(), lambda _row: False, "a matching row")
+    report = str(caught.value)
+    assert _SENTINEL not in report, report
+    assert "Opaque(" not in report, report
+    assert "h5-a" in report and "h5-e" in report, report
+
+
+def test_safe_values_keep_their_identity_in_the_row_report():
+    with pytest.raises(AssertionError) as caught:
+        assert_no_offending_rows(
+            [("RecordA", 3, None, True, Classification.CANONICAL, "src/x.py:12 in close")],
+            lambda _row: True,
+            "rows",
+        )
+    report = str(caught.value)
+    assert "('RecordA', 3, None, True, Classification.CANONICAL, 'src/x.py:12 in close')" in report, report
 
 
 def test_a_missing_row_lists_the_candidates_that_did_not_match():

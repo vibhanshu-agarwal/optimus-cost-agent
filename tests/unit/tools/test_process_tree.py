@@ -82,6 +82,50 @@ def test_a_child_that_cannot_be_contained_never_runs_and_the_error_is_raised(tmp
     assert not marker.exists(), "the child ran although it was never contained"
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="job containment is the Windows path")
+def test_a_failure_after_the_child_ran_kills_its_whole_tree_and_keeps_the_error(tmp_path, monkeypatch):
+    """Codex review R2: setup can fail after the child has run and started descendants. The job is
+    terminated (not just closed), so the whole tree dies, and the initiating error is raised."""
+    code, roles = descendant_tree(tmp_path, "middle-exited")
+    real_resume = process_tree._resume
+    with DescendantRecorder(tmp_path, roles) as recorder:
+
+        def resume_then_fail(pid):
+            real_resume(pid)
+            assert recorder.wait_for(roles, timeout=30), "the tree never formed"
+            raise OSError("injected: setup failed after the child ran")
+
+        monkeypatch.setattr(process_tree, "_resume", resume_then_fail)
+        with pytest.raises(OSError, match="injected: setup failed after the child ran"):
+            process_tree.popen([sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        assert_descendants_killed(recorder, roles, deadline=time.monotonic() + 5.0, what="post-resume failure cleanup")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="job containment is the Windows path")
+def test_a_cleanup_failure_is_attached_to_the_initiating_error_and_the_root_is_still_reaped(monkeypatch):
+    started: list[subprocess.Popen[bytes]] = []
+    real_popen = subprocess.Popen
+
+    def recording_popen(*args, **kwargs):
+        started.append(real_popen(*args, **kwargs))
+        return started[-1]
+
+    def fail_resume(_pid):
+        raise OSError("injected: resume failed")
+
+    def fail_terminate(_job):
+        raise OSError("injected: terminate failed")
+
+    monkeypatch.setattr(subprocess, "Popen", recording_popen)
+    monkeypatch.setattr(process_tree, "_resume", fail_resume)
+    monkeypatch.setattr(process_tree, "_terminate_job", fail_terminate)
+    with pytest.raises(OSError, match="injected: resume failed") as caught:
+        process_tree.popen([sys.executable, "-c", "pass"])
+    notes = getattr(caught.value, "__notes__", [])
+    assert any("terminating the job failed" in note and "injected: terminate failed" in note for note in notes), notes
+    assert started[0].returncode is not None, "the root was not reaped"
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="process groups are the POSIX path")
 def test_popen_refuses_to_share_the_callers_session():
     with pytest.raises(ValueError, match="start_new_session"):

@@ -36,6 +36,7 @@ _THREAD_SUSPEND_RESUME = 0x0002
 _SNAPSHOT_THREADS = 0x00000004
 _RESUME_FAILED = 0xFFFFFFFF
 _KILLED_EXIT_CODE = 1  # what `taskkill /F` reported, so callers see no change
+_CLEANUP_SECONDS = 10.0  # the budget for reaping a root whose containment failed
 
 _lock = threading.Lock()
 _jobs: weakref.WeakKeyDictionary[subprocess.Popen[Any], int | None] = weakref.WeakKeyDictionary()
@@ -55,11 +56,13 @@ def popen(args: Sequence[str], **kwargs: Any) -> subprocess.Popen[Any]:
         return process
     kwargs["creationflags"] = kwargs.get("creationflags", 0) | _CREATE_SUSPENDED
     process = subprocess.Popen(list(args), **kwargs)
+    job: int | None = None
     try:
-        job = _contain(process.pid)
-    except BaseException:
-        process.kill()  # it never ran: it is still suspended
-        process.wait()
+        job = _new_job()
+        _assign(job, process.pid)
+        _resume(process.pid)
+    except BaseException as error:
+        _abandon(process, job, error)
         raise
     with _lock:
         _jobs[process] = job
@@ -74,9 +77,7 @@ def kill_tree(process: subprocess.Popen[Any]) -> None:
             raise ValueError("kill_tree() needs a process started by tools.process_tree.popen()")
         job = _jobs[process]
     if job is not None:
-        api = _kernel32()
-        if not api.TerminateJobObject(job, _KILLED_EXIT_CODE):
-            raise _win_error()
+        _terminate_job(job)
         return
     try:
         os.killpg(process.pid, signal.SIGKILL)
@@ -84,18 +85,44 @@ def kill_tree(process: subprocess.Popen[Any]) -> None:
         pass  # every member of the group has already exited
 
 
-def _contain(pid: int) -> int:
-    api = _kernel32()
-    job = api.CreateJobObjectW(None, None)
+def _abandon(process: subprocess.Popen[Any], job: int | None, error: BaseException) -> None:
+    """Undo a containment that failed part-way, then let the caller re-raise `error`.
+
+    A resume can succeed for one thread before a later step fails, so the child may already
+    have run and started descendants: the job is terminated, not just closed (closing leaves
+    its processes running). The root is then killed and reaped within `_CLEANUP_SECONDS`.
+    Each cleanup step runs even if an earlier one failed, and every failure is attached to
+    `error` as a note, so the initiating error is kept and nothing is lost.
+    """
+    if job is not None:
+        try:
+            _terminate_job(job)
+        except Exception as exc:  # noqa: BLE001 - recorded on the initiating error, never swallowed
+            error.add_note(f"tools.process_tree cleanup: terminating the job failed: {exc!r}")
+        try:
+            _close_handle(job)
+        except Exception as exc:  # noqa: BLE001 - recorded on the initiating error, never swallowed
+            error.add_note(f"tools.process_tree cleanup: closing the job failed: {exc!r}")
+    try:
+        process.kill()
+    except OSError as exc:
+        error.add_note(f"tools.process_tree cleanup: killing root pid {process.pid} failed: {exc!r}")
+    try:
+        process.wait(timeout=_CLEANUP_SECONDS)
+    except subprocess.TimeoutExpired:
+        error.add_note(f"tools.process_tree cleanup: root pid {process.pid} not reaped within {_CLEANUP_SECONDS}s")
+
+
+def _new_job() -> int:
+    job = _kernel32().CreateJobObjectW(None, None)
     if not job:
         raise _win_error()
-    try:
-        _assign(job, pid)
-        _resume(pid)
-    except BaseException:
-        _close_handle(job)
-        raise
     return job
+
+
+def _terminate_job(job: int) -> None:
+    if not _kernel32().TerminateJobObject(job, _KILLED_EXIT_CODE):
+        raise _win_error()
 
 
 def _assign(job: int, pid: int) -> None:

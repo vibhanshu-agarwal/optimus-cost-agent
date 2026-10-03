@@ -131,3 +131,66 @@ def test_a_leaked_task_is_attributed_to_the_exact_repeat_that_left_it(monkeypatc
     assert rows_with_tasks == [1], rows_with_tasks
     assert observations[1].unexpected_persistent_tasks[0].startswith("fu33-repeat-two | coro=")
     assert len(observations) == 3 * len(shutdown._TERMINAL_CAUSES)
+
+
+def test_a_task_that_finishes_during_the_thread_diagnostic_join_stays_in_its_row(monkeypatch):
+    """Codex review R3: task state is captured at detection, before any diagnostic join. Here the
+    owner thread finishes its task exactly while the schedule waits on that thread; the row must
+    still name the task (and the thread), not report "no tasks"."""
+    from types import SimpleNamespace
+
+    started = threading.Event()
+    release = threading.Event()
+    owners: list[threading.Thread] = []
+
+    def _owner() -> None:
+        loop = asyncio.new_event_loop()
+        gate = loop.create_future()
+
+        async def _finishing_during_the_join() -> None:
+            await gate
+
+        task = loop.create_task(_finishing_during_the_join(), name="fu33-join-window-task")
+        loop.run_until_complete(asyncio.sleep(0))
+        started.set()
+        release.wait(10)
+        gate.set_result(None)
+        loop.run_until_complete(task)
+        loop.close()
+
+    calls = {"count": 0}
+
+    def _probe(record, cause, *, source):  # noqa: ARG001 - signature of the real probe
+        calls["count"] += 1
+        if calls["count"] == 2:
+            owner = threading.Thread(target=_owner, name="fu33-join-window-owner", daemon=True)
+            owner.start()
+            owners.append(owner)
+            assert started.wait(10)
+        return 1, f"{cause}:prepared"
+
+    real_join = shutdown.alive_after_bounded_join
+
+    def _join_that_lets_the_owner_finish(thread, seconds):
+        release.set()
+        return real_join(thread, max(seconds, 5.0))
+
+    monkeypatch.setattr(shutdown, "_probe_resource", _probe)
+    monkeypatch.setattr(shutdown, "alive_after_bounded_join", _join_that_lets_the_owner_finish)
+    observations: list[shutdown.ShutdownScheduleObservation] = []
+    shutdown._run_schedule(
+        observations,
+        [SimpleNamespace(close_path_id="h5-0000000000000001")],
+        3,
+        None,
+        ("MainThread",),
+        Counter(thread.name for thread in threading.enumerate()),
+    )
+    for owner in owners:
+        owner.join(5)
+
+    row = observations[1]
+    assert [entry.split(" | ")[0] for entry in row.unexpected_persistent_threads] == ["fu33-join-window-owner"]
+    assert "still_alive_after_join=no" in row.unexpected_persistent_threads[0]  # it finished during the join
+    assert len(row.unexpected_persistent_tasks) == 1, row.unexpected_persistent_tasks
+    assert row.unexpected_persistent_tasks[0].startswith("fu33-join-window-task | coro=")
