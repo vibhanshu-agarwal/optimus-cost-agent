@@ -651,13 +651,21 @@ class AttachedTurn:
         return None
 
     def _receipt_sink(self, receipt: MaintenanceReceipt) -> None:
-        try:
-            self._attachment.record_receipt(receipt)
-            if self._record_receipt is not None:
-                self._record_receipt(receipt)
-        except Exception as exc:
-            self._sink_error = exc
-            raise
+        # Both sinks are offered the receipt even if the first refuses it, so neither the ledger nor the
+        # settlement loses a charge because the other failed; the first failure is then raised as the
+        # integrity error it is (Codex CP3 correction ruling C2).
+        errors: list[Exception] = []
+        for sink in (self._attachment.record_receipt, self._record_receipt):
+            if sink is None:
+                continue
+            try:
+                sink(receipt)
+            except Exception as exc:  # noqa: BLE001 - offered to both sinks first
+                errors.append(exc)
+        if errors:
+            if self._sink_error is None:
+                self._sink_error = errors[0]
+            raise errors[0]
 
     def record_dispatch(self, text: str) -> None:
         """The runner is sending `text` as a complete planning/answer request now."""

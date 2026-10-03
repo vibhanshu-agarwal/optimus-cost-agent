@@ -46,7 +46,9 @@ from optimus_model_policy.binding import RouteBinding
 # Re-exported: the one preflight classifier every stage uses lives in optimus.gateway.attempts.
 __all__ = ["PREFLIGHT_REFUSAL_CODES", "AttemptIntegrityError"]
 
-ATTEMPT_OUTCOMES = frozenset({"completed", "not_sent", "rejected", "uncertain"})
+# `unattributed`: reported usage the Gateway did not attribute to a single completed attempt (Codex CP3
+# correction ruling C2). Its cost counts once; it is never a summary's source.
+ATTEMPT_OUTCOMES = frozenset({"completed", "not_sent", "rejected", "uncertain", "unattributed"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,11 +76,16 @@ class SummarizerAttempt:
 
 @dataclass(frozen=True, slots=True)
 class SummarizerResponse:
-    """What one summarizer request produced: text if any, its true finish status, every attempt."""
+    """What one summarizer request produced: text if any, its true finish status, every attempt.
+
+    `integrity_error` is set when the Gateway's report could not be attributed truthfully: `attempts`
+    then holds what can still be recorded (the reported usage, unattributed, and the route attempts as
+    reported, unsettled) and there is no text. The host records them, then raises it."""
 
     text: str | None
     finish_status: str | None
     attempts: tuple[SummarizerAttempt, ...]
+    integrity_error: AttemptIntegrityError | None = None
 
 
 class SummarizerCall(Protocol):
@@ -163,26 +170,19 @@ class HostMaintenance:
         if self._cancelled():
             return MaintenanceResult(summary_text=None, attempt_ids=(), status="cancelled", finish_status=None)
         response = self._call(prompt=build_summary_prompt(request.input_text), max_output_tokens=request.max_output_tokens)
+        # Every attempt is offered to the sink even if an earlier one is refused; the first refusal,
+        # then any integrity error, is raised only after all were recorded (Codex CP3 correction ruling
+        # C2): a reported charge is never dropped because its report or a sibling receipt failed.
+        refused: list[Exception] = []
         for attempt in response.attempts:
-            self._record(
-                MaintenanceReceipt(
-                    identity=self._identity,
-                    stage="summarization",
-                    attempt_id=attempt.attempt_id,
-                    gateway_request_id=attempt.gateway_request_id,
-                    outcome=attempt.outcome,
-                    cost_usd=attempt.cost_usd,
-                    finish_status=response.finish_status if attempt.outcome == "completed" else None,
-                    covered_turn_ids=request.covered_turn_ids,
-                    recorded_at=self._clock(),
-                    provider_request_id=attempt.provider_request_id,
-                    http_status=attempt.http_status,
-                    provider=attempt.provider,
-                    resolved_provider=attempt.resolved_provider,
-                    resolved_model=attempt.resolved_model,
-                    gateway_usage=attempt.gateway_usage,
-                )
-            )
+            try:
+                self._record_attempt(request, response, attempt)
+            except Exception as error:  # noqa: BLE001 - offered every receipt first
+                refused.append(error)
+        if refused:
+            raise refused[0]
+        if response.integrity_error is not None:
+            raise response.integrity_error
         attempt_ids = tuple(attempt.attempt_id for attempt in response.attempts)
         if self._cancelled():
             return MaintenanceResult(summary_text=None, attempt_ids=attempt_ids, status="cancelled", finish_status=response.finish_status)
@@ -194,6 +194,27 @@ class HostMaintenance:
             attempt_ids=attempt_ids,
             status="completed",
             finish_status=response.finish_status,
+        )
+
+    def _record_attempt(self, request: MaintenanceRequest, response: SummarizerResponse, attempt: SummarizerAttempt) -> None:
+        self._record(
+            MaintenanceReceipt(
+                identity=self._identity,
+                stage="summarization",
+                attempt_id=attempt.attempt_id,
+                gateway_request_id=attempt.gateway_request_id,
+                outcome=attempt.outcome,
+                cost_usd=attempt.cost_usd,
+                finish_status=response.finish_status if attempt.outcome == "completed" else None,
+                covered_turn_ids=request.covered_turn_ids,
+                recorded_at=self._clock(),
+                provider_request_id=attempt.provider_request_id,
+                http_status=attempt.http_status,
+                provider=attempt.provider,
+                resolved_provider=attempt.resolved_provider,
+                resolved_model=attempt.resolved_model,
+                gateway_usage=attempt.gateway_usage,
+            )
         )
 
 
@@ -215,8 +236,9 @@ class GatewaySummarizerCall:
     Every attempt the Gateway reports becomes a `SummarizerAttempt`, classified by the one host
     classifier every stage uses (`optimus.gateway.attempts`): the cost the Gateway settled goes to the
     completed attempt it names, with its original usage; a proven unsent or refused attempt costs
-    nothing; an `uncertain` one stays unknown. Nothing is retried here. The only thing it raises is
-    `AttemptIntegrityError`, for a Gateway report it cannot attribute truthfully.
+    nothing; an `uncertain` one stays unknown. Nothing is retried here. It never raises: a Gateway
+    report it cannot attribute truthfully comes back as the records its `AttemptIntegrityError` carries,
+    with that error, and the host records them before raising it (Codex CP3 correction ruling C2).
 
     `bind(request_id, input_text, output_cap)` returns the request's route binding (with its
     Contributor disclosure, noticed first, where required) or None when a required notice was not
@@ -252,15 +274,26 @@ class GatewaySummarizerCall:
                 model=self._model_id, input_text=prompt, metadata=metadata, route_binding=binding
             )
         except Exception as exc:  # noqa: BLE001 - every failure is classified; transport loss stays unknown
-            return SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, attempts_from_failure(exc)))
-        attempts = _attempts(request_id, attempts_from_response(response))
+            try:
+                return SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, attempts_from_failure(exc)))
+            except AttemptIntegrityError as error:
+                return _unattributable(request_id, error)
+        try:
+            attempts = _attempts(request_id, attempts_from_response(response))
+        except AttemptIntegrityError as error:
+            return _unattributable(request_id, error)
         return SummarizerResponse(text=response.output_text, finish_status=response.finish_reason, attempts=attempts)
+
+
+def _unattributable(request_id: str, error: AttemptIntegrityError) -> SummarizerResponse:
+    """No summary from a report that cannot be attributed: only its recordable facts, and its error."""
+    return SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, error.attempts), integrity_error=error)
 
 
 def _attempts(request_id: str, attempts: tuple[ProviderAttempt, ...]) -> tuple[SummarizerAttempt, ...]:
     return tuple(
         SummarizerAttempt(
-            attempt_id=f"{request_id}:{attempt.number}",
+            attempt_id=f"{request_id}:{attempt.key}",
             gateway_request_id=attempt.gateway_request_id,
             outcome=attempt.outcome,
             cost_usd=attempt.cost_usd,

@@ -5,9 +5,13 @@ One classifier for every host call path - planning, answer and summarization - s
 settle the same Gateway outcome differently:
 
 - a success or failure carrying ``route_attempts`` (enforced routing) is one attempt per record, in
-  order. The settled usage belongs to the one completed attempt it names (its Gateway request id);
-  usage that names no completed attempt is a Gateway contract violation, raised as
-  ``AttemptIntegrityError`` rather than attributed by guess. ``not_sent`` and ``rejected`` attempts
+  order. The settled usage belongs to the one completed attempt it names (its Gateway request id).
+  Usage that names no single completed attempt is a Gateway contract violation, raised as
+  ``AttemptIntegrityError`` rather than attributed by guess. The error carries what can still be
+  recorded truthfully: the reported usage itself as one ``unattributed`` record (its reported cost is
+  known, so it counts once; which attempt it settled is not, so its turn is never complete) and every
+  route attempt as reported but unsettled. Callers record these, then raise (Codex CP3 correction
+  ruling C1/C2). ``not_sent`` and ``rejected`` attempts
   certainly reached no model and cost exactly 0; an ``uncertain`` attempt, or one reported completed
   without the usage that would settle it, may have been billed, so it is ``uncertain`` at unknown cost;
 - a proven preflight refusal - a known Gateway refusal code, ``retryable`` False, no route attempts
@@ -67,11 +71,19 @@ PREFLIGHT_REFUSAL_CODES = frozenset(
 )
 
 _ZERO_COST = frozenset({"not_sent", "rejected"})
+OUTCOMES = frozenset({"completed", *_ZERO_COST, "uncertain", "unattributed"})
 
 
 class AttemptIntegrityError(ValueError):
     """The Gateway's report cannot be attributed truthfully, such as settled usage that names no
-    completed attempt. An integrity error, never an ordinary failure: it is raised, not settled."""
+    completed attempt. An integrity error, never an ordinary failure: it is raised, not settled.
+
+    `attempts` is what can still be recorded truthfully: the reported usage as one `unattributed`
+    record, then the route attempts as reported but unsettled. Record them, then raise."""
+
+    def __init__(self, message: str, *, attempts: tuple[ProviderAttempt, ...] = ()) -> None:
+        super().__init__(message)
+        self.attempts = attempts
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,7 +91,9 @@ class ProviderAttempt:
     """One provider attempt. ``cost_usd`` is None when unknown, never a stand-in zero.
 
     ``routed`` is True when the Gateway reported the attempt in ``route_attempts``; ``number`` is then
-    its position there. ``gateway_usage`` is set only on the attempt whose usage settled the request.
+    its position there. ``gateway_usage`` is set only on the attempt whose usage settled the request,
+    or on an ``unattributed`` record: reported usage that names no single completed attempt. That record
+    is not a provider attempt; its ``key`` is ``usage``, never an attempt number.
     """
 
     number: int
@@ -92,17 +106,26 @@ class ProviderAttempt:
     routed: bool = False
 
     def __post_init__(self) -> None:
-        if self.number < 1 or self.outcome not in {"completed", *_ZERO_COST, "uncertain"}:
+        if self.number < 1 or self.outcome not in OUTCOMES:
             raise ValueError("a provider attempt needs a positive number and a known outcome")
         if self.outcome in _ZERO_COST and self.cost_usd != Decimal("0"):
             raise ValueError("an attempt that reached no model costs exactly 0")
         if self.outcome == "uncertain" and self.cost_usd is not None:
             raise ValueError("an uncertain attempt's cost is unknown")
         usage = self.gateway_usage
+        if self.outcome == "unattributed" and (usage is None or self.routed):
+            raise ValueError("an unattributed record is reported usage, never a route attempt")
         if usage is not None and (
-            self.outcome != "completed" or self.cost_usd != usage.cost_usd or self.gateway_request_id != usage.gateway_request_id
+            self.outcome not in {"completed", "unattributed"}
+            or self.cost_usd != usage.cost_usd
+            or self.gateway_request_id != usage.gateway_request_id
         ):
             raise ValueError("only the completed attempt that settled the request carries its usage")
+
+    @property
+    def key(self) -> str:
+        """The record's identity within its host request: the attempt number, or `usage`."""
+        return "usage" if self.outcome == "unattributed" else str(self.number)
 
 
 def is_preflight_refusal(exc: BaseException) -> bool:
@@ -147,7 +170,21 @@ def _attempts(
         if usage is not None:
             named = [item.attempt for item in route_attempts if item.outcome == "completed" and item.gateway_request_id == usage.gateway_request_id]
             if len(named) != 1:
-                raise AttemptIntegrityError("the Gateway's settled usage names no single completed route attempt")
+                # Keep the reported charge (known, counted once) without guessing which attempt it
+                # settled; the route attempts stay as reported, unsettled.
+                unattributed = ProviderAttempt(
+                    number=1,
+                    outcome="unattributed",
+                    cost_usd=usage.cost_usd,
+                    gateway_request_id=usage.gateway_request_id,
+                    provider_request_id=usage.provider_request_id,
+                    http_status=http_status,
+                    gateway_usage=usage,
+                )
+                raise AttemptIntegrityError(
+                    "the Gateway's settled usage names no single completed route attempt",
+                    attempts=(unattributed, *(_routed(item, None) for item in route_attempts)),
+                )
             settled = named[0]
         return tuple(_routed(item, usage if item.attempt == settled else None) for item in route_attempts)
     if usage is not None:

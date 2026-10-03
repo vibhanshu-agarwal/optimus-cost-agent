@@ -36,7 +36,9 @@ if TYPE_CHECKING:
     from optimus.usage.accounting import UsageAccountingService
 
 STAGES = frozenset({"planning", "answer", "summarization"})
-OUTCOMES = frozenset({"completed", "failed", "not_sent", "rejected", "uncertain"})
+# `unattributed`: usage the Gateway reported but did not attribute to a single completed attempt. Its
+# reported cost is known and counts once; its turn is never complete (Codex CP3 correction ruling C1/C2).
+OUTCOMES = frozenset({"completed", "failed", "not_sent", "rejected", "uncertain", "unattributed"})
 _ZERO_COST_OUTCOMES = frozenset({"not_sent", "rejected"})
 # Arrival bookkeeping: may differ between two arrivals of one attempt; the first arrival is kept.
 _BOOKKEEPING = frozenset({"recorded_at", "post_teardown"})
@@ -97,9 +99,11 @@ class StageReceipt:
         if self.outcome in _ZERO_COST_OUTCOMES and cost != Decimal("0"):
             raise ValueError("an attempt that was never sent or was refused before any model ran costs nothing")
         usage = self.gateway_usage
+        if self.outcome == "unattributed" and usage is None:
+            raise ValueError("an unattributed record is the reported usage itself")
         if usage is None:
             return
-        if self.outcome != "completed" or cost != usage.cost_usd or self.gateway_request_id != usage.gateway_request_id:
+        if self.outcome not in {"completed", "unattributed"} or cost != usage.cost_usd or self.gateway_request_id != usage.gateway_request_id:
             raise ValueError("only a completed attempt carries the usage that settled it, with its cost and request")
         for name in _USAGE_FACTS:
             settled = getattr(usage, name)
@@ -125,18 +129,21 @@ class StageReceipt:
 
 @dataclass(frozen=True, slots=True)
 class TurnCostSummary:
-    """A turn's settled cost: the known subtotal, every unknown attempt, every receipt and how many
-    worker invocations for the turn are still running."""
+    """A turn's settled cost: the known subtotal, every unknown attempt, every receipt, how many
+    worker invocations for the turn are still running and how many accounting-integrity failures it
+    had (an unattributed usage record, or a receipt the store refused as conflicting). Any of those
+    keeps it incomplete; known charges still count."""
 
     turn_id: str
     known_subtotal_usd: Decimal
     unknown_attempt_ids: tuple[str, ...]
     receipt_ids: tuple[str, ...]
     pending_invocations: int = 0
+    integrity_failures: int = 0
 
     @property
     def complete(self) -> bool:
-        return not self.unknown_attempt_ids and not self.pending_invocations
+        return not self.unknown_attempt_ids and not self.pending_invocations and not self.integrity_failures
 
 
 CostSubscriber = Callable[[str, TurnCostSummary], None]
@@ -175,6 +182,7 @@ class TurnSettlement:
         self._receipts: dict[str, StageReceipt] = {}
         self._attempt_for_gateway: dict[str, str] = {}
         self._pending: dict[str, int] = {}
+        self._refused: dict[str, int] = {}
         self._subscribers: list[CostSubscriber] = []
 
     def subscribe(self, subscriber: CostSubscriber) -> None:
@@ -209,6 +217,7 @@ class TurnSettlement:
             existing = self._receipts.get(receipt.attempt_id)
             if existing is not None:
                 if existing.facts() != receipt.facts():
+                    self._refuse(receipt.turn_id)
                     raise ReceiptConflictError(f"attempt {receipt.attempt_id} was already recorded differently")
                 return
             gateway_id = receipt.gateway_request_id
@@ -218,12 +227,19 @@ class TurnSettlement:
                 # one charge. Different facts for one Gateway request are an integrity error (Fable
                 # CP3 review MINOR-7; mirrors ProviderUsageLedger).
                 if self._receipts[owner].settled_facts() != receipt.settled_facts():
+                    self._refuse(receipt.turn_id)
                     raise ReceiptConflictError(f"Gateway request {gateway_id} was already settled differently")
                 return
             self._receipts[receipt.attempt_id] = receipt
             if gateway_id is not None:
                 self._attempt_for_gateway[gateway_id] = receipt.attempt_id
             self._publish(receipt.turn_id)
+
+    def _refuse(self, turn_id: str) -> None:
+        """A refused conflicting receipt: the turn's accounting failed, so it can never read as
+        complete; what was already settled keeps counting, and nothing is charged twice."""
+        self._refused[turn_id] = self._refused.get(turn_id, 0) + 1
+        self._publish(turn_id)
 
     def project(self, turn_id: str, subscriber: CostSubscriber) -> None:
         """Publish one turn's current summary to `subscriber` alone, ordered with every other
@@ -243,15 +259,15 @@ class TurnSettlement:
 
     def settle_turn(self, turn_id: str) -> TurnCostSummary:
         with self._lock:
-            return _summary(turn_id, self.receipts(turn_id), self._pending.get(turn_id, 0))
+            return _summary(turn_id, self.receipts(turn_id), self._pending.get(turn_id, 0), self._refused.get(turn_id, 0))
 
     def settle_all(self) -> TurnCostSummary:
         """Every turn of this store's session together (`turn_id` "*")."""
         with self._lock:
-            return _summary("*", tuple(self._receipts.values()), sum(self._pending.values()))
+            return _summary("*", tuple(self._receipts.values()), sum(self._pending.values()), sum(self._refused.values()))
 
 
-def _summary(turn_id: str, receipts: tuple[StageReceipt, ...], pending: int) -> TurnCostSummary:
+def _summary(turn_id: str, receipts: tuple[StageReceipt, ...], pending: int, refused: int) -> TurnCostSummary:
     known = sum((r.reported_cost_usd for r in receipts if r.reported_cost_usd is not None), Decimal("0"))
     return TurnCostSummary(
         turn_id=turn_id,
@@ -259,6 +275,7 @@ def _summary(turn_id: str, receipts: tuple[StageReceipt, ...], pending: int) -> 
         unknown_attempt_ids=tuple(r.attempt_id for r in receipts if r.reported_cost_usd is None),
         receipt_ids=tuple(r.attempt_id for r in receipts),
         pending_invocations=pending,
+        integrity_failures=refused + sum(1 for r in receipts if r.outcome == "unattributed"),
     )
 
 

@@ -21,7 +21,13 @@ from optimus.agent.state_store import (
 )
 from optimus.agent.tools import AgentToolbox
 from optimus.agent.workspace_context import WorkspaceContextResult, assemble_workspace_context_for_prompt
-from optimus.gateway.attempts import ProviderAttempt, attempts_from_failure, attempts_from_response, is_preflight_refusal
+from optimus.gateway.attempts import (
+    AttemptIntegrityError,
+    ProviderAttempt,
+    attempts_from_failure,
+    attempts_from_response,
+    is_preflight_refusal,
+)
 from optimus.gateway.client import GatewayClient
 from optimus.gateway.models import GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
@@ -512,15 +518,11 @@ class AgentRunner:
                 **_binding_kwargs(bound),
             )
         except Exception as exc:
-            # Settled usage reaches the ledger first; then every attempt is reported, known or not,
-            # before the failure propagates as it always has.
-            self._record_ledger_usage(request, scope, getattr(exc, "gateway_usage", None), settled_turn=1, wire_attempt=1)
-            attempts = attempts_from_failure(exc)
-            self._report_attempts(request, scope, settled_turn=1, wire_attempt=1, attempts=attempts, identity=_identity(bound))
+            # Every attempt is accounted for, known or not, before the failure propagates as it always
+            # has (an accounting-integrity error propagates instead).
+            self._account(request, scope, usage=getattr(exc, "gateway_usage", None), classify=lambda exc=exc: attempts_from_failure(exc), identity=_identity(bound))
             raise
-        self._record_ledger_usage(request, scope, response.gateway_usage, settled_turn=1, wire_attempt=1)
-        attempts = attempts_from_response(response)
-        self._report_attempts(request, scope, settled_turn=1, wire_attempt=1, attempts=attempts, identity=_identity(bound))
+        attempts = self._account(request, scope, usage=response.gateway_usage, classify=lambda: attempts_from_response(response), identity=_identity(bound))
         total_cost_usd = response.gateway_usage.cost_usd
         unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)
         unfinished_reason = None
@@ -857,20 +859,43 @@ class AgentRunner:
             candidate_plan_text=candidate_plan_text,
         )
 
-    def _record_ledger_usage(
+    def _account(
         self,
         request: AgentRunRequest,
         scope: _RunScope,
-        usage: GatewayUsage | None,
         *,
-        settled_turn: int,
-        wire_attempt: int,
-    ) -> None:
-        """Record a request's settled usage, if it has one, before its attempts are classified: a paid
-        attempt reaches the ledger even when its report then fails as an integrity error (Fable CP3
-        correction review MINOR-1)."""
+        usage: GatewayUsage | None,
+        classify: Callable[[], tuple[ProviderAttempt, ...]],
+        identity: RouteIdentity | None,
+        settled_turn: int = 1,
+        wire_attempt: int = 1,
+    ) -> tuple[ProviderAttempt, ...]:
+        """Account for one host request in both sinks and return its attempts.
+
+        Settled usage goes to the existing ledger first; then every attempt goes to this invocation's
+        receipt sink, or, for a report that cannot be attributed, what its integrity error carries: the
+        reported usage as one `unattributed` record and the route attempts as reported, unsettled. A
+        failure in one sink never stops the other: every record is attempted, then the first integrity
+        error is raised, so the paid charge is kept and its turn can never read as complete at zero
+        (Fable CP3 correction review MINOR-1; Codex CP3 correction ruling C1)."""
+        errors: list[Exception] = []
         if usage is not None:
-            self._record_ledger_entry(request, scope, usage, settled_turn=settled_turn, wire_attempt=wire_attempt)
+            try:
+                self._record_ledger_entry(request, scope, usage, settled_turn=settled_turn, wire_attempt=wire_attempt)
+            except Exception as error:  # noqa: BLE001 - held, then raised once the receipts are recorded
+                errors.append(error)
+        try:
+            attempts = classify()
+        except AttemptIntegrityError as error:
+            errors.append(error)
+            attempts = error.attempts
+        try:
+            self._report_attempts(request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity)
+        except Exception as error:  # noqa: BLE001 - held with the others
+            errors.append(error)
+        if errors:
+            raise errors[0]
+        return attempts
 
     def _record_ledger_entry(
         self,
@@ -917,37 +942,60 @@ class AgentRunner:
         """Report each provider attempt of one host request to this invocation's receipt sink, if any:
         settled usage on the attempt that settled it, an unknown cost (never zero) where the Gateway
         reported none, exactly 0 for a proven unsent or refused attempt (Plan 12.2 Task 11; Codex CP3
-        ruling R1, R3 and R4). Receipts settled after transport teardown are flagged so."""
+        ruling R1, R3 and R4). Receipts settled after transport teardown are flagged so. A receipt the
+        sink refuses never stops the others; the first refusal is raised after all were offered."""
         sink = scope.stage_receipts
         if sink is None:
             return
         post_teardown = scope.transport_abandoned()
         stage = "answer" if request.execution_mode is ExecutionMode.CHAT else "planning"
         base = f"{request.run_id}:{stage}:{settled_turn}:{wire_attempt}"
+        refused: list[Exception] = []
         for attempt in attempts:
-            sink(
-                StageReceipt(
-                    session_id=request.session_id,
-                    turn_id=request.run_id,
-                    stage=stage,
-                    # A Gateway-routed attempt is numbered within its host request.
-                    attempt_id=f"{base}:{attempt.number}" if attempt.routed else base,
-                    gateway_request_id=attempt.gateway_request_id,
-                    outcome=attempt.outcome,
-                    reported_cost_usd=attempt.cost_usd,
-                    recorded_at=datetime.now(tz=UTC),
-                    requested_model=identity.model_id if identity is not None else self._model,
-                    role=identity.role if identity is not None else None,
-                    route=identity.route if identity is not None else (),
-                    reasoning=identity.reasoning if identity is not None else None,
-                    quantizations=identity.quantizations if identity is not None else (),
-                    registry_hash=identity.registry_hash if identity is not None else None,
-                    provider_request_id=attempt.provider_request_id,
-                    http_status=attempt.http_status,
-                    gateway_usage=attempt.gateway_usage,
-                    post_teardown=post_teardown,
+            try:
+                self._report_one(
+                    sink, request, stage=stage, base=base, attempt=attempt, identity=identity, post_teardown=post_teardown
                 )
+            except Exception as error:  # noqa: BLE001 - offered every receipt first
+                refused.append(error)
+        if refused:
+            raise refused[0]
+
+    def _report_one(
+        self,
+        sink: Callable[[StageReceipt], None],
+        request: AgentRunRequest,
+        *,
+        stage: str,
+        base: str,
+        attempt: ProviderAttempt,
+        identity: RouteIdentity | None,
+        post_teardown: bool,
+    ) -> None:
+        sink(
+            StageReceipt(
+                session_id=request.session_id,
+                turn_id=request.run_id,
+                stage=stage,
+                # A Gateway-routed attempt is numbered within its host request; unattributed
+                # reported usage is keyed `usage`, never an attempt number.
+                attempt_id=f"{base}:{attempt.key}" if attempt.routed or attempt.outcome == "unattributed" else base,
+                gateway_request_id=attempt.gateway_request_id,
+                outcome=attempt.outcome,
+                reported_cost_usd=attempt.cost_usd,
+                recorded_at=datetime.now(tz=UTC),
+                requested_model=identity.model_id if identity is not None else self._model,
+                role=identity.role if identity is not None else None,
+                route=identity.route if identity is not None else (),
+                reasoning=identity.reasoning if identity is not None else None,
+                quantizations=identity.quantizations if identity is not None else (),
+                registry_hash=identity.registry_hash if identity is not None else None,
+                provider_request_id=attempt.provider_request_id,
+                http_status=attempt.http_status,
+                gateway_usage=attempt.gateway_usage,
+                post_teardown=post_teardown,
             )
+        )
 
     def _run_approved_from_store(
         self,
@@ -1413,18 +1461,18 @@ class AgentRunner:
             )
         except Exception as exc:
             # One classifier for every stage (Codex CP3 ruling R3): a proven preflight refusal cost
-            # nothing; transport loss or any failure without settled usage stays unknown. Settled
-            # usage reaches the ledger first; an integrity error then propagates out of the turn.
-            self._record_ledger_usage(request, scope, getattr(exc, "gateway_usage", None), settled_turn=1, wire_attempt=1)
+            # nothing; transport loss or any failure without settled usage stays unknown. An
+            # accounting-integrity error propagates out of the turn once everything was recorded.
             try:
-                attempts = attempts_from_failure(exc)
+                attempts = self._account(
+                    request, scope, usage=getattr(exc, "gateway_usage", None), classify=lambda exc=exc: attempts_from_failure(exc), identity=identity
+                )
             except Exception:
                 complete("cost_unknown")
                 raise
             unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)
             known = sum((attempt.cost_usd for attempt in attempts if attempt.cost_usd is not None), Decimal("0"))
             complete("cost_unknown" if unknown else "failed")
-            self._report_attempts(request, scope, settled_turn=1, wire_attempt=1, attempts=attempts, identity=identity)
             if unknown:
                 return self._chat_failure(
                     request, stop_reason="CHAT_GATEWAY_COST_UNKNOWN", total_cost_usd=known, cost_complete=False, unknown_cost_attempt_count=unknown
@@ -1434,9 +1482,7 @@ class AgentRunner:
             return self._chat_failure(request, stop_reason="CHAT_GATEWAY_FAILURE", total_cost_usd=known)
 
         complete("succeeded")
-        self._record_ledger_usage(request, scope, response.gateway_usage, settled_turn=1, wire_attempt=1)
-        attempts = attempts_from_response(response)
-        self._report_attempts(request, scope, settled_turn=1, wire_attempt=1, attempts=attempts, identity=identity)
+        attempts = self._account(request, scope, usage=response.gateway_usage, classify=lambda: attempts_from_response(response), identity=identity)
         total_cost_usd = response.gateway_usage.cost_usd
         # A routed success can follow an earlier attempt whose cost is unknown; it stays unknown.
         unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)

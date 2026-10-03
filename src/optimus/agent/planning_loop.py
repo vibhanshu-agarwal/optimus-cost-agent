@@ -22,7 +22,13 @@ from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacke
 from optimus.agent.prompts import build_multi_turn_planner_input, format_mcp_evidence_envelope
 from optimus.agent.tools import AgentToolbox
 from optimus.agent.workspace_context import DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
-from optimus.gateway.attempts import ProviderAttempt, attempts_from_failure, attempts_from_response, is_preflight_refusal
+from optimus.gateway.attempts import (
+    AttemptIntegrityError,
+    ProviderAttempt,
+    attempts_from_failure,
+    attempts_from_response,
+    is_preflight_refusal,
+)
 from optimus.gateway.errors import GatewayError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
@@ -1033,17 +1039,17 @@ class _PlanningIterationRunner:
         # How this request's sequence ended, for its stop reason (sequence-local, not loop-wide).
         ended = {"unsent": False, "unknown": False, "refused": False}
         # An attempt that cannot be attributed or recorded truthfully (a Gateway report that names no
-        # attempt, a conflicting receipt, a divergent ledger record) is an integrity error. It must fail
-        # the turn loudly after the retry funnel, never pass as a gateway failure (Fable CP3 correction
-        # review MINOR-1).
+        # attempt, a conflicting receipt, a divergent ledger record) is an integrity error. Everything
+        # that can still be recorded is recorded first; then it fails the turn loudly after the retry
+        # funnel, never as a gateway failure (Fable CP3 correction review MINOR-1; Codex CP3 correction
+        # ruling C1).
         integrity: list[Exception] = []
 
-        def guarded(action: Callable[[], Any]) -> Any:
+        def capture(action: Callable[[], Any]) -> None:
             try:
-                return action()
-            except Exception as error:
+                action()
+            except Exception as error:  # noqa: BLE001 - held for after the retry funnel
                 integrity.append(error)
-                raise _PermanentStop("attempt accounting integrity error") from error
 
         def operation() -> GatewayResponse:
             nonlocal wire_attempt, bound
@@ -1066,9 +1072,25 @@ class _PlanningIterationRunner:
                 bound = self._route_binder.bind(stage="planning", input_text=prompt)
                 if bound is None:
                     ended["unsent"] = True
-                    guarded(lambda: self._report_attempts(planning_turn, wire_attempt, (_NOT_SENT,), self._route_binder.identity))
+                    capture(lambda: self._report_attempts(planning_turn, wire_attempt, (_NOT_SENT,), self._route_binder.identity))
                     raise _PermanentStop("required notice not delivered; nothing was sent")
             identity = bound.identity if bound is not None else None
+
+            def account(usage: GatewayUsage | None, classify: Callable[[], tuple[ProviderAttempt, ...]]) -> tuple[ProviderAttempt, ...] | None:
+                """Settled usage to the totals and the ledger, then every attempt to the receipt sink,
+                or, for a report that cannot be attributed, the records its integrity error carries.
+                No failure stops the next step. Returns None when anything failed."""
+                held = len(integrity)
+                if usage is not None:
+                    capture(lambda: self._record_reported_gateway_usage(usage, planning_turn, wire_attempt))
+                try:
+                    attempts = classify()
+                except AttemptIntegrityError as error:
+                    integrity.append(error)
+                    attempts = error.attempts
+                capture(lambda: self._report_attempts(planning_turn, wire_attempt, attempts, identity))
+                return attempts if len(integrity) == held else None
+
             if control is not None:
                 from optimus.acp.lifecycle import DirectiveKind
 
@@ -1099,16 +1121,12 @@ class _PlanningIterationRunner:
                 # usage stays unknown. Settled usage is recorded first, so a paid attempt reaches the
                 # totals and the ledger even if its report then fails.
                 usage = getattr(exc, "gateway_usage", None)
-                if usage is not None:
-                    guarded(lambda: self._record_reported_gateway_usage(usage, planning_turn, wire_attempt))
-                try:
-                    attempts = guarded(lambda exc=exc: attempts_from_failure(exc))
-                except _PermanentStop:
+                attempts = account(usage, lambda exc=exc: attempts_from_failure(exc))
+                if attempts is None:
                     complete("cost_unknown")
-                    raise
+                    raise _PermanentStop("attempt accounting integrity error") from exc
                 unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)
                 complete("cost_unknown" if unknown else "failed")
-                guarded(lambda: self._report_attempts(planning_turn, wire_attempt, attempts, identity))
                 if unknown:
                     # Unknown cost: terminal regardless of retryability.
                     self._cost_complete = False
@@ -1129,7 +1147,7 @@ class _PlanningIterationRunner:
                 self._cost_complete = False
                 self._unknown_cost_attempt_count += 1
                 ended["unknown"] = True
-                guarded(lambda exc=exc: self._report_attempts(planning_turn, wire_attempt, attempts_from_failure(exc), identity))
+                account(None, lambda exc=exc: attempts_from_failure(exc))
                 from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
 
                 if debug_trace_enabled():
@@ -1150,9 +1168,9 @@ class _PlanningIterationRunner:
 
             complete("succeeded")
             # Success path — record usage exactly once, before the attempts are classified.
-            guarded(lambda: self._record_reported_gateway_usage(response.gateway_usage, planning_turn, wire_attempt))
-            attempts = guarded(lambda: attempts_from_response(response))
-            guarded(lambda: self._report_attempts(planning_turn, wire_attempt, attempts, identity))
+            attempts = account(response.gateway_usage, lambda: attempts_from_response(response))
+            if attempts is None:
+                raise _PermanentStop("attempt accounting integrity error")
             # A routed success can follow an earlier attempt whose cost is unknown; it stays unknown.
             unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)
             if unknown:

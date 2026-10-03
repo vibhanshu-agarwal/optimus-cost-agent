@@ -274,12 +274,22 @@ def test_a_conflicting_receipt_fails_the_run_loudly_and_is_never_a_gateway_failu
     assert len(service.provider_ledger.entries) == 1
 
 
-def test_an_unattributable_summary_report_is_raised_not_hidden_as_a_fallback() -> None:
+def test_an_unattributable_summary_report_comes_back_as_its_recordable_facts_and_its_error() -> None:
+    """The summarizer call never raises: it returns the reported usage (unattributed), the route attempt
+    as reported (unsettled) and the integrity error, and no text; the host records, then raises
+    (Codex CP3 correction ruling C2)."""
     from optimus.gateway.attempts import AttemptIntegrityError
 
     call = GatewaySummarizerCall(gateway_client=ReturningGateway(_misattributed()), model_id="m", session_id="s", request_ids=lambda: "r")
-    with pytest.raises(AttemptIntegrityError):
-        call(prompt="P", max_output_tokens=9)
+
+    response = call(prompt="P", max_output_tokens=9)
+
+    assert isinstance(response.integrity_error, AttemptIntegrityError) and response.text is None
+    assert [(a.attempt_id, a.outcome, a.cost_usd, a.gateway_request_id) for a in response.attempts] == [
+        ("r:usage", "unattributed", Decimal("0.0003"), "gw-used"),
+        ("r:1", "uncertain", None, "gw-other"),
+    ]
+    assert response.attempts[0].gateway_usage == _usage()
 
 
 def test_an_attached_turn_surfaces_a_summary_integrity_error_instead_of_falling_back() -> None:
