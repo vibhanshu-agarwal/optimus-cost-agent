@@ -45,6 +45,8 @@ class StageReceipt:
     reported_cost_usd: Decimal | None
     recorded_at: datetime
     requested_model: str | None = None
+    role: str | None = None
+    route: tuple[str, ...] = ()
     resolved_model: str | None = None
     provider: str | None = None
     resolved_provider: str | None = None
@@ -68,6 +70,19 @@ class StageReceipt:
             raise ValueError("an uncertain attempt's cost is unknown")
         if self.outcome in _ZERO_COST_OUTCOMES and cost != Decimal("0"):
             raise ValueError("an attempt that was never sent or was refused before any model ran costs nothing")
+
+    def settled_facts(self) -> tuple[object, ...]:
+        """What a Gateway replay of one request must repeat, whichever host attempt carried it; the
+        existing usage ledger compares the same settled facts."""
+        return (
+            self.turn_id,
+            self.stage,
+            self.gateway_request_id,
+            self.outcome,
+            self.reported_cost_usd,
+            self.resolved_model,
+            self.resolved_provider,
+        )
 
     def facts(self) -> tuple[object, ...]:
         """What must agree for two receipts of one attempt to be the same attempt. Arrival time and
@@ -116,8 +131,14 @@ class TurnSettlement:
                     raise ReceiptConflictError(f"attempt {receipt.attempt_id} was already recorded differently")
                 return
             gateway_id = receipt.gateway_request_id
-            if gateway_id is not None and self._attempt_for_gateway.get(gateway_id, receipt.attempt_id) != receipt.attempt_id:
-                raise ReceiptConflictError(f"Gateway request {gateway_id} already belongs to another attempt")
+            owner = self._attempt_for_gateway.get(gateway_id) if gateway_id is not None else None
+            if owner is not None:
+                # A host retry that the Gateway answered from the same settled request is a replay:
+                # one charge. Different settled facts for one Gateway request are an integrity error
+                # (Fable CP3 review MINOR-7; mirrors ProviderUsageLedger).
+                if self._receipts[owner].settled_facts() != receipt.settled_facts():
+                    raise ReceiptConflictError(f"Gateway request {gateway_id} was already settled differently")
+                return
             self._receipts[receipt.attempt_id] = receipt
             if gateway_id is not None:
                 self._attempt_for_gateway[gateway_id] = receipt.attempt_id
@@ -159,6 +180,11 @@ def receipt_from_maintenance(receipt: MaintenanceReceipt) -> StageReceipt:
         reported_cost_usd=receipt.cost_usd,
         recorded_at=receipt.recorded_at,
         requested_model=identity.model_id,
+        role=identity.role,
+        route=identity.route,
+        provider=receipt.provider,
+        resolved_provider=receipt.resolved_provider,
+        resolved_model=receipt.resolved_model,
         strategy=identity.strategy,
         revision_digest=identity.revision_digest,
     )

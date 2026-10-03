@@ -122,6 +122,7 @@ def make_attachment(
             model_id="test/summarizer", role="summarizer", route=("provider-a",), reasoning=None, quantizations=("fp8",)
         ),
         record_receipt=(receipts if receipts is not None else []).append,
+        max_repacks=2,
     )
 
 
@@ -549,3 +550,92 @@ async def test_an_engine_that_raises_is_an_unavailable_view_not_a_closed_thread(
     assert texts(outbound)[0] == CONTEXT_FALLBACK_TEXT.format(strategy="compaction")
     assert len(runner.requests) == 1  # under the floor: full history, and the thread stays OPEN
     assert session_of(adapter, session_id).conversation.disposition is ConversationDisposition.OPEN
+
+
+# --- Fable CP3 review fixes -------------------------------------------------------------------------
+
+
+class _LongReplyRunner(Runner):
+    """Plans a plan that fits, then applies it with a long reply (many write summaries)."""
+
+    def run(self, request, **kwargs):
+        result = super().run(request, **kwargs)
+        if not request.approval.approved:
+            return result
+        from optimus.agent.models import AgentToolCall
+
+        calls = tuple(AgentToolCall(tool_name="write_file", summary=f"wrote module_{n}.py with its new docstrings and type hints") for n in range(14))
+        # As production application does (runner._apply_stored_plan), the applied result carries the plan.
+        return result.model_copy(update={"tool_calls": calls, "mutation_count": len(calls), "candidate_plan_text": self.plan_text})
+
+
+async def test_a_plan_that_fits_keeps_its_record_within_storage_by_shortening_only_the_reply(tmp_path):
+    from optimus.acp.conversation import COMPLETION_TRUNCATION_MARKER, rendered_byte_length
+
+    runner = _LongReplyRunner(plan_text="WRITE example.py\n" + "plan line\n" * 130)
+    adapter, outbound, _ = make_adapter(tmp_path, make_attachment(source_max=4096, reservation=800), runner)
+    session_id = await new_session(adapter, tmp_path)
+    conversation = session_of(adapter, session_id).conversation
+    commit_record(conversation, ("history " * 400)[:2200])
+    assert conversation.plan_fits(2, sanitized_user_prompt="Make a big change", sanitized_plan_text=runner.plan_text)
+
+    response = await prompt(adapter, outbound, session_id, "Make a big change", "p1", approve=True)
+
+    assert response["result"]["stopReason"] == "end_turn"
+    record = conversation.records[2]
+    assert record.outcome is ConversationOutcome.COMPLETED and record.plan_text.endswith("plan line\n")  # the plan is kept whole
+    assert record.completion_text.endswith(COMPLETION_TRUNCATION_MARKER)  # only the reply message is shortened
+    assert rendered_byte_length(conversation.records) <= 4096
+    assert conversation.disposition is ConversationDisposition.OPEN
+
+
+async def test_a_plan_whose_result_could_not_be_kept_fails_before_approval(tmp_path):
+    runner = Runner(plan_text="WRITE example.py\n" + "plan line\n" * 170)
+    adapter, outbound, _ = make_adapter(tmp_path, make_attachment(source_max=4096, reservation=800), runner)
+    session_id = await new_session(adapter, tmp_path)
+    conversation = session_of(adapter, session_id).conversation
+    commit_record(conversation, ("history " * 400)[:2200])
+    assert not conversation.plan_fits(2, sanitized_user_prompt="Make a big change", sanitized_plan_text=runner.plan_text)
+
+    response = await prompt(adapter, outbound, session_id, "Make a big change", "p1")
+
+    assert response["result"]["stopReason"] == "end_turn"
+    assert [r for r in outbound.requests if r["method"] == "session/request_permission"] == []
+    assert conversation.records[2].outcome is ConversationOutcome.FAILED and conversation.records[2].plan_text == ""
+
+
+async def test_storage_no_prompt_can_use_is_exhaustion_and_closes_the_thread(tmp_path):
+    from optimus.acp.spec import ATTACHED_STORAGE_REFUSAL_TEXT
+
+    adapter, outbound, runner = make_adapter(tmp_path, make_attachment(source_max=4096, reservation=1000))
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    conversation = session_of(adapter, session_id).conversation
+    commit_record(conversation, ("history " * 400)[:3100])  # even an empty prompt leaves no room for a reply
+
+    response = await prompt(adapter, outbound, session_id, "x", "p1")
+
+    assert response["result"]["stopReason"] == "end_turn"
+    assert texts(outbound) == [ATTACHED_STORAGE_REFUSAL_TEXT]
+    assert conversation.disposition is ConversationDisposition.CAP_CLOSED
+    assert runner.requests == []
+
+
+async def test_a_conflicting_summary_receipt_is_an_integrity_error_never_a_silent_fallback(tmp_path):
+    from optimus.usage.turn_settlement import ReceiptConflictError
+
+    class ReusedIdentity(SummarizerCall):
+        def __call__(self, *, prompt: str, max_output_tokens: int) -> SummarizerResponse:
+            self.prompts.append(prompt)
+            attempt = SummarizerAttempt(attempt_id="same-id", gateway_request_id="gw-same", outcome="completed", cost_usd=Decimal("0.0001"))
+            return SummarizerResponse(text=self.text, finish_status="stop", attempts=(attempt,))
+
+    adapter, outbound, runner = make_adapter(tmp_path, make_attachment(summarizer=ReusedIdentity()))
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    for n in range(3):
+        await prompt(adapter, outbound, session_id, f"Earlier prompt {n}", f"p{n}")  # turn 3 records "same-id"
+    calls = len(runner.requests)
+
+    with pytest.raises(ReceiptConflictError):
+        await prompt(adapter, outbound, session_id, "Next", "next")  # turn 4 claims it again
+
+    assert len(runner.requests) == calls  # nothing dispatched on a broken ledger

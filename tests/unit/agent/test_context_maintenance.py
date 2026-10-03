@@ -343,3 +343,106 @@ def test_a_gateway_error_keeps_its_attempts_and_known_cost() -> None:
     billed = GatewayHttpError(422, "finish status", gateway_usage=_usage("0.0002"))
     [attempt] = _gateway_call(_Client(error=billed))(prompt="P", max_output_tokens=9).attempts
     assert (attempt.outcome, attempt.cost_usd, attempt.http_status) == ("completed", Decimal("0.0002"), 422)
+
+
+# --- Fable CP3 review fixes -------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("code", ["CAPACITY_REFUSED", "INPUT_EXCEEDS_CAPACITY", "DISCLOSURE_REQUIRED", "BINDING_REQUIRED", "SNAPSHOT_NOT_APPROVED"])
+def test_a_policy_refusal_before_any_attempt_is_a_zero_cost_rejection(code) -> None:
+    from optimus.gateway.errors import GatewayHttpError
+
+    refusal = GatewayHttpError(400, "refused", gateway_code=code, retryable=False, route_attempts=())
+
+    [attempt] = _gateway_call(_Client(error=refusal))(prompt="P", max_output_tokens=9).attempts
+
+    assert (attempt.outcome, attempt.cost_usd, attempt.http_status) == ("rejected", Decimal("0"), 400)
+
+
+@pytest.mark.parametrize(
+    ("code", "retryable"),
+    [("FINISH_STATUS_UNVERIFIED", False), ("SOMETHING_NEW", False), ("CAPACITY_REFUSED", None), (None, False)],
+)
+def test_anything_short_of_a_known_preflight_refusal_stays_unknown(code, retryable) -> None:
+    from optimus.gateway.errors import GatewayHttpError
+
+    error = GatewayHttpError(502, "failed", gateway_code=code, retryable=retryable, route_attempts=())
+
+    [attempt] = _gateway_call(_Client(error=error))(prompt="P", max_output_tokens=9).attempts
+
+    assert (attempt.outcome, attempt.cost_usd) == ("uncertain", None)
+
+
+def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attempt() -> None:
+    import re
+    from pathlib import Path
+
+    from optimus.context.maintenance import PREFLIGHT_REFUSAL_CODES
+
+    src = Path(__file__).resolve().parents[3] / "src"
+    sources = [
+        src / "optimus_gateway" / "model_policy.py",
+        src / "optimus_gateway" / "responses.py",
+        src / "optimus_gateway" / "chat_completions.py",
+        src / "optimus_model_policy" / "capacity.py",
+        src / "optimus_model_policy" / "binding.py",
+    ]
+    pattern = re.compile(r'(?:ModelPolicyRefusal|_refuse|BindingError)\(\s*"([A-Z_]+)"|reason or "([A-Z_]+)"')
+    codes = {match for path in sources for pair in pattern.findall(path.read_text(encoding="utf-8")) for match in pair if match}
+    # Raised after a completed, billed attempt (with its usage), or only at launch: never a preflight refusal.
+    assert PREFLIGHT_REFUSAL_CODES == codes - {"FINISH_STATUS_UNVERIFIED", "FIXTURE_POLICY"}
+
+
+def test_the_settled_attempt_carries_its_provider_and_resolved_model() -> None:
+    from optimus.gateway.models import GatewayResponse, GatewayUsage
+
+    usage = GatewayUsage(
+        gateway_request_id="gw-1", provider="alibaba", billing_units=1, cost_usd=Decimal("0.0002"),
+        resolved_provider="alibaba", resolved_model="qwen/qwen3.7-flash-0901",
+    )  # fmt: skip
+    client = _Client(response=GatewayResponse(output_text=valid_summary(), gateway_usage=usage, raw={}, finish_reason="stop"))
+    receipts: list[MaintenanceReceipt] = []
+    HostMaintenance(call=_gateway_call(client), sanitizer=SANITIZER, identity=IDENTITY, record_receipt=receipts.append, cancelled=lambda: False)(
+        _request()
+    )
+
+    [receipt] = receipts
+    assert (receipt.provider, receipt.resolved_provider, receipt.resolved_model) == ("alibaba", "alibaba", "qwen/qwen3.7-flash-0901")
+
+
+def test_the_production_factory_mints_distinct_request_identities_per_turn_and_call() -> None:
+    import dataclasses
+
+    from optimus.context.maintenance import SummarizerRoute, gateway_summarizer_factory
+    from optimus.gateway.models import GatewayResponse, GatewayUsage
+
+    class Client:
+        def __init__(self) -> None:
+            self.request_ids: list[str] = []
+
+        def create_response(self, *, model, input_text, metadata=None, route_binding=None):
+            self.request_ids.append(metadata["request_id"])
+            usage = GatewayUsage(gateway_request_id=f"gw-{len(self.request_ids)}", provider="p", billing_units=1, cost_usd=Decimal("0.0001"))
+            return GatewayResponse(output_text=valid_summary(), gateway_usage=usage, raw={}, finish_reason="stop")
+
+    client = Client()
+    route = SummarizerRoute(model_id=IDENTITY.model_id, role="summarizer", route=IDENTITY.route, reasoning=None, quantizations=IDENTITY.quantizations)
+    factory = gateway_summarizer_factory(gateway_client=client, route=route, snapshot=None, disclosure_key=None)
+    first, second = factory(IDENTITY, lambda text: True), factory(dataclasses.replace(IDENTITY, turn_seq=10), lambda text: True)
+    attempts = [call(prompt="P", max_output_tokens=9).attempts[0].attempt_id for call in (first, first, second)]
+
+    assert len(set(client.request_ids)) == 3 and len(set(attempts)) == 3
+    assert client.request_ids[0].startswith("sess-m:9:summary:1:") and client.request_ids[1].startswith("sess-m:9:summary:2:")
+    assert client.request_ids[2].startswith("sess-m:10:summary:1:")
+
+
+@pytest.mark.parametrize(("cost", "expected"), [("0.0002", ("completed", Decimal("0.0002"))), (None, ("uncertain", None))])
+def test_a_malformed_gateway_response_keeps_any_usage_it_reported(cost, expected) -> None:
+    from optimus.gateway.errors import GatewayResponseError
+
+    usage = None if cost is None else _usage(cost)
+    error = GatewayResponseError("response failed validation", gateway_usage=usage)
+
+    [attempt] = _gateway_call(_Client(error=error))(prompt="P", max_output_tokens=9).attempts
+
+    assert (attempt.outcome, attempt.cost_usd) == expected

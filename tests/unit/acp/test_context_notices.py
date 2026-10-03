@@ -422,7 +422,7 @@ def test_the_production_summarizer_notices_a_contributor_route_before_it_sends()
     route = SummarizerRoute(model_id=CONTRIBUTOR, role="summarizer", route=("p",), reasoning=None, quantizations=(None,))
     factory = gateway_summarizer_factory(
         gateway_client=Client(), route=route, snapshot=load_registry(packaged_defaults(), None),
-        disclosure_key=disclosure_key("launch-secret"), request_ids=lambda: "req-1",
+        disclosure_key=disclosure_key("launch-secret"),
     )  # fmt: skip
     identity = MaintenanceIdentity(
         session_id="s", turn_seq=1, model_id=CONTRIBUTOR, role="summarizer", route=("p",), reasoning=None,
@@ -436,3 +436,98 @@ def test_the_production_summarizer_notices_a_contributor_route_before_it_sends()
     factory(identity, deliver)(prompt="P", max_output_tokens=300)
 
     assert events == ["notice:True", f"sent:{CONTRIBUTOR}:True"]
+
+
+# --- Fable CP3 review fixes -------------------------------------------------------------------------
+
+
+def _contributor_attachment(client):
+    import dataclasses
+
+    from optimus.context.maintenance import SummarizerRoute, gateway_summarizer_factory
+    from optimus_model_policy import load_registry
+    from optimus_model_policy.binding import disclosure_key, packaged_defaults
+
+    route = SummarizerRoute(model_id=CONTRIBUTOR, role="summarizer", route=("meta",), reasoning=None, quantizations=(None,))
+    factory = gateway_summarizer_factory(
+        gateway_client=client, route=route, snapshot=load_registry(packaged_defaults(), None), disclosure_key=disclosure_key("launch-secret")
+    )
+    return dataclasses.replace(make_attachment(), summarizer=factory, summarizer_route=route)
+
+
+class _ObservingClient:
+    """A Gateway client double that records how many Contributor notices had reached the session when
+    each summary request was sent."""
+
+    def __init__(self, outbound) -> None:
+        self.outbound = outbound
+        self.notices_seen: list[int] = []
+
+    def create_response(self, *, model, input_text, metadata=None, route_binding=None):
+        from context_engine.summary import SECTIONS
+        from optimus.gateway.disclosure import CONTRIBUTOR_NOTICE
+        from optimus.gateway.models import GatewayResponse, GatewayUsage
+
+        assert route_binding is not None and route_binding.disclosure is not None
+        self.notices_seen.append(sum(CONTRIBUTOR_NOTICE in text for text in texts(self.outbound)))
+        usage = GatewayUsage(gateway_request_id=f"gw-{len(self.notices_seen)}", provider="meta", billing_units=1, cost_usd=Decimal("0.0001"))
+        summary = "\n".join(f"## {name}\nNone." for name in SECTIONS)
+        return GatewayResponse(output_text=summary, gateway_usage=usage, raw={}, finish_reason="stop")
+
+
+async def test_the_session_notice_channel_delivers_the_contributor_notice_before_the_summary_is_sent(tmp_path):
+    from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
+
+    outbound = RecordingOutboundChannel()
+    client = _ObservingClient(outbound)
+    adapter = AcpDuplexAdapter(
+        runner=DispatchingRunner(), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound,
+        context_attachment=_contributor_attachment(client),
+    )  # fmt: skip
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    for n in range(4):
+        await prompt(adapter, outbound, session_id, f"Prompt {n}", f"p{n}")
+
+    # Turns 3 and 4 each summarized once, each request noticed first through the real channel.
+    assert client.notices_seen == [1, 2]
+    receipts = [r for r in session_of(adapter, session_id).cost_settlement.receipts(f"{session_id}:4") if r.stage == "summarization"]
+    assert [(r.outcome, r.reported_cost_usd) for r in receipts] == [("completed", Decimal("0.0001"))]
+
+
+async def test_an_undelivered_contributor_notice_sends_no_summary(tmp_path):
+    from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
+    from optimus.gateway.disclosure import CONTRIBUTOR_NOTICE
+
+    outbound = RecordingOutboundChannel()
+    original = outbound.notify
+
+    async def notify(method, params, *, require_flushed=False):
+        if CONTRIBUTOR_NOTICE in str(params.get("update", {}).get("content", {}).get("text", "")):
+            raise AcpOutboundError(code=-32603, message="write failed")
+        await original(method, params, require_flushed=require_flushed)
+
+    outbound.notify = notify  # type: ignore[method-assign]
+    client = _ObservingClient(outbound)
+    adapter = AcpDuplexAdapter(
+        runner=DispatchingRunner(), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound,
+        context_attachment=_contributor_attachment(client),
+    )  # fmt: skip
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    for n in range(3):
+        await prompt(adapter, outbound, session_id, f"Prompt {n}", f"p{n}")
+
+    assert client.notices_seen == []  # nothing that needed the notice was sent
+    receipts = [r for r in session_of(adapter, session_id).cost_settlement.receipts(f"{session_id}:3") if r.stage == "summarization"]
+    assert [(r.outcome, r.reported_cost_usd) for r in receipts] == [("not_sent", Decimal("0"))]
+
+
+async def test_a_session_that_starts_on_sliding_gets_its_notice(tmp_path):
+    import dataclasses
+
+    adapter, outbound, _ = make_adapter(tmp_path, dataclasses.replace(make_attachment(), initial_strategy="sliding_window"), DispatchingRunner())
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    outbound.notifications.clear()
+
+    await prompt(adapter, outbound, session_id, "First", "p1")
+
+    assert texts(outbound).count(SLIDING_ACTIVE_TEXT) == 1

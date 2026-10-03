@@ -309,6 +309,20 @@ class ConversationState:
                 crosses_warning=False,
             )
         if projected + self._record_reservation_bytes > self._source_max_bytes:
+            shortest = dict(self._records)
+            shortest[turn_seq] = provisional_turn("")
+            if rendered_byte_length(shortest) + self._record_reservation_bytes > self._source_max_bytes:
+                # Even an empty prompt leaves no room for a reply: genuine exhaustion, which latches
+                # (Fable CP3 review MINOR-1).
+                self._disposition = ConversationDisposition.CAP_CLOSED
+                return AdmissionDecision(
+                    admitted=False,
+                    sanitized_user_prompt=sanitized,
+                    projected_bytes=projected,
+                    turn_seq=None,
+                    refuse_reason="cap",
+                    crosses_warning=False,
+                )
             # Not exhaustion: a shorter prompt may still leave room for its reply. Nothing latches.
             return AdmissionDecision(
                 admitted=False,
@@ -421,6 +435,13 @@ class ConversationState:
         return render_model_conversation(self._records)
 
 
+COMPLETION_TRUNCATION_MARKER = (
+    "\n[This reply was shortened to fit this conversation's storage; outcomes, effects and approvals are kept exactly.]"
+)
+_LONGEST_OUTCOME = max(ConversationOutcome, key=lambda outcome: len(outcome.value))
+_LONGEST_EFFECT = max(EffectState, key=lambda effect: len(effect.value))
+
+
 class AttachedConversationState(ConversationState):
     """An attached Context Engine session's storage class (Plan 12.2 Task 9; design spec 4.2).
 
@@ -428,6 +449,11 @@ class AttachedConversationState(ConversationState):
     through any engine fault. Exceeding the source limit is genuine exhaustion and closes the thread
     as before; a prompt that leaves too little room for its reply's reservation is refused
     recoverably, and the thread stays OPEN.
+
+    A committed result must fit: `plan_fits` is checked before approval, against the plan, the
+    longest outcome and effect values and the truncation marker. At commit, a reply message that
+    would overflow is shortened, with a marker, to fit; the plan, outcome and effect are never
+    shortened (Fable CP3 review MAJOR-1).
     """
 
     def __init__(self, sanitizer: ConversationSanitizer, *, source_max_bytes: int, record_reservation_bytes: int) -> None:
@@ -447,17 +473,51 @@ class AttachedConversationState(ConversationState):
         outcome: ConversationOutcome,
         effect_state: EffectState,
     ) -> CommitDecision:
-        decision = super().prepare_commit(
-            turn_seq,
-            sanitized_user_prompt=sanitized_user_prompt,
-            sanitized_plan_text=sanitized_plan_text,
-            sanitized_completion_text=sanitized_completion_text,
-            outcome=outcome,
-            effect_state=effect_state,
-        )
+        def measure(completion: str) -> CommitDecision:
+            return super(AttachedConversationState, self).prepare_commit(
+                turn_seq,
+                sanitized_user_prompt=sanitized_user_prompt,
+                sanitized_plan_text=sanitized_plan_text,
+                sanitized_completion_text=completion,
+                outcome=outcome,
+                effect_state=effect_state,
+            )
+
+        decision = measure(sanitized_completion_text)
+        if decision.projected_bytes > self._source_max_bytes and sanitized_completion_text:
+            decision = self._shortened(measure, sanitized_completion_text, decision)
         projected = decision.projected_bytes
         return dataclasses.replace(
             decision,
             closes_cap=projected > self._source_max_bytes,
             crosses_warning=crosses_warning_threshold(projected, self._source_max_bytes) and not self._warning_confirmed,
         )
+
+    def _shortened(self, measure, completion: str, overflowing: CommitDecision) -> CommitDecision:
+        """The longest prefix of `completion` that fits with the marker; the overflowing decision
+        when not even the marker fits (genuine exhaustion)."""
+        best = measure(COMPLETION_TRUNCATION_MARKER)
+        if best.projected_bytes > self._source_max_bytes:
+            return overflowing
+        low, high = 0, len(completion)
+        while low < high:
+            middle = (low + high + 1) // 2
+            candidate = measure(completion[:middle] + COMPLETION_TRUNCATION_MARKER)
+            if candidate.projected_bytes <= self._source_max_bytes:
+                low, best = middle, candidate
+            else:
+                high = middle - 1
+        return best
+
+    def plan_fits(self, turn_seq: int, *, sanitized_user_prompt: str, sanitized_plan_text: str) -> bool:
+        """Whether this turn's record can keep its plan and still commit a result: measured with the
+        longest outcome and effect values and only the truncation marker as the reply."""
+        decision = super().prepare_commit(
+            turn_seq,
+            sanitized_user_prompt=sanitized_user_prompt,
+            sanitized_plan_text=sanitized_plan_text,
+            sanitized_completion_text=COMPLETION_TRUNCATION_MARKER,
+            outcome=_LONGEST_OUTCOME,
+            effect_state=_LONGEST_EFFECT,
+        )
+        return decision.projected_bytes <= self._source_max_bytes

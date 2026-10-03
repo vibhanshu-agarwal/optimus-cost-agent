@@ -392,6 +392,7 @@ def _attached_turn(*, usable: int, calls: int = 3, tail: int = 400, summarizer=N
         summarizer=lambda identity, deliver_notice: summarizer,
         summarizer_route=SummarizerRoute(model_id="test/summarizer", role="summarizer", route=("p",), reasoning=None, quantizations=("fp8",)),
         record_receipt=(receipts if receipts is not None else []).append,
+        max_repacks=2,
     )
     records = {seq: turn(f"Turn {seq} " + "w" * 360) for seq in range(1, 7)}
     attached = AttachedTurn.capture(
@@ -503,3 +504,38 @@ def test_an_absent_agent_planner_input_is_unchanged(tmp_path):
     kwargs = dict(planning_turn=1, max_planning_turns=3, remaining_budget_usd=Decimal("0.05"), remaining_wall_clock_minutes=30)
     assert build_multi_turn_planner_input("task", conversation_envelope="", **kwargs) == build_multi_turn_planner_input("task", **kwargs)
     assert "Prior conversation" not in build_multi_turn_planner_input("task", **kwargs)
+
+
+# --- Fable CP3 review fixes -------------------------------------------------------------------------
+
+
+def test_a_non_attached_agent_caller_keeps_its_existing_planner_input(tmp_path):
+    gateway = _Gateway("REFUSE: no")
+    request = AgentRunRequest(
+        run_id="r", session_id="s", task="Plan it", execution_mode=ExecutionMode.AGENT, workspace_root=tmp_path,
+        conversation_envelope="CLIENT-SUPPLIED-HISTORY",
+    )  # fmt: skip
+
+    AgentRunner(gateway_client=gateway, model="m").run(request)
+
+    assert "CLIENT-SUPPLIED-HISTORY" not in gateway.calls[0]["input_text"]
+    assert "Prior conversation" not in gateway.calls[0]["input_text"]
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.AGENT, ExecutionMode.CHAT])
+def test_a_request_not_fitted_because_the_turn_was_halted_reports_a_halt(tmp_path, mode):
+    gateway = _Gateway("unused")
+    request = _attached_request(tmp_path, mode, prompt="Go on.", selection="Go on.", envelope="HISTORY-VIEW")
+    halted: list[bool] = []
+
+    class HaltedWhileFitting(_FakePacker):
+        def fit(self, build):
+            halted.append(True)  # the user cancels while the request is being fitted
+            return None
+
+    result = AgentRunner(gateway_client=gateway, model="m").run(
+        request, context_packer=HaltedWhileFitting("HISTORY-VIEW"), halt_requested=lambda: bool(halted)
+    )
+
+    assert gateway.calls == []
+    assert result.stop_reason in {"PLANNING_HALTED", "CHAT_HALTED"}

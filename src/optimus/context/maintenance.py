@@ -22,6 +22,8 @@ projection over the existing ledger.
 
 from __future__ import annotations
 
+import itertools
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -48,6 +50,9 @@ class SummarizerAttempt:
     cost_usd: Decimal | None
     provider_request_id: str | None = None
     http_status: int | None = None
+    provider: str | None = None
+    resolved_provider: str | None = None
+    resolved_model: str | None = None
 
     def __post_init__(self) -> None:
         if not self.attempt_id or self.outcome not in ATTEMPT_OUTCOMES:
@@ -109,6 +114,9 @@ class MaintenanceReceipt:
     recorded_at: datetime
     provider_request_id: str | None
     http_status: int | None
+    provider: str | None = None
+    resolved_provider: str | None = None
+    resolved_model: str | None = None
 
 
 def _utc_now() -> datetime:
@@ -155,6 +163,9 @@ class HostMaintenance:
                     recorded_at=self._clock(),
                     provider_request_id=attempt.provider_request_id,
                     http_status=attempt.http_status,
+                    provider=attempt.provider,
+                    resolved_provider=attempt.resolved_provider,
+                    resolved_model=attempt.resolved_model,
                 )
             )
         attempt_ids = tuple(attempt.attempt_id for attempt in response.attempts)
@@ -181,6 +192,44 @@ class SummarizerRoute:
     route: tuple[str, ...]
     reasoning: str | None
     quantizations: tuple[str | None, ...]
+
+
+# Gateway model-policy refusals raised before any upstream attempt (optimus_gateway.model_policy
+# admit_request/parse_route_binding and optimus_model_policy.capacity.guard_request). A refusal with one
+# of these codes, no route attempts and no usage is a proven zero-upstream rejection, never an unknown
+# billed attempt. FINISH_STATUS_UNVERIFIED is raised after a completed, billed attempt and always
+# carries its usage, so it is not here. A test keeps this set equal to the Gateway's codes.
+PREFLIGHT_REFUSAL_CODES = frozenset(
+    {
+        "BINDING_MALFORMED",
+        "BINDING_REQUIRED",
+        "BINDING_UNSUPPORTED",
+        "BINDING_VERSION_UNSUPPORTED",
+        "CAPACITY_REFUSED",
+        "DISCLOSURE_INVALID",
+        "DISCLOSURE_REQUIRED",
+        "ESTIMATOR_UNKNOWN",
+        "ESTIMATOR_UNVERIFIED",
+        "INPUT_EXCEEDS_CAPACITY",
+        "MODEL_NOT_ELIGIBLE",
+        "OUTPUT_RESERVE_EXCEEDS_ROUTE",
+        "OUTPUT_RESERVE_EXCEEDS_TOTAL",
+        "OUTPUT_RESERVE_INVALID",
+        "REGISTRY_HASH_MISMATCH",
+        "ROUTE_UNVERIFIED",
+        "SNAPSHOT_NOT_APPROVED",
+        "UNKNOWN_MODEL",
+    }
+)
+
+
+def _preflight_refusal(exc: GatewayHttpError) -> bool:
+    return (
+        exc.gateway_code in PREFLIGHT_REFUSAL_CODES
+        and exc.retryable is False
+        and not exc.route_attempts
+        and exc.gateway_usage is None
+    )
 
 
 class GatewaySummarizerCall:
@@ -226,6 +275,13 @@ class GatewaySummarizerCall:
                 model=self._model_id, input_text=prompt, metadata=metadata, route_binding=binding
             )
         except GatewayHttpError as exc:
+            if _preflight_refusal(exc):
+                # Refused before any upstream attempt: nothing ran and nothing was billed (Fable CP3
+                # review MAJOR-2; Task 1 contracts 6).
+                refused = SummarizerAttempt(
+                    attempt_id=f"{request_id}:1", gateway_request_id=None, outcome="rejected", cost_usd=Decimal("0"), http_status=exc.status_code
+                )
+                return SummarizerResponse(text=None, finish_status=None, attempts=(refused,))
             attempts = _attempts(request_id, exc.route_attempts, exc.gateway_usage, http_status=exc.status_code)
             return SummarizerResponse(text=None, finish_status=None, attempts=attempts)
         except GatewayResponseError as exc:
@@ -254,6 +310,7 @@ def _attempts(
                 cost_usd=_attempt_cost(item.outcome, usage if item.attempt == settled else None),
                 provider_request_id=item.provider_request_id,
                 http_status=item.http_status,
+                **(_usage_facts(usage) if item.attempt == settled else {}),
             )
             for item in route_attempts
         )
@@ -266,6 +323,7 @@ def _attempts(
                 cost_usd=usage.cost_usd,
                 provider_request_id=usage.provider_request_id,
                 http_status=http_status,
+                **_usage_facts(usage),
             ),
         )
     return (
@@ -273,6 +331,12 @@ def _attempts(
             attempt_id=f"{request_id}:1", gateway_request_id=None, outcome="uncertain", cost_usd=None, http_status=http_status
         ),
     )
+
+
+def _usage_facts(usage: GatewayUsage | None) -> dict[str, str | None]:
+    if usage is None:
+        return {}
+    return {"provider": usage.provider, "resolved_provider": usage.resolved_provider, "resolved_model": usage.resolved_model}
 
 
 def _attempt_cost(outcome: str, usage: GatewayUsage | None) -> Decimal | None:
@@ -289,16 +353,22 @@ def gateway_summarizer_factory(
     route: SummarizerRoute,
     snapshot: Any | None,
     disclosure_key: bytes | None,
-    request_ids: Callable[[], str],
 ) -> SummarizerFactory:
     """The production summarizer for an attachment: one `GatewaySummarizerCall` per turn.
 
     With a trusted registry `snapshot` and launch `disclosure_key`, each request is route-bound and,
     for a Contributor route, the turn's notice is delivered before its disclosure is issued; without
-    them (registry enforcement inactive) no binding is sent."""
+    them (registry enforcement inactive) no binding is sent. Request identities, and so attempt
+    identities, are minted here per turn and call: session, turn, call ordinal and a random part, so
+    two turns can never claim one attempt (Fable CP3 review MAJOR-3)."""
     from optimus.gateway.disclosure import ContributorDisclosure
 
     def bind_turn(identity: MaintenanceIdentity, deliver_notice: Callable[[str], bool]) -> SummarizerCall:
+        ordinal = itertools.count(1)
+
+        def request_ids() -> str:
+            return f"{identity.session_id}:{identity.turn_seq}:summary:{next(ordinal)}:{uuid.uuid4().hex}"
+
         bind = None
         if snapshot is not None and disclosure_key is not None:
             disclosure = ContributorDisclosure(snapshot=snapshot, key=disclosure_key, deliver_notice=deliver_notice)

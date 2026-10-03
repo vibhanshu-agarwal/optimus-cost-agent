@@ -372,8 +372,10 @@ class AcpDuplexAdapter:
         self._context_attachment = context_attachment
         # Plan 12.2 Task 11: operator-configured cost alerts (turn and session scopes); none by default,
         # and no amount is invented. A daily scope needs a reconciled durable ledger, which this host
-        # does not have, so it is unavailable here rather than counted per process.
-        self._alert_policies = tuple(policy for policy in alert_policies if policy.scope in {"turn", "session"})
+        # does not have: such a policy is refused here, never counted per process or silently dropped.
+        if any(policy.scope == "day" for policy in alert_policies):
+            raise ValueError("daily cost alerts need a reconciled durable ledger (P9.85-FU-3); this host has none")
+        self._alert_policies = tuple(alert_policies)
         self._closed = False
 
     def _remove_active_turn(self, session_id: str, turn_seq: int, control: TurnControl) -> bool:
@@ -716,6 +718,7 @@ class AcpDuplexAdapter:
         session = self._sessions.create(cwd=cwd, conversation=self._new_conversation())
         if self._context_attachment is not None:
             session.context_strategy = self._context_attachment.initial_strategy
+            session.sliding_notice_pending = session.context_strategy == "sliding_window"
         empty_state = ClientMcpSessionState(session_id=session.session_id)
         session.client_mcp_state = empty_state
 
@@ -1149,6 +1152,9 @@ class AcpDuplexAdapter:
                 ownership_slot,
             )
         finally:
+            # Every exit applies what this turn's receipts settled; idempotent when a normal exit has
+            # already applied its cost (Plan 12.2 Task 11; Fable CP3 review MINOR-2).
+            self._apply_settled_cost(session, turn)
             # Recompute after any cancellation so settlement telemetry is exact even for a turn that
             # ends without a commit (Plan 12.2 Task 2). After transport teardown this is a no-op.
             turn.turn_control.refresh_effect_state()
@@ -1229,6 +1235,7 @@ class AcpDuplexAdapter:
             await self._emit_final_text(
                 session_id=turn.session_id, text=CONTEXT_UNAVAILABLE_TEXT.format(strategy=strategy), turn=turn
             )
+            await self._emit_cost_alerts(turn)
             return self._turn(success_response(request_id=request_id, result={"stopReason": "end_turn"}), turn.turn_control, ownership_slot)
         checkpoint = attached_turn.checkpoint_to_publish(current_generation=conversation.generation, cancelled=halted)
         if checkpoint is not None:
@@ -1279,16 +1286,14 @@ class AcpDuplexAdapter:
 
     @staticmethod
     def _plan_record_fits(conversation: ConversationState, turn_seq: int, sanitized_user_prompt: str, plan_text: str) -> bool:
-        """Whether this turn's record with its plan stays within the attached source limit."""
-        decision = conversation.prepare_commit(
+        """Whether this turn's record can keep its plan and still commit a result within the attached
+        source limit: the reply is bounded at commit, the plan and facts never are."""
+        assert isinstance(conversation, AttachedConversationState)
+        return conversation.plan_fits(
             turn_seq,
             sanitized_user_prompt=sanitized_user_prompt,
             sanitized_plan_text=conversation.sanitize_text(plan_text) if plan_text else "",
-            sanitized_completion_text="",
-            outcome=ConversationOutcome.COMPLETED,
-            effect_state=EffectState.NONE,
         )
-        return not decision.closes_cap
 
     async def _finish_chat_turn(
         self,
@@ -1413,6 +1418,14 @@ class AcpDuplexAdapter:
         known = sum((r.reported_cost_usd for r in summaries if r.reported_cost_usd is not None), Decimal("0"))
         complete = planning_complete and all(r.reported_cost_usd is not None for r in summaries)
         session.conversation.apply_planning_cost_once(turn.turn_seq, cost_usd=planning_cost + known, cost_complete=complete)
+
+    @staticmethod
+    def _apply_settled_cost(session: AcpSpecSession, turn: AcpPromptTurn) -> None:
+        """Apply the turn's settled receipts (every stage) once, for an exit that applied nothing."""
+        summary = session.cost_settlement.settle_turn(turn.run_id)
+        session.conversation.apply_planning_cost_once(
+            turn.turn_seq, cost_usd=summary.known_subtotal_usd, cost_complete=summary.complete
+        )
 
     async def _emit_cost_alerts(self, turn: AcpPromptTurn) -> None:
         """Report each configured cost threshold this turn or session has newly reached, once, as a

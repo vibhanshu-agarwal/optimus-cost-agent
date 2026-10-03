@@ -54,7 +54,7 @@ def test_an_identical_replay_counts_once_even_when_it_arrives_later():
         receipt("a1", "0.003"),  # same attempt, different cost
         receipt("a1", None, outcome="uncertain"),  # the same attempt, now claimed unknown
         receipt("a1", "0.002", stage="answer"),
-        receipt("a2", "0.002", gateway="gw-a1"),  # another attempt claiming the same Gateway request
+        receipt("a2", "0.003", gateway="gw-a1"),  # another attempt settling the same Gateway request differently
     ],
 )
 def test_a_conflicting_duplicate_is_an_integrity_error(conflict):
@@ -400,3 +400,85 @@ async def test_summaries_paid_for_on_a_turn_that_sends_nothing_still_settle(tmp_
     receipts = session.cost_settlement.receipts(turn_id)
     assert receipts and all(r.stage == "summarization" for r in receipts)
     assert session.cost_settlement.settle_turn(turn_id).known_subtotal_usd == Decimal("0.0001") * len(receipts)
+
+
+# --- Fable CP3 review fixes -------------------------------------------------------------------------
+
+
+def test_an_identical_gateway_replay_on_another_host_attempt_is_charged_once():
+    settlement = TurnSettlement()
+    settlement.record_attempt(receipt("a1", "0.002", gateway="gw-shared"))
+    settlement.record_attempt(receipt("a2", "0.002", gateway="gw-shared"))  # the Gateway replayed its settled request
+
+    summary = settlement.settle_turn("s:1")
+
+    assert summary.known_subtotal_usd == Decimal("0.002") and summary.receipt_ids == ("a1",)
+
+
+def test_a_summarization_receipt_keeps_the_exact_route_and_resolved_provider():
+    import dataclasses
+
+    raw = dataclasses.replace(_maintenance_receipt("m1", Decimal("0.0003")), provider="alibaba", resolved_provider="alibaba", resolved_model="qwen/qwen3.7-flash-0901")
+
+    converted = receipt_from_maintenance(raw)
+
+    assert (converted.role, converted.route) == ("summarizer", ("alibaba",))
+    assert (converted.provider, converted.resolved_provider, converted.resolved_model) == ("alibaba", "alibaba", "qwen/qwen3.7-flash-0901")
+
+
+def test_an_unknown_attempt_settled_after_teardown_is_flagged(tmp_path):
+    from optimus.acp.lifecycle import TurnControl
+    from optimus.agent.models import AgentRunRequest
+    from optimus.agent.runner import AgentRunner
+    from optimus.runtime.modes import ExecutionMode
+
+    control = TurnControl(session_id="s", turn_seq=1)
+
+    class Gateway:
+        def create_response(self, *, model, input_text, metadata=None):
+            control.request_transport_teardown()  # the client went away while the attempt was in flight
+            raise ConnectionResetError("lost")
+
+    receipts: list[StageReceipt] = []
+    request = AgentRunRequest(run_id="s:1", session_id="s", task="Q", execution_mode=ExecutionMode.CHAT, workspace_root=tmp_path)
+    AgentRunner(gateway_client=Gateway(), model="m").run(request, stage_receipts=receipts.append, operation_control=control)
+
+    [unknown] = receipts
+    assert (unknown.outcome, unknown.reported_cost_usd, unknown.post_teardown) == ("uncertain", None, True)
+
+
+async def test_a_runner_exception_still_applies_what_the_turn_settled(tmp_path):
+    from tests.unit.acp.test_context_engine_admission import make_adapter, new_session, prompt_request, rpc, session_of
+
+    class RaisingRunner:
+        def run(self, request, **kwargs):
+            kwargs["stage_receipts"](
+                StageReceipt(
+                    session_id=request.session_id, turn_id=request.run_id, stage="answer", attempt_id=f"{request.run_id}:answer:1:1",
+                    gateway_request_id="gw-x", outcome="completed", reported_cost_usd=Decimal("0.004"), recorded_at=AT,
+                )
+            )  # fmt: skip
+            raise RuntimeError("runner defect after a paid call")
+
+    adapter, _, _ = make_adapter(tmp_path, None, RaisingRunner())
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+
+    with pytest.raises(RuntimeError, match="runner defect"):
+        await rpc(adapter, prompt_request(session_id, "Q", "p1"))
+
+    conversation = session_of(adapter, session_id).conversation
+    assert conversation.known_cost_usd == Decimal("0.004") and conversation.usage_gauge().cost == Decimal("0.004")
+
+
+def test_a_daily_alert_policy_is_refused_by_a_host_without_a_reconciled_ledger(tmp_path):
+    from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
+    from optimus.usage.cost_alerts import AlertPolicy
+
+    with pytest.raises(ValueError, match="reconciled durable ledger"):
+        AcpDuplexAdapter(
+            runner=_ReceiptRunner(),
+            workspace_root=tmp_path,
+            sessions=InMemoryAcpSpecSessionStore(),
+            outbound=RecordingOutboundChannel(),
+            alert_policies=(AlertPolicy(scope="day", thresholds_usd=(Decimal("1"),), day_timezone="Asia/Kolkata"),),
+        )

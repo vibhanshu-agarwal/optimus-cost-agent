@@ -562,7 +562,9 @@ class AgentRunner:
             task=request.task,
             initial_workspace_context=initial_workspace_context,
             initial_workspace_file_sizes=initial_workspace_file_sizes,
-            conversation_envelope=request.conversation_envelope,
+            # Only an attached turn's planner renders history in its own section; every other
+            # caller keeps its existing input (design spec 7; Fable CP3 review MINOR-8).
+            conversation_envelope=request.conversation_envelope if request.selection_text is not None else "",
         )
         if planning_result.stop_reason is not None:
             status = (
@@ -841,13 +843,17 @@ class AgentRunner:
         settled_turn: int,
         wire_attempt: int,
         gateway_usage: GatewayUsage | None,
-        post_teardown: bool = False,
+        post_teardown: bool | None = None,
     ) -> None:
         """Report one planning/answer attempt to this run's receipt sink, if any: its reported usage,
-        or an unknown cost (never zero) when the Gateway reported none (Plan 12.2 Task 11)."""
+        or an unknown cost (never zero) when the Gateway reported none (Plan 12.2 Task 11). An attempt
+        settled after transport teardown is flagged so, known or unknown."""
         sink = self._active_stage_receipts
         if sink is None:
             return
+        if post_teardown is None:
+            control = self._active_operation_control
+            post_teardown = bool(control is not None and control.transport_abandoned())
         stage = "answer" if request.execution_mode is ExecutionMode.CHAT else "planning"
         known = gateway_usage is not None
         sink(
@@ -887,7 +893,7 @@ class AgentRunner:
         if not _record_matches_request(record, request):
             return self._missing_plan_result(request)
         result = self._apply_stored_plan(request=request, record=record, context=context, toolbox=toolbox, operation_control=operation_control)
-        if record.cost_complete is not True and result.total_cost_usd == record.cost_usd:
+        if record.cost_complete is not True:
             # Application carries the stored planning cost unchanged, including its incompleteness; a
             # legacy record without completeness is unverified, never complete (Plan 12.2 Task 11).
             result = result.model_copy(update={"cost_complete": False, "unknown_cost_attempt_count": max(result.unknown_cost_attempt_count, 1)})
@@ -1285,6 +1291,8 @@ class AgentRunner:
         else:
             fitted = context_packer.fit(build)
             if fitted is None:
+                if halt_requested is not None and halt_requested():
+                    return self._chat_failure(request, stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
                 return self._chat_failure(request, stop_reason="CHAT_CONTEXT_CAPACITY_EXCEEDED")
             chat_input = fitted
         if halt_requested is not None and halt_requested():

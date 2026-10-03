@@ -1181,6 +1181,12 @@ class _PlanningIterationRunner:
             # fitted to the route's usable input, repacking the history view when needed (Plan 12.2
             # Task 9). Nothing that does not fit is sent.
             fitted = self._context_packer.fit(build)
+            if fitted is None and self._halt_requested():
+                return self._typed_planning_failure(
+                    stop_reason="PLANNING_HALTED",
+                    summary="planning was halted while its request was being fitted",
+                    cost_usd=Decimal("0"),
+                )
             if fitted is None:
                 return self._typed_planning_failure(
                     stop_reason="CONTEXT_CAPACITY_EXCEEDED",

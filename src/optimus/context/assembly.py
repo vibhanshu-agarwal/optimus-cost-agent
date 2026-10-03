@@ -285,7 +285,7 @@ class ContextAttachment:
     summarizer: SummarizerFactory | None
     summarizer_route: SummarizerRoute | None
     record_receipt: Callable[[MaintenanceReceipt], None]
-    max_repacks: int = 2
+    max_repacks: int
     initial_strategy: str = "compaction"
 
     def __post_init__(self) -> None:
@@ -364,6 +364,7 @@ class AttachedTurn:
         self._dispatches: list[DispatchReading] = []
         # The turn's own receipt sink (its session's settlement), alongside the attachment's.
         self._record_receipt = record_receipt
+        self._sink_error: Exception | None = None
         self._snapshot: HistorySnapshot | None = None
         self._maintenance: _TurnMaintenance | None = None
         self._view: PreparedView | None = None
@@ -478,7 +479,7 @@ class AttachedTurn:
         assert self._snapshot is not None and self._maintenance is not None
         limits = dataclasses.replace(self._attachment.limits, history_input_tokens=history_tokens)
         try:
-            return self._attachment.engine.prepare_view(
+            view = self._attachment.engine.prepare_view(
                 self._snapshot,
                 strategy=self._strategy,
                 parameters=self._attachment.parameters,
@@ -488,7 +489,14 @@ class AttachedTurn:
                 cancelled=self._cancelled,
             )
         except Exception as exc:  # noqa: BLE001 - an engine fault is an unavailable view, never a closed thread
+            if self._sink_error is not None:
+                # Recording a paid attempt failed (for example a conflicting receipt): an accounting
+                # integrity error, surfaced rather than hidden as a fallback (Fable CP3 review MAJOR-3).
+                raise self._sink_error from exc
             return PreparedView((), (), None, self._snapshot.protected, (), (), False, f"engine fault: {type(exc).__name__}")
+        if self._sink_error is not None:
+            raise self._sink_error  # an engine that swallowed the failure still cannot hide it
+        return view
 
     def _admit(self, applied: str, view: PreparedView) -> None:
         assert self._snapshot is not None
@@ -572,9 +580,13 @@ class AttachedTurn:
         return None
 
     def _receipt_sink(self, receipt: MaintenanceReceipt) -> None:
-        self._attachment.record_receipt(receipt)
-        if self._record_receipt is not None:
-            self._record_receipt(receipt)
+        try:
+            self._attachment.record_receipt(receipt)
+            if self._record_receipt is not None:
+                self._record_receipt(receipt)
+        except Exception as exc:
+            self._sink_error = exc
+            raise
 
     def record_dispatch(self, text: str) -> None:
         """The runner is sending `text` as a complete planning/answer request now."""
