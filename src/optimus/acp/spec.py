@@ -80,6 +80,8 @@ from optimus.mcp.client_catalog import ClientMcpOneCallApproval
 from optimus.mcp.client_config import ClientMcpConfigError
 from optimus.mcp.client_disposition import AcpMcpPermissionBroker, ClientMcpRuntime, ClientMcpSessionState
 from optimus.runtime.modes import ExecutionMode
+from optimus.usage.cost_alerts import AlertPolicy, AlertTracker, CostScopeSummary
+from optimus.usage.turn_settlement import TurnSettlement, receipt_from_maintenance
 
 ACP_PROTOCOL_VERSION = 1
 
@@ -203,6 +205,10 @@ class AcpSpecSession:
     context_strategy: str | None = None
     context_checkpoint: SummaryCheckpoint | None = None
     context_approvals: dict[int, tuple[ApprovalFact, ...]] = field(default_factory=dict, repr=False, compare=False)
+    # Plan 12.2 Task 11: every model attempt of this session, settled exactly once, and the cost
+    # alert crossings already reported.
+    cost_settlement: TurnSettlement = field(default_factory=TurnSettlement, repr=False, compare=False)
+    alert_tracker: AlertTracker = field(default_factory=AlertTracker, repr=False, compare=False)
 
 
 @dataclass
@@ -343,6 +349,7 @@ class AcpDuplexAdapter:
         notice_control: NoticeControl | None = None,
         settlement_sink: Any | None = None,
         context_attachment: ContextAttachment | None = None,
+        alert_policies: tuple[AlertPolicy, ...] = (),
     ) -> None:
         self._runner = runner
         self._workspace_root = Path(workspace_root).resolve()
@@ -363,6 +370,10 @@ class AcpDuplexAdapter:
         self._settlement_sink = settlement_sink
         # Plan 12.2 Task 9: fixes every new session's storage class. None keeps the engine-absent floor.
         self._context_attachment = context_attachment
+        # Plan 12.2 Task 11: operator-configured cost alerts (turn and session scopes); none by default,
+        # and no amount is invented. A daily scope needs a reconciled durable ledger, which this host
+        # does not have, so it is unavailable here rather than counted per process.
+        self._alert_policies = tuple(policy for policy in alert_policies if policy.scope in {"turn", "session"})
         self._closed = False
 
     def _remove_active_turn(self, session_id: str, turn_seq: int, control: TurnControl) -> bool:
@@ -852,6 +863,7 @@ class AcpDuplexAdapter:
                 turn_seq=turn_seq,
                 cancelled=turn.turn_control.halt_requested,
                 deliver_notice=self._blocking_notice(session_id, asyncio.get_running_loop()),
+                record_receipt=lambda receipt: session.cost_settlement.record_attempt(receipt_from_maintenance(receipt)),
             )
             if self._context_attachment is not None
             else None
@@ -930,12 +942,14 @@ class AcpDuplexAdapter:
                     halt_requested=turn.turn_control.halt_requested,
                     operation_control=turn.turn_control,
                     context_packer=attached_turn,
+                    stage_receipts=session.cost_settlement.record_attempt,
                 ),
             )
-            conversation.apply_planning_cost_once(
-                turn_seq,
-                cost_usd=planning_result.total_cost_usd,
-                cost_complete=planning_result.cost_complete,
+            self._apply_turn_cost(
+                session,
+                turn,
+                planning_cost=planning_result.total_cost_usd,
+                planning_complete=planning_result.cost_complete,
             )
             # region agent log
             acp_debug_log(
@@ -1085,6 +1099,7 @@ class AcpDuplexAdapter:
                 **self._runner_runtime_kwargs(
                     session=session,
                     operation_control=turn.turn_control,
+                    stage_receipts=session.cost_settlement.record_attempt,
                 ),
             )
             # region agent log
@@ -1196,6 +1211,9 @@ class AcpDuplexAdapter:
         """
         outcome = await asyncio.to_thread(attached_turn.prepare)
         halted = turn.turn_control.halt_requested()
+        if outcome.kind in {"cancelled", "unavailable"} or halted:
+            # No planning or answer call follows; any summaries already paid for still count.
+            self._apply_turn_cost(session, turn, planning_cost=Decimal("0"), planning_complete=True)
         strategy = _STRATEGY_LABELS[attached_turn.strategy]  # captured; a setter during maintenance never changes it
         if outcome.kind == "cancelled" or halted:
             await self._commit_turn(
@@ -1383,6 +1401,45 @@ class AcpDuplexAdapter:
                 session_id=turn.session_id, conversation=conversation, text=self._warning_text(), is_warning=True
             )
         await self._emit_usage_update(session_id=turn.session_id, conversation=conversation, turn=turn)
+        await self._emit_cost_alerts(turn)
+
+    def _apply_turn_cost(
+        self, session: AcpSpecSession, turn: AcpPromptTurn, *, planning_cost: Decimal, planning_complete: bool
+    ) -> None:
+        """Apply a turn's cost to the conversation once: its planning/answer cost as the runner reports
+        it, plus every summarization attempt it paid for (Plan 12.2 Task 11). An unknown summary cost
+        leaves the total incomplete; known costs still count."""
+        summaries = [r for r in session.cost_settlement.receipts(turn.run_id) if r.stage == "summarization"]
+        known = sum((r.reported_cost_usd for r in summaries if r.reported_cost_usd is not None), Decimal("0"))
+        complete = planning_complete and all(r.reported_cost_usd is not None for r in summaries)
+        session.conversation.apply_planning_cost_once(turn.turn_seq, cost_usd=planning_cost + known, cost_complete=complete)
+
+    async def _emit_cost_alerts(self, turn: AcpPromptTurn) -> None:
+        """Report each configured cost threshold this turn or session has newly reached, once, as a
+        live notice. Alerts never refuse, stop or delay anything; a failed send is dropped."""
+        session = self._sessions.get(turn.session_id)
+        if session is None or not self._alert_policies:
+            return
+        settlement = session.cost_settlement
+        turn_summary = settlement.settle_turn(turn.run_id)
+        session_summary = settlement.settle_all()
+        summaries = {
+            "turn": CostScopeSummary(
+                scope="turn", scope_id=turn.run_id, known_subtotal_usd=turn_summary.known_subtotal_usd, complete=turn_summary.complete
+            ),
+            "session": CostScopeSummary(
+                scope="session",
+                scope_id=turn.session_id,
+                known_subtotal_usd=session_summary.known_subtotal_usd,
+                complete=session_summary.complete,
+            ),
+        }
+        for policy in self._alert_policies:
+            for notice in session.alert_tracker.new_notices(summaries[policy.scope], policy):
+                with contextlib.suppress(Exception):
+                    await self._outbound.notify(
+                        "session/update", build_agent_message_chunk_notification(session_id=turn.session_id, text=notice.text)
+                    )
 
     async def _emit_capacity_notice(
         self,
@@ -1484,6 +1541,7 @@ class AcpDuplexAdapter:
         halt_requested: Any | None = None,
         operation_control: Any | None = None,
         context_packer: Any | None = None,
+        stage_receipts: Any | None = None,
     ) -> dict[str, Any]:
         """Pass client-MCP runtime kwargs only when the runner accepts them."""
         kwargs: dict[str, Any] = {}
@@ -1505,6 +1563,8 @@ class AcpDuplexAdapter:
             _maybe("operation_control", operation_control)
         if context_packer is not None:
             _maybe("context_packer", context_packer)
+        if stage_receipts is not None:
+            _maybe("stage_receipts", stage_receipts)
         _maybe("client_mcp_service", _client_mcp_service(session))
         _maybe("mcp_permission_broker", self._mcp_permission_broker_for(session))
         return kwargs

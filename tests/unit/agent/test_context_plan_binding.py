@@ -193,7 +193,8 @@ async def test_a_mode_or_strategy_change_while_waiting_cannot_alter_application(
     assert applied.model_dump(exclude={"approval"}) == planning.model_dump(exclude={"approval"})
     assert applied.execution_mode is ExecutionMode.AGENT
     assert len(summarizer.prompts) == summaries_at_permission  # no summary regenerated
-    assert conversation.usage_gauge().cost == Decimal("0.008")  # four planning charges, none repeated
+    # Four planning charges, none repeated, plus every summary paid for (Plan 12.2 Task 11).
+    assert conversation.usage_gauge().cost == Decimal("0.008") + Decimal("0.0001") * len(summarizer.prompts)
     facts = session.context_approvals[max(conversation.records)]
     assert [fact.decision.value for fact in facts] == ["granted"]
     assert facts[0].artifact_hash == "hash-1"

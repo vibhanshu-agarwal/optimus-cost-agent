@@ -3981,6 +3981,11 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     task10_paths = frozenset({"src/optimus/acp/session_config.py", "src/optimus/gateway/disclosure.py"})
     task9_committed = b"from optimus.context.assembly import" in head_spec
     task10_committed = b"from optimus.acp.session_config import" in head_spec
+    # Task 11 adds the turn settlement and cost alerts (two paths).
+    task11_paths = frozenset({"src/optimus/usage/cost_alerts.py", "src/optimus/usage/turn_settlement.py"})
+    task11_committed = b"from optimus.usage.turn_settlement import" in head_spec
+    if not task11_committed:
+        expected -= task11_paths
     if not task9_committed:
         expected -= task9_paths
     if not task10_committed:
@@ -3990,8 +3995,9 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     assert (seam2_paths <= closure) is seam2_committed
     assert (task9_paths <= closure) is task9_committed
     assert (task10_paths <= closure) is task10_committed
+    assert (task11_paths <= closure) is task11_committed
     base = 136 if seam2_committed else 134 if seam3_committed else 133
-    assert len(closure) == base + (4 if task9_committed else 0) + (2 if task10_committed else 0)
+    assert len(closure) == base + (4 if task9_committed else 0) + (2 if task10_committed else 0) + (2 if task11_committed else 0)
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

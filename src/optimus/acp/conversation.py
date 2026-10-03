@@ -255,6 +255,11 @@ class ConversationState:
         return rendered_byte_length(self._records)
 
     @property
+    def known_cost_usd(self) -> Decimal:
+        """Every known cost applied so far, a subtotal when `cost_complete` is False."""
+        return self._session_cost
+
+    @property
     def source_max_bytes(self) -> int:
         return self._source_max_bytes
 
@@ -336,11 +341,12 @@ class ConversationState:
         if turn_seq in self._cost_applied_turns:
             return
         self._cost_applied_turns.add(turn_seq)
+        # The known subtotal keeps every known cost, before and after an unknown one (Plan 12.2 Task
+        # 11); only the definitive total is withheld once anything is unknown.
+        if cost_usd is not None:
+            self._session_cost += cost_usd
         if not cost_complete or cost_usd is None:
             self._cost_complete = False
-            return
-        if self._cost_complete:
-            self._session_cost += cost_usd
 
     def prepare_commit(
         self,

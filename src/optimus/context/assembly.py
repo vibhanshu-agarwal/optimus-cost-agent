@@ -343,6 +343,7 @@ class AttachedTurn:
         turn_seq: int,
         cancelled: Callable[[], bool],
         deliver_notice: Callable[[str], bool] | None = None,
+        record_receipt: Callable[[MaintenanceReceipt], None] | None = None,
     ) -> None:
         if strategy not in STRATEGIES:
             raise ValueError(f"unknown strategy {strategy!r}")
@@ -361,6 +362,8 @@ class AttachedTurn:
         # A turn without a notice channel can deliver no required notice, so it sends nothing that needs one.
         self._deliver_notice = deliver_notice if deliver_notice is not None else (lambda text: False)
         self._dispatches: list[DispatchReading] = []
+        # The turn's own receipt sink (its session's settlement), alongside the attachment's.
+        self._record_receipt = record_receipt
         self._snapshot: HistorySnapshot | None = None
         self._maintenance: _TurnMaintenance | None = None
         self._view: PreparedView | None = None
@@ -387,6 +390,7 @@ class AttachedTurn:
         turn_seq: int,
         cancelled: Callable[[], bool],
         deliver_notice: Callable[[str], bool] | None = None,
+        record_receipt: Callable[[MaintenanceReceipt], None] | None = None,
     ) -> AttachedTurn:
         """Copy everything the turn depends on now, before any await: later commits and setters
         cannot reach it. Approval facts of a turn that never committed are left out."""
@@ -405,6 +409,7 @@ class AttachedTurn:
             turn_seq=turn_seq,
             cancelled=cancelled,
             deliver_notice=deliver_notice,
+            record_receipt=record_receipt,
         )
 
     @property
@@ -449,7 +454,7 @@ class AttachedTurn:
                 call=attachment.summarizer(identity, self._deliver_notice),
                 sanitizer=self._sanitizer,
                 identity=identity,
-                record_receipt=attachment.record_receipt,
+                record_receipt=self._receipt_sink,
                 cancelled=self._cancelled,
             )
         self._maintenance = _TurnMaintenance(host, attachment.parameters.max_maintenance_calls)
@@ -565,6 +570,11 @@ class AttachedTurn:
                 self._view, self._envelope = view, envelope
                 return text
         return None
+
+    def _receipt_sink(self, receipt: MaintenanceReceipt) -> None:
+        self._attachment.record_receipt(receipt)
+        if self._record_receipt is not None:
+            self._record_receipt(receipt)
 
     def record_dispatch(self, text: str) -> None:
         """The runner is sending `text` as a complete planning/answer request now."""

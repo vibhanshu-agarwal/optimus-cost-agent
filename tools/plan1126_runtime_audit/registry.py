@@ -50,6 +50,9 @@ _H5_PROBE_EXECUTES = (
     "src/optimus/mcp/client_supervisor.py",
     "src/optimus/mcp/local_ipc.py",
     "src/optimus/redis/__init__.py",
+    # Plan 12.2 Task 11: spec.py imports the turn settlement and cost alerts, so the H5 probe executes them.
+    "src/optimus/usage/cost_alerts.py",
+    "src/optimus/usage/turn_settlement.py",
     "tools/plan1126_runtime_audit/source.py",
 )
 

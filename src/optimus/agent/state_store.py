@@ -53,6 +53,11 @@ class AgentPlanRecord(BaseModel):
     # Plan 12.2 Task 9: the admitted context the plan was made on. Application requires the same
     # digest; None (engine absent, or a record stored before this field) matches only None.
     context_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    # Plan 12.2 Task 11: version 2 records keep whether the planning cost is complete; with
+    # `gateway_request_ids` they are the plan's attempt references. A version 1 (legacy) record has
+    # no completeness: None means unverified, never complete.
+    record_version: int = Field(default=2, ge=1)
+    cost_complete: bool | None = None
 
     @field_serializer("cost_usd")
     def serialize_cost_usd(self, value: Decimal) -> str:
@@ -442,4 +447,14 @@ def _record_from_mapping(mapping: dict[str, str]) -> AgentPlanRecord:
         created_at_ms=int(mapping["created_at_ms"]),
         expires_at_ms=int(mapping["expires_at_ms"]),
         context_digest=mapping.get("context_digest"),
+        record_version=int(mapping.get("record_version", "1")),
+        cost_complete=_optional_bool(mapping.get("cost_complete")),
     )
+
+
+def _optional_bool(value: str | None) -> bool | None:
+    if value is None:
+        return None
+    if value not in {"True", "False"}:
+        raise ValueError(f"unreadable stored boolean {value!r}")
+    return value == "True"

@@ -786,6 +786,7 @@ class PlanningLoopRunner:
         mcp_permission_broker: object | None = None,
         operation_control: object | None = None,
         context_packer: ContextPacker | None = None,
+        unknown_attempt_callback: Callable[[int, int], None] | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -809,6 +810,7 @@ class PlanningLoopRunner:
         self._mcp_permission_broker = mcp_permission_broker
         self._operation_control = operation_control
         self._context_packer = context_packer
+        self._unknown_attempt_callback = unknown_attempt_callback
 
     def run(
         self,
@@ -854,6 +856,7 @@ class PlanningLoopRunner:
             operation_control=self._operation_control,
             conversation_envelope=conversation_envelope,
             context_packer=self._context_packer,
+            unknown_attempt_callback=self._unknown_attempt_callback,
         )
         controller = GoalLoopController(
             policy=iteration_runner.loop_budget_policy,
@@ -908,10 +911,12 @@ class _PlanningIterationRunner:
         operation_control: object | None = None,
         conversation_envelope: str = "",
         context_packer: ContextPacker | None = None,
+        unknown_attempt_callback: Callable[[int, int], None] | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
         self._task = task
+        self._unknown_attempt_callback = unknown_attempt_callback
         self._conversation_envelope = conversation_envelope
         self._context_packer = context_packer
         self._initial_workspace_context = initial_workspace_context
@@ -1051,6 +1056,8 @@ class _PlanningIterationRunner:
                 # No valid usage — unknown cost. Terminal regardless of retryability.
                 self._cost_complete = False
                 self._unknown_cost_attempt_count += 1
+                if self._unknown_attempt_callback is not None:
+                    self._unknown_attempt_callback(planning_turn, wire_attempt)
                 from optimus.retry.policy import PermanentGatewayError as _PermanentStop
 
                 raise _PermanentStop("unknown transport cost") from exc
@@ -1062,6 +1069,8 @@ class _PlanningIterationRunner:
                 # Unexpected non-Gateway exception — treat as unknown cost.
                 self._cost_complete = False
                 self._unknown_cost_attempt_count += 1
+                if self._unknown_attempt_callback is not None:
+                    self._unknown_attempt_callback(planning_turn, wire_attempt)
                 from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
 
                 if debug_trace_enabled():

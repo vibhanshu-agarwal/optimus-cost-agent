@@ -35,6 +35,7 @@ from optimus.runtime.state import AgentState, AwaitingApproval, RuntimeContext, 
 from optimus.skills.registry import SkillRegistry
 from optimus.telemetry.events import TelemetryEvent
 from optimus.usage.accounting import UsageAccountingService
+from optimus.usage.turn_settlement import StageReceipt
 
 if TYPE_CHECKING:
     from optimus.agent.planning_loop import PlanningProgressObserver
@@ -236,6 +237,7 @@ class AgentRunner:
         self._planning_progress_observer = planning_progress_observer
         self._transition_validator = TransitionValidator()
         self._active_operation_control: TurnOperationControl | None = None
+        self._active_stage_receipts: Callable[[StageReceipt], None] | None = None
 
     @property
     def event_sink(self) -> Callable[[TelemetryEvent], None] | None:
@@ -251,6 +253,7 @@ class AgentRunner:
         halt_requested: Callable[[], bool] | None = None,
         operation_control: TurnOperationControl | None = None,
         context_packer: ContextPacker | None = None,
+        stage_receipts: Callable[[StageReceipt], None] | None = None,
     ) -> AgentRunResult:
         observer = (
             planning_progress_observer
@@ -259,6 +262,8 @@ class AgentRunner:
         )
         matched_skills = self._match_skills(request)
         self._active_operation_control = operation_control
+        # Plan 12.2 Task 11: every model attempt of this run, known or unknown, is reported once here.
+        self._active_stage_receipts = stage_receipts
         try:
             if request.completion_condition and request.execution_mode is ExecutionMode.CHAT:
                 # Chat is one Gateway call. The goal loop would repeat it outside the
@@ -285,6 +290,7 @@ class AgentRunner:
             return result
         finally:
             self._active_operation_control = None
+            self._active_stage_receipts = None
             # Narrow flush() protocol: flush a batching event sink (e.g. TelemetryFanout)
             # after the final agent_run event, and also on a controlled failure that
             # raises out of this method, so buffered telemetry is not silently dropped.
@@ -530,6 +536,9 @@ class AgentRunner:
                 wire_attempt=wire_attempt,
             )
 
+        def unknown_attempt_callback(settled_turn: int, wire_attempt: int) -> None:
+            self._report_stage_receipt(request, settled_turn=settled_turn, wire_attempt=wire_attempt, gateway_usage=None)
+
         planner = PlanningLoopRunner(
             gateway_client=self._gateway_client,
             model=self._model,
@@ -539,6 +548,7 @@ class AgentRunner:
             max_cost_usd=request.max_cost_usd,
             guard=guard,
             usage_callback=usage_callback,
+            unknown_attempt_callback=unknown_attempt_callback,
             progress_observer=progress_observer,
             client_mcp_service=client_mcp_service,
             mcp_permission_broker=mcp_permission_broker,
@@ -692,6 +702,7 @@ class AgentRunner:
                     created_at_ms=created_at_ms,
                     expires_at_ms=created_at_ms + 3_600_000,
                     context_digest=request.context_digest,
+                    cost_complete=cost_complete,
                 )
                 op_id = f"persist:{plan_hash}"
                 if operation_control is not None:
@@ -793,10 +804,17 @@ class AgentRunner:
         settled_turn: int,
         wire_attempt: int,
     ) -> None:
-        if self._usage_accounting is None:
-            return
         control = self._active_operation_control
         post_teardown = bool(control is not None and control.transport_abandoned())
+        self._report_stage_receipt(
+            request,
+            settled_turn=settled_turn,
+            wire_attempt=wire_attempt,
+            gateway_usage=gateway_usage,
+            post_teardown=post_teardown,
+        )
+        if self._usage_accounting is None:
+            return
         turn_seq: int | None = None
         if post_teardown:
             try:
@@ -816,6 +834,43 @@ class AgentRunner:
             post_teardown=post_teardown,
         )
 
+    def _report_stage_receipt(
+        self,
+        request: AgentRunRequest,
+        *,
+        settled_turn: int,
+        wire_attempt: int,
+        gateway_usage: GatewayUsage | None,
+        post_teardown: bool = False,
+    ) -> None:
+        """Report one planning/answer attempt to this run's receipt sink, if any: its reported usage,
+        or an unknown cost (never zero) when the Gateway reported none (Plan 12.2 Task 11)."""
+        sink = self._active_stage_receipts
+        if sink is None:
+            return
+        stage = "answer" if request.execution_mode is ExecutionMode.CHAT else "planning"
+        known = gateway_usage is not None
+        sink(
+            StageReceipt(
+                session_id=request.session_id,
+                turn_id=request.run_id,
+                stage=stage,
+                attempt_id=f"{request.run_id}:{stage}:{settled_turn}:{wire_attempt}",
+                gateway_request_id=gateway_usage.gateway_request_id if known else None,
+                outcome="completed" if known else "uncertain",
+                reported_cost_usd=gateway_usage.cost_usd if known else None,
+                recorded_at=datetime.now(tz=UTC),
+                requested_model=self._model,
+                resolved_model=gateway_usage.resolved_model if known else None,
+                provider=gateway_usage.provider if known else None,
+                resolved_provider=gateway_usage.resolved_provider if known else None,
+                input_tokens=gateway_usage.input_tokens if known else None,
+                output_tokens=gateway_usage.output_tokens if known else None,
+                cached_tokens=gateway_usage.cached_tokens if known else None,
+                post_teardown=post_teardown,
+            )
+        )
+
     def _run_approved_from_store(
         self,
         *,
@@ -831,6 +886,22 @@ class AgentRunner:
 
         if not _record_matches_request(record, request):
             return self._missing_plan_result(request)
+        result = self._apply_stored_plan(request=request, record=record, context=context, toolbox=toolbox, operation_control=operation_control)
+        if record.cost_complete is not True and result.total_cost_usd == record.cost_usd:
+            # Application carries the stored planning cost unchanged, including its incompleteness; a
+            # legacy record without completeness is unverified, never complete (Plan 12.2 Task 11).
+            result = result.model_copy(update={"cost_complete": False, "unknown_cost_attempt_count": max(result.unknown_cost_attempt_count, 1)})
+        return result
+
+    def _apply_stored_plan(
+        self,
+        *,
+        request: AgentRunRequest,
+        record: AgentPlanRecord,
+        context: RuntimeContext,
+        toolbox: AgentToolbox,
+        operation_control: TurnOperationControl | None,
+    ) -> AgentRunResult:
 
         context = self._transition(context, AgentState.PLANNING)
         context = self._transition(context, AgentState.PLAN_READY)
@@ -1248,6 +1319,7 @@ class AgentRunner:
             usage = getattr(exc, "gateway_usage", None)
             if usage is None:
                 complete("cost_unknown")
+                self._report_stage_receipt(request, settled_turn=1, wire_attempt=1, gateway_usage=None)
                 return self._chat_failure(request, stop_reason="CHAT_GATEWAY_COST_UNKNOWN", cost_complete=False)
             complete("failed")
             self._record_gateway_usage(request, gateway_usage=usage, settled_turn=1, wire_attempt=1)
@@ -1255,6 +1327,7 @@ class AgentRunner:
         except Exception:
             # Same rule as the planning loop: an unexpected transport failure has unknown cost.
             complete("cost_unknown")
+            self._report_stage_receipt(request, settled_turn=1, wire_attempt=1, gateway_usage=None)
             return self._chat_failure(request, stop_reason="CHAT_GATEWAY_COST_UNKNOWN", cost_complete=False)
 
         complete("succeeded")
