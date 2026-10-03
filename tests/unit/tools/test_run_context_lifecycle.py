@@ -745,7 +745,10 @@ def test_a_registry_beyond_its_ceiling_is_partial_and_never_pruned(monkeypatch: 
     assert ceiling == 512
     ids = [f"20000101T{index:06d}-{index + 1}-abcdef" for index in range(ceiling + 1)]
     for run_id in ids:
-        run_context_records.write_record(registry / f"{run_id}.json", _announcement(run_id, start))
+        # A fixed creation time, so the parent match below works where the real root has none (no native support).
+        announcement = _announcement(run_id, start)
+        announcement["root"] = {**announcement["root"], "creation_time": 123456}  # type: ignore[dict-item]
+        run_context_records.write_record(registry / f"{run_id}.json", announcement)
     before = sorted(path.name for path in registry.iterdir())
     entries, state = run_context_records.registry_entries("none")
     assert state == "partial" and len(entries) == ceiling and ids[0] not in {entry["run_id"] for entry in entries}
@@ -760,7 +763,7 @@ def test_a_registry_beyond_its_ceiling_is_partial_and_never_pruned(monkeypatch: 
         "status": "UNKNOWN", "reason": "registry_partial", "method": "validated_process_ancestry"}
     newest = run_context_records.read_record(registry / f"{ids[-1]}.json")
     assert newest is not None
-    live = run_context_windows.ProcessIdentity(pid=int(newest["root"]["pid"]), creation_time=int(newest["root"]["creation_time"]),  # type: ignore[index]
+    live = run_context_windows.ProcessIdentity(pid=int(newest["root"]["pid"]), creation_time=123456,  # type: ignore[index]
                                                image=None, error=None, live=True, opened=True)
     monkeypatch.setattr(run_context_windows, "ancestors", lambda: ([live], "root_reached"))
     assert newest["mode"] == "active"
