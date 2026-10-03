@@ -85,7 +85,9 @@ def test_validate_redis_url_rejects_non_redis_schemes():
 
 
 def test_plan_record_schema_and_persisted_mapping_are_functional_only():
-    record = plan_record()
+    # Plan 12.2 Task 9: the admitted context digest is functional (it binds application to the
+    # context the plan was made on). A record without one persists no such field.
+    record = plan_record().model_copy(update={"context_digest": "c" * 64})
 
     assert set(AgentPlanRecord.model_fields) == {
         "run_id",
@@ -103,6 +105,7 @@ def test_plan_record_schema_and_persisted_mapping_are_functional_only():
         "cost_usd",
         "created_at_ms",
         "expires_at_ms",
+        "context_digest",
     }
 
     fake = FakeRedis()

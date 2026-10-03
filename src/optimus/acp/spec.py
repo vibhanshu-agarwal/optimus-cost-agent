@@ -7,10 +7,13 @@ import itertools
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Protocol
 
+from context_engine import SummaryCheckpoint
 from optimus.acp.conversation import (
+    AttachedConversationState,
     ConversationDisposition,
     ConversationOutcome,
     ConversationSanitizer,
@@ -64,6 +67,8 @@ from optimus.acp.shapes import (
 )
 from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus
 from optimus.agent.planning_loop import PlanningProgressEvent
+from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
+from optimus.context.assembly import AttachedTurn, ContextAttachment
 from optimus.mcp.client_catalog import ClientMcpOneCallApproval
 from optimus.mcp.client_config import ClientMcpConfigError
 from optimus.mcp.client_disposition import AcpMcpPermissionBroker, ClientMcpRuntime, ClientMcpSessionState
@@ -97,6 +102,28 @@ CAPACITY_REACHED_TEXT = (
 )
 """Sent when a committed reply itself fills the conversation, so the user learns of it
 before their next prompt is refused."""
+
+# Plan 12.2 Task 9: attached Context Engine notices. Each names its limiting condition and whether the
+# thread can continue; none is a content-policy refusal (design spec 8.2, 10).
+CONTEXT_FALLBACK_TEXT = (
+    "The {strategy} context strategy could not be applied to this prompt, so the full conversation "
+    "history was sent instead."
+)
+CONTEXT_UNAVAILABLE_TEXT = (
+    "The {strategy} context strategy could not be applied, and the full conversation history is too "
+    "large to send without it. Nothing was sent to the model. This thread stays open: try again, and the "
+    "strategy is used as soon as it is available."
+)
+CONTEXT_RESERVATION_TEXT = (
+    "This prompt would not leave enough room in this conversation's storage for a reply, so nothing was "
+    "sent to the model. This thread stays open: a shorter prompt may fit."
+)
+CONTEXT_PLAN_TOO_LARGE_TEXT = (
+    "The plan is too large to keep in this conversation's history, so it was not offered for approval "
+    "and nothing was changed. Ask for a smaller change."
+)
+_CONTEXT_CANCELLED_TEXT = "Cancelled before the model was asked."
+_STRATEGY_LABELS = {"compaction": "compaction", "hybrid": "hybrid", "sliding_window": "sliding window"}
 
 
 def resolve_max_planning_turns(environ: Mapping[str, str]) -> int | None:
@@ -148,6 +175,11 @@ class AcpSpecSession:
     mode_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False, compare=False)
     # True while a committed mode change has not yet sent both of its paired updates.
     mode_updates_pending: bool = False
+    # Plan 12.2 Task 9, attached sessions only: the strategy the next turn captures, the published
+    # summary checkpoint and the host's exact approval facts per turn. None/empty when absent.
+    context_strategy: str | None = None
+    context_checkpoint: SummaryCheckpoint | None = None
+    context_approvals: dict[int, tuple[ApprovalFact, ...]] = field(default_factory=dict, repr=False, compare=False)
 
 
 @dataclass
@@ -285,6 +317,7 @@ class AcpDuplexAdapter:
         sanitizer_inputs: ConversationSanitizerInputs | None = None,
         notice_control: NoticeControl | None = None,
         settlement_sink: Any | None = None,
+        context_attachment: ContextAttachment | None = None,
     ) -> None:
         self._runner = runner
         self._workspace_root = Path(workspace_root).resolve()
@@ -303,6 +336,8 @@ class AcpDuplexAdapter:
         )
         self._notice_control = notice_control
         self._settlement_sink = settlement_sink
+        # Plan 12.2 Task 9: fixes every new session's storage class. None keeps the engine-absent floor.
+        self._context_attachment = context_attachment
         self._closed = False
 
     def _remove_active_turn(self, session_id: str, turn_seq: int, control: TurnControl) -> bool:
@@ -334,7 +369,15 @@ class AcpDuplexAdapter:
         )
 
     def _new_conversation(self) -> ConversationState:
-        return ConversationState(ConversationSanitizer(self._sanitizer_inputs))
+        sanitizer = ConversationSanitizer(self._sanitizer_inputs)
+        attachment = self._context_attachment
+        if attachment is None:
+            return ConversationState(sanitizer)
+        return AttachedConversationState(
+            sanitizer,
+            source_max_bytes=attachment.source_max_bytes,
+            record_reservation_bytes=attachment.record_reservation_bytes,
+        )
 
     def _planner_inputs(
         self,
@@ -598,6 +641,8 @@ class AcpDuplexAdapter:
 
         # Provisional in-memory session after input-shape validation.
         session = self._sessions.create(cwd=cwd, conversation=self._new_conversation())
+        if self._context_attachment is not None:
+            session.context_strategy = self._context_attachment.initial_strategy
         empty_state = ClientMcpSessionState(session_id=session.session_id)
         session.client_mcp_state = empty_state
 
@@ -728,6 +773,26 @@ class AcpDuplexAdapter:
             hypothesis_id="H1",
         )
         # endregion
+        # Plan 12.2 Task 9: an attached turn captures its history, strategy and checkpoint now,
+        # before any await a setter could interleave with.
+        attached_turn = (
+            AttachedTurn.capture(
+                attachment=self._context_attachment,
+                session_key=session_id,
+                records=conversation.records,
+                approvals=session.context_approvals,
+                generation=conversation.generation,
+                sanitizer=conversation.sanitizer,
+                strategy=session.context_strategy or self._context_attachment.initial_strategy,
+                mode=turn.execution_mode,
+                checkpoint=session.context_checkpoint,
+                current_prompt=admission.sanitized_user_prompt,
+                turn_seq=turn_seq,
+                cancelled=turn.turn_control.halt_requested,
+            )
+            if self._context_attachment is not None
+            else None
+        )
         try:
             if admission.crosses_warning and conversation.note_warning_threshold_for_attempt(
                 admission.projected_bytes
@@ -736,17 +801,42 @@ class AcpDuplexAdapter:
                     session_id=session_id, conversation=conversation, text=CAPACITY_WARNING_TEXT, is_warning=True
                 )
 
-            planner_task, conversation_envelope = self._planner_inputs(
-                conversation, admission.sanitized_user_prompt, turn.execution_mode
-            )
-            planning_fields: dict[str, object] = {
-                "run_id": run_id,
-                "session_id": session_id,
-                "task": planner_task,
-                "execution_mode": turn.execution_mode,
-                "workspace_root": session.cwd,
-                "conversation_envelope": conversation_envelope,
-            }
+            if attached_turn is None:
+                planner_task, conversation_envelope = self._planner_inputs(
+                    conversation, admission.sanitized_user_prompt, turn.execution_mode
+                )
+                planning_fields: dict[str, object] = {
+                    "run_id": run_id,
+                    "session_id": session_id,
+                    "task": planner_task,
+                    "execution_mode": turn.execution_mode,
+                    "workspace_root": session.cwd,
+                    "conversation_envelope": conversation_envelope,
+                }
+            else:
+                stopped = await self._prepare_attached_context(
+                    request_id=request.get("id"),
+                    session=session,
+                    conversation=conversation,
+                    turn=turn,
+                    attached_turn=attached_turn,
+                    sanitized_user_prompt=admission.sanitized_user_prompt,
+                    ownership_slot=ownership_slot,
+                )
+                if stopped is not None:
+                    return stopped
+                admitted = attached_turn.admitted
+                assert admitted is not None
+                planning_fields = {
+                    "run_id": run_id,
+                    "session_id": session_id,
+                    "task": admitted.current_prompt,
+                    "execution_mode": turn.execution_mode,
+                    "workspace_root": session.cwd,
+                    "conversation_envelope": admitted.conversation_envelope,
+                    "selection_text": admitted.selection_text,
+                    "context_digest": admitted.digest,
+                }
             if self._max_planning_turns is not None:
                 planning_fields["max_planning_turns"] = self._max_planning_turns
             planning_request = AgentRunRequest(**planning_fields)
@@ -773,6 +863,7 @@ class AcpDuplexAdapter:
                     session=session,
                     halt_requested=turn.turn_control.halt_requested,
                     operation_control=turn.turn_control,
+                    context_packer=attached_turn,
                 ),
             )
             conversation.apply_planning_cost_once(
@@ -802,6 +893,29 @@ class AcpDuplexAdapter:
                     sanitized_user_prompt=admission.sanitized_user_prompt,
                     result=planning_result,
                     ownership_slot=ownership_slot,
+                )
+            if (
+                attached_turn is not None
+                and planning_result.status is AgentRunStatus.AWAITING_APPROVAL
+                and not self._plan_record_fits(
+                    conversation, turn_seq, admission.sanitized_user_prompt, planning_result.candidate_plan_text or ""
+                )
+            ):
+                # Design spec 4.2: a plan the attached record cannot keep fails before approval or any
+                # effect, and its exact failed outcome is kept instead of the plan.
+                await self._emit_final_text(session_id=session_id, text=CONTEXT_PLAN_TOO_LARGE_TEXT, turn=turn)
+                await self._commit_turn(
+                    conversation=conversation,
+                    turn=turn,
+                    sanitized_user_prompt=admission.sanitized_user_prompt,
+                    result=planning_result.model_copy(update={"candidate_plan_text": None}),
+                    outcome=ConversationOutcome.FAILED,
+                    completion_text=CONTEXT_PLAN_TOO_LARGE_TEXT,
+                )
+                return self._turn(
+                    success_response(request_id=request.get("id"), result={"stopReason": "end_turn"}),
+                    turn_control,
+                    ownership_slot,
                 )
             await self._emit_result_updates(session_id=session_id, result=planning_result, planning=True, turn=turn)
             if turn.turn_control.halt_requested():
@@ -864,6 +978,16 @@ class AcpDuplexAdapter:
                 hypothesis_id="GAP1",
             )
             # endregion
+            if attached_turn is not None:
+                # The host's exact decision for this artifact, decided as the application below is.
+                session.context_approvals[turn_seq] = (
+                    approval_fact_from_permission(
+                        turn_seq=turn_seq,
+                        artifact_hash=planning_result.plan_hash,
+                        permission_result=permission_result,
+                        halted=turn.turn_control.halt_requested(),
+                    ),
+                )
             if turn.turn_control.halt_requested() or not _permission_approved(permission_result):
                 await self._commit_turn(
                     conversation=conversation,
@@ -959,9 +1083,11 @@ class AcpDuplexAdapter:
         ownership_slot: ResponseOwnershipSlot | None,
     ) -> NonTurnResponseEnvelope:
         del conversation
-        full = reason in {"cap", "cap_closed"}
+        full = reason in {"cap", "cap_closed", "reservation"}
         message = (
-            CAPACITY_REFUSAL_TEXT
+            CONTEXT_RESERVATION_TEXT
+            if reason == "reservation"
+            else CAPACITY_REFUSAL_TEXT
             if full
             else "Conversation delivery is indeterminate; this prompt was refused."
             if reason == "delivery_indeterminate"
@@ -981,6 +1107,69 @@ class AcpDuplexAdapter:
             success_response(request_id=request_id, result={"stopReason": "end_turn" if full else "refusal"}),
             ownership_slot,
         )
+
+    async def _prepare_attached_context(
+        self,
+        *,
+        request_id: str | int | None,
+        session: AcpSpecSession,
+        conversation: ConversationState,
+        turn: AcpPromptTurn,
+        attached_turn: AttachedTurn,
+        sanitized_user_prompt: str,
+        ownership_slot: ResponseOwnershipSlot | None,
+    ) -> TurnResponseEnvelope | None:
+        """Prepare an attached turn's view off the event loop (Plan 12.2 Task 9; design spec 8).
+
+        Returns the turn's response when it stops here, or None to dispatch. A cancelled turn sends
+        and publishes nothing and is committed as cancelled. An unavailable engine whose full history
+        is over the floor is refused with zero planning/answer calls and no commit: the thread stays
+        OPEN and the next turn tries again. Every maintenance attempt was already recorded.
+        """
+        outcome = await asyncio.to_thread(attached_turn.prepare)
+        halted = turn.turn_control.halt_requested()
+        strategy = _STRATEGY_LABELS[attached_turn.strategy]  # captured; a setter during maintenance never changes it
+        if outcome.kind == "cancelled" or halted:
+            await self._commit_turn(
+                conversation=conversation,
+                turn=turn,
+                sanitized_user_prompt=sanitized_user_prompt,
+                result=_context_stop_result(turn, _CONTEXT_CANCELLED_TEXT),
+                outcome=ConversationOutcome.CANCELLED,
+                completion_text=_CONTEXT_CANCELLED_TEXT,
+            )
+            return self._turn(success_response(request_id=request_id, result={"stopReason": "cancelled"}), turn.turn_control, ownership_slot)
+        if outcome.kind == "unavailable":
+            await self._emit_final_text(
+                session_id=turn.session_id, text=CONTEXT_UNAVAILABLE_TEXT.format(strategy=strategy), turn=turn
+            )
+            return self._turn(success_response(request_id=request_id, result={"stopReason": "end_turn"}), turn.turn_control, ownership_slot)
+        checkpoint = attached_turn.checkpoint_to_publish(current_generation=conversation.generation, cancelled=halted)
+        if checkpoint is not None:
+            session.context_checkpoint = checkpoint
+        if outcome.kind == "fallback":
+            # Live-only and best-effort, before any dispatch; never stored in the canonical history.
+            with contextlib.suppress(Exception):
+                await self._outbound.notify(
+                    "session/update",
+                    build_agent_message_chunk_notification(
+                        session_id=turn.session_id, text=CONTEXT_FALLBACK_TEXT.format(strategy=strategy)
+                    ),
+                )
+        return None
+
+    @staticmethod
+    def _plan_record_fits(conversation: ConversationState, turn_seq: int, sanitized_user_prompt: str, plan_text: str) -> bool:
+        """Whether this turn's record with its plan stays within the attached source limit."""
+        decision = conversation.prepare_commit(
+            turn_seq,
+            sanitized_user_prompt=sanitized_user_prompt,
+            sanitized_plan_text=conversation.sanitize_text(plan_text) if plan_text else "",
+            sanitized_completion_text="",
+            outcome=ConversationOutcome.COMPLETED,
+            effect_state=EffectState.NONE,
+        )
+        return not decision.closes_cap
 
     async def _finish_chat_turn(
         self,
@@ -1177,6 +1366,7 @@ class AcpDuplexAdapter:
         planning_progress_observer: Any | None = None,
         halt_requested: Any | None = None,
         operation_control: Any | None = None,
+        context_packer: Any | None = None,
     ) -> dict[str, Any]:
         """Pass client-MCP runtime kwargs only when the runner accepts them."""
         kwargs: dict[str, Any] = {}
@@ -1196,6 +1386,8 @@ class AcpDuplexAdapter:
             _maybe("halt_requested", halt_requested)
         if operation_control is not None:
             _maybe("operation_control", operation_control)
+        if context_packer is not None:
+            _maybe("context_packer", context_packer)
         _maybe("client_mcp_service", _client_mcp_service(session))
         _maybe("mcp_permission_broker", self._mcp_permission_broker_for(session))
         return kwargs
@@ -1361,6 +1553,7 @@ _PLANNING_TERMINAL_STOP_REASONS = frozenset(
         "PLANNING_TURN_LIMIT_EXHAUSTED",
         "PLANNING_HALTED",
         "PLANNING_MODEL_REFUSED",
+        "CONTEXT_CAPACITY_EXCEEDED",
         "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
         "PLANNING_READ_BUDGET_EXHAUSTED",
         "PLANNING_READ_INVALID_RANGE",
@@ -1417,6 +1610,23 @@ def _text_from_content_blocks(blocks: list[Any]) -> str:
         if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str):
             texts.append(block["text"])
     return "\n".join(texts).strip()
+
+
+def _context_stop_result(turn: AcpPromptTurn, text: str) -> AgentRunResult:
+    """The result a turn records when it stopped before any planning or answer call."""
+    return AgentRunResult(
+        run_id=turn.run_id,
+        session_id=turn.session_id,
+        execution_mode=turn.execution_mode,
+        status=AgentRunStatus.TERMINATED,
+        final_state="TERMINATED",
+        output_text=text,
+        tool_calls=(),
+        total_cost_usd=Decimal("0"),
+        mutation_count=0,
+        provider_keys_resolvable=(),
+        stop_reason="cancelled",
+    )
 
 
 def _conversation_outcome(result: AgentRunResult) -> ConversationOutcome:

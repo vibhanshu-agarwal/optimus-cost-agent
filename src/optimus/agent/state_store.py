@@ -50,6 +50,9 @@ class AgentPlanRecord(BaseModel):
     cost_usd: Decimal = Field(ge=Decimal("0"))
     created_at_ms: int = Field(ge=0)
     expires_at_ms: int = Field(ge=0)
+    # Plan 12.2 Task 9: the admitted context the plan was made on. Application requires the same
+    # digest; None (engine absent, or a record stored before this field) matches only None.
+    context_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @field_serializer("cost_usd")
     def serialize_cost_usd(self, value: Decimal) -> str:
@@ -438,4 +441,5 @@ def _record_from_mapping(mapping: dict[str, str]) -> AgentPlanRecord:
         cost_usd=Decimal(mapping["cost_usd"]),
         created_at_ms=int(mapping["created_at_ms"]),
         expires_at_ms=int(mapping["expires_at_ms"]),
+        context_digest=mapping.get("context_digest"),
     )

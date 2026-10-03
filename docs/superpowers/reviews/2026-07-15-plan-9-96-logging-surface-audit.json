@@ -3831,6 +3831,14 @@
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_evaluate_context_summarizer.py::test_the_command_line_checks_a_saved_summary",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.assembly:_exact_turn:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Inspection: _exact_turn serializes one committed turn's already-sanitized ordinary text (the host adapter sanitizes every record into the snapshot), with its plan wrapped in the inert historical-plan markers, as one line of the model-facing history view an attached turn sends as untrusted conversation data; it is never persisted or logged.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/agent/test_context_selection.py::test_the_rendered_view_wraps_the_summary_inert_and_keeps_plans_inert",
+      "evidence_tier": "unit"
     }
   ]
 }

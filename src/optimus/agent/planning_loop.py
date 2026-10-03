@@ -18,7 +18,7 @@ from optimus.agent.directives import (
     parse_mcp_call_line,
     parse_mcp_list_line,
 )
-from optimus.agent.models import AgentMcpToolOutput, AgentToolCall
+from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
 from optimus.agent.prompts import build_multi_turn_planner_input, format_mcp_evidence_envelope
 from optimus.agent.tools import AgentToolbox
 from optimus.agent.workspace_context import DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
@@ -738,6 +738,11 @@ def planning_corrective_text(
         "PLANNING_WALL_CLOCK_EXHAUSTED": "Planning stopped because the wall-clock limit was reached.",
         "PLANNING_TURN_LIMIT_EXHAUSTED": "Planning stopped before a final plan could be settled.",
         "PLANNING_HALTED": "Planning was halted before settlement.",
+        "CONTEXT_CAPACITY_EXCEEDED": (
+            "Planning stopped because its next request would not fit the model's input capacity, even "
+            "with a smaller view of the conversation. That request was not sent, and nothing was stored "
+            "or changed."
+        ),
         "PLANNING_OBSERVATION_BUDGET_EXHAUSTED": (
             "Planning stopped because carried observation evidence exceeds the allowed budget."
         ),
@@ -780,6 +785,7 @@ class PlanningLoopRunner:
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
         operation_control: object | None = None,
+        context_packer: ContextPacker | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -802,6 +808,7 @@ class PlanningLoopRunner:
         self._client_mcp_service = client_mcp_service
         self._mcp_permission_broker = mcp_permission_broker
         self._operation_control = operation_control
+        self._context_packer = context_packer
 
     def run(
         self,
@@ -813,6 +820,7 @@ class PlanningLoopRunner:
         initial_workspace_file_sizes: dict[str, int] | None = None,
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
+        conversation_envelope: str = "",
     ) -> PlanningLoopResult:
         if self._max_cost_usd <= Decimal("0"):
             return PlanningLoopResult(stop_reason="PLANNING_BUDGET_EXHAUSTED", settled_turns=0)
@@ -844,6 +852,8 @@ class PlanningLoopRunner:
             client_mcp_service=service,
             mcp_permission_broker=broker,
             operation_control=self._operation_control,
+            conversation_envelope=conversation_envelope,
+            context_packer=self._context_packer,
         )
         controller = GoalLoopController(
             policy=iteration_runner.loop_budget_policy,
@@ -896,10 +906,14 @@ class _PlanningIterationRunner:
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
         operation_control: object | None = None,
+        conversation_envelope: str = "",
+        context_packer: ContextPacker | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
         self._task = task
+        self._conversation_envelope = conversation_envelope
+        self._context_packer = context_packer
         self._initial_workspace_context = initial_workspace_context
         self._initial_workspace_file_sizes = initial_workspace_file_sizes
         self._workspace_root = workspace_root
@@ -1124,25 +1138,44 @@ class _PlanningIterationRunner:
                 summary=str(exc),
                 cost_usd=Decimal("0"),
             )
-        prompt = build_multi_turn_planner_input(
-            self._task,
-            planning_turn=planning_turn,
-            max_planning_turns=self._policy.max_planning_turns,
-            remaining_budget_usd=remaining_budget,
-            remaining_wall_clock_minutes=remaining_wall_clock,
-            carried_observations_envelope=carried_envelope,
-            current_read_evidence_envelope=current_envelope,
-            mcp_evidence_envelope=self._mcp_evidence_envelope,
-            initial_workspace_context=self._initial_workspace_context if planning_turn == 1 else "",
-            initial_workspace_file_sizes=(
-                self._initial_workspace_file_sizes if planning_turn == 1 else {}
-            ),
-            evidence_limits=(
-                PLANNING_OBSERVATION_MAX_BYTES,
-                PLANNING_NEW_READ_MAX_BYTES,
-                DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES,
-            ),
-        )
+        mcp_evidence_envelope = self._mcp_evidence_envelope
+
+        def build(conversation_envelope: str) -> str:
+            return build_multi_turn_planner_input(
+                self._task,
+                planning_turn=planning_turn,
+                max_planning_turns=self._policy.max_planning_turns,
+                remaining_budget_usd=remaining_budget,
+                remaining_wall_clock_minutes=remaining_wall_clock,
+                carried_observations_envelope=carried_envelope,
+                current_read_evidence_envelope=current_envelope,
+                mcp_evidence_envelope=mcp_evidence_envelope,
+                initial_workspace_context=self._initial_workspace_context if planning_turn == 1 else "",
+                initial_workspace_file_sizes=(
+                    self._initial_workspace_file_sizes if planning_turn == 1 else {}
+                ),
+                evidence_limits=(
+                    PLANNING_OBSERVATION_MAX_BYTES,
+                    PLANNING_NEW_READ_MAX_BYTES,
+                    DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES,
+                ),
+                conversation_envelope=conversation_envelope,
+            )
+
+        if self._context_packer is None:
+            prompt = build(self._conversation_envelope)
+        else:
+            # An attached turn: files and evidence grow every round, so each complete request is
+            # fitted to the route's usable input, repacking the history view when needed (Plan 12.2
+            # Task 9). Nothing that does not fit is sent.
+            fitted = self._context_packer.fit(build)
+            if fitted is None:
+                return self._typed_planning_failure(
+                    stop_reason="CONTEXT_CAPACITY_EXCEEDED",
+                    summary="the planning request does not fit the model's usable input",
+                    cost_usd=Decimal("0"),
+                )
+            prompt = fitted
         # MCP evidence is one-shot for the turn that just received it.
         self._mcp_evidence_envelope = ""
         try:

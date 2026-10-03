@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from optimus.agent.directives import AgentDirectiveParseError, parse_agent_plan
-from optimus.agent.models import AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
+from optimus.agent.models import AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall, ContextPacker
 from optimus.agent.operation_control import TurnOperationControl
 from optimus.agent.prompts import build_agent_planner_input
 from optimus.agent.state_store import (
@@ -60,7 +60,17 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
     "CHAT_COMPLETION_CONDITION_UNSUPPORTED": (
         "Chat answers a single question and cannot run toward a completion condition. Use Agent mode for goal loops."
     ),
+    "CHAT_CONTEXT_CAPACITY_EXCEEDED": (
+        "Chat could not answer: the request would not fit the model's input capacity, even with a smaller view "
+        "of the conversation. It was not sent."
+    ),
 }
+
+
+def _selection_text(request: AgentRunRequest) -> str:
+    """What selects workspace files and skills (Plan 12.2 Task 9): an attached turn's exact selection
+    text, never its summarized history; otherwise the task, as before."""
+    return request.selection_text if request.selection_text is not None else request.task
 
 
 class _AgentLoopIterationRunner:
@@ -240,6 +250,7 @@ class AgentRunner:
         mcp_permission_broker: object | None = None,
         halt_requested: Callable[[], bool] | None = None,
         operation_control: TurnOperationControl | None = None,
+        context_packer: ContextPacker | None = None,
     ) -> AgentRunResult:
         observer = (
             planning_progress_observer
@@ -263,6 +274,7 @@ class AgentRunner:
                     mcp_permission_broker=mcp_permission_broker,
                     halt_requested=halt_requested,
                     operation_control=operation_control,
+                    context_packer=context_packer,
                 )
             self._emit_agent_run(
                 request,
@@ -291,7 +303,7 @@ class AgentRunner:
         matches = registry.match(
             run_id=request.run_id,
             session_id=request.session_id,
-            task_text=request.task,
+            task_text=_selection_text(request),
             changed_paths=(),
             execution_mode=request.execution_mode,
         )
@@ -351,6 +363,7 @@ class AgentRunner:
         mcp_permission_broker: object | None = None,
         halt_requested: Callable[[], bool] | None = None,
         operation_control: TurnOperationControl | None = None,
+        context_packer: ContextPacker | None = None,
     ) -> AgentRunResult:
         context = RuntimeContext(execution_mode=request.execution_mode)
         toolbox = AgentToolbox.for_workspace(
@@ -380,10 +393,11 @@ class AgentRunner:
                 context=context,
                 halt_requested=halt_requested,
                 operation_control=operation_control,
+                context_packer=context_packer,
             )
         workspace_context = assemble_workspace_context_for_prompt(
             request.workspace_root,
-            task=request.task,
+            task=_selection_text(request),
         )
         if self._workspace_context_observer is not None:
             self._workspace_context_observer(request, workspace_context)
@@ -403,6 +417,7 @@ class AgentRunner:
                     mcp_permission_broker=mcp_permission_broker,
                     halt_requested=halt_requested,
                     operation_control=operation_control,
+                    context_packer=context_packer,
                 )
             return self._build_result(
                 request=request,
@@ -428,6 +443,7 @@ class AgentRunner:
                 mcp_permission_broker=mcp_permission_broker,
                 halt_requested=halt_requested,
                 operation_control=operation_control,
+                context_packer=context_packer,
             )
         planner_input = build_agent_planner_input(request.task, workspace_context=workspace_context.text)
         response = self._gateway_client.create_response(
@@ -493,6 +509,7 @@ class AgentRunner:
         mcp_permission_broker: object | None = None,
         halt_requested: Callable[[], bool] | None = None,
         operation_control: TurnOperationControl | None = None,
+        context_packer: ContextPacker | None = None,
     ) -> AgentRunResult:
         from optimus.agent.planning_loop import PlanningLoopPolicy, PlanningLoopRunner
 
@@ -527,6 +544,7 @@ class AgentRunner:
             mcp_permission_broker=mcp_permission_broker,
             halt_requested=halt_requested,
             operation_control=operation_control,
+            context_packer=context_packer,
         )
         planning_result = planner.run(
             run_id=request.run_id,
@@ -534,6 +552,7 @@ class AgentRunner:
             task=request.task,
             initial_workspace_context=initial_workspace_context,
             initial_workspace_file_sizes=initial_workspace_file_sizes,
+            conversation_envelope=request.conversation_envelope,
         )
         if planning_result.stop_reason is not None:
             status = (
@@ -672,6 +691,7 @@ class AgentRunner:
                     cost_usd=total_cost_usd,
                     created_at_ms=created_at_ms,
                     expires_at_ms=created_at_ms + 3_600_000,
+                    context_digest=request.context_digest,
                 )
                 op_id = f"persist:{plan_hash}"
                 if operation_control is not None:
@@ -1151,6 +1171,7 @@ class AgentRunner:
         context: RuntimeContext,
         halt_requested: Callable[[], bool] | None = None,
         operation_control: TurnOperationControl | None = None,
+        context_packer: ContextPacker | None = None,
     ) -> AgentRunResult:
         """Plan 12.1 Chat: one Gateway call, a prose answer, no directive execution.
 
@@ -1163,9 +1184,13 @@ class AgentRunner:
         planning call does: it is not started once the turn is halted, and its
         terminal state feeds the turn settlement's cost completeness.
         """
-        selection_text = (
-            f"{request.conversation_envelope}\n{request.task}" if request.conversation_envelope else request.task
-        )
+        if request.selection_text is not None:
+            # Plan 12.2 Task 9: an attached turn selects from its exact text, never from a summary.
+            selection_text = request.selection_text
+        else:
+            selection_text = (
+                f"{request.conversation_envelope}\n{request.task}" if request.conversation_envelope else request.task
+            )
         workspace_context = assemble_workspace_context_for_prompt(request.workspace_root, task=selection_text)
         if self._workspace_context_observer is not None:
             self._workspace_context_observer(request, workspace_context)
@@ -1175,12 +1200,22 @@ class AgentRunner:
                 stop_reason=workspace_context.blocking_stop_reason,
                 output_text=workspace_context.blocking_message or "Workspace context could not be assembled.",
             )
-        chat_input = build_agent_planner_input(
-            request.task,
-            workspace_context=workspace_context.text,
-            conversation_envelope=request.conversation_envelope,
-            advisory=True,
-        )
+
+        def build(conversation_envelope: str) -> str:
+            return build_agent_planner_input(
+                request.task,
+                workspace_context=workspace_context.text,
+                conversation_envelope=conversation_envelope,
+                advisory=True,
+            )
+
+        if context_packer is None:
+            chat_input = build(request.conversation_envelope)
+        else:
+            fitted = context_packer.fit(build)
+            if fitted is None:
+                return self._chat_failure(request, stop_reason="CHAT_CONTEXT_CAPACITY_EXCEEDED")
+            chat_input = fitted
         if halt_requested is not None and halt_requested():
             return self._chat_failure(request, stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
         from optimus.acp.lifecycle import DirectiveKind
@@ -1321,6 +1356,8 @@ def _epoch_ms() -> int:
 def _record_matches_request(record: AgentPlanRecord, request: AgentRunRequest) -> bool:
     return (
         record.task == request.task
+        # Plan 12.2 Task 9: the admitted context the plan was made on (None for engine-absent turns).
+        and record.context_digest == request.context_digest
         and record.execution_mode is request.execution_mode
         and Path(record.workspace_root).resolve() == request.workspace_root
     )

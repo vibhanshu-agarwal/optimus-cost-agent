@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -202,12 +203,33 @@ def rendered_byte_length(records: Mapping[int, ConversationTurn]) -> int:
     return len(render_conversation_envelope(records).encode("utf-8"))
 
 
-def crosses_warning_threshold(used_bytes: int) -> bool:
-    return used_bytes * 5 >= CONVERSATION_MAX_BYTES * 4
+def provisional_turn(sanitized_user_prompt: str) -> ConversationTurn:
+    """The record an admitted prompt is measured as before it has a plan or reply. Admission and the
+    attached engine's pure floor probe (Plan 12.2 Task 9) measure the same record."""
+    return ConversationTurn(
+        user_prompt=sanitized_user_prompt,
+        plan_text="",
+        completion_text="",
+        outcome=ConversationOutcome.COMPLETED,
+        effect_state=EffectState.NONE,
+    )
+
+
+def crosses_warning_threshold(used_bytes: int, source_max_bytes: int = CONVERSATION_MAX_BYTES) -> bool:
+    return used_bytes * 5 >= source_max_bytes * 4
 
 
 class ConversationState:
-    """Session-owned transient conversation map, budget, cost, and disposition."""
+    """Session-owned transient conversation map, budget, cost, and disposition.
+
+    The engine-absent storage class: `CONVERSATION_MAX_BYTES` and no reservation. An attached Context
+    Engine session uses `AttachedConversationState`, which sets its own class.
+    """
+
+    # The storage class (Plan 12.2 Task 9). Class-level, so the Plan 11.26 H4-pinned `__init__`,
+    # `prepare_commit` and `commit_after_final_flush` stay byte-identical for engine-absent sessions.
+    _source_max_bytes: int = CONVERSATION_MAX_BYTES
+    _record_reservation_bytes: int = 0
 
     def __init__(self, sanitizer: ConversationSanitizer) -> None:
         self._sanitizer = sanitizer
@@ -233,6 +255,20 @@ class ConversationState:
         return rendered_byte_length(self._records)
 
     @property
+    def source_max_bytes(self) -> int:
+        return self._source_max_bytes
+
+    @property
+    def generation(self) -> int:
+        """A history revision's committed generation: one record is committed per turn, never
+        replaced or removed, so the record count advances with every commit."""
+        return len(self._records)
+
+    @property
+    def sanitizer(self) -> ConversationSanitizer:
+        return self._sanitizer
+
+    @property
     def warning_confirmed(self) -> bool:
         return self._warning_confirmed
 
@@ -255,15 +291,9 @@ class ConversationState:
             )
         turn_seq = self._next_turn_seq
         provisional = dict(self._records)
-        provisional[turn_seq] = ConversationTurn(
-            user_prompt=sanitized,
-            plan_text="",
-            completion_text="",
-            outcome=ConversationOutcome.COMPLETED,
-            effect_state=EffectState.NONE,
-        )
+        provisional[turn_seq] = provisional_turn(sanitized)
         projected = rendered_byte_length(provisional)
-        if projected > CONVERSATION_MAX_BYTES:
+        if projected > self._source_max_bytes:
             self._disposition = ConversationDisposition.CAP_CLOSED
             return AdmissionDecision(
                 admitted=False,
@@ -273,12 +303,22 @@ class ConversationState:
                 refuse_reason="cap",
                 crosses_warning=False,
             )
+        if projected + self._record_reservation_bytes > self._source_max_bytes:
+            # Not exhaustion: a shorter prompt may still leave room for its reply. Nothing latches.
+            return AdmissionDecision(
+                admitted=False,
+                sanitized_user_prompt=sanitized,
+                projected_bytes=projected,
+                turn_seq=None,
+                refuse_reason="reservation",
+                crosses_warning=False,
+            )
         return AdmissionDecision(
             admitted=True,
             sanitized_user_prompt=sanitized,
             projected_bytes=projected,
             turn_seq=turn_seq,
-            crosses_warning=crosses_warning_threshold(projected) and not self._warning_confirmed,
+            crosses_warning=crosses_warning_threshold(projected, self._source_max_bytes) and not self._warning_confirmed,
         )
 
     def allocate_turn_seq(self) -> int:
@@ -350,7 +390,7 @@ class ConversationState:
         """Return True once when a first warning attempt should be scheduled."""
         if self._warning_confirmed or self._warning_crossed:
             return False
-        if not crosses_warning_threshold(projected_bytes):
+        if not crosses_warning_threshold(projected_bytes, self._source_max_bytes):
             return False
         self._warning_crossed = True
         return True
@@ -367,9 +407,51 @@ class ConversationState:
 
     def usage_gauge(self) -> UsageGauge:
         used = self.used_bytes // 4
-        size = CONVERSATION_MAX_BYTES // 4
+        size = self._source_max_bytes // 4
         cost = self._session_cost if self._cost_complete else None
         return UsageGauge(used=used, size=size, cost=cost)
 
     def planner_envelope(self) -> str:
         return render_model_conversation(self._records)
+
+
+class AttachedConversationState(ConversationState):
+    """An attached Context Engine session's storage class (Plan 12.2 Task 9; design spec 4.2).
+
+    Its own measured source limit and a per-turn record reservation, fixed at creation and kept
+    through any engine fault. Exceeding the source limit is genuine exhaustion and closes the thread
+    as before; a prompt that leaves too little room for its reply's reservation is refused
+    recoverably, and the thread stays OPEN.
+    """
+
+    def __init__(self, sanitizer: ConversationSanitizer, *, source_max_bytes: int, record_reservation_bytes: int) -> None:
+        if source_max_bytes <= 0 or not 0 <= record_reservation_bytes < source_max_bytes:
+            raise ValueError("a conversation needs a positive source limit and a reservation below it")
+        super().__init__(sanitizer)
+        self._source_max_bytes = source_max_bytes
+        self._record_reservation_bytes = record_reservation_bytes
+
+    def prepare_commit(
+        self,
+        turn_seq: int,
+        *,
+        sanitized_user_prompt: str,
+        sanitized_plan_text: str,
+        sanitized_completion_text: str,
+        outcome: ConversationOutcome,
+        effect_state: EffectState,
+    ) -> CommitDecision:
+        decision = super().prepare_commit(
+            turn_seq,
+            sanitized_user_prompt=sanitized_user_prompt,
+            sanitized_plan_text=sanitized_plan_text,
+            sanitized_completion_text=sanitized_completion_text,
+            outcome=outcome,
+            effect_state=effect_state,
+        )
+        projected = decision.projected_bytes
+        return dataclasses.replace(
+            decision,
+            closes_cap=projected > self._source_max_bytes,
+            crosses_warning=crosses_warning_threshold(projected, self._source_max_bytes) and not self._warning_confirmed,
+        )

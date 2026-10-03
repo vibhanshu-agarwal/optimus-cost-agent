@@ -31,8 +31,10 @@ IDENTITY = MaintenanceIdentity(
     session_id="sess-m",
     turn_seq=9,
     model_id="qwen/qwen3.7-flash",
+    role="summarizer",
     route=("alibaba",),
     reasoning=None,
+    quantizations=("fp8",),
     strategy="compaction",
     revision_digest="d" * 64,
 )
@@ -235,3 +237,101 @@ def test_the_engine_and_host_summarize_without_ever_sending_authority() -> None:
     [(prompt, _)] = call.prompts
     assert "plan-hash-2" not in prompt and denied.render() not in prompt
     assert [r.covered_turn_ids for r in receipts] == [(1, 2, 3)]
+
+
+# --- The Gateway summarizer call (Plan 12.2 Task 9) ------------------------------------------------
+
+
+class _Client:
+    """A Gateway client double: returns `response` or raises `error`, recording each call."""
+
+    def __init__(self, *, response=None, error: Exception | None = None) -> None:
+        self.response, self.error = response, error
+        self.calls: list[dict[str, object]] = []
+
+    def create_response(self, *, model, input_text, metadata=None, route_binding=None):
+        self.calls.append({"model": model, "input_text": input_text, "metadata": metadata, "route_binding": route_binding})
+        if self.error is not None:
+            raise self.error
+        return self.response
+
+
+def _gateway_call(client: _Client, *, registry_hash: str | None = "f" * 64):
+    from optimus.context.maintenance import GatewaySummarizerCall
+
+    return GatewaySummarizerCall(
+        gateway_client=client, model_id="qwen/qwen3.7-flash", registry_hash=registry_hash, session_id="sess-m", request_ids=lambda: "req-1"
+    )
+
+
+def _usage(cost: str = "0.0003"):
+    from optimus.gateway.models import GatewayUsage
+
+    return GatewayUsage(gateway_request_id="gw-1", provider="alibaba", billing_units=10, cost_usd=Decimal(cost), provider_request_id="pr-1")
+
+
+def _route(*outcomes: str):
+    from optimus.gateway.models import GatewayRouteAttempt
+
+    return tuple(GatewayRouteAttempt(attempt=n, gateway_request_id=f"gw-{n}", outcome=outcome) for n, outcome in enumerate(outcomes, start=1))
+
+
+def test_the_gateway_call_binds_the_route_and_reports_the_completed_attempt() -> None:
+    from optimus.gateway.models import GatewayResponse
+
+    client = _Client(response=GatewayResponse(output_text=valid_summary(), gateway_usage=_usage(), raw={}, finish_reason="stop"))
+
+    response = _gateway_call(client)(prompt="P", max_output_tokens=300)
+
+    binding = client.calls[0]["route_binding"]
+    assert (binding.registry_hash, binding.request_id, binding.output_cap) == ("f" * 64, "req-1", 300)
+    assert client.calls[0]["metadata"]["purpose"] == "context_summary"
+    assert response.finish_status == "stop" and response.text == valid_summary()
+    [attempt] = response.attempts
+    assert (attempt.outcome, attempt.cost_usd, attempt.gateway_request_id) == ("completed", Decimal("0.0003"), "gw-1")
+
+
+def test_no_binding_is_sent_where_no_registry_is_enforced() -> None:
+    from optimus.gateway.models import GatewayResponse
+
+    client = _Client(response=GatewayResponse(output_text=valid_summary(), gateway_usage=_usage(), raw={}, finish_reason="stop"))
+    _gateway_call(client, registry_hash=None)(prompt="P", max_output_tokens=300)
+    assert client.calls[0]["route_binding"] is None
+
+
+def test_settled_usage_goes_to_the_final_completed_attempt_only() -> None:
+    from optimus.gateway.models import GatewayResponse
+
+    response = GatewayResponse(output_text="x", gateway_usage=_usage(), raw={}, finish_reason="stop", route_attempts=_route("rejected", "uncertain", "completed"))
+
+    attempts = _gateway_call(_Client(response=response))(prompt="P", max_output_tokens=300).attempts
+
+    assert [(a.outcome, a.cost_usd) for a in attempts] == [("rejected", Decimal("0")), ("uncertain", None), ("completed", Decimal("0.0003"))]
+    assert [a.attempt_id for a in attempts] == ["req-1:1", "req-1:2", "req-1:3"]
+
+
+@pytest.mark.parametrize("error", [TimeoutError("read timed out"), ConnectionResetError("reset"), ValueError("bad json")])
+def test_a_failure_after_dispatch_is_an_uncertain_receipt_never_an_exception(error) -> None:
+    receipts: list[MaintenanceReceipt] = []
+    callback = HostMaintenance(
+        call=_gateway_call(_Client(error=error)), sanitizer=SANITIZER, identity=IDENTITY, record_receipt=receipts.append, cancelled=lambda: False
+    )
+
+    result = callback(_request())
+
+    assert result.status == "failed" and result.summary_text is None
+    [receipt] = receipts
+    assert (receipt.outcome, receipt.cost_usd, receipt.attempt_id) == ("uncertain", None, "req-1:1")
+
+
+def test_a_gateway_error_keeps_its_attempts_and_known_cost() -> None:
+    from optimus.gateway.errors import GatewayHttpError
+
+    with_route = GatewayHttpError(502, "upstream", gateway_usage=None, route_attempts=_route("not_sent", "uncertain"))
+    assert [(a.outcome, a.cost_usd) for a in _gateway_call(_Client(error=with_route))(prompt="P", max_output_tokens=9).attempts] == [
+        ("not_sent", Decimal("0")),
+        ("uncertain", None),
+    ]
+    billed = GatewayHttpError(422, "finish status", gateway_usage=_usage("0.0002"))
+    [attempt] = _gateway_call(_Client(error=billed))(prompt="P", max_output_tokens=9).attempts
+    assert (attempt.outcome, attempt.cost_usd, attempt.http_status) == ("completed", Decimal("0.0002"), 422)
