@@ -14,7 +14,7 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
 
@@ -33,15 +33,6 @@ def _defined_functions(relative: str) -> set[str]:
     return {node.name for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
 
 
-def _module_constant(relative: str, name: str) -> str | None:
-    """The string a module assigns to `name` at top level, or None."""
-    for node in ast.parse((_ROOT / relative).read_text(encoding="utf-8")).body:
-        if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == name for target in node.targets) \
-                and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
-            return node.value.value
-    return None
-
-
 # --- literal_program: the command is `python -c <program> [data...]`, and the program cannot reach the resolver.
 #
 # The command list is read in order: the interpreter, then options that select no code, then the
@@ -55,7 +46,12 @@ def _module_constant(relative: str, name: str) -> str | None:
 # alias, `from` import, assignment or attribute is rejected, however harmless it looks. The one
 # program outside that grammar, the synthetic writer, is registered by exact text hash with the
 # binding of its argv: its launcher takes `(path, mode)`, passes `str(path), mode`, and every caller
-# hands it a path rooted in its own `tmp_path`.
+# hands it a path rooted in its own `tmp_path`. A program named by a module constant is the value of
+# exactly one plain top-level assignment of a string constant, and nothing else in the module binds
+# that name in any form (Codex correction-2 review, 2026-10-04: `_WRITER += ...` and `_WRITER: str =
+# ...` after the reviewed assignment kept its hash while changing what the launch uses). "Rooted in
+# tmp_path" means joined with plain child names only: under Windows semantics `root / "D:x"` is on
+# drive D, so each name is proven to keep the root's anchor under both path flavours.
 
 _INTERPRETERS = {"sys.executable", "sys._base_executable"}
 _CODELESS_FLAGS = {"-B", "-u", "-E", "-s", "-S", "-I", "-q", "-O", "-OO"}
@@ -128,30 +124,78 @@ def check_program_text(program: str) -> None:
         raise AssertionError(f"statement outside the reviewed shapes: {ast.unparse(statement)}")
 
 
-def _module_assignments(relative: str, name: str) -> list[ast.Assign]:
-    return [node for node in ast.parse((_ROOT / relative).read_text(encoding="utf-8")).body
-            if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)]
+def _node_binds(node: ast.AST, name: str) -> bool:
+    """Whether this one node binds `name` lexically: assignment of any kind (plain, annotated, augmented,
+    for/with targets, walrus, `del`), import, def/class, `except ... as`, match captures, `type` alias,
+    or a global/nonlocal declaration. A target that merely mentions the name counts (fails closed)."""
+    if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.For, ast.AsyncFor, ast.NamedExpr, ast.Delete)):
+        targets = node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target]
+        return any(isinstance(leaf, ast.Name) and leaf.id == name for target in targets for leaf in ast.walk(target))
+    if isinstance(node, (ast.With, ast.AsyncWith)):
+        return any(item.optional_vars is not None and any(isinstance(leaf, ast.Name) and leaf.id == name for leaf in ast.walk(item.optional_vars))
+                   for item in node.items)
+    if isinstance(node, (ast.Import, ast.ImportFrom)):
+        return any((alias.asname or alias.name).split(".")[0] == name for alias in node.names)
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return node.name == name
+    if isinstance(node, (ast.Global, ast.Nonlocal)):
+        return name in node.names
+    if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)):
+        return node.name == name
+    if isinstance(node, ast.MatchMapping):
+        return node.rest == name
+    if isinstance(node, ast.TypeAlias):
+        return isinstance(node.name, ast.Name) and node.name.id == name
+    return False
 
 
 def binds(statement: ast.stmt, name: str) -> bool:
-    """Whether a statement (re)binds `name`: assignment of any kind, for/with targets, walrus, import, def."""
-    for node in ast.walk(statement):
-        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.For, ast.AsyncFor, ast.NamedExpr)):
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            if any(isinstance(leaf, ast.Name) and leaf.id == name for target in targets for leaf in ast.walk(target)):
-                return True
-        if isinstance(node, (ast.With, ast.AsyncWith)) and any(
-            item.optional_vars is not None and any(isinstance(leaf, ast.Name) and leaf.id == name for leaf in ast.walk(item.optional_vars))
-            for item in node.items
-        ):
-            return True
-        if isinstance(node, (ast.Import, ast.ImportFrom)) and any((alias.asname or alias.name).split(".")[0] == name for alias in node.names):
-            return True
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == name:
-            return True
-        if isinstance(node, (ast.Global, ast.Nonlocal)) and name in node.names:
-            return True
-    return False
+    """Whether a statement (re)binds `name` anywhere inside it, nested scopes included (fails closed)."""
+    return any(_node_binds(node, name) for node in ast.walk(statement))
+
+
+def _scope_nodes(statement: ast.stmt):
+    """The nodes of a statement that run in the enclosing scope. A nested def, lambda or class body is a scope of
+    its own and is not entered; the def/class node itself is yielded (it binds its name), as are its decorators,
+    defaults, annotations and bases, which evaluate in the enclosing scope."""
+    stack: list[ast.AST] = [statement]
+    while stack:
+        node = stack.pop()
+        yield node
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            stack.extend(node.decorator_list + node.args.defaults + [d for d in node.args.kw_defaults if d is not None])
+            stack.extend(a.annotation for a in ast.walk(node.args) if isinstance(a, ast.arg) and a.annotation is not None)
+            if node.returns is not None:
+                stack.append(node.returns)
+        elif isinstance(node, ast.Lambda):
+            stack.extend(node.args.defaults + [d for d in node.args.kw_defaults if d is not None])
+        elif isinstance(node, ast.ClassDef):
+            stack.extend(node.decorator_list + node.bases + [keyword.value for keyword in node.keywords])
+        else:
+            stack.extend(ast.iter_child_nodes(node))
+
+
+def module_binds(statement: ast.stmt, name: str) -> bool:
+    """Whether a module-level statement binds `name` in the module's namespace: any binding form in the module's own
+    scope (conditional blocks included), or a `global` declaration in a nested function, which lets it rebind the name."""
+    return any(_node_binds(node, name) for node in _scope_nodes(statement)) or any(
+        isinstance(node, ast.Global) and name in node.names for node in ast.walk(statement)
+    )
+
+
+def module_constant(relative: str, name: str) -> str:
+    """The string a module binds to `name` by exactly one plain top-level assignment of a string constant, with no
+    other module-scope binding of that name in any form; otherwise an AssertionError naming what else binds it."""
+    module = ast.parse((_ROOT / relative).read_text(encoding="utf-8"))
+    bindings = [statement for statement in module.body if module_binds(statement, name)]
+    assert len(bindings) == 1, f"{name} is bound {len(bindings)} times at module scope in {relative}: " + "; ".join(
+        f"line {statement.lineno}: {ast.unparse(statement)[:60]}" for statement in bindings
+    )
+    statement = bindings[0]
+    assert isinstance(statement, ast.Assign) and len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name) \
+        and isinstance(statement.value, ast.Constant) and isinstance(statement.value.value, str), \
+        f"{name} is not bound by one plain top-level assignment of a string constant in {relative}: line {statement.lineno}: {ast.unparse(statement)[:60]}"
+    return statement.value.value
 
 
 def function_binds(function: ast.FunctionDef | ast.AsyncFunctionDef, name: str) -> bool:
@@ -167,16 +211,33 @@ def _enclosing_function(relative: str, function: str) -> ast.FunctionDef | ast.A
     return None
 
 
+_PLAIN_COMPONENT = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?$")
+_WINDOWS_DEVICES = {"CON", "PRN", "AUX", "NUL", *(f"COM{n}" for n in range(1, 10)), *(f"LPT{n}" for n in range(1, 10))}
+
+
+def plain_component(text: str) -> bool:
+    """A plain child name: ASCII letters, digits, `_`, `.` and `-`, neither starting nor ending with `.`; so no
+    separator, drive (`D:x`), root, UNC, traversal or reserved-device syntax. Proven, not just filtered: joined to a
+    synthetic root under both Windows and POSIX semantics it keeps the root's anchor and is that root's direct child."""
+    if not _PLAIN_COMPONENT.match(text) or text.split(".")[0].upper() in _WINDOWS_DEVICES:
+        return False
+    for pure, root in ((PureWindowsPath, "C:/synthetic/root"), (PurePosixPath, "/synthetic/root")):
+        base = pure(root)
+        joined = base / text
+        if joined.anchor != base.anchor or joined.parent != base or joined.name != text or joined.parts != (*base.parts, text):
+            return False
+    return True
+
+
 def rooted_in_tmp_path(function: ast.FunctionDef | ast.AsyncFunctionDef, name: str, depth: int = 0) -> bool:
-    """`name` is bound exactly once in the function, to `tmp_path / <literal> [/ <literal>...]` or to another such name."""
+    """`name` is bound exactly once in the function, to `tmp_path / <plain name> [/ <plain name>...]` or to another such name."""
     assert depth < 4, f"{name}: binding chain too deep"
     assignments = [statement for statement in ast.walk(function) if isinstance(statement, ast.Assign) and binds(statement, name)]
     if len(assignments) != 1 or any(binds(statement, name) for statement in function.body if not isinstance(statement, ast.Assign)):
         return False
     value = assignments[0].value
     while isinstance(value, ast.BinOp) and isinstance(value.op, ast.Div):
-        if not (isinstance(value.right, ast.Constant) and isinstance(value.right.value, str) and value.right.value and "/" not in value.right.value
-                and "\\" not in value.right.value and value.right.value not in {".", ".."}):
+        if not (isinstance(value.right, ast.Constant) and isinstance(value.right.value, str) and plain_component(value.right.value)):
             return False
         value = value.left
     if isinstance(value, ast.Name) and value.id == "tmp_path":
@@ -243,10 +304,7 @@ def inline_program(command: str, relative: str, *, key: str | None = None, funct
         program = program_node.value
         check_program_text(program)
     elif isinstance(program_node, ast.Name):
-        assignments = _module_assignments(relative, program_node.id)
-        assert len(assignments) == 1 and isinstance(assignments[0].value, ast.Constant) and isinstance(assignments[0].value.value, str), \
-            f"{program_node.id} is not bound exactly once, to a string constant, at the top of {relative}"
-        program = assignments[0].value.value
+        program = module_constant(relative, program_node.id)
         enclosing = _enclosing_function(relative, function) if function else None
         assert function is None or enclosing is not None, f"no function {function} in {relative}"
         assert enclosing is None or not function_binds(enclosing, program_node.id), \
@@ -335,14 +393,50 @@ def test_every_default_launch_site_is_mapped_to_a_proof() -> None:
         ("program-sleep-and-exit", "[sys.executable, '-c', 'import sys, time; time.sleep(0.3); sys.exit(3)']", True),
         ("program-module-constant-rebound-in-function", "[sys.executable, '-c', _PROGRAM]", "rebinding"),
         ("program-module-constant-twice", "[sys.executable, '-c', _TWICE]", False),
+        ("program-module-constant-augmented", "[sys.executable, '-c', _AUG]", False),
+        ("program-module-constant-annotated", "[sys.executable, '-c', _ANN]", False),
+        ("program-module-constant-conditional", "[sys.executable, '-c', _COND]", False),
+        ("program-module-constant-global-in-function", "[sys.executable, '-c', _GLOBAL]", False),
+        ("program-module-constant-import-as", "[sys.executable, '-c', _IMPORTED]", False),
+        ("program-module-constant-def", "[sys.executable, '-c', _DEF]", False),
+        ("program-module-constant-for-target", "[sys.executable, '-c', _FOR]", False),
+        ("program-module-constant-with-target", "[sys.executable, '-c', _WITH]", False),
+        ("program-module-constant-walrus", "[sys.executable, '-c', _WALRUS]", False),
+        ("program-module-constant-del", "[sys.executable, '-c', _DEL]", False),
+        ("program-module-constant-multi-target", "[sys.executable, '-c', _MULTI]", False),
+        ("program-module-constant-except-as", "[sys.executable, '-c', _EXCEPT]", False),
+        ("program-module-constant-match-capture", "[sys.executable, '-c', _MATCH]", False),
+        ("program-module-constant-type-alias", "[sys.executable, '-c', _TYPE]", False),
+        ("program-module-constant-decorator-walrus", "[sys.executable, '-c', _DECO]", False),
+        ("program-module-constant-not-a-string", "[sys.executable, '-c', _NUMBER]", False),
+        ("program-module-constant-undefined", "[sys.executable, '-c', _UNDEFINED]", False),
+        ("program-module-constant-nested-local-only", "[sys.executable, '-c', _LOCAL]", True),
     ],
 )
 def test_the_literal_program_check_reads_the_command_in_order(tmp_path: Path, monkeypatch, name: str, command: str, accepted) -> None:
-    """Sensitivity of the literal check: data after the program is fine; anything that selects code is not."""
+    """Sensitivity of the literal check: data after the program is fine; anything that selects code is not; a module
+    constant is one plain top-level string assignment and nothing else in the module binds the name in any form."""
     module = tmp_path / "site_module.py"
     module.write_text(
         '_PROGRAM = "import os; os._exit(3)"\n_TWICE = "pass"\n_TWICE = "pass"\n\n'
-        "def rebinding():\n    _PROGRAM = 'import os; os.system(1)'\n    return _PROGRAM\n",
+        "def rebinding():\n    _PROGRAM = 'import os; os.system(1)'\n    return _PROGRAM\n\n"
+        '_AUG = "pass"\n_AUG += "; import optimus"\n'
+        '_ANN: str = "pass"\n'
+        'if True:\n    _COND = "pass"\n'
+        '_GLOBAL = "pass"\n\ndef changes_global():\n    global _GLOBAL\n    _GLOBAL = "import optimus"\n\n'
+        '_IMPORTED = "pass"\nimport os as _IMPORTED\n'
+        '_DEF = "pass"\n\ndef _DEF():\n    pass\n\n'
+        '_FOR = "pass"\nfor _FOR in ["import optimus"]:\n    pass\n'
+        '_WITH = "pass"\nwith open(__file__) as _WITH:\n    pass\n'
+        '_WALRUS = "pass"\n(_WALRUS := "import optimus")\n'
+        '_DEL = "pass"\ndel _DEL\n'
+        '_MULTI = _OTHER = "pass"\n'
+        '_EXCEPT = "pass"\ntry:\n    pass\nexcept Exception as _EXCEPT:\n    pass\n'
+        '_MATCH = "pass"\nmatch 1:\n    case _MATCH:\n        pass\n'
+        '_TYPE = "pass"\ntype _TYPE = str\n'
+        '_DECO = "pass"\n\n@(_DECO := staticmethod)\ndef decorated():\n    pass\n\n'
+        "_NUMBER = 3\n"
+        '_LOCAL = "pass"\n\ndef local_only():\n    _LOCAL = "import optimus"\n    return _LOCAL\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(sys.modules[__name__], "_ROOT", tmp_path)
@@ -385,10 +479,54 @@ def _writer_module(mutation: str = "") -> str:
         return source.replace("def _spawn_and_kill(path: Path, mode: str) -> None:", "def _spawn_and_kill(path: Path, mode: str, extra=None) -> None:", 1)
     if mutation == "launcher-rebinds-path":
         return source.replace("    env = os.environ.copy()\n", "    env = os.environ.copy()\n    path = Path('C:/elsewhere')\n", 1)
+    if mutation in _WRITER_MODULE_REBINDINGS:  # the reviewed assignment keeps its hash; something else binds the name
+        return source + "\n" + _WRITER_MODULE_REBINDINGS[mutation]
+    if mutation == "module-multi-target":
+        return source.replace('_WRITER = r"""', '_WRITER = _ALSO = r"""', 1)
+    if mutation.startswith("caller-component-"):
+        assert '    capture = tmp_path / "cap"\n' in source
+        return source.replace('    capture = tmp_path / "cap"\n', f'    capture = tmp_path / {_WRITER_CALLER_COMPONENTS[mutation]!r}\n', 1)
     return source
 
 
-@pytest.mark.parametrize("mutation", ["", "text", "argv", "caller-path", "caller-rooted-outside", "launcher-signature", "launcher-rebinds-path"])
+_WRITER_MODULE_REBINDINGS = {
+    "module-augmented": '_WRITER += "\\nimport optimus\\n"\n',
+    "module-annotated": '_WRITER: str = "import optimus"\n',
+    "module-reassigned": '_WRITER = "import optimus"\n',
+    "module-conditional": 'if sys.platform:\n    _WRITER = "import optimus"\n',
+    "module-global-in-function": 'def _retarget():\n    global _WRITER\n    _WRITER = "import optimus"\n',
+    "module-import-as": "import optimus as _WRITER\n",
+    "module-def": "def _WRITER():\n    pass\n",
+    "module-for-target": 'for _WRITER in ["import optimus"]:\n    pass\n',
+    "module-with-target": "with open(__file__) as _WRITER:\n    pass\n",
+    "module-walrus": '(_WRITER := "import optimus")\n',
+    "module-del": "del _WRITER\n",
+    "module-except-as": "try:\n    pass\nexcept Exception as _WRITER:\n    pass\n",
+    "module-match-capture": "match 1:\n    case _WRITER:\n        pass\n",
+    "module-comprehension-walrus": '[(_WRITER := "import optimus") for _ in range(1)]\n',
+}
+_WRITER_CALLER_COMPONENTS = {
+    "caller-component-drive-relative": "D:review-root",  # Codex's control: PureWindowsPath('C:/synthetic/root') / 'D:review-root' is on D:
+    "caller-component-drive-absolute": "D:/review-root",
+    "caller-component-drive-backslash": "D:\\review-root",
+    "caller-component-rooted": "/review-root",
+    "caller-component-rooted-backslash": "\\review-root",
+    "caller-component-unc": "//server/share",
+    "caller-component-unc-backslash": "\\\\server\\share",
+    "caller-component-traversal": "../cap",
+    "caller-component-traversal-backslash": "..\\cap",
+    "caller-component-parent": "..",
+    "caller-component-self": ".",
+    "caller-component-device": "NUL",
+    "caller-component-colon": "cap:stream",
+}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["", "text", "argv", "caller-path", "caller-rooted-outside", "launcher-signature", "launcher-rebinds-path", "module-multi-target",
+     *_WRITER_MODULE_REBINDINGS, *_WRITER_CALLER_COMPONENTS],
+)
 def test_the_registered_writer_is_bound_to_its_text_argv_launcher_and_callers(tmp_path: Path, monkeypatch, mutation: str) -> None:
     relative = _WRITER_SITE.split("::")[0]
     source = _writer_module(mutation)
@@ -403,6 +541,54 @@ def test_the_registered_writer_is_bound_to_its_text_argv_launcher_and_callers(tm
     else:
         with pytest.raises(AssertionError):
             inline_program(command, relative, key=_WRITER_SITE, function="_spawn_and_kill")
+
+
+@pytest.mark.parametrize(
+    ("text", "plain"),
+    [
+        ("cap", True), ("live.ndjson", True), ("review-root", True), ("a_b.c-d", True), ("x", True), ("7", True),
+        ("", False), (".", False), ("..", False), (".hidden", False), ("name.", False), ("a b", False), ("~", False), ("é", False),
+        ("D:review-root", False), ("D:/review-root", False), ("D:\\review-root", False), ("cap:stream", False),
+        ("/review-root", False), ("\\review-root", False), ("//server/share", False), ("\\\\server\\share", False),
+        ("a/b", False), ("a\\b", False), ("../cap", False), ("..\\cap", False),
+        ("NUL", False), ("nul", False), ("con.txt", False), ("COM1", False), ("LPT9.log", False),
+    ],
+)
+def test_a_plain_component_keeps_the_root_under_both_path_semantics(text: str, plain: bool) -> None:
+    assert plain_component(text) is plain
+    if plain:
+        for pure, root in ((PureWindowsPath, "C:/synthetic/root"), (PurePosixPath, "/synthetic/root")):
+            joined = pure(root) / text
+            assert joined.anchor == pure(root).anchor and joined.parent == pure(root) and joined.name == text, (pure, text)
+
+
+def test_the_windows_drive_relative_control_escapes_a_root_by_join() -> None:
+    """Codex's control: `/` with a drive-qualified literal is not containment, so the component contract must reject it."""
+    root = PureWindowsPath("C:/synthetic/root")
+    assert (root / "D:review-root").drive == "D:" and root.drive == "C:"
+    assert (PurePosixPath("/synthetic/root") / "D:review-root").parent == PurePosixPath("/synthetic/root")  # fine on POSIX; not enough
+    assert not plain_component("D:review-root")
+
+
+@pytest.mark.parametrize(
+    ("statement", "bound"),
+    [
+        ('_X = "a"', True), ('_X: str = "a"', True), ('_X += "a"', True), ("_X = _Y = 1", True), ("_Y = _X = 1", True),
+        ("for _X in []:\n    pass", True), ("with open(__file__) as _X:\n    pass", True), ('(_X := "a")', True), ("del _X", True),
+        ("import os as _X", True), ("from os import path as _X", True), ("import _X", True), ("def _X():\n    pass", True),
+        ("class _X:\n    pass", True), ("try:\n    pass\nexcept Exception as _X:\n    pass", True),
+        ("match 1:\n    case _X:\n        pass", True), ("match 1:\n    case [*_X]:\n        pass", True),
+        ("match {}:\n    case {**_X}:\n        pass", True), ("type _X = str", True),
+        ("if True:\n    _X = 1", True), ("while False:\n    _X = 1", True), ("try:\n    _X = 1\nexcept Exception:\n    pass", True),
+        ("def f():\n    global _X\n    _X = 1", True), ("def f(a=(_X := 1)):\n    pass", True), ("@(_X := staticmethod)\ndef f():\n    pass", True),
+        ("class C(metaclass=(_X := type)):\n    pass", True), ("[(_X := i) for i in range(1)]", True), ("f = lambda a=(_X := 1): a", True),
+        ("def f():\n    _X = 1", False), ("def f(_X):\n    return _X", False), ("class C:\n    _X = 1", False),
+        ("f = lambda _X: _X", False), ("def f():\n    def _X():\n        pass", False), ("[_X for _X in range(1)]", False),
+        ("print(_X)", False), ("_X.attr", False), ("_Y = 1", False),
+    ],
+)
+def test_module_binding_forms_are_classified_without_entering_nested_scopes(statement: str, bound: bool) -> None:
+    assert module_binds(ast.parse(statement).body[0], "_X") is bound
 
 
 # --- the repository's launch wrapper is inventoried under its bound name, and nothing else's `.popen` is.
