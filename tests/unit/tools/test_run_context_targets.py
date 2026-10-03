@@ -52,6 +52,12 @@ def _behaviour() -> Iterator[None]:
 def test_behaviour_target(_behaviour: None) -> None:
     if _BEHAVIOUR == "interrupt":
         raise KeyboardInterrupt
+    if _BEHAVIOUR == "terminal_fault":
+        # Deliberately not restored: the session's terminal record must then fail to serialize.
+        def broken(*_arguments: object, **_options: object) -> str:
+            raise TypeError("serialization blew up")
+
+        json.dumps = broken  # type: ignore[assignment]
 
 
 def test_held_nested_target() -> None:

@@ -7,7 +7,9 @@ pytest invocation; nothing is installed in the environment and no launcher is ch
 In each Python child that inherits that environment it records a start line, arms the same refusal
 as `tests.support.child_tripwire` on the product's real Windows known-folder adapter, and records an
 end line. A child that asks for the real folders is refused and recorded; the real folders are
-never resolved. Each line carries the test pytest was running when the child started. Where the
+never resolved. Each line carries the test pytest was running when the child started. In the launching process
+it also records every `subprocess.Popen` with the test frame it came from and whether the child's
+environment still carries this hook, so a site is credited only by its own launches. Where the
 MAIN-5 guard is active the hook stands aside. A failure here never changes the observed process.
 """
 
@@ -66,6 +68,35 @@ if _directory and not getattr(sys, "_main5_guard_activated", False):
                 return spec
 
         sys.meta_path.insert(0, _Finder())
+
+        def _launch_site():
+            frame = sys._getframe(2)
+            while frame is not None:
+                name = frame.f_code.co_filename.replace("\\", "/")
+                marker = name.find("/tests/")
+                if marker >= 0 and "/tests/support/child_census/" not in name:
+                    return name[marker + 1:], frame.f_code.co_name, frame.f_lineno
+                frame = frame.f_back
+            return None, None, None
+
+        def _audit(event, arguments):
+            # The launching side: which test frame started a child, and whether the child's
+            # environment still carries this hook. Recorded before the child exists.
+            if event != "subprocess.Popen":
+                return
+            try:
+                executable, launch_arguments, _cwd, env = arguments
+                effective = os.environ if env is None else env
+                hooked = bool(effective.get("OPTIMUS_TEST_CHILD_CENSUS_DIR")) and "child_census" in str(effective.get("PYTHONPATH", ""))
+                file, function, line = _launch_site()
+                program = executable or (launch_arguments[0] if launch_arguments else "")
+                _note("launch", site_file=file, site_function=function, site_line=line,
+                      hook_env=hooked, program=os.path.basename(str(program))[:80],
+                      launching_test=os.environ.get("PYTEST_CURRENT_TEST", "")[:300])
+            except Exception:  # noqa: BLE001 - never change the launch
+                pass
+
+        sys.addaudithook(_audit)
         _note("start", base_interpreter=sys.prefix == sys.base_prefix)
         atexit.register(lambda: _note(
             "end", is_pytest="pytest" in sys.modules, trusted_paths_imported=_TARGET in sys.modules,

@@ -43,8 +43,8 @@ def _record(run_id: str) -> dict[str, object]:
 
 
 def _stream(run_id: str, name: str) -> list[dict[str, object]]:
-    entries, refused = run_context_records.read_entries(_ROOT / "tmp" / "test-runs" / run_id / f"{name}.jsonl", name)
-    assert refused == 0
+    entries, refused, how = run_context_records.read_entries(_ROOT / "tmp" / "test-runs" / run_id / f"{name}.jsonl", name)
+    assert (refused, how) in {(0, "ok"), (0, "missing")}
     return entries
 
 
@@ -137,10 +137,14 @@ def test_deselected_tests_keep_their_identity() -> None:
 
 
 def _scratch_context(tmp_path: Path) -> run_context.RunContext:
+    """A context of this run's shape with its own run ID and folder, so nothing touches the real session's records."""
     real = _context()
     scratch = run_context.RunContext(
-        run_id=real.run_id, mode=real.mode, reason=real.reason, record_dir=tmp_path, started_utc=real.started_utc,
-        worktree=real.worktree, started_monotonic=time.monotonic(), started_wall=time.time(),
+        run_id=f"20000101T000000-{os.getpid()}-{secrets.token_hex(3)}", mode=real.mode, reason=real.reason,
+        record_dir=tmp_path, started_utc=real.started_utc, worktree=real.worktree,
+        started_monotonic=time.monotonic(), started_wall=time.time(), root=dict(real.root), native=dict(real.native),
+        parent_run=dict(real.parent_run),
+        guard_mode=real.guard_mode, facts=dict(real.facts),
     )
     scratch.last_sample = time.monotonic()  # no sample is due inside these unit checks
     return scratch
@@ -180,19 +184,130 @@ def test_an_append_that_fails_outside_the_entry_is_deferred_and_written_later(mo
     assert (scratch.counts["phases"], scratch.counts["deferred_appends"], scratch.counts["recording_errors"]) == (0, 1, 0)
     assert not (tmp_path / "phases.jsonl").exists()
     run_context.record_phase(scratch, _report(when="teardown"))
-    entries, refused = run_context_records.read_entries(tmp_path / "phases.jsonl", "phases")
-    assert [entry["when"] for entry in entries] == ["call", "teardown"] and refused == 0
+    entries, refused, how = run_context_records.read_entries(tmp_path / "phases.jsonl", "phases")
+    assert [entry["when"] for entry in entries] == ["call", "teardown"] and (refused, how) == (0, "ok")
     assert (scratch.counts["phases"], scratch.pending["phases"]) == (2, [])
     assert run_context.completeness(scratch) == "COMPLETE"
-    # Still failing at the end of the run: the last attempt fails and the record says INVALID.
+    # Still failing at the end of the run: the actual terminal path makes a last attempt and fails.
     monkeypatch.setattr(json, "dumps", broken)
     run_context.record_phase(scratch, _report(when="setup"))
     assert scratch.pending["phases"] and scratch.counts["deferred_appends"] == 2
-    monkeypatch.setattr(run_context_records, "append_entries", broken)
-    run_context._append(scratch, "phases", [])  # noqa: SLF001 - the final attempt finish_run makes
-    assert scratch.pending["phases"] and run_context.completeness(scratch) == "COMPLETE"
-    scratch.counts["recording_errors"] += 1 if scratch.pending["phases"] else 0  # what finish_run then records
+    monkeypatch.setattr(run_context, "_current", scratch)
+    final = run_context.finish_run(scratch, 0)
+    assert (final["exit_status"], final["completeness"]) == (0, "INVALID") and run_context.current() is None
+    assert scratch.pending["phases"] == [] and scratch.counts["recording_errors"] >= 1
+
+
+class _CloseFails:
+    """A file whose bytes reach the disk and whose close then fails: the append's progress is unknown."""
+
+    def __init__(self, inner: object) -> None:
+        self._inner = inner
+
+    def write(self, data: str) -> int:
+        return self._inner.write(data)  # type: ignore[attr-defined]
+
+    def __enter__(self) -> _CloseFails:
+        return self
+
+    def __exit__(self, *_arguments: object) -> None:
+        self._inner.close()  # type: ignore[attr-defined]
+        raise OSError("close blew up")
+
+
+def _opening_phases_with_failing_close(real_open):  # noqa: ANN001, ANN202
+    def opened(path: object, mode: str = "r", *arguments: object, **options: object) -> object:
+        handle = real_open(path, mode, *arguments, **options)
+        return _CloseFails(handle) if str(path).endswith("phases.jsonl") and "a" in mode else handle
+
+    return opened
+
+
+def test_an_append_with_unknown_progress_is_restored_then_retried_or_made_invalid(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import builtins
+
+    scratch = _scratch_context(tmp_path)
+    run_context.record_phase(scratch, _report(when="setup"))
+    size = (tmp_path / "phases.jsonl").stat().st_size
+    real_open = builtins.open
+    # Bytes reach the stream, then close fails: the stream is cut back to its earlier length and
+    # the batch waits; the next append writes it once.
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(builtins, "open", _opening_phases_with_failing_close(real_open))
+        run_context.record_phase(scratch, _report(when="call"))
+    assert (tmp_path / "phases.jsonl").stat().st_size == size
+    assert (scratch.counts["phases"], scratch.counts["deferred_appends"], scratch.counts["recording_errors"]) == (1, 1, 0)
+    run_context.record_phase(scratch, _report(when="teardown"))
+    entries, refused, how = run_context_records.read_entries(tmp_path / "phases.jsonl", "phases")
+    assert [entry["when"] for entry in entries] == ["setup", "call", "teardown"] and (refused, how) == (0, "ok")
+    assert scratch.counts["phases"] == 3 and run_context.completeness(scratch) == "COMPLETE"
+    # The same failure when the stream cannot be cut back: progress stays unknown, the record is INVALID.
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(builtins, "open", _opening_phases_with_failing_close(real_open))
+        patched.setattr(os, "truncate", lambda *_arguments: (_ for _ in ()).throw(OSError("truncate blew up")))
+        run_context.record_phase(scratch, _report(when="setup"))
+    assert (scratch.counts["phases"], scratch.counts["recording_errors"], scratch.pending["phases"]) == (3, 1, [])
     assert run_context.completeness(scratch) == "INVALID"
+    # The terminal read-back sees the stray line that did reach the stream.
+    monkeypatch.setattr(run_context, "_current", scratch)
+    final = run_context.finish_run(scratch, 0)
+    assert final["completeness"] == "INVALID" and final["streams"]["reconciled"] is False  # type: ignore[index]
+    assert final["streams"]["read_back"]["phases"] == "differs"  # type: ignore[index]
+
+
+def test_the_terminal_record_is_read_back_and_reconciled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    scratch = _scratch_context(tmp_path)
+    for when in ("setup", "call", "teardown"):
+        run_context.record_phase(scratch, _report(when=when))
+    monkeypatch.setattr(run_context, "_current", scratch)
+    final = run_context.finish_run(scratch, 0)
+    assert final["completeness"] == "COMPLETE" and final["streams"]["reconciled"] is True, (final, scratch.counts)  # type: ignore[index]
+    assert final["streams"]["read_back"] == {"nodes": "empty", "phases": "matches", "samples": "matches"}  # type: ignore[index]
+    record = run_context_records.read_record(tmp_path / "run.json")
+    assert record is not None and record["checkpoint"] == "terminal" and record["streams"]["reconciled"] is True
+    assert run_context.current() is None
+
+
+def test_a_terminal_failure_is_contained_and_still_cleans_up(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """json.dumps still patched when the session ends: no exception, exit status kept, entry withdrawn."""
+    scratch = _scratch_context(tmp_path)
+    run_context.record_phase(scratch, _report(when="call"))
+    announcement = run_context_records.registry_root() / f"{scratch.run_id}.json"
+    start = run_context_records.read_record(_context().record_dir / "run.json")
+    assert start is not None
+    start.pop("schema")
+    run_context_records.write_record(announcement, {**start, "run_id": scratch.run_id})
+    assert announcement.exists()
+
+    def broken(*_arguments: object, **_options: object) -> str:
+        raise TypeError("serialization blew up")
+
+    monkeypatch.setattr(json, "dumps", broken)
+    monkeypatch.setattr(run_context, "_current", scratch)
+    final = run_context.finish_run(scratch, 3)
+    assert (final["exit_status"], final["completeness"]) == (3, "INVALID")
+    assert run_context.current() is None and not announcement.exists()
+    monkeypatch.undo()
+    record = run_context_records.read_record(tmp_path / "run.json")
+    assert record is None or record["checkpoint"] == "start"
+    # A failure anywhere else in the terminal work is contained the same way.
+    another = _scratch_context(tmp_path / "another")
+    run_context_records.write_record(run_context_records.registry_root() / f"{another.run_id}.json", {**start, "run_id": another.run_id})
+    monkeypatch.setattr(run_context, "_read_back", lambda _context: (_ for _ in ()).throw(RuntimeError("read-back blew up")))
+    monkeypatch.setattr(run_context, "_current", another)
+    final = run_context.finish_run(another, 2)
+    assert (final["exit_status"], final["completeness"]) == (2, "INVALID") and another.counts["recording_errors"] >= 1
+    assert run_context.current() is None and not (run_context_records.registry_root() / f"{another.run_id}.json").exists()
+
+
+def test_a_session_whose_terminal_write_fails_still_reports_its_exit_status() -> None:
+    """The conftest path: a nested run whose target leaves json.dumps broken until the session ends."""
+    code, run_id, output = _nested(f"{_TARGETS}::test_behaviour_target", behaviour="terminal_fault")
+    assert code == 0, output
+    assert "records=INVALID" in output and "exit=0" in output, output
+    assert not (run_context_records.registry_root() / f"{run_id}.json").exists()
+    record = run_context_records.read_record(_ROOT / "tmp" / "test-runs" / run_id / "run.json")
+    assert record is not None and record["checkpoint"] == "start"
 
 
 def test_a_recording_failure_is_counted_and_never_raised(tmp_path: Path) -> None:
@@ -207,8 +322,11 @@ def test_a_damaged_stream_yields_only_its_whole_conforming_lines(tmp_path: Path)
     good = {"node": "a" * 64, "when": "call", "outcome": "passed", "at": 1.0, "seconds": 0.5}
     lines = [json.dumps(good), json.dumps({**good, "extra": "x"}), json.dumps({"node": "short"}), json.dumps(good)[:25]]
     (tmp_path / "phases.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    assert run_context_records.read_entries(tmp_path / "phases.jsonl", "phases") == ([good], 3)
-    assert run_context_records.read_entries(tmp_path / "missing.jsonl", "phases") == ([], 0)
+    assert run_context_records.read_entries(tmp_path / "phases.jsonl", "phases") == ([good], 3, "ok")
+    assert run_context_records.read_entries(tmp_path / "missing.jsonl", "phases") == ([], 0, "missing")
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(Path, "read_text", lambda *_arguments, **_options: (_ for _ in ()).throw(PermissionError("denied")))
+        assert run_context_records.read_entries(tmp_path / "phases.jsonl", "phases") == ([], 0, "unreadable")
     shaped_like_an_assignment = "token" + "=" + "hunter2" * 2
     for bad in ({**good, "reason": "line\nbreak"}, {**good, "note": "x"}, {"node": "a" * 64}, {**good, "reason": shaped_like_an_assignment}):
         with pytest.raises(ValueError, match=run_context_records.REJECTED):
@@ -403,8 +521,9 @@ def test_a_planted_run_takes_its_own_processes_with_it_and_leaves_another_run_al
             assert observer.end(root) is True
             assert all(observer.end(process) is False for process in others), "the observer can end only the planted root"
         assert observer.wait_until_gone(root, 60) is not None, "the planted root never exited"
-        waits = [observer.wait_until_gone(process, 5.0) for process in own]
-        assert all(wait is not None for wait in waits), f"members still running five seconds after the root exited: {waits}"
+        # One deadline, five seconds from the detected root exit, shared by every member.
+        gone = observer.wait_all_gone(own, 5.0)
+        assert all(seconds is not None for seconds in gone.values()), f"members still running five seconds after the root exited: {gone}"
 
         assert all(observer.is_gone(process) is False for process in others), "the independent run must be untouched"
         still = {entry["run_id"] for entry in run_context.other_runs("none")[0]}
@@ -425,13 +544,85 @@ def test_a_planted_run_takes_its_own_processes_with_it_and_leaves_another_run_al
 
         (tmp_path / "survivor" / "release").write_text("go", encoding="utf-8")
         assert survivor_process.wait(timeout=120) == 0
-        assert all(observer.wait_until_gone(process, 5.0) is not None for process in others)
+        assert all(seconds is not None for seconds in observer.wait_all_gone(others, 5.0).values())
     finally:
         observer.close(watched)
         for process in (survivor_process, planted_process):
             if process.poll() is None:
                 process.kill()
                 process.wait(timeout=60)
+
+
+class _VirtualProcesses:
+    """A kernel for the observer's waits: each handle is a process that exits at a known virtual second."""
+
+    def __init__(self, exits_at: dict[int, float | None]) -> None:
+        self.now, self.exits_at = 0.0, exits_at
+
+    def clock(self) -> float:
+        return self.now
+
+    def WaitForSingleObject(self, handle: int, milliseconds: int) -> int:  # noqa: N802 - the native name
+        exit_at = self.exits_at[handle]
+        if exit_at is None:
+            self.now += milliseconds / 1000
+            return 0xFFFFFFFF
+        if exit_at <= self.now:
+            return 0
+        if exit_at <= self.now + milliseconds / 1000:
+            self.now = exit_at
+            return 0
+        self.now += milliseconds / 1000
+        return 258
+
+
+def test_the_cleanup_deadline_is_common_to_all_members() -> None:
+    """Children exiting four and eight seconds after the root: the proof must fail, and it does."""
+    kernel = _VirtualProcesses({1: 4.0, 2: 8.0, 3: None})
+    first, second, unreadable = (observer.Watched(pid=pid, creation_time=1, handle=pid) for pid in (1, 2, 3))
+    gone = observer.wait_all_gone([first, second], 5.0, api=kernel, clock=kernel.clock)
+    assert gone == {1: 4.0, 2: None}, gone
+    # Renewing five seconds per member would have accepted both; that reading is rejected.
+    kernel = _VirtualProcesses({1: 4.0, 2: 8.0, 3: None})
+    assert [observer.wait_until_gone(process, 5.0, api=kernel, clock=kernel.clock) for process in (first, second)] == [4.0, 4.0]
+    # A wait that fails is never an exit, and a handle that could not be validated is never an exit.
+    kernel = _VirtualProcesses({1: 1.0, 2: 1.0, 3: None})
+    gone = observer.wait_all_gone([first, unreadable, observer.Watched(pid=4, creation_time=1, handle=None)], 5.0, api=kernel, clock=kernel.clock)
+    assert gone == {1: 1.0, 3: None, 4: None}, gone
+
+
+# --- R4: an overlap query that cannot observe a root says so.
+
+
+@_windows
+@pytest.mark.parametrize(
+    ("identity", "listed_relation", "ended"),
+    [
+        (dict(opened=False, error=5), "unknown", 0),
+        (dict(opened=True, creation_time=None, error=87), "unknown", 0),
+        (dict(opened=True, creation_time=123456, live=None, error=5), "unknown", 0),
+        (dict(opened=False, error=87), None, 1),
+        (dict(opened=True, creation_time=999, live=True), None, 1),
+        (dict(opened=True, creation_time=123456, live=False), None, 1),
+    ],
+    ids=["open-denied", "creation-query-failed", "liveness-denied", "no-such-process", "pid-reused", "terminated"],
+)
+def test_an_unobservable_root_is_unknown_and_an_ended_one_is_counted(
+    monkeypatch: pytest.MonkeyPatch, identity: dict[str, object], listed_relation: str | None, ended: int
+) -> None:
+    entry = {"run_id": "20000101T000000-4242-abcdef", "mode": "active", "root": {"pid": 4242, "creation_time": 123456},
+             "declared_agent": "claude", "worktree": "C:\\w"}
+    monkeypatch.setattr(run_context_records, "registry_entries", lambda _exclude: [entry])
+    fields = {"pid": 4242, "creation_time": None, "image": None, "error": None, "live": None, "opened": False, **identity}
+    monkeypatch.setattr(run_context_windows, "process_identity", lambda _pid: run_context_windows.ProcessIdentity(**fields))
+    listed, extra, failed, ended_count = run_context.other_runs("none")
+    assert (extra, failed, ended_count) == (0, False, ended)
+    assert [other["relation"] for other in listed] == ([listed_relation] if listed_relation else [])
+
+
+def test_a_registry_that_cannot_be_read_is_reported_not_hidden(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(run_context_records, "registry_entries", lambda _exclude: (_ for _ in ()).throw(PermissionError("denied")))
+    assert run_context.other_runs("none") == ([], 0, True, 0)
 
 
 def test_the_context_and_the_observer_never_open_a_job_or_start_a_thread() -> None:

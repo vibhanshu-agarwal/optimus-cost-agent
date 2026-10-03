@@ -76,6 +76,8 @@ class RunContext:
     last_sample: float = 0.0
     ceilings: dict[str, int] = field(default_factory=lambda: dict(MAX_STREAM_RECORDS))
     pending: dict[str, list[dict[str, object]]] = field(default_factory=lambda: {"nodes": [], "phases": [], "samples": []})
+    # What each stream should hold, for the terminal read-back: a digest of every entry, in order.
+    ledger: dict[str, object] = field(default_factory=lambda: {"nodes": hashlib.sha256(), "phases": hashlib.sha256(), "samples": hashlib.sha256()})
     selection: object = field(default_factory=hashlib.sha256)
 
 
@@ -318,9 +320,11 @@ def _reason(text: object) -> str:
 def _append(context: RunContext, stream: str, entries: list[dict[str, object]]) -> None:
     """Append to a stream within its ceiling. Nothing here raises.
 
-    An entry the table refuses is a recording error. An append that fails for a reason outside the
-    entries (a test has patched the serializer, the file is briefly locked) is deferred: the batch
-    waits, in order, for the next append of that stream, and `finish_run` makes a last attempt.
+    An entry the table refuses is a recording error. An append that provably never reached the
+    stream (a test has patched the serializer; or the stream was restored to its earlier length)
+    is deferred: the batch waits, in order, for the next append of that stream, and `finish_run`
+    makes a last attempt. An append whose progress is unknown is a recording error: the record is
+    INVALID rather than possibly duplicated.
     """
     pending = context.pending[stream]
     batch = [*pending, *entries]
@@ -331,18 +335,44 @@ def _append(context: RunContext, stream: str, entries: list[dict[str, object]]) 
         context.truncated = True
         return
     try:
-        records.append_entries(context.record_dir / f"{stream}.jsonl", stream, batch)
+        written = records.append_entries(context.record_dir / f"{stream}.jsonl", stream, batch)
         context.counts[stream] += len(batch)
+        for digest in written:
+            context.ledger[stream].update(digest)  # type: ignore[attr-defined]
     except records.RecordTooLarge:
         context.truncated = True
-    except ValueError:
-        context.counts["recording_errors"] += 1
-    except Exception:  # noqa: BLE001 - the cause is outside the entries; keep them for the next attempt
+    except records.AppendNotStarted:
         if len(batch) > MAX_PENDING_ENTRIES:
             context.counts["recording_errors"] += 1
         else:
             pending.extend(batch)
             context.counts["deferred_appends"] += 1
+    except Exception:  # noqa: BLE001 - refused entry, unknown progress or anything else: the record is INVALID
+        context.counts["recording_errors"] += 1
+
+
+def _read_back(context: RunContext) -> tuple[bool, dict[str, str]]:
+    """Read every stream back and compare it with what this run says it wrote: count, content, order.
+
+    The ledger holds a digest of every line as it was written; the stream is read line by line
+    and must contain exactly those lines, in that order, all of them conforming.
+    """
+    reconciled, status = True, {}
+    for stream in ("nodes", "phases", "samples"):
+        path = context.record_dir / f"{stream}.jsonl"
+        if context.counts[stream] == 0 and not path.exists():
+            status[stream] = "empty"
+            continue
+        entries, refused, how = records.read_entries(path, stream)
+        stored = records.stream_line_digests(path) or []
+        digest = hashlib.sha256()
+        for line in stored:
+            digest.update(line)
+        matches = how == "ok" and refused == 0 and len(entries) == len(stored) == context.counts[stream] \
+            and digest.digest() == context.ledger[stream].digest()  # type: ignore[attr-defined]
+        status[stream] = "matches" if matches else how if how != "ok" else "differs"
+        reconciled = reconciled and matches
+    return reconciled, status
 
 
 def record_collection(context: RunContext, selected: list[str], deselected: list[str]) -> None:
@@ -381,19 +411,23 @@ def record_phase(context: RunContext, report: object) -> None:
         context.counts["recording_errors"] += 1
 
 
-def other_runs(run_id: str) -> tuple[list[dict[str, object]], int, bool]:
-    """Other registered runs that are running now, how many more were not listed, and whether reading failed.
+def other_runs(run_id: str) -> tuple[list[dict[str, object]], int, bool, int]:
+    """Other registered runs now: the listed ones, how many more were not listed, whether the registry
+    could not be read, and how many have positively ended.
 
-    On Windows each is checked through a process handle (PID, creation time and live state) and
-    then against this run's own job: `own_job` or `outside`. Nothing is inferred from a registry
-    entry alone, and no other run's job is opened. Elsewhere the relation is `unverified`.
+    On Windows each root is checked through a process handle. A root that is running, with the
+    registered creation time, is `own_job` or `outside` by this run's own job. A root whose open
+    says there is no such process, whose creation time differs (the PID was reused) or whose wait
+    says it has terminated is counted as ended and not listed. A root that cannot be observed
+    (the open or a query was denied or failed) is listed as `unknown`: that is not absence.
+    Elsewhere the relation is `unverified`. No other run's job is opened.
     """
     try:
         entries = records.registry_entries(run_id)
     except OSError:
-        return [], 0, True
+        return [], 0, True, 0
     listed: list[dict[str, object]] = []
-    extra = 0
+    extra = ended = 0
     for entry in entries:
         root = entry.get("root")
         pid, created = (root.get("pid"), root.get("creation_time")) if isinstance(root, dict) else (None, None)
@@ -403,12 +437,18 @@ def other_runs(run_id: str) -> tuple[list[dict[str, object]], int, bool]:
             if not _whole_number(created):
                 continue
             identity = native.process_identity(pid)
-            if identity.creation_time != created or identity.live is not True:
+            if (not identity.opened and identity.error == native.ERROR_INVALID_PARAMETER) \
+                    or (identity.creation_time is not None and identity.creation_time != created) or identity.live is False:
+                ended += 1
                 continue
-            member = native.is_member(identity)
-            relation = "own_job" if member is True else "outside" if member is False else "unverified"
+            if identity.creation_time is None or identity.live is None:
+                relation = "unknown"
+            else:
+                member = native.is_member(identity)
+                relation = "own_job" if member is True else "outside" if member is False else "unknown"
         else:
             if not Path(f"/proc/{pid}").exists():
+                ended += 1
                 continue
             relation = "unverified"
         if len(listed) >= records.MAX_OTHER_RUNS:
@@ -418,7 +458,7 @@ def other_runs(run_id: str) -> tuple[list[dict[str, object]], int, bool]:
             "run_id": entry["run_id"], "relation": relation, "declared_agent": entry.get("declared_agent"),
             "worktree": entry.get("worktree"),
         })
-    return listed, extra, False
+    return listed, extra, False, ended
 
 
 def sample_run(context: RunContext, checkpoint: str) -> None:
@@ -429,11 +469,12 @@ def sample_run(context: RunContext, checkpoint: str) -> None:
     """
     try:
         now = time.monotonic()
-        others, extra, failed = other_runs(context.run_id)
+        others, extra, failed, ended = other_runs(context.run_id)
         entry: dict[str, object] = {
             "at": round(now - context.started_monotonic, 3),
             "gap": round(now - (context.last_sample or context.started_monotonic), 3),
-            "checkpoint": checkpoint, "others": others, "others_not_listed": extra, "registry_error": failed,
+            "checkpoint": checkpoint, "others": others, "others_not_listed": extra, "others_ended": ended,
+            "registry_error": failed,
         }
         if context.native.get("enrolled"):
             entry["accounting"] = native.accounting()
@@ -473,10 +514,27 @@ def completeness(context: RunContext) -> str:
 def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
     """Write the terminal record. The job handle is deliberately kept until the interpreter exits.
 
-    A recording failure never replaces pytest's own exit status: it makes the record INVALID,
-    and the summary line says so.
+    Nothing here raises into pytest: a failure anywhere in the terminal work leaves pytest's own
+    exit status in place, makes the record INVALID, and still withdraws this run's registry entry
+    and clears the current context.
     """
     global _current
+    final: dict[str, object] = {"exit_status": int(exit_status), "completeness": "INVALID"}
+    try:
+        final.update(_terminal(context, exit_status))
+    except Exception:  # noqa: BLE001 - the terminal record could not be established
+        context.counts["recording_errors"] += 1
+        final["completeness"] = "INVALID"
+    finally:
+        try:
+            records.remove_own_registry_entry(context.run_id)
+        except OSError:
+            final["completeness"] = "INVALID"
+        _current = None
+    return final
+
+
+def _terminal(context: RunContext, exit_status: int) -> dict[str, object]:
     sample_run(context, "terminal")
     for stream in ("nodes", "phases", "samples"):
         if context.pending[stream]:
@@ -485,6 +543,9 @@ def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
             # Still not written after the last attempt: the record is incomplete and says so.
             context.counts["recording_errors"] += 1
             context.pending[stream].clear()
+    reconciled, read_back = _read_back(context)
+    if not reconciled:
+        context.counts["recording_errors"] += 1
     final: dict[str, object] = {"exit_status": int(exit_status), "finished_utc": datetime.now(timezone.utc).isoformat()}
     if context.native.get("enrolled"):
         final["accounting"] = native.accounting()
@@ -500,7 +561,7 @@ def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
         "selected": counts["selected"], "deselected": counts["deselected"], "collection_errors": counts["collection_errors"],
         "selection_sha256": context.selection.hexdigest(),  # type: ignore[attr-defined]
         "streams": {"nodes": counts["nodes"], "phases": counts["phases"], "samples": counts["samples"],
-                    "truncated": context.truncated},
+                    "truncated": context.truncated, "reconciled": reconciled, "read_back": read_back},
         "recording_errors": counts["recording_errors"], "deferred_appends": counts["deferred_appends"],
         "last_sample_at": round(max(0.0, context.last_sample - context.started_monotonic), 3),
         "completeness": completeness(context),
@@ -508,11 +569,16 @@ def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
     payload = {**_payload(context, checkpoint="terminal"), **final}
     try:
         records.write_record(context.record_dir / "run.json", payload)
-    except (OSError, ValueError):
+    except Exception as error:  # noqa: BLE001 - a patched serializer or a failed write at the very end
         final["completeness"] = "INVALID"
-    records.remove_own_registry_entry(context.run_id)
-    _current = None
+        final["terminal_failure"] = _failure_token(error)
     return final
+
+
+def _failure_token(error: BaseException) -> str:
+    """Where a record was refused, or the kind of failure. Never a value from the record."""
+    text = error.place if isinstance(error, records.RecordRejected) else type(error).__name__
+    return "".join(char for char in text if char.isalnum() or char in "_.:<>[]")[:80] or "failure"
 
 
 def summary_line(context: RunContext, final: dict[str, object] | None) -> str:

@@ -98,3 +98,55 @@ def test_the_census_hook_records_a_clean_child_and_is_inert_when_not_asked(tmp_p
         "from optimus.acp import trusted_paths\nprint(trusted_paths._real_windows_known_folders.__module__)", hooked=False,
     )
     assert none == [] and unhooked.stdout.strip() == "optimus.acp.trusted_paths", unhooked.stdout + unhooked.stderr
+
+
+# --- R5: a site is credited only by its own launches, recorded on the launching side.
+
+_LAUNCHING_PROGRAM = """
+import os, subprocess, sys
+code = "import subprocess, sys; subprocess.run([sys.executable, '-c', 'print(1)'], check=True)"
+exec(compile(code, "/w/tests/unit/tools/fake_site_module.py", "exec"), {"__name__": "fake_site"})
+subprocess.run([sys.executable, "-c", "print(2)"], check=True, env={"PATH": os.environ["PATH"]})
+"""
+
+
+@_ordinary
+def test_the_census_hook_records_each_launch_with_its_site_and_whether_the_hook_travels(tmp_path: Path) -> None:
+    from tests.support.child_census import attribution
+
+    completed, events = _census_child(tmp_path, _LAUNCHING_PROGRAM)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    launches = [event for event in events if event["event"] == "launch"]
+    assert [(launch["site_file"], launch["site_function"], launch["hook_env"]) for launch in launches] == [
+        ("tests/unit/tools/fake_site_module.py", "<module>", True), (None, None, False)]
+    assert all("test_the_census_hook_records_each_launch" in str(launch["launching_test"]) for launch in launches)
+    # The frame line maps to the nearest site at or before it in the same file and function.
+    sites = [{"key": "a.py::f#1", "file": "a.py", "function": "f", "line": 10},
+             {"key": "a.py::f#2", "file": "a.py", "function": "f", "line": 20},
+             {"key": "a.py::g#1", "file": "a.py", "function": "g", "line": 15}]
+    assert attribution.site_for("a.py", "f", 12, sites) == "a.py::f#1"
+    assert attribution.site_for("a.py", "f", 20, sites) == "a.py::f#2"
+    assert attribution.site_for("a.py", "g", 14, sites) is None
+    assert attribution.site_for("b.py", "f", 12, sites) is None
+
+
+def test_a_launch_in_the_same_file_never_credits_another_site() -> None:
+    from tests.support.child_census import attribution
+
+    site_map = {"a.py::test_one#1": {"disposition": "census", "proof": "p"}, "a.py::_helper#1": {"disposition": "census", "proof": "p"},
+                "a.py::test_two#1": {"disposition": "census", "proof": "p"}, "b.py::test_three#1": {"disposition": "tripwire_at_site", "proof": "p"}}
+    sites = [{"key": key, "file": key.split("::")[0], "function": key.split("::")[1].split("#")[0], "line": 1} for key in site_map]
+    launches = [{"site": "a.py::test_one#1", "test": "a.py::test_one (call)", "hook_env": True},
+                {"site": "a.py::_helper#1", "test": "a.py::test_four (call)", "hook_env": False}]
+    children = [{"test": "a.py::test_one (call)", "calls": 0, "ended": True, "is_pytest": False},
+                {"test": "a.py::test_four (call)", "calls": 0, "ended": True, "is_pytest": False}]
+    table = attribution.per_site_table(site_map, sites, launches, children, {"a.py::test_one", "a.py::test_four"})
+    assert table["a.py::test_one#1"]["status"] == "launched_and_clean" and table["a.py::test_one#1"]["reachability"] == "collected"
+    assert table["a.py::_helper#1"]["status"] == "launched_without_hook" and table["a.py::_helper#1"]["reachability"] == "helper"
+    # The same file launched twice, yet the site that never launched is not credited by either.
+    assert table["a.py::test_two#1"]["status"] == "not_launched" and table["a.py::test_two#1"]["reachability"] == "not_collected"
+    assert table["b.py::test_three#1"]["status"] == "proof_elsewhere"
+    assert attribution.unproven(table) == ["a.py::_helper#1", "a.py::test_two#1"]
+    # A child that asked for the real folders is named, not averaged away.
+    children[0]["calls"] = 1
+    assert attribution.per_site_table(site_map, sites, launches, children, set())["a.py::test_one#1"]["status"] == "REAL_ADAPTER_REQUESTED"

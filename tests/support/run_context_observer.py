@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ctypes
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 _SYNCHRONIZE = 0x00100000
@@ -70,13 +71,29 @@ def is_gone(process: Watched) -> bool | None:
     return True if result == _WAIT_OBJECT_0 else False if result == _WAIT_TIMEOUT else None
 
 
-def wait_until_gone(process: Watched, seconds: float) -> float | None:
-    """Seconds until the process terminated, or None when it was still running at the deadline."""
+def wait_until_gone(process: Watched, seconds: float, *, api: object = None, clock: Callable[[], float] = time.monotonic) -> float | None:
+    """Seconds until the process terminated, or None when it was still running at the deadline
+    or its state could not be read. An unknown state is never taken for an exit."""
     if process.handle is None:
         return None
-    started = time.monotonic()
-    result = _kernel32().WaitForSingleObject(process.handle, int(seconds * 1000))
-    return time.monotonic() - started if result == _WAIT_OBJECT_0 else None
+    started = clock()
+    result = (api or _kernel32()).WaitForSingleObject(process.handle, int(max(0.0, seconds) * 1000))
+    return clock() - started if result == _WAIT_OBJECT_0 else None
+
+
+def wait_all_gone(processes: list[Watched], seconds: float, *, api: object = None, clock: Callable[[], float] = time.monotonic) -> dict[int, float | None]:
+    """One deadline for all: `seconds` from now, shared. Each process gets only what remains of it.
+
+    The result maps PID to seconds-from-now at which the process was seen gone, or None when it
+    was still running, or unreadable, when the common deadline passed.
+    """
+    started = clock()
+    deadline = started + seconds
+    gone: dict[int, float | None] = {}
+    for process in processes:
+        waited = wait_until_gone(process, deadline - clock(), api=api, clock=clock)
+        gone[process.pid] = None if waited is None else round(clock() - started, 3)
+    return gone
 
 
 def end(process: Watched) -> bool:

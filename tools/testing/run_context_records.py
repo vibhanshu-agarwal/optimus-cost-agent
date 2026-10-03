@@ -47,12 +47,30 @@ _DIGEST = re.compile(r"[0-9a-f]{64}")
 _VERSION = re.compile(r"[A-Za-z0-9.+-]{1,40}")
 _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?\+00:00")
 _TOKEN = re.compile(r"[A-Za-z0-9_]{1,48}")
+_PLACE = re.compile(r"[A-Za-z0-9_.:<>\[\]]{1,80}")
 
 _Check = Callable[[object], bool]
 
 
+class RecordRejected(ValueError):
+    """A record or entry broke the field table. `place` names the field, never a value."""
+
+    def __init__(self, place: str) -> None:
+        super().__init__(f"{REJECTED}:{place}")
+        self.place = place
+
+
 class RecordTooLarge(ValueError):
     """A record or a stream would pass its size ceiling. Carries only the fixed code."""
+
+
+class AppendNotStarted(Exception):
+    """An append failed before a single byte reached the stream, or the stream was restored to its
+    length from before the append. The same batch can be appended again without duplication."""
+
+
+class AppendIntegrityUnknown(Exception):
+    """An append failed after bytes may have reached the stream and the stream could not be restored."""
 
 
 class _Table(dict):  # type: ignore[type-arg]
@@ -115,11 +133,13 @@ _STREAMS: dict[str, _Table] = {
     "samples": _Table({
         "at": _seconds, "gap": _seconds, "checkpoint": _one_of("start", "phase", "terminal"),
         "accounting": _ACCOUNTING,
+        # `unknown`: the identity could not be observed (denied or failed query), as distinct from a
+        # root that has positively ended or whose PID was reused, which is counted in `others_ended`.
         "others": [_Table({
-            "run_id": _text(RUN_ID), "relation": _one_of("own_job", "outside", "unverified"),
+            "run_id": _text(RUN_ID), "relation": _one_of("own_job", "outside", "unverified", "unknown"),
             "declared_agent": _optional(_text(AGENT)), "worktree": _optional(_text(WORKTREE)),
         }, required=("run_id", "relation"))],
-        "others_not_listed": _count, "registry_error": _flag,
+        "others_not_listed": _count, "others_ended": _count, "registry_error": _flag,
     }, required=("at", "gap", "checkpoint", "others")),
 }
 _FIELDS = _Table({
@@ -160,9 +180,11 @@ _FIELDS = _Table({
     "selection_sha256": _text(_DIGEST),
     "protected_roots": _count, "protection": _one_of("full", "reduced", "none"),
     "selected": _count, "deselected": _count, "collection_errors": _count,
-    "streams": {"nodes": _count, "phases": _count, "samples": _count, "truncated": _flag},
+    "streams": {"nodes": _count, "phases": _count, "samples": _count, "truncated": _flag,
+                "reconciled": _flag, "read_back": {"nodes": _text(_TOKEN), "phases": _text(_TOKEN), "samples": _text(_TOKEN)}},
     "recording_errors": _count, "deferred_appends": _count, "last_sample_at": _seconds,
     "completeness": _one_of("COMPLETE", "TRUNCATED", "INVALID"),
+    "terminal_failure": _text(_PLACE),
     "members": {"ok": _flag, "complete": _flag, "error": _optional(_count), "identities": [_IDENTITY]},
 }, required=("schema", "checkpoint", "run_id", "mode", "reason", "root"))
 
@@ -221,13 +243,13 @@ def registry_root() -> Path:
 def write_record(target: Path, payload: dict[str, object]) -> None:
     """Persist one conforming record atomically. The single persistence sink of the run context."""
     if "schema" in payload:
-        raise ValueError(f"{REJECTED}:record.schema")
+        raise RecordRejected("record.schema")
     record = {"schema": SCHEMA, **payload}
     found = violation(record)
     if found is not None:
-        raise ValueError(f"{REJECTED}:{found}")
+        raise RecordRejected(found)
     if not unchanged_by_shared_sanitizer(record):
-        raise ValueError(f"{REJECTED}:shared_sanitizer")
+        raise RecordRejected("shared_sanitizer")
     body = json.dumps(record, indent=1, sort_keys=True)
     if len(body.encode("utf-8")) > MAX_RECORD_BYTES:
         raise RecordTooLarge(TOO_LARGE)
@@ -250,37 +272,77 @@ def read_record(source: Path) -> dict[str, object] | None:
     return payload
 
 
-def append_entries(target: Path, stream: str, entries: list[dict[str, object]], *, max_bytes: int = MAX_STREAM_BYTES) -> None:
+def append_entries(target: Path, stream: str, entries: list[dict[str, object]], *, max_bytes: int = MAX_STREAM_BYTES) -> list[bytes]:
     """Append conforming entries to one of a run's streams. The run context's only other sink.
 
     Every entry is checked against its stream's table, the batch must be left unchanged by the
     shared sanitizer, and the file may not grow past its ceiling. Nothing is written otherwise.
+    Returns a digest of each line written, so the caller can reconcile the stream later.
     """
     table = _STREAMS[stream]
     for entry in entries:
         found = _violation(entry, table, stream)
         if found is not None:
-            raise ValueError(f"{REJECTED}:{found}")
+            raise RecordRejected(found)
     if not unchanged_by_shared_sanitizer(entries):
-        raise ValueError(f"{REJECTED}:shared_sanitizer")
-    body = "".join(json.dumps(entry, sort_keys=True) + "\n" for entry in entries)
-    existing = target.stat().st_size if target.exists() else 0
+        raise RecordRejected("shared_sanitizer")
+    try:
+        # Everything before the open happens in memory: a failure here never touched the stream.
+        lines = [json.dumps(entry, sort_keys=True) for entry in entries]
+        body = "".join(line + "\n" for line in lines)
+        existing = target.stat().st_size if target.exists() else 0
+    except Exception as error:  # noqa: BLE001 - a patched serializer or a failed stat, before any write
+        raise AppendNotStarted from error
     if existing + len(body.encode("utf-8")) > max_bytes:
         raise RecordTooLarge(TOO_LARGE)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with open(target, "a", encoding="utf-8") as stream_file:
-        stream_file.write(body)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "a", encoding="utf-8") as stream_file:
+            stream_file.write(body)
+    except OSError as error:
+        # Progress is unknown: bytes may have reached the stream before the failure. The stream is
+        # restored to its length from before this append; only then may the batch be tried again.
+        try:
+            if target.exists():
+                os.truncate(target, existing)
+            restored = (target.stat().st_size if target.exists() else 0) == existing
+        except OSError:
+            restored = False
+        if restored:
+            raise AppendNotStarted from error
+        raise AppendIntegrityUnknown from error
+    return [line_digest(line) for line in lines]
 
 
-def read_entries(source: Path, stream: str) -> tuple[list[dict[str, object]], int]:
-    """A stream's conforming entries and the number of lines refused (malformed, cut short or foreign)."""
+def line_digest(line: str) -> bytes:
+    import hashlib
+
+    return hashlib.sha256(line.encode("utf-8")).digest()
+
+
+def stream_line_digests(source: Path) -> list[bytes] | None:
+    """A digest of every line of a stream as stored, or None when the stream cannot be read."""
+    try:
+        return [line_digest(line) for line in source.read_text(encoding="utf-8").splitlines()]
+    except (OSError, ValueError):
+        return None
+
+
+def read_entries(source: Path, stream: str) -> tuple[list[dict[str, object]], int, str]:
+    """A stream's conforming entries, the number of lines refused, and how the read went.
+
+    The third value is `ok`, `missing` (no such stream), `unreadable` (it exists but could not be
+    read) or `oversized`. An unreadable stream is never reported as an empty one.
+    """
     table = _STREAMS[stream]
+    if not source.exists():
+        return [], 0, "missing"
     try:
         if source.stat().st_size > MAX_STREAM_BYTES:
-            return [], 1
+            return [], 0, "oversized"
         lines = source.read_text(encoding="utf-8").splitlines()
     except (OSError, ValueError):
-        return [], 0
+        return [], 0, "unreadable"
     entries: list[dict[str, object]] = []
     refused = 0
     for line in lines:
@@ -293,7 +355,7 @@ def read_entries(source: Path, stream: str) -> tuple[list[dict[str, object]], in
             entries.append(entry)
         else:
             refused += 1
-    return entries, refused
+    return entries, refused, "ok"
 
 
 def sanitized_text(value: str) -> str:
