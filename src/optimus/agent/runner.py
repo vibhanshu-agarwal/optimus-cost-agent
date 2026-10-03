@@ -26,6 +26,7 @@ from optimus.gateway.attempts import (
     ProviderAttempt,
     attempts_from_failure,
     attempts_from_response,
+    first_error,
     is_preflight_refusal,
 )
 from optimus.gateway.client import GatewayClient
@@ -88,11 +89,14 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
 class _RunScope:
     """What one `run` invocation owns: the sink its attempt receipts go to, the control its receipts
     are classified against (post-teardown) and the binder for its requests (Codex CP3 ruling R1/R4).
-    It is passed down explicitly and never stored on the runner, which concurrent sessions share."""
+    It is passed down explicitly and never stored on the runner, which concurrent sessions share.
+    `integrity_failure` is told the turn id whose charge the existing ledger refused, so that turn
+    never reads complete (Fable CP3 correction-2 review MINOR-1)."""
 
     stage_receipts: Callable[[StageReceipt], None] | None = None
     operation_control: TurnOperationControl | None = None
     route: TurnRouteBinder | None = None
+    integrity_failure: Callable[[str], None] | None = None
 
     def transport_abandoned(self) -> bool:
         return self.operation_control is not None and self.operation_control.transport_abandoned()
@@ -284,10 +288,12 @@ class AgentRunner:
         context_packer: ContextPacker | None = None,
         stage_receipts: Callable[[StageReceipt], None] | None = None,
         route_binder: TurnRouteBinder | None = None,
+        integrity_failure: Callable[[str], None] | None = None,
     ) -> AgentRunResult:
         """`stage_receipts` receives every model attempt of this run, known or unknown, once (Plan 12.2
         Task 11). `route_binder` binds each request to the turn's captured trusted route; without it
-        no binding is sent (registry enforcement inactive). Both belong to this invocation alone."""
+        no binding is sent (registry enforcement inactive). `integrity_failure` receives this run's
+        turn id when the existing ledger refuses one of its charges. All belong to this invocation alone."""
         observer = (
             planning_progress_observer
             if planning_progress_observer is not None
@@ -299,7 +305,9 @@ class AgentRunner:
 
             raise RouteIdentityError("the turn's route is bound to a different model than this runner sends")
         matched_skills = self._match_skills(request)
-        scope = _RunScope(stage_receipts=stage_receipts, operation_control=operation_control, route=route_binder)
+        scope = _RunScope(
+            stage_receipts=stage_receipts, operation_control=operation_control, route=route_binder, integrity_failure=integrity_failure
+        )
         try:
             if request.completion_condition and request.execution_mode is ExecutionMode.CHAT:
                 # Chat is one Gateway call. The goal loop would repeat it outside the
@@ -894,7 +902,7 @@ class AgentRunner:
         except Exception as error:  # noqa: BLE001 - held with the others
             errors.append(error)
         if errors:
-            raise errors[0]
+            raise first_error(errors)
         return attempts
 
     def _record_ledger_entry(
@@ -916,18 +924,26 @@ class AgentRunner:
                 turn_seq = int(str(request.run_id).rsplit(":", 1)[-1])
             except ValueError:
                 turn_seq = None
-        self._usage_accounting.record_gateway_usage(
-            gateway_usage,
-            run_id=request.run_id,
-            session_id=request.session_id,
-            request_id=f"{request.run_id}:planning:{settled_turn}:{wire_attempt}",
-            occurred_at=datetime.now(tz=UTC),
-            service="agent.model",
-            native_unit="tokens",
-            price_snapshot_id=gateway_usage.price_snapshot_id,
-            turn_seq=turn_seq,
-            post_teardown=post_teardown,
-        )
+        try:
+            self._usage_accounting.record_gateway_usage(
+                gateway_usage,
+                run_id=request.run_id,
+                session_id=request.session_id,
+                request_id=f"{request.run_id}:planning:{settled_turn}:{wire_attempt}",
+                occurred_at=datetime.now(tz=UTC),
+                service="agent.model",
+                native_unit="tokens",
+                price_snapshot_id=gateway_usage.price_snapshot_id,
+                turn_seq=turn_seq,
+                post_teardown=post_teardown,
+            )
+        except Exception:
+            # The system of record refused this charge (such as a Gateway request id reused with
+            # different facts): the turn's accounting failed, so its settlement must never read
+            # complete, whichever path recorded it (Fable CP3 correction-2 review MINOR-1).
+            if scope.integrity_failure is not None:
+                scope.integrity_failure(request.run_id)
+            raise
 
     def _report_attempts(
         self,
@@ -959,7 +975,7 @@ class AgentRunner:
             except Exception as error:  # noqa: BLE001 - offered every receipt first
                 refused.append(error)
         if refused:
-            raise refused[0]
+            raise first_error(refused)
 
     def _report_one(
         self,

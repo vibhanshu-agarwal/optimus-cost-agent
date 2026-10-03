@@ -39,12 +39,13 @@ from optimus.gateway.attempts import (
     ProviderAttempt,
     attempts_from_failure,
     attempts_from_response,
+    first_error,
 )
 from optimus.gateway.models import GatewayUsage
 from optimus_model_policy.binding import RouteBinding
 
 # Re-exported: the one preflight classifier every stage uses lives in optimus.gateway.attempts.
-__all__ = ["PREFLIGHT_REFUSAL_CODES", "AttemptIntegrityError"]
+__all__ = ["PREFLIGHT_REFUSAL_CODES", "AttemptIntegrityError", "first_error"]
 
 # `unattributed`: reported usage the Gateway did not attribute to a single completed attempt (Codex CP3
 # correction ruling C2). Its cost counts once; it is never a summary's source.
@@ -179,10 +180,9 @@ class HostMaintenance:
                 self._record_attempt(request, response, attempt)
             except Exception as error:  # noqa: BLE001 - offered every receipt first
                 refused.append(error)
-        if refused:
-            raise refused[0]
-        if response.integrity_error is not None:
-            raise response.integrity_error
+        held = [*refused, *((response.integrity_error,) if response.integrity_error is not None else ())]
+        if held:
+            raise first_error(held)
         attempt_ids = tuple(attempt.attempt_id for attempt in response.attempts)
         if self._cancelled():
             return MaintenanceResult(summary_text=None, attempt_ids=attempt_ids, status="cancelled", finish_status=response.finish_status)

@@ -62,6 +62,7 @@ from optimus.context.maintenance import (
     MaintenanceReceipt,
     SummarizerFactory,
     SummarizerRoute,
+    first_error,
 )
 from optimus.runtime.modes import ExecutionMode
 
@@ -384,6 +385,7 @@ class AttachedTurn:
         cancelled: Callable[[], bool],
         deliver_notice: Callable[[str], bool] | None = None,
         record_receipt: Callable[[MaintenanceReceipt], None] | None = None,
+        record_integrity_failure: Callable[[MaintenanceReceipt], None] | None = None,
     ) -> None:
         if strategy not in STRATEGIES:
             raise ValueError(f"unknown strategy {strategy!r}")
@@ -404,6 +406,8 @@ class AttachedTurn:
         self._dispatches: list[DispatchReading] = []
         # The turn's own receipt sink (its session's settlement), alongside the attachment's.
         self._record_receipt = record_receipt
+        # Told of a receipt the attachment's ledger refused, so the turn's settlement never reads complete.
+        self._record_integrity_failure = record_integrity_failure
         self._sink_error: Exception | None = None
         self._snapshot: HistorySnapshot | None = None
         self._maintenance: _TurnMaintenance | None = None
@@ -434,6 +438,7 @@ class AttachedTurn:
         cancelled: Callable[[], bool],
         deliver_notice: Callable[[str], bool] | None = None,
         record_receipt: Callable[[MaintenanceReceipt], None] | None = None,
+        record_integrity_failure: Callable[[MaintenanceReceipt], None] | None = None,
     ) -> AttachedTurn:
         """Copy everything the turn depends on now, before any await: later commits and setters
         cannot reach it. Approval facts of a turn that never committed are left out."""
@@ -453,6 +458,7 @@ class AttachedTurn:
             cancelled=cancelled,
             deliver_notice=deliver_notice,
             record_receipt=record_receipt,
+            record_integrity_failure=record_integrity_failure,
         )
 
     @property
@@ -653,19 +659,26 @@ class AttachedTurn:
     def _receipt_sink(self, receipt: MaintenanceReceipt) -> None:
         # Both sinks are offered the receipt even if the first refuses it, so neither the ledger nor the
         # settlement loses a charge because the other failed; the first failure is then raised as the
-        # integrity error it is (Codex CP3 correction ruling C2).
+        # integrity error it is (Codex CP3 correction ruling C2). A ledger refusal is also reported to the
+        # settlement, which would otherwise never learn of it and read complete (Fable CP3 correction-2
+        # review MINOR-1).
         errors: list[Exception] = []
-        for sink in (self._attachment.record_receipt, self._record_receipt):
+        ledger_refused = False
+        for sink, is_ledger in ((self._attachment.record_receipt, True), (self._record_receipt, False)):
             if sink is None:
                 continue
             try:
                 sink(receipt)
             except Exception as exc:  # noqa: BLE001 - offered to both sinks first
                 errors.append(exc)
+                ledger_refused = ledger_refused or is_ledger
+        if ledger_refused and self._record_integrity_failure is not None:
+            self._record_integrity_failure(receipt)
         if errors:
+            error = first_error(errors)
             if self._sink_error is None:
-                self._sink_error = errors[0]
-            raise errors[0]
+                self._sink_error = error
+            raise error
 
     def record_dispatch(self, text: str) -> None:
         """The runner is sending `text` as a complete planning/answer request now."""

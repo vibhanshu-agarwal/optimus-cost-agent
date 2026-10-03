@@ -5,7 +5,9 @@ violation), or a sink refuses a receipt, the run still fails loudly and is never
 reported charge is kept: in the existing ledger once, and in the session settlement as an
 `unattributed` record whose cost counts while its turn stays incomplete. The route attempts are kept as
 reported, unsettled; nothing is relabelled or invented. A crossed live threshold alerts once with the
-retained facts; after transport teardown nothing live is sent. A replay never charges twice.
+retained facts; after transport teardown nothing live is sent. A replay never charges twice. A charge
+only the existing ledger refuses keeps its turn incomplete too, and one raised error keeps the others
+noted (Fable CP3 correction-2 review MINOR-1, NIT-1).
 
 C1 is proved through the real ACP prompt, worker and finalization boundary with the real runner; C2
 through the real GatewaySummarizerCall -> HostMaintenance -> attachment and ledger sinks, and through
@@ -18,6 +20,7 @@ import asyncio
 import contextlib
 import dataclasses
 import threading
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -27,6 +30,7 @@ from context_engine import MaintenanceRequest
 from context_engine.summary import PROMPT_VERSION, SECTIONS, SUMMARY_FORMAT
 from optimus.acp.conversation import ConversationSanitizer, ConversationSanitizerInputs
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
+from optimus.agent.models import AgentRunRequest
 from optimus.agent.runner import AgentRunner
 from optimus.context.maintenance import (
     GatewaySummarizerCall,
@@ -163,7 +167,8 @@ async def test_a_receipt_the_store_refuses_fails_loudly_and_never_reads_complete
 
     session = store.get(session_id)
     turn = session.cost_settlement.settle_turn(f"{session_id}:2")
-    assert (turn.known_subtotal_usd, turn.complete, turn.integrity_failures) == (Decimal("0"), False, 1)
+    assert (turn.known_subtotal_usd, turn.complete) == (Decimal("0"), False)
+    assert turn.integrity_failures == (2 if ledger else 1)  # the settlement's refusal, and the ledger's
     assert (session.conversation.known_cost_usd, session.conversation.cost_complete) == (Decimal("0.004"), False)
     if service is not None:
         assert service.provider_ledger.total_cost_usd() == Decimal("0.004")
@@ -200,9 +205,81 @@ async def test_an_unattributable_report_after_teardown_is_kept_and_nothing_live_
     assert len(outbound.notifications) == sent
 
 
-def test_a_replay_or_later_reconciliation_never_charges_twice() -> None:
-    from datetime import UTC, datetime
+def _ledger_holding_other_facts() -> UsageAccountingService:
+    """An existing ledger that already holds `gw-reported` with other facts (another run's record)."""
+    service = UsageAccountingService()
+    service.record_gateway_usage(
+        _usage(cost="0.009"), run_id="other:1", session_id="other", request_id="other:1:planning:1:1",
+        occurred_at=datetime(2026, 10, 3, tzinfo=UTC), service="agent.model", native_unit="tokens",
+    )  # fmt: skip
+    return service
 
+
+@pytest.mark.parametrize("mode", ["agent", "chat"])
+async def test_a_charge_only_the_ledger_refuses_keeps_the_turn_incomplete(tmp_path, mode) -> None:
+    """Fable CP3 correction-2 review MINOR-1: the ledger refuses the charge (its Gateway request id is
+    already recorded with other facts) while the session's settlement, which has no conflicting owner,
+    accepts it. The turn fails loudly and never reads complete; the ledger's own record stands."""
+    service = _ledger_holding_other_facts()
+    gateway = Gateway(_report(broken=False, text="WRITE a.py\nx" if mode == "agent" else "An answer."))
+    adapter, store, outbound = _adapter(tmp_path, gateway, service=service)
+    session_id = await new_session(adapter, tmp_path, mode=mode)
+
+    with pytest.raises(DuplicateGatewayRequestError):
+        await rpc(adapter, prompt_request(session_id, "A question?", "p1"))
+
+    session = store.get(session_id)
+    turn = session.cost_settlement.settle_turn(f"{session_id}:1")
+    assert gateway.calls == 1
+    assert (turn.known_subtotal_usd, turn.complete, turn.integrity_failures) == (Decimal("0.004"), False, 1)
+    assert (session.conversation.known_cost_usd, session.conversation.cost_complete) == (Decimal("0.004"), False)
+    assert service.provider_ledger.total_cost_usd() == Decimal("0.009")
+    [alert] = _alerts(outbound)
+    assert "at least $0.004" in alert  # incomplete wording, never "(now $0.004)"
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.AGENT, ExecutionMode.CHAT, ExecutionMode.PLAN], ids=["planning", "chat", "plan"])
+def test_every_runner_path_reports_a_ledger_refusal_to_its_turn(tmp_path, mode) -> None:
+    """The multi-turn planning loop, Chat and the single-shot PLAN path all record through the runner's
+    one ledger entry point, which tells the run's settlement of a refusal."""
+    settlement = TurnSettlement()
+    request = AgentRunRequest(run_id="s:1", session_id="s", task="Change it.", workspace_root=tmp_path, execution_mode=mode)
+    runner = AgentRunner(gateway_client=Gateway(_report(broken=False, text="WRITE a.py\nx")), model="fake/model", usage_accounting=_ledger_holding_other_facts())
+
+    with pytest.raises(DuplicateGatewayRequestError):
+        runner.run(request, stage_receipts=settlement.record_attempt, integrity_failure=settlement.record_integrity_failure)
+
+    turn = settlement.settle_turn("s:1")
+    assert (turn.known_subtotal_usd, turn.complete, turn.integrity_failures) == (Decimal("0.004"), False, 1)
+
+
+def test_one_raised_accounting_error_keeps_the_others_noted(tmp_path) -> None:
+    """Fable CP3 correction-2 review NIT-1: every held accounting error is noted (by type) on the one
+    raised, on the runner and on the summary path."""
+    settlement = TurnSettlement()
+    request = AgentRunRequest(run_id="s:1", session_id="s", task="A question?", workspace_root=tmp_path, execution_mode=ExecutionMode.CHAT)
+    runner = AgentRunner(gateway_client=Gateway(_report(broken=True)), model="fake/model", usage_accounting=_ledger_holding_other_facts())
+
+    with pytest.raises(DuplicateGatewayRequestError) as raised:
+        runner.run(request, stage_receipts=settlement.record_attempt, integrity_failure=settlement.record_integrity_failure)
+
+    assert raised.value.__notes__ == ["accounting also failed: AttemptIntegrityError"]
+    turn = settlement.settle_turn("s:1")
+    assert (turn.known_subtotal_usd, turn.complete, turn.integrity_failures) == (Decimal("0.004"), False, 2)
+
+    def refusing(receipt) -> None:
+        raise ReceiptConflictError("already settled differently")
+
+    host = HostMaintenance(
+        call=GatewaySummarizerCall(gateway_client=Gateway(_report(broken=True, text=SUMMARY)), model_id="fake", session_id="s", request_ids=lambda: "r"),
+        sanitizer=ConversationSanitizer(ConversationSanitizerInputs((), ())), identity=IDENTITY, record_receipt=refusing, cancelled=lambda: False,
+    )  # fmt: skip
+    with pytest.raises(ReceiptConflictError) as refused:
+        host(REQUEST)
+    assert "accounting also failed: AttemptIntegrityError" in refused.value.__notes__
+
+
+def test_a_replay_or_later_reconciliation_never_charges_twice() -> None:
     settlement = TurnSettlement()
     unattributed = StageReceipt(
         session_id="s", turn_id="s:1", stage="answer", attempt_id="s:1:answer:1:1:usage", gateway_request_id="gw-reported",
@@ -318,12 +395,14 @@ def test_a_ledger_refusal_never_keeps_the_charge_out_of_the_settlement() -> None
         sanitizer=ConversationSanitizer(ConversationSanitizerInputs((), ())), strategy="compaction", mode=ExecutionMode.CHAT, checkpoint=None,
         current_prompt="now", turn_seq=4, cancelled=lambda: False,
         record_receipt=lambda receipt: settlement.record_attempt(receipt_from_maintenance(receipt)),
+        record_integrity_failure=lambda receipt: settlement.record_integrity_failure(receipt_from_maintenance(receipt).turn_id),
     )  # fmt: skip
 
     with pytest.raises(DuplicateGatewayRequestError):
         turn.prepare()
 
-    assert settlement.settle_turn("s:4").known_subtotal_usd == Decimal("0.004")
+    summary = settlement.settle_turn("s:4")
+    assert (summary.known_subtotal_usd, summary.complete, summary.integrity_failures) == (Decimal("0.004"), False, 1)
 
 
 async def test_an_attached_turns_unattributable_summary_is_kept_and_alerted_through_the_acp_host(tmp_path) -> None:
@@ -360,4 +439,42 @@ async def test_an_attached_turns_unattributable_summary_is_kept_and_alerted_thro
     assert session.cost_settlement.settle_turn(run_id).known_subtotal_usd == Decimal("0.004")
     assert session.conversation.cost_complete is False
     assert "gw-summary" in service.provider_ledger.gateway_request_ids()
+    assert any("at least $0.004" in alert for alert in _alerts(outbound))
+
+
+async def test_an_attached_turns_summary_charge_the_ledger_refuses_is_kept_incomplete_through_the_acp_host(tmp_path) -> None:
+    class Summarizing(Gateway):
+        def create_response(self, *, model, input_text, metadata=None, **kwargs):
+            self.calls += 1
+            if metadata.get("purpose") == "context_summary":
+                return _report(broken=False, text=SUMMARY, usage=_usage("gw-summary"))
+            return _report(broken=False, usage=_usage(f"gw-answer-{self.calls}", cost="0.0001"))
+
+    def refusing_ledger(receipt) -> None:
+        raise DuplicateGatewayRequestError(receipt.gateway_request_id)
+
+    gateway = Summarizing(None)
+    route = SummarizerRoute(model_id="test/summarizer", role="summarizer", route=("provider-a",), reasoning=None, quantizations=("fp8",))
+    attachment = dataclasses.replace(
+        make_attachment(tail=10), summarizer=gateway_summarizer_factory(gateway_client=gateway, route=route, snapshot=None, disclosure_key=None),
+        summarizer_route=route, record_receipt=refusing_ledger,
+    )  # fmt: skip
+    adapter, store, outbound = _adapter(tmp_path, gateway, attachment=attachment)
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+
+    raised = None
+    for n in range(6):
+        try:
+            await rpc(adapter, prompt_request(session_id, f"Question {n}: " + "words " * 30, f"p{n}"))
+        except DuplicateGatewayRequestError:
+            raised = n + 1
+            break
+
+    assert raised is not None  # the turn that needed a summary failed loudly
+    session = store.get(session_id)
+    run_id = f"{session_id}:{raised}"
+    assert [r.gateway_request_id for r in session.cost_settlement.receipts(run_id)] == ["gw-summary"]  # no answer was dispatched
+    turn = session.cost_settlement.settle_turn(run_id)
+    assert (turn.known_subtotal_usd, turn.complete, turn.integrity_failures) == (Decimal("0.004"), False, 1)
+    assert session.conversation.cost_complete is False
     assert any("at least $0.004" in alert for alert in _alerts(outbound))

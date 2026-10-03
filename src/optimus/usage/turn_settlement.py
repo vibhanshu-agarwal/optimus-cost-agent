@@ -131,8 +131,8 @@ class StageReceipt:
 class TurnCostSummary:
     """A turn's settled cost: the known subtotal, every unknown attempt, every receipt, how many
     worker invocations for the turn are still running and how many accounting-integrity failures it
-    had (an unattributed usage record, or a receipt the store refused as conflicting). Any of those
-    keeps it incomplete; known charges still count."""
+    had (an unattributed usage record, a receipt the store refused as conflicting, or a charge another
+    sink - the existing ledger - refused). Any of those keeps it incomplete; known charges still count."""
 
     turn_id: str
     known_subtotal_usd: Decimal
@@ -217,7 +217,7 @@ class TurnSettlement:
             existing = self._receipts.get(receipt.attempt_id)
             if existing is not None:
                 if existing.facts() != receipt.facts():
-                    self._refuse(receipt.turn_id)
+                    self.record_integrity_failure(receipt.turn_id)
                     raise ReceiptConflictError(f"attempt {receipt.attempt_id} was already recorded differently")
                 return
             gateway_id = receipt.gateway_request_id
@@ -227,7 +227,7 @@ class TurnSettlement:
                 # one charge. Different facts for one Gateway request are an integrity error (Fable
                 # CP3 review MINOR-7; mirrors ProviderUsageLedger).
                 if self._receipts[owner].settled_facts() != receipt.settled_facts():
-                    self._refuse(receipt.turn_id)
+                    self.record_integrity_failure(receipt.turn_id)
                     raise ReceiptConflictError(f"Gateway request {gateway_id} was already settled differently")
                 return
             self._receipts[receipt.attempt_id] = receipt
@@ -235,11 +235,13 @@ class TurnSettlement:
                 self._attempt_for_gateway[gateway_id] = receipt.attempt_id
             self._publish(receipt.turn_id)
 
-    def _refuse(self, turn_id: str) -> None:
-        """A refused conflicting receipt: the turn's accounting failed, so it can never read as
-        complete; what was already settled keeps counting, and nothing is charged twice."""
-        self._refused[turn_id] = self._refused.get(turn_id, 0) + 1
-        self._publish(turn_id)
+    def record_integrity_failure(self, turn_id: str) -> None:
+        """The turn's accounting failed: a conflicting receipt this store refused, or a charge another
+        sink (the existing ledger) refused. It can never read as complete; what was already settled
+        keeps counting, and nothing is charged twice (Fable CP3 correction-2 review MINOR-1)."""
+        with self._lock:
+            self._refused[turn_id] = self._refused.get(turn_id, 0) + 1
+            self._publish(turn_id)
 
     def project(self, turn_id: str, subscriber: CostSubscriber) -> None:
         """Publish one turn's current summary to `subscriber` alone, ordered with every other

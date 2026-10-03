@@ -28,6 +28,7 @@ ledger never has to reconstruct billing facts.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -40,6 +41,7 @@ __all__ = [
     "ProviderAttempt",
     "attempts_from_failure",
     "attempts_from_response",
+    "first_error",
     "is_preflight_refusal",
 ]
 
@@ -84,6 +86,18 @@ class AttemptIntegrityError(ValueError):
     def __init__(self, message: str, *, attempts: tuple[ProviderAttempt, ...] = ()) -> None:
         super().__init__(message)
         self.attempts = attempts
+
+
+def first_error(errors: Sequence[BaseException]) -> BaseException:
+    """The first of the accounting errors held while every record was still offered, with each other
+    one noted on it by type (content-free), so raising one never loses the rest (Fable CP3
+    correction-2 review NIT-1)."""
+    first = errors[0]
+    for other in errors[1:]:
+        note = f"accounting also failed: {type(other).__name__}"
+        if other is not first and note not in getattr(first, "__notes__", ()):
+            first.add_note(note)
+    return first
 
 
 @dataclass(frozen=True, slots=True)

@@ -27,6 +27,7 @@ from optimus.gateway.attempts import (
     ProviderAttempt,
     attempts_from_failure,
     attempts_from_response,
+    first_error,
     is_preflight_refusal,
 )
 from optimus.gateway.errors import GatewayError
@@ -1180,7 +1181,7 @@ class _PlanningIterationRunner:
 
         retry_result = self._retry_controller.run(operation)
         if integrity:
-            raise integrity[0]
+            raise first_error(integrity)
 
         # Map RetryResult to planning outcomes.
         sequence_cost = self._total_cost_usd - cost_before

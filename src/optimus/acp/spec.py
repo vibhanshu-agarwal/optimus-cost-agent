@@ -887,6 +887,9 @@ class AcpDuplexAdapter:
                 cancelled=turn.turn_control.halt_requested,
                 deliver_notice=self._blocking_notice(session_id, asyncio.get_running_loop()),
                 record_receipt=lambda receipt: session.cost_settlement.record_attempt(receipt_from_maintenance(receipt)),
+                record_integrity_failure=lambda receipt: session.cost_settlement.record_integrity_failure(
+                    receipt_from_maintenance(receipt).turn_id
+                ),
             )
             if self._context_attachment is not None
             else None
@@ -973,6 +976,7 @@ class AcpDuplexAdapter:
                     context_packer=attached_turn,
                     stage_receipts=session.cost_settlement.record_attempt,
                     route_binder=turn.route_binder,
+                    integrity_failure=session.cost_settlement.record_integrity_failure,
                 ),
             )
             self._apply_turn_cost(
@@ -1133,6 +1137,7 @@ class AcpDuplexAdapter:
                     operation_control=turn.turn_control,
                     stage_receipts=session.cost_settlement.record_attempt,
                     route_binder=turn.route_binder,
+                    integrity_failure=session.cost_settlement.record_integrity_failure,
                 ),
             )
             # region agent log
@@ -1643,6 +1648,7 @@ class AcpDuplexAdapter:
         context_packer: Any | None = None,
         stage_receipts: Any | None = None,
         route_binder: Any | None = None,
+        integrity_failure: Any | None = None,
     ) -> dict[str, Any]:
         """Pass client-MCP runtime kwargs only when the runner accepts them."""
         kwargs: dict[str, Any] = {}
@@ -1668,6 +1674,8 @@ class AcpDuplexAdapter:
             _maybe("stage_receipts", stage_receipts)
         if route_binder is not None:
             _maybe("route_binder", route_binder)
+        if integrity_failure is not None:
+            _maybe("integrity_failure", integrity_failure)
         _maybe("client_mcp_service", _client_mcp_service(session))
         _maybe("mcp_permission_broker", self._mcp_permission_broker_for(session))
         return kwargs
