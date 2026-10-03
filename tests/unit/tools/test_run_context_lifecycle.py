@@ -612,17 +612,261 @@ def test_an_unobservable_root_is_unknown_and_an_ended_one_is_counted(
 ) -> None:
     entry = {"run_id": "20000101T000000-4242-abcdef", "mode": "active", "root": {"pid": 4242, "creation_time": 123456},
              "declared_agent": "claude", "worktree": "C:\\w"}
-    monkeypatch.setattr(run_context_records, "registry_entries", lambda _exclude: [entry])
+    monkeypatch.setattr(run_context_records, "registry_entries", lambda _exclude: ([entry], "ok"))
     fields = {"pid": 4242, "creation_time": None, "image": None, "error": None, "live": None, "opened": False, **identity}
     monkeypatch.setattr(run_context_windows, "process_identity", lambda _pid: run_context_windows.ProcessIdentity(**fields))
-    listed, extra, failed, ended_count = run_context.other_runs("none")
-    assert (extra, failed, ended_count) == (0, False, ended)
+    listed, extra, registry, ended_count = run_context.other_runs("none")
+    assert (extra, registry, ended_count) == (0, "ok", ended)
     assert [other["relation"] for other in listed] == ([listed_relation] if listed_relation else [])
 
 
-def test_a_registry_that_cannot_be_read_is_reported_not_hidden(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(run_context_records, "registry_entries", lambda _exclude: (_ for _ in ()).throw(PermissionError("denied")))
-    assert run_context.other_runs("none") == ([], 0, True, 0)
+def _start_record() -> dict[str, object]:
+    """This session's own start record, as a shape for synthetic announcements. Read while the session is current."""
+    start = run_context_records.read_record(_context().record_dir / "run.json")
+    assert start is not None
+    start.pop("schema")
+    return start
+
+
+def _announcement(run_id: str, start: dict[str, object]) -> dict[str, object]:
+    pid = int(run_id.split("-")[1])
+    return {**start, "run_id": run_id, "root": {**start["root"], "pid": pid}}  # type: ignore[dict-item]
+
+
+class _ReadDenied:
+    """Reading one existing file fails at the operating-system boundary; the reader itself is untouched.
+
+    On Windows the file is held open with no sharing, so any other open is refused by the kernel.
+    Elsewhere the process may be root, which no mode bit stops, so the open call is refused below
+    `Path.read_text` for that one path.
+    """
+
+    def __init__(self, target: Path) -> None:
+        self._target = target
+        self._handle: int | None = None
+        self._patch = pytest.MonkeyPatch()
+
+    def __enter__(self) -> _ReadDenied:
+        if sys.platform == "win32":
+            import _winapi
+
+            self._handle = _winapi.CreateFile(str(self._target), _winapi.GENERIC_READ, 0, 0, _winapi.OPEN_EXISTING, 0, 0)
+        else:
+            import io
+
+            real_open, target = io.open, self._target
+
+            def denied(file: object, *arguments: object, **options: object) -> object:
+                if isinstance(file, (str, Path)) and Path(file) == target:
+                    raise PermissionError(13, "synthetic read denial")
+                return real_open(file, *arguments, **options)  # type: ignore[arg-type]
+
+            self._patch.setattr(io, "open", denied)
+        return self
+
+    def __exit__(self, *_arguments: object) -> None:
+        if self._handle is not None:
+            import _winapi
+
+            _winapi.CloseHandle(self._handle)
+        self._patch.undo()
+
+
+def _listing_denied(folder: Path) -> pytest.MonkeyPatch:
+    """Listing one folder fails below the reader: `os.scandir` refuses that path and nothing else."""
+    real_scandir = os.scandir
+
+    def denied(path: object = ".", *arguments: object, **options: object) -> object:
+        if isinstance(path, (str, Path)) and Path(path) == folder:
+            raise PermissionError(13, "synthetic listing denial")
+        return real_scandir(path, *arguments, **options)  # type: ignore[arg-type]
+
+    patch = pytest.MonkeyPatch()
+    patch.setattr(os, "scandir", denied)
+    return patch
+
+
+def test_a_registry_that_cannot_be_read_is_reported_not_hidden(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """R4: the actual reader, `other_runs`, the stored sample and parent discovery all carry the registry's state."""
+    registry, start = tmp_path / "registry", _start_record()
+    monkeypatch.setattr(run_context_records, "registry_root", lambda: registry)
+    assert run_context_records.registry_entries("none") == ([], "absent")
+    assert run_context.other_runs("none") == ([], 0, "absent", 0)
+    registry.mkdir()
+    assert run_context_records.registry_entries("none") == ([], "ok")
+    first, second = "20000101T000000-4242-abcdef", "20000101T000000-4343-abcdef"
+    for run_id in (first, second):
+        run_context_records.write_record(registry / f"{run_id}.json", _announcement(run_id, start))
+    assert sorted(entry["run_id"] for entry in run_context_records.registry_entries("none")[0]) == [first, second]
+    # The folder itself cannot be listed: that is `unreadable`, never an empty registry.
+    denied = _listing_denied(registry)
+    try:
+        assert run_context_records.registry_entries("none") == ([], "unreadable")
+        assert run_context.other_runs("none") == ([], 0, "unreadable", 0)
+        scratch = _scratch_context(tmp_path / "run")
+        run_context.sample_run(scratch, "phase")
+        samples, refused, how = run_context_records.read_entries(tmp_path / "run" / "samples.jsonl", "samples")
+        assert (refused, how) == (0, "ok") and samples[-1]["registry"] == "unreadable" and samples[-1]["others"] == []
+        monkeypatch.setattr(run_context_windows, "ancestors", lambda: ([], "root_reached"))
+        assert run_context._discover_parent_run("none") == {  # noqa: SLF001
+            "status": "UNKNOWN", "reason": "registry_unreadable", "method": "validated_process_ancestry"}
+    finally:
+        denied.undo()
+    # One entry exists but cannot be read: the rest is listed and the answer is `partial`.
+    with _ReadDenied(registry / f"{first}.json"):
+        entries, state = run_context_records.registry_entries("none")
+        assert state == "partial" and [entry["run_id"] for entry in entries] == [second]
+        assert run_context.other_runs("none")[2] == "partial"
+        assert run_context._discover_parent_run("none")["reason"] == "registry_partial"  # noqa: SLF001
+    # An entry withdrawn between the listing and its read belongs to a run that just finished.
+    real_load = run_context_records._load_record  # noqa: SLF001
+
+    def withdrawn_meanwhile(source: Path) -> tuple[dict[str, object] | None, str]:
+        if source.name == f"{first}.json":
+            source.unlink()
+        return real_load(source)
+
+    monkeypatch.setattr(run_context_records, "_load_record", withdrawn_meanwhile)
+    entries, state = run_context_records.registry_entries("none")
+    assert state == "ok" and [entry["run_id"] for entry in entries] == [second]
+    monkeypatch.setattr(run_context_records, "_load_record", real_load)
+    # A malformed entry is refused and skipped, as before; it is not a read failure.
+    (registry / "zzz-malformed.json").write_text("{not json", encoding="utf-8")
+    entries, state = run_context_records.registry_entries("none")
+    assert state == "ok" and [entry["run_id"] for entry in entries] == [second]
+
+
+def test_a_registry_beyond_its_ceiling_is_partial_and_never_pruned(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Codex's registry-ceiling disposition: the cap stays, partial stays visible, absence is not guessed, nothing is deleted."""
+    registry, start = tmp_path / "registry", _start_record()
+    registry.mkdir()
+    monkeypatch.setattr(run_context_records, "registry_root", lambda: registry)
+    ceiling = run_context_records.MAX_REGISTRY_ENTRIES
+    assert ceiling == 512
+    ids = [f"20000101T{index:06d}-{index + 1}-abcdef" for index in range(ceiling + 1)]
+    for run_id in ids:
+        run_context_records.write_record(registry / f"{run_id}.json", _announcement(run_id, start))
+    before = sorted(path.name for path in registry.iterdir())
+    entries, state = run_context_records.registry_entries("none")
+    assert state == "partial" and len(entries) == ceiling and ids[0] not in {entry["run_id"] for entry in entries}
+    assert run_context.other_runs("none")[2] == "partial"
+    scratch = _scratch_context(tmp_path / "run")
+    run_context.sample_run(scratch, "phase")
+    samples = run_context_records.read_entries(tmp_path / "run" / "samples.jsonl", "samples")[0]
+    assert samples[-1]["registry"] == "partial" and samples[-1]["others_not_listed"] >= 0
+    # An unmatched parent is UNKNOWN; a positively validated parent among the observed entries is still found.
+    monkeypatch.setattr(run_context_windows, "ancestors", lambda: ([], "root_reached"))
+    assert run_context._discover_parent_run("none") == {  # noqa: SLF001
+        "status": "UNKNOWN", "reason": "registry_partial", "method": "validated_process_ancestry"}
+    newest = run_context_records.read_record(registry / f"{ids[-1]}.json")
+    assert newest is not None
+    live = run_context_windows.ProcessIdentity(pid=int(newest["root"]["pid"]), creation_time=int(newest["root"]["creation_time"]),  # type: ignore[index]
+                                               image=None, error=None, live=True, opened=True)
+    monkeypatch.setattr(run_context_windows, "ancestors", lambda: ([live], "root_reached"))
+    assert newest["mode"] == "active"
+    assert run_context._discover_parent_run("none") == {  # noqa: SLF001
+        "status": "parent", "run_id": ids[-1], "method": "validated_process_ancestry"}
+    assert sorted(path.name for path in registry.iterdir()) == before, "no registry entry was deleted"
+
+
+class _UnlinkDenied:
+    """Removing one file fails at the operating-system boundary; the removal helper is untouched.
+
+    On Windows a file that is open through the C runtime cannot be deleted, so holding it open is a
+    genuine kernel refusal. Elsewhere an open file can be unlinked, so `os.unlink` is refused for
+    that one path below `Path.unlink`.
+    """
+
+    def __init__(self, target: Path) -> None:
+        self._target = target
+        self._handle: object = None
+        self._patch = pytest.MonkeyPatch()
+
+    def __enter__(self) -> _UnlinkDenied:
+        if sys.platform == "win32":
+            self._handle = open(self._target, "rb")  # noqa: SIM115
+        else:
+            real_unlink, target = os.unlink, self._target
+
+            def denied(path: object, *arguments: object, **options: object) -> None:
+                if isinstance(path, (str, Path)) and Path(path) == target:
+                    raise PermissionError(13, "synthetic unlink denial")
+                real_unlink(path, *arguments, **options)  # type: ignore[arg-type]
+
+            self._patch.setattr(os, "unlink", denied)
+        return self
+
+    def __exit__(self, *_arguments: object) -> None:
+        if self._handle is not None:
+            self._handle.close()  # type: ignore[attr-defined]
+        self._patch.undo()
+
+
+def test_the_stored_terminal_record_states_whether_the_announcement_was_withdrawn(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """R2: actual finish_run, writer, reader and removal helper; the stored and returned states agree."""
+    registry, start = tmp_path / "registry", _start_record()
+    registry.mkdir()
+    monkeypatch.setattr(run_context_records, "registry_root", lambda: registry)
+    scratch, denied = _scratch_context(tmp_path / "clean"), _scratch_context(tmp_path / "denied")
+    # Positive: the announcement is withdrawn before the record is written, and the record says so.
+    run_context_records.write_record(registry / f"{scratch.run_id}.json", _announcement(scratch.run_id, start))
+    run_context.record_phase(scratch, _report(when="call"))
+    monkeypatch.setattr(run_context, "_current", scratch)
+    final = run_context.finish_run(scratch, 0)
+    stored = run_context_records.read_record(tmp_path / "clean" / "run.json")
+    assert stored is not None and stored["checkpoint"] == "terminal"
+    for record in (final, stored):
+        assert (record["exit_status"], record["completeness"], record["registry_withdrawal"], record["recording_errors"]) == (0, "COMPLETE", "done", 0)
+    assert not (registry / f"{scratch.run_id}.json").exists() and run_context.current() is None
+    # The unlink is denied by the operating system: the entry remains, and both the stored record and
+    # the returned one say INVALID with the withdrawal failed; pytest's exit status is kept.
+    announcement = registry / f"{denied.run_id}.json"
+    run_context_records.write_record(announcement, _announcement(denied.run_id, start))
+    run_context.record_phase(denied, _report(when="call"))
+    monkeypatch.setattr(run_context, "_current", denied)
+    with _UnlinkDenied(announcement):
+        final = run_context.finish_run(denied, 7)
+    assert announcement.exists()
+    stored = run_context_records.read_record(tmp_path / "denied" / "run.json")
+    assert stored is not None and stored["checkpoint"] == "terminal" and stored["streams"]["phases"] == 1
+    for record in (final, stored):
+        assert (record["exit_status"], record["completeness"], record["registry_withdrawal"]) == (7, "INVALID", "failed")
+        assert record["recording_errors"] == 1
+    assert run_context.current() is None
+    # The removal is the ordinary helper: once the denial is lifted it withdraws the entry.
+    run_context_records.remove_own_registry_entry(denied.run_id)
+    assert not announcement.exists()
+
+
+def test_a_refused_terminal_record_is_stored_as_invalid_when_any_record_can_be(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A full terminal record refused by the field table never leaves a COMPLETE claim behind."""
+    registry, start = tmp_path / "registry", _start_record()
+    registry.mkdir()
+    monkeypatch.setattr(run_context_records, "registry_root", lambda: registry)
+    scratch, another = _scratch_context(tmp_path / "run"), _scratch_context(tmp_path / "another")
+    # The refused value sits in the terminal facts: the minimal INVALID record is stored instead.
+    run_context_records.write_record(registry / f"{scratch.run_id}.json", _announcement(scratch.run_id, start))
+    run_context.record_phase(scratch, _report(when="call"))
+    scratch.native["enrolled"] = True
+    monkeypatch.setattr(run_context_windows, "accounting", lambda: {"ok": True, "total_processes": "many"})
+    monkeypatch.setattr(run_context_windows, "members", lambda: ([], None))
+    monkeypatch.setattr(run_context, "_current", scratch)
+    final = run_context.finish_run(scratch, 1)
+    stored = run_context_records.read_record(tmp_path / "run" / "run.json")
+    assert stored is not None and stored["checkpoint"] == "terminal" and "streams" not in stored
+    for record in (final, stored):
+        assert (record["completeness"], record["terminal_failure"], record["exit_status"], record["registry_withdrawal"]) == (
+            "INVALID", "record.accounting.total_processes", 1, "done")
+    assert not (registry / f"{scratch.run_id}.json").exists() and run_context.current() is None
+    # The refused value sits in the run's own facts, shared by both attempts: nothing is stored, and
+    # the returned result still says INVALID with the entry withdrawn.
+    run_context_records.write_record(registry / f"{another.run_id}.json", _announcement(another.run_id, start))
+    another.facts["protection"] = "not-a-level"
+    monkeypatch.setattr(run_context, "_current", another)
+    final = run_context.finish_run(another, 0)
+    assert run_context_records.read_record(tmp_path / "another" / "run.json") is None
+    assert (final["completeness"], final["terminal_failure"], final["registry_withdrawal"]) == ("INVALID", "record.protection", "done")
+    assert not (registry / f"{another.run_id}.json").exists() and run_context.current() is None
 
 
 def test_the_context_and_the_observer_never_open_a_job_or_start_a_thread() -> None:

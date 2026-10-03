@@ -79,6 +79,8 @@ class RunContext:
     # What each stream should hold, for the terminal read-back: a digest of every entry, in order.
     ledger: dict[str, object] = field(default_factory=lambda: {"nodes": hashlib.sha256(), "phases": hashlib.sha256(), "samples": hashlib.sha256()})
     selection: object = field(default_factory=hashlib.sha256)
+    # True once this run's own registry announcement has been removed.
+    registry_withdrawn: bool = False
 
 
 _sessions_started = 0
@@ -194,13 +196,15 @@ def _discover_parent_run(run_id: str) -> dict[str, object]:
     run's own job. No job is opened and no command line is read.
 
     The answer is `parent` when a match is found, `none` only when the whole chain was followed to
-    its end without one, `not_found` when the visible chain ended at an exited ancestor (earlier
-    ancestors cannot be seen, so absence is not established), and UNKNOWN when any query failed.
+    its end without one and the whole registry was read, `not_found` when the visible chain ended at
+    an exited ancestor (earlier ancestors cannot be seen, so absence is not established), and
+    UNKNOWN when any query failed or the registry could not be read in full.
     """
     method = "validated_process_ancestry"
     chain, stopped = native.ancestors()
     roots: dict[tuple[int, int], str] = {}
-    for entry in records.registry_entries(run_id):
+    entries, registry = records.registry_entries(run_id)
+    for entry in entries:
         # The reader guarantees a complete root identity. An entry that still lacks one, or whose
         # creation time was never read, names no ancestor and is passed over, never raised on.
         root = entry.get("root")
@@ -212,11 +216,14 @@ def _discover_parent_run(run_id: str) -> dict[str, object]:
         found = roots.get((ancestor.pid, ancestor.creation_time or -1)) if ancestor.live is True else None
         if found is not None:
             return {"status": "parent", "run_id": found, "method": method}
+    if stopped not in ("root_reached", "ancestor_exited"):
+        return {"status": UNKNOWN, "reason": stopped, "method": method}
+    if registry in ("unreadable", "partial"):
+        # A registered parent may sit in the part of the registry that could not be read.
+        return {"status": UNKNOWN, "reason": f"registry_{registry}", "method": method}
     if stopped == "root_reached":
         return {"status": "none", "method": method}
-    if stopped == "ancestor_exited":
-        return {"status": "not_found", "reason": stopped, "method": method}
-    return {"status": UNKNOWN, "reason": stopped, "method": method}
+    return {"status": "not_found", "reason": stopped, "method": method}
 
 
 def start_run(config: object) -> RunContext:
@@ -411,21 +418,20 @@ def record_phase(context: RunContext, report: object) -> None:
         context.counts["recording_errors"] += 1
 
 
-def other_runs(run_id: str) -> tuple[list[dict[str, object]], int, bool, int]:
-    """Other registered runs now: the listed ones, how many more were not listed, whether the registry
-    could not be read, and how many have positively ended.
+def other_runs(run_id: str) -> tuple[list[dict[str, object]], int, str, int]:
+    """Other registered runs now: the listed ones, how many more were not listed, how the registry
+    read went (one of `records.REGISTRY_STATES`), and how many have positively ended.
 
     On Windows each root is checked through a process handle. A root that is running, with the
     registered creation time, is `own_job` or `outside` by this run's own job. A root whose open
     says there is no such process, whose creation time differs (the PID was reused) or whose wait
     says it has terminated is counted as ended and not listed. A root that cannot be observed
     (the open or a query was denied or failed) is listed as `unknown`: that is not absence.
-    Elsewhere the relation is `unverified`. No other run's job is opened.
+    Elsewhere the relation is `unverified`. A registry that could not be listed, or read in full,
+    is reported as such by the reader itself: an empty answer is only ever a read, empty registry.
+    No other run's job is opened.
     """
-    try:
-        entries = records.registry_entries(run_id)
-    except OSError:
-        return [], 0, True, 0
+    entries, registry = records.registry_entries(run_id)
     listed: list[dict[str, object]] = []
     extra = ended = 0
     for entry in entries:
@@ -458,7 +464,7 @@ def other_runs(run_id: str) -> tuple[list[dict[str, object]], int, bool, int]:
             "run_id": entry["run_id"], "relation": relation, "declared_agent": entry.get("declared_agent"),
             "worktree": entry.get("worktree"),
         })
-    return listed, extra, False, ended
+    return listed, extra, registry, ended
 
 
 def sample_run(context: RunContext, checkpoint: str) -> None:
@@ -469,12 +475,12 @@ def sample_run(context: RunContext, checkpoint: str) -> None:
     """
     try:
         now = time.monotonic()
-        others, extra, failed, ended = other_runs(context.run_id)
+        others, extra, registry, ended = other_runs(context.run_id)
         entry: dict[str, object] = {
             "at": round(now - context.started_monotonic, 3),
             "gap": round(now - (context.last_sample or context.started_monotonic), 3),
             "checkpoint": checkpoint, "others": others, "others_not_listed": extra, "others_ended": ended,
-            "registry_error": failed,
+            "registry": registry,
         }
         if context.native.get("enrolled"):
             entry["accounting"] = native.accounting()
@@ -512,29 +518,75 @@ def completeness(context: RunContext) -> str:
 
 
 def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
-    """Write the terminal record. The job handle is deliberately kept until the interpreter exits.
+    """Withdraw the announcement, then write the terminal record. The job handle is deliberately
+    kept until the interpreter exits.
 
     Nothing here raises into pytest: a failure anywhere in the terminal work leaves pytest's own
-    exit status in place, makes the record INVALID, and still withdraws this run's registry entry
-    and clears the current context.
+    exit status in place and makes the record INVALID. The registry withdrawal comes before the
+    record is written, so the stored record states whether it happened; a withdrawal that fails is
+    a recording error in the stored record and in the returned one alike. The current context is
+    cleared in every case.
     """
     global _current
     final: dict[str, object] = {"exit_status": int(exit_status), "completeness": "INVALID"}
     try:
-        final.update(_terminal(context, exit_status))
-    except Exception:  # noqa: BLE001 - the terminal record could not be established
+        try:
+            final.update(_terminal(context, exit_status))
+        except Exception as error:  # noqa: BLE001 - the terminal facts could not be established
+            context.counts["recording_errors"] += 1
+            final["terminal_failure"] = _failure_token(error)
+        final["finished_utc"] = datetime.now(timezone.utc).isoformat()
+        final["registry_withdrawal"] = _withdraw(context)
+        if final["registry_withdrawal"] == "failed":
+            context.counts["recording_errors"] += 1
+        final["recording_errors"] = context.counts["recording_errors"]
+        final["completeness"] = "INVALID" if "terminal_failure" in final else completeness(context)
+        _publish(context, final)
+    except Exception as error:  # noqa: BLE001 - never into pytest
         context.counts["recording_errors"] += 1
         final["completeness"] = "INVALID"
+        final.setdefault("terminal_failure", _failure_token(error))
     finally:
-        try:
-            records.remove_own_registry_entry(context.run_id)
-        except OSError:
-            final["completeness"] = "INVALID"
         _current = None
     return final
 
 
+def _withdraw(context: RunContext) -> str:
+    """Withdraw this run's own announcement once: `done`, or `failed` when the entry may remain."""
+    if not context.registry_withdrawn:
+        try:
+            records.remove_own_registry_entry(context.run_id)
+        except Exception:  # noqa: BLE001 - a denied or failed unlink leaves the entry in place
+            return "failed"
+        context.registry_withdrawn = True
+    return "done"
+
+
+_MINIMAL_TERMINAL = ("exit_status", "finished_utc", "completeness", "terminal_failure", "recording_errors", "registry_withdrawal")
+
+
+def _publish(context: RunContext, final: dict[str, object]) -> None:
+    """Write the terminal record through the single sink. When the full record is refused or cannot
+    be written, the result is INVALID and a minimal INVALID record is tried in its place; when that
+    fails too, the start record is left as it is. Nothing here claims success it did not have."""
+    target = context.record_dir / "run.json"
+    try:
+        records.write_record(target, {**_payload(context, checkpoint="terminal"), **final})
+        return
+    except Exception as error:  # noqa: BLE001 - a patched serializer, a refused field or a failed write
+        context.counts["recording_errors"] += 1
+        final["completeness"] = "INVALID"
+        final["terminal_failure"] = _failure_token(error)
+        final["recording_errors"] = context.counts["recording_errors"]
+    minimal = {name: final[name] for name in _MINIMAL_TERMINAL if name in final}
+    try:
+        records.write_record(target, {**_payload(context, checkpoint="terminal"), **minimal})
+    except Exception:  # noqa: BLE001 - the start record remains; the returned result already says INVALID
+        pass
+
+
 def _terminal(context: RunContext, exit_status: int) -> dict[str, object]:
+    """The terminal facts: a last sample, the streams flushed and read back, the job's members."""
     sample_run(context, "terminal")
     for stream in ("nodes", "phases", "samples"):
         if context.pending[stream]:
@@ -546,7 +598,7 @@ def _terminal(context: RunContext, exit_status: int) -> dict[str, object]:
     reconciled, read_back = _read_back(context)
     if not reconciled:
         context.counts["recording_errors"] += 1
-    final: dict[str, object] = {"exit_status": int(exit_status), "finished_utc": datetime.now(timezone.utc).isoformat()}
+    final: dict[str, object] = {"exit_status": int(exit_status)}
     if context.native.get("enrolled"):
         final["accounting"] = native.accounting()
         identities, error = native.members()
@@ -562,16 +614,9 @@ def _terminal(context: RunContext, exit_status: int) -> dict[str, object]:
         "selection_sha256": context.selection.hexdigest(),  # type: ignore[attr-defined]
         "streams": {"nodes": counts["nodes"], "phases": counts["phases"], "samples": counts["samples"],
                     "truncated": context.truncated, "reconciled": reconciled, "read_back": read_back},
-        "recording_errors": counts["recording_errors"], "deferred_appends": counts["deferred_appends"],
+        "deferred_appends": counts["deferred_appends"],
         "last_sample_at": round(max(0.0, context.last_sample - context.started_monotonic), 3),
-        "completeness": completeness(context),
     })
-    payload = {**_payload(context, checkpoint="terminal"), **final}
-    try:
-        records.write_record(context.record_dir / "run.json", payload)
-    except Exception as error:  # noqa: BLE001 - a patched serializer or a failed write at the very end
-        final["completeness"] = "INVALID"
-        final["terminal_failure"] = _failure_token(error)
     return final
 
 

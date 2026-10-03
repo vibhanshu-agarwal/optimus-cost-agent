@@ -259,7 +259,9 @@ def test_a_failed_creation_time_read_is_not_taken_for_an_exited_parent(monkeypat
 
 @_windows
 @pytest.mark.parametrize("how", ["open_reports_no_such_process", "wait_reports_terminated"])
-def test_an_exited_ancestor_ends_the_chain_without_proving_absence(monkeypatch: pytest.MonkeyPatch, how: str) -> None:
+def test_an_exited_ancestor_ends_the_chain_without_proving_absence(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, how: str) -> None:
+    # An empty registry of its own: the machine's real registry may be beyond its ceiling, which is UNKNOWN on its own account.
+    monkeypatch.setattr(run_context_records, "registry_root", lambda: tmp_path)
     if how == "open_reports_no_such_process":
         _inject(monkeypatch, OpenProcess=_fail(87))
     else:
@@ -432,7 +434,7 @@ def test_an_incomplete_registry_identity_is_refused_and_cannot_abort_discovery(m
     try:
         planted.write_text(json.dumps(incomplete), encoding="utf-8")
         assert run_context_records.read_record(planted) is None
-        assert run_id not in [entry["run_id"] for entry in run_context_records.registry_entries("none")]
+        assert run_id not in [entry["run_id"] for entry in run_context_records.registry_entries("none")[0]]
         first = _parent_status() if sys.platform == "win32" else {"status": "unsupported"}
     finally:
         planted.unlink(missing_ok=True)
@@ -448,7 +450,7 @@ def test_an_incomplete_registry_identity_is_refused_and_cannot_abort_discovery(m
         {"mode": "active", "root": {"pid": 1, "creation_time": 1}},
         {},
     ]
-    monkeypatch.setattr(run_context_records, "registry_entries", lambda _exclude: unusable)
+    monkeypatch.setattr(run_context_records, "registry_entries", lambda _exclude: (unusable, "ok"))
     second = _parent_status() if sys.platform == "win32" else {"status": "unsupported"}
     assert second["status"] in {"none", "not_found", "UNKNOWN", "unsupported"} and second.get("run_id") != run_id
 
@@ -547,7 +549,7 @@ def test_a_forged_registry_entry_never_reaches_a_record_or_the_terminal(request:
     try:
         planted[0].write_text(json.dumps(malformed), encoding="utf-8")
         planted[1].write_text(json.dumps(misfiled), encoding="utf-8")
-        accepted = [entry["run_id"] for entry in run_context_records.registry_entries("none")]
+        accepted = [entry["run_id"] for entry in run_context_records.registry_entries("none")[0]]
         completed = subprocess.run(
             [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-q", "tests/unit/tools/test_run_context.py::test_probe_noop"],
             cwd=_ROOT, capture_output=True, text=True, timeout=300, check=False,

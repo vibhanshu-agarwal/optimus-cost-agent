@@ -33,6 +33,9 @@ MAX_OTHER_RUNS = 64
 MAX_RUN_FOLDERS = 2000
 REJECTED = "TEST_RUN_CONTEXT_RECORD_REJECTED"
 TOO_LARGE = "TEST_RUN_CONTEXT_RECORD_TOO_LARGE"
+# How a registry read went: fully listed and read; no registry folder at all; the folder could not be
+# listed; or it was listed but some entries could not be read or were beyond the ceiling.
+REGISTRY_STATES = ("ok", "absent", "unreadable", "partial")
 
 RUN_ID = re.compile(r"\d{8}T\d{6}-(?P<pid>\d{1,10})-[0-9a-f]{6}")
 JOB_NAME = re.compile(r"optimus-test-run-\d{8}T\d{6}-\d{1,10}-[0-9a-f]{6}")
@@ -139,7 +142,9 @@ _STREAMS: dict[str, _Table] = {
             "run_id": _text(RUN_ID), "relation": _one_of("own_job", "outside", "unverified", "unknown"),
             "declared_agent": _optional(_text(AGENT)), "worktree": _optional(_text(WORKTREE)),
         }, required=("run_id", "relation"))],
-        "others_not_listed": _count, "others_ended": _count, "registry_error": _flag,
+        # `registry`: how the registry read went. `absent` and an empty `ok` listing mean no other
+        # run has announced itself; `unreadable` and `partial` mean the answer is incomplete.
+        "others_not_listed": _count, "others_ended": _count, "registry": _one_of(*REGISTRY_STATES),
     }, required=("at", "gap", "checkpoint", "others")),
 }
 _FIELDS = _Table({
@@ -185,6 +190,8 @@ _FIELDS = _Table({
     "recording_errors": _count, "deferred_appends": _count, "last_sample_at": _seconds,
     "completeness": _one_of("COMPLETE", "TRUNCATED", "INVALID"),
     "terminal_failure": _text(_PLACE),
+    # Whether the run's own registry announcement was withdrawn before this record was written.
+    "registry_withdrawal": _one_of("done", "failed"),
     "members": {"ok": _flag, "complete": _flag, "error": _optional(_count), "identities": [_IDENTITY]},
 }, required=("schema", "checkpoint", "run_id", "mode", "reason", "root"))
 
@@ -261,15 +268,29 @@ def write_record(target: Path, payload: dict[str, object]) -> None:
 
 def read_record(source: Path) -> dict[str, object] | None:
     """Read one record, or None when it is missing, too large, malformed or breaks the field table."""
+    return _load_record(source)[0]
+
+
+def _load_record(source: Path) -> tuple[dict[str, object] | None, str]:
+    """One record and how the read went: `ok`, `gone` (no such file), `unreadable` (it exists but
+    could not be read) or `refused` (too large, malformed or breaking the field table)."""
     try:
         if source.stat().st_size > MAX_RECORD_BYTES:
-            return None
-        payload = json.loads(source.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
+            return None, "refused"
+        text = source.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None, "gone"
+    except OSError:
+        return None, "unreadable"
+    except ValueError:
+        return None, "refused"
+    try:
+        payload = json.loads(text)
+    except ValueError:
+        return None, "refused"
     if violation(payload) is not None:
-        return None
-    return payload
+        return None, "refused"
+    return payload, "ok"
 
 
 def append_entries(target: Path, stream: str, entries: list[dict[str, object]], *, max_bytes: int = MAX_STREAM_BYTES) -> list[bytes]:
@@ -393,16 +414,31 @@ def prune_run_folders(runs_root: Path, keep_run_id: str, *, ceiling: int = MAX_R
     return removed
 
 
-def registry_entries(exclude_run_id: str) -> list[dict[str, object]]:
-    """Other runs' registry entries that conform and are filed under their own run ID. Never deletes."""
+def registry_entries(exclude_run_id: str) -> tuple[list[dict[str, object]], str]:
+    """Other runs' registry entries that conform and are filed under their own run ID, and how the
+    read went (one of REGISTRY_STATES). Never deletes.
+
+    The folder is listed directly: a listing that is denied or fails is `unreadable`, never an empty
+    one. An entry that disappears between the listing and its read belongs to a run that has just
+    finished and is passed over; an entry that exists but cannot be read, or one beyond the ceiling,
+    makes the answer `partial`. Malformed or oversized entries are refused and skipped.
+    """
     root = registry_root()
     try:
-        candidates = sorted(root.glob("*.json"))[-MAX_REGISTRY_ENTRIES:]
+        with os.scandir(root) as listing:
+            names = sorted(found.name for found in listing if found.name.endswith(".json"))
+    except FileNotFoundError:
+        return [], "absent"
     except OSError:
-        return []
+        return [], "unreadable"
+    status = "ok"
+    if len(names) > MAX_REGISTRY_ENTRIES:
+        names, status = names[-MAX_REGISTRY_ENTRIES:], "partial"
     entries: list[dict[str, object]] = []
-    for candidate in candidates:
-        entry = read_record(candidate)
-        if entry is not None and entry["run_id"] != exclude_run_id and candidate.name == f"{entry['run_id']}.json":
+    for name in names:
+        entry, how = _load_record(root / name)
+        if how == "unreadable":
+            status = "partial"
+        elif entry is not None and entry["run_id"] != exclude_run_id and name == f"{entry['run_id']}.json":
             entries.append(entry)
-    return entries
+    return entries, status
