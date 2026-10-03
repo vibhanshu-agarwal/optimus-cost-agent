@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 from decimal import Decimal
 from pathlib import Path
+from subprocess import CompletedProcess
 from typing import Any
 
 import pytest
@@ -299,7 +300,13 @@ def test_an_output_cap_over_the_route_is_refused_by_the_gateway_at_no_cost(tmp_p
 def test_applying_a_stored_plan_sends_nothing_and_needs_no_new_notice(tmp_path, snapshot) -> None:
     upstream = ScriptedUpstream()
     gateway = InProcessGateway(snapshot, upstream)
-    runner = AgentRunner(gateway_client=_client(gateway), model=CONTRIBUTOR)
+    # The plan's TEST runs through an injected runner, never as a real process: an uninjected
+    # `pytest -q` would run in the test process's working directory, the repository, and recurse
+    # into this suite (Plan 12.2 CP4 run t12-full-1).
+    shell: list[list[str]] = []
+    runner = AgentRunner(
+        gateway_client=_client(gateway), model=CONTRIBUTOR, shell_runner=lambda command: shell.append(command) or CompletedProcess(command, 0, "1 passed", "")
+    )
     planned, _, _, notices, _ = _run(tmp_path, snapshot, CONTRIBUTOR, ExecutionMode.AGENT, runner=runner)
     assert planned.status is AgentRunStatus.AWAITING_APPROVAL and len(notices.events) == 1
 
@@ -313,6 +320,7 @@ def test_applying_a_stored_plan_sends_nothing_and_needs_no_new_notice(tmp_path, 
 
     assert applied.status is AgentRunStatus.COMPLETED
     assert (tmp_path / "ws" / "a.py").read_text(encoding="utf-8").strip() == "x"
+    assert shell == [["pytest", "-q"]]
     assert gateway.payloads[1:] == [] and applying.events == [] and receipts == []
 
 

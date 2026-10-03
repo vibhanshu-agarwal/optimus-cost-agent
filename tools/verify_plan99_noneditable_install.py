@@ -271,7 +271,7 @@ def validate_extraction_evidence(values: dict[str, object], *, venv_root: Path, 
         raise VerificationError("packaged registry defaults were not loaded")
 
 
-def _extraction_probe(*, python: Path, workspace: Path, env: dict[str, str], venv_root: Path, repo_root: Path) -> dict[str, str]:
+def _extraction_probe(*, python: Path, workspace: Path, env: dict[str, str], venv_root: Path, repo_root: Path) -> dict[str, object]:
     script = workspace / "extraction_probe.py"
     script.write_text(EXTRACTION_PROBE, encoding="utf-8")
     result = _run([str(python), str(script)], cwd=workspace, env=env)
@@ -281,7 +281,7 @@ def _extraction_probe(*, python: Path, workspace: Path, env: dict[str, str], ven
     except json.JSONDecodeError as exc:
         raise VerificationError("extraction probe returned invalid evidence") from exc
     validate_extraction_evidence(values, venv_root=venv_root, repo_root=repo_root)
-    return {key: str(value) for key, value in values.items()}
+    return values  # JSON types kept: an empty host-module list stays a list in the evidence
 
 
 def _ambient_secret_values(env: dict[str, str]) -> tuple[str, ...]:

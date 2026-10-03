@@ -43,9 +43,10 @@ from context_engine import (
     MaintenanceResult,
     ProtectedTurnState,
     StrategyParameters,
+    SummaryCheckpoint,
     ViewLimits,
 )
-from context_engine.engine import ContextEngine
+from context_engine.engine import PRIOR_SUMMARY_HEADER, ContextEngine
 from context_engine.selection import render_ordinary_turn, render_protected_state
 from context_engine.summary import PROMPT_VERSION, SECTIONS, SUMMARY_FORMAT, build_summary_prompt
 from optimus.acp.conversation import (
@@ -230,12 +231,27 @@ class EngineFixture:
     summary_tokens: int = 4_096
     maintenance_input_tokens: int = 65_536
     max_calls: int = 1_000
+    anchor_tokens: int = 8_192
+    hybrid_tail_tokens: int | None = None  # twice the compaction tail when not given
+
+    @classmethod
+    def from_proposal(cls, proposal: Mapping[str, Any], *, tier: str = "cheap") -> EngineFixture:
+        """The proposed values themselves, at the byte-level bound, for the proposed-policy rows."""
+        return cls(
+            history_input_tokens=proposal["history_input_tokens_by_tier"][tier],
+            tail_tokens=proposal["compaction_tail_input_tokens"],
+            summary_tokens=proposal["summary_output_tokens"],
+            maintenance_input_tokens=proposal["maintenance_input_tokens"],
+            max_calls=proposal["max_maintenance_calls"],
+            anchor_tokens=proposal["anchor_input_tokens"],
+            hybrid_tail_tokens=proposal["hybrid_tail_input_tokens"],
+        )
 
     def parameters(self) -> StrategyParameters:
         return StrategyParameters(
-            anchor_input_tokens=8_192,
+            anchor_input_tokens=self.anchor_tokens,
             compaction_tail_input_tokens=self.tail_tokens,
-            hybrid_tail_input_tokens=self.tail_tokens * 2,
+            hybrid_tail_input_tokens=self.hybrid_tail_tokens if self.hybrid_tail_tokens is not None else self.tail_tokens * 2,
             summary_output_tokens=self.summary_tokens,
             max_maintenance_calls=self.max_calls,
             prompt_version=PROMPT_VERSION,
@@ -258,9 +274,20 @@ def snapshot_of(state: ConversationState, approvals: Mapping[int, Sequence[Appro
     return make_history_snapshot(session_key="measure", generation=state.generation, records=state.records, approvals=approvals, sanitizer=state.sanitizer)
 
 
-def turn_pipeline(state: AttachedConversationState, approvals: Mapping[int, Sequence[ApprovalFact]], *, strategy: str, fixture: EngineFixture) -> dict[str, Any]:
+def turn_pipeline(
+    state: AttachedConversationState,
+    approvals: Mapping[int, Sequence[ApprovalFact]],
+    *,
+    strategy: str,
+    fixture: EngineFixture,
+    checkpoint: SummaryCheckpoint | None = None,
+) -> dict[str, Any]:
     """One attached turn's host work, with every intermediate alive at once as in a real turn:
-    admission, snapshot, view, rendered envelope, selection text, admitted digest, commit check."""
+    admission, snapshot, view, rendered envelope, selection text, admitted digest, commit check.
+    With `checkpoint`, the engine may reuse it or merge only what it does not cover (the steady
+    state); the view's own checkpoint is returned for the next turn. Outside: the host's
+    `HostMaintenance` wrapper (summary sanitization, receipts) and the request assembly after the
+    admitted view (`fit()` and the Gateway body), roughly two more envelope-sized copies."""
     prompt = text_of("ascii", 2_048)
     admission = state.prepare_admission(prompt)
     snapshot = snapshot_of(state, approvals)
@@ -269,13 +296,14 @@ def turn_pipeline(state: AttachedConversationState, approvals: Mapping[int, Sequ
         view = full_history_view(snapshot)
     else:
         view = ContextEngine().prepare_view(
-            snapshot, strategy=strategy, parameters=fixture.parameters(), limits=fixture.limits(), checkpoint=None, maintenance=summarizer, cancelled=lambda: False
-        )
+            snapshot, strategy=strategy, parameters=fixture.parameters(), limits=fixture.limits(), checkpoint=checkpoint, maintenance=summarizer,
+            cancelled=lambda: False,
+        )  # fmt: skip
     reason, fallback = view.reason, False
     if not view.available:
         # The host's own rule: the full history when the floor probe fits, else a refusal.
         if probe_floor(state.records, prompt) > CONVERSATION_MAX_BYTES:
-            return {"available": False, "reason": reason, "fallback": "refused", "maintenance_calls": summarizer.calls, "envelope_bytes": 0}
+            return {"available": False, "reason": reason, "fallback": "refused", "maintenance_calls": summarizer.calls, "envelope_bytes": 0, "checkpoint": None}
         view, fallback = full_history_view(snapshot), True
     envelope = render_context_view(snapshot, view)
     selection = build_selection_text(prompt, snapshot, view)
@@ -296,6 +324,7 @@ def turn_pipeline(state: AttachedConversationState, approvals: Mapping[int, Sequ
         "envelope_bytes": len(envelope.encode("utf-8")),
         "projected_bytes": decision.projected_bytes,
         "digest": digest,
+        "checkpoint": view.checkpoint,
     }
 
 
@@ -561,6 +590,52 @@ def sanitizer_scaling(prose_kib: Sequence[int], token_kib: Sequence[int]) -> dic
     }
 
 
+def chunk_capacity(proposal: Mapping[str, Any]) -> int:
+    """Source tokens one non-first maintenance call can take at the byte-level bound: the input
+    less the prior summary at its maximum, its header and one separator (`engine._plan`)."""
+    header = len(PRIOR_SUMMARY_HEADER.encode("utf-8"))
+    return proposal["maintenance_input_tokens"] - proposal["summary_output_tokens"] - header - 1
+
+
+def _history_of_turns(rendered_turn_bytes: int, total_bytes: int) -> tuple[AttachedConversationState, dict[int, tuple[ApprovalFact, ...]]]:
+    """Equal whole turns whose rendered ordinary text is `rendered_turn_bytes`, about `total_bytes`
+    of canonical history in all."""
+    overhead = len(render_ordinary_turn(snapshot_of(*build_state("ascii", 1, turn_bytes=TURN_BYTES)).turns[0]).encode("utf-8")) - TURN_BYTES
+    return build_state("ascii", total_bytes, turn_bytes=rendered_turn_bytes - overhead)
+
+
+def proposed_policy_rows(proposal: Mapping[str, Any]) -> dict[str, Any]:
+    """The proposed values themselves, at the byte-level bound, on a history the attached storage
+    class can still admit a turn on: a cold rebuild (a strategy switch, or no reusable checkpoint),
+    the steady-state turn that reuses the previous checkpoint, and the whole-turn worst case for the
+    call allowance (every turn just over half a chunk, so each call carries one turn)."""
+    fixture = EngineFixture.from_proposal(proposal)
+    history_bytes = proposal["source_max_bytes"] - proposal["record_reservation_bytes"]
+    rows: dict[str, Any] = {}
+
+    def row(outcome: Mapping[str, Any], reading: Reading, state: AttachedConversationState) -> dict[str, Any]:
+        return {
+            **reading.as_dict(), "canonical_bytes": state.used_bytes, "turns": state.generation, "available": outcome["available"],
+            "reason": outcome["reason"], "fallback": outcome["fallback"], "maintenance_calls": outcome["maintenance_calls"],
+        }  # fmt: skip
+
+    state, approvals = build_state("ascii", history_bytes)
+    cold, reading = measure(lambda: turn_pipeline(state, approvals, strategy="compaction", fixture=fixture))
+    rows["cold_rebuild_8kib_turns"] = row(cold, reading, state)
+    seq = state.generation + 1
+    state.commit_after_final_flush(
+        CommitDecision(commit=True, turn_seq=seq, projected_bytes=0, closes_cap=False, crosses_warning=False, record=make_turn("ascii", TURN_BYTES, seq))
+    )
+    approvals[seq] = approval_facts(seq, 1)
+    steady, reading = measure(lambda: turn_pipeline(state, approvals, strategy="compaction", fixture=fixture, checkpoint=cold["checkpoint"]))
+    rows["steady_state_turn"] = row(steady, reading, state)
+    worst_turn = chunk_capacity(proposal) // 2 + 1
+    state, approvals = _history_of_turns(worst_turn, history_bytes)
+    worst, reading = measure(lambda: turn_pipeline(state, approvals, strategy="compaction", fixture=fixture))
+    rows["cold_rebuild_worst_whole_turns"] = {**row(worst, reading, state), "rendered_turn_bytes": worst_turn}
+    return rows
+
+
 # --- D3: complete WRITE plans and completion status -------------------------------------------------
 
 
@@ -614,6 +689,7 @@ def write_plan_sizes(paths: Sequence[str], ratios: Sequence[Decimal]) -> dict[st
         "largest_plans": [{"path": path, "plan_bytes": size} for size, path in sorted(largest, reverse=True)[:5]],
         "reserve_tokens_by_ratio": {str(r): {name: math.ceil(value * r) for name, value in plan_points.items()} for r in ratios},
         "mean_plan_bytes": round(statistics.fmean(plans)),
+        "records_within_bytes": {str(limit): round(sum(1 for b in records if b <= limit) / len(records), 4) for limit in (65_536, 131_072)},
     }
 
 
@@ -738,7 +814,7 @@ def allocations(policy: Any, reserves: Mapping[str, int], fixed: Mapping[str, in
                     continue
                 cell = allocation(
                     window=window, ceiling=policy.context_ceiling_tokens, reserve=reserve,
-                    fixed_tokens=math.ceil(material * ratio), prompt_tokens=math.ceil(prompt_bytes * ratio),
+                    fixed_tokens=math.ceil(material * ratio), prompt_tokens=0 if reserve_name == "summarizer" else math.ceil(prompt_bytes * ratio),
                 )  # fmt: skip
                 price = Decimal(str(entry.prices.input_usd_per_million))
                 triggers = []
@@ -747,7 +823,7 @@ def allocations(policy: Any, reserves: Mapping[str, int], fixed: Mapping[str, in
                         trigger = adr003_trigger(cell["usable_input"], target)
                         triggers.append({"tier_target": target, "trigger_tokens": trigger, "input_usd_at_trigger": str((price * trigger / 1_000_000).quantize(Decimal("0.0001")))})
                 capacity = cell["history_capacity"]
-                floor_bytes = CONVERSATION_MAX_BYTES + material + prompt_bytes
+                floor_bytes = CONVERSATION_MAX_BYTES + material  # the floor already includes the current prompt
                 rows.append(
                     {
                         "role": role_name,
@@ -830,18 +906,31 @@ def check_proposal(proposal: Mapping[str, Any], *, policy: Any, plan_bytes: Sequ
     need(0 <= p["record_reservation_bytes"] < p["source_max_bytes"], "record reservation must be below the source limit")
     need(p["view_source_max_bytes"] >= p["source_max_bytes"], "the engine's source limit must admit every history storage admits")
     need(p["hybrid_tail_input_tokens"] > p["compaction_tail_input_tokens"], "hybrid's exact tail must exceed compaction's (spec 6.3)")
+    need(p["implementer_output_reserve"] > 0 and p["summarizer_output_reserve"] > 0, "every output reserve must be positive (spec 9.4)")
     need(p["summary_output_tokens"] <= p["summarizer_output_reserve"], "a summary must fit the summarizer's output reserve")
     need(p["transient_max_bytes"] >= math.ceil(p["maintenance_input_tokens"] / LOWEST_RATIO), "the transient byte bound must not bind before the token bound")
     need(p["max_maintenance_calls"] >= 1, "maintenance needs at least one call")
+    # The strategy allocations must be realizable inside the smallest history target (Fable CP4 review
+    # MINOR-2): otherwise hybrid's larger tail is only nominal there.
+    smallest_target = min(p["history_input_tokens_by_tier"].values())
+    need(
+        p["anchor_input_tokens"] + p["hybrid_tail_input_tokens"] + p["summary_output_tokens"] <= smallest_target,
+        "hybrid's anchor, tail and summary must fit the smallest history target",
+    )
+    need(p["compaction_tail_input_tokens"] + p["summary_output_tokens"] <= smallest_target, "compaction's tail and summary must fit the smallest history target")
     summary_prompt_tokens = fixed["summarizer"]
-    for route in _route_bounds(policy, ("summarizer",)):
+    summarizers = _route_bounds(policy, ("summarizer",))
+    for route in summarizers:
         if route["window"] is None or route["max_output"] is None:
             continue
         need(p["summarizer_output_reserve"] <= route["max_output"], f"summarizer reserve exceeds {route['model']}'s max output")
         total = min(ceiling, route["window"])
         need(summary_prompt_tokens + p["maintenance_input_tokens"] + p["summarizer_output_reserve"] <= total, f"a maintenance call does not fit {route['model']}")
     implementer_roles = ("easy", "medium", "complex", "escalation")
+    implementer_tiers = set()
+    binding: dict[str, str] = {}
     for route in _route_bounds(policy, implementer_roles):
+        implementer_tiers.add(route["tier"])
         if route["max_output"] is not None:
             need(p["implementer_output_reserve"] <= route["max_output"], f"implementer reserve exceeds {route['model']}'s max output")
         if route["window"] is None:
@@ -849,22 +938,56 @@ def check_proposal(proposal: Mapping[str, Any], *, policy: Any, plan_bytes: Sequ
         usable = min(ceiling, route["window"]) - p["implementer_output_reserve"]
         target = p["history_input_tokens_by_tier"].get(route["tier"])
         if target is not None:
+            # `prompt_allowance_bytes` is an assumed current-prompt size, not a bound: nothing but
+            # admission bounds an attached prompt, and an oversized one is refused by `fit()`.
             need(target + fixed["planning"] + p["prompt_allowance_bytes"] <= usable, f"{route['tier']} history target leaves no room for planning material on {route['model']}")
-    # A cold rebuild of the whole attached source, in whole-turn chunks each carrying the prior summary.
-    per_call = p["maintenance_input_tokens"] - p["summary_output_tokens"]
-    cold_calls = math.ceil(p["source_max_bytes"] / per_call) if per_call > 0 else None
-    need(cold_calls is not None and cold_calls <= p["max_maintenance_calls"], "the call allowance cannot rebuild the whole source at the byte bound")
+            binding[route["tier"]] = "tier target" if target <= usable * 4 // 5 else "80% of usable input"
+    for tier in p["history_input_tokens_by_tier"]:
+        need(tier in implementer_tiers, f"history target for {tier} has no active implementer route to check it against")
+    # A cold rebuild of the whole attached source, in whole-turn chunks each carrying the prior summary
+    # (Fable CP4 review MAJOR-1): the perfect-packing minimum, and the whole-turn worst case, when
+    # every turn is just over half a chunk so each call carries one turn. The allowance must cover the
+    # worst case, or a strategy switch on such a history is refused.
+    capacity = chunk_capacity(p)
+    if capacity > 0:
+        min_calls = math.ceil(p["source_max_bytes"] / capacity)
+        worst_calls = math.ceil(p["source_max_bytes"] / (capacity // 2 + 1))
+    else:
+        min_calls = worst_calls = None
+    need(worst_calls is not None and worst_calls <= p["max_maintenance_calls"], "the call allowance cannot rebuild the whole source in its whole-turn worst case")
 
     usable_implementer = ceiling - p["implementer_output_reserve"]
-    floor_request = CONVERSATION_MAX_BYTES + fixed["planning"] + p["prompt_allowance_bytes"]
+    # D7 (ADR-014): the 524288-byte floor already includes the current prompt (admission measures the
+    # history plus the provisional turn), so only the path's other material is added (Fable MAJOR-2).
+    floor_request = CONVERSATION_MAX_BYTES + fixed["planning"]
     coverage = {
         "plans_within_implementer_reserve": {str(r): round(sum(1 for b in plan_bytes if math.ceil(b * r) <= p["implementer_output_reserve"]) / len(plan_bytes), 4) for r in ESTIMATOR_RATIOS},
         "records_within_reservation": round(sum(1 for b in record_bytes_measured if b <= p["record_reservation_bytes"]) / len(record_bytes_measured), 4),
-        "cold_rebuild_calls_at_byte_bound": cold_calls,
+        "cold_rebuild_calls_min_at_byte_bound": min_calls,
+        "cold_rebuild_calls_whole_turn_worst_at_byte_bound": worst_calls,
+        "cold_rebuild_list_price_usd": _cold_rebuild_cost(p, policy, summarizers, worst_calls, summary_prompt_tokens),
         "absent_floor_max_ratio": round(usable_implementer / floor_request, 4),
-        "largest_single_turn_tokens_summarizable": p["maintenance_input_tokens"],
+        "largest_single_turn_tokens_summarizable": {"steady_state": capacity, "oldest_turn_of_a_cold_rebuild": p["maintenance_input_tokens"]},
+        "trigger_binding_term_by_tier": binding,
     }
     return {"violations": violations, "coverage": coverage}
+
+
+def _cold_rebuild_cost(p: Mapping[str, Any], policy: Any, summarizers: Sequence[Mapping[str, Any]], calls: int | None, prompt_tokens: int) -> dict[str, str]:
+    """Illustrative list-price cost of a worst-case cold rebuild on each summarizer route: the whole
+    source once, every later call's prior summary and header, each call's fixed prompt; every call's
+    summary as output. No call is made."""
+    if calls is None:
+        return {}
+    header = len(PRIOR_SUMMARY_HEADER.encode("utf-8"))
+    input_tokens = p["source_max_bytes"] + (calls - 1) * (header + p["summary_output_tokens"]) + calls * prompt_tokens
+    output_tokens = calls * p["summary_output_tokens"]
+    costs = {}
+    for route in summarizers:
+        prices = policy.models[route["model"]].prices
+        usd = Decimal(str(prices.input_usd_per_million)) * input_tokens / 1_000_000 + Decimal(str(prices.output_usd_per_million)) * output_tokens / 1_000_000
+        costs[route["model"]] = str(usd.quantize(Decimal("0.0001")))
+    return costs
 
 
 # --- Report -------------------------------------------------------------------------------------------
@@ -917,6 +1040,7 @@ def run(*, quick: bool, implementer_reserve: int, summarizer_reserve: int, propo
             plans, records = plan_and_record_bytes(paths[:40] if quick else paths)
             report["proposal"] = dict(proposal)
             report["proposal_check"] = check_proposal(proposal, policy=policy, plan_bytes=plans, record_bytes_measured=records, fixed=fixed)
+            report["proposed_policy_rows"] = proposed_policy_rows(proposal)
         return report
     finally:
         tracemalloc.stop()

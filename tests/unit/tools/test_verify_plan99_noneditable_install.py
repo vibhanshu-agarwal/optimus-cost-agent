@@ -219,3 +219,19 @@ def test_the_extraction_probe_reports_a_clean_engine_import_and_is_caught_in_a_c
     assert Path(values["defaults"]).name == "defaults.yaml" and values["effective_hash"]
     with pytest.raises(VerificationError, match="inside repository checkout"):
         verifier.validate_extraction_evidence(values, venv_root=Path(sys.prefix), repo_root=Path(__file__).resolve().parents[3])
+
+
+def test_the_extraction_probe_detects_a_host_package_loaded_with_the_engine(tmp_path):
+    """Fable CP4 review MINOR-6: the probe itself, not only the validator, sees a host import."""
+    import json
+    import subprocess
+    import sys
+
+    script = tmp_path / "tainted_probe.py"
+    script.write_text("import optimus.acp.conversation\n" + verifier.EXTRACTION_PROBE, encoding="utf-8")
+    result = subprocess.run([sys.executable, str(script)], cwd=tmp_path, capture_output=True, text=True, check=True, timeout=120)
+    values = json.loads(result.stdout)
+
+    assert "optimus" in values["host_modules_after_engine_import"]
+    with pytest.raises(VerificationError, match="context_engine imported host packages"):
+        verifier.validate_extraction_evidence(values, venv_root=Path(sys.prefix), repo_root=tmp_path / "elsewhere")

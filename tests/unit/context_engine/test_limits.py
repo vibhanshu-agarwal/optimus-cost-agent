@@ -11,6 +11,7 @@ assertions only once the operator accepts them. No timing or memory figure is as
 from __future__ import annotations
 
 import json
+import math
 import re
 from decimal import Decimal
 
@@ -165,13 +166,13 @@ PROPOSAL = {
     "transient_max_bytes": 524_288,
     "maintenance_input_tokens": 131_072,
     "summary_output_tokens": 8_192,
-    "max_maintenance_calls": 12,
+    "max_maintenance_calls": 18,
     "anchor_input_tokens": 16_384,
     "compaction_tail_input_tokens": 32_768,
     "hybrid_tail_input_tokens": 65_536,
     "implementer_output_reserve": 32_768,
     "summarizer_output_reserve": 8_192,
-    "history_input_tokens_by_tier": {"ultra-cheap": 131_072, "cheap": 131_072, "review": 65_536},
+    "history_input_tokens_by_tier": {"ultra-cheap": 131_072, "cheap": 131_072},
     "prompt_allowance_bytes": 16_384,
 }
 FIXED = {"planning": 43_819, "chat": 17_126, "summarizer": 989}
@@ -185,10 +186,55 @@ def test_a_consistent_proposal_has_no_violations_and_reports_its_coverage() -> N
     result = check()
 
     assert result["violations"] == []
-    assert result["coverage"]["plans_within_implementer_reserve"] == {"1": 0.6667, "0.5": 0.6667, "0.25": 1.0}
-    assert result["coverage"]["records_within_reservation"] == 0.6667
-    assert result["coverage"]["cold_rebuild_calls_at_byte_bound"] == 9
-    assert result["coverage"]["absent_floor_max_ratio"] == round((262_144 - 32_768) / (524_288 + 43_819 + 16_384), 4)
+    coverage = result["coverage"]
+    assert coverage["plans_within_implementer_reserve"] == {"1": 0.6667, "0.5": 0.6667, "0.25": 1.0}
+    assert coverage["records_within_reservation"] == 0.6667
+    # A chunk after the first carries the prior summary, its header and a separator: 131072 - 8192 - 15 - 1.
+    assert limits.chunk_capacity(PROPOSAL) == 122_864
+    # Perfect packing is only a lower bound; turns just over half a chunk take one call each.
+    assert (coverage["cold_rebuild_calls_min_at_byte_bound"], coverage["cold_rebuild_calls_whole_turn_worst_at_byte_bound"]) == (9, 18)
+    assert coverage["largest_single_turn_tokens_summarizable"] == {"steady_state": 122_864, "oldest_turn_of_a_cold_rebuild": 131_072}
+    # D7: the floor already includes the current prompt, so only the path's other material is added.
+    assert coverage["absent_floor_max_ratio"] == round((262_144 - 32_768) / (524_288 + 43_819), 4)
+    assert coverage["trigger_binding_term_by_tier"] == {"ultra-cheap": "tier target", "cheap": "tier target"}
+    assert set(coverage["cold_rebuild_list_price_usd"]) == {"qwen/qwen3.7-flash", "openai/gpt-6-luna"}
+
+
+def test_the_whole_turn_worst_case_bounds_the_engines_real_call_count() -> None:
+    """The engine's actual cold-rebuild calls stay within the checker's whole-turn worst case, and
+    turns just over half a chunk really do exceed the perfect-packing minimum (Fable CP4 MAJOR-1)."""
+    small = {**PROPOSAL, "maintenance_input_tokens": 16_384, "summary_output_tokens": 1_024}
+    source = 262_144
+    capacity = limits.chunk_capacity(small)
+    minimum, worst = math.ceil(source / capacity), math.ceil(source / (capacity // 2 + 1))
+    fixture = limits.EngineFixture(history_input_tokens=400_000, tail_tokens=1, summary_tokens=1_024, maintenance_input_tokens=16_384, max_calls=1_000, hybrid_tail_tokens=2)
+
+    calls = {}
+    for turn in (2_048, capacity // 2 + 1):
+        state, approvals = limits._history_of_turns(turn, source)
+        outcome = limits.turn_pipeline(state, approvals, strategy="compaction", fixture=fixture)
+        assert outcome["available"], outcome["reason"]
+        calls[turn] = outcome["maintenance_calls"]
+
+    assert all(count <= worst for count in calls.values()), (calls, worst)
+    assert calls[capacity // 2 + 1] > minimum, (calls, minimum)
+
+
+def test_a_steady_state_turn_reuses_its_checkpoint_with_at_most_one_call() -> None:
+    import tracemalloc
+
+    proposal = {**PROPOSAL, "source_max_bytes": 600_000, "record_reservation_bytes": 100_000}
+
+    tracemalloc.start()
+    try:
+        rows = limits.proposed_policy_rows(proposal)
+    finally:
+        tracemalloc.stop()
+
+    assert rows["cold_rebuild_8kib_turns"]["available"] and rows["cold_rebuild_8kib_turns"]["maintenance_calls"] > 1
+    assert rows["steady_state_turn"]["available"] and rows["steady_state_turn"]["maintenance_calls"] <= 1
+    worst = rows["cold_rebuild_worst_whole_turns"]
+    assert worst["available"] and worst["maintenance_calls"] <= proposal["max_maintenance_calls"]
 
 
 @pytest.mark.parametrize(
@@ -200,7 +246,11 @@ def test_a_consistent_proposal_has_no_violations_and_reports_its_coverage() -> N
         ({"hybrid_tail_input_tokens": 32_768}, "hybrid's exact tail must exceed compaction's"),
         ({"summary_output_tokens": 8_193}, "a summary must fit the summarizer's output reserve"),
         ({"transient_max_bytes": 524_287}, "the transient byte bound must not bind before the token bound"),
-        ({"max_maintenance_calls": 8}, "the call allowance cannot rebuild the whole source at the byte bound"),
+        ({"max_maintenance_calls": 17}, "the call allowance cannot rebuild the whole source in its whole-turn worst case"),
+        ({"implementer_output_reserve": 0}, "every output reserve must be positive"),
+        ({"history_input_tokens_by_tier": {"ultra-cheap": 131_072, "cheap": 80_000}}, "hybrid's anchor, tail and summary must fit the smallest history target"),
+        ({"history_input_tokens_by_tier": {"cheap": 40_000}}, "compaction's tail and summary must fit the smallest history target"),
+        ({"history_input_tokens_by_tier": {"cheap": 131_072, "review": 131_072}}, "history target for review has no active implementer route"),
         ({"implementer_output_reserve": 128_001}, "implementer reserve exceeds openai/gpt-6-luna's max output"),
         ({"summarizer_output_reserve": 65_537, "summary_output_tokens": 65_537}, "summarizer reserve exceeds qwen/qwen3.7-flash's max output"),
         ({"maintenance_input_tokens": 260_000, "transient_max_bytes": 1_040_000}, "a maintenance call does not fit qwen/qwen3.7-flash"),
