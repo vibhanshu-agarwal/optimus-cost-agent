@@ -139,7 +139,7 @@ def test_the_census_hook_records_a_clean_child_and_is_inert_when_not_asked(tmp_p
     assert none == [] and unhooked.stdout.split()[-1] == "optimus.acp.trusted_paths", unhooked.stdout + unhooked.stderr
 
 
-# --- R5: a site is credited only by its own launches, and a launch only by the child it started.
+# --- R5: a site is attributed only to its own launches, and a launch only by the child it started.
 
 _LAUNCHING_PROGRAM = """
 import os, subprocess, sys
@@ -245,7 +245,7 @@ def _child(pid: int, created: int | None = 1000, *, ppid: int = 10, parent_creat
             "test": "unused (call)"}
 
 
-def test_a_launch_is_credited_only_by_the_child_it_started() -> None:
+def test_a_launch_is_attributed_only_to_the_child_it_started() -> None:
     """R5: two sites under one test, one child; missing, incomplete and unarmed children; reused PIDs."""
     from tests.support.child_census import attribution
 
@@ -303,7 +303,7 @@ def test_a_launch_is_credited_only_by_the_child_it_started() -> None:
     assert table[one]["status"] == "launch_failed"
 
 
-def test_a_launch_in_the_same_file_never_credits_another_site() -> None:
+def test_a_launch_in_the_same_file_never_attributes_another_site() -> None:
     from tests.support.child_census import attribution
 
     site_map = {"a.py::test_one#1": {"disposition": "census", "proof": "p"}, "a.py::_helper#1": {"disposition": "census", "proof": "p"},
@@ -314,7 +314,7 @@ def test_a_launch_in_the_same_file_never_credits_another_site() -> None:
     table = attribution.per_site_table(site_map, sites, launches, children, {"a.py::test_one", "a.py::test_four"})
     assert table["a.py::test_one#1"]["status"] == "launched_and_clean" and table["a.py::test_one#1"]["reachability"] == "collected"
     assert table["a.py::_helper#1"]["status"] == "launched_without_hook" and table["a.py::_helper#1"]["reachability"] == "helper"
-    # The same file launched twice, yet the site that never launched is not credited by either.
+    # The same file launched twice, yet the site that never launched is not attributed by either.
     assert table["a.py::test_two#1"]["status"] == "not_launched" and table["a.py::test_two#1"]["reachability"] == "not_collected"
     assert table["b.py::test_three#1"]["status"] == "proof_elsewhere"
     assert attribution.unproven(table) == ["a.py::_helper#1", "a.py::test_two#1"]

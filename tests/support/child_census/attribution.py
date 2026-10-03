@@ -4,7 +4,7 @@ Test support only. The census hook records, in the launching process, every `sub
 with the test frame it came from and the identity of the process it created; and, in each child that
 inherited the hook, that child's own identity, its ancestors' identities, its arming and behaviour.
 These functions join those rows to the committed launch-site map, one row per site. A site is
-credited only by launches attributed to that site, and a launch only by the children it started:
+attributed only to launches attributed to that site, and a launch only by the children it started:
 another site's child, a reused test name, a start-only row or the mere presence of the hook in the
 environment is never positive evidence that this child was armed and clean.
 """

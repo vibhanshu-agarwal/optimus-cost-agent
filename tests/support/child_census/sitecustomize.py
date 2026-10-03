@@ -10,7 +10,7 @@ own process identity (PID and creation time) and its parent's identity, arms the
 end line. A child that asks for the real folders is refused and recorded; the real folders are
 never resolved. In every hooked process it also records each `subprocess.Popen`: the test frame it
 came from, whether the child's environment still carries this hook, and, once the child exists,
-the child's identity read from the launch handle. A site is therefore credited only by its own
+the child's identity read from the launch handle. A site is therefore attributed only to its own
 launches, and each launch only by the child it started. Where the MAIN-5 guard is active the hook
 stands aside. A failure here never changes the observed process.
 """
