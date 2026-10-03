@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from optimus.acp.conversation import (
+    ConversationDisposition,
     ConversationOutcome,
     ConversationSanitizer,
     ConversationSanitizerInputs,
@@ -56,6 +57,7 @@ from optimus.acp.shapes import (
     build_request_permission_params,
     build_session_mode_state,
     build_tool_call_notification,
+    build_usage_update,
     new_approval_id,
     new_tool_call_id,
     tool_kind_for_name,
@@ -76,6 +78,25 @@ _ID_BY_MODE: dict[ExecutionMode, str] = {mode: mode_id for mode_id, mode in _MOD
 _MODE_SETTER_METHODS = frozenset({"session/set_mode", "session/set_config_option"})
 _CHAT_CANCELLED_TEXT = "Chat answer cancelled before it was shown."
 _CHAT_FAILURE_FALLBACK_TEXT = "Chat could not answer this prompt. Please try again."
+
+CAPACITY_WARNING_TEXT = (
+    "Heads-up: this conversation has used about 80% of its context budget. "
+    "Please start a new thread soon; once it is full, new prompts in this thread will be refused."
+)
+"""Sent once, when an admitted prompt or a committed reply first projects the conversation
+past 80% of `CONVERSATION_MAX_BYTES` (operator ruling 2026-08-20; Plan 12.2 Task 3)."""
+
+CAPACITY_REFUSAL_TEXT = (
+    "This conversation has reached its context limit, so this prompt was refused. "
+    "Please start a new thread to continue."
+)
+
+CAPACITY_REACHED_TEXT = (
+    "This conversation has now reached its context limit. "
+    "Please start a new thread to continue; new prompts in this thread will be refused."
+)
+"""Sent when a committed reply itself fills the conversation, so the user learns of it
+before their next prompt is refused."""
 
 
 def resolve_max_planning_turns(environ: Mapping[str, str]) -> int | None:
@@ -708,9 +729,12 @@ class AcpDuplexAdapter:
         )
         # endregion
         try:
-            if admission.crosses_warning and self._notice_control is not None:
-                if conversation.note_warning_threshold_for_attempt(admission.projected_bytes):
-                    self._notice_control.allocate_warning_sequence()
+            if admission.crosses_warning and conversation.note_warning_threshold_for_attempt(
+                admission.projected_bytes
+            ):
+                await self._emit_capacity_notice(
+                    session_id=session_id, conversation=conversation, text=CAPACITY_WARNING_TEXT, is_warning=True
+                )
 
             planner_task, conversation_envelope = self._planner_inputs(
                 conversation, admission.sanitized_user_prompt, turn.execution_mode
@@ -920,6 +944,9 @@ class AcpDuplexAdapter:
                 ownership_slot,
             )
         finally:
+            # Recompute after any cancellation so settlement telemetry is exact even for a turn that
+            # ends without a commit (Plan 12.2 Task 2). After transport teardown this is a no-op.
+            turn.turn_control.refresh_effect_state()
             turn.turn_control.finalize_once(self._placeholder_settlement(turn))
 
     async def _refuse_prompt(
@@ -932,9 +959,10 @@ class AcpDuplexAdapter:
         ownership_slot: ResponseOwnershipSlot | None,
     ) -> NonTurnResponseEnvelope:
         del conversation
+        full = reason in {"cap", "cap_closed"}
         message = (
-            "Conversation capacity is exhausted; this prompt was refused."
-            if reason in {"cap", "cap_closed"}
+            CAPACITY_REFUSAL_TEXT
+            if full
             else "Conversation delivery is indeterminate; this prompt was refused."
             if reason == "delivery_indeterminate"
             else "This prompt was refused."
@@ -945,8 +973,12 @@ class AcpDuplexAdapter:
                 "session/update",
                 build_agent_message_chunk_notification(session_id=session_id, text=message),
             )
+        # A full conversation ends the turn normally rather than as a "refusal": Zed hides a refused
+        # turn's text behind a generic content-policy banner, and the user must see "start a new
+        # thread" (sandbox Zed live check, 2026-09-29). The conversation disposition, not the stop
+        # reason, records that capacity refused it.
         return self._non_turn(
-            success_response(request_id=request_id, result={"stopReason": "refusal"}),
+            success_response(request_id=request_id, result={"stopReason": "end_turn" if full else "refusal"}),
             ownership_slot,
         )
 
@@ -1036,9 +1068,75 @@ class AcpDuplexAdapter:
             sanitized_plan_text=plan_text,
             sanitized_completion_text=completion,
             outcome=outcome,
-            effect_state=EffectState.NONE,
+            # The effect the turn's operations actually settled, recomputed after any cancellation
+            # (Plan 12.2 Task 2). A turn that started no WRITE or TEST, including every Chat turn,
+            # settles NONE.
+            effect_state=turn.turn_control.refresh_effect_state(),
         )
         conversation.commit_after_final_flush(decision)
+        # A long reply can cross 80% (or fill the conversation outright) after an admission that
+        # was well below it; tell the user now, not at the refusal. A reply past the cap never
+        # gets the "soon" warning, even when an earlier disposition kept it from closing.
+        if decision.closes_cap and conversation.disposition is ConversationDisposition.CAP_CLOSED:
+            await self._emit_capacity_notice(
+                session_id=turn.session_id, conversation=conversation, text=CAPACITY_REACHED_TEXT, is_warning=False
+            )
+        elif (
+            not decision.closes_cap
+            and decision.crosses_warning
+            and conversation.note_warning_threshold_for_attempt(decision.projected_bytes)
+        ):
+            await self._emit_capacity_notice(
+                session_id=turn.session_id, conversation=conversation, text=CAPACITY_WARNING_TEXT, is_warning=True
+            )
+        await self._emit_usage_update(session_id=turn.session_id, conversation=conversation)
+
+    async def _emit_capacity_notice(
+        self,
+        *,
+        session_id: str,
+        conversation: ConversationState,
+        text: str,
+        is_warning: bool,
+    ) -> None:
+        """Deliver a capacity notice: the one-time 80% warning or the "limit reached" notice.
+
+        Best-effort: a failed send never fails the turn. The send demands a confirmed flush, and
+        the warning is confirmed only then. A failed or ambiguous write re-arms it, so the next
+        opportunity (this turn's commit, or the next admission) sends it again: a possible
+        duplicate warning is preferred to a lost one. The `NoticeControl` warning sequence, when
+        present, is bookkeeping retired as soon as the attempt settles. Main has no
+        `session/load`, so the notice is live-only: nothing stores or replays it.
+        """
+        handle = (
+            self._notice_control.allocate_warning_sequence()
+            if is_warning and self._notice_control is not None
+            else None
+        )
+        payload = build_agent_message_chunk_notification(session_id=session_id, text=text)
+        try:
+            await self._outbound.notify("session/update", payload, require_flushed=True)
+        except Exception:
+            if is_warning:
+                conversation.rearm_warning_attempt()
+        else:
+            if is_warning:
+                conversation.confirm_warning_flushed()
+        finally:
+            if handle is not None and self._notice_control is not None:
+                self._notice_control.abort_warning_sequence(handle)
+
+    async def _emit_usage_update(self, *, session_id: str, conversation: ConversationState) -> None:
+        """Send the ACP `usage_update` meter after a committed turn: estimated context used/size
+        (storage bytes // 4) and the session's cost only when it is complete.
+
+        Live-only and best-effort: it is never stored or replayed, and a failed send never fails
+        the turn. A refusal commits nothing, so it sends no new reading.
+        """
+        gauge = conversation.usage_gauge()
+        payload = build_usage_update(session_id=session_id, used=gauge.used, size=gauge.size, cost=gauge.cost)
+        with contextlib.suppress(Exception):
+            await self._outbound.notify("session/update", payload)
 
     async def _request_permission(self, *, turn: AcpPromptTurn, result: AgentRunResult) -> dict[str, Any]:
         tool_call_id = new_tool_call_id()

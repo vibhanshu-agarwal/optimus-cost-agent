@@ -184,6 +184,20 @@ def render_conversation_envelope(records: Mapping[int, ConversationTurn]) -> str
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
+def render_model_conversation(records: Mapping[int, ConversationTurn]) -> str:
+    """Model-facing history (Plan 12.2 Task 3, F3): turns in numeric order, fields in `_RECORD_FIELD_ORDER`.
+
+    `render_conversation_envelope` sorts its keys, so turn 10 precedes turn 2 and the fields come out
+    alphabetically. This renderer emits the same keys and values in their real order, so its byte
+    length is identical; the storage serializer alone still measures the floor.
+    """
+    payload: dict[str, dict[str, str]] = {}
+    for turn_seq in sorted(records):
+        record = records[turn_seq].as_record_dict()
+        payload[str(turn_seq)] = {key: record[key] for key in _RECORD_FIELD_ORDER}
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
 def rendered_byte_length(records: Mapping[int, ConversationTurn]) -> int:
     return len(render_conversation_envelope(records).encode("utf-8"))
 
@@ -341,6 +355,12 @@ class ConversationState:
         self._warning_crossed = True
         return True
 
+    def rearm_warning_attempt(self) -> None:
+        """A warning attempt was not confirmed as delivered: let the next crossing try again.
+        A no-op once the warning has been confirmed."""
+        if not self._warning_confirmed:
+            self._warning_crossed = False
+
     def confirm_warning_flushed(self) -> None:
         self._warning_confirmed = True
         self._warning_crossed = True
@@ -352,4 +372,4 @@ class ConversationState:
         return UsageGauge(used=used, size=size, cost=cost)
 
     def planner_envelope(self) -> str:
-        return render_conversation_envelope(self._records)
+        return render_model_conversation(self._records)

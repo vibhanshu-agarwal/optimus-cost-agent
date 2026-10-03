@@ -5,8 +5,9 @@ import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
+from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from optimus.agent.directives import AgentDirectiveParseError, parse_agent_plan
 from optimus.agent.models import AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
@@ -29,6 +30,7 @@ from optimus.loops.ledger import InMemoryProgressLedger
 from optimus.loops.models import CompletionEvaluatorProtocol, IterationOutcome, IterationState, LoopBudgetPolicy, LoopStopReason
 from optimus.loops.tools import GuardedLoopToolExecutor
 from optimus.runtime.modes import ExecutionMode
+from optimus.runtime.mutation import MutationForbidden
 from optimus.runtime.state import AgentState, AwaitingApproval, RuntimeContext, StateTransition, TransitionValidator
 from optimus.skills.registry import SkillRegistry
 from optimus.telemetry.events import TelemetryEvent
@@ -71,6 +73,78 @@ class _AgentLoopIterationRunner:
             cost_usd=result.total_cost_usd,
             deterministic_completion=result.status is AgentRunStatus.COMPLETED,
         )
+
+
+class _DirectiveGate:
+    """One run's lifecycle reporting for its READ, WRITE and TEST producers (Plan 12.2 Task 2).
+
+    Operation identities come from the host run id, the phase and each operation's ordinal within
+    this call, never from model text or shared runner state, so repeated paths and commands stay
+    distinct and a repeated run reproduces the same identities. Without a control (non-ACP callers)
+    every start is allowed and nothing is reported, which leaves those callers unchanged.
+    """
+
+    def __init__(self, control: TurnOperationControl | None, *, run_id: str, phase: str) -> None:
+        self._control = control
+        self._prefix = f"{run_id}:{phase}"
+        self.halted = False
+
+    def operation_id(self, label: str, ordinal: int) -> str:
+        return f"{self._prefix}:{label}:{ordinal}"
+
+    def register(self, operations: list[tuple[Any, str]]) -> None:
+        if self._control is not None and operations:
+            self._control.register_operations(operations)
+
+    def start(self, kind: Any, operation_id: str) -> bool:
+        if self._control is None:
+            return True
+        if self._control.try_start(kind, operation_id).granted:
+            return True
+        if not self._control.halt_requested():
+            # The gate refuses new starts only after cancellation or transport loss. A refusal
+            # without either means this identity already settled: a duplicate, not a cancellation.
+            raise RuntimeError(f"operation {operation_id} was refused a start although the turn has not stopped")
+        self.halted = True
+        return False
+
+    def complete(self, kind: Any, operation_id: str, terminal: str) -> None:
+        if self._control is not None:
+            self._control.complete_directive(kind, operation_id, terminal)
+
+
+def _failure_terminal(exc: BaseException) -> str:
+    # Only a typed guard denial proves an effectful producer never ran: MutationForbidden is raised
+    # before any write or subprocess (the toolbox re-raises it as PermissionError, keeping it as the
+    # cause). Any other failure after the lease may already have had an effect.
+    if isinstance(exc, MutationForbidden) or isinstance(exc.__cause__, MutationForbidden):
+        return "failed_no_effect"
+    return "failed_effect_unknown"
+
+
+def _run_gated(
+    gate: _DirectiveGate,
+    kind: Any,
+    operation_id: str,
+    producer: Callable[[], Any],
+    *,
+    effectful: bool,
+) -> tuple[bool, Any]:
+    """Run ``producer`` under the turn's lease and publish exactly one terminal for it.
+
+    The lease is taken immediately before the producer; a denied lease returns ``(False, None)``
+    without running it. A failure is re-raised after its terminal is published. A READ never has
+    an effect, so its failures are always ``failed_no_effect``.
+    """
+    if not gate.start(kind, operation_id):
+        return False, None
+    try:
+        result = producer()
+    except BaseException as exc:
+        gate.complete(kind, operation_id, _failure_terminal(exc) if effectful else "failed_no_effect")
+        raise
+    gate.complete(kind, operation_id, "succeeded")
+    return True, result
 
 
 class AgentRunner:
@@ -523,7 +597,7 @@ class AgentRunner:
                 output_text,
                 workspace_root=request.workspace_root,
                 toolbox=toolbox,
-                operation_control=operation_control,
+                gate=_DirectiveGate(operation_control, run_id=request.run_id, phase="planning"),
                 phase="planning_read",
             )
         )
@@ -620,15 +694,29 @@ class AgentRunner:
             shell_runner=self._shell_runner,
         )
 
-        write_calls = self._execute_write_directives(output_text, workspace_root=request.workspace_root, toolbox=toolbox)
+        gate = _DirectiveGate(operation_control, run_id=request.run_id, phase="approved")
+        self._register_known_effects(output_text, gate)
+        write_calls = self._execute_write_directives(output_text, workspace_root=request.workspace_root, toolbox=toolbox, gate=gate)
         tool_calls.extend(write_calls)
         mutation_count = sum(1 for call in write_calls if call.tool_name == "write_file")
-        try:
-            tool_calls.extend(self._execute_test_directives(output_text, toolbox=toolbox))
-        except AgentDirectiveParseError as exc:
-            if "unsafe TEST directive" in str(exc):
-                return self._unsafe_test_directive_result(request)
-            raise
+        if not gate.halted:
+            try:
+                tool_calls.extend(self._execute_test_directives(output_text, toolbox=toolbox, gate=gate))
+            except AgentDirectiveParseError as exc:
+                if "unsafe TEST directive" in str(exc):
+                    return self._unsafe_test_directive_result(request)
+                raise
+        if gate.halted:
+            return self._cancelled_execution_result(
+                request=request,
+                plan_text=output_text,
+                tool_calls=tool_calls,
+                mutation_count=mutation_count,
+                total_cost_usd=total_cost_usd,
+                plan_hash=plan_hash,
+                cost_complete=cost_complete,
+                unknown_cost_attempt_count=unknown_cost_attempt_count,
+            )
         write_failure = self._write_execution_failure_if_needed(
             request=request,
             plan_text=output_text,
@@ -703,7 +791,20 @@ class AgentRunner:
 
         context = self._transition(context, AgentState.PLANNING)
         context = self._transition(context, AgentState.PLAN_READY)
-        tool_calls = self._execute_read_directives(record.plan_text, workspace_root=request.workspace_root, toolbox=toolbox)
+        gate = _DirectiveGate(operation_control, run_id=request.run_id, phase="approved")
+        self._register_known_effects(record.plan_text, gate)
+        tool_calls = self._execute_read_directives(
+            record.plan_text, workspace_root=request.workspace_root, toolbox=toolbox, gate=gate
+        )
+        if gate.halted:
+            return self._cancelled_execution_result(
+                request=request,
+                plan_text=record.plan_text,
+                tool_calls=tool_calls,
+                mutation_count=0,
+                total_cost_usd=record.cost_usd,
+                plan_hash=record.plan_hash,
+            )
         context = self._transition(context, AgentState.AWAITING_APPROVAL)
         awaiting = AwaitingApproval(
             approval_id=request.approval.approval_id or "unknown-approval",
@@ -720,15 +821,27 @@ class AgentRunner:
             guard=self._guard,
             shell_runner=self._shell_runner,
         )
-        write_calls = self._execute_write_directives(record.plan_text, workspace_root=request.workspace_root, toolbox=approved_toolbox)
+        write_calls = self._execute_write_directives(
+            record.plan_text, workspace_root=request.workspace_root, toolbox=approved_toolbox, gate=gate
+        )
         tool_calls.extend(write_calls)
         mutation_count = sum(1 for call in write_calls if call.tool_name == "write_file")
-        try:
-            tool_calls.extend(self._execute_test_directives(record.plan_text, toolbox=approved_toolbox))
-        except AgentDirectiveParseError as exc:
-            if "unsafe TEST directive" in str(exc):
-                return self._unsafe_test_directive_result(request)
-            raise
+        if not gate.halted:
+            try:
+                tool_calls.extend(self._execute_test_directives(record.plan_text, toolbox=approved_toolbox, gate=gate))
+            except AgentDirectiveParseError as exc:
+                if "unsafe TEST directive" in str(exc):
+                    return self._unsafe_test_directive_result(request)
+                raise
+        if gate.halted:
+            return self._cancelled_execution_result(
+                request=request,
+                plan_text=record.plan_text,
+                tool_calls=tool_calls,
+                mutation_count=mutation_count,
+                total_cost_usd=record.cost_usd,
+                plan_hash=record.plan_hash,
+            )
         write_failure = self._write_execution_failure_if_needed(
             request=request,
             plan_text=record.plan_text,
@@ -810,32 +923,59 @@ class AgentRunner:
             StateTransition(target=target, reason=reason),
         )
 
+    def _register_known_effects(self, plan_text: str, gate: _DirectiveGate) -> None:
+        """Register the plan's WRITE and TEST operations before anything runs (Plan 12.2 Task 2).
+
+        A cancellation then suppresses every one that has not started, so the settled effect stays
+        exact: a completed WRITE followed by a suppressed TEST is PARTIAL. The conditions mirror the
+        executors, which skip a write to an unsafe path and run nothing from an unparseable plan.
+        """
+        from optimus.acp.lifecycle import DirectiveKind
+
+        try:
+            directives = parse_agent_plan(plan_text)
+        except AgentDirectiveParseError:
+            return
+        operations: list[tuple[Any, str]] = []
+        if directives.write is not None and self._is_safe_relative_path(directives.write.path):
+            operations.append((DirectiveKind.WRITE, gate.operation_id("write", 0)))
+        operations.extend(
+            (DirectiveKind.TEST, gate.operation_id("test", ordinal)) for ordinal in range(len(directives.tests))
+        )
+        gate.register(operations)
+
     def _execute_read_directives(
         self,
         plan_text: str,
         *,
         workspace_root: Path,
         toolbox: AgentToolbox,
-        operation_control: TurnOperationControl | None = None,
+        gate: _DirectiveGate,
         phase: str = "read",
     ) -> list[AgentToolCall]:
-        del operation_control, phase
+        from optimus.acp.lifecycle import DirectiveKind
+
+        kind = DirectiveKind(phase)
         try:
             directives = parse_agent_plan(plan_text)
         except AgentDirectiveParseError:
             return []
         calls: list[AgentToolCall] = []
-        for relative_path in directives.read_paths:
+        for ordinal, relative_path in enumerate(directives.read_paths):
             if not self._is_safe_relative_path(relative_path):
                 continue
             target = workspace_root / relative_path
             if not target.is_file():
                 continue
+            operation_id = gate.operation_id(phase, ordinal)
+            gate.register([(kind, operation_id)])
             try:
-                _, call = toolbox.read_file(target)
+                started, read = _run_gated(gate, kind, operation_id, partial(toolbox.read_file, target), effectful=False)
             except OSError:
                 continue
-            calls.append(call)
+            if not started:
+                break
+            calls.append(read[1])
         return calls
 
     def _execute_write_directives(
@@ -844,9 +984,10 @@ class AgentRunner:
         *,
         workspace_root: Path,
         toolbox: AgentToolbox,
-        operation_control: TurnOperationControl | None = None,
+        gate: _DirectiveGate,
     ) -> list[AgentToolCall]:
-        del operation_control
+        from optimus.acp.lifecycle import DirectiveKind
+
         try:
             directives = parse_agent_plan(plan_text)
         except AgentDirectiveParseError:
@@ -860,9 +1001,18 @@ class AgentRunner:
         target = workspace_root / relative_path
         calls: list[AgentToolCall] = []
         if target.exists():
-            _, read_call = toolbox.read_file(target)
-            calls.append(read_call)
-        calls.append(toolbox.write_file(target, content))
+            read_id = gate.operation_id("read-before-write", 0)
+            gate.register([(DirectiveKind.READ, read_id)])
+            started, read = _run_gated(gate, DirectiveKind.READ, read_id, partial(toolbox.read_file, target), effectful=False)
+            if not started:
+                return calls
+            calls.append(read[1])
+        write_id = gate.operation_id("write", 0)
+        started, write_call = _run_gated(
+            gate, DirectiveKind.WRITE, write_id, partial(toolbox.write_file, target, content), effectful=True
+        )
+        if started:
+            calls.append(write_call)
         return calls
 
     def _execute_test_directives(
@@ -870,11 +1020,54 @@ class AgentRunner:
         plan_text: str,
         *,
         toolbox: AgentToolbox,
-        operation_control: TurnOperationControl | None = None,
+        gate: _DirectiveGate,
     ) -> list[AgentToolCall]:
-        del operation_control
+        from optimus.acp.lifecycle import DirectiveKind
+
         directives = parse_agent_plan(plan_text)
-        return [toolbox.run_tests(command) for command in directives.tests]
+        calls: list[AgentToolCall] = []
+        for ordinal, command in enumerate(directives.tests):
+            # A test that runs and exits non-zero still executed: its terminal is "succeeded" and its
+            # failing verdict stays in the tool call's summary.
+            started, call = _run_gated(
+                gate, DirectiveKind.TEST, gate.operation_id("test", ordinal), partial(toolbox.run_tests, command), effectful=True
+            )
+            if not started:
+                break
+            calls.append(call)
+        return calls
+
+    def _cancelled_execution_result(
+        self,
+        *,
+        request: AgentRunRequest,
+        plan_text: str,
+        tool_calls: list[AgentToolCall],
+        mutation_count: int,
+        total_cost_usd: Decimal,
+        plan_hash: str | None,
+        cost_complete: bool = True,
+        unknown_cost_attempt_count: int = 0,
+    ) -> AgentRunResult:
+        """The turn stopped before every approved operation started (Plan 12.2 Task 2).
+
+        Work that ran before the cancellation is reported; nothing after it started. ``cancelled``
+        maps to a cancelled conversation outcome and ACP stop reason.
+        """
+        return self._build_result(
+            request=request,
+            status=AgentRunStatus.TERMINATED,
+            final_state="TERMINATED",
+            output_text=plan_text,
+            tool_calls=tuple(tool_calls),
+            total_cost_usd=total_cost_usd,
+            mutation_count=mutation_count,
+            plan_hash=plan_hash,
+            stop_reason="cancelled",
+            cost_complete=cost_complete,
+            unknown_cost_attempt_count=unknown_cost_attempt_count,
+            candidate_plan_text=plan_text,
+        )
 
     def _write_execution_failure_if_needed(
         self,

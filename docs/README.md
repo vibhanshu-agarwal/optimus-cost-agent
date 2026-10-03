@@ -44,6 +44,8 @@ relevant records before proposing a change in their area.
 | [ADR-013: Plan 12 effect repair](decisions/ADR-013-plan12-effect-producer-repair.md) | First code step; real WRITE/TEST boundaries and cancellation; later Package A authority |
 | [ADR-014: Request guard and source floor](decisions/ADR-014-all-session-request-guard-floor-clarification.md) | ADR-003 clarification with full-floor route evidence required |
 | [ADR-015: Cost-stop removal sequencing](decisions/ADR-015-cost-stop-removal-sequencing.md) | After accounting/D6, without waiting for ADR-009 |
+| [ADR-016: Checkpoint cadence](decisions/ADR-016-checkpoint-review-cadence.md) | Fable then Codex at at most four checkpoints; local task commits; Package A publication |
+| [ADR-017: Package A coverage residual](decisions/ADR-017-package-a-coverage-exception.md) | Exact one-time four-statement exception at 38a465f; result remains NOT MET |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 
 ## Research (input for Plan 12)
@@ -119,3 +121,5 @@ Live plans (each listed in the backlog's live plan registry):
 - [Past reports](superpowers/reports/archive/)
 - [Past runbooks](runbooks/archive/)
 - [Older publication sources](sources/archive/)
+
+- [Plan 12.2 Package A delivery record](superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md) — local commits, offline acceptance, residual and evidence custody.

@@ -4,6 +4,21 @@ Local-first Python ACP (Agent Client Protocol) server for building **cost-aware 
 
 **Status:** Early initialization (Phase 1). Design docs and project standards are in place; application code is under active development.
 
+## Conversation floor and turn effects
+
+- Each ACP session keeps its full conversation up to a 512 KiB floor. The first time a prompt or a
+  reply takes it past 80%, the agent says once that the thread should move to a new one. A full
+  conversation is refused with a readable message, and the turn ends normally.
+- A live `usage_update` meter follows every committed turn. It carries the session cost only while
+  that cost is fully known.
+- Each agent message block ends with a paragraph break, and the model sees past turns in turn order.
+- Approved Agent turns record the real effect of their file writes and tests. A cancel during
+  approved execution stops any operation that has not started; one already running is not
+  interrupted.
+
+The optional Context Engine is not part of this. Details and limits are in the
+[Plan 12.2 Package A delivery record](docs/superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md).
+
 ## Features (Phase 1)
 
 - **Gateway-only credential runtime** — only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` are required locally; no upstream provider credential is resolved in the agent process

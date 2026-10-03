@@ -55,7 +55,7 @@ in this table.
 
 | Plan | State | Backlog owner | Next gate |
 |---|---|---|---|
-| [Plan 12.2 — Context Engine](2026-10-01-plan-12-2-context-engine-implementation.md) | `Blocked` | `Plan 12` | Operator selected Package A (Tasks 0, 2 and 3) and Docs PR first on 2026-10-01 (S2; ADR-013). Claude implements; Codex reviews each task. Read-only intake may proceed; no product code before the docs PR merges and the latest-main checkout/path is verified. Task 2 review precedes Task 3. Task 1 and Tasks 4–13, paid/live calls, service/settings or sandbox changes and package-A commit/push/PR/merge are not released. Update this row when the merge/base gate is satisfied; it does not authorize the full engine. |
+| [Plan 12.2 — Context Engine](2026-10-01-plan-12-2-context-engine-implementation.md) | `Active` | `Plan 12` | Package A offline technical delivery accepted at 38a465f, with exact NOT MET residual in ADR-017; docs PR #214 merge/base gate was satisfied. [Delivery](../reviews/2026-10-02-plan-12-2-package-a-delivery.md). Operator selected Package A docs/PR then CP1, and replaced per-task reviews with CP1 Tasks 4-5, CP2 6-8, CP3 9-11, CP4 12-13 (ADR-016/S3). Claude reviews Codex docs draft, makes docs-only commit with only coverage hook skipped, pushes and opens PR; merge stays operator-owned. Task 1 contracts/complete cadence successor need acceptance before CP1; paid/live/service/sandbox gates remain separate. |
 | [Plan 12.1 — Plan/Chat advisory answer](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | `Blocked` | `P12-FU-1` | Dependency `P11.25-FU-1` retains sole ownership of non-AGENT conversation carriage. Tasks 0–5 are complete on draft PR #212: Codex's implementation review passed at `1c797b9`, and the full-suite CI there is green. The evidence is in `reports/plan-12-1-implementation-and-live-evidence.md`. Next gate: the operator's PR-readiness and merge decision. `P12-FU-1` and `P11.25-FU-1` stay promoted until merge and acceptance. |
 | [Local-hook UTF-8 decoding repair](2026-09-06-local-hook-utf8-repair.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Local delivery at `c9745898` is independently accepted and published to PR #196 with both first-execution checks passed. The operator authorized documentation review and normal merge conditional on the final head passing required checks; PR #196 records the result. Retained under transitional custody pending separate archival disposition; no further implementation or inherited budget is released. Preserve baseline identities, frozen documents and CI scope. |
 | [Plan 11.27 v12 — integrate accepted correction and deliver locally](2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v12.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Delivery and publication complete: local integration `2bd316bc`, merged via PR #195 at `32f32ef4`, with independent local/CI acceptance and restored protection. Retained at the root under transitional custody; the remaining gate is the separate archival/custody disposition. No further v12 execution or inherited budget is available. Scanner decoding repair remains with the backlog owner. |
@@ -348,40 +348,79 @@ open-work inventory.
 | `HARDENING-FEAT-RUNTIME-QUALITY` | Open | HIGH | The [hardening runtime-quality masterplan](hardening-runtime-quality-masterplan.md) sequences 16 new items, 17 existing candidates, and 3 existing obligations. The backlog row owns this masterplan's status; the masterplan owns its 15 child-plan statuses. The G6/G7 custody tables are historical acceptance records. This charter grants no implementation authority except through separately reviewed and authorized child tasks; live child status and task gates remain solely in the masterplan and owning child plans. **2026-09-06 reconciliation:** the CI guardrail child retains main's production scan and commit-time coverage, carries locked dependency sync, and adopts only the original three baseline entries plus 31 reviewed report identities. PR #194 merged at `0ec91225`, preserving accepted local delivery `cd4a3805`; both required PR checks and post-merge guardrails passed. The separately accepted decoding repair is published to PR #196 under conditional normal-merge authority. Later child tasks still require their own decisions. The masterplan's CI-GUARDRAILS row owns this reconciliation's next gate. |
 | `P11-FEAT-REGISTRY`             | Open                  | LOW        | Ratified, unscheduled, and held as the last primary Plan 11 slice. The ACP registry has a public authoritative repository, schema, submission guide, and stabilized live process; pickup begins by pinning and executing against the then-current validator/CI behavior, not by searching for an unknown source. Reassess 11.x-last versus a 13.x split for outward publication once this consolidated pool closes. The v1.0 release-version contract and excluded-capability inventory remain in Plan 11. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut). Verified local finding carried to pickup: package and ACP versions are both `0.1.0`, and ACP currently returns `authMethods: []`. The registry guide's Agent/Terminal Auth admission rule is an external claim to verify by live execution before implementation scope is frozen. Carried to pickup (2026-09-29): the excluded-capability inventory must name `P12-FU-1`, the Plan/Chat advisory-answer capability ruled out of v1.0 and carried into Plan 12.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `P11-FEAT-IDE`                  | Open                  | LOW        | Conditional — opens only through an explicitly approved complete versioned charter successor if REGISTRY surfaces an unmet multi-IDE expectation. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `Plan 12` | Open | LOW | Post-v1.0 context-window and intelligent-selection lane; outside the v1.0 cut. [Charter boundary](2026-07-25-plan-11-v1-milestone-charter.md#explicit-exclusions-and-unresolved-inputs). **2026-09-29:** work started in parallel by operator direction; it remains outside v1.0. [Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) separately schedules `P11.25-FU-1` and `P12-FU-1`. **2026-10-01:** the [Context Engine design](../specs/2026-10-01-plan-12-2-context-engine-design.md) and [Plan 12.2](2026-10-01-plan-12-2-context-engine-implementation.md) file the reviewed revision-5 contract; see [Package A custody](#plan-12-context-engine-package-a-custody). Only Tasks 0, 2 and 3 are authorized for Claude, with Codex review of each task; product code waits for the docs-first PR merge. The [Plan 11.25 correction](../reviews/2026-10-01-plan-11-25-effect-instrumentation-correction.md) identifies the effect gap owned by Task 2; no separate repair item is created. Broader implementation, paid calls and package-A delivery remain unapproved. Designated follow-ups `P9.8-FU-2`, `P9.8-FU-3`, `P9.85-FU-1`, `P9.85-FU-2` and `P12-FU-2` retain their existing custody/status; this filing closes none. Plan 2 keeps the delivered enforcement half. |
+| `Plan 12` | Open | LOW | Post-v1.0 context/intelligent selection remains outside v1.0 and proceeds in parallel by operator direction. Plan 12.1 retains its separate advisory-answer scope. Plan 12.2 Package A is locally accepted at 38a465f, not merged; [delivery](../reviews/2026-10-02-plan-12-2-package-a-delivery.md) and [custody](#plan-12-context-engine-package-a-custody). ADR-016 replaces per-task reviews with four remaining package checkpoints; Task 1 contracts gate CP1. Exact ADR-017 coverage residual and related observations have existing owners below. Wider engine/paid/live work is not delivered; designated Plan 12 follow-ups retain custody. |
 
-## Plan 12 Context Engine package A custody
+## Plan 12 Context Engine Package A custody
 
-**Raised / source:** operator selections on 2026-10-01, preserved verbatim in
-[ADR-013](../../decisions/ADR-013-plan12-effect-producer-repair.md) and indexed as
-[S2](../../decisions/README.md#rules-for-every-record). The selected labels are “Package A (Recommended)”
-and “Docs PR first (Recommended)”. This is part of the existing `Plan 12` feature owner, not another
-open-work pool or a separate runtime-hardening item.
+**Raised / source:** ADR-013/S2 preserves original Package A/docs-first selections; S3 in the
+[decision index](../../decisions/README.md#rules-for-every-record) covers later local commits,
+the [exact exception](../../decisions/ADR-017-package-a-coverage-exception.md) and [checkpoint/publication decisions](../../decisions/ADR-016-checkpoint-review-cadence.md).
 
-**Owning contract:** [Plan 12.2](2026-10-01-plan-12-2-context-engine-implementation.md), the next linear
-slice after Plan 12.1; [design](../specs/2026-10-01-plan-12-2-context-engine-design.md).
-The complete reviewed revision-5 contract is filed; only its Package A subset is released.
+**Owning contract:** Plan 12.2 and its filed design; no separate hardening item or work pool.
+The frozen first plan edition is historical for delivery cadence. A complete `_v2` draft carries
+the new cadence and Task 1 contract reference; accept/file that successor before CP1, never edit v1.
 
-**Scope / roles:** Claude implements Tasks 0, 2 and 3 in an isolated latest-main checkout; Codex drafts
-and reviews and does not implement. Task 0 is read-only intake and drift/prerequisite verification.
-Task 2 supplies actual READ/WRITE/TEST producer controls, exact WRITE/TEST effects at commit and
-cancellation/denied-start recomputation, including the legacy pre-approved runner path. Task 3 then
-ports separated notices/readable cap refusal, the visible existing 80% warning and usage meter, and
-the model history-order fix; source-floor calculations/canonical storage remain unchanged.
+**Status:** Open. Package A's Tasks 0/2/3 and the separately approved lock controls are implemented
+and offline technically accepted on the local branch at `38a465f`; publication/merge remain distinct.
+Docs-first PR #214 merged as `1f7b6a2`; ADR-001-015 remain frozen. Four commits and measured residual
+are in the [delivery record](../reviews/2026-10-02-plan-12-2-package-a-delivery.md). This does not close Plan 12 or certify live Zed.
 
-**Acceptance / next gates:** docs-only PR merge before any product code; fresh base and prescribed
-checkout-path verification; Task 2 real-boundary/cancellation evidence and Codex review before Task 3;
-Task 3 focused unit evidence and Codex review. This authorization ends with a reviewed branch, with no
-paid calls. Unit tests do not prove live Zed rendering. Any live-display check and package-A commit,
-push, PR shape, publication or merge require their corresponding separate authority. Task 1, Tasks
-4–13, provider qualification, services/settings and sandbox sync are not released. Remaining D1–D10
-items gate their own dependent later tasks; the accepted D7 interpretation and Q3 sequence are not
-reopened by this registration. The sandbox retains its effect-producer gap until separately synced.
+**Scope / roles / next gates:** Codex drafts docs/contracts, Claude reviews this docs packet,
+commits docs-only with the approved coverage-hook skip, pushes Package A and opens the PR.
+The operator merges after required CI/review. Task 1's proposed contracts are reviewed/accepted
+before CP1; no per-task Codex review/clearance between checkpoints. Remaining reviews are
+CP1 (4-5), CP2 (6-8), CP3 (9-11), CP4 (12-13), each Fable 5.1 then Codex. Focused tests/local
+commits between checkpoints skip only `optimus-pytest-coverage`; one scheduled full suite/coverage
+per checkpoint. Disclose the full-run commit and any later focused fix delta truthfully.
+Paid/live calls, service/settings changes and sandbox synchronization require their own authority.
+The sandbox's reported effect-producer gap remains until separate synchronization; PR discloses it.
 
-**Status:** Open. Package A is selected but its product code remains behind docs-first merge/base gates;
-no implementation or follow-up closure is claimed. The live plan registry holds Plan 12.2 as Blocked
-until those gates are satisfied and retains broader tasks under their own holds. Register later
-independent slices using linear numbers or revise this contract via complete `_vN` successors.
+**Open presentation observation (Plan 12 owner):** when a cancelled Agent turn has completed one
+or more file writes, its completion text still begins "Completed:" and lists those writes. The
+listed writes are true, but the text can obscure that the turn was cancelled and that later tests
+were suppressed. Keep outcome, effect completion and test verdict distinct. Record/assess a targeted wording treatment within
+Plan 12's presentation work; no code change or new plan is commissioned by this intake.
+Trigger: next relevant host/UI work. Acceptance: truthful text for success, cancellation, PARTIAL
+and failed tests, backed by focused UI/payload evidence. Status Open; not excluded from Plan 12.
+
+## Package A repeatability observations — P11.26-CAND-5 intake
+
+**Raised / origin:** Package A commit evidence/reviews, 2026-10-01; registered here 2026-10-02.
+**Owner:** `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION`, under `P11-FEAT-ACP-RUNTIME-HARDENING`.
+**Status:** Open. These are related intake observations, not rewrites of the original 14 sealed
+timeouts and not proof the existing candidate remedy is complete.
+
+- Historical audit reads via GitCommitSource hit 10-second archive/rev-parse timeouts during the
+  first Task 3 hook attempt. Later isolated checks passed; load is plausible, cause unconfirmed.
+  Preserve native failures/attempt identities and investigate attribution under owner scope;
+  no timeout increase, rerun-until-green or test deselection is authorized.
+- Coverage execution varied in launch_approvals, lifecycle, server and client_sdk across saved
+  full-2, 780faed terminal and 38a465f terminal datasets with identical production source, but
+  not identical tests. Deterministic lock controls landed locally at 38a465f. Other known paths
+  remain owner work; three observations are not an exhaustive census or causal attribution.
+- Terminal numeric condition at 38a465f remains NOT MET: server 574-575, 90.57377049180327% ->
+  90.1639344262295%; client_sdk 326/338, 78.38709677419355% -> 77.74193548387096%. Operator
+  accepted only those four statements at that head, per ADR-017; no general waiver on later code.
+  Aggregate 87.5846994535519%; launch approvals exactly baseline 86.79245283018868%.
+
+**Next owner gate:** separately scoped deterministic phase/timeout controls with behavior and
+negative assertions, preserving real integration tests, or explicit further attribution work.
+No more full-suite sampling is a prerequisite to this Package A publication; no best-of-N,
+coverage union, favorable baseline or exclusions. Nothing is automatically scheduled by intake.
+Evidence IDs/hashes and saved-run custody are in the Package A delivery record.
+
+## Package A sanitizer throughput — security-text owner intake
+
+**Raised / origin:** Task 3 test construction, 2026-10-01; intake 2026-10-02.
+**Owner:** `P11-REMEDIATION-SECURITY-TEXT-POLICY` / `T13-CAND-SECURITY-TEXT` rank 4.
+**Status:** Open. `ConversationSanitizer.sanitize` (`sanitize_for_persistence`), which runs on each
+admitted prompt and committed plan/completion text, was observed to be roughly quadratic on a single
+long unbroken token: one unprofiled timing of 16 KB took about 0.57 s, while space-separated text
+was fast. Larger timings are extrapolations, not measurements. Source inspection names the
+unanchored `\w+://` URI-userinfo search as a plausible contributor, not an established cause.
+No profiling or production remedy is commissioned.
+Trigger: owner's next sanitization-primitives work. Acceptance: bounded reproducible measurement
+and a reviewed remedy retaining hostile/split-secret detection, under that owner's scope.
 
 ## Plan 11.26 reviewed disposition and remediation custody
 
@@ -412,7 +451,7 @@ This G6 custody table is a historical acceptance record, not live remediation-pl
 | Candidate | `P11.26-CAND-2-TELEMETRY-CONTRACT` | 2 | Consolidation | 50 telemetry sites, 16 event kinds, and 5 sinks; includes C15 precision. | HIGH | `ACCEPTED_OPEN` | `P11-FEAT-ACP-RUNTIME-HARDENING` / typed telemetry boundary owner | G6 accepted custody; pickup establishes one schema, correlation, containment, sink-class, and storage-disposition authority. |
 | Candidate | `P11.26-CAND-3-SEMANTIC-ERROR-SELECTION` | 3 | Consolidation | 13 exact H7 symbol citations across 6 findings; the intentional sanitizer exception is retained, not repaired. | HIGH | `ACCEPTED_OPEN` | `P11-FEAT-ACP-RUNTIME-HARDENING` / semantic error-selection owner | G6 accepted custody; pickup centralizes runtime-outcome-to-wire-code selection while preserving Plan 11.18 authority. |
 | Candidate | `P11.26-CAND-4-QUEUE-BACKPRESSURE` | 4 | Consolidation | 3 constructor-declared unbounded queues and the separately cited full-operation health deadline. | HIGH | `ACCEPTED_OPEN` | `P11-FEAT-ACP-RUNTIME-HARDENING` / queue admission owner | G6 accepted custody; pickup establishes one bounded admission and overload-disposition contract before changing individual queues. |
-| Candidate | `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION` | 5 | Consolidation | Narrow and group shutdown tiers; 14 timeouts retain 10 HARNESS / 4 UNRESOLVED row attribution. | MEDIUM | `ACCEPTED_OPEN` | `P11-FEAT-ACP-RUNTIME-HARDENING` / repeatability evidence owner | G6 accepted custody; pickup replaces scenario-wide masking with per-row attribution and composite reporting. |
+| Candidate | `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION` | 5 | Consolidation | Narrow and group shutdown tiers; 14 timeouts retain 10 HARNESS / 4 UNRESOLVED row attribution. | MEDIUM | `ACCEPTED_OPEN` | `P11-FEAT-ACP-RUNTIME-HARDENING` / repeatability evidence owner | G6 accepted custody; pickup replaces scenario-wide masking with per-row attribution and composite reporting. Related Package A audit-Git timeout and coverage-repeatability intake below; original 14 sealed rows are unchanged. |
 | Obligation | `P11.26-UNRUN-BINDING` | — | Scope-out | Missing session-lease binding predicate; Task 10's five tests corroborate the stop but do not substitute for it. | N/A | `UNRUN_BINDING` | `P11-FEAT-ZED-RESUME` | Reconcile branches, nominate the binding commit, implement the predicate, then run it. |
 | Obligation | `P11.26-UNRUN-REDIS` | — | Scope-out | Missing live Redis owner/revision predicate and no live Redis grant. | N/A | `UNRUN` | operator | Grant the real Redis row after binding and provenance prerequisites are satisfied. |
 | Obligation | `P11.26-UNRUN-ZED` | — | Scope-out | Missing Zed E2E predicate/manual observation bundle and no Zed grant. | N/A | `UNRUN` | operator | Grant the five manual Zed rows after trusted-workspace and installed-artifact provenance prerequisites are satisfied. |
@@ -573,7 +612,7 @@ This G7 custody table is a historical acceptance record, not live remediation-pl
 | `T13-CAND-RUNNER-CONTRACTS` | 1 | `consolidation` | 37 | `MEDIUM` | `ACCEPTED_OPEN` | `P11-REMEDIATION-RUNNER-CONTRACTS` | Independent remediation plan and focused regression gate for evidence-runner helpers and pinned contract values. |
 | `T13-CAND-AUDIT-PRIMITIVES` | 2 | `consolidation` | 25 | `MEDIUM` | `ACCEPTED_OPEN` | `P11-REMEDIATION-AUDIT-PRIMITIVES` | Independent remediation plan and focused regression gate for audit-tool canonicalization, symbol, citation, and visitor helpers. |
 | `T13-CAND-CREDENTIAL-CONTRACTS` | 3 | `consolidation` | 15 | `HIGH` | `ACCEPTED_OPEN` | `P11-REMEDIATION-CREDENTIAL-CONTRACTS` | Independent remediation plan and focused regression gate for credential fingerprints and launch-security constants. |
-| `T13-CAND-SECURITY-TEXT` | 4 | `consolidation` | 13 | `HIGH` | `ACCEPTED_OPEN` | `P11-REMEDIATION-SECURITY-TEXT-POLICY` | Independent remediation plan and focused regression gate for security text sanitization and validation primitives. |
+| `T13-CAND-SECURITY-TEXT` | 4 | `consolidation` | 13 | `HIGH` | `ACCEPTED_OPEN` | `P11-REMEDIATION-SECURITY-TEXT-POLICY` | Independent remediation plan and focused regression gate for security text sanitization and validation primitives. Related Package A sanitizer-throughput observation recorded below; no remedy commissioned. |
 | `T13-CAND-DOMAIN-HTTPS` | 5 | `consolidation` | 12 | `HIGH` | `ACCEPTED_OPEN` | `P11-REMEDIATION-DOMAIN-POLICY` | Independent remediation plan and focused regression gate for domain and HTTPS normalization and matching policy. |
 | `T13-CAND-LEDGER-ACCOUNTING` | 6 | `consolidation` | 10 | `HIGH` | `ACCEPTED_OPEN` | `P11-REMEDIATION-LEDGER-ACCOUNTING` | Independent remediation plan and focused regression gate for evidence and provider-usage ledger settlement logic. |
 | `T13-CAND-REDACTION-LIFETIME` | 7 | `consolidation` | 10 | `HIGH` | `ACCEPTED_OPEN` | `P11-REMEDIATION-REDACTION-LIFETIME` | Independent remediation plan and focused regression gate for redaction cleanup, containment, hashing, and count aggregation. |
