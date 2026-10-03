@@ -21,7 +21,7 @@ SUMMARY_FORMAT = "context-summary-v1"
 # Identifies the validator a qualification receipt was judged by: `parse_summary` here and the fact
 # report in tools/evaluate_context_summarizer.py. Once any receipt is recorded, change either only
 # with a new version here and in the registry's SUMMARY_VALIDATOR, so earlier receipts stop counting.
-VALIDATOR_VERSION = "context-summary-validator-v3"
+VALIDATOR_VERSION = "context-summary-validator-v4"
 PROMPT_VERSION = "context-summary-prompt-v1"
 SECTIONS = (
     "Task context",
