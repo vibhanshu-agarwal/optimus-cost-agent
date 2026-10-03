@@ -3497,11 +3497,19 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.local_secret_scan:_validate_utf8_file:file_open",
+      "key": "tools.local_secret_scan:_validate_text_file:file_open",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: tools.local_secret_scan:_validate_utf8_file:file_open opens the approved baseline and each pre-commit-selected filename read-only in binary mode solely to strictly decode it as UTF-8 before the scanner runs; no bytes are retained, logged or exported, and its diagnostic names only the path, byte offset and decoder reason.",
+      "rationale": "Inspection: tools.local_secret_scan:_validate_text_file:file_open opens the approved baseline and each pre-commit-selected filename read-only in binary mode solely to strictly decode it, as UTF-16 when it starts with a UTF-16 byte-order mark and as UTF-8 otherwise, before the scanner runs; no bytes are retained, logged or exported, and its diagnostic names only the path, byte offset and decoder reason.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_rejects_invalid_utf8_before_delegation",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.local_secret_scan:_lines_from_file:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.local_secret_scan:_lines_from_file:file_open is the adapter's wrapper around the pinned scanner's file reader; it opens a scanner-selected file read-only to look for a UTF-16 byte-order mark and, for a BOM-marked file only, reads it as strict UTF-16 text for the in-process scanner, in place and without rewriting it; every other file is handed to the pinned reader. Decoded lines flow only to the scanner's plugins; nothing is retained, logged or exported, and its failure diagnostic names only the path and decoder reason.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_utf16_reader_decodes_bom_files_in_place_and_defers_other_files_to_the_pinned_reader",
       "evidence_tier": "unit"
     },
     {
