@@ -1,12 +1,12 @@
 """Per-site attribution for the child census: which launch sites launched, and what each child did.
 
 Test support only. The census hook records, in the launching process, every `subprocess.Popen`
-with the test frame it came from and the identity of the child it started; and, in each child that
-inherited the hook, that child's own identity, arming and behaviour. These functions join those
-rows to the committed launch-site map, one row per site. A site is credited only by launches
-attributed to that site, and a launch only by the child it started: another site's child, a
-reused test name, a start-only row or the mere presence of the hook in the environment is never
-positive evidence that this child was armed and clean.
+with the test frame it came from and the identity of the process it created; and, in each child that
+inherited the hook, that child's own identity, its ancestors' identities, its arming and behaviour.
+These functions join those rows to the committed launch-site map, one row per site. A site is
+credited only by launches attributed to that site, and a launch only by the children it started:
+another site's child, a reused test name, a start-only row or the mere presence of the hook in the
+environment is never positive evidence that this child was armed and clean.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ LAUNCH_VERDICTS = (
     "real_adapter_requested", "launched_without_hook", "launch_failed", "launch_identity_unread", "child_unobserved",
     "child_unarmed", "child_incomplete", "pytest_session", "clean",
 )
+BINDINGS = ("identity", "via_parent", "via_ancestor", "none")
 
 
 def site_for(file: str, function: str, line: int, sites: Iterable[dict[str, object]]) -> str | None:
@@ -35,26 +36,47 @@ def hook_env_present(env: dict[str, str] | None, own_env: dict[str, str]) -> boo
     return bool(effective.get("OPTIMUS_TEST_CHILD_CENSUS_DIR")) and HOOK_FOLDER in effective.get("PYTHONPATH", "")
 
 
+def _ancestry(child: dict[str, object]) -> list[tuple[object, object]]:
+    """A child's recorded ancestors, nearest first, as (pid, creation time) pairs; the first is its parent."""
+    chain = child.get("ancestors")
+    if isinstance(chain, list) and chain:
+        return [(entry.get("pid"), entry.get("creation_time")) for entry in chain if isinstance(entry, dict)]
+    return [(child.get("ppid"), child.get("parent_creation_time"))]
+
+
 def bound_children(launch: dict[str, object], children: list[dict[str, object]]) -> tuple[list[dict[str, object]], str]:
     """The child records a launch started, and how they were bound.
 
     A launch names the process it created: its PID and, where the launching side could read it,
-    creation time. A child record names its own identity and its parent's. The binding is `identity`
-    when the launched process is the hooked child itself, and `via_parent` when the launched process
-    is the hooked child's parent with the same full identity: on Windows the venv launcher starts
-    the interpreter as its child, so the hooked interpreter is one hop below the launched process.
-    A launch whose creation time could not be read names no exact process and binds to nothing
-    (`none`): a PID alone, with or without a matching parent PID, is reused too often to bind on.
+    creation time. A child record names its own identity and its ancestors' identities, each read
+    through a handle and each required to be older than its descendant. The binding is `identity`
+    when the launched process is the hooked child itself, `via_parent` when it is the hooked child's
+    parent with the same full identity (on Windows the venv launcher starts the interpreter as its
+    child), and `via_ancestor` when it sits further up that recorded chain (a console-script shim or
+    another launcher between). A launch whose creation time could not be read names no exact process
+    and binds to nothing (`none`): a PID alone, with or without a matching parent PID, is reused too
+    often to bind on; so does an ancestor whose creation time could not be read.
     """
     started = launch.get("child")
     if not isinstance(started, dict) or started.get("pid") is None or started.get("creation_time") is None:
         return [], "none"
     pid, created = started["pid"], started["creation_time"]
     exact = [child for child in children if child.get("pid") == pid and child.get("creation_time") == created]
-    if exact:
-        return (exact, "identity") if len(exact) == 1 else ([], "none")
-    below = [child for child in children if child.get("ppid") == pid and child.get("parent_creation_time") == created]
-    return (below, "via_parent") if below else ([], "none")
+    if len(exact) > 1:
+        return [], "none"
+    below: list[dict[str, object]] = []
+    hops: set[int] = set()
+    for child in children:
+        for hop, (ancestor, ancestor_created) in enumerate(_ancestry(child)):
+            if ancestor == pid and ancestor_created is not None and ancestor_created == created:
+                below.append(child)
+                hops.add(hop)
+                break
+    bound = [*exact, *below]
+    if not bound:
+        return [], "none"
+    # The farthest route used: the launched process itself, its children, or further down its tree.
+    return bound, "identity" if not below else "via_parent" if hops == {0} else "via_ancestor"
 
 
 def child_verdict(child: dict[str, object]) -> str:
@@ -65,8 +87,8 @@ def child_verdict(child: dict[str, object]) -> str:
         return "child_unarmed"
     if not child.get("ended"):
         return "child_incomplete"
-    if child.get("is_pytest") or child.get("imported_unarmed"):
-        # A nested pytest session guards its own adapter; that is the nested-session proof, not this census.
+    if child.get("imported_unarmed"):
+        # The adapter was imported with the session guard loaded: that is the nested session's own proof.
         return "pytest_session"
     return "clean"
 
@@ -94,9 +116,10 @@ def per_site_table(
     """One row per mapped site.
 
     `launches` rows: site (key or None), test, hook_env (bool), launcher_pid, child ({pid, creation_time}
-    or None when the launch failed). `children` rows: pid, creation_time, ppid, parent_creation_time,
-    armed (bool), ended (bool), calls (int), is_pytest (bool), imported_unarmed (bool). `collected`: node IDs collected
-    under the default selection, used to say whether a site's enclosing test function is reachable.
+    or None when the launch failed). `children` rows: pid, creation_time, ancestors ([{pid, creation_time}]
+    nearest first), armed (bool), ended (bool), calls (int), imported_unarmed (bool). `collected`:
+    node IDs collected under the default selection, used to say whether a site's enclosing test
+    function is reachable at all.
     """
     by_site: dict[str, list[dict[str, object]]] = {}
     for launch in launches:
@@ -143,8 +166,9 @@ def unproven(table: dict[str, dict[str, object]]) -> list[str]:
 def child_record(rows: Iterable[dict[str, object]]) -> dict[str, object]:
     """Fold one hooked process's rows (one row file) into the child record the table consumes."""
     state: dict[str, object] = {
-        "pid": None, "creation_time": None, "ppid": None, "parent_creation_time": None, "test": "", "armed": False, "ended": False,
-        "is_pytest": None, "imported": False, "imported_unarmed": False, "calls": 0, "script": None, "launches": 0,
+        "pid": None, "creation_time": None, "ppid": None, "parent_creation_time": None, "ancestors": [], "test": "",
+        "armed": False, "ended": False, "is_pytest": None, "imported": False, "imported_unarmed": False, "calls": 0,
+        "script": None, "launches": 0,
     }
     for row in rows:
         state["pid"] = state["pid"] if state["pid"] is not None else row.get("pid")
@@ -154,7 +178,7 @@ def child_record(rows: Iterable[dict[str, object]]) -> dict[str, object]:
             state["launches"] = int(state["launches"]) + 1  # type: ignore[call-overload]
         elif event == "start":
             state.update(armed=bool(row.get("armed")), ppid=row.get("ppid"), creation_time=row.get("creation_time"),
-                         parent_creation_time=row.get("parent_creation_time"))
+                         parent_creation_time=row.get("parent_creation_time"), ancestors=row.get("ancestors") or [])
         elif event == "trusted_paths_imported":
             state["imported"] = True
             state["imported_unarmed"] = not bool(row.get("armed"))

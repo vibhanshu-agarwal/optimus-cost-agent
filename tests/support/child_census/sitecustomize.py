@@ -67,39 +67,81 @@ if _directory and not getattr(sys, "_main5_guard_activated", False):
                 except Exception:  # noqa: BLE001
                     return None
 
+            _ntdll = ctypes.WinDLL("ntdll", use_last_error=True)
+
+            class _BasicInformation(ctypes.Structure):
+                _fields_ = [("ExitStatus", ctypes.c_long), ("PebBaseAddress", ctypes.c_void_p), ("AffinityMask", ctypes.c_size_t),
+                            ("BasePriority", ctypes.c_long), ("UniqueProcessId", ctypes.c_size_t), ("InheritedFromUniqueProcessId", ctypes.c_size_t)]
+
+            _ntdll.NtQueryInformationProcess.argtypes = (wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.ULONG, ctypes.POINTER(wintypes.ULONG))
+            _ntdll.NtQueryInformationProcess.restype = ctypes.c_long
+
             def _own_creation_time():
                 return _creation_time(_kernel32.GetCurrentProcess())
 
-            def _parent_creation_time(ppid):
-                # The venv launcher starts the interpreter as its child, so the process a launch
-                # created is usually this process's parent; its creation time completes that identity.
-                handle = _kernel32.OpenProcess(0x1000, False, ppid)  # PROCESS_QUERY_LIMITED_INFORMATION
+            def _parent_of(pid):
+                """A process's creation time and its parent's PID, read through one handle, or (None, None)."""
+                handle = _kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
                 if not handle:
-                    return None
+                    return None, None
                 try:
-                    return _creation_time(handle)
+                    created = _creation_time(handle)
+                    information, returned = _BasicInformation(), wintypes.ULONG(0)
+                    status = _ntdll.NtQueryInformationProcess(handle, 0, ctypes.byref(information), ctypes.sizeof(information), ctypes.byref(returned))
+                    return created, (int(information.InheritedFromUniqueProcessId) if status == 0 else None)
                 finally:
                     _kernel32.CloseHandle(handle)
 
             def _launched_creation_time(process):
                 return _creation_time(process._handle)  # noqa: SLF001 - the handle Popen holds on the child
         else:
-            def _start_ticks(pid):
-                """A process's start time in clock ticks since boot, from procfs, or None."""
+            def _stat_fields(pid):
                 try:
                     with open(f"/proc/{pid}/stat", encoding="utf-8") as stream:
-                        return int(stream.read().rsplit(")", 1)[1].split()[19])
-                except (OSError, ValueError, IndexError):
+                        return stream.read().rsplit(")", 1)[1].split()
+                except (OSError, IndexError):
+                    return None
+
+            def _start_ticks(pid):
+                """A process's start time in clock ticks since boot, from procfs, or None."""
+                fields = _stat_fields(pid)
+                try:
+                    return int(fields[19]) if fields else None
+                except (ValueError, IndexError):
                     return None
 
             def _own_creation_time():
                 return _start_ticks(os.getpid())
 
-            def _parent_creation_time(ppid):
-                return _start_ticks(ppid)
+            def _parent_of(pid):
+                fields = _stat_fields(pid)
+                try:
+                    return (int(fields[19]), int(fields[1])) if fields else (None, None)
+                except (ValueError, IndexError):
+                    return None, None
 
             def _launched_creation_time(process):
                 return _start_ticks(process.pid)
+
+        def _ancestors(limit=6):
+            """This process's ancestors, nearest first, as (pid, creation time) pairs read through handles.
+
+            The chain stops at the first ancestor whose identity cannot be read or whose creation time
+            is later than its descendant's (a reused PID): a launch binds to a child only on an exact
+            identity somewhere in this chain, so a broken link ends it rather than guessing.
+            """
+
+            chain, pid, younger = [], os.getppid(), _own_creation_time()
+            for _ in range(limit):
+                if not pid or younger is None:
+                    break
+                created, above = _parent_of(pid)
+                if created is None or created > younger:
+                    chain.append({"pid": pid, "creation_time": None})
+                    break
+                chain.append({"pid": pid, "creation_time": created})
+                pid, younger = above, created
+            return chain
 
         def _refuse():
             _calls[0] += 1
@@ -178,9 +220,9 @@ if _directory and not getattr(sys, "_main5_guard_activated", False):
 
         subprocess.Popen.__init__ = _init
         sys.meta_path.insert(0, _Finder())
-        _ppid = os.getppid()
+        _chain = _ancestors()
         _note("start", base_interpreter=sys.prefix == sys.base_prefix, armed=True, creation_time=_own_creation_time(),
-              ppid=_ppid, parent_creation_time=_parent_creation_time(_ppid))
+              ppid=os.getppid(), parent_creation_time=_chain[0]["creation_time"] if _chain else None, ancestors=_chain)
         atexit.register(lambda: _note(
             "end", is_pytest="pytest" in sys.modules, trusted_paths_imported=_TARGET in sys.modules,
             real_adapter_calls=_calls[0], script=os.path.basename(sys.argv[0]) if sys.argv and sys.argv[0] not in ("-c", "-m") else (sys.argv[0] if sys.argv else ""),

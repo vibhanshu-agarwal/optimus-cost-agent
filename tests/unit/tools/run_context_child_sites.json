@@ -15,9 +15,9 @@
  "sites": {
   "tests/integration/evidence/test_subprocess_truncation.py::_spawn_and_kill#1": {
    "mechanism": "python:inline_script",
-   "disposition": "census",
-   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
-   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `_WRITER` program (file writes and sleeps, no product import), terminated by the test before it can exit; a census child row therefore stays start-only."
   },
   "tests/integration/mcp/test_client_mcp_live.py::_list_tools_via_stdio#1": {
    "mechanism": "indirect",
@@ -309,15 +309,15 @@
   },
   "tests/unit/tools/test_run_context_boundaries.py::test_live_state_does_not_depend_on_the_exit_code#1": {
    "mechanism": "python:inline_script",
-   "disposition": "census",
-   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
-   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `import os; os._exit(259)`: exits without atexit, so a census child row stays start-only."
   },
   "tests/unit/tools/test_run_context_boundaries.py::test_live_state_does_not_depend_on_the_exit_code#2": {
    "mechanism": "python:inline_script",
-   "disposition": "census",
-   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
-   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `import time; time.sleep(120)`, killed by the test at once, before the hook can write a row."
   },
   "tests/unit/tools/test_run_context_child_sites.py::_census_child#1": {
    "mechanism": "python:inline_script",

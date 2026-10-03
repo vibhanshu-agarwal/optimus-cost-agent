@@ -32,6 +32,24 @@ def _defined_functions(relative: str) -> set[str]:
     return {node.name for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
 
 
+def _constant_names(command: str) -> list[str]:
+    """Bare names in a rendered command, other than the interpreter and the inline flag."""
+    try:
+        tree = ast.parse(command, mode="eval")
+    except SyntaxError:
+        return []
+    return [node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and node.id not in {"sys", "str", "path", "mode"}]
+
+
+def _module_constant(relative: str, name: str) -> str | None:
+    """The string a module assigns to `name` at top level, or None."""
+    for node in ast.parse((_ROOT / relative).read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == name for target in node.targets) \
+                and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            return node.value.value
+    return None
+
+
 def test_every_default_launch_site_is_mapped_to_a_proof() -> None:
     document = json.loads(_MAP.read_text(encoding="utf-8"))
     mapped, dispositions = document["sites"], document["dispositions"]
@@ -45,9 +63,13 @@ def test_every_default_launch_site_is_mapped_to_a_proof() -> None:
         assert proof_test.split("[")[0] in _defined_functions(proof_file), f"{key}: the proof test does not exist"
         assert entry["basis"], key
         if entry["disposition"] == "literal_program":
-            # A literal `-c` program with no product import: it cannot reach the resolver.
+            # A literal `-c` program with no product import: it cannot reach the resolver. Given by
+            # name, the program is a string constant of its module, checked the same way.
             command = str(found[key]["command"])
             assert "'-c'" in command and "optimus" not in command and "tools" not in command, key
+            for name in _constant_names(command):
+                program = _module_constant(str(found[key]["file"]), name)
+                assert program is not None and "optimus" not in program and "tools" not in program, f"{key}: {name}"
         if entry["disposition"] == "posix_only_caller":
             source = (_ROOT / str(found[key]["file"])).read_text(encoding="utf-8")
             helper = source.index(f"    def {found[key]['function']}(")
@@ -121,7 +143,8 @@ def test_the_census_hook_records_a_clean_child_and_is_inert_when_not_asked(tmp_p
 
 _LAUNCHING_PROGRAM = """
 import os, subprocess, sys
-code = "import subprocess, sys; subprocess.run([sys.executable, '-c', 'print(1)'], check=True)"
+inner = "import subprocess, sys; subprocess.run([sys.executable, '-c', 'print(11)'], check=True)"
+code = "import subprocess, sys; subprocess.run([sys.executable, '-c', " + repr(inner) + "], check=True)"
 exec(compile(code, "/w/tests/unit/tools/fake_site_module.py", "exec"), {"__name__": "fake_site"})
 subprocess.run([sys.executable, "-c", "print(2)"], check=True, env={"PATH": os.environ["PATH"]})
 try:
@@ -157,14 +180,23 @@ def test_the_census_hook_binds_each_launch_to_the_child_it_started(tmp_path: Pat
     hooked, unhooked, failed = launches
     assert failed["child"] is None and unhooked["child"]["pid"] and hooked["child"]["pid"]
     assert isinstance(hooked["child"]["creation_time"], int)
-    children = [attribution.child_record([event for event in events if event["pid"] == pid and event["event"] != "launch"])
+    children = [attribution.child_record([event for event in events if event["pid"] == pid])
                 for pid in {event["pid"] for event in events} - {launcher}]
-    assert len(children) == 1 and children[0]["ended"] and children[0]["armed"]
+    assert len(children) == 2 and all(child["ended"] and child["armed"] for child in children)
+    # The site's launch binds the hooked child it created and the hooked grandchild below it: the
+    # grandchild's recorded chain of identities reaches the launched process (two or four hops with
+    # launchers between). Every bound child must be clean for the launch to be.
     bound, how = attribution.bound_children({**hooked, "launcher_pid": launcher}, children)
     through_launcher = started_by == "launcher" and os.name == "nt" and sys.prefix != sys.base_prefix
-    assert bound == children and how == ("via_parent" if through_launcher else "identity")
-    assert (children[0]["ppid"] == hooked["child"]["pid"]) is through_launcher and (children[0]["pid"] == hooked["child"]["pid"]) is not through_launcher
+    assert sorted(child["pid"] for child in bound) == sorted(child["pid"] for child in children)
+    assert how == ("via_ancestor" if through_launcher else "via_parent")
+    near = next(child for child in children if child["launches"] == 1)
+    far = next(child for child in children if child["launches"] == 0)
+    assert (near["ppid"] == hooked["child"]["pid"]) is through_launcher and (near["pid"] == hooked["child"]["pid"]) is not through_launcher
+    assert attribution.bound_children({**hooked, "launcher_pid": launcher}, [near])[1] == ("via_parent" if through_launcher else "identity")
+    assert all(entry["creation_time"] is not None for entry in far["ancestors"]) and len(far["ancestors"]) >= 2
     assert attribution.launch_verdict({**hooked, "launcher_pid": launcher}, bound) == "clean"
+    assert attribution.launch_verdict({**hooked, "launcher_pid": launcher}, [near, {**far, "ended": False}]) == "child_incomplete"
     # The launch whose environment dropped the hook started a child that wrote nothing: it binds to no record.
     assert attribution.bound_children({**unhooked, "launcher_pid": launcher}, children) == ([], "none")
     assert attribution.launch_verdict({**unhooked, "launcher_pid": launcher}, []) == "launched_without_hook"
@@ -179,15 +211,38 @@ def test_the_census_hook_binds_each_launch_to_the_child_it_started(tmp_path: Pat
     assert attribution.site_for("b.py", "f", 12, sites) is None
 
 
+_CHAIN_PROGRAM = """
+import json, sitecustomize as hook
+normal = hook._ancestors()
+hook._parent_of = lambda pid: (hook._own_creation_time() + 1, 99)
+print("CHAIN=" + json.dumps({"normal": normal, "reused": hook._ancestors()}))
+"""
+
+
+@_ordinary
+def test_the_census_hook_stops_its_ancestor_chain_at_a_reused_pid(tmp_path: Path) -> None:
+    """Each link of the chain must be older than its descendant; a younger 'parent' is a reused PID and ends it."""
+    completed, _events = _census_child(tmp_path, _CHAIN_PROGRAM)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    chain = json.loads(completed.stdout.split("CHAIN=", 1)[1])
+    normal = chain["normal"]
+    assert normal and normal[0]["pid"] and all(entry["creation_time"] is not None for entry in normal)
+    assert all(older["creation_time"] <= younger["creation_time"] for younger, older in zip(normal, normal[1:], strict=False))
+    assert chain["reused"] == [{"pid": normal[0]["pid"], "creation_time": None}]
+
+
 def _launch(site: str, test: str, pid: int, created: int | None = 1000, *, hook_env: bool = True, launcher: int = 10) -> dict[str, object]:
     return {"site": site, "test": f"{test} (call)", "hook_env": hook_env, "launcher_pid": launcher,
             "child": {"pid": pid, "creation_time": created}}
 
 
 def _child(pid: int, created: int | None = 1000, *, ppid: int = 10, parent_created: int | None = 1, armed: bool = True,
-           ended: bool = True, calls: int = 0, is_pytest: bool = False, imported_unarmed: bool = False) -> dict[str, object]:
-    return {"pid": pid, "creation_time": created, "ppid": ppid, "parent_creation_time": parent_created, "armed": armed,
-            "ended": ended, "calls": calls, "is_pytest": is_pytest, "imported_unarmed": imported_unarmed, "test": "unused (call)"}
+           ended: bool = True, calls: int = 0, is_pytest: bool = False, imported_unarmed: bool = False,
+           ancestors: list[dict[str, object]] | None = None) -> dict[str, object]:
+    chain = [{"pid": ppid, "creation_time": parent_created}] if ancestors is None else ancestors
+    return {"pid": pid, "creation_time": created, "ppid": ppid, "parent_creation_time": parent_created, "ancestors": chain,
+            "armed": armed, "ended": ended, "calls": calls, "is_pytest": is_pytest, "imported_unarmed": imported_unarmed,
+            "test": "unused (call)"}
 
 
 def test_a_launch_is_credited_only_by_the_child_it_started() -> None:
@@ -209,7 +264,7 @@ def test_a_launch_is_credited_only_by_the_child_it_started() -> None:
     assert (table[one]["status"], table[two]["status"]) == ("child_incomplete", "child_unobserved")
     # A child whose hook never armed; a child that imported the adapter without arming; a nested session.
     for record, status in ((_child(101, armed=False), "child_unarmed"), (_child(101, imported_unarmed=True), "pytest_session"),
-                           (_child(101, is_pytest=True), "pytest_session"), (_child(101, calls=2), "REAL_ADAPTER_REQUESTED")):
+                           (_child(101, is_pytest=True), "launched_and_clean"), (_child(101, calls=2), "REAL_ADAPTER_REQUESTED")):
         assert attribution.per_site_table(site_map, sites, launches[:1], [record], collected)[one]["status"] == status
     # The same PID with another creation time is a different process: never bound.
     assert attribution.bound_children(launches[0], [_child(101, created=2000)]) == ([], "none")
@@ -220,6 +275,14 @@ def test_a_launch_is_credited_only_by_the_child_it_started() -> None:
     assert attribution.bound_children(launches[0], [_child(555, 9, ppid=101, parent_created=1001)]) == ([], "none")
     # Every hooked child one hop below the launched process is that launch's: one unclean one spoils it.
     assert attribution.launch_verdict(launches[0], [below, _child(556, 9, ppid=101, parent_created=1000, ended=False)]) == "child_incomplete"
+    # Further down the recorded chain (a shim or launcher between): bound on the exact identity at that hop only.
+    deep = _child(777, 12, ancestors=[{"pid": 600, "creation_time": 11}, {"pid": 101, "creation_time": 1000}])
+    assert attribution.bound_children(launches[0], [deep]) == ([deep], "via_ancestor")
+    assert attribution.bound_children(launches[0], [below, deep]) == ([below, deep], "via_ancestor")
+    for broken in ([{"pid": 600, "creation_time": 11}, {"pid": 101, "creation_time": 1001}],
+                   [{"pid": 600, "creation_time": 11}, {"pid": 101, "creation_time": None}],
+                   [{"pid": 600, "creation_time": 11}]):
+        assert attribution.bound_children(launches[0], [_child(777, 12, ancestors=broken)]) == ([], "none")
     # A launch whose created process's creation time could not be read names no exact process: it binds
     # to nothing, however well the PID, parent PID and uniqueness of the rows seem to agree.
     for lone in ([_child(101, None)], [_child(101, 999999)], [_child(101, None, ppid=10)]):
