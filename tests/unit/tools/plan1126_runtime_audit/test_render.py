@@ -13,6 +13,8 @@ from types import SimpleNamespace
 import pytest
 
 import tools.run_plan1126_runtime_audit as cli
+from tests.support.concurrency import DescendantRecorder, assert_descendants_killed
+from tests.support.fault_injection import TREE_SHAPES, descendant_tree
 from tools.plan1126_runtime_audit.model import AuditArtifact, GateStatus, LiveStatus
 from tools.plan1126_runtime_audit.render import render_markdown
 from tools.run_plan1126_runtime_audit import _live_gate, _record_zed, main
@@ -483,33 +485,40 @@ def test_offline_tier_captures_timeout_diagnostics_and_attributes_harness_instab
     assert outcome["stderr_tail"] == ""
 
 
+@pytest.mark.parametrize("shape", TREE_SHAPES)
 def test_offline_timeout_terminates_descendants_that_inherit_capture_pipes(
-    tmp_path: Path, capsys, monkeypatch,
+    tmp_path: Path, capsys, monkeypatch, shape: str,
 ) -> None:
+    """Every descendant holding the capture pipes is killed at the timeout, not waited for.
+
+    The tree is formed well before the timeout, so the kill always meets a grandchild. In the
+    "-exited" shapes no walk of parent pids from the child reaches the grandchild -- what
+    `taskkill /T` misses every time, and what a race made it miss once under load (P11-FU-33
+    batch, 2026-10-02). Each descendant announces its pid and is pinned as it starts; the report
+    names any that ran on past the kill.
+    """
     artifact = tmp_path / "artifact.json"
     checkpoint = tmp_path / "checkpoint.json"
+    pids = tmp_path / "pids"
+    pids.mkdir()
     _write_offline_artifact(artifact)
     nodeid = "tests/unit/tools/plan1126_runtime_audit/test_probe.py::test_descendant"
-    child_code = "import time; time.sleep(2)"
-    code = (
-        "import subprocess,sys,time; "
-        f"subprocess.Popen([sys.executable, '-c', {child_code!r}]); "
-        f"print({nodeid!r}, flush=True); time.sleep(2)"
-    )
+    code, roles = descendant_tree(pids, shape, then=f"print({nodeid!r}, flush=True)")
     spec = _offline_spec("descendant", code)
-    spec["timeout_seconds"] = 0.1
+    timeout = 5.0
+    spec["timeout_seconds"] = timeout
     spec["harness_nodeids"] = (nodeid,)
     monkeypatch.setattr(cli, "_OFFLINE_TIER_COMMANDS", {"narrow": (spec,), "group": ()})
 
-    started = time.perf_counter()
-    assert main([
-        "offline", "--artifact", str(artifact), "--checkpoint", str(checkpoint),
-        "--tier", "narrow", "--repeats", "1",
-    ]) == 0
-    elapsed = time.perf_counter() - started
-    capsys.readouterr()
-
-    assert elapsed < 1.0
+    with DescendantRecorder(pids, roles) as recorder:
+        started = time.monotonic()
+        assert main([
+            "offline", "--artifact", str(artifact), "--checkpoint", str(checkpoint),
+            "--tier", "narrow", "--repeats", "1",
+        ]) == 0
+        capsys.readouterr()
+        # Killed means gone well before the 30 s sleeps could end on their own.
+        assert_descendants_killed(recorder, roles, deadline=started + timeout + 10.0, what=f"offline timeout ({shape})")
 
 
 def test_offline_scenario_rerun_uses_new_generation_without_overwriting_history(

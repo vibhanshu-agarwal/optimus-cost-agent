@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import threading
+import time
 from concurrent.futures import Future, InvalidStateError
 from concurrent.futures import wait as futures_wait
 from dataclasses import dataclass, field
@@ -114,6 +115,34 @@ class _RuntimeLifecycle:
                 target=target, name="optimus-redis-runtime-teardown", daemon=True
             )
             self.teardown_thread.start()
+
+    def teardown_exited(self, deadline: float) -> bool:
+        """Join the retained teardown thread until ``deadline``; True once it has exited.
+
+        P11-FU-33: the thread publishes ``record.completed`` from its own ``finally`` and only
+        then unwinds, so a completed record does not yet mean the thread is gone. An observer
+        reports completion only after both.
+        """
+        thread = self.teardown_thread
+        if thread is None:
+            return True
+        if thread is threading.current_thread():
+            raise RuntimeError("the Redis runtime teardown thread cannot observe its own exit")
+        thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        return not thread.is_alive()
+
+    async def teardown_exited_async(self, deadline: float) -> bool:
+        """:meth:`teardown_exited` for a running loop. Polled, so the loop never blocks on a
+        join and no helper thread -- itself a thread that could outlive the close -- starts."""
+        thread = self.teardown_thread
+        if thread is None:
+            return True
+        while thread.is_alive():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            await asyncio.sleep(min(0.005, remaining))
+        return True
 
     def begin_close(self) -> tuple[TeardownRecord, bool]:
         """Close admission and create the one teardown record, atomically."""
@@ -350,6 +379,7 @@ class RedisRuntime:
         # permanently closing with nothing able to finish it.
         self.owner.reject_reentrancy("close")
         budget = SHUTDOWN_OBSERVATION_BUDGET_SECONDS if timeout is None else timeout
+        deadline = time.monotonic() + budget
         record, is_first_closer = self.lifecycle.begin_close()
         if is_first_closer:
             self.lifecycle.start_teardown(lambda: self._drive_teardown(record))
@@ -365,6 +395,13 @@ class RedisRuntime:
             raise RedisRuntimeShutdownIncomplete(
                 "the Redis runtime teardown has not reached terminal disposition within this "
                 "observation budget; the teardown and the owner are retained"
+            )
+        # P11-FU-33: the record completes inside the teardown thread's `finally`; the same
+        # budget also covers that thread's exit, so completion is never claimed while it lives.
+        if not self.lifecycle.teardown_exited(deadline):
+            raise RedisRuntimeShutdownIncomplete(
+                "the Redis runtime teardown thread has not exited within this observation "
+                "budget; the teardown and the owner are retained"
             )
         # Completed: republish the retained terminal exception unchanged, so a resource
         # that failed with TimeoutError reaches the caller as that TimeoutError.
@@ -388,13 +425,16 @@ class RedisRuntime:
         """
         self.owner.reject_reentrancy("close_async")
         budget = SHUTDOWN_OBSERVATION_BUDGET_SECONDS if timeout is None else timeout
+        deadline = time.monotonic() + budget
         record, is_first_closer = self.lifecycle.begin_close()
         if is_first_closer:
             self.lifecycle.start_teardown(lambda: self._drive_teardown(record))
         if record.completed.done():
             # Round 2, R5: a budget bounds WAITING; it must never hide an outcome that is
             # already available. A completed teardown -- clean or failed -- is republished
-            # immediately, exactly as the blocking observer would republish it.
+            # immediately, exactly as the blocking observer would republish it. P11-FU-33:
+            # "available" includes the teardown thread's exit, as in :meth:`close`.
+            await self._require_teardown_exited(deadline)
             record.completed.result()
             return record
         loop = asyncio.get_running_loop()
@@ -414,5 +454,13 @@ class RedisRuntime:
                 "the Redis runtime teardown has not reached terminal disposition within this "
                 "observation budget; the teardown and the owner are retained"
             ) from None
+        await self._require_teardown_exited(deadline)
         record.completed.result()
         return record
+
+    async def _require_teardown_exited(self, deadline: float) -> None:
+        if not await self.lifecycle.teardown_exited_async(deadline):
+            raise RedisRuntimeShutdownIncomplete(
+                "the Redis runtime teardown thread has not exited within this observation "
+                "budget; the teardown and the owner are retained"
+            )

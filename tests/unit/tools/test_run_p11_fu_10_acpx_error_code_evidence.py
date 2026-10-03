@@ -4,14 +4,20 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import os
 import shutil
+import sys
+import time
 from pathlib import Path
 
 import pytest
 
+from tests.support.concurrency import DescendantRecorder, assert_descendants_killed
+from tests.support.fault_injection import descendant_tree
 from tools.run_p11_fu_10_acpx_error_code_evidence import (
     AcpxEvidenceError,
     AcpxNotFoundError,
+    _run_acpx,
     assert_report_destination,
     assert_report_has_no_secrets,
     build_report,
@@ -165,3 +171,17 @@ def test_run_capture_writes_schema_limited_report(
     assert report["probed_codes"] == [-32001, -32911]
     assert "full_transcript" not in body
     assert "OPTIMUS_API_KEY" not in body
+
+
+@pytest.mark.parametrize("shape", ["parent-alive", "middle-exited"])
+def test_acpx_timeout_kills_every_descendant(tmp_path: Path, shape: str) -> None:
+    """In "middle-exited" no walk of parent pids from the acpx stand-in reaches the grandchild."""
+    pids = tmp_path / "pids"
+    pids.mkdir()
+    code, roles = descendant_tree(pids, shape)
+    timeout = 5.0
+    with DescendantRecorder(pids, roles) as recorder:
+        started = time.monotonic()
+        with pytest.raises(AcpxEvidenceError, match="timed out"):
+            _run_acpx([sys.executable, "-c", code], cwd=tmp_path, env=dict(os.environ), timeout=timeout)
+        assert_descendants_killed(recorder, roles, deadline=started + timeout + 10.0, what=f"acpx timeout ({shape})")

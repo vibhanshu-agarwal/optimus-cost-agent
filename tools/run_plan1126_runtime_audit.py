@@ -9,7 +9,6 @@ import math
 import os
 import platform
 import re
-import signal
 import statistics
 import subprocess
 import sys
@@ -24,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from tools import process_tree  # noqa: E402
 from tools.plan1126_runtime_audit.checkpoints import CheckpointStore  # noqa: E402
 from tools.plan1126_runtime_audit.corpus import literal_seeds  # noqa: E402
 from tools.plan1126_runtime_audit.cost import compute_cost  # noqa: E402
@@ -1210,30 +1210,21 @@ def _normalized_timeout_outcome(
 def _run_captured_command(
     command: Sequence[str], *, timeout_seconds: float,
 ) -> subprocess.CompletedProcess[str]:
-    is_windows = os.name == "nt"
-    process = subprocess.Popen(
+    group = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {}
+    process = process_tree.popen(
         list(command),
         cwd=ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
-        start_new_session=not is_windows,
-        creationflags=(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if is_windows else 0),
+        **group,
     )
     try:
         stdout, stderr = process.communicate(timeout=timeout_seconds)
     except subprocess.TimeoutExpired as exc:
-        if is_windows:
-            subprocess.run(
-                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=5.0,
-            )
-        else:
-            os.killpg(process.pid, signal.SIGKILL)
+        # The whole tree, including descendants no walk of parent pids reaches anymore.
+        process_tree.kill_tree(process)
         try:
             stdout, stderr = process.communicate(timeout=5.0)
         except subprocess.TimeoutExpired:

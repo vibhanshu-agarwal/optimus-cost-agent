@@ -19,6 +19,7 @@ from optimus.mcp.client_supervisor import (
     MCPSupervisorState,
     select_process_tree_teardown_seam,
 )
+from tests.support.concurrency import assert_threads_alive, assert_threads_stopped
 
 
 @pytest.fixture
@@ -106,7 +107,7 @@ def test_close_cancels_in_flight_and_surfaces_shutdown_error() -> None:
     assert entered.is_set()
     supervisor.close()
     worker.join(timeout=3.0)
-    assert not worker.is_alive()
+    assert_threads_stopped([worker], 'worker is still alive')
     assert supervisor.state is MCPSupervisorState.DEAD
 
 
@@ -141,7 +142,7 @@ def test_close_drains_pending_tasks_and_closes_event_loop() -> None:
         warnings.simplefilter("always")
         supervisor.close()
         worker.join(timeout=3.0)
-        assert not worker.is_alive()
+        assert_threads_stopped([worker], 'worker is still alive')
         gc.collect()
     assert loop.is_closed()
     assert supervisor.state is MCPSupervisorState.DEAD
@@ -262,9 +263,9 @@ def test_close_timeout_retains_ownership_then_reentrant_finalizes() -> None:
             release.set()
             w.join(5)
             captured_thread.join(5)
-        assert not w.is_alive()
+        assert_threads_stopped([w], 'w is still alive')
         assert worker_outcome == ["SUBMIT_TIMEOUT"], worker_outcome
-        assert not captured_thread.is_alive()
+        assert_threads_stopped([captured_thread], 'captured_thread is still alive')
 
         sup.close()  # re-entrant finalize once the owner thread has terminated
         assert sup.state is MCPSupervisorState.DEAD
@@ -299,7 +300,7 @@ def test_finalize_requires_the_owner_to_have_closed_its_loop() -> None:
     try:
         sup.close()
         owner.join(5)
-        assert not owner.is_alive()
+        assert_threads_stopped([owner], 'owner is still alive')
         assert not loop.is_closed(), "precondition: the owner could not close its loop"
         # Owner gone, loop still open -> no false completion.
         assert sup.state is MCPSupervisorState.STOPPING
@@ -363,12 +364,12 @@ def test_repeated_close_during_owner_drain_does_not_abort_cleanup() -> None:
         assert entered.wait(5)
         sup.close()  # initiator: bounded join elapses while cleanup is held
         assert sup.state is MCPSupervisorState.STOPPING
-        assert owner.is_alive()
+        assert_threads_alive([owner], 'owner is not alive')
         leave_initial_hold.set()
         assert drain_ack.wait(5)  # owner is now inside run_until_complete(gather(...))
         sup.close()  # later closer: must NOT stop the loop again
         assert sup.state is MCPSupervisorState.STOPPING, "later close published DEAD mid-drain"
-        assert owner.is_alive()
+        assert_threads_alive([owner], 'owner is not alive')
         assert not loop.is_closed()
     finally:
         leave_initial_hold.set()
@@ -422,9 +423,9 @@ def test_start_refused_across_entire_stopping_window() -> None:
             release.set()
             w.join(5)
             captured_thread.join(5)
-        assert not w.is_alive()
+        assert_threads_stopped([w], 'w is still alive')
         assert worker_outcome == ["SUBMIT_TIMEOUT"], worker_outcome
-        assert not captured_thread.is_alive()
+        assert_threads_stopped([captured_thread], 'captured_thread is still alive')
 
         # thread-dead-but-not-finalized STOPPING window: start still refused.
         assert sup.state is MCPSupervisorState.STOPPING
@@ -495,7 +496,7 @@ def test_two_closer_chronology_preserves_new_generation() -> None:
         # The stale closer B must not have touched generation G+1 ...
         assert sup.state is MCPSupervisorState.RUNNING
         assert sup._thread is gen2_thread  # noqa: SLF001
-        assert gen2_thread.is_alive()
+        assert_threads_alive([gen2_thread], 'gen2_thread is not alive')
         # ... and G+1 is still functional after the stale finalization attempt.
         assert sup.submit(sentinel(), timeout_seconds=5) == "ok"
         assert len(ran) == 2
@@ -654,7 +655,8 @@ def test_close_retains_a_live_owner_after_its_loop_has_closed() -> None:
     try:
         sup.close()  # bounded join elapses: the owner is held after closing its loop
         assert reached.wait(2), "the owner never reached the post-loop-close phase"
-        assert owner.is_alive() and loop.is_closed(), "precondition: live owner, closed loop"
+        assert_threads_alive([owner], "precondition: live owner, closed loop")
+        assert loop.is_closed(), "precondition: live owner, closed loop"
         assert sup.state is MCPSupervisorState.STOPPING, "a live owner was published DEAD"
         assert sup._thread is owner, "the live owner's thread reference was erased"  # noqa: SLF001
         assert sup._loop is loop, "the live owner's loop reference was erased"  # noqa: SLF001
@@ -664,7 +666,8 @@ def test_close_retains_a_live_owner_after_its_loop_has_closed() -> None:
         release.set()
         owner.join(5)
         sup.close()
-    assert not owner.is_alive() and failures == [], failures
+    assert_threads_stopped([owner], f"the owner thread is still alive; failures={failures!r}")
+    assert failures == [], failures
     assert sup.state is MCPSupervisorState.DEAD
     assert sup._thread is None and sup._loop is None  # noqa: SLF001
 
@@ -705,7 +708,7 @@ def test_stale_closer_cannot_erase_a_new_owner_after_its_loop_has_closed() -> No
     try:
         assert stale_reached.wait(2), "the stale closer never reached finalization"
         old_owner.join(2)
-        assert not old_owner.is_alive(), "precondition: the old owner must have terminated"
+        assert_threads_stopped([old_owner], "precondition: the old owner must have terminated")
         sup.close()  # a second real closer finalizes the old generation
         assert sup.state is MCPSupervisorState.DEAD
 
@@ -713,13 +716,15 @@ def test_stale_closer_cannot_erase_a_new_owner_after_its_loop_has_closed() -> No
         assert sup._generation == old_generation + 1  # noqa: SLF001
         sup.close()
         assert reached.wait(2), "the new owner never reached the post-loop-close phase"
-        assert new_owner.is_alive() and new_loop.is_closed()
+        assert_threads_alive([new_owner], "the new owner thread is not alive")
+        assert new_loop.is_closed()
         assert sup.state is MCPSupervisorState.STOPPING
         assert sup._thread is new_owner and sup._loop is new_loop  # noqa: SLF001
 
         stale_release.set()  # the stale closer (old generation) now finalizes
         stale.join(2)
-        assert not stale.is_alive() and stale_errors == [], stale_errors
+        assert_threads_stopped([stale], f"the stale owner thread is still alive; errors={stale_errors!r}")
+        assert stale_errors == [], stale_errors
         assert sup.state is MCPSupervisorState.STOPPING, "a stale closer erased a live new owner"
         assert sup._thread is new_owner, "the new owner's thread reference was erased"  # noqa: SLF001
         assert sup._loop is new_loop, "the new owner's loop reference was erased"  # noqa: SLF001
@@ -731,7 +736,9 @@ def test_stale_closer_cannot_erase_a_new_owner_after_its_loop_has_closed() -> No
         if new_owner is not None:
             new_owner.join(5)
         sup.close()
-    assert not stale.is_alive() and stale_errors == [], stale_errors
+    assert_threads_stopped([stale], f"the stale owner thread is still alive; errors={stale_errors!r}")
+    assert stale_errors == [], stale_errors
     if new_owner is not None:
-        assert not new_owner.is_alive() and failures == [], failures
+        assert_threads_stopped([new_owner], f"the new owner thread is still alive; failures={failures!r}")
+        assert failures == [], failures
     assert sup.state is MCPSupervisorState.DEAD

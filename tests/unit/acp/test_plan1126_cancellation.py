@@ -10,6 +10,7 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
+from tests.support.concurrency import assert_no_offending_rows
 from tools.plan1126_runtime_audit.cancellation import (
     H3_SOURCE_PATHS,
     _canonical_digest,
@@ -130,14 +131,11 @@ def test_task_supervision_inventory_is_independent_complete_and_receiver_safe() 
         {site.conceptual_id for site in inventory.cancellation_points}
     )
     assert inventory.cancellation_point_count > 0
-    assert all(record.creator and record.owner and record.registration_point for record in inventory.task_units)
-    assert all(record.cancellation_source and record.join_or_settlement and record.escape_path for record in inventory.task_units)
+    assert_no_offending_rows(inventory.task_units, lambda record: not (record.creator and record.owner and record.registration_point), 'must hold for all: record.creator and record.owner and record.registration_point')
+    assert_no_offending_rows(inventory.task_units, lambda record: not (record.cancellation_source and record.join_or_settlement and record.escape_path), 'must hold for all: record.cancellation_source and record.join_or_settlement and record.escape_path')
     assert inventory.ownership_role_counts["TASK_GROUP"] == 0
     assert inventory.ownership_role_counts["TIMEOUT"] == 0
-    assert all(
-        inventory.ownership_role_counts[role] > 0
-        for role in ("REGISTRATION", "CALLBACK", "CANCELLATION_CATCH", "JOIN", "TASK_SET_MUTATION")
-    )
+    assert_no_offending_rows(("REGISTRATION", "CALLBACK", "CANCELLATION_CATCH", "JOIN", "TASK_SET_MUTATION"), lambda role: not (inventory.ownership_role_counts[role] > 0), 'must hold for all: inventory.ownership_role_counts[role] > 0')
     escaped = [record for record in inventory.task_units if record.classification == "ESCAPED_CHILD"]
     assert len(escaped) == 1
     assert "run_coroutine_threadsafe" in escaped[0].creator
@@ -213,7 +211,7 @@ def test_turn_cancellation_races_256_seed_matrix() -> None:
     for point_id, level in sorted(by_family):
         family = by_family[(point_id, level)]
         assert [item.seed for item in family[: len(literal_seeds())]] == list(literal_seeds())
-        assert all(item.seed_source == "frozen-literal" for item in family[: len(literal_seeds())])
+        assert_no_offending_rows(family[: len(literal_seeds())], lambda item: not (item.seed_source == "frozen-literal"), 'must hold for all: item.seed_source == "frozen-literal"')
         assert [item.seed for item in family[len(literal_seeds()) :]] == [
             derived_seed(
                 _MERGED,
@@ -222,7 +220,7 @@ def test_turn_cancellation_races_256_seed_matrix() -> None:
             )
             for index in range(256)
         ]
-        assert all(item.seed_source == "commit-derived" for item in family[len(literal_seeds()) :])
+        assert_no_offending_rows(family[len(literal_seeds()) :], lambda item: not (item.seed_source == "commit-derived"), 'must hold for all: item.seed_source == "commit-derived"')
 
     assert sum(
         item.seed_source == "commit-derived" and item.concurrency_level == 1

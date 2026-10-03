@@ -28,6 +28,7 @@ from optimus.mcp.client_sdk import (
     ClientMcpSdkError,
 )
 from optimus.mcp.client_supervisor import MCPAsyncSupervisor
+from tests.support.concurrency import assert_no_offending_rows, assert_threads_stopped
 
 
 def _identity(*, name: str = "tools", target: str = "https://mcp.example.com/a") -> ClientMcpSafeIdentity:
@@ -357,7 +358,7 @@ def test_prompts_and_resources_capabilities_are_ignored_not_rejected(
     adapter = _adapter(supervisor, session=session)
     connection = adapter.open(_capability(), session_id="s1")
     assert connection.negotiated_protocol_version == "2025-11-25"
-    assert all(op != "prompts/list" and op != "resources/list" for op, _ in session.calls)
+    assert_no_offending_rows(session.calls, lambda call: call[0] in {"prompts/list", "resources/list"}, "prompts/list and resources/list must not be issued")
 
 
 def test_initialize_scans_locked_sdk_implementation_description(supervisor: MCPAsyncSupervisor) -> None:
@@ -611,7 +612,7 @@ def test_operation_deadline_is_enforced(supervisor: MCPAsyncSupervisor) -> None:
     try:
         worker.start()
         worker.join(timeout=0.6)
-        assert not worker.is_alive(), "deadline was not enforced at operation_timeout_seconds"
+        assert_threads_stopped([worker], "deadline was not enforced at operation_timeout_seconds")
         assert outcome, "open() returned without error"
         raised = outcome[0]
         assert isinstance(raised, ClientMcpSdkError)

@@ -28,6 +28,7 @@ from optimus.acp.server import StdioNdjsonLineReader
 from optimus.redis import async_bridge
 from optimus.redis.async_bridge import RedisLoopOwner, RedisLoopOwnerClosed
 from optimus.redis.runtime import RedisRuntime, RedisRuntimeState
+from tests.support.concurrency import assert_threads_alive
 from tests.unit.acp.test_server_mcp_shutdown import (
     _CapturingWriter,
     _drive_eof,
@@ -230,7 +231,7 @@ async def test_an_incomplete_teardown_reports_once_retains_ownership_and_returns
             "admitted_work_settled": True,
         }
         assert runtime.state is RedisRuntimeState.CLOSING
-        assert runtime.owner.thread_is_alive
+        assert_threads_alive([runtime.owner.thread], "the runtime owner thread is not alive")
     finally:
         client.release.set()
         record = await asyncio.to_thread(runtime.close, timeout=BOUND_SECONDS)

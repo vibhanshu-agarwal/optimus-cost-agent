@@ -974,11 +974,16 @@ def test_completion_requires_correlating_prompt_not_request_id_alone() -> None:
 
 
 def test_spawn_acpx_drains_pipes_instead_of_deadlocking(tmp_path: Path) -> None:
-    """Large stdout must not hang spawn_acpx for the full timeout window."""
+    """Large stdout must not hang spawn_acpx for the full timeout window.
+
+    The spawn runs on a named thread with a long timeout. A spawn that stopped draining would
+    still be blocked at the check, and the report would show the frame it is blocked in.
+    """
     import os
     import sys
-    import time
+    import threading
 
+    from tests.support.concurrency import assert_threads_stopped
     from tools.evidence_gather_support import acp as acp_mod
 
     script = tmp_path / "big_stdout.py"
@@ -1005,16 +1010,21 @@ def test_spawn_acpx_drains_pipes_instead_of_deadlocking(tmp_path: Path) -> None:
         "SYSTEMDRIVE",
         "COMSPEC",
     }}
-    started = time.monotonic()
-    code = acp_mod.spawn_acpx(
-        command=[sys.executable, str(script.resolve())],
-        cwd=tmp_path.resolve(),
-        env=env,
-        timeout_seconds=8,
+    codes: list[int] = []
+    worker = threading.Thread(
+        target=lambda: codes.append(acp_mod.spawn_acpx(
+            command=[sys.executable, str(script.resolve())],
+            cwd=tmp_path.resolve(),
+            env=env,
+            timeout_seconds=60,
+        )),
+        name="spawn-acpx-chatty-child",
+        daemon=True,
     )
-    elapsed = time.monotonic() - started
-    assert code == 0
-    assert elapsed < 4.0, f"spawn_acpx appeared to deadlock waiting without drain: {elapsed:.2f}s"
+    worker.start()
+    worker.join(30)
+    assert_threads_stopped([worker], "spawn_acpx with a child writing 310 KB to its pipes")
+    assert codes == [0]
 
 
 def test_collect_handler_is_registered_not_stage_unavailable(

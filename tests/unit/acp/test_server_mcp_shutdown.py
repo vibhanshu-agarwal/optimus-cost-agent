@@ -41,6 +41,7 @@ from optimus.acp.server import StdioNdjsonLineReader
 from optimus.mcp.client_disposition import ClientMcpRuntime, ClientMcpShutdownOutcome
 from optimus.mcp.client_supervisor import MCPAsyncSupervisor, MCPSupervisorError, MCPSupervisorState
 from tests.integration.acp.test_server_stream import configured_test_agent_server
+from tests.support.concurrency import assert_threads_alive, assert_threads_stopped
 
 BOUND_SECONDS = 5.0
 HELD_JOIN_BUDGET_SECONDS = 0.05
@@ -129,8 +130,8 @@ class _HeldSupervisor:
         self.worker.join(BOUND_SECONDS)
         self.owner.join(BOUND_SECONDS)
         self.supervisor.close()
-        assert not self.worker.is_alive(), "the submitting worker did not return"
-        assert not self.owner.is_alive(), "the owner thread did not terminate after release"
+        assert_threads_stopped([self.worker], "the submitting worker did not return")
+        assert_threads_stopped([self.owner], "the owner thread did not terminate after release")
         assert self.worker_outcome == ["SUBMIT_TIMEOUT"], self.worker_outcome
         assert self.supervisor.state is MCPSupervisorState.DEAD
 
@@ -512,7 +513,7 @@ async def test_eof_with_pending_runtime_reports_incomplete_once_with_stage_paylo
     try:
         await _drive_eof(srv)
         # The real owner chain was still holding cleanup at the decision point.
-        assert held.owner.is_alive(), "precondition: the owner thread must still be draining"
+        assert_threads_alive([held.owner], "precondition: the owner thread must still be draining")
         assert held.supervisor.state is MCPSupervisorState.STOPPING
         assert observed.sequence == ["close_all", "mcp_close", "mcp_incomplete"], observed.sequence
         [outcome] = observed.returned_outcomes

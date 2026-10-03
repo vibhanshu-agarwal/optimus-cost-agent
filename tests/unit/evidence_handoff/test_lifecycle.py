@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.support.concurrency import assert_no_offending_rows, assert_some_row, assert_threads_alive, assert_threads_stopped
 from tools.tracked_repository_files import tracked_repository_files
 
 
@@ -137,12 +138,12 @@ def test_concurrent_start_is_serialized_by_lifecycle_lock(tmp_path: Path) -> Non
     assert runner._entered.wait(timeout=2.0)
     second.start()
     time.sleep(0.05)
-    assert second.is_alive()
+    assert_threads_alive([second], 'second is not alive')
     runner._hold.set()
     first.join(timeout=2.0)
     second.join(timeout=2.0)
-    assert not first.is_alive()
-    assert not second.is_alive()
+    assert_threads_stopped([first], 'first is still alive')
+    assert_threads_stopped([second], 'second is still alive')
     assert len(results) == 2
 
 
@@ -208,7 +209,7 @@ def test_stop_surfaces_nonzero_docker_returncode(tmp_path: Path) -> None:
     assert status.availability is Availability.UNAVAILABLE
     assert status.summary_code == "store_stop_failed"
     assert status.running is False
-    assert any("stop" in call for call in runner.calls)
+    assert_some_row(runner.calls, lambda call: "stop" in call, 'must hold for some: "stop" in call')
 
 
 def test_destroy_for_test_cleanup_raises_on_nonzero_remove(tmp_path: Path) -> None:
@@ -260,8 +261,8 @@ def test_destroy_for_test_cleanup_skips_missing_resources(tmp_path: Path) -> Non
         docker_executable="docker",
     )
     manager.destroy_for_test_cleanup()
-    assert any("inspect" in call for call in runner.calls)
-    assert not any(("rm" in call or "remove" in call) for call in runner.calls)
+    assert_some_row(runner.calls, lambda call: "inspect" in call, 'must hold for some: "inspect" in call')
+    assert_no_offending_rows(runner.calls, lambda call: "rm" in call or "remove" in call, 'must hold for none: "rm" in call or "remove" in call')
 
 
 def test_refusal_to_switch_backend_while_running(tmp_path: Path) -> None:

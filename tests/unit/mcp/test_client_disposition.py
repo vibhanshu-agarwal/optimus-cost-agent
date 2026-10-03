@@ -41,6 +41,7 @@ from optimus.mcp.client_trust import (
     write_client_mcp_durable_from_fingerprint,
 )
 from optimus.runtime.modes import ExecutionMode, GenerationScope
+from tests.support.concurrency import assert_no_offending_rows, assert_threads_stopped
 
 HMAC_KEY = b"p11-fu-9-disposition-test-hmac-key!!"
 
@@ -470,7 +471,7 @@ def test_permission_params_shape_is_opaque_and_names_cli_review() -> None:
     assert params["sessionId"] == "session-1"
     assert params["candidateId"] == "cand-abc"
     assert {opt["kind"] for opt in params["options"]} == {"allow_once", "reject_once"}
-    assert all(opt["kind"] != "allow_always" for opt in params["options"])
+    assert_no_offending_rows(params["options"], lambda opt: not (opt["kind"] != "allow_always"), 'must hold for all: opt["kind"] != "allow_always"')
     assert "SECRET" not in blob
 
 
@@ -925,7 +926,7 @@ async def test_sessions_and_servers_never_share_lazy_connections_or_services(
         state_a.tool_service.ensure_server("docs"),
         state_b.tool_service.ensure_server("tools"),
     )
-    assert all(isinstance(service, AdapterBackedClientMcpToolService) for service in services)
+    assert_no_offending_rows(services, lambda service: not (isinstance(service, AdapterBackedClientMcpToolService)), 'must hold for all: isinstance(service, AdapterBackedClientMcpToolService)')
     assert len({id(service) for service in services}) == 3
     connections = [object.__getattribute__(service, "_connection") for service in services]
     assert len({id(connection) for connection in connections}) == 3
@@ -1269,7 +1270,7 @@ def test_pending_supervisor_then_dead_completes() -> None:
         w.join(5)
         owner.join(5)
 
-    assert not owner.is_alive()  # the real cleanup actually finished
+    assert_threads_stopped([owner], 'owner is still alive')
     second = runtime.close()
     assert second.supervisor_state is MCPSupervisorState.DEAD
     assert second.complete is True
