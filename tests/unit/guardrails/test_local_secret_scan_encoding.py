@@ -19,6 +19,7 @@ write time from split fragments so this module never contains a detectable value
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import io
 import json
@@ -336,11 +337,13 @@ def test_invalid_utf8_selected_text_is_rejected_with_path_and_reason(tmp_path: P
 # The 50 frozen Plan 11.7 custody transcripts are BOM-marked UTF-16 '.txt' files that pre-commit
 # selects as text. They used to be rejected as undecodable UTF-8, so the all-files hook could never
 # pass; the pinned scanner on its own would have opened them with the locale codec and silently
-# scanned nothing. The adapter now validates a file that starts with a UTF-16 byte-order mark as
+# scanned nothing. The adapter now validates a BOM-marked file *inside the custody namespace* as
 # strict UTF-16 and reads it as UTF-16 for the scanner, in place, under its own path, so detector
 # plugins, filters and baseline identities are unchanged and the bytes on disk are never rewritten.
+# The baseline and every selected file outside that namespace stay strict UTF-8 (Codex R2).
 
-REPORT_RELPATH = "reports/transcript.txt"
+REPORT_NAMESPACE = "reports/plan-11-7-server-custody-artifacts"
+REPORT_RELPATH = f"{REPORT_NAMESPACE}/amendments/transcript.txt"
 UTF16_BOMS = {"le": b"\xff\xfe", "be": b"\xfe\xff"}
 
 
@@ -402,6 +405,33 @@ def test_utf16_bom_does_not_loosen_utf8_validation_of_other_selected_files(tmp_p
     corrupt = _write(repo / "src" / "corrupt.py", INVALID_UTF8_BYTES + CANARY_LINE.encode("utf-8"))
     result = _run_local_hook(repo, [report, corrupt], utf8_mode=True)
     _assert_adapter_rejected(result, "src/corrupt.py", "cannot decode", "UTF-8", "byte offset")
+
+
+@pytest.mark.parametrize(
+    "relpath",
+    ["src/transcript.txt", "reports/other-plan/transcript.txt", "docs/transcript.txt"],
+    ids=["source", "other-report", "docs"],
+)
+def test_utf16_bom_text_outside_the_report_namespace_is_rejected_not_skipped(tmp_path: Path, relpath: str):
+    """UTF-16 is supported for the custody reports only; elsewhere a BOM-marked file is still undecodable UTF-8."""
+    repo = _make_hook_repo(tmp_path, "utf16-outside-namespace")
+    target = _write(repo / relpath, _utf16("transcript line\n" + CANARY_LINE))
+    before = _baseline_bytes(repo)
+    result = _run_local_hook(repo, [target], utf8_mode=True)
+    _assert_adapter_rejected(result, relpath, "cannot decode", "UTF-8", "byte offset 0")
+    assert _baseline_bytes(repo) == before
+
+
+def test_utf16_bom_baseline_is_rejected_before_delegation_without_writes(tmp_path: Path):
+    """The baseline is a UTF-8 JSON input to the pinned hook; a BOM-marked baseline never reaches it."""
+    repo = _make_hook_repo(tmp_path, "utf16-baseline")
+    baseline = repo / ".secrets.baseline"
+    utf16_baseline = _utf16(baseline.read_text(encoding="utf-8"))
+    baseline.write_bytes(utf16_baseline)
+    target = _write(repo / "src" / "probe.py", CANARY_LINE)
+    result = _run_local_hook(repo, [target], utf8_mode=True)
+    _assert_adapter_rejected(result, ".secrets.baseline", "cannot decode", "UTF-8", "byte offset 0")
+    assert baseline.read_bytes() == utf16_baseline, "a rejected baseline must not be written"
 
 
 @pytest.mark.parametrize(
@@ -588,37 +618,159 @@ def test_adapter_rejects_malformed_utf16_before_delegation(adapter, tmp_path: Pa
     assert baseline.read_bytes() == before and target.read_bytes() == content
 
 
-class _PinnedReader:
-    """Stands in for the pinned scanner's reader: records the paths it was asked for."""
-
-    def __init__(self) -> None:
-        self.calls: list[str] = []
-
-    def __call__(self, filename: str):
-        self.calls.append(filename)
-        yield ["pinned reader line\n"]
-
-
-def test_utf16_reader_decodes_bom_files_in_place_and_defers_other_files_to_the_pinned_reader(adapter, tmp_path: Path):
-    pinned = _PinnedReader()
-    reader = adapter._utf16_aware_reader(pinned)
-    report = _write(tmp_path / "transcript.txt", _utf16("transcript line\r\n" + CANARY_LINE))
-    source = _write(tmp_path / "module.py", CLEAN_UNICODE_LINE)
-
-    assert list(reader(str(report))) == [["transcript line\n", CANARY_LINE]]
-    assert pinned.calls == [], "a BOM-marked UTF-16 file is decoded by the adapter, not the pinned reader"
-    assert report.read_bytes() == _utf16("transcript line\r\n" + CANARY_LINE)
-
-    assert list(reader(str(source))) == [["pinned reader line\n"]]
-    assert pinned.calls == [str(source)], "every other file still goes through the pinned reader unchanged"
+def test_adapter_rejects_utf16_bom_baseline_before_delegation(adapter, tmp_path: Path, monkeypatch):
+    repo, baseline = _adapter_repo(tmp_path)
+    utf16_baseline = _utf16(baseline.read_text(encoding="utf-8"))
+    baseline.write_bytes(utf16_baseline)
+    _write(repo / "src" / "a.py", CLEAN_ASCII_LINE)
+    delegate = _Delegate()
+    status, err = _run_adapter(
+        adapter, repo, ["--baseline", ".secrets.baseline", "src", "src/a.py"], delegate=delegate, monkeypatch=monkeypatch
+    )
+    assert status == 2 and delegate.calls == [], (status, err)
+    assert ".secrets.baseline" in err and "cannot decode" in err and "UTF-8" in err and "byte offset 0" in err, err
+    assert baseline.read_bytes() == utf16_baseline
 
 
-def test_utf16_reader_fails_closed_on_a_file_that_changed_since_validation(adapter, tmp_path: Path):
-    """If the file stopped being valid UTF-16 between validation and the scan, the hook fails instead of skipping it."""
-    reader = adapter._utf16_aware_reader(_PinnedReader())
-    report = _write(tmp_path / "transcript.txt", _utf16("a") + b"\x00\xdc")
-    with pytest.raises(adapter.ValidationError, match="cannot decode .*transcript.txt as UTF-16"):
-        list(reader(str(report)))
+# The scanner's reader. It reads a file once, validates exactly those bytes by the rules above and
+# hands the decoded text to the scanner's transformers under the original name, so a file that
+# became unreadable, vanished or changed shape after validation fails the hook (ValidationError is
+# neither the IOError that scan_file swallows nor the UnicodeDecodeError the pinned reader swallows).
+
+
+def test_strict_reader_decodes_reports_as_utf16_and_everything_else_as_utf8(adapter, tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    reader = adapter._strict_reader()
+    report_bytes = _utf16("transcript line\r\n" + CANARY_LINE)
+    report = _write(tmp_path / REPORT_RELPATH, report_bytes)
+    source = _write(tmp_path / "src" / "module.py", CLEAN_UNICODE_LINE.encode("utf-8") + b"second\r\nthird\rfourth\n")
+
+    assert list(reader(REPORT_RELPATH)) == [["transcript line\n", CANARY_LINE]]
+    assert report.read_bytes() == report_bytes, "the report's bytes must not be rewritten"
+    assert list(reader(str(Path("src") / "module.py"))) == [[CLEAN_UNICODE_LINE, "second\n", "third\n", "fourth\n"]], (
+        "universal newlines, as the pinned open() produced them"
+    )
+    assert list(reader(str(source))) == list(reader(str(Path("src") / "module.py"))), "absolute and relative paths read alike"
+
+
+@pytest.mark.parametrize(
+    ("relpath", "content", "fragment"),
+    [
+        ("src/transcript.txt", _utf16("x\n"), "as UTF-8 at byte offset 0"),
+        (REPORT_NAMESPACE, _utf16("x\n"), "as UTF-8 at byte offset 0"),  # the namespace itself as a file: not below it
+        (REPORT_RELPATH, _utf16("a") + b"\x00\xdc", "as UTF-16 at byte offset 4: illegal encoding"),
+        (REPORT_RELPATH, b"\xff\xfe\x00\x00" + "ab".encode("utf-32-le"), "as UTF-16 at byte offset 2: NUL character"),
+        ("src/corrupt.py", INVALID_UTF8_BYTES, "as UTF-8 at byte offset 10"),
+        ("src/missing.py", None, "file not found"),
+    ],
+    ids=["utf16-outside-namespace", "utf16-namespace-as-a-file", "malformed-utf16-report", "utf32-report", "invalid-utf8-source", "missing"],
+)
+def test_strict_reader_fails_closed_instead_of_yielding_nothing(adapter, tmp_path: Path, monkeypatch, relpath, content, fragment):
+    monkeypatch.chdir(tmp_path)
+    if content is not None:
+        _write(tmp_path / relpath, content)
+    with pytest.raises(adapter.ValidationError, match=fragment):
+        list(adapter._strict_reader()(relpath))
+
+
+def _scan_in_process(adapter, repo: Path, relpath: str, *, before_scan=None, deny: Path | None = None) -> tuple[int, str]:
+    """Run the adapter with its real delegate (the pinned scanner, in process) in a staged fixture repo.
+
+    ``before_scan`` runs after validation succeeded and before the scanner starts, which is the
+    window Codex's R1 reproduction exercises; ``deny`` makes every open of that path raise
+    PermissionError for the duration of the scan.
+    """
+    parity.stage_fixture_files(repo)
+    real_open = open
+
+    def denied_open(path, *args, **kwargs):
+        if deny is not None and Path(path).resolve() == deny.resolve():
+            raise PermissionError(13, "Permission denied")
+        return real_open(path, *args, **kwargs)
+
+    def delegate(argv: list[str]) -> int:
+        if before_scan is not None:
+            before_scan()
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr("builtins.open", denied_open)
+            return adapter._delegate(argv)
+
+    err = io.StringIO()
+    out = io.StringIO()
+    previous = Path.cwd()
+    os.chdir(repo)
+    try:
+        with contextlib.redirect_stdout(out):
+            status = adapter.run(["--baseline", ".secrets.baseline", "src", relpath], delegate=delegate, stderr=err)
+    finally:
+        os.chdir(previous)
+    return status, out.getvalue() + err.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("relpath", "content"),
+    [(REPORT_RELPATH, _utf16(CANARY_LINE)), ("src/probe.py", CANARY_LINE.encode("utf-8"))],
+    ids=["utf16-report", "utf8-source"],
+)
+def test_in_process_scan_detects_an_unchanged_canary(adapter, tmp_path: Path, relpath: str, content: bytes):
+    """Positive control for the scan-time failure cases: the real delegate still finds and names the canary."""
+    repo = _make_hook_repo(tmp_path, "in-process-canary")
+    _write(repo / relpath, content)
+    before = _baseline_bytes(repo)
+    status, text = _scan_in_process(adapter, repo, relpath)
+    assert status == 1 and f"Secret Type: {CANARY_DETECTOR}" in text and ADAPTER_PROGRAM not in text, text
+    assert _baseline_bytes(repo) == before
+
+
+@pytest.mark.parametrize(
+    ("relpath", "content"),
+    [(REPORT_RELPATH, _utf16(CLEAN_ASCII_LINE)), ("src/probe.py", CLEAN_ASCII_LINE.encode("utf-8"))],
+    ids=["utf16-report", "utf8-source"],
+)
+def test_in_process_scan_passes_an_unchanged_clean_file(adapter, tmp_path: Path, relpath: str, content: bytes):
+    repo = _make_hook_repo(tmp_path, "in-process-clean")
+    _write(repo / relpath, content)
+    before = _baseline_bytes(repo)
+    status, text = _scan_in_process(adapter, repo, relpath)
+    assert status == 0 and "Secret Type:" not in text and ADAPTER_PROGRAM not in text, text
+    assert _baseline_bytes(repo) == before
+
+
+def _replace_with(path: Path, data: bytes):
+    return lambda: path.write_bytes(data)
+
+
+SCAN_TIME_FAILURES = [
+    ("report-denied", REPORT_RELPATH, _utf16(CLEAN_ASCII_LINE), "deny", "permission denied"),
+    ("report-deleted", REPORT_RELPATH, _utf16(CLEAN_ASCII_LINE), "delete", "file not found"),
+    ("report-to-invalid-utf8", REPORT_RELPATH, _utf16(CLEAN_ASCII_LINE), INVALID_UTF8_BYTES, "as UTF-8 at byte offset 10"),
+    ("report-to-utf32-canary", REPORT_RELPATH, _utf16(CLEAN_ASCII_LINE), CANARY_LINE.encode("utf-32"), "NUL character"),
+    ("report-to-malformed-utf16", REPORT_RELPATH, _utf16(CLEAN_ASCII_LINE), _utf16("a") + b"\x00\xdc", "illegal encoding"),
+    ("source-denied", "src/probe.py", CLEAN_ASCII_LINE.encode("utf-8"), "deny", "permission denied"),
+    ("source-deleted", "src/probe.py", CLEAN_ASCII_LINE.encode("utf-8"), "delete", "file not found"),
+    ("source-to-invalid-utf8", "src/probe.py", CLEAN_ASCII_LINE.encode("utf-8"), INVALID_UTF8_BYTES + CANARY_LINE.encode(), "as UTF-8 at byte offset 10"),
+    ("source-to-utf16-canary", "src/probe.py", CLEAN_ASCII_LINE.encode("utf-8"), _utf16(CANARY_LINE), "as UTF-8 at byte offset 0"),
+]
+
+
+@pytest.mark.parametrize(("name", "relpath", "content", "change", "fragment"), SCAN_TIME_FAILURES, ids=[c[0] for c in SCAN_TIME_FAILURES])
+def test_a_file_that_fails_to_read_or_decode_at_scan_time_cannot_be_reported_clean(
+    adapter, tmp_path: Path, name: str, relpath: str, content: bytes, change, fragment: str
+):
+    """Codex R1: after validation the file is denied, deleted or replaced; the hook must not return 0."""
+    repo = _make_hook_repo(tmp_path, f"scan-time-{name}")
+    target = _write(repo / relpath, content)
+    before = _baseline_bytes(repo)
+    if change == "deny":
+        status, text = _scan_in_process(adapter, repo, relpath, deny=target)
+    elif change == "delete":
+        status, text = _scan_in_process(adapter, repo, relpath, before_scan=target.unlink)
+    else:
+        status, text = _scan_in_process(adapter, repo, relpath, before_scan=_replace_with(target, change))
+    assert status == 2, (status, text)
+    assert f"{ADAPTER_PROGRAM}:" in text and relpath.split("/")[-1] in text.replace("\\", "/") and fragment in text, text
+    assert "Secret Type:" not in text and "baseline file was updated" not in text, text
+    assert _baseline_bytes(repo) == before, "no baseline write on a scan-time failure"
 
 
 def test_adapter_reports_a_validation_failure_raised_during_delegation(adapter, tmp_path: Path, monkeypatch):

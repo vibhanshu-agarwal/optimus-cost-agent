@@ -8,15 +8,21 @@ depends on the decoding mode), so the hook can pass a file it never read. This a
 
 1. requires the interpreter to run in UTF-8 mode (the configured entry passes ``-X utf8``),
 2. strictly decodes the baseline and every selected file, whole file, in chunks: as UTF-16 when the
-   file starts with a UTF-16 byte-order mark (the frozen Plan 11.7 custody transcripts; scanner
-   decoding repair, 2026-10-03), as UTF-8 otherwise,
+   file lies in the frozen Plan 11.7 custody namespace (``reports/plan-11-7-server-custody-artifacts/``)
+   and starts with a UTF-16 byte-order mark (scanner decoding repair, 2026-10-03), as UTF-8
+   everywhere else, the baseline included,
 3. rejects with status 2 and a path/offset/reason diagnostic before the scanner is imported or the
    baseline can be touched, and
 4. otherwise delegates the original arguments to ``detect_secrets.pre_commit_hook.main``, in their
    original order, and returns its status (0 clean, 1 findings, 3 baseline maintenance) as-is. The
-   scanner's file reader is wrapped so that a BOM-marked UTF-16 file is read as UTF-16, under its
-   own path and without touching its bytes, so plugins, filters and baseline identities see the
-   same file they always did; every other file is read by the pinned reader exactly as before.
+   scanner's file reader is replaced by one that reads a file once, validates exactly those bytes by
+   the same rules and hands the decoded text to the scanner's transformers under the original path,
+   so plugins, filters and baseline identities see the same file they always did and a BOM-marked
+   report is scanned as UTF-16 without touching its bytes. The pinned reader opens files in the
+   locale codec and yields nothing for one it cannot decode, and ``scan_file`` swallows ``IOError``
+   and skips a file that stopped existing; the replacement raises ``ValidationError``, which the
+   scanner does not catch, so a file that became unreadable, vanished or changed shape after
+   validation fails the hook (status 2) instead of scanning as clean.
 
 The one argument it drops is a byte-identical archive move (docs archive convention, 2026-09-29):
 a regular file moved from a ``docs/`` folder into the ``archive/`` beside it (the destination is
@@ -27,8 +33,12 @@ move, any changed byte and any copy is scanned as before. If Git fails, or any p
 is not exactly what these flags produce, nothing is dropped.
 
 It does not enumerate directories, rewrite or re-encode any file on disk, or decode with
-replacement characters. A UTF-16 file without a byte-order mark is not recognised as UTF-16: it is
-validated as UTF-8 like any other selected file. The literal ``src`` argument that the configured
+replacement characters. A UTF-16 file outside the custody namespace, or one without a byte-order
+mark, is not recognised as UTF-16: it is validated as UTF-8 like any other selected file. There is no
+snapshot: a file is read for validation and read again for the scan, and each read is validated
+on its own, so the scanner never sees bytes that were not; a file removed in the instant between
+the scan-time check and the scanner's own existence filter is the one case the hook does not see.
+The literal ``src`` argument that the configured
 entry carries is a compatibility marker for the scanner's positional interface: it is validated as
 an existing directory and passed through, never scanned recursively by this adapter (pre-commit
 supplies the selected filenames).
@@ -37,6 +47,7 @@ supplies the selected filenames).
 from __future__ import annotations
 
 import codecs
+import io
 import os
 import subprocess
 import sys
@@ -49,6 +60,7 @@ STATUS_VALIDATION_FAILED = 2
 DIRECTORY_MARKER = "src"
 PROGRAM = "local-secret-scan"
 UTF16_BOMS = (codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)
+UTF16_REPORT_NAMESPACE = ("reports", "plan-11-7-server-custody-artifacts")
 _ENCODING_LABELS = {"utf-8": "UTF-8", "utf-16": "UTF-16"}
 
 LineReader = Callable[[str], Iterator[list[str]]]
@@ -63,51 +75,76 @@ def _utf8_mode_enabled() -> bool:
 
 
 def _delegate(argv: list[str]) -> int:
-    """Import the pinned scanner only after validation succeeded, reading UTF-16 reports as UTF-16."""
+    """Import the pinned scanner only after validation succeeded, with its file reading made strict."""
     from detect_secrets.core import scan
     from detect_secrets.pre_commit_hook import main as hook_main
 
-    if not hasattr(scan._get_lines_from_file, "pinned"):
-        scan._get_lines_from_file = _utf16_aware_reader(scan._get_lines_from_file)
+    if not getattr(scan.scan_file, "strict", False):
+        scan.scan_file = _strict_scan_file(scan.scan_file)
+        scan._get_lines_from_file = _strict_reader()
     result = hook_main(argv)
     return int(result or 0)
 
 
-def _encoding_of(handle: IO[bytes]) -> str:
-    """``utf-16`` for a file that starts with a UTF-16 byte-order mark, ``utf-8`` otherwise; rewinds."""
-    marker = handle.read(len(UTF16_BOMS[0]))
-    handle.seek(0)
-    return "utf-16" if marker in UTF16_BOMS else "utf-8"
+def _is_utf16_report(path: str) -> bool:
+    """A relative path strictly below the frozen custody namespace, with ordinary components only."""
+    pure = PurePath(path)
+    parts = pure.as_posix().split("/")
+    if pure.is_absolute() or any(part in {"", ".", ".."} for part in parts):
+        return False
+    return len(parts) > len(UTF16_REPORT_NAMESPACE) and tuple(parts[: len(UTF16_REPORT_NAMESPACE)]) == UTF16_REPORT_NAMESPACE
 
 
-def _utf16_aware_reader(pinned: LineReader) -> LineReader:
-    """Wrap the pinned scanner's file reader so a BOM-marked UTF-16 file is read as UTF-16.
+def _encoding_for(path: str, head: bytes) -> str:
+    """``utf-16`` only for a BOM-marked file inside the custody namespace; ``utf-8`` for everything else."""
+    return "utf-16" if head[: len(UTF16_BOMS[0])] in UTF16_BOMS and _is_utf16_report(path) else "utf-8"
 
-    Every other file goes to the pinned reader untouched. The UTF-16 branch mirrors the pinned
-    reader of detect-secrets 1.5.0 (``detect_secrets.core.scan._get_lines_from_file``: the file's
-    transformer, else its lines, then the eager transformers) and differs in two ways only: the
-    codec, and failing closed where the pinned reader silently yields nothing for a file it cannot
-    decode. Validation already proved the file decodes; this guards the window in between.
+
+class _NamedText(io.StringIO):
+    """Decoded file content carrying the ``name`` the scanner's transformers key on."""
+
+    def __init__(self, text: str, name: str) -> None:
+        super().__init__(text)
+        self.name = name
+
+
+def _strict_scan_file(pinned_scan_file: Callable[[str], Iterator[object]]) -> Callable[[str], Iterator[object]]:
+    """Check readability and decodability of a file right before the scanner's own filters see it.
+
+    ``scan_file`` first runs filename filters, one of which drops a path that is no longer a file,
+    before any reader is involved; this check turns that silent drop into a failure. The one path
+    that is meant to be dropped is the compatibility directory marker, which the scanner has
+    always received and skipped as "not a file".
+    """
+
+    def scan_file(filename: str) -> Iterator[object]:
+        if not os.path.isdir(filename):
+            _read_strictly(filename)
+        yield from pinned_scan_file(filename)
+
+    scan_file.strict = True  # type: ignore[attr-defined]  # marks the wrapper; keeps installation idempotent
+    return scan_file
+
+
+def _strict_reader() -> LineReader:
+    """The scanner's file reader, built on ``_read_strictly``.
+
+    Mirrors the pinned reader of detect-secrets 1.5.0 (``detect_secrets.core.scan._get_lines_from_file``:
+    the file's transformer, else its lines, then the eager transformers) and differs only in how the
+    text is obtained: bytes read once and validated by the rules above, newlines translated as the
+    pinned ``open`` did, instead of a locale-codec ``open`` whose decode failure the pinned reader
+    swallows as "no lines".
     """
     from detect_secrets.transformers import get_transformed_file
 
     def _lines_from_file(filename: str) -> Iterator[list[str]]:
-        with open(filename, "rb") as raw:
-            encoding = _encoding_of(raw)
-        if encoding != "utf-16":
-            yield from pinned(filename)
-            return
-        try:
-            with open(filename, encoding="utf-16", errors="strict") as handle:
-                yield get_transformed_file(handle) or handle.readlines()
-                handle.seek(0)
-                lines = get_transformed_file(handle, use_eager_transformers=True)
-                if lines:
-                    yield lines
-        except UnicodeDecodeError as exc:
-            raise ValidationError(f"cannot decode {filename} as UTF-16 while scanning it: {exc.reason}") from None
+        handle = _NamedText(_read_strictly(filename).replace("\r\n", "\n").replace("\r", "\n"), filename)
+        yield get_transformed_file(handle) or handle.readlines()
+        handle.seek(0)
+        lines = get_transformed_file(handle, use_eager_transformers=True)
+        if lines:
+            yield lines
 
-    _lines_from_file.pinned = pinned  # type: ignore[attr-defined]  # marks the wrapper; keeps installation idempotent
     return _lines_from_file
 
 
@@ -137,14 +174,20 @@ def _parse(argv: Sequence[str]) -> tuple[str, list[str]]:
     return baseline, candidates
 
 
-def _validate_text_file(path: str) -> None:
-    """Strictly decode the whole file, chunk by chunk, as UTF-16 (BOM-marked) or UTF-8."""
+def _read_strictly(path: str) -> str:
+    """Read the whole file and strictly decode exactly those bytes; every failure is a ``ValidationError``.
+
+    Used before delegation and again by the scanner's reader, so nothing the scanner sees has
+    escaped these rules, and nothing it cannot read or decode can pass as clean.
+    """
     file_path = Path(path)
     if file_path.is_dir():
         raise ValidationError(f"unexpected directory argument: {path}")
     try:
         with open(file_path, "rb") as handle:
-            _decode_strictly(path, handle, _encoding_of(handle))
+            head = handle.read(len(UTF16_BOMS[0]))
+            handle.seek(0)
+            return _decode_strictly(path, handle, _encoding_for(path, head))
     except FileNotFoundError:
         raise ValidationError(f"cannot read {path}: file not found") from None
     except IsADirectoryError:
@@ -155,7 +198,7 @@ def _validate_text_file(path: str) -> None:
         raise ValidationError(f"cannot read {path}: {exc.strerror or exc}") from None
 
 
-def _decode_strictly(path: str, handle: IO[bytes], encoding: str) -> None:
+def _decode_strictly(path: str, handle: IO[bytes], encoding: str) -> str:
     """Decode every byte of ``handle`` with the strict incremental codec, reporting the first bad offset.
 
     UTF-16 text additionally may not contain U+0000: a NUL code unit is what a UTF-32 file, or any
@@ -165,6 +208,7 @@ def _decode_strictly(path: str, handle: IO[bytes], encoding: str) -> None:
     decoder = codecs.getincrementaldecoder(encoding)(errors="strict")
     consumed = 0
     decoded_bytes = len(UTF16_BOMS[0]) if encoding == "utf-16" else 0  # bytes behind the decoded text
+    pieces: list[str] = []
 
     def failure(offset: int, reason: str) -> ValidationError:
         return ValidationError(f"cannot decode {path} as {label} at byte offset {offset}: {reason}")
@@ -187,11 +231,13 @@ def _decode_strictly(path: str, handle: IO[bytes], encoding: str) -> None:
             if nul != -1:
                 raise failure(decoded_bytes + len(text[:nul].encode("utf-16-le")), "NUL character")
             decoded_bytes += len(text.encode("utf-16-le"))
+        pieces.append(text)
     buffered_at_eof = len(decoder.getstate()[0])
     try:
-        decoder.decode(b"", final=True)
+        pieces.append(decoder.decode(b"", final=True))
     except UnicodeDecodeError as exc:
         raise failure(consumed - buffered_at_eof + exc.start, exc.reason) from None
+    return "".join(pieces)
 
 
 ARCHIVE_ROOT = "docs"
@@ -301,13 +347,13 @@ def _without_identical_moves(argv: Sequence[str], candidates: Sequence[str]) -> 
 
 
 def _validate(baseline: str, candidates: Sequence[str]) -> None:
-    _validate_text_file(baseline)
+    _read_strictly(baseline)
     for candidate in candidates:
         if candidate == DIRECTORY_MARKER:
             if not os.path.isdir(candidate):
                 raise ValidationError(f"expected the compatibility directory marker {DIRECTORY_MARKER!r} to be an existing directory")
             continue
-        _validate_text_file(candidate)
+        _read_strictly(candidate)
 
 
 def run(argv: Sequence[str], *, delegate: Callable[[list[str]], int] = _delegate, stderr=None) -> int:
