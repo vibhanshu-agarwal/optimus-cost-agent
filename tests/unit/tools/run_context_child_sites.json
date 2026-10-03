@@ -145,18 +145,6 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
    "basis": "Skips unless the MAIN-5 runner sets MAIN5_RUNNER_PROBE; not launched in an ordinary run. The program is a literal."
   },
-  "tests/unit/guardrails/test_ci_parity.py::_run#1": {
-   "mechanism": "indirect",
-   "disposition": "non_python",
-   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
-   "basis": "Launches bash CI scripts in a temporary repository."
-  },
-  "tests/unit/guardrails/test_ci_parity.py::test_terminate_tree_reaps_even_when_tree_kill_fails#1": {
-   "mechanism": "python:inline_script",
-   "disposition": "literal_program",
-   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
-   "basis": "The program is the literal `import time; time.sleep(300)`, killed by the test; it imports no product code."
-  },
   "tests/unit/guardrails/test_local_secret_scan_encoding.py::_run_local_hook#1": {
    "mechanism": "indirect",
    "disposition": "census",
@@ -408,6 +396,30 @@
    "disposition": "census",
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/support/test_concurrency_diagnostics.py::_announcing_child#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Program assembled at run time (announce_pid_code plus a sleep/exit tail), no product import; an ordinary child of the inherited environment, proven by the census at the integration candidate (P11-FU-33 site inherited from main, 2026-10-03)."
+  },
+  "tests/unit/support/test_concurrency_diagnostics.py::test_a_running_process_is_reported_by_pid_without_its_command_line#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "The literal `import time; time.sleep(30)` program followed by a marker argument that is a local name, so the literal check cannot vouch for the whole command; killed by the test; an ordinary child of the inherited environment, proven by the census at the integration candidate (P11-FU-33 site inherited from main, 2026-10-03)."
+  },
+  "tests/unit/support/test_concurrency_diagnostics.py::test_a_watched_process_is_pinned_and_reports_its_exit#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `import sys, time; time.sleep(0.3); sys.exit(3)` program imports no product code; the map test checks the literal (P11-FU-33 site inherited from main, 2026-10-03)."
+  },
+  "tests/unit/tools/test_process_tree.py::test_kill_tree_refuses_a_process_it_did_not_start#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `import time; time.sleep(30)` program imports no product code and is killed by the test; the map test checks the literal (P11-FU-33 site inherited from main, 2026-10-03)."
   }
  }
 }

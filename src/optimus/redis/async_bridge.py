@@ -186,6 +186,9 @@ class RedisLoopOwner:
         # thread dead with the loop open; every observer -- concurrent, repeated, the
         # claimer itself -- waits on this same future within its own remaining budget.
         self._finalization: ConcurrentFuture[None] | None = None
+        # The thread running that finalization. It publishes the future and only then
+        # unwinds, so observers also wait for its exit (P11-FU-33).
+        self._finalizer_thread: threading.Thread | None = None
         self._thread = threading.Thread(target=self._run_forever, name=name, daemon=True)
         self._thread.start()
         if not self._ready.wait(_START_TIMEOUT_SECONDS):  # pragma: no cover - startup wedge
@@ -467,12 +470,15 @@ class RedisLoopOwner:
                 claimed = True
         if claimed:
             try:
-                threading.Thread(
+                finalizer = threading.Thread(
                     target=self._run_finalization,
                     args=(finalization,),
                     name=f"{self._thread.name}-finalizer",
                     daemon=True,
-                ).start()
+                )
+                with self._state_lock:
+                    self._finalizer_thread = finalizer
+                finalizer.start()
             except BaseException as exc:  # noqa: BLE001 - published as the retained outcome, then propagated
                 with contextlib.suppress(InvalidStateError):
                     finalization.set_exception(exc)
@@ -481,6 +487,15 @@ class RedisLoopOwner:
         done, _ = futures_wait([finalization], timeout=remaining)
         if not done:
             return False
+        # P11-FU-33: the finalizer publishes the future from inside its own body, so a done
+        # future does not yet mean the thread is gone. Its exit counts against the same budget.
+        with self._state_lock:
+            finalizer = self._finalizer_thread
+        if finalizer is not None and finalizer.ident is not None:
+            remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+            finalizer.join(timeout=remaining)
+            if finalizer.is_alive():
+                return False
         finalization.result()  # republish a retained finalization failure unchanged
         return True
 

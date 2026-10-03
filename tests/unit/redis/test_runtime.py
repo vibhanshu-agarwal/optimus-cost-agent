@@ -25,6 +25,8 @@ from optimus.redis.runtime import (
     StageOutcome,
 )
 from optimus.telemetry.redis_adapter import RedisTelemetryAdapter
+from tests.support.concurrency import assert_no_offending_rows, assert_some_row, assert_threads_alive, assert_threads_stopped
+from tests.support.fault_injection import pause_thread_on_return
 
 
 class _CountingResource:
@@ -131,7 +133,7 @@ def test_concurrent_close_performs_exactly_one_teardown(owner):
     for thread in threads:
         thread.join(10)
 
-    assert not any(thread.is_alive() for thread in threads)
+    assert_threads_stopped(threads, 'threads still alive')
     assert errors == []
     assert client.count == 1, f"client closed {client.count} times"
     assert pool.count == 1, f"pool closed {pool.count} times"
@@ -275,7 +277,7 @@ def test_startup_rollback_stops_the_owner_when_the_pool_cannot_be_built(monkeypa
     ]
     for thread in leaked:
         thread.join(5)
-    assert not [thread for thread in leaked if thread.is_alive()], "the owner thread leaked"
+    assert_threads_stopped(leaked, "the owner thread leaked")
 
 
 def test_startup_rollback_preserves_the_original_error_over_a_cleanup_failure(monkeypatch):
@@ -297,8 +299,8 @@ def test_startup_rollback_preserves_the_original_error_over_a_cleanup_failure(mo
         RedisRuntime.from_url("redis://127.0.0.1:6379/0")
 
     notes = getattr(excinfo.value, "__notes__", [])
-    assert any("startup rollback also failed" in note for note in notes), notes
-    assert any("pool cleanup failed" in note for note in notes), notes
+    assert_some_row(notes, lambda note: "startup rollback also failed" in note, notes)
+    assert_some_row(notes, lambda note: "pool cleanup failed" in note, notes)
 
 
 # --- Review round 1: R1/R2 corrections ------------------------------------------
@@ -337,7 +339,7 @@ def test_a_callers_timeout_never_publishes_the_record(owner):
         assert not record.completed.done(), "the record was published before teardown finished"
         assert not record.owner_terminated
         assert runtime.state is RedisRuntimeState.CLOSING
-        assert runtime.owner.thread_is_alive
+        assert_threads_alive([runtime.owner.thread], "the runtime owner thread is not alive")
     finally:
         release.set()
 
@@ -386,7 +388,7 @@ def test_the_retained_teardown_updates_the_record_at_real_termination(owner, mon
         assert not record.completed.done(), "the record published while the owner was still alive"
         assert not record.owner_terminated
         assert runtime.state is RedisRuntimeState.CLOSING
-        assert runtime.owner.thread_is_alive
+        assert_threads_alive([runtime.owner.thread], "the runtime owner thread is not alive")
     finally:
         release.set()
 
@@ -472,7 +474,7 @@ def test_admission_and_submission_are_atomic_against_close(owner):
     for thread in threads:
         thread.join(20)
 
-    assert not any(thread.is_alive() for thread in threads)
+    assert_threads_stopped(threads, 'threads still alive')
     assert runtime.state is RedisRuntimeState.CLOSED
     # Either the submission genuinely won the race, or it was refused. What must never
     # happen is being admitted after the close transition and running afterwards.
@@ -575,10 +577,10 @@ def test_concurrent_observers_both_receive_the_original_resource_timeout(owner):
     for thread in threads:
         thread.join(20)
 
-    assert not any(thread.is_alive() for thread in threads)
+    assert_threads_stopped(threads, 'threads still alive')
     assert len(seen) == 2
-    assert all(exc is client.error for exc in seen)
-    assert not any(isinstance(exc, RedisRuntimeShutdownIncomplete) for exc in seen)
+    assert_no_offending_rows(seen, lambda exc: exc is not client.error, 'must hold for all: exc is client.error')
+    assert_no_offending_rows(seen, lambda exc: isinstance(exc, RedisRuntimeShutdownIncomplete), 'must hold for none: isinstance(exc, RedisRuntimeShutdownIncomplete)')
 
 
 def test_a_genuinely_expired_observation_still_reports_incomplete_then_succeeds(owner):
@@ -656,7 +658,7 @@ async def test_close_async_reports_incomplete_and_retains_ownership(owner):
     with pytest.raises(RedisRuntimeShutdownIncomplete):
         await runtime.close_async(timeout=0.2)
     assert runtime.state is RedisRuntimeState.CLOSING
-    assert runtime.owner.thread_is_alive
+    assert_threads_alive([runtime.owner.thread], "the runtime owner thread is not alive")
     record = runtime.teardown_record
     assert record is not None and not record.completed.done()
     assert pool.count == 0, "the pool must not be closed under a client close that has not returned"
@@ -765,3 +767,86 @@ async def test_close_async_still_reports_genuinely_pending_work_at_zero_budget(o
         client.release.set()
         final = await runtime.close_async(timeout=5.0)
     assert final.is_clean
+
+
+# --- P11-FU-33: a close never reports completion while its own teardown thread lives -----
+
+_TEARDOWN_THREAD = "optimus-redis-runtime-teardown"
+
+
+def _teardown_thread(runtime: RedisRuntime) -> threading.Thread:
+    thread = runtime.lifecycle.teardown_thread
+    assert thread is not None, "the close never started the retained teardown thread"
+    return thread
+
+
+def test_close_returns_only_after_its_teardown_thread_has_exited(owner):
+    """MUTATION (P11-FU-33): close() returned once `record.completed` was set, while the teardown
+    thread that set it was still exiting; the H5 schedule then saw it as a persistent thread."""
+    runtime = _runtime(owner, client=_CountingResource(), pool=_CountingResource())
+    with pause_thread_on_return(_TEARDOWN_THREAD, "_drive_teardown", 0.3) as paused:
+        record = runtime.close(timeout=5.0)
+        assert_threads_stopped([_teardown_thread(runtime)], "close() returned before its teardown thread exited")
+    assert paused, "the injected pause never fired, so this test proved nothing"
+    assert record.is_clean
+
+
+async def test_close_async_returns_only_after_its_teardown_thread_has_exited(owner):
+    runtime = _runtime(owner, client=_CountingResource(), pool=_CountingResource())
+    with pause_thread_on_return(_TEARDOWN_THREAD, "_drive_teardown", 0.3) as paused:
+        record = await runtime.close_async(timeout=5.0)
+        assert_threads_stopped([_teardown_thread(runtime)], "close_async() returned before its teardown thread exited")
+    assert paused, "the injected pause never fired, so this test proved nothing"
+    assert record.is_clean
+
+
+def test_close_reports_incomplete_while_its_teardown_thread_is_still_exiting(owner):
+    """The budget bounds the wait for the thread's exit too: completion is never claimed early,
+    and a later observation reports the real outcome once the thread has gone."""
+    runtime = _runtime(owner, client=_CountingResource(), pool=_CountingResource())
+    with pause_thread_on_return(_TEARDOWN_THREAD, "_drive_teardown", 1.0) as paused:
+        with pytest.raises(RedisRuntimeShutdownIncomplete):
+            runtime.close(timeout=0.3)
+        assert paused, "the injected pause never fired, so this test proved nothing"
+        assert_threads_alive([_teardown_thread(runtime)], "precondition: the teardown thread is still exiting")
+        record = runtime.close(timeout=5.0)
+    assert_threads_stopped([_teardown_thread(runtime)], "the later close returned before the thread exited")
+    assert record.is_clean
+
+
+async def test_close_async_reports_incomplete_while_its_teardown_thread_is_still_exiting(owner):
+    runtime = _runtime(owner, client=_CountingResource(), pool=_CountingResource())
+    with pause_thread_on_return(_TEARDOWN_THREAD, "_drive_teardown", 1.0) as paused:
+        with pytest.raises(RedisRuntimeShutdownIncomplete):
+            await runtime.close_async(timeout=0.3)
+        assert paused, "the injected pause never fired, so this test proved nothing"
+        assert_threads_alive([_teardown_thread(runtime)], "precondition: the teardown thread is still exiting")
+        record = await runtime.close_async(timeout=5.0)
+    assert_threads_stopped([_teardown_thread(runtime)], "the later close_async returned before the thread exited")
+    assert record.is_clean
+
+
+def _harness_close(runtime: RedisRuntime) -> None:
+    from optimus.acp.harness_runtime import AgentHarnessRuntime
+
+    AgentHarnessRuntime(agent_runner=object(), redis_runtime=runtime).close()  # type: ignore[arg-type]
+
+
+def _state_store_close(runtime: RedisRuntime) -> None:
+    from optimus.agent.state_store import AsyncRedisAgentStateStore
+
+    RedisAgentStateStore(
+        async_store=AsyncRedisAgentStateStore(client=runtime.client),
+        submit=runtime.run_sync,
+        owned_runtime=runtime,
+    ).close()
+
+
+@pytest.mark.parametrize("close_owner", [_harness_close, _state_store_close], ids=["harness", "state_store"])
+def test_owners_of_a_runtime_return_only_after_its_teardown_thread_has_exited(owner, close_owner):
+    """The H5 close paths that close an owned runtime inherit the same guarantee."""
+    runtime = _runtime(owner, client=_CountingResource(), pool=_CountingResource())
+    with pause_thread_on_return(_TEARDOWN_THREAD, "_drive_teardown", 0.3) as paused:
+        close_owner(runtime)
+        assert_threads_stopped([_teardown_thread(runtime)], f"{close_owner.__name__} returned before the teardown thread exited")
+    assert paused, "the injected pause never fired, so this test proved nothing"

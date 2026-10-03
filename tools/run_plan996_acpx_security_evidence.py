@@ -59,6 +59,11 @@ from optimus.agent.state_store import RedisAgentStateStore
 from optimus_security.launch_manifest import LaunchManifestError, read_manifest_hmac_key
 from optimus_security.sanitization import StreamingTextSanitizer
 
+try:
+    from tools import process_tree
+except ModuleNotFoundError:  # run as a script: tools/ itself is sys.path[0]
+    import process_tree  # type: ignore[no-redef]
+
 
 @dataclass(frozen=True)
 class CaptureLaunch:
@@ -362,12 +367,14 @@ def spawn_authorized_capture(
     # ACPX is only a transport client. The effective agent mapping belongs to
     # the independently launched inner agent and must never be inherited here.
     spawn_kwargs: dict[str, Any] = {}
+    start = subprocess.Popen
     if drive_session:
+        # A driven session's whole tree must be killable on timeout (tools.process_tree);
+        # an ordinary capture keeps its plain child.
+        start = process_tree.popen
         if sys.platform == "win32":
             spawn_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-        else:
-            spawn_kwargs["start_new_session"] = True
-    return subprocess.Popen(
+    return start(
         list(command),
         cwd=candidate.workspace_identity.canonical_path,
         env=capture.acpx_client_environ,
@@ -663,16 +670,9 @@ def _capture_to_disk(
             raise subprocess.TimeoutExpired(command, timeout)
         exit_code = process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
-        if drive_session and sys.platform == "win32":
-            try:
-                subprocess.run(
-                    ["taskkill", "/F", "/T", "/PID", str(process.pid)],
-                    check=False,
-                    capture_output=True,
-                    timeout=_TERMINATION_CLEANUP_GRACE_SECONDS,
-                )
-            except subprocess.TimeoutExpired:
-                pass
+        if drive_session:
+            # The whole tree, including descendants no walk of parent pids reaches anymore.
+            process_tree.kill_tree(process)
         else:
             process.kill()
         try:

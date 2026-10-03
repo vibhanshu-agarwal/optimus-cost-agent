@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
+from tests.support.concurrency import assert_no_offending_rows, assert_some_row
 from tools.plan1126_runtime_audit import inventory as inventory_module
 from tools.plan1126_runtime_audit.corpus import derived_seed, literal_seeds
 from tools.plan1126_runtime_audit.historical_source import historical_source
@@ -380,12 +381,12 @@ def test_delivery_contract_ast_covers_all_send_sites() -> None:
             RoleOracle(path, queue_fields, future_fields).visit(tree)
 
     assert expected_role_calls <= observed
-    assert any(reference.endswith(".put") for _, _, reference in expected_role_calls)
-    assert any(reference.endswith(".set_result") for _, _, reference in expected_role_calls)
-    assert all("set_running_or_notify_cancel" not in reference for _, _, reference in observed)
-    assert all("next_ephemeral_send_key" not in reference for _, _, reference in observed)
-    assert all(site.delivery_phase is not None for site in sites)
-    assert all(site.classification is not Classification.UNCLASSIFIED for site in sites)
+    assert_some_row(expected_role_calls, lambda call: call[2].endswith(".put"), "an expected role call must end with .put")
+    assert_some_row(expected_role_calls, lambda call: call[2].endswith(".set_result"), "an expected role call must end with .set_result")
+    assert_no_offending_rows(observed, lambda call: "set_running_or_notify_cancel" in call[2], "observed calls must not include set_running_or_notify_cancel")
+    assert_no_offending_rows(observed, lambda call: "next_ephemeral_send_key" in call[2], "observed calls must not include next_ephemeral_send_key")
+    assert_no_offending_rows(sites, lambda site: not (site.delivery_phase is not None), 'must hold for all: site.delivery_phase is not None')
+    assert_no_offending_rows(sites, lambda site: not (site.classification is not Classification.UNCLASSIFIED), 'must hold for all: site.classification is not Classification.UNCLASSIFIED')
 
 
 def test_delivery_inventory_has_one_phase_per_conceptual_site() -> None:
@@ -466,14 +467,14 @@ def test_delivery_contract_model_1000_seed_schedule() -> None:
     )
     assert len(observations) == len(frozen) + 1_000
     assert [item.seed for item in observations[: len(frozen)]] == list(frozen)
-    assert all(item.seed_source == "frozen-literal" for item in observations[: len(frozen)])
+    assert_no_offending_rows(observations[: len(frozen)], lambda item: not (item.seed_source == "frozen-literal"), 'must hold for all: item.seed_source == "frozen-literal"')
     assert [item.seed for item in observations[len(frozen) :]] == [
         derived_seed(_MERGED, "H4-delivery", index) for index in range(1_000)
     ]
-    assert all(item.seed_source == "commit-derived" for item in observations[len(frozen) :])
-    assert all(item.anchor_commit == _MERGED for item in observations)
-    assert all(item.complete for item in observations)
-    assert all(item.classification is not Classification.UNCLASSIFIED for item in observations)
+    assert_no_offending_rows(observations[len(frozen) :], lambda item: not (item.seed_source == "commit-derived"), 'must hold for all: item.seed_source == "commit-derived"')
+    assert_no_offending_rows(observations, lambda item: not (item.anchor_commit == _MERGED), 'must hold for all: item.anchor_commit == _MERGED')
+    assert_no_offending_rows(observations, lambda item: not (item.complete), 'must hold for all: item.complete')
+    assert_no_offending_rows(observations, lambda item: not (item.classification is not Classification.UNCLASSIFIED), 'must hold for all: item.classification is not Classification.UNCLASSIFIED')
     assert {phase.value for item in observations for phase in item.schedule} == {
         "QUEUE_ADMISSION",
         "PUBLICATION",
@@ -485,23 +486,17 @@ def test_delivery_contract_model_1000_seed_schedule() -> None:
         "EFFECT_SETTLEMENT",
     }
     assert {item.vocabulary_names for item in observations} == {tuple(sorted(_SETTLED_VOCABULARY))}
-    assert any(site.classification is Classification.CONTRADICTORY for site in discovered)
-    assert all(item.classification is Classification.CANONICAL for item in observations)
-    assert all(item.contradiction is None for item in observations)
+    assert_some_row(discovered, lambda site: site.classification is Classification.CONTRADICTORY, 'must hold for some: site.classification is Classification.CONTRADICTORY')
+    assert_no_offending_rows(observations, lambda item: item.classification is not Classification.CANONICAL, 'must hold for all: item.classification is Classification.CANONICAL')
+    assert_no_offending_rows(observations, lambda item: item.contradiction is not None, 'must hold for all: item.contradiction is None')
     executed_citations = delivery_module.derive_transition_authority(
         _baseline(_MERGED), _baseline(_OVERLAY)
     ).executed_definition_citations
-    assert all(len(item.site_citations) == len(DeliveryPhase) for item in observations)
-    assert all(set(item.site_citations) <= executed_citations for item in observations)
-    assert all(item.send_state == item.send_outcome for item in observations)
-    assert all(
-        item.conversation_commit != "committed" or item.send_outcome == "flushed"
-        for item in observations
-    )
-    assert all(
-        item.send_outcome == "flushed" or item.conversation_commit == "not_committed"
-        for item in observations
-    )
+    assert_no_offending_rows(observations, lambda item: not (len(item.site_citations) == len(DeliveryPhase)), 'must hold for all: len(item.site_citations) == len(DeliveryPhase)')
+    assert_no_offending_rows(observations, lambda item: not (set(item.site_citations) <= executed_citations), 'must hold for all: set(item.site_citations) <= executed_citations')
+    assert_no_offending_rows(observations, lambda item: not (item.send_state == item.send_outcome), 'must hold for all: item.send_state == item.send_outcome')
+    assert_no_offending_rows(observations, lambda item: not (item.conversation_commit != "committed" or item.send_outcome == "flushed"), 'must hold for all: item.conversation_commit != "committed" or item.send_outcome == "flushed"')
+    assert_no_offending_rows(observations, lambda item: not (item.send_outcome == "flushed" or item.conversation_commit == "not_committed"), 'must hold for all: item.send_outcome == "flushed" or item.conversation_commit == "not_committed"')
 
 
 def test_delivery_phase_and_cross_baseline_classification_follow_settled_symbols() -> None:
@@ -519,15 +514,15 @@ def settle():
         "ConversationCommit.COMMITTED": DeliveryPhase.CONVERSATION_COMMIT,
         "EffectState.NONE": DeliveryPhase.EFFECT_SETTLEMENT,
     }
-    assert all(site.baseline_scope is BaselineScope.BOTH_ALIGNED for site in sites)
-    assert all(site.classification is Classification.CANONICAL for site in sites)
+    assert_no_offending_rows(sites, lambda site: site.baseline_scope is not BaselineScope.BOTH_ALIGNED, 'must hold for all: site.baseline_scope is BaselineScope.BOTH_ALIGNED')
+    assert_no_offending_rows(sites, lambda site: site.classification is not Classification.CANONICAL, 'must hold for all: site.classification is Classification.CANONICAL')
 
     merged = SourceTree({"fixture.py": "def publish():\n    FinalDelivery('flushed')\n"})
     overlay = SourceTree({"fixture.py": "def publish():\n    FinalDelivery(value)\n"})
     divergent = inventory_module.discover_delivery_sites(merged, overlay=overlay)
     assert len(divergent) == 2
-    assert all(site.baseline_scope is BaselineScope.BOTH_DIVERGENT for site in divergent)
-    assert all(site.classification is Classification.CANONICAL for site in divergent)
+    assert_no_offending_rows(divergent, lambda site: site.baseline_scope is not BaselineScope.BOTH_DIVERGENT, 'must hold for all: site.baseline_scope is BaselineScope.BOTH_DIVERGENT')
+    assert_no_offending_rows(divergent, lambda site: site.classification is not Classification.CANONICAL, 'must hold for all: site.classification is Classification.CANONICAL')
 
 
 def test_h4_record_uses_canonical_evidence_template_and_separate_baseline_identities() -> None:
@@ -561,8 +556,8 @@ def test_h4_record_uses_canonical_evidence_template_and_separate_baseline_identi
         f"{site['path']}:{site['line']}:{site['symbol']}:{site['reference']}"
         for site in record["discovered_sites"]
     )
-    assert all(site["delivery_phase"] is not None for site in record["discovered_sites"])
-    assert all(site["classification"] != "UNCLASSIFIED" for site in record["discovered_sites"])
+    assert_no_offending_rows(record["discovered_sites"], lambda site: not (site["delivery_phase"] is not None), 'must hold for all: site["delivery_phase"] is not None')
+    assert_no_offending_rows(record["discovered_sites"], lambda site: not (site["classification"] != "UNCLASSIFIED"), 'must hold for all: site["classification"] != "UNCLASSIFIED"')
     contradictions = [
         site for site in record["discovered_sites"] if site["classification"] == "CONTRADICTORY"
     ]
@@ -849,29 +844,20 @@ def test_h4_persists_source_derived_transition_records_not_a_seed_formatter() ->
     observations = summary["observations"]
     assert len(observations) == len(literal_seeds()) + 1_000
     assert summary["total_observation_count"] == len(observations)
-    assert all(len(item["operations"]) == len(DeliveryPhase) for item in observations)
-    assert all(
-        [operation["phase"] for operation in item["operations"]]
-        == item["schedule"]
-        for item in observations
-    )
-    assert all(
-        any(operation["phase"] == "CANCELLATION" for operation in item["operations"])
-        for item in observations
-    )
+    assert_no_offending_rows(observations, lambda item: not (len(item["operations"]) == len(DeliveryPhase)), 'must hold for all: len(item["operations"]) == len(DeliveryPhase)')
+    assert_no_offending_rows(observations, lambda item: not ([operation["phase"] for operation in item["operations"]]
+        == item["schedule"]), 'must hold for all: [operation["phase"] for operation in item["operations"]] == item["schedule"]')
+    assert_no_offending_rows(observations, lambda item: not (any(operation["phase"] == "CANCELLATION" for operation in item["operations"])), 'must hold for all: any(operation["phase"] == "CANCELLATION" for operation in item["operations"])')
     assert {item["scenario"] for item in observations} == {
         "success-known-effect", "success-unknown-effect", "preparation-failure",
         "write-failure", "flush-failure", "session-cancel-before-protocol-write",
         "cancel-after-publication", "transport-teardown",
     }
-    assert all(
-        next(
+    assert_no_offending_rows(observations, lambda item: not (next(
             operation["operation"]
             for operation in item["operations"]
             if operation["phase"] == "CANCELLATION"
-        ).startswith(("session_cancel_", "transport_teardown_"))
-        for item in observations
-    )
+        ).startswith(("session_cancel_", "transport_teardown_"))), 'must hold for all: next( operation["operation"] for operation in item["operations"] if operation["phase"] == "CANCELLATION" ).startswith(("session_cancel_", "transport_teardown_"))')
 
     settlement_tree = ast.parse(_baseline(_MERGED).read_text("src/optimus/acp/settlement.py"))
     independent_vocabulary = {
@@ -888,16 +874,13 @@ def test_h4_persists_source_derived_transition_records_not_a_seed_formatter() ->
         if isinstance(node, ast.ClassDef) and node.name in _SETTLED_VOCABULARY
     }
     assert summary["vocabulary"] == independent_vocabulary
-    assert all(
-        item["send_state"] in independent_vocabulary["SendState"].values()
+    assert_no_offending_rows(observations, lambda item: not (item["send_state"] in independent_vocabulary["SendState"].values()
         and item["send_outcome"] in independent_vocabulary["SendOutcome"].values()
         and item["settlement"] in independent_vocabulary["Settlement"].values()
         and item["final_delivery"] in independent_vocabulary["FinalDelivery"].values()
         and item["rpc_response_delivery"] in independent_vocabulary["RpcResponseDelivery"].values()
         and item["conversation_commit"] in independent_vocabulary["ConversationCommit"].values()
-        and item["effect_state"] in independent_vocabulary["EffectState"].values()
-        for item in observations
-    )
+        and item["effect_state"] in independent_vocabulary["EffectState"].values()), 'must hold for all: item["send_state"] in independent_vocabulary["SendState"].values() and item["send_outcome"] in independent_vocabulary["SendOutcome"].values() and item["settlement"] in independent_vocabulary["Settlement"].values() and item["final_delivery"] in independent_vocabulary["FinalDelivery"].values() and item["rpc_response_delivery"] in independent_vocabulary["RpcResponseDelivery"].values() and item["conversation_commit"] in independent_vocabulary["ConversationCommit"].values() and item["effect_state"] in independent_vocabulary["EffectState"].values()')
 
 
 def test_h4_execution_emits_only_citations_for_behaviors_it_runs() -> None:
@@ -917,10 +900,7 @@ def test_h4_execution_emits_only_citations_for_behaviors_it_runs() -> None:
     observations = payload["evidence_records"][0]["schedule_observations"]["observations"]
     assert len({tuple(item["schedule"]) for item in observations}) >= 6
     assert len({tuple(operation["operation"] for operation in item["operations"]) for item in observations}) >= 8
-    assert all(
-        set(item["site_citations"]) <= authority.executed_definition_citations
-        for item in observations
-    )
+    assert_no_offending_rows(observations, lambda item: not (set(item["site_citations"]) <= authority.executed_definition_citations), 'must hold for all: set(item["site_citations"]) <= authority.executed_definition_citations')
 
 
 def test_h4_literal_scenarios_are_coherent_primary_transitions() -> None:
@@ -951,10 +931,10 @@ def test_h4_literal_scenarios_are_coherent_primary_transitions() -> None:
         )
         assert actual == wanted
         operations = {operation.phase: operation.operation for operation in execution.operations}
-        assert not any(
-            forbidden in operation
-            for operation in operations.values()
-            for forbidden in ("control", "substitute")
+        assert_no_offending_rows(
+            operations.values(),
+            lambda operation: any(forbidden in operation for forbidden in ("control", "substitute")),
+            "no delivery operation may be a control or substitute step",
         )
         assert operations[DeliveryPhase.PHYSICAL_WRITE].startswith(
             "write_attempted_" if execution.write_attempted else "write_not_attempted_"
@@ -1008,14 +988,15 @@ def test_h4_persists_primary_scenario_coherence_and_rejects_tamper(tmp_path: Pat
         "scenario", "write_attempted", "flush_attempted", "cancellation_timing",
         "cancellation_result", "primary_conversation_record_count",
     }
-    assert all(coherence_fields <= set(observation) for observation in observations)
-    assert all(
-        not any(
+    assert_no_offending_rows(observations, lambda observation: not (coherence_fields <= set(observation)), 'must hold for all: coherence_fields <= set(observation)')
+    assert_no_offending_rows(
+        observations,
+        lambda observation: any(
             forbidden in operation["operation"]
             for operation in observation["operations"]
             for forbidden in ("control", "substitute")
-        )
-        for observation in observations
+        ),
+        "no observation may contain a control or substitute operation",
     )
 
     tampered = copy.deepcopy(payload)
@@ -1137,11 +1118,8 @@ def test_h4_global_status_and_findings_retain_truthful_partial_lineage() -> None
         for finding in payload["findings"]
     }
     assert finding_lineages == site_lineages
-    assert all(
-        {evidence["baseline_scope"] for evidence in finding["evidence"]}
-        == {finding["baseline_scope"]}
-        for finding in payload["findings"]
-    )
+    assert_no_offending_rows(payload["findings"], lambda finding: not ({evidence["baseline_scope"] for evidence in finding["evidence"]}
+        == {finding["baseline_scope"]}), 'must hold for all: {evidence["baseline_scope"] for evidence in finding["evidence"]} == {finding["baseline_scope"]}')
 
 
 def test_public_verify_allows_external_g2_acceptance_without_mechanical_evidence_drift(
@@ -1324,7 +1302,4 @@ def test_h4_verifier_filters_unrelated_findings_symmetrically(tmp_path: Path) ->
     cli = importlib.import_module("tools.run_plan1126_runtime_audit")
     verified = cli._verify_artifact(str(artifact_path))
 
-    assert any(
-        finding.finding_id == "NON-H4-UNRELATED-CONTROL"
-        for finding in verified.findings
-    )
+    assert_some_row(verified.findings, lambda finding: finding.finding_id == "NON-H4-UNRELATED-CONTROL", 'must hold for some: finding.finding_id == "NON-H4-UNRELATED-CONTROL"')
