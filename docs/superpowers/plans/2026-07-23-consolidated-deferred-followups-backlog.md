@@ -454,7 +454,9 @@ environment contracts, protected-root checks and historical audit findings.
 
 ### P11-FU-33: MAIN-5 shutdown repeatability evidence
 
-**Status:** Open.
+**Status:** Closed. Through [PR #219](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/219),
+merge `4797112e9ecca5526e874698dcfda719471dd6d9` (2026-10-03); merged tree equals
+independently accepted `82b8d952553a1d087472f7b38ea47f530d8c86e2`.
 **Origin:** Retained shutdown repeat-100 failure records; distinct from FU-5/FU-6/FU-7.
 **Designated future plan / owner:** `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION`;
 escalate to `P11.26-CAND-1-RESOURCE-LIFETIME` only if causal evidence warrants.
@@ -504,6 +506,28 @@ Consolidation obligation: the unmerged parallel-test-context work
 (`tools/testing/run_context_windows.py`) owns a second set of Windows job-object bindings;
 the two are to become one owner once both are on `main`. Real Zed under a no-breakaway job
 is unverified until the next authorized live probe.
+
+**Closure evidence and disposition (2026-10-03):** Classification: **product**.
+The deterministic 200/200 failing pause reproduction and 0/200 after joining,
+recorded above, establish the signal-before-thread-exit resource-lifetime cause;
+the bounded joins report incomplete shutdown while either thread remains alive.
+The retained failed rows and complete group outcomes, including the historical
+2-in-6 failures and the round-2 failure, remain evidence; a passing retry does not
+erase them or close other historical obligations. The entry's conditional escalation
+is warranted and recorded: this cause is a resource-lifetime instance, and all deferred
+joins, child/pipe/tree-kill paths and job-binding consolidation already listed above
+remain in `P11.26-CAND-1-RESOURCE-LIFETIME` custody. Neither that candidate nor
+`P11.26-CAND-5-REPEATABILITY-ATTRIBUTION` is closed by this filing.
+
+The Windows guarded full run and all-files pytest-coverage commit hook on accepted
+`82b8d95` both passed and are the repeat-100 execution evidence in the sealed reviewed
+packets. The repeat-100 test runs only on Windows full-history checkouts; Linux/WSL
+and CI skip it. PR #219's `verify` and `clean-environment-recheck` checks succeeded,
+and [post-merge guardrails run 37117424517](https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/37117424517)
+completed successfully on exact merge `4797112`; these CI results are delivery checks,
+not repeat-100 evidence. Real Zed under the no-breakaway job remains untested; a fresh
+Plan 11.24 establishing report is required before any future live drive. Those live
+boundaries remain open and are neither reopened nor closed here.
 
 ### P11-FU-34: MAIN-5 settlement telemetry truth
 
@@ -670,7 +694,7 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P12.1-FU-2` | Goal-loop iterations bypass turn cancellation and directive tracking | Open | MEDIUM     | Future goal-loop follow-up | Acceptance criteria in entry; pre-existing, not introduced by Plan 12.1 |
 | `P11-FU-31` | MAIN-5 synthetic-fixture and complete-scan delivery debt | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
 | `P11-FU-32` | MAIN-5 Windows harness environment dependence | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
-| `P11-FU-33` | MAIN-5 shutdown repeatability evidence | Open | MEDIUM | `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION` | Acceptance criteria in entry |
+| `P11-FU-33` | MAIN-5 shutdown repeatability evidence | Closed | MEDIUM | `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION` | Through [PR #219](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/219), merge `4797112`; deferred items retain CAND-1 custody |
 | `P11-FU-34` | MAIN-5 settlement telemetry truth | Open | MEDIUM | `P11.26-CAND-2-TELEMETRY-CONTRACT` | Acceptance criteria in entry |
 | ~~`P11-FU-35`~~ | ~~MAIN-5 y5 correction port~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-ACP-RUNTIME-HARDENING`~~ | ~~Through [PR #217](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/217), merge `df70385`; merged tree equals tested `a219831`~~ |
 | `P11-FU-36` | MAIN-5 remaining guarded-runner mechanics | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
