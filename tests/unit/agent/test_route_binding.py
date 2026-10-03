@@ -28,7 +28,13 @@ from optimus.acp.lifecycle import TurnControl
 from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunStatus
 from optimus.agent.runner import AgentRunner
 from optimus.config.gateway import OptimusGatewaySettings
-from optimus.gateway.client import GatewayClient, GatewayRequest, _try_parse_error_correlation, _try_parse_error_usage
+from optimus.gateway.client import (
+    GatewayClient,
+    GatewayRequest,
+    _route_attempts_dropped,
+    _try_parse_error_correlation,
+    _try_parse_error_usage,
+)
 from optimus.gateway.disclosure import CONTRIBUTOR_NOTICE
 from optimus.gateway.errors import GatewayHttpError
 from optimus.gateway.models import GatewayResponse, GatewayRouteAttempt, GatewayUsage
@@ -103,7 +109,10 @@ class InProcessGateway:
         detail = json.dumps(body, default=str)
         if status != 200:
             code, retryable, attempts = _try_parse_error_correlation(detail)
-            raise GatewayHttpError(status, detail, gateway_usage=_try_parse_error_usage(detail), gateway_code=code, retryable=retryable, route_attempts=attempts)
+            raise GatewayHttpError(
+                status, detail, gateway_usage=_try_parse_error_usage(detail), gateway_code=code, retryable=retryable,
+                route_attempts=attempts, route_attempts_malformed=_route_attempts_dropped(detail, attempts),
+            )  # fmt: skip
         return json.loads(detail, parse_float=Decimal)
 
 

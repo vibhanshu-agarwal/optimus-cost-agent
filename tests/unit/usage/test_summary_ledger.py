@@ -289,3 +289,13 @@ async def test_an_attached_turns_summaries_and_answers_reconcile_with_the_ledger
         run_id = f"{session_id}:{turn}"
         assert service.provider_ledger.total_cost_usd(run_id=run_id) == settlement.settle_turn(run_id).known_subtotal_usd
     assert service.provider_ledger.total_cost_usd() == settlement.settle_all().known_subtotal_usd
+
+
+def test_the_adapter_records_summaries_only() -> None:
+    """Planning and answer usage reaches the ledger through the runner's own path; accepting it here
+    too would emit its usage telemetry twice (Fable CP3 correction review MINOR-2)."""
+    [maintenance] = _summarize(_ok())
+    planning = dataclasses.replace(receipt_from_maintenance(maintenance), stage="planning")
+
+    with pytest.raises(ValueError, match="runner's own ledger path"):
+        UsageLedgerAdapter(UsageAccountingService()).record(planning)

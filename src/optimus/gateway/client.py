@@ -88,6 +88,7 @@ class UrllibGatewayTransport:
                 gateway_code=gateway_code,
                 retryable=retryable,
                 route_attempts=route_attempts,
+                route_attempts_malformed=_route_attempts_dropped(detail, route_attempts),
             ) from exc
         except URLError as exc:
             raise GatewayHttpError(0, str(exc.reason)) from exc
@@ -227,6 +228,19 @@ def _try_parse_error_correlation(detail: str) -> tuple[str | None, bool | None, 
         except Exception:  # noqa: BLE001 — a malformed record list is dropped, never fatal here
             attempts = ()
     return code, retryable, attempts
+
+
+def _route_attempts_dropped(detail: str, parsed: tuple[GatewayRouteAttempt, ...]) -> bool:
+    """Whether an error body carried a non-empty ``route_attempts`` value that parsing had to drop."""
+    if parsed:
+        return False
+    try:
+        decoded = json.loads(detail, parse_float=Decimal)
+    except (json.JSONDecodeError, ValueError):
+        return False
+    if not isinstance(decoded, dict) or "route_attempts" not in decoded:
+        return False
+    return decoded["route_attempts"] != []
 
 
 def _decode_gateway_json(body: str) -> dict[str, Any]:

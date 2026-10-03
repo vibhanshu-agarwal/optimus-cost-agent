@@ -24,7 +24,6 @@ from optimus.agent.workspace_context import WorkspaceContextResult, assemble_wor
 from optimus.gateway.attempts import ProviderAttempt, attempts_from_failure, attempts_from_response, is_preflight_refusal
 from optimus.gateway.client import GatewayClient
 from optimus.gateway.models import GatewayUsage
-from optimus.gateway.route_binding import BoundRequest, RouteIdentity, RouteIdentityError, TurnRouteBinder
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.loops.completion import DeterministicCompletionEvaluator
 from optimus.loops.controller import GoalLoopController, IterationRunner
@@ -41,6 +40,7 @@ from optimus.usage.turn_settlement import StageReceipt
 
 if TYPE_CHECKING:
     from optimus.agent.planning_loop import PlanningProgressObserver
+    from optimus.gateway.route_binding import BoundRequest, RouteIdentity, TurnRouteBinder
 
 WorkspaceContextObserver = Callable[[AgentRunRequest, WorkspaceContextResult], None]
 _OVERSIZED_REQUIRED_CONTEXT_TRIGGER = "REQUIRED_WORKSPACE_FILE_TOO_LARGE"
@@ -288,6 +288,9 @@ class AgentRunner:
             else self._planning_progress_observer
         )
         if route_binder is not None and route_binder.identity.model_id != self._model:
+            # Imported only when a route is bound: the inactive path loads no route-binding module.
+            from optimus.gateway.route_binding import RouteIdentityError
+
             raise RouteIdentityError("the turn's route is bound to a different model than this runner sends")
         matched_skills = self._match_skills(request)
         scope = _RunScope(stage_receipts=stage_receipts, operation_control=operation_control, route=route_binder)
@@ -509,14 +512,15 @@ class AgentRunner:
                 **_binding_kwargs(bound),
             )
         except Exception as exc:
-            # Every attempt is reported, known or not, before the failure propagates as it always has.
+            # Settled usage reaches the ledger first; then every attempt is reported, known or not,
+            # before the failure propagates as it always has.
+            self._record_ledger_usage(request, scope, getattr(exc, "gateway_usage", None), settled_turn=1, wire_attempt=1)
             attempts = attempts_from_failure(exc)
             self._report_attempts(request, scope, settled_turn=1, wire_attempt=1, attempts=attempts, identity=_identity(bound))
-            self._record_ledger_usage(request, scope, attempts=attempts, settled_turn=1, wire_attempt=1)
             raise
+        self._record_ledger_usage(request, scope, response.gateway_usage, settled_turn=1, wire_attempt=1)
         attempts = attempts_from_response(response)
         self._report_attempts(request, scope, settled_turn=1, wire_attempt=1, attempts=attempts, identity=_identity(bound))
-        self._record_ledger_usage(request, scope, attempts=attempts, settled_turn=1, wire_attempt=1)
         total_cost_usd = response.gateway_usage.cost_usd
         unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)
         unfinished_reason = None
@@ -857,14 +861,16 @@ class AgentRunner:
         self,
         request: AgentRunRequest,
         scope: _RunScope,
+        usage: GatewayUsage | None,
         *,
-        attempts: tuple[ProviderAttempt, ...],
         settled_turn: int,
         wire_attempt: int,
     ) -> None:
-        for attempt in attempts:
-            if attempt.gateway_usage is not None:
-                self._record_ledger_entry(request, scope, attempt.gateway_usage, settled_turn=settled_turn, wire_attempt=wire_attempt)
+        """Record a request's settled usage, if it has one, before its attempts are classified: a paid
+        attempt reaches the ledger even when its report then fails as an integrity error (Fable CP3
+        correction review MINOR-1)."""
+        if usage is not None:
+            self._record_ledger_entry(request, scope, usage, settled_turn=settled_turn, wire_attempt=wire_attempt)
 
     def _record_ledger_entry(
         self,
@@ -1407,13 +1413,18 @@ class AgentRunner:
             )
         except Exception as exc:
             # One classifier for every stage (Codex CP3 ruling R3): a proven preflight refusal cost
-            # nothing; transport loss or any failure without settled usage stays unknown.
-            attempts = attempts_from_failure(exc)
+            # nothing; transport loss or any failure without settled usage stays unknown. Settled
+            # usage reaches the ledger first; an integrity error then propagates out of the turn.
+            self._record_ledger_usage(request, scope, getattr(exc, "gateway_usage", None), settled_turn=1, wire_attempt=1)
+            try:
+                attempts = attempts_from_failure(exc)
+            except Exception:
+                complete("cost_unknown")
+                raise
             unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)
             known = sum((attempt.cost_usd for attempt in attempts if attempt.cost_usd is not None), Decimal("0"))
             complete("cost_unknown" if unknown else "failed")
             self._report_attempts(request, scope, settled_turn=1, wire_attempt=1, attempts=attempts, identity=identity)
-            self._record_ledger_usage(request, scope, attempts=attempts, settled_turn=1, wire_attempt=1)
             if unknown:
                 return self._chat_failure(
                     request, stop_reason="CHAT_GATEWAY_COST_UNKNOWN", total_cost_usd=known, cost_complete=False, unknown_cost_attempt_count=unknown
@@ -1423,9 +1434,9 @@ class AgentRunner:
             return self._chat_failure(request, stop_reason="CHAT_GATEWAY_FAILURE", total_cost_usd=known)
 
         complete("succeeded")
+        self._record_ledger_usage(request, scope, response.gateway_usage, settled_turn=1, wire_attempt=1)
         attempts = attempts_from_response(response)
         self._report_attempts(request, scope, settled_turn=1, wire_attempt=1, attempts=attempts, identity=identity)
-        self._record_ledger_usage(request, scope, attempts=attempts, settled_turn=1, wire_attempt=1)
         total_cost_usd = response.gateway_usage.cost_usd
         # A routed success can follow an earlier attempt whose cost is unknown; it stays unknown.
         unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)

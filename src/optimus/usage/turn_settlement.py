@@ -196,7 +196,11 @@ class TurnSettlement:
                 return False
             invocation.state = new
             if new in {"ended", "abandoned"}:
-                self._pending[invocation.turn_id] -= 1
+                remaining = self._pending[invocation.turn_id] - 1
+                if remaining:
+                    self._pending[invocation.turn_id] = remaining
+                else:
+                    del self._pending[invocation.turn_id]
                 self._publish(invocation.turn_id)
             return True
 
@@ -288,23 +292,26 @@ def receipt_from_maintenance(receipt: MaintenanceReceipt) -> StageReceipt:
     )
 
 
-_LEDGER_SERVICES = {"planning": "agent.model", "answer": "agent.model", "summarization": "context.summary"}
-
-
 class UsageLedgerAdapter:
-    """Records known stage receipts in the existing usage ledger (`UsageAccountingService` and its
-    `ProviderUsageLedger`), exactly once per Gateway request (Codex CP3 ruling R5).
+    """Records known summarization receipts in the existing usage ledger (`UsageAccountingService`
+    and its `ProviderUsageLedger`), exactly once per Gateway request (Codex CP3 ruling R5).
 
     Only a receipt carrying the Gateway's original usage becomes a `ProviderUsage`, copied from that
     usage, never reconstructed; an unknown or zero-cost attempt is a correlation fact the settlement
     keeps and the ledger never sees. A replay is idempotent and a divergent same-request record raises,
     both by the ledger's own rule. It records the same facts a second time, in the ledger's existing
-    schema; it is never a second debit or a separate spend authority."""
+    schema; it is never a second debit or a separate spend authority.
+
+    Summaries only: planning and answer usage reaches the same service through the runner's own
+    existing path, and accepting those receipts here too would emit their usage telemetry twice. It is
+    an injection seam (an attachment's `record_receipt`); no production composition wires it yet."""
 
     def __init__(self, usage_accounting: UsageAccountingService) -> None:
         self._usage = usage_accounting
 
     def record(self, receipt: StageReceipt) -> None:
+        if receipt.stage != "summarization":
+            raise ValueError("planning and answer usage is recorded by the runner's own ledger path")
         usage = receipt.gateway_usage
         if usage is None:
             return
@@ -314,7 +321,7 @@ class UsageLedgerAdapter:
             session_id=receipt.session_id,
             request_id=receipt.attempt_id,
             occurred_at=receipt.recorded_at,
-            service=_LEDGER_SERVICES[receipt.stage],
+            service="context.summary",
             native_unit="tokens",
             price_snapshot_id=usage.price_snapshot_id,
             turn_seq=_turn_seq(receipt.turn_id),

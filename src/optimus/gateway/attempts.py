@@ -5,12 +5,15 @@ One classifier for every host call path - planning, answer and summarization - s
 settle the same Gateway outcome differently:
 
 - a success or failure carrying ``route_attempts`` (enforced routing) is one attempt per record, in
-  order. The settled usage belongs to the final completed attempt only; ``not_sent`` and ``rejected``
-  attempts certainly reached no model and cost exactly 0; an ``uncertain`` attempt may have run and
-  been billed, so its cost stays unknown;
+  order. The settled usage belongs to the one completed attempt it names (its Gateway request id);
+  usage that names no completed attempt is a Gateway contract violation, raised as
+  ``AttemptIntegrityError`` rather than attributed by guess. ``not_sent`` and ``rejected`` attempts
+  certainly reached no model and cost exactly 0; an ``uncertain`` attempt, or one reported completed
+  without the usage that would settle it, may have been billed, so it is ``uncertain`` at unknown cost;
 - a proven preflight refusal - a known Gateway refusal code, ``retryable`` False, no route attempts
-  and no usage - is one ``rejected`` attempt costing exactly 0: the Gateway refused it before any
-  upstream call (``PREFLIGHT_REFUSAL_CODES``, pinned to the Gateway's own codes by a test);
+  (none reported, not a malformed list the client dropped) and no usage - is one ``rejected`` attempt
+  costing exactly 0: the Gateway refused it before any upstream call (``PREFLIGHT_REFUSAL_CODES``,
+  pinned to the Gateway's own codes by a test);
 - anything else without route attempts is one attempt: ``completed`` with its reported usage, or
   ``uncertain`` with an unknown cost when no usage was reported, since the request may have run.
 
@@ -29,6 +32,7 @@ from optimus.gateway.models import GatewayResponse, GatewayRouteAttempt, Gateway
 
 __all__ = [
     "PREFLIGHT_REFUSAL_CODES",
+    "AttemptIntegrityError",
     "ProviderAttempt",
     "attempts_from_failure",
     "attempts_from_response",
@@ -65,6 +69,11 @@ PREFLIGHT_REFUSAL_CODES = frozenset(
 _ZERO_COST = frozenset({"not_sent", "rejected"})
 
 
+class AttemptIntegrityError(ValueError):
+    """The Gateway's report cannot be attributed truthfully, such as settled usage that names no
+    completed attempt. An integrity error, never an ordinary failure: it is raised, not settled."""
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderAttempt:
     """One provider attempt. ``cost_usd`` is None when unknown, never a stand-in zero.
@@ -89,18 +98,23 @@ class ProviderAttempt:
             raise ValueError("an attempt that reached no model costs exactly 0")
         if self.outcome == "uncertain" and self.cost_usd is not None:
             raise ValueError("an uncertain attempt's cost is unknown")
-        if self.gateway_usage is not None and (self.outcome != "completed" or self.cost_usd != self.gateway_usage.cost_usd):
+        usage = self.gateway_usage
+        if usage is not None and (
+            self.outcome != "completed" or self.cost_usd != usage.cost_usd or self.gateway_request_id != usage.gateway_request_id
+        ):
             raise ValueError("only the completed attempt that settled the request carries its usage")
 
 
 def is_preflight_refusal(exc: BaseException) -> bool:
     """A Gateway refusal proven to precede any upstream attempt: a known preflight code, not
-    retryable, no route attempts and no usage. Anything short of all four is not proof."""
+    retryable, no route attempts and no usage. Anything short of all four is not proof; an attempt
+    list the client had to drop as malformed is not an empty one."""
     return (
         isinstance(exc, GatewayHttpError)
         and exc.gateway_code in PREFLIGHT_REFUSAL_CODES
         and exc.retryable is False
         and not exc.route_attempts
+        and not exc.route_attempts_malformed
         and exc.gateway_usage is None
     )
 
@@ -127,9 +141,15 @@ def _attempts(
     route_attempts: tuple[GatewayRouteAttempt, ...], usage: GatewayUsage | None, *, http_status: int | None
 ) -> tuple[ProviderAttempt, ...]:
     if route_attempts:
-        # The settled usage belongs to the final completed attempt only; never counted twice.
-        settled = max((item.attempt for item in route_attempts if item.outcome == "completed"), default=None)
-        return tuple(_routed(item, usage if usage is not None and item.attempt == settled else None) for item in route_attempts)
+        # The settled usage belongs to the completed attempt it names, and only to it: never counted
+        # twice, never attributed by position.
+        settled = None
+        if usage is not None:
+            named = [item.attempt for item in route_attempts if item.outcome == "completed" and item.gateway_request_id == usage.gateway_request_id]
+            if len(named) != 1:
+                raise AttemptIntegrityError("the Gateway's settled usage names no single completed route attempt")
+            settled = named[0]
+        return tuple(_routed(item, usage if item.attempt == settled else None) for item in route_attempts)
     if usage is not None:
         return (
             ProviderAttempt(
@@ -146,16 +166,18 @@ def _attempts(
 
 
 def _routed(item: GatewayRouteAttempt, usage: GatewayUsage | None) -> ProviderAttempt:
-    if item.outcome in _ZERO_COST:
+    outcome = item.outcome
+    if outcome in _ZERO_COST:
         cost: Decimal | None = Decimal("0")
-    elif item.outcome == "completed" and usage is not None:
+    elif outcome == "completed" and usage is not None:
         cost = usage.cost_usd
     else:
-        # Uncertain, or completed without the usage that would settle it: unknown, never zero.
-        cost, usage = None, None
+        # Uncertain, or completed without the usage that would settle it: it may have been billed and
+        # nothing settles it, so it is uncertain at unknown cost (as the Gateway itself reports it).
+        outcome, cost, usage = "uncertain", None, None
     return ProviderAttempt(
         number=item.attempt,
-        outcome=item.outcome,
+        outcome=outcome,
         cost_usd=cost,
         gateway_request_id=item.gateway_request_id,
         provider_request_id=item.provider_request_id,

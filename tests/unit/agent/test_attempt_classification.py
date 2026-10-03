@@ -215,3 +215,115 @@ def test_a_receipt_carries_usage_only_for_the_attempt_it_settled(changes) -> Non
 
     with pytest.raises(ValueError):
         StageReceipt(**{**fields, **changes})
+
+
+# --- Fable CP3 correction review: integrity errors are loud; proof stays strict ---------------------------
+
+
+def _misattributed():
+    """A routed report whose settled usage names no completed attempt: a Gateway contract violation."""
+    from optimus.gateway.models import GatewayResponse
+
+    attempts = (GatewayRouteAttempt(attempt=1, gateway_request_id="gw-other", outcome="completed"),)
+    return GatewayResponse(output_text="WRITE a.py\nx", gateway_usage=_usage(), raw={}, finish_reason="stop", route_attempts=attempts)
+
+
+class ReturningGateway:
+    def __init__(self, response) -> None:
+        self.response = response
+        self.calls = 0
+
+    def create_response(self, **kwargs):
+        self.calls += 1
+        return self.response
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.AGENT, ExecutionMode.CHAT, ExecutionMode.PLAN], ids=["planning", "chat", "plan"])
+def test_an_unattributable_report_fails_the_run_loudly_and_its_usage_still_reaches_the_ledger(tmp_path, mode) -> None:
+    from optimus.gateway.attempts import AttemptIntegrityError
+    from optimus.usage.accounting import UsageAccountingService
+
+    service = UsageAccountingService()
+    gateway = ReturningGateway(_misattributed())
+    request = AgentRunRequest(run_id="s:1", session_id="s", task="Change it.", workspace_root=tmp_path, execution_mode=mode)
+
+    with pytest.raises(AttemptIntegrityError):
+        AgentRunner(gateway_client=gateway, model="fake/model", usage_accounting=service).run(request, stage_receipts=[].append)
+
+    assert gateway.calls == 1  # never retried as an ordinary failure
+    assert [entry.gateway_request_id for entry in service.provider_ledger.entries] == ["gw-used"]
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.AGENT, ExecutionMode.CHAT], ids=["planning", "chat"])
+def test_a_conflicting_receipt_fails_the_run_loudly_and_is_never_a_gateway_failure(tmp_path, mode) -> None:
+    from optimus.gateway.models import GatewayResponse
+    from optimus.usage.accounting import UsageAccountingService
+    from optimus.usage.turn_settlement import ReceiptConflictError
+
+    def conflicting(receipt) -> None:
+        raise ReceiptConflictError("attempt already recorded differently")
+
+    service = UsageAccountingService()
+    gateway = ReturningGateway(GatewayResponse(output_text="WRITE a.py\nx", gateway_usage=_usage(), raw={}, finish_reason="stop"))
+    request = AgentRunRequest(run_id="s:1", session_id="s", task="Change it.", workspace_root=tmp_path, execution_mode=mode)
+
+    with pytest.raises(ReceiptConflictError):
+        AgentRunner(gateway_client=gateway, model="fake/model", usage_accounting=service).run(request, stage_receipts=conflicting)
+
+    assert gateway.calls == 1
+    assert len(service.provider_ledger.entries) == 1
+
+
+def test_an_unattributable_summary_report_is_raised_not_hidden_as_a_fallback() -> None:
+    from optimus.gateway.attempts import AttemptIntegrityError
+
+    call = GatewaySummarizerCall(gateway_client=ReturningGateway(_misattributed()), model_id="m", session_id="s", request_ids=lambda: "r")
+    with pytest.raises(AttemptIntegrityError):
+        call(prompt="P", max_output_tokens=9)
+
+
+def test_an_attached_turn_surfaces_a_summary_integrity_error_instead_of_falling_back() -> None:
+    import dataclasses
+
+    from optimus.acp.conversation import ConversationOutcome, ConversationSanitizer, ConversationSanitizerInputs, ConversationTurn
+    from optimus.acp.settlement import EffectState
+    from optimus.context.assembly import AttachedTurn
+    from optimus.gateway.attempts import AttemptIntegrityError
+    from tests.unit.acp.test_context_engine_admission import make_attachment
+
+    call = GatewaySummarizerCall(gateway_client=ReturningGateway(_misattributed()), model_id="m", session_id="s", request_ids=lambda: "r")
+    attachment = dataclasses.replace(make_attachment(tail=10), summarizer=lambda identity, deliver: call)
+    records = {
+        seq: ConversationTurn(f"q{seq} " + "w " * 200, "", "a " * 200, ConversationOutcome.COMPLETED, EffectState.NONE) for seq in (1, 2, 3)
+    }
+    turn = AttachedTurn.capture(
+        attachment=attachment, session_key="s", records=records, approvals={}, generation=3,
+        sanitizer=ConversationSanitizer(ConversationSanitizerInputs((), ())), strategy="compaction", mode=ExecutionMode.CHAT,
+        checkpoint=None, current_prompt="now", turn_seq=4, cancelled=lambda: False,
+    )  # fmt: skip
+
+    with pytest.raises(AttemptIntegrityError):
+        turn.prepare()
+
+
+def test_a_routed_attempt_reported_completed_without_settled_usage_is_uncertain() -> None:
+    error = GatewayHttpError(
+        502, "x", gateway_code="UPSTREAM_ATTEMPT_UNCERTAIN", retryable=False,
+        route_attempts=(GatewayRouteAttempt(attempt=1, gateway_request_id="gw-1", outcome="completed"),),
+    )  # fmt: skip
+
+    assert [(a.outcome, a.cost_usd) for a in attempts_from_failure(error)] == [("uncertain", None)]
+
+
+def test_a_dropped_malformed_attempt_list_is_never_proof_of_a_refusal() -> None:
+    from optimus.gateway.client import _route_attempts_dropped
+
+    error = GatewayHttpError(400, "x", gateway_code="CAPACITY_REFUSED", retryable=False, route_attempts=(), route_attempts_malformed=True)
+
+    assert not is_preflight_refusal(error)
+    assert [(a.outcome, a.cost_usd) for a in attempts_from_failure(error)] == [("uncertain", None)]
+    assert _route_attempts_dropped('{"code": "CAPACITY_REFUSED", "route_attempts": [{"attempt": 3}]}', ()) is True
+    assert _route_attempts_dropped('{"code": "CAPACITY_REFUSED", "route_attempts": "junk"}', ()) is True
+    assert _route_attempts_dropped('{"code": "CAPACITY_REFUSED", "route_attempts": []}', ()) is False
+    assert _route_attempts_dropped('{"code": "CAPACITY_REFUSED"}', ()) is False
+    assert _route_attempts_dropped("not json", ()) is False

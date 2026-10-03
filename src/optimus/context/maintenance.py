@@ -33,12 +33,18 @@ from typing import Any, Protocol
 from context_engine import MaintenanceRequest, MaintenanceResult
 from context_engine.summary import PROMPT_VERSION, SUMMARY_FORMAT, build_summary_prompt
 from optimus.acp.conversation import ConversationSanitizer
-from optimus.gateway.attempts import PREFLIGHT_REFUSAL_CODES, ProviderAttempt, attempts_from_failure, attempts_from_response
+from optimus.gateway.attempts import (
+    PREFLIGHT_REFUSAL_CODES,
+    AttemptIntegrityError,
+    ProviderAttempt,
+    attempts_from_failure,
+    attempts_from_response,
+)
 from optimus.gateway.models import GatewayUsage
 from optimus_model_policy.binding import RouteBinding
 
 # Re-exported: the one preflight classifier every stage uses lives in optimus.gateway.attempts.
-__all__ = ["PREFLIGHT_REFUSAL_CODES"]
+__all__ = ["PREFLIGHT_REFUSAL_CODES", "AttemptIntegrityError"]
 
 ATTEMPT_OUTCOMES = frozenset({"completed", "not_sent", "rejected", "uncertain"})
 
@@ -206,10 +212,11 @@ class SummarizerRoute:
 class GatewaySummarizerCall:
     """The production `SummarizerCall`: one summarizer request through the Optimus Gateway.
 
-    It never raises. Every attempt the Gateway reports becomes a `SummarizerAttempt`, classified by
-    the one host classifier every stage uses (`optimus.gateway.attempts`): the cost the Gateway settled
-    goes to the completed attempt, with its original usage; a proven unsent or refused attempt costs
-    nothing; an `uncertain` one stays unknown. Nothing is retried here.
+    Every attempt the Gateway reports becomes a `SummarizerAttempt`, classified by the one host
+    classifier every stage uses (`optimus.gateway.attempts`): the cost the Gateway settled goes to the
+    completed attempt it names, with its original usage; a proven unsent or refused attempt costs
+    nothing; an `uncertain` one stays unknown. Nothing is retried here. The only thing it raises is
+    `AttemptIntegrityError`, for a Gateway report it cannot attribute truthfully.
 
     `bind(request_id, input_text, output_cap)` returns the request's route binding (with its
     Contributor disclosure, noticed first, where required) or None when a required notice was not

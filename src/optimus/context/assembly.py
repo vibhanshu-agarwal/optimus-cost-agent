@@ -56,6 +56,7 @@ from optimus.acp.conversation import (
 )
 from optimus.context.adapter import ApprovalFact, make_history_snapshot
 from optimus.context.maintenance import (
+    AttemptIntegrityError,
     HostMaintenance,
     MaintenanceIdentity,
     MaintenanceReceipt,
@@ -555,6 +556,11 @@ class AttachedTurn:
                 # Recording a paid attempt failed (for example a conflicting receipt): an accounting
                 # integrity error, surfaced rather than hidden as a fallback (Fable CP3 review MAJOR-3).
                 raise self._sink_error from exc
+            if isinstance(exc, AttemptIntegrityError):
+                # A summarizer attempt the Gateway's report cannot attribute: an integrity error,
+                # surfaced like a receipt conflict, never hidden as a fallback (Fable CP3 correction
+                # review MINOR-1).
+                raise
             self._fault(phase, "maintenance_error" if self._maintenance.raised else "engine_error")
             return PreparedView((), (), None, self._snapshot.protected, (), (), False, "engine fault")
         if self._sink_error is not None:

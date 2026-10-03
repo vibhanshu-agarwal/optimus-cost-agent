@@ -310,7 +310,9 @@ def test_no_binding_is_sent_where_no_registry_is_enforced() -> None:
 def test_settled_usage_goes_to_the_final_completed_attempt_only() -> None:
     from optimus.gateway.models import GatewayResponse
 
-    response = GatewayResponse(output_text="x", gateway_usage=_usage(), raw={}, finish_reason="stop", route_attempts=_route("rejected", "uncertain", "completed"))
+    # The settled usage names the attempt that settled it, as the Gateway reports it (responses.py).
+    usage = _usage().model_copy(update={"gateway_request_id": "gw-3"})
+    response = GatewayResponse(output_text="x", gateway_usage=usage, raw={}, finish_reason="stop", route_attempts=_route("rejected", "uncertain", "completed"))
 
     attempts = _gateway_call(_Client(response=response))(prompt="P", max_output_tokens=300).attempts
 

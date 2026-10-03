@@ -20,15 +20,19 @@ class GatewayHttpError(GatewayError):
         gateway_code: str | None = None,
         retryable: bool | None = None,
         route_attempts: tuple[GatewayRouteAttempt, ...] = (),
+        route_attempts_malformed: bool = False,
     ) -> None:
         """``gateway_code``, ``retryable`` and ``route_attempts`` come from an enforced-routing error
         body (Plan 12.2 Task 5). ``retryable is False`` means the Gateway already applied the attempt
-        contract, so the host must not re-send; ``None`` (today's routing) keeps status-based retries."""
+        contract, so the host must not re-send; ``None`` (today's routing) keeps status-based retries.
+        ``route_attempts_malformed`` records that the body carried an attempt list the client had to
+        drop, so an empty ``route_attempts`` is never mistaken for "no attempt was made"."""
         self.status_code = status_code
         self.gateway_usage = gateway_usage
         self.gateway_code = gateway_code
         self.retryable = retryable
         self.route_attempts = route_attempts
+        self.route_attempts_malformed = route_attempts_malformed
         super().__init__(message)
 
 
