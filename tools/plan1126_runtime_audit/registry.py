@@ -40,6 +40,8 @@ _H5_PROBE_EXECUTES = (
     "src/optimus/acp/harness_runtime.py",
     "src/optimus/acp/local_infra.py",
     "src/optimus/acp/outbound_writer.py",
+    # Plan 12.2 Task 10: spec.py imports the full-set config module, so the H5 probe executes it.
+    "src/optimus/acp/session_config.py",
     "src/optimus/acp/spec.py",
     "src/optimus/agent/state_store.py",
     "src/optimus/mcp/client_catalog.py",

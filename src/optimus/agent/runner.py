@@ -1230,6 +1230,9 @@ class AgentRunner:
             if operation_control is not None:
                 operation_control.complete_directive(DirectiveKind.GATEWAY, op_id, terminal_state)
 
+        if context_packer is not None:
+            # Plan 12.2 Task 10: the attached meter reads only inputs actually sent.
+            context_packer.record_dispatch(chat_input)
         try:
             response = self._gateway_client.create_response(
                 model=self._model,

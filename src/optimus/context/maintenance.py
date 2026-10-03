@@ -71,6 +71,13 @@ class SummarizerCall(Protocol):
     def __call__(self, *, prompt: str, max_output_tokens: int) -> SummarizerResponse: ...
 
 
+class SummarizerFactory(Protocol):
+    """Binds a summarizer call to one turn: its identity, and the turn's way to deliver a required
+    notice (such as the Contributor disclosure) to the user before anything is sent."""
+
+    def __call__(self, identity: MaintenanceIdentity, deliver_notice: Callable[[str], bool]) -> SummarizerCall: ...
+
+
 @dataclass(frozen=True, slots=True)
 class MaintenanceIdentity:
     """Who and what a maintenance call serves, captured with the turn's settings: the exact role,
@@ -184,6 +191,10 @@ class GatewaySummarizerCall:
     and an `uncertain` one stays unknown. A failure with no attempt list is one attempt: completed with
     its reported cost when the Gateway reported usage, otherwise `uncertain` with an unknown cost,
     since the request may have run and been billed. Nothing is retried here.
+
+    `bind(request_id, input_text, output_cap)` returns the request's route binding (with its
+    Contributor disclosure, noticed first, where required) or None when a required notice was not
+    delivered: then nothing is sent. Without `bind` no binding is sent (registry enforcement inactive).
     """
 
     def __init__(
@@ -191,23 +202,24 @@ class GatewaySummarizerCall:
         *,
         gateway_client: Any,
         model_id: str,
-        registry_hash: str | None,
         session_id: str,
         request_ids: Callable[[], str],
+        bind: Callable[[str, str, int], RouteBinding | None] | None = None,
     ) -> None:
         self._client = gateway_client
         self._model_id = model_id
-        self._registry_hash = registry_hash
         self._session_id = session_id
         self._request_ids = request_ids
+        self._bind = bind
 
     def __call__(self, *, prompt: str, max_output_tokens: int) -> SummarizerResponse:
         request_id = self._request_ids()
-        binding = (
-            RouteBinding(registry_hash=self._registry_hash, request_id=request_id, output_cap=max_output_tokens)
-            if self._registry_hash is not None
-            else None
-        )
+        binding = None
+        if self._bind is not None:
+            binding = self._bind(request_id, prompt, max_output_tokens)
+            if binding is None:
+                unsent = SummarizerAttempt(attempt_id=f"{request_id}:1", gateway_request_id=None, outcome="not_sent", cost_usd=Decimal("0"))
+                return SummarizerResponse(text=None, finish_status=None, attempts=(unsent,))
         metadata = {"session_id": self._session_id, "purpose": "context_summary", "request_id": request_id}
         try:
             response = self._client.create_response(
@@ -269,3 +281,37 @@ def _attempt_cost(outcome: str, usage: GatewayUsage | None) -> Decimal | None:
     if outcome == "completed" and usage is not None:
         return usage.cost_usd
     return None
+
+
+def gateway_summarizer_factory(
+    *,
+    gateway_client: Any,
+    route: SummarizerRoute,
+    snapshot: Any | None,
+    disclosure_key: bytes | None,
+    request_ids: Callable[[], str],
+) -> SummarizerFactory:
+    """The production summarizer for an attachment: one `GatewaySummarizerCall` per turn.
+
+    With a trusted registry `snapshot` and launch `disclosure_key`, each request is route-bound and,
+    for a Contributor route, the turn's notice is delivered before its disclosure is issued; without
+    them (registry enforcement inactive) no binding is sent."""
+    from optimus.gateway.disclosure import ContributorDisclosure
+
+    def bind_turn(identity: MaintenanceIdentity, deliver_notice: Callable[[str], bool]) -> SummarizerCall:
+        bind = None
+        if snapshot is not None and disclosure_key is not None:
+            disclosure = ContributorDisclosure(snapshot=snapshot, key=disclosure_key, deliver_notice=deliver_notice)
+
+            def bind(request_id: str, input_text: str, output_cap: int) -> RouteBinding | None:
+                return disclosure.binding(model_id=route.model_id, request_id=request_id, input_text=input_text, output_cap=output_cap)
+
+        return GatewaySummarizerCall(
+            gateway_client=gateway_client,
+            model_id=route.model_id,
+            session_id=identity.session_id,
+            request_ids=request_ids,
+            bind=bind,
+        )
+
+    return bind_turn

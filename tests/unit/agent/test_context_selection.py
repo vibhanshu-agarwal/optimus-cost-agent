@@ -389,7 +389,7 @@ def _attached_turn(*, usable: int, calls: int = 3, tail: int = 400, summarizer=N
         estimate_request=estimate,
         registry_hash="e" * 64,
         model_id="test/planner",
-        summarizer=summarizer,
+        summarizer=lambda identity, deliver_notice: summarizer,
         summarizer_route=SummarizerRoute(model_id="test/summarizer", role="summarizer", route=("p",), reasoning=None, quantizations=("fp8",)),
         record_receipt=(receipts if receipts is not None else []).append,
     )
@@ -457,11 +457,15 @@ class _FakePacker:
         self.envelope = envelope
         self.refuse = refuse
         self.inputs: list[str] = []
+        self.dispatched: list[str] = []
 
     def fit(self, build):
         text = build(self.envelope)
         self.inputs.append(text)
         return None if self.refuse else text
+
+    def record_dispatch(self, text: str) -> None:
+        self.dispatched.append(text)
 
 
 def test_the_agent_planner_gets_history_in_its_own_section_and_packs_every_round(tmp_path):

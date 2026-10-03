@@ -1014,6 +1014,9 @@ class _PlanningIterationRunner:
                     from optimus.retry.policy import PermanentGatewayError as _PermanentStop
 
                     raise _PermanentStop("gateway attempt suppressed by turn control")
+            if self._context_packer is not None:
+                # Plan 12.2 Task 10: the attached meter reads only inputs actually sent.
+                self._context_packer.record_dispatch(prompt)
             try:
                 response = self._gateway_client.create_response(
                     model=self._model,

@@ -258,9 +258,17 @@ class _Client:
 
 def _gateway_call(client: _Client, *, registry_hash: str | None = "f" * 64):
     from optimus.context.maintenance import GatewaySummarizerCall
+    from optimus_model_policy.binding import RouteBinding
+
+    def bind(request_id: str, input_text: str, output_cap: int) -> RouteBinding:
+        return RouteBinding(registry_hash=registry_hash, request_id=request_id, output_cap=output_cap)
 
     return GatewaySummarizerCall(
-        gateway_client=client, model_id="qwen/qwen3.7-flash", registry_hash=registry_hash, session_id="sess-m", request_ids=lambda: "req-1"
+        gateway_client=client,
+        model_id="qwen/qwen3.7-flash",
+        session_id="sess-m",
+        request_ids=lambda: "req-1",
+        bind=bind if registry_hash is not None else None,
     )
 
 

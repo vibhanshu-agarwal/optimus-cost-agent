@@ -96,13 +96,11 @@ def build_current_mode_update_notification(*, session_id: str, current_mode_id: 
     }
 
 
-def build_config_option_update_notification(*, session_id: str, current_mode_id: str) -> dict[str, Any]:
+def build_config_option_update_notification(*, session_id: str, config_options: list[dict[str, Any]]) -> dict[str, Any]:
+    """A ``config_option_update`` carrying the full current set (Plan 12.2 Task 10)."""
     return {
         "sessionId": session_id,
-        "update": {
-            "sessionUpdate": "config_option_update",
-            "configOptions": build_mode_config_options(current_mode_id=current_mode_id),
-        },
+        "update": {"sessionUpdate": "config_option_update", "configOptions": config_options},
     }
 
 

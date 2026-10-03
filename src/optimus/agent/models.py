@@ -155,3 +155,7 @@ class ContextPacker(Protocol):
     history within a finite allowance; ``None`` when nothing fits, and then nothing is sent."""
 
     def fit(self, build: Callable[[str], str]) -> str | None: ...
+
+    def record_dispatch(self, text: str) -> None:
+        """Called as `text` is actually sent, once per attempt: the meter reads only real dispatches."""
+        ...

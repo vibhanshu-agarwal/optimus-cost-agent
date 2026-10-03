@@ -30,7 +30,7 @@ from optimus.acp.conversation import (
 from optimus.acp.settlement import EffectState
 from optimus.acp.shapes import AGENT_MESSAGE_BLOCK_SEPARATOR
 from optimus.acp.spec import (
-    CAPACITY_REFUSAL_TEXT,
+    ATTACHED_STORAGE_REFUSAL_TEXT,
     CONTEXT_FALLBACK_TEXT,
     CONTEXT_RESERVATION_TEXT,
     CONTEXT_UNAVAILABLE_TEXT,
@@ -117,7 +117,7 @@ def make_attachment(
         estimate_request=estimate,
         registry_hash="e" * 64,
         model_id="test/planner",
-        summarizer=summarizer,
+        summarizer=(lambda identity, deliver_notice: summarizer) if summarizer is not None else None,
         summarizer_route=SummarizerRoute(
             model_id="test/summarizer", role="summarizer", route=("provider-a",), reasoning=None, quantizations=("fp8",)
         ),
@@ -357,7 +357,7 @@ async def test_genuine_source_exhaustion_is_not_overridden_by_a_healthy_engine(t
     response = await prompt(adapter, outbound, session_id, "small", "small")
 
     assert response["result"]["stopReason"] == "end_turn"
-    assert texts(outbound) == [CAPACITY_REFUSAL_TEXT]
+    assert texts(outbound) == [ATTACHED_STORAGE_REFUSAL_TEXT]  # names storage (Task 10)
     assert runner.requests == []
 
 

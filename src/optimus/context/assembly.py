@@ -58,7 +58,7 @@ from optimus.context.maintenance import (
     HostMaintenance,
     MaintenanceIdentity,
     MaintenanceReceipt,
-    SummarizerCall,
+    SummarizerFactory,
     SummarizerRoute,
 )
 from optimus.runtime.modes import ExecutionMode
@@ -68,6 +68,7 @@ __all__ = [
     "AttachedTurn",
     "ContextAttachment",
     "ContextOutcome",
+    "DispatchReading",
     "SummarizerRoute",
     "admitted_context_digest",
     "build_selection_text",
@@ -233,6 +234,23 @@ class AdmittedContext:
 
 
 @dataclass(frozen=True, slots=True)
+class DispatchReading:
+    """One planning/answer input actually sent: its estimated size and that request's usable input
+    capacity (design spec 8.4)."""
+
+    tokens: int
+    capacity: int
+
+    @staticmethod
+    def largest(readings: Sequence[DispatchReading]) -> DispatchReading | None:
+        """The meter reading for a turn: the largest input sent, the smaller capacity on a tie; None
+        when nothing was sent, so no reading is fabricated."""
+        if not readings:
+            return None
+        return max(readings, key=lambda reading: (reading.tokens, -reading.capacity))
+
+
+@dataclass(frozen=True, slots=True)
 class ContextOutcome:
     """How preparing a turn's context ended. `unavailable` and `cancelled` dispatch nothing."""
 
@@ -264,7 +282,7 @@ class ContextAttachment:
     estimate_request: Callable[[str], int]
     registry_hash: str
     model_id: str
-    summarizer: SummarizerCall | None
+    summarizer: SummarizerFactory | None
     summarizer_route: SummarizerRoute | None
     record_receipt: Callable[[MaintenanceReceipt], None]
     max_repacks: int = 2
@@ -324,6 +342,7 @@ class AttachedTurn:
         current_prompt: str,
         turn_seq: int,
         cancelled: Callable[[], bool],
+        deliver_notice: Callable[[str], bool] | None = None,
     ) -> None:
         if strategy not in STRATEGIES:
             raise ValueError(f"unknown strategy {strategy!r}")
@@ -339,6 +358,9 @@ class AttachedTurn:
         self._current_prompt = current_prompt
         self._turn_seq = turn_seq
         self._cancelled = cancelled
+        # A turn without a notice channel can deliver no required notice, so it sends nothing that needs one.
+        self._deliver_notice = deliver_notice if deliver_notice is not None else (lambda text: False)
+        self._dispatches: list[DispatchReading] = []
         self._snapshot: HistorySnapshot | None = None
         self._maintenance: _TurnMaintenance | None = None
         self._view: PreparedView | None = None
@@ -364,6 +386,7 @@ class AttachedTurn:
         current_prompt: str,
         turn_seq: int,
         cancelled: Callable[[], bool],
+        deliver_notice: Callable[[str], bool] | None = None,
     ) -> AttachedTurn:
         """Copy everything the turn depends on now, before any await: later commits and setters
         cannot reach it. Approval facts of a turn that never committed are left out."""
@@ -381,6 +404,7 @@ class AttachedTurn:
             current_prompt=current_prompt,
             turn_seq=turn_seq,
             cancelled=cancelled,
+            deliver_notice=deliver_notice,
         )
 
     @property
@@ -410,20 +434,21 @@ class AttachedTurn:
         host = None
         if attachment.summarizer is not None and attachment.summarizer_route is not None:
             route = attachment.summarizer_route
+            identity = MaintenanceIdentity(
+                session_id=self._session_key,
+                turn_seq=self._turn_seq,
+                model_id=route.model_id,
+                role=route.role,
+                route=route.route,
+                reasoning=route.reasoning,
+                quantizations=route.quantizations,
+                strategy=self._strategy,
+                revision_digest=snapshot.revision.digest,
+            )
             host = HostMaintenance(
-                call=attachment.summarizer,
+                call=attachment.summarizer(identity, self._deliver_notice),
                 sanitizer=self._sanitizer,
-                identity=MaintenanceIdentity(
-                    session_id=self._session_key,
-                    turn_seq=self._turn_seq,
-                    model_id=route.model_id,
-                    role=route.role,
-                    route=route.route,
-                    reasoning=route.reasoning,
-                    quantizations=route.quantizations,
-                    strategy=self._strategy,
-                    revision_digest=snapshot.revision.digest,
-                ),
+                identity=identity,
                 record_receipt=attachment.record_receipt,
                 cancelled=self._cancelled,
             )
@@ -540,6 +565,13 @@ class AttachedTurn:
                 self._view, self._envelope = view, envelope
                 return text
         return None
+
+    def record_dispatch(self, text: str) -> None:
+        """The runner is sending `text` as a complete planning/answer request now."""
+        self._dispatches.append(DispatchReading(tokens=self._attachment.estimate_request(text), capacity=self._attachment.usable_input_tokens))
+
+    def largest_dispatch(self) -> DispatchReading | None:
+        return DispatchReading.largest(self._dispatches)
 
     def _view_cost(self, view: PreparedView) -> int:
         """A view's history cost as the engine allocates it: authority, exact turns and the summary
