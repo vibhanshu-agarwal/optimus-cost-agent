@@ -21,7 +21,7 @@ class VerificationError(RuntimeError):
 
 
 HOSTILE_PROVIDER_KEY = "fake-provider-key"
-HOSTILE_SHARED_SECRET = "fake-shared-secret"
+HOSTILE_SHARED_SECRET = "fake-shared-secret"  # pragma: allowlist secret - a fixed fake fixture value
 HOSTILE_FIXTURE_SECRETS = (HOSTILE_PROVIDER_KEY, HOSTILE_SHARED_SECRET)
 _PROVIDER_KEY_NAMES = (
     "OPENAI_API_KEY",
@@ -38,7 +38,7 @@ _PROVIDER_KEY_NAMES = (
 # Variable names the Task 2 resolver actually reads. Using other names would make an
 # "ignored hostile .env.gateway" probe vacuously True regardless of directory.
 HOSTILE_ENV_GATEWAY_CONTENTS = (
-    "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+    "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - a provider name, not a secret
     f"OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY={HOSTILE_PROVIDER_KEY}\n"
     f"OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET={HOSTILE_SHARED_SECRET}\n"
 )
@@ -219,6 +219,71 @@ def _probe(
     return {key: str(value) for key, value in values.items()}
 
 
+# Plan 12.2 Task 12: the packages a fresh `import context_engine` must not load (ADR-001; spec 3).
+EXTRACTION_HOST_PACKAGES = (
+    "optimus",
+    "optimus_gateway",
+    "optimus_security",
+    "optimus_model_policy",
+    "evidence_handoff",
+    "evidence_handoff_runtime",
+)
+
+EXTRACTION_PROBE = """\
+import json
+import sys
+from importlib import resources
+
+import context_engine
+
+host = sorted(name for name in sys.modules if name.split(".")[0] in {host_packages!r})
+
+import optimus_model_policy
+from optimus_model_policy.registry import load_registry
+
+with resources.as_file(resources.files("optimus_model_policy") / "defaults.yaml") as path:
+    snapshot = load_registry(path, None)
+    defaults = str(path)
+print(json.dumps({{
+    "context_engine": context_engine.__file__,
+    "host_modules_after_engine_import": host,
+    "model_policy": optimus_model_policy.__file__,
+    "defaults": defaults,
+    "policy_version": snapshot.policy.policy_version,
+    "effective_hash": snapshot.effective_hash,
+}}))
+""".format(host_packages=EXTRACTION_HOST_PACKAGES)
+
+
+def validate_extraction_evidence(values: dict[str, object], *, venv_root: Path, repo_root: Path) -> None:
+    """The installed wheel's `context_engine` imported no host package, and `optimus_model_policy`
+    loaded its packaged YAML defaults, all from the isolated venv rather than a source checkout."""
+    host = values.get("host_modules_after_engine_import")
+    if host != []:
+        raise VerificationError(f"context_engine imported host packages: {host}")
+    for key in ("context_engine", "model_policy", "defaults"):
+        path = Path(str(values.get(key, ""))).resolve()
+        if path.is_relative_to(repo_root.resolve()):
+            raise VerificationError(f"{key} resolved inside repository checkout")
+        if not path.is_relative_to(venv_root.resolve()):
+            raise VerificationError(f"{key} resolved outside isolated venv")
+    if Path(str(values["defaults"])).name != "defaults.yaml" or not values.get("effective_hash"):
+        raise VerificationError("packaged registry defaults were not loaded")
+
+
+def _extraction_probe(*, python: Path, workspace: Path, env: dict[str, str], venv_root: Path, repo_root: Path) -> dict[str, str]:
+    script = workspace / "extraction_probe.py"
+    script.write_text(EXTRACTION_PROBE, encoding="utf-8")
+    result = _run([str(python), str(script)], cwd=workspace, env=env)
+    _assert_output_clean(result.stdout + result.stderr, env)
+    try:
+        values = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise VerificationError("extraction probe returned invalid evidence") from exc
+    validate_extraction_evidence(values, venv_root=venv_root, repo_root=repo_root)
+    return {key: str(value) for key, value in values.items()}
+
+
 def _ambient_secret_values(env: dict[str, str]) -> tuple[str, ...]:
     return tuple(
         value
@@ -275,6 +340,7 @@ def _offline(args: argparse.Namespace) -> dict[str, object]:
         config_root=config_root,
         secret_values=HOSTILE_FIXTURE_SECRETS,
     )
+    extraction = _extraction_probe(python=python, workspace=workspace, env=env, venv_root=venv, repo_root=Path(__file__).resolve().parents[1])
     return {
         "wheel": wheel.name,
         "wheel_sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
@@ -285,6 +351,7 @@ def _offline(args: argparse.Namespace) -> dict[str, object]:
         "build_offline_commands": commands,
         "script_exit_codes": script_results,
         "paths": paths,
+        "extraction": extraction,
         "hostile_env_gateway": "not read; content omitted",
     }
 

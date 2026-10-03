@@ -82,7 +82,7 @@ def test_sanitized_evidence_rejects_secret_values():
 def test_live_prerequisites_check_acpx_redis_and_credentials(
     tmp_path, monkeypatch
 ):
-    (tmp_path / ".env.gateway").write_text("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=omitted\n")
+    (tmp_path / ".env.gateway").write_text("OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET=omitted\n")  # pragma: allowlist secret - placeholder
 
     class ReachableSocket:
         def __enter__(self):
@@ -170,3 +170,52 @@ def test_live_acpx_command_uses_posix_paths_for_cwd_and_agent():
     assert "workspace.as_posix()" in source
     assert "wrapper.as_posix()" in source
     assert 'str(workspace),\n        "--agent",\n        str(wrapper),' not in source.replace(" ", "")
+
+# --- Plan 12.2 Task 12: packaged extraction --------------------------------------------------------
+
+
+def _extraction(venv: Path, **changes: object) -> dict[str, object]:
+    values: dict[str, object] = {
+        "context_engine": str(venv / "Lib" / "site-packages" / "context_engine" / "__init__.py"),
+        "host_modules_after_engine_import": [],
+        "model_policy": str(venv / "Lib" / "site-packages" / "optimus_model_policy" / "__init__.py"),
+        "defaults": str(venv / "Lib" / "site-packages" / "optimus_model_policy" / "defaults.yaml"),
+        "policy_version": "2026-10-02.1",
+        "effective_hash": "a" * 64,
+    }
+    return {**values, **changes}
+
+
+def test_extraction_evidence_accepts_only_an_isolated_engine_import_with_packaged_defaults(tmp_path):
+    venv, repo = tmp_path / "venv", tmp_path / "repo"
+
+    verifier.validate_extraction_evidence(_extraction(venv), venv_root=venv, repo_root=repo)
+
+    bad = {
+        "host module": _extraction(venv, host_modules_after_engine_import=["optimus"]),
+        "no host report": _extraction(venv, host_modules_after_engine_import=None),
+        "source checkout": _extraction(venv, context_engine=str(repo / "src" / "context_engine" / "__init__.py")),
+        "outside venv": _extraction(venv, defaults=str(tmp_path / "elsewhere" / "defaults.yaml")),
+        "defaults not loaded": _extraction(venv, effective_hash=""),
+    }
+    for values in bad.values():
+        with pytest.raises(VerificationError):
+            verifier.validate_extraction_evidence(values, venv_root=venv, repo_root=repo)
+
+
+def test_the_extraction_probe_reports_a_clean_engine_import_and_is_caught_in_a_checkout(tmp_path):
+    """The real probe script, run in this repository's editable environment: `context_engine` loads
+    no host package, the packaged defaults load, and the validator refuses the source checkout."""
+    import json
+    import subprocess
+    import sys
+
+    script = tmp_path / "probe.py"
+    script.write_text(verifier.EXTRACTION_PROBE, encoding="utf-8")
+    result = subprocess.run([sys.executable, str(script)], cwd=tmp_path, capture_output=True, text=True, check=True, timeout=120)
+    values = json.loads(result.stdout)
+
+    assert values["host_modules_after_engine_import"] == []
+    assert Path(values["defaults"]).name == "defaults.yaml" and values["effective_hash"]
+    with pytest.raises(VerificationError, match="inside repository checkout"):
+        verifier.validate_extraction_evidence(values, venv_root=Path(sys.prefix), repo_root=Path(__file__).resolve().parents[3])

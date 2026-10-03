@@ -3847,6 +3847,38 @@
       "sanitizer": "content-free by construction: generated run id and allowlisted phase/category/outcome codes",
       "test_node": "tests/unit/acp/test_late_receipts.py::test_a_view_fault_leaves_one_content_free_operator_line",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.measure_context_engine_limits:completion_status:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: completion_status writes one fixed synthetic source line into its own temporary workspace for the runner to plan against; no runtime, credential or diagnostic data.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_limits.py::test_the_quick_report_has_every_section",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.measure_context_engine_limits:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main serializes the measurement report: synthetic-history sizes, timings, peaks, boundary outcomes and registry route facts; no prompt, credential or provider data.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_limits.py::test_the_quick_report_has_every_section",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.measure_context_engine_limits:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints only the report path it wrote, as controlled operational status, and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_limits.py::test_the_quick_report_has_every_section",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan99_noneditable_install:_extraction_probe:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _extraction_probe writes the fixed EXTRACTION_PROBE script into the isolated scratch workspace; it carries no runtime or credential data.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_the_extraction_probe_reports_a_clean_engine_import_and_is_caught_in_a_checkout",
+      "evidence_tier": "unit"
     }
   ]
 }
