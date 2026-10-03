@@ -46,20 +46,171 @@ def _module_constant(relative: str, name: str) -> str | None:
 #
 # The command list is read in order: the interpreter, then options that select no code, then the
 # inline flag, then the program (a string literal, or a name bound to a string constant of the
-# module), then anything else, which is data in the program's argv. Options that choose code
-# (`-m`, a script path, combined forms such as `-Sc`) are not accepted, so a program cannot hide
-# there. The program itself must parse, import only `os`, `sys` and `time` (statically or through
-# `__import__` of one of those names), and never mention the product or evaluate text.
+# module and to nothing else in the launching function), then anything else, which is data in the
+# program's argv. Options that choose code (`-m`, a script path, combined forms such as `-Sc`) are
+# not accepted, so a program cannot hide there. The program itself is held to an allow-list of
+# statement shapes (Codex correction review, 2026-10-04: a deny-list admitted `os.system`): plain
+# imports of os/sys/time, `pass`, and calls to `time.sleep`, `os._exit`, `sys.exit` and `print` of
+# constants, `os.getcwd()`/`os.getpid()`, `str(...)` and `+` of those. Any other statement, call,
+# alias, `from` import, assignment or attribute is rejected, however harmless it looks. The one
+# program outside that grammar, the synthetic writer, is registered by exact text hash with the
+# binding of its argv: its launcher takes `(path, mode)`, passes `str(path), mode`, and every caller
+# hands it a path rooted in its own `tmp_path`.
 
 _INTERPRETERS = {"sys.executable", "sys._base_executable"}
 _CODELESS_FLAGS = {"-B", "-u", "-E", "-s", "-S", "-I", "-q", "-O", "-OO"}
 _CODELESS_X = re.compile(r"^(utf8(=[01])?|dev|importtime|faulthandler|tracemalloc(=\d+)?)$")
-_PROGRAM_IMPORTS = {"os", "sys", "time"}
-_PROGRAM_FORBIDDEN_NAMES = {"exec", "eval", "compile", "importlib", "subprocess", "runpy", "getattr", "globals", "builtins"}
+_PROGRAM_MODULES = {"os", "sys", "time"}
+_PROGRAM_VALUE_CALLS = {"os.getcwd", "os.getpid"}
+_REGISTERED_PROGRAMS: dict[str, dict[str, object]] = {
+    "tests/integration/evidence/test_subprocess_truncation.py::_spawn_and_kill#1": {
+        "constant": "_WRITER",
+        "sha256": "acdeac9420aa7abb79a947eb5650c678ca67643d3d3f0d56f7152e352e8dde91",  # pragma: allowlist secret - digest of the registered program text
+        "arguments": ["str(path)", "mode"],
+        "launcher_parameters": ["path", "mode"],
+        "basis": "Writes NDJSON fragments to the file named by its first argument and sleeps; the launcher's path "
+                 "parameter is rooted in the calling test's tmp_path; the mode selects which fragment, not code.",
+    },
+}
 
 
-def inline_program(command: str, relative: str) -> str:
-    """The program text of a literal `-c` launch command, or an AssertionError naming what is wrong."""
+def _check_program_value(node: ast.expr) -> None:
+    """A value a reviewed program may print: constants, os.getcwd()/os.getpid(), str(...) and + of those."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, (str, int, float)) and not isinstance(node.value, bool):
+        return
+    if isinstance(node, ast.Call) and not node.keywords:
+        name = ast.unparse(node.func)
+        if name in _PROGRAM_VALUE_CALLS and not node.args:
+            return
+        if name == "str" and len(node.args) == 1:
+            _check_program_value(node.args[0])
+            return
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        _check_program_value(node.left)
+        _check_program_value(node.right)
+        return
+    raise AssertionError(f"value outside the reviewed shapes: {ast.unparse(node)}")
+
+
+def _check_program_call(call: ast.Call) -> None:
+    assert not call.keywords, f"keyword arguments are outside the reviewed shapes: {ast.unparse(call)}"
+    name = ast.unparse(call.func)
+    if name == "time.sleep":
+        assert len(call.args) == 1 and isinstance(call.args[0], ast.Constant) and isinstance(call.args[0].value, (int, float)) \
+            and not isinstance(call.args[0].value, bool), f"time.sleep without a numeric literal: {ast.unparse(call)}"
+    elif name in {"os._exit", "sys.exit"}:
+        assert len(call.args) <= 1 and all(isinstance(arg, ast.Constant) and isinstance(arg.value, int) and not isinstance(arg.value, bool)
+                                           for arg in call.args), f"exit without an integer literal: {ast.unparse(call)}"
+    elif name == "print":
+        for arg in call.args:
+            _check_program_value(arg)
+    else:
+        raise AssertionError(f"call outside the reviewed shapes: {ast.unparse(call)}")
+
+
+def check_program_text(program: str) -> None:
+    """A literal program made only of the reviewed statement shapes; anything else fails closed."""
+    try:
+        body = ast.parse(program).body
+    except SyntaxError as exc:
+        raise AssertionError(f"the program does not parse: {exc}") from exc
+    assert body, "empty program"
+    for statement in body:
+        if isinstance(statement, ast.Pass):
+            continue
+        if isinstance(statement, ast.Import):
+            assert all(alias.asname is None and alias.name in _PROGRAM_MODULES for alias in statement.names), \
+                f"import outside os/sys/time, or aliased: {ast.unparse(statement)}"
+            continue
+        if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
+            _check_program_call(statement.value)
+            continue
+        raise AssertionError(f"statement outside the reviewed shapes: {ast.unparse(statement)}")
+
+
+def _module_assignments(relative: str, name: str) -> list[ast.Assign]:
+    return [node for node in ast.parse((_ROOT / relative).read_text(encoding="utf-8")).body
+            if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)]
+
+
+def binds(statement: ast.stmt, name: str) -> bool:
+    """Whether a statement (re)binds `name`: assignment of any kind, for/with targets, walrus, import, def."""
+    for node in ast.walk(statement):
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.For, ast.AsyncFor, ast.NamedExpr)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(leaf, ast.Name) and leaf.id == name for target in targets for leaf in ast.walk(target)):
+                return True
+        if isinstance(node, (ast.With, ast.AsyncWith)) and any(
+            item.optional_vars is not None and any(isinstance(leaf, ast.Name) and leaf.id == name for leaf in ast.walk(item.optional_vars))
+            for item in node.items
+        ):
+            return True
+        if isinstance(node, (ast.Import, ast.ImportFrom)) and any((alias.asname or alias.name).split(".")[0] == name for alias in node.names):
+            return True
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == name:
+            return True
+        if isinstance(node, (ast.Global, ast.Nonlocal)) and name in node.names:
+            return True
+    return False
+
+
+def function_binds(function: ast.FunctionDef | ast.AsyncFunctionDef, name: str) -> bool:
+    """Whether the function's parameters or body bind `name`."""
+    parameters = function.args.args + function.args.posonlyargs + function.args.kwonlyargs + [a for a in (function.args.vararg, function.args.kwarg) if a]
+    return any(parameter.arg == name for parameter in parameters) or any(binds(statement, name) for statement in function.body)
+
+
+def _enclosing_function(relative: str, function: str) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    for node in ast.walk(ast.parse((_ROOT / relative).read_text(encoding="utf-8"))):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == function:
+            return node
+    return None
+
+
+def rooted_in_tmp_path(function: ast.FunctionDef | ast.AsyncFunctionDef, name: str, depth: int = 0) -> bool:
+    """`name` is bound exactly once in the function, to `tmp_path / <literal> [/ <literal>...]` or to another such name."""
+    assert depth < 4, f"{name}: binding chain too deep"
+    assignments = [statement for statement in ast.walk(function) if isinstance(statement, ast.Assign) and binds(statement, name)]
+    if len(assignments) != 1 or any(binds(statement, name) for statement in function.body if not isinstance(statement, ast.Assign)):
+        return False
+    value = assignments[0].value
+    while isinstance(value, ast.BinOp) and isinstance(value.op, ast.Div):
+        if not (isinstance(value.right, ast.Constant) and isinstance(value.right.value, str) and value.right.value and "/" not in value.right.value
+                and "\\" not in value.right.value and value.right.value not in {".", ".."}):
+            return False
+        value = value.left
+    if isinstance(value, ast.Name) and value.id == "tmp_path":
+        return any(parameter.arg == "tmp_path" for parameter in function.args.args) and not any(binds(statement, "tmp_path") for statement in function.body)
+    return isinstance(value, ast.Name) and rooted_in_tmp_path(function, value.id, depth + 1)
+
+
+def _check_registered_program(relative: str, key: str, name: str, program: str, arguments: list[ast.expr]) -> None:
+    """The registered writer: exact text, exact argv spellings, launcher parameters, and callers rooted in tmp_path."""
+    entry = _REGISTERED_PROGRAMS[key]
+    assert name == entry["constant"], f"{key}: launches {name}, registered program is {entry['constant']}"
+    import hashlib
+
+    assert hashlib.sha256(program.encode("utf-8")).hexdigest() == entry["sha256"], f"{key}: the registered program's text changed; re-review it"
+    assert [ast.unparse(argument) for argument in arguments] == entry["arguments"], f"{key}: argv differs from the registered binding"
+    launcher = _enclosing_function(relative, key.split("::")[1].split("#")[0])
+    assert launcher is not None and [parameter.arg for parameter in launcher.args.args] == entry["launcher_parameters"], f"{key}: launcher signature changed"
+    assert not any(binds(statement, str(parameter)) for parameter in entry["launcher_parameters"] for statement in launcher.body), f"{key}: the launcher rebinds an argument"
+    module = ast.parse((_ROOT / relative).read_text(encoding="utf-8"))
+    callers = [(function, call) for function in ast.walk(module) if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
+               for call in ast.walk(function) if isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == launcher.name]
+    assert callers, f"{key}: no caller"
+    for function, call in callers:
+        assert len(call.args) == len(entry["launcher_parameters"]) and not call.keywords, f"{key}: caller does not pass the arguments positionally"
+        path = call.args[0]
+        assert isinstance(path, ast.Name) and rooted_in_tmp_path(function, path.id), f"{key}: {function.name} passes a path not rooted in its tmp_path"
+
+
+def inline_program(command: str, relative: str, *, key: str | None = None, function: str | None = None) -> str:
+    """The program text of a literal `-c` launch command, or an AssertionError naming what is wrong.
+
+    `key` and `function` name the launch site; they bind a module-constant program to the launching
+    function (which must not rebind the name) and select a registered program's binding.
+    """
     try:
         tree = ast.parse(command, mode="eval").body
     except SyntaxError as exc:
@@ -87,40 +238,26 @@ def inline_program(command: str, relative: str) -> str:
         raise AssertionError(f"no bare '-c' in {command!r}")
     assert index + 1 < len(elements), f"nothing follows -c in {command!r}"
     program_node = elements[index + 1]
+    arguments = elements[index + 2:]  # the program's argv: data, whatever expressions produce them
     if isinstance(program_node, ast.Constant) and isinstance(program_node.value, str):
         program = program_node.value
+        check_program_text(program)
     elif isinstance(program_node, ast.Name):
-        constant = _module_constant(relative, program_node.id)
-        assert constant is not None, f"{program_node.id} is not a string constant of {relative}"
-        program = constant
+        assignments = _module_assignments(relative, program_node.id)
+        assert len(assignments) == 1 and isinstance(assignments[0].value, ast.Constant) and isinstance(assignments[0].value.value, str), \
+            f"{program_node.id} is not bound exactly once, to a string constant, at the top of {relative}"
+        program = assignments[0].value.value
+        enclosing = _enclosing_function(relative, function) if function else None
+        assert function is None or enclosing is not None, f"no function {function} in {relative}"
+        assert enclosing is None or not function_binds(enclosing, program_node.id), \
+            f"{function} rebinds {program_node.id}; the module constant is not what the launch uses"
+        if key in _REGISTERED_PROGRAMS:
+            _check_registered_program(relative, key, program_node.id, program, arguments)
+        else:
+            check_program_text(program)
     else:
         raise AssertionError(f"the program is neither a literal nor a module constant: {ast.unparse(program_node)!r}")
-    check_program_text(program)
-    return program  # elements[index + 2:] are the program's argv: data, whatever expressions produce them
-
-
-def check_program_text(program: str) -> None:
-    """A program that cannot reach the product: parses, imports only os/sys/time, evaluates nothing."""
-    assert "optimus" not in program and "tools" not in program, "the program mentions the product"
-    try:
-        body = ast.parse(program)
-    except SyntaxError as exc:
-        raise AssertionError(f"the program does not parse: {exc}") from exc
-    for node in ast.walk(body):
-        if isinstance(node, ast.Import):
-            modules = {alias.name.split(".")[0] for alias in node.names}
-        elif isinstance(node, ast.ImportFrom):
-            modules = {(node.module or "").split(".")[0]}
-        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "__import__":
-            argument = node.args[0] if node.args else None
-            assert isinstance(argument, ast.Constant) and isinstance(argument.value, str), "__import__ of a non-literal name"
-            modules = {argument.value.split(".")[0]}
-        elif isinstance(node, ast.Name):
-            assert node.id not in _PROGRAM_FORBIDDEN_NAMES, f"the program uses {node.id}"
-            continue
-        else:
-            continue
-        assert modules <= _PROGRAM_IMPORTS, f"the program imports {sorted(modules - _PROGRAM_IMPORTS)}"
+    return program
 
 
 def _skips_on_windows(relative: str, function: str) -> bool:
@@ -145,7 +282,7 @@ def test_every_default_launch_site_is_mapped_to_a_proof() -> None:
         assert proof_test.split("[")[0] in _defined_functions(proof_file), f"{key}: the proof test does not exist"
         assert entry["basis"], key
         if entry["disposition"] == "literal_program":
-            inline_program(str(found[key]["command"]), str(found[key]["file"]))
+            inline_program(str(found[key]["command"]), str(found[key]["file"]), key=key, function=str(found[key]["function"]))
         if entry["disposition"] == "reviewed_program":
             # The program is assembled at run time; a site-specific executable proof in the reviewed-
             # programs module vouches for the helper, every reachable tail and the generated code.
@@ -181,29 +318,91 @@ def test_every_default_launch_site_is_mapped_to_a_proof() -> None:
         ("program-imports-subprocess", "[sys.executable, '-c', 'import subprocess']", False),
         ("program-dunder-import-dynamic", "[sys.executable, '-c', '__import__(name)']", False),
         ("program-dunder-import-other", "[sys.executable, '-c', '__import__(\"importlib\")']", False),
+        ("program-dunder-import-os", "[sys.executable, '-c', '__import__(\"os\").getpid()']", False),
         ("program-exec", "[sys.executable, '-c', 'exec(\"pass\")']", False),
         ("program-does-not-parse", "[sys.executable, '-c', 'import (']", False),
+        ("program-os-system", "[sys.executable, '-c', \"import os; os.system('review-canary')\"]", False),
+        ("program-from-os-import-system", "[sys.executable, '-c', \"from os import system; system('review-canary')\"]", False),
+        ("program-os-popen", "[sys.executable, '-c', \"import os; os.popen('x')\"]", False),
+        ("program-aliased-import", "[sys.executable, '-c', 'import time as t; t.sleep(1)']", False),
+        ("program-assignment", "[sys.executable, '-c', 'import os; x = os.getcwd()']", False),
+        ("program-print-open", "[sys.executable, '-c', \"print(open('x').read())\"]", False),
+        ("program-sleep-non-literal", "[sys.executable, '-c', 'import sys, time; time.sleep(sys.argv[1])']", False),
+        ("program-exit-with-string", "[sys.executable, '-c', \"import sys; sys.exit('x')\"]", False),
+        ("program-attribute-chain", "[sys.executable, '-c', 'import os; os.environ.clear()']", False),
+        ("program-getcwd-print", "[sys.executable, '-c', 'import os, sys; print(os.getcwd()); sys.exit(7)']", True),
+        ("program-print-pid-string", "[sys.executable, '-c', \"import os; print('PID=' + str(os.getpid()))\"]", True),
+        ("program-sleep-and-exit", "[sys.executable, '-c', 'import sys, time; time.sleep(0.3); sys.exit(3)']", True),
+        ("program-module-constant-rebound-in-function", "[sys.executable, '-c', _PROGRAM]", "rebinding"),
+        ("program-module-constant-twice", "[sys.executable, '-c', _TWICE]", False),
     ],
 )
-def test_the_literal_program_check_reads_the_command_in_order(tmp_path: Path, monkeypatch, name: str, command: str, accepted: bool) -> None:
+def test_the_literal_program_check_reads_the_command_in_order(tmp_path: Path, monkeypatch, name: str, command: str, accepted) -> None:
     """Sensitivity of the literal check: data after the program is fine; anything that selects code is not."""
     module = tmp_path / "site_module.py"
-    module.write_text('_PROGRAM = "import os; os._exit(3)"\n', encoding="utf-8")
+    module.write_text(
+        '_PROGRAM = "import os; os._exit(3)"\n_TWICE = "pass"\n_TWICE = "pass"\n\n'
+        "def rebinding():\n    _PROGRAM = 'import os; os.system(1)'\n    return _PROGRAM\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(sys.modules[__name__], "_ROOT", tmp_path)
-    if accepted:
-        program = inline_program(command, "site_module.py")
-        assert program in {"import time; time.sleep(30)", "pass", "import os; os._exit(3)"}
+    if accepted is True:
+        program = inline_program(command, "site_module.py", function=None)
+        check_program_text(program)
+    elif accepted == "rebinding":
+        inline_program(command, "site_module.py", function=None)  # bound to the module constant when no function rebinds it
+        with pytest.raises(AssertionError, match="rebinds"):
+            inline_program(command, "site_module.py", function="rebinding")
     else:
         with pytest.raises(AssertionError):
-            inline_program(command, "site_module.py")
+            inline_program(command, "site_module.py", function=None)
 
 
-def test_the_literal_program_check_accepts_the_repository_writer_program() -> None:
-    """Control: the existing literal programs (file writes through `__import__('os')`, sleeps, exits) stay accepted."""
+def test_the_literal_program_check_accepts_every_filed_literal_program() -> None:
+    """Control: every literal_program site on this tree, the registered writer included, is accepted with its binding."""
+    sites = {site["key"]: site for site in default_python_sites(_ROOT)}
     for key, entry in json.loads(_MAP.read_text(encoding="utf-8"))["sites"].items():
         if entry["disposition"] == "literal_program":
-            site = next(site for site in default_python_sites(_ROOT) if site["key"] == key)
-            inline_program(str(site["command"]), str(site["file"]))
+            site = sites[key]
+            inline_program(str(site["command"]), str(site["file"]), key=key, function=str(site["function"]))
+    assert set(_REGISTERED_PROGRAMS) <= set(sites), "a registered program's site no longer exists"
+
+
+_WRITER_SITE = "tests/integration/evidence/test_subprocess_truncation.py::_spawn_and_kill#1"
+
+
+def _writer_module(mutation: str = "") -> str:
+    source = (_ROOT / _WRITER_SITE.split("::")[0]).read_text(encoding="utf-8")
+    if mutation == "text":
+        return source.replace("time.sleep(60)", "time.sleep(61)", 1)
+    if mutation == "argv":
+        return source.replace("[sys.executable, \"-c\", _WRITER, str(path), mode]", "[sys.executable, \"-c\", _WRITER, str(other), mode]", 1)
+    if mutation == "caller-path":
+        return source.replace("    _spawn_and_kill(source, mode)\n", "    _spawn_and_kill(Path('C:/elsewhere/live.ndjson'), mode)\n", 1)
+    if mutation == "caller-rooted-outside":
+        return source.replace('    capture = tmp_path / "cap"\n', '    capture = tmp_path.parent / "cap"\n', 1)
+    if mutation == "launcher-signature":
+        return source.replace("def _spawn_and_kill(path: Path, mode: str) -> None:", "def _spawn_and_kill(path: Path, mode: str, extra=None) -> None:", 1)
+    if mutation == "launcher-rebinds-path":
+        return source.replace("    env = os.environ.copy()\n", "    env = os.environ.copy()\n    path = Path('C:/elsewhere')\n", 1)
+    return source
+
+
+@pytest.mark.parametrize("mutation", ["", "text", "argv", "caller-path", "caller-rooted-outside", "launcher-signature", "launcher-rebinds-path"])
+def test_the_registered_writer_is_bound_to_its_text_argv_launcher_and_callers(tmp_path: Path, monkeypatch, mutation: str) -> None:
+    relative = _WRITER_SITE.split("::")[0]
+    source = _writer_module(mutation)
+    assert mutation == "" or source != _writer_module(), mutation
+    target = tmp_path / relative
+    target.parent.mkdir(parents=True)
+    target.write_text(source, encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "_ROOT", tmp_path)
+    command = "[sys.executable, '-c', _WRITER, str(path), mode]" if mutation != "argv" else "[sys.executable, '-c', _WRITER, str(other), mode]"
+    if mutation == "":
+        inline_program(command, relative, key=_WRITER_SITE, function="_spawn_and_kill")
+    else:
+        with pytest.raises(AssertionError):
+            inline_program(command, relative, key=_WRITER_SITE, function="_spawn_and_kill")
 
 
 # --- the repository's launch wrapper is inventoried under its bound name, and nothing else's `.popen` is.
