@@ -678,7 +678,9 @@ def _scan_in_process(adapter, repo: Path, relpath: str, *, before_scan=None, den
 
     ``before_scan`` runs after validation succeeded and before the scanner starts, which is the
     window Codex's R1 reproduction exercises; ``deny`` makes every open of that path raise
-    PermissionError for the duration of the scan.
+    PermissionError for the duration of the scan. The UTF-8-mode gate is satisfied as the other
+    adapter unit tests satisfy it (the configured entry passes ``-X utf8``; the test process, on
+    Linux in particular, need not), so what is exercised is the scan-time read, not that gate.
     """
     parity.stage_fixture_files(repo)
     real_open = open
@@ -700,7 +702,8 @@ def _scan_in_process(adapter, repo: Path, relpath: str, *, before_scan=None, den
     previous = Path.cwd()
     os.chdir(repo)
     try:
-        with contextlib.redirect_stdout(out):
+        with pytest.MonkeyPatch.context() as patch, contextlib.redirect_stdout(out):
+            patch.setattr(adapter, "_utf8_mode_enabled", lambda: True)
             status = adapter.run(["--baseline", ".secrets.baseline", "src", relpath], delegate=delegate, stderr=err)
     finally:
         os.chdir(previous)
