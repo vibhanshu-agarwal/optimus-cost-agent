@@ -9,7 +9,7 @@ M2: an attached view that was not built leaves one content-free operator line: r
 bounded category - never exception text, history, summary, credential or the engine's reason.
 
 N1: a Contributor notice that is not confirmed within the finite wait sends nothing, its pending send
-is cancelled, and a late completion is never credited.
+is cancelled, and a late completion is never counted.
 """
 
 from __future__ import annotations
@@ -427,10 +427,10 @@ def test_a_fault_only_ever_carries_its_bounded_vocabulary() -> None:
     assert all(re.fullmatch(r"[a-z_]+", category) for category in FAULT_CATEGORIES)
 
 
-# --- N1: the notice wait is finite and never credits a late success ---------------------------------------
+# --- N1: the notice wait is finite and never counts a late success ----------------------------------------
 
 
-async def test_an_unconfirmed_notice_times_out_sends_nothing_and_is_never_credited_late(tmp_path, monkeypatch) -> None:
+async def test_an_unconfirmed_notice_times_out_sends_nothing_and_is_never_counted_late(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(spec_module, "_NOTICE_FLUSH_TIMEOUT_SECONDS", 0.05)
     outbound = RecordingOutboundChannel()
     original = outbound.notify
