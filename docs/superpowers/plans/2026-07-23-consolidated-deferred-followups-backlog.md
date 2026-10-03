@@ -529,6 +529,12 @@ not repeat-100 evidence. Real Zed under the no-breakaway job remains untested; a
 Plan 11.24 establishing report is required before any future live drive. Those live
 boundaries remain open and are neither reopened nor closed here.
 
+**Deferred-work pickup (2026-10-03):** The open residuals now have explicit Plan 11.x
+entries: `P11-FU-38` (bounded joins/waits), `P11-FU-39` (timeout/capture cleanup class),
+`P11-FU-40` (real Zed containment) and `P11-FU-41` (job-binding consolidation). Their
+existing owners and evidence gates remain unchanged; this FU33 entry stays Closed.
+The establishing-report prerequisite stays solely with Plan 11.24's Task-13 gate.
+
 ### P11-FU-34: MAIN-5 settlement telemetry truth
 
 **Status:** Open.
@@ -564,6 +570,122 @@ association proposed, without a new dedicated backlog ID.
 prevention or supervisor signals. Separate origin evidence from child environment claims.
 If plants move, prove collection and lane partitions and retain the whole runner-file gate;
 no WP-27 port is implied.
+
+## Plan 11.x resource-lifetime and live-evidence residuals from FU33
+
+Raised 2026-10-03 at the operator's request to expose deferred work as open entries
+in this consolidated log. These residuals were identified during
+[Closed P11-FU-33](#p11-fu-33-main-5-shutdown-repeatability-evidence), delivered by
+[PR #219](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/219) and filed through
+[PR #220](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/220). The seed lists
+in that historical entry are not exhaustive class inventories. These entries preserve
+existing custody, historical failures and the default MEDIUM priority. They do not
+reopen FU33, change candidate/parent/Plan 12 statuses, commission implementation,
+allocate an implementation-plan number, or grant a live drive.
+
+### P11-FU-38: Bounded join and wait outcome classification
+
+**Status:** Open.
+**Origin:** FU33 named silent bounded joins in `NdjsonSubprocessSession.terminate()`
+and `PendingClientMcpCandidateEndpoint._stop_listener()`. The same NDJSON class's
+`_fail_subprocess_exited()` also suppresses a timed-out process wait and silently joins
+the stderr reader before constructing its diagnostic; the diagnostic can be partial.
+Reporting implementations already exist in the FU33 Redis completion paths and the
+MCP supervisor. These examples seed the class; they do not define its full scope.
+**Designated future plan / owner:** `P11.26-CAND-1-RESOURCE-LIFETIME`, existing lifecycle owner;
+separately owned product surfaces retain their existing owner and explicit disposition.
+**Trigger or acceptance criteria:** First record a source-derived inventory of every
+bounded join or wait in `src/` for a thread, process, task, loop or future owner
+to finish, including wrappers and failure/diagnostic paths. Polling and receive
+timeouts are excluded.
+For each site record its resource/callers/readers, timeout budget, silent versus
+reporting outcome, owner and disposition. Include the NDJSON failure-path wait/join,
+the local IPC consume worker, all FU33 Redis joins and the MCP supervisor; distinguish
+reporting a timeout from proving that the underlying owner has terminated.
+Use CAND-1's single lifecycle owner and bounded-completion contract: reconcile the
+existing reporting implementations and migrate all affected CAND-1 callers/readers,
+rather than adding a third pattern for the initially named sites. Any independently
+owned site needs a named existing custody entry and reviewed disposition, not omission.
+Exercise completion before the deadline and an owner retained after it; preserve
+self-stop/no-self-join behavior, idempotence and the primary failure/cancellation.
+Diagnostics must expose incomplete capture/cleanup safely, without presenting partial
+stderr as complete or turning a detected failure into a pass after a late join.
+Close only after every silent site has an explicit reviewed disposition and all
+required owned migrations have evidence; no unclassified or unowned silent site may
+disappear from the inventory. This does not close the lifecycle parent or H5 history.
+
+### P11-FU-39: Process-tree timeout and captured-pipe cleanup class
+
+**Status:** Open.
+**Origin:** FU33's seed sites were `tools/evidence_gather_support/acp.py::spawn_acpx`
+and Plan 9.96's ordinary capture in `tools/run_plan996_acpx_security_evidence.py`.
+The class also includes other explicit child-only termination paths and implicit
+termination in `subprocess.run(timeout=...)` with captured stdout/stderr. On Windows,
+CPython's timeout handler kills the direct child and calls `communicate()` without
+a timeout; a pipe-holding descendant can keep that drainage blocked. A timed captured
+run is a candidate for investigation, not automatically a confirmed defect.
+**Designated future plan / owner:** `P11.26-CAND-1-RESOURCE-LIFETIME` for Optimus runtime
+and its lifecycle tooling. Evidence-handoff sites retain their separate product owner;
+Plan 11.7 relay sites retain Plan 11.7 / `P11-FEAT-ZED-RESUME` live-owner custody.
+**Trigger or acceptance criteria:** First derive a class inventory across `src/`,
+`tools/` and `tests/` (including `tests/support`): explicit direct-child `kill`/`terminate` calls and wrappers, plus timed
+`subprocess.run` calls with captured pipes (including aliases and wrapper call sites).
+Record per site the launch/containment path, child type, whether a descendant can inherit
+and retain a pipe, termination/drain/wait/join budgets, evidence tier, exact owning
+backlog identity and disposition. Classify confirmed hazards, already tree-contained
+paths, safe/non-descendant cases, test-only controls and independently owned surfaces;
+Classify deliberate test-only kills as controls rather than automatically repairing
+them; record an owner for every test site under its existing custody. Justify each
+exclusion. Do not treat a heuristic scan count as a defect count or a
+complete inventory without source re-derivation and wrapper/caller inspection.
+Include the seed sites, ordinary versus drive-session capture, the redaction live-evidence
+tool, Plan 11.7 custody relay, `LocalGatewayProcess.stop`, `operator_verify`, the
+evidence-handoff service/process helpers and timed captured `acpx` launchers. Keep each
+evidence-handoff site with its existing product owner and each relay site with its live
+owner; file or link the necessary owning follow-up before excluding a site from CAND-1
+remediation. No separate product/parent status or active lane changes through this filing.
+For CAND-1-owned hazards, use the shared process-tree owner and migrate all affected
+callers with bounded termination, root reaping, pipe drainage and reader joins.
+Reconcile Plan 9.96's pinned plain-child premise and immutable evidence explicitly;
+ordinary capture and drive-session contracts remain distinct. Prove real descendant
+and inherited-pipe behavior on Windows and POSIX; retain initiating failures and
+explicit surviving-owner outcomes. Helper fakes alone cannot prove tree termination.
+Close only when every candidate has reviewed owner/disposition and each required owned
+repair or separately owned follow-up has evidence/custody; no unclassified site is lost.
+
+### P11-FU-40: Real Zed process containment and live-only tree-kill path
+
+**Status:** Open.
+**Origin:** Real Zed has not been tested inside the no-breakaway Windows job used by
+the new process-tree owner. `tests/investigation/evidence/test_zed_user_data_live.py`
+still terminates through `taskkill /T`; the reviewed Python stand-in is not real Zed
+compatibility evidence.
+**Designated future plan / owner:** `P11.26-CAND-1-RESOURCE-LIFETIME`, existing lifecycle owner;
+live evidence remains gated by Plan 11.24 and `P11.26-UNRUN-ZED`, without replacing them.
+**Trigger or acceptance criteria:** Before any live run, satisfy
+[Plan 11.24 v6's existing Task-13 establishing-report gate](2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md)
+and the existing binding, trusted-workspace, installed-artifact and operator-grant prerequisites. Review
+the live-only termination path against the shared process owner, then verify real Zed
+startup, supported ACP interaction and bounded timeout/teardown under the intended
+containment. Independently observe descendants, surviving processes and capture pipes;
+retain failures or incompatibility as non-passing evidence. Do not weaken no-breakaway
+policy, infer compatibility from a Python stand-in, or infer live acceptance from CI.
+
+### P11-FU-41: Windows job-object binding owner consolidation
+
+**Status:** Open.
+**Origin:** Main's `tools/process_tree.py` owns Windows job-object bindings; the separate
+parallel-test-context lane's `tools/testing/run_context_windows.py` contains another set
+and is not on main at this filing baseline.
+**Designated future plan / owner:** `P11.26-CAND-1-RESOURCE-LIFETIME`, existing lifecycle owner;
+coordinate the parallel-test-context owner without importing or changing its active lane.
+**Trigger or acceptance criteria:** When both deliveries are on main, inventory their
+callers and establish one shared native-binding owner, then migrate all callers. Preserve
+suspended-start/assign-before-resume ordering, error classification, handle custody,
+partial-resume cleanup, whole-tree termination and failure-preserving bounded reaping.
+Exercise real descendant trees and cleanup failures; demonstrate that consolidation
+retains the guarded test runner's attribution and protection contracts. Neither lane's
+independent acceptance is a consolidation pass; scheduling and implementation are separate.
 
 ## Plan 11.26 H4 verifier follow-ups from Seam 2 checkpoint A
 
@@ -699,6 +821,10 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | ~~`P11-FU-35`~~ | ~~MAIN-5 y5 correction port~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-ACP-RUNTIME-HARDENING`~~ | ~~Through [PR #217](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/217), merge `df70385`; merged tree equals tested `a219831`~~ |
 | `P11-FU-36` | MAIN-5 remaining guarded-runner mechanics | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
 | `P11-FU-37` | MAIN-5 Windows evidence-bundle promotion residual | Open | MEDIUM | `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` | Acceptance criteria in entry |
+| `P11-FU-38` | Bounded join and wait outcome classification | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria in entry; deferred from Closed FU33 |
+| `P11-FU-39` | Process-tree timeout and captured-pipe cleanup class | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria in entry; deferred from Closed FU33 |
+| `P11-FU-40` | Real Zed process containment and live-only tree-kill path | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria in entry; deferred from Closed FU33 |
+| `P11-FU-41` | Windows job-object binding owner consolidation | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria in entry; deferred from Closed FU33 |
 
 ## Evidence and handoff feature registry
 
