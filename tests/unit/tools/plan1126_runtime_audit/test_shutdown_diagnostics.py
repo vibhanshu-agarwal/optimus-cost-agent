@@ -194,3 +194,60 @@ def test_a_task_that_finishes_during_the_thread_diagnostic_join_stays_in_its_row
     assert "still_alive_after_join=no" in row.unexpected_persistent_threads[0]  # it finished during the join
     assert len(row.unexpected_persistent_tasks) == 1, row.unexpected_persistent_tasks
     assert row.unexpected_persistent_tasks[0].startswith("fu33-join-window-task | coro=")
+
+
+def test_a_thread_that_exits_during_the_task_scan_keeps_its_target_and_stack(monkeypatch):
+    """Codex re-review RR2: a detected thread is captured (target, identity, frames) together with its
+    detection, before the task scan. Here it exits exactly at the task-scan boundary; its row must still
+    carry its target and the frame it was in, not "<exited before it could be described>"."""
+    from types import SimpleNamespace
+
+    release = threading.Event()
+    started = threading.Event()
+    threads: list[threading.Thread] = []
+
+    def _short_lived_teardown() -> None:
+        started.set()
+        release.wait(10)
+
+    calls = {"count": 0}
+
+    def _probe(record, cause, *, source):  # noqa: ARG001 - signature of the real probe
+        calls["count"] += 1
+        if calls["count"] == 2:
+            thread = threading.Thread(target=_short_lived_teardown, name="fu33-short-lived-teardown", daemon=True)
+            thread.start()
+            threads.append(thread)
+            assert started.wait(10)
+        return 1, f"{cause}:prepared"
+
+    real_scan = shutdown._leftover_tasks
+
+    def _scan_during_which_the_thread_exits(baseline):
+        if threads and threads[0].is_alive():
+            release.set()
+            threads[0].join(5)
+            assert not threads[0].is_alive()
+        return real_scan(baseline)
+
+    monkeypatch.setattr(shutdown, "_probe_resource", _probe)
+    monkeypatch.setattr(shutdown, "_leftover_tasks", _scan_during_which_the_thread_exits)
+    observations: list[shutdown.ShutdownScheduleObservation] = []
+    shutdown._run_schedule(
+        observations,
+        [SimpleNamespace(close_path_id="h5-0000000000000001")],
+        3,
+        None,
+        ("MainThread",),
+        Counter(thread.name for thread in threading.enumerate()),
+    )
+
+    entries = observations[1].unexpected_persistent_threads
+    assert len(entries) == 1, entries
+    entry = entries[0]
+    assert entry.startswith("fu33-short-lived-teardown | daemon=True | target="), entry
+    assert "_short_lived_teardown" in entry.split(" | ")[2], entry
+    assert "in _short_lived_teardown" in entry, entry  # the frame it was in at detection
+    assert "exited before it could be described" not in entry, entry
+    assert "still_alive_after_join=no" in entry, entry
+    assert _CONTENT_FREE.match(entry), entry

@@ -341,15 +341,32 @@ def safe_view(value: Any, *, _depth: int = 0) -> str:
     prefixes, high-entropy tokens) and are truncated. Values under secret-named keys are
     ``<redacted>``; under command, environment, payload, stream or locals keys ``<withheld>``.
     Dataclasses show their fields under the same rules; any other object is ``<TypeName>`` and
-    its ``repr`` is never called. Depth and item counts are capped. A string that looks like an
-    ordinary identifier under an ordinary key cannot be told from one and is shown.
+    its ``repr`` is never called -- not even to order a set, and not through a ``str``/``int``
+    subclass's override. A value that cannot be projected at all is ``<TypeName unrenderable>``,
+    without the exception's text, so the report is never aborted. Depth and item counts are
+    capped. A string that looks like an ordinary identifier under an ordinary key cannot be told
+    from one and is shown.
     """
-    if value is None or isinstance(value, (bool, int, float)):
-        return repr(value)
+    try:
+        return _view(value, _depth)
+    except Exception:  # noqa: BLE001 - a projection never aborts the report or leaks its exception
+        return f"<{type(value).__name__} unrenderable>"
+
+
+def _view(value: Any, _depth: int) -> str:
+    if value is None:
+        return "None"
     if isinstance(value, enum.Enum):
         return f"{type(value).__name__}.{value.name}"
+    if isinstance(value, bool):
+        return "True" if value else "False"
+    # Base-type representations: a subclass's own __repr__ never runs.
+    if isinstance(value, int):
+        return int.__repr__(value)
+    if isinstance(value, float):
+        return float.__repr__(value)
     if isinstance(value, str):
-        return repr(_safe_text(value))
+        return repr(_safe_text(str.__str__(value)))
     if isinstance(value, (bytes, bytearray, memoryview)):
         return f"<{type(value).__name__} len={len(value)}>"
     if _depth >= _MAX_DEPTH:
@@ -360,12 +377,16 @@ def safe_view(value: Any, *, _depth: int = 0) -> str:
     if isinstance(value, Mapping):
         entries, more = _capped(list(value.items()))
         return "{" + ", ".join(f"{safe_view(k, _depth=_depth + 1)}: {_safe_entry(k, v, _depth)}" for k, v in entries) + more + "}"
-    if isinstance(value, (list, tuple, set, frozenset)):
-        items, more = _capped(sorted(value, key=repr) if isinstance(value, (set, frozenset)) else list(value))
+    if isinstance(value, (set, frozenset)):
+        # Render each member safely first, then order the safe strings (Codex re-review RR1).
+        rendered, more = _capped(sorted(safe_view(item, _depth=_depth + 1) for item in value))
+        return "{" + ", ".join(rendered) + more + "}"
+    if isinstance(value, (list, tuple)):
+        items, more = _capped(list(value))
         body = ", ".join(safe_view(item, _depth=_depth + 1) for item in items) + more
         if isinstance(value, tuple):
             return f"({body},)" if len(items) == 1 and not more else f"({body})"
-        return f"[{body}]" if isinstance(value, list) else "{" + body + "}"
+        return f"[{body}]"
     return f"<{type(value).__name__}>"
 
 
@@ -373,10 +394,13 @@ def _render_row(row: Any, fields: Sequence[str] | None) -> str:
     """One row under the credential-free policy; with ``fields``, only those that the row has."""
     if fields is None:
         return safe_view(row)
-    if isinstance(row, Mapping):
-        chosen = {field: row[field] for field in fields if field in row}
-    else:
-        chosen = {field: getattr(row, field) for field in fields if hasattr(row, field)}
+    try:
+        if isinstance(row, Mapping):
+            chosen = {field: row[field] for field in fields if field in row}
+        else:
+            chosen = {field: getattr(row, field) for field in fields if hasattr(row, field)}
+    except Exception:  # noqa: BLE001 - a projection never aborts the report or leaks its exception
+        return f"<{type(row).__name__} unrenderable>"
     return safe_view(chosen)
 
 

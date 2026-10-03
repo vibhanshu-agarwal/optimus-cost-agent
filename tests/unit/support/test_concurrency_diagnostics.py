@@ -8,6 +8,7 @@ report would not have named the cause is not done.
 from __future__ import annotations
 
 import asyncio
+import collections.abc
 import dataclasses
 import enum
 import subprocess
@@ -353,6 +354,69 @@ def test_safe_values_keep_their_identity_in_the_row_report():
         )
     report = str(caught.value)
     assert "('RecordA', 3, None, True, Classification.CANONICAL, 'src/x.py:12 in close')" in report, report
+
+
+class _ReprBomb:
+    """Codex re-review RR1: an object whose own repr must never run; it raises with the sentinel."""
+
+    calls = 0
+
+    def __repr__(self) -> str:
+        type(self).calls += 1
+        raise ValueError(_SENTINEL)
+
+
+class _LoudInt(int):
+    def __repr__(self) -> str:
+        _ReprBomb.calls += 1
+        raise ValueError(_SENTINEL)
+
+
+class _LoudStr(str):
+    def __repr__(self) -> str:
+        _ReprBomb.calls += 1
+        raise ValueError(_SENTINEL)
+
+
+@pytest.mark.parametrize("kind", [set, frozenset])
+@pytest.mark.parametrize("helper", ["no_offending_rows", "some_row"])
+@pytest.mark.parametrize("fields", [None, ("close_path_id", "members")])
+def test_collection_members_are_never_ordered_or_rendered_by_their_own_repr(kind, helper, fields):
+    """Codex re-review RR1: set ordering used repr(); members are now rendered safely, then sorted."""
+    _ReprBomb.calls = 0
+    rows = [{"close_path_id": "h5-set", "members": kind({_ReprBomb(), "alpha", 7, _LoudInt(5), _LoudStr("beta")})}]
+    with pytest.raises(AssertionError) as caught:
+        if helper == "no_offending_rows":
+            assert_no_offending_rows(rows, lambda _row: True, "rows", fields=fields)
+        else:
+            assert_some_row(rows, lambda _row: False, "rows", fields=fields)
+    report = str(caught.value)
+    assert _ReprBomb.calls == 0, "an object's own repr ran"
+    assert _SENTINEL not in report, report
+    for kept in ("h5-set", "'alpha'", "7", "5", "'beta'", "<_ReprBomb>"):
+        assert kept in report, (kept, report)
+
+
+class _BrokenMapping(collections.abc.Mapping):
+    """A mapping that cannot be projected at all: iterating it raises with the sentinel."""
+
+    def __getitem__(self, key):
+        raise KeyError(key)
+
+    def __iter__(self):
+        raise ValueError(_SENTINEL)
+
+    def __len__(self) -> int:
+        return 1
+
+
+def test_a_value_that_cannot_be_projected_is_marked_and_never_aborts_the_report():
+    with pytest.raises(AssertionError) as caught:
+        assert_no_offending_rows([{"close_path_id": "h5-broken", "state": _BrokenMapping()}], lambda _row: True, "rows")
+    report = str(caught.value)
+    assert _SENTINEL not in report, report
+    assert "'state': <_BrokenMapping unrenderable>" in report, report
+    assert "h5-broken" in report
 
 
 def test_a_missing_row_lists_the_candidates_that_did_not_match():
