@@ -44,6 +44,14 @@ def test_every_default_launch_site_is_mapped_to_a_proof() -> None:
         proof_file, _, proof_test = str(entry["proof"]).partition("::")
         assert proof_test.split("[")[0] in _defined_functions(proof_file), f"{key}: the proof test does not exist"
         assert entry["basis"], key
+        if entry["disposition"] == "literal_program":
+            # A literal `-c` program with no product import: it cannot reach the resolver.
+            command = str(found[key]["command"])
+            assert "'-c'" in command and "optimus" not in command and "tools" not in command, key
+        if entry["disposition"] == "posix_only_caller":
+            source = (_ROOT / str(found[key]["file"])).read_text(encoding="utf-8")
+            helper = source.index(f"    def {found[key]['function']}(")
+            assert 'os.name == "nt"' in source[max(0, helper - 1200):helper], f"{key}: the enclosing test does not skip on Windows"
         if entry["disposition"] == "runner_only_plant":
             # The plant really is skipped in an ordinary run, and its program is a literal.
             source = (_ROOT / str(found[key]["file"])).read_text(encoding="utf-8")

@@ -54,7 +54,8 @@ def per_site_table(
             else "helper" if not function.startswith("test_") else "not_collected"
         rows = by_site.get(key, [])
         tests = sorted({str(row.get("test", "")).split(" (")[0] for row in rows})
-        observed = [child for test in tests for child in by_test_children.get(test, []) if not child.get("is_pytest")]
+        # Every child attributed to those tests counts; the launching session's own row carries no test.
+        observed = [child for test in tests for child in by_test_children.get(test, [])]
         calls = sum(int(child.get("calls", 0)) for child in observed)
         hooked = all(bool(row.get("hook_env")) for row in rows) if rows else False
         if entry["disposition"] != "census":

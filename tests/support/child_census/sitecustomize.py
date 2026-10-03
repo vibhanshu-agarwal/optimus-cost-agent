@@ -59,8 +59,10 @@ if _directory and not getattr(sys, "_main5_guard_activated", False):
 
                 def exec_module(module):
                     execute(module)
-                    # A pytest process installs its own guard on this adapter; leave that one alone.
-                    if "pytest" not in sys.modules:
+                    # A pytest session installs its own guard on this adapter (its conftest imports the
+                    # guard module first); leave that one alone. Any other process is armed, whether
+                    # or not it happens to import pytest.
+                    if "tools.testing.run_context_guard" not in sys.modules:
                         module._real_windows_known_folders = _refuse
                     _note("trusted_paths_imported")
 

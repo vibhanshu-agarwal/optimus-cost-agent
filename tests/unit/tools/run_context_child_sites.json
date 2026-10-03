@@ -8,7 +8,9 @@
   "nested_pytest_passive": "The child is a pytest session that executes no repository test.",
   "native_helper_only": "The child imports only the native job helper.",
   "runner_only_plant": "The launch is skipped in an ordinary run.",
-  "non_python": "The launched program is not Python."
+  "non_python": "The launched program is not Python.",
+  "literal_program": "The launched program is a literal in the test that imports no product code; the map test checks the literal.",
+  "posix_only_caller": "The launch sits inside a test that skips on Windows; it is not reachable in the Windows default selection."
  },
  "sites": {
   "tests/integration/evidence/test_subprocess_truncation.py::_spawn_and_kill#1": {
@@ -151,9 +153,9 @@
   },
   "tests/unit/guardrails/test_ci_parity.py::test_terminate_tree_reaps_even_when_tree_kill_fails#1": {
    "mechanism": "python:inline_script",
-   "disposition": "census",
-   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
-   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The program is the literal `import time; time.sleep(300)`, killed by the test; it imports no product code."
   },
   "tests/unit/guardrails/test_local_secret_scan_encoding.py::_run_local_hook#1": {
    "mechanism": "indirect",
@@ -253,9 +255,9 @@
   },
   "tests/unit/tools/test_plan117_custody_relay.py::exited_child_popen#1": {
    "mechanism": "indirect",
-   "disposition": "census",
-   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
-   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+   "disposition": "posix_only_caller",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Defined inside a test that skips on Windows (`os.name == \"nt\"`); not reachable in the Windows default selection. On POSIX it launches the custody relay's child, which the relay's other sites show clean."
   },
   "tests/unit/tools/test_plan117_custody_relay.py::test_cli_main_parses_double_dash#1": {
    "mechanism": "python:inline_script",
@@ -343,15 +345,15 @@
   },
   "tests/unit/tools/test_run_context_targets.py::test_planted_run_target#1": {
    "mechanism": "python:inline_script",
-   "disposition": "census",
-   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
-   "basis": "Runs only inside a planted nested run: a literal sleep and a nested pytest."
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Runs only inside a planted nested run; the literal `import time; time.sleep(300)`."
   },
   "tests/unit/tools/test_run_context_targets.py::test_planted_run_target#2": {
    "mechanism": "python:nested_pytest",
-   "disposition": "census",
-   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
-   "basis": "Runs only inside a planted nested run: a literal sleep and a nested pytest."
+   "disposition": "nested_pytest",
+   "proof": "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
+   "basis": "Runs only inside a planted nested run; a nested default pytest on the held target."
   },
   "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::_assert_capture_timeout_terminates_tree#1": {
    "mechanism": "python:script_file",
