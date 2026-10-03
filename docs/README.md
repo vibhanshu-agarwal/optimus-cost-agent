@@ -80,6 +80,7 @@ Live plans (each listed in the backlog's live plan registry):
 |---|---|
 | [Plan 12.2: Context Engine](superpowers/plans/2026-10-01-plan-12-2-context-engine-implementation.md) | Complete contract derived from reviewed revision 5; Package A only selected |
 | [Plan 12.1: Plan/Chat advisory answers](superpowers/plans/2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | Selectable read-only Chat with conversation carriage |
+| [Plan 11.29: GitHub Issues migration](superpowers/plans/2026-10-04-plan-11-29-github-issues-migration.md) | Open work moves to GitHub Issues, shown in a live status page |
 | [Plan 11.7 v3: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | Resume an ACP session in Zed |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |
 | [Plan 11.24 v6: guided session-load probe](superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md) | Probe of Zed's `session/load` |
