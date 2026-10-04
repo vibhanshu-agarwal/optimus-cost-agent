@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from optimus.golden.tasks import load_golden_tasks
+from tests.support import child_tripwire
 from tests.support.gateway_settings import LOOPBACK_GATEWAY_URL
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -84,9 +85,11 @@ def test_release_cli_accepts_golden_results_path(tmp_path, monkeypatch):
     stdout_path = tmp_path / "stdout.txt"
     stderr_path = tmp_path / "stderr.txt"
 
+    # A tripwire loads at the child's start-up; arguments and the rest of the environment are unchanged.
+    tripwire_record = tmp_path / "child-tripwire.jsonl"
     exit_code = _run_release_cli_subprocess(
         argv=_release_cli_argv(results_path=results_path, scan_root=tmp_path),
-        env=env,
+        env=child_tripwire.hooked_environment(env, tripwire_record),
         stdout_path=stdout_path,
         stderr_path=stderr_path,
     )
@@ -95,6 +98,8 @@ def test_release_cli_accepts_golden_results_path(tmp_path, monkeypatch):
     report = json.loads(stdout_path.read_text(encoding="utf-8"))
     assert report["passed"] is True
     assert any(result["name"] == "golden-task-suite" and result["passed"] for result in report["results"])
+    # This ordinary child ran the real release CLI without ever asking for the real known folders.
+    child_tripwire.assert_no_real_adapter_access(tripwire_record)
 
 
 def test_release_cli_main_in_process(tmp_path, monkeypatch):

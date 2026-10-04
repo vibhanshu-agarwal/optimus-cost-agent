@@ -1,0 +1,480 @@
+{
+ "purpose": "Every default-selection test launch site that starts Python or passes a prepared command, with how its child is shown not to reach the real application folders. Kept complete by test_run_context_child_sites.py.",
+ "dispositions": {
+  "census": "Observed in an ordinary pytest run with the census hook: the child never asked for the real known folders. The census is an acceptance check at the candidate; its receipt names each test that launched a child.",
+  "tripwire_at_site": "The test loads the child tripwire before the child's own program and asserts zero real-adapter calls.",
+  "guard_built_by_test": "The test builds the child's environment to carry the MAIN-5 guard.",
+  "nested_pytest": "The child is a pytest session of this repository and applies the same run context to itself.",
+  "nested_pytest_passive": "The child is a pytest session that executes no repository test.",
+  "native_helper_only": "The child imports only the native job helper.",
+  "runner_only_plant": "The launch is skipped in an ordinary run.",
+  "non_python": "The launched program is not Python.",
+  "literal_program": "The command is `python -c <program> [data...]`: the interpreter, options that select no code, the inline flag, a program that is a literal or a string constant of the module, then data; the program imports only os, sys and time and evaluates nothing, so it cannot reach the resolver. The map test reads the command in that order.",
+  "reviewed_program": "The launched program is assembled at run time by a named helper from reviewed pieces; a site-specific executable proof in test_run_context_reviewed_programs.py regenerates it with synthetic inputs, checks every statement against the reviewed shapes, runs its file-writing part in isolation, binds the helper's source and every reachable tail, and rejects any other construction. The proof names the site in PROVEN_SITES.",
+  "posix_only_caller": "The launch sits inside a test that skips on Windows; it is not reachable in the Windows default selection."
+ },
+ "sites": {
+  "tests/integration/evidence/test_subprocess_truncation.py::_spawn_and_kill#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `_WRITER` program (file writes and sleeps, no product import), terminated by the test before it can exit; a census child row therefore stays start-only."
+  },
+  "tests/integration/mcp/test_client_mcp_live.py::_list_tools_via_stdio#1": {
+   "mechanism": "indirect",
+   "disposition": "non_python",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Launches docker."
+  },
+  "tests/integration/mcp/test_client_mcp_live.py::_list_tools_via_stdio#2": {
+   "mechanism": "indirect",
+   "disposition": "non_python",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Launches docker."
+  },
+  "tests/integration/release/test_phase1_release_gate_cli.py::_run_release_cli_subprocess#1": {
+   "mechanism": "python:script_file",
+   "disposition": "tripwire_at_site",
+   "proof": "tests/integration/release/test_phase1_release_gate_cli.py::test_release_cli_accepts_golden_results_path",
+   "basis": "Tripwire loaded at start-up in the real release CLI child; zero real-adapter calls asserted."
+  },
+  "tests/unit/acp/test_main5_guard.py::_guarded_probe#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "guard_built_by_test",
+   "proof": "tests/unit/acp/test_main5_guard.py::test_real_known_folder_adapter_is_refused_and_recorded",
+   "basis": "The test replaces PYTHONPATH with the MAIN-5 guard's startup folder; the child refuses the real adapter itself."
+  },
+  "tests/unit/acp/test_main5_guard.py::test_ambiguous_directory_descriptor_is_refused_and_recorded#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "guard_built_by_test",
+   "proof": "tests/unit/acp/test_main5_guard.py::test_real_known_folder_adapter_is_refused_and_recorded",
+   "basis": "The test replaces PYTHONPATH with the MAIN-5 guard's startup folder; the child refuses the real adapter itself."
+  },
+  "tests/unit/acp/test_main5_guard.py::test_audit_guard_allows_pipe_file_descriptors#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "guard_built_by_test",
+   "proof": "tests/unit/acp/test_main5_guard.py::test_real_known_folder_adapter_is_refused_and_recorded",
+   "basis": "The test replaces PYTHONPATH with the MAIN-5 guard's startup folder; the child refuses the real adapter itself."
+  },
+  "tests/unit/acp/test_main5_guard.py::test_explicit_fake_known_folder_adapter_succeeds_without_violation#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "guard_built_by_test",
+   "proof": "tests/unit/acp/test_main5_guard.py::test_real_known_folder_adapter_is_refused_and_recorded",
+   "basis": "The test replaces PYTHONPATH with the MAIN-5 guard's startup folder; the child refuses the real adapter itself."
+  },
+  "tests/unit/acp/test_main5_guard.py::test_failed_guard_startup_stops_child#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "guard_built_by_test",
+   "proof": "tests/unit/acp/test_main5_guard.py::test_real_known_folder_adapter_is_refused_and_recorded",
+   "basis": "The test replaces PYTHONPATH with the MAIN-5 guard's startup folder; the child refuses the real adapter itself."
+  },
+  "tests/unit/acp/test_main5_guard.py::test_guard_exits_if_lazy_adapter_patch_is_skipped#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "guard_built_by_test",
+   "proof": "tests/unit/acp/test_main5_guard.py::test_real_known_folder_adapter_is_refused_and_recorded",
+   "basis": "The test replaces PYTHONPATH with the MAIN-5 guard's startup folder; the child refuses the real adapter itself."
+  },
+  "tests/unit/acp/test_main5_guard.py::test_guard_refusal_row_has_fixed_code_and_process_identity_only#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "guard_built_by_test",
+   "proof": "tests/unit/acp/test_main5_guard.py::test_real_known_folder_adapter_is_refused_and_recorded",
+   "basis": "The test replaces PYTHONPATH with the MAIN-5 guard's startup folder; the child refuses the real adapter itself."
+  },
+  "tests/unit/acp/test_main5_guard.py::test_real_known_folder_adapter_is_refused_and_recorded#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "guard_built_by_test",
+   "proof": "tests/unit/acp/test_main5_guard.py::test_real_known_folder_adapter_is_refused_and_recorded",
+   "basis": "The test replaces PYTHONPATH with the MAIN-5 guard's startup folder; the child refuses the real adapter itself."
+  },
+  "tests/unit/acp/test_main5_guard.py::test_suppressed_write_violation_is_recorded_without_writing#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "guard_built_by_test",
+   "proof": "tests/unit/acp/test_main5_guard.py::test_real_known_folder_adapter_is_refused_and_recorded",
+   "basis": "The test replaces PYTHONPATH with the MAIN-5 guard's startup folder; the child refuses the real adapter itself."
+  },
+  "tests/unit/acp/test_plan1126_queue_policy.py::_child_case#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/acp/test_plan1126_shutdown.py::_child_case#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/acp/test_server_reader_ownership.py::test_seam4_b2_teardown_completes_in_a_child_while_the_parent_holds_stdin_open#1": {
+   "mechanism": "python:script_file",
+   "disposition": "tripwire_at_site",
+   "proof": "tests/unit/acp/test_server_reader_ownership.py::test_seam4_b2_teardown_completes_in_a_child_while_the_parent_holds_stdin_open",
+   "basis": "Tripwire loaded first in the real ACP server child; zero real-adapter calls asserted."
+  },
+  "tests/unit/acp/test_stdio_ndjson.py::test_main5_runner_base_interpreter_probe#1": {
+   "mechanism": "indirect",
+   "disposition": "runner_only_plant",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Skips unless the MAIN-5 runner sets MAIN5_RUNNER_PROBE; not launched in an ordinary run. The program is a literal."
+  },
+  "tests/unit/acp/test_stdio_ndjson.py::test_main5_runner_combined_no_site_probe#1": {
+   "mechanism": "python:script_file",
+   "disposition": "runner_only_plant",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Skips unless the MAIN-5 runner sets MAIN5_RUNNER_PROBE; not launched in an ordinary run. The program is a literal."
+  },
+  "tests/unit/acp/test_stdio_ndjson.py::test_main5_runner_guard_exit_86_probe#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "runner_only_plant",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Skips unless the MAIN-5 runner sets MAIN5_RUNNER_PROBE; not launched in an ordinary run. The program is a literal."
+  },
+  "tests/unit/acp/test_stdio_ndjson.py::test_main5_runner_guarded_pair_probe#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "runner_only_plant",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Skips unless the MAIN-5 runner sets MAIN5_RUNNER_PROBE; not launched in an ordinary run. The program is a literal."
+  },
+  "tests/unit/acp/test_stdio_ndjson.py::test_main5_runner_no_site_probe#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "runner_only_plant",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Skips unless the MAIN-5 runner sets MAIN5_RUNNER_PROBE; not launched in an ordinary run. The program is a literal."
+  },
+  "tests/unit/acp/test_stdio_ndjson.py::test_main5_runner_version_probe#1": {
+   "mechanism": "python:script_file",
+   "disposition": "runner_only_plant",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Skips unless the MAIN-5 runner sets MAIN5_RUNNER_PROBE; not launched in an ordinary run. The program is a literal."
+  },
+  "tests/unit/guardrails/test_ci_parity.py::_run#1": {
+   "mechanism": "indirect",
+   "disposition": "non_python",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Launches bash CI scripts in a temporary repository; started through tools.process_tree.popen so a timeout ends the whole tree (P11-FU-33)."
+  },
+  "tests/unit/guardrails/test_ci_parity.py::test_terminate_tree_reaps_even_when_tree_kill_fails#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `import time; time.sleep(300)` program, started through tools.process_tree.popen and terminated by the test; it imports no product code."
+  },
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::_run_local_hook#1": {
+   "mechanism": "indirect",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_process_without_utf8_flag_refuses#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_environment_record_for_this_boundary#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_historical_reader_omits_cp1252_undecodable_text#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_historical_reader_omits_cp1252_undecodable_text#2": {
+   "mechanism": "python:inline_script",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_historical_reader_omits_invalid_utf8_even_in_utf8_mode#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/optimus_gateway/test_request_body_rejection.py::_run_child_with_watchdog#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "tripwire_at_site",
+   "proof": "tests/unit/optimus_gateway/test_request_body_rejection.py::test_stalled_client_with_production_defaults_completes_under_external_watchdog",
+   "basis": "Tripwire loaded at start-up in the gateway child, finished or killed; zero real-adapter calls asserted."
+  },
+  "tests/unit/support/test_concurrency_diagnostics.py::_announcing_child#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "reviewed_program",
+   "proof": "tests/unit/tools/test_run_context_reviewed_programs.py::test_the_announcing_child_runs_only_the_reviewed_announce_and_sleep",
+   "basis": "The program is announce_pid_code(directory, role) + '; ' + then, where every reachable `then` is a literal `import time; time.sleep(<number>)`; the proof binds the helper's source and every call, regenerates the program with a synthetic directory, checks each statement and runs the announce prefix in isolation. Four of the five tests kill the sleeping child, so its census row stays start-only; the census at the integration candidate recorded 4 child_incomplete and 1 clean verdicts, retained as observations (P11-FU-33 site inherited from main)."
+  },
+  "tests/unit/support/test_concurrency_diagnostics.py::test_a_running_process_is_reported_by_pid_without_its_command_line#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `import time; time.sleep(30)` program followed by one data argument (the marker, which the program never reads); killed by the test, so its census row stays unobserved (recorded at the integration candidate as child_unobserved, retained as an observation). It imports no product code (P11-FU-33 site inherited from main)."
+  },
+  "tests/unit/support/test_concurrency_diagnostics.py::test_a_watched_process_is_pinned_and_reports_its_exit#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `import sys, time; time.sleep(0.3); sys.exit(3)` program imports no product code; the map test checks the literal (P11-FU-33 site inherited from main, 2026-10-03)."
+  },
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::_child_case#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::_cli#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_fresh_child_executes_verified_source_not_stale_bytecode#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_cli_script_runs_directly_from_outside_repository#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::_child_case#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_debug_trace_message_rule.py::_scan#1": {
+   "mechanism": "indirect",
+   "disposition": "non_python",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Launches the configured hook binary."
+  },
+  "tests/unit/tools/test_debug_trace_message_rule.py::test_fresh_process_resolves_then_scans_without_shell_path#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_git_env_immunity.py::_run_contaminated_pytest#2": {
+   "mechanism": "indirect",
+   "disposition": "nested_pytest_passive",
+   "proof": "tests/unit/tools/test_run_context_boundaries.py::test_a_selection_that_is_not_the_approved_default_runs_passive",
+   "basis": "Nested pytest of a temporary project with a rebuilt PYTHONPATH: another root, so passive; its one test runs git only."
+  },
+  "tests/unit/tools/test_plan1126_unrun_binding.py::_collected_target_nodeids#1": {
+   "mechanism": "python:nested_pytest",
+   "disposition": "nested_pytest_passive",
+   "proof": "tests/unit/tools/test_run_context_boundaries.py::test_a_selection_that_is_not_the_approved_default_runs_passive",
+   "basis": "Collection-only nested pytest: executes no test, installs nothing."
+  },
+  "tests/unit/tools/test_plan117_custody_relay.py::exited_child_popen#1": {
+   "mechanism": "indirect",
+   "disposition": "posix_only_caller",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Defined inside a test that skips on Windows (`os.name == \"nt\"`); not reachable in the Windows default selection. On POSIX it launches the custody relay's child, which the relay's other sites show clean."
+  },
+  "tests/unit/tools/test_plan117_custody_relay.py::test_cli_main_parses_double_dash#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_plan117_custody_relay.py::test_cli_relay_only_args_never_reach_child#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_process_tree.py::test_a_child_that_cannot_be_contained_never_runs_and_the_error_is_raised#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "reviewed_program",
+   "proof": "tests/unit/tools/test_run_context_reviewed_programs.py::test_the_marker_program_only_creates_its_marker_under_the_synthetic_directory",
+   "basis": "The program is the f-string `open(<tmp_path/ran>!r, 'w').close()`; the proof binds the test's marker assignment and f-string parts, renders it with a synthetic directory, checks the single statement and runs it in isolation. The test refuses the job assignment, so the suspended child never runs (Windows-only test)."
+  },
+  "tests/unit/tools/test_process_tree.py::test_a_cleanup_failure_is_attached_to_the_initiating_error_and_the_root_is_still_reaped#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `pass` program, started through tools.process_tree.popen with resume and job termination both injected to fail (Windows-only test)."
+  },
+  "tests/unit/tools/test_process_tree.py::test_a_failure_after_the_child_ran_kills_its_whole_tree_and_keeps_the_error#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "reviewed_program",
+   "proof": "tests/unit/tools/test_run_context_reviewed_programs.py::test_descendant_trees_announce_sleep_and_spawn_only_reviewed_programs",
+   "basis": "The program is descendant_tree(tmp_path, 'middle-exited'), proven by the same descendant-tree proof; the tree is killed by the post-resume failure path under test (Windows-only test)."
+  },
+  "tests/unit/tools/test_process_tree.py::test_a_tree_child_runs_normally_and_keeps_the_callers_arguments#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `import os, sys; print(os.getcwd()); sys.exit(7)` program, started through tools.process_tree.popen; it imports no product code."
+  },
+  "tests/unit/tools/test_process_tree.py::test_kill_tree_after_the_whole_tree_exited_is_harmless#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `pass` program, started through tools.process_tree.popen."
+  },
+  "tests/unit/tools/test_process_tree.py::test_kill_tree_kills_every_descendant_including_ones_no_parent_walk_reaches#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "reviewed_program",
+   "proof": "tests/unit/tools/test_run_context_reviewed_programs.py::test_descendant_trees_announce_sleep_and_spawn_only_reviewed_programs",
+   "basis": "The program is descendant_tree(tmp_path, shape): members announce their pid under the test's directory, sleep, pass or spawn another reviewed member; the proof regenerates every shape, checks each member recursively and runs the announce prefix in isolation. The tree is killed by the test, so census rows stay start-only."
+  },
+  "tests/unit/tools/test_process_tree.py::test_kill_tree_refuses_a_process_it_did_not_start#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `import time; time.sleep(30)` program imports no product code and is killed by the test; the map test checks the literal (P11-FU-33 site inherited from main, 2026-10-03)."
+  },
+  "tests/unit/tools/test_process_tree.py::test_popen_refuses_to_share_the_callers_session#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "posix_only_caller",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The launch sits inside a test that skips on Windows; on POSIX the wrapper refuses start_new_session=False before any process is started."
+  },
+  "tests/unit/tools/test_run_context.py::_nested#1": {
+   "mechanism": "python:nested_pytest",
+   "disposition": "nested_pytest",
+   "proof": "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
+   "basis": "Nested pytest of this repository: an active child guards itself; a passive one executes the no-op target."
+  },
+  "tests/unit/tools/test_run_context_boundaries.py::_probe#1": {
+   "mechanism": "python:nested_pytest",
+   "disposition": "nested_pytest",
+   "proof": "tests/unit/tools/test_run_context_boundaries.py::test_a_selection_that_is_not_the_approved_default_runs_passive",
+   "basis": "Selection probes on the synthetic target."
+  },
+  "tests/unit/tools/test_run_context_boundaries.py::_tripwire_child#1": {
+   "mechanism": "python:script_file",
+   "disposition": "tripwire_at_site",
+   "proof": "tests/unit/tools/test_run_context_boundaries.py::test_the_child_tripwire_records_and_refuses_a_real_adapter_request",
+   "basis": "The tripwire's own sensitivity children; the real adapter is replaced before any call."
+  },
+  "tests/unit/tools/test_run_context_boundaries.py::test_a_forged_registry_entry_never_reaches_a_record_or_the_terminal#1": {
+   "mechanism": "python:nested_pytest",
+   "disposition": "nested_pytest",
+   "proof": "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
+   "basis": "Nested default pytest on the no-op target."
+  },
+  "tests/unit/tools/test_run_context_boundaries.py::test_a_job_name_that_already_exists_is_rejected_without_changing_that_job#1": {
+   "mechanism": "python:script_file",
+   "disposition": "native_helper_only",
+   "proof": "tests/unit/tools/test_run_context_boundaries.py::test_a_job_name_that_already_exists_is_rejected_without_changing_that_job",
+   "basis": "The script imports the native helper only; PYTHONPATH is replaced with the repository root."
+  },
+  "tests/unit/tools/test_run_context_boundaries.py::test_a_tripwire_that_is_missing_or_late_never_counts_as_a_clean_child#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "tripwire_at_site",
+   "proof": "tests/unit/tools/test_run_context_boundaries.py::test_the_child_tripwire_records_and_refuses_a_real_adapter_request",
+   "basis": "A child that stops at the unconfigured tripwire before running any program."
+  },
+  "tests/unit/tools/test_run_context_boundaries.py::test_live_state_does_not_depend_on_the_exit_code#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `import os; os._exit(259)`: exits without atexit, so a census child row stays start-only."
+  },
+  "tests/unit/tools/test_run_context_boundaries.py::test_live_state_does_not_depend_on_the_exit_code#2": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `import time; time.sleep(120)`, killed by the test at once, before the hook can write a row."
+  },
+  "tests/unit/tools/test_run_context_child_sites.py::_census_child#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "tripwire_at_site",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "The census hook's own sensitivity children; the real adapter is replaced before any call."
+  },
+  "tests/unit/tools/test_run_context_lifecycle.py::_nested#1": {
+   "mechanism": "python:nested_pytest",
+   "disposition": "nested_pytest",
+   "proof": "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
+   "basis": "Nested pytest on the synthetic targets."
+  },
+  "tests/unit/tools/test_run_context_lifecycle.py::_plant#1": {
+   "mechanism": "indirect",
+   "disposition": "nested_pytest",
+   "proof": "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
+   "basis": "Planted nested default pytest."
+  },
+  "tests/unit/tools/test_run_context_lifecycle.py::test_a_second_default_session_reuses_the_job_and_a_passive_one_is_refused#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "nested_pytest",
+   "proof": "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
+   "basis": "pytest.main in a child interpreter: the same conftest guards it."
+  },
+  "tests/unit/tools/test_run_context_targets.py::test_planted_run_target#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Runs only inside a planted nested run; the literal `import time; time.sleep(300)`."
+  },
+  "tests/unit/tools/test_run_context_targets.py::test_planted_run_target#2": {
+   "mechanism": "python:nested_pytest",
+   "disposition": "nested_pytest",
+   "proof": "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
+   "basis": "Runs only inside a planted nested run; a nested default pytest on the held target."
+  },
+  "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::_assert_capture_timeout_terminates_tree#1": {
+   "mechanism": "python:script_file",
+   "disposition": "tripwire_at_site",
+   "proof": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_capture_timeout_terminates_parent_and_descendant_in_an_isolated_probe",
+   "basis": "Tripwire loaded first in the real capture probe child; zero real-adapter calls asserted."
+  },
+  "tests/unit/tools/test_verify_masterplan_impact.py::_run_verifier#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_verify_masterplan_impact.py::test_event_body_is_read_as_data_without_shell_interpolation#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_verify_plan117_custody_feasibility.py::test_cli_prints_canonical_summary_and_nonzero_on_failure#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_verify_plan117_custody_feasibility.py::test_cli_prints_canonical_summary_and_nonzero_on_failure#2": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_verify_plan117_custody_feasibility.py::test_cli_task5_checkpoint_option#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_verify_plan987_acpx_evidence.py::test_cli_digest_gate_rejects_non_lowercase_or_non_sha256_value#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_verify_plan987_acpx_evidence.py::test_cli_digest_gate_rejects_non_lowercase_or_non_sha256_value#2": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_verify_plan987_acpx_evidence.py::test_post_capture_verifier_is_directly_executable#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  }
+ }
+}

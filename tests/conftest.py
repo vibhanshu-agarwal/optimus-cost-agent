@@ -23,13 +23,30 @@ from tools.plan1126_unrun_binding import (
     scopeout_nodeids,
     scopeout_reason,
 )
+from tools.testing import run_context, run_context_guard
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _PLAN1126_UNRUN_COUNT: pytest.StashKey[int] = pytest.StashKey()
+_RUN_CONTEXT: pytest.StashKey[run_context.RunContext] = pytest.StashKey()
+_RUN_CONTEXT_FINAL: pytest.StashKey[dict[str, object]] = pytest.StashKey()
+_RUN_CONTEXT_DESELECTED: list[str] = []
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--test-run-context",
+        dest=run_context.OPTION_DEST,
+        choices=("auto", "passive"),
+        default="auto",
+        help="auto: own a job and guard real folders for the default selection; passive: record only.",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
     config.stash[_PLAN1126_UNRUN_COUNT] = 0
+    # Before collection: an active default-selection session owns its processes and is guarded
+    # against the real application folders from here on. Any other selection is only recorded.
+    config.stash[_RUN_CONTEXT] = run_context.start_run(config)
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -47,6 +64,29 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     config.stash[_PLAN1126_UNRUN_COUNT] = len(selected)
 
 
+def pytest_deselected(items: list[pytest.Item]) -> None:
+    _RUN_CONTEXT_DESELECTED.extend(item.nodeid for item in items)
+
+
+def pytest_collection_finish(session: pytest.Session) -> None:
+    context = session.config.stash.get(_RUN_CONTEXT, None)
+    if context is not None:
+        run_context.record_collection(context, [item.nodeid for item in session.items], list(_RUN_CONTEXT_DESELECTED))
+    _RUN_CONTEXT_DESELECTED.clear()
+
+
+def pytest_collectreport(report: pytest.CollectReport) -> None:
+    context = run_context.current()
+    if context is not None and report.failed:
+        run_context.record_collection_error(context)
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    context = run_context.current()
+    if context is not None:
+        run_context.record_phase(context, report)
+
+
 def pytest_terminal_summary(
     terminalreporter: pytest.TerminalReporter,
     exitstatus: int,
@@ -56,6 +96,9 @@ def pytest_terminal_summary(
     skipped_count = config.stash[_PLAN1126_UNRUN_COUNT]
     if skipped_count:
         terminalreporter.write_sep("=", format_terminal_summary(skipped_count))
+    context = config.stash.get(_RUN_CONTEXT, None)
+    if context is not None:
+        terminalreporter.write_sep("=", run_context.summary_line(context, config.stash.get(_RUN_CONTEXT_FINAL, None)))
 
 _INHERITED_GIT_ENV: dict[str, str] = {}
 
@@ -82,6 +125,19 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """Restore whatever `pytest_sessionstart` removed; leave no trace in the parent."""
     os.environ.update(_INHERITED_GIT_ENV)
     _INHERITED_GIT_ENV.clear()
+    context = session.config.stash.get(_RUN_CONTEXT, None)
+    if context is not None:
+        session.config.stash[_RUN_CONTEXT_FINAL] = run_context.finish_run(context, int(exitstatus))
+
+
+@pytest.fixture(autouse=True)
+def _default_trusted_root_isolation(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """In an active run, a test that passes no folders gets its own synthetic ones, never real roots."""
+    context = request.config.stash.get(_RUN_CONTEXT, None)
+    if context is None or context.guard_mode != "pytest_process_guard":
+        return
+    session_root = request.getfixturevalue("tmp_path_factory").getbasetemp() / "known-folders"
+    run_context_guard.redirect_for_test(monkeypatch, session_root, request.node.nodeid)
 
 
 @pytest.fixture(scope="session", autouse=True)

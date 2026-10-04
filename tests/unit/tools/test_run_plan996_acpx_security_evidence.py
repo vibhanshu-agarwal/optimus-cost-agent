@@ -18,6 +18,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.support import child_tripwire
+
 pytestmark = pytest.mark.usefixtures("isolated_windows_known_folders")
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -2133,6 +2135,7 @@ def _assert_capture_timeout_terminates_tree(
     target_path = tmp_path / "sleeping-parent.py"
     duration_path = tmp_path / "capture-duration.json"
     tree_exit_path = tmp_path / "tree-exit.json"
+    tripwire_record = tmp_path / "child-tripwire.jsonl"
     repo_root = Path(__file__).resolve().parents[3]
     target_path.write_text(
         textwrap.dedent(
@@ -2155,7 +2158,8 @@ def _assert_capture_timeout_terminates_tree(
         encoding="utf-8",
     )
     probe_path.write_text(
-        textwrap.dedent(
+        child_tripwire.PRELUDE  # runs before the probe's own imports; the launch is otherwise unchanged
+        + textwrap.dedent(
             f"""
             import ctypes
             import json
@@ -2232,7 +2236,7 @@ def _assert_capture_timeout_terminates_tree(
     probe = subprocess.Popen(
         [sys.executable, str(probe_path)],
         cwd=repo_root,
-        env={**os.environ, "PYTHONPATH": str(repo_root)},
+        env=child_tripwire.environment({**os.environ, "PYTHONPATH": str(repo_root)}, tripwire_record),
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
     )
     pids: dict[str, int] = {}
@@ -2250,6 +2254,8 @@ def _assert_capture_timeout_terminates_tree(
     assert json.loads(tree_exit_path.read_text(encoding="utf-8")) == {"parent": 0, "descendant": 0}
     capture_seconds = json.loads(duration_path.read_text(encoding="utf-8"))["capture_seconds"]
     assert capture_seconds < 10.0, f"capture exceeded its 10-second shutdown budget: {capture_seconds:.3f}s"
+    # This ordinary child ran the real capture path without ever asking for the real known folders.
+    child_tripwire.assert_no_real_adapter_access(tripwire_record)
     return capture_seconds
 
 

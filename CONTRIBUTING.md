@@ -108,6 +108,52 @@ git worktree prune
 - Agents must ask at task start whether to create a new worktree and branch (see
   `AGENTS.md`).
 
+### Parallel test runs
+
+Follow [Parallel tests and evidence attribution](AGENTS.md#parallel-tests-and-evidence-attribution)
+and the [Plan 11.28 governing design](docs/superpowers/specs/2026-10-02-plan-11-28-parallel-local-test-context-design.md).
+Use separate worktrees and environments for concurrent coverage-producing commands, with
+one coverage writer per worktree, including commit hooks. Preserve the current live-registry
+holds; these examples do not release workflow activation or cleanup.
+
+Prepare each worktree's environment before starting measured runs. Native Windows and
+WSL/Linux use separate environments; do not sync or replace an environment while its tests run:
+
+```bash
+uv sync --frozen --extra dev
+```
+
+From that worktree, use its prepared environment without another sync. A full default-selection
+coverage run is:
+
+```bash
+uv run --no-sync pytest --cov=optimus --cov-branch --cov-report=term-missing
+```
+
+For a focused run that must not write coverage, for example:
+
+```bash
+uv run --no-sync pytest --no-cov tests/unit/tools/test_run_context.py
+```
+
+The focused example does not satisfy a required coverage gate. Keep the repository's normal
+configuration and marker selection; do not clear `addopts` merely to run a focused subset.
+Record these identities before and after each reviewed run, alongside its exact command,
+platform/environment, exit status, output and run-context records:
+
+```bash
+git rev-parse --show-toplevel
+git branch --show-current
+git rev-parse HEAD
+git status --porcelain=v1 --untracked-files=all
+```
+
+Keep the measured acceptance checkout unchanged and check the emitted context mode,
+protection/native validity and evidence completeness. A passing pytest exit alone is insufficient.
+Archive and hash required evidence before temporary run-record retention or authorized cleanup
+can remove it. Follow the shared rules for provisional dirty-tree evidence, skips, UNKNOWN
+observations and weaker WSL/Linux capabilities.
+
 ## Test-Driven Development and Commits
 
 ### Agents

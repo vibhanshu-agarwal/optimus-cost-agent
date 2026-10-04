@@ -36,6 +36,7 @@ import pytest
 from optimus.acp import server
 from optimus.acp.server import StdioNdjsonLineReader
 from tests.integration.acp.test_server_stream import configured_test_agent_server
+from tests.support import child_tripwire
 
 TEARDOWN_BOUND_SECONDS = 5.0
 SETTLE_BOUND_SECONDS = 5.0
@@ -720,11 +721,14 @@ def test_seam4_b2_teardown_completes_in_a_child_while_the_parent_holds_stdin_ope
     workspace = tmp_path / "ws"
     workspace.mkdir()
     script = tmp_path / "b2_child.py"
-    script.write_text(_B2_CHILD_SCRIPT, encoding="utf-8")
+    # The tripwire line runs before the child's own imports; the launch below is otherwise unchanged.
+    script.write_text(child_tripwire.PRELUDE + _B2_CHILD_SCRIPT, encoding="utf-8")
+    tripwire_record = tmp_path / "child-tripwire.jsonl"
 
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join([str(repo_root / "src"), str(repo_root)])
     env.pop("PYTEST_ADDOPTS", None)
+    env = child_tripwire.environment(env, tripwire_record)
 
     proc = subprocess.Popen(
         [sys.executable, str(script), str(workspace)],
@@ -792,3 +796,5 @@ def test_seam4_b2_teardown_completes_in_a_child_while_the_parent_holds_stdin_ope
             assert killed, "the child had to be killed; that is never a passing result"
         for thread in threads:
             thread.join(timeout=SETTLE_BOUND_SECONDS)
+    # This ordinary child ran the real server without ever asking for the real known folders.
+    child_tripwire.assert_no_real_adapter_access(tripwire_record)

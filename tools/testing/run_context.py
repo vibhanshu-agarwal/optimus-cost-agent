@@ -1,0 +1,651 @@
+"""Run context for pytest: which run this is, what it owns, and what else was running.
+
+Test tooling only, loaded from `tests/conftest.py`. Importing it has no side effects. A session
+that uses the unchanged default marker selection (including a focused subset of it) is ACTIVE: on
+Windows it owns a new job object and the pytest process is guarded against the real application
+folders. Every other session is PASSIVE: it is recorded, and nothing else about it changes.
+
+The context creates no thread, timer or helper process. It never reads a command line and never
+opens another run's job.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import os
+import secrets
+import sys
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+
+from tools.testing import run_context_guard as guard
+from tools.testing import run_context_records as records
+from tools.testing import run_context_windows as native
+
+OPTION_DEST = "test_run_context"
+ACTIVE = "active"
+PASSIVE = "passive"
+UNKNOWN = "UNKNOWN"
+
+# The approved default selection, frozen here on purpose. A session's own configuration can be
+# replaced from the command line, the environment or another config file, so it is never the
+# comparator. A guardrail test keeps this list equal to the repository's pyproject.toml.
+EXCLUDED_BY_DEFAULT = (
+    "requires_redis", "requires_gateway", "requires_mcp_http", "requires_mcp_stdio", "e2e", "requires_live_gateway",
+    "requires_phoenix", "requires_os_keyring", "requires_os_keyring_write", "requires_acpx", "requires_zed",
+    "requires_windows_desktop", "evidence_investigation", "requires_evidence_handoff_postgres",
+    "requires_evidence_handoff_service", "requires_real_agents",
+)
+APPROVED_DEFAULT_MARKER_EXPRESSION = " and ".join(f"not {name}" for name in EXCLUDED_BY_DEFAULT)
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+
+
+# Frozen ceilings on one run's streams. A stream that reaches its ceiling stops and the record says so.
+MAX_STREAM_RECORDS = {"nodes": 40_000, "phases": 60_000, "samples": 5_000}
+# Entries whose append failed for a reason outside the entry itself wait here for the next append.
+MAX_PENDING_ENTRIES = 2_000
+
+
+@dataclass
+class RunContext:
+    run_id: str
+    mode: str
+    reason: str
+    record_dir: Path
+    started_utc: str
+    worktree: str
+    branch: str | None = None
+    head: str | None = None
+    declared_agent: str | None = None
+    root: dict[str, object] = field(default_factory=dict)
+    root_parent: dict[str, object] = field(default_factory=dict)
+    parent_run: dict[str, object] = field(default_factory=dict)
+    native: dict[str, object] = field(default_factory=dict)
+    guard_mode: str = "not_installed"
+    session_index: int = 1
+    started_monotonic: float = 0.0
+    started_wall: float = 0.0
+    facts: dict[str, object] = field(default_factory=dict)
+    counts: dict[str, int] = field(default_factory=lambda: {
+        "nodes": 0, "phases": 0, "samples": 0, "selected": 0, "deselected": 0, "collection_errors": 0,
+        "recording_errors": 0, "deferred_appends": 0,
+    })
+    truncated: bool = False
+    last_sample: float = 0.0
+    ceilings: dict[str, int] = field(default_factory=lambda: dict(MAX_STREAM_RECORDS))
+    pending: dict[str, list[dict[str, object]]] = field(default_factory=lambda: {"nodes": [], "phases": [], "samples": []})
+    # What each stream should hold, for the terminal read-back: a digest of every entry, in order.
+    ledger: dict[str, object] = field(default_factory=lambda: {"nodes": hashlib.sha256(), "phases": hashlib.sha256(), "samples": hashlib.sha256()})
+    selection: object = field(default_factory=hashlib.sha256)
+    # True once this run's own registry announcement has been removed.
+    registry_withdrawn: bool = False
+
+
+_sessions_started = 0
+_current: RunContext | None = None
+SAMPLE_INTERVAL_SECONDS = 5.0
+
+
+def current() -> RunContext | None:
+    """The context of the pytest session now running in this interpreter, if any."""
+    return _current
+
+
+def _uses_repository_configuration(config: object) -> bool:
+    """Whether the session was configured by this checkout's own pyproject.toml and nothing else."""
+    try:
+        inipath, rootpath = getattr(config, "inipath", None), getattr(config, "rootpath", None)
+        if inipath is None or rootpath is None:
+            return False
+        return (
+            Path(str(inipath)).resolve() == (_REPOSITORY_ROOT / "pyproject.toml").resolve()
+            and Path(str(rootpath)).resolve() == _REPOSITORY_ROOT
+        )
+    except OSError:
+        return False
+
+
+def classify(config: object) -> tuple[str, str]:
+    """ACTIVE only for the approved default selection under the repository's own configuration.
+
+    The effective `-m` expression is compared with the frozen approved expression, as text. A file
+    or `-k` subset of the default selection stays ACTIVE. Anything else is PASSIVE: another
+    expression (even an equivalent one written differently), an overridden `addopts`, another
+    config file or root, a collection-only run, or an explicit request.
+    """
+    option = config.option  # type: ignore[attr-defined]
+    if getattr(option, OPTION_DEST, "auto") == "passive":
+        return PASSIVE, "requested"
+    if getattr(option, "collectonly", False):
+        return PASSIVE, "collection_only"
+    if not _uses_repository_configuration(config):
+        return PASSIVE, "foreign_configuration"
+    overrides = getattr(option, "override_ini", None) or ()
+    if any(str(entry).split("=", 1)[0].strip() == "addopts" for entry in overrides):
+        return PASSIVE, "overridden_addopts"
+    if (getattr(option, "markexpr", "") or "") != APPROVED_DEFAULT_MARKER_EXPRESSION:
+        return PASSIVE, "non_default_selection"
+    return ACTIVE, "default_selection"
+
+
+def _identity(identity: native.ProcessIdentity) -> dict[str, object]:
+    image = identity.image if identity.image is not None and records.IMAGE.fullmatch(identity.image) else None
+    return {"pid": identity.pid, "creation_time": identity.creation_time, "image": image, "error": identity.error,
+            "live": identity.live}
+
+
+def _bounded(value: str | None, pattern: object) -> str | None:
+    """A value fit to persist, or None when it breaks its pattern or the shared sanitizer would change it."""
+    if value is None or pattern.fullmatch(value) is None:  # type: ignore[attr-defined]
+        return None
+    return value if records.unchanged_by_shared_sanitizer(value) else None
+
+
+def _git_identity(worktree: Path) -> tuple[str | None, str | None]:
+    """Branch and commit read from the checkout's own files, without starting a process."""
+    try:
+        marker = worktree / ".git"
+        git_dir = marker
+        if marker.is_file():
+            text = marker.read_text(encoding="utf-8").strip()
+            if not text.startswith("gitdir:"):
+                return None, None
+            git_dir = Path(text.split(":", 1)[1].strip())
+        head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+        if not head.startswith("ref:"):
+            return None, head
+        reference = head.split(":", 1)[1].strip()
+        branch = reference.removeprefix("refs/heads/")
+        common = git_dir
+        common_marker = git_dir / "commondir"
+        if common_marker.is_file():
+            common = (git_dir / common_marker.read_text(encoding="utf-8").strip()).resolve()
+        for base in (git_dir, common):
+            candidate = base / reference
+            if candidate.is_file():
+                return branch, candidate.read_text(encoding="utf-8").strip()
+        packed = common / "packed-refs"
+        if packed.is_file():
+            for line in packed.read_text(encoding="utf-8").splitlines():
+                if line.endswith(" " + reference):
+                    return branch, line.split(" ", 1)[0]
+        return branch, None
+    except OSError:
+        return None, None
+
+
+def _declared_agent(branch: str | None) -> str | None:
+    """The agent named in an `agent/<name>/...` branch. Provenance the branch supplies, not proof."""
+    parts = (branch or "").split("/")
+    return parts[1] if len(parts) >= 3 and parts[0] == "agent" else None
+
+
+def _whole_number(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _discover_parent_run(run_id: str) -> dict[str, object]:
+    """Which registered active run, if any, this process descends from.
+
+    A child cannot see its parent run's job: the Python venv launcher puts every interpreter it
+    starts into a job of its own, so a process's immediate job holds only itself. The parent is
+    therefore found by ancestry: the nearest running ancestor whose PID and creation time match a
+    registered active root. This names a relationship only; ownership and cleanup stay with each
+    run's own job. No job is opened and no command line is read.
+
+    The answer is `parent` when a match is found, `none` only when the whole chain was followed to
+    its end without one and the whole registry was read, `not_found` when the visible chain ended at
+    an exited ancestor (earlier ancestors cannot be seen, so absence is not established), and
+    UNKNOWN when any query failed or the registry could not be read in full.
+    """
+    method = "validated_process_ancestry"
+    chain, stopped = native.ancestors()
+    roots: dict[tuple[int, int], str] = {}
+    entries, registry = records.registry_entries(run_id)
+    for entry in entries:
+        # The reader guarantees a complete root identity. An entry that still lacks one, or whose
+        # creation time was never read, names no ancestor and is passed over, never raised on.
+        root = entry.get("root")
+        pid, created = (root.get("pid"), root.get("creation_time")) if isinstance(root, dict) else (None, None)
+        named = entry.get("run_id")
+        if entry.get("mode") == ACTIVE and _whole_number(pid) and _whole_number(created) and isinstance(named, str):
+            roots[(pid, created)] = named
+    for ancestor in chain:
+        found = roots.get((ancestor.pid, ancestor.creation_time or -1)) if ancestor.live is True else None
+        if found is not None:
+            return {"status": "parent", "run_id": found, "method": method}
+    if stopped not in ("root_reached", "ancestor_exited"):
+        return {"status": UNKNOWN, "reason": stopped, "method": method}
+    if registry in ("unreadable", "partial"):
+        # A registered parent may sit in the part of the registry that could not be read.
+        return {"status": UNKNOWN, "reason": f"registry_{registry}", "method": method}
+    if stopped == "root_reached":
+        return {"status": "none", "method": method}
+    return {"status": "not_found", "reason": stopped, "method": method}
+
+
+def start_run(config: object) -> RunContext:
+    """Classify the session, enrol and guard an active one, and write its first record."""
+    global _sessions_started
+    mode, reason = classify(config)
+    enrolled_before = native.supported() and native.owner() is not None
+    if enrolled_before and mode == PASSIVE:
+        import pytest
+
+        raise pytest.UsageError(
+            "test-run-context: this interpreter already started an active default run; "
+            "start this selection in a separate interpreter"
+        )
+    _sessions_started += 1
+    worktree = Path(str(config.rootpath))  # type: ignore[attr-defined]
+    run_id = f"{datetime.now(timezone.utc):%Y%m%dT%H%M%S}-{os.getpid()}-{secrets.token_hex(3)}"
+    branch, head = _git_identity(worktree)
+    context = RunContext(
+        run_id=run_id, mode=mode, reason=reason, record_dir=worktree / "tmp" / "test-runs" / run_id,
+        started_utc=datetime.now(timezone.utc).isoformat(), worktree=str(worktree), branch=branch, head=head,
+        declared_agent=_declared_agent(branch), session_index=_sessions_started,
+    )
+    if native.supported():
+        context.root = _identity(native.current_identity())
+        context.root_parent = _identity(native.parent_identity())
+        context.parent_run = {"status": "same_interpreter"} if enrolled_before else _discover_parent_run(run_id)
+        if mode == ACTIVE:
+            owner = native.enroll(run_id)
+            context.native = {"supported": True, "attempted": True, "valid": owner.valid, "job_name": owner.name,
+                              "reused_from_earlier_session": enrolled_before, **owner.facts}
+        else:
+            context.native = {"supported": True, "attempted": False, "enrolled": False}
+    else:
+        context.root = {"pid": os.getpid(), "creation_time": None, "image": None, "error": None, "live": True}
+        context.native = {"supported": False, "attempted": False, "enrolled": False}
+        context.parent_run = {"status": "unsupported"}
+    if mode == ACTIVE:
+        context.guard_mode = guard.install()
+    context.started_monotonic, context.started_wall = time.monotonic(), time.time()
+    context.facts = _session_facts(worktree)
+    if context.native.get("enrolled") and enrolled_before:
+        # A later session in the same interpreter shares the job: its own activity is the
+        # difference between the terminal totals and this baseline.
+        context.facts["accounting_baseline"] = native.accounting()
+    payload = _payload(context, checkpoint="start")
+    records.write_record(context.record_dir / "run.json", payload)
+    records.write_record(records.registry_root() / f"{run_id}.json", payload)
+    global _current
+    _current = context
+    if context.parent_run.get("status") not in {"parent", "same_interpreter"}:
+        records.prune_run_folders(context.record_dir.parent, run_id)
+    sample_run(context, "start")
+    return context
+
+
+def _file_digest(path: Path) -> str | None:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _session_facts(worktree: Path) -> dict[str, object]:
+    import pytest
+
+    return {
+        "python": ".".join(str(part) for part in sys.version_info[:3]), "pytest": _bounded_version(pytest.__version__),
+        "lock_sha256": _file_digest(worktree / "uv.lock"), "config_sha256": _file_digest(worktree / "pyproject.toml"),
+        "protected_roots": len(guard.protected_roots()), "protection": guard.protection(),
+    }
+
+
+def _bounded_version(value: str) -> str:
+    return "".join(char for char in value if char.isalnum() or char in ".+-")[:40] or "unknown"
+
+
+def _node(nodeid: str) -> str:
+    """The exact identity of a test: a digest of its raw node ID, so two tests never collapse into one."""
+    return hashlib.sha256(nodeid.encode("utf-8")).hexdigest()
+
+
+def _label(nodeid: str) -> str | None:
+    """A bounded display label for a node ID, or None when the shared sanitizer would change the ID.
+
+    The raw ID is checked first, before any character is replaced, so replacing characters can
+    never turn text the sanitizer recognises into text it does not.
+    """
+    if not records.unchanged_by_shared_sanitizer(nodeid):
+        return None
+    label = "".join(char if records.LABEL.fullmatch(char) else "_" for char in nodeid)[:200]
+    return label if label and records.unchanged_by_shared_sanitizer(label) else None
+
+
+def _reason(text: object) -> str:
+    """A skip reason as the shared sanitizer leaves it, printable and bounded."""
+    cleaned = "".join(char if " " <= char <= "~" else " " for char in str(text))[:200]
+    return "".join(char if " " <= char <= "~" else " " for char in records.sanitized_text(cleaned))[:200]
+
+
+def _append(context: RunContext, stream: str, entries: list[dict[str, object]]) -> None:
+    """Append to a stream within its ceiling. Nothing here raises.
+
+    An entry the table refuses is a recording error. An append that provably never reached the
+    stream (a test has patched the serializer; or the stream was restored to its earlier length)
+    is deferred: the batch waits, in order, for the next append of that stream, and `finish_run`
+    makes a last attempt. An append whose progress is unknown is a recording error: the record is
+    INVALID rather than possibly duplicated.
+    """
+    pending = context.pending[stream]
+    batch = [*pending, *entries]
+    pending.clear()
+    if not batch:
+        return
+    if context.counts[stream] + len(batch) > context.ceilings[stream]:
+        context.truncated = True
+        return
+    try:
+        written = records.append_entries(context.record_dir / f"{stream}.jsonl", stream, batch)
+        context.counts[stream] += len(batch)
+        for digest in written:
+            context.ledger[stream].update(digest)  # type: ignore[attr-defined]
+    except records.RecordTooLarge:
+        context.truncated = True
+    except records.AppendNotStarted:
+        if len(batch) > MAX_PENDING_ENTRIES:
+            context.counts["recording_errors"] += 1
+        else:
+            pending.extend(batch)
+            context.counts["deferred_appends"] += 1
+    except Exception:  # noqa: BLE001 - refused entry, unknown progress or anything else: the record is INVALID
+        context.counts["recording_errors"] += 1
+
+
+def _read_back(context: RunContext) -> tuple[bool, dict[str, str]]:
+    """Read every stream back and compare it with what this run says it wrote: count, content, order.
+
+    The ledger holds a digest of every line as it was written; the stream is read line by line
+    and must contain exactly those lines, in that order, all of them conforming.
+    """
+    reconciled, status = True, {}
+    for stream in ("nodes", "phases", "samples"):
+        path = context.record_dir / f"{stream}.jsonl"
+        if context.counts[stream] == 0 and not path.exists():
+            status[stream] = "empty"
+            continue
+        entries, refused, how = records.read_entries(path, stream)
+        stored = records.stream_line_digests(path) or []
+        digest = hashlib.sha256()
+        for line in stored:
+            digest.update(line)
+        matches = how == "ok" and refused == 0 and len(entries) == len(stored) == context.counts[stream] \
+            and digest.digest() == context.ledger[stream].digest()  # type: ignore[attr-defined]
+        status[stream] = "matches" if matches else how if how != "ok" else "differs"
+        reconciled = reconciled and matches
+    return reconciled, status
+
+
+def record_collection(context: RunContext, selected: list[str], deselected: list[str]) -> None:
+    """Keep the identity of every collected test, selected or deselected, independently of its outcome."""
+    entries = []
+    for state, nodeids in (("selected", selected), ("deselected", deselected)):
+        for nodeid in nodeids:
+            entries.append({"node": _node(nodeid), "label": _label(nodeid), "state": state})
+        context.counts[state] += len(nodeids)
+    for nodeid in sorted(selected):
+        context.selection.update(_node(nodeid).encode("ascii"))  # type: ignore[attr-defined]
+    for start in range(0, len(entries), 2000):
+        _append(context, "nodes", entries[start:start + 2000])
+
+
+def record_collection_error(context: RunContext) -> None:
+    context.counts["collection_errors"] += 1
+
+
+def record_phase(context: RunContext, report: object) -> None:
+    """Keep one test phase, then take a sample if one is due. Runs synchronously; never raises."""
+    try:
+        entry: dict[str, object] = {
+            "node": _node(str(report.nodeid)), "when": str(report.when), "outcome": str(report.outcome),  # type: ignore[attr-defined]
+            "at": round(max(0.0, float(getattr(report, "start", context.started_wall)) - context.started_wall), 3),
+            "seconds": round(max(0.0, float(getattr(report, "duration", 0.0))), 3),
+        }
+        if entry["outcome"] == "skipped":
+            longrepr = getattr(report, "longrepr", None)
+            detail = longrepr[2] if isinstance(longrepr, tuple) and len(longrepr) == 3 else getattr(report, "wasxfail", "")
+            entry["reason"] = _reason(detail)
+        _append(context, "phases", [entry])
+        if time.monotonic() - context.last_sample >= SAMPLE_INTERVAL_SECONDS:
+            sample_run(context, "phase")
+    except Exception:  # noqa: BLE001 - recording must never change a test's outcome
+        context.counts["recording_errors"] += 1
+
+
+def other_runs(run_id: str) -> tuple[list[dict[str, object]], int, str, int]:
+    """Other registered runs now: the listed ones, how many more were not listed, how the registry
+    read went (one of `records.REGISTRY_STATES`), and how many have positively ended.
+
+    On Windows each root is checked through a process handle. A root that is running, with the
+    registered creation time, is `own_job` or `outside` by this run's own job. A root whose open
+    says there is no such process, whose creation time differs (the PID was reused) or whose wait
+    says it has terminated is counted as ended and not listed. A root that cannot be observed
+    (the open or a query was denied or failed) is listed as `unknown`: that is not absence.
+    Elsewhere the relation is `unverified`. A registry that could not be listed, or read in full,
+    is reported as such by the reader itself: an empty answer is only ever a read, empty registry.
+    No other run's job is opened.
+    """
+    entries, registry = records.registry_entries(run_id)
+    listed: list[dict[str, object]] = []
+    extra = ended = 0
+    for entry in entries:
+        root = entry.get("root")
+        pid, created = (root.get("pid"), root.get("creation_time")) if isinstance(root, dict) else (None, None)
+        if not _whole_number(pid):
+            continue
+        if native.supported():
+            if not _whole_number(created):
+                continue
+            identity = native.process_identity(pid)
+            if (not identity.opened and identity.error == native.ERROR_INVALID_PARAMETER) \
+                    or (identity.creation_time is not None and identity.creation_time != created) or identity.live is False:
+                ended += 1
+                continue
+            if identity.creation_time is None or identity.live is None:
+                relation = "unknown"
+            else:
+                member = native.is_member(identity)
+                relation = "own_job" if member is True else "outside" if member is False else "unknown"
+        else:
+            if not Path(f"/proc/{pid}").exists():
+                ended += 1
+                continue
+            relation = "unverified"
+        if len(listed) >= records.MAX_OTHER_RUNS:
+            extra += 1
+            continue
+        listed.append({
+            "run_id": entry["run_id"], "relation": relation, "declared_agent": entry.get("declared_agent"),
+            "worktree": entry.get("worktree"),
+        })
+    return listed, extra, registry, ended
+
+
+def sample_run(context: RunContext, checkpoint: str) -> None:
+    """One synchronous observation: this run's job totals and the other runs alive right now.
+
+    Called at the start, at test-phase boundaries when the interval has passed, and at the end.
+    There is no timer or thread, so a long phase has no sample inside it; `gap` shows that.
+    """
+    try:
+        now = time.monotonic()
+        others, extra, registry, ended = other_runs(context.run_id)
+        entry: dict[str, object] = {
+            "at": round(now - context.started_monotonic, 3),
+            "gap": round(now - (context.last_sample or context.started_monotonic), 3),
+            "checkpoint": checkpoint, "others": others, "others_not_listed": extra, "others_ended": ended,
+            "registry": registry,
+        }
+        if context.native.get("enrolled"):
+            entry["accounting"] = native.accounting()
+        context.last_sample = now
+        _append(context, "samples", [entry])
+    except Exception:  # noqa: BLE001 - recording must never change a test's outcome
+        context.counts["recording_errors"] += 1
+
+
+def _payload(context: RunContext, *, checkpoint: str) -> dict[str, object]:
+    """The record for one checkpoint. Checkout-derived text that is not fit to persist is withheld by name."""
+    text = {
+        "worktree": _bounded(context.worktree, records.WORKTREE), "branch": _bounded(context.branch, records.BRANCH),
+        "head": _bounded(context.head, records.COMMIT), "declared_agent": _bounded(context.declared_agent, records.AGENT),
+    }
+    supplied = {"worktree": context.worktree, "branch": context.branch, "head": context.head,
+                "declared_agent": context.declared_agent}
+    payload: dict[str, object] = {
+        "checkpoint": checkpoint, "run_id": context.run_id, "mode": context.mode, "reason": context.reason,
+        "session_index": context.session_index, "started_utc": context.started_utc, **text,
+        "withheld": sorted(name for name, value in text.items() if value is None and supplied[name] is not None),
+        "platform": sys.platform, "root": context.root, "parent_run": context.parent_run, "native": context.native,
+        "guard_mode": context.guard_mode, **context.facts,
+    }
+    if context.root_parent:
+        payload["root_parent"] = context.root_parent
+    return payload
+
+
+def completeness(context: RunContext) -> str:
+    """INVALID after any recording failure, TRUNCATED when a ceiling stopped a stream, else COMPLETE."""
+    if context.counts["recording_errors"]:
+        return "INVALID"
+    return "TRUNCATED" if context.truncated else "COMPLETE"
+
+
+def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
+    """Withdraw the announcement, then write the terminal record. The job handle is deliberately
+    kept until the interpreter exits.
+
+    Nothing here raises into pytest: a failure anywhere in the terminal work leaves pytest's own
+    exit status in place and makes the record INVALID. The registry withdrawal comes before the
+    record is written, so the stored record states whether it happened; a withdrawal that fails is
+    a recording error in the stored record and in the returned one alike. The current context is
+    cleared in every case.
+    """
+    global _current
+    final: dict[str, object] = {"exit_status": int(exit_status), "completeness": "INVALID"}
+    try:
+        try:
+            final.update(_terminal(context, exit_status))
+        except Exception as error:  # noqa: BLE001 - the terminal facts could not be established
+            context.counts["recording_errors"] += 1
+            final["terminal_failure"] = _failure_token(error)
+        final["finished_utc"] = datetime.now(timezone.utc).isoformat()
+        final["registry_withdrawal"] = _withdraw(context)
+        if final["registry_withdrawal"] == "failed":
+            context.counts["recording_errors"] += 1
+        final["recording_errors"] = context.counts["recording_errors"]
+        final["completeness"] = "INVALID" if "terminal_failure" in final else completeness(context)
+        _publish(context, final)
+    except Exception as error:  # noqa: BLE001 - never into pytest
+        context.counts["recording_errors"] += 1
+        final["completeness"] = "INVALID"
+        final.setdefault("terminal_failure", _failure_token(error))
+    finally:
+        _current = None
+    return final
+
+
+def _withdraw(context: RunContext) -> str:
+    """Withdraw this run's own announcement once: `done`, or `failed` when the entry may remain."""
+    if not context.registry_withdrawn:
+        try:
+            records.remove_own_registry_entry(context.run_id)
+        except Exception:  # noqa: BLE001 - a denied or failed unlink leaves the entry in place
+            return "failed"
+        context.registry_withdrawn = True
+    return "done"
+
+
+_MINIMAL_TERMINAL = ("exit_status", "finished_utc", "completeness", "terminal_failure", "recording_errors", "registry_withdrawal")
+
+
+def _publish(context: RunContext, final: dict[str, object]) -> None:
+    """Write the terminal record through the single sink. When the full record is refused or cannot
+    be written, the result is INVALID and a minimal INVALID record is tried in its place; when that
+    fails too, the start record is left as it is. Nothing here claims success it did not have."""
+    target = context.record_dir / "run.json"
+    try:
+        records.write_record(target, {**_payload(context, checkpoint="terminal"), **final})
+        return
+    except Exception as error:  # noqa: BLE001 - a patched serializer, a refused field or a failed write
+        context.counts["recording_errors"] += 1
+        final["completeness"] = "INVALID"
+        final["terminal_failure"] = _failure_token(error)
+        final["recording_errors"] = context.counts["recording_errors"]
+    minimal = {name: final[name] for name in _MINIMAL_TERMINAL if name in final}
+    try:
+        records.write_record(target, {**_payload(context, checkpoint="terminal"), **minimal})
+    except Exception:  # noqa: BLE001 - the start record remains; the returned result already says INVALID
+        pass
+
+
+def _terminal(context: RunContext, exit_status: int) -> dict[str, object]:
+    """The terminal facts: a last sample, the streams flushed and read back, the job's members."""
+    sample_run(context, "terminal")
+    for stream in ("nodes", "phases", "samples"):
+        if context.pending[stream]:
+            _append(context, stream, [])
+        if context.pending[stream]:
+            # Still not written after the last attempt: the record is incomplete and says so.
+            context.counts["recording_errors"] += 1
+            context.pending[stream].clear()
+    reconciled, read_back = _read_back(context)
+    if not reconciled:
+        context.counts["recording_errors"] += 1
+    final: dict[str, object] = {"exit_status": int(exit_status)}
+    if context.native.get("enrolled"):
+        final["accounting"] = native.accounting()
+        identities, error = native.members()
+        # `complete` is True only when every listed member's identity was actually read.
+        final["members"] = (
+            {"ok": True, "complete": all(identity.creation_time is not None for identity in identities),
+             "identities": [_identity(identity) for identity in identities]}
+            if identities is not None else {"ok": False, "complete": False, "error": error}
+        )
+    counts = context.counts
+    final.update({
+        "selected": counts["selected"], "deselected": counts["deselected"], "collection_errors": counts["collection_errors"],
+        "selection_sha256": context.selection.hexdigest(),  # type: ignore[attr-defined]
+        "streams": {"nodes": counts["nodes"], "phases": counts["phases"], "samples": counts["samples"],
+                    "truncated": context.truncated, "reconciled": reconciled, "read_back": read_back},
+        "deferred_appends": counts["deferred_appends"],
+        "last_sample_at": round(max(0.0, context.last_sample - context.started_monotonic), 3),
+    })
+    return final
+
+
+def _failure_token(error: BaseException) -> str:
+    """Where a record was refused, or the kind of failure. Never a value from the record."""
+    text = error.place if isinstance(error, records.RecordRejected) else type(error).__name__
+    return "".join(char for char in text if char.isalnum() or char in "_.:<>[]")[:80] or "failure"
+
+
+def summary_line(context: RunContext, final: dict[str, object] | None) -> str:
+    """One compact line for pytest's terminal summary."""
+    parts = [f"test-run-context: mode={context.mode}", f"reason={context.reason}", f"run={context.run_id}"]
+    if context.native.get("enrolled"):
+        accounting = (final or {}).get("accounting") or {}
+        processes = accounting.get("total_processes") if isinstance(accounting, dict) and accounting.get("ok") else "QUERY_FAILED"
+        parts += [f"native={'valid' if context.native.get('valid') else 'INVALID'}", f"job={context.native.get('job_name')}",
+                  f"processes={processes}"]
+    elif context.native.get("attempted"):
+        # Enrolment was tried and did not hold: no job and no process count are claimed.
+        parts.append("native=INVALID")
+    else:
+        parts.append(f"native={'not_enrolled' if context.native.get('supported') else 'unsupported'}")
+    status = context.parent_run.get("status")
+    parts.append(f"parent={context.parent_run.get('run_id') if status == 'parent' else status}")
+    parts.append(f"guard={context.guard_mode}")
+    if context.guard_mode == "pytest_process_guard":
+        parts.append(f"protection={context.facts.get('protection')}")
+    if final is not None:
+        streams = final.get("streams") or {}
+        parts += [f"records={final.get('completeness')}", f"phases={streams.get('phases') if isinstance(streams, dict) else 0}",
+                  f"exit={final.get('exit_status')}"]
+    return " ".join(str(part) for part in parts)
