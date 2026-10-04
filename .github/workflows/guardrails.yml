@@ -75,5 +75,8 @@ jobs:
           PY
           uv run pre-commit run optimus-secret-scan-ci-production --all-files --hook-stage manual
 
+      # Plan 12.2 closure: one full default run, then separate floors on that dataset (Optimus product
+      # group, context_engine and optimus_model_policy at 80% each; Evidence Handoff and the aggregate
+      # informational). The commit hook keeps its interim entry until the profiles lane lands.
       - name: "optimus-check: pytest-coverage"
-        run: uv run pytest --cov=optimus --cov-branch --cov-report=term-missing -v
+        run: uv run python tools/check_product_coverage.py --run-full-suite --groups tools/product-coverage-groups.json --report-json "${RUNNER_TEMP}/product-coverage-report.json"
