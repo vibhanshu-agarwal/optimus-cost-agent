@@ -135,7 +135,7 @@ Plan 11.25 correction remain unchanged; the repair exists on the Package A branc
 It holds the survey of how eight coding agents handle context and spend, the OpenRouter catalog snapshot
 of the tier models, and their sources.
 
-**Related filed contract:** [Plan 12.2 design](../superpowers/specs/2026-10-01-plan-12-2-context-engine-design.md), [implementation plan](../superpowers/plans/2026-10-01-plan-12-2-context-engine-implementation_v2.md) (v2; the first edition is archived), [Task 1 contracts](../superpowers/specs/2026-10-02-plan-12-2-task1-contracts.md) and [Plan 11.25 correction note](../superpowers/reviews/2026-10-01-plan-11-25-effect-instrumentation-correction.md). The predecessors are only partially completed/clarified, so ADR-001–012 remain current and unchanged; none moves to archive.
+**Related filed contract:** [Plan 12.2 design](../superpowers/specs/2026-10-01-plan-12-2-context-engine-design_v2.md) (v2), [implementation plan](../superpowers/plans/2026-10-01-plan-12-2-context-engine-implementation_v3.md) (v3; earlier editions are archived), [Task 1 contracts](../superpowers/specs/2026-10-02-plan-12-2-task1-contracts_v2.md) (v2) and [Plan 11.25 correction note](../superpowers/reviews/2026-10-01-plan-11-25-effect-instrumentation-correction.md). The predecessors are only partially completed/clarified, so ADR-001–012 remain current and unchanged; none moves to archive.
 
 **Working papers outside the repository** (the operator's handoff folder,
 `optimus-handoff\plan-12-discovery\`). They are kept for provenance only; the records above are
