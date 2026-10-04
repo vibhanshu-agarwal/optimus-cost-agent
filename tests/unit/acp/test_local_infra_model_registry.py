@@ -18,7 +18,7 @@ _KEY = b"test-local-infra-registry-key-32!"
 _LITERAL = "optimus-model-registry-v1:" + "c" * 64
 
 
-def _spawned_manifest(tmp_path, monkeypatch: pytest.MonkeyPatch, **extra: object) -> dict:
+def _spawned_args(tmp_path, monkeypatch: pytest.MonkeyPatch, **extra: object) -> list[str]:
     calls = {"n": 0}
 
     def reachable(host, port, *, timeout=1.0):
@@ -58,7 +58,11 @@ def _spawned_manifest(tmp_path, monkeypatch: pytest.MonkeyPatch, **extra: object
         runtime_root=tmp_path / ".optimus",
         **extra,
     )
-    args = captured["args"]
+    return captured["args"]
+
+
+def _spawned_manifest(tmp_path, monkeypatch: pytest.MonkeyPatch, **extra: object) -> dict:
+    args = _spawned_args(tmp_path, monkeypatch, **extra)
     return json.loads(args[args.index("--manifest") + 1])
 
 
@@ -71,3 +75,16 @@ def test_inactive_launch_signs_a_version_one_manifest(tmp_path, monkeypatch) -> 
 def test_active_launch_signs_the_approved_registry(tmp_path, monkeypatch) -> None:
     manifest = _spawned_manifest(tmp_path, monkeypatch, model_registry=_LITERAL)
     assert (manifest["schema_version"], manifest["model_registry"]) == (2, _LITERAL)
+
+
+def test_a_test_profile_reaches_the_gateway_child_by_name_only(tmp_path, monkeypatch) -> None:
+    """Release supplement V2: the Gateway child gets only the reviewed profile's name and composes it
+    itself; the signed manifest carries the approved literal. No path, hash or override is passed."""
+    args = _spawned_args(tmp_path, monkeypatch, model_registry=_LITERAL, test_profile="qualification")
+    assert args[-2:] == ["--plan12-test-profile", "qualification"]
+    assert json.loads(args[args.index("--manifest") + 1])["model_registry"] == _LITERAL
+    assert not any(part.endswith(".yaml") for part in args)
+
+
+def test_without_a_profile_the_gateway_child_argv_is_unchanged(tmp_path, monkeypatch) -> None:
+    assert "--plan12-test-profile" not in _spawned_args(tmp_path, monkeypatch)

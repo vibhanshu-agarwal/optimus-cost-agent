@@ -34,6 +34,7 @@ from optimus.acp.operator_paths import OperatorPathConfigurationError, resolve_a
 from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.acp.server import StdioByteReader, StdioByteWriter, StdioNdjsonLineReader, StdioNdjsonLineWriter
 from optimus.acp.subprocess_env import system_environ_view
+from optimus.acp.test_composition import compose_test_composition
 from optimus.acp.trusted_paths import (
     TrustedPathError,
     format_trusted_path_operator_message,
@@ -45,6 +46,7 @@ from optimus.agent.defaults import AgentModelError, resolve_agent_model
 from optimus.gateway.client import DEFAULT_GATEWAY_TIMEOUT_SECONDS, validate_gateway_timeout_seconds
 from optimus_model_policy import RegistryError
 from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError
+from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES
 
 
 def _print_log(message: str) -> None:
@@ -115,6 +117,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         metavar="SECONDS",
         help=f"Gateway request timeout in seconds for this process (default: {DEFAULT_GATEWAY_TIMEOUT_SECONDS:.1f}).",
+    )
+    # Plan 12.2 closure (release supplement V2): select one reviewed, source-owned test profile by its
+    # fixed name. The name grants nothing: the launch approval must bind the profile's exact effective
+    # hash, and the Gateway composes the same profile itself. Absent, the composition is today's.
+    parser.add_argument(
+        "--plan12-test-profile",
+        choices=TEST_PROFILE_NAMES,
+        default=None,
+        help="Reviewed Plan 12.2 test profile; its launch approval must bind the profile's exact effective hash.",
     )
     # Internal-only arguments (Plan 9.96, Task 5 Step 2). Never documented as
     # a public operator-facing flag beyond the optimus-trust CLI, which is
@@ -238,6 +249,7 @@ def _authorize_or_exit(
             workspace_state=workspace_state,
             operator_paths=operator_paths,
             hmac_key=store.hmac_key,
+            test_profile=args.plan12_test_profile,
         )
     except LaunchGateError as exc:
         print(f"optimus-agent: {exc.code}" + (f": {exc.detail}" if exc.detail else ""), file=sys.stderr)
@@ -509,15 +521,24 @@ def main(argv: list[str] | None = None) -> int:
     # default-filling, but now operates on the already-authorized projection
     # (never os.environ) and receives the already-resolved shared secret from
     # the candidate rather than re-resolving it.
+    test_composition = None
     try:
         agent_environ = apply_local_defaults(
             candidate.agent_environ,
             config_root=candidate.operator_paths.config_root,
             resolved_shared_secret=candidate.shared_secret,
         )
-        # Plan 12.2 Task 5: under an enforced model registry an unusable model fails here with a
-        # typed message rather than inside the runtime composition. Inactive: today's rules.
-        resolve_agent_model(agent_environ, cli_model=args.model)
+        if args.plan12_test_profile is not None:
+            # Release supplement V2: the named profile, re-composed from its reviewed source and
+            # refused unless the authorized launch approved exactly its hash.
+            test_composition = compose_test_composition(
+                args.plan12_test_profile, approved_literal=candidate.security_literals.get(APPROVAL_LITERAL_NAME)
+            )
+            test_composition.agent_model(agent_environ, cli_model=args.model)
+        else:
+            # Plan 12.2 Task 5: under an enforced model registry an unusable model fails here with a
+            # typed message rather than inside the runtime composition. Inactive: today's rules.
+            resolve_agent_model(agent_environ, cli_model=args.model)
     except AgentModelError as exc:
         print(f"optimus-agent: AGENT_MODEL_INVALID: {exc}", file=sys.stderr)
         return 2
@@ -552,6 +573,7 @@ def main(argv: list[str] | None = None) -> int:
             log=_print_log,
             # Plan 12.2 Task 5: the registry literal the operator approved, or None while inactive.
             model_registry=candidate.security_literals.get(APPROVAL_LITERAL_NAME),
+            test_profile=args.plan12_test_profile,
         )
 
     if args.check_config:
@@ -613,6 +635,8 @@ def main(argv: list[str] | None = None) -> int:
             }
             if args.gateway_timeout_seconds is not None:
                 build_server_kwargs["gateway_timeout_seconds"] = args.gateway_timeout_seconds
+            if test_composition is not None:
+                build_server_kwargs["test_composition"] = test_composition
             server = build_configured_server(**build_server_kwargs)
         except StartupConfigurationError as exc:
             print(f"optimus-agent: {exc.user_message}", file=sys.stderr)

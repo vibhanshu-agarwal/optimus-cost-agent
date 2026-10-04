@@ -428,6 +428,7 @@ def ensure_local_gateway(
     otlp_endpoint: str | None = None,
     log: Callable[[str], None] = _noop_log,
     model_registry: str | None = None,
+    test_profile: str | None = None,
 ) -> LocalGatewayProcess | None:
     """Start the local Gateway child using ALREADY-RESOLVED credentials.
 
@@ -513,6 +514,9 @@ def ensure_local_gateway(
         return None
 
     try:
+        # A named Plan 12.2 test profile is passed by name only: the Gateway composes it from its own
+        # reviewed source and refuses unless the signed manifest binds that hash (release supplement V2).
+        profile_argv = [] if test_profile is None else ["--plan12-test-profile", test_profile]
         process = subprocess.Popen(
             [
                 sys.executable,
@@ -524,6 +528,7 @@ def ensure_local_gateway(
                 str(port),
                 "--manifest",
                 serialized_manifest,
+                *profile_argv,
             ],
             env=child_env,
             stdin=subprocess.DEVNULL,

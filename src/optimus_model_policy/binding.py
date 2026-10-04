@@ -12,6 +12,14 @@ HMAC-protected approval (so the operator approves that exact effective hash) and
 Gateway child manifest; the Gateway composes its own snapshot and refuses to start unless the two
 agree. A ``registry_hash`` in a request is only the caller's view, checked against that trusted
 snapshot; it never grants anything.
+
+Plan 12.2 test composition (closure release supplement V2, 2026-10-04): a launch may instead name one
+of the reviewed, source-owned profiles in :mod:`optimus_model_policy.test_profiles`. That is this
+same reviewed-code route, not caller-supplied activation: a fixed name selects packaged data with a
+pinned effective hash, both sides compose it independently, and it enforces only after the operator
+approves that exact hash in the HMAC launch approval and signed manifest. ``ENFORCEMENT_ACTIVE`` and
+:func:`trusted_snapshot` are unchanged by it, and no file path, hash or environment value supplied
+by a caller is accepted.
 """
 
 from __future__ import annotations

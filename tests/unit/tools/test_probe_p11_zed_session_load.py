@@ -4009,6 +4009,12 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     tree_committed = b"from tools import process_tree" in head_probe
     if not tree_committed:
         expected -= {tree_path}
+    # The Plan 12.2 closure test composition (release supplement V2) adds one host module the entrypoint
+    # imports, keyed on HEAD's __main__.
+    composition_path = "src/optimus/acp/test_composition.py"
+    composition_committed = b"from optimus.acp.test_composition import" in head_main
+    if not composition_committed:
+        expected -= {composition_path}
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
@@ -4017,10 +4023,11 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     assert (task11_paths <= closure) is task11_committed
     assert (correction_paths <= closure) is correction_committed
     assert (tree_path in closure) is tree_committed
+    assert (composition_path in closure) is composition_committed
     base = 136 if seam2_committed else 134 if seam3_committed else 133
     assert len(closure) == base + (4 if task9_committed else 0) + (2 if task10_committed else 0) + (2 if task11_committed else 0) + (
         2 if correction_committed else 0
-    ) + tree_committed
+    ) + tree_committed + composition_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

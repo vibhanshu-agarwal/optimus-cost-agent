@@ -12,6 +12,7 @@ from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.server import serve_gateway
 from optimus_model_policy import RegistryError
 from optimus_model_policy.binding import BindingError, approval_literal, trusted_snapshot
+from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES, compose_test_profile_snapshot
 from optimus_security.launch_manifest import (
     LaunchManifestError,
     read_manifest_hmac_key,
@@ -60,6 +61,15 @@ def main(argv: list[str] | None = None) -> int:
             "Direct unmanifested startup fails closed."
         ),
     )
+    parser.add_argument(
+        "--plan12-test-profile",
+        choices=TEST_PROFILE_NAMES,
+        default=None,
+        help=(
+            "Reviewed Plan 12.2 test profile, composed here independently; the signed manifest must bind "
+            "its exact effective hash. Grants nothing by itself."
+        ),
+    )
     args = parser.parse_args(argv)
 
     environ = dict(os.environ)
@@ -83,9 +93,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     # Plan 12.2 Task 5: compose the trusted model registry this install enforces (None while
-    # enforcement is inactive); the manifest must bind exactly its approval literal.
+    # enforcement is inactive); the manifest must bind exactly its approval literal. A named test
+    # profile is composed here from its own reviewed source, never taken from the parent (release
+    # supplement V2); the HMAC-signed manifest must still name its hash.
     try:
-        registry = trusted_snapshot()
+        registry = trusted_snapshot() if args.plan12_test_profile is None else compose_test_profile_snapshot(args.plan12_test_profile)
     except (BindingError, RegistryError) as exc:
         print(f"optimus-local-gateway: model registry is not trustworthy ({exc.code}); refusing to start.", file=sys.stderr)
         return 2

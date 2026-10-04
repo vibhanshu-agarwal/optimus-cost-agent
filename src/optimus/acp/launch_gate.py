@@ -59,7 +59,8 @@ from optimus.acp.trusted_paths import (
     WorkspaceSecurityState,
 )
 from optimus_model_policy import RegistryError
-from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError, trusted_approval_literal
+from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError, approval_literal, trusted_approval_literal
+from optimus_model_policy.test_profiles import compose_test_profile_snapshot
 from optimus_security.sanitization import canonicalize_credential_uri, validate_secret_length
 
 # Plan 9.96, Task 5 Batch 3 Step 5: the reviewed default each monotonic-tier
@@ -470,8 +471,13 @@ def resolve_launch_candidate(
     operator_paths: OperatorPaths,
     hmac_key: bytes,
     credential_keyring_backend: object | None = None,
+    test_profile: str | None = None,
 ) -> LaunchCandidate:
     """Resolve the complete launch candidate from the captured environment.
+
+    ``test_profile`` names a reviewed, source-owned Plan 12.2 test profile (release supplement V2): its
+    pinned effective hash is bound into the approval instead of the installed trusted snapshot's, so
+    the operator approves that exact snapshot. The name itself grants nothing.
 
     Classifies all OPTIMUS_* variables, rejects unknown/internal-only inherited
     names, computes display rows and security snapshot digest, and projects
@@ -657,7 +663,11 @@ def resolve_launch_candidate(
     # enforcement is inactive there is no literal and the digest is unchanged, so existing
     # approvals stay valid; activation adds it and those approvals then need re-approval.
     try:
-        registry_literal = trusted_approval_literal()
+        if test_profile is None:
+            registry_literal = trusted_approval_literal()
+        else:
+            # A named test profile binds its own reviewed snapshot (release supplement V2).
+            registry_literal = approval_literal(compose_test_profile_snapshot(test_profile))
     except (BindingError, RegistryError) as exc:
         raise LaunchGateError(code="MODEL_REGISTRY_INVALID", detail=exc.code) from exc
     if registry_literal is not None:
@@ -688,7 +698,7 @@ def resolve_launch_candidate(
             LaunchDisplayRow(
                 name=APPROVAL_LITERAL_NAME,
                 tier=LaunchVariableTier.SECURITY,
-                source_class="trusted-composition",
+                source_class="trusted-composition" if test_profile is None else f"test-profile:{test_profile}",
                 display_value=registry_literal,
                 decision="requires exact approval",
             )
