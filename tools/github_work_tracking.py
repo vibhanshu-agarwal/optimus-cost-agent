@@ -41,7 +41,7 @@ import subprocess
 import sys
 import time
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -2018,6 +2018,127 @@ def finalize_inventory(data: Mapping, mapping: Mapping[str, int]) -> dict:
     return final
 
 
+# ==== Task 4: the cutover change set, rendered from a finalized manifest ====
+
+_PLACEHOLDER = re.compile(r"\{\{issue:(?P<record>[^{}\s]+)\}\}")
+PLACEHOLDER_START = "{{issue:"
+
+
+def _issue_of(record_id: str, records: Mapping[str, InventoryRecord]) -> int:
+    """The issue of a migrating record in a finalized manifest."""
+    record = records.get(record_id)
+    if record is None:
+        raise ValueError(f"unknown record {record_id!r}")
+    if record.disposition != "migrate":
+        raise ValueError(f"record {record_id!r} does not migrate ({record.disposition}), so it has no issue")
+    if record.target_issue is None:
+        raise ValueError(f"record {record_id!r} has no issue yet; finalize the manifest from the reconcile mapping first")
+    return record.target_issue
+
+
+def fill_issue_placeholders(text: str, inventory: Inventory) -> str:
+    """Each ``{{issue:RECORD}}`` becomes that record's issue URL from a finalized manifest; none is left behind."""
+    records = {record.id: record for record in inventory.records}
+    filled = _PLACEHOLDER.sub(lambda match: f"https://github.com/{REPO}/issues/{_issue_of(match.group('record'), records)}", text)
+    if PLACEHOLDER_START in filled:
+        start = filled.index(PLACEHOLDER_START)
+        raise ValueError(f"malformed issue placeholder {filled[start : start + 40]!r}")
+    return filled
+
+
+def render_pool_stub(inventory: Inventory, pool: str, history_commit: str, anchors: Iterable[str], headings: Mapping[str, str]) -> str:
+    """The pool after the cutover: the authority statement, the live links, a permalink to ``pool`` at
+    ``history_commit``, and one heading per compatibility anchor that links its issue and its entry at that commit.
+
+    ``pool`` must be the pool the manifest inventoried. An anchor's heading is the pool's own heading for it, or a
+    reviewed heading from ``headings`` that reproduces it. The result passes the stub and anchor gates, or it is refused.
+    """
+    if git_blob_id(pool.encode("utf-8")) != inventory.source_blobs["pool"]:
+        raise ValueError("this is not the pool the manifest inventoried; re-baseline the manifest before the cutover")
+    found = _headings(pool.splitlines())
+    pool_headings = {heading_anchor(title): title for _number, _level, title in found}
+    entries = {f"pool:{number}": heading_anchor(title) for number, _level, title in found}  # a heading unit's anchor
+    records = {record.id: record for record in inventory.records}
+    history = blob_url(POOL_PATH, history_commit)
+    issues = f"https://github.com/{REPO}/issues"
+    sections = []
+    for anchor in sorted(set(anchors)):
+        target = inventory.compat_anchors.get(anchor)
+        if target is None:
+            raise ValueError(f"inbound anchor {anchor!r} has no reviewed target in the manifest's compat_anchors")
+        if anchor in pool_headings:
+            title = pool_headings[anchor]
+        elif anchor not in headings:
+            raise ValueError(f"anchor {anchor!r} has no heading in the pool and no reviewed heading")
+        elif heading_anchor(headings[anchor]) != anchor:
+            raise ValueError(f"reviewed heading {headings[anchor]!r} does not reproduce anchor {anchor!r}")
+        else:
+            title = headings[anchor]
+        if target.startswith("section:"):
+            sections.append(f"### {title}\n\nThe [section at the cutover]({history}#{target.removeprefix('section:')}).\n")
+            continue
+        record = records.get(target)
+        if record is None:
+            raise ValueError(f"anchor {anchor!r} points to unknown record {target!r}")
+        # A reviewed heading links the record's own heading at the cutover, when it has one.
+        fragment = anchor if anchor in pool_headings else next((entries[unit] for unit in record.units if unit in entries), None)
+        at_cutover = f"[its entry at the cutover]({history}#{fragment})" if fragment else f"[the pool at the cutover]({history})"
+        if record.disposition == "migrate":
+            line = f"Tracked in [{record.id}]({issues}/{_issue_of(record.id, records)}); history: {at_cutover}."
+        elif record.disposition == "duplicate":
+            original = record.duplicate_of or ""
+            line = f"A duplicate of {original}, tracked in [{original}]({issues}/{_issue_of(original, records)}); history: {at_cutover}."
+        else:
+            line = f"Retired at the cutover as {record.disposition}, not open work; history: {at_cutover}."
+        sections.append(f"### {title}\n\n{line}\n")
+    stub = (
+        f"# {found[0][2]}\n\n"
+        "This file no longer tracks work. GitHub issues are the sole live registry for every feature, defect, follow-up\n"
+        f"and plan: [all issues]({issues}), [the plans]({issues}?q=is%3Aissue+label%3Akind%3Aplan) and the\n"
+        "[work status page](../../work-status.html), which shows every issue as one live table.\n\n"
+        f"The pool as it stood before the cutover is preserved at [commit `{history_commit[:12]}`]({history}).\n\n"
+        "## Compatibility anchors\n\n"
+        "Older documents link the headings below; each points to its issue, or to its entry before the cutover.\n\n" + "\n".join(sections)
+    )
+    problems = stub_problems(stub) + anchor_problems(stub, anchors)
+    if problems:
+        raise ValueError(f"the rendered stub fails its gates: {'; '.join(problems)}")
+    return stub
+
+
+def _checkout_files(root: Path) -> Iterator[tuple[str, bytes]]:
+    """Every tracked file of the checkout at ``root`` (any type can link the pool), by repository-relative path.
+
+    Repository truth is the Git index (``tools/tracked_repository_files.py``): stage a new document before rendering;
+    untracked and ignored files are neither scanned nor filled."""
+    from tools.tracked_repository_files import tracked_repository_files
+
+    resolved = root.resolve()
+    for path in tracked_repository_files(root, pathspecs=["."]):
+        yield path.relative_to(resolved).as_posix(), path.read_bytes()
+
+
+def cutover_docs(
+    inventory: Inventory, root: Path, history_pool: bytes, history_commit: str, headings: Mapping[str, str]
+) -> dict[str, bytes]:
+    """The changed files of the cutover under ``root``: every tracked Markdown document with its issue placeholders
+    filled, and the pool stub keeping every reviewed and inbound anchor. Nothing is written; any refusal raises before a caller
+    writes anything.
+
+    The checkout's pool must be the pool at ``history_commit`` (line endings aside, since a Windows checkout may
+    convert them), so the history permalink preserves exactly the text the stub replaces.
+    """
+    if (root / POOL_PATH).read_bytes().replace(b"\r\n", b"\n") != history_pool.replace(b"\r\n", b"\n"):
+        raise ValueError(f"{POOL_PATH} under {root} is not the pool at {history_commit}; render the cutover from that pool")
+    anchors, changed = set(inventory.compat_anchors), {}
+    for path, data in _checkout_files(root):  # the pool links none of its own anchors by file name
+        anchors |= inbound_pool_anchors({path: data.decode("utf-8", "replace")})
+        if path.endswith(".md") and PLACEHOLDER_START.encode() in data:
+            changed[path] = fill_issue_placeholders(data.decode("utf-8"), inventory).encode("utf-8")
+    changed[POOL_PATH] = render_pool_stub(inventory, history_pool.decode("utf-8"), history_commit, anchors, headings).encode("utf-8")
+    return changed
+
+
 # ---- command line ----
 
 
@@ -2043,6 +2164,8 @@ def _github_command(args: argparse.Namespace, reader: SourceReader, client: GitH
         for problem in result.problems:
             print(f"PROBLEM: {problem}")
         print(json.dumps({"ok": result.ok, "problems": len(result.problems), "mapped": len(result.mapping)}))
+        if result.ok and args.mapping_out is not None:  # a mapping is evidence only when every record reconciles
+            args.mapping_out.write_bytes((json.dumps(dict(result.mapping), indent=2, sort_keys=True) + "\n").encode("utf-8"))
         return 0 if result.ok else 1
     batch = plan_migration(inventory, drafts, issues, labels)
     text = render_batch(batch).encode("utf-8")
@@ -2113,12 +2236,49 @@ def main(argv: Sequence[str] | None = None, reader: SourceReader = read_sources_
     publish.add_argument("--pause-seconds", type=_pause_seconds, default=WRITE_PAUSE_S)
     check = commands.add_parser("reconcile", help="read GitHub and check every migrating record's issue (no writes)")
     check.add_argument("inventory", type=Path)
+    check.add_argument("--mapping-out", type=Path, help="when every record reconciles, write its record -> issue mapping")
     for command in (plan, publish, check):
         command.add_argument("--final", action="store_true", help="final copies: no trial label or banner")
+    finalize = commands.add_parser("finalize", help="record each migrating record's issue from a reconcile mapping (offline)")
+    finalize.add_argument("inventory", type=Path)
+    finalize.add_argument("--mapping", type=Path, required=True)
+    finalize.add_argument("--out", type=Path, required=True)
+    cutover = commands.add_parser("cutover-docs", help="write the pool stub and fill issue placeholders from a finalized manifest")
+    cutover.add_argument("inventory", type=Path)
+    cutover.add_argument("--history-commit", required=True, help="the commit whose pool the stub's history permalink keeps")
+    cutover.add_argument("--root", type=Path, default=REPO_ROOT)
     args = parser.parse_args(argv)
 
     if args.command in ("plan", "publish", "reconcile"):
         return _github_command(args, reader, client or GhClient())
+
+    if args.command == "finalize":
+        try:
+            mapping = json.loads(args.mapping.read_text(encoding="utf-8"))
+            if not isinstance(mapping, dict):
+                raise ValueError("the mapping is not a JSON object of record ids to issue numbers")
+            final = finalize_inventory(json.loads(args.inventory.read_text(encoding="utf-8")), mapping)
+        except ValueError as error:
+            print(json.dumps({"step": "STOP", "reason": str(error)}))
+            return 2
+        args.out.write_bytes(render_manifest(final).encode("utf-8"))
+        return 0
+
+    if args.command == "cutover-docs":
+        from tools import github_work_tracking_rules as rules
+        from tools.tracked_repository_files import TrackedFileInventoryError
+
+        inventory = load_inventory(args.inventory)
+        try:
+            pool = reader(args.history_commit, {"pool": POOL_PATH})["pool"]
+            changed = cutover_docs(inventory, args.root, pool, args.history_commit, rules.COMPAT_HEADINGS)
+        except (ValueError, TrackedFileInventoryError) as error:  # no index to read is a refusal, not a crash
+            print(json.dumps({"step": "STOP", "reason": str(error)}))
+            return 2
+        for path, data in changed.items():
+            (args.root / path).write_bytes(data)
+        print(json.dumps({"ok": True, "changed": sorted(changed)}))
+        return 0
 
     if args.command == "draft":
         from tools import github_work_tracking_rules as rules

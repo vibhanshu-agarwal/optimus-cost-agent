@@ -2291,7 +2291,13 @@ def test_the_real_frozen_artifacts_are_unchanged_at_head() -> None:
 
     inventory = gwt.load_inventory(MANIFEST)
     frozen = {record.title for record in inventory.records if record.kind == "frozen-mapping"}
-    assert set(inventory.frozen_artifacts) == frozen and len(frozen) == 23  # every frozen-mapping record keeps its digest
+    # The pool states "Pin status: not digest-pinned" for two historical-provenance documents: each may be edited under
+    # its own reviewed scope, so the manifest records them but seals no digest for them.
+    unpinned = {
+        "docs/superpowers/plans/archive/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md",
+        "docs/superpowers/specs/2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-design.md",
+    }
+    assert set(inventory.frozen_artifacts) == frozen - unpinned and len(frozen) == 23 and unpinned <= frozen
     assert gwt.frozen_problems(head, inventory) == []
 
 
@@ -2313,7 +2319,9 @@ def test_status_stub_has_no_duplicate_board() -> None:
 def test_the_manifest_pins_every_frozen_artifact_digest() -> None:
     data = json.loads(MANIFEST.read_text(encoding="utf-8"))
     pool = gwt.git_blob_bytes(data["baseline"]["commit"], rules.SOURCES["pool"]).decode("utf-8")
-    stated = dict(re.findall(r"^- `(docs/superpowers/[^`]+)` — SHA-256 `([0-9A-Fa-f]{64})`", pool, re.M))
+    bullets = re.findall(r"^- `(docs/superpowers/[^`]+)` — SHA-256 `([0-9A-Fa-f]{64})`(.*)$", pool, re.M)
+    stated = {path: digest for path, digest, rest in bullets if "Pin status: not digest-pinned" not in rest}
+    assert len(stated) == 21 and len({path for path, _digest, _rest in bullets}) == 23
     assert {path: entry["sha256"] for path, entry in data["frozen_artifacts"].items()} == {p: d.lower() for p, d in stated.items()}
     lines = [line for line in MANIFEST.read_text(encoding="utf-8").splitlines() if '"sha256": ' in line]
     assert len(lines) == len(stated) and all("pragma: allowlist secret" in line for line in lines)
@@ -2399,3 +2407,236 @@ def test_plan_identity_rules_fail_closed(monkeypatch: pytest.MonkeyPatch) -> Non
         rules._frozen_artifacts(twice)
     once = rules._frozen_artifacts(f"- `{path}` — SHA-256 `{'A' * 64}` — one\n- `{path}` — SHA-256 `{'a' * 64}` — again\n")
     assert once == {path: {"sha256": "a" * 64, "pin": rules.DIGEST_PIN_NOTE}}  # one artifact, stated twice, same digest
+
+
+def test_only_digest_pinned_frozen_bullets_are_sealed() -> None:
+    pinned, unpinned = "docs/superpowers/plans/archive/p.md", "docs/superpowers/specs/u.md"
+    pool = (
+        f"- `{pinned}` — SHA-256 `{'A' * 64}` — Frozen approval bytes.\n"
+        f"- `{unpinned}` — SHA-256 `{'B' * 64}` — Historical provenance. Pin status: not digest-pinned. Editable.\n"
+        f"- `{pinned}` — SHA-256 `{'A' * 64}` — Pin status: not digest-pinned here, but frozen above.\n"
+    )
+    assert rules._frozen_artifacts(pool) == {pinned: {"sha256": "a" * 64, "pin": rules.DIGEST_PIN_NOTE}}
+
+
+# ==== Task 4: the cutover change set (the pool stub and issue placeholders, rendered from a finalized manifest) ====
+
+CUTOVER = "c" * 40
+COMPAT = {
+    "live-implementation-plan-registry": "section:live-implementation-plan-registry",
+    "p11-fu-40-real-zed-containment": "P11-FU-40",
+    "p11-fu-40-a-broken-older-fragment": "P11-FU-40",
+    "plan-117-accepted-risk-redis-durability": "RISK",
+}
+HEADINGS = {"p11-fu-40-a-broken-older-fragment": "P11-FU-40: A broken older fragment"}
+
+
+def _cutover_inventory(tmp_path: Path, compat: dict[str, str] = COMPAT) -> gwt.Inventory:
+    data = _identities(_good())
+    data["compat_anchors"] = compat
+    return _gated(tmp_path, data)
+
+
+def test_the_pool_stub_keeps_every_anchor_and_no_board(tmp_path: Path) -> None:
+    inventory = _cutover_inventory(tmp_path)
+    stub = gwt.render_pool_stub(inventory, POOL, CUTOVER, set(COMPAT), HEADINGS)
+    assert gwt.stub_problems(stub) == [] and gwt.anchor_problems(stub, set(COMPAT)) == []
+    history = f"https://github.com/{gwt.REPO}/blob/{CUTOVER}/{gwt.POOL_PATH}"
+    fu40 = {r.id: r.target_issue for r in inventory.records}["P11-FU-40"]
+    assert f"({ISSUES}/{fu40})" in stub and f"({history}#p11-fu-40-real-zed-containment)" in stub
+    assert "### P11-FU-40: Real Zed containment" in stub  # the pool's own heading reproduces its anchor
+    assert "### P11-FU-40: A broken older fragment" in stub  # a reviewed heading reproduces a fragment no heading had
+    assert stub.count(f"({history}#p11-fu-40-real-zed-containment)") == 2  # ...and links its record's own entry
+    assert f"({history}#live-implementation-plan-registry)" in stub and "label%3Akind%3Aplan" in stub
+    assert f"({history}#plan-117-accepted-risk-redis-durability)" in stub and "not open work" in stub
+    assert "Partially implemented" not in stub and "| `P11-FU-20`" not in stub  # no status and no board survive
+
+
+@pytest.mark.parametrize(
+    ("anchors", "headings", "expected"),
+    [
+        ({"p11-fu-40-a-broken-older-fragment"}, {}, "no heading"),
+        ({"p11-fu-40-a-broken-older-fragment"}, {"p11-fu-40-a-broken-older-fragment": "Another title"}, "does not reproduce"),
+        ({"an-inbound-anchor-nobody-reviewed"}, {}, "no reviewed target"),
+    ],
+)
+def test_the_pool_stub_refuses_an_anchor_it_cannot_reproduce(
+    tmp_path: Path, anchors: set[str], headings: dict[str, str], expected: str
+) -> None:
+    with pytest.raises(ValueError, match=expected):
+        gwt.render_pool_stub(_cutover_inventory(tmp_path), POOL, CUTOVER, anchors, headings)
+
+
+def test_the_pool_stub_replaces_only_the_inventoried_pool(tmp_path: Path) -> None:
+    edited = POOL + "\n### P11-FU-99: Filed after the baseline\n\nAn item the manifest never saw.\n"
+    with pytest.raises(ValueError, match="not the pool the manifest inventoried"):
+        gwt.render_pool_stub(_cutover_inventory(tmp_path), edited, CUTOVER, set(COMPAT), HEADINGS)
+    with pytest.raises(ValueError, match="history permalink"):
+        gwt.render_pool_stub(_cutover_inventory(tmp_path), POOL, "main", set(COMPAT), HEADINGS)  # a moving ref
+
+
+def test_the_pool_stub_needs_a_finalized_manifest(tmp_path: Path) -> None:
+    data = _identities(_good(), finalized=False)
+    data["compat_anchors"] = COMPAT
+    with pytest.raises(ValueError, match="P11-FU-40.*no issue"):
+        gwt.render_pool_stub(_gated(tmp_path, data), POOL, CUTOVER, set(COMPAT), HEADINGS)
+
+
+def test_issue_placeholders_are_filled_only_from_a_finalized_manifest(tmp_path: Path) -> None:
+    inventory = _cutover_inventory(tmp_path)
+    fu40 = {r.id: r.target_issue for r in inventory.records}["P11-FU-40"]
+    text = "**Tracking issue:** {{issue:P11-FU-40}}\nSee {{issue:plan:11.23}}.\n"
+    assert gwt.fill_issue_placeholders(text, inventory) == f"**Tracking issue:** {ISSUES}/{fu40}\nSee {ISSUES}/222.\n"
+    with pytest.raises(ValueError, match="nobody"):
+        gwt.fill_issue_placeholders("{{issue:nobody}}", inventory)
+    with pytest.raises(ValueError, match="A2A-M17"):
+        gwt.fill_issue_placeholders("{{issue:A2A-M17}}", inventory)  # it does not migrate, so it has no issue
+    with pytest.raises(ValueError, match="malformed"):
+        gwt.fill_issue_placeholders("{{issue: P11-FU-40}}", inventory)  # never left behind unfilled
+    unfinalized = _gated(tmp_path, _identities(_good(), finalized=False))
+    with pytest.raises(ValueError, match="P11-FU-40"):
+        gwt.fill_issue_placeholders("{{issue:P11-FU-40}}", unfinalized)
+    assert gwt.fill_issue_placeholders("no placeholders here", unfinalized) == "no placeholders here"
+
+
+def _git_add(root: Path) -> None:
+    """Stage everything under ``root`` in a fresh repository: the cutover scans the Git index, not the filesystem."""
+    if not (root / ".git").exists():
+        subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True, capture_output=True)
+
+
+def test_cli_cutover_docs_writes_the_stub_and_fills_the_placeholders(tmp_path: Path) -> None:
+    compat = {anchor: target for anchor, target in COMPAT.items() if anchor not in HEADINGS}
+    data = _identities(_good())
+    data["compat_anchors"] = compat
+    inventory_path = _write(tmp_path, _with_source(data, POOL))
+    root = tmp_path / "checkout"
+    (root / gwt.PLANS_DIR).mkdir(parents=True)
+    (root / gwt.POOL_PATH).write_text(POOL, encoding="utf-8")
+    note = root / "docs/note.md"
+    note.write_text(
+        f"Owner: {{{{issue:P11-FU-40}}}}; [entry](superpowers/plans/{gwt.POOL_FILE}#p11-fu-40-real-zed-containment)\n", encoding="utf-8"
+    )
+    reader = lambda commit, paths: {name: POOL.encode("utf-8") for name in paths}  # noqa: E731 - the pool at the cutover commit
+    argv = ["cutover-docs", str(inventory_path), "--history-commit", CUTOVER, "--root", str(root)]
+    assert gwt.main(argv, reader=reader) == 2  # not a Git checkout: there is no index to scan, so nothing is written
+    stray = root / "docs/stray.md"
+    stray.write_text(f"[old](superpowers/plans/{gwt.POOL_FILE}#an-unreviewed-fragment)\n", encoding="utf-8")
+    _git_add(root)
+    assert gwt.main(argv, reader=reader) == 2  # an inbound anchor nobody reviewed: nothing is written
+    assert (root / gwt.POOL_PATH).read_text(encoding="utf-8") == POOL and "{{issue:P11-FU-40}}" in note.read_text(encoding="utf-8")
+    stray.unlink()
+    _git_add(root)
+    assert gwt.main(argv, reader=reader) == 0
+    inventory = gwt.load_inventory(inventory_path)
+    stub = gwt.render_pool_stub(inventory, POOL, CUTOVER, set(compat), rules.COMPAT_HEADINGS)
+    assert (root / gwt.POOL_PATH).read_text(encoding="utf-8") == stub
+    fu40 = {r.id: r.target_issue for r in inventory.records}["P11-FU-40"]
+    assert note.read_text(encoding="utf-8").startswith(f"Owner: {ISSUES}/{fu40};")
+    assert gwt.main(argv, reader=reader) == 2  # the root's pool is now the stub, not the pool at the history commit
+    assert (root / gwt.POOL_PATH).read_text(encoding="utf-8") == stub
+
+
+def test_the_reviewed_compat_headings_reproduce_exactly_the_broken_anchors() -> None:
+    commit = json.loads(MANIFEST.read_text(encoding="utf-8"))["baseline"]["commit"]
+    pool = gwt.git_blob_bytes(commit, rules.SOURCES["pool"]).decode("utf-8")
+    slugs = {gwt.heading_anchor(title) for _number, _level, title in gwt._headings(pool.splitlines())}
+    assert set(rules.COMPAT_ANCHORS) - slugs == set(rules.COMPAT_HEADINGS)  # only anchors no pool heading reproduces
+    assert all(gwt.heading_anchor(heading) == anchor for anchor, heading in rules.COMPAT_HEADINGS.items())
+
+
+def test_cli_finalize_writes_the_manifest_with_every_issue(tmp_path: Path) -> None:
+    data = _identities(_good(), finalized=False)
+    inventory_path = _write(tmp_path, _with_source(data, POOL))
+    numbers = iter(range(700, 800))
+    mapping = {r["id"]: r.get("target_issue") or next(numbers) for r in data["records"] if r["disposition"] == "migrate"}
+    mapping_path = tmp_path / "mapping.json"
+    mapping_path.write_text(json.dumps(mapping), encoding="utf-8")
+    out = tmp_path / "final.json"
+    assert gwt.main(["finalize", str(inventory_path), "--mapping", str(mapping_path), "--out", str(out)]) == 0
+    assert (
+        out.read_bytes()
+        == gwt.render_manifest(gwt.finalize_inventory(json.loads(inventory_path.read_text(encoding="utf-8")), mapping)).encode()
+    )
+    mapping_path.write_text(json.dumps({**mapping, "P11-FU-40": 0}), encoding="utf-8")
+    assert gwt.main(["finalize", str(inventory_path), "--mapping", str(mapping_path), "--out", str(tmp_path / "bad.json")]) == 2
+    assert not (tmp_path / "bad.json").exists()
+
+
+def test_cli_reconcile_writes_its_mapping_only_when_it_reconciles(tmp_path: Path) -> None:
+    client = FakeGitHub(_pilot_issues(), _pilot_labels())
+    _publish_cli(tmp_path, client, "run", "--pause-seconds", "0", "--execute")  # plans, then publishes the fixture batch
+    path = tmp_path / "inventory.json"
+    reader = lambda commit, paths: {"pool": POOL.encode("utf-8")}  # noqa: E731 - fixture reader
+    out = tmp_path / "mapping.json"
+    assert gwt.main(["reconcile", str(path), "--mapping-out", str(out)], reader=reader, client=client) == 0
+    mapping = json.loads(out.read_text(encoding="utf-8"))
+    assert mapping["plan:11.23"] == 222 and mapping["P11-FU-20"] == 223 and len(mapping) == 8
+    client.issues[222]["body"] = "edited"
+    out.unlink(missing_ok=True)
+    assert gwt.main(["reconcile", str(path), "--mapping-out", str(out)], reader=reader, client=client) == 1
+    assert not out.exists()
+
+
+# Written after the generator's implementation while planning mutants (a disclosed test-first deviation): branches.
+
+
+def test_the_pool_stub_links_every_kind_of_target(tmp_path: Path) -> None:
+    data = _identities(_good())
+    _records(data)["A2A-M17"].update(disposition="duplicate", duplicate_of="A2A-C1")
+    compat = {"a2a-ledger-audit-obligations": "A2A-M17", "a2a-c1-an-older-fragment": "A2A-C1"}
+    data["compat_anchors"] = compat
+    inventory = _gated(tmp_path, data)
+    c1 = _records(data)["A2A-C1"]["target_issue"]
+    history = f"https://github.com/{gwt.REPO}/blob/{CUTOVER}/{gwt.POOL_PATH}"
+    stub = gwt.render_pool_stub(inventory, POOL, CUTOVER, set(compat), {"a2a-c1-an-older-fragment": "A2A C1: an older fragment"})
+    # A duplicate links its original's issue; a pool heading links itself even when its record is only a table row.
+    assert (
+        f"A duplicate of A2A-C1, tracked in [A2A-C1]({ISSUES}/{c1}); history: [its entry at the cutover]({history}#a2a-ledger-audit-obligations)."
+        in stub
+    )
+    # A reviewed heading for a record without a heading of its own links the whole pool at the cutover.
+    assert f"Tracked in [A2A-C1]({ISSUES}/{c1}); history: [the pool at the cutover]({history})." in stub
+    data["compat_anchors"] = {"gone": "P11-FU-404"}
+    with pytest.raises(ValueError, match="points to unknown record 'P11-FU-404'"):
+        gwt.render_pool_stub(_gated(tmp_path, data), POOL, CUTOVER, {"gone"}, {"gone": "Gone"})
+    data["compat_anchors"] = {"pool": "P11-FU-40"}  # the pool's own title: the stub would carry that heading twice
+    with pytest.raises(ValueError, match="more than one heading"):
+        gwt.render_pool_stub(_gated(tmp_path, data), POOL, CUTOVER, {"pool"}, {})
+
+
+def test_cutover_docs_scans_every_tracked_file_and_fills_only_markdown(tmp_path: Path) -> None:
+    data = _identities(_good())
+    data["compat_anchors"] = {"p11-fu-40-real-zed-containment": "P11-FU-40"}
+    inventory = _gated(tmp_path, data)
+    root = tmp_path / "checkout"
+    for path, content in {
+        gwt.POOL_PATH: POOL,
+        "tests/fixture.py": 'TEXT = "{{issue:P11-FU-40}}"\n',  # code is never filled
+        ".github/workflows/x.yml": f"# {gwt.POOL_FILE}#p11-fu-40-real-zed-containment\n",  # any tracked file type links
+    }.items():
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_text(content, encoding="utf-8")
+    _git_add(root)
+    # Repository truth is the Git index (tools/tracked_repository_files.py): an untracked or ignored file is not scanned.
+    (root / "docs/unstaged-draft.md").write_text(f"[old]({gwt.POOL_FILE}#an-unreviewed-fragment)\n", encoding="utf-8")
+    changed = gwt.cutover_docs(inventory, root, POOL.encode("utf-8"), CUTOVER, {})
+    assert set(changed) == {gwt.POOL_PATH}
+    (root / ".github/workflows/x.yml").write_text(f"# {gwt.POOL_FILE}#an-unreviewed-fragment\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="an-unreviewed-fragment"):
+        gwt.cutover_docs(inventory, root, POOL.encode("utf-8"), CUTOVER, {})
+    _records(data)["A2A-M17"]["target_issue"] = 999  # a retiring record never lends its number
+    with pytest.raises(ValueError, match="'A2A-M17' does not migrate"):
+        gwt.fill_issue_placeholders("{{issue:A2A-M17}}", _gated(tmp_path, data))
+
+
+@pytest.mark.parametrize("malformed", ["a list of every migrating record", "not JSON"])
+def test_cli_finalize_refuses_a_malformed_mapping(tmp_path: Path, malformed: str) -> None:
+    data = _identities(_good(), finalized=False)
+    inventory_path = _write(tmp_path, _with_source(data, POOL))
+    migrating = [r["id"] for r in data["records"] if r["disposition"] == "migrate"]
+    mapping_path = tmp_path / "mapping.json"
+    mapping_path.write_text(json.dumps(migrating) if malformed.startswith("a list") else "{not json", encoding="utf-8")
+    assert gwt.main(["finalize", str(inventory_path), "--mapping", str(mapping_path), "--out", str(tmp_path / "out.json")]) == 2
+    assert not (tmp_path / "out.json").exists()

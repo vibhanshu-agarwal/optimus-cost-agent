@@ -530,7 +530,6 @@
   "A2A-C1": {"issue": 225, "fingerprint": "e3f5e19d26d8ca4adbe34b16c834a641a9e00dfa839c7aa33f562b5a15408bda", "pin": "# pragma: allowlist secret - sha256 of the issue's public fields when its adoption was reviewed, not a secret"}
  },
  "frozen_artifacts": {
-  "docs/superpowers/plans/archive/2026-07-23-plan-10-1-p9-96-follow-up-remediation.md": {"sha256": "fa35912c3e5ac343a1092e7b5a88ca93c0e1293061cb53d5810bb1ba3c1002f8", "pin": "# pragma: allowlist secret - sha256 of the frozen artifact's approved bytes, not a secret"},
   "docs/superpowers/plans/archive/2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md": {"sha256": "4303d6ad5c44ed62a85a0509c8c87366505d4d470dd7bc4e0b4309bbe6e3c771", "pin": "# pragma: allowlist secret - sha256 of the frozen artifact's approved bytes, not a secret"},
   "docs/superpowers/plans/archive/2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md": {"sha256": "e66eca48c588e7db618d4850fdf0cee901b4966bc0ab405e21c857ae6be24f32", "pin": "# pragma: allowlist secret - sha256 of the frozen artifact's approved bytes, not a secret"},
   "docs/superpowers/plans/archive/2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md": {"sha256": "254a6acc56511bbcceb8fc101b190f213fd65450327145c88979077d845d6d3e", "pin": "# pragma: allowlist secret - sha256 of the frozen artifact's approved bytes, not a secret"},
@@ -550,7 +549,6 @@
   "docs/superpowers/specs/2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-design.md": {"sha256": "5608ad5520b8960e070a4a4f32c992d152a2ca19f21c177b44ac9805f371f3aa", "pin": "# pragma: allowlist secret - sha256 of the frozen artifact's approved bytes, not a secret"},
   "docs/superpowers/specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md": {"sha256": "3d4fba5be86399f4fd7cabb319847a847a06394be2ceeb5d795952c2901eb90e", "pin": "# pragma: allowlist secret - sha256 of the frozen artifact's approved bytes, not a secret"},
   "docs/superpowers/specs/2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md": {"sha256": "ac48c0aef1778d6ebe93005bc3993ae204f81a1c59cdc8db17cfb7edb6a040f8", "pin": "# pragma: allowlist secret - sha256 of the frozen artifact's approved bytes, not a secret"},
-  "docs/superpowers/specs/2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-design.md": {"sha256": "bbb033051b8238a50e72d20f6c59a79bf94a0ebe19a43428ccb440eaf8b37f73", "pin": "# pragma: allowlist secret - sha256 of the frozen artifact's approved bytes, not a secret"},
   "docs/superpowers/specs/2026-08-15-p11-fu-18-29-durable-approval-workspace-identity-design.md": {"sha256": "b445693afb9b110e61d860f1b63d8836ff0ea651e0ac327baba1cc906c84543b", "pin": "# pragma: allowlist secret - sha256 of the frozen artifact's approved bytes, not a secret"},
   "docs/superpowers/specs/evidence-handoff-a2a-ledger-design.md": {"sha256": "2aa21d8a5569a6427c2e34c9b785467ad7cd934d708ae16d5a43d52c2f9a71a1", "pin": "# pragma: allowlist secret - sha256 of the frozen artifact's approved bytes, not a secret"}
  },

@@ -1769,6 +1769,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.github_work_tracking:main:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the finalize and cutover-docs commands print a refusal as their STOP reason: a ValueError naming manifest record ids, issue numbers, repository paths, pool anchors and headings from committed files, or a JSON decoding position in an operator-supplied mapping file; or a TrackedFileInventoryError's fixed code with a repository-relative path or git exit status. Never runtime secrets or production payloads.",
+      "sanitizer": "fixed gate vocabulary over committed repository content and public issue numbers",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_cutover_docs_writes_the_stub_and_fills_the_placeholders",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.github_work_tracking:main:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: main serializes only the inventory validation summary (an ok flag, the problem count and per-disposition record and unit counts) computed from a reviewed planning manifest and committed planning documents; no runtime secrets, credentials or production payloads are read.",

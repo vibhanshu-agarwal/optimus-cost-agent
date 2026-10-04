@@ -54,7 +54,8 @@ QUOTES = {
 A2A_RANKS = {"C": "Critical", "H": "High", "M": "Medium"}
 DIGEST_PIN_NOTE = "# pragma: allowlist secret - sha256 of the frozen artifact's approved bytes, not a secret"
 PLAN_PIN_NOTE = "# pragma: allowlist secret - git blob id of this plan file at the baseline commit, not a secret"
-_FROZEN_DIGEST = re.compile(r"^- `(?P<path>docs/superpowers/[^`]+)` — SHA-256 `(?P<digest>[0-9A-Fa-f]{64})`", re.M)
+_FROZEN_DIGEST = re.compile(r"^- `(?P<path>docs/superpowers/[^`]+)` — SHA-256 `(?P<digest>[0-9A-Fa-f]{64})`(?P<rest>.*)$", re.M)
+UNPINNED = "Pin status: not digest-pinned"  # the pool's words for a provenance document that stays editable under review
 # Docs-root documents that track no issue of their own (file name -> why); every other docs-root plan file has one owner.
 PLAN_EXEMPTIONS = {
     "2026-07-01-phase-1-roadmap.md": "the phase-1 roadmap: plan history and navigation; its open work is tracked by the records it points to",
@@ -343,6 +344,12 @@ COMPAT_ANCHORS = {
     "p11-fu-9-client-supplied-acp-mcpservers-disposition": "P11-FU-9",
     "p11-fu-5-windows-subprocess-handle-duplication-flake-winerror-650": "P11-FU-5",
     "p11-fu-4-re-pin-fu-4a-fu-5-live-evidence": "P11-FU-4",
+}
+# Inbound links whose fragment no pool heading ever produced (the pool's own headings read "P11-FU-22: Durable …" and
+# "FU-4A/FU-5"); the authority stub gives each a reviewed heading that reproduces the fragment, so the links resolve.
+COMPAT_HEADINGS = {
+    "durable-effect-aware-mcp-indeterminate-call-custody": "Durable effect-aware MCP indeterminate-call custody",
+    "p11-fu-4-re-pin-fu-4a-fu-5-live-evidence": "P11-FU-4: Re-pin FU-4A FU-5 live evidence",
 }
 
 OVERRIDES: dict[str, dict] = {
@@ -641,13 +648,19 @@ def draft_inventory(commit: str, sources: Mapping[str, bytes], plans: Mapping[st
 
 
 def _frozen_artifacts(pool: str) -> dict:
-    """Each frozen approval artifact's SHA-256 as the pool states it, to survive the pool's cutover to a stub."""
+    """Each frozen approval artifact's SHA-256 as the pool states it, to survive the pool's cutover to a stub.
+
+    A document the pool lists only as "not digest-pinned" provenance stays editable under its own reviewed scope, so it
+    gets no sealed digest; every stated digest must still agree."""
     digests: dict[str, str] = {}
+    pinned: set[str] = set()
     for match in _FROZEN_DIGEST.finditer(pool):
         path, digest = match.group("path"), match.group("digest").lower()
         if digests.setdefault(path, digest) != digest:
             raise ValueError(f"the pool states two digests for frozen artifact {path}")
-    return {path: {"sha256": digest, "pin": DIGEST_PIN_NOTE} for path, digest in sorted(digests.items())}
+        if UNPINNED not in match.group("rest"):
+            pinned.add(path)
+    return {path: {"sha256": digest, "pin": DIGEST_PIN_NOTE} for path, digest in sorted(digests.items()) if path in pinned}
 
 
 def _plan_identities(records: list[dict], scans: Mapping[str, gwt.SourceScan], plans: Mapping[str, bytes]) -> dict:
