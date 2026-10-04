@@ -1782,3 +1782,119 @@ def test_a_metadata_only_label_change_needs_no_body_update(tmp_path: Path) -> No
     assert gwt.reconcile(inventory, drafts, gwt.read_issues(client)).problems == ()
     for current in ("**Handler:**", "**Difficulty:**"):
         assert current not in client.issues[222]["body"]
+
+
+# ---- Checkpoint 2 Codex follow-up at 700155e: a run whose required evidence is incomplete never reports success ----
+
+
+class _SealBlockedJournal(gwt.Journal):
+    """A journal that records every step, after which the evidence seal cannot be stored (its path is taken)."""
+
+    def write(self, step: str, **fields: Any) -> None:
+        super().write(step, **fields)
+        if step == "outcome" and self.path is not None:
+            (self.path.parent / "evidence.sha256").mkdir()
+
+
+def _journal_lines(path: Path) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def _created_on_record(journal: list[dict[str, Any]]) -> dict[str, int]:
+    """The issue each create produced, as its durable result record states it."""
+    return {record["target"]: record["number"] for record in journal if record["step"] == "result" and record["op"] == "create-issue"}
+
+
+@pytest.mark.parametrize("operations", [None, 0], ids=["a normal batch", "an empty batch"])
+def test_an_unjournaled_final_outcome_is_never_a_pass(tmp_path: Path, operations: int | None) -> None:
+    inventory, drafts, client = _setup(tmp_path)
+    batch = _plan(inventory, drafts, client)
+    batch = dataclasses.replace(batch, operations=batch.operations[:operations])
+    path = tmp_path / "journal.jsonl"
+    result = gwt.publish_batch(batch, client, _FailingJournal(path, "outcome"), pause=lambda: None)
+
+    assert result.outcome == "incomplete" and result.journal_ok is False
+    assert "applied and validated" in result.reason  # every write was validated, and that fact is kept
+    assert "final outcome could not be journaled" in result.reason  # and no outcome record is claimed
+    assert result.writes == len(client.writes) == len(batch.operations)  # no retry and no later write
+    journal = _journal_lines(path)
+    assert journal[-1]["step"] == ("validated" if batch.operations else "start")
+    created = _created_on_record(journal)
+    assert len(created) == sum(operation.op == "create-issue" for operation in batch.operations)
+    assert dict(result.issues) == {**{record_id: ref.number for record_id, ref in batch.reused.items()}, **created}
+
+
+@pytest.mark.parametrize("cause", ["unknown", "failed"])
+def test_an_unjournaled_final_outcome_keeps_a_failed_or_unknown_classification(tmp_path: Path, cause: str) -> None:
+    inventory, drafts, client = _setup(tmp_path)
+    batch = _plan(inventory, drafts, client)
+    if cause == "unknown":
+        stop = _at(batch, "create-issue") + 1
+        client.faults[stop - 1] = "lost"
+    else:
+        stop = _at(batch, "update-issue")
+        target, read = batch.operations[stop].issue, client.get
+
+        def get(path: str) -> str:
+            if path.endswith(f"issues/{target}"):
+                raise RuntimeError("the response decoder crashed")
+            return read(path)
+
+        client.get = get  # type: ignore[method-assign]
+    result = gwt.publish_batch(batch, client, _FailingJournal(tmp_path / "journal.jsonl", "outcome"), pause=lambda: None)
+    assert result.outcome == cause and result.journal_ok is False
+    assert "final outcome could not be journaled" in result.reason
+    assert result.writes == len(client.writes) == stop  # no retry and no later write
+
+
+def test_a_journal_failure_before_the_end_still_records_the_final_outcome(tmp_path: Path) -> None:
+    inventory, drafts, client = _setup(tmp_path)
+    batch = _plan(inventory, drafts, client)
+    path = tmp_path / "journal.jsonl"
+    result = gwt.publish_batch(batch, client, _FailingJournal(path, "intent"), pause=lambda: None)
+    journal = _journal_lines(path)
+    assert result.outcome == "failed" and result.journal_ok is False
+    assert journal[-1]["step"] == "outcome" and journal[-1]["outcome"] == "failed"
+    assert "final outcome could not be journaled" not in result.reason  # it was; only the intent was not
+
+
+def _publish_cli_summary(tmp_path: Path, client: FakeGitHub, capsys: pytest.CaptureFixture[str]) -> tuple[int, dict[str, Any]]:
+    _publish_cli(tmp_path, client, "warmup", "--pause-seconds", "0")  # no --execute: plans the batch only
+    capsys.readouterr()
+    code = _publish_cli(tmp_path, client, "run", "--pause-seconds", "0", "--execute")
+    return code, json.loads(capsys.readouterr().out.splitlines()[-1])
+
+
+def test_cli_publish_with_an_unjournaled_final_outcome_exits_nonzero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    client = FakeGitHub(_pilot_issues(), _pilot_labels())
+    monkeypatch.setattr(gwt, "Journal", lambda path: _FailingJournal(path, "outcome"))
+    code, summary = _publish_cli_summary(tmp_path, client, capsys)
+
+    assert code == 4 and summary["outcome"] == "incomplete" and summary["sealed"] is False
+    assert summary["evidence"].startswith("incomplete") and "journal could not be written in full" in summary["evidence"]
+    assert summary["writes"] == len(client.writes) == 11 and "applied and validated" in summary["reason"]
+    evidence = tmp_path / "run"
+    assert not (evidence / "evidence.sha256").exists()
+    journal = _journal_lines(evidence / "journal.jsonl")
+    assert journal[-1]["step"] == "validated"  # there is no outcome record, and none is claimed
+    created = _created_on_record(journal)
+    assert created and created.items() <= summary["issues"].items()  # known identities are kept
+
+
+def test_cli_publish_whose_seal_cannot_be_written_exits_nonzero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    client = FakeGitHub(_pilot_issues(), _pilot_labels())
+    monkeypatch.setattr(gwt, "Journal", _SealBlockedJournal)
+    code, summary = _publish_cli_summary(tmp_path, client, capsys)
+
+    assert code == 4 and summary["outcome"] == "incomplete" and summary["sealed"] is False
+    assert summary["evidence"].startswith("incomplete") and "seal could not be written" in summary["evidence"]
+    assert summary["writes"] == len(client.writes) == 11 and "applied and validated" in summary["reason"]
+    evidence = tmp_path / "run"
+    assert (evidence / "evidence.sha256").is_dir()  # the blocked path: no seal file exists
+    journal = _journal_lines(evidence / "journal.jsonl")
+    assert journal[-1]["step"] == "outcome" and journal[-1]["outcome"] == "pass"  # every write validated, on record
+    assert summary["issues"] == journal[-1]["issues"]

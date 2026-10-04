@@ -1407,11 +1407,11 @@ class Journal:
 
 @dataclass(frozen=True)
 class PublicationResult:
-    outcome: str  # "pass" | "failed" | "unknown" | "refused"
+    outcome: str  # "pass" | "incomplete" (every write validated, required evidence missing) | "failed" | "unknown" | "refused"
     reason: str
     writes: int
     issues: Mapping[str, int]
-    journal_ok: bool = True  # False when the journal could not be written: the run stopped and its evidence is incomplete
+    journal_ok: bool = True  # False when any journal record could not be written: the evidence is incomplete, never sealed
 
 
 def _request(operation: Operation, refs: Mapping[str, IssueRef], repo: str) -> tuple[str, str, dict[str, Any]]:
@@ -1473,9 +1473,11 @@ def publish_batch(
 ) -> PublicationResult:
     """Apply a conflict-free batch in order; stop at the first failed, mismatched or unknown write, never retrying.
 
-    Every way out ends with an outcome record. A failure of any kind before a write is sent means nothing was written
+    Every way out attempts an outcome record. A failure of any kind before a write is sent means nothing was written
     for that operation (``failed``); a failure of any kind once it has been sent leaves its outcome ``unknown``. A
-    journal that cannot be written stops the run, and the result says so (``journal_ok``).
+    journal that cannot be written stops the run, and the result says so (``journal_ok``). When the outcome record
+    itself cannot be written, the reason says so; a run whose writes all validated is then ``incomplete``, never
+    ``pass``, and any other outcome keeps its classification.
     """
     repo = batch.repo
     wait = pause or (lambda: time.sleep(WRITE_PAUSE_S))
@@ -1484,16 +1486,21 @@ def publish_batch(
     journal_ok = True
 
     def record(step: str, **fields: Any) -> bool:
+        """Journal one record; ``False`` when this record could not be written, which ``journal_ok`` then keeps."""
         nonlocal journal_ok
         try:
             journal.write(step, **fields)
         except Exception:  # noqa: BLE001 - the evidence store itself failed: stop, and never claim a seal
             journal_ok = False
-        return journal_ok
+            return False
+        return True
 
     def finish(outcome: str, reason: str) -> PublicationResult:
         issues = {record_id: ref.number for record_id, ref in refs.items()}
-        record("outcome", outcome=outcome, reason=reason, writes=writes, issues=issues)
+        if not record("outcome", outcome=outcome, reason=reason, writes=writes, issues=issues):
+            reason = f"{reason}; the final outcome could not be journaled, so the evidence is incomplete"
+            if outcome == "pass":
+                outcome = "incomplete"
         return PublicationResult(outcome, reason, writes, issues, journal_ok)
 
     if not record("start", batch_sha256=batch.sha256, operations=len(batch.operations), conflicts=len(batch.conflicts), trial=batch.trial):
@@ -1686,11 +1693,16 @@ def _github_command(args: argparse.Namespace, reader: SourceReader, client: GitH
     seconds = args.pause_seconds
     result = publish_batch(batch, client, Journal(args.evidence_dir / "journal.jsonl"), pause=lambda: time.sleep(seconds))
     sealed = result.journal_ok and _seal_evidence(args.evidence_dir)  # sealed last, after the outcome record
-    summary = {"outcome": result.outcome, "reason": result.reason, "writes": result.writes, "sealed": sealed}
+    outcome = "incomplete" if result.outcome == "pass" and not sealed else result.outcome  # a pass needs its seal
+    summary = {"outcome": outcome, "reason": result.reason, "writes": result.writes, "issues": dict(result.issues), "sealed": sealed}
     if not sealed:
-        summary["evidence"] = "the evidence could not be sealed: the journal or its storage failed, so the record is incomplete"
+        summary["evidence"] = (
+            "incomplete: the journal could not be written in full, so the evidence could not be sealed"
+            if not result.journal_ok
+            else "incomplete: the journal was written, but its evidence seal could not be written"
+        )
     print(json.dumps(summary))
-    return {"pass": 0, "failed": 1, "refused": 2, "unknown": 3}[result.outcome]
+    return {"pass": 0, "failed": 1, "refused": 2, "unknown": 3, "incomplete": 4}[outcome]
 
 
 def _seal_evidence(directory: Path) -> bool:

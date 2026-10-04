@@ -1747,7 +1747,7 @@
     {
       "key": "tools.github_work_tracking:_github_command:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: the commands print a JSON summary (ok flag, conflict and problem counts, batch digest, write budget, outcome and reason) built from the inventory and public issue metadata.",
+      "rationale": "Inspection: the commands print a JSON summary (ok flag, conflict and problem counts, batch digest, write budget, outcome and reason, write count, record ids with their public issue numbers, the seal flag and a fixed evidence note) built from the inventory and public issue metadata.",
       "sanitizer": "governance-only inputs; public issue content; no credentials",
       "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_plan_is_read_only_and_publish_runs_only_the_reviewed_batch",
       "evidence_tier": "unit"
