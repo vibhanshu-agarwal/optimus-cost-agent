@@ -91,6 +91,10 @@ class RunContext:
 _sessions_started = 0
 _current: RunContext | None = None
 SAMPLE_INTERVAL_SECONDS = 5.0
+# The recorder's own clocks, bound at import. Tests patch the `time` module (often through a tool module's own
+# `time` attribute) while their phases are reported; the session recording them must not read their clock.
+_monotonic = time.monotonic
+_wall_time = time.time
 
 
 def current() -> RunContext | None:
@@ -268,7 +272,7 @@ def start_run(config: object) -> RunContext:
         context.parent_run = {"status": "unsupported"}
     if mode == ACTIVE:
         context.guard_mode = guard.install()
-    context.started_monotonic, context.started_wall = time.monotonic(), time.time()
+    context.started_monotonic, context.started_wall = _monotonic(), _wall_time()
     context.facts = _session_facts(worktree)
     if context.native.get("enrolled") and enrolled_before:
         # A later session in the same interpreter shares the job: its own activity is the
@@ -417,7 +421,7 @@ def record_phase(context: RunContext, report: object) -> None:
             detail = longrepr[2] if isinstance(longrepr, tuple) and len(longrepr) == 3 else getattr(report, "wasxfail", "")
             entry["reason"] = _reason(detail)
         _append(context, "phases", [entry])
-        if time.monotonic() - context.last_sample >= SAMPLE_INTERVAL_SECONDS:
+        if _monotonic() - context.last_sample >= SAMPLE_INTERVAL_SECONDS:
             sample_run(context, "phase")
     except Exception:  # noqa: BLE001 - recording must never change a test's outcome
         context.counts["recording_errors"] += 1
@@ -508,7 +512,7 @@ def sample_run(context: RunContext, checkpoint: str) -> None:
     There is no timer or thread, so a long phase has no sample inside it; `gap` shows that.
     """
     try:
-        now = time.monotonic()
+        now = _monotonic()
         others, extra, registry, ended = other_runs(context.run_id)
         entry: dict[str, object] = {
             "at": round(now - context.started_monotonic, 3),

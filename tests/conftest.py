@@ -25,8 +25,11 @@ from tools.plan1126_unrun_binding import (
 )
 from tools.testing import run_context, run_context_guard
 
+pytest_plugins = ("tests.support.profiles_plugin",)
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _PLAN1126_UNRUN_COUNT: pytest.StashKey[int] = pytest.StashKey()
+_PLAN1126_UNRUN_MARKED: pytest.StashKey[frozenset[str]] = pytest.StashKey()
 _RUN_CONTEXT: pytest.StashKey[run_context.RunContext] = pytest.StashKey()
 _RUN_CONTEXT_FINAL: pytest.StashKey[dict[str, object]] = pytest.StashKey()
 _RUN_CONTEXT_DESELECTED: list[str] = []
@@ -61,7 +64,8 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         if item.nodeid in selected_set:
             item.add_marker(marker)
-    config.stash[_PLAN1126_UNRUN_COUNT] = len(selected)
+    # Deselection (`-m`, `-k`, `--profile`) can still follow; the count is taken from the final items.
+    config.stash[_PLAN1126_UNRUN_MARKED] = frozenset(selected_set)
 
 
 def pytest_deselected(items: list[pytest.Item]) -> None:
@@ -69,6 +73,8 @@ def pytest_deselected(items: list[pytest.Item]) -> None:
 
 
 def pytest_collection_finish(session: pytest.Session) -> None:
+    marked = session.config.stash.get(_PLAN1126_UNRUN_MARKED, frozenset())
+    session.config.stash[_PLAN1126_UNRUN_COUNT] = sum(1 for item in session.items if item.nodeid in marked)
     context = session.config.stash.get(_RUN_CONTEXT, None)
     if context is not None:
         run_context.record_collection(context, [item.nodeid for item in session.items], list(_RUN_CONTEXT_DESELECTED))

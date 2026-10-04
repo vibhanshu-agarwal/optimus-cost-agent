@@ -434,6 +434,24 @@
    "proof": "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_capture_timeout_terminates_parent_and_descendant_in_an_isolated_probe",
    "basis": "Tripwire loaded first in the real capture probe child; zero real-adapter calls asserted."
   },
+  "tests/unit/tools/test_run_profile.py::test_a_dry_run_commit_writes_a_conforming_selection_record_and_runs_nothing#1": {
+   "mechanism": "python:module",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "The profile runner (`python -m tools.testing.run_profile --dry-run`) with its temporary folders under tmp_path: it reads Git and runs one collection-only pytest, executing no test; an ordinary child proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_run_profile.py::test_an_interrupted_lane_stops_only_its_own_processes#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `import time; time.sleep(120)` program: a foreign process the runner did not start, which must survive the runner's cleanup; the test kills it. It imports no product code (Plan 11.30 Task 2)."
+  },
+  "tests/unit/tools/test_test_profiles.py::_pytest#1": {
+   "mechanism": "python:nested_pytest",
+   "disposition": "nested_pytest",
+   "proof": "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
+   "basis": "Nested pytest of this repository with its temporary folders, and so its run registry, under the test's tmp_path: an active child guards itself; collection-only children execute no test."
+  },
   "tests/unit/tools/test_verify_masterplan_impact.py::_run_verifier#1": {
    "mechanism": "python:script_file",
    "disposition": "census",

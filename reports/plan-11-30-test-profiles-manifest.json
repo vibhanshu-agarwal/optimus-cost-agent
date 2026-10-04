@@ -854,6 +854,275 @@
      "docs_gate_after_intake_commit": "1 failed, 83 passed: test_post_amendment_plans_declare_prerequisites_with_required_columns on v4's frozen Tooling prerequisite disposition; returned to Codex"
     }
    }
+  },
+  "task1": {
+   "status": "complete; uncommitted pending Codex answer on Task 1-2 commits",
+   "base_commit": "git-sha1:d562e95ed6a6121884ceb85ee6464326f913323c",
+   "sources_sha256": {
+    "tests/profiles.toml": "sha256:7bf2df59ea830a2b7152ac2dbb5558a0137ca303ac26e59324752c3c7548a1a2",
+    "tools/testing/test_profiles.py": "sha256:68985c89fb3ecf777f81dc3a679627f4fface0adc70b3812dc8e780bf7e1e24d",
+    "tests/support/profiles_plugin.py": "sha256:eff18f63636383bc2ce3d284a8b10ee7103f4d036858c96b4b41d7e547e87d86",
+    "tests/conftest.py": "sha256:7d442df6743eba89982370e560d86aba7edd1fee280122cacf72ae599da8c3ad",
+    "tests/unit/tools/test_test_profiles.py": "sha256:700a3b0be71c7809838c8b8651bcd70950eabe923240827c447541ab35cd6551",
+    "tests/unit/tools/run_context_child_sites.json": "sha256:48b8609eeeb5f90920faee799f63af21c617693ca23ecbf365cad965d6c08c43"
+   },
+   "classification": {
+    "nodes": 5329,
+    "core": 3999,
+    "proc": 835,
+    "gates": 325,
+    "audit-sealed": 90,
+    "audit-current": 67,
+    "e2e-local": 12,
+    "platform_tag": 1488,
+    "concurrency_tag": 381,
+    "measured_slow_snapshot": 164
+   },
+   "survey": {
+    "file": "tier-survey.md",
+    "sha256": "sha256:ec4d9b1c3174dcc1e8da97abc496a69901949a9f98fd8957c0f9159f43156782",
+    "parsed_mismatches": 0,
+    "ambiguities_ruled": 16
+   },
+   "controls": {
+    "pure_red_green": "ImportError -> 37 passed",
+    "classifier_mutants": "5/5 killed",
+    "plugin_red_green": "9 RED -> GREEN",
+    "manifest_mutants": "9/9 killed (first pass found the vacuous duration guard; fixed test-first)"
+   },
+   "verification": {
+    "windows_gate": "629 passed, 2 skipped (TMPDIR set and unset)",
+    "wsl_gate": "580 passed, 51 skipped (TMPDIR=/tmp and unset)",
+    "windows_wsl_bytes": "6/6 changed files identical",
+    "no_profile_identity": "identical with plugin blocked; baseline +55 new nodes only",
+    "profiles_vs_classifier": "identical for 6 static profiles",
+    "ruff": "clean",
+    "diff_check": "clean",
+    "local_scan_findings": "0"
+   },
+   "wsl_patch_sha256": "sha256:9b6d3aec53cb7b84b4bc873fab412b351589bc9d3428cebbcea6ba50a132cdaf",
+   "raw_receipts": "optimus-handoff/test-profiles-research/plan-11-30-task1-evidence-20261004"
+  },
+  "task2": {
+   "status": "complete; uncommitted pending Codex answer on Task 1-2 commits",
+   "base_commit": "git-sha1:d562e95ed6a6121884ceb85ee6464326f913323c",
+   "sources_sha256": {
+    "tools/testing/test_profiles.py": "sha256:f4e1d52239dd57782a15195ae31fdaeecf402a28cd2b0fda92f8ef397cfb959c",
+    "tools/testing/run_profile.py": "sha256:31ee8a00917400945da587c2cfbb4a292d4b846329bcea76e8c2704ebba98e8f",
+    "tests/profiles.toml": "sha256:97a96ff2f58e884a8ee95f57e35a25491a60f489b9b0b1b6fe66c5eb22653165",
+    "tests/unit/tools/test_test_profile_selection.py": "sha256:65bc804539fd36a33c07eeddec01357fbcbc18076043251dc4fc99b23ca11175",
+    "tests/unit/tools/test_run_profile.py": "sha256:92c40a97eb5181bceeb8fbb63dda0987c56c1f0c1128998b880b42ce1e3178a1",
+    "tests/unit/tools/run_context_child_sites.json": "sha256:9afdb521b0ada90dfad3119daf4615f53bb2af1d70484c3d882c0de10f0b5ecd",
+    "docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json": "sha256:0acd886f55828f912a793734cbcd04cefb14cc062faa1825c54059082932a52c"
+   },
+   "controls": {
+    "selector": 38,
+    "runner": 16,
+    "mutants": "14/14 killed; 1 equivalent dropped with boundary proof"
+   },
+   "verification": {
+    "windows_gate_tmpdir_set": "684 passed, 2 skipped",
+    "windows_gate_tmpdir_unset": "684 passed, 2 skipped",
+    "wsl_gate": "632 passed, 54 skipped (TMPDIR=/tmp and unset)",
+    "windows_wsl_bytes": "12/12 changed files identical"
+   },
+   "harness_errors": [
+    "runner hang (venv launcher pid) -> fixed; stopping my session leaked registry entry 20261004T165602-47672-d6a805 (kept)"
+   ],
+   "wsl_patch_sha256": "sha256:59f936d5e65a66501bc46c46eb71947ae4a7e873b2850853f96d973ae760eab2",
+   "raw_receipts": "optimus-handoff/test-profiles-research/plan-11-30-task2-evidence-20261004"
+  },
+  "checkpoint_b": {
+   "status": "attempt 3 passed on final Tasks 1-2 source (Windows and WSL); Fable 5.1 accepted (SOUND WITH AMENDMENTS, report-only, applied); awaiting Codex; Task 1-2 commits held",
+   "base": "git-sha1:a929aab2092876ab0d83ecc4e46896ae3a0935c0",
+   "attempts": {
+    "1": {
+     "windows": "win1 aborted (orphan 4 failed / 4992 passed), win2 cancelled",
+     "wsl": "failed",
+     "seal": "sha256:f2ffefcf5d77234eb6b88dde51afeb166c35d90a912920423d6c3b0e13de690a"
+    },
+    "2": {
+     "windows": "pass",
+     "wsl": "invalid (selected record INVALID: patched global clock)",
+     "seal": "sha256:e67c3ac2e8881887b15746d34c5a8d91cfe08c373a848389c9c53fb27ecfd19c"
+    },
+    "3": {
+     "Windows": {
+      "verdict": "pass",
+      "exit": 0,
+      "detail": "",
+      "selected": 5145,
+      "deselected": 281,
+      "subruns": [
+       {
+        "name": "selected",
+        "run_id": "20261004T195132-15248-06ed9d",
+        "nodes": 5078,
+        "exit": 0,
+        "record_problem": null,
+        "qualifications": [
+         "parent=not_found:ancestor_exited"
+        ]
+       },
+       {
+        "name": "load-1",
+        "run_id": "20261004T200844-7248-98efd6",
+        "nodes": 67,
+        "exit": 0,
+        "record_problem": null,
+        "qualifications": [
+         "parent=not_found:ancestor_exited"
+        ]
+       },
+       {
+        "name": "repeat-1",
+        "run_id": "20261004T200848-41940-2e9039",
+        "nodes": 381,
+        "exit": 0,
+        "record_problem": null,
+        "qualifications": [
+         "parent=not_found:ancestor_exited"
+        ]
+       },
+       {
+        "name": "repeat-2",
+        "run_id": "20261004T200953-52988-073933",
+        "nodes": 381,
+        "exit": 0,
+        "record_problem": null,
+        "qualifications": [
+         "parent=not_found:ancestor_exited"
+        ]
+       },
+       {
+        "name": "repeat-3",
+        "run_id": "20261004T201042-35188-e01641",
+        "nodes": 381,
+        "exit": 0,
+        "record_problem": null,
+        "qualifications": [
+         "parent=not_found:ancestor_exited"
+        ]
+       }
+      ],
+      "stability": {
+       "counted_repeat_run_ids": [
+        "20261004T200848-41940-2e9039",
+        "20261004T200953-52988-073933",
+        "20261004T201042-35188-e01641"
+       ],
+       "detail": "3 repeats each inside one load run's recorded test phases",
+       "required_load_run_id": "20261004T200844-7248-98efd6",
+       "verdict": "complete"
+      },
+      "pytest": {
+       "20261004T195132-15248-06ed9d": "5038 passed, 40 skipped, 1 warning in 1027.43s (0:17:07)",
+       "20261004T200848-41940-2e9039": "373 passed, 8 skipped in 61.16s (0:01:01)",
+       "20261004T200953-52988-073933": "373 passed, 8 skipped in 44.54s",
+       "20261004T201042-35188-e01641": "373 passed, 8 skipped in 44.49s",
+       "20261004T200844-7248-98efd6": "67 passed in 812.78s (0:13:32)"
+      }
+     },
+     "WSL": {
+      "verdict": "pass",
+      "exit": 0,
+      "detail": "",
+      "selected": 5145,
+      "deselected": 281,
+      "subruns": [
+       {
+        "name": "selected",
+        "run_id": "20261004T195200-522-b5f07d",
+        "nodes": 5078,
+        "exit": 0,
+        "record_problem": null,
+        "qualifications": [
+         "native=unsupported",
+         "guard=unsupported_platform",
+         "parent=unsupported"
+        ]
+       },
+       {
+        "name": "audit-current",
+        "run_id": "20261004T195606-4381-099015",
+        "nodes": 67,
+        "exit": 0,
+        "record_problem": null,
+        "qualifications": [
+         "native=unsupported",
+         "guard=unsupported_platform",
+         "parent=unsupported"
+        ]
+       }
+      ],
+      "stability": null,
+      "pytest": {
+       "20261004T195200-522-b5f07d": "4988 passed, 90 skipped, 1 warning in 228.70s (0:03:48)",
+       "20261004T195606-4381-099015": "67 passed in 555.02s (0:09:15)"
+      }
+     },
+     "seal": "sha256:e170d99308d6c05d73c8af3d87b9c6254f21d24db69aa6401f11c23c1bdcf476"
+    }
+   },
+   "reviews": {
+    "fable_attempt1": "NOT SOUND (F1-F3 MAJOR, F4-F10 MINOR)",
+    "codex_b_m1": "runner pass without terminal/capability validity",
+    "fable_fix_pass": "NOT SOUND (R1 MAJOR tool-mediated docs scanners; R2-R4 MINOR) -> fixed",
+    "fable_round2_and_clock": "SOUND (M1-M3 report corrections applied)",
+    "fable_final_attempt3": "SOUND WITH AMENDMENTS (C1-C3 report-only, applied); accepts CP-B on d562e95 + 9d123df2"
+   },
+   "fixed": [
+    "F1",
+    "F2",
+    "F3",
+    "B-M1/F6",
+    "F5",
+    "F7",
+    "F8",
+    "docs-gate one-cell exception",
+    "recorder clock bound at import",
+    "logging sink run_profile:execute:exception_export"
+   ],
+   "deferred": {
+    "F4": "abrupt runner kill orphans subruns",
+    "F9": "GIT_INDEX_FILE hook control -> Task 3",
+    "A4": "two AST audits stay audit-current"
+   },
+   "archival": {
+    "result": "PARTIAL, NON-PASSING",
+    "archived": 723,
+    "refused": 1,
+    "archive_exit": 3,
+    "verify_exit": 4,
+    "seal": "sha256:6a4bec8d76c63f6a34dc936fffdb7f27024990f96392130dd9b323bc445e0ee1"
+   },
+   "sources_sha256": {
+    "tools/testing/test_profiles.py": "sha256:a2260e83550f6c3c65aa70e8fd63b414894d4ee93e1953600e7643267c1e2ff3",
+    "tools/testing/run_profile.py": "sha256:6113feb0b0e93a9e4c3653c9f85dfcc37cd063371bed193fab2bf6d84baafae9",
+    "tools/testing/run_context.py": "sha256:67f551cf1a59d944fd27a05c14d8b7f1a83d4ea8276aa69d018d08fb5ac54e48",
+    "tests/profiles.toml": "sha256:29f99b3626560ab6b4a48976ae264faea7240d79d8d692785f7b2d541ec5151e",
+    "tests/unit/tools/test_run_profile.py": "sha256:665b2c2ed40f7c62967fb745c6a4212d365e9b6fbf20b040334dc40e47e0fe8d",
+    "tests/unit/tools/test_test_profile_selection.py": "sha256:b15c70817788f0ffa9db6a4882d4b65751c527b26b68738a363789393a737d79",
+    "tests/unit/tools/test_test_profiles.py": "sha256:3e0ad7eb45596e245199530e9468ba363720795a66e176d734ada5adaf8ab864",
+    "tests/unit/tools/test_run_context_lifecycle.py": "sha256:17e040b5b5ac2f7f5c8ea01ac713332524eeb7eeadbbe104ca535e98df4db18c",
+    "tests/unit/docs/test_open_work_pool_hygiene.py": "sha256:2028c183714f5604c5a5fc19e040f2073b89cae62a4b591bdca446c09932042d",
+    "docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json": "sha256:63533c86b38695abe364e0f06a19af004995e7774d296cbcd84500cf2fff292f"
+   },
+   "raw_receipts": [
+    "optimus-handoff/test-profiles-research/plan-11-30-checkpoint-b-attempt1-evidence-20261004",
+    "optimus-handoff/test-profiles-research/plan-11-30-checkpoint-b-attempt2-evidence-20261004",
+    "optimus-handoff/test-profiles-research/plan-11-30-checkpoint-b-attempt3-evidence-20261004",
+    "optimus-handoff/test-profiles-research/plan-11-30-archival-evidence-20261004"
+   ],
+   "tested_source": {
+    "head": "git-sha1:d562e95ed6a6121884ceb85ee6464326f913323c",
+    "working_diff_sha256": "sha256:9d123df294f71a209a1e9c4b42ab33dea23bb087bcd0534b5faf40535fa4d267",
+    "post_run_changes": "reports/plan-11-30-test-profiles-{evidence.md,manifest.json} only"
+   },
+   "residuals_added": [
+    "WSL wall-clock timestamps accurate to about a minute in attempt 3 (guest wall clock jumped ~47 s / ~15 s vs monotonic); no claim depends on them"
+   ],
+   "post_edit_receipts": "optimus-handoff/test-profiles-research/plan-11-30-checkpoint-b-report-receipts-20261004"
   }
  }
 }

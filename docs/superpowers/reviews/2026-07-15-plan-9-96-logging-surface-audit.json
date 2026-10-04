@@ -3767,6 +3767,46 @@
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed in tools.testing.registry_maintenance",
       "test_node": "tests/unit/tools/test_registry_maintenance.py::test_the_cli_refuses_a_manifest_the_shared_sanitizer_would_change",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_profile:_write_json:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 2. _write_json writes the profile runner's selection record and run evidence manifest under tmp/test-profiles. The selection record holds the profile, label, view, platform, base and HEAD SHAs, diff and manifest/classification digests, changed and provisional repository paths with working-byte digests, counts, node digests with run-context labels (never raw node IDs, some of which carry credential-shaped test parameters), reasons grouped to node digests, fallback, domains, platform triggers and obligations; the run manifest holds subrun names, run IDs, modes, exit codes, node counts, digests, UTC times, each subrun's record problem token and qualification labels, the stability verdict and a detail line (failed subrun names and exit codes, record problems, or a sanitized start failure). Each is refused if the shared sanitizer would change it (the selection record raises before anything runs; a refused run manifest exits invalid).",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.run_profile as refuse-if-changed",
+      "test_node": "tests/unit/tools/test_run_profile.py::test_a_selection_record_the_shared_sanitizer_would_change_is_refused",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_profile:execute:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Checkpoint B (F7). When a subrun never begins its tests, execute stops the runner's own process trees and keeps the SelectionError text (subrun name and start timeout) as the run's detail for the summary line and the run manifest; the text passes through the shared sanitizer and is bounded to 300 characters.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.run_profile (sanitized_text)",
+      "test_node": "tests/unit/tools/test_run_profile.py::test_a_start_failure_detail_passes_the_shared_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_profile:failure_line:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 2. failure_line turns an input failure (the runner's own SelectionError/ManifestError/ClassificationError or an OSError naming repository paths or Git exit codes) into one printed line; the text passes through the shared sanitizer and is bounded to 300 characters.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.run_profile (sanitized_text)",
+      "test_node": "tests/unit/tools/test_run_profile.py::test_an_input_failure_line_passes_the_shared_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_profile:overlap:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Checkpoint B (Fable R2). When a load never begins its tests, the Windows overlap lane stops its own load, keeps every load and repeat that already ran, and keeps the SelectionError text (subrun name and start timeout) as the lane's detail for the run manifest and summary line; the text passes through the shared sanitizer and is bounded to 300 characters.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.run_profile (sanitized_text)",
+      "test_node": "tests/unit/tools/test_run_profile.py::test_a_stalled_load_detail_passes_the_shared_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_profile:main:stdout_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 2. The runner prints one summary line (profile, label, selected/deselected counts, fallback and platform tokens, obligations, verdict, the run's detail line and the evidence path it created under tmp/test-profiles), progress events (subrun names and exit codes), and input-failure lines built by failure_line through the shared sanitizer. Subrun pytest sessions write to the console as any pytest run does; the runner keeps none of their output.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.run_profile (sanitized_text for failure details)",
+      "test_node": "tests/unit/tools/test_run_profile.py::test_an_input_failure_line_passes_the_shared_sanitizer",
+      "evidence_tier": "unit"
     }
   ]
 }

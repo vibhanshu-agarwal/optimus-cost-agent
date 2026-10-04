@@ -278,3 +278,269 @@ Push, PR, merge, service activation and paid calls stay held.
 - A read-only dry run of the reviewed manifest would archive 722 entries and refuse the 2 now-UNKNOWN entries (`changed_since_inventory:root_unknown`, exit 3). The registry was unchanged, and no `ended/` folder exists.
 
 The release says a changed class stops execution, and the fresh manifest goes back to Codex. Receipts are in `codex-release-archival/` under the raw receipts folder.
+
+## Task 1 — Classification and additive plugin (2026-10-04)
+
+**Status: complete, uncommitted** (base `d562e95`; a commit waits for Codex's answer on Task 1–2 commits). Receipts: `optimus-handoff/test-profiles-research/plan-11-30-task1-evidence-20261004/`.
+
+### What was built
+
+| File | Responsibility |
+|---|---|
+| `tests/profiles.toml` | The one manifest: 18 tier rules, 3 tag rules and a measured-slow snapshot (164 nodes) |
+| `tools/testing/test_profiles.py` | Pure contract: `load_manifest`, `classify_nodes`, `profile_members`, `unexplained_slow_nodes`, and the two maintained signals |
+| `tests/support/profiles_plugin.py` | `--profile`: after every other deselection, it deselects through `pytest_deselected` and prints one `test-profiles:` line |
+| `tests/conftest.py` | Registers the plugin. The UNRUN count is now taken from the final items. |
+| `tests/unit/tools/test_test_profiles.py` | 55 nodes: the pure contract, the plugin controls and the repository guards |
+| `tests/unit/tools/run_context_child_sites.json` | One new `nested_pytest` launch site |
+
+**Precedence.** The longest matching node rule decides. Otherwise the single matching path rule decides; otherwise the node is `core`.
+- Two path rules claiming one file are a conflict.
+- A rule that decides no node fails the full-universe guard.
+- Static profiles: `full` (identity), `core`, `proc`, `audit`, `platform`, `concurrency`.
+- `quick`, `commit` and `checkpoint` arrive with the Task 2 selector.
+- The effective `-m` is never touched, so run-context ACTIVE/PASSIVE classification is unchanged.
+
+### Classification of the default selection (5,329 nodes)
+
+| Tier | Nodes | Source of the rules |
+|---|---|---|
+| core | 3,999 | Default, plus reviewed explicit rules for 7 measured-slow in-process tests and the cheap remainder of the audit family |
+| proc | 835 | Run-context/process-tree files, child-launching tool files, subprocess-heavy nodes |
+| gates | 325 | Current-source guards (S1 and Zed closures, logging manifest, walker allowlist, debug-trace, boundaries, credit surface, docs hygiene, UNRUN binding, this manifest's own guards) |
+| audit-sealed | 90 | Pinned-commit or sealed-artifact replay |
+| audit-current | 67 | Current-tree measurement or current-source reads |
+| e2e-local | 12 | Unmarked `tests/e2e/**` |
+
+Tags: `platform` 1,488 nodes (28 signal files), `concurrency` 381 nodes (9 signal files plus 4 reviewed product-race files).
+
+**Source of the audit/gates split.** A per-node survey of the audit family (357 nodes) and the proc candidates (504 nodes), plus a repository-wide search for current-source guards (278 nodes in 50 files). Each row carries file:line evidence. The survey was parsed mechanically: 0 node-count or target mismatches against the real collection. Its 16 ambiguities were ruled in the ledger: the proposed tier stands in each case, and A11 (unrun-binding guards) is `gates`.
+
+### Controls (test-first)
+
+- **Pure contract.** RED (module missing), then 37 passed. 5/5 classifier mutants were killed: prefix boundary, shortest-wins, no conflict check, shadowed rule counted, audit as one tier.
+- **Plugin controls.** 9 RED (no option, no manifest, no final-items UNRUN), then GREEN. They cover:
+  - no-profile output byte-identical with the plugin blocked (MAIN-5 argument shape);
+  - honest deselected counts;
+  - composition with `-k` and explicit targets;
+  - single-file sessions;
+  - unknown or change-selected profile names as usage errors;
+  - unchanged ACTIVE/PASSIVE classification (active default, `-m` passive, requested passive);
+  - UNRUN counted from the final items.
+- **Repository guards** (whole default selection):
+  - no dead rule;
+  - every measured-slow node has an explicit rule;
+  - run-context/process-tree files are `proc` except current-source gate nodes;
+  - `tests/e2e/**` is `e2e-local`;
+  - concurrency and platform tags follow their maintained signals;
+  - every child-launching file with `core` nodes has a written review (17 files);
+  - v4's named current-source guards are `gates` or `audit-current`.
+- **9/9 manifest mutants killed.** The first pass found a real defect: the manifest generator kept the measured-seconds column, so every snapshot entry matched no node, and the duration guard was vacuous. The guard now requires every snapshot entry to be a collected node ID (RED 164, then GREEN after the generator fix).
+
+### Verification
+
+| Check | Platform | Result |
+|---|---|---|
+| Task 1 gate command + cross-cutting guards, `TMPDIR` set / unset | Windows | 629 passed, 2 skipped in each |
+| Same, `TMPDIR=/tmp` / unset (native clone at `d562e95` + Task 1 diff) | WSL | 580 passed, 51 skipped in each |
+| Changed files Windows vs WSL | both | 6/6 byte-identical, no CR bytes |
+| No-profile collection, plugin vs plugin blocked | Windows | identical (5,329/5,440, 111 deselected by `-m`) |
+| Default collection vs the pre-Task-1 baseline | Windows | +55 nodes, all in `test_test_profiles.py`; nothing removed |
+| Each static profile through the plugin vs the classifier | Windows | identical for full, core, proc, audit, platform and concurrency |
+| `ruff check .`, `git diff HEAD --check`, local secret scan of changed files | Windows | clean, clean, 0 findings |
+
+The real registry listing changed during the Windows runs only through another lane's runs (`mut-t4b`); no run of this lane remained.
+
+### Residuals and limits
+
+- **The selection record is deferred to Task 2**, because it carries the base/head/index/diff. In Task 1 a profile's deselection is visible in run-context's node stream, pytest's deselected count and the `test-profiles:` line.
+- **The measured-slow snapshot comes from the 2026-10-02 reference run.** Tests added since then are unmeasured until Task 6 refreshes the snapshot. Stale snapshot entries fail the guard.
+- **Tags and launcher reviews are file-level.** The `platform` tag selects every node of a file that reads the platform.
+- **The tier survey is a reviewed snapshot.** New tests default to `core` unless a maintained-signal, launcher, slow-node or named-guard check catches them. A new current-source guard outside the named categories is caught only by review.
+
+## Task 2 — Per-commit selector, bounded broad fallback and supported-load checkpoint runner (2026-10-04)
+
+**Status: complete, uncommitted.** Base `d562e95`; Task 1 lies beneath it. Receipts: `optimus-handoff/test-profiles-research/plan-11-30-task2-evidence-20261004/`.
+
+### What was built
+
+| File | Responsibility |
+|---|---|
+| `tools/testing/test_profiles.py` | Adds the pure selector: `parse_name_status`, `build_dependency_map`, `select_tests`, plus the `[selection]` and `[[inputs]]` manifest sections |
+| `tools/testing/run_profile.py` | `python -m tools.testing.run_profile --profile commit\|checkpoint\|quick [--base SHA] [--exact] [--dry-run]`: Git change views, selection record, supervised subruns, Windows load-overlap repeats, evidence manifest |
+| `tests/profiles.toml` | Broad paths, docs gates and three declared inputs (sealed Plan 11.26 data → audit-sealed; `tools/testing/**`, the process tree and `tests/support/child_*` → run-context proc tests; `src/optimus/**` → the e2e tests' dynamic launch of the ACP server) |
+| `tests/unit/tools/test_test_profile_selection.py`, `tests/unit/tools/test_run_profile.py` | Selector controls over a synthetic repository; runner controls with temporary Git repositories and real nested sessions |
+
+### Selection contract (as built)
+
+- **Views.**
+  - `commit` is the index against HEAD. Unstaged divergence is selected and hashed as provisional.
+  - `checkpoint` is the recorded base against the working tree, plus untracked files. Everything not yet committed is provisional.
+  - `--exact` refuses any provisional divergence.
+  - An empty index is `no-commit-input` and runs nothing; it is never a pass.
+  - Git is read with the caller's environment, so inside a hook the selection follows the hook's `GIT_INDEX_FILE`.
+- **Dependencies.**
+  - Import edges are keyed by module name. They cover packages, relative imports and string imports, including `-m` launches.
+  - A deleted or renamed module still finds its importers by its old name.
+  - Data references (a tracked file, or a folder without Python code) propagate through importers. Only the changed path's own readers count; the importers of those readers then carry the change further.
+  - Naming a folder of code (`ROOT / "src"`, `"tests/unit"`) scans or runs it. The reading test is selected, but it never makes a change count as mapped.
+  - A change is mapped only when it reaches a test.
+- **Fallback.**
+  - Broad paths (configuration, conftest files, `tests/support/**`, the manifest), unmapped non-prose paths and an unavailable old view select all `core`, all `gates` and native platform tests.
+  - Expensive domains are included only through declared inputs or real dependencies.
+  - `fallback:broad` reasons and every expensive domain's included/omitted reason are recorded.
+- **Prose.**
+  - `docs/**` other than machine-readable data, root `*.md` and `reports/**/*.md` select the docs gates and the readers of the changed file.
+  - Prose never falls back.
+  - Every non-prose change selects all gates.
+- **R5.** Current audits stay out of commits until audit optimization G is accepted. Checkpoints run all of them at full depth.
+- **Platform.**
+  - Triggers:
+    - a source that reads the platform or imports `ctypes`, `msvcrt`, `winreg`, `keyring` or `_winapi`;
+    - production code that imports `subprocess`;
+    - a declared platform path;
+    - the broad path.
+  - A trigger adds platform-tagged `core` and `gates` nodes.
+  - A commit records a WSL obligation, which the next checkpoint's own whole-diff selection on WSL discharges.
+- **Checkpoint load (Windows only).**
+  1. The full-depth current-audit subrun runs as load.
+  2. The selected concurrency nodes run as three separately attributable repeats.
+  3. A repeat starts only after the load has recorded its first test phase. It counts only if that same load run is still running when the repeat ends, and run-record times confirm it.
+  4. The load workload is repeated only as needed.
+  5. A failure stops the lane and is kept.
+  6. Overlap that cannot be held is `stability-unrun` (exit 3), never a pass.
+  7. Cleanup stops only this runner's own process trees.
+
+  POSIX runs the selection, including its concurrency nodes, serially without load.
+- **Selection record and evidence manifest.**
+  - Node IDs appear only as digests plus run-context labels, because some carry credential-shaped test parameters.
+  - Each document is refused if the shared sanitizer would change it.
+  - Subrun console output is not kept: identity, mode and times come from each subrun's own run records.
+
+### How the real repository shaped the rules (test-first refinements)
+
+A mapping survey over all 1,218 tracked files led to five refinements, each RED → GREEN in the selector controls:
+- Only whole `a / b / c` chains name paths.
+- Whole-code-folder scanners never make a change mapped.
+- A rename is mapped when either of its paths is.
+- `docs/**` is prose except machine-readable data.
+- Code-folder references select only test readers, and mapped means reaching a test.
+
+A "reaches a conftest ⇒ broad" rule was tried and then removed (ruling in the ledger). 129 of 135 `src/optimus` modules sit in the root conftest's import closure, and v4 maps `tools/testing/**` explicitly. Conftest-imported code runs inside every selected session anyway.
+
+### Controls and mutation
+
+- **Selector:** 38 controls. Every dependency kind is planted: imports, package `__init__`, relative imports (single-dot and parent), string imports, `-m` launches, path joins, tool readers, declared inputs, rename, delete, prose, machine data, configuration, platform and the old view. Also covered: determinism, reasons, `no-commit-input`, and that no single change turns a commit into the full suite.
+- **Runner:** 16 controls.
+  - Temporary Git repositories: index-vs-HEAD only, earlier commits in the checkpoint view only, unstaged provisional hashing, `--exact`, untracked files, rename/delete/Unicode names, a missing base.
+  - Real nested sessions: an ACTIVE recorded subrun, complete overlap, a kept failure, unobtainable overlap reported as `unrun`, an interrupt that stops only owned processes, a dry-run CLI selection record, and sanitizer refusals.
+- **Mutation:** 14/14 mutants killed across the selector and the runner. One equivalent mutant was dropped with its boundary proof, after the missing relative-import control had been added.
+
+### Defects found and fixed during the task
+
+- **The runner hung on the first execution.** On Windows a venv's `python.exe` is a launcher, and the run record names its child. The runner now matches the root or root-parent PID, and load iterations are bounded.
+  - Stopping my own stuck session leaked one real-registry entry, `20261004T165602-47672-d6a805`. Its worktree is present, so it was kept, not deleted.
+- **In-loop counting overcounted repeats.** The loop now stops on covered repeats.
+- **The selection record carried raw node IDs.** The sanitizer refused it; the record now uses digests.
+- **Four cross-cutting guards caught real gaps**, all fixed:
+  - 2 child sites;
+  - 3 logging sinks, now classified with demonstrating tests;
+  - test globs;
+  - the platform tag and tier of `test_run_profile.py`.
+
+### Verification
+
+| Check | Platform | Result |
+|---|---|---|
+| Tasks 1–2 focused gate (both briefs' commands + cross-cutting guards), `TMPDIR` set | Windows | 684 passed, 2 skipped |
+| Same, `TMPDIR` unset | Windows | 684 passed, 2 skipped |
+| Same (native clone at `d562e95` + Tasks 1–2 diff), `TMPDIR=/tmp` / unset | WSL | 632 passed, 54 skipped in each |
+| Changed files Windows vs WSL | both | 12/12 byte-identical, no CR bytes |
+
+Checkpoint B's own `--profile checkpoint` runs on Windows and WSL follow in the Checkpoint B section.
+
+## Checkpoint B — Tasks 0–2 cumulative checkpoint profile (2026-10-04)
+
+**Status: attempt 3 passed on the final Tasks 1–2 source on both platforms; Fable 5.1 accepted (SOUND WITH AMENDMENTS, report-only, applied); awaiting Codex.** Nothing is committed: the Task 1–2 commits (coverage-hook skip only) need Fable then Codex to accept Checkpoint B on this tested source. Push, PR and merge stay held.
+
+Checkpoint B runs the change-selected `checkpoint` profile itself (`python -m tools.testing.run_profile --profile checkpoint --base a929aab2092876ab0d83ecc4e46896ae3a0935c0`) on native Windows and real WSL: the cumulative Tasks 0–2 selection from main, every current audit at full depth, the triggered platform lanes, Windows concurrency repeats overlapping the current audit and serial WSL concurrency without load. No full suite.
+
+### Attempts (all sealed; failures and invalid runs retained)
+
+| Attempt | Source | Windows | WSL | Receipts (seal) |
+|---|---|---|---|---|
+| 1 | Tasks 1–2 as first delivered | `win1` aborted by me (block-buffered console misread as lost); its orphaned subrun finished 4 failed / 4,992 passed: the two failures below plus two child-site tests whose real ancestor chain ended at the killed runner. `win2` cancelled before launch | **failed**: 2 failed / 4,949 passed / 86 skipped; audits 67 passed | `plan-11-30-checkpoint-b-attempt1-evidence-20261004` (`f2ffefcf…`) |
+| 2 | after the fix pass below | **pass** (selected 5,028 passed / 40 skipped; audit load 67 passed; 3 counted repeats). Each record carries `parent=not_found:ancestor_exited`, which that runner did not yet label (round 2 adds it) | **invalid**: every test passed (4,982 / 86 skipped; audits 67) but the selected subrun's own record was INVALID | `plan-11-30-checkpoint-b-attempt2-evidence-20261004` (`e67c3ac2…`) |
+| 3 | after the recorder clock fix | **pass** (exit 0) | **pass** (exit 0) | `plan-11-30-checkpoint-b-attempt3-evidence-20261004` (`e170d993…`) |
+
+Correction to the sealed attempt-2 note (Fable M1): the WSL lane ended at 19:03:35.89Z, before the Windows overlap lane began (19:05:24.99Z); it overlapped only the Windows `selected` subrun, not the stability repeats.
+
+Attempt-1 failures: the committed-plan docs gate (frozen v4 Tooling cell) and the provider-balance retirement guard (the Task 1 manifest and guard map spelled its retired token). The second was a real Task 1 defect that the Tasks 1–2 focused gates had missed because they did not run the whole `gates` tier; every later pre-checkpoint gate does.
+
+### Reviews and the fix pass (test-first; one pass, then the recorder fix)
+
+Fable 5.1 reviewed attempt 1 and returned **NOT SOUND** (three MAJOR). Codex independently recorded **B-M1**. Fable's re-review of that fix pass returned **NOT SOUND** again (R1 MAJOR: F2 only partly closed; R2–R4 MINOR), and all four were fixed before attempt 3. Fable then found R1–R4 and the recorder fix **SOUND** (with report corrections M1–M3), and its final check of attempt 3 and this section is **SOUND WITH AMENDMENTS** (C1–C3, report-only, applied): it recomputed both lanes from the raw run records, verified every seal, and accepts Checkpoint B on `d562e95` + `9d123df2…`. Every fix has a control that failed first; 19 + 6 + 10 + 2 + 2 mutants were killed (`cpb-fix/mutate_fixes.py`, `cpb-fix/mutate_docs.py`, `cpb3/mutate_round2.py`, the clock-site mutants, the two sanitizer demonstrations).
+
+| Finding | Fix | Control |
+|---|---|---|
+| F1 (MAJOR) retirement token in `tests/` | the guard is classified by a gates path rule `tests/unit/test_*_surface_retirement.py`; the test-side name is assembled at runtime; the guard still runs as `gates` | the guard itself (failed in attempt 1) and the current-source guard map |
+| F2 (MAJOR) prose omitted gates that scan the docs tree | a prose change also selects the **gates-tier** whole-folder readers of its folder | `test_prose_in_a_scanned_folder_selects_the_gates_that_scan_it_and_no_cost_tier_scanner` |
+| F3 (MAJOR) a root-conftest change omitted the run-context controls | the root conftest and the profile plugin are inputs of the run-context lane | `test_a_session_hook_change_selects_the_run_context_controls` (both paths) |
+| B-M1 (Codex) / F6 a pass without valid terminal or capability evidence | `record_validity` reads each finished subrun's own terminal record: terminal checkpoint and time, ACTIVE, no terminal failure, COMPLETE, recorded exit equal to the process exit, and on Windows a valid native job and an installed guard. POSIX unsupported labels, an UNKNOWN parent (with its reason) and reduced protection are kept as qualifications, never failures. A subrun never validated is `not_validated`. Failures stay failures | 13 refusal cases, 5 qualification cases, Codex's exit-0/ACTIVE/no-terminal-time probe, verdict-level controls, real supported-Windows and qualified-POSIX subruns |
+| F5 overlap bounded by the load's session end | a repeat counts only inside the load's recorded test phases (first phase start to last recorded phase end); both records must support a pass, except a load this runner stopped | `test_a_repeat_counts_only_inside_its_load_s_recorded_test_phases` |
+| F7 a start timeout escaped as a traceback (exit 1) | the run stops its own process trees and is `invalid` with the sanitized reason in the manifest | two controls, one with credential-shaped text |
+| R1 (MAJOR, re-review) prose still omitted gates that scan the docs through a tool (`tools/doc_paths.py`) | for prose only, a scanning tool's importers are followed to tests (then gates-tier only); code changes keep direct scanners, as the earlier "a runner's own tests do not consume the folder it runs" ruling requires, and already run every gate | `test_prose_in_a_folder_a_tool_scans_selects_the_gates_that_use_the_tool`; on the real repository a new `docs/new-topic.md` now selects `test_document_names_under_docs_are_unique` |
+| R2 a stall after repeats dropped what ran | the overlap lane catches a start timeout, stops its own load, keeps every load and repeat, and is `invalid` with the sanitized reason | a real-process stall after `repeat-1`; a sanitizer demonstration (new classified sink `run_profile:overlap:exception_export`) |
+| R3 weaker labels dropped | `parent=not_found[:reason]`, `processes=QUERY_FAILED` and `members=incomplete` are kept as qualifications, as the run's own summary line shows them | three qualification cases |
+| R4 `unrun` hid a load's record problem | record problems are named before `unrun`; any other overlap verdict is `invalid` (an `invalid` outcome previously fell through to `pass` in the control before the fix) | three verdict-mapping cases |
+| F8 snapshot provenance | the reference run is stated as exit 1 / INVALID diagnostic data | — |
+| Docs gate (Codex-authorized) | a hash-pinned exception for exactly v4's Tooling disposition cell of exactly the approved raw bytes; every other check stays | approved snapshot passes only with it; same bytes under another name, altered bytes, another row with the same text and a broken status/owner all fail; 6/6 mutants |
+
+**Attempt-2 WSL invalid, root cause and fix.** `tests/unit/tools/test_probe_p11_zed_session_load.py`'s two-lifecycle tests patch the global `time.monotonic` (through the probe module's `time`) to 100–1,100. The enclosing session's run-context recorder read that clock while their call phase was reported. On a WSL VM booted minutes earlier (session start at monotonic ≈253 s) the patched 1,100 fired a sample at 846.74 s (gap 707.138 s, exactly the patched value minus the last real sample), pushed the next sample 707 s out, and made the terminal sample's gap negative, which the samples table refuses: one recording error, so the record was INVALID. Windows uptime is far above 1,100, so it never triggers there; attempt 1 ran on an older VM. B-M1 refused the pass, as intended. Fix: the recorder binds its clocks at import (`tools/testing/run_context.py`), so no test's patch reaches it. Control `test_a_test_that_patches_the_global_clock_cannot_move_the_session_s_sampling` reproduced the failure in-process (1 sample, 1 recording error) before the fix; both clock-site mutants are killed. The probe tests are unchanged.
+
+**Pre-checkpoint focused gate on the final source (Windows):** 1,009 nodes (the whole gates tier, the Tasks 1–2 gate files, the docs file and the retirement guard): 1,007 passed, 2 skipped. The commit hooks (ast-grep through pre-commit's own environment, Ruff, TOML, trailing whitespace, config trust, Bandit), both secret scans and `git diff --check` pass over the working tree. The fix pass also classified one new logging sink (`run_profile:execute:exception_export`, shared sanitizer, with a demonstrating test).
+
+### Attempt 3 (final source) — results
+
+Source: HEAD `d562e95` plus the working diff `9d123df294f7…` (Windows) / the identical patch on a native WSL clone. Selection on both: **5145 selected, 281 deselected**, fallback `broad` (`.gitattributes`, `tests/conftest.py`, `tests/profiles.toml`, `tests/support/profiles_plugin.py`; `unmapped: reports/plan-11-30-test-profiles-manifest.json`), platform `triggered` (8 triggers), expensive domains: audit-current and audit-sealed included, proc included, e2e-local omitted (no dependency or declared input changed), audit depth `full`, 381 concurrency nodes.
+
+| Platform | Subrun | Run ID | Nodes | pytest | Exit | Record | Qualifications |
+|---|---|---|---|---|---|---|---|
+| Windows | `selected` | `20261004T195132-15248-06ed9d` | 5078 | 5038 passed, 40 skipped, 1 warning in 1027.43s (0:17:07) | exit 0 | valid | parent=not_found:ancestor_exited |
+| Windows | `load-1` | `20261004T200844-7248-98efd6` | 67 | 67 passed in 812.78s (0:13:32) | exit 0 | valid | parent=not_found:ancestor_exited |
+| Windows | `repeat-1` | `20261004T200848-41940-2e9039` | 381 | 373 passed, 8 skipped in 61.16s (0:01:01) | exit 0 | valid | parent=not_found:ancestor_exited |
+| Windows | `repeat-2` | `20261004T200953-52988-073933` | 381 | 373 passed, 8 skipped in 44.54s | exit 0 | valid | parent=not_found:ancestor_exited |
+| Windows | `repeat-3` | `20261004T201042-35188-e01641` | 381 | 373 passed, 8 skipped in 44.49s | exit 0 | valid | parent=not_found:ancestor_exited |
+| WSL | `selected` | `20261004T195200-522-b5f07d` | 5078 | 4988 passed, 90 skipped, 1 warning in 228.70s (0:03:48) | exit 0 | valid | native=unsupported, guard=unsupported_platform, parent=unsupported |
+| WSL | `audit-current` | `20261004T195606-4381-099015` | 67 | 67 passed in 555.02s (0:09:15) | exit 0 | valid | native=unsupported, guard=unsupported_platform, parent=unsupported |
+
+- **Windows verdict:** **pass** (exit 0). Stability: **complete**: 3 repeats each inside one load run's recorded test phases; load run `20261004T200844-7248-98efd6`; counted repeats `20261004T200848-41940-2e9039`, `20261004T200953-52988-073933`, `20261004T201042-35188-e01641`.
+- **WSL verdict:** **pass** (exit 0). Stability: none (POSIX runs the selection, its concurrency nodes included, serially without load).
+
+Windows overlap (UTC; a repeat counts only inside its load's recorded test phases):
+
+| Subrun | Run ID | Started | First phase | Last phase end | Finished | Counted inside |
+|---|---|---|---|---|---|---|
+| `load-1` | `20261004T200844-7248-98efd6` | 2026-10-04T20:08:44.278259+00:00 | 2026-10-04T20:08:45.396193+00:00 | 2026-10-04T20:22:17.023296+00:00 | 2026-10-04T20:22:17.277579+00:00 | — |
+| `repeat-1` | `20261004T200848-41940-2e9039` | 2026-10-04T20:08:48.254385+00:00 | 2026-10-04T20:08:51.693219+00:00 | 2026-10-04T20:09:32.708857+00:00 | 2026-10-04T20:09:32.980502+00:00 | 20261004T200844-7248-98efd6 |
+| `repeat-2` | `20261004T200953-52988-073933` | 2026-10-04T20:09:53.888485+00:00 | 2026-10-04T20:09:57.451751+00:00 | 2026-10-04T20:10:38.388195+00:00 | 2026-10-04T20:10:38.678429+00:00 | 20261004T200844-7248-98efd6 |
+| `repeat-3` | `20261004T201042-35188-e01641` | 2026-10-04T20:10:42.655635+00:00 | 2026-10-04T20:10:45.889000+00:00 | 2026-10-04T20:11:27.108869+00:00 | 2026-10-04T20:11:27.403396+00:00 | 20261004T200844-7248-98efd6 |
+
+The WSL lane ran 19:52:00–20:06:08Z and overlapped these Windows subruns: `selected`. Other lanes' runs may also have been active. No timing claim is made from these runs.
+
+**Receipts after the final edit of this section** (Fable C3): the docs gate and detect-secrets were re-run on the final report and manifest; their outputs and run record are sealed in `plan-11-30-checkpoint-b-report-receipts-20261004`, named in the Codex packet.
+
+### Registry archival (Codex option A, executed 2026-10-04 ~18:15 UTC)
+
+Against the original reviewed manifest (class `28bc1799…`, 724 eligible): the fresh dry run was 723 `would_archive` and 1 `changed_since_inventory:root_unknown`; execution archived 723 and refused the same member (exit 3); `verify` exited 4 with 3 problems, all on that refused member, which is still in place, byte-unchanged, with no copy and no receipt. **PARTIAL, NON-PASSING**: 723 archived with per-member proof; the original manifest remains incompletely reconciled. Receipts: `plan-11-30-archival-evidence-20261004` (`6a4bec8d…`).
+
+### Residuals and deferred items
+
+- **Abrupt runner kill** (Fable F4, deferred): `tools.process_tree` jobs carry no kill-on-close, so killing the runner process itself orphans its subruns (as `win1` showed). Interrupts, failures, start timeouts and normal ends stop every owned tree.
+- **Hook context** (F9, deferred to Task 3): no control yet runs the runner inside a real hook with `GIT_INDEX_FILE`; Task 3 wires the hook and adds it.
+- **Two cheap AST audits stay `audit-current`** (A4): tiered by audit family; checkpoints run them; `gates` would fit equally.
+- **Selection limits** (Task 2 rulings): a fixture used only by name through conftest-wrapped product code is not followed; `Path(__file__).parent / "fixtures"` readers and `reports/*.json` take the bounded broad path; `no-commit-input` exits 0 with that label, never `pass`. The final full runs remain the backstop.
+- **Subrun console output** is kept only because the checkpoint scripts redirect the runner's console; their digests are in the attempt receipts.
+- **Recorder clock**: fixed at the recorder; other code that reads a patchable clock during a test is not audited here.
+- **WSL wall-clock timestamps** (Fable C2): in attempt 3 the WSL guest wall clock advanced about 47 s (audits) and 15 s (selected) more than monotonic time (VM time re-sync: wall spans 602.0 s and 243.8 s against 554.8 s and 228.5 s monotonic, pytest 555.02 s and 228.70 s; inter-phase wall gaps up to 24.3 s, Windows at most 0.044 s). WSL `started_utc`/`finished_utc`/phase `at` values are therefore accurate only to about a minute. No claim here depends on them: WSL runs serially without load, counts and outcomes are unaffected, and the lane-overlap statement survives a one-minute error. Gap arithmetic on WSL records needs this caveat.
+- **Scans seen through path joins only** (Fable M3): a gate that scans the docs solely through a loose pathspec string (for example `tracked_repository_files(..., pathspecs=["docs"])`) would be invisible to the prose scanner rule. None exists outside `tests/unit/docs/**` today, and `tools/doc_paths.py` joins `REPO_ROOT / "docs"`, so it is reached.

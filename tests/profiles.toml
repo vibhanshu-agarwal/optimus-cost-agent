@@ -1,0 +1,807 @@
+# Plan 11.30 test profiles: exactly one cost tier per collected test (tools/testing/test_profiles.py).
+# Unruled nodes are `core`. Precedence: the longest matching node rule, else the one matching path rule.
+# Every rule must decide at least one collected node (tests/unit/tools/test_test_profiles.py).
+schema = "test-profiles-v1"
+
+[[rules]]
+tier = "audit-current"
+paths = [
+  "tests/unit/acp/test_plan1126_shutdown.py",
+]
+why = "Plan 11.26 audit files that measure the current tree: read current sources from the repository root or spawn measurement children against it. Exceptions are node rules."
+
+[[rules]]
+tier = "audit-sealed"
+paths = [
+  "tests/unit/acp/test_plan1126_delivery_contract.py",
+  "tests/unit/acp/test_plan1126_semantic_errors.py",
+  "tests/unit/acp/test_plan1126_session_lease.py",
+  "tests/unit/telemetry/test_plan1126_runtime_contract.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_historical_source.py",
+]
+why = "Plan 11.26 audit files that replay pinned commits (GitCommitSource / historical_source), sealed reports/plan-11-26 artifacts or seeded models of them; no current-tree read. Exceptions are node rules."
+
+[[rules]]
+tier = "core"
+paths = [
+  "tests/unit/tools/test_probe_p11_zed_session_load.py",
+  "tests/unit/tools/test_run_plan996_acpx_security_evidence.py",
+]
+why = "Mostly synthetic tool tests (Zed probe, acpx security evidence); their spawning, replay and current-source nodes have node rules."
+
+[[rules]]
+tier = "core"
+paths = [
+  "tests/unit/acp/test_plan1126_cancellation.py",
+  "tests/unit/acp/test_plan1126_queue_policy.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_artifact.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_checkpoints.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_clients.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_corpus.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_cost.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_duplication.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_inventory.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_provenance.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_repeatability.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_shutdown_diagnostics.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_source.py",
+  "tests/unit/tools/test_plan1126_unrun_binding.py",
+]
+why = "Plan 11.26 audit-family tool unit tests on synthetic inputs and frozen schema/seed contracts (reviewed, survey A6). Exceptions are node rules."
+
+[[rules]]
+tier = "proc"
+paths = [
+  "tests/unit/guardrails/test_ci_parity.py",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py",
+  "tests/unit/tools/test_debug_trace_message_rule.py",
+]
+why = "Subprocess-heavy repository tooling tests: real pre-commit/uv/bash/ast-grep runs, per-test git repositories and secret-scan child processes. Current-source guards in them are gates node rules."
+
+[[rules]]
+tier = "audit-current"
+nodes = [
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_contract_model_1000_seed_schedule",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_behavioral_mutations_change_or_invalidate_primary_observation",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_execution_emits_only_citations_for_behaviors_it_runs",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_literal_scenarios_are_coherent_primary_transitions",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_transition_authority_rejects_immutable_byte_drift",
+  "tests/unit/acp/test_plan1126_queue_policy.py::test_connection_health_probe_and_pool_ownership_are_classified",
+  "tests/unit/acp/test_plan1126_queue_policy.py::test_h9_refuses_an_inventory_discovered_from_a_different_source",
+  "tests/unit/acp/test_plan1126_queue_policy.py::test_h9_refuses_to_measure_a_source_it_is_not_executing",
+  "tests/unit/acp/test_plan1126_queue_policy.py::test_health_deadline_scope_out_has_health_specific_reason_and_gate",
+  "tests/unit/acp/test_plan1126_queue_policy.py::test_the_bridge_wait_is_still_discovered_after_ownership_moved_it",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_context_cannot_be_copied_into_a_different_shape",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_context_issued_for_another_entry_authorizes_nothing",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_context_whose_measurement_window_closed_authorizes_nothing",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_dependency_the_specification_names_must_be_installed",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_fabricated_binding_buys_zero_probe_calls",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_later_stage_failure_leaves_earlier_evidence_verifiable",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_missing_execution_context_fails_before_any_observation",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_missing_sidecar_fails_verification",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_probe_internal_source_mismatch_is_raised_not_recorded",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_tampered_observation_fails_verification",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_truncated_measured_tree_is_refused",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_an_entry_binds_its_own_runtime_even_when_the_caller_omits_it",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_an_h5_context_does_not_authorize_h9_either",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_an_under_scoped_specification_is_widened_by_the_issuer",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_an_unknown_measurement_entry_is_refused",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_fresh_measurement_retains_resolvable_evidence",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_retained_evidence_round_trips_from_disk",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_successor_verification_resolves_sidecars_without_remeasuring",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_child_refuses_to_measure_without_a_private_bytecode_cache",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_cli_measures_verifies_renders_and_replays_in_fresh_processes",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_cli_refuses_to_replace_an_existing_artifact",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_fresh_child_executes_verified_source_not_stale_bytecode",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_issuer_refuses_to_mint_outside_a_measurement_child",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_renderer_distinguishes_current_records_from_historical_ones",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_successor_envelope_carries_historical_records_unchanged",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_v1_envelope_rejects_fresh_measurements",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_failing_earlier_stage_still_demonstrates_custody_on_this_tree",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_failing_serving_task_persists_a_content_free_failure_never_its_text",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_floor_lowered_below_an_executing_distribution_is_refused_before_evidence",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_floor_lowered_below_an_executing_module_is_refused_before_evidence",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_late_submission_refusal_is_recorded_from_a_fixed_vocabulary",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_null_handoff_is_a_null_handle_not_a_retained_one",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_null_handoff_measures_missing_through_the_public_path",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_sealed_s1_record_verifies_and_an_edited_ruling_is_refused",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_serving_graph_that_reaches_the_shared_loop_is_a_retention_defect",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_serving_task_that_never_settles_is_recorded_as_pending",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_an_omitted_rollback_measures_missing_through_the_public_path",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_an_unexpected_late_submission_failure_is_recorded_content_free",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_dropping_the_retained_handle_from_source_makes_retention_false",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_identifiers_come_from_the_scenario_enum_not_the_rows",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_cancellation_probe_retains_only_its_outcome_vocabulary",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_configured_handoff_probe_refuses_a_null_server_handle",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_current_tree_retains_the_handle_and_closes_redis_last",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_h5_probe_branches_are_closure_checked_too",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_measured_revision_demonstrates_every_scenario",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_rollback_probe_records_the_product_disposition_before_fallback_cleanup",
+]
+why = "Measure the current tree: read *_SOURCE_PATHS or current sources from the repository root, run current production transitions or S1 probes, or spawn measurement children (survey A1-A5)."
+
+[[rules]]
+tier = "audit-sealed"
+nodes = [
+  "tests/unit/acp/test_plan1126_cancellation.py::test_h3_artifact_derives_cost_and_coverage_from_raw_observations",
+  "tests/unit/acp/test_plan1126_cancellation.py::test_task_supervision_inventory_is_independent_complete_and_receiver_safe",
+  "tests/unit/acp/test_plan1126_cancellation.py::test_turn_cancellation_races_256_seed_matrix",
+  "tests/unit/acp/test_plan1126_queue_policy.py::test_h9_artifact_recomputes_cost_coverage_and_findings",
+  "tests/unit/acp/test_plan1126_queue_policy.py::test_health_deadline_citations_keep_the_evidence_line_and_are_checked_against_it",
+  "tests/unit/acp/test_plan1126_queue_policy.py::test_queue_inventory_is_independent_complete_and_not_seeded",
+  "tests/unit/acp/test_plan1126_queue_policy.py::test_queue_policy_cross_checks_constructor_and_10000_admissions",
+  "tests/unit/acp/test_plan1126_shutdown.py::test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register",
+  "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_inventory_is_independent_complete_and_receiver_safe",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_historical_replay_executes_no_h9_admission_probe",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_historical_replay_runs_zero_current_probes",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_historical_verification_and_rendering_execute_no_probe",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_cli_refuses_an_unknown_envelope",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_cumulative_artifact_commands_execute_no_probe",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_replay_carrier_reads_every_family_and_refuses_a_gap",
+  "tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_cli_discovers_pinned_inventory",
+  "tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_inventory_is_deterministic_and_reconciles_prior_seeds",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_committed_task_1_authority_is_accepted_identity_but_remains_unrun",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_inventory_and_offline_subcommands_perform_offline_work",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_rejects_semantically_invalid_task_0_and_task_1_intakes",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_requires_the_frozen_literal_seed_fixture",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_zed_uses_authority_before_artifact_and_rejects_self_anchoring",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_import_closure_predecessor_keeps_134_with_the_seam2_list",
+]
+why = "Replay a pinned commit, a sealed reports/plan-11-26 artifact or a seeded model of it, with no current-tree read (survey A7-A8)."
+
+[[rules]]
+tier = "core"
+nodes = [
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_phase_and_cross_baseline_classification_follow_settled_symbols",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_scanner_uses_typed_roles_and_control_flow_not_name_tokens",
+  "tests/unit/guardrails/test_ci_parity.py::test_baseline_policy_control_accepts_the_approved_shape",
+  "tests/unit/guardrails/test_ci_parity.py::test_baseline_policy_rejects_each_independent_mutant",
+  "tests/unit/guardrails/test_ci_parity.py::test_default_agent_config_paths_include_nested_agents_cursor_rules_and_root_mcp",
+  "tests/unit/guardrails/test_ci_parity.py::test_scan_paths_blocks_missing_explicit_path",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_accepts_valid_sequences_spanning_chunk_boundaries",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_delegates_original_argv_unchanged_and_preserves_status",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_refuses_to_run_outside_utf8_mode",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_rejects_invalid_utf8_before_delegation",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_rejects_malformed_or_unexpected_arguments",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_rejects_malformed_utf16_before_delegation",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_rejects_missing_directory_marker",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_rejects_undecodable_baseline",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_rejects_utf16_bom_baseline_before_delegation",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_reports_a_validation_failure_raised_during_delegation",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_reports_unreadable_candidate_without_delegating",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_validates_utf16_bom_candidates_and_delegates_argv_unchanged",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_cp1252_control_classification",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_git_failure_drops_nothing",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_malformed_git_output_drops_nothing",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_only_the_literal_directory_marker_is_left_to_the_scanner",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_strict_reader_decodes_reports_as_utf16_and_everything_else_as_utf8",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_strict_reader_fails_closed_instead_of_yielding_nothing",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_unknown_object_format_drops_nothing",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_well_formed_archive_records_are_recognised",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_well_formed_record_outside_the_rule_is_not_exempt",
+  "tests/unit/tools/test_debug_trace_message_rule.py::test_stripping_path_does_not_leak_a_cached_node_version",
+]
+why = "Synthetic in-memory tool tests inside a file whose default tier is not core."
+
+[[rules]]
+tier = "gates"
+nodes = [
+  "tests/unit/guardrails/test_ci_parity.py::test_ci_dependency_sync_is_locked",
+  "tests/unit/guardrails/test_ci_parity.py::test_ci_uses_guardrail_rule_set",
+  "tests/unit/guardrails/test_ci_parity.py::test_detect_secrets_baseline_matches_the_approved_exception_set",
+  "tests/unit/guardrails/test_ci_parity.py::test_frozen_v9_document_digest_is_unchanged",
+  "tests/unit/guardrails/test_ci_parity.py::test_pre_commit_and_ci_name_the_same_guardrail_checks",
+  "tests/unit/guardrails/test_ci_parity.py::test_pre_commit_uses_guardrail_rule_set",
+  "tests/unit/guardrails/test_ci_parity.py::test_production_binding_control_accepts_unmutated_configuration",
+  "tests/unit/guardrails/test_ci_parity.py::test_production_binding_rejects_each_independent_mutant",
+  "tests/unit/guardrails/test_ci_parity.py::test_production_secret_scan_binding_is_required",
+  "tests/unit/guardrails/test_ci_parity.py::test_report_exception_document_digest_is_unchanged",
+  "tests/unit/guardrails/test_ci_parity.py::test_weakened_hook_entry_escapes_substring_checks",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_configured_entry_runs_the_adapter_in_utf8_mode",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_frozen_fixtures_are_unchanged",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_binding_that_omits_an_executing_distribution_is_refused",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_binding_that_omits_an_executing_product_file_is_refused",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_recorder_sees_work_on_threads_started_while_armed",
+  "tests/unit/tools/test_debug_trace_message_rule.py::test_real_sink_module_passes_the_gate",
+  "tests/unit/tools/test_plan1126_unrun_binding.py::test_scopeout_manifest_mutations_fail_closed",
+  "tests/unit/tools/test_plan1126_unrun_binding.py::test_scopeout_manifest_pins_exact_37_collected_nodeids",
+  "tests/unit/tools/test_plan1126_unrun_binding.py::test_scopeout_runs_when_available_and_attributes_every_skip_when_absent",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_import_closure_equals_explicit_module_path_subset",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_import_closure_refuses_a_genuinely_unlisted_reachable_module",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_import_closure_refuses_each_seam2_module_when_unlisted",
+  "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_capture_tool_does_not_import_or_instantiate_project_acp_client",
+]
+why = "Current-source guards inside audit or tooling files: S1 execution closure, Zed import closure, the UNRUN binding manifest and checks whose subject is the repository's own content (v4 design contract 1; survey A1, A11)."
+
+[[rules]]
+tier = "proc"
+nodes = [
+  "tests/unit/tools/plan1126_runtime_audit/test_checkpoints.py::test_checkpoint_store_allows_only_one_concurrent_expected_revision_writer",
+  "tests/unit/tools/plan1126_runtime_audit/test_historical_source.py::test_a_live_commit_still_uses_git",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_cli_script_runs_directly_from_outside_repository",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_cost_proposal_selects_latest_complete_measurement_generation",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_cost_proposal_updates_measurements_and_keeps_live_rows_unrun",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_scenario_rerun_uses_new_generation_without_overwriting_history",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_terminal_command_runs_once_only_after_tier_evidence_exists",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_tier_captures_timeout_diagnostics_and_attributes_harness_instability",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_tier_distinguishes_flaky_from_harness_invalid",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_tier_runner_checkpoints_real_repeats_and_resumes",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_timeout_terminates_descendants_that_inherit_capture_pipes",
+  "tests/unit/tools/plan1126_runtime_audit/test_source.py::test_git_commit_source_reads_immutable_blob_not_dirty_worktree",
+  "tests/unit/tools/plan1126_runtime_audit/test_source.py::test_git_commit_source_reads_multiple_blobs_from_one_bounded_archive",
+  "tests/unit/tools/test_plan1126_unrun_binding.py::test_scopeout_is_conditional_on_commit_object_availability",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_applicability_hashes_git_blobs_not_worktree_bytes",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_applicability_rejects_dirty_execution_surface",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_authority_allows_report_only_descendant_commit",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_authority_reads_committed_report_blob_not_worktree_bytes",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_authority_rejects_dirty_tracked_authorizing_report",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_authority_rejects_nonancestor_or_surface_drift",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_authority_rejects_untracked_authorizing_report",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_import_closure_rejects_unlisted_new_project_module",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_import_closure_traverses_package_init_reexports",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_isolated_probe_patch_writes_exact_git_blob_bytes_on_windows",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_launch_timeout_kills_every_descendant_of_the_launched_process",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_prepare_probe_excludes_gitignored_secret_like_files",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_prepare_probe_patches_only_isolated_spec_and_records_isolation",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_source_digest_changes_when_untracked_file_appears",
+  "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_capability_gap_default_capture_remains_version_only",
+  "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_capture_timeout_terminates_parent_and_descendant_in_an_isolated_probe",
+  "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_default_version_spawn_uses_system_only_client_environment",
+  "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_drive_session_timeout_kills_every_descendant_of_the_capture_child",
+  "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_spawn_authorized_capture_uses_devnull_stdin",
+  "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_spawn_uses_acpx_client_environment_not_effective_agent_environment",
+]
+why = "Spawn real child processes (multiprocessing writers, python -c scenarios, per-test git repositories, the real configured secret-scan step) without measuring the current tree (survey A9, A10, A12, A15)."
+
+[[rules]]
+tier = "gates"
+paths = [
+  "tests/unit/mcp/test_client_mcp_closure.py",
+  "tests/unit/optimus_gateway/test_pricing.py",
+  "tests/unit/tools/test_plan115_docs.py",
+  "tests/unit/tools/test_plan116_local_startup_docs.py",
+]
+why = "Every node is a current-source guard: its subject is the repository's own documents or sources (survey section C)."
+
+[[rules]]
+tier = "gates"
+paths = [
+  "tests/unit/test_*_surface_retirement.py",
+]
+why = "The provider-balance retirement guard and its allowlist check. A glob, not the file's name: the guard scans every tracked src/ and tests/ file for the retired token, so (like the guard's own file) this manifest never spells it."
+
+[[rules]]
+tier = "gates"
+nodes = [
+  "tests/integration/release/test_phase1_release_gate_cli.py::test_readme_documents_spawnable_acp_agent_contract",
+  "tests/integration/release/test_phase1_release_gate_cli.py::test_release_cli_accepts_agent_harness_task_filter_text",
+  "tests/integration/release/test_phase1_release_gate_cli.py::test_release_cli_runs_preflight_before_agent_harness",
+  "tests/integration/release/test_phase1_release_gate_cli.py::test_release_cli_wires_redis_backed_agent_harness",
+  "tests/integration/release/test_verify_live_agent_cli.py::test_verify_live_agent_module_exposes_required_flags",
+  "tests/unit/acp/test_bootstrap.py::test_bootstrap_has_no_divergent_dead_redis_default_constant",
+  "tests/unit/acp/test_debug_trace.py::test_acp_debug_log_has_no_redaction_opt_out_parameters",
+  "tests/unit/acp/test_debug_trace.py::test_authorized_launch_comparison_accepts_no_caller_supplied_secret",
+  "tests/unit/acp/test_debug_trace_call_sites.py::test_call_inventory_is_exactly_the_classified_sites",
+  "tests/unit/acp/test_debug_trace_call_sites.py::test_disabled_hot_path_does_not_even_call_sink",
+  "tests/unit/acp/test_debug_trace_call_sites.py::test_disabled_mcp_reporter_builds_no_fields",
+  "tests/unit/acp/test_debug_trace_call_sites.py::test_disabled_redis_reporter_reads_no_runtime_fields",
+  "tests/unit/acp/test_debug_trace_call_sites.py::test_disabled_trace_never_evaluates_migrated_payload",
+  "tests/unit/acp/test_debug_trace_call_sites.py::test_enabled_diagnostics_preserve_payload_fields",
+  "tests/unit/acp/test_debug_trace_call_sites.py::test_enabled_mcp_reporter_field_failure_is_contained",
+  "tests/unit/acp/test_debug_trace_call_sites.py::test_enabled_mcp_reporter_fields_and_sentinels",
+  "tests/unit/acp/test_debug_trace_call_sites.py::test_enabled_supplier_is_invoked_exactly_once_per_site",
+  "tests/unit/acp/test_debug_trace_call_sites.py::test_exception_diagnostic_has_static_message_and_redacted_lazy_detail",
+  "tests/unit/acp/test_debug_trace_call_sites.py::test_no_production_site_formats_its_message_dynamically",
+  "tests/unit/acp/test_debug_trace_call_sites.py::test_stateful_input_is_read_exactly_once_only_when_enabled_unobserved",
+  "tests/unit/acp/test_entrypoint.py::test_pyproject_declares_optimus_agent_console_script",
+  "tests/unit/acp/test_error_code_registry.py::test_production_raw_error_code_allowlist_is_exact_and_empty",
+  "tests/unit/acp/test_evidence_redaction_adapter.py::test_adapter_source_does_not_call_ambient_resolvers",
+  "tests/unit/acp/test_launch_policy.py::TestRegistryInventory::test_every_literal_optimus_source_name_has_one_policy",
+  "tests/unit/acp/test_launch_policy.py::TestRegistryInventory::test_local_gateway_prefix_literal_has_one_fail_closed_prefix_rule",
+  "tests/unit/acp/test_outbound_writer.py::test_no_direct_ndjson_physical_write_outside_writer_and_adapter",
+  "tests/unit/docs/test_docs_index.py::test_every_document_folder_has_an_archive",
+  "tests/unit/docs/test_docs_index.py::test_index_lists_every_current_document",
+  "tests/unit/docs/test_docs_index.py::test_index_lists_nothing_archived_or_missing",
+  "tests/unit/docs/test_docs_index.py::test_local_only_logs_are_never_indexed",
+  "tests/unit/docs/test_docs_index.py::test_local_only_logs_are_never_tracked",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_a2a_ledger_chain_break_recovery_and_rollback_residual_are_explicit",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_a2a_ledger_design_v2_is_the_live_successor_and_owns_the_channel",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_a2a_ledger_freezes_recipient_visibility_in_the_first_slice",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_a2a_ledger_integrity_detection_is_a_first_slice_contract",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_a2a_ledger_integrity_failure_is_loud_latched_and_non_retryable",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_a2a_ledger_plan_freezes_ordered_risk_slice_scope",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_a2a_ledger_row_records_not_shipped_state",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_adjacent_custody_rows_reflect_restored_dual_ownership",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_archived_product_pool_has_no_scheduling_plan_numbers",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_archived_product_pool_retains_its_historical_document_inventory",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_canonical_a2a_ledger_obligations_table_matches_expected",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_charter_is_ratified_and_maps_completed_plan_11_lanes",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_every_optimus_pool_entry_has_one_canonical_status",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_every_relative_optimus_pool_link_resolves",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_feature_status_is_canonical_and_state_prose_lives_in_scope_detail",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_fu_index_is_an_exact_projection_of_stable_id_entries",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_gateway_mcp_retirement_custody_is_current",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_guardrails_checkout_fetches_prerequisite_amendment_history",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_hardening_masterplan_status_is_parent_owned_and_candidate_tables_are_historical",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_historical_numbering_provenance_has_durable_pin_custody",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_immutable_documents_match_approved_digests_after_archival",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_immutable_pool_authority_rows_are_an_exact_projection",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_linear_numbering_semantics_reject_interstitial_and_nested_shapes",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_nested_status_parser_ignores_fenced_plan_985_example",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_nested_statuses_in_plan_987_remain_exact",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_one_approved_plan_cell_is_the_only_prerequisite_disposition_exception",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_optimus_dependencies_resolve_inside_the_canonical_backlog",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_p11_fu_20_is_partial_and_owned_by_live_blocked_plan_1123",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_p996_aggregate_uses_canonical_closed_status",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_plan_1116_terminal_partial_outcome_keeps_distinct_followup_custody",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_plan_1118_current_docs_close_p11_fu_10",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_plan_1118_records_forward_only_error_code_custody",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_plan_1121_keeps_p115_fu1_separate_scheduled_custody",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_plan_118_status_matches_its_checked_task_boundary",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_plan_11_26_candidates_are_ranked_and_unrun_owners_remain_distinct",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_plan_11_26_hypothesis_scope_authority_and_dispositions_cover_h1_through_h10",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_plan_11_26_runtime_audit_is_archived_while_remediation_custody_stays_open",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_plan_11_26_task13_custody_is_separate_accepted_and_reproducible",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_plan_11_26_telemetry_precision_findings_do_not_widen_observation_values",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_plan_11_26_terminal_report_preserves_timeout_attribution_and_authority",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_plan_987_document_level_closure_preserves_historical_unchecked_boxes",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_plan_versioning_uses_forward_only_semantic_anchor_groups",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_pool_tables_have_collision_safe_identities_and_valid_priority_cells",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_post_amendment_plans_declare_prerequisites_with_required_columns",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_priority_is_authored_only_in_table_cells",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_priority_seed_preserves_only_approved_non_medium_values",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_product_checkpoint_log_location_remains_gitignored",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_product_features_have_exactly_one_pool_owner",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_promoted_statuses_remain_exact_and_every_entry_status_has_a_resolution",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_promoted_targets_resolve_inside_plan_directory",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_publication_plan_custody_is_a_real_indexed_pool_entry",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_roadmap_plan_11_snapshot_is_complete_and_defers_item_state_to_pool",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_settled_entries_do_not_label_historical_defects_as_current",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_settled_index_is_an_exact_status_projection",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_w1_document_level_status_is_exact",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_zed_session_load_seal_remains_historical_throughout_the_living_pool",
+  "tests/unit/docs/test_plan_directory_hygiene.py::test_hardening_masterplan_owns_exactly_fifteen_child_plan_statuses",
+  "tests/unit/docs/test_plan_directory_hygiene.py::test_plan_archive_is_flat_and_contains_no_registered_live_plan",
+  "tests/unit/docs/test_plan_directory_hygiene.py::test_plan_root_contains_only_governance_and_registered_live_plans",
+  "tests/unit/docs/test_plan_directory_hygiene.py::test_relative_markdown_links_resolve_except_registered_stale_links",
+  "tests/unit/docs/test_plan_directory_hygiene.py::test_repository_document_paths_in_text_resolve",
+  "tests/unit/docs/test_plan_directory_hygiene.py::test_separately_named_amendments_cannot_be_live_root_plans",
+  "tests/unit/docs/test_plan_relocation_digest_equivalence.py::test_registered_relocations_are_pure_path_repairs",
+  "tests/unit/evidence/test_collector_boundaries.py::test_collector_and_fixtures_have_no_model_literals_or_defaults",
+  "tests/unit/evidence/test_collector_boundaries.py::test_collector_rejects_optimus_security_and_deployable_imports",
+  "tests/unit/evidence/test_collector_boundaries.py::test_collector_source_has_no_prompt_injection_capability",
+  "tests/unit/evidence/test_collector_pipeline.py::test_compose_signature_has_no_concrete_host_types",
+  "tests/unit/evidence/test_import_boundaries.py::test_collector_subtree_rejects_dynamic_and_escaping_relative_imports",
+  "tests/unit/evidence/test_import_boundaries.py::test_collector_subtree_rejects_optimus_security_imports",
+  "tests/unit/evidence/test_import_boundaries.py::test_evidence_handoff_imports_only_stdlib_and_allowlisted_third_party",
+  "tests/unit/evidence/test_import_boundaries.py::test_evidence_handoff_python_tree_exists_for_scanning",
+  "tests/unit/evidence/test_import_boundaries.py::test_evidence_handoff_rejects_dynamic_imports",
+  "tests/unit/evidence/test_import_boundaries.py::test_evidence_handoff_rejects_relative_imports_escaping_package",
+  "tests/unit/evidence/test_import_boundaries.py::test_evidence_handoff_runtime_imports_only_allowlisted_roots",
+  "tests/unit/evidence/test_import_boundaries.py::test_evidence_handoff_runtime_rejects_forbidden_and_dynamic_imports",
+  "tests/unit/evidence/test_import_boundaries.py::test_evidence_handoff_runtime_tree_exists_for_scanning",
+  "tests/unit/evidence/test_import_boundaries.py::test_optimus_security_remains_stdlib_only",
+  "tests/unit/evidence/test_import_boundaries.py::test_portable_evidence_handoff_does_not_import_runtime_package",
+  "tests/unit/evidence/test_naming_boundaries.py::test_collector_scenarios_and_artifacts_have_no_feature_id_or_scheduling_numbers",
+  "tests/unit/evidence/test_naming_boundaries.py::test_evidence_handoff_source_has_no_feature_id_or_scheduling_numbers",
+  "tests/unit/evidence/test_naming_boundaries.py::test_package_and_module_names_are_descriptive",
+  "tests/unit/evidence/test_naming_boundaries.py::test_pyproject_requires_evidence_handoff_postgres_marker_names_docker_loopback",
+  "tests/unit/evidence/test_naming_boundaries.py::test_pyproject_requires_evidence_handoff_service_marker_names_docker_loopback",
+  "tests/unit/evidence/test_naming_boundaries.py::test_pyproject_requires_os_keyring_marker_is_descriptive",
+  "tests/unit/evidence/test_naming_boundaries.py::test_pyproject_requires_os_keyring_write_marker_is_descriptive_and_deselected",
+  "tests/unit/evidence/test_naming_boundaries.py::test_task_owned_tests_have_no_feature_id_or_scheduling_numbers",
+  "tests/unit/evidence_handoff/test_auth.py::test_signature_verification_uses_compare_digest",
+  "tests/unit/evidence_handoff/test_auth.py::test_transport_auth_gate_is_credential_validator_not_stub",
+  "tests/unit/evidence_handoff/test_capabilities.py::test_schema_level_capabilities_table_lacks_per_reader_columns",
+  "tests/unit/evidence_handoff/test_lifecycle.py::test_runtime_source_has_neither_wslc_backend_nor_wslc_backend_id",
+  "tests/unit/evidence_handoff/test_migration_manifest.py::test_migration_manifest_pins_digests_for_committed_sql",
+  "tests/unit/evidence_handoff/test_sessions.py::test_session_registry_create_uses_secrets_module",
+  "tests/unit/evidence_handoff/test_signing_key_custody_resolve.py::test_runtime_input_supplier_and_service_do_not_query_keyring",
+  "tests/unit/guardrails/test_tracked_file_scanners.py::test_every_filesystem_walker_is_migrated_or_has_a_reviewed_non_repository_reason",
+  "tests/unit/optimus_gateway/test_providers.py::test_build_upstream_client_constructs_only_openai_compatible_upstream_class",
+  "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_accepts_command_timeout_argument",
+  "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_accepts_golden_results_argument",
+  "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_exists_and_uses_default_builder",
+  "tests/unit/telemetry/test_serialization.py::test_sanitize_workspace_text_delegates_whitespace_rule_to_shared_engine",
+  "tests/unit/tools/test_doc_paths.py::test_document_names_under_docs_are_unique",
+  "tests/unit/tools/test_evidence_gather.py::test_entry_point_module_exists",
+  "tests/unit/tools/test_evidence_gather.py::test_fixture_stage_writes_use_atomic_json_helpers",
+  "tests/unit/tools/test_evidence_gather.py::test_gate_contract_rename_breaks_collector_call_sites",
+  "tests/unit/tools/test_evidence_gather.py::test_live_markers_are_registered_and_excluded_by_default",
+  "tests/unit/tools/test_evidence_gather.py::test_no_console_script_registration_for_evidence_gather",
+  "tests/unit/tools/test_evidence_gather.py::test_only_entry_point_imports_support_from_outside",
+  "tests/unit/tools/test_evidence_gather.py::test_only_redact_imports_redaction_orchestration",
+  "tests/unit/tools/test_evidence_gather.py::test_redaction_gate_contract_imports_are_public_models_exports",
+  "tests/unit/tools/test_evidence_gather.py::test_support_package_has_no_main_or_prompt_injection_ids",
+  "tests/unit/tools/test_plan117_custody_relay.py::test_control_path_does_not_mutate_acp_bytes_env_argv_or_cwd",
+  "tests/unit/tools/test_plan117_custody_relay.py::test_custody_relay_source_has_zero_emdash_and_replacement_codepoints",
+  "tests/unit/tools/test_plan117_custody_relay.py::test_forward_loops_do_not_call_blocking_read_on_buffered_pipes",
+  "tests/unit/tools/test_run_context.py::test_the_context_creates_no_thread",
+  "tests/unit/tools/test_run_context_boundaries.py::test_the_frozen_default_expression_equals_the_repository_configuration",
+  "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+  "tests/unit/tools/test_run_context_child_sites.py::test_the_literal_program_check_accepts_every_filed_literal_program",
+  "tests/unit/tools/test_run_context_child_sites.py::test_the_repository_wrapper_sites_are_inventoried",
+  "tests/unit/tools/test_run_context_lifecycle.py::test_the_context_and_the_observer_never_open_a_job_or_start_a_thread",
+  "tests/unit/tools/test_run_context_reviewed_programs.py::test_descendant_trees_announce_sleep_and_spawn_only_reviewed_programs",
+  "tests/unit/tools/test_run_context_reviewed_programs.py::test_the_announcing_child_runs_only_the_reviewed_announce_and_sleep",
+  "tests/unit/tools/test_run_context_reviewed_programs.py::test_the_marker_program_only_creates_its_marker_under_the_synthetic_directory",
+  "tests/unit/tools/test_run_p11_fu_10_acpx_error_code_evidence.py::test_script_never_imports_project_acp_protocol_client",
+  "tests/unit/tools/test_run_p11_fu_9_acpx_evidence.py::test_script_never_imports_a_project_acp_client_or_protocol_module",
+  "tests/unit/tools/test_run_plan115_acpx_cost_obs_evidence.py::test_script_never_imports_a_project_acp_client_or_protocol_module",
+  "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_no_forbidden_imports_or_apis",
+  "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_origin_a_prompt_retry_rejects_cli_supplied_session_or_proof",
+  "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_writer_discipline_no_ad_hoc_json_dump_in_runner",
+  "tests/unit/tools/test_run_plan987_acpx_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+  "tests/unit/tools/test_run_plan988_fu4b_live_evidence.py::test_helper_source_does_not_implement_acp_protocol",
+  "tests/unit/tools/test_verify_masterplan_impact.py::test_workflow_supplies_the_backlog_diff_to_the_verifier",
+  "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
+  "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+  "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_live_acpx_command_uses_posix_paths_for_cwd_and_agent",
+  "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_live_gateway_log_status_uses_live_workspace_path",
+  "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_script_delegates_acp_protocol_to_acpx",
+]
+why = "Current-source guards: they read src/, tools/, tests/, docs, pyproject or tracked/HEAD content to enforce a repository rule (logging manifest, walker allowlist, debug-trace sites, naming/import/collector boundaries, docs hygiene; survey section C). They override a file's proc rule."
+
+[[rules]]
+tier = "proc"
+paths = [
+  "tests/unit/tools/test_run_context.py",
+  "tests/unit/tools/test_run_context_boundaries.py",
+  "tests/unit/tools/test_run_context_child_sites.py",
+  "tests/unit/tools/test_run_context_lifecycle.py",
+  "tests/unit/tools/test_run_context_reviewed_programs.py",
+  "tests/unit/tools/test_run_context_targets.py",
+  "tests/unit/tools/test_process_tree.py",
+]
+why = "Run-context and process-tree tests: nested pytest sessions, job objects and process kills; selected by tools/testing/** and tools/process_tree.py changes (v4 design contract 1)."
+
+[[rules]]
+tier = "proc"
+paths = [
+  "tests/unit/acp/test_main5_guard.py",
+  "tests/unit/tools/test_git_env_immunity.py",
+  "tests/unit/tools/test_plan117_custody_relay.py",
+  "tests/unit/tools/test_verify_masterplan_impact.py",
+  "tests/unit/tools/test_verify_plan117_custody_feasibility.py",
+  "tests/unit/tools/test_verify_plan987_acpx_evidence.py",
+  "tests/unit/tools/test_run_profile.py",
+]
+why = "Launch real child processes (guard-built MAIN-5 interpreters, nested pytest, census children of the tool under test); run serially, never on xdist workers."
+
+[[rules]]
+tier = "e2e-local"
+paths = [
+  "tests/e2e/**",
+]
+why = "Unmarked end-to-end tests that the default selection runs (spawn the real ACP stdio process); the e2e marker would drop them from full."
+
+[[rules]]
+tier = "core"
+nodes = [
+  "tests/unit/acp/test_conversation.py::test_admission_cap_refuses_without_history_or_cost",
+  "tests/unit/acp/test_launch_approval_cli.py::TestClientMcpReviewCeremonyTask7::test_mcp_review_rejects_unreadable_or_expired_candidate",
+  "tests/unit/acp/test_main_check_config.py::test_check_config_strict_passes_flag_to_preflight",
+  "tests/unit/evidence/test_text_redaction.py::test_candidates_split_across_64kib_reads",
+  "tests/unit/evidence_handoff/test_transport.py::test_service_runtime_manifest_never_persists_store_password",
+  "tests/unit/mcp/test_client_catalog.py::test_budget_exceeded_aggregate_bytes_yields_no_catalog",
+  "tests/unit/optimus_gateway/test_request_body_rejection.py::test_stalled_client_with_production_defaults_completes_under_external_watchdog",
+]
+why = "Measured over 2 s (2.0-10.4 s, reference run 20261002T203101) but in-process product tests with no child process: reviewed to stay core."
+
+[[rules]]
+tier = "proc"
+nodes = [
+  "tests/unit/tools/test_test_profiles.py::test_without_a_profile_the_plugin_changes_no_collection_output",
+  "tests/unit/tools/test_test_profiles.py::test_a_static_profile_deselects_the_rest_through_pytest_and_says_so",
+  "tests/unit/tools/test_test_profiles.py::test_a_profile_composes_with_k_and_explicit_targets",
+  "tests/unit/tools/test_test_profiles.py::test_a_single_file_session_loads_the_plugin",
+  "tests/unit/tools/test_test_profiles.py::test_an_unknown_or_change_selected_profile_is_a_usage_error",
+  "tests/unit/tools/test_test_profiles.py::test_a_profile_never_changes_how_the_run_context_classifies_the_session",
+]
+why = "Plugin controls: real nested pytest sessions of this repository (collection-only and one active run)."
+
+[[rules]]
+tier = "gates"
+nodes = [
+  "tests/unit/tools/test_test_profiles.py::test_the_manifest_classifies_the_whole_default_selection_with_no_dead_rule",
+  "tests/unit/tools/test_test_profiles.py::test_every_measured_slow_node_has_an_explicit_rule",
+  "tests/unit/tools/test_test_profiles.py::test_run_context_and_process_tree_tests_are_proc",
+  "tests/unit/tools/test_test_profiles.py::test_unmarked_end_to_end_tests_are_e2e_local",
+  "tests/unit/tools/test_test_profiles.py::test_the_concurrency_tag_follows_its_maintained_signal",
+  "tests/unit/tools/test_test_profiles.py::test_the_platform_tag_follows_its_maintained_signal",
+  "tests/unit/tools/test_test_profiles.py::test_every_file_that_launches_a_child_has_a_reviewed_tier",
+  "tests/unit/tools/test_test_profiles.py::test_current_source_guards_are_gates_or_audit_current",
+  "tests/unit/tools/test_test_profiles.py::test_every_selection_declaration_still_names_something",
+]
+why = "The manifest's own guards: they hold tests/profiles.toml against the current collected universe and tracked test sources, so every test change must run them."
+
+[[tags]]
+name = "concurrency"
+paths = [
+  "tests/unit/acp/test_server_mcp_shutdown.py",
+  "tests/unit/acp/test_server_redis_shutdown.py",
+  "tests/unit/evidence_handoff/test_lifecycle.py",
+  "tests/unit/mcp/test_client_disposition.py",
+  "tests/unit/mcp/test_client_sdk.py",
+  "tests/unit/mcp/test_client_supervisor.py",
+  "tests/unit/optimus_gateway/test_request_body_rejection.py",
+  "tests/unit/redis/test_async_bridge.py",
+  "tests/unit/redis/test_runtime.py",
+]
+why = "Maintained signal: imports tests.support.concurrency or tests.support.fault_injection to race current product code (audit tiers and reviewed tooling uses excluded in the guard)."
+
+[[tags]]
+name = "concurrency"
+paths = [
+  "tests/unit/acp/test_lifecycle.py",
+  "tests/unit/acp/test_plan121_chat_mode.py",
+  "tests/unit/acp/test_spec_protocol.py",
+  "tests/unit/acp/test_stdio_ndjson.py",
+]
+why = "Reviewed product race/async/teardown tests that do not use the shared helpers (research inventory section 3.1); tagged whole-file."
+
+[[tags]]
+name = "platform"
+paths = [
+  "tests/integration/acp/test_launch_trust_flow.py",
+  "tests/integration/evidence/test_private_files_platform.py",
+  "tests/integration/evidence/test_subprocess_truncation.py",
+  "tests/unit/acp/test_acp_subprocess_env.py",
+  "tests/unit/acp/test_evidence_redaction_adapter.py",
+  "tests/unit/acp/test_launch_audit.py",
+  "tests/unit/acp/test_launch_gate.py",
+  "tests/unit/acp/test_main5_guard.py",
+  "tests/unit/acp/test_main_wiring.py",
+  "tests/unit/acp/test_trusted_paths.py",
+  "tests/unit/evidence/test_private_files.py",
+  "tests/unit/guardrails/test_ci_parity.py",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py",
+  "tests/unit/mcp/test_client_config.py",
+  "tests/unit/mcp/test_client_disposition.py",
+  "tests/unit/mcp/test_client_supervisor.py",
+  "tests/unit/mcp/test_local_ipc.py",
+  "tests/unit/security/test_sanitization.py",
+  "tests/unit/support/test_concurrency_diagnostics.py",
+  "tests/unit/tools/test_plan117_custody_relay.py",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py",
+  "tests/unit/tools/test_process_tree.py",
+  "tests/unit/tools/test_registry_maintenance.py",
+  "tests/unit/tools/test_run_context.py",
+  "tests/unit/tools/test_run_context_boundaries.py",
+  "tests/unit/tools/test_run_context_child_sites.py",
+  "tests/unit/tools/test_run_context_lifecycle.py",
+  "tests/unit/tools/test_run_plan996_acpx_security_evidence.py",
+  "tests/unit/tools/test_run_profile.py",
+]
+why = "Maintained signal: the module reads the running platform (sys.platform, os.name, platform.system()...), so its behaviour or selection differs between Windows and POSIX."
+
+[selection]
+broad_paths = [
+  ".gitattributes",
+  ".github/**",
+  ".pre-commit-config.yaml",
+  "pyproject.toml",
+  "sgconfig.yml",
+  "tests/**/conftest.py",
+  "tests/conftest.py",
+  "tests/profiles.toml",
+  "tests/support/**",
+  "uv.lock",
+]
+prose_gates = [
+  "tests/unit/docs/**",
+]
+platform_paths = [
+]
+
+[[inputs]]
+paths = [
+  "reports/plan-11-26*",
+  "tests/fixtures/plan1126_runtime_audit/**",
+]
+tiers = [
+  "audit-sealed",
+]
+why = "Sealed Plan 11.26 models, fixtures and artifacts replayed by the sealed audit tier (research data mapping)."
+
+[[inputs]]
+paths = [
+  "tests/conftest.py",
+  "tests/support/child_*",
+  "tests/support/child_*/**",
+  "tests/support/profiles_plugin.py",
+  "tools/process_tree.py",
+  "tools/testing/**",
+]
+files = [
+  "tests/unit/tools/test_run_context.py",
+  "tests/unit/tools/test_run_context_boundaries.py",
+  "tests/unit/tools/test_run_context_child_sites.py",
+  "tests/unit/tools/test_run_context_lifecycle.py",
+  "tests/unit/tools/test_run_context_reviewed_programs.py",
+  "tests/unit/tools/test_run_context_targets.py",
+  "tests/unit/tools/test_process_tree.py",
+]
+why = "v4 design contract 1: run-context and process-tree tests are selected by tools/testing/**, tools/process_tree.py and tests/support/child_* changes, and by the session hooks only they control (the root conftest and the profile plugin: collection, deselected identity, phases, UNRUN)."
+
+[[inputs]]
+paths = [
+  "src/optimus/**",
+]
+files = [
+  "tests/e2e/**",
+]
+why = "Dynamic launch: the unmarked end-to-end tests spawn the real ACP stdio process, which imports the optimus package."
+
+[measurement]
+source = "Windows reference run 20261002T203101-45752-c1999b at 3538de06 (default selection with coverage; its run.json records exit 1 and completeness INVALID, so it is diagnostic data, not acceptance, and nodes it did not reach are unmeasured); nodes over 2 s of setup+call+teardown, matched to current node IDs by node digest. Refreshed from each Task 6 full run."
+explicit_seconds = 2.0
+slow_nodes = [
+  "tests/e2e/acp/test_multi_turn_conversation.py::test_admission_cap_exact_boundary_still_refuses",
+  "tests/unit/acp/test_conversation.py::test_admission_cap_refuses_without_history_or_cost",
+  "tests/unit/acp/test_launch_approval_cli.py::TestClientMcpReviewCeremonyTask7::test_mcp_review_rejects_unreadable_or_expired_candidate",
+  "tests/unit/acp/test_main_check_config.py::test_check_config_strict_passes_flag_to_preflight",
+  "tests/unit/acp/test_plan1126_cancellation.py::test_h3_artifact_derives_cost_and_coverage_from_raw_observations",
+  "tests/unit/acp/test_plan1126_cancellation.py::test_task_supervision_inventory_is_independent_complete_and_receiver_safe",
+  "tests/unit/acp/test_plan1126_cancellation.py::test_turn_cancellation_races_256_seed_matrix",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_contract_ast_covers_all_send_sites",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_contract_model_1000_seed_schedule",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_inventory_has_one_phase_per_conceptual_site",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_scanner_recognizes_settled_write_by_following_owner_publication",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_evidence_template_pins_h4_seed_count_without_pinning_later_hypotheses",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_behavioral_mutations_change_or_invalidate_primary_observation",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_execution_emits_only_citations_for_behaviors_it_runs",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_global_status_and_findings_retain_truthful_partial_lineage",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_literal_scenarios_are_coherent_primary_transitions",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_model_and_schema_reject_duplicate_conceptual_sites",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_model_schema_and_public_verify_fail_closed_on_cross_field_mutations",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_model_schema_and_public_verify_reject_coverage_metadata_mutations",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_persists_primary_scenario_coherence_and_rejects_tamper",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_persists_source_derived_transition_records_not_a_seed_formatter",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_record_projection_excludes_only_human_review_fields",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_record_uses_canonical_evidence_template_and_separate_baseline_identities",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_render_escapes_content_free_markdown_metadata",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_render_surfaces_worked_example_evidence_without_payload_content",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_separates_structural_closure_from_owned_settled_vocabulary_coverage",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_transition_authority_rejects_immutable_byte_drift",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_verifier_filters_unrelated_findings_symmetrically",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_verifier_preserves_record_level_human_review_fields",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_verifier_rejects_finding_population_order_and_field_drift[duplicate]",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_verifier_rejects_finding_population_order_and_field_drift[missing]",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_verifier_rejects_finding_population_order_and_field_drift[owner]",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_verifier_rejects_finding_population_order_and_field_drift[permuted]",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_verifier_rejects_generated_finding_ruling_drift",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_public_verify_allows_external_g2_acceptance_without_mechanical_evidence_drift",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_public_verify_rejects_mutable_or_secret_bearing_h4_metadata[ACCEPTED_FAKE_COMMAND]",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_public_verify_rejects_mutable_or_secret_bearing_h4_metadata[ACCEPTED_SECRET_OWNER]",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_public_verify_rejects_mutable_or_secret_bearing_h4_metadata[ACCEPTED_SECRET_RULING]",
+  "tests/unit/acp/test_plan1126_queue_policy.py::test_connection_health_probe_and_pool_ownership_are_classified",
+  "tests/unit/acp/test_plan1126_queue_policy.py::test_h9_artifact_recomputes_cost_coverage_and_findings",
+  "tests/unit/acp/test_plan1126_queue_policy.py::test_h9_refuses_an_inventory_discovered_from_a_different_source",
+  "tests/unit/acp/test_plan1126_queue_policy.py::test_h9_refuses_to_measure_a_source_it_is_not_executing",
+  "tests/unit/acp/test_plan1126_semantic_errors.py::test_h6_h7_artifact_recomputes_coverage_findings_and_scope_out_debt",
+  "tests/unit/acp/test_plan1126_session_lease.py::test_h10_artifact_is_scoped_out_without_runtime_or_live_evidence",
+  "tests/unit/acp/test_plan1126_shutdown.py::test_a_historical_inventory_with_a_current_measurement_is_refused",
+  "tests/unit/acp/test_plan1126_shutdown.py::test_close_is_idempotent_across_discovered_paths",
+  "tests/unit/acp/test_plan1126_shutdown.py::test_dynamic_probe_refuses_a_source_binding_it_is_not_executing",
+  "tests/unit/acp/test_plan1126_shutdown.py::test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register",
+  "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist",
+  "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_inventory_is_independent_complete_and_receiver_safe",
+  "tests/unit/docs/test_open_work_pool_hygiene.py::test_immutable_documents_match_approved_digests_after_archival",
+  "tests/unit/evidence/test_text_redaction.py::test_candidates_split_across_64kib_reads",
+  "tests/unit/evidence_handoff/test_transport.py::test_service_runtime_manifest_never_persists_store_password",
+  "tests/unit/guardrails/test_ci_parity.py::test_production_secret_scan_regression_controls",
+  "tests/unit/guardrails/test_ci_parity.py::test_production_secret_scan_rejects_nested_canary_and_restores_clean",
+  "tests/unit/guardrails/test_ci_parity.py::test_production_secret_scan_selects_exact_tracked_text",
+  "tests/unit/guardrails/test_ci_parity.py::test_run_timeout_terminates_descendant_processes",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_drops_only_byte_identical_archive_moves",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_any_other_byte_identical_move_is_scanned[not-into-archive]",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_any_other_byte_identical_move_is_scanned[out-of-archive]",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_any_other_byte_identical_move_is_scanned[outside-docs]",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_any_other_byte_identical_move_is_scanned[renamed]",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_archive_move_plus_identical_copy_still_scans_one_copy",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_archive_move_with_changed_bytes_is_scanned",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_byte_identical_archive_move_under_docs_is_not_rescanned",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_byte_identical_folder_move_into_archive_is_not_rescanned",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_canary_in_plain_ascii_file_is_detected_by_configured_hook",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_clean_selected_text_passes_under_either_parent_locale[ascii]",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_clean_selected_text_passes_under_either_parent_locale[spaced-non-ascii-path]",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_clean_selected_text_passes_under_either_parent_locale[unicode]",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_clean_selected_text_passes_under_either_parent_locale[utf8-bom]",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_clean_valid_utf8_with_cp1252_undecodable_text_passes[parent-utf8-off]",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_clean_valid_utf8_with_cp1252_undecodable_text_passes[parent-utf8-on]",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_copy_into_archive_is_scanned",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_invalid_utf8_selected_text_is_rejected_with_path_and_reason",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_only_selected_files_are_scanned_among_staged_files",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_real_commit_skips_an_archive_move_but_blocks_an_edited_one",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_untracked_unselected_canary_is_not_pulled_in",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_valid_utf8_with_cp1252_undecodable_text_cannot_hide_a_canary[parent-utf8-off]",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_valid_utf8_with_cp1252_undecodable_text_cannot_hide_a_canary[parent-utf8-on]",
+  "tests/unit/guardrails/test_tracked_file_scanners.py::test_every_filesystem_walker_is_migrated_or_has_a_reviewed_non_repository_reason",
+  "tests/unit/mcp/test_client_catalog.py::test_budget_exceeded_aggregate_bytes_yields_no_catalog",
+  "tests/unit/optimus_gateway/test_request_body_rejection.py::test_stalled_client_with_production_defaults_completes_under_external_watchdog",
+  "tests/unit/telemetry/test_plan1126_runtime_contract.py::test_h8_artifact_recomputes_s2_cost_coverage_and_findings",
+  "tests/unit/telemetry/test_plan1126_runtime_contract.py::test_runtime_event_schema_generated_10000_cases",
+  "tests/unit/telemetry/test_plan1126_runtime_contract.py::test_runtime_redaction_generated_1000_cases",
+  "tests/unit/telemetry/test_plan1126_runtime_contract.py::test_telemetry_sink_failures_are_contained",
+  "tests/unit/tools/plan1126_runtime_audit/test_checkpoints.py::test_checkpoint_store_allows_only_one_concurrent_expected_revision_writer",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_context_cannot_be_copied_into_a_different_shape",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_context_issued_for_another_entry_authorizes_nothing",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_context_whose_measurement_window_closed_authorizes_nothing",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_later_stage_failure_leaves_earlier_evidence_verifiable",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_missing_sidecar_fails_verification",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_probe_internal_source_mismatch_is_raised_not_recorded",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_a_tampered_observation_fails_verification",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_an_entry_binds_its_own_runtime_even_when_the_caller_omits_it",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_an_h5_context_does_not_authorize_h9_either",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_an_under_scoped_specification_is_widened_by_the_issuer",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_fresh_measurement_retains_resolvable_evidence",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_historical_replay_executes_no_h9_admission_probe",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_historical_replay_runs_zero_current_probes",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_historical_verification_and_rendering_execute_no_probe",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_retained_evidence_round_trips_from_disk",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_successor_verification_resolves_sidecars_without_remeasuring",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_cli_measures_verifies_renders_and_replays_in_fresh_processes",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_cli_refuses_to_replace_an_existing_artifact",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_cumulative_artifact_commands_execute_no_probe",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_fresh_child_executes_verified_source_not_stale_bytecode",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_renderer_distinguishes_current_records_from_historical_ones",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_replay_carrier_reads_every_family_and_refuses_a_gap",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_successor_envelope_carries_historical_records_unchanged",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_v1_envelope_rejects_fresh_measurements",
+  "tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_cli_discovers_pinned_inventory",
+  "tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_inventory_is_deterministic_and_reconciles_prior_seeds",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_terminal_command_runs_once_only_after_tier_evidence_exists",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_floor_lowered_below_an_executing_distribution_is_refused_before_evidence",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_floor_lowered_below_an_executing_module_is_refused_before_evidence",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_null_handoff_measures_missing_through_the_public_path",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_sealed_s1_record_verifies_and_an_edited_ruling_is_refused",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_an_omitted_rollback_measures_missing_through_the_public_path",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_h5_probe_branches_are_closure_checked_too",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_measured_revision_demonstrates_every_scenario",
+  "tests/unit/tools/test_git_env_immunity.py::test_central_protection_keeps_the_surrounding_repository_untouched",
+  "tests/unit/tools/test_plan1126_unrun_binding.py::test_scopeout_manifest_mutations_fail_closed[add]",
+  "tests/unit/tools/test_plan1126_unrun_binding.py::test_scopeout_manifest_mutations_fail_closed[remove]",
+  "tests/unit/tools/test_plan1126_unrun_binding.py::test_scopeout_manifest_mutations_fail_closed[rename]",
+  "tests/unit/tools/test_plan1126_unrun_binding.py::test_scopeout_manifest_pins_exact_37_collected_nodeids",
+  "tests/unit/tools/test_plan1126_unrun_binding.py::test_scopeout_runs_when_available_and_attributes_every_skip_when_absent",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_import_closure_equals_explicit_module_path_subset",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_import_closure_predecessor_keeps_134_with_the_seam2_list",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_import_closure_refuses_a_genuinely_unlisted_reachable_module",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_import_closure_refuses_each_seam2_module_when_unlisted[src/optimus/acp/failure_notes.py]",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_import_closure_refuses_each_seam2_module_when_unlisted[src/optimus/acp/harness_runtime.py]",
+  "tests/unit/tools/test_run_context.py::test_a_nested_default_pytest_completes_and_names_this_run_as_its_parent",
+  "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
+  "tests/unit/tools/test_run_context.py::test_other_selections_stay_passive[arguments0-collection_only-0]",
+  "tests/unit/tools/test_run_context.py::test_other_selections_stay_passive[arguments1-non_default_selection-5]",
+  "tests/unit/tools/test_run_context.py::test_other_selections_stay_passive[arguments2-requested-0]",
+  "tests/unit/tools/test_run_context_boundaries.py::test_a_collection_only_run_is_passive_and_executes_nothing",
+  "tests/unit/tools/test_run_context_boundaries.py::test_a_forged_registry_entry_never_reaches_a_record_or_the_terminal",
+  "tests/unit/tools/test_run_context_boundaries.py::test_a_selection_that_is_not_the_approved_default_runs_passive[explicit-non-default]",
+  "tests/unit/tools/test_run_context_boundaries.py::test_a_selection_that_is_not_the_approved_default_runs_passive[mixed-override-then-default]",
+  "tests/unit/tools/test_run_context_boundaries.py::test_a_selection_that_is_not_the_approved_default_runs_passive[overridden-addopts-selects-e2e]",
+  "tests/unit/tools/test_run_context_boundaries.py::test_a_selection_that_is_not_the_approved_default_runs_passive[requested-passive]",
+  "tests/unit/tools/test_run_context_boundaries.py::test_a_selection_that_is_not_the_approved_default_runs_passive[unknown-partial-expression]",
+  "tests/unit/tools/test_run_context_boundaries.py::test_another_config_file_runs_passive_whatever_it_selects[same-default]",
+  "tests/unit/tools/test_run_context_boundaries.py::test_another_config_file_runs_passive_whatever_it_selects[selects-e2e]",
+  "tests/unit/tools/test_run_context_boundaries.py::test_the_default_written_out_explicitly_stays_active",
+  "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+  "tests/unit/tools/test_run_context_lifecycle.py::test_a_collection_error_is_counted_and_never_recorded_as_a_clean_pass",
+  "tests/unit/tools/test_run_context_lifecycle.py::test_a_planted_run_takes_its_own_processes_with_it_and_leaves_another_run_alone[abrupt_exit-base_interpreter]",
+  "tests/unit/tools/test_run_context_lifecycle.py::test_a_planted_run_takes_its_own_processes_with_it_and_leaves_another_run_alone[abrupt_exit-venv_launcher]",
+  "tests/unit/tools/test_run_context_lifecycle.py::test_a_planted_run_takes_its_own_processes_with_it_and_leaves_another_run_alone[normal_exit-base_interpreter]",
+  "tests/unit/tools/test_run_context_lifecycle.py::test_a_planted_run_takes_its_own_processes_with_it_and_leaves_another_run_alone[normal_exit-venv_launcher]",
+  "tests/unit/tools/test_run_context_lifecycle.py::test_a_second_default_session_reuses_the_job_and_a_passive_one_is_refused",
+  "tests/unit/tools/test_run_context_lifecycle.py::test_an_interrupted_run_is_never_recorded_as_a_clean_pass",
+  "tests/unit/tools/test_run_context_lifecycle.py::test_deselected_tests_keep_their_identity",
+  "tests/unit/tools/test_run_context_lifecycle.py::test_each_phase_outcome_is_kept_as_pytest_reported_it[passing]",
+  "tests/unit/tools/test_run_context_lifecycle.py::test_each_phase_outcome_is_kept_as_pytest_reported_it[setup-skip]",
+  "tests/unit/tools/test_run_context_lifecycle.py::test_each_phase_outcome_is_kept_as_pytest_reported_it[teardown-failure]",
+  "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_capture_timeout_terminates_parent_and_descendant_in_an_isolated_probe[delayed-start]",
+  "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_capture_timeout_terminates_parent_and_descendant_in_an_isolated_probe[normal-start]",
+  "tests/unit/tools/test_verify_plan987_acpx_evidence.py::test_cli_digest_gate_rejects_non_lowercase_or_non_sha256_value",
+  "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
+]

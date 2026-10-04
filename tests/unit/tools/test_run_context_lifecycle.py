@@ -291,6 +291,29 @@ def _report(outcome: str = "passed", when: str = "call") -> SimpleNamespace:
     return SimpleNamespace(nodeid="tests/a.py::test_x", when=when, outcome=outcome, start=time.time(), duration=0.01, longrepr=None)
 
 
+def test_a_test_that_patches_the_global_clock_cannot_move_the_session_s_sampling(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests patch the `time` module (for example through a tool module's own `time` attribute) while their phase is
+    reported. The session's recorder keeps its own clock: a patched report neither takes a sample nor shifts the next
+    one, so a later sample can never see a negative gap and turn the whole record INVALID."""
+    scratch = _scratch_context(tmp_path)
+    before = scratch.last_sample
+    monkeypatch.setattr(time, "monotonic", lambda: before + 10_000.0)
+    run_context.record_phase(scratch, _report())
+    monkeypatch.undo()
+    run_context.sample_run(scratch, "terminal")
+    assert scratch.counts["samples"] == 1 and scratch.counts["recording_errors"] == 0
+    assert 0 <= scratch.last_sample - before < 60
+    # A sample that is really due during a patched report is taken at the recorder's own time.
+    scratch.last_sample -= 2 * run_context.SAMPLE_INTERVAL_SECONDS
+    due = scratch.last_sample
+    monkeypatch.setattr(time, "monotonic", lambda: due + 10_000.0)
+    run_context.record_phase(scratch, _report())
+    monkeypatch.undo()
+    run_context.sample_run(scratch, "terminal")
+    assert scratch.counts["samples"] == 3 and scratch.counts["recording_errors"] == 0
+    assert 0 <= scratch.last_sample - due < 60
+
+
 def test_a_stream_stops_at_its_ceiling_and_says_so(tmp_path: Path) -> None:
     assert run_context.MAX_STREAM_RECORDS == {"nodes": 40_000, "phases": 60_000, "samples": 5_000}
     assert run_context_records.MAX_STREAM_BYTES == 32 * 1024 * 1024 and run_context_records.MAX_RUN_FOLDERS == 2000
