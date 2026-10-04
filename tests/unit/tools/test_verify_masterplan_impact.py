@@ -121,6 +121,43 @@ def test_invalid_declarations_fail_closed(tmp_path: Path, body: str, changed: tu
     assert error in result.stderr, result.stderr
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        f"<!-- Work tracking impact: {ISSUES}/301 -->\n",
+        f"<!--\nWork tracking impact: {ISSUES}/301\n-->\n",
+        f"<!-- an example, never closed\nWork tracking impact: {ISSUES}/301\n",
+        f"```text\nWork tracking impact: {ISSUES}/301\n```\n",
+        f"~~~\nWork tracking impact: {ISSUES}/301\n~~~\n",
+    ],
+    ids=["inline comment", "comment block", "unclosed comment", "backtick fence", "tilde fence"],
+)
+def test_a_declaration_a_reviewer_cannot_see_does_not_count(tmp_path: Path, body: str) -> None:
+    result = _run(tmp_path, body, (TRACKED,))
+    assert result.returncode != 0
+    assert "exactly one" in result.stderr, result.stderr
+
+
+def test_a_visible_declaration_beside_hidden_examples_counts(tmp_path: Path) -> None:
+    body = (
+        "<!--\nWork tracking impact: none: a commented example\n-->\n"
+        f"Work tracking impact: {ISSUES}/301\n"
+        f"```text\nWork tracking impact: {ISSUES}/1\n```\n"
+    )
+    result = _run(tmp_path, body, (TRACKED,))
+    assert result.returncode == 0, result.stderr
+
+
+def test_a_sealed_plan_cannot_trade_its_identity_for_a_header(tmp_path: Path) -> None:
+    rebound = {FROZEN: f"# Plan 11.23\n\n**Tracking issue:** {ISSUES}/999\n\nEdited.\n"}
+    result = _run(tmp_path / "rebound", f"Work tracking impact: {ISSUES}/999\n", (FROZEN,), files=rebound)
+    assert result.returncode != 0
+    assert "#999" in result.stderr and "#222" in result.stderr, result.stderr
+    kept = {FROZEN: f"# Plan 11.23\n\n**Tracking issue:** {ISSUES}/222\n\nEdited.\n"}
+    result = _run(tmp_path / "kept", f"Work tracking impact: {ISSUES}/222\n", (FROZEN,), files=kept)
+    assert result.returncode == 0, result.stderr
+
+
 def test_a_plan_with_two_tracking_headers_fails_closed(tmp_path: Path) -> None:
     root = _root(tmp_path, {TRACKED: f"**Tracking issue:** {ISSUES}/301\n**Tracking issue:** {ISSUES}/302\n"})
     with pytest.raises(ValueError, match="2 tracking headers"):

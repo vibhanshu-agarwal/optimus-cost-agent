@@ -43,7 +43,8 @@ def _read_body(args: argparse.Namespace) -> str:
 
 
 def _declaration(body: str) -> str:
-    declarations = [line.strip() for line in body.splitlines() if line.strip().startswith(DECLARATION_PREFIX)]
+    # Only what a reviewer sees counts: a declaration inside an HTML comment or fenced code is an example.
+    declarations = [line.strip() for line in gwt.visible_lines(body) if line.strip().startswith(DECLARATION_PREFIX)]
     if len(declarations) != 1:
         raise ValueError(f"the pull request body must contain exactly one {DECLARATION_PREFIX} declaration")
     return declarations[0].removeprefix(DECLARATION_PREFIX).strip()
@@ -68,17 +69,21 @@ def _declared_issues(value: str) -> set[int] | None:
 
 
 def _plan_issue(root: Path, path: str, manifest: dict[str, Any]) -> int | None:
-    """A changed plan's tracking issue: its own header, else the sealed manifest's baseline identity for its path."""
+    """A changed plan's tracking issue: the sealed manifest's baseline identity for its path, which a header may repeat
+    but never replace; else its own header."""
     file = root / path
-    if file.is_file():
-        number = gwt.tracking_issue(file.read_text(encoding="utf-8"), path)
-        if number is not None:
-            return number
+    header = gwt.tracking_issue(file.read_text(encoding="utf-8"), path) if file.is_file() else None
     entry = manifest.get("plan_files", {}).get(path)
     if entry is None:
-        return None
+        return header
     record = next((record for record in manifest.get("records", []) if record.get("id") == entry.get("record")), None)
-    return record.get("target_issue") if record else None
+    sealed = record.get("target_issue") if record else None
+    if header is not None and header != sealed:
+        raise ValueError(
+            f"{path} carries a tracking header for #{header}, but its sealed baseline identity is"
+            f" {f'#{sealed}' if sealed else 'not yet an issue'}; a sealed plan keeps its identity"
+        )
+    return sealed
 
 
 def verify(*, body: str, changed_files: set[str], root: Path) -> None:

@@ -2780,3 +2780,117 @@ def test_cli_only_selects_records_and_refuses_a_bad_selection(tmp_path: Path, ca
     assert "full reconcile" in json.loads(capsys.readouterr().out.splitlines()[-1])["reason"]
     assert not (tmp_path / "mapping.json").exists()
     assert len(client.log) == reads  # every refusal comes before any GitHub read
+
+
+# ==== Checkpoint 3 review fixes (Fable 5.1, 2026-10-05): kept pilot text, sealed identities, visible headers ====
+
+
+def _retaining_pilot() -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """A legacy pilot adopted at its reviewed fingerprint, retaining two reviewed paragraphs of its body as one passage."""
+    issues = _legacy_pilot_issues()
+    issues[0]["body"] += "\nCustody: reviewed pilot custody text.\n"
+    data = _adopt(_good(), "plan:11.23", 222, gwt.issue_snapshot(issues[0]).fingerprint)
+    _records(data)["plan:11.23"]["retained"] = ["Codex-drafted pilot body\n\nCustody: reviewed pilot custody text."]
+    return data, issues
+
+
+def test_an_adopted_pilot_keeps_its_reviewed_passages_quoted_in_the_region(tmp_path: Path) -> None:
+    data, issues = _retaining_pilot()
+    inventory, drafts, client = _setup(tmp_path, data, issues=issues)
+    region = {draft.record_id: draft.body for draft in drafts}["plan:11.23"]
+    assert "> Codex-drafted pilot body\n>\n> Custody: reviewed pilot custody text.\n" in region  # quoted exactly
+    assert region.index("## Reviewed pilot passages") < region.index("## Source at baseline")
+    batch = _plan(inventory, drafts, client)
+    assert batch.conflicts == ()
+    update = next(op for op in batch.operations if op.issue == 222)
+    assert update.payload["body"] == region.rstrip("\n")  # the passages live inside the generated region
+    result, _journal = _publish(tmp_path, batch, client)
+    assert result.outcome == "pass"
+    assert gwt.reconcile(inventory, drafts, gwt.read_issues(client)).problems == ()
+    without = {draft.record_id: draft.body for draft in drafts}["P11-FU-20"]
+    assert "## Reviewed pilot passages" not in without  # only a record that retains passages has the section
+
+
+def test_a_retained_passage_the_live_body_lacks_is_a_conflict(tmp_path: Path) -> None:
+    data, issues = _retaining_pilot()
+    _records(data)["plan:11.23"]["retained"] = ["Codex-drafted pilot body", "Custody: text nobody reviewed."]
+    inventory, drafts, client = _setup(tmp_path, data, issues=issues)
+    batch = _plan(inventory, drafts, client)
+    assert any("plan:11.23" in c and "reviewed pilot passage 2" in c for c in batch.conflicts), batch.conflicts
+    assert not [op for op in batch.operations if op.issue == 222]
+
+
+@pytest.mark.parametrize(
+    ("retained", "adopted", "expected"),
+    [
+        (["kept"], False, "only a record with a reviewed adoption"),
+        ([" \n "], True, "empty"),
+        ([" padded"], True, "surrounding whitespace"),
+        (["<!-- /optimus-source: PLAN-11.23 -->"], True, "source marker"),
+        (["kept", "kept"], True, "more than once"),
+    ],
+    ids=["no adoption", "empty", "padded", "a source marker", "repeated"],
+)
+def test_retained_pilot_passages_fail_closed(tmp_path: Path, retained: list[str], adopted: bool, expected: str) -> None:
+    data = _adopt(_good(), "plan:11.23", 222, "a" * 64) if adopted else _good()
+    _records(data)["plan:11.23"]["retained"] = retained
+    problems = _problems(tmp_path, data)
+    assert any("plan:11.23" in problem and expected in problem for problem in problems), problems
+
+
+def test_the_real_pilots_retain_every_reviewed_paragraph_their_sources_do_not_carry() -> None:
+    inventory = gwt.load_inventory(MANIFEST)
+    sources = gwt.read_sources_at(inventory.baseline_commit, inventory.read_paths)
+    drafts = {draft.record_id: draft.body for draft in gwt.draft_issues(inventory, sources)}
+    retained = {record.id: record.retained for record in inventory.records if record.retained}
+    assert set(retained) == set(inventory.adoptions) == set(rules.PILOT_RETAINED)
+    for record_id, passages in retained.items():
+        for passage in passages:
+            assert gwt.quote_block(passage) in drafts[record_id], record_id
+            assert "Trial copy for the tracking pilot" not in passage and "optimus-source" not in passage
+    text = {record_id: "\n".join(passages) for record_id, passages in retained.items()}
+    assert "Closing FU20 alone is not automatic plan acceptance." in text["plan:11.23"]  # the closure rule
+    assert "owns the unsatisfied live prerequisite gate" in text["plan:11.23"]  # the Task 6 gate pointer
+    assert "Historical suggested ownership is not new implementation authority" in text["P11-FU-20"]
+    assert "## Acceptance design boundary" in text["A2A-C1"] and "historical audit evidence" in text["A2A-C1"]
+    assert "Custody: P11.26-CAND-1-RESOURCE-LIFETIME." in text["P11-FU-40"]
+
+
+def test_a_sealed_plan_keeps_its_sealed_identity_when_it_gains_a_header(tmp_path: Path) -> None:
+    inventory = _gated(tmp_path, _identities(_good()))
+    rebound = FROZEN_TEXT + f"\n**Tracking issue:** {ISSUES}/999\n".encode()
+    problems = gwt.plan_identity_problems(_plans(**{"plan-11-23": rebound}), inventory)
+    assert any(FROZEN_PLAN in p and "#999" in p and "#222" in p for p in problems), problems
+    kept = FROZEN_TEXT + f"\n**Tracking issue:** {ISSUES}/222\n".encode()  # a changed sealed plan naming its own issue
+    assert gwt.plan_identity_problems(_plans(**{"plan-11-23": kept}), inventory) == []
+
+
+def test_tracking_headers_count_only_where_a_reader_sees_them() -> None:
+    header = f"**Tracking issue:** {ISSUES}/301"
+    assert gwt.tracking_issue(f"# Plan\n\n```markdown\n{header}\n```\n", "p.md") is None
+    assert gwt.tracking_issue(f"# Plan\n\n<!--\n{header}\n-->\n", "p.md") is None
+    assert gwt.tracking_issue(f"# Plan\n\n<!-- draft, never closed\n{header}\n", "p.md") is None
+    visible = f"# Plan\n\n**Tracking issue:** {ISSUES}/302\n\n~~~\n{header}\n~~~\n\nText <!-- aside --> after.\n"
+    assert gwt.tracking_issue(visible, "p.md") == 302  # a fenced example is not a second header
+
+
+def test_an_uppercase_inbound_anchor_names_its_lowercase_form() -> None:
+    upper = "Durable-Effect-Aware-MCP-Indeterminate-Call-Custody"
+    problems = gwt.anchor_problems(STUB_FIXTURE, {upper})
+    assert len(problems) == 1 and "uppercase" in problems[0] and upper.lower() in problems[0], problems
+
+
+@pytest.mark.parametrize(
+    "placeholder", ["{{ issue:P11-FU-40 }}", "{{Issue:P11-FU-40}}", "{{ISSUE: P11-FU-40}}", "{{issue:P11-FU-40}}x", "{{issue:P11-FU-40}}_"]
+)
+def test_a_malformed_or_glued_issue_placeholder_is_refused(tmp_path: Path, placeholder: str) -> None:
+    inventory = _cutover_inventory(tmp_path)
+    with pytest.raises(ValueError, match="malformed"):
+        gwt.fill_issue_placeholders(f"See {placeholder}.", inventory)
+    root = tmp_path / "checkout"
+    for path, content in {gwt.POOL_PATH: POOL, "docs/note.md": f"Owner: {placeholder}\n"}.items():
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_text(content, encoding="utf-8")
+    _git_add(root)
+    with pytest.raises(ValueError, match="malformed"):  # the cutover never leaves such a document unfilled
+        gwt.cutover_docs(inventory, root, POOL.encode("utf-8"), CUTOVER, {})

@@ -603,7 +603,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "live plan registry row",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "plan:12.2",
@@ -634,7 +635,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "live plan registry row",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "plan:12.1",
@@ -665,7 +667,8 @@
    "reviewed": true,
    "review_note": "Plan 12 slice; its registry backlog owner P12-FU-1 is its own child item, so the parent is the Plan 12 feature",
    "rationale": "live plan registry row",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "plan:local-hook-utf-8-decoding-repair",
@@ -694,7 +697,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "live plan registry row",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "plan:11.27",
@@ -725,7 +729,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "live plan registry row",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "plan:11.28",
@@ -756,7 +761,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "live plan registry row",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "plan:p11-fu-6-bounded-early-post-rejection",
@@ -785,7 +791,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "live plan registry row",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "plan:11.7",
@@ -816,7 +823,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "live plan registry row",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "plan:11.24",
@@ -847,7 +855,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "live plan registry row",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "plan:11.23",
@@ -889,6 +898,9 @@
      "section",
      "Definition of Done and Evidence Map"
     ]
+   ],
+   "retained": [
+    "Drafted by Codex; source-checked by Claude against `980dad0`; published by Claude on 2026-10-03 through the operator's GitHub account. Agent signatures identify authorship only and carry no operator authority.\n\n## Current position\n\nSource status: **Blocked**. Priority: **Medium** (operator-selected default). Difficulty: **Medium** (default, not assessed). Planned Estimate: **NA**. Handler: **Unassigned**.\n\nThe registry records: \"Tasks 1–4 satisfy production composition; Task 6 still requires independently authored ACP/write-server evidence, live Redis/TimeSeries, Gateway authority, TTY ceremony, and paid-call authorization.\"\n\nProduction delivery does not establish live acceptance. Work item **P11-FU-20** is **Partially implemented**; it is designated as this issue's native sub-issue and will appear in the Sub-issues panel once pilot setup completes. It is a separate acceptance record, not an extra implementation task.\n\n## Contract and custody\n\nGoal, from the approved plan: \"Make a leased client-supplied MCP server usable through the existing static `mcp_list_tools` and `mcp_call` operations by composing the real SDK adapter, bounded discovery, catalog admission, concrete dispatch service, registry, and teardown at first use.\"\n\n[Approved plan](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) retains all tasks, constraints and verification commands. No checkbox/approval is altered by this tracking copy.\n\n[Definition of Done and evidence map](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md#definition-of-done-and-evidence-map) is the complete acceptance contract, including zero-open session creation, lazy list and safe dispatch, identity-bound one-call authorization, fail-closed behavior, bounded connection lifecycle and independently authored live evidence.\n\n[Task 6](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md#task-6-establish-and-run-the-external-one-call-evidence-gate) owns the unsatisfied live prerequisite gate. Skipped/deselected execution is unrun, never a pass. This issue does not authorize it.\n\nCustody: [registry row, owner P11-FU-20](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md#live-implementation-plan-registry).\n\n[Interim release evidence](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/reports/plan-11-23-p11-fu-20-runtime-release.md). Existing evidence remains unchanged; no raw/private artifacts uploaded.\n\nClose only when the plan's own gates and mapped item obligations are satisfied and the governing custody/closure authority is obtained. Closing FU20 alone is not automatic plan acceptance."
    ]
   },
   {
@@ -918,7 +930,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "live plan registry row",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-TRACK-RUFF-LINT",
@@ -949,7 +962,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "hardening child-plan track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-TRACK-RUFF-FORMAT",
@@ -980,7 +994,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "hardening child-plan track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-TRACK-CI-GUARDRAILS",
@@ -1011,7 +1026,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "hardening child-plan track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-TRACK-DEPENDENCY-WORKFLOW",
@@ -1042,7 +1058,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "hardening child-plan track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-TRACK-TEST-DOUBLES",
@@ -1073,7 +1090,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "hardening child-plan track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-TRACK-STATIC-TYPING",
@@ -1104,7 +1122,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "hardening child-plan track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-TRACK-AUDIT-TOOLING",
@@ -1135,7 +1154,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "hardening child-plan track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-TRACK-ANALYSIS-ORACLE",
@@ -1166,7 +1186,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "hardening child-plan track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-TRACK-LIFECYCLE-SIGNALS",
@@ -1197,7 +1218,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "hardening child-plan track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-TRACK-LOGGING-TELEMETRY",
@@ -1228,7 +1250,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "hardening child-plan track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-TRACK-SEMANTIC-ERRORS",
@@ -1259,7 +1282,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "hardening child-plan track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-TRACK-QUEUE-BACKPRESSURE",
@@ -1290,7 +1314,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "hardening child-plan track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-TRACK-REPEATABILITY",
@@ -1321,7 +1346,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "hardening child-plan track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-TRACK-PUBLIC-API-DOCS",
@@ -1352,7 +1378,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "hardening child-plan track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-TRACK-DUPLICATION",
@@ -1383,7 +1410,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "hardening child-plan track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "structure:masterplan:runtime-candidates",
@@ -1414,7 +1442,8 @@
    "reviewed": true,
    "review_note": "table heading; its rows are claimed by the candidate records",
    "rationale": "unit without a known status token, read and given a terminal disposition",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "structure:masterplan:duplication-candidates",
@@ -1445,7 +1474,8 @@
    "reviewed": true,
    "review_note": "table heading; its rows are claimed by the T13 candidate records",
    "rationale": "unit without a known status token, read and given a terminal disposition",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "structure:masterplan:parent-update-checklist",
@@ -1476,7 +1506,8 @@
    "reviewed": true,
    "review_note": "process checklist heading in the pickup contract, not a work record",
    "rationale": "unit without a known status token, read and given a terminal disposition",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "history:roadmap:plan-9-5",
@@ -1505,7 +1536,8 @@
    "reviewed": true,
    "review_note": "status prose: the build plan completes with its completion plan; Plan 9.5 is closed history",
    "rationale": "unit without a known status token, read and given a terminal disposition",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "history:roadmap:plan-9-6-closure",
@@ -1536,7 +1568,8 @@
    "reviewed": true,
    "review_note": "closure heading; Plan 9.6 is Complete (2026-07-11)",
    "rationale": "unit without a known status token, read and given a terminal disposition",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "history:roadmap:plan-10",
@@ -1565,7 +1598,8 @@
    "reviewed": true,
    "review_note": "the former Plan 10.x lanes are closed; open work moved to the pool",
    "rationale": "unit without a known status token, read and given a terminal disposition",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "structure:roadmap:plan-11-execution-snapshot",
@@ -1596,7 +1630,8 @@
    "reviewed": true,
    "review_note": "snapshot of terminal Plan 11 lane outcomes; it defers live state to the pool",
    "rationale": "unit without a known status token, read and given a terminal disposition",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "structure:roadmap:plan-12-pointer",
@@ -1625,7 +1660,8 @@
    "reviewed": true,
    "review_note": "pointer prose; Plan 12 work is owned by the Plan 12 feature and its plans",
    "rationale": "unit without a known status token, read and given a terminal disposition",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "risk:plan-11-7-redis-durability",
@@ -1657,7 +1693,8 @@
    "reviewed": true,
    "review_note": "operator-accepted 2026-07-30: optimus-redis gives no container-lifecycle durability; revisit only if session-state loss occurs or a future plan changes Redis persistence; no mitigation is outstanding",
    "rationale": "operator-accepted 2026-07-30: optimus-redis gives no container-lifecycle durability; revisit only if session-state loss occurs or a future plan changes Redis persistence; no mitigation is outstanding",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FEAT-GATEWAY-CORE",
@@ -1688,7 +1725,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FEAT-GATEWAY-TOOLS",
@@ -1719,7 +1757,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FEAT-GATEWAY-COST-OBS",
@@ -1750,7 +1789,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FEAT-GATEWAY-MCP",
@@ -1781,7 +1821,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FEAT-ZED-RESUME",
@@ -1812,7 +1853,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FEAT-MULTI-TURN-CONVERSATION",
@@ -1843,7 +1885,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FEAT-ACP-RUNTIME-HARDENING",
@@ -1874,7 +1917,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-FEAT-RUNTIME-QUALITY",
@@ -1905,7 +1949,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FEAT-REGISTRY",
@@ -1915,7 +1960,7 @@
    "units": [
     "pool:351"
    ],
-   "title": "P11-FEAT-REGISTRY: ACP registry submission",
+   "title": "P11-FEAT-REGISTRY: ACP registry registration and v1.0 cut",
    "aliases": [
     "P11-FEAT-REGISTRY"
    ],
@@ -1936,7 +1981,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FEAT-IDE",
@@ -1967,7 +2013,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "feature:plan-12",
@@ -1998,7 +2045,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11.26-CAND-1-RESOURCE-LIFETIME",
@@ -2030,7 +2078,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11.26-CAND-2-TELEMETRY-CONTRACT",
@@ -2062,7 +2111,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11.26-CAND-3-SEMANTIC-ERROR-SELECTION",
@@ -2094,7 +2144,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11.26-CAND-4-QUEUE-BACKPRESSURE",
@@ -2126,7 +2177,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11.26-CAND-5-REPEATABILITY-ATTRIBUTION",
@@ -2158,7 +2210,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11.26-UNRUN-BINDING",
@@ -2190,7 +2243,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11.26-UNRUN-REDIS",
@@ -2201,7 +2255,7 @@
     "pool:419",
     "masterplan:313"
    ],
-   "title": "P11.26-UNRUN-REDIS: Unrun: live Redis rows",
+   "title": "P11.26-UNRUN-REDIS: Unrun: live Redis row",
    "aliases": [
     "P11.26-UNRUN-REDIS"
    ],
@@ -2222,7 +2276,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; source owner-to-be is 'operator', so the issue sits under the Plan 11.26 feature",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11.26-UNRUN-ZED",
@@ -2254,7 +2309,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; source owner-to-be is 'operator', so the issue sits under the Plan 11.26 feature",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-31",
@@ -2288,7 +2344,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-32",
@@ -2322,7 +2379,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-33",
@@ -2356,7 +2414,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-34",
@@ -2390,7 +2449,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-35",
@@ -2424,7 +2484,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-36",
@@ -2458,7 +2519,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-38",
@@ -2492,7 +2554,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-39",
@@ -2526,7 +2589,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-40",
@@ -2560,7 +2624,10 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": [
+    "Drafted by Codex; source-checked by Claude against `980dad0`; published by Claude on 2026-10-03 through the operator's GitHub account. Agent signatures identify authorship only and carry no operator authority. Difficulty: Medium (operator-selected default, not assessed). Planned Estimate: NA. Handler: Unassigned.\n\nPriority: Medium. Custody: P11.26-CAND-1-RESOURCE-LIFETIME. Source entry reproduced below; only its relative plan link is normalized.\n\n[Authoritative pool entry](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md#p11-fu-40-real-zed-process-containment-and-live-only-tree-kill-path)"
+   ]
   },
   {
    "id": "P11-FU-41",
@@ -2594,7 +2661,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "T13-CAND-RUNNER-CONTRACTS",
@@ -2626,7 +2694,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "T13-CAND-AUDIT-PRIMITIVES",
@@ -2658,7 +2727,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "T13-CAND-CREDENTIAL-CONTRACTS",
@@ -2690,7 +2760,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "T13-CAND-SECURITY-TEXT",
@@ -2722,7 +2793,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "T13-CAND-DOMAIN-HTTPS",
@@ -2754,7 +2826,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "T13-CAND-LEDGER-ACCOUNTING",
@@ -2786,7 +2859,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "T13-CAND-REDACTION-LIFETIME",
@@ -2818,7 +2892,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "T13-CAND-DIRECTIVE-GRAMMAR",
@@ -2850,7 +2925,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "T13-CAND-EVIDENCE-SERVICE",
@@ -2882,7 +2958,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "T13-CAND-SHARED-DEFAULTS",
@@ -2914,7 +2991,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "T13-CAND-REDIS-HEALTH",
@@ -2946,7 +3024,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "T13-CAND-RETRY-TIMING",
@@ -2978,7 +3057,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P9.8-FU-2",
@@ -3012,7 +3092,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P9.8-FU-3",
@@ -3046,7 +3127,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P9.8-FU-5",
@@ -3080,7 +3162,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P9.85-FU-1",
@@ -3114,7 +3197,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P9.85-FU-2",
@@ -3148,7 +3232,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P9.85-FU-3",
@@ -3182,7 +3267,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; the source owner cell coordinates with or defers to a future lane, so no parent",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P9.87-FU-1",
@@ -3216,7 +3302,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; the source owner cell coordinates with or defers to a future lane, so no parent",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-1",
@@ -3250,7 +3337,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-2",
@@ -3284,7 +3372,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-3",
@@ -3318,7 +3407,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-4",
@@ -3354,7 +3444,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; the source owner cell coordinates with or defers to a future lane, so no parent",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-5",
@@ -3388,7 +3479,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; the source owner cell coordinates with or defers to a future lane, so no parent",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-6",
@@ -3422,7 +3514,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-7",
@@ -3456,7 +3549,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; the source owner cell coordinates with or defers to a future lane, so no parent",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11.5-FU-1",
@@ -3490,7 +3584,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-8",
@@ -3524,7 +3619,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; the source owner cell coordinates with or defers to a future lane, so no parent",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-9",
@@ -3558,7 +3654,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-10",
@@ -3592,7 +3689,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11.7-FU-1",
@@ -3626,7 +3724,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11.7-FU-2",
@@ -3660,7 +3759,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11.7-FU-3",
@@ -3694,7 +3794,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-11",
@@ -3728,7 +3829,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-12",
@@ -3762,7 +3864,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-13",
@@ -3796,7 +3899,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-14",
@@ -3830,7 +3934,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-15",
@@ -3864,7 +3969,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-16",
@@ -3898,7 +4004,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; the source owner cell coordinates with or defers to a future lane, so no parent",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-22",
@@ -3932,7 +4039,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-23",
@@ -3966,7 +4074,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; the source owner cell coordinates with or defers to a future lane, so no parent",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-24",
@@ -4000,7 +4109,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; the source owner cell coordinates with or defers to a future lane, so no parent",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-25",
@@ -4034,7 +4144,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; the source owner cell coordinates with or defers to a future lane, so no parent",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-26",
@@ -4068,7 +4179,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-27",
@@ -4102,7 +4214,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-28",
@@ -4136,7 +4249,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-29",
@@ -4170,7 +4284,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-30",
@@ -4204,7 +4319,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-17",
@@ -4238,7 +4354,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-18",
@@ -4272,7 +4389,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-19",
@@ -4306,7 +4424,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-20",
@@ -4340,7 +4459,10 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": [
+    "Drafted by Codex; source-checked by Claude against `980dad0`; published by Claude on 2026-10-03 through the operator's GitHub account. Agent signatures identify authorship only and carry no operator authority. Difficulty: Medium (operator-selected default, not assessed). Planned Estimate: NA. Handler: Unassigned.\n\nCurrent status: Partially implemented. Priority: Medium. Custody: Live blocked Plan 11.23 Task 6. Parent: Plan 11.23 pilot issue #222. Native parent binding is part of this pilot's setup and must be verified before pilot acceptance.\n\n[Authoritative pool entry](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md#p11-fu-20-attach-per-server-catalogauthorizer-to-session-tool-service-for-real-one-call-issuance)\n\nSource entry reproduced below, including historical origin and current disposition. Historical suggested ownership is not new implementation authority; current Plan 11.23 custody controls. Relative report links are normalized to committed source links."
+   ]
   },
   {
    "id": "P11-FU-21",
@@ -4374,7 +4496,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11.5-FU-2",
@@ -4408,7 +4531,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11.25-FU-1",
@@ -4443,7 +4567,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11.25-FU-2",
@@ -4478,7 +4603,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; the source owner cell coordinates with or defers to a future lane, so no parent",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P12-FU-1",
@@ -4512,7 +4638,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P12-FU-2",
@@ -4546,7 +4673,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P12.1-FU-1",
@@ -4580,7 +4708,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; the source owner cell coordinates with or defers to a future lane, so no parent",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P12.1-FU-2",
@@ -4614,7 +4743,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; the source owner cell coordinates with or defers to a future lane, so no parent",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "P11-FU-37",
@@ -4648,7 +4778,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity; source owner EVIDENCE-HANDOFF-FEAT-REDACTION-GATE is history, so this issue has no parent",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-ZED-RENDER-OBSERVATION",
@@ -4679,7 +4810,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-REDACTION-GATE",
@@ -4710,7 +4842,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR",
@@ -4741,7 +4874,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER",
@@ -4772,7 +4906,8 @@
    "reviewed": true,
    "review_note": "Reviewed disposition: not shipped/not supported/not trusted after the NOT SOUND audit; closure plan archived. Open work continues under the LEDGER-* slices and A2A obligations; this umbrella stays history and remains the live owner of the frozen v1 design",
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER-DESIGN-REFRESH",
@@ -4803,7 +4938,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-A2A-CHANNEL",
@@ -4834,7 +4970,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION",
@@ -4865,7 +5002,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY",
@@ -4896,7 +5034,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-LEDGER-DATAPATH",
@@ -4927,7 +5066,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY",
@@ -4958,7 +5098,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-LEDGER-AUDIT-WIRING",
@@ -4989,7 +5130,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD",
@@ -5020,7 +5162,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-APPROVAL-RECORD",
@@ -5051,7 +5194,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-PEER-LIVENESS-SIGNAL",
@@ -5082,7 +5226,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE",
@@ -5113,7 +5258,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "EVIDENCE-HANDOFF-FEAT-AT-REST-INTEGRITY",
@@ -5144,7 +5290,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-C1",
@@ -5181,6 +5328,10 @@
      "section",
      "Critical 1 — No shipped composition root or runbook can provision the claimed product"
     ]
+   ],
+   "retained": [
+    "Drafted by Codex; source-checked by Claude against `980dad0`; published by Claude on 2026-10-03 through the operator's GitHub account. Agent signatures identify authorship only and carry no operator authority. Difficulty: Medium (operator-selected default, not assessed). Planned Estimate: NA. Handler: Unassigned.\n\nCurrent source status: Open. Priority: Medium. Severity: CRITICAL (separate from scheduling priority and default difficulty). Custody: EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION.\n\n[Current obligation and custody](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md#a2a-ledger-audit-obligations)\n\n[Audit diagnosis source](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/reviews/evidence-handoff-a2a-ledger-independent-audit.md#critical-1--no-shipped-composition-root-or-runbook-can-provision-the-claimed-product)\n\nThe diagnosis below is historical audit evidence, not a fresh claim that every cited code path is unchanged today. The current backlog retains C1 as Open. Preserve original evidence and establish current production state at pickup.",
+    "## Acceptance design boundary\n\nC1 remains an audit obligation under the named composition feature. Its future approved repair plan must define executable acceptance and real-dependency evidence. The source audit recommends one fail-closed composition root and runbook covering application-role provisioning, first-run key custody, packaged migrations, metadata initialization, enrollment/credential issuance, full-audit readiness, real service start/stop, truthful cross-process status and cleanup/recovery. This recommendation is preserved as audit input, not accepted as a new mechanism by this tracking pilot. Do not omit neighboring C3/H7/H9/M15 obligations or close the feature through a C1-only repair."
    ]
   },
   {
@@ -5212,7 +5363,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-C3",
@@ -5243,7 +5395,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-H4",
@@ -5274,7 +5427,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-H5",
@@ -5305,7 +5459,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-H6",
@@ -5336,7 +5491,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-H7",
@@ -5367,7 +5523,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-H8",
@@ -5398,7 +5555,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-H9",
@@ -5429,7 +5587,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-H10",
@@ -5460,7 +5619,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-H11",
@@ -5491,7 +5651,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-H12a",
@@ -5522,7 +5683,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-H12b",
@@ -5553,7 +5715,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-H13",
@@ -5584,7 +5747,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-M14",
@@ -5615,7 +5779,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-M15",
@@ -5646,7 +5811,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-M16a",
@@ -5677,7 +5843,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-M16b",
@@ -5708,7 +5875,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-M16c",
@@ -5739,7 +5907,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "A2A-M17",
@@ -5770,7 +5939,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "grouped source units with one identity",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-RUFF-LINT-RATCHET",
@@ -5801,7 +5971,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-RUFF-FORMAT-MIGRATION",
@@ -5832,7 +6003,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-COVERAGE-SOURCE-SCOPE",
@@ -5863,7 +6035,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-LOCKFILE-CI-ENFORCEMENT",
@@ -5894,7 +6067,8 @@
    "reviewed": true,
    "review_note": "the CI-GUARDRAILS track reports locked dependency sync merged (PR #194); the source still lists this item, so it migrates Open, but its body must quote the track's next gate and it is a closure-review candidate at Checkpoint 3",
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-SECRET-SCAN-SCOPE",
@@ -5925,7 +6099,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-BANDIT-B310",
@@ -5956,7 +6131,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-DEPENDENCY-CVE-SCAN",
@@ -5987,7 +6163,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-WORKFLOW-LINT-SECURITY",
@@ -6018,7 +6195,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-AUTOSPEC-BOUNDARIES",
@@ -6049,7 +6227,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-MYPY-SRC-RATCHET",
@@ -6080,7 +6259,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-AUDIT-INVENTORY-REDERIVATION",
@@ -6111,7 +6291,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-AUDIT-TOOL-TYPING",
@@ -6142,7 +6323,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-PYSCN-EVALUATION",
@@ -6173,7 +6355,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-SIGNAL-ADAPTER",
@@ -6204,7 +6387,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-EXCEPTION-SITE-DISPOSITION",
@@ -6235,7 +6419,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "HARDENING-ITEM-PUBLIC-API-DOCSTRINGS",
@@ -6266,7 +6451,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "new-work custody register item under its hardening track",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "custody:plan-12.2-package-a",
@@ -6295,7 +6481,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "section-level custody record",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "H4-VERIFIER-FOLLOW-UPS",
@@ -6326,7 +6513,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "section-level open follow-up with no ID",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-07-23-plan-10-2-p9-96-fu7-effective-row-display-provenance.md",
@@ -6355,7 +6543,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P9.96-FU-7 disposition](#p996-task-9-disclosed-follow-ups-closed-historical-plan-10-custody).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-07-24-plan-10-3-uv-lock-surface-audit-remediation.md",
@@ -6384,7 +6573,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [Plan 10.3 historical correction](#plan-103-frozen-plan-status-correction-historical).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-07-25-plan-11-1-p11-feat-gateway-core-implementation.md",
@@ -6415,7 +6605,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FEAT-GATEWAY-CORE](#feature-slices).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-07-26-plan-11-2-p11-feat-gateway-tools-implementation.md",
@@ -6446,7 +6637,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FEAT-GATEWAY-TOOLS](#feature-slices).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md",
@@ -6477,7 +6669,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FEAT-GATEWAY-COST-OBS](#feature-slices).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-07-29-plan-11-7-p11-feat-zed-resume-implementation.md",
@@ -6508,7 +6701,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md",
@@ -6539,7 +6733,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md",
@@ -6570,7 +6765,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-08-04-plan-11-7-retry-preflight-gate-amendment.md",
@@ -6601,7 +6797,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FU-11](#p11-fu-11-plan-117-retry-preflight-and-live-session-proof).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-08-18-plan-11-24-zed-guided-session-load-probe.md",
@@ -6632,7 +6829,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-08-18-plan-11-24-zed-guided-session-load-probe_v2.md",
@@ -6663,7 +6861,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-08-18-plan-11-24-zed-guided-session-load-probe_v3.md",
@@ -6694,7 +6893,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-08-18-plan-11-24-zed-guided-session-load-probe_v4.md",
@@ -6725,7 +6925,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-08-18-plan-11-24-zed-guided-session-load-probe_v5.md",
@@ -6756,7 +6957,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FEAT-ZED-RESUME](#feature-slices).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md",
@@ -6785,7 +6987,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P9.96 historical summary and disposition](#p996-task-9-disclosed-follow-ups-closed-historical-plan-10-custody).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-07-26-plan-11-2-p11-feat-gateway-tools-design.md",
@@ -6816,7 +7019,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FEAT-GATEWAY-TOOLS](#feature-slices).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-08-04-plan-11-7-retry-preflight-gate-design.md",
@@ -6847,7 +7051,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FU-11](#p11-fu-11-plan-117-retry-preflight-and-live-session-proof).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-08-06-plan-11-8-p11-feat-gateway-mcp-design.md",
@@ -6879,7 +7084,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FEAT-GATEWAY-MCP](#feature-slices).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-08-15-p11-fu-18-29-durable-approval-workspace-identity-design.md",
@@ -6911,7 +7117,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [P11-FU-18](#p11-fu-18-workspace-identity-ctime-coalescing-fail-open) and [P11-FU-29](#p11-fu-29-durable-approval-identity-instability-on-transient-git-probe-failure).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:evidence-handoff-a2a-ledger-design.md",
@@ -6942,7 +7149,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; [EVIDENCE-HANDOFF-FEAT-A2A-LEDGER](#evidence-and-handoff-feature-registry).",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-07-23-plan-10-1-p9-96-follow-up-remediation.md",
@@ -6971,7 +7179,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; historical provenance (no live owner)",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-design.md",
@@ -7000,7 +7209,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; historical provenance (no live owner)",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "frozen:2026-08-08-plan-11-9-p11-7-fu-1-gateway-timeout-design.md",
@@ -7029,7 +7239,8 @@
    "reviewed": false,
    "review_note": null,
    "rationale": "frozen artifact; historical provenance (no live owner)",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   },
   {
    "id": "issue:33",
@@ -7058,7 +7269,8 @@
    "reviewed": true,
    "review_note": "existing issue, kept open and linked as-is. Task 2 reconciles it read-only against existing evidence (reports/plan-9-75-zed-hitl-runtime-evidence.md and the P11-FEAT-ZED-RESUME records) and records a reviewed applicability disposition; Plan 11.29 runs no Zed, acpx or Gateway drive. A new reproduction, if one is needed, belongs to P11-FEAT-ZED-RESUME under that lane's own plan and authority, with #33 open and linked meanwhile. This inventory authorizes no closure, relabel or duplicate issue; later plan coverage never proves closure",
    "rationale": "pre-existing GitHub issue (2026-07-09); related to, not owned by, P11-FEAT-ZED-RESUME",
-   "quotes": []
+   "quotes": [],
+   "retained": []
   }
  ]
 }

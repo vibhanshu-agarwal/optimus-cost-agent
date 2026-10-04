@@ -380,6 +380,8 @@ class InventoryRecord:
     rationale: str = ""
     # Reviewed passages of other files quoted exactly in the issue body: (context source, "line" | "section", text).
     quotes: tuple[tuple[str, str, str], ...] = ()
+    # Reviewed passages of an adopted pilot's own body, quoted exactly in the body that replaces it.
+    retained: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -421,7 +423,7 @@ class CoverageReport:
 
 
 _RECORD_FIELDS = set(InventoryRecord.__dataclass_fields__)
-_TUPLE_FIELDS = ("units", "aliases", "anchors", "related")
+_TUPLE_FIELDS = ("units", "aliases", "anchors", "related", "retained")
 
 
 def inventory_from_data(data: Mapping) -> Inventory:
@@ -659,6 +661,19 @@ def _adoption_problems(inventory: Inventory, records: Mapping[str, InventoryReco
             problems.append(f"{label} names #{adoption.get('issue')}, not the record's reviewed target issue {record.target_issue}")
         if not (isinstance(adoption.get("fingerprint"), str) and _SHA256_HEX.fullmatch(adoption["fingerprint"])):
             problems.append(f"{label}: its fingerprint {adoption.get('fingerprint')!r} is not a SHA-256 hex digest")
+    for record in records.values():
+        label = f"record {record.id!r}"
+        if record.retained and record.id not in inventory.adoptions:
+            problems.append(f"{label} retains pilot passages, but only a record with a reviewed adoption has a pilot body to retain")
+        for index, passage in enumerate(record.retained, 1):
+            if not passage.strip():
+                problems.append(f"{label}: retained pilot passage {index} is empty")
+            elif passage != passage.strip():
+                problems.append(f"{label}: retained pilot passage {index} has surrounding whitespace; cut it exactly")
+            if _MARKER.search(passage) or _END_MARKER.search(passage):
+                problems.append(f"{label}: retained pilot passage {index} carries a source marker, which would split the region")
+            if record.retained.index(passage) != index - 1:
+                problems.append(f"{label}: retained pilot passage {index} appears more than once")
     return problems
 
 
@@ -1205,6 +1220,11 @@ class IssueDraft:
     priority_basis: str
 
 
+def quote_block(text: str) -> str:
+    """``text`` as a Markdown block quote: every line, blank ones included, keeps its exact content after ``> ``."""
+    return "\n".join(f"> {line}" if line else ">" for line in text.split("\n"))
+
+
 def render_body(
     record: InventoryRecord,
     claimed: Sequence[SourceUnit],
@@ -1213,7 +1233,8 @@ def render_body(
     basis: str,
     trial: bool,
 ) -> str:
-    """Marker, provenance, metadata basis and every claimed unit quoted exactly from the pinned source."""
+    """Marker, provenance, metadata basis, an adopted pilot's kept passages and every claimed unit quoted exactly from
+    the pinned source."""
     commit = inventory.baseline_commit
     short = commit[:7]
     aliases = [alias for alias in record.aliases if alias != record.id]
@@ -1262,6 +1283,18 @@ def render_body(
         "",
         *facts,
         "",
+    ]
+    if record.retained:
+        out += [
+            "## Reviewed pilot passages",
+            "",
+            "Kept from the reviewed pilot body that this generated body replaces, quoted exactly with their published link"
+            " targets. Historical: this issue's state and labels carry the current status.",
+            "",
+        ]
+        for passage in record.retained:
+            out += [quote_block(passage), ""]
+    out += [
         f"## Source at baseline `{short}`",
         "",
         "Quoted exactly from the pinned source; only relative and in-page link targets are rewritten as permalinks at that commit.",
@@ -1536,7 +1569,14 @@ def plan_migration(
                     f" (fingerprint {issue.fingerprint[:12]}…, reviewed {str(adoption['fingerprint'])[:12]}…); review it again"
                 )
                 continue
-            body = draft.body.rstrip("\n")  # the reviewed adoption replaces the whole body with the generated region
+            lacking = [str(index) for index, passage in enumerate(record.retained, 1) if passage not in issue.body]
+            if lacking:
+                conflicts.append(
+                    f"{label}: #{issue.number}'s body lacks reviewed pilot passage {', '.join(lacking)}; a kept passage"
+                    " quotes the adopted body exactly"
+                )
+                continue
+            body = draft.body.rstrip("\n")  # the reviewed adoption replaces the whole body; its kept passages are quoted in it
         else:
             # An update rewrites only the generated region; the existing title and every line outside the region survive.
             body = issue.body[: region[0]] + draft.body.rstrip("\n") + issue.body[region[1] :]
@@ -1877,9 +1917,47 @@ def issue_reference(text: str) -> int:
     return int(match.group("number"))
 
 
+def visible_lines(text: str) -> list[str]:
+    """The lines of Markdown ``text`` as a reader of the rendered page sees them: fenced code and HTML comments (an
+    unclosed comment runs to the end) are blanked, so an example there never counts as a header or a declaration."""
+    lines: list[str] = []
+    fence: str | None = None
+    comment = False
+    for line in text.splitlines():
+        if comment:
+            end = line.find("-->")
+            if end < 0:
+                lines.append("")
+                continue
+            comment, line = False, line[end + 3 :]
+        elif fence is not None:
+            closing = _FENCE.match(line)
+            if closing and closing.group("marker")[0] == fence[0] and len(closing.group("marker")) >= len(fence):
+                fence = None if not line[closing.end() :].strip() else fence
+            lines.append("")
+            continue
+        else:
+            opening = _FENCE.match(line)
+            if opening:
+                fence = opening.group("marker")
+                lines.append("")
+                continue
+        shown = []
+        while (start := line.find("<!--")) >= 0:
+            shown.append(line[:start])
+            end = line.find("-->", start + 4)
+            if end < 0:
+                comment, line = True, ""
+                break
+            line = line[end + 3 :]
+        lines.append("".join(shown) + line)
+    return lines
+
+
 def tracking_issue(text: str, path: str) -> int | None:
-    """A plan's ``**Tracking issue:** <issue URL>`` header, or ``None`` when it has none; more than one is an error."""
-    headers = [match.group("url") for match in map(TRACKING_HEADER.match, text.splitlines()) if match]
+    """A plan's visible ``**Tracking issue:** <issue URL>`` header, or ``None`` when it has none; more than one is an
+    error."""
+    headers = [match.group("url") for match in map(TRACKING_HEADER.match, visible_lines(text)) if match]
     if len(headers) > 1:
         raise ValueError(f"{path} carries {len(headers)} tracking headers; a plan has exactly one")
     if not headers:
@@ -1892,18 +1970,28 @@ def tracking_issue(text: str, path: str) -> int | None:
 
 def plan_identity_problems(plans: Mapping[str, bytes], inventory: Inventory) -> list[str]:
     """Each docs-root plan file has one issue identity: its own tracking header, the sealed baseline identity of its
-    exact blob, or a reviewed exemption."""
+    exact blob, or a reviewed exemption. A sealed plan keeps its sealed identity: a header there may repeat it, never
+    replace it."""
     records = {record.id: record for record in inventory.records}
     problems = []
     for path, data in sorted(plans.items()):
+        entry = inventory.plan_files.get(path)
+        record = records.get(entry["record"]) if entry else None
         try:
-            if tracking_issue(data.decode("utf-8"), path) is not None or path in inventory.plan_exemptions:
-                continue
+            header = tracking_issue(data.decode("utf-8"), path)
         except ValueError as error:
             problems.append(str(error))
             continue
-        entry = inventory.plan_files.get(path)
-        record = records.get(entry["record"]) if entry else None
+        if entry is not None and header is not None:
+            sealed = record.target_issue if record else None
+            if header != sealed:
+                problems.append(
+                    f"{path} carries a tracking header for #{header}, but its sealed baseline identity {entry['record']!r} is"
+                    f" {f'#{sealed}' if sealed else 'not yet an issue'}; a sealed plan keeps its identity"
+                )
+            continue
+        if header is not None or path in inventory.plan_exemptions:
+            continue
         if entry is None:
             problems.append(f"{path} has no tracking header, no sealed baseline identity and no reviewed exemption")
         elif entry["blob"] != git_blob_id(data):
@@ -1958,6 +2046,9 @@ def anchor_problems(stub: str, anchors: Iterable[str]) -> list[str]:
     slugs = [heading_anchor(title) for _number, _level, title in headings]
     problems = []
     for anchor in sorted(set(anchors)):
+        if anchor != anchor.lower():
+            problems.append(f"anchor {anchor!r} has uppercase letters, but GitHub heading anchors are lowercase; link {anchor.lower()!r}")
+            continue
         count = slugs.count(anchor)
         if count == 0:
             problems.append(f"anchor {anchor!r} no longer resolves in the pool")
@@ -1999,7 +2090,11 @@ def frozen_problems(read: Callable[[str], bytes | None], inventory: Inventory) -
 
 
 def stub_problems(text: str) -> list[str]:
-    """The pool after the cutover: an authority statement, the live links and a history permalink; no board."""
+    """The pool after the cutover: an authority statement, the live links and a history permalink; no board.
+
+    Boards are found by their Markdown delimiter rows and status lines, which is what the generated stub could carry;
+    an HTML ``<table>`` or a differently worded status line passes, so only a later hand edit could slip one in.
+    """
     lines = text.splitlines()
     problems = []
     for number, line in enumerate(lines, 1):
@@ -2049,8 +2144,9 @@ def finalize_inventory(data: Mapping, mapping: Mapping[str, int]) -> dict:
 
 # ==== Task 4: the cutover change set, rendered from a finalized manifest ====
 
-_PLACEHOLDER = re.compile(r"\{\{issue:(?P<record>[^{}\s]+)\}\}")
+_PLACEHOLDER = re.compile(r"\{\{issue:(?P<record>[^{}\s]+)\}\}(?!\w)")  # never glued to a following word
 PLACEHOLDER_START = "{{issue:"
+_PLACEHOLDER_LIKE = re.compile(r"\{\{\s*issue\s*:", re.IGNORECASE)  # any spacing or case: filled exactly, or refused
 
 
 def _issue_of(record_id: str, records: Mapping[str, InventoryRecord]) -> int:
@@ -2069,9 +2165,9 @@ def fill_issue_placeholders(text: str, inventory: Inventory) -> str:
     """Each ``{{issue:RECORD}}`` becomes that record's issue URL from a finalized manifest; none is left behind."""
     records = {record.id: record for record in inventory.records}
     filled = _PLACEHOLDER.sub(lambda match: f"https://github.com/{REPO}/issues/{_issue_of(match.group('record'), records)}", text)
-    if PLACEHOLDER_START in filled:
-        start = filled.index(PLACEHOLDER_START)
-        raise ValueError(f"malformed issue placeholder {filled[start : start + 40]!r}")
+    leftover = _PLACEHOLDER_LIKE.search(filled)
+    if leftover:
+        raise ValueError(f"malformed issue placeholder {filled[leftover.start() : leftover.start() + 40]!r}")
     return filled
 
 
@@ -2162,7 +2258,7 @@ def cutover_docs(
     anchors, changed = set(inventory.compat_anchors), {}
     for path, data in _checkout_files(root):  # the pool links none of its own anchors by file name
         anchors |= inbound_pool_anchors({path: data.decode("utf-8", "replace")})
-        if path.endswith(".md") and PLACEHOLDER_START.encode() in data:
+        if path.endswith(".md") and _PLACEHOLDER_LIKE.search(data.decode("utf-8", "replace")):
             changed[path] = fill_issue_placeholders(data.decode("utf-8"), inventory).encode("utf-8")
     changed[POOL_PATH] = render_pool_stub(inventory, history_pool.decode("utf-8"), history_commit, anchors, headings).encode("utf-8")
     return changed
@@ -2330,6 +2426,8 @@ def main(argv: Sequence[str] | None = None, reader: SourceReader = read_sources_
         except (ValueError, TrackedFileInventoryError) as error:  # no index to read is a refusal, not a crash
             print(json.dumps({"step": "STOP", "reason": str(error)}))
             return 2
+        # Every check has passed; the files are then written one by one into the Git checkout. If a write fails part way,
+        # `git status` lists the files already written and `git restore` undoes them.
         for path, data in changed.items():
             (args.root / path).write_bytes(data)
         print(json.dumps({"ok": True, "changed": sorted(changed)}))

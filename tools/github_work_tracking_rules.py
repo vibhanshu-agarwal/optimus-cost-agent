@@ -45,11 +45,100 @@ PILOT_ADOPTIONS = {
     "P11-FU-40": "55cdab926ee09cc7b613748c56239027f04222b5749903352bc6e350e5e07a60",  # pragma: allowlist secret
     "A2A-C1": "e3f5e19d26d8ca4adbe34b16c834a641a9e00dfa839c7aa33f562b5a15408bda",  # pragma: allowlist secret
 }
-# The reviewed passages the pilot bodies carried beyond their pool entries (plan goal, Definition of Done, audit
-# diagnosis), quoted exactly so adoption loses none of them. FU-20's and FU-40's pilot text is their pool entries.
+# Reviewed context the pilot bodies quoted from other pinned files (the plan goal and Definition of Done, the audit
+# diagnosis), quoted again at the baseline. The pilots' own reviewed prose is kept by PILOT_RETAINED below.
 QUOTES = {
     "plan:11.23": [("plan-11-23", "line", "**Goal:**"), ("plan-11-23", "section", "Definition of Done and Evidence Map")],
     "A2A-C1": [("a2a-audit", "section", "Critical 1 — No shipped composition root or runbook can provision the claimed product")],
+}
+# Pilot option (a) replaces each whole pilot body, so it must not discard reviewed information (Codex, Checkpoint 2).
+# Every paragraph of each reviewed pilot body is kept, except its trial banner, its source marker and the paragraphs
+# the generated body already quotes verbatim from its pinned source (the pool entry, the audit section). Each run of
+# consecutive kept paragraphs is one passage, cut exactly from the body read at the adoption fingerprint; planning
+# refuses the adoption unless every passage is still in the live body (Checkpoint 3 review, Fable H1).
+PILOT_RETAINED = {
+    "plan:11.23": (
+        (
+            "Drafted by Codex; source-checked by Claude against `980dad0`; published by Claude on 2026-10-03 through "
+            "the operator's GitHub account. Agent signatures identify authorship only and carry no operator "
+            "authority.\n\n## Current position\n\nSource status: **Blocked**. Priority: **Medium** (operator-selected "
+            "default). Difficulty: **Medium** (default, not assessed). Planned Estimate: **NA**. Handler: "
+            '**Unassigned**.\n\nThe registry records: "Tasks 1–4 satisfy production composition; Task 6 still '
+            "requires independently authored ACP/write-server evidence, live Redis/TimeSeries, Gateway authority, TTY "
+            'ceremony, and paid-call authorization."\n\nProduction delivery does not establish live acceptance. Work '
+            "item **P11-FU-20** is **Partially implemented**; it is designated as this issue's native sub-issue and "
+            "will appear in the Sub-issues panel once pilot setup completes. It is a separate acceptance record, not "
+            'an extra implementation task.\n\n## Contract and custody\n\nGoal, from the approved plan: "Make a '
+            "leased client-supplied MCP server usable through the existing static `mcp_list_tools` and `mcp_call` "
+            "operations by composing the real SDK adapter, bounded discovery, catalog admission, concrete dispatch "
+            'service, registry, and teardown at first use."\n\n[Approved '
+            "plan](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) "
+            "retains all tasks, constraints and verification commands. No checkbox/approval is altered by this "
+            "tracking copy.\n\n[Definition of Done and evidence "
+            "map](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md#definition-of-done-and-evidence-map) "
+            "is the complete acceptance contract, including zero-open session creation, lazy list and safe dispatch, "
+            "identity-bound one-call authorization, fail-closed behavior, bounded connection lifecycle and "
+            "independently authored live evidence.\n\n[Task "
+            "6](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md#task-6-establish-and-run-the-external-one-call-evidence-gate) "
+            "owns the unsatisfied live prerequisite gate. Skipped/deselected execution is unrun, never a pass. This "
+            "issue does not authorize it.\n\nCustody: [registry row, owner "
+            "P11-FU-20](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md#live-implementation-plan-registry).\n\n[Interim "
+            "release "
+            "evidence](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/reports/plan-11-23-p11-fu-20-runtime-release.md). "
+            "Existing evidence remains unchanged; no raw/private artifacts uploaded.\n\nClose only when the plan's "
+            "own gates and mapped item obligations are satisfied and the governing custody/closure authority is "
+            "obtained. Closing FU20 alone is not automatic plan acceptance."
+        ),
+    ),
+    "P11-FU-20": (
+        (
+            "Drafted by Codex; source-checked by Claude against `980dad0`; published by Claude on 2026-10-03 through "
+            "the operator's GitHub account. Agent signatures identify authorship only and carry no operator "
+            "authority. Difficulty: Medium (operator-selected default, not assessed). Planned Estimate: NA. Handler: "
+            "Unassigned.\n\nCurrent status: Partially implemented. Priority: Medium. Custody: Live blocked Plan 11.23 "
+            "Task 6. Parent: Plan 11.23 pilot issue #222. Native parent binding is part of this pilot's setup and "
+            "must be verified before pilot acceptance.\n\n[Authoritative pool "
+            "entry](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md#p11-fu-20-attach-per-server-catalogauthorizer-to-session-tool-service-for-real-one-call-issuance)\n\nSource "
+            "entry reproduced below, including historical origin and current disposition. Historical suggested "
+            "ownership is not new implementation authority; current Plan 11.23 custody controls. Relative report "
+            "links are normalized to committed source links."
+        ),
+    ),
+    "P11-FU-40": (
+        (
+            "Drafted by Codex; source-checked by Claude against `980dad0`; published by Claude on 2026-10-03 through "
+            "the operator's GitHub account. Agent signatures identify authorship only and carry no operator "
+            "authority. Difficulty: Medium (operator-selected default, not assessed). Planned Estimate: NA. Handler: "
+            "Unassigned.\n\nPriority: Medium. Custody: P11.26-CAND-1-RESOURCE-LIFETIME. Source entry reproduced "
+            "below; only its relative plan link is normalized.\n\n[Authoritative pool "
+            "entry](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md#p11-fu-40-real-zed-process-containment-and-live-only-tree-kill-path)"
+        ),
+    ),
+    "A2A-C1": (
+        (
+            "Drafted by Codex; source-checked by Claude against `980dad0`; published by Claude on 2026-10-03 through "
+            "the operator's GitHub account. Agent signatures identify authorship only and carry no operator "
+            "authority. Difficulty: Medium (operator-selected default, not assessed). Planned Estimate: NA. Handler: "
+            "Unassigned.\n\nCurrent source status: Open. Priority: Medium. Severity: CRITICAL (separate from "
+            "scheduling priority and default difficulty). Custody: "
+            "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION.\n\n[Current obligation and "
+            "custody](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md#a2a-ledger-audit-obligations)\n\n[Audit "
+            "diagnosis "
+            "source](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/980dad08cece20e109a5ee4eeecfcde04df2d71c/docs/superpowers/reviews/evidence-handoff-a2a-ledger-independent-audit.md#critical-1--no-shipped-composition-root-or-runbook-can-provision-the-claimed-product)\n\nThe "
+            "diagnosis below is historical audit evidence, not a fresh claim that every cited code path is unchanged "
+            "today. The current backlog retains C1 as Open. Preserve original evidence and establish current "
+            "production state at pickup."
+        ),
+        (
+            "## Acceptance design boundary\n\nC1 remains an audit obligation under the named composition feature. Its "
+            "future approved repair plan must define executable acceptance and real-dependency evidence. The source "
+            "audit recommends one fail-closed composition root and runbook covering application-role provisioning, "
+            "first-run key custody, packaged migrations, metadata initialization, enrollment/credential issuance, "
+            "full-audit readiness, real service start/stop, truthful cross-process status and cleanup/recovery. This "
+            "recommendation is preserved as audit input, not accepted as a new mechanism by this tracking pilot. Do "
+            "not omit neighboring C3/H7/H9/M15 obligations or close the feature through a C1-only repair."
+        ),
+    ),
 }
 A2A_RANKS = {"C": "Critical", "H": "High", "M": "Medium"}
 DIGEST_PIN_NOTE = "# pragma: allowlist secret - sha256 of the frozen artifact's approved bytes, not a secret"
@@ -91,7 +180,7 @@ TITLES = {
     "P11-FEAT-ZED-RESUME": "Zed session resume",
     "P11-FEAT-ACP-RUNTIME-HARDENING": "ACP runtime hardening",
     "HARDENING-FEAT-RUNTIME-QUALITY": "Hardening runtime-quality masterplan",
-    "P11-FEAT-REGISTRY": "ACP registry submission",
+    "P11-FEAT-REGISTRY": "ACP registry registration and v1.0 cut",
     "P11-FEAT-IDE": "Conditional IDE-specific testing",
     # Plan 11.26 candidates (their owner role) and unrun obligations (the missing predicate)
     "P11.26-CAND-1-RESOURCE-LIFETIME": "One owner for resource lifetime and close ordering",
@@ -100,7 +189,7 @@ TITLES = {
     "P11.26-CAND-4-QUEUE-BACKPRESSURE": "Bounded queue admission and overload disposition",
     "P11.26-CAND-5-REPEATABILITY-ATTRIBUTION": "Per-row repeatability attribution",
     "P11.26-UNRUN-BINDING": "Unrun: session-lease binding predicate",
-    "P11.26-UNRUN-REDIS": "Unrun: live Redis rows",
+    "P11.26-UNRUN-REDIS": "Unrun: live Redis row",
     "P11.26-UNRUN-ZED": "Unrun: manual Zed rows",
     # Task 13 duplication candidates: the source's own "focused regression gate for ..." phrase
     "T13-CAND-RUNNER-CONTRACTS": "evidence-runner helpers and pinned contract values",
@@ -392,7 +481,7 @@ def classify(source: str, title: str) -> tuple[str, str, bool]:
 
 def _record(**fields) -> dict:
     record = {
-        name: ([] if name in ("units", "aliases", "anchors", "related", "quotes") else None)
+        name: ([] if name in ("units", "aliases", "anchors", "related", "quotes", "retained") else None)
         for name in gwt.InventoryRecord.__dataclass_fields__
     }
     record.update(
@@ -626,6 +715,8 @@ def draft_inventory(commit: str, sources: Mapping[str, bytes], plans: Mapping[st
     _titles(records, sources["a2a-audit"].decode("utf-8"))
     for record in records:
         record["quotes"] = [list(quote) for quote in QUOTES.get(record["id"], ())]
+        if record["id"] in PILOT_RETAINED:
+            record["retained"] = list(PILOT_RETAINED[record["id"]])
     return {
         "schema": gwt.SCHEMA,
         "baseline": {
