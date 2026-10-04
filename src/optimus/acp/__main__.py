@@ -143,6 +143,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         parser.error("--with-local-phoenix cannot be combined with --no-auto-start")
     if args.with_local_phoenix and args.check_config and not args.strict:
         parser.error("--with-local-phoenix with --check-config requires --strict")
+    if args.plan12_test_profile is not None:
+        # A profiled launch starts its own profiled Gateway child and binds every request through the
+        # ndjson session adapters. A Gateway it did not start is unprofiled, the framed transport has no
+        # route policy, and strict check-config sends an unbound probe: each would only end in generic
+        # refusals (Fable CP4 release review M1, m2).
+        for flag, chosen in (("--no-auto-start", args.no_auto_start), ("--framed", args.framed), ("--strict", args.strict)):
+            if chosen:
+                parser.error(f"--plan12-test-profile cannot be combined with {flag}")
     return args
 
 
@@ -529,8 +537,10 @@ def main(argv: list[str] | None = None) -> int:
             resolved_shared_secret=candidate.shared_secret,
         )
         if args.plan12_test_profile is not None:
-            # Release supplement V2: the named profile, re-composed from its reviewed source and
-            # refused unless the authorized launch approved exactly its hash.
+            # Release supplement V2: the named profile, re-composed from its reviewed source. The
+            # operator's approval binds it through the authorized candidate's snapshot digest
+            # (authorize_launch, above); this refuses any composition other than the one that
+            # candidate digested.
             test_composition = compose_test_composition(
                 args.plan12_test_profile, approved_literal=candidate.security_literals.get(APPROVAL_LITERAL_NAME)
             )
@@ -611,6 +621,16 @@ def main(argv: list[str] | None = None) -> int:
         if error_exit is not None:
             return error_exit
         gateway_process = _start_gateway(otlp_endpoint=otlp_endpoint)
+        if test_composition is not None and gateway_process is None:
+            # The profiled launch owns its profiled Gateway child. A Gateway already listening, or none
+            # at all, would refuse every bound request with a generic text (Fable CP4 release review M1).
+            print(
+                "optimus-agent: TEST_PROFILE_GATEWAY_NOT_STARTED: a test-profile launch must start its own "
+                "profiled Gateway; stop any Gateway already listening on the configured URL and see the "
+                "local gateway log.",
+                file=sys.stderr,
+            )
+            return 2
 
     # Single try/finally around BOTH build_configured_server(...) and serve(...): an earlier draft
     # of this plan wrapped only the serve() call, so an unexpected (non-StartupConfigurationError)

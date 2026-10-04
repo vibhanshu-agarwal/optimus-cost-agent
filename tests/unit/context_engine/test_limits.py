@@ -168,6 +168,7 @@ PROPOSAL = {
     "maintenance_input_tokens": 131_072,
     "summary_output_tokens": 8_192,
     "max_maintenance_calls": 18,
+    "max_repacks": 1,
     "anchor_input_tokens": 16_384,
     "compaction_tail_input_tokens": 32_768,
     "hybrid_tail_input_tokens": 65_536,
@@ -188,8 +189,9 @@ def test_the_pinned_fixed_material_is_the_current_measurement() -> None:
 
 def test_the_checked_values_are_the_accepted_closure_set() -> None:
     """Task 12 accepted-value assertions: the operator accepted closure V2 section 1's numeric set on
-    2026-10-04 (offline release). The checker runs on exactly those values, plus one finite repack and
-    the unchanged inclusive 512 KiB absent-engine floor."""
+    2026-10-04 (offline release). The checker runs on exactly those values, including the one finite
+    repack it now checks against the call allowance, and the unchanged inclusive 512 KiB absent-engine
+    floor."""
     from optimus.acp.conversation import CONVERSATION_MAX_BYTES
 
     assert PROPOSAL == {
@@ -200,6 +202,7 @@ def test_the_checked_values_are_the_accepted_closure_set() -> None:
         "maintenance_input_tokens": 131_072,  # engine-assembled text only
         "summary_output_tokens": 8_192,  # summary output and maintenance reserve
         "max_maintenance_calls": 18,  # shared per-turn allowance, repack included
+        "max_repacks": 1,  # one finite repack after the initial packing
         "anchor_input_tokens": 16_384,  # hybrid first-turn anchor
         "compaction_tail_input_tokens": 32_768,  # compaction exact tail
         "hybrid_tail_input_tokens": 65_536,  # hybrid exact tail
@@ -209,11 +212,7 @@ def test_the_checked_values_are_the_accepted_closure_set() -> None:
         "prompt_allowance_bytes": 16_384,
     }
     assert CONVERSATION_MAX_BYTES == 524_288  # absent-engine storage/admission floor, retained (D7)
-    assert ACCEPTED_MAX_REPACKS == 1
     assert check()["violations"] == []
-
-
-ACCEPTED_MAX_REPACKS = 1  # closure V2 section 1: one repack after the initial packing
 
 
 def test_the_d7_absent_engine_history_bound_at_ratio_one() -> None:
@@ -330,6 +329,9 @@ def test_a_steady_state_turn_reuses_its_checkpoint_with_at_most_one_call() -> No
         ({"summary_output_tokens": 8_193}, "a summary must fit the summarizer's output reserve"),
         ({"transient_max_bytes": 524_287}, "the transient byte bound must not bind before the token bound"),
         ({"max_maintenance_calls": 16}, "the call allowance cannot rebuild the whole source in its whole-turn worst case at ratio 1"),
+        ({"max_repacks": -1}, "repacks must be a finite count"),
+        ({"max_repacks": 18}, "repacks must be a finite count"),
+        ({"max_repacks": 1.5}, "repacks must be a finite count"),
         ({"summary_output_tokens": 110_000, "summarizer_output_reserve": 110_000}, "the derived summary byte bound at ratio 0.2 must be below the transient bound"),
         ({"implementer_output_reserve": 0}, "every output reserve must be positive"),
         ({"history_input_tokens_by_tier": {"ultra-cheap": 131_072, "cheap": 80_000}}, "hybrid's anchor, tail and summary must fit the smallest history target"),

@@ -1,9 +1,10 @@
 """Plan 12.2 closure (release supplement V2): the trusted, process-scoped test composition.
 
 Offline acceptance before any paid/live use. A named, source-owned profile is bound into the HMAC
-launch approval; the host refuses a composition its launch did not approve; the Gateway composes the
-same profile itself and refuses a manifest naming another hash; the server hands the trusted route
-policy to every session adapter. Production composition is unchanged.
+launch approval through the security-snapshot digest (`authorize_launch` refuses an approval that does
+not bind it); the host refuses a composition other than the one the authorized candidate digested; the
+Gateway composes the same profile itself and refuses a manifest naming another hash; the server hands
+the trusted route policy to every session adapter. Production composition is unchanged.
 
 The real ``qualification`` profile admits no model today (its tokenizer, finish and reasoning facts are
 unverified), so the positive mechanism is shown with a SYNTHETIC, test-only profile whose facts are
@@ -21,6 +22,7 @@ from typing import Any
 import pytest
 
 from optimus.acp import __main__ as acp_main
+from optimus.acp import local_infra
 from optimus.acp.launch_approvals import KeyringApprovalStore
 from optimus.acp.launch_gate import LaunchGateError, authorize_launch, resolve_launch_candidate
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
@@ -130,7 +132,9 @@ def test_an_unavailable_profile_refuses_the_candidate(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("approved", [None, "optimus-model-registry-v1:" + "0" * 64])
-def test_a_composition_the_launch_did_not_approve_is_refused(approved: str | None) -> None:
+def test_a_composition_other_than_the_one_the_authorized_candidate_digested_is_refused(approved: str | None) -> None:
+    """A consistency check, not the approval: the approval binds through `authorize_launch`'s digest
+    (above); this refuses a host composition whose literal differs from the candidate's."""
     with pytest.raises(BindingError) as caught:
         compose_test_composition("qualification", approved_literal=approved)
     assert caught.value.code == "TEST_PROFILE_NOT_APPROVED"
@@ -155,6 +159,14 @@ def test_a_synthetic_eligible_profile_composes_its_exact_model_and_route(synthet
     assert policy.identity.registry_hash == synthetic_profile
     with pytest.raises(RouteIdentityError):
         composition.route_policy(model_id="openai/other", shared_secret="test-key")  # pragma: allowlist secret - synthetic
+
+
+def test_a_profile_runs_only_its_own_model(synthetic_profile: str) -> None:
+    """Another explicit model is refused while composing, before any side effect (Fable m3)."""
+    composition = compose_test_composition("qualification", approved_literal="optimus-model-registry-v1:" + synthetic_profile)
+    assert composition.agent_model(_ENV, cli_model=LUNA) == LUNA
+    with pytest.raises(AgentModelError):
+        composition.agent_model(_ENV, cli_model="claude-haiku")
 
 
 def test_the_enforced_gateway_request_carries_the_profiles_exact_route_filter(synthetic_profile: str, tmp_path: Path) -> None:
@@ -226,7 +238,14 @@ def launch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         monkeypatch.setenv(name, value)
     started: list[Any] = []
     monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: started.append(("redis",)))
-    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: started.append(("gateway", k.get("test_profile"), k.get("model_registry"))))
+
+    class _Gateway:
+        def stop(self):
+            started.append(("gateway-stopped",))
+
+    monkeypatch.setattr(
+        acp_main, "ensure_local_gateway", lambda **k: started.append(("gateway", k.get("test_profile"), k.get("model_registry"))) or _Gateway()
+    )
 
     class _Server:
         async def serve_ndjson(self, *args, **kwargs):
@@ -261,6 +280,14 @@ def test_an_unknown_profile_name_is_rejected_by_the_parser(capsys) -> None:
     with pytest.raises(SystemExit) as caught:
         acp_main.parse_args(["--plan12-test-profile", "bogus"])
     assert caught.value.code == 2 and "invalid choice" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("flag", [["--no-auto-start"], ["--framed"], ["--check-config", "--strict"]])
+def test_a_profile_refuses_the_paths_that_cannot_carry_its_binding(flag: list[str], capsys) -> None:
+    """No Gateway of its own, no route policy on the framed transport, an unbound strict probe (Fable M1, m2)."""
+    with pytest.raises(SystemExit) as caught:
+        acp_main.parse_args(["--plan12-test-profile", "qualification", *flag])
+    assert caught.value.code == 2 and f"cannot be combined with {flag[-1]}" in capsys.readouterr().err
 
 
 def test_an_unavailable_profile_stops_startup_before_any_side_effect(launch, tmp_path: Path, capsys) -> None:
@@ -299,6 +326,29 @@ def test_an_approved_synthetic_profile_composes_the_gateway_and_server(launch, s
     assert gateway == [("gateway", "qualification", "optimus-model-registry-v1:" + synthetic_profile)]
     [(_, composition)] = server
     assert composition.snapshot.effective_hash == synthetic_profile and composition.profile.model_id == LUNA
+
+
+def test_a_profile_launch_refuses_a_gateway_it_did_not_start(launch, synthetic_profile: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys) -> None:
+    """Fable M1: a Gateway already listening on the port (started by `optimus-trust run-gateway`, or a
+    stale unprofiled child) is not adopted. The real `ensure_local_gateway` leaves it alone and the
+    launch stops before the server, instead of serving every request into a generic refusal."""
+    keyring, started = launch
+    authorize_workspace_for_test(env=_ENV, workspace_root=tmp_path, fake_keyring=keyring, test_profile="qualification")
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", local_infra.ensure_local_gateway)
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda host, port: True)  # someone else's Gateway is up
+
+    assert acp_main.main(["--workspace-root", str(tmp_path), "--plan12-test-profile", "qualification"]) == 2
+    assert "TEST_PROFILE_GATEWAY_NOT_STARTED" in capsys.readouterr().err
+    assert started == [("redis",)]  # no server
+
+
+def test_a_profile_launch_with_another_model_stops_before_any_side_effect(launch, synthetic_profile: str, tmp_path: Path, capsys) -> None:
+    keyring, started = launch
+    authorize_workspace_for_test(env=_ENV, workspace_root=tmp_path, fake_keyring=keyring, test_profile="qualification")
+
+    assert acp_main.main(["--workspace-root", str(tmp_path), "--plan12-test-profile", "qualification", "--model", "claude-haiku"]) == 2
+    assert "AGENT_MODEL_INVALID" in capsys.readouterr().err
+    assert started == []
 
 
 def test_without_a_profile_the_launch_composition_is_unchanged(launch, tmp_path: Path) -> None:

@@ -28,9 +28,14 @@ import time
 import tomllib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:  # run as a script (CI): make the repository's `tools` importable
+    sys.path.insert(0, str(REPO_ROOT))
+
+from tools.tracked_repository_files import TrackedFileInventoryError, tracked_repository_files  # noqa: E402
+
 GROUPS_SCHEMA_VERSION = 1
 RUN_RECORD_SCHEMA = "plan12-product-coverage-run-v1"
 # The one approved full selection: the repository's own addopts and markers, the configured coverage
@@ -100,15 +105,24 @@ def load_groups(path: Path) -> GroupsConfig:
     return GroupsConfig(groups=groups, package_floors=package_floors, aggregate=aggregate)
 
 
-def discover_packages(src: Path) -> tuple[str, ...]:
-    """Every top-level package under `src`: a directory holding Python source, `__init__.py` or not."""
-    found = []
-    for child in sorted(src.iterdir()):
-        if not child.is_dir() or child.name.startswith((".", "_")) or child.name.endswith(".egg-info"):
-            continue
-        if any(path.suffix == ".py" for path in child.rglob("*.py")):
-            found.append(child.name)
-    return tuple(found)
+def tracked_sources(repo: Path) -> tuple[PurePosixPath, ...]:
+    """Every tracked Python file under `src/`, relative to it: the repository-truth inventory (the Git
+    index), never a disk walk, so untracked or generated files can neither add nor hide a package."""
+    try:
+        files = tracked_repository_files(repo, pathspecs=("src",))
+    except TrackedFileInventoryError as exc:
+        raise CoverageGateError(f"cannot list the tracked src files: {exc}") from exc
+    src = (repo / "src").resolve()
+    return tuple(PurePosixPath(path.relative_to(src).as_posix()) for path in files if path.suffix == ".py")
+
+
+def discover_packages(sources: Sequence[PurePosixPath]) -> tuple[str, ...]:
+    """Every top-level package with tracked Python source, `__init__.py` or not (namespace packages). A
+    top-level module would belong to no group, so it is refused rather than left unmeasured."""
+    stray = sorted(str(path) for path in sources if len(path.parts) == 1)
+    if stray:
+        raise CoverageGateError(f"top-level src modules belong to no package group: {stray}")
+    return tuple(sorted({path.parts[0] for path in sources if not path.parts[0].startswith((".", "_"))}))
 
 
 def configured_sources(pyproject: Path) -> tuple[str, ...]:
@@ -140,10 +154,12 @@ def _sha256(path: Path) -> str:
 
 
 def report_dataset(data_file: Path, config: GroupsConfig, *, repo: Path) -> dict[str, object]:
-    """Each floor's percentage from one dataset, with the configured precision and comparison."""
+    """Each floor's percentage from one dataset, with the configured precision and comparison: coverage's
+    own fail-under rule, as pytest-cov and `coverage report --fail-under` apply it (the total rounded to
+    the configured precision is compared with the floor)."""
     import coverage
     from coverage.exceptions import NoDataError
-    from coverage.results import should_fail_under
+    from coverage.results import display_covered, should_fail_under
 
     if not data_file.is_file() or data_file.stat().st_size == 0:
         raise CoverageGateError("coverage data is missing or empty")
@@ -151,14 +167,11 @@ def report_dataset(data_file: Path, config: GroupsConfig, *, repo: Path) -> dict
     cov.load()
     measured = {Path(name).resolve() for name in cov.get_data().measured_files()}
     src = (repo / "src").resolve()
-    # Every source file must be in the dataset, executed or not; a run without the configured sources
-    # would silently drop never-imported files from the denominator.
-    absent = sorted(
-        str(path.relative_to(src)).replace("\\", "/")
-        for package in discover_packages(src)
-        for path in (src / package).rglob("*.py")
-        if path.resolve() not in measured and "__pycache__" not in path.parts
-    )
+    # Every tracked source file must be in the dataset, executed or not; a run without the configured
+    # sources would silently drop never-imported files from the denominator.
+    sources = tracked_sources(repo)
+    packages = set(discover_packages(sources))
+    absent = sorted(str(path) for path in sources if path.parts[0] in packages and (src / path).resolve() not in measured)
     if absent:
         raise CoverageGateError(f"source files missing from the dataset (not measured even as unexecuted): {absent[:10]}")
     precision = cov.config.precision
@@ -175,7 +188,15 @@ def report_dataset(data_file: Path, config: GroupsConfig, *, repo: Path) -> dict
         value = percent(entry.packages)
         passed = not should_fail_under(value, entry.floor, precision)
         rows.append(
-            {"name": entry.name, "packages": list(entry.packages), "percent": value, "floor": entry.floor, "enforced": entry.enforced, "passed": passed}
+            {
+                "name": entry.name,
+                "packages": list(entry.packages),
+                "percent": value,
+                "compared": display_covered(value, precision),
+                "floor": entry.floor,
+                "enforced": entry.enforced,
+                "passed": passed,
+            }
         )
     return {"data_file_sha256": _sha256(data_file), "precision": precision, "floors": rows}
 
@@ -189,6 +210,17 @@ def _run_pytest(command: Sequence[str], cwd: Path) -> int:
     return subprocess.run(list(command), cwd=cwd, check=False).returncode  # noqa: S603 - fixed argv
 
 
+def candidate_identity(repo: Path) -> dict[str, object]:
+    """The commit this run measures and whether the tree differed from it (Fable CP4 release review m7);
+    unknown outside a git checkout."""
+    try:
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
+        status = subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return {"git_head": None, "worktree_dirty": None}
+    return {"git_head": head, "worktree_dirty": bool(status.strip())}
+
+
 def run_full_suite(repo: Path, *, runner: Runner = _run_pytest, python: str = sys.executable) -> dict[str, object]:
     data_file = repo / ".coverage"
     # Only coverage data files (`.coverage`, `.coverage.<suffix>`), never `.coveragerc`: a stale dataset
@@ -197,10 +229,12 @@ def run_full_suite(repo: Path, *, runner: Runner = _run_pytest, python: str = sy
         if stale.is_file() and (stale.name == ".coverage" or stale.name.startswith(".coverage.")):
             stale.unlink()
     command = [python, *FULL_SUITE_ARGS]
+    identity = candidate_identity(repo)
     started = time.time()
     exit_code = runner(command, repo)
     record: dict[str, object] = {
         "schema": RUN_RECORD_SCHEMA,
+        **identity,
         "command": [Path(command[0]).name, *command[1:]],
         "pytest_exit": exit_code,
         "started": started,
@@ -241,7 +275,7 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner = _run_pytest, rep
     measured: dict[str, object] | None = None
     try:
         config = load_groups(args.groups)
-        validate_inventory(config, discover_packages(repo / "src"), configured_sources(repo / "pyproject.toml"))
+        validate_inventory(config, discover_packages(tracked_sources(repo)), configured_sources(repo / "pyproject.toml"))
     except CoverageGateError as exc:
         config, error = None, str(exc)
 
@@ -268,9 +302,12 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner = _run_pytest, rep
     args.report_json.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if args.run_full_suite and "data_file_sha256" in run:
         (args.report_json.with_suffix(".run.json")).write_text(json.dumps(run, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if "git_head" in run:
+        print(f"coverage dataset: git_head {run['git_head']} worktree_dirty {run['worktree_dirty']}")
     for row in (measured or {}).get("floors", []):
         label = "required" if row["enforced"] else "informational"
-        print(f"coverage {row['name']}: {row['percent']}% (floor {row['floor']}%, {label}) {'PASS' if row['passed'] else 'BELOW'}")
+        verdict_text = "PASS" if row["passed"] else "BELOW"
+        print(f"coverage {row['name']}: {row['compared']}% compared, {row['percent']:.4f}% measured (floor {row['floor']}%, {label}) {verdict_text}")
     for failure in result["verdict"]["failures"]:
         print(f"coverage gate failure: {failure}", file=sys.stderr)
     return 0 if result["verdict"]["passed"] else 1

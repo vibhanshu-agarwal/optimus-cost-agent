@@ -80,10 +80,6 @@ class RequestReading:
     tokens: int
     capacity: int
 
-    @property
-    def fraction(self) -> float:
-        return self.tokens / self.capacity
-
 
 @dataclass(frozen=True, slots=True)
 class BoundRequest:

@@ -2,8 +2,8 @@
 
 `ViewLimits.maintenance_input_tokens` (131072) bounds only the engine-assembled text. The host then
 wraps it in the summary prompt and the Gateway sends it as one framed message with one output reserve
-(8192). This proves, through the real host wrapper, the real `GatewaySummarizerCall` and the real
-in-process enforced Gateway, that the actual complete input at the accepted maximum engine-text
+(8192). This proves, through the real host callback (`HostMaintenance`, which wraps the engine text), the real
+`GatewaySummarizerCall` and the real in-process enforced Gateway, that the actual complete input at the accepted maximum engine-text
 envelope plus its reserve fits the enabled guard; that exact equality is admitted; and that one token
 over is refused with zero upstream attempts and a zero-cost receipt. A 131072 engine-text pass alone is
 not this proof. The estimator here is a test-only r=1 profile, not a verified route.
@@ -11,6 +11,7 @@ not this proof. The estimator here is a test-only r=1 profile, not a verified ro
 
 from __future__ import annotations
 
+import dataclasses
 from decimal import Decimal
 from pathlib import Path
 
@@ -19,10 +20,11 @@ import pytest
 from context_engine import OrdinaryTurn
 from context_engine.engine import maintenance_input
 from context_engine.summary import build_summary_prompt
-from optimus.context.maintenance import GatewaySummarizerCall
+from optimus.context.maintenance import GatewaySummarizerCall, HostMaintenance
 from optimus.gateway.disclosure import ContributorDisclosure
 from optimus_model_policy import Message, PackedModelRequest, estimate_complete_input
 from optimus_model_policy.binding import disclosure_key
+from tests.unit.agent.test_context_maintenance import IDENTITY, SANITIZER, _request
 from tests.unit.agent.test_route_binding import InProcessGateway, ScriptedUpstream, _client
 from tests.unit.optimus_gateway.model_policy_support import SHARED_SECRET, VERIFIED_POLICY, verified_snapshot
 
@@ -58,7 +60,8 @@ def _wire_tokens(snapshot, prompt: str) -> int:
     return estimate_complete_input(request, profile).tokens
 
 
-def _summarize(snapshot, prompt: str):
+def _summarize(snapshot, engine_text: str):
+    """One maintenance call exactly as the host makes it: the engine's request through `HostMaintenance`."""
     upstream = ScriptedUpstream(replies=[SUMMARY])
     gateway = InProcessGateway(snapshot, upstream)
     disclosure = ContributorDisclosure(snapshot=snapshot, key=disclosure_key(SHARED_SECRET), deliver_notice=lambda text: True)
@@ -71,39 +74,49 @@ def _summarize(snapshot, prompt: str):
             model_id=MODEL, request_id=request_id, input_text=input_text, output_cap=output_cap
         ),
     )
-    return call(prompt=prompt, max_output_tokens=ACCEPTED_SUMMARY_OUTPUT_TOKENS), gateway, upstream
+    receipts: list = []
+    host = HostMaintenance(
+        call=call,
+        sanitizer=SANITIZER,
+        identity=dataclasses.replace(IDENTITY, session_id="s", model_id=MODEL),
+        record_receipt=receipts.append,
+        cancelled=lambda: False,
+    )
+    result = host(_request(input_text=engine_text, max_output_tokens=ACCEPTED_SUMMARY_OUTPUT_TOKENS))
+    return result, [(receipt.outcome, receipt.cost_usd) for receipt in receipts], gateway, upstream
 
 
 def test_the_wrapped_maintenance_input_at_the_accepted_envelope_fits_the_enabled_guard(tmp_path: Path) -> None:
-    prompt = build_summary_prompt(_engine_text_at_the_envelope())
+    engine_text = _engine_text_at_the_envelope()
+    prompt = build_summary_prompt(engine_text)  # the bytes the host is expected to send
     snapshot = _snapshot(tmp_path, ceiling=262_144)
     tokens = _wire_tokens(snapshot, prompt)
 
     # The wrapper and framing are extra to the engine text, and the whole request still fits.
     assert tokens > ACCEPTED_MAINTENANCE_INPUT_TOKENS
     assert tokens + ACCEPTED_SUMMARY_OUTPUT_TOKENS <= 262_144
-    response, gateway, upstream = _summarize(snapshot, prompt)
+    result, receipts, gateway, upstream = _summarize(snapshot, engine_text)
     assert [status for status, _ in gateway.replies] == [200]
     [sent] = upstream.calls
     assert (sent["input_text"], sent["max_tokens"]) == (prompt, ACCEPTED_SUMMARY_OUTPUT_TOKENS)  # the complete wrapped input, one reserve
-    assert response.finish_status == "stop" and [attempt.outcome for attempt in response.attempts] == ["completed"]
+    assert (result.status, result.finish_status) == ("completed", "stop") and [outcome for outcome, _ in receipts] == ["completed"]
 
 
 @pytest.mark.parametrize(("slack", "admitted"), [(0, True), (-1, False)], ids=["equality", "one-over"])
 def test_equality_is_admitted_and_one_over_is_refused_with_zero_upstream_attempts(tmp_path: Path, slack: int, admitted: bool) -> None:
-    prompt = build_summary_prompt(_engine_text_at_the_envelope())
+    engine_text = _engine_text_at_the_envelope()
     probe = _snapshot(tmp_path, ceiling=262_144)
-    exact = _wire_tokens(probe, prompt) + ACCEPTED_SUMMARY_OUTPUT_TOKENS  # usable input == the wrapped input exactly
+    exact = _wire_tokens(probe, build_summary_prompt(engine_text)) + ACCEPTED_SUMMARY_OUTPUT_TOKENS  # usable input == the wrapped input exactly
     snapshot = _snapshot(tmp_path, ceiling=exact + slack)
 
-    response, gateway, upstream = _summarize(snapshot, prompt)
+    result, receipts, gateway, upstream = _summarize(snapshot, engine_text)
 
     [(status, body)] = gateway.replies
     if admitted:
         assert status == 200 and len(upstream.calls) == 1
-        assert [attempt.outcome for attempt in response.attempts] == ["completed"]
+        assert result.status == "completed" and [outcome for outcome, _ in receipts] == ["completed"]
     else:
         assert status == 400 and body["code"] == "INPUT_EXCEEDS_CAPACITY"
         assert upstream.calls == []  # zero upstream attempts
-        assert [(attempt.outcome, attempt.cost_usd) for attempt in response.attempts] == [("rejected", Decimal("0"))]
-        assert response.text is None
+        assert receipts == [("rejected", Decimal("0"))]  # a zero-cost receipt
+        assert (result.status, result.summary_text) == ("failed", None)

@@ -943,6 +943,7 @@ PROPOSAL_KEYS = (
     "maintenance_input_tokens",
     "summary_output_tokens",
     "max_maintenance_calls",
+    "max_repacks",
     "anchor_input_tokens",
     "compaction_tail_input_tokens",
     "hybrid_tail_input_tokens",
@@ -998,6 +999,11 @@ def check_proposal(proposal: Mapping[str, Any], *, policy: Any, plan_bytes: Sequ
     need(p["summary_output_tokens"] <= p["summarizer_output_reserve"], "a summary must fit the summarizer's output reserve")
     need(p["transient_max_bytes"] >= math.ceil(p["maintenance_input_tokens"] / LOWEST_RATIO), "the transient byte bound must not bind before the token bound")
     need(p["max_maintenance_calls"] >= 1, "maintenance needs at least one call")
+    # A repack re-summarizes inside the same turn and draws on the same call allowance (closure V2 section 1).
+    need(
+        isinstance(p["max_repacks"], int) and 0 <= p["max_repacks"] < p["max_maintenance_calls"],
+        "repacks must be a finite count that leaves the initial packing a share of the turn's call allowance",
+    )
     # The strategy allocations must be realizable inside the smallest history target (Fable CP4 review
     # MINOR-2): otherwise hybrid's larger tail is only nominal there.
     smallest_target = min(p["history_input_tokens_by_tier"].values())

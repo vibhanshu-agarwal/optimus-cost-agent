@@ -376,7 +376,7 @@ class _SummarizerCall:
         return SummarizerResponse(text=summary_text("Merged."), finish_status="stop", attempts=(attempt,))
 
 
-def _attached_turn(*, usable: int, calls: int = 3, tail: int = 400, summarizer=None, receipts=None, max_repacks: int = 2):
+def _attached_turn(*, usable: int, calls: int = 3, tail: int = 400, summarizer=None, receipts=None, max_repacks: int = 2, estimate_request=estimate):
     from optimus.context.assembly import AttachedTurn, ContextAttachment, SummarizerRoute
 
     summarizer = summarizer if summarizer is not None else _SummarizerCall()
@@ -387,7 +387,7 @@ def _attached_turn(*, usable: int, calls: int = 3, tail: int = 400, summarizer=N
         source_max_bytes=1_000_000,
         record_reservation_bytes=0,
         usable_input_tokens=usable,
-        estimate_request=estimate,
+        estimate_request=estimate_request,
         registry_hash="e" * 64,
         model_id="test/planner",
         summarizer=lambda identity, deliver_notice: summarizer,
@@ -470,19 +470,33 @@ def test_a_repack_keeps_the_parameters_digest_and_summarizes_only_new_turns():
     assert attached.candidate is initial  # a repack's checkpoint is never the one published
 
 
+def _lighter_request_estimate(text: str) -> int:
+    """Test-only: a request estimator lighter than the view's, so a repack sized from the request's
+    excess removes too little and only a second repack fits."""
+    return (len(text.encode("utf-8")) + 7) // 8
+
+
 def test_the_accepted_single_repack_within_the_shared_allowance():
-    """Task 12 accepted values: one finite repack after the initial packing, inside the turn's shared
-    18-call allowance. A request one repack can fit is sent after exactly one; one that cannot fit is
-    refused with no more than that one repack (here before any, since even its fixed part is too large)."""
-    fitting, _ = _attached_turn(usable=1100, calls=18, max_repacks=1)
+    """Task 12 accepted values, read from the checker-validated proposal: one finite repack after the
+    initial packing, inside the turn's shared call allowance. A request one repack fits is sent after
+    exactly one. A request only a second repack would fit is refused after that one, and the same
+    request fits when a second is allowed, so the one-repack limit is what refuses (Fable m4)."""
+    from tests.unit.context_engine.test_limits import PROPOSAL
+
+    accepted, allowance = PROPOSAL["max_repacks"], PROPOSAL["max_maintenance_calls"]
+    fitting, _ = _attached_turn(usable=1100, calls=allowance, max_repacks=accepted)
     assert fitting.prepare().kind == "view"
     assert fitting.fit(_build(3000)) is not None and fitting.repacks == 1
-    assert fitting.maintenance_calls <= 18
+    assert fitting.maintenance_calls <= allowance
 
-    refused, summarizer = _attached_turn(usable=1100, calls=18, max_repacks=1)
+    refused, summarizer = _attached_turn(usable=600, calls=allowance, max_repacks=accepted, estimate_request=_lighter_request_estimate)
     assert refused.prepare().kind == "view"
-    assert refused.fit(_build(10_000)) is None
-    assert refused.repacks <= 1 and len(summarizer.prompts) == refused.maintenance_calls <= 18
+    assert refused.fit(_build(3500)) is None
+    assert refused.repacks == accepted == 1 and len(summarizer.prompts) == refused.maintenance_calls == 2
+
+    allowed, _ = _attached_turn(usable=600, calls=allowance, max_repacks=accepted + 1, estimate_request=_lighter_request_estimate)
+    assert allowed.prepare().kind == "view"
+    assert allowed.fit(_build(3500)) is not None and allowed.repacks == 2
 
 
 def test_a_request_whose_fixed_part_cannot_fit_is_refused_without_looping():

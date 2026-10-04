@@ -45,6 +45,7 @@ def test_log_planning_replan_event_writes_content_free_fields(tmp_path, monkeypa
     assert data["max_planning_turns"] == 3
     assert data["read_identities"] == ["src/a.py#bytes=0:5", "src/b.py#bytes=0:10"]
     assert data["gateway_request_ids"] == ["gw-1", "gw-2"]
+    assert data["remaining_budget_usd"] == "0.046"  # an evaluation caller's remaining explicit cap
     assert "observation" not in json.dumps(data).lower()
     assert "alpha content" not in json.dumps(data)
 
@@ -66,6 +67,7 @@ def test_log_planning_replan_event_uses_event_stop_reason_when_not_overridden(tm
 
     line = json.loads(log_path.read_text(encoding="utf-8").strip())
     assert line["data"]["loop_stop"] == "PLANNING_TURN_LIMIT_EXHAUSTED"
+    assert "remaining_budget_usd" not in line["data"]  # a product run has no cap (Plan 12.2 Task 11)
 
 
 def test_acp_debug_log_noop_when_disabled(tmp_path):

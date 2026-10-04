@@ -163,7 +163,7 @@ and LangSmith is not a dependency.
 ### Phase 1 Retry, Fitness Gates, Golden Tasks, and Release Gate
 
 Plan 8 adds the Sprint 1 validation and release skeleton. `RetryController`
-classifies gateway, policy, budget, and fitness-gate failures into transient,
+classifies gateway, policy, and fitness-gate failures into transient,
 permanent, and escalate paths, caps transient retries at three with bounded
 backoff, and records retry metadata for telemetry. `CompositeFitnessGateRunner`
 runs required and optional checks, fails closed on exceptions, and blocks

@@ -1,12 +1,14 @@
 """Plan 12.2 closure: the product coverage gate checks separate floors on one full-suite dataset.
 
 Datasets here are written with coverage's own data API (line data), never by tracing inside this
-test process, and run mode's pytest launch is an injected stand-in: no nested suite runs.
+test process, and run mode's pytest launch is an injected stand-in: no nested suite runs. Each stand-in
+repository is a real Git checkout because the gate inventories `src/` from the Git index.
 """
 
 from __future__ import annotations
 
 import json
+import subprocess
 import textwrap
 from pathlib import Path
 
@@ -36,6 +38,13 @@ def _module(path: Path, statements: int) -> Path:
     return path
 
 
+def track(repo: Path) -> None:
+    """Record the stand-in repository's current files in its Git index (the gate's inventory)."""
+    if not (repo / ".git").exists():
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+
+
 def make_repo(tmp_path: Path, groups: dict | None = None) -> Path:
     repo = tmp_path / "repo"
     src = repo / "src"
@@ -62,6 +71,7 @@ def make_repo(tmp_path: Path, groups: dict | None = None) -> Path:
         encoding="utf-8",
     )
     (repo / "groups.json").write_text(json.dumps(groups or GROUPS), encoding="utf-8")
+    track(repo)
     return repo
 
 
@@ -145,15 +155,52 @@ def test_every_src_package_maps_to_exactly_one_group(tmp_path: Path, change, mes
 
     with pytest.raises(CoverageGateError, match=message):
         config = gate.load_groups(repo / "groups.json")
-        gate.validate_inventory(config, gate.discover_packages(repo / "src"), gate.configured_sources(repo / "pyproject.toml"))
+        gate.validate_inventory(config, gate.discover_packages(gate.tracked_sources(repo)), gate.configured_sources(repo / "pyproject.toml"))
 
 
-def test_namespace_packages_are_discovered(tmp_path: Path) -> None:
+def test_namespace_packages_are_discovered_from_the_git_index_only(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     (repo / "src" / "notes").mkdir()
     (repo / "src" / "notes" / "README.md").write_text("no Python here", encoding="utf-8")
+    track(repo)
+    _module(repo / "src" / "scratch" / "wip.py", 1)  # untracked: never a package of the repository
 
-    assert gate.discover_packages(repo / "src") == ("alpha", "alpha_extra", "beta", "gamma")
+    assert gate.discover_packages(gate.tracked_sources(repo)) == ("alpha", "alpha_extra", "beta", "gamma")
+
+
+def test_the_inventory_fails_closed_outside_a_git_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+    plain = tmp_path / "plain"
+    _module(plain / "src" / "alpha" / "a.py", 1)
+
+    with pytest.raises(CoverageGateError, match="cannot list the tracked src files"):
+        gate.tracked_sources(plain)
+
+
+def test_a_top_level_src_module_is_refused(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    _module(repo / "src" / "stray.py", 1)
+    track(repo)
+
+    with pytest.raises(CoverageGateError, match="stray.py"):
+        gate.discover_packages(gate.tracked_sources(repo))
+
+
+@pytest.mark.parametrize(("executed", "passed"), [(159, True), (158, False)], ids=["79.5-compares-as-80", "79.0"])
+def test_the_floor_comparison_is_coverages_own_fail_under_rule(tmp_path: Path, executed: int, passed: bool) -> None:
+    """The rule pytest-cov's `--cov-fail-under`, pyproject's `fail_under` and `coverage report
+    --fail-under` apply: the total rounded to the configured precision (0 here) against the floor."""
+    repo = make_repo(tmp_path)
+    (repo / "src" / "beta" / "ns_module.py").unlink()
+    _module(repo / "src" / "beta" / "wide.py", 200)
+    track(repo)
+    files = (*(name for name in ALL_FILES if name != "beta/ns_module.py"), "beta/wide.py")
+    executed_lines = {**{name: count for name, count in FULL.items() if name != "beta/ns_module.py"}, "beta/wide.py": executed}
+
+    report = gate.report_dataset(write_data(repo, executed_lines, touched=files), gate.load_groups(repo / "groups.json"), repo=repo)
+
+    [row] = [row for row in report["floors"] if row["name"] == "engine"]
+    assert (row["percent"], row["compared"], row["passed"]) == (executed / 2, "80" if passed else "79", passed)
 
 
 def test_configured_sources_must_be_exactly_the_src_packages(tmp_path: Path) -> None:
@@ -161,7 +208,7 @@ def test_configured_sources_must_be_exactly_the_src_packages(tmp_path: Path) -> 
     config = gate.load_groups(repo / "groups.json")
 
     with pytest.raises(CoverageGateError, match="missing .*src/gamma"):
-        gate.validate_inventory(config, gate.discover_packages(repo / "src"), ("src/alpha", "src/alpha_extra", "src/beta"))
+        gate.validate_inventory(config, gate.discover_packages(gate.tracked_sources(repo)), ("src/alpha", "src/alpha_extra", "src/beta"))
 
 
 def _stand_in(repo: Path, exit_code: int, executed: dict[str, int]):
@@ -179,7 +226,8 @@ def _stand_in(repo: Path, exit_code: int, executed: dict[str, int]):
 FULL = {"alpha/big.py": 90, "alpha_extra/small.py": 10, "beta/ns_module.py": 10, "gamma/handoff.py": 10}
 
 
-def test_run_mode_launches_the_one_fixed_selection_and_keeps_its_true_exit(tmp_path: Path) -> None:
+def test_run_mode_launches_the_one_fixed_selection_and_keeps_its_true_exit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))  # the stand-in repo is no git checkout
     repo = make_repo(tmp_path)
     (repo / ".coverage.stale").write_text("old", encoding="utf-8")
     (repo / ".coveragerc").write_text("[run]\n", encoding="utf-8")
@@ -194,6 +242,7 @@ def test_run_mode_launches_the_one_fixed_selection_and_keeps_its_true_exit(tmp_p
     assert not (repo / ".coverage.stale").exists() and (repo / ".coveragerc").exists()
     result = json.loads(report_path.read_text(encoding="utf-8"))
     assert result["run"]["pytest_exit"] == 1 and result["verdict"]["failures"] == ["full suite exit 1"]
+    assert (result["run"]["git_head"], result["run"]["worktree_dirty"]) == (None, None)
     assert all(row["passed"] for row in result["coverage"]["floors"])  # floors met, the failed suite still fails
 
 
@@ -231,9 +280,14 @@ def test_contradictory_or_incomplete_modes_are_rejected(tmp_path: Path, argv: li
     assert exit_info.value.code == 2
 
 
+def test_a_run_record_names_the_checkout_it_measured() -> None:
+    identity = gate.candidate_identity(REPO_ROOT)
+    assert len(str(identity["git_head"])) == 40 and isinstance(identity["worktree_dirty"], bool)
+
+
 def test_the_repository_groups_cover_the_real_src_packages_exactly() -> None:
     config = gate.load_groups(REPO_ROOT / "tools" / "product-coverage-groups.json")
-    gate.validate_inventory(config, gate.discover_packages(REPO_ROOT / "src"), gate.configured_sources(REPO_ROOT / "pyproject.toml"))
+    gate.validate_inventory(config, gate.discover_packages(gate.tracked_sources(REPO_ROOT)), gate.configured_sources(REPO_ROOT / "pyproject.toml"))
     required = {row.name: (row.packages, row.floor, row.enforced) for row in (*config.groups, *config.package_floors)}
     assert required["optimus"] == (("optimus", "optimus_gateway", "optimus_security", "optimus_model_policy"), 80.0, True)
     assert required["context_engine"] == (("context_engine",), 80.0, True)
