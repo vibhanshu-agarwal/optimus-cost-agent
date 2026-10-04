@@ -70,7 +70,7 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
     "unrun": "Unrun",
     "unrun-binding": "Unrun (binding)"
   },
-  "closed_reasons": {"completed": "Done", "not_planned": "Not planned", "duplicate": "Duplicate"},
+  "closed_reasons": {"completed": "Done", "not_planned": "Not planned"},
   "dimensions": {
     "priority": {"label": "priority", "values": {"high": "High", "medium": "Medium", "low": "Low"}},
     "difficulty": {"label": "difficulty", "values": {"high": "High", "medium": "Medium", "low": "Low"}},
@@ -113,33 +113,41 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
     return {text: String(text), bad: Boolean(bad)};
   }
 
+  // The display name of a vocabulary entry, or null. Only an own string entry counts, so a label or close reason
+  // such as "constructor", "toString" or "__proto__" never reads an inherited object property.
+  function lookup(table, key) {
+    return typeof key === "string" && Object.prototype.hasOwnProperty.call(table, key) && typeof table[key] === "string"
+      ? table[key]
+      : null;
+  }
+
   function statusCell(issue, vocab) {
     const values = labelValues(issue, "status");
     if (issue.state === "closed") {
       if (values.length) {
         return cell("conflict: closed but labelled status:" + values.join(", status:"), true);
       }
-      const reason = vocab.closed_reasons[issue.state_reason];
-      return reason ? cell(reason, false) : cell("Closed (reason unavailable)", true);
+      const reason = lookup(vocab.closed_reasons, issue.state_reason);
+      return reason !== null ? cell(reason, false) : cell("Closed (reason unavailable)", true);
     }
     if (values.length === 0) return cell("missing status", true);
     if (values.length > 1) return cell("conflict: " + values.join(", "), true);
-    const known = vocab.statuses[values[0]];
-    return known ? cell(known, false) : cell("unknown: " + values[0], true);
+    const known = lookup(vocab.statuses, values[0]);
+    return known !== null ? cell(known, false) : cell("unknown: " + values[0], true);
   }
 
   function metadataCell(issue, dimension) {
     const values = labelValues(issue, dimension.label);
     if (values.length === 0) return cell("missing", true);
     if (values.length > 1) return cell("conflict: " + values.join(", "), true);
-    const known = dimension.values[values[0]];
-    if (known) return cell(known, false);
+    const known = lookup(dimension.values, values[0]);
+    if (known !== null) return cell(known, false);
     return dimension.free_form ? cell(values[0], false) : cell("unknown: " + values[0], true);
   }
 
   function singleKnown(issue, prefix, table) {
     const values = labelValues(issue, prefix);
-    return values.length === 1 && Object.prototype.hasOwnProperty.call(table, values[0]) ? values[0] : null;
+    return values.length === 1 && lookup(table, values[0]) !== null ? values[0] : null;
   }
 
   function apiIssuePattern(repo) {
@@ -184,19 +192,22 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
     const placed = new Set();
     const rows = [];
     // Each issue has at most one parent, so a walk down from a root reaches every issue once and never meets a cycle:
-    // issues on (or under) a cycle are never reached and are placed below with that error. A node past MAX_DEPTH is
-    // still shown once, with its own error.
-    const visit = (number, depth) => {
-      placed.add(number);
-      if (depth > MAX_DEPTH) relationErrors.set(number, "parent chain deeper than " + MAX_DEPTH + " levels");
-      rows.push({number, depth});
-      for (const child of children.get(number) || []) visit(child, depth + 1);
-    };
+    // issues on (or under) a cycle are never reached and are placed below with that error. The walk keeps its own
+    // stack, so its depth never depends on the browser's call stack; a node past MAX_DEPTH is still shown once, with
+    // its own error, and nothing beneath it is dropped.
     const roots = issues
       .map((issue) => issue.number)
       .filter((number) => !(parentOf.has(number) && byNumber.has(parentOf.get(number))))
       .sort(order);
-    for (const root of roots) visit(root, 0);
+    const pending = roots.map((number) => [number, 0]).reverse();
+    while (pending.length) {
+      const [number, depth] = pending.pop();
+      placed.add(number);
+      if (depth > MAX_DEPTH) relationErrors.set(number, "parent chain deeper than " + MAX_DEPTH + " levels");
+      rows.push({number, depth});
+      const kids = children.get(number) || [];
+      for (let i = kids.length - 1; i >= 0; i -= 1) pending.push([kids[i], depth + 1]);
+    }
     for (const issue of issues) {
       if (!placed.has(issue.number)) {
         if (!relationErrors.has(issue.number)) relationErrors.set(issue.number, "parent cycle");

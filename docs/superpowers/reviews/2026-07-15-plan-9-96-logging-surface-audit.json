@@ -1769,14 +1769,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.github_work_tracking:finish:text_write",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: publish_batch's finish step writes the outcome journal record (outcome, reason, write count, record-id to issue-number map) through Journal.write.",
-      "sanitizer": "fixed journal vocabulary; digests instead of payloads",
-      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_unknown_create_outcome_stops_without_retry",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "tools.github_work_tracking:main:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: main serializes only the inventory validation summary (an ok flag, the problem count and per-disposition record and unit counts) computed from a reviewed planning manifest and committed planning documents; no runtime secrets, credentials or production payloads are read.",
@@ -1801,11 +1793,11 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.github_work_tracking:publish_batch:text_write",
+      "key": "tools.github_work_tracking:record:text_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: publish_batch writes start, intent, result and validated journal records through Journal.write; each holds operation kind, target record id, endpoint, payload digest and issue identity, never a body or credential.",
+      "rationale": "Inspection: publish_batch's record helper writes every journal record (start, intent, result, validated, outcome) through Journal.write; each holds step names, operation kinds, record ids, endpoints, payload digests, issue numbers/ids and outcome reasons, never issue bodies, tokens or production payloads, and a storage failure stops the run instead of being hidden.",
       "sanitizer": "fixed journal vocabulary; digests instead of payloads",
-      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_unknown_create_outcome_stops_without_retry",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_an_unwritable_journal_stops_the_run_and_says_so",
       "evidence_tier": "unit"
     },
     {

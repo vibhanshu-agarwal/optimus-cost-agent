@@ -6,6 +6,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const {spawnSync} = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
@@ -96,8 +97,9 @@ test("test_closed_reason_mapping", () => {
   assert.deepEqual({...closed("completed")}, {text: "Done", bad: false});
   assert.deepEqual({...closed("not_planned")}, {text: "Not planned", bad: false});
   assert.deepEqual({...closed(null)}, {text: "Closed (reason unavailable)", bad: true});
-  assert.deepEqual({...closed("duplicate")}, {text: "Duplicate", bad: false});
-  assert.deepEqual({...closed("some_new_reason")}, {text: "Closed (reason unavailable)", bad: true});
+  for (const reason of ["duplicate", "some_new_reason", "constructor", "toString", "__proto__", "hasOwnProperty"]) {
+    assert.deepEqual({...closed(reason)}, {text: "Closed (reason unavailable)", bad: true}, reason);
+  }
 });
 
 test("test_closed_with_status_label_is_invalid", () => {
@@ -125,6 +127,22 @@ test("test_missing_and_conflicting_dimensions", () => {
 test("test_unknown_enum_and_unclassified_issue_visible", () => {
   assert.deepEqual({...WS.statusCell(issue(1, ["status:weird"]), VOCAB)}, {text: "unknown: weird", bad: true});
   assert.deepEqual({...WS.metadataCell(issue(1, ["handler:somebody"]), VOCAB.dimensions.owner)}, {text: "unknown: somebody", bad: true});
+  for (const name of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+    assert.deepEqual({...WS.statusCell(issue(1, ["status:" + name]), VOCAB)}, {text: "unknown: " + name, bad: true}, name);
+    for (const dimension of ["priority", "difficulty", "owner"]) {
+      const spec = VOCAB.dimensions[dimension];
+      assert.deepEqual({...WS.metadataCell(issue(1, [spec.label + ":" + name]), spec)}, {text: "unknown: " + name, bad: true}, dimension + ":" + name);
+    }
+    // the free-form estimate rule stands: any value is shown as written
+    assert.deepEqual({...WS.metadataCell(issue(1, ["estimate:" + name]), VOCAB.dimensions.estimate)}, {text: name, bad: false});
+    const odd = WS.buildRows([issue(2, [...FULL.slice(0, 5), "product:" + name, "kind:" + name])], VOCAB);
+    assert.deepEqual(plain(odd.map((s) => s.title)), ["Untriaged issues"], name);
+  }
+  // each guard matters on its own: an inherited string entry, and an own entry that is not a display string
+  const inherited = {label: "priority", values: Object.create({inherited: "Inherited"})};
+  assert.deepEqual({...WS.metadataCell(issue(1, ["priority:inherited"]), inherited)}, {text: "unknown: inherited", bad: true});
+  const numeric = {label: "priority", values: {weird: 5}};
+  assert.deepEqual({...WS.metadataCell(issue(1, ["priority:weird"]), numeric)}, {text: "unknown: weird", bad: true});
   const sections = WS.buildRows([issue(1, FULL), issue(2, ["status:open"]), issue(3, [...FULL.slice(0, 5), "product:mars", "kind:plan"])], VOCAB);
   assert.deepEqual(plain(sections.map((s) => s.title)), ["Optimus", "Untriaged issues"]);
   const rows = rowsByNumber(sections);
@@ -173,6 +191,12 @@ test("test_multilevel_relations_render_once", () => {
   assert.deepEqual(plain(section.rows.map((r) => [r.number, r.depth])), [[10, 0], [20, 1], [30, 2]]);
   assert.deepEqual({...section.rows[0].progress}, {completed: 0, total: 1});
 
+  const parent = issue(60, [...FULL.slice(0, 6), "kind:feature"]);
+  const kids = [63, 61].map((n) => issue(n, FULL, {parent_issue_url: parentUrl(60)}));
+  const planKid = issue(62, [...FULL.slice(0, 6), "kind:plan"], {parent_issue_url: parentUrl(60)});
+  const ordered = WS.buildRows([...kids, planKid, parent], VOCAB)[0].rows.map((r) => r.number);
+  assert.deepEqual(plain(ordered), [60, 62, 61, 63], "children in vocabulary kind order, then by number");
+
   const a = issue(41, FULL, {parent_issue_url: parentUrl(42)});
   const b = issue(42, FULL, {parent_issue_url: parentUrl(41)});
   const cyc = WS.buildRows([a, b], VOCAB)[0].rows;
@@ -185,8 +209,42 @@ test("test_multilevel_relations_render_once", () => {
   assert.equal(deep.get(113).relationError, "parent chain deeper than 10 levels");
   assert.ok(![...deep.values()].some((r) => r.relationError === "parent cycle"), "depth is not reported as a cycle");
 
+  const LIMIT = 5000;
+  const long = Array.from({length: LIMIT}, (_, i) => issue(1000 + i, FULL, i ? {parent_issue_url: parentUrl(999 + i)} : {}));
+  let built;
+  assert.doesNotThrow(() => { built = WS.buildRows(long, VOCAB); });
+  const numbers = built.flatMap((s) => s.rows.map((r) => r.number));
+  assert.equal(numbers.length, LIMIT);
+  assert.equal(new Set(numbers).size, LIMIT, "every issue of a full-population chain appears exactly once");
+  assert.equal(rowsByNumber(built).get(1000 + LIMIT - 1).relationError, "parent chain deeper than 10 levels");
+  assert.doesNotThrow(() => WS.renderSections(built));
+
   const foreign = issue(50, FULL, {parent_issue_url: "https://api.github.com/repos/someone/else/issues/1"});
   assert.equal(rowsByNumber(WS.buildRows([foreign], VOCAB)).get(50).relationError, "malformed parent link");
+});
+
+// A recursive walk needs a stack frame per level, so whether a 5,000-level chain fits depends on the host's stack.
+// This runs the exact page logic in a child Node with a deliberately small stack: only a bounded-stack walk passes.
+const SMALL_STACK_CHILD = `
+  const {logic, vocab, labels, size} = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+  const context = require("node:vm").createContext({URLSearchParams});
+  require("node:vm").runInContext(logic, context);
+  const api = "https://api.github.com/repos/" + vocab.repo + "/issues/";
+  const issue = (n, parent) => ({number: n, title: "t", state: "open", state_reason: null,
+    html_url: "https://github.com/" + vocab.repo + "/issues/" + n, parent_issue_url: parent ? api + parent : null,
+    labels: labels.map((name) => ({name}))});
+  const chain = Array.from({length: size}, (_, i) => issue(1000 + i, i ? 999 + i : null));
+  const sections = context.WorkStatus.buildRows(chain, vocab);
+  context.WorkStatus.renderSections(sections);
+  const rows = sections.flatMap((s) => s.rows);
+  process.stdout.write(rows.length + " " + new Set(rows.map((r) => r.number)).size);
+`;
+
+test("test_hierarchy_walk_is_bounded_on_a_small_stack", () => {
+  const input = JSON.stringify({logic: block("work-status-logic"), vocab: VOCAB, labels: FULL, size: 5000});
+  const run = spawnSync(process.execPath, ["--stack-size=150", "-e", SMALL_STACK_CHILD], {input, encoding: "utf8"});
+  assert.equal(run.status, 0, `the page logic failed on a small stack: ${run.stderr.split("\n").find((l) => /Error/.test(l))}`);
+  assert.equal(run.stdout, "5000 5000", "every issue of the chain appears exactly once");
 });
 
 test("test_late_fetch_cannot_replace_newer_filter", async () => {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 import hashlib
 import json
 import re
@@ -1616,3 +1617,168 @@ def test_unknown_binding_outcome_stops_without_retry(tmp_path: Path, fault: str)
     result, journal = _publish(tmp_path, batch, client)
     assert result.outcome == "unknown" and len(client.writes) == bind + 1
     assert journal[-2]["step"] == "intent" and journal[-2]["op"] == "bind-sub-issue"
+
+
+# ---- Checkpoint 2 Codex review: unexpected failures always end with an outcome; bodies hold no current metadata ----
+
+
+class _FailingJournal(gwt.Journal):
+    """A journal whose storage fails at one step."""
+
+    def __init__(self, path: Path | None, failing_step: str) -> None:
+        super().__init__(path)
+        self.failing_step = failing_step
+
+    def write(self, step: str, **fields: Any) -> None:
+        if step == self.failing_step:
+            raise OSError("the evidence disk is unavailable")
+        super().write(step, **fields)
+
+
+def _explode(_obj: dict[str, Any]) -> dict[str, Any]:
+    raise RuntimeError("the transport crashed")
+
+
+def _publish_cli(tmp_path: Path, client: FakeGitHub, evidence: str, *extra: str) -> int:
+    path = _write(tmp_path, _with_source(_good(), POOL))
+    reader = lambda commit, paths: {"pool": POOL.encode("utf-8")}  # noqa: E731 - fixture reader
+    batch_path = tmp_path / "batch.json"
+    if not batch_path.exists():
+        assert gwt.main(["plan", str(path), "--out", str(batch_path)], reader=reader, client=client) == 0
+    argv = ["publish", str(path), "--batch", str(batch_path), "--evidence-dir", str(tmp_path / evidence), *extra]
+    return gwt.main(argv, reader=reader, client=client)
+
+
+@pytest.mark.parametrize("which", ["the first write", "a write after a created issue"])
+def test_an_unexpected_error_during_a_write_is_an_unknown_outcome(tmp_path: Path, which: str) -> None:
+    inventory, drafts, client = _setup(tmp_path)
+    batch = _plan(inventory, drafts, client)
+    creates = [index for index, op in enumerate(batch.operations) if op.op == "create-issue"]
+    index = 0 if which == "the first write" else creates[1]
+    client.faults[index] = _explode
+
+    result, journal = _publish(tmp_path, batch, client)
+    assert result.outcome == "unknown" and "RuntimeError" in result.reason and "not retried" in result.reason
+    assert len(client.writes) == index + 1  # no retry and no later write
+    assert journal[-1]["step"] == "outcome" and journal[-1]["outcome"] == "unknown"
+    if index:
+        first = batch.operations[creates[0]].target
+        assert result.issues[first] == journal[-1]["issues"][first]  # a created identity is kept on record
+
+
+def test_an_unexpected_error_while_verifying_a_binding_is_an_unknown_outcome(tmp_path: Path) -> None:
+    inventory, drafts, client = _setup(tmp_path)
+    batch = _plan(inventory, drafts, client)
+    bind = _at(batch, "bind-sub-issue")
+    read = client.get
+
+    def get(path: str) -> str:
+        if path.endswith("/parent"):
+            raise RuntimeError("the response decoder crashed")
+        return read(path)
+
+    client.get = get  # type: ignore[method-assign]
+    result, journal = _publish(tmp_path, batch, client)
+    assert result.outcome == "unknown" and len(client.writes) == bind + 1
+    assert journal[-1]["outcome"] == "unknown"
+
+
+def test_an_unexpected_error_before_a_write_sends_nothing_for_it(tmp_path: Path) -> None:
+    inventory, drafts, client = _setup(tmp_path)
+    batch = _plan(inventory, drafts, client)
+    update = _at(batch, "update-issue")
+    target = batch.operations[update].issue
+    read = client.get
+
+    def get(path: str) -> str:
+        if path.endswith(f"issues/{target}"):
+            raise RuntimeError("the response decoder crashed")
+        return read(path)
+
+    client.get = get  # type: ignore[method-assign]
+    result, journal = _publish(tmp_path, batch, client)
+    assert result.outcome == "failed" and "nothing was written for it" in result.reason
+    assert len(client.writes) == update and journal[-1]["outcome"] == "failed"
+
+
+@pytest.mark.parametrize(
+    ("step", "outcome", "sent"), [("start", "failed", 0), ("intent", "failed", 0), ("result", "unknown", 1), ("validated", "failed", 1)]
+)
+def test_an_unwritable_journal_stops_the_run_and_says_so(tmp_path: Path, step: str, outcome: str, sent: int) -> None:
+    inventory, drafts, client = _setup(tmp_path)
+    batch = _plan(inventory, drafts, client)
+    result = gwt.publish_batch(batch, client, _FailingJournal(tmp_path / "journal.jsonl", step), pause=lambda: None)
+    assert result.outcome == outcome and result.journal_ok is False
+    assert len(client.writes) == sent  # an intent that cannot be recorded is never sent
+
+
+@pytest.mark.parametrize(("step", "operations"), [("start", 0), ("validated", 1)])
+def test_a_journal_failure_is_never_a_pass(tmp_path: Path, step: str, operations: int) -> None:
+    # Where no later journal record follows (an empty batch, or the last operation), the failure itself must stop the run.
+    inventory, drafts, client = _setup(tmp_path)
+    batch = _plan(inventory, drafts, client)
+    batch = dataclasses.replace(batch, operations=batch.operations[:operations])
+    result = gwt.publish_batch(batch, client, _FailingJournal(tmp_path / "journal.jsonl", step), pause=lambda: None)
+    assert result.outcome == "failed" and result.journal_ok is False
+
+
+def test_cli_publish_seals_its_evidence_after_an_unexpected_error(tmp_path: Path) -> None:
+    client = FakeGitHub(_pilot_issues(), _pilot_labels())
+    _publish_cli(tmp_path, client, "warmup", "--pause-seconds", "0")  # no --execute: plans the batch only
+    client.faults[2] = _explode
+    assert _publish_cli(tmp_path, client, "run", "--pause-seconds", "0", "--execute") == 3
+    assert len(client.writes) == 3
+    evidence = tmp_path / "run"
+    journal = [json.loads(line) for line in (evidence / "journal.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert journal[-1]["outcome"] == "unknown"
+    seal = (evidence / "evidence.sha256").read_text(encoding="utf-8").splitlines()
+    assert seal == [f"{hashlib.sha256((evidence / name).read_bytes()).hexdigest()}  {name}" for name in ("batch.json", "journal.jsonl")]
+
+
+def test_cli_publish_never_claims_a_seal_it_could_not_make(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    client = FakeGitHub(_pilot_issues(), _pilot_labels())
+    _publish_cli(tmp_path, client, "warmup", "--pause-seconds", "0")
+    monkeypatch.setattr(gwt, "Journal", lambda path: _FailingJournal(path, "intent"))
+    assert _publish_cli(tmp_path, client, "run", "--pause-seconds", "0", "--execute") == 1
+    assert client.writes == [] and not (tmp_path / "run" / "evidence.sha256").exists()
+    assert "could not be sealed" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("pause", ["-1", "nan", "inf"])
+def test_cli_publish_rejects_an_invalid_pause_before_any_request(tmp_path: Path, pause: str) -> None:
+    client = FakeGitHub(_pilot_issues(), _pilot_labels())
+    (tmp_path / "batch.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        _publish_cli(tmp_path, client, "run", "--pause-seconds", pause, "--execute")
+    assert client.log == [] and not (tmp_path / "run").exists()
+
+
+def test_bodies_state_no_current_metadata(tmp_path: Path) -> None:
+    issues = _pilot_issues()
+    explicit = ["priority:low", "difficulty:high", "estimate:3d", "handler:claude"]
+    issues[0]["labels"] = [_label(name) for name in ["shadow-pilot", "status:blocked", "kind:plan", "product:optimus", *explicit]]
+    data = _good()
+    _records(data)["A2A-C1"]["severity"] = "CRITICAL"  # as the drafting rules set it from the obligation row
+    inventory, drafts, client = _setup(tmp_path, data, issues=issues)
+    batch = _plan(inventory, drafts, client)
+    assert batch.conflicts == ()
+    assert set(explicit) <= set(next(op for op in batch.operations if op.issue == 222).payload["labels"])
+    for draft in drafts:
+        for current in ("**Priority:**", "**Difficulty:**", "**Planned Estimate:**", "**Handler:**", "**Severity:**"):
+            assert current not in draft.body, (draft.record_id, current)
+        assert "labels carry the current values" in draft.body, draft.record_id
+    assert "**Source severity:** CRITICAL" in {draft.record_id: draft for draft in drafts}["A2A-C1"].body
+
+
+def test_a_metadata_only_label_change_needs_no_body_update(tmp_path: Path) -> None:
+    inventory, drafts, client = _setup(tmp_path)
+    result, _journal = _publish(tmp_path, _plan(inventory, drafts, client), client)
+    assert result.outcome == "pass"
+    for old, new in (("handler:unassigned", "handler:claude"), ("difficulty:medium", "difficulty:high")):
+        client.issues[222]["labels"] = [_label(new) if label["name"] == old else label for label in client.issues[222]["labels"]]
+    assert not [op for op in _plan(inventory, drafts, client).operations if op.issue == 222]
+    assert gwt.reconcile(inventory, drafts, gwt.read_issues(client)).problems == ()
+    for current in ("**Handler:**", "**Difficulty:**"):
+        assert current not in client.issues[222]["body"]

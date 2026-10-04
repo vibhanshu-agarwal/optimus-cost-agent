@@ -32,6 +32,7 @@ import argparse
 import functools
 import hashlib
 import json
+import math
 import os
 import posixpath
 import re
@@ -710,7 +711,6 @@ _VOCABULARY = re.compile(r'<script type="application/json" id="work-status-vocab
 _SOURCE_DIMENSIONS = ("status", "product", "kind")  # always the source record's value
 _DEFAULTED_DIMENSIONS = ("priority", "difficulty", "estimate", "handler")  # an explicit value on the issue survives a default
 _MANAGED_PREFIXES = tuple(f"{dimension}:" for dimension in (*_SOURCE_DIMENSIONS, *_DEFAULTED_DIMENSIONS))
-_PRIORITY_BASIS = {"source": "from the source", "default": "default, not assessed"}
 
 
 @dataclass(frozen=True)
@@ -1081,16 +1081,24 @@ def render_body(
     status = f"- **Source status at baseline `{short}`:** {stated} (historical; this issue's state and labels carry the current status)"
     if record.status_disposition:
         status += f". Synthesized: {record.status_disposition}"
+    # Current priority, difficulty, estimate and handler live only in labels; the body records the migration's basis.
+    priority = (record.priority or DEFAULT_PRIORITY).title()
+    basis_text = {
+        "source": f"priority {priority} from the source",
+        "default": f"no source priority (the migration default is {DEFAULT_PRIORITY.title()})",
+    }.get(basis) or f"priority {priority} by reviewed disposition: {record.priority_disposition}"
     facts = [
         f"- **Source record:** `{record.id}`" + (f" (also {', '.join(f'`{alias}`' for alias in aliases)})" if aliases else ""),
         status,
-        f"- **Priority:** {(record.priority or DEFAULT_PRIORITY).title()} ({_PRIORITY_BASIS.get(basis) or 'reviewed: ' + str(record.priority_disposition)})."
-        " **Difficulty:** Medium (default, not assessed). **Planned Estimate:** NA. **Handler:** Unassigned.",
+        f"- **Migration basis** (historical; this issue's state and labels carry the current values): {basis_text};"
+        " the source states no difficulty, planned estimate or handler (the migration defaults are Medium, NA and unassigned).",
     ]
     if record.severity:
-        facts.append(f"- **Severity:** {record.severity} (separate from scheduling priority).")
+        facts.append(f"- **Source severity:** {record.severity} (historical; separate from scheduling priority).")
     if record.parent:
-        facts.append(f"- **Parent:** `{record.parent}` (native sub-issue).")
+        facts.append(
+            f"- **Source owner:** `{record.parent}` (bound as the native parent at migration; the native link carries the current one)."
+        )
     if record.related:
         facts.append(f"- **Related:** {', '.join(f'`{related}`' for related in record.related)}.")
     if record.duplicate_rationale:
@@ -1379,7 +1387,8 @@ def plan_migration(
 
 
 class Journal:
-    """Append-only JSON lines, flushed and fsynced per record, so each write's intent is durable before it is sent."""
+    """Append-only JSON lines, flushed and fsynced per record before the next step, so a write's intent is on disk
+    before the write is sent. It promises nothing after a process kill or a disk failure."""
 
     def __init__(self, path: Path | None) -> None:
         self.path = path
@@ -1402,6 +1411,7 @@ class PublicationResult:
     reason: str
     writes: int
     issues: Mapping[str, int]
+    journal_ok: bool = True  # False when the journal could not be written: the run stopped and its evidence is incomplete
 
 
 def _request(operation: Operation, refs: Mapping[str, IssueRef], repo: str) -> tuple[str, str, dict[str, Any]]:
@@ -1461,65 +1471,71 @@ def _binding_problem(client: GitHubClient, repo: str, parent: int, child: int) -
 def publish_batch(
     batch: MigrationBatch, client: GitHubClient, journal: Journal, pause: Callable[[], None] | None = None
 ) -> PublicationResult:
-    """Apply a conflict-free batch in order; stop at the first failed, mismatched or unknown write, never retrying."""
+    """Apply a conflict-free batch in order; stop at the first failed, mismatched or unknown write, never retrying.
+
+    Every way out ends with an outcome record. A failure of any kind before a write is sent means nothing was written
+    for that operation (``failed``); a failure of any kind once it has been sent leaves its outcome ``unknown``. A
+    journal that cannot be written stops the run, and the result says so (``journal_ok``).
+    """
     repo = batch.repo
     wait = pause or (lambda: time.sleep(WRITE_PAUSE_S))
     refs = dict(batch.reused)
     writes = 0
-    journal.write("start", batch_sha256=batch.sha256, operations=len(batch.operations), conflicts=len(batch.conflicts), trial=batch.trial)
+    journal_ok = True
+
+    def record(step: str, **fields: Any) -> bool:
+        nonlocal journal_ok
+        try:
+            journal.write(step, **fields)
+        except Exception:  # noqa: BLE001 - the evidence store itself failed: stop, and never claim a seal
+            journal_ok = False
+        return journal_ok
 
     def finish(outcome: str, reason: str) -> PublicationResult:
         issues = {record_id: ref.number for record_id, ref in refs.items()}
-        journal.write("outcome", outcome=outcome, reason=reason, writes=writes, issues=issues)
-        return PublicationResult(outcome, reason, writes, issues)
+        record("outcome", outcome=outcome, reason=reason, writes=writes, issues=issues)
+        return PublicationResult(outcome, reason, writes, issues, journal_ok)
 
+    if not record("start", batch_sha256=batch.sha256, operations=len(batch.operations), conflicts=len(batch.conflicts), trial=batch.trial):
+        return finish("failed", "the journal could not be written; nothing was written")
     if batch.conflicts:
         return finish("refused", f"the batch has {len(batch.conflicts)} conflict(s); nothing is written")
     for index, operation in enumerate(batch.operations):
-        try:
+        label = f"{operation.op} {operation.target}"
+        try:  # before the write: any failure here means nothing was sent for this operation
             method, path, payload = _request(operation, refs, repo)
-        except KeyError as error:
-            return finish("failed", f"{operation.target}: no issue is known for {error}; nothing was written for it")
-        if operation.op == "update-issue":
-            try:
+            if operation.op == "update-issue":
                 current = issue_snapshot(_json(client.get(f"repos/{repo}/issues/{operation.issue}")))
-            except (TransportError, ReadFailed) as error:
-                return finish("failed", f"re-reading #{operation.issue} before its update failed ({error}); nothing was written for it")
-            if current.fingerprint != operation.expected_fingerprint:
-                return finish(
-                    "failed", f"#{operation.issue} changed after the plan read it (a concurrent body or label edit); its update is not sent"
-                )
-        if writes:
-            wait()
-        journal.write(
-            "intent",
-            index=index,
-            op=operation.op,
-            target=operation.target,
-            method=method,
-            endpoint=path,
-            payload_sha256=operation.payload_sha256,
-        )
+                if current.fingerprint != operation.expected_fingerprint:
+                    return finish(
+                        "failed",
+                        f"#{operation.issue} changed after the plan read it (a concurrent body or label edit); its update is not sent",
+                    )
+            if writes:
+                wait()
+        except Exception as error:  # noqa: BLE001 - classified by stage, never retried
+            return finish("failed", f"{label}: {type(error).__name__} before the write ({error}); nothing was written for it")
+        intent = {"method": method, "endpoint": path, "payload_sha256": operation.payload_sha256}
+        if not record("intent", index=index, op=operation.op, target=operation.target, **intent):
+            return finish("failed", f"{label}: its intent could not be journaled, so the write was not sent")
         writes += 1
-        try:
+        try:  # once the write is sent, any failure leaves its outcome unknown
             obj = _json(client.send(method, path, payload))
-        except (TransportError, ReadFailed) as error:
-            reason = f"{operation.op} {operation.target}: the write did not complete cleanly ({error}); its outcome is unknown and it is not retried"
+            number, issue_id = (obj.get("number"), obj.get("id")) if isinstance(obj, dict) else (None, None)
+            if operation.op == "create-issue" and isinstance(number, int) and isinstance(issue_id, int):
+                refs[operation.target] = IssueRef(number, issue_id)  # kept even when the result then fails validation
+            if not record("result", index=index, op=operation.op, target=operation.target, number=number, id=issue_id):
+                return finish("unknown", f"{label}: its result could not be journaled; it is not retried")
+            problem = _result_problem(operation, payload, obj, refs)
+            if problem is None and operation.op == "bind-sub-issue":
+                problem = _binding_problem(client, repo, refs[operation.payload["parent"]].number, refs[operation.payload["child"]].number)
+        except Exception as error:  # noqa: BLE001 - classified by stage, never retried
+            reason = f"{label}: {type(error).__name__} after the write was sent ({error}); its outcome is unknown and it is not retried"
             return finish("unknown", reason)
-        number, issue_id = (obj.get("number"), obj.get("id")) if isinstance(obj, dict) else (None, None)
-        journal.write("result", index=index, op=operation.op, target=operation.target, number=number, id=issue_id)
-        if operation.op == "create-issue" and isinstance(number, int) and isinstance(issue_id, int):
-            refs[operation.target] = IssueRef(number, issue_id)  # kept even when the result then fails validation
-        problem = _result_problem(operation, payload, obj, refs)
-        if problem is None and operation.op == "bind-sub-issue":
-            child, parent = refs[operation.payload["child"]].number, refs[operation.payload["parent"]].number
-            try:
-                problem = _binding_problem(client, repo, parent, child)
-            except (TransportError, ReadFailed) as error:
-                return finish("unknown", f"{operation.target}: the binding was sent but could not be verified ({error}); it is not retried")
         if problem:
-            return finish("failed", f"{operation.op} {operation.target}: the result differs from the request ({problem}); no further write")
-        journal.write("validated", index=index, op=operation.op, target=operation.target)
+            return finish("failed", f"{label}: the result differs from the request ({problem}); no further write")
+        if not record("validated", index=index, op=operation.op, target=operation.target):
+            return finish("failed", f"{label}: validated, but the journal could not record it; no further write")
     return finish("pass", f"{writes} write(s) applied and validated")
 
 
@@ -1669,12 +1685,34 @@ def _github_command(args: argparse.Namespace, reader: SourceReader, client: GitH
     (args.evidence_dir / "batch.json").write_bytes(reviewed)
     seconds = args.pause_seconds
     result = publish_batch(batch, client, Journal(args.evidence_dir / "journal.jsonl"), pause=lambda: time.sleep(seconds))
-    seal = "".join(
-        f"{hashlib.sha256((args.evidence_dir / name).read_bytes()).hexdigest()}  {name}\n" for name in ("batch.json", "journal.jsonl")
-    )
-    (args.evidence_dir / "evidence.sha256").write_bytes(seal.encode("utf-8"))  # sealed last, after the outcome record
-    print(json.dumps({"outcome": result.outcome, "reason": result.reason, "writes": result.writes}))
+    sealed = result.journal_ok and _seal_evidence(args.evidence_dir)  # sealed last, after the outcome record
+    summary = {"outcome": result.outcome, "reason": result.reason, "writes": result.writes, "sealed": sealed}
+    if not sealed:
+        summary["evidence"] = "the evidence could not be sealed: the journal or its storage failed, so the record is incomplete"
+    print(json.dumps(summary))
     return {"pass": 0, "failed": 1, "refused": 2, "unknown": 3}[result.outcome]
+
+
+def _seal_evidence(directory: Path) -> bool:
+    """Write the digests of the reviewed batch and the journal; ``False`` (and no seal) when the storage fails."""
+    try:
+        names = ("batch.json", "journal.jsonl")
+        seal = "".join(f"{hashlib.sha256((directory / name).read_bytes()).hexdigest()}  {name}\n" for name in names)
+        (directory / "evidence.sha256").write_bytes(seal.encode("utf-8"))
+    except OSError:
+        return False
+    return True
+
+
+def _pause_seconds(text: str) -> float:
+    """A pause between writes: a finite number of seconds from 0 to 60, checked before any request is made."""
+    try:
+        value = float(text)
+    except ValueError:
+        value = math.nan
+    if not (math.isfinite(value) and 0 <= value <= 60):
+        raise argparse.ArgumentTypeError(f"--pause-seconds must be a finite number of seconds from 0 to 60, not {text!r}")
+    return value
 
 
 def main(argv: Sequence[str] | None = None, reader: SourceReader = read_sources_at, client: GitHubClient | None = None) -> int:
@@ -1692,7 +1730,7 @@ def main(argv: Sequence[str] | None = None, reader: SourceReader = read_sources_
     publish.add_argument("--batch", type=Path, required=True)
     publish.add_argument("--evidence-dir", type=Path, required=True)
     publish.add_argument("--execute", action="store_true", help="without it, nothing is written")
-    publish.add_argument("--pause-seconds", type=float, default=WRITE_PAUSE_S)
+    publish.add_argument("--pause-seconds", type=_pause_seconds, default=WRITE_PAUSE_S)
     check = commands.add_parser("reconcile", help="read GitHub and check every migrating record's issue (no writes)")
     check.add_argument("inventory", type=Path)
     for command in (plan, publish, check):
