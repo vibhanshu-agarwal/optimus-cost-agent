@@ -29,6 +29,7 @@ committed inventory from its baseline commit.
 from __future__ import annotations
 
 import argparse
+import copy
 import functools
 import hashlib
 import json
@@ -396,6 +397,12 @@ class Inventory:
     context_paths: Mapping[str, str] = field(default_factory=dict)
     # Reviewed adoptions of live issues without a generated region: record id -> {"issue", "fingerprint"}.
     adoptions: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    # The sealed identities the offline gates check: each frozen approval artifact's SHA-256 (path -> digest), each
+    # docs-root plan file's owning record at its baseline blob (path -> {"record", "blob"}), and the docs-root documents
+    # that track no issue of their own (path -> why).
+    frozen_artifacts: Mapping[str, str] = field(default_factory=dict)
+    plan_files: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    plan_exemptions: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def read_paths(self) -> dict[str, str]:
@@ -441,6 +448,9 @@ def inventory_from_data(data: Mapping) -> Inventory:
         context_blobs={name: spec["blob"] for name, spec in context.items()},
         context_paths={name: spec["path"] for name, spec in context.items()},
         adoptions={record_id: dict(adoption) for record_id, adoption in data.get("adoptions", {}).items()},
+        frozen_artifacts={path: entry["sha256"] for path, entry in data.get("frozen_artifacts", {}).items()},
+        plan_files={path: {"record": entry["record"], "blob": entry["blob"]} for path, entry in data.get("plan_files", {}).items()},
+        plan_exemptions=dict(data.get("plan_exemptions", {})),
     )
 
 
@@ -787,6 +797,19 @@ def read_sources_at(commit: str, paths: Mapping[str, str], repo: Path = REPO_ROO
     return {name: git_blob_bytes(commit, path, repo) for name, path in paths.items()}
 
 
+PLANS_DIR = "docs/superpowers/plans/"
+POOL_FILE = "2026-07-23-consolidated-deferred-followups-backlog.md"
+POOL_PATH = PLANS_DIR + POOL_FILE
+
+
+def read_plans_at(commit: str, repo: Path = REPO_ROOT) -> dict[str, bytes]:
+    """Every docs-root plan file (``docs/superpowers/plans/*.md``, not the archive) exactly as committed at ``commit``."""
+    listing = subprocess.run(["git", "ls-tree", "-z", commit, "--", PLANS_DIR], cwd=repo, check=True, capture_output=True).stdout
+    entries = [entry.decode("utf-8") for entry in listing.split(b"\0") if entry]
+    paths = [entry.split("\t", 1)[1] for entry in entries if entry.split(" ", 2)[1] == "blob"]
+    return {path: git_blob_bytes(commit, path, repo) for path in sorted(paths) if path.endswith(".md")}
+
+
 def render_manifest(data: Mapping) -> str:
     """The manifest text: stable key order, LF, and each pinned id on one line with its inline secret-scan marker."""
     text = json.dumps(data, indent=1, ensure_ascii=False) + "\n"
@@ -795,6 +818,10 @@ def render_manifest(data: Mapping) -> str:
         r'\{\n\s+"issue": (\d+),\n\s+"fingerprint": (".*?"),\n\s+"pin": (".*?")\n\s+\}',
         r'{"issue": \1, "fingerprint": \2, "pin": \3}',
         text,
+    )
+    text = re.sub(r'\{\n\s+"sha256": (".*?"),\n\s+"pin": (".*?")\n\s+\}', r'{"sha256": \1, "pin": \2}', text)
+    text = re.sub(
+        r'\{\n\s+"record": (".*?"),\n\s+"blob": (".*?"),\n\s+"pin": (".*?")\n\s+\}', r'{"record": \1, "blob": \2, "pin": \3}', text
     )
     return re.sub(r'\n(\s+)"commit": (".*?"),\n\s+"commit_pin": (".*?"),', r'\n\1"commit": \2, "commit_pin": \3,', text)
 
@@ -1796,6 +1823,201 @@ def reconcile(inventory: Inventory, drafts: Sequence[IssueDraft], observed: Sequ
     return ReconciliationReport(tuple(problems), mapping)
 
 
+# ==== Task 4: offline governance gates ====
+#
+# After the cutover, issues own current status. These checks read only the repository and the sealed manifest, never
+# GitHub: every docs-root plan has one issue identity, every source record is classified and mapped once, the pool's
+# inbound anchors still resolve, frozen approval bytes are unchanged, and the pool is an authority stub, not a board.
+
+TRACKING_HEADER = re.compile(r"^\*\*Tracking issue:\*\* (?P<url>\S+)\s*$")
+_ISSUE_URL = re.compile(rf"https://github\.com/{re.escape(REPO)}/issues/(?P<number>[1-9]\d*)")
+_ISSUE_SHORT = re.compile(rf"{re.escape(REPO)}#(?P<number>[1-9]\d*)")
+_ISSUE_LINK = re.compile(rf"https://github\.com/{re.escape(REPO)}/issues/[1-9]\d*")
+_PERMALINK = re.compile(rf"https://github\.com/{re.escape(REPO)}/blob/[0-9a-f]{{40}}/")
+_HISTORY_PERMALINK = re.compile(rf"https://github\.com/{re.escape(REPO)}/blob/[0-9a-f]{{40}}/{re.escape(POOL_PATH)}")
+_ISSUES_LIST_LINK = re.compile(rf"\]\(https://github\.com/{re.escape(REPO)}/issues(?:\?[^)]*)?\)")
+_WORK_STATUS_LINK = re.compile(r"\]\([^)\s]*work-status\.html\)")
+STUB_MAX_LINES = 150
+
+
+def issue_reference(text: str) -> int:
+    """The issue number of a repository-qualified reference: its full issue URL or ``owner/repo#number``."""
+    match = _ISSUE_URL.fullmatch(text) or _ISSUE_SHORT.fullmatch(text)
+    if match is None:
+        raise ValueError(f"{text!r} is not an issue of {REPO}")
+    return int(match.group("number"))
+
+
+def tracking_issue(text: str, path: str) -> int | None:
+    """A plan's ``**Tracking issue:** <issue URL>`` header, or ``None`` when it has none; more than one is an error."""
+    headers = [match.group("url") for match in map(TRACKING_HEADER.match, text.splitlines()) if match]
+    if len(headers) > 1:
+        raise ValueError(f"{path} carries {len(headers)} tracking headers; a plan has exactly one")
+    if not headers:
+        return None
+    match = _ISSUE_URL.fullmatch(headers[0])
+    if match is None:
+        raise ValueError(f"{path} tracking header {headers[0]!r} is not an issue of {REPO}")
+    return int(match.group("number"))
+
+
+def plan_identity_problems(plans: Mapping[str, bytes], inventory: Inventory) -> list[str]:
+    """Each docs-root plan file has one issue identity: its own tracking header, the sealed baseline identity of its
+    exact blob, or a reviewed exemption."""
+    records = {record.id: record for record in inventory.records}
+    problems = []
+    for path, data in sorted(plans.items()):
+        try:
+            if tracking_issue(data.decode("utf-8"), path) is not None or path in inventory.plan_exemptions:
+                continue
+        except ValueError as error:
+            problems.append(str(error))
+            continue
+        entry = inventory.plan_files.get(path)
+        record = records.get(entry["record"]) if entry else None
+        if entry is None:
+            problems.append(f"{path} has no tracking header, no sealed baseline identity and no reviewed exemption")
+        elif entry["blob"] != git_blob_id(data):
+            problems.append(f"{path} changed since its sealed baseline identity; a changed plan carries its own tracking header")
+        elif record is None or record.target_issue is None:
+            problems.append(f"{path}'s baseline record {entry['record']!r} has no issue identity")
+    return problems
+
+
+def mapping_problems(inventory: Inventory) -> list[str]:
+    """No source record is left unclassified: each migrates to an issue, is a duplicate of a migrating record, or retires
+    with a reviewed rationale."""
+    records = {record.id: record for record in inventory.records}
+    problems = []
+    for record in inventory.records:
+        label = f"record {record.id!r}"
+        if record.disposition == "migrate" and record.target_issue is None:
+            problems.append(f"{label} migrates but has no issue identity")
+        elif record.disposition in RETIRING_DISPOSITIONS and not (record.rationale.strip() or (record.terminal_disposition or "").strip()):
+            problems.append(f"{label} retires ({record.disposition}) with no reviewed rationale")
+        elif record.disposition == "duplicate":
+            original = records.get(record.duplicate_of or "")
+            if original is None or original.disposition != "migrate":
+                problems.append(f"{label} is a duplicate of {record.duplicate_of!r}, which is not a migrating record")
+    return problems
+
+
+def coverage_problems(inventory: Inventory) -> list[str]:
+    """Every source identity reaches one issue, and every compatibility anchor reaches a record or a pool section."""
+    issues: dict[str, set[int]] = defaultdict(set)
+    for record in inventory.records:
+        if record.disposition == "migrate" and record.target_issue is not None:
+            for identity in {record.id, *record.aliases}:
+                issues[identity].add(record.target_issue)
+    problems = [
+        f"identity {identity!r} names more than one issue: {_issue_list(sorted(numbers))}"
+        for identity, numbers in sorted(issues.items())
+        if len(numbers) > 1
+    ]
+    ids = {record.id for record in inventory.records}
+    for anchor, target in sorted(inventory.compat_anchors.items()):
+        if target not in ids and not target.startswith("section:"):
+            problems.append(f"compatibility anchor {anchor!r} points to unknown record {target!r}")
+    return problems
+
+
+def anchor_problems(stub: str, anchors: Iterable[str]) -> list[str]:
+    """Each anchor resolves to exactly one heading of the pool, and its section links an issue or an exact historical
+    permalink."""
+    lines = stub.splitlines()
+    headings = _headings(lines)
+    slugs = [heading_anchor(title) for _number, _level, title in headings]
+    problems = []
+    for anchor in sorted(set(anchors)):
+        count = slugs.count(anchor)
+        if count == 0:
+            problems.append(f"anchor {anchor!r} no longer resolves in the pool")
+            continue
+        if count > 1:
+            problems.append(f"anchor {anchor!r} has more than one heading in the pool")
+            continue
+        index = slugs.index(anchor)
+        first = headings[index][0]
+        last = headings[index + 1][0] - 1 if index + 1 < len(headings) else len(lines)
+        section = "\n".join(lines[first - 1 : last])
+        if not (_ISSUE_LINK.search(section) or _PERMALINK.search(section)):
+            problems.append(f"anchor {anchor!r} points nowhere: its section needs an issue link or an exact historical permalink")
+    return problems
+
+
+def inbound_pool_anchors(files: Mapping[str, str]) -> set[str]:
+    """Every fragment any of ``files`` links on the pool file."""
+    pattern = re.compile(rf"{re.escape(POOL_FILE)}#([A-Za-z0-9_-]+)")
+    return {anchor for text in files.values() for anchor in pattern.findall(text)}
+
+
+def frozen_problems(read: Callable[[str], bytes | None], inventory: Inventory) -> list[str]:
+    """Each frozen approval artifact still has the exact bytes its sealed SHA-256 names (``read`` gives committed bytes).
+
+    An artifact moved, byte for byte, into its directory's ``archive/`` (the repository's archive convention) is the
+    same artifact.
+    """
+    problems = []
+    for path, digest in sorted(inventory.frozen_artifacts.items()):
+        archived = posixpath.join(posixpath.dirname(path), "archive", posixpath.basename(path))
+        data = read(path)
+        data = read(archived) if data is None else data
+        if data is None:
+            problems.append(f"frozen artifact {path} is missing")
+        elif hashlib.sha256(data).hexdigest() != digest:
+            problems.append(f"frozen artifact {path} changed: sha256 {hashlib.sha256(data).hexdigest()[:12]}…, sealed {digest[:12]}…")
+    return problems
+
+
+def stub_problems(text: str) -> list[str]:
+    """The pool after the cutover: an authority statement, the live links and a history permalink; no board."""
+    lines = text.splitlines()
+    problems = []
+    for number, line in enumerate(lines, 1):
+        if _DELIMITER_ROW.match(line):
+            problems.append(f"line {number}: the pool keeps a table; current status lives in issues")
+        elif _STATUS_LINE.match(line) or _LOOSE_STATUS_LINE.match(line):
+            problems.append(f"line {number}: the pool keeps a status line; current status lives in issues")
+    if not _HISTORY_PERMALINK.search(text):
+        problems.append("the pool has no commit-bound history permalink to its pre-cutover text")
+    if not _WORK_STATUS_LINK.search(text):
+        problems.append("the pool does not link the work status page")
+    if not _ISSUES_LIST_LINK.search(text):
+        problems.append("the pool does not link the GitHub issues list")
+    if len(lines) > STUB_MAX_LINES:
+        problems.append(f"the pool is {len(lines)} lines; the authority stub keeps at most {STUB_MAX_LINES}")
+    return problems
+
+
+def finalize_inventory(data: Mapping, mapping: Mapping[str, int]) -> dict:
+    """The manifest with each migrating record's issue from a sealed reconcile ``mapping`` (record id -> issue number).
+
+    Every migrating record needs exactly one positive issue, an already reviewed target must agree, and no issue serves
+    two records. The input is never changed.
+    """
+    final = copy.deepcopy(dict(data))
+    records = {record["id"]: record for record in final["records"]}
+    migrating = {record_id for record_id, record in records.items() if record["disposition"] == "migrate"}
+    unknown = sorted(set(mapping) - migrating)
+    if unknown:
+        raise ValueError(f"the mapping names records that do not migrate: {unknown}")
+    missing = sorted(migrating - set(mapping))
+    if missing:
+        raise ValueError(f"migrating records without an issue in the mapping: {missing}")
+    for record_id, number in mapping.items():
+        if not isinstance(number, int) or isinstance(number, bool) or number < 1:
+            raise ValueError(f"record {record_id!r} maps to {number!r}, not a positive issue number")
+        reviewed = records[record_id].get("target_issue")
+        if reviewed is not None and reviewed != number:
+            raise ValueError(f"record {record_id!r} maps to #{number}, but its reviewed target issue is #{reviewed}")
+    shared = sorted(number for number, count in Counter(mapping.values()).items() if count > 1)
+    if shared:
+        raise ValueError(f"{_issue_list(shared)} map to more than one record")
+    for record_id, number in mapping.items():
+        records[record_id]["target_issue"] = number
+    return final
+
+
 # ---- command line ----
 
 
@@ -1902,7 +2124,8 @@ def main(argv: Sequence[str] | None = None, reader: SourceReader = read_sources_
         from tools import github_work_tracking_rules as rules
 
         sources = reader(args.commit, rules.READS)
-        sys.stdout.buffer.write(render_manifest(rules.draft_inventory(args.commit, sources)).encode("utf-8"))
+        manifest = rules.draft_inventory(args.commit, sources, read_plans_at(args.commit))
+        sys.stdout.buffer.write(render_manifest(manifest).encode("utf-8"))
         return 0
 
     inventory = load_inventory(args.inventory)

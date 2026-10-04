@@ -14,6 +14,7 @@ Drafting is pure: sources in, manifest data out. It refuses a source section no 
 
 from __future__ import annotations
 
+import posixpath
 import re
 from collections import defaultdict
 from collections.abc import Mapping
@@ -51,6 +52,20 @@ QUOTES = {
     "A2A-C1": [("a2a-audit", "section", "Critical 1 — No shipped composition root or runbook can provision the claimed product")],
 }
 A2A_RANKS = {"C": "Critical", "H": "High", "M": "Medium"}
+DIGEST_PIN_NOTE = "# pragma: allowlist secret - sha256 of the frozen artifact's approved bytes, not a secret"
+PLAN_PIN_NOTE = "# pragma: allowlist secret - git blob id of this plan file at the baseline commit, not a secret"
+_FROZEN_DIGEST = re.compile(r"^- `(?P<path>docs/superpowers/[^`]+)` — SHA-256 `(?P<digest>[0-9A-Fa-f]{64})`", re.M)
+# Docs-root documents that track no issue of their own (file name -> why); every other docs-root plan file has one owner.
+PLAN_EXEMPTIONS = {
+    "2026-07-01-phase-1-roadmap.md": "the phase-1 roadmap: plan history and navigation; its open work is tracked by the records it points to",
+    "2026-07-23-consolidated-deferred-followups-backlog.md": (
+        "the consolidated backlog: after the cutover an authority stub whose compatibility anchors link the issues"
+    ),
+    "2026-07-25-plan-11-v1-milestone-charter.md": "the Plan 11 v1.0 charter: a program boundary whose features carry their own issues",
+    "README.md": "the plans directory index; it tracks no work of its own",
+}
+# Owners no registry or board row states: the masterplan is the plan of the runtime-quality feature whose row links it.
+PLAN_OWNERS = {"hardening-runtime-quality-masterplan.md": "HARDENING-FEAT-RUNTIME-QUALITY"}
 # Readable titles for records whose source gives only an identifier: "<identifier>: <phrase>". Each phrase is a short
 # agent-written summary grounded in the record's own source row, reviewed at Checkpoint 3; the body quotes the source
 # exactly. A2A obligations are titled by the audit's own finding headings instead.
@@ -407,7 +422,8 @@ def _kind(identity: str) -> str:
     return "item"
 
 
-def draft_inventory(commit: str, sources: Mapping[str, bytes]) -> dict:
+def draft_inventory(commit: str, sources: Mapping[str, bytes], plans: Mapping[str, bytes]) -> dict:
+    """The manifest data: ``sources`` holds ``READS`` at ``commit``, ``plans`` every docs-root plan file there."""
     texts = {name: sources[name].decode("utf-8") for name in SOURCES}
     scans = {name: gwt.scan_source(name, texts[name]) for name in SOURCES}
     lines = {name: texts[name].splitlines() for name in SOURCES}
@@ -618,8 +634,45 @@ def draft_inventory(commit: str, sources: Mapping[str, bytes]) -> dict:
             record_id: {"issue": PILOT_ISSUES[record_id], "fingerprint": fingerprint, "pin": ADOPTION_PIN_NOTE}
             for record_id, fingerprint in PILOT_ADOPTIONS.items()
         },
+        "frozen_artifacts": _frozen_artifacts(texts["pool"]),
+        **_plan_identities(records, scans, plans),
         "records": records,
     }
+
+
+def _frozen_artifacts(pool: str) -> dict:
+    """Each frozen approval artifact's SHA-256 as the pool states it, to survive the pool's cutover to a stub."""
+    digests: dict[str, str] = {}
+    for match in _FROZEN_DIGEST.finditer(pool):
+        path, digest = match.group("path"), match.group("digest").lower()
+        if digests.setdefault(path, digest) != digest:
+            raise ValueError(f"the pool states two digests for frozen artifact {path}")
+    return {path: {"sha256": digest, "pin": DIGEST_PIN_NOTE} for path, digest in sorted(digests.items())}
+
+
+def _plan_identities(records: list[dict], scans: Mapping[str, gwt.SourceScan], plans: Mapping[str, bytes]) -> dict:
+    """Each docs-root plan file's owning record at its baseline blob, from the registry and board rows that name it."""
+    units = {unit.key: unit for scan in scans.values() for unit in scan.units}
+    owners: dict[str, set[str]] = defaultdict(set)
+    for record in records:
+        cell = {"plan": "plan", "track": "child plan"}.get(record["kind"])
+        for key in record["units"] if cell else ():
+            target = re.search(r"\]\(([^)#\s]+\.md)\)|`([^`/]+\.md)`", units[key].cells.get(cell, "")) if key in units else None
+            if target:
+                owners[posixpath.normpath(posixpath.join(gwt.PLANS_DIR, target.group(1) or target.group(2)))].add(record["id"])
+    for name, record_id in PLAN_OWNERS.items():
+        owners[gwt.PLANS_DIR + name] = {record_id}
+    stale = sorted(name for name in PLAN_EXEMPTIONS if gwt.PLANS_DIR + name not in plans)
+    if stale:
+        raise ValueError(f"PLAN_EXEMPTIONS names files that are not docs-root plans at this commit: {stale}")
+    files = {}
+    for path, data in sorted(plans.items()):
+        if path.removeprefix(gwt.PLANS_DIR) in PLAN_EXEMPTIONS:
+            continue
+        if len(owners.get(path, ())) != 1:
+            raise ValueError(f"docs-root plan {path} has owners {sorted(owners.get(path, ()))}; it needs exactly one, or an exemption")
+        files[path] = {"record": next(iter(owners[path])), "blob": gwt.git_blob_id(data), "pin": PLAN_PIN_NOTE}
+    return {"plan_files": files, "plan_exemptions": {gwt.PLANS_DIR + name: why for name, why in sorted(PLAN_EXEMPTIONS.items())}}
 
 
 def _titles(records: list[dict], audit: str) -> None:

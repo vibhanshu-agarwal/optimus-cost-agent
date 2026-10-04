@@ -1793,6 +1793,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.github_work_tracking:plan_identity_problems:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: plan_identity_problems returns tracking_issue's ValueError text as a gate problem; the text names a repository plan path, a header count or the header's issue URL from committed plan files, never runtime secrets or production payloads.",
+      "sanitizer": "fixed gate vocabulary over committed repository paths and public issue URLs",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_live_plan_files_have_issue_identity",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.github_work_tracking:record:text_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: publish_batch's record helper writes every journal record (start, intent, result, validated, outcome) through Journal.write; each holds step names, operation kinds, record ids, endpoints, payload digests, issue numbers/ids and outcome reasons, never issue bodies, tokens or production payloads, and a storage failure stops the run instead of being hidden.",
@@ -3467,7 +3475,7 @@
     {
       "key": "tools.verify_masterplan_impact:main:stderr_export",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: main prints only a fixed prefix and validation error derived from PR governance metadata; it does not process runtime secrets or production payloads.",
+      "rationale": "Inspection: main prints only a fixed prefix and a validation error naming the declaration, issue numbers and repository plan paths from the pull request's governance metadata; it reads no runtime secrets or production payloads.",
       "sanitizer": "governance-only inputs and fixed validation vocabulary",
       "test_node": "tests/unit/tools/test_verify_masterplan_impact.py::test_invalid_declarations_fail_closed",
       "evidence_tier": "unit"
@@ -3475,9 +3483,9 @@
     {
       "key": "tools.verify_masterplan_impact:main:stdout_export",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: main prints one fixed success sentence after the declaration and changed-file contract validates.",
+      "rationale": "Inspection: main prints one fixed success sentence after the work tracking declaration validates.",
       "sanitizer": "fixed success string",
-      "test_node": "tests/unit/tools/test_verify_masterplan_impact.py::test_updated_declaration_accepts_known_track_with_masterplan_change",
+      "test_node": "tests/unit/tools/test_verify_masterplan_impact.py::test_issue_links_accept_their_tracked_changes",
       "evidence_tier": "unit"
     },
     {

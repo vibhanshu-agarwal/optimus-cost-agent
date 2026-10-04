@@ -832,8 +832,11 @@ def test_committed_manifest_validates_at_its_baseline() -> None:
 
 def test_draft_reproduces_the_committed_manifest_byte_for_byte() -> None:
     commit = json.loads(MANIFEST.read_text(encoding="utf-8"))["baseline"]["commit"]
-    drafted = gwt.render_manifest(rules.draft_inventory(commit, gwt.read_sources_at(commit, rules.READS)))
-    assert drafted.encode("utf-8") == MANIFEST.read_bytes()
+    drafted = rules.draft_inventory(commit, gwt.read_sources_at(commit, rules.READS), gwt.read_plans_at(commit))
+    committed = gwt.load_inventory(MANIFEST).records
+    if all(r.target_issue is not None for r in committed if r.disposition == "migrate"):  # finalized after publication
+        drafted = gwt.finalize_inventory(drafted, {r.id: r.target_issue for r in committed if r.target_issue is not None})
+    assert gwt.render_manifest(drafted).encode("utf-8") == MANIFEST.read_bytes()
 
 
 def test_reviewed_overrides_are_marked_in_the_manifest() -> None:
@@ -877,7 +880,8 @@ def test_cli_validate_reports_problems_with_a_nonzero_exit(tmp_path: Path, capsy
 def test_cli_draft_writes_the_manifest_bytes(capsysbinary: pytest.CaptureFixture[bytes]) -> None:
     commit = json.loads(MANIFEST.read_text(encoding="utf-8"))["baseline"]["commit"]
     assert gwt.main(["draft", commit]) == 0
-    assert capsysbinary.readouterr().out == MANIFEST.read_bytes()
+    drafted = rules.draft_inventory(commit, gwt.read_sources_at(commit, rules.READS), gwt.read_plans_at(commit))
+    assert capsysbinary.readouterr().out == gwt.render_manifest(drafted).encode("utf-8")
 
 
 # ==== Task 2: bounded, restart-safe publication and reconciliation ====
@@ -2151,3 +2155,247 @@ def test_title_rules_fail_closed() -> None:
     migrating = [rules._record(id=record_id) for record_id in rules.TITLES] + [rules._record(id="A2A-H99", kind="obligation")]
     with pytest.raises(ValueError, match="no finding heading for A2A-H99"):
         rules._titles(migrating, "### High 4 — Something else\n")
+
+
+# ==== Task 4: offline governance gates (the plan's named tests over fixtures, the manifest's identities) ====
+
+ISSUES = f"https://github.com/{gwt.REPO}/issues"
+HISTORY = f"https://github.com/{gwt.REPO}/blob/{'a' * 40}/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md"
+STUB_FIXTURE = f"""\
+# Consolidated deferred follow-ups backlog
+
+Current work status lives in [GitHub issues]({ISSUES}) and the [work status page](../../work-status.html).
+The pool before the cutover is preserved at [its last commit]({HISTORY}).
+
+## Compatibility anchors
+
+### P11-FU-11: Plan 11.7 retry preflight and live session proof
+
+Tracked in [P11-FU-11]({ISSUES}/301).
+
+### Durable effect-aware MCP indeterminate-call custody
+
+Closed history: [P11-FU-22 at the cutover]({HISTORY}#p11-fu-22-durable-effect-aware-mcp-indeterminate-call-custody).
+"""
+ANCHORS = {"p11-fu-11-plan-117-retry-preflight-and-live-session-proof", "durable-effect-aware-mcp-indeterminate-call-custody"}
+FROZEN_PLAN = "docs/superpowers/plans/plan-11-23.md"
+FROZEN_TEXT = b"# Plan 11.23\n\nApproved bytes.\n"
+
+
+def _identities(data: dict[str, Any], *, finalized: bool = True) -> dict[str, Any]:
+    """The fixture with the manifest's identity tables, and (finalized) an issue for every migrating record."""
+    data["plan_files"] = {FROZEN_PLAN: {"record": "plan:11.23", "blob": gwt.git_blob_id(FROZEN_TEXT), "pin": "x"}}
+    data["plan_exemptions"] = {"docs/superpowers/plans/roadmap.md": "navigation history, no work of its own"}
+    data["frozen_artifacts"] = {"docs/a.md": {"sha256": hashlib.sha256(b"frozen").hexdigest(), "pin": "x"}}
+    if finalized:
+        numbers = iter(range(400, 500))
+        for record in data["records"]:
+            if record["disposition"] == "migrate" and record.get("target_issue") is None:
+                record["target_issue"] = next(numbers)
+    return data
+
+
+def _gated(tmp_path: Path, data: dict[str, Any]) -> gwt.Inventory:
+    return gwt.load_inventory(_write(tmp_path, _with_source(data, POOL)))
+
+
+def _plans(**changes: bytes | None) -> dict[str, bytes]:
+    plans = {
+        FROZEN_PLAN: FROZEN_TEXT,
+        "docs/superpowers/plans/roadmap.md": b"# Roadmap\n",
+        "docs/superpowers/plans/new-plan.md": f"# New\n\n**Tracking issue:** {ISSUES}/301\n".encode(),
+    }
+    for path, data in changes.items():
+        key = f"docs/superpowers/plans/{path}.md"
+        if data is None:
+            plans.pop(key, None)
+        else:
+            plans[key] = data
+    return plans
+
+
+def test_live_plan_files_have_issue_identity(tmp_path: Path) -> None:
+    inventory = _gated(tmp_path, _identities(_good()))
+    assert gwt.plan_identity_problems(_plans(), inventory) == []
+    cases = {
+        "changed since its sealed baseline identity": _plans(**{"plan-11-23": FROZEN_TEXT + b"edited\n"}),
+        "no tracking header, no sealed baseline identity": _plans(orphan=b"# Orphan\n"),
+        "2 tracking headers": _plans(**{"new-plan": f"**Tracking issue:** {ISSUES}/1\n**Tracking issue:** {ISSUES}/2\n".encode()}),
+        "is not an issue of": _plans(**{"new-plan": b"**Tracking issue:** https://github.com/someone/else/issues/3\n"}),
+    }
+    for expected, plans in cases.items():
+        problems = gwt.plan_identity_problems(plans, inventory)
+        assert any(expected in problem for problem in problems), (expected, problems)
+    data = _identities(_good(), finalized=False)
+    data["plan_files"][FROZEN_PLAN]["record"] = "plan:12.1"  # a record whose issue does not exist yet
+    problems = gwt.plan_identity_problems(_plans(), _gated(tmp_path, data))
+    assert any("plan:12.1" in problem and "no issue identity" in problem for problem in problems), problems
+
+
+def test_source_mapping_has_no_unclassified_record(tmp_path: Path) -> None:
+    assert gwt.mapping_problems(_gated(tmp_path, _identities(_good()))) == []
+    problems = gwt.mapping_problems(_gated(tmp_path, _identities(_good(), finalized=False)))
+    assert any("P11-FU-40" in problem and "no issue identity" in problem for problem in problems), problems
+    data = _identities(_good())
+    _records(data)["RISK"]["rationale"] = " "
+    _records(data)["A2A-M17"]["rationale"] = ""
+    problems = gwt.mapping_problems(_gated(tmp_path, data))
+    assert {"RISK", "A2A-M17"} <= {p.split("'")[1] for p in problems if "no reviewed rationale" in p}, problems
+
+
+def test_source_to_issue_coverage_and_unique_aliases(tmp_path: Path) -> None:
+    assert gwt.coverage_problems(_gated(tmp_path, _identities(_good()))) == []
+    data = _identities(_good())
+    _records(data)["P11-FU-40"]["aliases"] = ["P11-FU-20"]  # another migrating record's identity
+    assert any("P11-FU-20" in p and "more than one issue" in p for p in gwt.coverage_problems(_gated(tmp_path, data)))
+    data = _identities(_good())
+    data["compat_anchors"] = {"p11-fu-40-real-zed-containment": "P11-FU-40", "gone": "P11-FU-404", "registry": "section:x"}
+    problems = gwt.coverage_problems(_gated(tmp_path, data))
+    assert [p for p in problems if "gone" in p] and not [p for p in problems if "registry" in p or "p11-fu-40" in p], problems
+
+
+def test_pool_anchors_survive() -> None:
+    assert gwt.anchor_problems(STUB_FIXTURE, ANCHORS) == []
+    assert any("p11-fu-5-x" in p and "no longer resolves" in p for p in gwt.anchor_problems(STUB_FIXTURE, {*ANCHORS, "p11-fu-5-x"}))
+    unlinked = STUB_FIXTURE.replace(f"Tracked in [P11-FU-11]({ISSUES}/301).", "Tracked elsewhere.")
+    assert any("points nowhere" in p for p in gwt.anchor_problems(unlinked, ANCHORS))
+    twice = STUB_FIXTURE + "\n### Durable effect-aware MCP indeterminate-call custody\n\nAgain.\n"
+    assert any("more than one heading" in p for p in gwt.anchor_problems(twice, ANCHORS))
+    files = {
+        "docs/a.md": f"See [registry](../plans/{gwt.POOL_FILE}#live-implementation-plan-registry) and [top](../plans/{gwt.POOL_FILE}).",
+        "tests/b.py": f'LINK = "{gwt.POOL_FILE}#p11-fu-5-windows-subprocess-handle-duplication-flake-winerror-650"',
+        "docs/c.md": "Unrelated [link](other.md#a-fragment-of-another-file).",  # not the pool, so not its anchor
+    }
+    assert gwt.inbound_pool_anchors(files) == {
+        "live-implementation-plan-registry",
+        "p11-fu-5-windows-subprocess-handle-duplication-flake-winerror-650",
+    }
+
+
+def test_frozen_blobs_unchanged(tmp_path: Path) -> None:
+    inventory = _gated(tmp_path, _identities(_good()))
+    assert gwt.frozen_problems({"docs/a.md": b"frozen"}.get, inventory) == []
+    assert any("changed" in p for p in gwt.frozen_problems({"docs/a.md": b"frozen\r\n"}.get, inventory))
+    assert any("missing" in p for p in gwt.frozen_problems({}.get, inventory))
+    # Archived with its exact bytes under the repository's archive convention: still the same frozen artifact.
+    assert gwt.frozen_problems({"docs/archive/a.md": b"frozen"}.get, inventory) == []
+    assert any("changed" in p for p in gwt.frozen_problems({"docs/archive/a.md": b"frozen!"}.get, inventory))
+
+
+def test_the_real_frozen_artifacts_are_unchanged_at_head() -> None:
+    def head(path: str) -> bytes | None:
+        try:
+            return gwt.git_blob_bytes("HEAD", path)
+        except subprocess.CalledProcessError:
+            return None
+
+    inventory = gwt.load_inventory(MANIFEST)
+    frozen = {record.title for record in inventory.records if record.kind == "frozen-mapping"}
+    assert set(inventory.frozen_artifacts) == frozen and len(frozen) == 23  # every frozen-mapping record keeps its digest
+    assert gwt.frozen_problems(head, inventory) == []
+
+
+def test_status_stub_has_no_duplicate_board() -> None:
+    assert gwt.stub_problems(STUB_FIXTURE) == []
+    cases = {
+        "table": STUB_FIXTURE + "\n| ID | Status |\n|---|---|\n| P11-FU-1 | Open |\n",
+        "status line": STUB_FIXTURE + "\n**Status:** Open.\n",
+        "history permalink": STUB_FIXTURE.replace(HISTORY, "https://example.com/pool"),
+        "work status page": STUB_FIXTURE.replace("../../work-status.html", "../../elsewhere.html"),
+        "GitHub issues": STUB_FIXTURE.replace(f"[GitHub issues]({ISSUES})", "GitHub"),
+        "lines": STUB_FIXTURE + "\nfiller\n" * 200,
+    }
+    for expected, stub in cases.items():
+        problems = gwt.stub_problems(stub)
+        assert any(expected in problem for problem in problems), (expected, problems)
+
+
+def test_the_manifest_pins_every_frozen_artifact_digest() -> None:
+    data = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    pool = gwt.git_blob_bytes(data["baseline"]["commit"], rules.SOURCES["pool"]).decode("utf-8")
+    stated = dict(re.findall(r"^- `(docs/superpowers/[^`]+)` — SHA-256 `([0-9A-Fa-f]{64})`", pool, re.M))
+    assert {path: entry["sha256"] for path, entry in data["frozen_artifacts"].items()} == {p: d.lower() for p, d in stated.items()}
+    lines = [line for line in MANIFEST.read_text(encoding="utf-8").splitlines() if '"sha256": ' in line]
+    assert len(lines) == len(stated) and all("pragma: allowlist secret" in line for line in lines)
+
+
+def test_the_manifest_gives_every_docs_root_plan_one_identity() -> None:
+    data = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    commit = data["baseline"]["commit"]
+    plans = gwt.read_plans_at(commit)
+    assert set(data["plan_files"]) | set(data["plan_exemptions"]) == set(plans)
+    assert not set(data["plan_files"]) & set(data["plan_exemptions"])
+    records = {r["id"]: r for r in data["records"]}
+    for path, entry in data["plan_files"].items():
+        assert entry["blob"] == gwt.git_blob_id(plans[path]) and records[entry["record"]]["disposition"] == "migrate", path
+        assert "pragma: allowlist secret" in entry["pin"]
+    owners = {path.rsplit("/", 1)[1]: entry["record"] for path, entry in data["plan_files"].items()}
+    assert owners["2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md"] == "plan:11.23"
+    assert owners["2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md"] == "plan:11.7"
+    assert owners["hardening-runtime-quality-masterplan.md"] == "HARDENING-FEAT-RUNTIME-QUALITY"
+    assert owners["hardening-ci-guardrail-truthfulness-implementation.md"] == "HARDENING-TRACK-CI-GUARDRAILS"
+    assert all(rationale.strip() for rationale in data["plan_exemptions"].values())
+    assert set(data["plan_exemptions"]) == {f"{gwt.PLANS_DIR}{name}" for name in rules.PLAN_EXEMPTIONS}
+
+
+def test_finalize_records_each_migrating_record_issue_once(tmp_path: Path) -> None:
+    data = _identities(_good(), finalized=False)
+    migrating = [r["id"] for r in data["records"] if r["disposition"] == "migrate"]
+    mapping = {record_id: 500 + index for index, record_id in enumerate(migrating) if record_id not in ("plan:11.23", "P11-FU-20")}
+    mapping |= {"plan:11.23": 222, "P11-FU-20": 223}
+    final = gwt.finalize_inventory(data, mapping)
+    assert {r["id"]: r["target_issue"] for r in final["records"] if r["disposition"] == "migrate"} == mapping
+    assert "target_issue" not in _records(data)["P11-FU-40"]  # the input is left untouched
+    for broken, expected in [
+        ({k: v for k, v in mapping.items() if k != "P11-FU-40"}, "P11-FU-40"),
+        ({**mapping, "nobody": 9}, "nobody"),
+        ({**mapping, "plan:11.23": 999}, "plan:11.23"),
+        ({**mapping, "P11-FU-40": mapping["plan:12.1"]}, "more than one record"),
+        ({**mapping, "P11-FU-40": 0}, "P11-FU-40"),
+    ]:
+        with pytest.raises(ValueError, match=re.escape(expected)):
+            gwt.finalize_inventory(data, broken)
+
+
+# Written after the gates' implementation while planning mutants (a disclosed test-first deviation): branch boundaries.
+
+
+def test_gate_branches_fail_closed(tmp_path: Path) -> None:
+    data = _identities(_good())
+    data["plan_files"][FROZEN_PLAN]["record"] = "no-such-record"
+    problems = gwt.plan_identity_problems(_plans(), _gated(tmp_path, data))
+    assert any("no-such-record" in problem and "no issue identity" in problem for problem in problems), problems
+
+    data = _identities(_good())
+    _records(data)["A2A-M17"].update(rationale=" ", terminal_disposition="closed through the archived closure plan")
+    assert gwt.mapping_problems(_gated(tmp_path, data)) == []  # a terminal disposition is a reviewed rationale
+    _records(data)["A2A-M17"].update(disposition="duplicate", duplicate_of="A2A-C1")
+    assert gwt.mapping_problems(_gated(tmp_path, data)) == []
+    _records(data)["A2A-M17"]["duplicate_of"] = "RISK"  # not a migrating record
+    assert any("A2A-M17" in problem and "duplicate of 'RISK'" in problem for problem in gwt.mapping_problems(_gated(tmp_path, data)))
+
+    assert any("status line" in problem for problem in gwt.stub_problems(STUB_FIXTURE + "\n- Current status: Open\n"))
+
+    final_data = _identities(_good(), finalized=False)
+    complete = {r["id"]: r.get("target_issue") or 600 + i for i, r in enumerate(final_data["records"]) if r["disposition"] == "migrate"}
+    for bad in (True, "301", 2.0):
+        with pytest.raises(ValueError, match="not a positive issue number"):
+            gwt.finalize_inventory(final_data, {**complete, "P11-FU-40": bad})
+
+
+def test_plan_identity_rules_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    commit = json.loads(MANIFEST.read_text(encoding="utf-8"))["baseline"]["commit"]
+    sources, plans = gwt.read_sources_at(commit, rules.READS), gwt.read_plans_at(commit)
+    monkeypatch.setattr(rules, "PLAN_EXEMPTIONS", {**rules.PLAN_EXEMPTIONS, "gone.md": "no longer here"})
+    with pytest.raises(ValueError, match="gone.md"):
+        rules.draft_inventory(commit, sources, plans)
+    monkeypatch.undo()
+    orphan = {**plans, gwt.PLANS_DIR + "2026-12-01-orphan.md": b"# An unowned plan\n"}
+    with pytest.raises(ValueError, match="orphan.md has owners \\[\\]"):
+        rules.draft_inventory(commit, sources, orphan)
+    path = "docs/superpowers/plans/archive/x.md"
+    twice = f"- `{path}` — SHA-256 `{'A' * 64}` — one\n- `{path}` — SHA-256 `{'B' * 64}` — two\n"
+    with pytest.raises(ValueError, match="two digests"):
+        rules._frozen_artifacts(twice)
+    once = rules._frozen_artifacts(f"- `{path}` — SHA-256 `{'A' * 64}` — one\n- `{path}` — SHA-256 `{'a' * 64}` — again\n")
+    assert once == {path: {"sha256": "a" * 64, "pin": rules.DIGEST_PIN_NOTE}}  # one artifact, stated twice, same digest
