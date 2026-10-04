@@ -1,0 +1,79 @@
+# ADR-016: Test cadence, product coverage and staged turnaround delivery
+
+**Date:** 2026-10-04. **Status:** Accepted-with-open-items for operator policy; this record is an unpublished review draft until first merge. Claude agreed its substance subject to A1–A4; Codex applies those four corrections here. Checkpoint A accepted by Codex on 2026-10-04; stage-final evidence remains owed. **Decider:** operator for requirements, delivery route and narrow CI implementation authority; agents for implementation details and measured acceptance values. ADR-016 is available (latest existing record ADR-015).
+
+This record captures decisions, not a second work registry. Filing does not claim Task 0 complete. The consolidated backlog remains the sole status/owner/next-gate authority.
+
+## Shared sources and direct operator words
+
+| Source | Identity and qualification |
+|---|---|
+| S3: original operator messages and approval context | Global source S3 in the [decision index](README.md). Four exact original messages from Codex chat `01a10617-9940-72c0-a5e2-e3f8c3241055`, exported as `2026-10-04-codex-plan-11-30-operator-decisions-export.json`, SHA-256 `3DDD90F7FCB52DE88059E8A4582CFF37A6EF27BDA816A32A34E986E39CFB20D5`. Explicitly scoped transcript excerpt, not a full conversation export. Raw export is archival provenance only; exact operator words and decisions are reproduced below. |
+| H1: new-chat test-profiles handoff | `2026-10-04-test-profiles-new-chat-handoff.md`, SHA-256 `B1CAFA8914BC79B5762F87F4C5FC4C7691C750344DC38D140B700B62D8990DBD`, reverified by Codex at Checkpoint A. Settled D1–D6 below are labelled paraphrases from this shared handoff, not verbatim original operator quotations. External file is archival provenance only. |
+| P1: approved complete contract | Plan 11.30 v4, approved raw SHA-256 `8A40DEF6D627EDC722D9FA925BBB0C193DE433ECCB91D2DCA19F1DA6AFC5C790`. Its two CRLF lines must survive Git storage; a scoped `-text whitespace=cr-at-eol` attribute preserves the approved pin. LF derivative `7D07ADA39CE1F8987E529C7FD8838952B4607F6F2CBD8773D39220D44DB6AF1E` is not a replacement approval. |
+| C1: Claude/Codex recommendation agreement | Claude concurrence response `2026-10-04-claude-concurrence-plan-11-30-v3.md`, SHA-256 `DFF868D0B255838F49EE5C03C351B75EBF0B88DC085E965C8DDDF823F080D2F4`; Codex accepted the staged-delivery objection and audit-load simplification in S3 before operator approval. |
+| E1: accepted Checkpoint A snapshot | Claude lane `reports/plan-11-30-test-profiles-evidence.md`, SHA-256 `061FFD6AC366B2DD02920DBFCC942EA2C9CD88A6EEA063A0444D2B8FC31B1CD7`; `reports/plan-11-30-test-profiles-manifest.json`, SHA-256 `09E9076413D37E8626F6E55DE8AC114E091D6817067C2EFF080BC092F616F303`. Final eight source hashes independently match. Snapshot accepted for Task 0/Checkpoint A, not stage-final delivery. |
+| E2: follow-up and relayed operator progress decision | `2026-10-04-claude-checkpoint-a-e1-followup-packet-plan-11-30.md`, SHA-256 `1D58E6D633B651DB206933AAC706E192FD1933C3F41932B69C02CFB74396E4FC`. The operator relayed this packet in Codex chat on 2026-10-04. It reproduces the question-tool prompt, selected option and description from Claude's implementation chat; it is a hashed transcription, not an original chat export. The decision below is labelled paraphrase rather than an original-message quotation. External packet is provenance only. |
+
+Operator, verbatim, S3 message at `2026-10-04T10:02:14.535Z` giving the review/simplicity rules:
+
+> 1. I want both of you to agree
+> 2. Also keep the solution simple as possible. That does not mean you defer required functionality - but take the simpler to implement path
+
+Operator, verbatim, S3 reply at `2026-10-04T10:14:05.341Z`, after Codex asked approval at `2026-10-04T10:11:16.427Z` of v4 for implementation by another agent, the staged route and narrow CI change (with publication permissions kept separate):
+
+> Yes. Agreed as per comments above
+
+Operator, verbatim, S3 implementing-agent assignment at `2026-10-04T10:17:01.533Z`:
+
+> Claude will implement. Please create a task kickoff note for Claude
+
+## Context
+
+Routine full Windows hooks were costly and slowed main-based lanes. Retained historical timings and candidate runs have failures, partial registries and unequal host load; they motivate the work but are not an accepted delivery or a guaranteed speed promise. Plan 11.28 supplies the merged run-context/protection substrate and does not authorize its held workflow activation or registry cleanup.
+
+Task 0 demonstrated rising phase gaps with coverage on/off and in PASSIVE mode. The retained probes locate the recorder's per-phase written-file close cost on this host after particular Pillow PNG encoding paths. They do not identify the responsible host component or show that coverage/job/guard can never interact with it. The proposed recorder remedy holds each stream per run, writes and flushes each append, and closes at terminal/finally while retaining failed-write/read-back/INVALID semantics. Six-decimal phase timing makes existing fields useful below one millisecond; it does not change the UNKNOWN rule for a nonpositive first median.
+
+## Options and trade-offs
+
+| Choice | Benefit | Cost/risk | Disposition |
+|---|---|---|---|
+| Full suite per commit | Simple selection; broad coverage | Repeated expensive work blocks unrelated lanes | Replaced by approved commit profile; final full gates retained |
+| Additive static profiles and bounded dependency selection | Reuses pytest/default selection; faster routine checks; explicit reasons | Unknown dynamic dependencies remain a residual backstopped by final full runs | Chosen mechanism in approved v4 |
+| Marker replacement/dynamic coverage-based TIA | Potential additional selection precision | Could make supported runs PASSIVE or introduce a larger mechanism | Not selected |
+| Required full current audits supply checkpoint load | Reuses necessary work and can remove an extra worktree/environment | Requires resource independence, distinct records and complete overlap proof | Preferred; separate proc lane fallback |
+| Coverage-only CI flags/reports | Implements per-product gates with a small change | Requires actual comparable full CI evidence | Narrow implementation grant approved; other 11.28 holds retained |
+| One final delivery after all work | Saves one final validation/release cycle | Holds the hook gain behind audit-budget coordination and xdist acceptance | Rejected in joint recommendation |
+| Stage A Tasks 0–3, then required Stage B Tasks 4–5 | Main-based lanes receive the hook/overhead improvement earlier | One additional Task 6 cycle, estimated 3–5 engineering hours plus platform/review/CI wall time | Joint recommendation accepted by operator |
+| Isolate lifecycle children with TMPDIR/TEMP/TMP and positive marker proofs | Reuses temporary registries and proves the child destination | Needs set/unset controls and native-registry negative-space attribution | Chosen; normal cleanup is not abrupt-exit proof |
+| Shared positive-ended predicate | One identity/end rule for observation and maintenance | Windows checks PID plus creation time; POSIX only checks /proc presence and retains weaker capability labels; LIVE/UNKNOWN protected | Chosen; worktree absence alone is rejected as end proof |
+| Operator-invoked inventory/dry-run, exact-class archival, validated receipts | Explicit bounded grant; retains archived bytes and interrupted-move reconciliation | Fresh inventory, content rechecks and verification required | Chosen mechanism; actual host execution separately held |
+| Raise the 512 cap, automatic sweep or deletion | Reduces immediate registry pressure | Masks custody, expands mutation or loses evidence | Rejected; no automatic maintenance commissioned |
+| Per-phase reopen/close versus held streams | Reopen has a short handle lifetime; held streams remove repeated close cost | Held streams require bounded lifetime, flush, terminal close and integrity checks | Narrow Task 0 candidate; final full-run confirmation still owed |
+
+## Accepted requirements and authority
+
+The following are labelled paraphrases from H1/P1, not verbatim source quotations:
+
+- Commit profile per code commit; whole-diff checkpoints with all current audits at full depth, triggered Windows/WSL checks and Windows concurrency repeats under supported load. No intermediate full suite.
+- One serial full Windows coverage run per delivered candidate alongside final review; reuse for pre-finalize only if unchanged. Full WSL pre-finalize remains mandatory. Windows/WSL environments and coverage-producing lanes remain independent.
+- Full-suite-data Optimus 80% floor; Context Engine own 80%; model policy own 80% plus its Optimus inclusion. Safety-critical coverage cannot regress without explicit disposition. A2A's 80% enforcement is deferred; interim figures are informational, without a new-test obligation.
+- Required audit optimization and bounded core-only xdist remain in this plan. Per-commit quick audits begin only after the quick-depth gate; checkpoints stay full. Windows CI/nightly is not commissioned.
+- Stage A and Stage B each use Task 6 for their own exact source. The plan remains open until every required objective is accepted. Fable 5.1 then Codex review checkpoints A–D; implement the diagnosed Task 0 fix within the task, without a pre-coding approval round.
+- Claude implements; Codex architects/reviews. The approved narrow CI change covers existing full pytest coverage flags/product reports only. All other 11.28 profile/run-record activation, cleanup and branch-folding holds remain.
+
+**Agent-selected values, not operator-originated requirements:** static package partition/interface details, ordinary minimum three Windows outer stability repeats, initial two-worker xdist configuration and proposed 20% median improvement target, first/last-decile ratio threshold of two, microsecond recording precision and engineering estimates. Operator approved the complete v4 contract containing these choices; that does not change their origin. Preserve existing stronger internal repeat obligations.
+
+## Evidence and open boundaries
+
+- Codex independently checked all four receipt seals (161, 208, 223 and 240 files) and candidate per-file hashes, and recomputed pre/post gap ratios. Post-fix measured ratios are 1.096 with coverage and 1.169 without. The source runs exited 1 on the intake documentation failure; these metrics are diagnostic evidence, not passing test-run or delivery receipts.
+- Post-fix observations identify a live overlapping lane; the registry is partial. Host-load matching is unestablished. No claim that load can only worsen gaps or that the observed comparison is conservative is accepted. Task 6 full-source confirmation remains UNRUN.
+- The original forged receipt and remaining disposition/UTC cases are corrected test-first. Codex independently exercised valid receipt, `disposition=[]` and impossible UTC through verify/archive against temporary synthetic archived bytes: valid returns 0/0; structural damage returns 4/4 with the unreadable line named; invalid UTC returns 4/3 with the entry named. No bytes moved in those idempotency/refusal controls. One structurally malformed line blocks the entire receipt file until reviewed; semantic mismatches remain per entry. This conservative failure rule is accepted, including its cost of blocking other entries in that file.
+- The source-bound focused gates pass: Windows 428 passed/1 skipped in each TMPDIR state; WSL 381 passed/48 skipped in each state; index-visible docs 84 passed. The Windows test file was then normalized from CRLF to LF and its narrow 86-pass/1-skip gate repeated; WSL and final Windows source hashes match. Ruff independently passes for the full lane. Skipped native cases remain unsupported on WSL, not passing native proof. Checkpoint A is accepted; final full Task 6 remains UNRUN.
+- Registry execution release is limited to the reviewed 724-entry class after fresh inventory/dry-run proves the same class digest `28bc1799eebba5f132996b366ee255ca0ccaf85f0a332df4e26316343009134a`. Changed class, changed bytes or failed end/absence checks stop execution; no widened grant. Archive, never delete, retain receipts and run verify afterward. Keep LIVE/UNKNOWN/unmatched entries.
+- Shared registry boundary-test interruption risk, residual written-file close costs inside test phases and zero-resolution UNKNOWN observations retain named custody under `P11-FEAT-TEST-PROFILES`; filing this record closes none.
+- Progress disposition (labelled paraphrase, E2): the operator approved the jointly recommended Plan 11.30-only exception. Approved v4 stays byte-frozen. Verified task completion is recorded in the existing `P11-FEAT-TEST-PROFILES` backlog entry with report sections and manifest identities; the checkbox-only completion requirement is waived only for this plan. No tick-only successor or private-ledger completion authority. Other plans and frozen-byte rules remain unchanged.
+
+Implementation/verification is approved within v4. Claude agrees this unpublished record subject to the predicate-strength correction and updated verification facts in E2; both are now applied. Codex accepts Checkpoint A and expressly releases Claude's local intake commit and local Task 0 commit after importing this final documentation delta and passing normal relevant checks. For these two named commits only, `SKIP=optimus-pytest-coverage` is expressly allowed: the current hook would run the intermediate full suite prohibited by the approved cadence. All other hooks, Ruff, docs and secret checks remain required; do not use `--no-verify`. Task 6 full Windows/WSL/CI gates remain mandatory. This temporary exception ends after these two commits and does not change hook configuration.
+
+Authority clarification (labelled paraphrase; operator relay in Codex chat `01a10617-9940-72c0-a5e2-e3f8c3241055`, 2026-10-04): explicit Codex release counts as the operator grant for these Plan 11.30 local actions. The exact-class archival release above uses that delegation. This is not push, PR, merge, service activation or paid-call authority. Final closing-commit/document freshness audit remains a later gate. Task 1 may start after this accepted checkpoint and local intake/Task 0 delivery; a changed registry class pauses archival only and does not prevent Task 1.

@@ -44,6 +44,15 @@ by this folder.
        text. Codex verified the archive checksum and the scope/filing question-tool answers; Claude
        checked the exported selections. Raw S2 is archival provenance, not an operating/test/release input.
      - S1 remains the cited provenance for the frozen 2026-09-30 records; S2 adds later selections.
+   - **Source S3.** Plan 11.30 operator messages dated 2026-10-04 in Codex chat
+     `01a10617-9940-72c0-a5e2-e3f8c3241055`.
+     - External transcript excerpt: `optimus-handoff\decisions-sources\2026-10-04-codex-plan-11-30-operator-decisions-export.json`.
+     - SHA-256: `3DDD90F7FCB52DE88059E8A4582CFF37A6EF27BDA816A32A34E986E39CFB20D5`.
+     - Four exact original messages: review/simplicity instruction (`10:02:14.535Z`), Codex approval
+       question (`10:11:16.427Z`), operator approval (`10:14:05.341Z`) and Claude assignment
+       (`10:17:01.533Z`), all 2026-10-04 UTC. Explicitly scoped excerpt, not a full export.
+       ADR-016 reproduces operator words and authority boundaries. Raw S3 is archival provenance,
+       never an operating, test or release dependency; S1/S2 retain their existing meanings.
 2. **Label the decider.** Each record says who decided: the operator, an agent (Claude or Codex), or an
    agent proposal still awaiting the operator. A value an agent chose must never read as an operator
    requirement.
@@ -115,6 +124,8 @@ by this folder.
 | [013](ADR-013-plan12-effect-producer-repair.md) | Effect/cancellation repair as Plan 12’s first code step; completes [ADR-002](ADR-002-history-strategies-and-picker.md) delivery prerequisite, relates to [ADR-001](ADR-001-context-engine-separate-product.md) | Accepted-with-open-items; repair evidence owed | Operator; narrow mechanisms agreed by Claude/Codex | 2026-10-01 |
 | [014](ADR-014-all-session-request-guard-floor-clarification.md) | All-session request guard and unchanged source floor; completes [ADR-003](ADR-003-context-ceiling-and-history-limits.md) D7 interpretation | Accepted-with-open-items; full-floor/estimator evidence owed | Operator | 2026-10-01 |
 | [015](ADR-015-cost-stop-removal-sequencing.md) | Cost-stop removal after accounting/D6; completes [ADR-005](ADR-005-cost-alerts-not-limits.md) sequencing, clarifies [ADR-009](ADR-009-loop-control-without-stopping-the-user.md) dependency | Accepted-with-open-items; D6 and migration owed | Operator | 2026-10-01 |
+
+| [016](ADR-016-test-cadence-product-coverage-and-staged-delivery.md) | Test cadence, product coverage, registry mechanisms and staged turnaround delivery | Accepted-with-open-items; Checkpoint A accepted, progress exception approved; stage-final evidence owed | Operator policy; mechanisms agreed by Claude/Codex | 2026-10-04 |
 
 **Evidence in the repository:** [industry practice and model catalog, 2026-09-30](2026-09-30-industry-context-cost-and-model-evidence.md).
 It holds the survey of how eight coding agents handle context and spend, the OpenRouter catalog snapshot

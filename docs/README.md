@@ -44,6 +44,7 @@ relevant records before proposing a change in their area.
 | [ADR-013: Plan 12 effect repair](decisions/ADR-013-plan12-effect-producer-repair.md) | First code step; real WRITE/TEST boundaries and cancellation; later Package A authority |
 | [ADR-014: Request guard and source floor](decisions/ADR-014-all-session-request-guard-floor-clarification.md) | ADR-003 clarification with full-floor route evidence required |
 | [ADR-015: Cost-stop removal sequencing](decisions/ADR-015-cost-stop-removal-sequencing.md) | After accounting/D6, without waiting for ADR-009 |
+| [ADR-016: Test cadence and staged delivery](decisions/ADR-016-test-cadence-product-coverage-and-staged-delivery.md) | Accepted policy/mechanisms and Plan 11.30 progress exception; Checkpoint A accepted, stage-final evidence owed |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 
 ## Research (input for Plan 12)
@@ -78,6 +79,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
+| [Plan 11.30 v4: Test profiles](superpowers/plans/2026-10-04-plan-11-30-test-profiles-implementation_v4.md) | Approved 2026-10-04 for implementation by another agent: all v3 amendments, simpler audit-supplied load, narrow CI coverage change and Stage A then required Stage B delivery; Claude implements; [kickoff](superpowers/reviews/2026-10-04-plan-11-30-claude-kickoff.md); [Checkpoint A review](superpowers/reviews/2026-10-04-plan-11-30-checkpoint-a-codex-review.md) |
 | [Plan 12.2: Context Engine](superpowers/plans/2026-10-01-plan-12-2-context-engine-implementation.md) | Complete contract derived from reviewed revision 5; Package A only selected |
 | [Plan 12.1: Plan/Chat advisory answers](superpowers/plans/2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | Selectable read-only Chat with conversation carriage |
 | [Plan 11.29: GitHub Issues migration](superpowers/plans/2026-10-04-plan-11-29-github-issues-migration.md) | Open work moves to GitHub Issues, shown in a live status page |
