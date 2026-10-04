@@ -383,7 +383,9 @@ def _check_plan988_fu4b(summary: Mapping[str, object], report_text: str) -> None
     bridged["schema_version"] = EVIDENCE_SCHEMA_VERSION
     bridged["scenario"] = "replan"
     bridged["prompt_version"] = LANE_PROMPT_VERSION
-    _check_fu4b(bridged, report_text)
+    # The lane is frozen at its own planner prompt, so its historical evidence is checked against that
+    # version, never the current product prompt (Plan 12.2 Task 11 changed the latter).
+    _check_fu4b(bridged, report_text, prompt_version=LANE_PROMPT_VERSION)
 
     _require(summary.get("evidence_lane") == EVIDENCE_LANE, "fu4b claim missing")
     _require(summary.get("predicate_id") == PREDICATE_ID, "predicate_id mismatch")
