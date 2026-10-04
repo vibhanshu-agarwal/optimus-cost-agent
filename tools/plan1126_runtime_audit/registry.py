@@ -268,6 +268,8 @@ _REQUIRED_PATHS: dict[str, tuple[str, ...]] = {
     "h5.shutdown_schedule": (
         *_GATE_PATHS, *_REDIS_RUNTIME_PATHS, *_H5_PROBE_EXECUTES,
         "tools/plan1126_runtime_audit/shutdown.py",
+        # P11-FU-33: the schedule's detection-time capture, shared with the test helpers.
+        "tools/concurrency_capture.py",
     ),
     "h9.connection_health": (*_GATE_PATHS, *_REDIS_RUNTIME_PATHS, "tools/plan1126_runtime_audit/queue_policy.py"),
     "identity.echo_bound_modules": _GATE_PATHS,

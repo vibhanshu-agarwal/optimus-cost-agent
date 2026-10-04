@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
+from tests.support.concurrency import assert_no_offending_rows, assert_some_row
 from tools.plan1126_runtime_audit.cancellation import H3_SOURCE_PATHS
 from tools.plan1126_runtime_audit.delivery_characterization import H4_SOURCE_PATHS
 from tools.plan1126_runtime_audit.model import AuditArtifact
@@ -241,9 +242,9 @@ def test_queue_inventory_is_independent_complete_and_not_seeded() -> None:
     assert inventory.expected_queue_count is None
     assert inventory.queue_count == len(inventory.queues) > 0
     assert inventory.queue_count == len({queue.queue_id for queue in inventory.queues})
-    assert all(queue.constructor_declares_unbounded for queue in inventory.queues)
-    assert all(queue.declared_bound == 0 for queue in inventory.queues)
-    assert all(site.classification.value != "UNCLASSIFIED" for site in inventory.sites)
+    assert_no_offending_rows(inventory.queues, lambda queue: not (queue.constructor_declares_unbounded), 'must hold for all: queue.constructor_declares_unbounded')
+    assert_no_offending_rows(inventory.queues, lambda queue: not (queue.declared_bound == 0), 'must hold for all: queue.declared_bound == 0')
+    assert_no_offending_rows(inventory.sites, lambda site: not (site.classification.value != "UNCLASSIFIED"), 'must hold for all: site.classification.value != "UNCLASSIFIED"')
 
 
 def test_queue_inventory_derives_receiver_names_instead_of_using_an_allowlist() -> None:
@@ -320,8 +321,8 @@ def test_queue_policy_cross_checks_constructor_and_10000_admissions() -> None:
     }
     assert {row.observed_outcome.value for row in observations} == {"ACCEPTED"}
     assert {row.inference.value for row in observations} == {"DECLARED_UNBOUNDED"}
-    assert all(row.constructor_policy.value == "DECLARED_UNBOUNDED" for row in observations)
-    assert all(row.complete for row in observations)
+    assert_no_offending_rows(observations, lambda row: not (row.constructor_policy.value == "DECLARED_UNBOUNDED"), 'must hold for all: row.constructor_policy.value == "DECLARED_UNBOUNDED"')
+    assert_no_offending_rows(observations, lambda row: not (row.complete), 'must hold for all: row.complete')
     assert {row.elapsed_class.value for row in observations} == {"WITHIN_100MS"}
     assert {row.elapsed_threshold_ms for row in observations} == {100.0}
 
@@ -339,9 +340,9 @@ def test_connection_health_probe_and_pool_ownership_are_classified() -> None:
     assert {row["outcome"] for row in observations} == {
         "HEALTHY", "CONNECTION_FAILURE", "UNEXPECTED_PROPAGATED"
     }
-    assert all(row["deadline_policy"] == "CONNECT_ONLY" for row in observations)
-    assert all(row["pool_ownership"] == "RUNTIME_OWNED_CLIENT_THEN_POOL" for row in observations)
-    assert all(row["complete"] for row in observations)
+    assert_no_offending_rows(observations, lambda row: not (row["deadline_policy"] == "CONNECT_ONLY"), 'must hold for all: row["deadline_policy"] == "CONNECT_ONLY"')
+    assert_no_offending_rows(observations, lambda row: not (row["pool_ownership"] == "RUNTIME_OWNED_CLIENT_THEN_POOL"), 'must hold for all: row["pool_ownership"] == "RUNTIME_OWNED_CLIENT_THEN_POOL"')
+    assert_no_offending_rows(observations, lambda row: not (row["complete"]), 'must hold for all: row["complete"]')
 
 
 def test_health_deadline_scope_out_has_health_specific_reason_and_gate() -> None:
@@ -409,7 +410,7 @@ def test_h9_artifact_recomputes_cost_coverage_and_findings(tmp_path: Path) -> No
         "H9-MISSING-QUEUE-BACKPRESSURE-merged",
         "H9-MISSING-HEALTH-DEADLINE-merged",
     }
-    assert all(item["classification"] == "MISSING" for item in h9_findings)
+    assert_no_offending_rows(h9_findings, lambda item: not (item["classification"] == "MISSING"), 'must hold for all: item["classification"] == "MISSING"')
 
     artifact_path = tmp_path / "task9-artifact.json"
     artifact_path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")), encoding="utf-8")
@@ -514,7 +515,7 @@ def test_the_bridge_wait_is_still_discovered_after_ownership_moved_it() -> None:
     kinds = {site.site_kind.value for site in inventory.sites}
     assert "BRIDGE_WAIT" in kinds, "the bridge wait vanished from discovery when it moved"
     waits = [site for site in inventory.sites if site.site_kind.value == "BRIDGE_WAIT"]
-    assert any(site.path == "src/optimus/redis/async_bridge.py" for site in waits)
+    assert_some_row(waits, lambda site: site.path == "src/optimus/redis/async_bridge.py", 'must hold for some: site.path == "src/optimus/redis/async_bridge.py"')
 
 
 def _sealed_shutdown_observations():

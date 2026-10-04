@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
 
+from tests.support.concurrency import DescendantRecorder, assert_descendants_killed
+from tests.support.fault_injection import descendant_tree
 from tools.probe_p11_zed_session_load import (
     ALLOWED_PROBE_SEMANTICS,
     PLAN1119_RUN_ID,
@@ -3997,6 +4001,14 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         expected -= task9_paths
     if not task10_committed:
         expected -= task10_paths
+    # The P11-FU-33 batch adds exactly one module, which the probe itself imports to kill a timed-out
+    # launch's whole process tree. Keyed on whether HEAD's probe carries that import: committed
+    # predecessors keep their closure, and the batch pins one more path.
+    tree_path = "tools/process_tree.py"
+    head_probe = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "tools/probe_p11_zed_session_load.py")
+    tree_committed = b"from tools import process_tree" in head_probe
+    if not tree_committed:
+        expected -= {tree_path}
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
@@ -4004,10 +4016,11 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     assert (task10_paths <= closure) is task10_committed
     assert (task11_paths <= closure) is task11_committed
     assert (correction_paths <= closure) is correction_committed
+    assert (tree_path in closure) is tree_committed
     base = 136 if seam2_committed else 134 if seam3_committed else 133
     assert len(closure) == base + (4 if task9_committed else 0) + (2 if task10_committed else 0) + (2 if task11_committed else 0) + (
         2 if correction_committed else 0
-    )
+    ) + tree_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base
@@ -4471,3 +4484,23 @@ def test_establishing_report_freshness_rejects_stale_future_naive_minus_zero_and
             probe.validate_establishing_report_freshness(timestamp, now)
         else:
             probe.parse_aware_utc_timestamp(timestamp)
+
+
+@pytest.mark.parametrize("shape", ["parent-alive", "middle-exited"])
+def test_launch_timeout_kills_every_descendant_of_the_launched_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shape: str,
+) -> None:
+    """A Python stand-in, never Zed: the pytest launch guard is lifted only around this one call.
+    In "middle-exited" no walk of parent pids from the launched process reaches the grandchild."""
+    from tools.probe_p11_zed_session_load import _launch_zed_once
+
+    pids = tmp_path / "pids"
+    pids.mkdir()
+    code, roles = descendant_tree(pids, shape)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST")
+    timeout = 5.0
+    with DescendantRecorder(pids, roles) as recorder:
+        started = time.monotonic()
+        result = _launch_zed_once([sys.executable, "-c", code], env=dict(os.environ), cwd=tmp_path, timeout_s=timeout)
+        assert result["returncode"] != 0
+        assert_descendants_killed(recorder, roles, deadline=started + timeout + 10.0, what=f"launch timeout ({shape})")

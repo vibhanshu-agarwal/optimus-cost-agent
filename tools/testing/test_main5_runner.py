@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -19,9 +20,10 @@ _KIT_V3_MANIFEST_SHA256 = "A8C4244DF233C42446C498AE4C2AA5C859304D33CB1B740FD3275
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell scored environment")
+@pytest.mark.parametrize("powershell", ["powershell.exe", "pwsh.exe"])
 @pytest.mark.parametrize("previous", ["present", "absent"])
 def test_runner_scored_environment_selects_guarded_venv_and_preserves_cache_controls(
-    tmp_path: Path, previous: str,
+    tmp_path: Path, previous: str, powershell: str,
 ) -> None:
     # A leaked prefix changes the measurement controls; a missing override launches
     # shared-venv Python. The native child observes both, not a source-text pattern.
@@ -65,7 +67,7 @@ Assert-Restored
 'SCORED_ENVIRONMENT_PASS'
 """
     result = _runner_function_probe(
-        script, MAIN5_PREVIOUS_ENV=previous, MAIN5_TEST_PYTHON=sys.executable,
+        script, powershell=powershell, MAIN5_PREVIOUS_ENV=previous, MAIN5_TEST_PYTHON=sys.executable,
         MAIN5_OWN_VENV=str(tmp_path / "attempt-venv"), MAIN5_ENV_CODE=code,
         MAIN5_ENV_OBSERVED=str(observed), MAIN5_ENV_STDOUT=str(tmp_path / "native.txt"),
     )
@@ -282,9 +284,9 @@ def _runner(tmp_path: Path, mode: str, target: str = "") -> Path:
     return attempt
 
 
-def _runner_function_probe(script: str, **extra_env: str) -> subprocess.CompletedProcess[str]:
+def _runner_function_probe(script: str, *, powershell: str = "powershell.exe", **extra_env: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["powershell.exe", "-NoProfile", "-Command", script],
+        [powershell, "-NoProfile", "-Command", script],
         env={
             **os.environ,
             "MAIN5_RUNNER_SOURCE": str(_REPO / "tools/testing/run_main5_guarded_suite.ps1"),
@@ -1449,4 +1451,127 @@ if($actual -ne ($env:MAIN5_EXPECT_MEMBER -ceq 'true')){throw 'PID_REUSED_PARENT_
     result = _runner_function_probe(
         script, MAIN5_CENSUS_CASE=case, MAIN5_EXPECT_MEMBER="true" if case in {"normal", "equal_time"} else "false",
     )
+    assert result.returncode == 0, result.stderr + result.stdout
+
+
+
+def test_runner_has_no_present_empty_environment_clear_idioms() -> None:
+    """Required static backstop; the scored child tests the actual absence contract."""
+    source = (_REPO / "tools/testing/run_main5_guarded_suite.ps1").read_text()
+    assert not re.search(r"SetEnvironmentVariable\([^)]*,\s*\$null", source)
+    assert not re.search(r"\$env:[A-Za-z_]\w*\s*=\s*(['\"])\1", source)
+
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell native argument contract")
+@pytest.mark.parametrize("powershell", ["powershell.exe", "pwsh.exe"])
+def test_runner_null_target_never_reaches_native_argv(tmp_path: Path, powershell: str) -> None:
+    script = r"""
+$ErrorActionPreference='Stop'
+$t=$null; $e=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile($env:MAIN5_RUNNER_SOURCE,[ref]$t,[ref]$e)
+$targets=if($false){@('tests/example.py')}else{@()}
+$normalizer=$ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'Get-Main5NormalizedTargets'},$true)
+if($normalizer){
+  Invoke-Expression $normalizer.Extent.Text
+  $scoredTargets=@(Get-Main5NormalizedTargets -Targets $targets)
+}else{
+  $assignment=$ast.Find({param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -ceq '$scoredTargets'},$true)
+  $scoredTargets=& {param([string[]]$PytestTarget=@()) Invoke-Expression $assignment.Extent.Text; return ,$scoredTargets} -PytestTarget $targets
+}
+$lane=$ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'Invoke-Main5ScoredLane'},$true)
+Invoke-Expression $lane.Extent.Text
+$argsToPass=@('-c','import json,sys; print(json.dumps(sys.argv[1:]))','FIXED')
+if($scoredTargets.Count){$argsToPass += $scoredTargets}
+$code=Invoke-Main5ScoredLane -Python $env:MAIN5_TEST_PYTHON -Venv 'fixture' -Arguments $argsToPass -Output $env:MAIN5_ARG_OUTPUT
+if($code -ne 0){throw 'ARGV_PROBE_FAILED'}
+Get-Content -LiteralPath $env:MAIN5_ARG_OUTPUT
+"""
+    result = _runner_function_probe(script, powershell=powershell, MAIN5_TEST_PYTHON=sys.executable, MAIN5_ARG_OUTPUT=str(tmp_path / "argv.json"))
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.strip()) == ["FIXED"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell target validation")
+@pytest.mark.parametrize("powershell", ["powershell.exe", "pwsh.exe"])
+@pytest.mark.parametrize("target", ["", "   "])
+def test_runner_rejects_blank_target_at_entry(tmp_path: Path, powershell: str, target: str) -> None:
+    script = r"""
+$ErrorActionPreference='Stop'
+$badTarget=if($env:MAIN5_BAD_TARGET -ceq 'spaces'){'   '}else{''}
+try{
+ & $env:MAIN5_RUNNER_SOURCE -Mode Discover -AttemptDirectory $env:MAIN5_UNUSED_ATTEMPT -PytestTarget @($badTarget)
+ throw 'EMPTY_TARGET_ACCEPTED'
+}catch{
+ if($_.Exception.Message -cne 'MAIN5_INVALID_TEST_TARGET'){throw}
+ 'INVALID_TARGET_PASS'
+}
+"""
+    result = _runner_function_probe(
+        script, powershell=powershell, MAIN5_BAD_TARGET="spaces" if target else "empty",
+        MAIN5_UNUSED_ATTEMPT=str(tmp_path / "never-created"), MAIN5_KIT_DIR="",
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "INVALID_TARGET_PASS" in result.stdout
+    assert not (tmp_path / "never-created").exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell lane argument validation")
+@pytest.mark.parametrize("powershell", ["powershell.exe", "pwsh.exe"])
+@pytest.mark.parametrize("lane", ["Scored", "SelfTest"])
+def test_runner_rejects_blank_lane_arguments_before_python(tmp_path: Path, powershell: str, lane: str) -> None:
+    script = r"""
+$ErrorActionPreference='Stop'
+$t=$null; $e=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile($env:MAIN5_RUNNER_SOURCE,[ref]$t,[ref]$e)
+$name='Invoke-Main5'+$env:MAIN5_LANE+'Lane'
+$f=$ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq $name},$true)
+if($f){Invoke-Expression $f.Extent.Text}else{function Invoke-Main5SelfTestLane([string]$Python,[string[]]$Arguments,[string]$Output){& $Python @Arguments *> $Output; return $LASTEXITCODE}}
+foreach($bad in @('', '  ')){
+ $arguments=@('-c','from pathlib import Path; import os; Path(os.environ["MAIN5_NEVER_LAUNCHED"]).touch()', $bad)
+ try{
+   if($env:MAIN5_LANE -ceq 'Scored'){Invoke-Main5ScoredLane -Python $env:MAIN5_TEST_PYTHON -Venv 'fixture' -Arguments $arguments -Output $env:MAIN5_NATIVE_OUT | Out-Null}
+   else{Invoke-Main5SelfTestLane -Python $env:MAIN5_TEST_PYTHON -Arguments $arguments -Output $env:MAIN5_NATIVE_OUT | Out-Null}
+   throw 'EMPTY_ARGUMENT_ACCEPTED'
+ }catch{if($_.Exception.Message -cne 'MAIN5_EMPTY_PYTEST_ARGUMENT'){throw}}
+}
+'EMPTY_ARGUMENT_PASS'
+"""
+    launched = tmp_path / "launched"
+    result = _runner_function_probe(
+        script, powershell=powershell, MAIN5_LANE=lane, MAIN5_TEST_PYTHON=sys.executable,
+        MAIN5_NEVER_LAUNCHED=str(launched), MAIN5_NATIVE_OUT=str(tmp_path / "stdout.txt"),
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert not launched.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell ordinal executed-ID contract")
+@pytest.mark.parametrize("powershell", ["powershell.exe", "pwsh.exe"])
+@pytest.mark.parametrize("case", ["match", "extra", "case_extra", "missing", "no_identity"])
+def test_runner_checks_executed_lane_against_partition(powershell: str, case: str) -> None:
+    script = r"""
+$ErrorActionPreference='Stop'
+$t=$null; $e=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile($env:MAIN5_RUNNER_SOURCE,[ref]$t,[ref]$e)
+$f=$ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'Get-Main5ExecutedLaneVerdict'},$true)
+if(-not $f){throw 'EXECUTED_LANE_CHECK_MISSING'}
+Invoke-Expression $f.Extent.Text
+$rows=@([pscustomobject]@{event='audit-start';pid=100},[pscustomobject]@{event='test-start';pid=100;nodeid='tests/example.py::test_a[y]'})
+# Other pytest PIDs are deliberately outside this lane's executed-ID comparison.
+$rows += [pscustomobject]@{event='test-start';pid=200;nodeid='tools/foreign.py::test_child'}
+switch($env:MAIN5_LEDGER_CASE){
+ 'extra' {$rows += [pscustomobject]@{event='test-start';pid=100;nodeid='tools/foreign.py::test_extra'}}
+ 'case_extra' {$rows += [pscustomobject]@{event='test-start';pid=100;nodeid='tests/example.py::test_a[Y]'}}
+ 'missing' {$rows=@([pscustomobject]@{event='audit-start';pid=100})}
+ 'no_identity' {$rows=@()}
+}
+$actual=Get-Main5ExecutedLaneVerdict -Rows $rows -ExpectedNodeIds @('tests/example.py::test_a[y]')
+$expected=if($env:MAIN5_LEDGER_CASE -ceq 'match'){'PASS'}else{'FAIL'}
+if($actual.status -cne $expected){throw 'EXECUTED_PARTITION_VERDICT_WRONG'}
+if($env:MAIN5_LEDGER_CASE -cin @('extra','case_extra') -and $actual.failures -cnotcontains 'lane_executed_outside_partition'){throw 'EXTRA_NODE_REASON_MISSING'}
+if($env:MAIN5_LEDGER_CASE -cne 'no_identity' -and $actual.pytest_pid -ne 100){throw 'LANE_PID_WRONG'}
+'EXECUTED_PARTITION_PASS'
+"""
+    result = _runner_function_probe(script, powershell=powershell, MAIN5_LEDGER_CASE=case)
     assert result.returncode == 0, result.stderr + result.stdout

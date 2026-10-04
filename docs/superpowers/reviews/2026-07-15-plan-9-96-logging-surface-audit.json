@@ -3505,9 +3505,9 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.local_secret_scan:_validate_utf8_file:file_open",
+      "key": "tools.local_secret_scan:_read_strictly:file_open",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: tools.local_secret_scan:_validate_utf8_file:file_open opens the approved baseline and each pre-commit-selected filename read-only in binary mode solely to strictly decode it as UTF-8 before the scanner runs; no bytes are retained, logged or exported, and its diagnostic names only the path, byte offset and decoder reason.",
+      "rationale": "Inspection: tools.local_secret_scan:_read_strictly:file_open opens the approved baseline and each pre-commit-selected filename read-only in binary mode solely to strictly decode it (as UTF-16 only for a BOM-marked file inside the frozen Plan 11.7 custody namespace, as UTF-8 otherwise), once before the scanner runs and once more as the scanner's own reader; decoded text flows only to the in-process scanner's transformers and plugins, nothing is retained, logged or exported, and its diagnostic names only the path, byte offset and decoder reason.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_adapter_rejects_invalid_utf8_before_delegation",
       "evidence_tier": "unit"
@@ -3678,6 +3678,46 @@
       "rationale": "MAIN-5 writes the fixed .spawn row schema: kind, process IDs and creation times, image path, -S/-I/-E flags, argument-shape enum, exit code and audit event name. It records no raw argument, environment, content or secret.",
       "sanitizer": "fixed spawn schema without raw arguments, environment, content or secrets",
       "test_node": "tests/unit/acp/test_main5_guard.py::test_guard_spawn_ledger_records_short_no_site_child_without_arguments",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_context_records:append_entries:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "append_entries opens one of a run's three stream files for append, in the worktree's ignored tmp/test-runs folder, only after every entry passed its stream's typed field table, the batch was left unchanged by the shared sanitizer and the file would stay under its byte ceiling.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed after the typed stream table in tools.testing.run_context_records",
+      "test_node": "tests/unit/tools/test_run_context_lifecycle.py::test_a_damaged_stream_yields_only_its_whole_conforming_lines",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_context_records:append_entries:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "append_entries serializes stream entries (collected test identities, test phases, overlap samples) only after each entry passed its stream's typed field table: an unlisted field, a missing required field, a malformed digest or text with control characters refuses the whole batch. Test identities are SHA-256 digests; labels and skip reasons are bounded, and a batch that the shared sanitizer would change is refused.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed after the typed stream table in tools.testing.run_context_records",
+      "test_node": "tests/unit/tools/test_run_context_lifecycle.py::test_a_damaged_stream_yields_only_its_whole_conforming_lines",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_context_records:append_entries:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "append_entries writes that checked batch as JSON lines. Free text reaches it only as a skip reason already passed through the shared sanitizer by the producer, or as a display label that the producer withholds when the sanitizer would change the node ID.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed after the typed stream table in tools.testing.run_context_records",
+      "test_node": "tests/unit/tools/test_run_context_lifecycle.py::test_a_damaged_stream_yields_only_its_whole_conforming_lines",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_context_records:write_record:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "write_record serializes a record only after checking it against one typed field table: a field that is not listed (at any depth), a caller-supplied schema, a malformed identifier or text with control characters is refused, and so is a record that the shared sanitizer would change or that exceeds the size limit. The table has no free-text field, so a command line, environment value or exception text has nowhere to be stored. Checkout-derived text that fails these checks is withheld by the producer and named in the record.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed after the typed field table in tools.testing.run_context_records",
+      "test_node": "tests/unit/tools/test_run_context_boundaries.py::test_the_writer_refuses_a_record_outside_the_field_table",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_context_records:write_record:text_file_write",
+      "policy": "shared-sanitize",
+      "rationale": "write_record writes that checked record atomically to the worktree's ignored tmp/test-runs folder and to a temporary registry folder, both outside the protected application folders. It is the run context's only persistence sink, and read_record applies the same field table before any stored value is used.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed after the typed field table in tools.testing.run_context_records",
+      "test_node": "tests/unit/tools/test_run_context_boundaries.py::test_the_writer_refuses_a_record_outside_the_field_table",
       "evidence_tier": "unit"
     },
     {

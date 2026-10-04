@@ -82,10 +82,12 @@ Live plans (each listed in the backlog's live plan registry):
 |---|---|
 | [Plan 12.2: Context Engine (v3)](superpowers/plans/2026-10-01-plan-12-2-context-engine-implementation_v3.md) | Complete v3 with checkpoint cadence and the CP4 corrections C1–C3; Package A delivered, CP1–CP3 released offline |
 | [Plan 12.1: Plan/Chat advisory answers](superpowers/plans/2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | Selectable read-only Chat with conversation carriage |
+| [Plan 11.29: GitHub Issues migration](superpowers/plans/2026-10-04-plan-11-29-github-issues-migration.md) | Open work moves to GitHub Issues, shown in a live status page |
 | [Plan 11.7 v3: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | Resume an ACP session in Zed |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |
 | [Plan 11.24 v6: guided session-load probe](superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md) | Probe of Zed's `session/load` |
 | [Plan 11.27 v12: Git test immunity and CI secret scan](superpowers/plans/2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v12.md) | Latest version; v2 to v10 are in `archive/` |
+| [Plan 11.28: Parallel local test context](superpowers/plans/2026-10-02-plan-11-28-parallel-local-test-context-implementation.md) | Default-run attribution, application-folder isolation and parallel acceptance in separate worktrees |
 | [P11-FU-6 v2: bounded early POST rejection](superpowers/plans/2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | Gateway early-rejection correction |
 | [Local-hook UTF-8 repair](superpowers/plans/2026-09-06-local-hook-utf8-repair.md) | Pre-commit hook decoding fix |
 | [Evidence collector](superpowers/plans/evidence-handoff-evidence-collector-implementation.md) | Evidence-handoff collector |
@@ -98,6 +100,7 @@ Live plans (each listed in the backlog's live plan registry):
 | [Plan 12.2 Task 1 contracts (v2)](superpowers/specs/2026-10-02-plan-12-2-task1-contracts_v2.md) | Accepted 2026-10-02: engine data, summary format, registry/trust/capacity, host integration, D6 cost disposition; v2 carries the CP4 corrections C1–C3 |
 | [Plan 12.1 advisory-answer design](superpowers/specs/2026-09-29-plan-12-1-plan-chat-advisory-answer-design.md) | ACP Agent/Chat mode, prose-answer and history contract |
 | [ACP runtime hardening audit design](superpowers/specs/2026-08-29-plan-11-26-acp-runtime-hardening-audit-design.md) | Governing audit for ACP runtime hardening |
+| [Plan 11.28 parallel local test context design](superpowers/specs/2026-10-02-plan-11-28-parallel-local-test-context-design.md) | Selection boundary, native ownership, validated ancestry and proof-based child isolation |
 | [A2A ledger design v2](superpowers/specs/evidence-handoff-a2a-ledger-design_v2.md) | Agent-to-agent ledger and channel |
 | [A2A ledger remediation scoping](superpowers/specs/evidence-handoff-a2a-ledger-remediation-scoping.md) | Scope of the open ledger remediation slices |
 | [Evidence collector design](superpowers/specs/evidence-handoff-evidence-collector-design.md) | Evidence-handoff collector |

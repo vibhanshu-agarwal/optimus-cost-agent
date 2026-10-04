@@ -12,12 +12,23 @@ import asyncio
 import contextlib
 import hashlib
 import json
+import re
 import threading
 import time
+import weakref
 from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Mapping
+
+from tools.concurrency_capture import (
+    FrameLocation,
+    ThreadSnapshot,
+    alive_after_bounded_join,
+    pending_tasks,
+    snapshot_task,
+    snapshot_threads,
+)
 
 from .measurement import VerifiedExecution
 from .source import (
@@ -972,7 +983,111 @@ def shutdown_schedule_observations(
     return tuple(observations)
 
 
+# --- P11-FU-33: detection-time context --------------------------------------------------
+#
+# A detection must name its cause. Capture has ONE owner, `tools.concurrency_capture`; this
+# module only renders its snapshots as single-line, content-free entries for the frozen schema:
+#   thread: "name | daemon=… | target=… | at <innermost frame> < … | still_alive_after_join=yes/no"
+#   task:   "name | coro=… | at <innermost frame> < …"
+# Every row measures real state: persistent threads by name against the control set, and
+# pending asyncio tasks against the schedule's baseline, so a leak is attributed to the exact
+# repeat that left it. The verdict is the detection itself; the bounded join only annotates it.
+
+_DIAGNOSTIC_JOIN_SECONDS = 0.2
+_DIAGNOSTIC_FRAMES = 6
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+_CONTROL_CHARACTERS = re.compile(r"[\u0000-\u001f\u007f]")
+_CREDENTIAL_LABEL = re.compile(
+    r"(api[_-]?key|password|passwd|access[_-]?token|refresh[_-]?token|authorization|cookie|secret"
+    r"|response body|prompt body|request body|payload body)(\s*[:=])",
+    re.IGNORECASE,
+)
+
+
+def _content_free(text: str) -> str:
+    """Keep an entry inside the frozen schema's contentFreeText rule."""
+    return _CREDENTIAL_LABEL.sub(r"<label>\2", _CONTROL_CHARACTERS.sub(" ", text))
+
+
+def _locations(frames: tuple[FrameLocation, ...], empty: str) -> str:
+    if not frames:
+        return empty
+    rendered = []
+    for frame in frames:
+        path = Path(frame.filename)
+        try:
+            shown = path.resolve().relative_to(_REPOSITORY_ROOT).as_posix()
+        except (OSError, ValueError):
+            shown = path.name
+        rendered.append(f"{shown}:{frame.lineno} in {frame.function}")
+    return " < ".join(rendered)
+
+
+@dataclass(frozen=True)
+class _CapturedThreads:
+    """Detected threads, captured with their detection: the Thread objects, one frames snapshot
+    of them, and any counted name no live thread carried by then."""
+
+    threads: tuple[threading.Thread, ...]
+    snapshots: tuple[ThreadSnapshot, ...]
+    unmatched: tuple[str, ...]
+
+
+def _capture_persistent_threads(persistent: Counter[str], live: list[threading.Thread]) -> _CapturedThreads:
+    """Capture the threads behind a persistent-name count from the SAME live list the count came
+    from, so a detected thread is always retained with its target, identity and frames -- even if
+    it exits a moment later (Codex re-review RR2). Takes no wait; joins happen only when formatting."""
+    wanted = Counter(persistent)
+    threads = []
+    for thread in live:
+        if wanted[thread.name] > 0:
+            wanted[thread.name] -= 1
+            threads.append(thread)
+    snapshots = snapshot_threads(threads, limit=_DIAGNOSTIC_FRAMES)
+    return _CapturedThreads(tuple(threads), tuple(snapshots), tuple(wanted.elements()))
+
+
+def _format_persistent_threads(captured: _CapturedThreads) -> tuple[str, ...]:
+    """Format captured threads; the bounded join here only annotates, it never clears an entry."""
+    described = [
+        f"{snapshot.name} | daemon={snapshot.daemon} | target={snapshot.target}"
+        f" | at {_locations(snapshot.frames, '<no live frame>')}"
+        f" | still_alive_after_join={'yes' if alive_after_bounded_join(thread, _DIAGNOSTIC_JOIN_SECONDS) else 'no'}"
+        for thread, snapshot in zip(captured.threads, captured.snapshots, strict=True)
+    ]
+    described.extend(f"{name} | <exited before it could be described>" for name in captured.unmatched)
+    return tuple(sorted(_content_free(entry) for entry in described))
+
+
+def _describe_persistent_threads(persistent: Counter[str]) -> tuple[str, ...]:
+    """Describe the threads behind a persistent-name count, at the moment it was taken."""
+    return _format_persistent_threads(_capture_persistent_threads(persistent, threading.enumerate()))
+
+
+def _pending_task_baseline() -> weakref.WeakSet[asyncio.Task[Any]]:
+    return weakref.WeakSet(pending_tasks())
+
+
+def _leftover_tasks(baseline: weakref.WeakSet[asyncio.Task[Any]]) -> list[asyncio.Task[Any]]:
+    return [task for task in pending_tasks() if task not in baseline]
+
+
+def _describe_tasks(tasks: list[asyncio.Task[Any]]) -> tuple[str, ...]:
+    entries = []
+    for task in tasks:
+        snapshot = snapshot_task(task, limit=_DIAGNOSTIC_FRAMES)
+        entries.append(
+            f"{snapshot.name} | coro={snapshot.coroutine} | at {_locations(snapshot.frames, '<no frame>')}"
+        )
+    return tuple(sorted(_content_free(entry) for entry in entries))
+
+
+def _leftover_task_descriptions(baseline: weakref.WeakSet[asyncio.Task[Any]]) -> tuple[str, ...]:
+    return _describe_tasks(_leftover_tasks(baseline))
+
+
 def _run_schedule(observations, applicable, repeats, source, control_thread_names, control_counts) -> None:
+    task_baseline = _pending_task_baseline()
     for record in applicable:
         for cause in _TERMINAL_CAUSES:
             for _ in range(repeats):
@@ -999,8 +1114,19 @@ def _run_schedule(observations, applicable, repeats, source, control_thread_name
                     complete = True
                     outcome = "ERROR"
                 elapsed = time.perf_counter() - started
-                after_counts = Counter(thread.name for thread in threading.enumerate())
-                persistent = tuple(sorted((after_counts - control_counts).elements()))
+                # Detection-time capture, in this order and before any wait (Codex review R3, RR2):
+                # 1. the persistent threads, from the same live list that detects them, with their
+                #    target, identity and frames -- a thread may exit during the task scan;
+                # 2. this row's real task state -- a leak is reported once, on the repeat that left
+                #    it, and then joins the baseline so later rows are not charged with it.
+                # Only then the formatting, whose bounded thread join is annotation only.
+                live = threading.enumerate()
+                persistent_counts = Counter(thread.name for thread in live) - control_counts
+                captured = _capture_persistent_threads(persistent_counts, live) if persistent_counts else None
+                leftovers = _leftover_tasks(task_baseline)
+                task_descriptions = _describe_tasks(leftovers)
+                task_baseline.update(leftovers)
+                persistent = _format_persistent_threads(captured) if captured is not None else ()
                 observations.append(
                     ShutdownScheduleObservation(
                         close_path_id=record.close_path_id,
@@ -1009,14 +1135,13 @@ def _run_schedule(observations, applicable, repeats, source, control_thread_name
                         close_invocation_count=3,
                         control_thread_names=control_thread_names,
                         unexpected_persistent_threads=persistent,
-                        unexpected_persistent_tasks=(),
+                        unexpected_persistent_tasks=task_descriptions,
                         repeat_latency_class="WITHIN_100MS" if elapsed <= 0.1 else "ABOVE_100MS",
                         underlying_close_count=underlying_count,
                         close_outcome=outcome,
                         cause_effect=cause_effect,
                     )
                 )
-
 
 def characterize_shutdown_inventory(
     inventory: ShutdownInventory,

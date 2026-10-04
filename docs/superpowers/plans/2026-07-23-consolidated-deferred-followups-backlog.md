@@ -55,10 +55,12 @@ in this table.
 
 | Plan | State | Backlog owner | Next gate |
 |---|---|---|---|
+| [Plan 11.29 — GitHub Issues migration and live status view](2026-10-04-plan-11-29-github-issues-migration.md) | `Active` | `operator directive 2026-10-03` | Operator approved the written plan on 2026-10-04. Claude implements from Task 0, with four checkpoints, each reviewed by Fable 5.1 then Codex. Pilot issues #222–#225 are shadow copies; this backlog stays authoritative until the Task 5 cutover. Remaining issue writes need their own operator grant; the cutover merge and trial-wording removal were granted together on 2026-10-04. |
 | [Plan 12.2 — Context Engine](2026-10-01-plan-12-2-context-engine-implementation_v3.md) | `Active` | `Plan 12` | Package A offline technical delivery accepted at 38a465f, with exact NOT MET residual in ADR-017; docs PR #214 merge/base gate was satisfied. [Delivery](../reviews/2026-10-02-plan-12-2-package-a-delivery.md). Operator selected Package A docs/PR then CP1, and replaced per-task reviews with CP1 Tasks 4-5, CP2 6-8, CP3 9-11, CP4 12-13 (ADR-016/S3). Package A is published as PR #216; merge stays operator-owned. The operator accepted the [Task 1 contracts](../specs/2026-10-02-plan-12-2-task1-contracts_v2.md) and the complete v2 plan on 2026-10-02, releasing CP1–CP3 offline. CP1 is cleared for offline continuation; CP2 (Tasks 6–8) is cleared offline at 58ded9d on 2026-10-03; CP3 (Tasks 9–11) is the next checkpoint under the accepted scope and cadence. D6/governed activation and paid/live/service gates remain separate. Paid/live/service/sandbox gates remain separate. |
 | [Plan 12.1 — Plan/Chat advisory answer](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | `Blocked` | `P12-FU-1` | Dependency `P11.25-FU-1` retains sole ownership of non-AGENT conversation carriage. Tasks 0–5 are complete on draft PR #212: Codex's implementation review passed at `1c797b9`, and the full-suite CI there is green. The evidence is in `reports/plan-12-1-implementation-and-live-evidence.md`. Next gate: the operator's PR-readiness and merge decision. `P12-FU-1` and `P11.25-FU-1` stay promoted until merge and acceptance. |
 | [Local-hook UTF-8 decoding repair](2026-09-06-local-hook-utf8-repair.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Local delivery at `c9745898` is independently accepted and published to PR #196 with both first-execution checks passed. The operator authorized documentation review and normal merge conditional on the final head passing required checks; PR #196 records the result. Retained under transitional custody pending separate archival disposition; no further implementation or inherited budget is released. Preserve baseline identities, frozen documents and CI scope. |
 | [Plan 11.27 v12 — integrate accepted correction and deliver locally](2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v12.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Delivery and publication complete: local integration `2bd316bc`, merged via PR #195 at `32f32ef4`, with independent local/CI acceptance and restored protection. Retained at the root under transitional custody; the remaining gate is the separate archival/custody disposition. No further v12 execution or inherited budget is available. Scanner decoding repair remains with the backlog owner. |
+| [Plan 11.28 — Parallel local test context](2026-10-02-plan-11-28-parallel-local-test-context-implementation.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Delivery and publication complete: final PR head `cbbf74c` merged through PR #227 at `f8231e85c6074890382f67b8d99acbb008cb0887` on 2026-10-04, under the operator's conditional delivery approval after the final-head gates passed. Implementation/four-run technical acceptance remains bound to `95505c4`; scanner R1/R2 repair to `2b28c7b`; integrated child-proof correction to `4dfbea7`, with child-proof R1/R2 closed and all 15 independent reviewer-control expectations met, zero false acceptances. Approved exception v2 applies to this delivery only: the final-head all-files receipt remains exit 1 for 697 inherited findings at 671 locations in 154 files, with an identical inherited inventory, zero changed finding blobs, zero adapter errors and unchanged baseline. The full release-diff scan against freshly fetched `39803f8` passes for all 32 changed files; required final-head `verify` and `clean-environment-recheck` checks pass, including normal coverage and production-only CI scanning. Final-head receipt seal: `plan-11-28-pr227-head-receipts-20261004`; merge receipt seal: `plan-11-28-pr227-merge-20261004`. Retained live pending separate activation and custody disposition. Activation in workflows, branch folding and cleanup remain held. Inherited finding debt remains open under P11-FU-31 / P11-FEAT-ACP-RUNTIME-HARDENING; 693 findings remain unadjudicated, and new/changed debt is not covered by exception v2. Original failed attempts, sealed receipts and evidence qualifications remain preserved. No full-suite/four-run acceptance repeat is requested. |
 | [P11-FU-6 — bounded early POST rejection corrective plan v2](2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | `Blocked` | `P11-FU-6` | The bounded early-POST correction is delivered and merged through PR #195 at `32f32ef4`. The corrective plan remains frozen under transitional custody pending archival disposition; `P11-FU-6` remains Open for separately defined broader reliability closure. No additional product behavior, installation or rollout is authorized by this status update. |
 | [Plan 11.7 v3 — Zed Resume](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | `Blocked` | `P11-FEAT-ZED-RESUME` | Task 0 evidence authority remains unaccepted; resume only after a reviewed forward-only v4 and explicit operator authorization. |
 | [Plan 11.24 v6 — guided session-load probe](2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md) | `Blocked` | `P11-FEAT-ZED-RESUME` | Offline repair is merged; the separately authorized Task-13 prerequisite drive and later two-Zed gate remain dormant. |
@@ -343,7 +345,7 @@ open-work inventory.
 | ~~`P11-FEAT-GATEWAY-COST-OBS`~~ | ~~Closed~~            | ~~MEDIUM~~ | ~~Plan 11.5 — closed by PR #95 (merge `e388258`), 2026-07-29; migration follow-ups remain assigned here (`P11.5-FU-1` Closed via Plan 11.21; `P11.5-FU-2` closed via Plan 11.6) and receive a new Plan 11.x number only at pickup. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); [implementation plan](archive/2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration~~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ~~`P11-FEAT-GATEWAY-MCP`~~      | ~~Retired~~           | ~~MEDIUM~~ | ~~Retired by Plan 11.12. [Plan 11.8](archive/2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md) and [Plan 11.11](archive/2026-08-13-plan-11-11-p11-feat-gateway-mcp-2026-07-28-http-compatibility.md) are historical precursor work; their frozen design and merged implementation records are not rewritten. Plan 11.13 published HLD v2.18, LLD v2.41, Guardrails v1.3, and Test Strategy v1.7 through the sibling reversal package; immutable amendment inputs remain historical. Client-owned MCP remains live and separate. This completed publication remains a pre-`P11-FEAT-REGISTRY` / v1.0 dependency. [Evidence](../reports/2026-08-15-plan-11-13-authoritative-document-reversal-evidence.md). [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering)~~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `P11-FEAT-ZED-RESUME`           | Partially implemented | MEDIUM     | Partially implemented; blocked. Frozen Task 0 Steps 1-4 sealed (`session/load` unreachable on historical Zed 1.13.1); frozen Plan 11.7 Tasks 0 Steps 5-7 and Tasks 1-11 remain blocked. Standalone feasibility amendment approved (`79F3C92A…C06E6`, 2026-08-02); origin-A fixture v2 amendment approved and merged (`5BB327D8…9A4D` / PR #108, 2026-08-02). Corrected `origin-a-3` executed and sealed as Option B process-invalid (`next_corr=4` / `next_prompt=3` unclaimed; DoD success false). Retry-preflight amendment (`P11-FU-11`, PR #110) implemented through Task 5 **Path A** fail-closed terminal stop (2026-08-05): real CLI fail-closed at acquire; offline `unavailable_proof`; no corr-4 / no settings mutation / no Zed launch; accepted live retry not obtained. Parent Task 5 remains blocked; clean relaunch needs a budget-expansion amendment. Re-probe on 2026-08-15 at `71cb9ed` observed Zed `1.15.0 e17dc4f…`, independent acpx `0.12.0`, and live Redis. Its live `agentCapabilities` omitted `loadSession` and `sessionCapabilities.resume`; the resulting **INDETERMINATE / INTERNAL_CAPABILITY_UNAVAILABLE** establishes the Optimus agent gate only, not Zed support. Acpx made no forced `session/load` call, Zed was not launched, and no origin-A launch occurred. The current repository cannot independently compare the historical 1.13.1 run because its three named Task 0 artifacts are absent from `origin/main`; the [custody note](../../../reports/p11-feat-zed-resume-task0-evidence-custody-note.md) does not classify that absence as loss or invalidate the seal. The real-Zed temporary-advertisement re-probe is separately scoped and must commit its sanitized evidence. See [the re-probe](../../../reports/p11-feat-zed-resume-session-load-reprobe.md). Does not claim server-side custody feasible or an origin-A/amendment disposition. Its unimplemented error-code subset is now completed by `P11-FU-10` / Plan 11.18; frozen Plan 11.7 remains blocked and this transfer does not unblock `session/load`. Carries owned `P11-FU-1`, `P9.8-FU-5`, and `P11-FU-11`; coordinates, but does not own, `P11-FU-4`. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume); [feasibility amendment](archive/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md); [origin-A fixture v2 amendment](archive/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md); [retry-preflight amendment](archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md). Dependency: `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` in this backlog supplies its sanitized-evidence gate. |
-| `P11-FEAT-MULTI-TURN-CONVERSATION` | Closed | MEDIUM | Plan 11.25 Slice 1 — same-process in-memory multi-turn conversation on ACP `session/prompt` (canonical history, byte-budget admission/commitment, settlement, dedicated NDJSON writer), merged through PR #188 and follow-up PR #189. Does **not** include persistence, `session/resume`/`session/load`, compression/summarization/pruning/eviction (Plan 12), or non-AGENT-mode carriage; `MT-FU-1` and `MT-FU-2` remain separately open below. Evidence: [baseline](../../../reports/plan-11-25-multi-turn-baseline.md), [contract evidence](../../../reports/plan-11-25-multi-turn-contract-evidence.md), [release review](../../../reports/plan-11-25-multi-turn-release-review.md); [archived implementation plan](archive/2026-08-21-plan-11-25-multi-turn-conversation-implementation.md). Current-source discrepancy: [producer-instrumentation correction](../reviews/2026-10-01-plan-11-25-effect-instrumentation-correction.md); narrow effect/cancellation repair is owned by Plan 12.2 Task 2, not established by the historical checked steps. |
+| ~~`P11-FEAT-MULTI-TURN-CONVERSATION`~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.25 Slice 1 — same-process in-memory multi-turn conversation on ACP `session/prompt` (canonical history, byte-budget admission/commitment, settlement, dedicated NDJSON writer), merged through PR #188 and follow-up PR #189. Does **not** include persistence, `session/resume`/`session/load`, compression/summarization/pruning/eviction (Plan 12), or non-AGENT-mode carriage; `MT-FU-1` and `MT-FU-2` remain separately open below. Evidence: [baseline](../../../reports/plan-11-25-multi-turn-baseline.md), [contract evidence](../../../reports/plan-11-25-multi-turn-contract-evidence.md), [release review](../../../reports/plan-11-25-multi-turn-release-review.md); [archived implementation plan](archive/2026-08-21-plan-11-25-multi-turn-conversation-implementation.md). Current-source discrepancy: [producer-instrumentation correction](../reviews/2026-10-01-plan-11-25-effect-instrumentation-correction.md); narrow effect/cancellation repair is owned by Plan 12.2 Task 2, not established by the historical checked steps.~~ |
 | `P11-FEAT-ACP-RUNTIME-HARDENING` | Open | HIGH | **Plan 11.26 Tasks 0-12 accepted through G6; Task 13 accepted at G7.** The [approved design](../specs/2026-08-29-plan-11-26-acp-runtime-hardening-audit-design.md) and [archived implementation plan](archive/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md) remain the governing audit documents. Canonical Task 12 outputs: [machine-readable audit](../../../reports/plan-11-26-acp-runtime-audit.json), [deterministic audit report](../../../reports/plan-11-26-acp-runtime-audit.md), and [terminal characterization](../../../reports/plan-11-26-terminal-characterization.md). Separate Task 13 outputs: [candidate inventory](../../../reports/plan-11-26-duplication-candidates.json), [reviewed duplication audit](../../../reports/plan-11-26-duplication-audit.json), and [deterministic duplication report](../../../reports/plan-11-26-duplication-audit.md). The terminal artifact remains honestly `INCOMPLETE`: 16 offline predicates passed and three blocked predicates retain distinct binding/Redis/Zed owners; every live row remains `UNRUN`. The audit covers concurrency, task ownership and cancellation; stdio and Redis connection lifecycle under orderly EOF, cancellation, and abrupt client termination; idempotent close, lease release/recovery, backpressure, connection health and pooling; semantic exception taxonomy and runtime-to-wire mapping; duplicated lifecycle/protocol logic and flaky tests; redacted structured telemetry and logging with stable correlation fields; reviewer-facing comments and docstrings that explain invariants and non-obvious decisions; and comparison using at least one independently authored ACP client or conformance harness. Plan 11.26 is audit-and-contract only and does not authorize production fixes. The ranked custody table below records the accepted Task 12 structural-prevention candidates and keeps this feature `Open` until later remediation plans separately complete. Task 13 is the operator-directed duplication audit; evidence collector and A2A are separate products and are affirmatively excluded from core duplication clustering before classification. Zed, acpx, SDK/harness, Redis mutation, Gateway/model calls, paid calls, evidence promotion, push, PR, and merge remain separately unauthorized. Archiving the audit plan does not close any remediation owner or live obligation. **HIGH justification:** these cross-cutting lifecycle and observability weaknesses increase defect-escape risk and make failures materially harder to reproduce, diagnose, and review. **2026-09-06 current disposition:** PR #195 delivered Git-test immunity, production-only CI scanning and the bounded FU-6 rejected-POST correction. PR #194 subsequently merged at `0ec91225` with the accepted H/M/D history, a documentation correction, both required PR checks and post-merge guardrails passed. The separately approved [local-hook UTF-8 repair](2026-09-06-local-hook-utf8-repair.md) was independently accepted at local commit `c9745898` and merged through PR #196 at `3b3093d3`. Seam 4 A and B subsequently merged through PR #197 and #198; seam 5 merged through PR #199 at `1be9e056`. **2026-09-08 narrow port disposition:** seam 3, independently accepted at `672d842b`, merged through PR #200 at `5ad8ef4f` with required PR checks and first post-merge guardrails passed. Its captured subprocess inputs preserve empty-versus-missing semantics and a separate MCP system view. Seam 1 is independently accepted locally at `185bddc7`, adding lazy, failure-contained debug tracing while preserving redaction, control flow and the merged lifecycle contracts. Publication with governance updates and GitHub CI is authorized; seam-1 merge remains a separate decision. The [masterplan](hardening-runtime-quality-masterplan.md) records the evidence and boundaries; its repeatability, lifecycle and other track obligations remain open. The executor commission is complete. Existing findings and the 50 frozen UTF-16 transcripts retain separate disposition; strict rejection when selected does not alter their custody. Broader FU-6 closure and live/binding obligations remain Open. Installation and rollout of this repair are not established. **2026-09-10 H4 filing:** [Deferred H4 verifier follow-ups](#plan-1126-h4-verifier-follow-ups-from-seam-2-checkpoint-a) remain Open under this feature after seam 2 merged through PR #202; filing does not commission verifier implementation or close historical/live obligations. |
 | `HARDENING-FEAT-RUNTIME-QUALITY` | Open | HIGH | The [hardening runtime-quality masterplan](hardening-runtime-quality-masterplan.md) sequences 16 new items, 17 existing candidates, and 3 existing obligations. The backlog row owns this masterplan's status; the masterplan owns its 15 child-plan statuses. The G6/G7 custody tables are historical acceptance records. This charter grants no implementation authority except through separately reviewed and authorized child tasks; live child status and task gates remain solely in the masterplan and owning child plans. **2026-09-06 reconciliation:** the CI guardrail child retains main's production scan and commit-time coverage, carries locked dependency sync, and adopts only the original three baseline entries plus 31 reviewed report identities. PR #194 merged at `0ec91225`, preserving accepted local delivery `cd4a3805`; both required PR checks and post-merge guardrails passed. The separately accepted decoding repair is published to PR #196 under conditional normal-merge authority. Later child tasks still require their own decisions. The masterplan's CI-GUARDRAILS row owns this reconciliation's next gate. |
 | `P11-FEAT-REGISTRY`             | Open                  | LOW        | Ratified, unscheduled, and held as the last primary Plan 11 slice. The ACP registry has a public authoritative repository, schema, submission guide, and stabilized live process; pickup begins by pinning and executing against the then-current validator/CI behavior, not by searching for an unknown source. Reassess 11.x-last versus a 13.x split for outward publication once this consolidated pool closes. The v1.0 release-version contract and excluded-capability inventory remain in Plan 11. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut). Verified local finding carried to pickup: package and ACP versions are both `0.1.0`, and ACP currently returns `authMethods: []`. The registry guide's Agent/Terminal Auth admission rule is an external claim to verify by live execution before implementation scope is frozen. Carried to pickup (2026-09-29): the excluded-capability inventory must name `P12-FU-1`, the Plan/Chat advisory-answer capability ruled out of v1.0 and carried into Plan 12.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -456,6 +458,276 @@ This G6 custody table is a historical acceptance record, not live remediation-pl
 | Obligation | `P11.26-UNRUN-REDIS` | — | Scope-out | Missing live Redis owner/revision predicate and no live Redis grant. | N/A | `UNRUN` | operator | Grant the real Redis row after binding and provenance prerequisites are satisfied. |
 | Obligation | `P11.26-UNRUN-ZED` | — | Scope-out | Missing Zed E2E predicate/manual observation bundle and no Zed grant. | N/A | `UNRUN` | operator | Grant the five manual Zed rows after trusted-workspace and installed-artifact provenance prerequisites are satisfied. |
 
+## MAIN-5 residuals under existing 11.x owners
+
+Raised 2026-10-02 from MAIN-5 local-delivery, telemetry, harness and guarded-runner review.
+The UNC1-UNC7 sandbox checkpoint at `f6b0b602291b933ac1f493f397cad2b6f53620bf`
+(`sandbox-main5-guarded-runner-y5`) is independently accepted. The original main
+port merged through PR #215 at `78c1f7c`; that merge does not include the y5 correction.
+These entries record custody and acceptance criteria only. They commission no
+implementation, assign no new numbered plan; priority stays at the default MEDIUM.
+They change no Plan 12 state.
+Associations without a dedicated existing ID remain proposed under the named owner.
+
+### P11-FU-31: MAIN-5 synthetic-fixture and complete-scan delivery debt
+
+**Status:** Open.
+**Origin:** Synthetic fixtures block touched-file commits; retained all-files scanner failures on frozen UTF-16 reports. Accepted MAIN-5 ruling-H fixture proofs remain historical evidence.
+**Designated future plan / owner:** `P11-FEAT-ACP-RUNTIME-HARDENING`, existing local-hook custody.
+**Trigger or acceptance criteria:** Inventory touched-file synthetic fixtures and the scanner
+fixpoint; verify synthetic provenance before any per-line pragma and prove Python AST
+equality. Preserve baseline/config protection and effective scanning. Keep the 50 frozen
+UTF-16 reports under separate disposition custody with unchanged identities; scanner
+failure is non-passing. This residual does not reopen the accepted local-hook delivery.
+
+### P11-FU-32: MAIN-5 Windows harness environment dependence
+
+**Status:** Open.
+**Origin:** Windows Bash selection, reserved test-venv semantics, measurement cache dependence, approval/bundle long paths and ast-grep cache dependence.
+**Designated future plan / owner:** `P11-FEAT-ACP-RUNTIME-HARDENING`, test tooling;
+measurement evidence belongs to `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION`.
+**Trigger or acceptance criteria:** Distinguish Git Bash from WSL launchers, inventory
+`OPTIMUS_TEST_VENV` consumers, and prove missing versus empty semantics before any rename.
+Prove ast-grep and measurement cache independence using isolated roots. Characterize
+approval long-path failures under test tooling and bundle failures under the evidence
+handoff owner. Short basetemp is mitigation, not product repair. Preserve Linux parity,
+environment contracts, protected-root checks and historical audit findings.
+
+### P11-FU-33: MAIN-5 shutdown repeatability evidence
+
+**Status:** Closed. Through [PR #219](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/219),
+merge `4797112e9ecca5526e874698dcfda719471dd6d9` (2026-10-03); merged tree equals
+independently accepted `82b8d952553a1d087472f7b38ea47f530d8c86e2`.
+**Origin:** Retained shutdown repeat-100 failure records; distinct from FU-5/FU-6/FU-7.
+**Designated future plan / owner:** `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION`;
+escalate to `P11.26-CAND-1-RESOURCE-LIFETIME` only if causal evidence warrants.
+**Trigger or acceptance criteria:** Capture failed rows with timing, process ownership and
+quiescence evidence; classify harness, product or unresolved and retain the complete group
+outcome. A passing retry cannot erase a failure or close historical obligations.
+
+**Evidence (2026-10-02):** The repeat-100 `unexpected_persistent_threads` assertion
+failed in the port-Y guarded full run (pre-`-y5`) and the R4 unguarded manual run
+on `a219831`. The reviewed Windows full-suite record is 2 failures in 6 runs.
+Linux/WSL bundle and PR #217 CI runs skipped the test under `P11.26-UNRUN-BINDING`
+because binding commit `fac32284888850bacde93815265cbabe3afd4663` was missing;
+those runs prove nothing about this test. Root cause is not established.
+Public anchors: [PR #217 description](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/217)
+and [PR #217 CI](https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/36977760586).
+
+**Root cause and proposed closure (2026-10-02):** `RedisRuntime.close()` and
+`close_async()` returned once `record.completed` was set, but the
+`optimus-redis-runtime-teardown` thread sets it inside its own `finally` and only then
+exits, so the H5 schedule could enumerate that thread before it left. OS preemption in
+that window produced the failures. A deterministic reproduction pauses only that thread
+after it publishes completion: 200/200 failures, and 0/200 once the thread is joined.
+`RedisLoopOwner`'s finalizer thread had the same signal-before-exit shape. The fix joins
+each thread within the caller's existing observation budget and reports shutdown as
+incomplete, rather than complete, while it lives. The H5 schedule now records
+detection-time context (thread target and stack) and measures pending asyncio tasks
+from real state, and the concurrency tests name the offending thread, task, process or
+row instead of a bare assertion. Two bounded joins that return silently on timeout
+remain, outside the H5 schedule: `NdjsonSubprocessSession.terminate()` (5 s) and the
+client-MCP local IPC listener stop (2 s); custody `P11.26-CAND-1-RESOURCE-LIFETIME`.
+Proposed closure: Closed when the fix lands on `main`, citing the merge, with this entry
+escalated per its criteria to `P11.26-CAND-1-RESOURCE-LIFETIME`.
+
+**Same batch, round 2 (2026-10-02/03):** the batch's guarded full run then failed a test
+outside its diff. The plan1126 offline timeout used `taskkill /T`, which walks parent
+pids at the moment it runs, so a descendant started during the walk, or one whose parent
+had already exited, escaped the kill and kept the capture pipes open. `tools/process_tree.py`
+now owns whole-tree kills (Windows: the child starts suspended inside a job object; POSIX:
+its own process group), and all four `taskkill /T` sites in `tools/` use it. Tests that used
+elapsed time as a proxy for a tree kill now name the surviving process. Remaining under
+custody `P11.26-CAND-1-RESOURCE-LIFETIME`, not changed by this batch: on timeout
+`tools/evidence_gather_support/acp.py::spawn_acpx` kills only its direct child and then
+reads the pipes without a bound; the Plan 9.96 ordinary capture timeout kills only its
+direct child (its plain-child spawn is pinned); and the live-only Zed investigation test
+`tests/investigation/evidence/test_zed_user_data_live.py` still uses `taskkill /T`.
+Consolidation obligation: the unmerged parallel-test-context work
+(`tools/testing/run_context_windows.py`) owns a second set of Windows job-object bindings;
+the two are to become one owner once both are on `main`. Real Zed under a no-breakaway job
+is unverified until the next authorized live probe.
+
+**Closure evidence and disposition (2026-10-03):** Classification: **product**.
+The deterministic 200/200 failing pause reproduction and 0/200 after joining,
+recorded above, establish the signal-before-thread-exit resource-lifetime cause;
+the bounded joins report incomplete shutdown while either thread remains alive.
+The retained failed rows and complete group outcomes, including the historical
+2-in-6 failures and the round-2 failure, remain evidence; a passing retry does not
+erase them or close other historical obligations. The entry's conditional escalation
+is warranted and recorded: this cause is a resource-lifetime instance, and all deferred
+joins, child/pipe/tree-kill paths and job-binding consolidation already listed above
+remain in `P11.26-CAND-1-RESOURCE-LIFETIME` custody. Neither that candidate nor
+`P11.26-CAND-5-REPEATABILITY-ATTRIBUTION` is closed by this filing.
+
+The Windows guarded full run and all-files pytest-coverage commit hook on accepted
+`82b8d95` both passed and are the repeat-100 execution evidence in the sealed reviewed
+packets. The repeat-100 test runs only on Windows full-history checkouts; Linux/WSL
+and CI skip it. PR #219's `verify` and `clean-environment-recheck` checks succeeded,
+and [post-merge guardrails run 37117424517](https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/37117424517)
+completed successfully on exact merge `4797112`; these CI results are delivery checks,
+not repeat-100 evidence. Real Zed under the no-breakaway job remains untested; a fresh
+Plan 11.24 establishing report is required before any future live drive. Those live
+boundaries remain open and are neither reopened nor closed here.
+
+**Deferred-work pickup (2026-10-03):** The open residuals now have explicit Plan 11.x
+entries: `P11-FU-38` (bounded joins/waits), `P11-FU-39` (timeout/capture cleanup class),
+`P11-FU-40` (real Zed containment) and `P11-FU-41` (job-binding consolidation). Their
+existing owners and evidence gates remain unchanged; this FU33 entry stays Closed.
+The establishing-report prerequisite stays solely with Plan 11.24's Task-13 gate.
+
+### P11-FU-34: MAIN-5 settlement telemetry truth
+
+**Status:** Open.
+**Origin:** Settlement telemetry emits a `not_committed` placeholder whose authority and timing need confirmation.
+**Designated future plan / owner:** `P11.26-CAND-2-TELEMETRY-CONTRACT`, typed telemetry boundary owner.
+**Trigger or acceptance criteria:** Establish authoritative delivery state and emission
+order; prove delivered, rejected and cancelled outcomes. Check Plan 12 overlap read-only
+before any implementation commission; do not duplicate effect-producer repair or amend
+the Plan 12 plan in this lane.
+
+### P11-FU-35: MAIN-5 y5 correction port
+
+**Status:** Closed. Through [PR #217](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/217),
+merge `df703857a7304abd36beedce9fcb9737a24fcc46`; merged tree equals tested `a219831`.
+**Origin:** UNC/device prevention gap, SQLite file-URI classification, PowerShell absent/empty idiom and UNC7 lane-ledger correction.
+**Designated future plan / owner:** `P11-FEAT-ACP-RUNTIME-HARDENING`, MAIN-5 safety and test tooling.
+**Trigger or acceptance criteria:** Port `sandbox-main5-guarded-runner-y5` to main in the
+reviewed four-file scope, preserving network/device alias prevention before and after
+resolution, strict SQLite file-URI classification, PowerShell 7/5.1 environment removal,
+blank-target/argument refusal and ordinal executed-versus-planned lane checks. Retain
+the independent audit-only self-test lane, whole runner-file integrations, process-tree
+signals, clean protected roots and stop/seal on CONFOUNDED. Sandbox acceptance resolves
+the fix there; main-side closure requires its separate port review and delivery approvals.
+
+### P11-FU-36: MAIN-5 remaining guarded-runner mechanics
+
+**Status:** Open.
+**Origin:** Guard startup overhead, environment-claimed `runner_direct_role`
+and plants in `test_stdio_ndjson.py`.
+**Designated future plan / owner:** `P11-FEAT-ACP-RUNTIME-HARDENING`, MAIN-5 test tooling;
+association proposed, without a new dedicated backlog ID.
+**Trigger or acceptance criteria:** Profile startup uncontended without weakening write
+prevention or supervisor signals. Separate origin evidence from child environment claims.
+If plants move, prove collection and lane partitions and retain the whole runner-file gate;
+no WP-27 port is implied.
+
+## Plan 11.x resource-lifetime and live-evidence residuals from FU33
+
+Raised 2026-10-03 at the operator's request to expose deferred work as open entries
+in this consolidated log. These residuals were identified during
+[Closed P11-FU-33](#p11-fu-33-main-5-shutdown-repeatability-evidence), delivered by
+[PR #219](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/219) and filed through
+[PR #220](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/220). The seed lists
+in that historical entry are not exhaustive class inventories. These entries preserve
+existing custody, historical failures and the default MEDIUM priority. They do not
+reopen FU33, change candidate/parent/Plan 12 statuses, commission implementation,
+allocate an implementation-plan number, or grant a live drive.
+
+### P11-FU-38: Bounded join and wait outcome classification
+
+**Status:** Open.
+**Origin:** FU33 named silent bounded joins in `NdjsonSubprocessSession.terminate()`
+and `PendingClientMcpCandidateEndpoint._stop_listener()`. The same NDJSON class's
+`_fail_subprocess_exited()` also suppresses a timed-out process wait and silently joins
+the stderr reader before constructing its diagnostic; the diagnostic can be partial.
+Reporting implementations already exist in the FU33 Redis completion paths and the
+MCP supervisor. These examples seed the class; they do not define its full scope.
+**Designated future plan / owner:** `P11.26-CAND-1-RESOURCE-LIFETIME`, existing lifecycle owner;
+separately owned product surfaces retain their existing owner and explicit disposition.
+**Trigger or acceptance criteria:** First record a source-derived inventory of every
+bounded join or wait in `src/` for a thread, process, task, loop or future owner
+to finish, including wrappers and failure/diagnostic paths. Polling and receive
+timeouts are excluded.
+For each site record its resource/callers/readers, timeout budget, silent versus
+reporting outcome, owner and disposition. Include the NDJSON failure-path wait/join,
+the local IPC consume worker, all FU33 Redis joins and the MCP supervisor; distinguish
+reporting a timeout from proving that the underlying owner has terminated.
+Use CAND-1's single lifecycle owner and bounded-completion contract: reconcile the
+existing reporting implementations and migrate all affected CAND-1 callers/readers,
+rather than adding a third pattern for the initially named sites. Any independently
+owned site needs a named existing custody entry and reviewed disposition, not omission.
+Exercise completion before the deadline and an owner retained after it; preserve
+self-stop/no-self-join behavior, idempotence and the primary failure/cancellation.
+Diagnostics must expose incomplete capture/cleanup safely, without presenting partial
+stderr as complete or turning a detected failure into a pass after a late join.
+Close only after every silent site has an explicit reviewed disposition and all
+required owned migrations have evidence; no unclassified or unowned silent site may
+disappear from the inventory. This does not close the lifecycle parent or H5 history.
+
+### P11-FU-39: Process-tree timeout and captured-pipe cleanup class
+
+**Status:** Open.
+**Origin:** FU33's seed sites were `tools/evidence_gather_support/acp.py::spawn_acpx`
+and Plan 9.96's ordinary capture in `tools/run_plan996_acpx_security_evidence.py`.
+The class also includes other explicit child-only termination paths and implicit
+termination in `subprocess.run(timeout=...)` with captured stdout/stderr. On Windows,
+CPython's timeout handler kills the direct child and calls `communicate()` without
+a timeout; a pipe-holding descendant can keep that drainage blocked. A timed captured
+run is a candidate for investigation, not automatically a confirmed defect.
+**Designated future plan / owner:** `P11.26-CAND-1-RESOURCE-LIFETIME` for Optimus runtime
+and its lifecycle tooling. Evidence-handoff sites retain their separate product owner;
+Plan 11.7 relay sites retain Plan 11.7 / `P11-FEAT-ZED-RESUME` live-owner custody.
+**Trigger or acceptance criteria:** First derive a class inventory across `src/`,
+`tools/` and `tests/` (including `tests/support`): explicit direct-child `kill`/`terminate` calls and wrappers, plus timed
+`subprocess.run` calls with captured pipes (including aliases and wrapper call sites).
+Record per site the launch/containment path, child type, whether a descendant can inherit
+and retain a pipe, termination/drain/wait/join budgets, evidence tier, exact owning
+backlog identity and disposition. Classify confirmed hazards, already tree-contained
+paths, safe/non-descendant cases, test-only controls and independently owned surfaces;
+Classify deliberate test-only kills as controls rather than automatically repairing
+them; record an owner for every test site under its existing custody. Justify each
+exclusion. Do not treat a heuristic scan count as a defect count or a
+complete inventory without source re-derivation and wrapper/caller inspection.
+Include the seed sites, ordinary versus drive-session capture, the redaction live-evidence
+tool, Plan 11.7 custody relay, `LocalGatewayProcess.stop`, `operator_verify`, the
+evidence-handoff service/process helpers and timed captured `acpx` launchers. Keep each
+evidence-handoff site with its existing product owner and each relay site with its live
+owner; file or link the necessary owning follow-up before excluding a site from CAND-1
+remediation. No separate product/parent status or active lane changes through this filing.
+For CAND-1-owned hazards, use the shared process-tree owner and migrate all affected
+callers with bounded termination, root reaping, pipe drainage and reader joins.
+Reconcile Plan 9.96's pinned plain-child premise and immutable evidence explicitly;
+ordinary capture and drive-session contracts remain distinct. Prove real descendant
+and inherited-pipe behavior on Windows and POSIX; retain initiating failures and
+explicit surviving-owner outcomes. Helper fakes alone cannot prove tree termination.
+Close only when every candidate has reviewed owner/disposition and each required owned
+repair or separately owned follow-up has evidence/custody; no unclassified site is lost.
+
+### P11-FU-40: Real Zed process containment and live-only tree-kill path
+
+**Status:** Open.
+**Origin:** Real Zed has not been tested inside the no-breakaway Windows job used by
+the new process-tree owner. `tests/investigation/evidence/test_zed_user_data_live.py`
+still terminates through `taskkill /T`; the reviewed Python stand-in is not real Zed
+compatibility evidence.
+**Designated future plan / owner:** `P11.26-CAND-1-RESOURCE-LIFETIME`, existing lifecycle owner;
+live evidence remains gated by Plan 11.24 and `P11.26-UNRUN-ZED`, without replacing them.
+**Trigger or acceptance criteria:** Before any live run, satisfy
+[Plan 11.24 v6's existing Task-13 establishing-report gate](2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md)
+and the existing binding, trusted-workspace, installed-artifact and operator-grant prerequisites. Review
+the live-only termination path against the shared process owner, then verify real Zed
+startup, supported ACP interaction and bounded timeout/teardown under the intended
+containment. Independently observe descendants, surviving processes and capture pipes;
+retain failures or incompatibility as non-passing evidence. Do not weaken no-breakaway
+policy, infer compatibility from a Python stand-in, or infer live acceptance from CI.
+
+### P11-FU-41: Windows job-object binding owner consolidation
+
+**Status:** Open.
+**Origin:** Main's `tools/process_tree.py` owns Windows job-object bindings; the separate
+parallel-test-context lane's `tools/testing/run_context_windows.py` contains another set
+and is not on main at this filing baseline.
+**Designated future plan / owner:** `P11.26-CAND-1-RESOURCE-LIFETIME`, existing lifecycle owner;
+coordinate the parallel-test-context owner without importing or changing its active lane.
+**Trigger or acceptance criteria:** When both deliveries are on main, inventory their
+callers and establish one shared native-binding owner, then migrate all callers. Preserve
+suspended-start/assign-before-resume ordering, error classification, handle custody,
+partial-resume cleanup, whole-tree termination and failure-preserving bounded reaping.
+Exercise real descendant trees and cleanup failures; demonstrate that consolidation
+retains the guarded test runner's attribution and protection contracts. Neither lane's
+independent acceptance is a consolidation pass; scheduling and implementation are separate.
+
 ## Plan 11.26 H4 verifier follow-ups from Seam 2 checkpoint A
 
 **Raised:** 2026-09-09. **Governance filing commissioned:** 2026-09-10.
@@ -550,10 +822,10 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P11-FU-5` | Windows Subprocess Handle-Duplication Flake (WinError 6/50) | Open | LOW        | Future Windows subprocess-lifecycle evidence lane | [Plan 11.17 disposition](../../../reports/plan-11-17-p11-fu-5-windows-disposition.md); retains distinct FU-29 custody |
 | `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | LOW | Bounded rejected-POST correction merged through PR #195; broader Windows lifecycle reliability closure remains separately owned | [Plan 11.17 root-cause record](../../../reports/plan-11-17-p11-fu-6-root-cause.md); main `32f32ef4` carries the accepted correction; historical recurrence remains recorded, the 59-clean bound remains inapplicable, and no universal or packet-level mechanism is claimed |
 | `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Partially implemented | MEDIUM     | Future Windows coverage-flake closure lane; Plan 11.16 is a terminal partial outcome | [Windows residual](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md); Plan 11.17 recorded FU-6 open disposition |
-| `P11.5-FU-1` | Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics | Closed | MEDIUM     | `P11-FEAT-GATEWAY-COST-OBS` | [phoenix evidence](../../../reports/plan-11-21-p11-5-fu-1-phoenix-evidence.md); [release](../../../reports/plan-11-21-p11-5-fu-1-release.md); Task 8 watch remains Plan 11.5 Task 8 |
+| ~~`P11.5-FU-1`~~ | ~~Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics~~ | ~~Closed~~ | ~~MEDIUM~~     | ~~`P11-FEAT-GATEWAY-COST-OBS`~~ | ~~[phoenix evidence](../../../reports/plan-11-21-p11-5-fu-1-phoenix-evidence.md); [release](../../../reports/plan-11-21-p11-5-fu-1-release.md); Task 8 watch remains Plan 11.5 Task 8~~ |
 | `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Open | LOW        | Future Gateway migration design | Acceptance criteria in entry |
 | ~~`P11-FU-9`~~ | ~~Client-Supplied ACP `mcpServers` Disposition~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Dedicated P11-FU-9 lane~~ | ~~PR #119 / `9a93137`; [closure evidence](../../../reports/p11-fu-9-client-mcp-closure-evidence.md)~~ |
-| `P11-FU-10` | Complete ACP Error-Code Registry Audit | Closed | HIGH       | [Plan 11.18](archive/2026-08-15-plan-11-18-acp-error-code-registry-audit-implementation.md) | PR #158 (merge 7d4e466); [acpx evidence](../../../reports/plan-11-18-p11-fu-10-acpx-error-code-evidence.md) |
+| ~~`P11-FU-10`~~ | ~~Complete ACP Error-Code Registry Audit~~ | ~~Closed~~ | ~~HIGH~~       | ~~[Plan 11.18](archive/2026-08-15-plan-11-18-acp-error-code-registry-audit-implementation.md)~~ | ~~PR #158 (merge 7d4e466); [acpx evidence](../../../reports/plan-11-18-p11-fu-10-acpx-error-code-evidence.md)~~ |
 | ~~`P11.7-FU-1`~~ | ~~Configurable Gateway request timeout for debug/investigation workflows~~ | ~~Closed~~ | ~~HIGH~~   | ~~Plan 11.9~~ | ~~PR #123 / `d0253be`~~ |
 | ~~`P11.7-FU-2`~~ | ~~Gateway threaded-test flake under full-suite load~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FU-6` Gateway harness custody~~ | ~~Batch B 2026-08-14; misfiled duplicate~~ |
 | `P11.7-FU-3` | Committed `plan117_custody_relay.py` docstring `\ufffd` / em-dash corruption | Open | MEDIUM     | Plan 11.7 deferred follow-up | Acceptance criteria in entry |
@@ -584,6 +856,17 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P12-FU-2` | User-facing net cost-savings report | Open | MEDIUM | Plan 12; slice unscheduled | Requirement accepted in ADR-012; design and delivery surface pending; depends on P11.26-CAND-2-TELEMETRY-CONTRACT; paid evaluation requires separate authority |
 | `P12.1-FU-1` | Local Gateway missed the agent's startup readiness deadline | Open | MEDIUM     | Future local-startup follow-up | Acceptance criteria in entry; cause not yet diagnosed |
 | `P12.1-FU-2` | Goal-loop iterations bypass turn cancellation and directive tracking | Open | MEDIUM     | Future goal-loop follow-up | Acceptance criteria in entry; pre-existing, not introduced by Plan 12.1 |
+| `P11-FU-31` | MAIN-5 synthetic-fixture and complete-scan delivery debt | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
+| `P11-FU-32` | MAIN-5 Windows harness environment dependence | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
+| ~~`P11-FU-33`~~ | ~~MAIN-5 shutdown repeatability evidence~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11.26-CAND-5-REPEATABILITY-ATTRIBUTION`~~ | ~~Through [PR #219](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/219), merge `4797112`; deferred items retain CAND-1 custody~~ |
+| `P11-FU-34` | MAIN-5 settlement telemetry truth | Open | MEDIUM | `P11.26-CAND-2-TELEMETRY-CONTRACT` | Acceptance criteria in entry |
+| ~~`P11-FU-35`~~ | ~~MAIN-5 y5 correction port~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-ACP-RUNTIME-HARDENING`~~ | ~~Through [PR #217](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/217), merge `df70385`; merged tree equals tested `a219831`~~ |
+| `P11-FU-36` | MAIN-5 remaining guarded-runner mechanics | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
+| `P11-FU-37` | MAIN-5 Windows evidence-bundle promotion residual | Open | MEDIUM | `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` | Acceptance criteria in entry |
+| `P11-FU-38` | Bounded join and wait outcome classification | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria in entry; deferred from Closed FU33 |
+| `P11-FU-39` | Process-tree timeout and captured-pipe cleanup class | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria in entry; deferred from Closed FU33 |
+| `P11-FU-40` | Real Zed process containment and live-only tree-kill path | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria in entry; deferred from Closed FU33 |
+| `P11-FU-41` | Windows job-object binding owner consolidation | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria in entry; deferred from Closed FU33 |
 
 ## Evidence and handoff feature registry
 
@@ -595,10 +878,10 @@ current state, priority, and the next schedulable gate.
 | Identity | Status | Priority | Scope / next gate |
 |---|---|---|---|
 | `EVIDENCE-HANDOFF-FEAT-ZED-RENDER-OBSERVATION` | Open | MEDIUM | Design ratified but unscheduled; blocked on same-session Zed custody under `P11-FEAT-ZED-RESUME` and a production-equivalent cooperative-receipt feasibility result. [Design](../specs/evidence-handoff-zed-render-observation-design.md). |
-| `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` | Closed | MEDIUM | Closed 2026-07-31 through commits `2f5e4b8`…`eb5f5d8`. [Archived plan](archive/evidence-handoff-redaction-gate-implementation.md). |
+| ~~`EVIDENCE-HANDOFF-FEAT-REDACTION-GATE`~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Closed 2026-07-31 through commits `2f5e4b8`…`eb5f5d8`. [Archived plan](archive/evidence-handoff-redaction-gate-implementation.md).~~ |
 | `EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR` | Partially implemented | MEDIUM | Tasks 0–12 were independently reviewed at `c6c9b46`; determinate render outcomes remain blocked on the render-observation producer and the branch is unmerged. [Live plan](evidence-handoff-evidence-collector-implementation.md). |
 | `EVIDENCE-HANDOFF-FEAT-A2A-LEDGER` | Reviewed disposition | MEDIUM | Not shipped, not supported, and not trusted after the independent audit returned `NOT SOUND`; merged opt-in code must not be used for trusted workflows. [Archived closure plan](archive/evidence-handoff-a2a-not-shipped-closure_v3.md). Current design authority: [design v2](../specs/evidence-handoff-a2a-ledger-design_v2.md); the frozen [v1 design](../specs/evidence-handoff-a2a-ledger-design.md) is immutable history. |
-| `EVIDENCE-HANDOFF-FEAT-A2A-LEDGER-DESIGN-REFRESH` | Closed | MEDIUM | Closed 2026-09-28 by the complete successor [design v2](../specs/evidence-handoff-a2a-ledger-design_v2.md): Docker Desktop store ladder with wslc removed, Option A session protocol admission, and the audit's normative corrections; the operation-entry integrity guard stays owned by `EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY`. |
+| ~~`EVIDENCE-HANDOFF-FEAT-A2A-LEDGER-DESIGN-REFRESH`~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Closed 2026-09-28 by the complete successor [design v2](../specs/evidence-handoff-a2a-ledger-design_v2.md): Docker Desktop store ladder with wslc removed, Option A session protocol admission, and the audit's normative corrections; the operation-entry integrity guard stays owned by `EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY`.~~ |
 | `EVIDENCE-HANDOFF-FEAT-A2A-CHANNEL` | Open | MEDIUM | Deferred 2026-09-28 by operator decision (estimated two to two-and-a-half weeks including remediation, over the one-week threshold). Owns the [design v2](../specs/evidence-handoff-a2a-ledger-design_v2.md) channel slice: two-seat conversations paired by a ledger-minted code with per-seat cursors; channel activation of `question`, `answer`, `handoff`, and `acknowledgement`; the unattended-exchange budget; and client-owned same-thread scheduled polling for Claude Code and Codex, with Cursor on the operator nudge path. Next gate: an implementation plan whose first task settles the design's `unknown` prerequisites (Codex Windows thread-automation reliability, static-Bearer MCP connectivity), sequenced after the six remediation slices. |
 | `EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION` | Open | MEDIUM | Owns audit findings C1, C3, H7, H9, and M15. |
 | `EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY` | Open | MEDIUM | Owns audit findings C2, H13, and M16c. |
@@ -610,6 +893,20 @@ current state, priority, and the next schedulable gate.
 | `EVIDENCE-HANDOFF-FEAT-PEER-LIVENESS-SIGNAL` | Open | MEDIUM | Design-needed, unscheduled; requires an explicit heartbeat/session-health mechanism rather than inference from cursor activity. |
 | `EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE` | Open | HIGH | Design-needed OAuth/rotation/`kid`/JWKS/dynamic-registration work, including discovery and Bearer-challenge interoperability. |
 | `EVIDENCE-HANDOFF-FEAT-AT-REST-INTEGRITY` | Open | MEDIUM | Design-needed full-chain detector covering historical sequences behind confirmed cursors. |
+
+### P11-FU-37: MAIN-5 Windows evidence-bundle promotion residual
+
+**Raised:** 2026-10-02.
+**Status:** Open.
+**Origin:** Windows evidence-bundle directory-rename sharing violations, accepted ruling A/F
+and registered F1 unguarded reproduction; bundle/private-file long-path observations.
+**Designated future plan / owner:** Evidence-handoff redaction product owner, existing
+`EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` custody. This is a new residual under that owner;
+the existing feature remains Closed and is not reopened or declared unsound.
+**Trigger or acceptance criteria:** Characterize Windows sharing violations without the
+MAIN-5 guard; prove bounded promotion, integrity and failure custody, including applicable
+private-file promotion paths. The registered one-test flake exception is not general
+retry permission or a product fix. Short-path mitigation does not establish repair.
 
 ## A2A ledger audit obligations
 

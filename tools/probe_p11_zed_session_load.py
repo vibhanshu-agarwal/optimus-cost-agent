@@ -40,6 +40,7 @@ from typing import Any
 
 from optimus.acp.framing import FramingError, parse_content_length
 from optimus_security.sanitization import EVIDENCE_REDACTION_POLICY, PathAliasRule, sanitize_for_persistence
+from tools import process_tree
 from tools.plan117_custody_relay import verify_relay_capture
 
 PLAN1119_SCHEMA = "plan-11-19-zed-session-load-reprobe-v1"
@@ -355,6 +356,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "tools/plan117_custody_contract.py",
     "tools/plan117_custody_relay.py",
     "tools/probe_p11_zed_session_load.py",
+    "tools/process_tree.py",
     "tools/verify_plan1119_zed_reprobe_evidence.py",
     "uv.lock",
 )
@@ -3101,7 +3103,7 @@ def _launch_zed_once(
         stdout_target = log_handle
         stderr_target = log_handle
     try:
-        proc = subprocess.Popen(  # noqa: S603
+        proc = process_tree.popen(
             list(argv),
             cwd=cwd,
             env=dict(env),
@@ -3116,13 +3118,8 @@ def _launch_zed_once(
     try:
         returncode = proc.wait(timeout=timeout_s)
     except subprocess.TimeoutExpired:
-        subprocess.run(  # noqa: S603
-            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-            capture_output=True,
-            check=False,
-            shell=False,
-            timeout=30,
-        )
+        # The whole tree, including descendants no walk of parent pids reaches anymore.
+        process_tree.kill_tree(proc)
         try:
             returncode = proc.wait(timeout=15)
         except subprocess.TimeoutExpired:

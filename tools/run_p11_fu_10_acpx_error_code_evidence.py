@@ -22,6 +22,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+try:
+    from tools import process_tree
+except ModuleNotFoundError:  # run as a script: tools/ itself is sys.path[0]
+    import process_tree  # type: ignore[no-redef]
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT = ROOT / "reports" / "plan-11-18-p11-fu-10-acpx-error-code-evidence.md"
 PROBED_CODES: tuple[int, int] = (-32001, -32911)
@@ -203,22 +208,6 @@ def _write_probe_agent(scratch_dir: Path) -> Path:
     return probe_path
 
 
-def _kill_process_tree(pid: int) -> None:
-    if os.name == "nt":
-        subprocess.run(  # noqa: S603
-            ["taskkill", "/F", "/T", "/PID", str(pid)],
-            capture_output=True,
-            check=False,
-            shell=False,
-            timeout=30,
-        )
-        return
-    try:
-        os.kill(pid, 9)
-    except OSError:
-        pass
-
-
 def _run_acpx(
     command: Sequence[str],
     *,
@@ -226,7 +215,7 @@ def _run_acpx(
     env: Mapping[str, str],
     timeout: float,
 ) -> tuple[int, str, str]:
-    process = subprocess.Popen(  # noqa: S603
+    process = process_tree.popen(
         list(command),
         cwd=str(cwd),
         env=dict(env),
@@ -240,7 +229,8 @@ def _run_acpx(
     try:
         stdout, stderr = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        _kill_process_tree(process.pid)
+        # The whole tree, including descendants no walk of parent pids reaches anymore.
+        process_tree.kill_tree(process)
         try:
             stdout, stderr = process.communicate(timeout=5)
         except Exception:

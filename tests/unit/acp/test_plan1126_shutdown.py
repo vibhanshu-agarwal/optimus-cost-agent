@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
+from tests.support.concurrency import assert_no_offending_rows, assert_threads_alive
 from tools.plan1126_runtime_audit.cancellation import H3_SOURCE_PATHS
 from tools.plan1126_runtime_audit.delivery_characterization import H4_SOURCE_PATHS
 from tools.plan1126_runtime_audit.model import AuditArtifact
@@ -251,13 +252,10 @@ def test_shutdown_inventory_is_independent_complete_and_receiver_safe() -> None:
 
     assert inventory.close_path_count == len({site.conceptual_id for site in inventory.close_definitions})
     assert inventory.close_path_count > 0
-    assert all(
-        record.constructor and record.owner_transfer and record.normal_close
-        and record.cancellation_close and record.partial_failure_close and record.repeated_close
-        for record in inventory.resources
-    )
-    assert all(record.dependency_rank >= 0 for record in inventory.resources)
-    assert all(site.reference not in {"str.join", "bytes.join"} for site in inventory.close_sites)
+    assert_no_offending_rows(inventory.resources, lambda record: not (record.constructor and record.owner_transfer and record.normal_close
+        and record.cancellation_close and record.partial_failure_close and record.repeated_close), 'must hold for all: record.constructor and record.owner_transfer and record.normal_close and record.cancellation_close and record.partial_failure_close and record.repeated_close')
+    assert_no_offending_rows(inventory.resources, lambda record: not (record.dependency_rank >= 0), 'must hold for all: record.dependency_rank >= 0')
+    assert_no_offending_rows(inventory.close_sites, lambda site: not (site.reference not in {"str.join", "bytes.join"}), 'must hold for all: site.reference not in {"str.join", "bytes.join"}')
 
     fixture = SourceTree({"fixture.py": '''
 class RealOwner:
@@ -274,7 +272,7 @@ def run(owner, metrics, values):
     assert "close" in references
     assert "owner.close" in references
     assert "metrics.close" not in references
-    assert not any("join" in reference for reference in references)
+    assert_no_offending_rows(references, lambda reference: "join" in reference, 'must hold for none: "join" in reference')
 
 
 def test_shutdown_causes_repeat_100_with_control_allowlist() -> None:
@@ -289,13 +287,13 @@ def test_shutdown_causes_repeat_100_with_control_allowlist() -> None:
     assert len(observations) == len(applicable) * len(_CAUSES) * 100
     assert {item["terminal_cause"] for item in observations} == _CAUSES
     assert {item["close_path_id"] for item in observations} == applicable
-    assert all(item["complete"] for item in observations)
-    assert all(item["close_invocation_count"] == 3 for item in observations)
-    assert all(item["control_thread_names"] for item in observations)
-    assert all(not item["unexpected_persistent_threads"] for item in observations)
-    assert all(not item["unexpected_persistent_tasks"] for item in observations)
-    assert all("probe_error" not in item["cause_effect"] for item in observations)
-    assert all(item["repeat_latency_class"] in {"WITHIN_100MS", "ABOVE_100MS"} for item in observations)
+    assert_no_offending_rows(observations, lambda item: not (item["complete"]), 'must hold for all: item["complete"]')
+    assert_no_offending_rows(observations, lambda item: not (item["close_invocation_count"] == 3), 'must hold for all: item["close_invocation_count"] == 3')
+    assert_no_offending_rows(observations, lambda item: not (item["control_thread_names"]), 'must hold for all: item["control_thread_names"]')
+    assert_no_offending_rows(observations, lambda item: not (not item["unexpected_persistent_threads"]), 'must hold for all: not item["unexpected_persistent_threads"]')
+    assert_no_offending_rows(observations, lambda item: not (not item["unexpected_persistent_tasks"]), 'must hold for all: not item["unexpected_persistent_tasks"]')
+    assert_no_offending_rows(observations, lambda item: not ("probe_error" not in item["cause_effect"]), 'must hold for all: "probe_error" not in item["cause_effect"]')
+    assert_no_offending_rows(observations, lambda item: item["repeat_latency_class"] not in {"WITHIN_100MS", "ABOVE_100MS"}, 'must hold for all: item["repeat_latency_class"] in {"WITHIN_100MS", "ABOVE_100MS"}')
 
     by_family: dict[tuple[str, str], int] = {}
     for item in observations:
@@ -351,8 +349,8 @@ def test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register(tmp_path: P
         item["close_path_id"] for item in record["resource_ownership"] if not item["schedule_applicable"]
     }
     assert {item["close_path_id"] for item in record["close_path_scope_outs"]} == scoped_ids
-    assert all(item["owner"] == "P11-FEAT-ZED-RESUME" for item in record["close_path_scope_outs"])
-    assert all("PENDING" not in item["repeated_close"] for item in record["resource_ownership"])
+    assert_no_offending_rows(record["close_path_scope_outs"], lambda item: not (item["owner"] == "P11-FEAT-ZED-RESUME"), 'must hold for all: item["owner"] == "P11-FEAT-ZED-RESUME"')
+    assert_no_offending_rows(record["resource_ownership"], lambda item: not ("PENDING" not in item["repeated_close"]), 'must hold for all: "PENDING" not in item["repeated_close"]')
 
     summary = record["schedule_observations"]
     assert summary["observation_closure_status"] == "FULLY_STRUCTURALLY_CLOSED"
@@ -377,11 +375,11 @@ def test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register(tmp_path: P
         for assessment in evidence_record["schedule_observations"]["coverage_assessments"]
     )
     assert len(register) == expected_scope_outs
-    assert all(entry["field_name"] and entry["owning_gate"] for entry in register)
-    assert all(entry["missing_values"] for entry in register)
-    assert all(entry["owner"] for entry in register)
-    assert all(entry["reachable_in_gate"] == "NOT_YET_ASSESSED" for entry in register)
-    assert all(entry["reachability_reason"] for entry in register)
+    assert_no_offending_rows(register, lambda entry: not (entry["field_name"] and entry["owning_gate"]), 'must hold for all: entry["field_name"] and entry["owning_gate"]')
+    assert_no_offending_rows(register, lambda entry: not (entry["missing_values"]), 'must hold for all: entry["missing_values"]')
+    assert_no_offending_rows(register, lambda entry: not (entry["owner"]), 'must hold for all: entry["owner"]')
+    assert_no_offending_rows(register, lambda entry: not (entry["reachable_in_gate"] == "NOT_YET_ASSESSED"), 'must hold for all: entry["reachable_in_gate"] == "NOT_YET_ASSESSED"')
+    assert_no_offending_rows(register, lambda entry: not (entry["reachability_reason"]), 'must hold for all: entry["reachability_reason"]')
 
     report = render_markdown(payload)
     assert "### `H5`" in report
@@ -460,7 +458,7 @@ def test_bridge_probe_oracle_is_owner_identity_not_a_thread_name() -> None:
         count, cause_effect = module._probe_resource(  # noqa: SLF001 - the oracle is the subject
             record, "orderly_eof", source=_current_source(paths)
         )
-        assert decoy.is_alive()
+        assert_threads_alive([decoy], 'decoy is not alive')
         assert count == 1, "the probe failed to observe its own owner's termination"
         assert cause_effect.endswith("bridge_loop_stopped")
     finally:

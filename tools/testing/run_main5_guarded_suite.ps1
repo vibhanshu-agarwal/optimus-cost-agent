@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][ValidateSet('Control','Discover','Suite','Coverage')][string]$Mode,
     [Parameter(Mandatory=$true)][string]$AttemptDirectory,
-    [string[]]$PytestTarget = @(),
+    [object[]]$PytestTarget = @(),
     [string]$KitDirectory = '',
     [string]$DependencyPython = '',
     [string]$PreCommitHome = '',
@@ -9,21 +9,67 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+function Get-Main5NormalizedTargets([object[]]$Targets) {
+    $clean = [System.Collections.Generic.List[string]]::new()
+    foreach ($target in $Targets) {
+        if ($null -eq $target) { continue }
+        if ($target -isnot [string] -or [string]::IsNullOrWhiteSpace($target)) { throw 'MAIN5_INVALID_TEST_TARGET' }
+        $clean.Add($target)
+    }
+    return $clean.ToArray()
+}
+function Invoke-Main5SelfTestLane([string]$Python, [string[]]$Arguments, [string]$Output) {
+    foreach ($argument in $Arguments) {
+        if ([string]::IsNullOrWhiteSpace($argument)) { throw 'MAIN5_EMPTY_PYTEST_ARGUMENT' }
+    }
+    & $Python @Arguments *> $Output
+    return [int]$LASTEXITCODE
+}
+function Get-Main5ExecutedLaneVerdict([object[]]$Rows, [string[]]$ExpectedNodeIds) {
+    $expected = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($nodeId in $ExpectedNodeIds) { $null = $expected.Add($nodeId) }
+    # A fresh per-lane ledger starts with the main pytest's configure hook;
+    # any nested pytest configures only after that process begins executing tests.
+    $auditStarts = @($Rows | Where-Object { $_.event -ceq 'audit-start' })
+    if ($auditStarts.Count -eq 0 -or [int]$auditStarts[0].pid -le 0) {
+        return [pscustomobject]@{status='FAIL';pytest_pid=$null;executed_count=0;expected_count=$expected.Count;extra_nodeids=@();missing_nodeids=@($ExpectedNodeIds);failures=@('lane_execution_identity_missing')}
+    }
+    $pytestPid = [int]$auditStarts[0].pid
+    $actual = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($row in $Rows) {
+        if ($row.event -ceq 'test-start' -and $row.pid -eq $pytestPid) {
+            if ([string]::IsNullOrWhiteSpace([string]$row.nodeid)) { throw 'MAIN5_EXECUTED_NODEID_INVALID' }
+            $null = $actual.Add([string]$row.nodeid)
+        }
+    }
+    $extras = @(foreach ($nodeId in $actual) { if (-not $expected.Contains($nodeId)) { $nodeId } })
+    $missing = @(foreach ($nodeId in $expected) { if (-not $actual.Contains($nodeId)) { $nodeId } })
+    $failures = @()
+    if ($extras.Count) { $failures += 'lane_executed_outside_partition' }
+    if ($missing.Count) { $failures += 'lane_partition_not_fully_executed' }
+    return [pscustomobject]@{status=if ($failures.Count) {'FAIL'} else {'PASS'};pytest_pid=$pytestPid;executed_count=$actual.Count;expected_count=$expected.Count;extra_nodeids=@($extras | Sort-Object -CaseSensitive);missing_nodeids=@($missing | Sort-Object -CaseSensitive);failures=$failures}
+}
 function Invoke-Main5ScoredLane([string]$Python, [string]$Venv, [string[]]$Arguments, [string]$Output) {
+    foreach ($argument in $Arguments) {
+        if ([string]::IsNullOrWhiteSpace($argument)) { throw 'MAIN5_EMPTY_PYTEST_ARGUMENT' }
+    }
     $names = @('PYTHONPYCACHEPREFIX','PYTHONDONTWRITEBYTECODE')
     $previous = @{}
     foreach ($name in $names) {
         $previous[$name] = @{exists=(Test-Path -LiteralPath ("Env:{0}" -f $name));value=[Environment]::GetEnvironmentVariable($name,'Process')}
     }
     try {
-        [Environment]::SetEnvironmentVariable('PYTHONPYCACHEPREFIX',$null,'Process')
+        Remove-Item -LiteralPath Env:PYTHONPYCACHEPREFIX -ErrorAction SilentlyContinue
         $env:PYTHONDONTWRITEBYTECODE = '1'
         & $Python @Arguments *> $Output
         return [int]$LASTEXITCODE
     } finally {
         foreach ($name in $names) {
-            $value = if ($previous[$name].exists) { $previous[$name].value } else { $null }
-            [Environment]::SetEnvironmentVariable($name,$value,'Process')
+            if ($previous[$name].exists) {
+                [Environment]::SetEnvironmentVariable($name,$previous[$name].value,'Process')
+            } else {
+                Remove-Item -LiteralPath ("Env:{0}" -f $name) -ErrorAction SilentlyContinue
+            }
         }
     }
 }
@@ -455,6 +501,7 @@ function Get-Main5ClassCounts([object[]]$Classifications) {
         [pscustomobject]@{classification=$group.Name;count=$group.Count}
     }
 }
+$PytestTarget = @(Get-Main5NormalizedTargets -Targets $PytestTarget)
 $repo = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 Push-Location -LiteralPath $repo
 try {
@@ -637,7 +684,7 @@ $env:MAIN5_TEST_ID = 'MAIN5_CONTROL_PARENT'
 $env:X1_GUARD_LOG = Join-Path $attempt 'port-guard.jsonl'
 $env:KEYRING_AUDIT_LOG = Join-Path $attempt 'keyring-audit.jsonl'
 $env:PYTHON_KEYRING_BACKEND = 'counting_keyring.CountingKeyring'
-$env:PYTHONPATH = ''
+Remove-Item -LiteralPath Env:PYTHONPATH -ErrorAction SilentlyContinue
 $env:PATH = (Split-Path $gitBash -Parent) + ';' + (Join-Path $kit 'docker-shim') + ';' + $env:PATH
 $resolvedBash = (Get-Command bash.exe -ErrorAction Stop).Source
 $resolvedUv = (Get-Command uv.exe -ErrorAction Stop).Source
@@ -696,8 +743,8 @@ $guardConfig.log_dir = $logs
 $attemptConfigSha256 = Get-Main5Sha256 (Join-Path $site 'main5-config.json')
 Copy-Item -LiteralPath (Join-Path $site 'main5-config.json') -Destination (Join-Path $attempt 'attempt-config.json')
 $env:MAIN5_GUARD_LOG_DIR = $logs
-$env:MAIN5_CONTROL_PROTECTED_ROOT = ''
-$env:MAIN5_TEST_ID = ''
+Remove-Item -LiteralPath Env:MAIN5_CONTROL_PROTECTED_ROOT -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath Env:MAIN5_TEST_ID -ErrorAction SilentlyContinue
 $originProbe = @'
 import importlib.util, json, sys
 names = ('optimus', 'pydantic', 'zr_marker')
@@ -908,7 +955,8 @@ try {
 if ($selfSyncExit -ne 0) { throw 'MAIN5_SELF_TEST_FROZEN_SYNC_FAILED' }
 $selfTestPython = Join-Path $selfTestVenv 'Scripts\python.exe'
 $snapshot = Join-Path $repo 'tools\testing\main5_snapshot.ps1'
-$env:KIT_AUDIT_LOG = Join-Path $attempt 'suite-audit.jsonl'
+[IO.File]::WriteAllText((Join-Path $selfTestVenv 'Lib\site-packages\main5-audit.pth'),((Join-Path $kit 'keyring-audit') + "`n"),[Text.UTF8Encoding]::new($false))
+$env:KIT_AUDIT_LOG = Join-Path $attempt 'collection-audit.jsonl'
 $collectArgs = @('-m','pytest',("--rootdir={0}" -f $repo),'-p','zr_marker','-p','kit_audit','-p','no:cacheprovider','--collect-only','-q')
 $null = Invoke-Main5FullCollection -Python $python -Attempt $attempt -Arguments $collectArgs
 $fullNodeIds = @(Get-Content -LiteralPath (Join-Path $attempt 'full-collection.txt') | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^tests[/\\].*::' })
@@ -919,7 +967,7 @@ $targetNodeIds = @()
 if ($PytestTarget.Count -gt 0) {
     $targetNodeIds = @(Resolve-Main5TargetSet -FullNodeIds $fullNodeIds -Targets $PytestTarget -SelfTestFile 'tests/unit/acp/test_main5_guard.py' -SelfTestNodeIds $partition.self_test_nodeids)
 }
-$scoredTargets = @($PytestTarget | Where-Object { $_ -cne 'tests/unit/acp/test_main5_guard.py' })
+$scoredTargets = @(foreach ($target in $PytestTarget) { if ($target -cne 'tests/unit/acp/test_main5_guard.py') { $target } })
 $runScored = $true
 $runSelfTest = $true
 if ($Mode -eq 'Discover' -and $targetNodeIds.Count -eq 0) { $runScored = $false; $runSelfTest = $false }
@@ -928,6 +976,9 @@ $scoredExit = 0
 $scoredStart = $null
 $scoredEnd = $null
 $selfTestExit = 0
+$laneExecution = [ordered]@{scored=[pscustomobject]@{status='NOT_RUN'};self_test=[pscustomobject]@{status='NOT_RUN'}}
+$scoredExpected = @($partition.scored_nodeids)
+if ($targetNodeIds.Count -gt 0) { $scoredExpected = @($targetNodeIds | Where-Object { -not $_.StartsWith('tests/unit/acp/test_main5_guard.py::',[StringComparison]::Ordinal) }) }
 $scoredBefore = Join-Path $attempt 'scored-before.json'
 $scoredAfter = Join-Path $attempt 'scored-after.json'
 $selfBefore = Join-Path $attempt 'self-test-before.json'
@@ -943,6 +994,7 @@ try {
         $ErrorActionPreference = 'Continue'
         $previousDirectRole = $env:MAIN5_DIRECT_LAUNCH
         $env:MAIN5_DIRECT_LAUNCH = 'suite'
+        $env:KIT_AUDIT_LOG = Join-Path $attempt 'suite-audit.jsonl'
         $scoredStart = [DateTime]::UtcNow.ToFileTimeUtc()
         try { $scoredExit = Invoke-Main5ScoredLane -Python $python -Venv $venv -Arguments $scoredArgs -Output (Join-Path $attempt 'scored-suite.txt') }
         finally {
@@ -957,16 +1009,19 @@ try {
             $meta.scored_basetemp_archive = $archive
             $meta | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $attempt 'metadata.json') -Encoding utf8
         }
+        $laneRows = @(Get-Content -LiteralPath (Join-Path $attempt 'suite-audit.jsonl') | Where-Object { $_.Trim() } | ForEach-Object { $_ | ConvertFrom-Json })
+        $laneExecution.scored = Get-Main5ExecutedLaneVerdict -Rows $laneRows -ExpectedNodeIds $scoredExpected
         & $snapshot -OutputFile $scoredAfter
     }
     if ($runSelfTest) {
         & $snapshot -OutputFile $selfBefore
-        $selfArgs = @('-m','pytest',("--rootdir={0}" -f $repo),'-p','no:cacheprovider','-q',("--basetemp={0}" -f $workRoots.self_test_basetemp),'tests/unit/acp/test_main5_guard.py')
+        $selfArgs = @('-m','pytest','-p','kit_audit',("--rootdir={0}" -f $repo),'-p','no:cacheprovider','-q',("--basetemp={0}" -f $workRoots.self_test_basetemp),'tests/unit/acp/test_main5_guard.py')
         if ($Mode -eq 'Coverage') { $env:COVERAGE_FILE = Join-Path $attempt 'self-test-coverage.data'; $selfArgs += @('--cov=optimus','--cov-branch','--cov-report=term-missing','--cov-fail-under=0','--tb=long') }
         $previousErrorAction = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         $env:PYTHONPYCACHEPREFIX = $workRoots.self_test_pycache
-        try { & $selfTestPython @selfArgs *> (Join-Path $attempt 'self-test-suite.txt'); $selfTestExit = $LASTEXITCODE }
+        $env:KIT_AUDIT_LOG = Join-Path $attempt 'self-test-audit.jsonl'
+        try { $selfTestExit = Invoke-Main5SelfTestLane -Python $selfTestPython -Arguments $selfArgs -Output (Join-Path $attempt 'self-test-suite.txt') }
         finally {
             $ErrorActionPreference = $previousErrorAction
             $env:PYTHONPYCACHEPREFIX = $workRoots.collection_pycache
@@ -975,6 +1030,8 @@ try {
             $meta.self_test_basetemp_archive = $archive
             $meta | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $attempt 'metadata.json') -Encoding utf8
         }
+        $laneRows = @(Get-Content -LiteralPath (Join-Path $attempt 'self-test-audit.jsonl') | Where-Object { $_.Trim() } | ForEach-Object { $_ | ConvertFrom-Json })
+        $laneExecution.self_test = Get-Main5ExecutedLaneVerdict -Rows $laneRows -ExpectedNodeIds $partition.self_test_nodeids
         & $snapshot -OutputFile $selfAfter
     }
 } finally {
@@ -985,7 +1042,8 @@ $combinedCoverage = $null
 if ($Mode -eq 'Coverage') {
     $combinedCoverage = Invoke-Main5CombinedCoverage -Python $python -Attempt $attempt
 }
-$suiteExit = if ($scoredExit -ne 0 -or $selfTestExit -ne 0 -or ($Mode -eq 'Coverage' -and ($combinedCoverage.combine_exit -ne 0 -or $combinedCoverage.report_exit -ne 0 -or $null -eq $combinedCoverage.total))) { 1 } else { 0 }
+$laneExecution | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $attempt 'lane-execution.json') -Encoding utf8
+$suiteExit = if ($laneExecution.scored.status -ceq 'FAIL' -or $laneExecution.self_test.status -ceq 'FAIL' -or $scoredExit -ne 0 -or $selfTestExit -ne 0 -or ($Mode -eq 'Coverage' -and ($combinedCoverage.combine_exit -ne 0 -or $combinedCoverage.report_exit -ne 0 -or $null -eq $combinedCoverage.total))) { 1 } else { 0 }
 $before = Get-Content -LiteralPath (Join-Path $attempt 'before.json') -Raw | ConvertFrom-Json
 $after = Get-Content -LiteralPath (Join-Path $attempt 'after.json') -Raw | ConvertFrom-Json
 $rootNames = @($before.roots.PSObject.Properties.Name | Sort-Object)
@@ -1020,6 +1078,7 @@ $exits = @($spawnRows | Where-Object { $_.kind -eq 'exit_code' })
 $auditSpawns = @($spawnRows | Where-Object { $_.kind -eq 'audit_spawn' })
 $refusals = @($guardRows | Where-Object { $_.kind -eq 'guard_refusal' })
 $failures = @()
+foreach ($lane in @($laneExecution.scored,$laneExecution.self_test)) { if ($lane.status -ceq 'FAIL') { $failures += @($lane.failures) } }
 if ($refusals.Count -gt 0) { $failures += 'guard_refusal' }
 if ($starts.Count -lt 1) { $failures += 'guard_start_missing' }
 $startByIdentity = @{}
@@ -1148,6 +1207,7 @@ if (Test-Path -LiteralPath $selfBefore -PathType Leaf) {
 }
 $selfTestGate = if (-not $runSelfTest) { 'NOT_RUN' } elseif ($selfTestExit -eq 0 -and $selfTestRootStatus -in @('CLEAN','CONFOUNDED')) { 'PASS' } else { 'FAIL' }
 $result = [ordered]@{
+    lane_execution=$laneExecution
     mode=$Mode;suite_exit=$suiteExit;scored_exit=$scoredExit;self_test_exit=$selfTestExit
     combined_coverage_total=if ($null -ne $combinedCoverage) { $combinedCoverage.total } else { $null }
     combined_coverage_combine_exit=if ($null -ne $combinedCoverage) { $combinedCoverage.combine_exit } else { $null }
@@ -1170,7 +1230,7 @@ $result = [ordered]@{
     census_unavailable_count=$census.unavailable_count
 }
 $result | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $attempt 'result.json') -Encoding utf8
-if ($suiteExit -ne 0 -or $treeStatus -ne 'PASS' -or $violations -gt 0 -or $rootStatus -eq 'FAIL' -or $scoredRootStatus -eq 'FAIL' -or $selfTestRootStatus -eq 'FAIL') { exit 1 }
+if ($suiteExit -ne 0 -or $treeStatus -ne 'PASS' -or $violations -gt 0 -or $rootStatus -in @('FAIL','CONFOUNDED') -or $scoredRootStatus -in @('FAIL','CONFOUNDED') -or $selfTestRootStatus -in @('FAIL','CONFOUNDED')) { exit 1 }
 Write-Output 'MAIN5_SUITE_PASS'
 } finally {
     Pop-Location
