@@ -199,12 +199,19 @@ EXTERNAL_ISSUES = (
         "title": "P0: Zed ACP session/prompt hangs — no visible response after prompt (HITL deadlock)",
         "related": ["P11-FEAT-ZED-RESUME"],
         "target_issue": 33,
+        "status_disposition": "no source unit states it: the existing GitHub issue's state (open since 2026-07-09), re-read before any write",
         "priority": "HIGH",
+        "priority_disposition": (
+            "the issue body states Priority P0, kept verbatim in its body and evidence; HIGH is the disclosed label mapping (the label"
+            " vocabulary has no P0), not an operator priority assertion"
+        ),
         "reviewed": True,
         "review_note": (
-            "existing issue kept as-is; its body states Priority P0, mapped to the highest label. Task 2 runs a specific reviewed"
-            " operation: a current-Zed reproduction attempt or an operator disposition, citing"
-            " reports/plan-9-75-zed-hitl-runtime-evidence.md as the candidate resolver; later plan coverage never proves closure"
+            "existing issue, kept open and linked as-is. Task 2 reconciles it read-only against existing evidence"
+            " (reports/plan-9-75-zed-hitl-runtime-evidence.md and the P11-FEAT-ZED-RESUME records) and records a reviewed applicability"
+            " disposition; Plan 11.29 runs no Zed, acpx or Gateway drive. A new reproduction, if one is needed, belongs to"
+            " P11-FEAT-ZED-RESUME under that lane's own plan and authority, with #33 open and linked meanwhile. This inventory authorizes"
+            " no closure, relabel or duplicate issue; later plan coverage never proves closure"
         ),
         "rationale": "pre-existing GitHub issue (2026-07-09); related to, not owned by, P11-FEAT-ZED-RESUME",
     },
@@ -480,7 +487,7 @@ def draft_inventory(commit: str, sources: Mapping[str, bytes]) -> dict:
                 units=claim(units),
                 title=path,
                 product="evidence-a2a" if "evidence-handoff" in path else "optimus",
-                related=[m.group(1) for o in owners[:1] if (m := re.search(r"([A-Z0-9][A-Z0-9.-]+-[A-Z0-9-]*[A-Z0-9])", o or ""))],
+                related=list(dict.fromkeys(identity for owner in owners for identity in gwt.owner_identities(owner))),
                 rationale="frozen artifact; " + ("; ".join(o for o in owners if o) or "historical provenance (no live owner)"),
             )
         )
@@ -508,9 +515,6 @@ def _derive(records: list[dict], scans: Mapping[str, gwt.SourceScan]) -> None:
     units = {unit.key: unit for scan in scans.values() for unit in scan.units}
     by_id = {record["id"]: record for record in records}
     ids = set(by_id)
-    for record in records:
-        if record["kind"] == "frozen-mapping":  # a closed owner may have no record; its name stays in the rationale
-            record["related"] = [target for target in record["related"] if target in ids]
     board = {}
     for unit in scans["masterplan"].units:
         if unit.section == "Child-plan status board":
@@ -574,8 +578,12 @@ def _derive(records: list[dict], scans: Mapping[str, gwt.SourceScan]) -> None:
             record["parent"] = "HARDENING-TRACK-DUPLICATION"
         elif rid.startswith("HARDENING-ITEM-"):
             record["parent"] = board.get(rid)
-            record["status"] = record["status"] or "Open"
-            record["rationale"] = "the masterplan omits item status by design (its track reports it); open until its track delivers"
+            record["rationale"] = "new-work custody register item under its hardening track"
+            if not record["status"]:
+                record["status"] = "Open"
+                record["status_disposition"] = (
+                    "synthesized: the masterplan omits item status by design (its track reports it); open until its track delivers"
+                )
         elif record["kind"] == "plan":
             owner = next((row.cells.get("backlog owner", "") for row in rows), "")
             parent = next(iter(mentioned(owner, rid)), None)
@@ -593,3 +601,7 @@ def _derive(records: list[dict], scans: Mapping[str, gwt.SourceScan]) -> None:
         if record["disposition"] == "migrate" and parent and parent["disposition"] != "migrate":
             record["rationale"] += f"; source owner {parent['id']} is {parent['disposition']}, so this issue has no parent"
             record["parent"] = None
+    index = gwt.identity_index((record["id"], record["aliases"]) for record in records)
+    for record in records:
+        if record["kind"] == "frozen-mapping":  # every owner with a record is linked; a closed owner with none stays a name
+            record["related"] = list(dict.fromkeys(index[identity] for identity in record["related"] if identity in index))

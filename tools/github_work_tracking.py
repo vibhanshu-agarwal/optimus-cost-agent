@@ -15,7 +15,11 @@ authority documents the inventory was built from and checks the inventory agains
 * a record that merges several identities, merges conflicting source statuses, or is marked a duplicate states why;
 * a plan and an item are never merged into one record, because their acceptance surfaces differ;
 * unresolved work is never retired without an explicit terminal disposition, and an accepted risk with outstanding
-  mitigation is never excluded; parents form no cycle and never hang an open item under a retired record.
+  mitigation is never excluded; parents form no cycle and never hang an open item under a retired record;
+* a record's status is the text one of its claimed units states; only a status no unit states may be synthesized, with a
+  known token and a status disposition; a migrating record's priority is its source value, or ``MEDIUM`` unless a
+  priority disposition explains another value; each migrating record targets its own positive issue number;
+* a frozen artifact's mapping links every live owner it names that has a record.
 
 Unit keys are ``<source>:<line>`` against the exact source bytes, whose git blob ids the inventory pins. The reviewed
 drafting rules that produce the inventory live in ``tools.github_work_tracking_rules``; ``draft`` reproduces the
@@ -31,7 +35,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -63,6 +67,9 @@ UNRESOLVED_STATUSES = frozenset(
 )
 RESOLVED_STATUSES = frozenset({"closed", "retired", "reviewed disposition", "complete", "completed", "implemented", "resolved", "merged"})
 REVIEWED_DISPOSITION = "reviewed disposition"
+# The `priority:*` label vocabulary; a migrating record without a source priority takes the operator's default.
+PRIORITIES = frozenset({"HIGH", "MEDIUM", "LOW"})
+DEFAULT_PRIORITY = "MEDIUM"
 
 # The status token must be the first text of the status (the pool's own rule); `\b` keeps "Openly" or "Unblocked" out.
 _STATUS_TOKEN = re.compile(
@@ -100,6 +107,15 @@ def normalized_status(text: str | None) -> str | None:
         return None
     match = _STATUS_TOKEN.match(re.sub(r"[`~*]", "", text).strip())
     return match.group("token").lower() if match else None
+
+
+def owner_identities(text: str | None) -> list[str]:
+    """Every identity a frozen artifact's live-owner text names, in order and without repeats (anchors are lower case)."""
+    found: list[str] = []
+    for match in _IDENTITY.finditer(_clean(text)):
+        if match.group("id") not in found:
+            found.append(match.group("id"))
+    return found
 
 
 def heading_anchor(title: str) -> str:
@@ -337,6 +353,8 @@ class InventoryRecord:
     duplicate_of: str | None = None
     duplicate_rationale: str | None = None
     status_conflict_disposition: str | None = None
+    status_disposition: str | None = None
+    priority_disposition: str | None = None
     terminal_disposition: str | None = None
     mitigation_outstanding: bool = False
     target_issue: int | None = None
@@ -465,14 +483,16 @@ def validate_inventory(inventory: Inventory, sources: Mapping[str, bytes]) -> Co
         elif normalized_status(unit.stated_status) == REVIEWED_DISPOSITION:
             problems.append(f"{label}: a reviewed disposition always needs its own record")
 
+    index = identity_index((record.id, record.aliases) for record in inventory.records)
     aliases: dict[str, str] = {}
     for record in inventory.records:
-        problems.extend(_record_problems(record, records, units))
+        problems.extend(_record_problems(record, records, units, index))
         if record.disposition == "migrate":
             for alias in record.aliases:
                 if alias in aliases and aliases[alias] != record.id:
                     problems.append(f"alias {alias!r} names both {aliases[alias]!r} and {record.id!r}")
                 aliases[alias] = record.id
+    problems.extend(_target_issue_problems(inventory.records))
     problems.extend(_parent_cycles(records))
     for anchor, target in inventory.compat_anchors.items():
         if target not in records and not target.startswith("section:"):
@@ -483,7 +503,87 @@ def validate_inventory(inventory: Inventory, sources: Mapping[str, bytes]) -> Co
     return CoverageReport(tuple(problems), dict(counts))
 
 
-def _record_problems(record: InventoryRecord, records: Mapping[str, InventoryRecord], units: Mapping[str, SourceUnit]) -> list[str]:
+def identity_index(records: Iterable[tuple[str, Sequence[str]]]) -> dict[str, str]:
+    """Source identity -> record id: every record id, then each alias not already taken (the first record keeps it)."""
+    pairs = list(records)
+    index: dict[str, str] = {}
+    for record_id, aliases in pairs:
+        for alias in aliases:
+            index.setdefault(alias, record_id)
+    index.update({record_id: record_id for record_id, _aliases in pairs})
+    return index
+
+
+def _target_issue_problems(records: Sequence[InventoryRecord]) -> list[str]:
+    """Each migrating record lands on its own issue; a record that maps to another's issue is a ``duplicate``."""
+    problems = []
+    targets: dict[int, str] = {}
+    for record in records:
+        target = record.target_issue
+        if target is None:
+            continue
+        label = f"record {record.id!r}"
+        if not isinstance(target, int) or isinstance(target, bool) or target < 1:
+            problems.append(f"{label} target issue {target!r} is not a positive issue number")
+        elif record.disposition != "migrate":
+            problems.append(f"{label} targets issue #{target} but does not migrate; a duplicate names its original with duplicate_of")
+        elif target in targets:
+            problems.append(
+                f"{label} targets issue #{target}, which {targets[target]!r} already targets; a true duplicate uses duplicate_of"
+            )
+        else:
+            targets[target] = record.id
+    return problems
+
+
+def _status_problems(record: InventoryRecord, claimed: Sequence[SourceUnit]) -> list[str]:
+    """The record's status is the text one of its claimed units states; only a status no unit states may be synthesized."""
+    label = f"record {record.id!r}"
+    stated = sorted({_clean(unit.stated_status) for unit in claimed if unit.kind != "frozen-mapping" and _clean(unit.stated_status)})
+    disposition = (record.status_disposition or "").strip()
+    problems = []
+    if stated:
+        if record.status not in stated:
+            problems.append(f"{label} status {record.status!r} is not the source status of any claimed unit {stated}")
+        if disposition:
+            problems.append(f"{label} has a status disposition, but its source states the status, which cannot be overridden")
+    elif record.status is not None:
+        if not disposition:
+            problems.append(
+                f"{label} status {record.status!r} is stated by no claimed unit; a synthesized status needs a status disposition"
+            )
+        if normalized_status(record.status) is None:
+            problems.append(f"{label} synthesized status {record.status!r} is not a known status")
+    if record.disposition == "migrate" and not (record.status or "").strip():
+        problems.append(f"{label} migrates without a status")
+    return problems
+
+
+def _priority_problems(record: InventoryRecord, claimed: Sequence[SourceUnit]) -> list[str]:
+    """A migrating record's priority is its source value; without one it is the default unless a disposition says why."""
+    if record.disposition != "migrate":
+        return []
+    label = f"record {record.id!r}"
+    stated = sorted({unit.priority.upper() for unit in claimed if unit.priority})
+    disposition = (record.priority_disposition or "").strip()
+    if record.priority not in PRIORITIES:
+        return [f"{label} priority {record.priority!r} is not one of {sorted(PRIORITIES)}"]
+    if stated and record.priority not in stated:
+        return [f"{label} priority {record.priority!r} is not its source priority {stated}"]
+    if len(stated) == 1 and disposition:
+        return [f"{label} has a priority disposition, but its source states the priority, which cannot be overridden"]
+    if len(stated) > 1 and not disposition:
+        return [f"{label} has conflicting source priorities {stated} without a priority disposition"]
+    if not stated and record.priority != DEFAULT_PRIORITY and not disposition:
+        return [
+            f"{label} priority {record.priority!r} has no source and is not the default {DEFAULT_PRIORITY}; it needs a priority disposition"
+        ]
+    return []
+
+
+def _record_problems(
+    record: InventoryRecord, records: Mapping[str, InventoryRecord], units: Mapping[str, SourceUnit], index: Mapping[str, str]
+) -> list[str]:
     problems = []
     label = f"record {record.id!r}"
     if record.kind not in RECORD_KINDS:
@@ -514,6 +614,15 @@ def _record_problems(record: InventoryRecord, records: Mapping[str, InventoryRec
             problems.append(f"{label} is a duplicate without a duplicate rationale")
 
     claimed = [units[key] for key in record.units if key in units]
+    problems.extend(_status_problems(record, claimed))
+    problems.extend(_priority_problems(record, claimed))
+    for unit in claimed:
+        if unit.kind == "frozen-mapping":  # every live owner with a record stays linked; one without stays a name
+            for identity in owner_identities(unit.stated_status):
+                target = index.get(identity)
+                if target is not None and target not in record.related:
+                    problems.append(f"{label} drops live owner {identity!r} (record {target!r}) named by {unit.key}")
+
     identities = {unit.identity for unit in claimed if unit.kind != "section-record"}
     if len(identities) > 1 and not (record.duplicate_rationale or "").strip():
         problems.append(f"{label} merges identities {sorted(map(str, identities))} without a duplicate rationale")

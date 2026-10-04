@@ -139,7 +139,7 @@ def _good() -> dict[str, Any]:
             _record(
                 id="P11.25-FU-1",
                 kind="follow-up",
-                status="Promoted",
+                status="Promoted -> [Plan 12.1](plan-12-1.md)",
                 disposition="migrate",
                 parent="plan:12.1",
                 units=[u("| `P11.25-FU-1`"), u("### P11.25-FU-1")],
@@ -147,18 +147,24 @@ def _good() -> dict[str, Any]:
             _record(
                 id="P12-FU-1",
                 kind="follow-up",
-                status="Promoted",
+                status="Promoted -> [Plan 12.1](plan-12-1.md)",
                 disposition="migrate",
                 parent="plan:12.1",
                 units=[u("| `P12-FU-1` | Advisory"), u("### P12-FU-1")],
             ),
             _record(id="A2A-C1", kind="obligation", status="Open", disposition="migrate", units=[u("| C1 |")], product="evidence-a2a"),
             _record(id="A2A-M17", kind="obligation", status="Closed", disposition="history", units=[u("| M17 |")]),
-            _record(id="H4", kind="follow-up", status="Open", disposition="migrate", units=[u("## Plan 11.26 H4 verifier")]),
+            _record(
+                id="H4",
+                kind="follow-up",
+                status="Open. Filing is commissioned; verifier implementation is not.",
+                disposition="migrate",
+                units=[u("## Plan 11.26 H4 verifier")],
+            ),
             _record(
                 id="RISK",
                 kind="risk",
-                status="Reviewed disposition",
+                status="Reviewed disposition. Accepted as-is by the operator; recorded warning, not open work.",
                 disposition="not-work",
                 units=[u("### Plan 11.7 accepted risk")],
                 priority=None,
@@ -234,6 +240,7 @@ def test_missing_obligation_fails(tmp_path: Path) -> None:
 def test_duplicate_status_conflict_requires_disposition(tmp_path: Path) -> None:
     conflicting = POOL.replace("| `P11-FU-40` | Real Zed containment | Open |", "| `P11-FU-40` | Real Zed containment | Closed |")
     data = _good()
+    _records(data)["P11-FU-40"]["status"] = "Open."  # the entry's own status text
     assert any("P11-FU-40" in p and "conflicting source statuses" in p for p in _problems(tmp_path, data, conflicting))
 
     _records(data)["P11-FU-40"]["status_conflict_disposition"] = "Entry is authoritative; index row is stale (reviewed)."
@@ -273,6 +280,170 @@ def test_reviewed_disposition_units_always_need_a_record(tmp_path: Path) -> None
     data = _good()
     data["records"] = [r for r in data["records"] if r["id"] != "RISK"]
     assert any("reviewed disposition always needs its own record" in p for p in _problems(tmp_path, data))
+
+
+# ---- record metadata follows the pinned source ----
+
+
+@pytest.mark.parametrize("status", ["Closed", "nonsense", None])
+def test_record_status_is_a_source_status_snapshot(tmp_path: Path, status: str | None) -> None:
+    data = _good()
+    _records(data)["P11-FU-40"]["status"] = status  # its index row and entry both say Open
+    assert any("P11-FU-40" in p and "source status" in p for p in _problems(tmp_path, data))
+
+
+def test_a_status_disposition_cannot_override_a_source_status(tmp_path: Path) -> None:
+    data = _good()
+    _records(data)["P11-FU-40"].update(status="Closed", status_disposition="reviewed: treat as closed")
+    assert any("P11-FU-40" in p and "source status" in p for p in _problems(tmp_path, data))
+
+    data = _good()
+    _records(data)["P11-FU-40"]["status_disposition"] = "reviewed: no change"
+    assert any("P11-FU-40" in p and "cannot be overridden" in p for p in _problems(tmp_path, data))
+
+
+CUSTODY = POOL + "\n## Custody register\n\n| Item | Owner |\n|---|---|\n| `HARDENING-ITEM-FIXTURE` | track |\n"
+
+
+def _custody(**fields: Any) -> dict[str, Any]:
+    data = _good()
+    data["sections"].append({"source": "pool", "title": "Custody register", "classification": "migrated", "rationale": "items"})
+    record = _record(id="HARDENING-ITEM-FIXTURE", kind="item", status="Open", disposition="migrate", units=[_unit(CUSTODY, "ITEM-FIXTURE")])
+    record.update(fields)
+    data["records"].append(record)
+    return data
+
+
+def test_a_synthesized_status_needs_a_reviewed_disposition_and_a_known_token(tmp_path: Path) -> None:
+    disposition = "the register has no status column by design; open until its track delivers (reviewed)"
+    assert _problems(tmp_path, _custody(status_disposition=disposition), CUSTODY) == []
+
+    assert any("status disposition" in p for p in _problems(tmp_path, _custody(), CUSTODY))
+    assert any("not a known status" in p for p in _problems(tmp_path, _custody(status="nonsense", status_disposition=disposition), CUSTODY))
+    assert any("migrates without a status" in p for p in _problems(tmp_path, _custody(status=None), CUSTODY))
+
+
+@pytest.mark.parametrize(
+    ("record_id", "priority", "expected"),
+    [
+        ("P11-FU-40", "nonsense", "is not one of"),  # its index row says MEDIUM
+        ("P11-FU-40", "HIGH", "source priority"),
+        ("P11-FU-40", None, "is not one of"),
+        ("plan:11.23", "nonsense", "is not one of"),  # the registry has no priority column
+        ("plan:11.23", "HIGH", "priority disposition"),
+    ],
+)
+def test_record_priority_is_the_source_value_or_the_default(tmp_path: Path, record_id: str, priority: str | None, expected: str) -> None:
+    data = _good()
+    _records(data)[record_id]["priority"] = priority
+    assert any(record_id in p and expected in p for p in _problems(tmp_path, data))
+
+
+def test_a_priority_disposition_explains_a_non_default_value_without_a_source(tmp_path: Path) -> None:
+    data = _good()
+    _records(data)["plan:11.23"].update(priority="HIGH", priority_disposition="issue body states P0; mapped to the highest label")
+    assert _problems(tmp_path, data) == []
+
+    data = _good()
+    _records(data)["P11-FU-40"].update(priority="HIGH", priority_disposition="reviewed: raise it")
+    assert any("P11-FU-40" in p and "source priority" in p for p in _problems(tmp_path, data))
+
+    data = _good()
+    _records(data)["P11-FU-40"]["priority_disposition"] = "reviewed: no change"
+    assert any("P11-FU-40" in p and "cannot be overridden" in p for p in _problems(tmp_path, data))
+
+
+def test_conflicting_source_priorities_need_a_priority_disposition(tmp_path: Path) -> None:
+    text = POOL.replace(
+        "| Promoted -> [Plan 12.1](plan-12-1.md) | MEDIUM | Plan 12.1 | entry |\n\n",
+        "| Promoted -> [Plan 12.1](plan-12-1.md) | HIGH | Plan 12.1 | entry |\n\n",
+    )
+    assert text != POOL  # only the P12-FU-1 row (the index's last row) now says HIGH
+    data = _good()
+    records = _records(data)
+    records["P11.25-FU-1"].update(units=records["P11.25-FU-1"]["units"] + records["P12-FU-1"]["units"], duplicate_rationale="filed twice")
+    data["records"] = [r for r in data["records"] if r["id"] != "P12-FU-1"]
+    assert any("P11.25-FU-1" in p and "conflicting source priorities" in p for p in _problems(tmp_path, data, text))
+
+    records["P11.25-FU-1"]["priority_disposition"] = "the entry's own row is authoritative (reviewed)"
+    assert _problems(tmp_path, data, text) == []
+
+
+def test_source_priority_cells_compare_case_insensitively(tmp_path: Path) -> None:
+    text = POOL.replace(
+        "| C1 | CRITICAL | `EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION` | Open | MEDIUM |",
+        "| C1 | CRITICAL | `EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION` | Open | medium |",
+    )
+    assert text != POOL
+    assert _problems(tmp_path, _good(), text) == []
+
+
+@pytest.mark.parametrize(
+    ("target", "expected"),
+    [
+        (222, "already targets"),
+        (0, "positive issue number"),
+        (-1, "positive issue number"),
+        ("224", "positive issue number"),
+        (True, "positive issue number"),
+    ],
+)
+def test_target_issues_are_positive_and_unique(tmp_path: Path, target: Any, expected: str) -> None:
+    data = _good()
+    _records(data)["P11-FU-40"]["target_issue"] = target  # plan:11.23 already targets #222
+    assert any("P11-FU-40" in p and expected in p for p in _problems(tmp_path, data))
+
+
+def test_only_a_migrating_record_targets_an_issue(tmp_path: Path) -> None:
+    data = _good()
+    _records(data)["A2A-M17"]["target_issue"] = 500
+    assert any("A2A-M17" in p and "does not migrate" in p for p in _problems(tmp_path, data))
+
+
+FROZEN_OWNERS = POOL + (
+    "\n## Frozen approval bytes and live-status authority\n\n"
+    "- `docs/superpowers/plans/archive/shared.md` — SHA-256 `" + "A" * 64 + "` — Frozen approval bytes — live status is owned by the"
+    " consolidated open-work pool. Live owner: [`P11-FU-20`](#p11-fu-20-attach-catalog) and [`P11-FU-40`](#p11-fu-40-real-zed).\n"
+    "- `docs/superpowers/plans/archive/plan.md` — SHA-256 `" + "B" * 64 + "` — Frozen approval bytes — live status is owned by the"
+    " consolidated open-work pool. Live owner: [Plan 11.23 registry row](#live-implementation-plan-registry) and"
+    " [`P9.96-FU-7` disposition](#closed-history).\n"
+)
+
+
+def _frozen() -> dict[str, Any]:
+    data = _good()
+    data["sections"].append(
+        {"source": "pool", "title": "Frozen approval bytes and live-status authority", "classification": "migrated", "rationale": "owners"}
+    )
+    _records(data)["plan:11.23"]["aliases"] = ["Plan 11.23"]
+    for name, related in (("shared", ["P11-FU-20", "P11-FU-40"]), ("plan", ["plan:11.23"])):
+        data["records"].append(
+            _record(
+                id=f"frozen:{name}.md",
+                kind="frozen-mapping",
+                status=None,
+                disposition="not-work",
+                priority=None,
+                units=[_unit(FROZEN_OWNERS, f"archive/{name}.md")],
+                related=related,
+            )
+        )
+    return data
+
+
+def test_a_frozen_mapping_keeps_every_live_owner_that_has_a_record(tmp_path: Path) -> None:
+    assert _problems(tmp_path, _frozen(), FROZEN_OWNERS) == []  # P9.96-FU-7 has no record, so it stays a name only
+    for record_id, dropped in (("frozen:shared.md", "P11-FU-20"), ("frozen:shared.md", "P11-FU-40"), ("frozen:plan.md", "plan:11.23")):
+        data = _frozen()
+        _records(data)[record_id]["related"].remove(dropped)
+        problems = _problems(tmp_path, data, FROZEN_OWNERS)
+        assert any(record_id in p and dropped in p and "live owner" in p for p in problems), (record_id, dropped)
+
+
+def test_owner_identities_are_every_identity_in_order_without_repeats() -> None:
+    text = "[`P11-FU-18`](#p11-fu-18-x) and [`P11-FU-29`](#p11-fu-29-y); see `P11-FU-18` and [Plan 11.23](#z)."
+    assert gwt.owner_identities(text) == ["P11-FU-18", "P11-FU-29", "Plan 11.23"]
+    assert gwt.owner_identities(None) == []
 
 
 # ---- the parser fails closed ----
@@ -520,7 +691,17 @@ def test_each_structural_rule_fires(tmp_path: Path, name: str, mutate: Any, expe
 
 def test_external_issue_records_need_no_source_unit(tmp_path: Path) -> None:
     data = _good()
-    data["records"].append(_record(id="issue:33", kind="external-issue", status="Open", disposition="migrate", units=[], target_issue=33))
+    data["records"].append(
+        _record(
+            id="issue:33",
+            kind="external-issue",
+            status="Open",
+            status_disposition="the existing issue's GitHub state; no source unit states it",
+            disposition="migrate",
+            units=[],
+            target_issue=33,
+        )
+    )
     assert _problems(tmp_path, data) == []
 
 
@@ -563,8 +744,8 @@ def test_tracks_and_main5_residuals(tmp_path: Path) -> None:
         "records": [
             _record(id="HARDENING-TRACK-RUFF-LINT", kind="track", status="Not drafted", disposition="migrate", units=[u("RUFF-LINT`")]),
             _record(id="HARDENING-TRACK-CI-GUARDRAILS", kind="track", status="Active", disposition="migrate", units=[u("CI-GUARDRAILS`")]),
-            _record(id="P11-FU-31", kind="follow-up", status="Open", disposition="migrate", units=[u("### P11-FU-31")]),
-            _record(id="P11-FU-33", kind="follow-up", status="Closed", disposition="history", units=[u("### P11-FU-33")]),
+            _record(id="P11-FU-31", kind="follow-up", status="Open.", disposition="migrate", units=[u("### P11-FU-31")]),
+            _record(id="P11-FU-33", kind="follow-up", status="Closed. Through PR #219.", disposition="history", units=[u("### P11-FU-33")]),
         ],
     }
     report = gwt.validate_inventory(gwt.load_inventory(_write(tmp_path, data)), {"pool": PROGRAM.encode()})
@@ -622,6 +803,17 @@ def test_owner_cells_that_coordinate_or_defer_give_no_parent() -> None:
     assert records[0]["related"] == ["P11-FEAT-ZED-RESUME"]
 
 
+def test_draft_links_frozen_owners_by_record_id_or_alias() -> None:
+    records = [
+        rules._record(id="plan:11.23", kind="plan", status="Blocked", aliases=["Plan 11.23"]),
+        rules._record(id="P11-FU-18", kind="follow-up", status="Closed", disposition="history", aliases=["P11-FU-18"]),
+        rules._record(id="frozen:x.md", kind="frozen-mapping", disposition="not-work", related=["P11-FU-18", "Plan 11.23", "P9.96-FU-7"]),
+    ]
+    empty = {name: gwt.scan_source(name, "") for name in rules.SOURCES}
+    rules._derive(records, empty)
+    assert records[2]["related"] == ["P11-FU-18", "plan:11.23"]  # P9.96-FU-7 has no record, so it stays a name only
+
+
 def test_draft_refuses_an_unreviewed_section() -> None:
     with pytest.raises(ValueError, match="no reviewed classification"):
         rules.classify("pool", "A section nobody reviewed")
@@ -644,6 +836,23 @@ def test_reviewed_overrides_are_marked_in_the_manifest() -> None:
     records = {r["id"]: r for r in json.loads(MANIFEST.read_text(encoding="utf-8"))["records"]}
     for record_id in rules.OVERRIDES:
         assert records[record_id]["reviewed"] is True and records[record_id]["review_note"]
+
+
+def test_the_shared_fu18_fu29_design_keeps_both_owner_links() -> None:
+    records = {r["id"]: r for r in json.loads(MANIFEST.read_text(encoding="utf-8"))["records"]}
+    shared = records["frozen:2026-08-15-p11-fu-18-29-durable-approval-workspace-identity-design.md"]
+    assert shared["related"] == ["P11-FU-18", "P11-FU-29"]
+    assert {records[owner]["disposition"] for owner in shared["related"]} == {"history"}  # history references, not new issues
+
+
+def test_issue_33_is_reconciled_read_only_and_keeps_its_p0_source() -> None:
+    issue = {r["id"]: r for r in json.loads(MANIFEST.read_text(encoding="utf-8"))["records"]}["issue:33"]
+    note = issue["review_note"]
+    assert "read-only" in note and "reports/plan-9-75-zed-hitl-runtime-evidence.md" in note
+    assert "P11-FEAT-ZED-RESUME" in note and "no Zed" in note  # a new reproduction belongs to the Zed owner's lane
+    assert "reproduction attempt" not in note
+    assert issue["priority"] == "HIGH" and "P0" in issue["priority_disposition"]
+    assert issue["status"] == "Open" and issue["status_disposition"] and issue["target_issue"] == 33
 
 
 # ---- CLI ----
