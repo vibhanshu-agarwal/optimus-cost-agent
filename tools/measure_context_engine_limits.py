@@ -842,7 +842,6 @@ def fixed_request_material() -> dict[str, int]:
         "",
         planning_turn=3,
         max_planning_turns=3,
-        remaining_budget_usd=Decimal("1"),
         remaining_wall_clock_minutes=30,
         carried_observations_envelope=text_of("ascii", PLANNING_OBSERVATION_MAX_BYTES),
         current_read_evidence_envelope=text_of("ascii", PLANNING_NEW_READ_MAX_BYTES),

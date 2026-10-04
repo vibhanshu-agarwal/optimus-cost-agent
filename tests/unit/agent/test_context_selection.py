@@ -531,7 +531,7 @@ def test_a_request_the_packer_cannot_fit_is_not_dispatched(tmp_path, mode):
 def test_an_absent_agent_planner_input_is_unchanged(tmp_path):
     from optimus.agent.prompts import build_multi_turn_planner_input
 
-    kwargs = dict(planning_turn=1, max_planning_turns=3, remaining_budget_usd=Decimal("0.05"), remaining_wall_clock_minutes=30)
+    kwargs = dict(planning_turn=1, max_planning_turns=3, remaining_wall_clock_minutes=30)
     assert build_multi_turn_planner_input("task", conversation_envelope="", **kwargs) == build_multi_turn_planner_input("task", **kwargs)
     assert "Prior conversation" not in build_multi_turn_planner_input("task", **kwargs)
 

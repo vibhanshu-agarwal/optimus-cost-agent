@@ -222,13 +222,15 @@ fixture set described above.
 Plan 9 adds architectural support for bounded goal-driven loops and curated
 workflow skills. Loops are not the default execution mode. They are enabled only
 when a task has a machine-checkable completion condition and explicit
-`LoopBudgetPolicy` bounds for iterations, USD budget, wall-clock time, and
-repeated failures.
+`LoopBudgetPolicy` bounds for iterations, wall-clock time and repeated
+failures. A product loop has no dollar stop; only an independently authorized
+evaluation caller may pass its own explicit dollar cap (Plan 12.2 Task 11).
 
 Loop iterations persist progress to an append-only ledger and must use the same
 `PreToolGuard` and permission policy as ordinary Agent-mode tool calls. A loop
-that reaches completion, budget exhaustion, max iterations, wall-clock timeout,
-repeated failure, or human halt records a stable `LoopStopReason`.
+that reaches completion, max iterations, wall-clock timeout, repeated failure,
+human halt, or an evaluation caller's explicit dollar cap records a stable
+`LoopStopReason`.
 
 Skills are reviewed Markdown artifacts with frontmatter metadata. Trusted skills
 may be loaded only when their description or globs match the task. Draft skills
@@ -285,8 +287,8 @@ required file's complete content exceeds the single-pass context budget, the
 agent runs a bounded READ → observe → replan loop (default 3 turns, 30 minute
 wall clock, both overridable per request) instead of failing closed on every
 oversized reference. Every Gateway call across every turn — including
-retries — is charged against the same run-level `max_cost_usd` ceiling, and
-only the final settled plan is ever hashed, persisted, or exposed for ACP
+retries — is accounted to the run, with no product dollar stop (Plan 12.2
+Task 11), and only the final settled plan is ever hashed, persisted, or exposed for ACP
 approval; intermediate turns never surface a plan hash or a permission
 request. Implemented and live-verified 2026-07-12 over real `acpx` — see
 `reports/plan-9-85-multi-turn-acpx-evidence.md`. Model-initiated replanning

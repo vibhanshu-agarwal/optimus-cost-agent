@@ -287,10 +287,11 @@ async def test_session_prompt_never_lets_optimus_live_max_cost_usd_override_agen
     AgentRunRequest through this adapter, by construction. This test locks
     that absence in as a regression guard: every AgentRunRequest actually
     constructed by _handle_session_prompt keeps max_cost_usd at its
-    Pydantic default (Decimal("0.05")) regardless of what
-    OPTIMUS_LIVE_MAX_COST_USD is set to in the process environment --
-    proving the negative Step 5 explicitly asks for, not just asserting it
-    by inspection."""
+    Pydantic default regardless of what OPTIMUS_LIVE_MAX_COST_USD is set to
+    in the process environment -- proving the negative Step 5 explicitly
+    asks for, not just asserting it by inspection. Since Plan 12.2 Task 11
+    that default is None: a product (ACP) request has no dollar cap at all,
+    and ACP never sets one."""
     import os
 
     runner = _RecordingCompletedRunner()
@@ -327,7 +328,7 @@ async def test_session_prompt_never_lets_optimus_live_max_cost_usd_override_agen
         else:
             os.environ["OPTIMUS_LIVE_MAX_COST_USD"] = previous
 
-    assert runner.requests[0].max_cost_usd == Decimal("0.05")
+    assert runner.requests[0].max_cost_usd is None
 
 
 async def test_initialize_returns_spec_capabilities(tmp_path):
@@ -791,7 +792,9 @@ async def test_multi_turn_planning_emits_progress_before_final_permission(tmp_pa
 
 
 async def test_planning_failure_emits_end_turn_without_permission(tmp_path):
-    corrective_text = "Planning stopped because the run budget was exhausted."
+    # A product (ACP) run has no dollar stop since Plan 12.2 Task 11, so a terminal planning stop it can
+    # still reach stands in for the former budget case.
+    corrective_text = "Planning stopped because the wall-clock limit was reached."
 
     class PlanningFailureRunner:
         def run(self, request, *, planning_progress_observer=None):
@@ -807,7 +810,7 @@ async def test_planning_failure_emits_end_turn_without_permission(tmp_path):
                 total_cost_usd=Decimal("0.05"),
                 mutation_count=0,
                 provider_keys_resolvable=(),
-                stop_reason="PLANNING_BUDGET_EXHAUSTED",
+                stop_reason="PLANNING_WALL_CLOCK_EXHAUSTED",
                 plan_hash=None,
             )
 

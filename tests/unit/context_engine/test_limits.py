@@ -176,7 +176,22 @@ PROPOSAL = {
     "history_input_tokens_by_tier": {"ultra-cheap": 131_072, "cheap": 131_072},
     "prompt_allowance_bytes": 16_384,
 }
-FIXED = {"planning": 43_819, "chat": 17_126, "summarizer": 989}
+# Measured with `fixed_request_material()` after Task 11 removed the planner's remaining-dollar line and
+# bumped its prompt version (43819 before, in the older measured envelope); pinned below so the D7
+# figures always come from the current measurement.
+FIXED = {"planning": 43_795, "chat": 17_126, "summarizer": 989}
+
+
+def test_the_pinned_fixed_material_is_the_current_measurement() -> None:
+    assert limits.fixed_request_material() == FIXED
+
+
+def test_the_d7_absent_engine_history_bound_at_ratio_one() -> None:
+    """D7 (operator's request-capacity exception): with r=1, Agent history and prompt fit in the usable
+    input less the planning material, before any further overhead; a share of the 512 KiB floor."""
+    usable = 262_144 - PROPOSAL["implementer_output_reserve"]
+    bound = usable - FIXED["planning"]
+    assert (usable, bound, round(100 * bound / 524_288, 2)) == (229_376, 185_581, 35.4)
 
 
 def check(**changes: object) -> dict:
@@ -207,7 +222,7 @@ def test_a_consistent_proposal_has_no_violations_and_reports_its_coverage() -> N
     assert largest["1"] == {"steady_state": 122_864, "oldest_turn_of_a_cold_rebuild": 131_072}
     assert largest["0.2"] == {"steady_state": 483_312, "oldest_turn_of_a_cold_rebuild": 524_288}
     # D7: the floor already includes the current prompt, so only the path's other material is added.
-    assert coverage["absent_floor_max_ratio"] == round((262_144 - 32_768) / (524_288 + 43_819), 4)
+    assert coverage["absent_floor_max_ratio"] == round((262_144 - 32_768) / (524_288 + FIXED["planning"]), 4)
     assert coverage["trigger_binding_term_by_tier"] == {"ultra-cheap": "tier target", "cheap": "tier target"}
     assert set(coverage["cold_rebuild_list_price_usd"]) == {"qwen/qwen3.7-flash", "openai/gpt-6-luna"}
 

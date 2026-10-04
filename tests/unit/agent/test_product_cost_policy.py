@@ -1,12 +1,15 @@
-"""Plan 12.2 Task 11: product cost policy - accounting foundation now, cost-stop removal held.
+"""Plan 12.2 Task 11: product cost policy - no product dollar stop; accounting, alerts and limits kept.
 
-Accepted Q3 (ADR-015) removes the product $0.05 stop only after the accounting foundation and the D6
-unknown-cost/governed policy successor are accepted. That acceptance has not happened, so:
+ADR-005 and ADR-015, released offline by the operator on 2026-10-04 (closure package V2 and release
+supplement; Codex Task 11 scope note):
 
-- the removal's acceptance tests are strict expected failures. They pass the day the removal lands,
-  and strict mode then fails the run, so the marker cannot outlive the hold silently;
-- the bounds that stay after removal (3 planning rounds, 30 minutes, repeated-failure limit 2,
-  single-call Chat) and independently authorized evaluation caps are pinned now;
+- a product request has no dollar cap (``max_cost_usd`` is None by default and ACP never sets one), so
+  a successful answer or plan above the former $0.05 is delivered, the planner is told no remaining-dollar
+  budget, and no positive-dollar construction requirement remains;
+- the ordinary non-ACP goal loop has no dollar stop either (no $0.01 minimum or sentinel); only an
+  independently authorized evaluation caller's explicit finite cap can still stop on money;
+- the bounds that stay (3 planning rounds, 30 minutes, repeated-failure limit 2, single-call Chat, the
+  goal loop's iteration/time/failure/halt controls) and evaluation caps are pinned;
 - planning cost through approval is charged once, and a stored plan's cost completeness survives
   storage, with a legacy record missing it treated as unverified, never complete.
 """
@@ -25,12 +28,6 @@ from optimus.agent.state_store import AgentPlanRecord, InMemoryAgentStateStore, 
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.runtime.modes import ExecutionMode
 
-HELD = pytest.mark.xfail(
-    strict=True,
-    reason="HELD: product cost-stop removal waits for D6/governed successor acceptance (ADR-015 Q3); "
-    "accounting foundation only in CP3",
-)
-
 
 class _Gateway:
     def __init__(self, output_text: str, cost: str) -> None:
@@ -47,17 +44,15 @@ def _request(tmp_path: Path, mode: ExecutionMode, **fields) -> AgentRunRequest:
     return AgentRunRequest(run_id="s:1", session_id="s", task="Explain calc.py", execution_mode=mode, workspace_root=tmp_path, **fields)
 
 
-# --- Held: the removal's acceptance tests ----------------------------------------------------------
+# --- The removal's acceptance tests ----------------------------------------------------------------
 
 
-@HELD
 def test_a_product_answer_above_the_former_cap_is_delivered(tmp_path):
     result = AgentRunner(gateway_client=_Gateway("An answer.", "0.06"), model="m").run(_request(tmp_path, ExecutionMode.CHAT))
 
     assert result.status is AgentRunStatus.COMPLETED and result.output_text == "An answer."
 
 
-@HELD
 def test_the_planner_prompt_carries_no_remaining_dollar_budget(tmp_path):
     gateway = _Gateway("REFUSE: no", "0.001")
     AgentRunner(gateway_client=gateway, model="m").run(_request(tmp_path, ExecutionMode.AGENT))
@@ -65,11 +60,80 @@ def test_the_planner_prompt_carries_no_remaining_dollar_budget(tmp_path):
     assert "Remaining budget (USD)" not in gateway.calls[0]
 
 
-@HELD
 def test_planning_needs_no_positive_dollar_budget():
     from optimus.loops.models import LoopBudgetPolicy
 
-    LoopBudgetPolicy(max_iterations=3, max_wall_clock_minutes=30, repeated_failure_limit=2)
+    loop = LoopBudgetPolicy(max_iterations=3, max_wall_clock_minutes=30, repeated_failure_limit=2)
+    assert loop.max_budget_usd is None
+    assert PlanningLoopPolicy().to_loop_budget_policy().max_budget_usd is None
+
+
+def test_a_product_request_has_no_dollar_cap(tmp_path):
+    assert _request(tmp_path, ExecutionMode.CHAT).max_cost_usd is None
+
+
+def test_a_successful_plan_above_the_former_cap_is_offered_for_approval(tmp_path):
+    (tmp_path / "a.py").write_text("x = 0\n", encoding="utf-8")
+    result = AgentRunner(gateway_client=_Gateway("WRITE a.py\nx = 1\n", "0.06"), model="m").run(_request(tmp_path, ExecutionMode.AGENT))
+
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL and result.plan_hash is not None
+    assert result.total_cost_usd == Decimal("0.06")  # the actual cost is kept
+
+
+def test_product_planning_progress_carries_no_dollar_budget(tmp_path):
+    events = []
+    AgentRunner(gateway_client=_Gateway("REFUSE: no", "0.001"), model="m", planning_progress_observer=events.append).run(
+        _request(tmp_path, ExecutionMode.AGENT)
+    )
+
+    assert events and all(event.remaining_budget_usd is None for event in events)
+
+
+class _CostlyUnfinishedIteration:
+    """A goal-loop iteration that never completes and costs far more than the former product cap."""
+
+    def __init__(self, failure_signature: str | None = None) -> None:
+        self.calls = 0
+        self.failure_signature = failure_signature
+
+    def run_iteration(self, state, tools):
+        from optimus.loops.models import IterationOutcome
+
+        del state, tools
+        self.calls += 1
+        return IterationOutcome(summary="still failing", cost_usd=Decimal("1.00"), failure_signature=self.failure_signature)
+
+
+def _goal_loop(tmp_path: Path, iteration: _CostlyUnfinishedIteration, **fields):
+    runner = AgentRunner(gateway_client=_Gateway("unused", "0"), model="m", loop_iteration_runner=iteration)
+    return runner.run(_request(tmp_path, ExecutionMode.AGENT, completion_condition="pytest tests pass", **fields))
+
+
+def test_the_ordinary_goal_loop_has_no_dollar_stop_and_keeps_its_finite_controls(tmp_path):
+    """Codex's Task 11 scope note: a non-ACP caller is not an evaluation caller. The goal loop's own
+    iteration bound stops it, never money; the removed $0.01 minimum is not replaced."""
+    iteration = _CostlyUnfinishedIteration()
+
+    result = _goal_loop(tmp_path, iteration)
+
+    assert (result.stop_reason, iteration.calls) == ("MAX_ITERATIONS", 5)
+
+
+def test_the_goal_loop_repeated_failure_bound_remains(tmp_path):
+    iteration = _CostlyUnfinishedIteration(failure_signature="same failure")
+
+    result = _goal_loop(tmp_path, iteration)
+
+    assert (result.stop_reason, iteration.calls) == ("REPEATED_FAILURE", 3)
+
+
+@pytest.mark.parametrize("cap", ["0.50", "2.50"])
+def test_an_evaluation_callers_explicit_cap_still_stops_the_goal_loop(tmp_path, cap):
+    iteration = _CostlyUnfinishedIteration()
+
+    result = _goal_loop(tmp_path, iteration, max_cost_usd=Decimal(cap))
+
+    assert result.stop_reason == "BUDGET_EXHAUSTED" and iteration.calls == int(Decimal(cap)) + 1
 
 
 # --- Retained now and after removal ----------------------------------------------------------------
@@ -77,7 +141,7 @@ def test_planning_needs_no_positive_dollar_budget():
 
 def test_the_retained_planning_bounds_are_three_rounds_thirty_minutes_and_two_repeated_failures():
     policy = PlanningLoopPolicy()
-    loop = policy.to_loop_budget_policy(max_cost_usd=Decimal("0.05"))
+    loop = policy.to_loop_budget_policy()
 
     assert (policy.max_planning_turns, policy.max_wall_clock_minutes) == (3, 30)
     assert (loop.max_iterations, loop.max_wall_clock_minutes, loop.repeated_failure_limit) == (3, 30, 2)

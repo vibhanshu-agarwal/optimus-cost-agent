@@ -44,7 +44,6 @@ def test_build_agent_planner_input_includes_untrusted_workspace_section():
 
 
 def test_build_multi_turn_planner_input_includes_turn_budget_and_grammar():
-    from decimal import Decimal
 
     from optimus.agent.prompts import MULTI_TURN_PLANNER_PROMPT_VERSION, build_multi_turn_planner_input
 
@@ -52,7 +51,6 @@ def test_build_multi_turn_planner_input_includes_turn_budget_and_grammar():
         "Update src/a.py",
         planning_turn=2,
         max_planning_turns=3,
-        remaining_budget_usd=Decimal("0.04"),
         remaining_wall_clock_minutes=12,
         carried_observations_envelope="OBS_RECORD path=src/a.py bytes=0:5 sha256=abc\nnote\nEND_OBS_RECORD\n",
         current_read_evidence_envelope="READ_BLOCK path=src/a.py bytes=0:5 sha256=abc\nalpha\nEND_READ_BLOCK\n",
@@ -61,7 +59,7 @@ def test_build_multi_turn_planner_input_includes_turn_budget_and_grammar():
 
     assert MULTI_TURN_PLANNER_PROMPT_VERSION in prompt
     assert "Planning turn: 2 of 3" in prompt
-    assert "Remaining budget (USD): 0.04" in prompt
+    assert "Remaining budget" not in prompt  # Plan 12.2 Task 11: the planner never plans around money
     assert "Remaining wall-clock minutes: 12" in prompt
     assert "OBSERVE:" in prompt
     assert "REFUSE:" in prompt
@@ -81,7 +79,6 @@ def test_build_agent_planner_input_omits_workspace_section_when_empty():
 
 
 def test_multi_turn_prompt_marks_initial_context_ephemeral_and_requires_complete_reread():
-    from decimal import Decimal
 
     from optimus.agent.prompts import MULTI_TURN_PLANNER_PROMPT_VERSION, build_multi_turn_planner_input
 
@@ -89,11 +86,10 @@ def test_multi_turn_prompt_marks_initial_context_ephemeral_and_requires_complete
         "Update target.py",
         planning_turn=1,
         max_planning_turns=3,
-        remaining_budget_usd=Decimal("0.05"),
         remaining_wall_clock_minutes=30,
         initial_workspace_context="--- target.py ---\noriginal\n",
     )
-    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-07-12-plan-9-87-fu5a")
+    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-10-04-plan-12-2-task-11")
     assert "available on planning turn 1 only" in prompt
     assert "will not be carried to planning turn 2" in prompt
     assert "request every raw byte range" in prompt
@@ -103,7 +99,6 @@ def test_multi_turn_prompt_marks_initial_context_ephemeral_and_requires_complete
 
 
 def test_fu4c_multi_turn_prompt_requires_listed_byte_count_for_turn1_visible_files():
-    from decimal import Decimal
 
     from optimus.agent.prompts import build_multi_turn_planner_input
 
@@ -111,7 +106,6 @@ def test_fu4c_multi_turn_prompt_requires_listed_byte_count_for_turn1_visible_fil
         "Update target.py per the module documentation.",
         planning_turn=2,
         max_planning_turns=3,
-        remaining_budget_usd=Decimal("0.04"),
         remaining_wall_clock_minutes=12,
         carried_observations_envelope=(
             "OBS_RECORD path=target.py bytes=0:6143 sha256=abc\nseen in turn 1\nEND_OBS_RECORD\n"
@@ -125,7 +119,6 @@ def test_fu4c_multi_turn_prompt_requires_listed_byte_count_for_turn1_visible_fil
 
 
 def test_fu4c_multi_turn_prompt_exposes_known_turn1_file_size_for_full_reread():
-    from decimal import Decimal
 
     from optimus.agent.prompts import build_multi_turn_planner_input
 
@@ -133,7 +126,6 @@ def test_fu4c_multi_turn_prompt_exposes_known_turn1_file_size_for_full_reread():
         "Update target.py per the module documentation.",
         planning_turn=1,
         max_planning_turns=3,
-        remaining_budget_usd=Decimal("0.05"),
         remaining_wall_clock_minutes=30,
         initial_workspace_context="--- target.py ---\noriginal\n",
         initial_workspace_file_sizes={"target.py": 6144},
@@ -145,7 +137,6 @@ def test_fu4c_multi_turn_prompt_exposes_known_turn1_file_size_for_full_reread():
 
 
 def test_fu5a_multi_turn_prompt_discloses_enforced_evidence_limits():
-    from decimal import Decimal
 
     from optimus.agent.prompts import build_multi_turn_planner_input
 
@@ -153,7 +144,6 @@ def test_fu5a_multi_turn_prompt_discloses_enforced_evidence_limits():
         "Update target.py per the module documentation.",
         planning_turn=1,
         max_planning_turns=3,
-        remaining_budget_usd=Decimal("0.05"),
         remaining_wall_clock_minutes=30,
         initial_workspace_context="--- target.py ---\noriginal\n",
         evidence_limits=(4096, 12288, 16384),

@@ -374,9 +374,12 @@ class AgentRunner:
         iteration_runner = self._loop_iteration_runner or _AgentLoopIterationRunner(self, request, scope)
         evaluator = self._loop_evaluator or DeterministicCompletionEvaluator(completed=False, reason="goal not complete")
         controller = GoalLoopController(
+            # Plan 12.2 Task 11: an ordinary goal loop has no dollar stop (no positive minimum or
+            # sentinel); only an evaluation caller's own explicit cap travels into the loop. Its count,
+            # time, repeated-failure and halt controls remain.
             policy=LoopBudgetPolicy(
                 max_iterations=5,
-                max_budget_usd=max(request.max_cost_usd, Decimal("0.01")),
+                max_budget_usd=request.max_cost_usd,
                 max_wall_clock_minutes=30,
             ),
             runner=iteration_runner,
@@ -750,7 +753,8 @@ class AgentRunner:
             )
         )
 
-        if total_cost_usd > request.max_cost_usd:
+        # Plan 12.2 Task 11: only an evaluation caller's explicit cap can stop here; a product run has none.
+        if request.max_cost_usd is not None and total_cost_usd > request.max_cost_usd:
             return self._build_result(
                 request=request,
                 status=AgentRunStatus.TERMINATED,
@@ -1532,7 +1536,9 @@ class AgentRunner:
         total_cost_usd = response.gateway_usage.cost_usd
         # A routed success can follow an earlier attempt whose cost is unknown; it stays unknown.
         unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)
-        if total_cost_usd > request.max_cost_usd:
+        # Plan 12.2 Task 11: a product answer above the former $0.05 is delivered; only an evaluation
+        # caller's explicit cap withholds it.
+        if request.max_cost_usd is not None and total_cost_usd > request.max_cost_usd:
             return self._chat_failure(
                 request,
                 stop_reason="BUDGET_EXHAUSTED",

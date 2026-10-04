@@ -18,7 +18,6 @@ class FailureKind(StrEnum):
     RATE_LIMIT = "rate_limit"
     PERMANENT = "permanent"
     POLICY_VIOLATION = "policy_violation"
-    BUDGET_EXHAUSTED = "budget_exhausted"
     FITNESS_GATE = "fitness_gate"
     UNKNOWN = "unknown"
 
@@ -52,10 +51,8 @@ class PolicyViolationError(Exception):
     """A deterministic policy denial."""
 
 
-class BudgetExhaustedError(Exception):
-    def __init__(self, message: str, *, cost_usd: Decimal) -> None:
-        self.cost_usd = cost_usd
-        super().__init__(message)
+# Plan 12.2 Task 11 removed the product dollar-stop error and its failure kind: nothing raised it, and a
+# cost is never a retry classification (ADR-005, ADR-015).
 
 
 @dataclass(frozen=True)
@@ -115,13 +112,6 @@ def classify_failure(error: BaseException) -> FailureClassification:
         return _classification(FailureKind.PERMANENT, FailureSeverity.TERMINAL, error)
     if isinstance(error, PolicyViolationError):
         return _classification(FailureKind.POLICY_VIOLATION, FailureSeverity.TERMINAL, error)
-    if isinstance(error, BudgetExhaustedError):
-        return _classification(
-            FailureKind.BUDGET_EXHAUSTED,
-            FailureSeverity.TERMINAL,
-            error,
-            cost_usd=error.cost_usd,
-        )
     if isinstance(error, GatewayHttpError):
         if getattr(error, "retryable", None) is False:
             # Enforced routing (Plan 12.2 Task 5): the Gateway already applied the bounded attempt

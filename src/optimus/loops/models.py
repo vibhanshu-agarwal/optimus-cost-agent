@@ -21,7 +21,10 @@ class LoopBudgetPolicy(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     max_iterations: int = Field(ge=1)
-    max_budget_usd: Decimal = Field(gt=Decimal("0"))
+    # Plan 12.2 Task 11 (ADR-005, ADR-015): no dollar bound by default. A positive value is only an
+    # independently authorized evaluation caller's explicit cap; product loops keep the count, time,
+    # repeated-failure and halt controls below.
+    max_budget_usd: Decimal | None = Field(default=None, gt=Decimal("0"))
     max_wall_clock_minutes: int = Field(ge=1)
     repeated_failure_limit: int = Field(default=3, ge=2)
 
@@ -132,7 +135,8 @@ class IterationState(BaseModel):
 
     def with_runtime_limits(self, *, policy: LoopBudgetPolicy) -> "IterationState":
         deadline_at = self.started_at + timedelta(minutes=policy.max_wall_clock_minutes)
-        remaining = max(Decimal("0"), policy.max_budget_usd - self.cost_usd_spent)
+        cap = policy.max_budget_usd
+        remaining = None if cap is None else max(Decimal("0"), cap - self.cost_usd_spent)
         return self.model_copy(update={"deadline_at": deadline_at, "remaining_budget_usd": remaining})
 
     def elapsed_minutes(self, *, now: datetime) -> int:

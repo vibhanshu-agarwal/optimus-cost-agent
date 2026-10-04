@@ -103,9 +103,11 @@ class PlanningLoopPolicy(BaseModel):
     max_planning_turns: int = Field(default=3, ge=1)
     max_wall_clock_minutes: int = Field(default=30, ge=1)
 
-    def to_loop_budget_policy(self, *, max_cost_usd: Decimal) -> LoopBudgetPolicy:
-        if max_cost_usd <= Decimal("0"):
-            raise ValueError("max_cost_usd must be positive before constructing a planning loop")
+    def to_loop_budget_policy(self, *, max_cost_usd: Decimal | None = None) -> LoopBudgetPolicy:
+        """The loop's finite work controls; a dollar bound only for an evaluation caller's explicit cap
+        (Plan 12.2 Task 11). A product planning loop has none."""
+        if max_cost_usd is not None and max_cost_usd <= Decimal("0"):
+            raise ValueError("an evaluation cap must be positive before constructing a planning loop")
         return LoopBudgetPolicy(
             max_iterations=self.max_planning_turns,
             max_budget_usd=max_cost_usd,
@@ -197,7 +199,9 @@ class PlanningProgressEvent(BaseModel):
     total_cost_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     cost_complete: bool = True
     unknown_cost_attempt_count: int = Field(default=0, ge=0)
-    remaining_budget_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    # An evaluation caller's remaining explicit cap; None on every product run, which has no dollar bound
+    # (Plan 12.2 Task 11).
+    remaining_budget_usd: Decimal | None = Field(default=None, ge=Decimal("0"))
     gateway_request_ids: tuple[str, ...] = ()
     wire_retry_count: int = Field(default=0, ge=0)
     stop_reason: str | None = None
@@ -249,12 +253,6 @@ def planning_read_telemetry_fields(
 
 
 PlanningProgressObserver = Callable[[PlanningProgressEvent], None]
-
-
-def run_planning_with_budget(max_cost_usd: Decimal) -> PlanningLoopResult:
-    if max_cost_usd <= Decimal("0"):
-        return PlanningLoopResult(stop_reason="PLANNING_BUDGET_EXHAUSTED", settled_turns=0)
-    raise NotImplementedError("planning loop runner is implemented in a later task")
 
 
 def pack_planning_evidence(
@@ -805,7 +803,7 @@ class PlanningLoopRunner:
         policy: PlanningLoopPolicy,
         workspace_root: Path,
         execution_mode: ExecutionMode,
-        max_cost_usd: Decimal,
+        max_cost_usd: Decimal | None = None,
         guard: PreToolGuard | None = None,
         now: Callable[[], datetime] | None = None,
         halt_requested: Callable[[], bool] | None = None,
@@ -856,7 +854,8 @@ class PlanningLoopRunner:
         mcp_permission_broker: object | None = None,
         conversation_envelope: str = "",
     ) -> PlanningLoopResult:
-        if self._max_cost_usd <= Decimal("0"):
+        # Only an evaluation caller's explicit cap can stop planning on money (Plan 12.2 Task 11).
+        if self._max_cost_usd is not None and self._max_cost_usd <= Decimal("0"):
             return PlanningLoopResult(stop_reason="PLANNING_BUDGET_EXHAUSTED", settled_turns=0)
 
         from optimus.loops.tools import GuardedLoopToolExecutor
@@ -932,7 +931,7 @@ class _PlanningIterationRunner:
         execution_mode: ExecutionMode,
         policy: PlanningLoopPolicy,
         loop_budget_policy: LoopBudgetPolicy,
-        max_cost_usd: Decimal,
+        max_cost_usd: Decimal | None,
         now: Callable[[], datetime],
         usage_callback: PlanningGatewayUsageCallback | None,
         retry_controller: RetryController,
@@ -997,6 +996,14 @@ class _PlanningIterationRunner:
             client_mcp_service=client_mcp_service,
             mcp_permission_broker=mcp_permission_broker,
         )
+
+    def _cap_reached(self, spent: Decimal) -> bool:
+        """Whether an evaluation caller's explicit cap is spent; a product run has no cap (Plan 12.2 Task 11)."""
+        return self._max_cost_usd is not None and spent >= self._max_cost_usd
+
+    def _remaining_cap(self, spent: Decimal) -> Decimal | None:
+        """The evaluation cap left, for telemetry only; None on a product run, which has no dollar bound."""
+        return None if self._max_cost_usd is None else max(Decimal("0"), self._max_cost_usd - spent)
 
     def _typed_planning_failure(
         self,
@@ -1150,8 +1157,8 @@ class _PlanningIterationRunner:
                     ended["refused"] = True
                     ended["over_capacity"] = is_input_capacity_refusal(exc)
                     raise _PermanentStop("refused before any upstream attempt") from exc
-                # Budget gate: if aggregate is at/above cap, stop immediately.
-                if usage is not None and self._total_cost_usd >= self._max_cost_usd:
+                # An evaluation caller's explicit cap: at/above it, stop immediately (Plan 12.2 Task 11).
+                if usage is not None and self._cap_reached(self._total_cost_usd):
                     raise _PermanentStop("budget exhausted after reported failed attempt") from exc
                 # Re-raise for normal RetryController classification.
                 raise
@@ -1215,7 +1222,7 @@ class _PlanningIterationRunner:
             raise _PlanningGatewayInvocationError("PLANNING_INPUT_CAPACITY_EXCEEDED", reported_cost_usd=sequence_cost)
         if ended["refused"]:
             raise _PlanningGatewayInvocationError("PLANNING_GATEWAY_REFUSED", reported_cost_usd=sequence_cost)
-        if self._total_cost_usd >= self._max_cost_usd:
+        if self._cap_reached(self._total_cost_usd):
             raise _PlanningGatewayInvocationError(
                 "PLANNING_BUDGET_EXHAUSTED", reported_cost_usd=sequence_cost
             )
@@ -1225,7 +1232,6 @@ class _PlanningIterationRunner:
 
     def run_iteration(self, state: IterationState, tools: LoopToolExecutorProtocol) -> IterationOutcome:
         planning_turn = state.iteration + 1
-        remaining_budget = max(Decimal("0"), self._max_cost_usd - state.cost_usd_spent)
         remaining_wall_clock = max(
             0,
             self._policy.max_wall_clock_minutes - state.elapsed_minutes(now=self._now()),
@@ -1256,7 +1262,6 @@ class _PlanningIterationRunner:
                 self._task,
                 planning_turn=planning_turn,
                 max_planning_turns=self._policy.max_planning_turns,
-                remaining_budget_usd=remaining_budget,
                 remaining_wall_clock_minutes=remaining_wall_clock,
                 carried_observations_envelope=carried_envelope,
                 current_read_evidence_envelope=current_envelope,
@@ -1410,10 +1415,7 @@ class _PlanningIterationRunner:
                         source_sha256s=sha256s,
                         read_byte_counts=byte_counts,
                         total_cost_usd=self._total_cost_usd,
-                        remaining_budget_usd=max(
-                            Decimal("0"),
-                            self._max_cost_usd - state.cost_usd_spent - attempt_cost,
-                        ),
+                        remaining_budget_usd=self._remaining_cap(state.cost_usd_spent + attempt_cost),
                         gateway_request_ids=tuple(self._gateway_request_ids),
                         wire_retry_count=self._last_wire_retry_count,
                     )
@@ -1475,7 +1477,8 @@ class _PlanningIterationRunner:
         raise AssertionError(f"unsupported planning decision: {decision.kind}")
 
     def _planning_resource_stop_after_final_plan(self, *, state: IterationState) -> str | None:
-        if state.cost_usd_spent >= self.loop_budget_policy.max_budget_usd:
+        cap = self.loop_budget_policy.max_budget_usd
+        if cap is not None and state.cost_usd_spent >= cap:  # an evaluation cap only (Plan 12.2 Task 11)
             return "PLANNING_BUDGET_EXHAUSTED"
         if state.elapsed_minutes(now=self._now()) >= self.loop_budget_policy.max_wall_clock_minutes:
             return "PLANNING_WALL_CLOCK_EXHAUSTED"
@@ -1608,7 +1611,7 @@ class _PlanningIterationRunner:
                 settled_turn=result.settled_turns,
                 max_planning_turns=self._policy.max_planning_turns,
                 total_cost_usd=self._total_cost_usd,
-                remaining_budget_usd=max(Decimal("0"), self._max_cost_usd - self._total_cost_usd),
+                remaining_budget_usd=self._remaining_cap(self._total_cost_usd),
                 gateway_request_ids=tuple(self._gateway_request_ids),
                 wire_retry_count=self._last_wire_retry_count,
                 stop_reason=result.stop_reason,
