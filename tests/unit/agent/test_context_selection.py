@@ -376,7 +376,7 @@ class _SummarizerCall:
         return SummarizerResponse(text=summary_text("Merged."), finish_status="stop", attempts=(attempt,))
 
 
-def _attached_turn(*, usable: int, calls: int = 3, tail: int = 400, summarizer=None, receipts=None):
+def _attached_turn(*, usable: int, calls: int = 3, tail: int = 400, summarizer=None, receipts=None, max_repacks: int = 2):
     from optimus.context.assembly import AttachedTurn, ContextAttachment, SummarizerRoute
 
     summarizer = summarizer if summarizer is not None else _SummarizerCall()
@@ -393,7 +393,7 @@ def _attached_turn(*, usable: int, calls: int = 3, tail: int = 400, summarizer=N
         summarizer=lambda identity, deliver_notice: summarizer,
         summarizer_route=SummarizerRoute(model_id="test/summarizer", role="summarizer", route=("p",), reasoning=None, quantizations=("fp8",)),
         record_receipt=(receipts if receipts is not None else []).append,
-        max_repacks=2,
+        max_repacks=max_repacks,
     )
     records = {seq: turn(f"Turn {seq} " + "w" * 360) for seq in range(1, 7)}
     attached = AttachedTurn.capture(
@@ -468,6 +468,21 @@ def test_a_repack_keeps_the_parameters_digest_and_summarizes_only_new_turns():
     for seq in first_covered:  # an already summarized turn is never sent again
         assert all(f"Turn {seq} " not in prompt for prompt in repack_prompts)
     assert attached.candidate is initial  # a repack's checkpoint is never the one published
+
+
+def test_the_accepted_single_repack_within_the_shared_allowance():
+    """Task 12 accepted values: one finite repack after the initial packing, inside the turn's shared
+    18-call allowance. A request one repack can fit is sent after exactly one; one that cannot fit is
+    refused with no more than that one repack (here before any, since even its fixed part is too large)."""
+    fitting, _ = _attached_turn(usable=1100, calls=18, max_repacks=1)
+    assert fitting.prepare().kind == "view"
+    assert fitting.fit(_build(3000)) is not None and fitting.repacks == 1
+    assert fitting.maintenance_calls <= 18
+
+    refused, summarizer = _attached_turn(usable=1100, calls=18, max_repacks=1)
+    assert refused.prepare().kind == "view"
+    assert refused.fit(_build(10_000)) is None
+    assert refused.repacks <= 1 and len(summarizer.prompts) == refused.maintenance_calls <= 18
 
 
 def test_a_request_whose_fixed_part_cannot_fit_is_refused_without_looping():

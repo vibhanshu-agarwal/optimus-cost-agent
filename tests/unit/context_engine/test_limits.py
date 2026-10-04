@@ -186,6 +186,36 @@ def test_the_pinned_fixed_material_is_the_current_measurement() -> None:
     assert limits.fixed_request_material() == FIXED
 
 
+def test_the_checked_values_are_the_accepted_closure_set() -> None:
+    """Task 12 accepted-value assertions: the operator accepted closure V2 section 1's numeric set on
+    2026-10-04 (offline release). The checker runs on exactly those values, plus one finite repack and
+    the unchanged inclusive 512 KiB absent-engine floor."""
+    from optimus.acp.conversation import CONVERSATION_MAX_BYTES
+
+    assert PROPOSAL == {
+        "source_max_bytes": 1_048_576,  # attached canonical source, inclusive
+        "record_reservation_bytes": 131_072,  # prompt-time admission reservation, not a reply cap
+        "view_source_max_bytes": 1_048_576,  # engine source_max_bytes
+        "transient_max_bytes": 524_288,  # engine transient serialized input
+        "maintenance_input_tokens": 131_072,  # engine-assembled text only
+        "summary_output_tokens": 8_192,  # summary output and maintenance reserve
+        "max_maintenance_calls": 18,  # shared per-turn allowance, repack included
+        "anchor_input_tokens": 16_384,  # hybrid first-turn anchor
+        "compaction_tail_input_tokens": 32_768,  # compaction exact tail
+        "hybrid_tail_input_tokens": 65_536,  # hybrid exact tail
+        "implementer_output_reserve": 32_768,
+        "summarizer_output_reserve": 8_192,
+        "history_input_tokens_by_tier": {"ultra-cheap": 131_072, "cheap": 131_072},  # min(131072, floor(0.8 * usable)) at a 262144 route
+        "prompt_allowance_bytes": 16_384,
+    }
+    assert CONVERSATION_MAX_BYTES == 524_288  # absent-engine storage/admission floor, retained (D7)
+    assert ACCEPTED_MAX_REPACKS == 1
+    assert check()["violations"] == []
+
+
+ACCEPTED_MAX_REPACKS = 1  # closure V2 section 1: one repack after the initial packing
+
+
 def test_the_d7_absent_engine_history_bound_at_ratio_one() -> None:
     """D7 (operator's request-capacity exception): with r=1, Agent history and prompt fit in the usable
     input less the planning material, before any further overhead; a share of the 512 KiB floor."""
