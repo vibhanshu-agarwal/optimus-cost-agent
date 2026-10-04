@@ -3919,6 +3919,54 @@
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_the_extraction_probe_reports_a_clean_engine_import_and_is_caught_in_a_checkout",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_product_coverage:main:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main exports only CoverageGateError text into the report and stderr; every message is built by the gate from fixed wording, src package names, src-relative file paths, group names and coverage percentages, and a groups-file read failure names only the exception type. No credential, environment value or test output is included.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_product_coverage.py::test_report_mode_needs_the_identified_dataset",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_product_coverage:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main serializes the gate report (run command basename and arguments, pytest exit, timestamps, dataset SHA-256, per-floor percentages and verdict) for the operator-chosen report path; no environment, credential or source content is serialized.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_product_coverage.py::test_run_mode_launches_the_one_fixed_selection_and_keeps_its_true_exit",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_product_coverage:main:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch; the only matching calls are argparse parser.error with fixed usage messages, not a logger.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_product_coverage.py::test_report_mode_needs_the_identified_dataset",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_product_coverage:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints only the gate's own failure lines (fixed wording, package and group names, percentages and the pytest exit code) to stderr.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_product_coverage.py::test_run_mode_launches_the_one_fixed_selection_and_keeps_its_true_exit",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_product_coverage:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints one line per floor (name, percentage, floor, required or informational, PASS or BELOW); no credential or local diagnostic is printed.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_product_coverage.py::test_run_mode_launches_the_one_fixed_selection_and_keeps_its_true_exit",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_product_coverage:main:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main writes only the gate report and its run record, the JSON described above, to the operator-chosen report path; nothing else is persisted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_product_coverage.py::test_run_mode_launches_the_one_fixed_selection_and_keeps_its_true_exit",
+      "evidence_tier": "unit"
     }
   ]
 }
