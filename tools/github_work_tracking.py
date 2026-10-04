@@ -29,15 +29,21 @@ committed inventory from its baseline commit.
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
+import os
+import posixpath
 import re
 import subprocess
 import sys
-from collections import Counter
+import time
+from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Protocol
 
 SCHEMA = "optimus-work-tracking-migration-v1"
 
@@ -678,14 +684,976 @@ def render_manifest(data: Mapping) -> str:
     return re.sub(r'\n(\s+)"commit": (".*?"),\n\s+"commit_pin": (".*?"),', r'\n\1"commit": \2, "commit_pin": \3,', text)
 
 
-def main(argv: Sequence[str] | None = None, reader: SourceReader = read_sources_at) -> int:
+# ==== Task 2: bounded, restart-safe publication and reconciliation ====
+#
+# Publication is planned completely before the first write: every issue and label page is read (pull requests
+# excluded), every conflict is found, and the batch lists each exact body, label set and native binding. Applying a
+# batch journals each write's intent durably before sending it, re-reads an issue against the fingerprint the plan saw
+# before updating it, validates each result (a binding both ways) before the next write, and stops on any mismatch or
+# unknown outcome. Nothing is ever retried; a stopped run is reconciled read-only and needs fresh authority to go on.
+
+REPO = "vibhanshu-agarwal/optimus-cost-agent"
+PAGE = REPO_ROOT / "docs" / "work-status.html"
+TRIAL_LABEL = "shadow-pilot"
+WRITE_PAUSE_S = 1.0  # GitHub asks clients to wait at least a second between mutating requests
+TITLE_LIMIT, BODY_LIMIT = 256, 65_536
+MAX_PAGES = 100
+TRIAL_BANNER = (
+    "> **Staged copy for the tracking migration.** The repository pool remains authoritative until the cutover merge."
+    " This issue grants no implementation or live-run authority. Do not reference it with a closing keyword."
+)
+_MARKER = re.compile(r"<!-- optimus-source: (\S+) -->")
+_PARENT_URL = re.compile(rf"https://api\.github\.com/repos/{re.escape(REPO)}/issues/(\d+)")
+_LINK_TARGET = re.compile(r"(\]\()([^)\s]+)(\))")
+_VOCABULARY = re.compile(r'<script type="application/json" id="work-status-vocabulary">(?P<json>.*?)</script>', re.DOTALL)
+_SOURCE_DIMENSIONS = ("status", "product", "kind")  # always the source record's value
+_DEFAULTED_DIMENSIONS = ("priority", "difficulty", "estimate", "handler")  # an explicit value on the issue survives a default
+_MANAGED_PREFIXES = tuple(f"{dimension}:" for dimension in (*_SOURCE_DIMENSIONS, *_DEFAULTED_DIMENSIONS))
+_PRIORITY_BASIS = {"source": "from the source", "default": "default, not assessed"}
+
+
+@dataclass(frozen=True)
+class LabelSpec:
+    name: str
+    description: str
+    color: str
+
+    def payload(self) -> dict[str, str]:
+        return {"color": self.color, "description": self.description}
+
+
+# The pilot's 13 labels keep their published values; the rest are agent proposals reviewed before publication.
+LABEL_SPECS = {
+    name: LabelSpec(name, description, color)
+    for name, description, color in (
+        ("shadow-pilot", "Trial copy; repository pool remains authoritative", "d4c5f9"),
+        ("status:open", "Source record is Open", "0e8a16"),
+        ("status:partially-implemented", "Source record is Partially implemented", "fbca04"),
+        ("status:promoted", "Source record is Promoted to a plan", "c5def5"),
+        ("status:blocked", "Source record is Blocked", "d93f0b"),
+        ("status:active", "Source record is Active", "0e8a16"),
+        ("status:not-drafted", "Source record is Not drafted", "ededed"),
+        ("status:in-review", "Source record is In review", "1d76db"),
+        ("status:ready", "Source record is Ready", "0e8a16"),
+        ("status:accepted-open", "Source record is Accepted open: reviewed and still open work", "fbca04"),
+        ("status:unrun", "Source record is Unrun", "d93f0b"),
+        ("status:unrun-binding", "Source record is Unrun and binding", "b60205"),
+        ("priority:high", "High scheduling priority", "d93f0b"),
+        ("priority:medium", "Medium scheduling priority", "fbca04"),
+        ("priority:low", "Low scheduling priority", "c2e0c6"),
+        ("difficulty:high", "High complexity/difficulty", "e99695"),
+        ("difficulty:medium", "Medium complexity/difficulty; default unless assessed", "c2e0c6"),
+        ("difficulty:low", "Low complexity/difficulty", "bfdadc"),
+        ("estimate:na", "Planned Estimate is NA: not estimated", "ededed"),
+        ("handler:claude", "Current work handler: Claude", "bfd4f2"),
+        ("handler:codex", "Current work handler: Codex", "bfd4f2"),
+        ("handler:operator", "Current work handler: the operator", "bfd4f2"),
+        ("handler:unassigned", "No current work handler assigned", "ededed"),
+        ("product:optimus", "Optimus product", "1d76db"),
+        ("product:evidence-a2a", "Evidence/A2A product", "5319e7"),
+        ("kind:feature", "Feature slice that owns plans and items", "0e8a16"),
+        ("kind:plan", "Tracking issue for a repository implementation plan", "0052cc"),
+        ("kind:track", "Hardening child-plan track", "5319e7"),
+        ("kind:candidate", "Reviewed candidate awaiting its own plan", "c5def5"),
+        ("kind:follow-up", "Deferred follow-up with its own acceptance criteria", "006b75"),
+        ("kind:obligation", "Audit obligation retaining its owning feature custody", "7057ff"),
+        ("kind:item", "Work item owned by a track or feature", "bfdadc"),
+    )
+}
+
+
+@functools.cache
+def page_vocabulary(page: Path = PAGE) -> dict[str, Any]:
+    """The live page's label vocabulary, the one list of status, dimension, product and kind values."""
+    match = _VOCABULARY.search(page.read_text(encoding="utf-8"))
+    if match is None:
+        raise ValueError(f"{page} has no work-status vocabulary block")
+    return json.loads(match.group("json"))
+
+
+def _label_values(dimension: str) -> set[str] | None:
+    """The allowed values of a label dimension; ``None`` for a free-form dimension."""
+    vocabulary = page_vocabulary()
+    plain = {"status": "statuses", "product": "products", "kind": "kinds"}
+    if dimension in plain:
+        return set(vocabulary[plain[dimension]])
+    for spec in vocabulary["dimensions"].values():
+        if spec["label"] == dimension:
+            return None if spec.get("free_form") else set(spec["values"])
+    return set()
+
+
+def _valid_label(label: str) -> bool:
+    dimension, _, value = label.partition(":")
+    values = _label_values(dimension)
+    return bool(value) and (values is None or value in values)
+
+
+def _managed(label: str) -> bool:
+    return label == TRIAL_LABEL or label.startswith(_MANAGED_PREFIXES)
+
+
+def source_marker(record_id: str) -> str:
+    """The identity marker an issue body carries; the plan and A2A forms are the ones the pilot published (#222, #225)."""
+    if record_id.startswith("plan:"):
+        return "PLAN-" + record_id.removeprefix("plan:")
+    if record_id.startswith("A2A-"):
+        return "EVIDENCE-HANDOFF-" + record_id
+    return record_id
+
+
+def marker_comment(marker: str) -> str:
+    return f"<!-- optimus-source: {marker} -->"
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _canonical(data: Any) -> str:
+    return json.dumps(data, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
+def _issue_list(numbers: Iterable[int]) -> str:
+    return ", ".join(f"#{number}" for number in sorted(numbers))
+
+
+# ---- transport and reads ----
+
+
+class TransportError(RuntimeError):
+    """A GitHub request did not complete cleanly; ``status`` is the HTTP status when gh reported one."""
+
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+class ReadFailed(RuntimeError):
+    """A read returned nothing usable, so planning or verification cannot rest on it."""
+
+
+class GitHubClient(Protocol):
+    def get(self, path: str) -> str: ...
+
+    def send(self, method: str, path: str, payload: Mapping[str, Any]) -> str: ...
+
+
+class GhClient:
+    """The executor's existing ``gh`` connection: transport only; parsing and classification are shared code."""
+
+    def __init__(self, timeout_s: float = 120) -> None:
+        self.timeout_s = timeout_s
+
+    def get(self, path: str) -> str:
+        return self._run(["gh", "api", path], None)
+
+    def send(self, method: str, path: str, payload: Mapping[str, Any]) -> str:
+        return self._run(["gh", "api", "-X", method, path, "--input", "-"], json.dumps(payload).encode("utf-8"))
+
+    def _run(self, command: list[str], data: bytes | None) -> str:
+        try:
+            completed = subprocess.run(command, input=data, capture_output=True, timeout=self.timeout_s, check=False)
+        except (subprocess.TimeoutExpired, OSError) as error:
+            raise TransportError(f"{type(error).__name__}: {error}") from None
+        if completed.returncode != 0:
+            stderr = completed.stderr.decode("utf-8", "replace").strip()
+            status = re.search(r"HTTP (\d{3})", stderr)
+            raise TransportError(f"gh exited {completed.returncode}: {stderr[:300]}", int(status.group(1)) if status else None)
+        return completed.stdout.decode("utf-8")
+
+
+def _json(text: str) -> Any:
+    try:
+        return json.loads(text)
+    except ValueError as error:
+        raise ReadFailed(f"the response is not JSON ({error})") from None
+
+
+def read_pages(client: GitHubClient, path: str) -> list[Any]:
+    """Every object of a REST list, 100 per page, until an empty page."""
+    items: list[Any] = []
+    separator = "&" if "?" in path else "?"
+    for page in range(1, MAX_PAGES + 1):
+        try:
+            batch = _json(client.get(f"{path}{separator}per_page=100&page={page}"))
+        except TransportError as error:
+            raise ReadFailed(f"reading {path} page {page} failed: {error}") from None
+        if not isinstance(batch, list):
+            raise ReadFailed(f"{path} page {page} is not a list")
+        if not batch:
+            return items
+        items.extend(batch)
+    raise ReadFailed(f"{path} has more than {MAX_PAGES} pages")
+
+
+@dataclass(frozen=True)
+class IssueSnapshot:
+    number: int
+    id: int
+    title: str
+    body: str
+    labels: tuple[str, ...]
+    state: str
+    state_reason: str | None
+    parent: int | None
+
+    @property
+    def markers(self) -> tuple[str, ...]:
+        return tuple(_MARKER.findall(self.body))
+
+    @property
+    def fingerprint(self) -> str:
+        """What an update must still find before it writes: title, body, labels, state and native parent."""
+        fields = (self.title, self.body, list(self.labels), self.state, self.state_reason, self.parent)
+        return _sha256(_canonical(dict(zip(("title", "body", "labels", "state", "state_reason", "parent"), fields, strict=True))))
+
+
+def issue_snapshot(raw: Any) -> IssueSnapshot:
+    """An issue object as read from GitHub; a parent URL outside this repository is unusable, never followed."""
+    try:
+        url = raw.get("parent_issue_url")
+        parent = None
+        if url is not None:
+            match = _PARENT_URL.fullmatch(url)
+            if match is None:
+                raise ReadFailed(f"issue #{raw.get('number')} has a parent URL outside {REPO}: {url!r}")
+            parent = int(match.group(1))
+        labels = tuple(sorted(label["name"] for label in raw["labels"]))
+        return IssueSnapshot(
+            int(raw["number"]), int(raw["id"]), raw["title"], raw.get("body") or "", labels, raw["state"], raw.get("state_reason"), parent
+        )
+    except (AttributeError, KeyError, TypeError, ValueError) as error:
+        raise ReadFailed(f"unusable issue object ({type(error).__name__}: {error})") from None
+
+
+def read_issues(client: GitHubClient, repo: str = REPO) -> list[IssueSnapshot]:
+    """Every issue in every state; the issue list also returns pull requests, which are dropped."""
+    return [
+        issue_snapshot(raw)
+        for raw in read_pages(client, f"repos/{repo}/issues?state=all")
+        if not (isinstance(raw, dict) and "pull_request" in raw)
+    ]
+
+
+def read_labels(client: GitHubClient, repo: str = REPO) -> dict[str, LabelSpec]:
+    labels = {}
+    for raw in read_pages(client, f"repos/{repo}/labels"):
+        try:
+            labels[raw["name"]] = LabelSpec(raw["name"], raw.get("description") or "", str(raw["color"]).lower())
+        except (AttributeError, KeyError, TypeError) as error:
+            raise ReadFailed(f"unusable label object ({type(error).__name__}: {error})") from None
+    return labels
+
+
+# ---- issue drafts: the exact body and labels of each migrating record ----
+
+
+def blob_url(path: str, commit: str, repo: str = REPO) -> str:
+    return f"https://github.com/{repo}/blob/{commit}/{path}"
+
+
+def normalize_links(text: str, source_path: str, commit: str, repo: str = REPO) -> str:
+    """Relative and in-page link targets of quoted source become permalinks at ``commit``; nothing else changes."""
+
+    def pinned(match: re.Match[str]) -> str:
+        target = match.group(2)
+        if re.match(r"(?i)(https?|mailto):", target):
+            return match.group(0)
+        path, hash_mark, anchor = target.partition("#")
+        if path.startswith("/"):
+            resolved = posixpath.normpath(path.lstrip("/"))
+        else:
+            resolved = posixpath.normpath(posixpath.join(posixpath.dirname(source_path), path)) if path else source_path
+        if resolved == ".." or resolved.startswith("../"):
+            raise ValueError(f"link {target!r} in {source_path} resolves outside the repository")
+        return f"{match.group(1)}{blob_url(resolved, commit, repo)}{hash_mark}{anchor}{match.group(3)}"
+
+    return _LINK_TARGET.sub(pinned, text)
+
+
+def _unit_span(unit: SourceUnit, lines: Sequence[str]) -> tuple[int, int, list[str]]:
+    """(first, last, text) of a unit in its source; a row is quoted with its table's header and delimiter rows."""
+    if unit.kind == "row":
+        index = unit.line - 2
+        while index >= 1 and not _DELIMITER_ROW.match(lines[index]):
+            index -= 1
+        if index < 1:
+            raise ValueError(f"{unit.key}: no table header above the row")
+        return unit.line, unit.line, [lines[index - 1], lines[index], lines[unit.line - 1]]
+    if unit.kind == "frozen-mapping":
+        return unit.line, unit.line, [lines[unit.line - 1]]
+    last = unit.end
+    if unit.kind == "section-record":  # the section's own text, not the entries beneath it
+        for number in range(unit.line + 1, unit.end + 1):
+            heading = _HEADING.match(lines[number - 1])
+            if heading and len(heading.group("marks")) <= 3:
+                last = number - 1
+                break
+    while last > unit.line and not lines[last - 1].strip():
+        last -= 1
+    return unit.line, last, list(lines[unit.line - 1 : last])
+
+
+def unit_source_text(unit: SourceUnit, lines: Sequence[str]) -> str:
+    return "\n".join(_unit_span(unit, lines)[2])
+
+
+def priority_basis(record: InventoryRecord, claimed: Sequence[SourceUnit]) -> str:
+    """``source`` when a claimed unit states a priority, ``reviewed`` for a disposed value, otherwise ``default``."""
+    if any(unit.priority for unit in claimed):
+        return "source"
+    return "reviewed" if (record.priority_disposition or "").strip() else "default"
+
+
+def status_label(status: str | None) -> str:
+    token = normalized_status(status) or "unrecognized"
+    return "status:" + token.replace(" ", "-").replace("_", "-")
+
+
+def record_labels(record: InventoryRecord, trial: bool) -> tuple[str, ...]:
+    """Source status, product and kind; source or default priority; the operator's Medium/NA/unassigned defaults."""
+    labels = {
+        status_label(record.status),
+        f"priority:{(record.priority or DEFAULT_PRIORITY).lower()}",
+        "difficulty:medium",
+        "estimate:na",
+        "handler:unassigned",
+        f"product:{record.product}",
+        f"kind:{record.kind}",
+    }
+    if trial:
+        labels.add(TRIAL_LABEL)
+    return tuple(sorted(labels))
+
+
+@dataclass(frozen=True)
+class IssueDraft:
+    record_id: str
+    marker: str
+    title: str
+    body: str
+    labels: tuple[str, ...]
+    parent: str | None
+    priority_basis: str
+
+
+def render_body(
+    record: InventoryRecord,
+    claimed: Sequence[SourceUnit],
+    lines: Mapping[str, Sequence[str]],
+    inventory: Inventory,
+    basis: str,
+    trial: bool,
+) -> str:
+    """Marker, provenance, metadata basis and every claimed unit quoted exactly from the pinned source."""
+    commit = inventory.baseline_commit
+    short = commit[:7]
+    aliases = [alias for alias in record.aliases if alias != record.id]
+    stating = next((unit.source for unit in claimed if _clean(unit.stated_status) == record.status), None)
+    stated = normalize_links(str(record.status), inventory.source_paths[stating], commit) if stating else record.status
+    status = f"- **Source status at baseline `{short}`:** {stated} (historical; this issue's state and labels carry the current status)"
+    if record.status_disposition:
+        status += f". Synthesized: {record.status_disposition}"
+    facts = [
+        f"- **Source record:** `{record.id}`" + (f" (also {', '.join(f'`{alias}`' for alias in aliases)})" if aliases else ""),
+        status,
+        f"- **Priority:** {(record.priority or DEFAULT_PRIORITY).title()} ({_PRIORITY_BASIS.get(basis) or 'reviewed: ' + str(record.priority_disposition)})."
+        " **Difficulty:** Medium (default, not assessed). **Planned Estimate:** NA. **Handler:** Unassigned.",
+    ]
+    if record.severity:
+        facts.append(f"- **Severity:** {record.severity} (separate from scheduling priority).")
+    if record.parent:
+        facts.append(f"- **Parent:** `{record.parent}` (native sub-issue).")
+    if record.related:
+        facts.append(f"- **Related:** {', '.join(f'`{related}`' for related in record.related)}.")
+    if record.duplicate_rationale:
+        facts.append(f"- **Merged source records:** {record.duplicate_rationale}")
+    if record.status_conflict_disposition:
+        facts.append(f"- **Conflicting source statuses:** {record.status_conflict_disposition}")
+    if record.reviewed:
+        facts.append(f"- **Reviewed note:** {record.review_note}")
+    out = [marker_comment(source_marker(record.id)), ""]
+    if trial:
+        out += [TRIAL_BANNER, ""]
+    out += [
+        "Generated from the reviewed migration inventory (`reports/github-work-tracking-migration.json`) by"
+        " `tools/github_work_tracking.py`; published by Claude through the operator's GitHub account. Agent signatures"
+        " identify authorship only and carry no operator authority.",
+        "",
+        *facts,
+        "",
+        f"## Source at baseline `{short}`",
+        "",
+        "Quoted exactly from the pinned source; only relative and in-page link targets are rewritten as permalinks at that commit.",
+        "",
+    ]
+    for unit in claimed:
+        first, last, text = _unit_span(unit, lines[unit.source])
+        path = inventory.source_paths[unit.source]
+        span = f"L{first}" if first == last else f"L{first}-L{last}"
+        out += [f"**`{path}` line {unit.line}** ([at baseline]({blob_url(path, commit)}?plain=1#{span}))", ""]
+        out += [normalize_links("\n".join(text), path, commit), ""]
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
+def draft_issues(inventory: Inventory, sources: Mapping[str, bytes], trial: bool = True) -> list[IssueDraft]:
+    """One draft per migrating record with source units; an existing external issue is reused, never redrafted."""
+    texts = {name: data.decode("utf-8") for name, data in sources.items()}
+    units = {unit.key: unit for name, text in texts.items() for unit in scan_source(name, text).units}
+    lines = {name: text.splitlines() for name, text in texts.items()}
+    drafts = []
+    for record in inventory.records:
+        if record.disposition != "migrate" or record.kind == "external-issue":
+            continue
+        claimed = [units[key] for key in record.units]
+        basis = priority_basis(record, claimed)
+        body = render_body(record, claimed, lines, inventory, basis, trial)
+        drafts.append(
+            IssueDraft(record.id, source_marker(record.id), record.title, body, record_labels(record, trial), record.parent, basis)
+        )
+    return drafts
+
+
+# ---- the plan: every operation, found conflicts first ----
+
+
+@dataclass(frozen=True)
+class IssueRef:
+    number: int
+    id: int
+
+
+@dataclass(frozen=True)
+class Operation:
+    op: str  # "create-label" | "create-issue" | "update-issue" | "bind-sub-issue"
+    target: str
+    payload: Mapping[str, Any]
+    issue: int | None = None
+    expected_fingerprint: str | None = None
+
+    @property
+    def payload_sha256(self) -> str:
+        return _sha256(_canonical(self.payload))
+
+
+OPERATION_KINDS = ("create-label", "create-issue", "update-issue", "bind-sub-issue")
+
+
+@dataclass(frozen=True)
+class MigrationBatch:
+    repo: str
+    baseline_commit: str
+    trial: bool
+    operations: tuple[Operation, ...]
+    conflicts: tuple[str, ...]
+    reused: Mapping[str, IssueRef]
+
+    @property
+    def ok(self) -> bool:
+        return not self.conflicts
+
+    @property
+    def budget(self) -> dict[str, int]:
+        counts = Counter(operation.op for operation in self.operations)
+        reads = counts["update-issue"] + 2 * counts["bind-sub-issue"]
+        return {**{kind: counts[kind] for kind in OPERATION_KINDS}, "writes": len(self.operations), "reads_around_writes": reads}
+
+    def to_data(self) -> dict[str, Any]:
+        return {
+            "schema": SCHEMA,
+            "repo": self.repo,
+            "baseline_commit": self.baseline_commit,
+            "trial": self.trial,
+            "budget": self.budget,
+            "conflicts": list(self.conflicts),
+            "reused": {record_id: {"number": ref.number, "id": ref.id} for record_id, ref in self.reused.items()},
+            "operations": [
+                {
+                    "op": operation.op,
+                    "target": operation.target,
+                    "issue": operation.issue,
+                    "expected_fingerprint": operation.expected_fingerprint,
+                    "payload_sha256": operation.payload_sha256,
+                    "payload": dict(operation.payload),
+                }
+                for operation in self.operations
+            ],
+        }
+
+    @property
+    def sha256(self) -> str:
+        return _sha256(render_batch(self))
+
+
+def render_batch(batch: MigrationBatch) -> str:
+    return json.dumps(batch.to_data(), indent=1, ensure_ascii=False) + "\n"
+
+
+def _target_problem(label: str, number: int | None, issue: IssueSnapshot | None) -> str | None:
+    if issue is None:
+        return f"{label} targets #{number}, which does not exist (or is a pull request)"
+    if issue.state != "open":
+        return f"{label} targets #{number}, which is closed; the migration never reopens an issue"
+    return None
+
+
+def merged_labels(draft: IssueDraft, issue: IssueSnapshot) -> tuple[list[str], list[str]]:
+    """The labels an update writes, and conflicts that stop it.
+
+    Status, product, kind and the trial marker come from the draft. For priority, difficulty, estimate and handler an
+    explicit value already on the issue survives a default; an explicit source priority must agree with it. Every
+    label outside the managed namespaces survives untouched.
+    """
+    wanted = set(draft.labels)
+    result = {label for label in issue.labels if not _managed(label)}
+    result |= {label for label in wanted if label == TRIAL_LABEL or label.startswith(tuple(f"{d}:" for d in _SOURCE_DIMENSIONS))}
+    conflicts = []
+    where = f"record {draft.record_id!r} (#{issue.number})"
+    for dimension in _DEFAULTED_DIMENSIONS:
+        want = next(label for label in wanted if label.startswith(dimension + ":"))
+        present = [label for label in issue.labels if label.startswith(dimension + ":")]
+        if len(present) > 1:
+            conflicts.append(f"{where} carries more than one {dimension} label {present}")
+        elif present and not _valid_label(present[0]):
+            conflicts.append(f"{where} carries {present[0]!r}, which is not a known {dimension} value")
+        elif present and dimension == "priority" and draft.priority_basis != "default" and present[0] != want:
+            conflicts.append(
+                f"{where} carries {present[0]!r}, but its {draft.priority_basis} priority is {want!r}; resolve it before any write"
+            )
+        else:
+            result.add(present[0] if present else want)
+    return sorted(result), conflicts
+
+
+def plan_migration(
+    inventory: Inventory, drafts: Sequence[IssueDraft], issues: Sequence[IssueSnapshot], labels: Mapping[str, LabelSpec]
+) -> MigrationBatch:
+    """Every write a publication needs, in order (labels, issues, bindings), and every conflict that forbids it."""
+    conflicts: list[str] = []
+    drafts_by_id = {draft.record_id: draft for draft in drafts}
+    owners = {draft.marker: draft.record_id for draft in drafts}
+    by_number = {issue.number: issue for issue in issues}
+    hits: dict[str, list[int]] = defaultdict(list)
+    for issue in issues:
+        for marker in issue.markers:
+            hits[marker].append(issue.number)
+    for marker, numbers in sorted(hits.items()):
+        if marker not in owners:
+            conflicts.append(f"issue(s) {_issue_list(numbers)} carry source marker {marker!r}, which no migrating record owns")
+        elif len(numbers) > 1:
+            conflicts.append(f"source marker {marker!r} of {owners[marker]!r} is on more than one issue: {_issue_list(numbers)}")
+    for draft in drafts:
+        if not 0 < len(draft.title) <= TITLE_LIMIT or len(draft.body) > BODY_LIMIT:
+            conflicts.append(
+                f"record {draft.record_id!r} title ({len(draft.title)}) or body ({len(draft.body)}) is outside GitHub's limits"
+            )
+
+    label_ops = []
+    for name in sorted({label for draft in drafts for label in draft.labels}):
+        spec = LABEL_SPECS.get(name)
+        existing = labels.get(name)
+        if spec is None:
+            conflicts.append(f"label {name!r} has no reviewed specification")
+        elif existing is None:
+            label_ops.append(Operation("create-label", name, {"name": name, **spec.payload()}))
+        elif existing != spec:
+            conflicts.append(
+                f"label {name!r} exists with color {existing.color} and description {existing.description!r},"
+                f" not the reviewed {spec.color} and {spec.description!r}"
+            )
+
+    reused: dict[str, IssueRef] = {}
+    issue_ops = []
+    for record in inventory.records:
+        if record.disposition != "migrate":
+            continue
+        label = f"record {record.id!r}"
+        if record.kind == "external-issue":  # reusing an existing issue is its own reviewed operation, never a write here
+            issue = by_number.get(record.target_issue) if record.target_issue is not None else None
+            problem = _target_problem(label, record.target_issue, issue)
+            if problem:
+                conflicts.append(problem)
+            elif issue is not None:
+                reused[record.id] = IssueRef(issue.number, issue.id)
+            continue
+        draft = drafts_by_id.get(record.id)
+        if draft is None:
+            conflicts.append(f"{label} has no drafted issue")
+            continue
+        marked = hits.get(draft.marker, [])
+        if record.target_issue is None:
+            if marked:
+                conflicts.append(
+                    f"{label} has no reviewed target issue, but its source marker is on {_issue_list(marked)}; an earlier"
+                    " write's outcome may be unknown: reconcile read-only and record the identity before any write"
+                )
+            else:
+                payload = {"title": draft.title, "body": draft.body, "labels": list(draft.labels)}
+                issue_ops.append(Operation("create-issue", record.id, payload))
+            continue
+        issue = by_number.get(record.target_issue)
+        problem = _target_problem(label, record.target_issue, issue)
+        if problem is None and issue is not None and draft.marker not in issue.markers:
+            problem = f"{label} targets #{issue.number}, which does not carry its source marker {draft.marker!r}"
+        if problem or issue is None:
+            conflicts.append(str(problem))
+            continue
+        reused[record.id] = IssueRef(issue.number, issue.id)
+        wanted, label_conflicts = merged_labels(draft, issue)
+        conflicts.extend(label_conflicts)
+        if (issue.title, issue.body, list(issue.labels)) != (draft.title, draft.body, wanted):
+            payload = {"title": draft.title, "body": draft.body, "labels": wanted}
+            issue_ops.append(Operation("update-issue", record.id, payload, issue.number, issue.fingerprint))
+
+    bind_ops = []
+    for draft in drafts:
+        ref = reused.get(draft.record_id)
+        current = by_number[ref.number].parent if ref else None
+        where = f"record {draft.record_id!r}"
+        if draft.parent is None:
+            if current is not None:
+                conflicts.append(
+                    f"{where} has no parent, but #{ref.number if ref else '?'} is a native sub-issue of #{current}; the migration never re-parents"
+                )
+            continue
+        if draft.parent not in drafts_by_id:
+            conflicts.append(f"{where} has parent {draft.parent!r}, which has no drafted issue")
+            continue
+        parent_ref = reused.get(draft.parent)
+        if current is not None:
+            if parent_ref is None or current != parent_ref.number:
+                conflicts.append(
+                    f"{where}: #{ref.number if ref else '?'} is already a native sub-issue of #{current}; the migration never re-parents"
+                )
+            continue
+        bind_ops.append(
+            Operation("bind-sub-issue", f"{draft.record_id} <- {draft.parent}", {"child": draft.record_id, "parent": draft.parent})
+        )
+
+    trial = any(TRIAL_LABEL in draft.labels for draft in drafts)
+    operations = tuple(label_ops + issue_ops + bind_ops)
+    return MigrationBatch(REPO, inventory.baseline_commit, trial, operations, tuple(conflicts), reused)
+
+
+# ---- publication: journal, write, validate; stop without retry ----
+
+
+class Journal:
+    """Append-only JSON lines, flushed and fsynced per record, so each write's intent is durable before it is sent."""
+
+    def __init__(self, path: Path | None) -> None:
+        self.path = path
+        self.records: list[dict[str, Any]] = []
+
+    def write(self, step: str, **fields: Any) -> None:
+        utc = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        record = {"schema": SCHEMA, "seq": len(self.records), "utc": utc, "step": step, **fields}
+        self.records.append(record)
+        if self.path is not None:
+            with self.path.open("a", encoding="utf-8", newline="\n") as handle:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+
+
+@dataclass(frozen=True)
+class PublicationResult:
+    outcome: str  # "pass" | "failed" | "unknown" | "refused"
+    reason: str
+    writes: int
+    issues: Mapping[str, int]
+
+
+def _request(operation: Operation, refs: Mapping[str, IssueRef], repo: str) -> tuple[str, str, dict[str, Any]]:
+    if operation.op == "create-label":
+        return "POST", f"repos/{repo}/labels", dict(operation.payload)
+    if operation.op == "create-issue":
+        return "POST", f"repos/{repo}/issues", dict(operation.payload)
+    if operation.op == "update-issue":
+        return "PATCH", f"repos/{repo}/issues/{operation.issue}", dict(operation.payload)
+    if operation.op == "bind-sub-issue":
+        parent, child = refs[operation.payload["parent"]], refs[operation.payload["child"]]
+        return "POST", f"repos/{repo}/issues/{parent.number}/sub_issues", {"sub_issue_id": child.id}
+    raise ValueError(f"unknown operation {operation.op!r}")
+
+
+def _result_problem(operation: Operation, payload: Mapping[str, Any], obj: Any, refs: Mapping[str, IssueRef]) -> str | None:
+    """How a write's returned object differs from its request, or ``None``."""
+    if not isinstance(obj, dict):
+        return "the response is not an object"
+    if operation.op == "create-label":
+        got = (obj.get("name"), str(obj.get("color", "")).lower(), obj.get("description") or "")
+        want = (payload["name"], payload["color"], payload["description"])
+        return None if got == want else f"label {got} is not {want}"
+    if operation.op == "bind-sub-issue":  # GitHub answers with the parent issue
+        parent = refs[operation.payload["parent"]].number
+        return None if obj.get("number") == parent else f"the binding answered for #{obj.get('number')}, not #{parent}"
+    try:
+        issue = issue_snapshot(obj)
+    except ReadFailed as error:
+        return str(error)
+    checks = (
+        ("number", operation.op != "update-issue" or issue.number == operation.issue),
+        ("title", issue.title == payload["title"]),
+        ("body", issue.body == payload["body"]),
+        ("labels", list(issue.labels) == sorted(payload["labels"])),
+        ("state", issue.state == "open"),
+    )
+    return ", ".join(name for name, ok in checks if not ok) or None
+
+
+def _binding_problem(client: GitHubClient, repo: str, parent: int, child: int) -> str | None:
+    """A binding counts only when the child names the parent and the parent lists the child."""
+    try:
+        found: int | None = issue_snapshot(_json(client.get(f"repos/{repo}/issues/{child}/parent"))).number
+    except TransportError as error:
+        if error.status != 404:
+            raise
+        found = None
+    if found != parent:
+        return f"#{child}'s native parent is {f'#{found}' if found else 'missing'}, not #{parent}"
+    children = [issue_snapshot(raw).number for raw in read_pages(client, f"repos/{repo}/issues/{parent}/sub_issues")]
+    if child not in children:
+        return f"#{parent}'s sub-issues {_issue_list(children)} do not include #{child}"
+    return None
+
+
+def publish_batch(
+    batch: MigrationBatch, client: GitHubClient, journal: Journal, pause: Callable[[], None] | None = None
+) -> PublicationResult:
+    """Apply a conflict-free batch in order; stop at the first failed, mismatched or unknown write, never retrying."""
+    repo = batch.repo
+    wait = pause or (lambda: time.sleep(WRITE_PAUSE_S))
+    refs = dict(batch.reused)
+    writes = 0
+    journal.write("start", batch_sha256=batch.sha256, operations=len(batch.operations), conflicts=len(batch.conflicts), trial=batch.trial)
+
+    def finish(outcome: str, reason: str) -> PublicationResult:
+        issues = {record_id: ref.number for record_id, ref in refs.items()}
+        journal.write("outcome", outcome=outcome, reason=reason, writes=writes, issues=issues)
+        return PublicationResult(outcome, reason, writes, issues)
+
+    if batch.conflicts:
+        return finish("refused", f"the batch has {len(batch.conflicts)} conflict(s); nothing is written")
+    for index, operation in enumerate(batch.operations):
+        try:
+            method, path, payload = _request(operation, refs, repo)
+        except KeyError as error:
+            return finish("failed", f"{operation.target}: no issue is known for {error}; nothing was written for it")
+        if operation.op == "update-issue":
+            try:
+                current = issue_snapshot(_json(client.get(f"repos/{repo}/issues/{operation.issue}")))
+            except (TransportError, ReadFailed) as error:
+                return finish("failed", f"re-reading #{operation.issue} before its update failed ({error}); nothing was written for it")
+            if current.fingerprint != operation.expected_fingerprint:
+                return finish(
+                    "failed", f"#{operation.issue} changed after the plan read it (a concurrent body or label edit); its update is not sent"
+                )
+        if writes:
+            wait()
+        journal.write(
+            "intent",
+            index=index,
+            op=operation.op,
+            target=operation.target,
+            method=method,
+            endpoint=path,
+            payload_sha256=operation.payload_sha256,
+        )
+        writes += 1
+        try:
+            obj = _json(client.send(method, path, payload))
+        except (TransportError, ReadFailed) as error:
+            reason = f"{operation.op} {operation.target}: the write did not complete cleanly ({error}); its outcome is unknown and it is not retried"
+            return finish("unknown", reason)
+        number, issue_id = (obj.get("number"), obj.get("id")) if isinstance(obj, dict) else (None, None)
+        journal.write("result", index=index, op=operation.op, target=operation.target, number=number, id=issue_id)
+        if operation.op == "create-issue" and isinstance(number, int) and isinstance(issue_id, int):
+            refs[operation.target] = IssueRef(number, issue_id)  # kept even when the result then fails validation
+        problem = _result_problem(operation, payload, obj, refs)
+        if problem is None and operation.op == "bind-sub-issue":
+            child, parent = refs[operation.payload["child"]].number, refs[operation.payload["parent"]].number
+            try:
+                problem = _binding_problem(client, repo, parent, child)
+            except (TransportError, ReadFailed) as error:
+                return finish("unknown", f"{operation.target}: the binding was sent but could not be verified ({error}); it is not retried")
+        if problem:
+            return finish("failed", f"{operation.op} {operation.target}: the result differs from the request ({problem}); no further write")
+        journal.write("validated", index=index, op=operation.op, target=operation.target)
+    return finish("pass", f"{writes} write(s) applied and validated")
+
+
+# ---- reconciliation: read-only, exact coverage ----
+
+
+@dataclass(frozen=True)
+class ReconciliationReport:
+    problems: tuple[str, ...]
+    mapping: Mapping[str, int]
+
+    @property
+    def ok(self) -> bool:
+        return not self.problems
+
+
+def _label_problems(draft: IssueDraft, issue: IssueSnapshot) -> list[str]:
+    where = f"record {draft.record_id!r}: #{issue.number}"
+    problems = []
+    for dimension in _SOURCE_DIMENSIONS:
+        got = sorted(label for label in issue.labels if label.startswith(dimension + ":"))
+        want = sorted(label for label in draft.labels if label.startswith(dimension + ":"))
+        if got != want:
+            problems.append(f"{where} {dimension} labels {got} are not {want}")
+    if (TRIAL_LABEL in issue.labels) != (TRIAL_LABEL in draft.labels):
+        problems.append(f"{where} {'lacks' if TRIAL_LABEL in draft.labels else 'still carries'} the {TRIAL_LABEL} label")
+    for dimension in _DEFAULTED_DIMENSIONS:
+        got = [label for label in issue.labels if label.startswith(dimension + ":")]
+        want = next(label for label in draft.labels if label.startswith(dimension + ":"))
+        if len(got) != 1 or not _valid_label(got[0]):
+            problems.append(f"{where} needs exactly one valid {dimension} label, not {got}")
+        elif dimension == "priority" and draft.priority_basis != "default" and got[0] != want:
+            problems.append(f"{where} carries {got[0]!r}, not its {draft.priority_basis} priority {want!r}")
+    return problems
+
+
+def reconcile(inventory: Inventory, drafts: Sequence[IssueDraft], observed: Sequence[IssueSnapshot]) -> ReconciliationReport:
+    """Each migrating record maps to exactly one open issue whose title, body, labels and native parent match."""
+    problems: list[str] = []
+    drafts_by_id = {draft.record_id: draft for draft in drafts}
+    owners = {draft.marker for draft in drafts}
+    by_number = {issue.number: issue for issue in observed}
+    hits: dict[str, list[IssueSnapshot]] = defaultdict(list)
+    for issue in observed:
+        for marker in issue.markers:
+            hits[marker].append(issue)
+    for marker, issues in sorted(hits.items()):
+        if marker not in owners:
+            problems.append(
+                f"{_issue_list(issue.number for issue in issues)} carry source marker {marker!r}, which no migrating record owns"
+            )
+    mapping: dict[str, int] = {}
+    for record in inventory.records:
+        if record.disposition != "migrate":
+            continue
+        label = f"record {record.id!r}"
+        if record.kind == "external-issue":
+            issue = by_number.get(record.target_issue) if record.target_issue is not None else None
+            problem = _target_problem(label, record.target_issue, issue)
+            if problem:
+                problems.append(problem)
+            elif issue is not None:
+                mapping[record.id] = issue.number
+            continue
+        draft = drafts_by_id.get(record.id)
+        if draft is None:
+            problems.append(f"{label} has no drafted issue")
+            continue
+        found = hits.get(draft.marker, [])
+        if len(found) != 1:
+            problems.append(
+                f"{label} source marker is on more than one issue: {_issue_list(issue.number for issue in found)}"
+                if found
+                else f"{label} has no issue carrying its source marker {draft.marker!r}"
+            )
+            continue
+        issue = found[0]
+        mapping[record.id] = issue.number
+        if record.target_issue is not None and issue.number != record.target_issue:
+            problems.append(f"{label} maps to #{issue.number}, not its reviewed target #{record.target_issue}")
+        if issue.state != "open":
+            problems.append(f"{label}: #{issue.number} is closed during the migration")
+        if issue.title != draft.title:
+            problems.append(f"{label}: #{issue.number} title differs from the draft")
+        if issue.body != draft.body:
+            problems.append(f"{label}: #{issue.number} body differs from the draft")
+        problems.extend(_label_problems(draft, issue))
+    for draft in drafts:
+        number = mapping.get(draft.record_id)
+        if number is None:
+            continue
+        expected = mapping.get(draft.parent) if draft.parent else None
+        actual = by_number[number].parent
+        if actual != expected:
+            problems.append(
+                f"record {draft.record_id!r}: #{number}'s native parent is {f'#{actual}' if actual else 'none'}, not {f'#{expected}' if expected else 'none'}"
+            )
+    shared = [number for number, count in Counter(mapping.values()).items() if count > 1]
+    if shared:
+        problems.append(f"{_issue_list(shared)} are mapped by more than one record")
+    return ReconciliationReport(tuple(problems), mapping)
+
+
+# ---- command line ----
+
+
+def _github_command(args: argparse.Namespace, reader: SourceReader, client: GitHubClient) -> int:
+    """``plan`` and ``reconcile`` only read GitHub; ``publish`` writes only a reviewed batch that a fresh plan equals."""
+    if args.command == "publish" and not args.execute:
+        print(json.dumps({"step": "STOP", "reason": "publish writes to GitHub only with --execute"}))
+        return 2
+    inventory = load_inventory(args.inventory)
+    sources = reader(inventory.baseline_commit, inventory.source_paths)
+    report = validate_inventory(inventory, sources)
+    if not report.ok:
+        print(json.dumps({"step": "STOP", "reason": f"the inventory has {len(report.problems)} problem(s); run validate"}))
+        return 2
+    drafts = draft_issues(inventory, sources, trial=not args.final)
+    try:
+        issues, labels = read_issues(client), read_labels(client)
+    except ReadFailed as error:
+        print(json.dumps({"step": "STOP", "reason": str(error)}))
+        return 2
+    if args.command == "reconcile":
+        result = reconcile(inventory, drafts, issues)
+        for problem in result.problems:
+            print(f"PROBLEM: {problem}")
+        print(json.dumps({"ok": result.ok, "problems": len(result.problems), "mapped": len(result.mapping)}))
+        return 0 if result.ok else 1
+    batch = plan_migration(inventory, drafts, issues, labels)
+    text = render_batch(batch).encode("utf-8")
+    if args.command == "plan":
+        args.out.write_bytes(text)
+        for conflict in batch.conflicts:
+            print(f"CONFLICT: {conflict}")
+        print(json.dumps({"ok": batch.ok, "conflicts": len(batch.conflicts), "batch_sha256": batch.sha256, **batch.budget}))
+        return 0 if batch.ok else 1
+    reviewed = args.batch.read_bytes()
+    if text != reviewed:
+        print(json.dumps({"step": "STOP", "reason": "a fresh plan differs from the reviewed batch; plan and review again"}))
+        return 2
+    args.evidence_dir.mkdir(parents=True, exist_ok=False)
+    (args.evidence_dir / "batch.json").write_bytes(reviewed)
+    seconds = args.pause_seconds
+    result = publish_batch(batch, client, Journal(args.evidence_dir / "journal.jsonl"), pause=lambda: time.sleep(seconds))
+    print(json.dumps({"outcome": result.outcome, "reason": result.reason, "writes": result.writes}))
+    return {"pass": 0, "failed": 1, "refused": 2, "unknown": 3}[result.outcome]
+
+
+def main(argv: Sequence[str] | None = None, reader: SourceReader = read_sources_at, client: GitHubClient | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
     validate = commands.add_parser("validate", help="check an inventory against the sources at its baseline commit")
     validate.add_argument("inventory", type=Path)
     draft = commands.add_parser("draft", help="derive the inventory from the sources at a commit (written to stdout)")
     draft.add_argument("commit")
+    plan = commands.add_parser("plan", help="read GitHub and write every operation a publication would perform (no writes)")
+    plan.add_argument("inventory", type=Path)
+    plan.add_argument("--out", type=Path, required=True)
+    publish = commands.add_parser("publish", help="apply a reviewed batch; a fresh plan must equal it byte for byte")
+    publish.add_argument("inventory", type=Path)
+    publish.add_argument("--batch", type=Path, required=True)
+    publish.add_argument("--evidence-dir", type=Path, required=True)
+    publish.add_argument("--execute", action="store_true", help="without it, nothing is written")
+    publish.add_argument("--pause-seconds", type=float, default=WRITE_PAUSE_S)
+    check = commands.add_parser("reconcile", help="read GitHub and check every migrating record's issue (no writes)")
+    check.add_argument("inventory", type=Path)
+    for command in (plan, publish, check):
+        command.add_argument("--final", action="store_true", help="final copies: no trial label or banner")
     args = parser.parse_args(argv)
+
+    if args.command in ("plan", "publish", "reconcile"):
+        return _github_command(args, reader, client or GhClient())
 
     if args.command == "draft":
         from tools import github_work_tracking_rules as rules

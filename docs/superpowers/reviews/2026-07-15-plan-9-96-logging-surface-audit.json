@@ -1697,6 +1697,86 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.github_work_tracking:GhClient.send:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: GhClient.send serializes a write payload (issue title/body/labels, a label spec, or a sub-issue id) for gh's stdin; every value is built from committed planning documents for publication in the public repository, and gh supplies its own credential outside the payload.",
+      "sanitizer": "governance-only inputs; public issue content; no credentials",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_gh_client_classifies_transport_failures",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:Journal.write:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: Journal.write appends one JSON line per step to the publication journal in an operator-named evidence directory; records hold step names, operation kinds, record ids, endpoints, payload SHA-256 digests, issue numbers/ids and outcome reasons, never issue bodies, tokens or production payloads.",
+      "sanitizer": "fixed journal vocabulary; digests instead of payloads",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_unknown_create_outcome_stops_without_retry",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:Journal.write:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: Journal.write serializes the same fixed-shape journal record (step, operation, target record id, endpoint, payload digest, issue identity, reason); it carries no issue body, credential or runtime payload.",
+      "sanitizer": "fixed journal vocabulary; digests instead of payloads",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_unknown_create_outcome_stops_without_retry",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:Journal.write:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: Journal.write writes the serialized journal line and fsyncs it so a write's intent is durable before the write is sent; content is the fixed journal record described for its json_serialization surface.",
+      "sanitizer": "fixed journal vocabulary; digests instead of payloads",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_unknown_create_outcome_stops_without_retry",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:_canonical:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _canonical serializes payloads and issue metadata only as hash input for payload digests and update fingerprints; the text is never logged or persisted.",
+      "sanitizer": "hash input only; never emitted",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_issue_snapshots_validate_parent_urls_and_fingerprint_metadata",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:_github_command:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the plan/publish/reconcile commands print a ReadFailed reason, which names the REST path, page and gh's error text truncated to 300 characters; gh reports HTTP status and message there and never prints its token.",
+      "sanitizer": "bounded gh error text; no credentials",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_plan_is_read_only_and_publish_runs_only_the_reviewed_batch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:_github_command:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the commands print a JSON summary (ok flag, conflict and problem counts, batch digest, write budget, outcome and reason) built from the inventory and public issue metadata.",
+      "sanitizer": "governance-only inputs; public issue content; no credentials",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_plan_is_read_only_and_publish_runs_only_the_reviewed_batch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:_github_command:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the commands print planning conflicts and reconciliation problems, which name record ids, issue numbers, label names and markers from committed planning documents and the public issue list, plus the JSON summary.",
+      "sanitizer": "governance-only inputs; public issue content; no credentials",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_plan_is_read_only_and_publish_runs_only_the_reviewed_batch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:_result_problem:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _result_problem returns a ReadFailed message (exception type and the missing or mistyped field of a returned issue object) as part of a failed-write reason in the journal; it holds no payload body or credential.",
+      "sanitizer": "field names and types only",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_write_result_mismatch_blocks_next_write",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:finish:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: publish_batch's finish step writes the outcome journal record (outcome, reason, write count, record-id to issue-number map) through Journal.write.",
+      "sanitizer": "fixed journal vocabulary; digests instead of payloads",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_unknown_create_outcome_stops_without_retry",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.github_work_tracking:main:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: main serializes only the inventory validation summary (an ok flag, the problem count and per-disposition record and unit counts) computed from a reviewed planning manifest and committed planning documents; no runtime secrets, credentials or production payloads are read.",
@@ -1718,6 +1798,22 @@
       "rationale": "Inspection: the draft command writes the derived inventory manifest bytes to stdout; the manifest is built only from committed planning documents read at a named commit and holds record ids, statuses, titles and git blob ids, never runtime secrets, credentials or production payloads.",
       "sanitizer": "governance-only inputs; fixed manifest schema",
       "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_draft_writes_the_manifest_bytes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:publish_batch:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: publish_batch writes start, intent, result and validated journal records through Journal.write; each holds operation kind, target record id, endpoint, payload digest and issue identity, never a body or credential.",
+      "sanitizer": "fixed journal vocabulary; digests instead of payloads",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_unknown_create_outcome_stops_without_retry",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:render_batch:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: render_batch serializes the reviewable publication batch (exact issue titles, bodies and labels built from committed planning documents, public issue numbers/ids, fingerprints and the write budget) to an operator-named file for review; all of it is destined for the public repository.",
+      "sanitizer": "governance-only inputs; public issue content; no credentials",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_plan_is_read_only_and_publish_runs_only_the_reviewed_batch",
       "evidence_tier": "unit"
     },
     {
