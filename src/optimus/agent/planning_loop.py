@@ -28,6 +28,7 @@ from optimus.gateway.attempts import (
     attempts_from_failure,
     attempts_from_response,
     first_error,
+    is_input_capacity_refusal,
     is_preflight_refusal,
 )
 from optimus.gateway.errors import GatewayError
@@ -765,6 +766,13 @@ def planning_corrective_text(
             "or changed. A shorter prompt or a narrower request that involves fewer workspace files may "
             "help. If earlier conversation history is the cause, start a new thread."
         ),
+        # The Gateway's final guard refused the complete request as over the route's input capacity, with
+        # no smaller view tried (release supplement V1; Codex's exact text, 2026-10-04).
+        "PLANNING_INPUT_CAPACITY_EXCEEDED": (
+            "Planning stopped because its next request exceeds the model's input capacity. That request was "
+            "not sent to a model. A shorter prompt or a narrower request involving fewer workspace files may "
+            "help. If earlier conversation history is the cause, start a new thread. This thread stays open."
+        ),
         "PLANNING_OBSERVATION_BUDGET_EXHAUSTED": (
             "Planning stopped because carried observation evidence exceeds the allowed budget."
         ),
@@ -1039,7 +1047,7 @@ class _PlanningIterationRunner:
         wire_attempt = 0
         bound: Any | None = None
         # How this request's sequence ended, for its stop reason (sequence-local, not loop-wide).
-        ended = {"unsent": False, "unknown": False, "refused": False}
+        ended = {"unsent": False, "unknown": False, "refused": False, "over_capacity": False}
         # An attempt that cannot be attributed or recorded truthfully (a Gateway report that names no
         # attempt, a conflicting receipt, a divergent ledger record) is an integrity error. Everything
         # that can still be recorded is recorded first; then it fails the turn loudly after the retry
@@ -1103,6 +1111,9 @@ class _PlanningIterationRunner:
             if self._context_packer is not None:
                 # Plan 12.2 Task 10: the attached meter reads only inputs actually sent.
                 self._context_packer.record_dispatch(prompt)
+            elif self._route_binder is not None:
+                # Release supplement V1: without an engine, the request meter reads the bound route's capacity.
+                self._route_binder.record_dispatch(prompt)
             metadata: dict[str, Any] = {
                 "run_id": self._run_id,
                 "session_id": self._session_id,
@@ -1137,6 +1148,7 @@ class _PlanningIterationRunner:
                     raise _PermanentStop("unknown transport cost") from exc
                 if is_preflight_refusal(exc):
                     ended["refused"] = True
+                    ended["over_capacity"] = is_input_capacity_refusal(exc)
                     raise _PermanentStop("refused before any upstream attempt") from exc
                 # Budget gate: if aggregate is at/above cap, stop immediately.
                 if usage is not None and self._total_cost_usd >= self._max_cost_usd:
@@ -1199,6 +1211,8 @@ class _PlanningIterationRunner:
             raise _PlanningGatewayInvocationError(
                 "PLANNING_GATEWAY_COST_UNKNOWN", reported_cost_usd=sequence_cost
             )
+        if ended["over_capacity"]:
+            raise _PlanningGatewayInvocationError("PLANNING_INPUT_CAPACITY_EXCEEDED", reported_cost_usd=sequence_cost)
         if ended["refused"]:
             raise _PlanningGatewayInvocationError("PLANNING_GATEWAY_REFUSED", reported_cost_usd=sequence_cost)
         if self._total_cost_usd >= self._max_cost_usd:

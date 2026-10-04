@@ -42,6 +42,7 @@ __all__ = [
     "attempts_from_failure",
     "attempts_from_response",
     "first_error",
+    "is_input_capacity_refusal",
     "is_preflight_refusal",
 ]
 
@@ -154,6 +155,14 @@ def is_preflight_refusal(exc: BaseException) -> bool:
         and not exc.route_attempts_malformed
         and exc.gateway_usage is None
     )
+
+
+def is_input_capacity_refusal(exc: BaseException) -> bool:
+    """A proven preflight refusal whose stated cause is that the complete input exceeds the route's
+    usable capacity. Only `INPUT_EXCEEDS_CAPACITY` establishes that cause: the reasonless
+    `CAPACITY_REFUSED` fallback names none, so it keeps the generic refusal (release supplement V1;
+    Codex concurrence disposition, 2026-10-04)."""
+    return is_preflight_refusal(exc) and getattr(exc, "gateway_code", None) == "INPUT_EXCEEDS_CAPACITY"
 
 
 def attempts_from_response(response: GatewayResponse) -> tuple[ProviderAttempt, ...]:

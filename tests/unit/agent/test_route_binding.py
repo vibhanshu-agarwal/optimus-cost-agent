@@ -274,14 +274,76 @@ def test_an_uncertain_attempt_before_settled_usage_keeps_both_and_stays_incomple
 # --- The final Gateway guard -----------------------------------------------------------------------------
 
 
-def test_an_input_over_the_routes_capacity_is_refused_by_the_gateway_at_no_cost(tmp_path, snapshot) -> None:
-    result, receipts, gateway, _, _ = _run(tmp_path, snapshot, STANDARD, ExecutionMode.CHAT, task="x" * (LIMIT_BYTES + 1))
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [
+        (ExecutionMode.CHAT, "CHAT_INPUT_CAPACITY_EXCEEDED"),
+        (ExecutionMode.AGENT, "PLANNING_INPUT_CAPACITY_EXCEEDED"),
+        (ExecutionMode.PLAN, "PLANNING_INPUT_CAPACITY_EXCEEDED"),
+    ],
+    ids=["chat", "planning", "single-shot-plan"],
+)
+def test_an_input_over_the_routes_capacity_gets_the_capacity_refusal_at_no_cost(tmp_path, snapshot, mode, expected) -> None:
+    """Release supplement V1: the Gateway's INPUT_EXCEEDS_CAPACITY is shown as the capacity refusal (no
+    smaller view claimed), never the generic gateway refusal; the refused request costs nothing and
+    gives no meter reading."""
+    from optimus.agent.planning_loop import planning_corrective_text
+    from optimus.agent.runner import CHAT_FAILURE_MESSAGES
+
+    result, receipts, gateway, _, binder = _run(tmp_path, snapshot, STANDARD, mode, task="x" * (LIMIT_BYTES + 1))
 
     [(status, body)] = gateway.replies
-    assert status == 400 and body["code"] in {"CAPACITY_REFUSED", "INPUT_EXCEEDS_CAPACITY"}
+    assert status == 400 and body["code"] == "INPUT_EXCEEDS_CAPACITY"
     assert gateway.upstream.calls == []
     assert [(r.outcome, r.reported_cost_usd) for r in receipts] == [("rejected", Decimal("0"))]
-    assert (result.stop_reason, result.cost_complete) == ("CHAT_GATEWAY_REFUSED", True)
+    assert (result.stop_reason, result.cost_complete, result.total_cost_usd) == (expected, True, Decimal("0"))
+    text = CHAT_FAILURE_MESSAGES[expected] if mode is ExecutionMode.CHAT else planning_corrective_text(expected)
+    assert result.output_text == text and text.endswith("This thread stays open.") and "not sent to a model" in text
+    assert binder.largest_dispatch() is None
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.CHAT, ExecutionMode.AGENT], ids=["chat", "planning"])
+def test_a_reasonless_capacity_refusal_keeps_the_generic_refusal(tmp_path, snapshot, mode) -> None:
+    """CAPACITY_REFUSED is only the Gateway's defensive fallback for a refusal without a reason; it does
+    not establish overflow, so it keeps the generic refusal and its zero cost (Codex concurrence
+    disposition, 2026-10-04). No production path reaches it today: this refusal is synthetic."""
+
+    class Refusing:
+        def create_response(self, **kwargs):
+            raise GatewayHttpError(
+                400, json.dumps({"code": "CAPACITY_REFUSED"}), gateway_usage=None, gateway_code="CAPACITY_REFUSED",
+                retryable=False, route_attempts=(), route_attempts_malformed=False,
+            )  # fmt: skip
+
+    binder = _policy(snapshot).capture(session_id="s", turn_seq=1, deliver_notice=Notices())
+    receipts: list[StageReceipt] = []
+    result = AgentRunner(gateway_client=Refusing(), model=STANDARD).run(_request(tmp_path, mode), stage_receipts=receipts.append, route_binder=binder)
+
+    expected = "CHAT_GATEWAY_REFUSED" if mode is ExecutionMode.CHAT else "PLANNING_GATEWAY_REFUSED"
+    assert (result.stop_reason, result.cost_complete, result.total_cost_usd) == (expected, True, Decimal("0"))
+    assert [(r.outcome, r.reported_cost_usd) for r in receipts] == [("rejected", Decimal("0"))]
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.CHAT, ExecutionMode.AGENT, ExecutionMode.PLAN], ids=["chat", "planning", "single-shot-plan"])
+def test_the_request_reading_is_the_gateways_own_complete_input_and_capacity(tmp_path, snapshot, mode) -> None:
+    """Release supplement V1: without an engine, the meter reads the request actually sent with the
+    same packed input, verified estimator and usable capacity as the Gateway's final guard."""
+    from optimus_model_policy import Message, PackedModelRequest, guard_request
+
+    _, _, gateway, _, binder = _run(tmp_path, snapshot, STANDARD, mode)
+
+    decisions = [
+        guard_request(
+            PackedModelRequest(model_id=STANDARD, messages=(Message(role="user", content=payload["input"]),), tools_json="", output_cap=CAP),
+            snapshot,
+            snapshot.effective_hash,
+        )
+        for payload in gateway.payloads
+    ]
+    assert decisions and all(decision.allowed for decision in decisions)
+    largest = max(decisions, key=lambda decision: decision.input_tokens)
+    reading = binder.largest_dispatch()
+    assert reading is not None and (reading.tokens, reading.capacity) == (largest.input_tokens, largest.usable_input) == (largest.input_tokens, 262144 - CAP)
 
 
 def test_an_output_cap_over_the_route_is_refused_by_the_gateway_at_no_cost(tmp_path, snapshot) -> None:
@@ -421,6 +483,81 @@ async def test_the_acp_host_sends_nothing_when_the_session_cannot_confirm_the_no
     assert CHAT_FAILURE_MESSAGES["CHAT_NOTICE_UNDELIVERED"] in texts(outbound)
     [receipt] = session_of(adapter, session_id).cost_settlement.receipts(f"{session_id}:1")
     assert (receipt.outcome, receipt.reported_cost_usd) == ("not_sent", Decimal("0"))
+
+
+async def test_the_acp_host_meters_and_warns_on_request_capacity_without_an_engine(tmp_path) -> None:
+    """Release supplement V1 (D7 exception): under a trusted route policy and no engine, the meter reads
+    the request's usable capacity; one 80% request warning arrives long before storage is near its
+    floor; a request over capacity gets the capacity refusal, no reading, and the thread stays open.
+    A heavier test estimator (4 tokens per byte) makes a 50 KB request cross 80% while storage is ~10%."""
+    from optimus.acp.conversation import ConversationDisposition
+    from optimus.acp.spec import (
+        ABSENT_STORAGE_WARNING_TEXT,
+        CAPACITY_WARNING_TEXT,
+        REQUEST_CAPACITY_WARNING_TEXT,
+        AcpDuplexAdapter,
+        InMemoryAcpSpecSessionStore,
+        RecordingOutboundChannel,
+    )
+    from optimus.agent.runner import CHAT_FAILURE_MESSAGES
+    from tests.unit.acp.test_context_engine_admission import new_session, prompt, session_of, texts
+    from tests.unit.acp.test_context_notices import usage_updates
+    from tests.unit.optimus_gateway.model_policy_support import VERIFIED_POLICY
+
+    (tmp_path / "registry").mkdir()
+    heavy = verified_snapshot(tmp_path / "registry", VERIFIED_POLICY.replace('tokens_per_byte: "0.5"', 'tokens_per_byte: "4"'))
+    usable = 262144 - CAP
+    outbound = RecordingOutboundChannel()
+    gateway = InProcessGateway(heavy, ScriptedUpstream(replies=["An answer."]))
+    adapter = AcpDuplexAdapter(
+        runner=AgentRunner(gateway_client=_client(gateway), model=STANDARD), workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(), outbound=outbound, route_policy=_policy(heavy, STANDARD),
+    )  # fmt: skip
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+
+    await prompt(adapter, outbound, session_id, "A question?", "p1")
+    first = usage_updates(outbound)[-1]
+    assert first["size"] == usable and 0 < first["used"] < 0.8 * usable
+    assert REQUEST_CAPACITY_WARNING_TEXT not in texts(outbound)
+
+    # Ordinary words: one 50 KB run without separators is slow to sanitize (owned separately).
+    await prompt(adapter, outbound, session_id, "calculator note " * 3_125, "p2")
+    second = usage_updates(outbound)[-1]
+    assert second["size"] == usable and 0.8 * usable <= second["used"] <= usable
+    assert texts(outbound).count(REQUEST_CAPACITY_WARNING_TEXT) == 1
+    # Storage is nowhere near its 80% notice: the request limit comes first (D7).
+    assert ABSENT_STORAGE_WARNING_TEXT not in texts(outbound) and CAPACITY_WARNING_TEXT not in texts(outbound)
+
+    meters_before = len(usage_updates(outbound))
+    response = await prompt(adapter, outbound, session_id, "rounding rule " * 1_500, "p3")  # history + prompt now exceed capacity
+    assert response["result"]["stopReason"] == "end_turn"
+    assert CHAT_FAILURE_MESSAGES["CHAT_INPUT_CAPACITY_EXCEEDED"] in texts(outbound)
+    assert texts(outbound).count(REQUEST_CAPACITY_WARNING_TEXT) == 1  # never repeated
+    assert len(usage_updates(outbound)) == meters_before  # a refused request gets no fabricated reading
+    assert session_of(adapter, session_id).conversation.disposition is ConversationDisposition.OPEN
+    assert len(gateway.upstream.calls) == 2  # the refused request reached no model
+
+
+async def test_storage_notices_say_storage_under_a_route_policy(tmp_path, snapshot) -> None:
+    """Release supplement V1: with a trusted route policy, the absent-engine 80% notice is labelled as
+    storage and says a model request can be refused sooner."""
+    from optimus.acp.spec import (
+        ABSENT_STORAGE_WARNING_TEXT,
+        CAPACITY_WARNING_TEXT,
+        AcpDuplexAdapter,
+        InMemoryAcpSpecSessionStore,
+        RecordingOutboundChannel,
+    )
+
+    def adapter(policy):
+        return AcpDuplexAdapter(
+            runner=AgentRunner(gateway_client=_client(InProcessGateway(snapshot, ScriptedUpstream())), model=STANDARD), workspace_root=tmp_path,
+            sessions=InMemoryAcpSpecSessionStore(), outbound=RecordingOutboundChannel(), route_policy=policy,
+        )  # fmt: skip
+
+    assert adapter(_policy(snapshot, STANDARD))._warning_text() == ABSENT_STORAGE_WARNING_TEXT  # noqa: SLF001
+    assert adapter(None)._warning_text() == CAPACITY_WARNING_TEXT  # noqa: SLF001 - inactive enforcement unchanged
+    assert "storage limit" in ABSENT_STORAGE_WARNING_TEXT and "refused sooner" in ABSENT_STORAGE_WARNING_TEXT
 
 
 # --- The single-shot PLAN path ---------------------------------------------------------------------------

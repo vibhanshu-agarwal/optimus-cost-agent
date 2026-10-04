@@ -195,6 +195,21 @@ ATTACHED_STORAGE_REACHED_TEXT = (
     "This conversation's storage is now full. "
     "Please start a new thread to continue; new prompts in this thread will be refused."
 )
+# Release supplement V1 (D7 request-capacity exception): with a trusted route policy and no engine, the
+# 80% storage notice names storage and says a model request can be refused sooner; the request meter and
+# its separate 80% warning read the complete request the Gateway's final guard admits. Neither promises a
+# number of future turns. Without a route policy (today's inactive enforcement) the texts above are kept.
+ABSENT_STORAGE_WARNING_TEXT = (
+    "Heads-up: this conversation has used about 80% of its storage limit. Please start a new thread soon; "
+    "once its storage is full, new prompts in this thread will be refused. A model request can be refused "
+    "sooner, when it exceeds the model's input capacity."
+)
+REQUEST_CAPACITY_WARNING_TEXT = (
+    "Heads-up: this prompt's model request used 80% or more of the model's input capacity. A later request "
+    "that exceeds that capacity will be refused. A shorter prompt or a narrower request involving fewer "
+    "workspace files may help; if earlier conversation history is the cause, start a new thread."
+)
+REQUEST_WARNING_FRACTION = 0.8
 _NOTICE_FLUSH_TIMEOUT_SECONDS = 30.0
 _STRATEGY_LABELS = {"compaction": "compaction", "hybrid": "hybrid", "sliding_window": "sliding window"}
 
@@ -257,6 +272,8 @@ class AcpSpecSession:
     config_publication: ConfigPublication = field(default_factory=ConfigPublication, repr=False, compare=False)
     # Plan 12.2 Task 10: set by a committed switch to sliding, cleared by its confirmed notice or a switch away.
     sliding_notice_pending: bool = False
+    # Release supplement V1: set once the 80% request-capacity warning is confirmed delivered.
+    request_warning_sent: bool = False
     # Plan 12.2 Task 9, attached sessions only: the strategy the next turn captures, the published
     # summary checkpoint and the host's exact approval facts per turn. None/empty when absent.
     context_strategy: str | None = None
@@ -1271,7 +1288,7 @@ class AcpDuplexAdapter:
             CONTEXT_RESERVATION_TEXT
             if reason == "reservation"
             else ATTACHED_STORAGE_REFUSAL_TEXT
-            if full and self._context_attachment is not None
+            if full and self._storage_labelled
             else CAPACITY_REFUSAL_TEXT
             if full
             else "Conversation delivery is indeterminate; this prompt was refused."
@@ -1348,8 +1365,16 @@ class AcpDuplexAdapter:
                 )
         return None
 
+    @property
+    def _storage_labelled(self) -> bool:
+        """Whether this adapter's conversation limit is storage, not the model's context: attached, or
+        absent under a trusted route policy whose requests the Gateway guards (release supplement V1)."""
+        return self._context_attachment is not None or self._route_policy is not None
+
     def _warning_text(self) -> str:
-        return ATTACHED_STORAGE_WARNING_TEXT if self._context_attachment is not None else CAPACITY_WARNING_TEXT
+        if self._context_attachment is not None:
+            return ATTACHED_STORAGE_WARNING_TEXT
+        return ABSENT_STORAGE_WARNING_TEXT if self._route_policy is not None else CAPACITY_WARNING_TEXT
 
     async def _emit_sliding_notice(self, session: AcpSpecSession) -> None:
         """The first admitted turn after a switch to sliding says so, once (design spec 10).
@@ -1491,7 +1516,7 @@ class AcpDuplexAdapter:
             await self._emit_capacity_notice(
                 session_id=turn.session_id,
                 conversation=conversation,
-                text=ATTACHED_STORAGE_REACHED_TEXT if self._context_attachment is not None else CAPACITY_REACHED_TEXT,
+                text=ATTACHED_STORAGE_REACHED_TEXT if self._storage_labelled else CAPACITY_REACHED_TEXT,
                 is_warning=False,
             )
         elif (
@@ -1503,6 +1528,7 @@ class AcpDuplexAdapter:
                 session_id=turn.session_id, conversation=conversation, text=self._warning_text(), is_warning=True
             )
         await self._emit_usage_update(session_id=turn.session_id, conversation=conversation, turn=turn)
+        await self._emit_request_capacity_warning(turn)
         await self._emit_cost_alerts(turn)
 
     def _apply_turn_cost(
@@ -1640,24 +1666,44 @@ class AcpDuplexAdapter:
         """Send the ACP `usage_update` meter after a committed turn, with the session's cost only
         when it is complete.
 
-        Engine-absent: estimated context used/size (storage bytes // 4). Attached (Plan 12.2 Task 10;
-        design spec 8.4): the largest complete planning/answer input actually sent during the turn
-        against that request's usable capacity; summarizer calls are excluded, and a turn that sent
-        nothing gets no reading.
+        Engine-absent without a route policy (inactive enforcement): estimated context used/size
+        (storage bytes // 4). Attached (Plan 12.2 Task 10; design spec 8.4), and engine-absent under a
+        trusted route policy (release supplement V1): the largest complete planning/answer input actually
+        sent during the turn against that request's usable capacity; summarizer calls are excluded, and
+        a turn that sent nothing, or whose request the Gateway refused, gets no reading.
 
         Live-only and best-effort: it is never stored or replayed, and a failed send never fails
         the turn. A refusal commits nothing, so it sends no new reading.
         """
         gauge = conversation.usage_gauge()
         used, size = gauge.used, gauge.size
-        if turn is not None and turn.attached is not None:
-            reading = turn.attached.largest_dispatch()
+        if turn is not None and (turn.attached is not None or turn.route_binder is not None):
+            reading = turn.attached.largest_dispatch() if turn.attached is not None else turn.route_binder.largest_dispatch()
             if reading is None:
                 return
             used, size = reading.tokens, reading.capacity
         payload = build_usage_update(session_id=session_id, used=used, size=size, cost=gauge.cost)
         with contextlib.suppress(Exception):
             await self._outbound.notify("session/update", payload)
+
+    async def _emit_request_capacity_warning(self, turn: AcpPromptTurn) -> None:
+        """Release supplement V1: once a session's engine-absent request reaches 80% of its usable input
+        capacity under a trusted route policy, say so, once. It reads the same reading as the meter, so a
+        refused request (no reading) gets its capacity refusal instead. Separate from the storage notice;
+        live-only and best-effort: only a confirmed flush retires it, and a failed send never fails the
+        turn."""
+        session = self._sessions.get(turn.session_id)
+        if session is None or session.request_warning_sent or turn.attached is not None or turn.route_binder is None:
+            return
+        reading = turn.route_binder.largest_dispatch()
+        if reading is None or reading.tokens < REQUEST_WARNING_FRACTION * reading.capacity:
+            return
+        payload = build_agent_message_chunk_notification(session_id=turn.session_id, text=REQUEST_CAPACITY_WARNING_TEXT)
+        try:
+            await self._outbound.notify("session/update", payload, require_flushed=True)
+        except Exception:  # noqa: BLE001 - a notice failure never fails the turn
+            return
+        session.request_warning_sent = True
 
     async def _request_permission(self, *, turn: AcpPromptTurn, result: AgentRunResult) -> dict[str, Any]:
         tool_call_id = new_tool_call_id()
@@ -1886,6 +1932,7 @@ _PLANNING_TERMINAL_STOP_REASONS = frozenset(
         "PLANNING_GATEWAY_FAILURE",
         "PLANNING_GATEWAY_COST_UNKNOWN",
         "PLANNING_GATEWAY_REFUSED",
+        "PLANNING_INPUT_CAPACITY_EXCEEDED",
         "PLANNING_NOTICE_UNDELIVERED",
         "PLANNING_REPEATED_READ_REQUEST",
         "PLANNING_UNPARSEABLE_RESPONSE",

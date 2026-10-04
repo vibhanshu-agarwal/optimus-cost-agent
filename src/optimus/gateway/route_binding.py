@@ -26,10 +26,18 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from optimus.gateway.disclosure import ContributorDisclosure
-from optimus_model_policy import RegistrySnapshot
+from optimus_model_policy import Message, PackedModelRequest, RegistrySnapshot, guard_request
 from optimus_model_policy.binding import RouteBinding
 
-__all__ = ["BoundRequest", "RouteIdentity", "RouteIdentityError", "RoutePolicy", "TurnRouteBinder", "registry_route_identity"]
+__all__ = [
+    "BoundRequest",
+    "RequestReading",
+    "RouteIdentity",
+    "RouteIdentityError",
+    "RoutePolicy",
+    "TurnRouteBinder",
+    "registry_route_identity",
+]
 
 
 class RouteIdentityError(ValueError):
@@ -65,6 +73,19 @@ def registry_route_identity(snapshot: RegistrySnapshot, *, model_id: str, role: 
 
 
 @dataclass(frozen=True, slots=True)
+class RequestReading:
+    """One planning/answer request actually sent without an attached engine: its complete-input
+    estimate and that request's usable input capacity, as the Gateway's final guard computes them."""
+
+    tokens: int
+    capacity: int
+
+    @property
+    def fraction(self) -> float:
+        return self.tokens / self.capacity
+
+
+@dataclass(frozen=True, slots=True)
 class BoundRequest:
     """One host request's binding and the identity it binds."""
 
@@ -90,7 +111,12 @@ class RoutePolicy:
         """This turn's binder; call it before any await."""
         disclosure = ContributorDisclosure(snapshot=self._snapshot, key=self._key, deliver_notice=deliver_notice)
         return TurnRouteBinder(
-            identity=self.identity, output_cap=self.output_cap, disclosure=disclosure, session_id=session_id, turn_seq=turn_seq
+            identity=self.identity,
+            output_cap=self.output_cap,
+            disclosure=disclosure,
+            session_id=session_id,
+            turn_seq=turn_seq,
+            snapshot=self._snapshot,
         )
 
 
@@ -98,14 +124,47 @@ class TurnRouteBinder:
     """One turn's request binder: its captured identity and the turn's notice channel."""
 
     def __init__(
-        self, *, identity: RouteIdentity, output_cap: int, disclosure: ContributorDisclosure, session_id: str, turn_seq: int
+        self,
+        *,
+        identity: RouteIdentity,
+        output_cap: int,
+        disclosure: ContributorDisclosure,
+        session_id: str,
+        turn_seq: int,
+        snapshot: RegistrySnapshot | None = None,
     ) -> None:
         self.identity = identity
         self.output_cap = output_cap
         self._disclosure = disclosure
+        self._snapshot = snapshot
         self._prefix = f"{session_id}:{turn_seq}"
         self._ordinal = itertools.count(1)
         self._lock = threading.Lock()
+        self._readings: list[RequestReading] = []
+
+    def record_dispatch(self, input_text: str) -> None:
+        """The runner is sending `input_text` as one complete planning/answer request now (no attached
+        engine). Its reading uses the same packed input, verified estimator and usable capacity as the
+        Gateway's final guard (release supplement V1). A request that guard would refuse records nothing:
+        its capacity refusal is shown instead, never a successful reading."""
+        if self._snapshot is None:
+            return
+        packed = PackedModelRequest(
+            model_id=self.identity.model_id, messages=(Message(role="user", content=input_text),), tools_json="", output_cap=self.output_cap
+        )
+        decision = guard_request(packed, self._snapshot, self._snapshot.effective_hash)
+        if decision.allowed:
+            with self._lock:
+                self._readings.append(RequestReading(tokens=decision.input_tokens, capacity=decision.usable_input))
+
+    def largest_dispatch(self) -> RequestReading | None:
+        """The turn's meter reading: the largest request sent, the smaller capacity on a tie; None when
+        nothing was sent."""
+        with self._lock:
+            readings = list(self._readings)
+        if not readings:
+            return None
+        return max(readings, key=lambda reading: (reading.tokens, -reading.capacity))
 
     def bind(self, *, stage: str, input_text: str) -> BoundRequest | None:
         """A new request for the complete final `input_text`, or None when its required notice was

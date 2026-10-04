@@ -137,8 +137,11 @@ def test_no_host_call_path_keeps_its_own_refusal_classifier() -> None:
 def test_a_preflight_refusal_through_planning_is_complete_at_zero(tmp_path, code) -> None:
     result, receipts, gateway = _run(tmp_path, ExecutionMode.AGENT, _refusal(code))
 
+    # Only a stated input-capacity refusal is shown as one (release supplement V1); every other
+    # preflight code, the reasonless CAPACITY_REFUSED included, keeps the generic refusal.
+    expected = "PLANNING_INPUT_CAPACITY_EXCEEDED" if code == "INPUT_EXCEEDS_CAPACITY" else "PLANNING_GATEWAY_REFUSED"
     assert [(r.stage, r.outcome, r.reported_cost_usd) for r in receipts] == [("planning", "rejected", Decimal("0"))]
-    assert (result.stop_reason, result.cost_complete, result.total_cost_usd) == ("PLANNING_GATEWAY_REFUSED", True, Decimal("0"))
+    assert (result.stop_reason, result.cost_complete, result.total_cost_usd) == (expected, True, Decimal("0"))
     assert gateway.calls == 1  # not retried
 
 
@@ -146,8 +149,9 @@ def test_a_preflight_refusal_through_planning_is_complete_at_zero(tmp_path, code
 def test_a_preflight_refusal_through_chat_is_complete_at_zero(tmp_path, code) -> None:
     result, receipts, gateway = _run(tmp_path, ExecutionMode.CHAT, _refusal(code))
 
+    expected = "CHAT_INPUT_CAPACITY_EXCEEDED" if code == "INPUT_EXCEEDS_CAPACITY" else "CHAT_GATEWAY_REFUSED"
     assert [(r.stage, r.outcome, r.reported_cost_usd) for r in receipts] == [("answer", "rejected", Decimal("0"))]
-    assert (result.stop_reason, result.cost_complete, result.total_cost_usd) == ("CHAT_GATEWAY_REFUSED", True, Decimal("0"))
+    assert (result.stop_reason, result.cost_complete, result.total_cost_usd) == (expected, True, Decimal("0"))
     assert gateway.calls == 1
 
 

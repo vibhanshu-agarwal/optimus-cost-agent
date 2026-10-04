@@ -27,6 +27,7 @@ from optimus.gateway.attempts import (
     attempts_from_failure,
     attempts_from_response,
     first_error,
+    is_input_capacity_refusal,
     is_preflight_refusal,
 )
 from optimus.gateway.client import GatewayClient
@@ -82,6 +83,13 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
         "Chat could not answer: the request would not fit the model's input capacity, even with a smaller view "
         "of the conversation. It was not sent. A shorter prompt or a narrower request that involves fewer "
         "workspace files may help. If earlier conversation history is the cause, start a new thread."
+    ),
+    # The Gateway's final guard refused the complete request as over the route's input capacity, with no
+    # smaller view tried (release supplement V1; Codex's exact text, 2026-10-04).
+    "CHAT_INPUT_CAPACITY_EXCEEDED": (
+        "Chat could not answer because this request exceeds the model's input capacity. This request was not "
+        "sent to a model. A shorter prompt or a narrower request involving fewer workspace files may help. If "
+        "earlier conversation history is the cause, start a new thread. This thread stays open."
     ),
 }
 
@@ -516,6 +524,8 @@ class AgentRunner:
                     total_cost_usd=Decimal("0"),
                     stop_reason="PLANNING_NOTICE_UNDELIVERED",
                 )
+            # Release supplement V1: the request meter reads the bound route's capacity.
+            scope.route.record_dispatch(planner_input)
         try:
             response = self._gateway_client.create_response(
                 model=self._model,
@@ -530,6 +540,20 @@ class AgentRunner:
             # Every attempt is accounted for, known or not, before the failure propagates as it always
             # has (an accounting-integrity error propagates instead).
             self._account(request, scope, usage=getattr(exc, "gateway_usage", None), classify=lambda exc=exc: attempts_from_failure(exc), identity=_identity(bound))
+            if is_input_capacity_refusal(exc):
+                # Release supplement V1: a complete request over the route's input capacity is a readable
+                # OPEN refusal that cost nothing, never a raw gateway error.
+                from optimus.agent.planning_loop import planning_corrective_text
+
+                return self._build_result(
+                    request=request,
+                    status=AgentRunStatus.FAILED,
+                    final_state="FAILED",
+                    output_text=planning_corrective_text("PLANNING_INPUT_CAPACITY_EXCEEDED"),
+                    tool_calls=(),
+                    total_cost_usd=Decimal("0"),
+                    stop_reason="PLANNING_INPUT_CAPACITY_EXCEEDED",
+                )
             raise
         attempts = self._account(request, scope, usage=response.gateway_usage, classify=lambda: attempts_from_response(response), identity=_identity(bound))
         total_cost_usd = response.gateway_usage.cost_usd
@@ -1460,6 +1484,9 @@ class AgentRunner:
         if context_packer is not None:
             # Plan 12.2 Task 10: the attached meter reads only inputs actually sent.
             context_packer.record_dispatch(chat_input)
+        elif scope.route is not None:
+            # Release supplement V1: without an engine, the request meter reads the bound route's capacity.
+            scope.route.record_dispatch(chat_input)
         identity = _identity(bound)
         try:
             response = self._gateway_client.create_response(
@@ -1494,6 +1521,8 @@ class AgentRunner:
                 return self._chat_failure(
                     request, stop_reason="CHAT_GATEWAY_COST_UNKNOWN", total_cost_usd=known, cost_complete=False, unknown_cost_attempt_count=unknown
                 )
+            if is_input_capacity_refusal(exc):
+                return self._chat_failure(request, stop_reason="CHAT_INPUT_CAPACITY_EXCEEDED")
             if is_preflight_refusal(exc):
                 return self._chat_failure(request, stop_reason="CHAT_GATEWAY_REFUSED")
             return self._chat_failure(request, stop_reason="CHAT_GATEWAY_FAILURE", total_cost_usd=known)
