@@ -496,6 +496,10 @@ def test_a_request_the_packer_cannot_fit_is_not_dispatched(tmp_path, mode):
     assert gateway.calls == []
     assert result.stop_reason == ("CONTEXT_CAPACITY_EXCEEDED" if mode is ExecutionMode.AGENT else "CHAT_CONTEXT_CAPACITY_EXCEEDED")
     assert "was not sent" in result.output_text
+    assert result.output_text.endswith(  # Codex's final corrections C1: the recovery that can help
+        " A shorter prompt or a narrower request that involves fewer workspace files may help. "
+        "If earlier conversation history is the cause, start a new thread."
+    )
 
 
 def test_an_absent_agent_planner_input_is_unchanged(tmp_path):

@@ -762,7 +762,8 @@ def planning_corrective_text(
         "CONTEXT_CAPACITY_EXCEEDED": (
             "Planning stopped because its next request would not fit the model's input capacity, even "
             "with a smaller view of the conversation. That request was not sent, and nothing was stored "
-            "or changed."
+            "or changed. A shorter prompt or a narrower request that involves fewer workspace files may "
+            "help. If earlier conversation history is the cause, start a new thread."
         ),
         "PLANNING_OBSERVATION_BUDGET_EXHAUSTED": (
             "Planning stopped because carried observation evidence exceeds the allowed budget."

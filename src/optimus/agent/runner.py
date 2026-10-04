@@ -80,7 +80,8 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
     ),
     "CHAT_CONTEXT_CAPACITY_EXCEEDED": (
         "Chat could not answer: the request would not fit the model's input capacity, even with a smaller view "
-        "of the conversation. It was not sent."
+        "of the conversation. It was not sent. A shorter prompt or a narrower request that involves fewer "
+        "workspace files may help. If earlier conversation history is the cause, start a new thread."
     ),
 }
 

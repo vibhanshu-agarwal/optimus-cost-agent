@@ -119,13 +119,59 @@ before their next prompt is refused."""
 # Plan 12.2 Task 9: attached Context Engine notices. Each names its limiting condition and whether the
 # thread can continue; none is a content-policy refusal (design spec 8.2, 10).
 CONTEXT_FALLBACK_TEXT = (
-    "The {strategy} context strategy could not be applied to this prompt, so the full conversation "
-    "history was sent instead."
+    "The {strategy} context strategy is unavailable for this prompt. The full conversation history will be "
+    "used if it fits the model's request limit."
 )
-CONTEXT_UNAVAILABLE_TEXT = (
-    "The {strategy} context strategy could not be applied, and the full conversation history is too "
-    "large to send without it. Nothing was sent to the model. This thread stays open: try again, and the "
-    "strategy is used as soon as it is available."
+# One fixed message per known engine reason, naming the limit and the recovery that can actually help;
+# an unknown reason is never shown verbatim (Codex's final corrections C1, 2026-10-04). The common ending
+# speaks only of answer/planning dispatch: summarization attempts may already have run and been charged.
+CONTEXT_UNAVAILABLE_ENDING = "This thread stays open. No answer or plan was requested for this prompt."
+CONTEXT_UNAVAILABLE_TEXTS: dict[str, str] = {
+    "turn exceeds maintenance input": (
+        "An earlier turn is too large for {strategy} to summarize with the current limits. Choose Sliding window "
+        "to continue with less ordinary conversation history, or start a new thread. Sliding window may omit all "
+        "ordinary history if even the newest turn does not fit."
+    ),
+    "exact authority exceeds history capacity": (
+        "The recorded execution outcomes and approval facts exceed this thread's context allowance. Start a new "
+        "thread; changing context strategy will not make those required facts smaller."
+    ),
+    "history capacity too small for a summary": (
+        "The {strategy} summary and required history do not fit this thread's context allowance. Choose Sliding "
+        "window to continue with less ordinary conversation history, or start a new thread."
+    ),
+    "maintenance input exceeded": (
+        "The {strategy} strategy cannot summarize this history within its input or call limits. Choose Sliding "
+        "window to continue with less ordinary conversation history, or start a new thread."
+    ),
+    "maintenance allowance exceeded": (
+        "The {strategy} strategy cannot summarize this history within its input or call limits. Choose Sliding "
+        "window to continue with less ordinary conversation history, or start a new thread."
+    ),
+    "maintenance failed": (
+        "The {strategy} summary could not be completed or accepted. Retrying may help and may incur another "
+        "summarization charge. You can also choose Sliding window to continue with less ordinary conversation "
+        "history."
+    ),
+    "summary malformed": (
+        "The {strategy} summary could not be completed or accepted. Retrying may help and may incur another "
+        "summarization charge. You can also choose Sliding window to continue with less ordinary conversation "
+        "history."
+    ),
+    "summary exceeds bound": (
+        "The {strategy} summary could not be completed or accepted. Retrying may help and may incur another "
+        "summarization charge. You can also choose Sliding window to continue with less ordinary conversation "
+        "history."
+    ),
+    "maintenance unavailable": (
+        "Summarization is unavailable with this thread's current model and settings. Choose Sliding window to "
+        "continue with less ordinary conversation history, or retry after summarization becomes available."
+    ),
+    "source exceeds limit": "The stored conversation exceeds the context engine's source limit. Start a new thread.",
+}
+CONTEXT_UNAVAILABLE_UNKNOWN_TEXT = (
+    "The {strategy} context strategy could not prepare this conversation. You can try Sliding window with less "
+    "ordinary conversation history, or start a new thread."
 )
 CONTEXT_RESERVATION_TEXT = (
     "This prompt would not leave enough room in this conversation's storage for a reply, so nothing was "
@@ -151,6 +197,13 @@ ATTACHED_STORAGE_REACHED_TEXT = (
 )
 _NOTICE_FLUSH_TIMEOUT_SECONDS = 30.0
 _STRATEGY_LABELS = {"compaction": "compaction", "hybrid": "hybrid", "sliding_window": "sliding window"}
+
+
+def context_unavailable_text(reason: str | None, strategy: str) -> str:
+    """The refusal for an attached view that could not be built and a full history over the floor:
+    the fixed message for a known engine reason, the generic one otherwise, then the common ending."""
+    message = CONTEXT_UNAVAILABLE_TEXTS.get(reason or "", CONTEXT_UNAVAILABLE_UNKNOWN_TEXT)
+    return f"{message.format(strategy=strategy)} {CONTEXT_UNAVAILABLE_ENDING}"
 
 
 def resolve_max_planning_turns(environ: Mapping[str, str]) -> int | None:
@@ -1277,7 +1330,7 @@ class AcpDuplexAdapter:
             return self._turn(success_response(request_id=request_id, result={"stopReason": "cancelled"}), turn.turn_control, ownership_slot)
         if outcome.kind == "unavailable":
             await self._emit_final_text(
-                session_id=turn.session_id, text=CONTEXT_UNAVAILABLE_TEXT.format(strategy=strategy), turn=turn
+                session_id=turn.session_id, text=context_unavailable_text(outcome.reason, strategy), turn=turn
             )
             await self._emit_cost_alerts(turn)
             return self._turn(success_response(request_id=request_id, result={"stopReason": "end_turn"}), turn.turn_control, ownership_slot)

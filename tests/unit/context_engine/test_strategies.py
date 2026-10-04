@@ -379,8 +379,13 @@ class ExactText(FakeMaintenance):
         (FakeMaintenance(finish="length"), "maintenance failed"),
         (FakeMaintenance(text=None), "maintenance failed"),
         (ExactText(""), "maintenance failed"),
+        # No summarizer configured, or one that does not support this prompt/format version: not a
+        # provider failure, so retrying cannot help (Codex's final corrections C1).
+        (FakeMaintenance(status="unavailable", text=None, finish=None), "maintenance unavailable"),
+        (FakeMaintenance(status="unsupported", text=None, finish=None), "maintenance unavailable"),
+        (ExactText("a usable-looking summary", status="unsupported"), "maintenance unavailable"),
     ],
-    ids=["failed", "failed-with-text", "length-limited", "none", "empty-string"],
+    ids=["failed", "failed-with-text", "length-limited", "none", "empty-string", "no-summarizer", "unsupported", "unsupported-with-text"],
 )
 def test_an_unusable_maintenance_result_makes_the_view_unavailable(fake, reason) -> None:
     snap = make_snapshot([30, 30, 30])

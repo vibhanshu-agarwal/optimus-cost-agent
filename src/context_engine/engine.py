@@ -43,6 +43,10 @@ from .summary import SUMMARY_FORMAT, SummaryFormatError, parse_summary
 
 PRIOR_SUMMARY_HEADER = "prior summary:\n"
 _SEPARATOR = "\n"
+# Callback statuses meaning no summarizer is configured, or it does not support this prompt/format
+# version: not a transient provider failure, so the view is unavailable rather than failed and a retry
+# cannot help (Codex's final corrections C1, 2026-10-04).
+_UNAVAILABLE_STATUSES = frozenset({"unavailable", "unsupported"})
 
 
 class _Unavailable(Exception):
@@ -241,6 +245,8 @@ class ContextEngine:
 
     @staticmethod
     def _accepted_summary(result: object, estimate: Callable[[str], int], reserve: int) -> str:
+        if isinstance(result, MaintenanceResult) and result.status in _UNAVAILABLE_STATUSES:
+            raise _Unavailable("maintenance unavailable")
         if (
             not isinstance(result, MaintenanceResult)
             or result.status != "completed"

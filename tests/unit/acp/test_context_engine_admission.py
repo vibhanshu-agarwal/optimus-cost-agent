@@ -33,10 +33,12 @@ from optimus.acp.spec import (
     ATTACHED_STORAGE_REFUSAL_TEXT,
     CONTEXT_FALLBACK_TEXT,
     CONTEXT_RESERVATION_TEXT,
-    CONTEXT_UNAVAILABLE_TEXT,
+    CONTEXT_UNAVAILABLE_ENDING,
+    CONTEXT_UNAVAILABLE_TEXTS,
     AcpDuplexAdapter,
     InMemoryAcpSpecSessionStore,
     RecordingOutboundChannel,
+    context_unavailable_text,
 )
 from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.context.assembly import ContextAttachment, SummarizerRoute, probe_floor
@@ -69,16 +71,17 @@ class SummarizerCall:
 
 
 class FlakyEngine:
-    """Unavailable for the first `failures` turns, then the real engine."""
+    """Unavailable, for `reason`, for the first `failures` turns, then the real engine."""
 
-    def __init__(self, failures: int) -> None:
+    def __init__(self, failures: int, reason: str = "maintenance failed") -> None:
         self.failures = failures
+        self.reason = reason
         self.calls = 0
 
     def prepare_view(self, snapshot, **kwargs) -> PreparedView:
         self.calls += 1
         if self.calls <= self.failures:
-            return PreparedView((), (), None, snapshot.protected, (), (), False, "maintenance failed")
+            return PreparedView((), (), None, snapshot.protected, (), (), False, self.reason)
         return ContextEngine().prepare_view(snapshot, **kwargs)
 
 
@@ -333,7 +336,7 @@ async def test_unavailable_engine_refusals_above_the_floor_stay_open_until_a_hea
         outbound.notifications.clear()
         response = await prompt(adapter, outbound, session_id, text, f"r{n}")
         assert response["result"]["stopReason"] == "end_turn"
-        assert texts(outbound) == [CONTEXT_UNAVAILABLE_TEXT.format(strategy="sliding window")]
+        assert texts(outbound) == [context_unavailable_text("maintenance failed", "sliding window")]
         assert conversation.disposition is ConversationDisposition.OPEN
         assert runner.requests == []  # zero planning/answer calls
         assert dict(conversation.records) == records_before  # nothing evicted, nothing committed
@@ -639,3 +642,174 @@ async def test_a_conflicting_summary_receipt_is_an_integrity_error_never_a_silen
         await prompt(adapter, outbound, session_id, "Next", "next")  # turn 4 claims it again
 
     assert len(runner.requests) == calls  # nothing dispatched on a broken ledger
+
+
+# --- Reason-specific refusals (CP4 correction C1) -------------------------------------------------
+#
+# Codex's final corrections (2026-10-04) fix one message per known engine reason. The expected texts
+# are spelled out here, not read back from the module, so a wording change is a visible test change.
+
+_ENDING = "This thread stays open. No answer or plan was requested for this prompt."
+_SLIDING_OR_NEW = "Choose Sliding window to continue with less ordinary conversation history, or start a new thread."
+_RETRYABLE = (
+    "The compaction summary could not be completed or accepted. Retrying may help and may incur another "
+    "summarization charge. You can also choose Sliding window to continue with less ordinary conversation history."
+)
+EXPECTED_REFUSALS = {
+    "turn exceeds maintenance input": (
+        "An earlier turn is too large for compaction to summarize with the current limits. "
+        f"{_SLIDING_OR_NEW} Sliding window may omit all ordinary history if even the newest turn does not fit."
+    ),
+    "exact authority exceeds history capacity": (
+        "The recorded execution outcomes and approval facts exceed this thread's context allowance. Start a new "
+        "thread; changing context strategy will not make those required facts smaller."
+    ),
+    "history capacity too small for a summary": (
+        f"The compaction summary and required history do not fit this thread's context allowance. {_SLIDING_OR_NEW}"
+    ),
+    "maintenance input exceeded": (
+        f"The compaction strategy cannot summarize this history within its input or call limits. {_SLIDING_OR_NEW}"
+    ),
+    "maintenance allowance exceeded": (
+        f"The compaction strategy cannot summarize this history within its input or call limits. {_SLIDING_OR_NEW}"
+    ),
+    "maintenance failed": _RETRYABLE,
+    "summary malformed": _RETRYABLE,
+    "summary exceeds bound": _RETRYABLE,
+    "maintenance unavailable": (
+        "Summarization is unavailable with this thread's current model and settings. Choose Sliding window to "
+        "continue with less ordinary conversation history, or retry after summarization becomes available."
+    ),
+    "source exceeds limit": "The stored conversation exceeds the context engine's source limit. Start a new thread.",
+}
+_UNKNOWN = (
+    "The compaction context strategy could not prepare this conversation. You can try Sliding window with less "
+    "ordinary conversation history, or start a new thread."
+)
+
+
+@pytest.mark.parametrize("reason", sorted(EXPECTED_REFUSALS))
+def test_each_known_reason_has_its_fixed_message_and_the_common_ending(reason):
+    assert CONTEXT_UNAVAILABLE_ENDING == _ENDING
+    assert context_unavailable_text(reason, "compaction") == f"{EXPECTED_REFUSALS[reason]} {_ENDING}"
+
+
+@pytest.mark.parametrize("reason", [None, "", "engine fault", "cancelled", "a reason nobody wrote yet"])
+def test_an_unknown_reason_gets_the_generic_message_never_the_reason_itself(reason):
+    text = context_unavailable_text(reason, "compaction")
+    assert text == f"{_UNKNOWN} {_ENDING}"
+    if reason:
+        assert reason not in text
+
+
+def test_every_reason_the_engine_can_give_has_a_message():
+    """A new engine reason must get a fixed message: parsed from the engine's own raise sites."""
+    import re
+
+    import context_engine.engine as engine_module
+
+    source = Path(engine_module.__file__).read_text(encoding="utf-8")
+    raised = set(re.findall(r'_Unavailable\("([^"]+)"\)', source)) - {"cancelled"}  # cancel has its own path
+    raised |= {"summary exceeds bound", "summary malformed"}  # returned by _text_rejection, then raised
+    assert raised == set(CONTEXT_UNAVAILABLE_TEXTS) == set(EXPECTED_REFUSALS)
+
+
+def test_the_fallback_notice_does_not_claim_the_history_was_already_sent():
+    assert CONTEXT_FALLBACK_TEXT.format(strategy="compaction") == (
+        "The compaction context strategy is unavailable for this prompt. The full conversation history will be "
+        "used if it fits the model's request limit."
+    )
+
+
+async def _compaction_session_over_floor(tmp_path, attachment: ContextAttachment):
+    """An attached compaction Chat session holding one ~522 KB turn, whose next prompt projects one byte
+    over the 524288-byte floor, so an unavailable view is refused rather than falling back."""
+    adapter, outbound, runner = make_adapter(tmp_path, attachment)
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    conversation = session_of(adapter, session_id).conversation
+    # Space-separated filler: the shared sanitizer is quadratic on one long unbroken token
+    # (P11-REMEDIATION-SECURITY-TEXT-POLICY).
+    commit_record(conversation, ("history " * CONVERSATION_MAX_BYTES)[: CONVERSATION_MAX_BYTES - 2000])
+    text = "p" * (CONVERSATION_MAX_BYTES + 1 - probe_floor(conversation.records, ""))
+    assert probe_floor(conversation.records, text) == CONVERSATION_MAX_BYTES + 1
+    return adapter, outbound, runner, session_id, conversation, text
+
+
+async def test_an_oversized_earlier_turn_is_refused_with_its_recovery_and_recurs_unchanged(tmp_path):
+    summarizer = SummarizerCall()
+    attachment = make_attachment(summarizer=summarizer)
+    # The one ~130,000-token turn cannot enter a 100,000-token maintenance input.
+    attachment = dataclasses.replace(attachment, limits=dataclasses.replace(attachment.limits, maintenance_input_tokens=100_000))
+    adapter, outbound, runner, session_id, conversation, text = await _compaction_session_over_floor(tmp_path, attachment)
+    records_before = dict(conversation.records)
+
+    for n in range(2):  # a deterministic capacity reason recurs while nothing changes
+        outbound.notifications.clear()
+        response = await prompt(adapter, outbound, session_id, text, f"r{n}")
+        assert response["result"]["stopReason"] == "end_turn"
+        assert texts(outbound) == [f"{EXPECTED_REFUSALS['turn exceeds maintenance input']} {_ENDING}"]
+        assert conversation.disposition is ConversationDisposition.OPEN
+        assert runner.requests == []  # zero planning/answer dispatch
+        assert summarizer.prompts == []  # refused before any maintenance call
+        assert dict(conversation.records) == records_before  # the refused prompt is not committed
+
+
+async def test_a_missing_summarizer_is_unavailable_not_a_failure_to_retry(tmp_path):
+    adapter, outbound, runner, session_id, conversation, text = await _compaction_session_over_floor(
+        tmp_path, make_attachment(summarizer=None)
+    )
+
+    for n in range(2):
+        outbound.notifications.clear()
+        response = await prompt(adapter, outbound, session_id, text, f"r{n}")
+        assert response["result"]["stopReason"] == "end_turn"
+        assert texts(outbound) == [f"{EXPECTED_REFUSALS['maintenance unavailable']} {_ENDING}"]
+        assert "Retrying may help" not in texts(outbound)[0]
+        assert conversation.disposition is ConversationDisposition.OPEN
+        assert runner.requests == []
+
+
+async def test_an_unsupported_summary_prompt_version_is_unavailable_with_zero_provider_calls(tmp_path):
+    receipts: list = []
+    summarizer = SummarizerCall()
+    attachment = make_attachment(summarizer=summarizer, receipts=receipts)
+    attachment = dataclasses.replace(attachment, parameters=dataclasses.replace(attachment.parameters, prompt_version="summary-prompt-v0"))
+    adapter, outbound, runner, session_id, conversation, text = await _compaction_session_over_floor(tmp_path, attachment)
+
+    response = await prompt(adapter, outbound, session_id, text, "r0")
+
+    assert response["result"]["stopReason"] == "end_turn"
+    assert texts(outbound) == [f"{EXPECTED_REFUSALS['maintenance unavailable']} {_ENDING}"]
+    assert summarizer.prompts == [] and receipts == []  # the host refused the version before any provider call
+    assert runner.requests == []
+
+
+async def test_a_rejected_summary_keeps_its_receipt_and_claims_no_absence_of_model_activity(tmp_path):
+    receipts: list = []
+    summarizer = SummarizerCall(text="not a context-summary-v1 summary")
+    adapter, outbound, runner, session_id, conversation, text = await _compaction_session_over_floor(
+        tmp_path, make_attachment(summarizer=summarizer, receipts=receipts)
+    )
+
+    response = await prompt(adapter, outbound, session_id, text, "r0")
+
+    assert response["result"]["stopReason"] == "end_turn"
+    assert texts(outbound) == [f"{EXPECTED_REFUSALS['summary malformed']} {_ENDING}"]
+    assert len(summarizer.prompts) == 1 and len(receipts) == 1  # the paid attempt is kept
+    assert "Nothing was sent" not in texts(outbound)[0]
+    assert runner.requests == []
+    assert conversation.disposition is ConversationDisposition.OPEN
+
+
+async def test_an_unknown_engine_reason_reaches_the_user_only_as_the_generic_message(tmp_path):
+    engine = FlakyEngine(failures=1, reason="a reason nobody wrote yet")
+    adapter, outbound, runner, session_id, conversation, text = await _compaction_session_over_floor(
+        tmp_path, make_attachment(engine=engine)
+    )
+
+    response = await prompt(adapter, outbound, session_id, text, "r0")
+
+    assert response["result"]["stopReason"] == "end_turn"
+    assert texts(outbound) == [f"{_UNKNOWN} {_ENDING}"]
+    assert "a reason nobody wrote yet" not in texts(outbound)[0]
+    assert runner.requests == []
