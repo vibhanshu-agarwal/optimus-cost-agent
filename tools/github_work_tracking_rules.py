@@ -25,9 +25,112 @@ SOURCES = {
     "masterplan": "docs/superpowers/plans/hardening-runtime-quality-masterplan.md",
     "roadmap": "docs/superpowers/plans/2026-07-01-phase-1-roadmap.md",
 }
+# Files quoted for context only: pinned at the baseline like the sources, but outside unit coverage.
+CONTEXT = {
+    "plan-11-23": "docs/superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md",
+    "a2a-audit": "docs/superpowers/reviews/evidence-handoff-a2a-ledger-independent-audit.md",
+}
+READS = {**SOURCES, **CONTEXT}
 PIN_NOTE = "# pragma: allowlist secret - git blob id of this source at the baseline commit, not a secret"
 COMMIT_PIN_NOTE = "# pragma: allowlist secret - baseline git commit id, not a secret"
+ADOPTION_PIN_NOTE = "# pragma: allowlist secret - sha256 of the issue's public fields when its adoption was reviewed, not a secret"
 PILOT_ISSUES = {"plan:11.23": 222, "P11-FU-20": 223, "P11-FU-40": 224, "A2A-C1": 225}
+# Pilot option (a), proposed for Checkpoint 3: each pilot body has the source marker but no generated region, so the
+# migration may replace it whole with the generated region, and only while the live issue still has the fingerprint
+# read for that review (2026-10-04; task4/pilot-fingerprints.txt). Publication needs the separate write grant.
+PILOT_ADOPTIONS = {
+    "plan:11.23": "67c34bdc077d60a61c02bddc1bd303e156fcb955d3ff8063143d5ffbad903b99",  # pragma: allowlist secret
+    "P11-FU-20": "0e76a94e872938945dd9c0445a3dfcfff453bb815172642146e8012b0af98b58",  # pragma: allowlist secret
+    "P11-FU-40": "55cdab926ee09cc7b613748c56239027f04222b5749903352bc6e350e5e07a60",  # pragma: allowlist secret
+    "A2A-C1": "e3f5e19d26d8ca4adbe34b16c834a641a9e00dfa839c7aa33f562b5a15408bda",  # pragma: allowlist secret
+}
+# The reviewed passages the pilot bodies carried beyond their pool entries (plan goal, Definition of Done, audit
+# diagnosis), quoted exactly so adoption loses none of them. FU-20's and FU-40's pilot text is their pool entries.
+QUOTES = {
+    "plan:11.23": [("plan-11-23", "line", "**Goal:**"), ("plan-11-23", "section", "Definition of Done and Evidence Map")],
+    "A2A-C1": [("a2a-audit", "section", "Critical 1 — No shipped composition root or runbook can provision the claimed product")],
+}
+A2A_RANKS = {"C": "Critical", "H": "High", "M": "Medium"}
+# Readable titles for records whose source gives only an identifier: "<identifier>: <phrase>". Each phrase is a short
+# agent-written summary grounded in the record's own source row, reviewed at Checkpoint 3; the body quotes the source
+# exactly. A2A obligations are titled by the audit's own finding headings instead.
+TITLES = {
+    # hardening tracks: named after their child plan files on the masterplan's child-plan status board
+    "HARDENING-TRACK-RUFF-LINT": "Ruff lint ratchet",
+    "HARDENING-TRACK-RUFF-FORMAT": "Ruff format migration",
+    "HARDENING-TRACK-CI-GUARDRAILS": "CI guardrail truthfulness",
+    "HARDENING-TRACK-DEPENDENCY-WORKFLOW": "Dependency and workflow security",
+    "HARDENING-TRACK-TEST-DOUBLES": "Test-double contracts",
+    "HARDENING-TRACK-STATIC-TYPING": "Static type checking",
+    "HARDENING-TRACK-AUDIT-TOOLING": "Audit-tool integrity and typing",
+    "HARDENING-TRACK-ANALYSIS-ORACLE": "Analysis-oracle evaluation",
+    "HARDENING-TRACK-LIFECYCLE-SIGNALS": "Resource lifetime and signals",
+    "HARDENING-TRACK-LOGGING-TELEMETRY": "Logging and telemetry",
+    "HARDENING-TRACK-SEMANTIC-ERRORS": "Semantic error selection",
+    "HARDENING-TRACK-QUEUE-BACKPRESSURE": "Queue backpressure",
+    "HARDENING-TRACK-REPEATABILITY": "Repeatability attribution",
+    "HARDENING-TRACK-PUBLIC-API-DOCS": "Public API documentation",
+    "HARDENING-TRACK-DUPLICATION": "Duplication remediation",
+    # features (the pool's feature slices table)
+    "P11-FEAT-ZED-RESUME": "Zed session resume",
+    "P11-FEAT-ACP-RUNTIME-HARDENING": "ACP runtime hardening",
+    "HARDENING-FEAT-RUNTIME-QUALITY": "Hardening runtime-quality masterplan",
+    "P11-FEAT-REGISTRY": "ACP registry submission",
+    "P11-FEAT-IDE": "Conditional IDE-specific testing",
+    # Plan 11.26 candidates (their owner role) and unrun obligations (the missing predicate)
+    "P11.26-CAND-1-RESOURCE-LIFETIME": "One owner for resource lifetime and close ordering",
+    "P11.26-CAND-2-TELEMETRY-CONTRACT": "Typed telemetry boundary contract",
+    "P11.26-CAND-3-SEMANTIC-ERROR-SELECTION": "Centralized runtime-outcome-to-wire-code selection",
+    "P11.26-CAND-4-QUEUE-BACKPRESSURE": "Bounded queue admission and overload disposition",
+    "P11.26-CAND-5-REPEATABILITY-ATTRIBUTION": "Per-row repeatability attribution",
+    "P11.26-UNRUN-BINDING": "Unrun: session-lease binding predicate",
+    "P11.26-UNRUN-REDIS": "Unrun: live Redis rows",
+    "P11.26-UNRUN-ZED": "Unrun: manual Zed rows",
+    # Task 13 duplication candidates: the source's own "focused regression gate for ..." phrase
+    "T13-CAND-RUNNER-CONTRACTS": "evidence-runner helpers and pinned contract values",
+    "T13-CAND-AUDIT-PRIMITIVES": "audit-tool canonicalization, symbol, citation, and visitor helpers",
+    "T13-CAND-CREDENTIAL-CONTRACTS": "credential fingerprints and launch-security constants",
+    "T13-CAND-SECURITY-TEXT": "security text sanitization and validation primitives",
+    "T13-CAND-DOMAIN-HTTPS": "domain and HTTPS normalization and matching policy",
+    "T13-CAND-LEDGER-ACCOUNTING": "evidence and provider-usage ledger settlement logic",
+    "T13-CAND-REDACTION-LIFETIME": "redaction cleanup, containment, hashing, and count aggregation",
+    "T13-CAND-DIRECTIVE-GRAMMAR": "planner directive grammar",
+    "T13-CAND-EVIDENCE-SERVICE": "evidence acquisition and package-advisory recording helpers",
+    "T13-CAND-SHARED-DEFAULTS": "shared model defaults and MCP name grammar",
+    "T13-CAND-REDIS-HEALTH": "Redis health-check exception normalization",
+    "T13-CAND-RETRY-TIMING": "retry delay conversion",
+    # evidence/handoff features (the feature registry); the ledger slices name the audit findings they own
+    "EVIDENCE-HANDOFF-FEAT-ZED-RENDER-OBSERVATION": "Zed render observation",
+    "EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR": "Evidence collector",
+    "EVIDENCE-HANDOFF-FEAT-A2A-CHANNEL": "A2A channel slice",
+    "EVIDENCE-HANDOFF-FEAT-LEDGER-COMPOSITION": "Ledger composition (audit findings C1, C3, H7, H9, and M15)",
+    "EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY": "Ledger integrity boundary (audit findings C2, H13, and M16c)",
+    "EVIDENCE-HANDOFF-FEAT-LEDGER-DATAPATH": "Ledger data path (audit findings H4, H5, and H6)",
+    "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY": "Ledger runtime boundary (audit findings H8, M14, and M16b)",
+    "EVIDENCE-HANDOFF-FEAT-LEDGER-AUDIT-WIRING": "Ledger audit wiring (audit finding M16a)",
+    "EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD": "Ledger evidence and Definition of Done (audit findings H10, H11, and H12b)",
+    "EVIDENCE-HANDOFF-FEAT-APPROVAL-RECORD": "Approval audit record (design needed)",
+    "EVIDENCE-HANDOFF-FEAT-PEER-LIVENESS-SIGNAL": "Peer liveness signal (design needed)",
+    "EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE": "Credential lifecycle: OAuth, rotation, and key discovery (design needed)",
+    "EVIDENCE-HANDOFF-FEAT-AT-REST-INTEGRITY": "Full-chain at-rest integrity detector (design needed)",
+    # hardening items (the masterplan's new-work custody register): the target state its acceptance cell names
+    "HARDENING-ITEM-RUFF-LINT-RATCHET": "Adopt Ruff lint families in reviewed tranches",
+    "HARDENING-ITEM-RUFF-FORMAT-MIGRATION": "One behavior-neutral Ruff formatting changeset",
+    "HARDENING-ITEM-COVERAGE-SOURCE-SCOPE": "Report coverage for all five production packages",
+    "HARDENING-ITEM-LOCKFILE-CI-ENFORCEMENT": "Fail CI on a stale uv.lock",
+    "HARDENING-ITEM-SECRET-SCAN-SCOPE": "Scan repository text surfaces for secrets",
+    "HARDENING-ITEM-BANDIT-B310": "Re-enable Bandit B310 behind one shared scheme guard",
+    "HARDENING-ITEM-DEPENDENCY-CVE-SCAN": "Lock-derived dependency CVE gate and update owner",
+    "HARDENING-ITEM-WORKFLOW-LINT-SECURITY": "Check every workflow with actionlint and zizmor",
+    "HARDENING-ITEM-AUTOSPEC-BOUNDARIES": "Contract-checked test doubles at real boundaries",
+    "HARDENING-ITEM-MYPY-SRC-RATCHET": "Mypy over all of src with a shrinking exception set",
+    "HARDENING-ITEM-AUDIT-INVENTORY-REDERIVATION": "Re-derive the committed audit candidate inventory",
+    "HARDENING-ITEM-AUDIT-TOOL-TYPING": "Type-check the audit tools",
+    "HARDENING-ITEM-PYSCN-EVALUATION": "Time-boxed clone/dead-code analysis evaluation",
+    "HARDENING-ITEM-SIGNAL-ADAPTER": "SIGINT, SIGTERM, and atexit process-boundary adapters",
+    "HARDENING-ITEM-EXCEPTION-SITE-DISPOSITION": "Inventory and disposition of broad exception sites",
+    "HARDENING-ITEM-PUBLIC-API-DOCSTRINGS": "Define and document the supported public API",
+}
 
 # (classification, rationale, statusless rows read and found to hold no work)
 SECTION_RULES: dict[tuple[str, str], tuple[str, str, bool]] = {
@@ -267,7 +370,8 @@ def classify(source: str, title: str) -> tuple[str, str, bool]:
 
 def _record(**fields) -> dict:
     record = {
-        name: ([] if name in ("units", "aliases", "anchors", "related") else None) for name in gwt.InventoryRecord.__dataclass_fields__
+        name: ([] if name in ("units", "aliases", "anchors", "related", "quotes") else None)
+        for name in gwt.InventoryRecord.__dataclass_fields__
     }
     record.update(
         title="",
@@ -496,18 +600,44 @@ def draft_inventory(commit: str, sources: Mapping[str, bytes]) -> dict:
         records.append(_record(**issue))
 
     _derive(records, {name: scans[name] for name in SOURCES})
+    _titles(records, sources["a2a-audit"].decode("utf-8"))
+    for record in records:
+        record["quotes"] = [list(quote) for quote in QUOTES.get(record["id"], ())]
     return {
         "schema": gwt.SCHEMA,
         "baseline": {
             "commit": commit,
             "commit_pin": COMMIT_PIN_NOTE,
             "sources": {name: {"path": SOURCES[name], "blob": gwt.git_blob_id(sources[name]), "pin": PIN_NOTE} for name in SOURCES},
+            "context": {name: {"path": CONTEXT[name], "blob": gwt.git_blob_id(sources[name]), "pin": PIN_NOTE} for name in CONTEXT},
         },
         "sections": sections,
         "reviewed_anomalies": reviewed_anomalies,
         "compat_anchors": COMPAT_ANCHORS,
+        "adoptions": {
+            record_id: {"issue": PILOT_ISSUES[record_id], "fingerprint": fingerprint, "pin": ADOPTION_PIN_NOTE}
+            for record_id, fingerprint in PILOT_ADOPTIONS.items()
+        },
         "records": records,
     }
+
+
+def _titles(records: list[dict], audit: str) -> None:
+    """Reviewed titles for identifier-only records, and each migrating A2A obligation's audit finding heading."""
+    headings = {(rank, number): text for rank, number, text in re.findall(r"^### (Critical|High|Medium) (\d+) — (.+)$", audit, re.M)}
+    migrating = {record["id"]: record for record in records if record["disposition"] == "migrate"}
+    stale = sorted(set(TITLES) - set(migrating))
+    if stale:
+        raise ValueError(f"TITLES names records that do not migrate: {stale}")
+    for record_id, phrase in TITLES.items():
+        migrating[record_id]["title"] = f"{record_id}: {phrase}"
+    for record_id, record in migrating.items():
+        code = re.fullmatch(r"A2A-([CHM])(\d+)[a-z]?", record_id)
+        if code:
+            heading = headings.get((A2A_RANKS[code.group(1)], code.group(2)))
+            if heading is None:
+                raise ValueError(f"the A2A audit has no finding heading for {record_id}")
+            record["title"] = f"A2A {record_id[4:]}: {heading}"
 
 
 def _derive(records: list[dict], scans: Mapping[str, gwt.SourceScan]) -> None:
@@ -547,8 +677,6 @@ def _derive(records: list[dict], scans: Mapping[str, gwt.SourceScan]) -> None:
             record["product"] = "evidence-a2a"
         if record["disposition"] == "migrate":
             record["priority"] = record["priority"] or next((u.priority.upper() for u in claimed if u.priority), None) or "MEDIUM"
-            if rid.startswith("A2A-"):
-                record["title"] = f"A2A obligation {rid[4:]}"
         if record["parent"] or record["disposition"] not in ("migrate", "duplicate"):
             continue
         if record["kind"] == "follow-up":

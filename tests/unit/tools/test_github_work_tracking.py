@@ -825,14 +825,14 @@ def test_draft_refuses_an_unreviewed_section() -> None:
 
 def test_committed_manifest_validates_at_its_baseline() -> None:
     inventory = gwt.load_inventory(MANIFEST)
-    report = gwt.validate_inventory(inventory, gwt.read_sources_at(inventory.baseline_commit, inventory.source_paths))
+    report = gwt.validate_inventory(inventory, gwt.read_sources_at(inventory.baseline_commit, inventory.read_paths))
     assert report.problems == ()
     assert report.counts["migrate"] > 0
 
 
 def test_draft_reproduces_the_committed_manifest_byte_for_byte() -> None:
     commit = json.loads(MANIFEST.read_text(encoding="utf-8"))["baseline"]["commit"]
-    drafted = gwt.render_manifest(rules.draft_inventory(commit, gwt.read_sources_at(commit, rules.SOURCES)))
+    drafted = gwt.render_manifest(rules.draft_inventory(commit, gwt.read_sources_at(commit, rules.READS)))
     assert drafted.encode("utf-8") == MANIFEST.read_bytes()
 
 
@@ -1348,8 +1348,8 @@ def test_bodies_quote_each_claimed_unit_with_baseline_permalinks(tmp_path: Path)
     assert plan.title == _records(_good())["plan:11.23"]["title"]  # the record's reviewed title
     assert plan.body.startswith("<!-- optimus-source: PLAN-11.23 -->\n") and plan.body.count("<!-- optimus-source:") == 1
     base = f"https://github.com/{gwt.REPO}/blob/fixture/"
-    promoted = f"**Source status at baseline `fixture`:** Promoted -> [Plan 12.1]({base}plan-12-1.md) (historical"
-    assert promoted in by_id["P11.25-FU-1"].body  # a status quoted in the facts is pinned like the source text
+    promoted = "**Source status at baseline `fixture`:** Promoted (the leading status of the source quoted below; historical"
+    assert promoted in by_id["P11.25-FU-1"].body  # the facts name the status; the quoted source carries its links
     assert (
         "| Plan | State | Backlog owner | Next gate |\n|---|---|---|---|\n"
         f"| [Plan 11.23 — client-MCP runtime composition]({base}plan-11-23.md) | `Blocked` | `P11-FU-20` | Task 6 live gate. |"
@@ -1394,12 +1394,13 @@ def test_only_link_targets_change_when_source_is_quoted() -> None:
 
 def test_every_real_body_quotes_its_claimed_units_exactly() -> None:
     inventory = gwt.load_inventory(MANIFEST)
-    sources = gwt.read_sources_at(inventory.baseline_commit, inventory.source_paths)
+    sources = gwt.read_sources_at(inventory.baseline_commit, inventory.read_paths)
     drafts = gwt.draft_issues(inventory, sources)
     records = {r.id: r for r in inventory.records if r.disposition == "migrate"}
     assert {draft.record_id for draft in drafts} == {rid for rid, record in records.items() if record.kind != "external-issue"}
-    units = {unit.key: unit for name, data in sources.items() for unit in gwt.scan_source(name, data.decode("utf-8")).units}
-    lines = {name: data.decode("utf-8").splitlines() for name, data in sources.items()}
+    coverage = {name: sources[name] for name in inventory.source_paths}
+    units = {unit.key: unit for name, data in coverage.items() for unit in gwt.scan_source(name, data.decode("utf-8")).units}
+    lines = {name: data.decode("utf-8").splitlines() for name, data in coverage.items()}
     for draft in drafts:
         for key in records[draft.record_id].units:
             unit = units[key]
@@ -1898,3 +1899,255 @@ def test_cli_publish_whose_seal_cannot_be_written_exits_nonzero(
     journal = _journal_lines(evidence / "journal.jsonl")
     assert journal[-1]["step"] == "outcome" and journal[-1]["outcome"] == "pass"  # every write validated, on record
     assert summary["issues"] == journal[-1]["issues"]
+
+
+# ==== Task 4: staged issue content (titles, reviewed context quotes, pilot adoption, the status fact) ====
+
+CONTEXT_DOC = """\
+# Context plan
+
+**Goal:** Make the fixture plan usable.
+
+## Tasks
+
+Some tasks.
+
+## Definition of Done
+
+| Claim | Evidence |
+|---|---|
+| done | [proof](proof.md) |
+
+### Detail
+
+Nested detail stays inside the section.
+
+## Self-review
+
+Not quoted.
+"""
+
+
+def _context_inventory(tmp_path: Path, quotes: list[tuple[str, str, str]], pinned: str = CONTEXT_DOC) -> gwt.Inventory:
+    data = _with_source(_good(), POOL)
+    data["baseline"]["context"] = {"ctx": {"path": "docs/plans/ctx-plan.md", "blob": gwt.git_blob_id(pinned.encode("utf-8"))}}
+    _records(data)["plan:11.23"]["quotes"] = [list(quote) for quote in quotes]
+    return gwt.load_inventory(_write(tmp_path, data))
+
+
+def _read(context: str = CONTEXT_DOC) -> dict[str, bytes]:
+    return {"pool": POOL.encode("utf-8"), "ctx": context.encode("utf-8")}
+
+
+def test_a_reviewed_context_quote_is_rendered_exactly_and_pinned(tmp_path: Path) -> None:
+    inventory = _context_inventory(tmp_path, [("ctx", "line", "**Goal:**"), ("ctx", "section", "Definition of Done")])
+    assert inventory.read_paths == {"pool": "pool.md", "ctx": "docs/plans/ctx-plan.md"}
+    assert gwt.validate_inventory(inventory, _read()).problems == ()
+    body = {draft.record_id: draft.body for draft in gwt.draft_issues(inventory, _read())}["plan:11.23"]
+    base = gwt.blob_url("docs/plans/ctx-plan.md", "fixture")
+    assert "**Goal:** Make the fixture plan usable." in body
+    section = "\n".join(CONTEXT_DOC.splitlines()[8:17]).replace("(proof.md)", f"({gwt.blob_url('docs/plans/proof.md', 'fixture')})")
+    assert section in body  # the heading through its nested detail, with the relative link pinned
+    assert "Not quoted." not in body and "Some tasks." not in body
+    assert f"({base}?plain=1#L3)" in body and f"({base}?plain=1#L9-L17)" in body
+    assert body.index("**Goal:**") < body.index("## Definition of Done") < body.index("<!-- /optimus-source: PLAN-11.23 -->")
+
+
+@pytest.mark.parametrize(
+    ("quotes", "context", "expected"),
+    [
+        ([("ctx", "section", "Definition of Done")], CONTEXT_DOC.replace("Some tasks.", "Some tasks!"), "is not its pinned blob"),
+        ([("ctx", "section", "Missing heading")], CONTEXT_DOC, "matches no"),
+        ([("ctx", "section", "Detail")], CONTEXT_DOC + "\n### Detail\n\nAgain.\n", "matches 2"),
+        ([("ctx", "line", "**Goal:**")], CONTEXT_DOC + "\n**Goal:** a second goal.\n", "matches 2"),
+        ([("other", "line", "**Goal:**")], CONTEXT_DOC, "unknown context source"),
+        ([("ctx", "paragraph", "**Goal:**")], CONTEXT_DOC, "unknown selector"),
+    ],
+)
+def test_a_context_quote_must_resolve_exactly_once_at_its_pinned_blob(
+    tmp_path: Path, quotes: list[tuple[str, str, str]], context: str, expected: str
+) -> None:
+    pinned = CONTEXT_DOC if expected == "is not its pinned blob" else context
+    problems = gwt.validate_inventory(_context_inventory(tmp_path, quotes, pinned), _read(context)).problems
+    assert any(expected in problem for problem in problems), problems
+
+
+def test_the_real_pilot_context_quotes_keep_the_reviewed_passages() -> None:
+    inventory = gwt.load_inventory(MANIFEST)
+    sources = gwt.read_sources_at(inventory.baseline_commit, inventory.read_paths)
+    drafts = {draft.record_id: draft.body for draft in gwt.draft_issues(inventory, sources)}
+    assert {record.id for record in inventory.records if record.quotes} == {"plan:11.23", "A2A-C1"}
+    plan = sources["plan-11-23"].decode("utf-8").splitlines()
+    goal = next(line for line in plan if line.startswith("**Goal:**"))
+    assert goal in drafts["plan:11.23"] and "## Definition of Done and Evidence Map" in drafts["plan:11.23"]
+    audit = sources["a2a-audit"].decode("utf-8")
+    assert "### Critical 1 — No shipped composition root or runbook can provision the claimed product" in drafts["A2A-C1"]
+    root_cause = next(line for line in audit.splitlines() if line.startswith("**Root cause:** tested components"))
+    assert root_cause in drafts["A2A-C1"] and "### Critical 2" not in drafts["A2A-C1"]
+
+
+def test_no_migrating_record_keeps_a_bare_identifier_title() -> None:
+    records = json.loads(MANIFEST.read_text(encoding="utf-8"))["records"]
+    bare = [r["id"] for r in records if r["disposition"] == "migrate" and r["title"] in (r["id"], f"A2A obligation {r['id'][4:]}")]
+    assert bare == []
+    titled = {r["id"]: r["title"] for r in records}
+    for record_id, phrase in rules.TITLES.items():
+        assert 0 < len(phrase) <= 120 and titled[record_id] == f"{record_id}: {phrase}", record_id
+
+
+def test_a2a_titles_are_the_audit_finding_headings() -> None:
+    data = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    audit = gwt.git_blob_bytes(data["baseline"]["commit"], rules.CONTEXT["a2a-audit"]).decode("utf-8")
+    headings = {(rank, number): text for rank, number, text in re.findall(r"^### (Critical|High|Medium) (\d+) — (.+)$", audit, re.M)}
+    a2a = [r for r in data["records"] if r["id"].startswith("A2A-") and r["disposition"] == "migrate"]
+    assert len(a2a) == 19
+    for record in a2a:
+        code = record["id"][4:]
+        rank = {"C": "Critical", "H": "High", "M": "Medium"}[code[0]]
+        number = re.match(r"[CHM](\d+)", code).group(1)
+        assert record["title"] == f"A2A {code}: {headings[(rank, number)]}", record["id"]
+    assert {r["id"]: r["title"] for r in a2a}[
+        "A2A-C1"
+    ] == "A2A C1: No shipped composition root or runbook can provision the claimed product"
+
+
+def _legacy_pilot_issues() -> list[dict[str, Any]]:
+    """The live pilots' shape: the source marker, but no generated region end."""
+    issues = _pilot_issues()
+    issues[0]["body"] = "> trial copy\n\n<!-- optimus-source: PLAN-11.23 -->\n\nCodex-drafted pilot body\n"
+    return issues
+
+
+def _adopt(data: dict[str, Any], record_id: str, issue: int, fingerprint: str) -> dict[str, Any]:
+    """A reviewed adoption: the live issue's fingerprint at review, on one line with its secret-scan pin."""
+    data.setdefault("adoptions", {})[record_id] = {"issue": issue, "fingerprint": fingerprint, "pin": rules.ADOPTION_PIN_NOTE}
+    return data
+
+
+def test_a_pilot_body_is_adopted_whole_only_at_its_reviewed_fingerprint(tmp_path: Path) -> None:
+    issues = _legacy_pilot_issues()
+    fingerprint = gwt.issue_snapshot(issues[0]).fingerprint
+    data = _adopt(_good(), "plan:11.23", 222, fingerprint)
+    inventory, drafts, client = _setup(tmp_path, data, issues=issues)
+    batch = _plan(inventory, drafts, client)
+    assert batch.conflicts == ()
+    update = next(op for op in batch.operations if op.issue == 222)
+    region = {draft.record_id: draft.body for draft in drafts}["plan:11.23"].rstrip("\n")
+    assert update.payload["body"] == region  # the whole reviewed pilot body is replaced by the generated region
+    assert update.payload["title"] == issues[0]["title"] and update.expected_fingerprint == fingerprint
+    result, _journal = _publish(tmp_path, batch, client)
+    assert result.outcome == "pass"
+    again = _plan(inventory, drafts, client)  # once adopted it has a region: nothing more to write for it, and no conflict
+    assert not [c for c in again.conflicts if "plan:11.23" in c] and not [op for op in again.operations if op.issue == 222]
+
+
+@pytest.mark.parametrize("case", ["edited after its review", "never reviewed for adoption", "malformed fingerprint"])
+def test_an_unreviewed_or_changed_pilot_body_stays_a_conflict(tmp_path: Path, case: str) -> None:
+    issues = _legacy_pilot_issues()
+    data = _good()
+    if case == "edited after its review":
+        _adopt(data, "plan:11.23", 222, gwt.issue_snapshot(issues[0]).fingerprint)
+        issues[0]["body"] += "\nedited after the review\n"
+    if case == "malformed fingerprint":
+        _adopt(data, "plan:11.23", 222, "not-a-digest")
+        assert any("plan:11.23" in problem and "adoption" in problem for problem in _problems(tmp_path, data))
+        return
+    inventory, drafts, client = _setup(tmp_path, data, issues=issues)
+    batch = _plan(inventory, drafts, client)
+    expected = "changed since its reviewed adoption" if case == "edited after its review" else "no generated region"
+    assert any("plan:11.23" in conflict and expected in conflict for conflict in batch.conflicts), batch.conflicts
+    assert not [op for op in batch.operations if op.issue == 222]
+
+
+@pytest.mark.parametrize(
+    ("record_id", "issue"),
+    [("P11-FU-40", 224), ("plan:11.23", 999), ("no-such-record", 222), ("A2A-M17", 225)],
+    ids=["no reviewed target", "another issue", "unknown record", "a record that does not migrate"],
+)
+def test_an_adoption_names_a_migrating_record_and_its_reviewed_target(tmp_path: Path, record_id: str, issue: int) -> None:
+    data = _adopt(_good(), record_id, issue, "a" * 64)
+    assert any(record_id in problem and "adoption" in problem for problem in _problems(tmp_path, data))
+
+
+def test_only_the_four_pilots_carry_a_reviewed_adoption() -> None:
+    adoptions = json.loads(MANIFEST.read_text(encoding="utf-8"))["adoptions"]
+    assert set(adoptions) == set(rules.PILOT_ISSUES) == {"plan:11.23", "P11-FU-20", "P11-FU-40", "A2A-C1"}
+    for record_id, adoption in adoptions.items():
+        assert adoption["issue"] == rules.PILOT_ISSUES[record_id] and re.fullmatch(r"[0-9a-f]{64}", adoption["fingerprint"])
+        assert "pragma: allowlist secret" in adoption["pin"]
+    lines = [line for line in MANIFEST.read_text(encoding="utf-8").splitlines() if '"fingerprint": ' in line]
+    assert len(lines) == 4 and all("pragma: allowlist secret" in line for line in lines)  # each digest is pinned on its line
+
+
+def test_the_status_fact_names_the_status_and_never_cuts_a_sentence() -> None:
+    inventory = gwt.load_inventory(MANIFEST)
+    short = inventory.baseline_commit[:7]
+    drafts = {
+        d.record_id: d.body for d in gwt.draft_issues(inventory, gwt.read_sources_at(inventory.baseline_commit, inventory.read_paths))
+    }
+
+    def fact(record_id: str) -> str:
+        return next(line for line in drafts[record_id].splitlines() if line.startswith("- **Source status at baseline"))
+
+    quoted = "(the leading status of the source quoted below; historical: this issue's state and labels carry the current status)"
+    assert fact("P9.87-FU-1") == f"- **Source status at baseline `{short}`:** Open {quoted}"  # its status line soft-wraps
+    assert fact("P11.25-FU-1") == f"- **Source status at baseline `{short}`:** Promoted {quoted}"
+    assert fact("HARDENING-ITEM-RUFF-LINT-RATCHET").startswith(
+        f"- **Source status at baseline `{short}`:** Open (historical: this issue's state and labels carry the current status)."
+        " Synthesized: "
+    )
+
+
+# Written after the implementation while planning mutants (a disclosed test-first deviation): branch boundaries.
+
+
+def test_quote_selectors_match_exactly_their_own_lines() -> None:
+    lines = [
+        "# Doc",
+        "",
+        "Prose that mentions **Goal:** mid-line.",
+        "**Goal:** the real goal.",
+        "",
+        "## Section",
+        "",
+        "```text",
+        "## not a heading inside fenced code",
+        "```",
+        "",
+        "### Nested",
+        "",
+        "Last line of the file.",
+        "",
+    ]
+    assert gwt.quote_span(lines, "line", "**Goal:**") == (4, 4)  # a line that only mentions the text does not match
+    assert gwt.quote_span(lines, "section", "Section") == (6, 14)  # through fenced code and nesting, to the end of the file
+    with pytest.raises(ValueError, match="matches no"):
+        gwt.quote_span(lines, "section", "not a heading inside fenced code")
+    assert gwt.quote_span(["~~~", "# fenced", "~~~", "# Real", "text"], "section", "Real") == (4, 5)
+
+
+def test_a_record_that_does_not_migrate_quotes_no_context(tmp_path: Path) -> None:
+    data = _with_source(_good(), POOL)
+    data["baseline"]["context"] = {"ctx": {"path": "docs/plans/ctx-plan.md", "blob": gwt.git_blob_id(CONTEXT_DOC.encode("utf-8"))}}
+    _records(data)["A2A-M17"]["quotes"] = [["ctx", "line", "**Goal:**"]]
+    problems = gwt.validate_inventory(gwt.load_inventory(_write(tmp_path, data)), _read()).problems
+    assert any("A2A-M17" in problem and "only a migrating record" in problem for problem in problems), problems
+
+
+def test_an_adoption_never_bypasses_a_malformed_region(tmp_path: Path) -> None:
+    issues = _pilot_issues()
+    issues[0]["body"] = "<!-- /optimus-source: PLAN-11.23 -->\n<!-- optimus-source: PLAN-11.23 -->\n"
+    data = _adopt(_good(), "plan:11.23", 222, gwt.issue_snapshot(issues[0]).fingerprint)
+    inventory, drafts, client = _setup(tmp_path, data, issues=issues)
+    batch = _plan(inventory, drafts, client)
+    assert any("plan:11.23" in conflict and "malformed generated region" in conflict for conflict in batch.conflicts)
+    assert not [op for op in batch.operations if op.issue == 222]
+
+
+def test_title_rules_fail_closed() -> None:
+    records = [rules._record(id="HARDENING-TRACK-RUFF-LINT", disposition="history")]
+    with pytest.raises(ValueError, match="TITLES names records that do not migrate"):
+        rules._titles(records, "")
+    migrating = [rules._record(id=record_id) for record_id in rules.TITLES] + [rules._record(id="A2A-H99", kind="obligation")]
+    with pytest.raises(ValueError, match="no finding heading for A2A-H99"):
+        rules._titles(migrating, "### High 4 — Something else\n")

@@ -116,6 +116,13 @@ def normalized_status(text: str | None) -> str | None:
     return match.group("token").lower() if match else None
 
 
+def status_token(text: str | None) -> str:
+    """The leading status token as the source writes it (``Promoted -> [Plan 12.1](…)`` -> ``Promoted``)."""
+    cleaned = re.sub(r"[`~*]", "", text or "").strip()
+    match = _STATUS_TOKEN.match(cleaned)
+    return match.group("token") if match else cleaned
+
+
 def owner_identities(text: str | None) -> list[str]:
     """Every identity a frozen artifact's live-owner text names, in order and without repeats (anchors are lower case)."""
     found: list[str] = []
@@ -370,6 +377,8 @@ class InventoryRecord:
     reviewed: bool = False
     review_note: str | None = None
     rationale: str = ""
+    # Reviewed passages of other files quoted exactly in the issue body: (context source, "line" | "section", text).
+    quotes: tuple[tuple[str, str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -382,6 +391,16 @@ class Inventory:
     records: tuple[InventoryRecord, ...]
     compat_anchors: Mapping[str, str] = field(default_factory=dict)
     reviewed_anomalies: Mapping[str, str] = field(default_factory=dict)
+    # Files quoted for context only, pinned like the sources but outside unit coverage.
+    context_blobs: Mapping[str, str] = field(default_factory=dict)
+    context_paths: Mapping[str, str] = field(default_factory=dict)
+    # Reviewed adoptions of live issues without a generated region: record id -> {"issue", "fingerprint"}.
+    adoptions: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+
+    @property
+    def read_paths(self) -> dict[str, str]:
+        """Every file the inventory pins at its baseline: the coverage sources, then the context files."""
+        return {**self.source_paths, **self.context_paths}
 
 
 @dataclass(frozen=True)
@@ -406,8 +425,10 @@ def inventory_from_data(data: Mapping) -> Inventory:
         unknown = set(raw) - _RECORD_FIELDS
         if unknown:
             raise ValueError(f"record {raw.get('id')!r} has unknown fields {sorted(unknown)}")
-        records.append(InventoryRecord(**{**raw, **{name: tuple(raw.get(name, ())) for name in _TUPLE_FIELDS}}))
+        quotes = tuple(tuple(quote) for quote in raw.get("quotes", ()))
+        records.append(InventoryRecord(**{**raw, **{name: tuple(raw.get(name, ())) for name in _TUPLE_FIELDS}, "quotes": quotes}))
     sources = data["baseline"]["sources"]
+    context = data["baseline"].get("context", {})
     return Inventory(
         schema=data["schema"],
         baseline_commit=data["baseline"]["commit"],
@@ -417,6 +438,9 @@ def inventory_from_data(data: Mapping) -> Inventory:
         records=tuple(records),
         compat_anchors=dict(data.get("compat_anchors", {})),
         reviewed_anomalies=dict(data.get("reviewed_anomalies", {})),
+        context_blobs={name: spec["blob"] for name, spec in context.items()},
+        context_paths={name: spec["path"] for name, spec in context.items()},
+        adoptions={record_id: dict(adoption) for record_id, adoption in data.get("adoptions", {}).items()},
     )
 
 
@@ -425,15 +449,19 @@ def load_inventory(path: Path) -> Inventory:
 
 
 def validate_inventory(inventory: Inventory, sources: Mapping[str, bytes]) -> CoverageReport:
+    """``sources`` holds every file in ``inventory.read_paths``: the coverage sources and the pinned context files."""
     problems: list[str] = []
 
-    if set(sources) != set(inventory.source_blobs):
-        problems.append(f"sources {sorted(sources)} differ from the baseline sources {sorted(inventory.source_blobs)}")
+    if set(sources) != set(inventory.read_paths):
+        problems.append(f"sources {sorted(sources)} differ from the baseline sources {sorted(inventory.read_paths)}")
     for name, data in sources.items():
-        if inventory.source_blobs.get(name) != git_blob_id(data):
+        if name in inventory.context_blobs:
+            if inventory.context_blobs[name] != git_blob_id(data):
+                problems.append(f"context {name!r} is not its pinned blob {inventory.context_blobs[name]}; re-derive the inventory")
+        elif inventory.source_blobs.get(name) != git_blob_id(data):
             problems.append(f"source {name!r} is not the baseline blob {inventory.source_blobs.get(name)}; re-derive the inventory")
 
-    scans = {name: scan_source(name, data.decode("utf-8")) for name, data in sources.items()}
+    scans = {name: scan_source(name, data.decode("utf-8")) for name, data in sources.items() if name in inventory.source_paths}
     seen_anomalies = set()
     for scan in scans.values():
         for anomaly in scan.anomalies:
@@ -500,6 +528,8 @@ def validate_inventory(inventory: Inventory, sources: Mapping[str, bytes]) -> Co
                     problems.append(f"alias {alias!r} names both {aliases[alias]!r} and {record.id!r}")
                 aliases[alias] = record.id
     problems.extend(_target_issue_problems(inventory.records))
+    problems.extend(_quote_problems(inventory, sources))
+    problems.extend(_adoption_problems(inventory, records))
     problems.extend(_parent_cycles(records))
     for anchor, target in inventory.compat_anchors.items():
         if target not in records and not target.startswith("section:"):
@@ -540,6 +570,85 @@ def _target_issue_problems(records: Sequence[InventoryRecord]) -> list[str]:
             )
         else:
             targets[target] = record.id
+    return problems
+
+
+QUOTE_SELECTORS = ("line", "section")
+_SHA256_HEX = re.compile(r"[0-9a-f]{64}")
+
+
+def _headings(lines: Sequence[str]) -> list[tuple[int, int, str]]:
+    """(line number, level, title) of every heading outside fenced code."""
+    found, fence = [], None
+    for number, line in enumerate(lines, 1):
+        opener = _FENCE.match(line)
+        if opener:
+            marker = opener.group("marker")
+            if fence is None:
+                fence = marker
+            elif marker[0] == fence[0] and len(marker) >= len(fence):
+                fence = None
+            continue
+        heading = None if fence else _HEADING.match(line)
+        if heading:
+            found.append((number, len(heading.group("marks")), heading.group("title")))
+    return found
+
+
+def quote_span(lines: Sequence[str], selector: str, text: str) -> tuple[int, int]:
+    """The 1-based ``(first, last)`` lines a reviewed context quote covers.
+
+    ``line`` is the one line that starts with ``text``; ``section`` is the one heading titled ``text`` through the line
+    before the next heading of the same or a higher level, without trailing blank lines. Anything else is an error.
+    """
+    if selector == "line":
+        found = [number for number, line in enumerate(lines, 1) if line.startswith(text)]
+    elif selector == "section":
+        headings = _headings(lines)
+        found = [number for number, _level, title in headings if title == text]
+    else:
+        raise ValueError(f"unknown selector {selector!r}; use one of {', '.join(QUOTE_SELECTORS)}")
+    if len(found) != 1:
+        raise ValueError(f"{selector} {text!r} matches {len(found) or 'no'} line(s); a quote must match exactly one")
+    first = last = found[0]
+    if selector == "section":
+        level = next(level for number, level, _title in headings if number == first)
+        last = next((number - 1 for number, other, _title in headings if number > first and other <= level), len(lines))
+        while last > first and not lines[last - 1].strip():
+            last -= 1
+    return first, last
+
+
+def _quote_problems(inventory: Inventory, sources: Mapping[str, bytes]) -> list[str]:
+    """Each reviewed context quote names a pinned context file and resolves there exactly once."""
+    problems = []
+    for record in inventory.records:
+        for source, selector, text in record.quotes:
+            label = f"record {record.id!r} context quote ({selector} {text!r} in {source!r})"
+            if record.disposition != "migrate":
+                problems.append(f"{label}: only a migrating record's issue body quotes context")
+            if source not in inventory.context_paths:
+                problems.append(f"{label}: unknown context source; pin it under the baseline's context")
+            elif source in sources:
+                try:
+                    quote_span(sources[source].decode("utf-8").splitlines(), selector, text)
+                except ValueError as error:
+                    problems.append(f"{label}: {error}")
+    return problems
+
+
+def _adoption_problems(inventory: Inventory, records: Mapping[str, InventoryRecord]) -> list[str]:
+    """A reviewed adoption names a migrating record, that record's reviewed target issue and a SHA-256 fingerprint."""
+    problems = []
+    for record_id, adoption in inventory.adoptions.items():
+        label = f"adoption of {record_id!r}"
+        record = records.get(record_id)
+        if record is None or record.disposition != "migrate":
+            problems.append(f"{label}: no migrating record has that id")
+        elif record.target_issue is None or adoption.get("issue") != record.target_issue:
+            problems.append(f"{label} names #{adoption.get('issue')}, not the record's reviewed target issue {record.target_issue}")
+        if not (isinstance(adoption.get("fingerprint"), str) and _SHA256_HEX.fullmatch(adoption["fingerprint"])):
+            problems.append(f"{label}: its fingerprint {adoption.get('fingerprint')!r} is not a SHA-256 hex digest")
     return problems
 
 
@@ -682,6 +791,11 @@ def render_manifest(data: Mapping) -> str:
     """The manifest text: stable key order, LF, and each pinned id on one line with its inline secret-scan marker."""
     text = json.dumps(data, indent=1, ensure_ascii=False) + "\n"
     text = re.sub(r'\{\n\s+"path": (".*?"),\n\s+"blob": (".*?"),\n\s+"pin": (".*?")\n\s+\}', r'{"path": \1, "blob": \2, "pin": \3}', text)
+    text = re.sub(
+        r'\{\n\s+"issue": (\d+),\n\s+"fingerprint": (".*?"),\n\s+"pin": (".*?")\n\s+\}',
+        r'{"issue": \1, "fingerprint": \2, "pin": \3}',
+        text,
+    )
     return re.sub(r'\n(\s+)"commit": (".*?"),\n\s+"commit_pin": (".*?"),', r'\n\1"commit": \2, "commit_pin": \3,', text)
 
 
@@ -1076,9 +1190,13 @@ def render_body(
     commit = inventory.baseline_commit
     short = commit[:7]
     aliases = [alias for alias in record.aliases if alias != record.id]
-    stating = next((unit.source for unit in claimed if _clean(unit.stated_status) == record.status), None)
-    stated = normalize_links(str(record.status), inventory.source_paths[stating], commit) if stating else record.status
-    status = f"- **Source status at baseline `{short}`:** {stated} (historical; this issue's state and labels carry the current status)"
+    # The fact names the status; the source's whole statement, which may wrap over lines, is quoted below it.
+    stated = any(_clean(unit.stated_status) == record.status for unit in claimed)
+    status = (
+        f"- **Source status at baseline `{short}`:** {status_token(record.status)} ("
+        + ("the leading status of the source quoted below; " if stated else "")
+        + "historical: this issue's state and labels carry the current status)"
+    )
     if record.status_disposition:
         status += f". Synthesized: {record.status_disposition}"
     # Current priority, difficulty, estimate and handler live only in labels; the body records the migration's basis.
@@ -1128,14 +1246,31 @@ def render_body(
         span = f"L{first}" if first == last else f"L{first}-L{last}"
         out += [f"**`{path}` line {unit.line}** ([at baseline]({blob_url(path, commit)}?plain=1#{span}))", ""]
         out += [normalize_links("\n".join(text), path, commit), ""]
+    if record.quotes:
+        out += [
+            f"## Reviewed context at baseline `{short}`",
+            "",
+            "Further passages reviewed for this record, quoted exactly from the pinned files; only relative and in-page link"
+            " targets are rewritten as permalinks at that commit.",
+            "",
+        ]
+        for source, selector, quoted in record.quotes:
+            first, last = quote_span(lines[source], selector, quoted)
+            path = inventory.context_paths[source]
+            span = f"L{first}" if first == last else f"L{first}-L{last}"
+            out += [f"**`{path}` line {first}** ([at baseline]({blob_url(path, commit)}?plain=1#{span}))", ""]
+            out += [normalize_links("\n".join(lines[source][first - 1 : last]), path, commit), ""]
     out.append(end_marker_comment(source_marker(record.id)))
     return "\n".join(out) + "\n"
 
 
 def draft_issues(inventory: Inventory, sources: Mapping[str, bytes], trial: bool = True) -> list[IssueDraft]:
-    """One draft per migrating record with source units; an existing external issue is reused, never redrafted."""
+    """One draft per migrating record with source units; an existing external issue is reused, never redrafted.
+
+    ``sources`` holds every file in ``inventory.read_paths``; only the coverage sources hold units.
+    """
     texts = {name: data.decode("utf-8") for name, data in sources.items()}
-    units = {unit.key: unit for name, text in texts.items() for unit in scan_source(name, text).units}
+    units = {unit.key: unit for name, text in texts.items() if name in inventory.source_paths for unit in scan_source(name, text).units}
     lines = {name: text.splitlines() for name, text in texts.items()}
     drafts = []
     for record in inventory.records:
@@ -1344,11 +1479,22 @@ def plan_migration(
         wanted, label_conflicts = merged_labels(draft, issue)
         conflicts.extend(label_conflicts)
         region = generated_region(issue.body, draft.marker)
-        if isinstance(region, str):
+        adoption = inventory.adoptions.get(record.id)
+        legacy = issue.body.count(marker_comment(draft.marker)) == 1 and end_marker_comment(draft.marker) not in issue.body
+        if isinstance(region, str) and not (legacy and adoption):
             conflicts.append(f"{label}: #{issue.number}: {region}")
             continue
-        # An update rewrites only the generated region; the existing title and every line outside the region survive.
-        body = issue.body[: region[0]] + draft.body.rstrip("\n") + issue.body[region[1] :]
+        if isinstance(region, str):  # a pilot body with no region, adopted only in the exact state its review read
+            if issue.fingerprint != adoption["fingerprint"]:
+                conflicts.append(
+                    f"{label}: #{issue.number} has no generated region and has changed since its reviewed adoption"
+                    f" (fingerprint {issue.fingerprint[:12]}…, reviewed {str(adoption['fingerprint'])[:12]}…); review it again"
+                )
+                continue
+            body = draft.body.rstrip("\n")  # the reviewed adoption replaces the whole body with the generated region
+        else:
+            # An update rewrites only the generated region; the existing title and every line outside the region survive.
+            body = issue.body[: region[0]] + draft.body.rstrip("\n") + issue.body[region[1] :]
         if (issue.body, list(issue.labels)) != (body, wanted):
             payload = {"title": issue.title, "body": body, "labels": wanted}
             issue_ops.append(Operation("update-issue", record.id, payload, issue.number, issue.fingerprint))
@@ -1659,7 +1805,7 @@ def _github_command(args: argparse.Namespace, reader: SourceReader, client: GitH
         print(json.dumps({"step": "STOP", "reason": "publish writes to GitHub only with --execute"}))
         return 2
     inventory = load_inventory(args.inventory)
-    sources = reader(inventory.baseline_commit, inventory.source_paths)
+    sources = reader(inventory.baseline_commit, inventory.read_paths)
     report = validate_inventory(inventory, sources)
     if not report.ok:
         print(json.dumps({"step": "STOP", "reason": f"the inventory has {len(report.problems)} problem(s); run validate"}))
@@ -1755,12 +1901,12 @@ def main(argv: Sequence[str] | None = None, reader: SourceReader = read_sources_
     if args.command == "draft":
         from tools import github_work_tracking_rules as rules
 
-        sources = reader(args.commit, rules.SOURCES)
+        sources = reader(args.commit, rules.READS)
         sys.stdout.buffer.write(render_manifest(rules.draft_inventory(args.commit, sources)).encode("utf-8"))
         return 0
 
     inventory = load_inventory(args.inventory)
-    report = validate_inventory(inventory, reader(inventory.baseline_commit, inventory.source_paths))
+    report = validate_inventory(inventory, reader(inventory.baseline_commit, inventory.read_paths))
     for problem in report.problems:
         print(f"PROBLEM: {problem}")
     print(json.dumps({"ok": report.ok, "problems": len(report.problems), **report.counts}, sort_keys=True))
