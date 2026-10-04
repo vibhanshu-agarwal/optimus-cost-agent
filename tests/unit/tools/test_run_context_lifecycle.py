@@ -7,6 +7,7 @@ job handle; the only process it ends is the planted root it started.
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import json
 import os
@@ -16,6 +17,7 @@ import subprocess
 import sys
 import sysconfig
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -62,6 +64,124 @@ def _nested(target: str, *arguments: str, behaviour: str = "") -> tuple[int, str
     return completed.returncode, found.group(1), output
 
 
+# --- Plan 11.30 Task 0: this file never touches the real registry (negative space).
+
+
+def _registry_bytes(folder: Path) -> dict[str, bytes]:
+    """Every entry of a registry folder, by name, as bytes. An entry withdrawn mid-listing is passed over."""
+    found: dict[str, bytes] = {}
+    try:
+        names = [entry.name for entry in os.scandir(folder) if entry.name.endswith(".json")]
+    except FileNotFoundError:
+        return found
+    for name in names:
+        try:
+            found[name] = (folder / name).read_bytes()
+        except FileNotFoundError:
+            continue
+    return found
+
+
+def _end_status(data: bytes) -> str:
+    try:
+        root = json.loads(data)["root"]
+        return run_context.process_end_status(root["pid"], root["creation_time"])[0]
+    except (ValueError, KeyError, TypeError):
+        return run_context.UNKNOWN
+
+
+def _descendants(run_id: str | None, added: dict[str, bytes]) -> list[str]:
+    """The added entries whose recorded parent chain reaches `run_id`: this run's own children."""
+    parents: dict[str, tuple[str, object]] = {}
+    for name, data in added.items():
+        try:
+            entry = json.loads(data)
+            parent = entry.get("parent_run", {}).get("run_id")
+            parents[str(entry["run_id"])] = (name, parent)
+        except (ValueError, KeyError, TypeError, AttributeError):
+            continue
+    ours: set[str] = {run_id} if run_id else set()
+    grew = True
+    while grew:
+        grew = False
+        for child, (_name, parent) in parents.items():
+            if parent in ours and child not in ours:
+                ours.add(child)
+                grew = True
+    return sorted(name for child, (name, _parent) in parents.items() if child in ours)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _real_registry_untouched() -> Iterator[None]:
+    """This file adds, changes and removes nothing in the real registry, while other lanes may.
+
+    Concurrent runs may announce and withdraw themselves meanwhile, so host-wide equality is never
+    asserted. An added entry is this file's when its recorded parent chain reaches this run. An
+    entry whose root had already ended cannot withdraw itself, so its removal is never legitimate.
+    An entry that stayed must keep its bytes. Parent chains are recorded only where validated process
+    ancestry exists (Windows); elsewhere added entries cannot be attributed here, and the positive
+    marker checks of the synthetic registry carry the proof instead.
+    """
+    real = run_context_records.registry_root()
+    before = _registry_bytes(real)
+    ended_before = {name for name, data in before.items() if _end_status(data) == run_context.ENDED}
+    context = run_context.current()
+    yield
+    after = _registry_bytes(real)
+    added = {name: after[name] for name in after.keys() - before.keys()}
+    ours = _descendants(context.run_id if context is not None else None, added)
+    changed = sorted(name for name in before.keys() & after.keys() if before[name] != after[name])
+    removed = sorted(name for name in ended_before - after.keys())
+    assert (ours, changed, removed) == ([], [], []), "this file touched the real registry"
+
+
+class _SyntheticRegistry:
+    """One test's registry. Children reach it through TEMP/TMP; this process only inside `view()`."""
+
+    def __init__(self, temp: Path) -> None:
+        self.temp = temp
+        self.root = temp / "optimus-test-runs" / "registry"
+        # A passive announcement that exists only here: a child that lists it read this registry.
+        self.marker = f"20000101T000000-{os.getpid()}-{secrets.token_hex(3)}"
+
+    @contextlib.contextmanager
+    def view(self) -> Iterator[Path]:
+        """This process reads and withdraws synthetic entries only here, inside one test phase. Between
+        phases the outer run keeps sampling the real registry, so its overlap records stay true."""
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(run_context_records, "registry_root", lambda: self.root)
+            yield self.root
+
+
+@pytest.fixture(autouse=True)
+def synthetic_registry(tmp_path_factory: pytest.TempPathFactory) -> Iterator[_SyntheticRegistry]:
+    """Every nested, planted or repeated-session child of this test announces itself in a synthetic
+    registry. The outer run's own announcement is copied in, so children still find it as their parent.
+
+    Python's temporary directory is TMPDIR first, then TEMP, then TMP, on every platform, so all three
+    point at the synthetic root. The fixture keeps its own MonkeyPatch: a test's `monkeypatch.undo()`
+    cannot end the isolation early.
+    """
+    synthetic = _SyntheticRegistry(tmp_path_factory.mktemp("reg"))
+    synthetic.root.mkdir(parents=True)
+    context = run_context.current()
+    if context is not None:
+        own = run_context_records.registry_root() / f"{context.run_id}.json"
+        if own.is_file():
+            (synthetic.root / own.name).write_bytes(own.read_bytes())
+            start = run_context_records.read_record(own)
+            assert start is not None
+            start.pop("schema")
+            run_context_records.write_record(
+                synthetic.root / f"{synthetic.marker}.json",
+                {**start, "run_id": synthetic.marker, "mode": "passive", "reason": "requested"},
+            )
+    with pytest.MonkeyPatch.context() as patch:
+        for name in ("TMPDIR", "TEMP", "TMP"):
+            patch.setenv(name, str(synthetic.temp))
+        yield synthetic
+
+
 # --- Task 3: per-test records, collection identity, completeness.
 
 
@@ -97,7 +217,9 @@ def test_two_tests_that_share_a_label_keep_distinct_identities() -> None:
     ],
     ids=["passing", "setup-skip", "teardown-failure"],
 )
-def test_each_phase_outcome_is_kept_as_pytest_reported_it(behaviour: str, exit_code: int, expected: list[tuple[str, str]]) -> None:
+def test_each_phase_outcome_is_kept_as_pytest_reported_it(
+    behaviour: str, exit_code: int, expected: list[tuple[str, str]], synthetic_registry: _SyntheticRegistry,
+) -> None:
     code, run_id, output = _nested(f"{_TARGETS}::test_behaviour_target", behaviour=behaviour)
     assert code == exit_code, output
     record, phases = _record(run_id), _stream(run_id, "phases")
@@ -105,7 +227,10 @@ def test_each_phase_outcome_is_kept_as_pytest_reported_it(behaviour: str, exit_c
     assert (record["exit_status"], record["completeness"], record["selected"]) == (exit_code, "COMPLETE", 1)
     assert f"records=COMPLETE phases={len(expected)} exit={exit_code}" in output
     # A finished run has withdrawn its own announcement; its record stays in the worktree.
-    assert not (run_context_records.registry_root() / f"{run_id}.json").exists()
+    assert not (synthetic_registry.root / f"{run_id}.json").exists()
+    # Positively: the child read the synthetic registry, whose marker announcement exists nowhere else.
+    listed = {other["run_id"] for sample in _stream(run_id, "samples") for other in sample["others"]}
+    assert synthetic_registry.marker in listed, "the nested run did not read the synthetic registry"
     if behaviour == "setup_skip":
         reason = str(phases[0]["reason"])
         assert "synthetic setup skip" in reason and "hunter2" not in reason
@@ -136,6 +261,17 @@ def test_deselected_tests_keep_their_identity() -> None:
     assert run_context._node(f"{_TARGETS}::test_planted_run_target") in {entry["node"] for entry in nodes if entry["state"] == "deselected"}  # noqa: SLF001
 
 
+_SCRATCH_CONTEXTS: list[run_context.RunContext] = []
+
+
+@pytest.fixture(autouse=True)
+def _close_scratch_streams() -> Iterator[None]:
+    """A scratch context a test never finishes still closes the stream files it held."""
+    yield
+    while _SCRATCH_CONTEXTS:
+        run_context_records.close_held(_SCRATCH_CONTEXTS.pop().held)  # type: ignore[arg-type]
+
+
 def _scratch_context(tmp_path: Path) -> run_context.RunContext:
     """A context of this run's shape with its own run ID and folder, so nothing touches the real session's records."""
     real = _context()
@@ -147,6 +283,7 @@ def _scratch_context(tmp_path: Path) -> run_context.RunContext:
         guard_mode=real.guard_mode, facts=dict(real.facts),
     )
     scratch.last_sample = time.monotonic()  # no sample is due inside these unit checks
+    _SCRATCH_CONTEXTS.append(scratch)
     return scratch
 
 
@@ -198,27 +335,33 @@ def test_an_append_that_fails_outside_the_entry_is_deferred_and_written_later(mo
     assert scratch.pending["phases"] == [] and scratch.counts["recording_errors"] >= 1
 
 
-class _CloseFails:
-    """A file whose bytes reach the disk and whose close then fails: the append's progress is unknown."""
+class _FlushFails:
+    """A held stream whose bytes reach the operating system and whose flush then fails: the append's
+    progress is unknown. (Plan 11.30 Task 0: streams are held for the run, so the bytes of an append
+    reach the operating system at its flush, not at a close.)"""
 
     def __init__(self, inner: object) -> None:
         self._inner = inner
 
+    @property
+    def closed(self) -> bool:
+        return self._inner.closed  # type: ignore[attr-defined]
+
     def write(self, data: str) -> int:
         return self._inner.write(data)  # type: ignore[attr-defined]
 
-    def __enter__(self) -> _CloseFails:
-        return self
+    def flush(self) -> None:
+        self._inner.flush()  # type: ignore[attr-defined]
+        raise OSError("flush blew up")
 
-    def __exit__(self, *_arguments: object) -> None:
+    def close(self) -> None:
         self._inner.close()  # type: ignore[attr-defined]
-        raise OSError("close blew up")
 
 
-def _opening_phases_with_failing_close(real_open):  # noqa: ANN001, ANN202
+def _opening_phases_with_failing_flush(real_open):  # noqa: ANN001, ANN202
     def opened(path: object, mode: str = "r", *arguments: object, **options: object) -> object:
         handle = real_open(path, mode, *arguments, **options)
-        return _CloseFails(handle) if str(path).endswith("phases.jsonl") and "a" in mode else handle
+        return _FlushFails(handle) if str(path).endswith("phases.jsonl") and "a" in mode else handle
 
     return opened
 
@@ -230,10 +373,12 @@ def test_an_append_with_unknown_progress_is_restored_then_retried_or_made_invali
     run_context.record_phase(scratch, _report(when="setup"))
     size = (tmp_path / "phases.jsonl").stat().st_size
     real_open = builtins.open
-    # Bytes reach the stream, then close fails: the stream is cut back to its earlier length and
-    # the batch waits; the next append writes it once.
+    # Bytes reach the stream, then the flush fails: the stream is cut back to its earlier length and
+    # the batch waits; the next append writes it once. The held stream is released first so the
+    # next append opens it again through the failing opener.
+    assert run_context_records.close_held(scratch.held) is True
     with pytest.MonkeyPatch.context() as patched:
-        patched.setattr(builtins, "open", _opening_phases_with_failing_close(real_open))
+        patched.setattr(builtins, "open", _opening_phases_with_failing_flush(real_open))
         run_context.record_phase(scratch, _report(when="call"))
     assert (tmp_path / "phases.jsonl").stat().st_size == size
     assert (scratch.counts["phases"], scratch.counts["deferred_appends"], scratch.counts["recording_errors"]) == (1, 1, 0)
@@ -242,8 +387,9 @@ def test_an_append_with_unknown_progress_is_restored_then_retried_or_made_invali
     assert [entry["when"] for entry in entries] == ["setup", "call", "teardown"] and (refused, how) == (0, "ok")
     assert scratch.counts["phases"] == 3 and run_context.completeness(scratch) == "COMPLETE"
     # The same failure when the stream cannot be cut back: progress stays unknown, the record is INVALID.
+    assert run_context_records.close_held(scratch.held) is True
     with pytest.MonkeyPatch.context() as patched:
-        patched.setattr(builtins, "open", _opening_phases_with_failing_close(real_open))
+        patched.setattr(builtins, "open", _opening_phases_with_failing_flush(real_open))
         patched.setattr(os, "truncate", lambda *_arguments: (_ for _ in ()).throw(OSError("truncate blew up")))
         run_context.record_phase(scratch, _report(when="setup"))
     assert (scratch.counts["phases"], scratch.counts["recording_errors"], scratch.pending["phases"]) == (3, 1, [])
@@ -268,44 +414,115 @@ def test_the_terminal_record_is_read_back_and_reconciled(monkeypatch: pytest.Mon
     assert run_context.current() is None
 
 
-def test_a_terminal_failure_is_contained_and_still_cleans_up(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """json.dumps still patched when the session ends: no exception, exit status kept, entry withdrawn."""
+def test_each_stream_is_opened_once_and_held_until_the_run_ends(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Plan 11.30 Task 0 regression control: one open and one close per stream per run, never one per entry.
+
+    On the Windows host where this was diagnosed, once the process had encoded a PNG through Pillow,
+    every close() of a file the process had written blocked in the kernel, and for longer as the run
+    went on. Opening, appending and closing `phases.jsonl` once per phase grew the median gap between
+    test phases from 7 to 60 ms over a core run. Every entry still reaches the operating system as it
+    is appended, so another reader, or the record left by a killed run, sees all of them.
+    """
+    import builtins
+
+    scratch = _scratch_context(tmp_path)
+    real_open = builtins.open
+    opened: list[str] = []
+
+    def counting(path: object, mode: str = "r", *arguments: object, **options: object) -> object:
+        if str(path).endswith(".jsonl") and "a" in mode:
+            opened.append(Path(str(path)).name)
+        return real_open(path, mode, *arguments, **options)
+
+    monkeypatch.setattr(builtins, "open", counting)
+    for when in ("setup", "call", "teardown") * 20:
+        run_context.record_phase(scratch, _report(when=when))
+    assert opened == ["phases.jsonl"]
+    entries, refused, how = run_context_records.read_entries(tmp_path / "phases.jsonl", "phases")
+    assert len(entries) == 60 and (refused, how) == (0, "ok"), "every entry reached the operating system when appended"
+    monkeypatch.setattr(run_context, "_current", scratch)
+    final = run_context.finish_run(scratch, 0)
+    assert final["completeness"] == "COMPLETE" and final["streams"]["read_back"]["phases"] == "matches"  # type: ignore[index]
+    assert scratch.held == {}, "the run closes every stream it held"
+
+
+class _CloseRaises:
+    """A held stream whose close fails at the end of the run."""
+
+    def __init__(self, inner: object) -> None:
+        self._inner = inner
+        self.closed = False
+
+    def close(self) -> None:
+        self._inner.close()  # type: ignore[attr-defined]
+        raise OSError("close blew up")
+
+
+def test_a_held_stream_that_cannot_be_closed_makes_the_record_invalid(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Plan 11.30 Task 0: the one close at the end of the run is checked like every other step."""
     scratch = _scratch_context(tmp_path)
     run_context.record_phase(scratch, _report(when="call"))
-    announcement = run_context_records.registry_root() / f"{scratch.run_id}.json"
-    start = run_context_records.read_record(_context().record_dir / "run.json")
-    assert start is not None
-    start.pop("schema")
-    run_context_records.write_record(announcement, {**start, "run_id": scratch.run_id})
-    assert announcement.exists()
-
-    def broken(*_arguments: object, **_options: object) -> str:
-        raise TypeError("serialization blew up")
-
-    monkeypatch.setattr(json, "dumps", broken)
+    target = tmp_path / "phases.jsonl"
+    scratch.held[target] = _CloseRaises(scratch.held[target])
     monkeypatch.setattr(run_context, "_current", scratch)
-    final = run_context.finish_run(scratch, 3)
-    assert (final["exit_status"], final["completeness"]) == (3, "INVALID")
-    assert run_context.current() is None and not announcement.exists()
-    monkeypatch.undo()
-    record = run_context_records.read_record(tmp_path / "run.json")
-    assert record is None or record["checkpoint"] == "start"
-    # A failure anywhere else in the terminal work is contained the same way.
-    another = _scratch_context(tmp_path / "another")
-    run_context_records.write_record(run_context_records.registry_root() / f"{another.run_id}.json", {**start, "run_id": another.run_id})
-    monkeypatch.setattr(run_context, "_read_back", lambda _context: (_ for _ in ()).throw(RuntimeError("read-back blew up")))
-    monkeypatch.setattr(run_context, "_current", another)
-    final = run_context.finish_run(another, 2)
-    assert (final["exit_status"], final["completeness"]) == (2, "INVALID") and another.counts["recording_errors"] >= 1
-    assert run_context.current() is None and not (run_context_records.registry_root() / f"{another.run_id}.json").exists()
+    final = run_context.finish_run(scratch, 0)
+    assert (final["exit_status"], final["completeness"]) == (0, "INVALID") and scratch.counts["recording_errors"] >= 1
+    assert scratch.held == {}
 
 
-def test_a_session_whose_terminal_write_fails_still_reports_its_exit_status() -> None:
+def test_phase_times_keep_sub_millisecond_precision(tmp_path: Path) -> None:
+    """Plan 11.30 Task 0: with the per-phase close removed, gaps between phases fall below one
+    millisecond, and the plan's gap predicate (v4 §6) needs a positive first-decile median. Times
+    rounded to milliseconds made that median 0 and the verdict UNKNOWN; microseconds keep it measurable."""
+    scratch = _scratch_context(tmp_path)
+    run_context.record_phase(scratch, SimpleNamespace(
+        nodeid="tests/a.py::test_x", when="call", outcome="passed", start=scratch.started_wall + 0.000437,
+        duration=0.000219, longrepr=None))
+    entry = run_context_records.read_entries(tmp_path / "phases.jsonl", "phases")[0][0]
+    assert (entry["at"], entry["seconds"]) == (0.000437, 0.000219)
+
+
+def test_a_terminal_failure_is_contained_and_still_cleans_up(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, synthetic_registry: _SyntheticRegistry,
+) -> None:
+    """json.dumps still patched when the session ends: no exception, exit status kept, entry withdrawn."""
+    with synthetic_registry.view():
+        scratch = _scratch_context(tmp_path)
+        run_context.record_phase(scratch, _report(when="call"))
+        announcement = run_context_records.registry_root() / f"{scratch.run_id}.json"
+        start = run_context_records.read_record(_context().record_dir / "run.json")
+        assert start is not None
+        start.pop("schema")
+        run_context_records.write_record(announcement, {**start, "run_id": scratch.run_id})
+        assert announcement.exists()
+
+        def broken(*_arguments: object, **_options: object) -> str:
+            raise TypeError("serialization blew up")
+
+        monkeypatch.setattr(json, "dumps", broken)
+        monkeypatch.setattr(run_context, "_current", scratch)
+        final = run_context.finish_run(scratch, 3)
+        assert (final["exit_status"], final["completeness"]) == (3, "INVALID")
+        assert run_context.current() is None and not announcement.exists()
+        monkeypatch.undo()
+        record = run_context_records.read_record(tmp_path / "run.json")
+        assert record is None or record["checkpoint"] == "start"
+        # A failure anywhere else in the terminal work is contained the same way.
+        another = _scratch_context(tmp_path / "another")
+        run_context_records.write_record(run_context_records.registry_root() / f"{another.run_id}.json", {**start, "run_id": another.run_id})
+        monkeypatch.setattr(run_context, "_read_back", lambda _context: (_ for _ in ()).throw(RuntimeError("read-back blew up")))
+        monkeypatch.setattr(run_context, "_current", another)
+        final = run_context.finish_run(another, 2)
+        assert (final["exit_status"], final["completeness"]) == (2, "INVALID") and another.counts["recording_errors"] >= 1
+        assert run_context.current() is None and not (run_context_records.registry_root() / f"{another.run_id}.json").exists()
+
+
+def test_a_session_whose_terminal_write_fails_still_reports_its_exit_status(synthetic_registry: _SyntheticRegistry) -> None:
     """The conftest path: a nested run whose target leaves json.dumps broken until the session ends."""
     code, run_id, output = _nested(f"{_TARGETS}::test_behaviour_target", behaviour="terminal_fault")
     assert code == 0, output
     assert "records=INVALID" in output and "exit=0" in output, output
-    assert not (run_context_records.registry_root() / f"{run_id}.json").exists()
+    assert not (synthetic_registry.root / f"{run_id}.json").exists()
     record = run_context_records.read_record(_ROOT / "tmp" / "test-runs" / run_id / "run.json")
     assert record is not None and record["checkpoint"] == "start"
 
@@ -442,14 +659,18 @@ print("CODES=" + ",".join(str(code) for code in codes))
 
 
 @_windows
-def test_a_second_default_session_reuses_the_job_and_a_passive_one_is_refused() -> None:
+def test_a_second_default_session_reuses_the_job_and_a_passive_one_is_refused(synthetic_registry: _SyntheticRegistry) -> None:
     completed = subprocess.run(
         [sys.executable, "-c", _REPEATED_SESSIONS], cwd=_ROOT, capture_output=True, text=True, timeout=300, check=False,
     )
     output = completed.stdout + completed.stderr
     assert "CODES=0,0,4" in output and "separate interpreter" in output, output
-    first, second = (_record(run_id) for run_id in _RUN.findall(output)[:2])
+    first_id, second_id = _RUN.findall(output)[:2]
+    first, second = _record(first_id), _record(second_id)
     assert (first["session_index"], second["session_index"]) == (1, 2)
+    # Both sessions read the synthetic registry (Plan 11.30 Task 0 isolation).
+    for run_id in (first_id, second_id):
+        assert synthetic_registry.marker in {other["run_id"] for sample in _stream(run_id, "samples") for other in sample["others"]}
     assert first["native"]["job_name"] == second["native"]["job_name"]
     assert first["native"]["reused_from_earlier_session"] is False and second["native"]["reused_from_earlier_session"] is True
     assert second["parent_run"] == {"status": "same_interpreter"} and second["native"]["valid"] is True
@@ -493,7 +714,9 @@ def _planted(folder: Path) -> dict[str, object]:
 @_windows
 @pytest.mark.parametrize("started_by", ["venv_launcher", "base_interpreter"])
 @pytest.mark.parametrize("how", ["normal_exit", "abrupt_exit"])
-def test_a_planted_run_takes_its_own_processes_with_it_and_leaves_another_run_alone(tmp_path: Path, how: str, started_by: str) -> None:
+def test_a_planted_run_takes_its_own_processes_with_it_and_leaves_another_run_alone(
+    tmp_path: Path, how: str, started_by: str, synthetic_registry: _SyntheticRegistry,
+) -> None:
     if started_by == "base_interpreter" and getattr(sys, "_main5_guard_activated", False):
         pytest.skip("MAIN-5 requires every Python child to start through its attempt environment")
     survivor_process, planted_process = _plant(tmp_path / "survivor", started_by), _plant(tmp_path / "planted", started_by)
@@ -512,7 +735,8 @@ def test_a_planted_run_takes_its_own_processes_with_it_and_leaves_another_run_al
         assert all(observer.is_gone(process) is False for process in watched)
 
         # Before anything ends: seen from this test's job, both planted runs are its own members.
-        seen = {entry["run_id"]: entry["relation"] for entry in run_context.other_runs("none")[0]}
+        with synthetic_registry.view():
+            seen = {entry["run_id"]: entry["relation"] for entry in run_context.other_runs("none")[0]}
         assert seen.get(planted["run_id"]) == "own_job" and seen.get(survivor["run_id"]) == "own_job"
 
         if how == "normal_exit":
@@ -526,7 +750,8 @@ def test_a_planted_run_takes_its_own_processes_with_it_and_leaves_another_run_al
         assert all(seconds is not None for seconds in gone.values()), f"members still running five seconds after the root exited: {gone}"
 
         assert all(observer.is_gone(process) is False for process in others), "the independent run must be untouched"
-        still = {entry["run_id"] for entry in run_context.other_runs("none")[0]}
+        with synthetic_registry.view():
+            still = {entry["run_id"] for entry in run_context.other_runs("none")[0]}
         assert survivor["run_id"] in still and planted["run_id"] not in still and planted["nested"]["run_id"] not in still
 
         record = _record(planted["run_id"])
@@ -541,6 +766,12 @@ def test_a_planted_run_takes_its_own_processes_with_it_and_leaves_another_run_al
         else:
             # No terminal record could be written: the record stays partial and the observer supplies the rest.
             assert record["checkpoint"] == "start" and "exit_status" not in record
+            # Every phase recorded before the kill had already reached the operating system (Plan 11.30 Task 0).
+            assert ("setup", "passed") in [(entry["when"], entry["outcome"]) for entry in _stream(planted["run_id"], "phases")]
+            # A killed run never withdraws its announcement; it must never have been made in the real registry.
+            real = run_context_records.registry_root()
+            assert not (real / f"{planted['run_id']}.json").exists() and not (real / f"{planted['nested']['run_id']}.json").exists()
+            assert (synthetic_registry.root / f"{planted['run_id']}.json").exists(), "the killed run announced itself in the synthetic registry"
 
         (tmp_path / "survivor" / "release").write_text("go", encoding="utf-8")
         assert survivor_process.wait(timeout=120) == 0

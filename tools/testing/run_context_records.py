@@ -23,6 +23,7 @@ import re
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+from typing import IO
 
 SCHEMA = "test-run-context-v1"
 MAX_RECORD_BYTES = 256 * 1024
@@ -293,12 +294,21 @@ def _load_record(source: Path) -> tuple[dict[str, object] | None, str]:
     return payload, "ok"
 
 
-def append_entries(target: Path, stream: str, entries: list[dict[str, object]], *, max_bytes: int = MAX_STREAM_BYTES) -> list[bytes]:
+def append_entries(
+    target: Path, stream: str, entries: list[dict[str, object]], *, max_bytes: int = MAX_STREAM_BYTES,
+    held: dict[Path, IO[str]] | None = None,
+) -> list[bytes]:
     """Append conforming entries to one of a run's streams. The run context's only other sink.
 
     Every entry is checked against its stream's table, the batch must be left unchanged by the
     shared sanitizer, and the file may not grow past its ceiling. Nothing is written otherwise.
     Returns a digest of each line written, so the caller can reconcile the stream later.
+
+    With `held`, the stream is opened once, kept in `held` and reused, and each append is written
+    and flushed to the operating system before this returns; `close_held` closes it. A stream that
+    fails is closed and dropped from `held`, so the next append opens it again. Plan 11.30 Task 0:
+    on some Windows hosts every close() of a written file blocks for longer as the process ages,
+    and one open and close per test phase made the gaps between phases grow over a whole run.
     """
     table = _STREAMS[stream]
     for entry in entries:
@@ -317,10 +327,20 @@ def append_entries(target: Path, stream: str, entries: list[dict[str, object]], 
     if existing + len(body.encode("utf-8")) > max_bytes:
         raise RecordTooLarge(TOO_LARGE)
     try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with open(target, "a", encoding="utf-8") as stream_file:
+        if held is None:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with open(target, "a", encoding="utf-8") as stream_file:
+                stream_file.write(body)
+        else:
+            stream_file = held.get(target)
+            if stream_file is None or stream_file.closed:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                stream_file = held[target] = open(target, "a", encoding="utf-8")  # noqa: SIM115 - closed by close_held
             stream_file.write(body)
+            stream_file.flush()
     except OSError as error:
+        if held is not None:
+            _drop_held(held, target)
         # Progress is unknown: bytes may have reached the stream before the failure. The stream is
         # restored to its length from before this append; only then may the batch be tried again.
         try:
@@ -333,6 +353,28 @@ def append_entries(target: Path, stream: str, entries: list[dict[str, object]], 
             raise AppendNotStarted from error
         raise AppendIntegrityUnknown from error
     return [line_digest(line) for line in lines]
+
+
+def _drop_held(held: dict[Path, IO[str]], target: Path) -> None:
+    """Forget a held stream after a failure; closing it may fail too, which changes nothing."""
+    stream_file = held.pop(target, None)
+    if stream_file is not None:
+        try:
+            stream_file.close()
+        except OSError:
+            pass
+
+
+def close_held(held: dict[Path, IO[str]]) -> bool:
+    """Close every held stream. True only when every close succeeded; nothing stays held either way."""
+    closed = True
+    while held:
+        target, stream_file = held.popitem()
+        try:
+            stream_file.close()
+        except OSError:
+            closed = False
+    return closed
 
 
 def line_digest(line: str) -> bytes:

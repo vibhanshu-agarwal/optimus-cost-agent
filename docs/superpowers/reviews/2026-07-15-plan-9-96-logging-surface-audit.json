@@ -3711,6 +3711,62 @@
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed after the typed field table in tools.testing.run_context_records",
       "test_node": "tests/unit/tools/test_run_context_boundaries.py::test_the_writer_refuses_a_record_outside_the_field_table",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.registry_maintenance:_append_receipt:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 0. _append_receipt opens the append-only receipt file registry/ended/receipts.jsonl beside archived run-context registry entries, only during an operator-invoked archive under a granted class digest, after the receipt line passed the shared sanitizer unchanged.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed in tools.testing.registry_maintenance",
+      "test_node": "tests/unit/tools/test_registry_maintenance.py::test_the_granted_class_is_archived_with_one_receipt_each_and_the_rest_stays",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.registry_maintenance:_append_receipt:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 0. _append_receipt serializes one receipt per archived entry: entry name, run ID, content SHA-256, source and target paths inside the registry, the end-status predicate result, disposition, class digest and a UTC timestamp. The line is refused if the shared sanitizer would change it.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed in tools.testing.registry_maintenance",
+      "test_node": "tests/unit/tools/test_registry_maintenance.py::test_the_granted_class_is_archived_with_one_receipt_each_and_the_rest_stays",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.registry_maintenance:_append_receipt:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 0. _append_receipt writes that checked receipt line and nothing else.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed in tools.testing.registry_maintenance",
+      "test_node": "tests/unit/tools/test_registry_maintenance.py::test_the_granted_class_is_archived_with_one_receipt_each_and_the_rest_stays",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.registry_maintenance:main:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 0. The inventory command creates one new manifest file (mode x, never overwritten) only after the whole manifest passed the shared sanitizer unchanged; entry names are filesystem text, so a manifest the sanitizer would change is refused and nothing is written.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed in tools.testing.registry_maintenance",
+      "test_node": "tests/unit/tools/test_registry_maintenance.py::test_the_cli_refuses_a_manifest_the_shared_sanitizer_would_change",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.registry_maintenance:main:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 0. The inventory manifest holds registry entry names, content SHA-256 digests, run IDs, process IDs and creation times, recorded worktree paths from field-table-validated records, end-status results, dispositions and counts. Unreadable or malformed entries contribute only name, digest and reason, never content. Refused if the shared sanitizer would change it.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed in tools.testing.registry_maintenance",
+      "test_node": "tests/unit/tools/test_registry_maintenance.py::test_the_cli_refuses_a_manifest_the_shared_sanitizer_would_change",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.registry_maintenance:main:stdout_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 0. The CLI prints counts, the class digest, outcome tallies and, for refused entries, the manifest entry name and a fixed reason token; manifest text was checked by the shared sanitizer before it was written.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed in tools.testing.registry_maintenance",
+      "test_node": "tests/unit/tools/test_registry_maintenance.py::test_the_cli_refuses_a_manifest_the_shared_sanitizer_would_change",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.registry_maintenance:main:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 0. The inventory command writes the checked manifest JSON and nothing else.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed in tools.testing.registry_maintenance",
+      "test_node": "tests/unit/tools/test_registry_maintenance.py::test_the_cli_refuses_a_manifest_the_shared_sanitizer_would_change",
+      "evidence_tier": "unit"
     }
   ]
 }

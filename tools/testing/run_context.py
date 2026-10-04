@@ -28,6 +28,9 @@ OPTION_DEST = "test_run_context"
 ACTIVE = "active"
 PASSIVE = "passive"
 UNKNOWN = "UNKNOWN"
+# A registered root process, as `process_end_status` finds it.
+ENDED = "ENDED"
+LIVE = "LIVE"
 
 # The approved default selection, frozen here on purpose. A session's own configuration can be
 # replaced from the command line, the environment or another config file, so it is never the
@@ -81,6 +84,8 @@ class RunContext:
     selection: object = field(default_factory=hashlib.sha256)
     # True once this run's own registry announcement has been removed.
     registry_withdrawn: bool = False
+    # The run's open stream files, one per stream, closed when the run ends (Plan 11.30 Task 0).
+    held: dict[Path, object] = field(default_factory=dict)
 
 
 _sessions_started = 0
@@ -342,7 +347,7 @@ def _append(context: RunContext, stream: str, entries: list[dict[str, object]]) 
         context.truncated = True
         return
     try:
-        written = records.append_entries(context.record_dir / f"{stream}.jsonl", stream, batch)
+        written = records.append_entries(context.record_dir / f"{stream}.jsonl", stream, batch, held=context.held)  # type: ignore[arg-type]
         context.counts[stream] += len(batch)
         for digest in written:
             context.ledger[stream].update(digest)  # type: ignore[attr-defined]
@@ -404,8 +409,8 @@ def record_phase(context: RunContext, report: object) -> None:
     try:
         entry: dict[str, object] = {
             "node": _node(str(report.nodeid)), "when": str(report.when), "outcome": str(report.outcome),  # type: ignore[attr-defined]
-            "at": round(max(0.0, float(getattr(report, "start", context.started_wall)) - context.started_wall), 3),
-            "seconds": round(max(0.0, float(getattr(report, "duration", 0.0))), 3),
+            "at": round(max(0.0, float(getattr(report, "start", context.started_wall)) - context.started_wall), 6),
+            "seconds": round(max(0.0, float(getattr(report, "duration", 0.0))), 6),
         }
         if entry["outcome"] == "skipped":
             longrepr = getattr(report, "longrepr", None)
@@ -416,6 +421,40 @@ def record_phase(context: RunContext, report: object) -> None:
             sample_run(context, "phase")
     except Exception:  # noqa: BLE001 - recording must never change a test's outcome
         context.counts["recording_errors"] += 1
+
+
+def process_end_status(pid: int, creation_time: int | None) -> tuple[str, str]:
+    """Whether a registered root process has positively ended: (`ENDED`, `LIVE` or `UNKNOWN`, basis).
+
+    The one predicate behind overlap reading and registry maintenance (Plan 11.30 Task 0). On Windows
+    the process is checked through one short-lived handle: the open says there is no such process
+    (`not_found`), the PID now names a process with another creation time, so the recorded one ended
+    and the replacement is not it (`replaced`), or a zero-time wait says it has terminated
+    (`terminated`). A denied or failed open or query, or an entry without a creation time, is
+    UNKNOWN, never absence. A running process with the recorded creation time is LIVE (`running`).
+    Elsewhere a missing `/proc/<pid>` is ENDED (`proc_absent`), and a present one proves no identity:
+    UNKNOWN (`proc_present`).
+    """
+    status, basis, _identity_read = _end_status(pid, creation_time)
+    return status, basis
+
+
+def _end_status(pid: int, creation_time: int | None) -> tuple[str, str, native.ProcessIdentity | None]:
+    """`process_end_status` plus the identity it read, so a caller never opens the process twice."""
+    if not native.supported():
+        return ((ENDED, "proc_absent", None) if not Path(f"/proc/{pid}").exists() else (UNKNOWN, "proc_present", None))
+    if not _whole_number(creation_time):
+        return UNKNOWN, "incomplete_identity", None
+    identity = native.process_identity(pid)
+    if not identity.opened and identity.error == native.ERROR_INVALID_PARAMETER:
+        return ENDED, "not_found", identity
+    if identity.creation_time is not None and identity.creation_time != creation_time:
+        return ENDED, "replaced", identity
+    if identity.live is False:
+        return ENDED, "terminated", identity
+    if identity.creation_time is None or identity.live is None:
+        return UNKNOWN, "query_failed", identity
+    return LIVE, "running", identity
 
 
 def other_runs(run_id: str) -> tuple[list[dict[str, object]], int, str, int]:
@@ -439,24 +478,19 @@ def other_runs(run_id: str) -> tuple[list[dict[str, object]], int, str, int]:
         pid, created = (root.get("pid"), root.get("creation_time")) if isinstance(root, dict) else (None, None)
         if not _whole_number(pid):
             continue
-        if native.supported():
-            if not _whole_number(created):
-                continue
-            identity = native.process_identity(pid)
-            if (not identity.opened and identity.error == native.ERROR_INVALID_PARAMETER) \
-                    or (identity.creation_time is not None and identity.creation_time != created) or identity.live is False:
-                ended += 1
-                continue
-            if identity.creation_time is None or identity.live is None:
-                relation = "unknown"
-            else:
-                member = native.is_member(identity)
-                relation = "own_job" if member is True else "outside" if member is False else "unknown"
-        else:
-            if not Path(f"/proc/{pid}").exists():
-                ended += 1
-                continue
+        if native.supported() and not _whole_number(created):
+            continue
+        status, _basis, identity = _end_status(pid, created)
+        if status == ENDED:
+            ended += 1
+            continue
+        if not native.supported():
             relation = "unverified"
+        elif status == UNKNOWN or identity is None:
+            relation = "unknown"
+        else:
+            member = native.is_member(identity)
+            relation = "own_job" if member is True else "outside" if member is False else "unknown"
         if len(listed) >= records.MAX_OTHER_RUNS:
             extra += 1
             continue
@@ -548,6 +582,8 @@ def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
         final.setdefault("terminal_failure", _failure_token(error))
     finally:
         _current = None
+        # Never leave a stream open past the run, even when the terminal work failed early.
+        records.close_held(context.held)  # type: ignore[arg-type]
     return final
 
 
@@ -595,6 +631,8 @@ def _terminal(context: RunContext, exit_status: int) -> dict[str, object]:
             # Still not written after the last attempt: the record is incomplete and says so.
             context.counts["recording_errors"] += 1
             context.pending[stream].clear()
+    if not records.close_held(context.held):  # type: ignore[arg-type]
+        context.counts["recording_errors"] += 1
     reconciled, read_back = _read_back(context)
     if not reconciled:
         context.counts["recording_errors"] += 1

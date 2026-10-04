@@ -1,0 +1,859 @@
+{
+ "schema": "plan-11-30-evidence-manifest-v1",
+ "digest_notation": "Digests are algorithm-tagged: sha256:<64 lowercase hex> for SHA-256, git-sha1:<40 lowercase hex> for Git commit IDs.",
+ "plan": {
+  "path": "docs/superpowers/plans/2026-10-04-plan-11-30-test-profiles-implementation_v4.md",
+  "approved_working_bytes_sha256": "sha256:8a40def6d627edc722d9fa925bbb0c193de433eccb91d2dca19f1da6afc5c790",
+  "lf_normalised_blob_sha256": "sha256:7d07ada39ce1f8987e529c7fd8838952b4607f6f2cbd8773d39220d44db6af1e"
+ },
+ "report": "reports/plan-11-30-test-profiles-evidence.md",
+ "sections": {
+  "task0": {
+   "status": "complete; checkpoint A accepted by Codex 2026-10-04",
+   "base_commit": "git-sha1:a929aab2092876ab0d83ecc4e46896ae3a0935c0",
+   "sources": {
+    "pre_fix_tracked_diff_sha256": "sha256:8bc1c6f984bcccd93df5a97ab255aa59de744999012168f22681630d2fc9a53b",
+    "post_fix_first_tracked_diff_sha256": "sha256:bd5dabc87546367b898accdc6d9fd88afd57e08921a4c45f61c55e0f37a7af0e",
+    "post_fix_final_tracked_diff_sha256": "sha256:8ac5f80f454ef1fd1367011a2324175f9c7612b9884b813495044469e644ccbc",
+    "post_fix_final_files_sha256": {
+     "docs/README.md": "sha256:318ea5ac28263808baf192d41b59008ccadef124249be2404b09b1dc05cd5466",
+     "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md": "sha256:80755a101299a783529ddea56155b126f06339dfcd4a5841745970410d28e649",
+     "docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json": "sha256:c61df4978a8fc136a5cdaf1c8f74baa4dae076b258ea47a568fc22bc836a0f97",
+     "tests/unit/tools/run_context_child_sites.json": "sha256:0663524a3dbddac909567436bd38e017bbccd25b0b2688345c6e377e9fdf1fcd",
+     "tests/unit/tools/test_registry_maintenance.py": "sha256:bfc07c72407d33f4661f8080aa6c1e873bbab118938b733626bb7d95a7c2d34d",
+     "tests/unit/tools/test_run_context_lifecycle.py": "sha256:9ed99bb5655b3a30ca8a5c4636838d45fe88f37e9b6ba5943fbdfb334796a375",
+     "tools/testing/registry_maintenance.py": "sha256:aee44275d6fa3a1d114803126a8b6fd6141b3c808cae83167d7d29f5fc217cd1",
+     "tools/testing/run_context.py": "sha256:8532d2bb7e03bc55e8331f6f0cc45f582ec137f650b695ebb5fe2ce716e3d53c",
+     "tools/testing/run_context_records.py": "sha256:f11d0400240f2956936dc1a5a8e342d67102b43a6de5af97abea1c4097005253"
+    },
+    "checkpoint_a_amended_files_sha256": {
+     "docs/README.md": "sha256:318ea5ac28263808baf192d41b59008ccadef124249be2404b09b1dc05cd5466",
+     "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md": "sha256:80755a101299a783529ddea56155b126f06339dfcd4a5841745970410d28e649",
+     "docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json": "sha256:c61df4978a8fc136a5cdaf1c8f74baa4dae076b258ea47a568fc22bc836a0f97",
+     "tests/unit/tools/run_context_child_sites.json": "sha256:0663524a3dbddac909567436bd38e017bbccd25b0b2688345c6e377e9fdf1fcd",
+     "tests/unit/tools/test_registry_maintenance.py": "sha256:bb3a9920cdedcbde78b53068b42c3903f49fa6a141b029567576a5303487310f",
+     "tests/unit/tools/test_run_context_lifecycle.py": "sha256:3bee94a284fa21092c41fb853bcf21a767aa3bd1596572cf8bfb61c06c379443",
+     "tools/testing/registry_maintenance.py": "sha256:b3afbe1a5ae41d66f46dbe3daf6940b8bcc5a5e924db838f3cf4307b94103400",
+     "tools/testing/run_context.py": "sha256:8532d2bb7e03bc55e8331f6f0cc45f582ec137f650b695ebb5fe2ce716e3d53c",
+     "tools/testing/run_context_records.py": "sha256:f11d0400240f2956936dc1a5a8e342d67102b43a6de5af97abea1c4097005253"
+    },
+    "recorder_code_unchanged_since_fix_check": [
+     "tools/testing/run_context.py",
+     "tools/testing/run_context_records.py"
+    ],
+    "final_files_sha256": {
+     "tools/testing/run_context.py": "sha256:8532d2bb7e03bc55e8331f6f0cc45f582ec137f650b695ebb5fe2ce716e3d53c",
+     "tools/testing/run_context_records.py": "sha256:f11d0400240f2956936dc1a5a8e342d67102b43a6de5af97abea1c4097005253",
+     "tools/testing/registry_maintenance.py": "sha256:74c3a535fb52bf9caa6019fd5bacabc15f220276b96cc7ffeb334d8e35b8df0c",
+     "tests/unit/tools/test_run_context_lifecycle.py": "sha256:3bee94a284fa21092c41fb853bcf21a767aa3bd1596572cf8bfb61c06c379443",
+     "tests/unit/tools/test_registry_maintenance.py": "sha256:a9be93a64300eaabf641aff0f37a857dc5b3ef00f7be5b9776560f834c9de6b0",
+     "tests/unit/tools/run_context_child_sites.json": "sha256:0663524a3dbddac909567436bd38e017bbccd25b0b2688345c6e377e9fdf1fcd",
+     "docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json": "sha256:c61df4978a8fc136a5cdaf1c8f74baa4dae076b258ea47a568fc22bc836a0f97",
+     "docs/superpowers/plans/2026-10-04-plan-11-30-test-profiles-implementation_v4.md": "sha256:8a40def6d627edc722d9fa925bbb0c193de433eccb91d2dca19f1da6afc5c790"
+    }
+   },
+   "core_nodelist": {
+    "path": "tmp/plan-11-30-core-nodeids.txt",
+    "sha256": "sha256:062320611a0c6a003ae51a02ff767001de504fca3f020d4333906924d05dcdc7",
+    "nodes": 3821,
+    "default_collected": 5184
+   },
+   "runs": [
+    {
+     "label": "r1-active-cov",
+     "run_id": "20261004T103059-24588-6332c9",
+     "source": "pre-fix",
+     "purpose": "reproduce",
+     "mode": "active",
+     "reason": "default_selection",
+     "command": "uv run --no-sync pytest @tmp/plan-11-30-core-nodeids.txt --durations=0 --cov=optimus --cov-branch --cov-report=term-missing --cov-fail-under=0",
+     "head": "git-sha1:a929aab2092876ab0d83ecc4e46896ae3a0935c0",
+     "tracked_diff_sha256": "sha256:8bc1c6f984bcccd93df5a97ab255aa59de744999012168f22681630d2fc9a53b",
+     "nodelist_sha256": "sha256:062320611a0c6a003ae51a02ff767001de504fca3f020d4333906924d05dcdc7",
+     "pyproject_sha256": "sha256:9fee0c4cb628efb255d926e4213c31b3e6797ce73c22456d8e353aa940ba0432",
+     "uvlock_sha256": "sha256:f1caae185d41b02de2bf9a1cc4970e2517278c8a12b3a4728dd71fc2d826a097",
+     "start_utc": "2026-10-04T10:30:54Z",
+     "end_utc": "2026-10-04T10:41:30Z",
+     "exit_status": 1,
+     "completeness": "COMPLETE",
+     "selected": 3821,
+     "record_files_sha256": {
+      "nodes.jsonl": "sha256:29b90563453f15c1dfb7c230817d7059c242e9aa9f72587b81c773876e6b06cb",
+      "phases.jsonl": "sha256:159e99603e3c7ea80b59d6cb6ede12f8d9cc62cafe2de0536c62e76433899e3d",
+      "run.json": "sha256:bc9d6fa288851ab248148d94af80e14f70cd37ce251f4cd13e8a225e0f786a8a",
+      "samples.jsonl": "sha256:69f36b1711d1fed6c1708438061b28c1553aabcf7f2574d0bba60564d29437eb"
+     },
+     "output_sha256": "sha256:0123c51d60aa949c6f936024b6bc6d88e9995b81dd3db10bda0ea365a0ab93d4",
+     "gap_predicate_v4_s6": {
+      "phases": 11444,
+      "transitions": 11443,
+      "k": 1144,
+      "first_decile_median_s": 0.007,
+      "last_decile_median_s": 0.058,
+      "negative_gaps": 0,
+      "gap_sum_s": 402.987,
+      "phase_sum_s": 203.543,
+      "record_precision_s": 0.001,
+      "ratio": 8.2857,
+      "verdict": "FAIL"
+     },
+     "parent_run": {
+      "method": "validated_process_ancestry",
+      "reason": "registry_partial",
+      "status": "UNKNOWN"
+     },
+     "registry_states": [
+      "partial"
+     ],
+     "samples": 116,
+     "listed_other_runs": {
+      "20261003T074725-33588-29f415": {
+       "worktree_leaf": "optimus-cost-agent-wt-claude-runctx",
+       "relation": "unknown",
+       "samples": 62
+      },
+      "20261003T184727-31724-25f243": {
+       "worktree_leaf": "optimus-cost-agent-wt-claude-ptc-int",
+       "relation": "unknown",
+       "samples": 59
+      }
+     },
+     "live_foreign_overlap": []
+    },
+    {
+     "label": "r2-active-nocov",
+     "run_id": "20261004T104215-55844-00df20",
+     "source": "pre-fix",
+     "purpose": "reproduce",
+     "mode": "active",
+     "reason": "default_selection",
+     "command": "uv run --no-sync pytest @tmp/plan-11-30-core-nodeids.txt --durations=0 --no-cov",
+     "head": "git-sha1:a929aab2092876ab0d83ecc4e46896ae3a0935c0",
+     "tracked_diff_sha256": "sha256:8bc1c6f984bcccd93df5a97ab255aa59de744999012168f22681630d2fc9a53b",
+     "nodelist_sha256": "sha256:062320611a0c6a003ae51a02ff767001de504fca3f020d4333906924d05dcdc7",
+     "pyproject_sha256": "sha256:9fee0c4cb628efb255d926e4213c31b3e6797ce73c22456d8e353aa940ba0432",
+     "uvlock_sha256": "sha256:f1caae185d41b02de2bf9a1cc4970e2517278c8a12b3a4728dd71fc2d826a097",
+     "start_utc": "2026-10-04T10:42:12Z",
+     "end_utc": "2026-10-04T10:53:03Z",
+     "exit_status": 1,
+     "completeness": "COMPLETE",
+     "selected": 3821,
+     "record_files_sha256": {
+      "nodes.jsonl": "sha256:29b90563453f15c1dfb7c230817d7059c242e9aa9f72587b81c773876e6b06cb",
+      "phases.jsonl": "sha256:f358b10e1447f4cbe219f0891b87a13675c126d48bf62620b960a36fb9bc8a9d",
+      "run.json": "sha256:7489ba6d17afd014b466e0066edc228e789ba09f5c976fc9f5c5de0d5703955c",
+      "samples.jsonl": "sha256:8be90bf71eb81ac64259eef56873f77c8d041366f057c2cb500b87f192c5ca50"
+     },
+     "output_sha256": "sha256:57e68e26e9b9b1740006f9f88876eb4241d18cb379c7dd3784ed4224ede2e2bc",
+     "gap_predicate_v4_s6": {
+      "phases": 11444,
+      "transitions": 11443,
+      "k": 1144,
+      "first_decile_median_s": 0.007,
+      "last_decile_median_s": 0.065,
+      "negative_gaps": 0,
+      "gap_sum_s": 423.71,
+      "phase_sum_s": 207.009,
+      "record_precision_s": 0.001,
+      "ratio": 9.2857,
+      "verdict": "FAIL"
+     },
+     "parent_run": {
+      "method": "validated_process_ancestry",
+      "reason": "registry_partial",
+      "status": "UNKNOWN"
+     },
+     "registry_states": [
+      "partial"
+     ],
+     "samples": 120,
+     "listed_other_runs": {
+      "20261003T074725-33588-29f415": {
+       "worktree_leaf": "optimus-cost-agent-wt-claude-runctx",
+       "relation": "unknown",
+       "samples": 119
+      },
+      "20261003T184727-31724-25f243": {
+       "worktree_leaf": "optimus-cost-agent-wt-claude-ptc-int",
+       "relation": "unknown",
+       "samples": 1
+      },
+      "20261002T183226-40608-2f7a56": {
+       "worktree_leaf": "test_central_protection_keeps_0",
+       "relation": "unknown",
+       "samples": 23
+      }
+     },
+     "live_foreign_overlap": []
+    },
+    {
+     "label": "r3-passive-cov",
+     "run_id": "20261004T105330-42060-4ddeb5",
+     "source": "pre-fix",
+     "purpose": "discriminate",
+     "mode": "passive",
+     "reason": "requested",
+     "command": "uv run --no-sync pytest @tmp/plan-11-30-core-nodeids.txt --durations=0 --cov=optimus --cov-branch --cov-report=term-missing --cov-fail-under=0 --test-run-context=passive",
+     "head": "git-sha1:a929aab2092876ab0d83ecc4e46896ae3a0935c0",
+     "tracked_diff_sha256": "sha256:8bc1c6f984bcccd93df5a97ab255aa59de744999012168f22681630d2fc9a53b",
+     "nodelist_sha256": "sha256:062320611a0c6a003ae51a02ff767001de504fca3f020d4333906924d05dcdc7",
+     "pyproject_sha256": "sha256:9fee0c4cb628efb255d926e4213c31b3e6797ce73c22456d8e353aa940ba0432",
+     "uvlock_sha256": "sha256:f1caae185d41b02de2bf9a1cc4970e2517278c8a12b3a4728dd71fc2d826a097",
+     "start_utc": "2026-10-04T10:53:26Z",
+     "end_utc": "2026-10-04T11:04:48Z",
+     "exit_status": 1,
+     "completeness": "COMPLETE",
+     "selected": 3821,
+     "record_files_sha256": {
+      "nodes.jsonl": "sha256:29b90563453f15c1dfb7c230817d7059c242e9aa9f72587b81c773876e6b06cb",
+      "phases.jsonl": "sha256:85dd385bdaba53fb44f8c5afca9d3b0d8eb855e7ada8e67fa0b9a3ce5cd6350e",
+      "run.json": "sha256:c6b4d6af85cfce5030494e92b38cdc972fe0f2fb7a29401f6db51f6d37ffea2e",
+      "samples.jsonl": "sha256:e1a7d6dcb8a3bd3f106dff8bca259eaa2d179199d589247fd20d8b3e1c59920f"
+     },
+     "output_sha256": "sha256:2c2db8bac6bedf5e0149a3624f299807cc7dc64c77a78d389efd0b0fe4ddb3e2",
+     "gap_predicate_v4_s6": {
+      "phases": 11444,
+      "transitions": 11443,
+      "k": 1144,
+      "first_decile_median_s": 0.007,
+      "last_decile_median_s": 0.06,
+      "negative_gaps": 0,
+      "gap_sum_s": 449.486,
+      "phase_sum_s": 204.94,
+      "record_precision_s": 0.001,
+      "ratio": 8.5714,
+      "verdict": "FAIL"
+     },
+     "parent_run": {
+      "method": "validated_process_ancestry",
+      "reason": "registry_partial",
+      "status": "UNKNOWN"
+     },
+     "registry_states": [
+      "partial"
+     ],
+     "samples": 126,
+     "listed_other_runs": {},
+     "live_foreign_overlap": []
+    },
+    {
+     "label": "d1-active-cov-instrumented",
+     "run_id": "20261004T110548-20320-f3b48f",
+     "source": "pre-fix",
+     "purpose": "diagnose",
+     "mode": "active",
+     "reason": "default_selection",
+     "command": "uv run --no-sync pytest @tmp/plan-11-30-core-nodeids.txt --durations=0 --cov=optimus --cov-branch --cov-report=term-missing --cov-fail-under=0 -p tmp.plan1130_gapdiag",
+     "head": "git-sha1:a929aab2092876ab0d83ecc4e46896ae3a0935c0",
+     "tracked_diff_sha256": "sha256:8bc1c6f984bcccd93df5a97ab255aa59de744999012168f22681630d2fc9a53b",
+     "nodelist_sha256": "sha256:062320611a0c6a003ae51a02ff767001de504fca3f020d4333906924d05dcdc7",
+     "pyproject_sha256": "sha256:9fee0c4cb628efb255d926e4213c31b3e6797ce73c22456d8e353aa940ba0432",
+     "uvlock_sha256": "sha256:f1caae185d41b02de2bf9a1cc4970e2517278c8a12b3a4728dd71fc2d826a097",
+     "start_utc": "2026-10-04T11:05:44Z",
+     "end_utc": "2026-10-04T11:16:50Z",
+     "exit_status": 1,
+     "completeness": "COMPLETE",
+     "selected": 3821,
+     "record_files_sha256": {
+      "nodes.jsonl": "sha256:29b90563453f15c1dfb7c230817d7059c242e9aa9f72587b81c773876e6b06cb",
+      "phases.jsonl": "sha256:41c150ec4899e956e6599400a245f4dce23fd82504e7e87e7e1a312cc1a85fd3",
+      "run.json": "sha256:369856e5ea522050bed51d302f7070235ea74b7960b5e819cfce715ddc2fdb42",
+      "samples.jsonl": "sha256:fd65cda18ef04489b117935c0c37f3596c7730de02323a9689afdd68c20736cc"
+     },
+     "output_sha256": "sha256:11ce525763114a0265fe66cf9f75afbc92ee7cd08c60811d6b3f27c7d023a4b5",
+     "gap_predicate_v4_s6": {
+      "phases": 11444,
+      "transitions": 11443,
+      "k": 1144,
+      "first_decile_median_s": 0.007,
+      "last_decile_median_s": 0.061,
+      "negative_gaps": 0,
+      "gap_sum_s": 421.527,
+      "phase_sum_s": 212.826,
+      "record_precision_s": 0.001,
+      "ratio": 8.7143,
+      "verdict": "FAIL"
+     },
+     "parent_run": {
+      "method": "validated_process_ancestry",
+      "reason": "registry_partial",
+      "status": "UNKNOWN"
+     },
+     "registry_states": [
+      "partial"
+     ],
+     "samples": 120,
+     "listed_other_runs": {
+      "20261002T191217-47708-6d2eae": {
+       "worktree_leaf": "optimus-cost-agent-wt-claude-runctx",
+       "relation": "unknown",
+       "samples": 6
+      }
+     },
+     "live_foreign_overlap": []
+    },
+    {
+     "label": "d2-active-nocov-prefix1500-instrumented",
+     "run_id": "20261004T111813-27804-0963c6",
+     "source": "pre-fix",
+     "purpose": "diagnose-prefix",
+     "mode": "active",
+     "reason": "default_selection",
+     "command": "uv run --no-sync pytest @tmp/plan-11-30-core-prefix1500.txt --no-cov -p tmp.plan1130_gapdiag2",
+     "head": "git-sha1:a929aab2092876ab0d83ecc4e46896ae3a0935c0",
+     "tracked_diff_sha256": "sha256:8bc1c6f984bcccd93df5a97ab255aa59de744999012168f22681630d2fc9a53b",
+     "nodelist_sha256": "sha256:062320611a0c6a003ae51a02ff767001de504fca3f020d4333906924d05dcdc7",
+     "pyproject_sha256": "sha256:9fee0c4cb628efb255d926e4213c31b3e6797ce73c22456d8e353aa940ba0432",
+     "uvlock_sha256": "sha256:f1caae185d41b02de2bf9a1cc4970e2517278c8a12b3a4728dd71fc2d826a097",
+     "start_utc": "2026-10-04T11:18:09Z",
+     "end_utc": "2026-10-04T11:21:02Z",
+     "exit_status": 1,
+     "completeness": "COMPLETE",
+     "selected": 1500,
+     "record_files_sha256": {
+      "nodes.jsonl": "sha256:898f388f04533799f82852a466f311ecd8beccffbff69b3f9c970e52f35205a0",
+      "phases.jsonl": "sha256:ab62ec4cbbd77bc10c008c0b7ba8f06e053f91df37bcfe3537303f6b1bc90f85",
+      "run.json": "sha256:a1f6ff2df05d82b97b8eac145f9bf1f356e61b38eca68459b9f42372820f65f1",
+      "samples.jsonl": "sha256:1863adda94f7bb9a207a9cb1959294f29b5e877bd56eec8b639c06ca2798e7f3"
+     },
+     "output_sha256": "sha256:c0dfafc1e324811a58b89703d0f08e5d00597d4f338dadfbd4feb09d88258dce",
+     "parent_run": {
+      "method": "validated_process_ancestry",
+      "reason": "registry_partial",
+      "status": "UNKNOWN"
+     },
+     "registry_states": [
+      "partial"
+     ],
+     "samples": 32,
+     "listed_other_runs": {},
+     "live_foreign_overlap": []
+    },
+    {
+     "label": "d3-active-nocov-prefix1500-closesplit",
+     "run_id": "20261004T112320-58116-d6c987",
+     "source": "pre-fix",
+     "purpose": "diagnose-prefix",
+     "mode": "active",
+     "reason": "default_selection",
+     "command": "uv run --no-sync pytest @tmp/plan-11-30-core-prefix1500.txt --no-cov -p tmp.plan1130_gapdiag3",
+     "head": "git-sha1:a929aab2092876ab0d83ecc4e46896ae3a0935c0",
+     "tracked_diff_sha256": "sha256:8bc1c6f984bcccd93df5a97ab255aa59de744999012168f22681630d2fc9a53b",
+     "nodelist_sha256": "sha256:062320611a0c6a003ae51a02ff767001de504fca3f020d4333906924d05dcdc7",
+     "pyproject_sha256": "sha256:9fee0c4cb628efb255d926e4213c31b3e6797ce73c22456d8e353aa940ba0432",
+     "uvlock_sha256": "sha256:f1caae185d41b02de2bf9a1cc4970e2517278c8a12b3a4728dd71fc2d826a097",
+     "start_utc": "2026-10-04T11:23:17Z",
+     "end_utc": "2026-10-04T11:26:57Z",
+     "exit_status": 1,
+     "completeness": "COMPLETE",
+     "selected": 1500,
+     "record_files_sha256": {
+      "nodes.jsonl": "sha256:898f388f04533799f82852a466f311ecd8beccffbff69b3f9c970e52f35205a0",
+      "phases.jsonl": "sha256:ca84959f3a27ebca0c00b4c5e0fe3f5b5f17d76087a64d8d7489d22df79fce8a",
+      "run.json": "sha256:498853e795ce6b791de6c22d267a43482fefb8f020e2f2253b864c904da54986",
+      "samples.jsonl": "sha256:483a53e2c7107dae932e5b31fef7d63b6f99eb52870cc9717b9b6d45f3bfc88e"
+     },
+     "output_sha256": "sha256:47433aa9f90e7f25df068b090f219fd295c100589c23a23c5e38d8a16dbedddf",
+     "parent_run": {
+      "method": "validated_process_ancestry",
+      "reason": "registry_partial",
+      "status": "UNKNOWN"
+     },
+     "registry_states": [
+      "partial"
+     ],
+     "samples": 44,
+     "listed_other_runs": {},
+     "live_foreign_overlap": []
+    },
+    {
+     "label": "r5-active-cov-postfix",
+     "run_id": "20261004T115442-33504-b8e39c",
+     "source": "post-fix-bd5dabc8",
+     "purpose": "fix-check",
+     "mode": "active",
+     "reason": "default_selection",
+     "command": "uv run --no-sync pytest @tmp/plan-11-30-core-nodeids.txt --durations=0 --cov=optimus --cov-branch --cov-report=term-missing --cov-fail-under=0",
+     "head": "git-sha1:a929aab2092876ab0d83ecc4e46896ae3a0935c0",
+     "tracked_diff_sha256": "sha256:bd5dabc87546367b898accdc6d9fd88afd57e08921a4c45f61c55e0f37a7af0e",
+     "nodelist_sha256": "sha256:062320611a0c6a003ae51a02ff767001de504fca3f020d4333906924d05dcdc7",
+     "pyproject_sha256": "sha256:9fee0c4cb628efb255d926e4213c31b3e6797ce73c22456d8e353aa940ba0432",
+     "uvlock_sha256": "sha256:f1caae185d41b02de2bf9a1cc4970e2517278c8a12b3a4728dd71fc2d826a097",
+     "start_utc": "2026-10-04T11:54:38Z",
+     "end_utc": "2026-10-04T11:58:16Z",
+     "exit_status": 1,
+     "completeness": "COMPLETE",
+     "selected": 3821,
+     "record_files_sha256": {
+      "nodes.jsonl": "sha256:29b90563453f15c1dfb7c230817d7059c242e9aa9f72587b81c773876e6b06cb",
+      "phases.jsonl": "sha256:d6b44650e65d4b3c077e6f8d50495ac52c832db1e466d21ad402b53aa7a19e3a",
+      "run.json": "sha256:9b560526604550fce9792041c493643df1204c8a1528d75e4e4377aca4373e7e",
+      "samples.jsonl": "sha256:b2d25d0104470037bd324942027bf66f1fa5be7c685f9b76e93d1cf86119f9c2"
+     },
+     "output_sha256": "sha256:2f4b21ed7a1667398200dbf4d75d751188a15e96cf7cdcd23741ef254bd2cfa9",
+     "gap_predicate_v4_s6": {
+      "phases": 11444,
+      "transitions": 11443,
+      "k": 1144,
+      "first_decile_median_s": 0.001,
+      "last_decile_median_s": 0.001,
+      "negative_gaps": 592,
+      "gap_sum_s": 11.335,
+      "phase_sum_s": 181.347,
+      "record_precision_s": 0.001,
+      "ratio": 1.0,
+      "verdict": "PASS"
+     },
+     "parent_run": {
+      "method": "validated_process_ancestry",
+      "reason": "registry_partial",
+      "status": "UNKNOWN"
+     },
+     "registry_states": [
+      "partial"
+     ],
+     "samples": 36,
+     "listed_other_runs": {
+      "20261002T191731-50540-19494d": {
+       "worktree_leaf": "optimus-cost-agent-wt-claude-runctx",
+       "relation": "unknown",
+       "samples": 10
+      },
+      "20261004T114222-51636-016cc7": {
+       "worktree_leaf": "optimus-cost-agent-wt-claude-plan12-cp4",
+       "relation": "outside",
+       "samples": 36
+      },
+      "20261002T191653-33988-32e20e": {
+       "worktree_leaf": "optimus-cost-agent-wt-claude-runctx",
+       "relation": "unknown",
+       "samples": 7
+      }
+     },
+     "live_foreign_overlap": [
+      "20261004T114222-51636-016cc7"
+     ]
+    },
+    {
+     "label": "r6-active-nocov-postfix",
+     "run_id": "20261004T115840-42472-aa79f7",
+     "source": "post-fix-bd5dabc8",
+     "purpose": "fix-check",
+     "mode": "active",
+     "reason": "default_selection",
+     "command": "uv run --no-sync pytest @tmp/plan-11-30-core-nodeids.txt --durations=0 --no-cov",
+     "head": "git-sha1:a929aab2092876ab0d83ecc4e46896ae3a0935c0",
+     "tracked_diff_sha256": "sha256:bd5dabc87546367b898accdc6d9fd88afd57e08921a4c45f61c55e0f37a7af0e",
+     "nodelist_sha256": "sha256:062320611a0c6a003ae51a02ff767001de504fca3f020d4333906924d05dcdc7",
+     "pyproject_sha256": "sha256:9fee0c4cb628efb255d926e4213c31b3e6797ce73c22456d8e353aa940ba0432",
+     "uvlock_sha256": "sha256:f1caae185d41b02de2bf9a1cc4970e2517278c8a12b3a4728dd71fc2d826a097",
+     "start_utc": "2026-10-04T11:58:37Z",
+     "end_utc": "2026-10-04T12:02:01Z",
+     "exit_status": 1,
+     "completeness": "COMPLETE",
+     "selected": 3821,
+     "record_files_sha256": {
+      "nodes.jsonl": "sha256:29b90563453f15c1dfb7c230817d7059c242e9aa9f72587b81c773876e6b06cb",
+      "phases.jsonl": "sha256:5c3f64aee8451bcda110a0adee6e3a4eb391758b6ee2b61af6e9cdc2e8a17171",
+      "run.json": "sha256:df4bd150c66571212370f80802c3c1463c7db21cdb24ad83cdc352c61ff833b1",
+      "samples.jsonl": "sha256:b1accdf33ba02c3696ab72a729cde03bfc20c64ddee4e236e9df8b97e889c7f7"
+     },
+     "output_sha256": "sha256:5768a0a5544f5d1c03ff5bba701bc089501f04b4315d9caec99d6df4e28ab8a5",
+     "gap_predicate_v4_s6": {
+      "phases": 11444,
+      "transitions": 11443,
+      "k": 1144,
+      "first_decile_median_s": 0.0,
+      "last_decile_median_s": 0.001,
+      "negative_gaps": 604,
+      "gap_sum_s": 11.286,
+      "phase_sum_s": 175.572,
+      "record_precision_s": 0.001,
+      "verdict": "UNKNOWN",
+      "why": "first-decile median not positive"
+     },
+     "parent_run": {
+      "method": "validated_process_ancestry",
+      "reason": "registry_partial",
+      "status": "UNKNOWN"
+     },
+     "registry_states": [
+      "partial"
+     ],
+     "samples": 33,
+     "listed_other_runs": {
+      "20261004T114222-51636-016cc7": {
+       "worktree_leaf": "optimus-cost-agent-wt-claude-plan12-cp4",
+       "relation": "outside",
+       "samples": 33
+      }
+     },
+     "live_foreign_overlap": [
+      "20261004T114222-51636-016cc7"
+     ]
+    },
+    {
+     "label": "r7-active-cov-postfix-us",
+     "run_id": "20261004T120544-17508-047bbb",
+     "source": "post-fix-8ac5f80f",
+     "purpose": "fix-check",
+     "mode": "active",
+     "reason": "default_selection",
+     "command": "uv run --no-sync pytest @tmp/plan-11-30-core-nodeids.txt --durations=0 --cov=optimus --cov-branch --cov-report=term-missing --cov-fail-under=0",
+     "head": "git-sha1:a929aab2092876ab0d83ecc4e46896ae3a0935c0",
+     "tracked_diff_sha256": "sha256:8ac5f80f454ef1fd1367011a2324175f9c7612b9884b813495044469e644ccbc",
+     "nodelist_sha256": "sha256:062320611a0c6a003ae51a02ff767001de504fca3f020d4333906924d05dcdc7",
+     "pyproject_sha256": "sha256:9fee0c4cb628efb255d926e4213c31b3e6797ce73c22456d8e353aa940ba0432",
+     "uvlock_sha256": "sha256:f1caae185d41b02de2bf9a1cc4970e2517278c8a12b3a4728dd71fc2d826a097",
+     "start_utc": "2026-10-04T12:05:41Z",
+     "end_utc": "2026-10-04T12:09:16Z",
+     "exit_status": 1,
+     "completeness": "COMPLETE",
+     "selected": 3821,
+     "record_files_sha256": {
+      "nodes.jsonl": "sha256:29b90563453f15c1dfb7c230817d7059c242e9aa9f72587b81c773876e6b06cb",
+      "phases.jsonl": "sha256:947e9edb334791d03c55d7b3159100380c2edb26b68b125722bb2aa7b0f4a47c",
+      "run.json": "sha256:902961228296d1b126021de26d037b380f73c2336e68fab1920b759188d4f330",
+      "samples.jsonl": "sha256:c4042616da25d9a53c341b902222a14f5f698613e91b50da9cbddb56b7447060"
+     },
+     "output_sha256": "sha256:8b2cc712573e6b352c8aa3dd27124bc333ab7eb2c5f41ef8ea5c3c74d33f3677",
+     "gap_predicate_v4_s6": {
+      "phases": 11444,
+      "transitions": 11443,
+      "k": 1144,
+      "first_decile_median_s": 0.000371,
+      "last_decile_median_s": 0.000407,
+      "negative_gaps": 0,
+      "gap_sum_s": 9.48,
+      "phase_sum_s": 181.147,
+      "record_precision_s": 1e-06,
+      "ratio": 1.0956,
+      "verdict": "PASS"
+     },
+     "parent_run": {
+      "method": "validated_process_ancestry",
+      "reason": "registry_partial",
+      "status": "UNKNOWN"
+     },
+     "registry_states": [
+      "partial"
+     ],
+     "samples": 36,
+     "listed_other_runs": {
+      "20261002T195829-49788-e59fbb": {
+       "worktree_leaf": "optimus-cost-agent-wt-claude-runctx",
+       "relation": "unknown",
+       "samples": 36
+      },
+      "20261004T114222-51636-016cc7": {
+       "worktree_leaf": "optimus-cost-agent-wt-claude-plan12-cp4",
+       "relation": "outside",
+       "samples": 36
+      }
+     },
+     "live_foreign_overlap": [
+      "20261004T114222-51636-016cc7"
+     ]
+    },
+    {
+     "label": "r8-active-nocov-postfix-us",
+     "run_id": "20261004T120919-34428-c7ee88",
+     "source": "post-fix-8ac5f80f",
+     "purpose": "fix-check",
+     "mode": "active",
+     "reason": "default_selection",
+     "command": "uv run --no-sync pytest @tmp/plan-11-30-core-nodeids.txt --durations=0 --no-cov",
+     "head": "git-sha1:a929aab2092876ab0d83ecc4e46896ae3a0935c0",
+     "tracked_diff_sha256": "sha256:8ac5f80f454ef1fd1367011a2324175f9c7612b9884b813495044469e644ccbc",
+     "nodelist_sha256": "sha256:062320611a0c6a003ae51a02ff767001de504fca3f020d4333906924d05dcdc7",
+     "pyproject_sha256": "sha256:9fee0c4cb628efb255d926e4213c31b3e6797ce73c22456d8e353aa940ba0432",
+     "uvlock_sha256": "sha256:f1caae185d41b02de2bf9a1cc4970e2517278c8a12b3a4728dd71fc2d826a097",
+     "start_utc": "2026-10-04T12:09:16Z",
+     "end_utc": "2026-10-04T12:12:44Z",
+     "exit_status": 1,
+     "completeness": "COMPLETE",
+     "selected": 3821,
+     "record_files_sha256": {
+      "nodes.jsonl": "sha256:29b90563453f15c1dfb7c230817d7059c242e9aa9f72587b81c773876e6b06cb",
+      "phases.jsonl": "sha256:1a82a50a80e2165eafa34aabe1478137163b4b15bd5fdbf43c4b026974df3b5b",
+      "run.json": "sha256:287766f6b70557da742e1348fa0460c20dfebdd60ffd497dc9af8fae1bf070f0",
+      "samples.jsonl": "sha256:da542a88f6c1848490dd2b8cabf5219a59d35b8c151b7db5aa671d5d46f4d3d9"
+     },
+     "output_sha256": "sha256:8277f88a367f026b0a3ed172d3fdfc093257c8a76f64ac30b95920d41bde31fc",
+     "gap_predicate_v4_s6": {
+      "phases": 11444,
+      "transitions": 11443,
+      "k": 1144,
+      "first_decile_median_s": 0.00035,
+      "last_decile_median_s": 0.000409,
+      "negative_gaps": 0,
+      "gap_sum_s": 9.577,
+      "phase_sum_s": 181.174,
+      "record_precision_s": 1e-06,
+      "ratio": 1.1686,
+      "verdict": "PASS"
+     },
+     "parent_run": {
+      "method": "validated_process_ancestry",
+      "reason": "registry_partial",
+      "status": "UNKNOWN"
+     },
+     "registry_states": [
+      "partial"
+     ],
+     "samples": 36,
+     "listed_other_runs": {
+      "20261002T195829-49788-e59fbb": {
+       "worktree_leaf": "optimus-cost-agent-wt-claude-runctx",
+       "relation": "unknown",
+       "samples": 36
+      },
+      "20261004T114222-51636-016cc7": {
+       "worktree_leaf": "optimus-cost-agent-wt-claude-plan12-cp4",
+       "relation": "outside",
+       "samples": 36
+      }
+     },
+     "live_foreign_overlap": [
+      "20261004T114222-51636-016cc7"
+     ]
+    }
+   ],
+   "verdicts": {
+    "reproduction": {
+     "coverage_on": "FAIL (reproduces)",
+     "coverage_off": "FAIL (reproduces)",
+     "passive_coverage_on": "FAIL (reproduces)"
+    },
+    "fix_check": {
+     "coverage_on": "PASS",
+     "coverage_off": "PASS",
+     "superseded_attempts": {
+      "r5-active-cov-postfix": "PASS at 1 ms",
+      "r6-active-nocov-postfix": "UNKNOWN at 1 ms"
+     },
+     "qualification": "Post-fix ratios satisfy the predicate under an identified overlapping lane (plan12-cp4 run 20261004T114222-51636-016cc7). Host load was neither matched nor completely observable, so no conservative-comparison or isolated wall-speedup claim is made."
+    },
+    "full_run_confirmation": "UNRUN (Task 6)",
+    "discrimination": "In these controls neither coverage nor the Plan 11.28 job/guard is a necessary trigger; absence of every interaction is not established."
+   },
+   "registry": {
+    "host_inventory_sha256": "sha256:102fbd7c2f5265f5c308de4fe2d01e872d61a7cc7833edef1d6ef7b2e9132380",
+    "total": 732,
+    "eligible": 724,
+    "class_digest": "sha256:28bc1799eebba5f132996b366ee255ca0ccaf85f0a332df4e26316343009134a",
+    "host_archival": "not performed: Codex released class 28bc1799 on 2026-10-04 subject to a matching fresh inventory; the fresh class differs (57a4afe0), so execution stopped",
+    "red_demo_leaked_entries": [
+     "20261004T114340-17304-8fffcf",
+     "20261004T114340-3484-beeda6",
+     "20261004T114342-34364-3d06c4",
+     "20261004T114342-46164-476c42"
+    ],
+    "release_check": {
+     "fresh_inventory_sha256": "sha256:0a37d9519037c63e271b70fdd14d45acf655f12aaadfbb4e30234e46b9c5a3b3",
+     "fresh_taken_utc": "2026-10-04T15:12:48.121875+00:00",
+     "fresh_total": 789,
+     "fresh_eligible": 724,
+     "fresh_class_digest": "sha256:57a4afe0ce9867b23a3d422e87195d7044e023e38e0a1fb61803fcf2e280c98e",
+     "delta": {
+      "eligible_in_both_identical_bytes": 722,
+      "left_now_unknown_query_failed": 2,
+      "joined_was_unknown_now_not_found": 2,
+      "end_basis_changed_still_eligible": 13,
+      "new_names_worktree_present": 58
+     },
+     "delta_report_sha256": "sha256:e93adfd42e57a5a45f5bdff8e217c285582aae1e29717f3124d2ba9c333421a5",
+     "dry_run_reviewed_manifest": "would_archive 722, refused 2 (changed_since_inventory:root_unknown), exit 3; registry unchanged",
+     "outcome": "stopped per release; fresh manifest returned to Codex"
+    }
+   },
+   "verification": {
+    "windows_focused_gate_final": "361 passed, 1 skipped",
+    "wsl_final": "314 passed, 48 skipped, exit 0",
+    "wsl_attempts": {
+     "wsl": "3 failed (index not mirrored)",
+     "wsl-a2": "6 failed (git apply --intent-to-add replaced index)",
+     "wsl-a3": "313 passed, 48 skipped (source bd5dabc8)",
+     "wsl-final-a1": "314 passed, 48 skipped (source 8ac5f80f)"
+    },
+    "checkpoint_a_amended": {
+     "windows_tmpdir_set": "363 passed, 1 skipped (gate4)",
+     "windows_tmpdir_unset": "363 passed, 1 skipped (gate4)",
+     "wsl_tmpdir_set_and_unset": "316 passed, 48 skipped each, exit 0 (wsl-final2-a1); files byte-identical to Windows",
+     "superseded": {
+      "gate3": "1 failed (logging-surface verify:exception_export), fixed",
+      "gate1_isolation_proof": "withdrawn: TMPDIR state of its environment not recorded"
+     }
+    },
+    "codex_corrections": {
+     "windows_gate5": "378 passed, 1 skipped (TMPDIR set and unset)",
+     "wsl_final3": "331 passed, 48 skipped each (TMPDIR=/tmp and unset), exit 0",
+     "docs_gate_intake": "84 passed untracked; 83 passed 1 failed visible (kickoff link to gitignored reviewer log; Codex-owned)"
+    },
+    "codex_e1_followup": {
+     "docs_gate_all_intake_visible": "84 passed",
+     "diff_check": "clean",
+     "local_scan_findings": "0 on the files scanned before this block was written; this block's former key then tripped the Secret Keyword detector (found at the release check, key renamed)",
+     "windows_gate6": "428 passed, 1 skipped (TMPDIR set and unset)",
+     "wsl_final4": "381 passed, 48 skipped each (TMPDIR=/tmp and unset), exit 0",
+     "harness_error": "test_registry_maintenance.py briefly CRLF on Windows (write_text); normalised to LF; 86 passed"
+    }
+   },
+   "retained_failures": [
+    "tests/unit/docs/test_open_work_pool_hygiene.py::test_priority_is_authored_only_in_table_cells fails in every core run (intake backlog edit, Codex-owned)"
+   ],
+   "raw_receipts": {
+    "location": "optimus-handoff/test-profiles-research/plan-11-30-task0-evidence-20261004",
+    "files": 161,
+    "sha256sums_sha256": "sha256:5dc4c91b1170588ed16a550dfb5a526f25c40f643198353839457d3f4ecbd0d5",
+    "files_v2": 208,
+    "sha256sums_v2_sha256": "sha256:4703c118459dc0dad663f8b89cfb056598800a8ac18b86ee76cf5e64f5fea32a",
+    "probes_retained": "probes-retained-20261004T124616 (re-run after review; values match the ledger transcriptions)",
+    "files_v3": 223,
+    "sha256sums_v3_sha256": "sha256:885933c55dd32de3e30989ffa261c192d4217ddcbbb8fddf2a6269d1906c0cca"
+   },
+   "provenance": [
+    {
+     "input": "Claude research report (corrected \u00a713/\u00a713.4)",
+     "sha256": "sha256:f991c06a7ae51a30a10cfa1cefd7e7d472a012e303fed379028b45e384c6d9de",
+     "v4_pin": "matches F991C06A",
+     "qualification": "Windows cause unknown; Linux-flat CI gaps are a research observation, not re-measured"
+    },
+    {
+     "input": "Fable review of the research",
+     "sha256": "sha256:dc97731b7997c14d97adc51847f3cb7d6e6b8dc3b647e44447011f220bc6e3da",
+     "v4_pin": "matches DC97731B",
+     "qualification": "SOUND WITH AMENDMENTS against the original research version"
+    },
+    {
+     "input": "Claude review of v1",
+     "sha256": "sha256:8fea78cf6d4167ad5689d99195eb45ceb6dc65e48a80d3b26c7a25fffe2f3242",
+     "v4_pin": "matches 8FEA78CF",
+     "qualification": "NOT READY 7 MAJOR / 6 MINOR"
+    },
+    {
+     "input": "Claude re-review of v2",
+     "sha256": "sha256:797fd9d04184e4fc9ea9136ec0ab9f4520fe1d5dc151d547f008aa2395dc0ef9",
+     "v4_pin": "matches 797FD9D0",
+     "qualification": "SOUND WITH AMENDMENTS 2 MAJOR / 5 MINOR"
+    },
+    {
+     "input": "Claude concurrence on v3",
+     "sha256": "sha256:dff868d0b255838f49ee5c03c351b75ebf0b88dc085e965c8dddf823f080d2f4",
+     "v4_pin": "matches DFF868D0",
+     "qualification": "agreement on reuse, CI grant, staged route"
+    },
+    {
+     "input": "New-chat handoff 2026-10-04",
+     "sha256": "sha256:b1cafa8914bc79b5762f87f4c5fc4c7691c750344dc38d140b700b62d8990dbd",
+     "v4_pin": "matches B1CAFA89 (reverified by Codex at its original authoring output path)",
+     "qualification": "no shared-folder copy; not relied on"
+    },
+    {
+     "input": "tier-runs-95505c4.txt",
+     "sha256": "sha256:dafb7e4102b9934188e825514d68e2bd8b9539f2cc393cc565c03a2760bc154a",
+     "v4_pin": "named",
+     "qualification": "derived table; transition-kind breakdown only"
+    },
+    {
+     "input": "acceptance-3 reference run 20261003T104058-46816-ca116c run.json",
+     "sha256": "sha256:5e122943e134d19050520e8c24b74b15f5a92294892d17e554813d371348be4d",
+     "v4_pin": "named",
+     "qualification": "ACTIVE COMPLETE exit 0, parent UNKNOWN registry_partial"
+    },
+    {
+     "input": "acceptance-3 reference run phases.jsonl",
+     "sha256": "sha256:82c71adc992c23f90918e894c10cb8c30b6e6e056cba976975f4b8b8b586c645",
+     "v4_pin": "named",
+     "qualification": "transition-kind breakdown only"
+    },
+    {
+     "input": "older reference run 20261002T203101-45752-c1999b run.json",
+     "sha256": "sha256:c358780a5fdf5af5f270c51a6b18b8dc91c2c02bf94f053be77adb8ca3f26e49",
+     "v4_pin": "named",
+     "qualification": "INVALID exit 1; not used"
+    }
+   ],
+   "checkpoint_a_review": {
+    "reviewer": "Fable 5.1",
+    "verdict": "SOUND WITH AMENDMENTS",
+    "major": 3,
+    "minor": 8,
+    "dispositions": {
+     "1": "fixed: TMPDIR isolation + positive marker proofs",
+     "2": "fixed: probes re-run with retained outputs; wording corrected",
+     "3": "fixed: provenance table; handoff pin UNVERIFIED",
+     "4": "fixed: parent/registry state surfaced",
+     "5": "added coverage control",
+     "6": "fixed: scratch held streams closed",
+     "7": "fixed: fixture owns its MonkeyPatch",
+     "8": "fixed: ReceiptsUnreadable named mismatch",
+     "9": "residual recorded with owner",
+     "10": "stated",
+     "11": "Codex-owned"
+    },
+    "next": "Codex verifies the bounded-correction delta",
+    "codex": {
+     "verdict": "HOLD for bounded corrections",
+     "review_file": "docs/superpowers/reviews/2026-10-04-plan-11-30-checkpoint-a-codex-review.md",
+     "review_sha256": "sha256:cc29a909be7e9527a73459cb7127b68bd829be4ef4e28696420855436e01578c",
+     "C-M1": "fixed test-first: receipts validated against manifest entry and grant in archive and verify (14 RED -> GREEN)",
+     "C-M2": "wording replaced in report and manifest",
+     "intake_import": {
+      ".gitattributes": "sha256:488c6ddcc37e9471fe500b28ec7542e510eb0e85055fff854f09b6ef9009bd7d",
+      "docs/README.md": "sha256:fa3bc2a9ee1f6cf8c748d9baab711bc344b0ba23a4dfef778cfdd2daf3f2bd03",
+      "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md": "sha256:b48bce4bc1ea497617241a251921e3cb918fe57ab543c96303605b5c72cfd38d"
+     },
+     "v4_blob_with_text_unset": "git-sha1:3cef47af7a65010391d583b22cffa393959600ac",
+     "returned_to_codex": "kickoff links the gitignored reviewer log (docs link test fails once intake files are visible)"
+    },
+    "codex_e1_followup": {
+     "defects": {
+      "disposition_list_typeerror": "fixed: structural receipt-file validation (42 RED -> GREEN)",
+      "invalid_utc_accepted": "fixed: ASCII + exact form + real datetime + zero offset (3 RED -> GREEN)"
+     },
+     "intake_reimport": {
+      ".gitattributes": "sha256:5b9e26740ff0ab572d4fe2eeb839e40ae40090cb505ceb75671c0b4239331ced",
+      "docs/README.md": "sha256:1d6d87f3fe1334ddbb534a1b275c2de5b60d214a5562ac1fe21c0a4bf95b7ae6",
+      "docs/decisions/README.md": "sha256:e3d86861fe1f1b4d228254c5074f7123a00245fc6844b61ef1ff11436007cb21",
+      "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md": "sha256:4a00e43ba04a5617933dc77d962cdc5ec3d77ad098c65ac746d82454e5d44ba4",
+      "docs/decisions/ADR-016-test-cadence-product-coverage-and-staged-delivery.md": "sha256:925b4011844416be087b64a7d279f22ad405a4752e8b560c93cf32cc84200cbc",
+      "docs/superpowers/reviews/2026-10-04-plan-11-30-checkpoint-a-codex-review.md": "sha256:5b3481f752938572ea027c6627977d2b892e2c6e0f119658fa148d09e8c31f4a",
+      "docs/superpowers/reviews/2026-10-04-plan-11-30-claude-kickoff.md": "sha256:34cb257cf80b6646c6ea5aa5365b604d991c4a809c01e6d56676df592567a706"
+     },
+     "s3_export_sha256": "sha256:3ddd90f7fcb52de88059e8a4582cff37a6ef27bda816a32a34e986e39cfb20d5",
+     "returned_to_codex": "ADR-016 line 48 inverts Windows/POSIX identity-evidence strength"
+    },
+    "codex_acceptance": {
+     "utc": "2026-10-04T15:04:45+00:00",
+     "review": "docs/superpowers/reviews/2026-10-04-plan-11-30-checkpoint-a-codex-review.md",
+     "accepted_report_sha256": "sha256:061ffd6ac366b2dd02920dbfcc942ea2c9cd88a6eea063a0444d2b8fc31b1cd7",
+     "accepted_manifest_sha256": "sha256:09e9076413d37e8626f6e55de8ac114e091d6817067c2eff080bc092f616f303",
+     "released": [
+      "local intake commit",
+      "local Task 0 commit",
+      "SKIP=optimus-pytest-coverage for those two commits only",
+      "exact-class archival of 28bc1799 if a fresh inventory and dry run match",
+      "Task 1 after local delivery"
+     ],
+     "held": [
+      "push",
+      "PR",
+      "merge",
+      "service activation",
+      "paid calls"
+     ],
+     "final_doc_delta_sha256": {
+      "docs/README.md": "sha256:8ae3eb955deb31054112140d839f83e0bcdfa0b37d892c4c0c851939ef8f4472",
+      "docs/decisions/README.md": "sha256:84510616419b17ead17d7869b37b50710c6b00591a6537b7223d5dc4f8b0d54e",
+      "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md": "sha256:2fdfbf244f92159c37f5f2e49a46cd234f379101b14cf4dbbb549db675658a6c",
+      "docs/decisions/ADR-016-test-cadence-product-coverage-and-staged-delivery.md": "sha256:0c930159666f11fc89944b3cd266123e3b01ac6083886299bfbc5788ebbd59b3",
+      "docs/superpowers/reviews/2026-10-04-plan-11-30-checkpoint-a-codex-review.md": "sha256:b8b366ceef0dafd34b6f2101915b1d0c67f27d67624e3a7c1a3ec39a8e696a33"
+     },
+     "intake_commit": "git-sha1:e3fe91f704e0730b094fd5352f0274d14a61ab16",
+     "docs_gate_after_intake_commit": "1 failed, 83 passed: test_post_amendment_plans_declare_prerequisites_with_required_columns on v4's frozen Tooling prerequisite disposition; returned to Codex"
+    }
+   }
+  }
+ }
+}

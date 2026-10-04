@@ -392,6 +392,12 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "The census hook's own sensitivity children; the real adapter is replaced before any call."
   },
+  "tests/unit/tools/test_registry_maintenance.py::test_an_exited_process_whose_handle_is_still_held_has_terminated#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal `pass` program, waited for by the test while it still holds the process handle, so the shared end predicate sees a positively terminated process (Plan 11.30 Task 0). It imports no product code."
+  },
   "tests/unit/tools/test_run_context_lifecycle.py::_nested#1": {
    "mechanism": "python:nested_pytest",
    "disposition": "nested_pytest",
