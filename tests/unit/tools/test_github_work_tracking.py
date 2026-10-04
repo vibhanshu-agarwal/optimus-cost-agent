@@ -2640,3 +2640,143 @@ def test_cli_finalize_refuses_a_malformed_mapping(tmp_path: Path, malformed: str
     mapping_path.write_text(json.dumps(migrating) if malformed.startswith("a list") else "{not json", encoding="utf-8")
     assert gwt.main(["finalize", str(inventory_path), "--mapping", str(mapping_path), "--out", str(tmp_path / "out.json")]) == 2
     assert not (tmp_path / "out.json").exists()
+
+
+# ==== Task 4: batched publication (2026-10-05 ruling, Option A): a record selection over the full inventory ====
+
+
+def _selection(tmp_path: Path, name: str, *record_ids: str) -> Path:
+    path = tmp_path / f"{name}.txt"
+    path.write_text("".join(f"{record_id}\n" for record_id in record_ids), encoding="utf-8")
+    return path
+
+
+def _ops(batch: gwt.MigrationBatch) -> list[tuple[str, str, str]]:
+    return [(operation.op, operation.target, operation.payload_sha256) for operation in batch.operations]
+
+
+BATCHES = (
+    ("plan:11.23", "P11-FU-20"),  # the pilot updates
+    ("P11.25-FU-1", "A2A-C1"),  # a child before its parent: its binding waits for the parent's batch
+    ("plan:12.1", "P12-FU-1", "P11-FU-40", "H4"),
+)
+
+
+def _publish_batches(tmp_path: Path, inventory: gwt.Inventory, drafts: list[gwt.IssueDraft], client: FakeGitHub, count: int) -> None:
+    for number, records in enumerate(BATCHES[:count]):
+        batch = gwt.plan_migration(inventory, drafts, gwt.read_issues(client), gwt.read_labels(client), frozenset(records))
+        assert batch.conflicts == ()
+        assert _publish(tmp_path, batch, client, name=f"batch-{number}.jsonl")[0].outcome == "pass"
+
+
+def test_selected_batches_apply_exactly_the_full_plan(tmp_path: Path) -> None:
+    inventory, drafts, client = _setup(tmp_path)
+    full = _ops(_plan(inventory, drafts, client))
+    applied: list[tuple[str, str, str]] = []
+    done: set[str] = set()
+    for number, records in enumerate(BATCHES):
+        selected = frozenset(records)
+        batch = gwt.plan_migration(inventory, drafts, gwt.read_issues(client), gwt.read_labels(client), selected)
+        assert batch.conflicts == ()
+        for operation in batch.operations:  # a batch writes only for its own records
+            if operation.op == "create-label":
+                assert any(operation.target in draft.labels for draft in drafts if draft.record_id in selected)
+            elif operation.op == "bind-sub-issue":
+                assert {operation.payload["child"], operation.payload["parent"]} & selected
+            else:
+                assert operation.target in selected
+        result, _journal = _publish(tmp_path, batch, client, name=f"batch-{number}.jsonl")
+        assert result.outcome == "pass"
+        applied += _ops(batch)
+        done |= selected
+        assert gwt.reconcile(inventory, drafts, gwt.read_issues(client), frozenset(done)).problems == ()
+
+        again = gwt.plan_migration(inventory, drafts, gwt.read_issues(client), gwt.read_labels(client), selected)
+        if number == 0:  # the adopted pilots now equal their drafts
+            assert again.operations == () and again.conflicts == ()
+            continue
+        assert any("no reviewed target issue" in conflict for conflict in again.conflicts)  # recovery is never a re-run
+        writes = len(client.writes)
+        assert _publish(tmp_path, again, client, name=f"rerun-{number}.jsonl")[0].outcome == "refused"
+        assert len(client.writes) == writes
+
+    assert [op for op in applied if op[0] == "bind-sub-issue"][0][1] == "P11.25-FU-1 <- plan:12.1"  # bound in the parent's batch
+    assert sorted(applied) == sorted(full)  # the batches partition the whole plan: nothing lost, nothing twice
+    report = gwt.reconcile(inventory, drafts, gwt.read_issues(client))
+    assert report.ok and len(report.mapping) == 8
+
+
+def test_a_selected_reconcile_checks_every_existing_issue_across_the_repository(tmp_path: Path) -> None:
+    inventory, drafts, client = _setup(tmp_path)
+    _publish_batches(tmp_path, inventory, drafts, client, 2)
+    selected = frozenset(BATCHES[1])
+    report = gwt.reconcile(inventory, drafts, gwt.read_issues(client), selected)
+    assert report.problems == ()
+    numbers = report.mapping
+    full = gwt.reconcile(inventory, drafts, gwt.read_issues(client)).problems
+    assert sorted(problem.split("'")[1] for problem in full) == sorted(BATCHES[2])  # only the unpublished batch is missing
+    assert all("has no issue carrying its source marker" in problem for problem in full)
+
+    def broken(change: Any) -> list[str]:
+        issues = copy.deepcopy(client.issues)
+        change(issues)
+        return list(gwt.reconcile(inventory, drafts, gwt.read_issues(FakeGitHub(list(issues.values()))), selected).problems)
+
+    cases = {  # outside the selection: a duplicate, a foreign marker and an edited earlier issue are still found
+        "'P11-FU-20' source marker is on more than one issue": lambda issues: issues.update(
+            {900: _issue(900, body="<!-- optimus-source: P11-FU-20 -->")}
+        ),
+        "no migrating record owns": lambda issues: issues.update({901: _issue(901, body="<!-- optimus-source: P11-FU-999 -->")}),
+        "'plan:11.23': #222 body's generated region differs": lambda issues: issues[222].update(
+            body=issues[222]["body"].replace("<!-- /optimus-source: PLAN-11.23 -->", "edited\n<!-- /optimus-source: PLAN-11.23 -->")
+        ),
+        "'P12-FU-1' source marker is on more than one issue": lambda issues: issues.update(
+            {902: _issue(902, body="<!-- optimus-source: P12-FU-1 -->"), 903: _issue(903, body="<!-- optimus-source: P12-FU-1 -->")}
+        ),
+        "'A2A-C1' has no issue carrying its source marker": lambda issues: issues.pop(numbers["A2A-C1"]),
+    }
+    for expected, change in cases.items():
+        problems = broken(change)
+        assert any(expected in problem for problem in problems), (expected, problems)
+
+
+def test_cli_only_selects_records_and_refuses_a_bad_selection(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = _write(tmp_path, _with_source(_good(), POOL))
+    reader = lambda commit, paths: {"pool": POOL.encode("utf-8")}  # noqa: E731 - fixture reader
+    client = FakeGitHub(_pilot_issues(), _pilot_labels())
+    only = ["--only", str(_selection(tmp_path, "pilots", *BATCHES[0])), "--only", str(_selection(tmp_path, "second", *BATCHES[1]))]
+    batch_path = tmp_path / "batch.json"
+
+    assert gwt.main(["plan", str(path), "--out", str(batch_path), *only], reader=reader, client=client) == 0
+    operations = json.loads(batch_path.read_text(encoding="utf-8"))["operations"]
+    assert {op["target"] for op in operations if op["op"] in ("create-issue", "update-issue")} == {*BATCHES[0], *BATCHES[1]}
+    publish = ["publish", str(path), "--batch", str(batch_path), "--pause-seconds", "0", "--execute"]
+    assert gwt.main([*publish, "--evidence-dir", str(tmp_path / "whole")], reader=reader, client=client) == 2
+    assert client.writes == []  # without the reviewed selection, a fresh plan is another batch
+    assert gwt.main([*publish, "--evidence-dir", str(tmp_path / "run"), *only], reader=reader, client=client) == 0
+    assert len(client.writes) == len(operations)
+    assert gwt.main(["reconcile", str(path), *only], reader=reader, client=client) == 0
+    assert gwt.main(["reconcile", str(path)], reader=reader, client=client) == 1  # the full inventory is not yet published
+    capsys.readouterr()
+
+    reads = len(client.log)
+    refusals = {
+        "unknown": (("P11-FU-999",), "'P11-FU-999'"),
+        "history": (("A2A-M17",), "'A2A-M17'"),
+        "twice": (("H4", "H4"), "more than once"),
+        "empty": ((), "names no record"),
+    }
+    for name, (records, expected) in refusals.items():
+        bad = _selection(tmp_path, name, *records)
+        assert gwt.main(["plan", str(path), "--out", str(tmp_path / f"{name}.json"), "--only", str(bad)], reader=reader, client=client) == 2
+        assert expected in json.loads(capsys.readouterr().out)["reason"] and not (tmp_path / f"{name}.json").exists()
+    overlap = ["reconcile", str(path), *only, "--only", str(_selection(tmp_path, "overlap", "A2A-C1"))]
+    assert gwt.main(overlap, reader=reader, client=client) == 2
+    assert "more than once" in json.loads(capsys.readouterr().out)["reason"]
+    missing = ["plan", str(path), "--out", str(tmp_path / "missing.json"), "--only", str(tmp_path / "absent.txt")]
+    assert gwt.main(missing, reader=reader, client=client) == 2
+    mapping = ["reconcile", str(path), *only, "--mapping-out", str(tmp_path / "mapping.json")]
+    assert gwt.main(mapping, reader=reader, client=client) == 2
+    assert "full reconcile" in json.loads(capsys.readouterr().out.splitlines()[-1])["reason"]
+    assert not (tmp_path / "mapping.json").exists()
+    assert len(client.log) == reads  # every refusal comes before any GitHub read

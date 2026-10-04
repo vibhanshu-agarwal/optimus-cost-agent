@@ -1424,10 +1424,24 @@ def merged_labels(draft: IssueDraft, issue: IssueSnapshot) -> tuple[list[str], l
 
 
 def plan_migration(
-    inventory: Inventory, drafts: Sequence[IssueDraft], issues: Sequence[IssueSnapshot], labels: Mapping[str, LabelSpec]
+    inventory: Inventory,
+    drafts: Sequence[IssueDraft],
+    issues: Sequence[IssueSnapshot],
+    labels: Mapping[str, LabelSpec],
+    selected: frozenset[str] | None = None,
 ) -> MigrationBatch:
-    """Every write a publication needs, in order (labels, issues, bindings), and every conflict that forbids it."""
+    """Every write a publication needs, in order (labels, issues, bindings), and every conflict that forbids it.
+
+    With ``selected`` (``--only``), the writes are the selected records' own: the missing labels they carry, their
+    creates and updates, and each binding with a selected end once both its issues exist. A record outside the
+    selection whose source marker is on one issue is an earlier batch's identity. Conflicts are still found across the
+    whole repository and inventory.
+    """
     conflicts: list[str] = []
+
+    def chosen(record_id: str) -> bool:
+        return selected is None or record_id in selected
+
     drafts_by_id = {draft.record_id: draft for draft in drafts}
     owners = {draft.marker: draft.record_id for draft in drafts}
     by_number = {issue.number: issue for issue in issues}
@@ -1453,13 +1467,15 @@ def plan_migration(
             )
 
     label_ops = []
+    needed = {label for draft in drafts if chosen(draft.record_id) for label in draft.labels}
     for name in sorted({label for draft in drafts for label in draft.labels}):
         spec = LABEL_SPECS.get(name)
         existing = labels.get(name.lower())
         if spec is None:
             conflicts.append(f"label {name!r} has no reviewed specification")
         elif existing is None:
-            label_ops.append(Operation("create-label", name, {"name": name, **spec.payload()}))
+            if name in needed:  # created by the first batch whose records carry it
+                label_ops.append(Operation("create-label", name, {"name": name, **spec.payload()}))
         elif existing != spec:
             conflicts.append(
                 f"label {name!r} exists as {existing.name!r} with color {existing.color} and description"
@@ -1486,12 +1502,14 @@ def plan_migration(
             continue
         marked = hits.get(draft.marker, [])
         if record.target_issue is None:
-            if marked:
+            if len(marked) == 1 and not chosen(record.id):  # published by an earlier batch: an identity, never a write
+                reused[record.id] = IssueRef(marked[0], by_number[marked[0]].id)
+            elif marked:
                 conflicts.append(
                     f"{label} has no reviewed target issue, but its source marker is on {_issue_list(marked)}; an earlier"
                     " write's outcome may be unknown: reconcile read-only and record the identity before any write"
                 )
-            else:
+            elif chosen(record.id):
                 payload = {"title": draft.title, "body": draft.body, "labels": list(draft.labels)}
                 issue_ops.append(Operation("create-issue", record.id, payload))
             continue
@@ -1522,10 +1540,11 @@ def plan_migration(
         else:
             # An update rewrites only the generated region; the existing title and every line outside the region survive.
             body = issue.body[: region[0]] + draft.body.rstrip("\n") + issue.body[region[1] :]
-        if (issue.body, list(issue.labels)) != (body, wanted):
+        if chosen(record.id) and (issue.body, list(issue.labels)) != (body, wanted):
             payload = {"title": issue.title, "body": body, "labels": wanted}
             issue_ops.append(Operation("update-issue", record.id, payload, issue.number, issue.fingerprint))
 
+    exists = set(reused) | {operation.target for operation in issue_ops if operation.op == "create-issue"}
     bind_ops = []
     for draft in drafts:
         ref = reused.get(draft.record_id)
@@ -1547,6 +1566,9 @@ def plan_migration(
                     f"{where}: #{ref.number if ref else '?'} is already a native sub-issue of #{current}; the migration never re-parents"
                 )
             continue
+        ends = {draft.record_id, draft.parent}
+        if selected is not None and not (ends & selected and ends <= exists):
+            continue  # it belongs to the batch that publishes the later of its two issues
         bind_ops.append(
             Operation("bind-sub-issue", f"{draft.record_id} <- {draft.parent}", {"child": draft.record_id, "parent": draft.parent})
         )
@@ -1752,9 +1774,15 @@ def _label_problems(draft: IssueDraft, issue: IssueSnapshot) -> list[str]:
     return problems
 
 
-def reconcile(inventory: Inventory, drafts: Sequence[IssueDraft], observed: Sequence[IssueSnapshot]) -> ReconciliationReport:
+def reconcile(
+    inventory: Inventory, drafts: Sequence[IssueDraft], observed: Sequence[IssueSnapshot], selected: frozenset[str] | None = None
+) -> ReconciliationReport:
     """Each migrating record maps to exactly one open issue whose generated region, labels, native parent and (for a
-    created issue) title match its draft."""
+    created issue) title match its draft.
+
+    With ``selected`` (``--only``), a record outside the selection may have no issue yet. Every issue that exists is
+    still checked in full, and source markers are checked across the whole repository.
+    """
     problems: list[str] = []
     drafts_by_id = {draft.record_id: draft for draft in drafts}
     owners = {draft.marker for draft in drafts}
@@ -1787,11 +1815,12 @@ def reconcile(inventory: Inventory, drafts: Sequence[IssueDraft], observed: Sequ
             continue
         found = hits.get(draft.marker, [])
         if len(found) != 1:
-            problems.append(
-                f"{label} source marker is on more than one issue: {_issue_list(issue.number for issue in found)}"
-                if found
-                else f"{label} has no issue carrying its source marker {draft.marker!r}"
-            )
+            if found or selected is None or record.id in selected:
+                problems.append(
+                    f"{label} source marker is on more than one issue: {_issue_list(issue.number for issue in found)}"
+                    if found
+                    else f"{label} has no issue carrying its source marker {draft.marker!r}"
+                )
             continue
         issue = found[0]
         mapping[record.id] = issue.number
@@ -2142,12 +2171,37 @@ def cutover_docs(
 # ---- command line ----
 
 
+def read_selection(paths: Sequence[Path] | None, inventory: Inventory) -> frozenset[str] | None:
+    """The migrating records named in the ``--only`` files, one id per line; ``None`` (every record) without any."""
+    if not paths:
+        return None
+    ids = [line.strip() for path in paths for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if not ids:
+        raise ValueError("the selection names no record")
+    unknown = sorted(set(ids) - {record.id for record in inventory.records if record.disposition == "migrate"})
+    if unknown:
+        raise ValueError(f"the selection names records the inventory does not migrate: {unknown}")
+    twice = sorted(record_id for record_id, count in Counter(ids).items() if count > 1)
+    if twice:
+        raise ValueError(f"the selection names {twice} more than once")
+    return frozenset(ids)
+
+
 def _github_command(args: argparse.Namespace, reader: SourceReader, client: GitHubClient) -> int:
-    """``plan`` and ``reconcile`` only read GitHub; ``publish`` writes only a reviewed batch that a fresh plan equals."""
+    """``plan`` and ``reconcile`` only read GitHub; ``publish`` writes only a reviewed batch that a fresh plan equals.
+    ``--only`` selects records within the full inventory."""
     if args.command == "publish" and not args.execute:
         print(json.dumps({"step": "STOP", "reason": "publish writes to GitHub only with --execute"}))
         return 2
     inventory = load_inventory(args.inventory)
+    try:
+        selected = read_selection(args.only, inventory)
+    except (OSError, ValueError) as error:  # an unreadable or unreviewable selection is refused before any read
+        print(json.dumps({"step": "STOP", "reason": str(error)}))
+        return 2
+    if selected is not None and getattr(args, "mapping_out", None) is not None:
+        print(json.dumps({"step": "STOP", "reason": "a mapping is written only by a full reconcile, without --only"}))
+        return 2
     sources = reader(inventory.baseline_commit, inventory.read_paths)
     report = validate_inventory(inventory, sources)
     if not report.ok:
@@ -2160,14 +2214,14 @@ def _github_command(args: argparse.Namespace, reader: SourceReader, client: GitH
         print(json.dumps({"step": "STOP", "reason": str(error)}))
         return 2
     if args.command == "reconcile":
-        result = reconcile(inventory, drafts, issues)
+        result = reconcile(inventory, drafts, issues, selected)
         for problem in result.problems:
             print(f"PROBLEM: {problem}")
         print(json.dumps({"ok": result.ok, "problems": len(result.problems), "mapped": len(result.mapping)}))
         if result.ok and args.mapping_out is not None:  # a mapping is evidence only when every record reconciles
             args.mapping_out.write_bytes((json.dumps(dict(result.mapping), indent=2, sort_keys=True) + "\n").encode("utf-8"))
         return 0 if result.ok else 1
-    batch = plan_migration(inventory, drafts, issues, labels)
+    batch = plan_migration(inventory, drafts, issues, labels, selected)
     text = render_batch(batch).encode("utf-8")
     if args.command == "plan":
         args.out.write_bytes(text)
@@ -2239,6 +2293,7 @@ def main(argv: Sequence[str] | None = None, reader: SourceReader = read_sources_
     check.add_argument("--mapping-out", type=Path, help="when every record reconciles, write its record -> issue mapping")
     for command in (plan, publish, check):
         command.add_argument("--final", action="store_true", help="final copies: no trial label or banner")
+        command.add_argument("--only", type=Path, action="append", help="a file of record ids, one per line, to act on (repeatable)")
     finalize = commands.add_parser("finalize", help="record each migrating record's issue from a reconcile mapping (offline)")
     finalize.add_argument("inventory", type=Path)
     finalize.add_argument("--mapping", type=Path, required=True)

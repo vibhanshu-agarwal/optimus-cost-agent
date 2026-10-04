@@ -1739,8 +1739,8 @@
     {
       "key": "tools.github_work_tracking:_github_command:exception_export",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: the plan/publish/reconcile commands print a ReadFailed reason, which names the REST path, page and gh's error text truncated to 300 characters; gh reports HTTP status and message there and never prints its token.",
-      "sanitizer": "bounded gh error text; no credentials",
+      "rationale": "Inspection: the plan/publish/reconcile commands print a ReadFailed reason, which names the REST path, page and gh's error text truncated to 300 characters; gh reports HTTP status and message there and never prints its token. They also print an --only selection refusal: record ids from an operator-supplied selection file, or the OS error for that file's path.",
+      "sanitizer": "bounded gh error text; selection refusals name record ids and a local path; no credentials",
       "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_plan_is_read_only_and_publish_runs_only_the_reviewed_batch",
       "evidence_tier": "unit"
     },
