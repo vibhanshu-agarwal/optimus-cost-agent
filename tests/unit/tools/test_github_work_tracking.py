@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import re
 import subprocess
@@ -942,13 +943,13 @@ def _pilot_issues() -> list[dict[str, Any]]:
         _issue(
             222,
             title="Plan 11.23: Client-MCP runtime composition",
-            body="> trial copy\n\n<!-- optimus-source: PLAN-11.23 -->\n\npilot body",
+            body="> trial copy\n\n<!-- optimus-source: PLAN-11.23 -->\n\npilot body\n<!-- /optimus-source: PLAN-11.23 -->\n",
             labels=[*PILOT_DEFAULTS, "status:blocked", "kind:plan"],
         ),
         _issue(
             223,
             title="P11-FU-20: Attach catalog",
-            body="<!-- optimus-source: P11-FU-20 -->\n\npilot body",
+            body="<!-- optimus-source: P11-FU-20 -->\n\npilot body\n<!-- /optimus-source: P11-FU-20 -->\n\nOperator note.\n",
             labels=[*PILOT_DEFAULTS, "status:partially-implemented", "kind:follow-up"],
             parent=222,
         ),
@@ -1025,17 +1026,18 @@ class FakeGitHub:
         elif method == "POST" and rest.endswith("/sub_issues"):
             parent = int(rest.split("/")[1])
             child = next(issue for issue in self.issues.values() if issue["id"] == payload["sub_issue_id"])
-            if fault != "no-sub-list":
-                self.subs.setdefault(parent, []).append(child["number"])
-            if fault != "no-parent-link":
-                child["parent_issue_url"] = f"https://api.github.com/repos/{gwt.REPO}/issues/{parent}"
-            return json.dumps(self.issues[parent])
+            obj = copy.deepcopy(self.issues[parent])
         else:
             raise AssertionError(f"unexpected {method} {path}")
         if callable(fault):
             obj = fault(obj)
         if rest == "labels":
             self.labels[obj["name"]] = obj
+        elif rest.endswith("/sub_issues"):
+            if fault != "no-sub-list":
+                self.subs.setdefault(parent, []).append(child["number"])
+            if fault != "no-parent-link":
+                child["parent_issue_url"] = f"https://api.github.com/repos/{gwt.REPO}/issues/{parent}"
         else:
             self.issues[obj["number"]] = obj
         if fault == "lost":
@@ -1315,7 +1317,9 @@ def test_migration_reconciliation_exact_coverage(tmp_path: Path) -> None:
         "no migrating record owns": lambda issues: issues.update({901: _issue(901, body="<!-- optimus-source: P11-FU-999 -->")}),
         "status labels": relabel("A2A-C1", "status:open", "status:blocked"),
         "native parent": lambda issues: issues[numbers["P12-FU-1"]].update(parent_issue_url=None),
-        "body differs": lambda issues: issues[numbers["H4"]].update(body=issues[numbers["H4"]]["body"] + "edited"),
+        "generated region differs": lambda issues: issues[numbers["H4"]].update(
+            body=issues[numbers["H4"]]["body"].replace("Source status", "Edited status")
+        ),
         "title differs": lambda issues: issues[numbers["P12-FU-1"]].update(title="renamed"),
         "closed": lambda issues: issues[numbers["plan:12.1"]].update(state="closed", state_reason="completed"),
         "not its reviewed target #222": moved_marker,
@@ -1323,6 +1327,10 @@ def test_migration_reconciliation_exact_coverage(tmp_path: Path) -> None:
         "exactly one valid difficulty label": relabel("A2A-C1", "difficulty:medium", None),
         "not its source priority": relabel("P11-FU-40", "priority:medium", "priority:low"),
         "mapped by more than one record": shared,
+        "exactly one valid priority label": lambda issues: issues[numbers["A2A-C1"]]["labels"].append(_label("Priority:High")),
+        "no generated region": lambda issues: issues[numbers["H4"]].update(
+            body=issues[numbers["H4"]]["body"].replace("<!-- /optimus-source: H4 -->", "")
+        ),
     }
     for expected, change in cases.items():
         problems = broken(change)
@@ -1478,6 +1486,9 @@ def test_cli_plan_is_read_only_and_publish_runs_only_the_reviewed_batch(tmp_path
     client.issues[222]["body"] = client.issues[222]["body"].removesuffix("\nedited after review")
     assert publish("run", "--execute") == 0 and len(client.writes) == 11
     assert (tmp_path / "run" / "journal.jsonl").is_file() and (tmp_path / "run" / "batch.json").read_bytes() == batch_path.read_bytes()
+    seal = (tmp_path / "run" / "evidence.sha256").read_text(encoding="utf-8").splitlines()
+    names = ("batch.json", "journal.jsonl")
+    assert seal == [f"{hashlib.sha256((tmp_path / 'run' / name).read_bytes()).hexdigest()}  {name}" for name in names]
 
 
 def test_gh_client_classifies_transport_failures(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1505,3 +1516,103 @@ def test_gh_client_classifies_transport_failures(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(gwt.subprocess, "run", ok)
     assert gwt.GhClient().send("PATCH", "repos/x/y/issues/1", {"title": "t"}) == '{"number": 1}'
     assert calls == [(["gh", "api", "-X", "PATCH", "repos/x/y/issues/1", "--input", "-"], b'{"title": "t"}')]
+
+
+# ---- Checkpoint 2 review: reused bodies, own markers, label case, duplicate list objects, binding faults ----
+
+
+def test_an_update_rewrites_only_the_generated_region_and_keeps_the_title(tmp_path: Path) -> None:
+    inventory, drafts, client = _setup(tmp_path)
+    regions = {draft.record_id: draft.body for draft in drafts}
+    assert regions["plan:11.23"].endswith("<!-- /optimus-source: PLAN-11.23 -->\n")
+    updates = {op.issue: op.payload for op in _plan(inventory, drafts, client).operations if op.op == "update-issue"}
+    assert updates[222]["title"] == "Plan 11.23: Client-MCP runtime composition"  # an existing title is never rewritten
+    assert updates[222]["body"] == "> trial copy\n\n" + regions["plan:11.23"]  # text before the region survives
+    assert updates[223]["body"] == regions["P11-FU-20"] + "\nOperator note.\n"  # and text after it
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("> trial copy\n\n<!-- optimus-source: PLAN-11.23 -->\n\nCodex-drafted pilot body", "no generated region"),
+        ("<!-- /optimus-source: PLAN-11.23 -->\n<!-- optimus-source: PLAN-11.23 -->\n", "malformed generated region"),
+    ],
+)
+def test_a_body_without_a_well_formed_generated_region_is_a_conflict(tmp_path: Path, body: str, expected: str) -> None:
+    issues = _pilot_issues()
+    issues[0]["body"] = body
+    inventory, drafts, client = _setup(tmp_path, issues=issues)
+    batch = _plan(inventory, drafts, client)
+    assert any("plan:11.23" in conflict and expected in conflict for conflict in batch.conflicts), batch.conflicts
+    assert not [op for op in batch.operations if op.issue == 222]
+
+
+@pytest.mark.parametrize("literal", ["<!-- optimus-source: P11-FU-20 -->", "<!-- /optimus-source: P11-FU-40 -->"])
+def test_a_body_must_carry_exactly_its_own_markers(tmp_path: Path, literal: str) -> None:
+    entry = "### P11-FU-40: Real Zed containment\n\n**Status:** Open.\n"
+    text = POOL.replace(entry, entry.replace("Open.", f"Open. Quoted: `{literal}`."))  # same line count, so unit keys hold
+    assert text != POOL
+    inventory, drafts, client = _setup(tmp_path, text=text)
+    conflicts = _plan(inventory, drafts, client).conflicts
+    assert any("P11-FU-40" in conflict and "exactly its own markers" in conflict for conflict in conflicts), conflicts
+
+
+def test_label_names_compare_case_insensitively(tmp_path: Path) -> None:
+    labels = [*_pilot_labels(), {"name": "Status:Promoted", **gwt.LABEL_SPECS["status:promoted"].payload()}]
+    inventory, drafts, client = _setup(tmp_path, labels=labels)
+    batch = _plan(inventory, drafts, client)
+    assert not [op for op in batch.operations if op.op == "create-label"]  # GitHub would refuse the case-variant name
+    assert any("'Status:Promoted'" in conflict for conflict in batch.conflicts), batch.conflicts
+
+    issues = _pilot_issues()
+    issues[0]["labels"].append(_label("Priority:High"))
+    inventory, drafts, client = _setup(tmp_path, issues=issues)
+    assert any("Priority:High" in conflict for conflict in _plan(inventory, drafts, client).conflicts)
+
+    issues = _pilot_issues()  # a case variant of a source-dimension label is managed, so the update replaces it
+    issues[0]["labels"] = [_label("Status:Blocked") if label["name"] == "status:blocked" else label for label in issues[0]["labels"]]
+    inventory, drafts, client = _setup(tmp_path, issues=issues)
+    update = next(op for op in _plan(inventory, drafts, client).operations if op.issue == 222)
+    assert "Status:Blocked" not in update.payload["labels"] and "status:blocked" in update.payload["labels"]
+
+
+def test_generated_region_needs_exactly_one_start_and_one_end_in_order() -> None:
+    start, end = "<!-- optimus-source: X -->", "<!-- /optimus-source: X -->"
+    assert gwt.generated_region(f"a\n{start}\nb\n{end}\nc", "X") == (2, 2 + len(f"{start}\nb\n{end}"))
+    assert "2 copies" in str(gwt.generated_region(f"{start}\n{start}\n{end}", "X"))
+    assert "no generated region" in str(gwt.generated_region(f"{start}\nb", "X"))
+    assert "malformed" in str(gwt.generated_region(f"{end}\n{start}", "X"))
+    assert "malformed" in str(gwt.generated_region(f"{start}\n{end}\n{end}", "X"))
+
+
+class _Pages:
+    """A read-only list endpoint that serves fixed pages, then an empty one."""
+
+    def __init__(self, pages: list[list[Any]]) -> None:
+        self.pages = pages
+
+    def get(self, path: str) -> str:
+        page = int(path.rsplit("page=", 1)[1])
+        return json.dumps(self.pages[page - 1] if page <= len(self.pages) else [])
+
+
+def test_an_object_listed_twice_is_read_once() -> None:
+    first, second = _pilot_issues()
+    assert [issue.number for issue in gwt.read_issues(_Pages([[first, second], [first]]))] == [222, 223]
+    label = _pilot_labels()[0]
+    assert list(gwt.read_labels(_Pages([[label, label]]))) == [label["name"]]
+
+
+@pytest.mark.parametrize("fault", ["timeout", "lost"])
+def test_unknown_binding_outcome_stops_without_retry(tmp_path: Path, fault: str) -> None:
+    inventory, drafts, client = _setup(tmp_path)
+    batch = _plan(inventory, drafts, client)
+    bind = _at(batch, "bind-sub-issue")
+
+    def timeout(_obj: dict[str, Any]) -> dict[str, Any]:
+        raise gwt.TransportError("timed out before GitHub applied anything")
+
+    client.faults[bind] = timeout if fault == "timeout" else fault
+    result, journal = _publish(tmp_path, batch, client)
+    assert result.outcome == "unknown" and len(client.writes) == bind + 1
+    assert journal[-2]["step"] == "intent" and journal[-2]["op"] == "bind-sub-issue"

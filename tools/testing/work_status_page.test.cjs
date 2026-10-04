@@ -96,7 +96,8 @@ test("test_closed_reason_mapping", () => {
   assert.deepEqual({...closed("completed")}, {text: "Done", bad: false});
   assert.deepEqual({...closed("not_planned")}, {text: "Not planned", bad: false});
   assert.deepEqual({...closed(null)}, {text: "Closed (reason unavailable)", bad: true});
-  assert.deepEqual({...closed("duplicate")}, {text: "Closed (reason unavailable)", bad: true});
+  assert.deepEqual({...closed("duplicate")}, {text: "Duplicate", bad: false});
+  assert.deepEqual({...closed("some_new_reason")}, {text: "Closed (reason unavailable)", bad: true});
 });
 
 test("test_closed_with_status_label_is_invalid", () => {
@@ -115,6 +116,10 @@ test("test_missing_and_conflicting_dimensions", () => {
   const estimate = VOCAB.dimensions.estimate;
   assert.deepEqual({...WS.metadataCell(issue(1, ["estimate:na"]), estimate)}, {text: "NA", bad: false});
   assert.deepEqual({...WS.metadataCell(issue(1, ["estimate:3d"]), estimate)}, {text: "3d", bad: false});
+  // GitHub label names are case-insensitive: a case variant is the same dimension, and an unknown value of it.
+  assert.deepEqual({...WS.metadataCell(issue(1, ["Priority:High"]), priority)}, {text: "unknown: High", bad: true});
+  assert.deepEqual({...WS.metadataCell(issue(1, ["priority:medium", "Priority:High"]), priority)}, {text: "conflict: medium, High", bad: true});
+  assert.deepEqual({...WS.statusCell(issue(1, ["Status:Open"]), VOCAB)}, {text: "unknown: Open", bad: true});
 });
 
 test("test_unknown_enum_and_unclassified_issue_visible", () => {
@@ -156,6 +161,8 @@ test("test_child_visible_without_selected_parent", () => {
   assert.equal(rows.get(7).depth, 0);
   assert.equal(rows.get(7).context, 5);
   assert.equal(rows.get(7).relationError, null);
+  const html = WS.renderSections(WS.buildRows([issue(7, FULL, {parent_issue_url: parentUrl(5)})], VOCAB));
+  assert.match(html, new RegExp(`\(under <a href="https://github.com/${REPO}/issues/5">#5</a>\)`), "the parent outside the view is a link");
 });
 
 test("test_multilevel_relations_render_once", () => {
@@ -171,6 +178,12 @@ test("test_multilevel_relations_render_once", () => {
   const cyc = WS.buildRows([a, b], VOCAB)[0].rows;
   assert.deepEqual(plain(cyc.map((r) => r.number).sort()), [41, 42], "each issue of a cycle is still shown once");
   assert.ok(cyc.every((r) => r.relationError === "parent cycle"));
+
+  const chain = Array.from({length: 13}, (_, i) => issue(101 + i, FULL, i ? {parent_issue_url: parentUrl(100 + i)} : {}));
+  const deep = rowsByNumber(WS.buildRows(chain, VOCAB));
+  assert.equal(deep.size, 13, "a chain deeper than the limit is still shown once per issue");
+  assert.equal(deep.get(113).relationError, "parent chain deeper than 10 levels");
+  assert.ok(![...deep.values()].some((r) => r.relationError === "parent cycle"), "depth is not reported as a cycle");
 
   const foreign = issue(50, FULL, {parent_issue_url: "https://api.github.com/repos/someone/else/issues/1"});
   assert.equal(rowsByNumber(WS.buildRows([foreign], VOCAB)).get(50).relationError, "malformed parent link");

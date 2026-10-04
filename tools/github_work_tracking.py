@@ -703,6 +703,7 @@ TRIAL_BANNER = (
     " This issue grants no implementation or live-run authority. Do not reference it with a closing keyword."
 )
 _MARKER = re.compile(r"<!-- optimus-source: (\S+) -->")
+_END_MARKER = re.compile(r"<!-- /optimus-source: (\S+) -->")
 _PARENT_URL = re.compile(rf"https://api\.github\.com/repos/{re.escape(REPO)}/issues/(\d+)")
 _LINK_TARGET = re.compile(r"(\]\()([^)\s]+)(\))")
 _VOCABULARY = re.compile(r'<script type="application/json" id="work-status-vocabulary">(?P<json>.*?)</script>', re.DOTALL)
@@ -790,7 +791,13 @@ def _valid_label(label: str) -> bool:
 
 
 def _managed(label: str) -> bool:
-    return label == TRIAL_LABEL or label.startswith(_MANAGED_PREFIXES)
+    """GitHub label names are unique case-insensitively, so ``Priority:High`` is a managed priority label too."""
+    lowered = label.lower()
+    return lowered == TRIAL_LABEL or lowered.startswith(_MANAGED_PREFIXES)
+
+
+def _in_dimension(label: str, dimension: str) -> bool:
+    return label.lower().startswith(dimension + ":")
 
 
 def source_marker(record_id: str) -> str:
@@ -804,6 +811,23 @@ def source_marker(record_id: str) -> str:
 
 def marker_comment(marker: str) -> str:
     return f"<!-- optimus-source: {marker} -->"
+
+
+def end_marker_comment(marker: str) -> str:
+    """Closes the generated region; text outside the region belongs to the issue and survives every update."""
+    return f"<!-- /optimus-source: {marker} -->"
+
+
+def generated_region(body: str, marker: str) -> tuple[int, int] | str:
+    """The ``[start, end)`` span of a body's generated region for ``marker``, or why there is no single well-formed one."""
+    start, end = marker_comment(marker), end_marker_comment(marker)
+    if body.count(start) != 1:
+        return f"its body carries {body.count(start)} copies of the source marker"
+    if body.count(end) == 0:
+        return "its body has no generated region (the source marker without a region end, as in a pilot body); rewriting it would discard reviewed text, so it needs a reviewed body decision first"
+    if body.count(end) != 1 or body.index(end) < body.index(start):
+        return "its body has a malformed generated region"
+    return body.index(start), body.index(end) + len(end)
 
 
 def _sha256(text: str) -> str:
@@ -928,19 +952,21 @@ def issue_snapshot(raw: Any) -> IssueSnapshot:
 
 
 def read_issues(client: GitHubClient, repo: str = REPO) -> list[IssueSnapshot]:
-    """Every issue in every state; the issue list also returns pull requests, which are dropped."""
-    return [
-        issue_snapshot(raw)
-        for raw in read_pages(client, f"repos/{repo}/issues?state=all")
-        if not (isinstance(raw, dict) and "pull_request" in raw)
-    ]
+    """Every issue in every state, once each (a page shift can list one twice); pull requests are dropped."""
+    issues: dict[int, IssueSnapshot] = {}
+    for raw in read_pages(client, f"repos/{repo}/issues?state=all"):
+        if not (isinstance(raw, dict) and "pull_request" in raw):
+            issue = issue_snapshot(raw)
+            issues[issue.number] = issue  # the later observation wins
+    return list(issues.values())
 
 
 def read_labels(client: GitHubClient, repo: str = REPO) -> dict[str, LabelSpec]:
+    """Repository labels keyed by lower-cased name, because GitHub label names are unique case-insensitively."""
     labels = {}
     for raw in read_pages(client, f"repos/{repo}/labels"):
         try:
-            labels[raw["name"]] = LabelSpec(raw["name"], raw.get("description") or "", str(raw["color"]).lower())
+            labels[raw["name"].lower()] = LabelSpec(raw["name"], raw.get("description") or "", str(raw["color"]).lower())
         except (AttributeError, KeyError, TypeError) as error:
             raise ReadFailed(f"unusable label object ({type(error).__name__}: {error})") from None
     return labels
@@ -1094,7 +1120,8 @@ def render_body(
         span = f"L{first}" if first == last else f"L{first}-L{last}"
         out += [f"**`{path}` line {unit.line}** ([at baseline]({blob_url(path, commit)}?plain=1#{span}))", ""]
         out += [normalize_links("\n".join(text), path, commit), ""]
-    return "\n".join(out).rstrip("\n") + "\n"
+    out.append(end_marker_comment(source_marker(record.id)))
+    return "\n".join(out) + "\n"
 
 
 def draft_issues(inventory: Inventory, sources: Mapping[str, bytes], trial: bool = True) -> list[IssueDraft]:
@@ -1212,7 +1239,7 @@ def merged_labels(draft: IssueDraft, issue: IssueSnapshot) -> tuple[list[str], l
     where = f"record {draft.record_id!r} (#{issue.number})"
     for dimension in _DEFAULTED_DIMENSIONS:
         want = next(label for label in wanted if label.startswith(dimension + ":"))
-        present = [label for label in issue.labels if label.startswith(dimension + ":")]
+        present = [label for label in issue.labels if _in_dimension(label, dimension)]
         if len(present) > 1:
             conflicts.append(f"{where} carries more than one {dimension} label {present}")
         elif present and not _valid_label(present[0]):
@@ -1248,19 +1275,25 @@ def plan_migration(
             conflicts.append(
                 f"record {draft.record_id!r} title ({len(draft.title)}) or body ({len(draft.body)}) is outside GitHub's limits"
             )
+        starts, ends = _MARKER.findall(draft.body), _END_MARKER.findall(draft.body)
+        if starts != [draft.marker] or ends != [draft.marker]:  # a marker quoted from the source would corrupt identity
+            conflicts.append(
+                f"record {draft.record_id!r} body carries source markers {starts} and region ends {ends};"
+                f" it must carry exactly its own markers {draft.marker!r}"
+            )
 
     label_ops = []
     for name in sorted({label for draft in drafts for label in draft.labels}):
         spec = LABEL_SPECS.get(name)
-        existing = labels.get(name)
+        existing = labels.get(name.lower())
         if spec is None:
             conflicts.append(f"label {name!r} has no reviewed specification")
         elif existing is None:
             label_ops.append(Operation("create-label", name, {"name": name, **spec.payload()}))
         elif existing != spec:
             conflicts.append(
-                f"label {name!r} exists with color {existing.color} and description {existing.description!r},"
-                f" not the reviewed {spec.color} and {spec.description!r}"
+                f"label {name!r} exists as {existing.name!r} with color {existing.color} and description"
+                f" {existing.description!r}, not the reviewed {spec.color} and {spec.description!r}"
             )
 
     reused: dict[str, IssueRef] = {}
@@ -1302,8 +1335,14 @@ def plan_migration(
         reused[record.id] = IssueRef(issue.number, issue.id)
         wanted, label_conflicts = merged_labels(draft, issue)
         conflicts.extend(label_conflicts)
-        if (issue.title, issue.body, list(issue.labels)) != (draft.title, draft.body, wanted):
-            payload = {"title": draft.title, "body": draft.body, "labels": wanted}
+        region = generated_region(issue.body, draft.marker)
+        if isinstance(region, str):
+            conflicts.append(f"{label}: #{issue.number}: {region}")
+            continue
+        # An update rewrites only the generated region; the existing title and every line outside the region survive.
+        body = issue.body[: region[0]] + draft.body.rstrip("\n") + issue.body[region[1] :]
+        if (issue.body, list(issue.labels)) != (body, wanted):
+            payload = {"title": issue.title, "body": body, "labels": wanted}
             issue_ops.append(Operation("update-issue", record.id, payload, issue.number, issue.fingerprint))
 
     bind_ops = []
@@ -1501,14 +1540,14 @@ def _label_problems(draft: IssueDraft, issue: IssueSnapshot) -> list[str]:
     where = f"record {draft.record_id!r}: #{issue.number}"
     problems = []
     for dimension in _SOURCE_DIMENSIONS:
-        got = sorted(label for label in issue.labels if label.startswith(dimension + ":"))
-        want = sorted(label for label in draft.labels if label.startswith(dimension + ":"))
+        got = sorted(label for label in issue.labels if _in_dimension(label, dimension))
+        want = sorted(label for label in draft.labels if _in_dimension(label, dimension))
         if got != want:
             problems.append(f"{where} {dimension} labels {got} are not {want}")
     if (TRIAL_LABEL in issue.labels) != (TRIAL_LABEL in draft.labels):
         problems.append(f"{where} {'lacks' if TRIAL_LABEL in draft.labels else 'still carries'} the {TRIAL_LABEL} label")
     for dimension in _DEFAULTED_DIMENSIONS:
-        got = [label for label in issue.labels if label.startswith(dimension + ":")]
+        got = [label for label in issue.labels if _in_dimension(label, dimension)]
         want = next(label for label in draft.labels if label.startswith(dimension + ":"))
         if len(got) != 1 or not _valid_label(got[0]):
             problems.append(f"{where} needs exactly one valid {dimension} label, not {got}")
@@ -1518,7 +1557,8 @@ def _label_problems(draft: IssueDraft, issue: IssueSnapshot) -> list[str]:
 
 
 def reconcile(inventory: Inventory, drafts: Sequence[IssueDraft], observed: Sequence[IssueSnapshot]) -> ReconciliationReport:
-    """Each migrating record maps to exactly one open issue whose title, body, labels and native parent match."""
+    """Each migrating record maps to exactly one open issue whose generated region, labels, native parent and (for a
+    created issue) title match its draft."""
     problems: list[str] = []
     drafts_by_id = {draft.record_id: draft for draft in drafts}
     owners = {draft.marker for draft in drafts}
@@ -1563,10 +1603,13 @@ def reconcile(inventory: Inventory, drafts: Sequence[IssueDraft], observed: Sequ
             problems.append(f"{label} maps to #{issue.number}, not its reviewed target #{record.target_issue}")
         if issue.state != "open":
             problems.append(f"{label}: #{issue.number} is closed during the migration")
-        if issue.title != draft.title:
+        if record.target_issue is None and issue.title != draft.title:  # a reused issue keeps its own reviewed title
             problems.append(f"{label}: #{issue.number} title differs from the draft")
-        if issue.body != draft.body:
-            problems.append(f"{label}: #{issue.number} body differs from the draft")
+        region = generated_region(issue.body, draft.marker)
+        if isinstance(region, str):
+            problems.append(f"{label}: #{issue.number}: {region}")
+        elif issue.body[region[0] : region[1]] != draft.body.rstrip("\n"):
+            problems.append(f"{label}: #{issue.number} body's generated region differs from the draft")
         problems.extend(_label_problems(draft, issue))
     for draft in drafts:
         number = mapping.get(draft.record_id)
@@ -1626,6 +1669,10 @@ def _github_command(args: argparse.Namespace, reader: SourceReader, client: GitH
     (args.evidence_dir / "batch.json").write_bytes(reviewed)
     seconds = args.pause_seconds
     result = publish_batch(batch, client, Journal(args.evidence_dir / "journal.jsonl"), pause=lambda: time.sleep(seconds))
+    seal = "".join(
+        f"{hashlib.sha256((args.evidence_dir / name).read_bytes()).hexdigest()}  {name}\n" for name in ("batch.json", "journal.jsonl")
+    )
+    (args.evidence_dir / "evidence.sha256").write_bytes(seal.encode("utf-8"))  # sealed last, after the outcome record
     print(json.dumps({"outcome": result.outcome, "reason": result.reason, "writes": result.writes}))
     return {"pass": 0, "failed": 1, "refused": 2, "unknown": 3}[result.outcome]
 

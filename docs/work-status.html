@@ -70,7 +70,7 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
     "unrun": "Unrun",
     "unrun-binding": "Unrun (binding)"
   },
-  "closed_reasons": {"completed": "Done", "not_planned": "Not planned"},
+  "closed_reasons": {"completed": "Done", "not_planned": "Not planned", "duplicate": "Duplicate"},
   "dimensions": {
     "priority": {"label": "priority", "values": {"high": "High", "medium": "Medium", "low": "Low"}},
     "difficulty": {"label": "difficulty", "values": {"high": "High", "medium": "Medium", "low": "Low"}},
@@ -104,7 +104,7 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
   function labelValues(issue, prefix) {
     return (issue.labels || [])
       .map((label) => (typeof label === "string" ? label : label && label.name) || "")
-      .filter((name) => name.startsWith(prefix + ":"))
+      .filter((name) => name.toLowerCase().startsWith(prefix + ":")) // GitHub label names are case-insensitive
       .map((name) => name.slice(prefix.length + 1));
   }
 
@@ -183,21 +183,20 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
 
     const placed = new Set();
     const rows = [];
-    const visit = (number, depth, path) => {
-      if (path.includes(number)) {
-        relationErrors.set(number, "parent cycle");
-        return;
-      }
-      if (placed.has(number) || depth > MAX_DEPTH) return;
+    // Each issue has at most one parent, so a walk down from a root reaches every issue once and never meets a cycle:
+    // issues on (or under) a cycle are never reached and are placed below with that error. A node past MAX_DEPTH is
+    // still shown once, with its own error.
+    const visit = (number, depth) => {
       placed.add(number);
+      if (depth > MAX_DEPTH) relationErrors.set(number, "parent chain deeper than " + MAX_DEPTH + " levels");
       rows.push({number, depth});
-      for (const child of children.get(number) || []) visit(child, depth + 1, path.concat(number));
+      for (const child of children.get(number) || []) visit(child, depth + 1);
     };
     const roots = issues
       .map((issue) => issue.number)
       .filter((number) => !(parentOf.has(number) && byNumber.has(parentOf.get(number))))
       .sort(order);
-    for (const root of roots) visit(root, 0, []);
+    for (const root of roots) visit(root, 0);
     for (const issue of issues) {
       if (!placed.has(issue.number)) {
         if (!relationErrors.has(issue.number)) relationErrors.set(issue.number, "parent cycle");
@@ -222,6 +221,7 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
         status: statusCell(issue, vocab),
         cells: Object.keys(vocab.dimensions).map((name) => metadataCell(issue, vocab.dimensions[name])),
         context: parent !== undefined && !byNumber.has(parent) ? parent : null,
+        contextUrl: parent !== undefined && !byNumber.has(parent) ? "https://github.com/" + vocab.repo + "/issues/" + parent : null,
         relationError: relationErrors.get(row.number) || null,
         progress: issue.sub_issues_summary && issue.sub_issues_summary.total
           ? {completed: Number(issue.sub_issues_summary.completed) || 0, total: Number(issue.sub_issues_summary.total) || 0}
@@ -298,7 +298,7 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
         const ref = row.url ? "<a href=\"" + esc(row.url) + "\">#" + row.number + "</a>" : "#" + row.number;
         const indent = row.depth ? "<span style=\"padding-left:" + Math.min(row.depth, MAX_DEPTH) * 18 + "px\">↳ </span>" : "";
         const progress = row.progress ? " <span class=\"progress\">(" + row.progress.completed + "/" + row.progress.total + " sub-issues done)</span>" : "";
-        const context = row.context ? " <span class=\"context\">(under #" + row.context + ")</span>" : "";
+        const context = row.context ? " <span class=\"context\">(under <a href=\"" + esc(row.contextUrl) + "\">#" + row.context + "</a>)</span>" : "";
         const relation = row.relationError ? " <span class=\"bad\">" + esc(row.relationError) + "</span>" : "";
         return "<tr><td>" + indent + ref + " — " + esc(row.title) + progress + context + relation + "</td>" +
           renderCell(row.status) + row.cells.map(renderCell).join("") + "</tr>";
