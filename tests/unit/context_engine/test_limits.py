@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 import re
 from decimal import Decimal
 
@@ -209,6 +210,18 @@ def test_a_consistent_proposal_has_no_violations_and_reports_its_coverage() -> N
     assert coverage["absent_floor_max_ratio"] == round((262_144 - 32_768) / (524_288 + 43_819), 4)
     assert coverage["trigger_binding_term_by_tier"] == {"ultra-cheap": "tier target", "cheap": "tier target"}
     assert set(coverage["cold_rebuild_list_price_usd"]) == {"qwen/qwen3.7-flash", "openai/gpt-6-luna"}
+
+
+@pytest.mark.parametrize("ratio", ["1", "0.5", "0.3", "0.25", "0.2", "0.1", "0.3333333333333333333333333333"])
+@pytest.mark.parametrize("summary_tokens", [1, 8_192, 99_999])
+def test_the_derived_summary_byte_bound_is_exactly_what_the_token_cap_admits(ratio, summary_tokens) -> None:
+    """floor(S / r) in exact rational arithmetic: the longest summary whose ceil(r * bytes) estimate fits
+    S tokens, and one byte more does not (Fable review of the CP4 corrections, NIT-3)."""
+    from fractions import Fraction
+
+    r = Fraction(Decimal(ratio))
+    bound = limits.summary_max_bytes_for(summary_tokens, Decimal(ratio))
+    assert math.ceil(bound * r) <= summary_tokens < math.ceil((bound + 1) * r)
 
 
 @pytest.mark.parametrize("ratio", [Decimal("1"), Decimal("0.2")], ids=["1", "0.2"])

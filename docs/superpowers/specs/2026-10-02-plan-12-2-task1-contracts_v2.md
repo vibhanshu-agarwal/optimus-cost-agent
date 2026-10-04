@@ -43,7 +43,7 @@ Keep the filed API names/signatures. Types are immutable; validation happens bef
 | `ProtectedTurnState` | `seq`, exact `outcome`, exact `effect_state`, tuple of host-issued approval facts; exactly one per committed turn |
 | `HistorySnapshot` | Revision plus tuples of ordinary turns/protected state with equal complete ID sets; no provisional current prompt |
 | `StrategyParameters` | Anchor/tail allocations, summary output bound, finite maintenance-call count, prompt/format version and digest |
-| `ViewLimits` | Finite history/source/transient/maintenance bounds; required `summary_max_bytes` (at least 1, strictly below `transient_max_bytes`, derived as `floor(S / r)` from the verified byte-ratio profile, C2); host `estimate_history(text) -> int` with verified estimator ID, subadditive over complete strings supplied to the engine |
+| `ViewLimits` | Finite history/source/transient/maintenance bounds; required `summary_max_bytes` (at least 1, strictly below `transient_max_bytes`, derived as `floor(S / r)` from the verified byte-ratio profile, C2); host `estimate_history(text) -> int` with verified estimator ID, subadditive over any strings the engine concatenates |
 | `MaintenanceRequest` | Complete sanitized `input_text`, host-computed covered IDs, max output, prompt/format version; model cannot supply trusted coverage metadata |
 | `MaintenanceResult` | Bounded optional summary text, attempt IDs, status and true finish/truncation status; monetary receipts remain host-owned |
 | `SummaryCheckpoint` | Current revision and digest, covered turn IDs plus per-turn source digests, strategy/parameter/format identity, sanitized inert summary |

@@ -210,7 +210,7 @@ class ViewLimits:
     it from its verified estimator, `floor(S / r)` for a `ceil(r * UTF-8 bytes)` profile and summary
     token cap `S`, so the byte bound never rejects a summary the token bound admits.
 
-    `estimate_history` must be subadditive over the complete strings given to the engine:
+    `estimate_history` must be subadditive over any strings the engine concatenates:
     `estimate_history(a + b) <= estimate_history(a) + estimate_history(b)`. The engine relies on it to
     count a maintenance input as the sum of its pieces; a `ceil(r * UTF-8 bytes)` profile with
     non-negative overhead satisfies it. Each assembled input is still checked before its call."""

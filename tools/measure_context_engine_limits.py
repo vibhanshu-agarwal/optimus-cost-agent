@@ -33,7 +33,7 @@ import time
 import tracemalloc
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from decimal import ROUND_FLOOR, Decimal
+from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -203,8 +203,9 @@ def ratio_estimator(ratio: Decimal) -> Callable[[str], int]:
 def summary_max_bytes_for(summary_tokens: int, ratio: Decimal) -> int:
     """`floor(S / r)`: the most UTF-8 bytes a summary within `S` tokens can have under a
     `ceil(r * bytes)` estimator, so the byte bound never rejects what the token bound admits (Codex's
-    final corrections C2). Exact decimal arithmetic."""
-    return int((Decimal(summary_tokens) / ratio).to_integral_value(rounding=ROUND_FLOOR))
+    final corrections C2). Exact rational arithmetic, whatever the decimal context's precision (Fable
+    review of the CP4 corrections, NIT-3)."""
+    return math.floor(Fraction(summary_tokens) / Fraction(ratio))
 
 
 def summary_of_tokens(tokens: int, ratio: Decimal) -> str:
@@ -671,7 +672,7 @@ def largest_summarizable_turn_bytes(proposal: Mapping[str, Any], ratio: Decimal)
     `ceil(ratio * bytes)` estimator: after a prior summary (steady state) and as the first turn of a
     cold rebuild (no prior summary)."""
     capacity = chunk_capacity(proposal, ratio)
-    tokens_to_bytes = lambda tokens: int((Decimal(tokens) / ratio).to_integral_value(rounding=ROUND_FLOOR))  # noqa: E731
+    tokens_to_bytes = lambda tokens: math.floor(Fraction(tokens) / Fraction(ratio))  # noqa: E731
     return {
         "steady_state": min(tokens_to_bytes(capacity["tokens"]), capacity["bytes"]),
         "oldest_turn_of_a_cold_rebuild": min(tokens_to_bytes(proposal["maintenance_input_tokens"]), proposal["transient_max_bytes"]),
@@ -716,7 +717,7 @@ def _proposed_policy_rows_at(proposal: Mapping[str, Any], ratio: Decimal) -> dic
     steady, reading = measure(lambda: turn_pipeline(state, approvals, strategy="compaction", fixture=fixture, checkpoint=cold["checkpoint"]))
     rows["steady_state_turn"] = row(steady, reading, state)
     capacity = chunk_capacity(proposal, ratio)
-    binding_bytes = min(int((Decimal(capacity["tokens"]) / ratio).to_integral_value(rounding=ROUND_FLOOR)), capacity["bytes"])
+    binding_bytes = min(math.floor(Fraction(capacity["tokens"]) / Fraction(ratio)), capacity["bytes"])
     worst_turn = binding_bytes // 2 + 1
     state, approvals = _history_of_turns(worst_turn, history_bytes)
     worst, reading = measure(lambda: turn_pipeline(state, approvals, strategy="compaction", fixture=fixture))
