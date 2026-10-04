@@ -360,6 +360,78 @@ def test_needing_more_calls_than_allowed_is_unavailable_before_any_call() -> Non
     assert (v.available, v.reason, maintenance.requests) == (False, "maintenance allowance exceeded", [])
 
 
+# --- Remaining turn-wide allowance (release supplement V3) --------------------------------------------
+
+
+def _four_chunk_case() -> tuple[HistorySnapshot, StrategyParameters, ViewLimits]:
+    """Turns 1-4 are summarized one per call; turn 5 is the exact tail."""
+    snap = make_snapshot([200, 200, 200, 200, 200])
+    lim = limits(maintenance_input_tokens=cost(snap, 1) + len(PRIOR_SUMMARY_HEADER) + RESERVE + 6)
+    return snap, params(compaction_tail_input_tokens=cost(snap, 5), max_maintenance_calls=18, summary_output_tokens=RESERVE), lim
+
+
+@pytest.mark.parametrize("bad", [-1, True, 1.0, "2"])
+def test_the_remaining_allowance_must_be_a_non_negative_int_or_none(bad: object) -> None:
+    assert limits().maintenance_calls_remaining is None
+    assert limits(maintenance_calls_remaining=0).maintenance_calls_remaining == 0
+    with pytest.raises(ContractError, match="maintenance_calls_remaining"):
+        limits(maintenance_calls_remaining=bad)
+
+
+def test_the_remaining_allowance_bounds_the_whole_plan_before_any_call() -> None:
+    snap, p, lim = _four_chunk_case()
+    refused = FakeMaintenance()
+    v = view(snap, "compaction", p, lim=dataclasses.replace(lim, maintenance_calls_remaining=3), maintenance=refused)
+    assert (v.available, v.reason, refused.requests) == (False, "maintenance allowance exceeded", [])
+
+    fitting = FakeMaintenance()
+    v = view(snap, "compaction", p, lim=dataclasses.replace(lim, maintenance_calls_remaining=4), maintenance=fitting)
+    assert v.available and len(fitting.requests) == 4
+
+
+def test_a_larger_remaining_allowance_never_lifts_the_parameters_bound() -> None:
+    snap, p, lim = _four_chunk_case()
+    maintenance = FakeMaintenance()
+    v = view(snap, "compaction", dataclasses.replace(p, max_maintenance_calls=3), lim=dataclasses.replace(lim, maintenance_calls_remaining=18), maintenance=maintenance)
+    assert (v.available, v.reason, maintenance.requests) == (False, "maintenance allowance exceeded", [])
+
+
+def test_zero_remaining_allows_only_a_view_that_needs_no_call() -> None:
+    snap, p, lim = _four_chunk_case()
+    exhausted = dataclasses.replace(lim, maintenance_calls_remaining=0)
+    first = FakeMaintenance()
+    full = view(snap, "compaction", p, lim=lim, maintenance=first)
+    assert full.available and full.checkpoint is not None
+
+    # A checkpoint that already covers the range is reused with no call.
+    again = FakeMaintenance()
+    reused = view(snap, "compaction", p, lim=exhausted, checkpoint=full.checkpoint, maintenance=again)
+    assert reused.available and again.requests == [] and reused.checkpoint == full.checkpoint
+    # Sliding and an all-tail view need no call either.
+    assert view(snap, "sliding_window", p, lim=exhausted, maintenance=again).available
+    assert view(snap, "compaction", dataclasses.replace(p, compaction_tail_input_tokens=100_000), lim=exhausted, maintenance=again).available
+    assert again.requests == []
+    # A cold plan needing calls refuses before its first callback.
+    cold = view(snap, "compaction", p, lim=exhausted, maintenance=again)
+    assert (cold.available, cold.reason, again.requests) == (False, "maintenance allowance exceeded", [])
+
+
+def test_the_remaining_allowance_is_outside_checkpoint_identity() -> None:
+    """A smaller allowance leaves the parameters digest alone, so a prefix checkpoint is still reused
+    and only the uncovered turns are summarized."""
+    snap, p, lim = _four_chunk_case()
+    prefix_snap = make_snapshot([200, 200, 200])  # turns 1-2 summarized, turn 3 the tail
+    prefix = view(prefix_snap, "compaction", dataclasses.replace(p, compaction_tail_input_tokens=cost(prefix_snap, 3)), lim=lim)
+    assert prefix.available and prefix.checkpoint is not None and prefix.checkpoint.covered_turn_ids == (1, 2)
+
+    maintenance = FakeMaintenance()
+    v = view(snap, "compaction", p, lim=dataclasses.replace(lim, maintenance_calls_remaining=2), checkpoint=prefix.checkpoint, maintenance=maintenance)
+    assert v.available and v.checkpoint is not None
+    assert v.checkpoint.parameters_digest == p.digest == prefix.checkpoint.parameters_digest
+    assert [request.covered_turn_ids for request in maintenance.requests] == [(1, 2, 3), (1, 2, 3, 4)]
+    assert all(PRIOR_SUMMARY_HEADER in request.input_text for request in maintenance.requests)
+
+
 def test_a_turn_larger_than_the_maintenance_input_is_unavailable_and_never_cut() -> None:
     snap = make_snapshot([500, 10, 10])
     maintenance = FakeMaintenance()
@@ -392,8 +464,21 @@ class ExactText(FakeMaintenance):
         (FakeMaintenance(status="unavailable", text=None, finish=None), "maintenance unavailable"),
         (FakeMaintenance(status="unsupported", text=None, finish=None), "maintenance unavailable"),
         (ExactText("a usable-looking summary", status="unsupported"), "maintenance unavailable"),
+        # A host's defensive refusal past its turn-wide allowance is the allowance reason, never a paid
+        # failure that "retrying may help" (closure V2 section 2.2).
+        (FakeMaintenance(status="allowance_exhausted", text=None, finish=None), "maintenance allowance exceeded"),
     ],
-    ids=["failed", "failed-with-text", "length-limited", "none", "empty-string", "no-summarizer", "unsupported", "unsupported-with-text"],
+    ids=[
+        "failed",
+        "failed-with-text",
+        "length-limited",
+        "none",
+        "empty-string",
+        "no-summarizer",
+        "unsupported",
+        "unsupported-with-text",
+        "allowance-exhausted",
+    ],
 )
 def test_an_unusable_maintenance_result_makes_the_view_unavailable(fake, reason) -> None:
     snap = make_snapshot([30, 30, 30])

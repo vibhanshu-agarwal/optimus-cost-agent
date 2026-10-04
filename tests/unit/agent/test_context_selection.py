@@ -437,12 +437,37 @@ def test_added_evidence_repacks_the_view_under_the_captured_revision():
 
 
 def test_a_repack_never_exceeds_the_turn_maintenance_allowance():
+    from optimus.context.assembly import ContextFault
+
     attached, summarizer = _attached_turn(usable=1100, calls=1)
     assert attached.prepare().kind == "view"
     assert attached.maintenance_calls == 1
 
     assert attached.fit(_build(3000)) is None  # it would need another summary
     assert len(summarizer.prompts) == 1
+    # Refused by the engine's whole-plan preflight against the remaining allowance (zero), before any
+    # callback, as the allowance reason (release supplement V3).
+    assert attached.take_faults() == (ContextFault("repack", "maintenance_unavailable"),)
+
+
+def test_a_repack_keeps_the_parameters_digest_and_summarizes_only_new_turns():
+    """Release supplement V3: the remaining allowance travels in ViewLimits, so the repack reuses the
+    admitted view's summary and pays only for the turns it newly covers."""
+    attached, summarizer = _attached_turn(usable=1100, calls=4)
+    assert attached.prepare().kind == "view"
+    initial = attached.admitted.view.checkpoint
+    assert initial is not None and len(summarizer.prompts) == 1
+    first_covered = initial.covered_turn_ids
+
+    assert attached.fit(_build(3000)) is not None and attached.repacks == 1
+    repacked = attached._view.checkpoint
+    assert repacked is not None and repacked.parameters_digest == initial.parameters_digest == attached._attachment.parameters.digest
+    assert repacked.covered_turn_ids[: len(first_covered)] == first_covered and len(repacked.covered_turn_ids) > len(first_covered)
+    repack_prompts = summarizer.prompts[1:]
+    assert repack_prompts and attached.maintenance_calls == len(summarizer.prompts) <= 4
+    for seq in first_covered:  # an already summarized turn is never sent again
+        assert all(f"Turn {seq} " not in prompt for prompt in repack_prompts)
+    assert attached.candidate is initial  # a repack's checkpoint is never the one published
 
 
 def test_a_request_whose_fixed_part_cannot_fit_is_refused_without_looping():

@@ -48,6 +48,9 @@ _SEPARATOR = "\n"
 # version: not a transient provider failure, so the view is unavailable rather than failed and a retry
 # cannot help (Codex's final corrections C1, 2026-10-04).
 _UNAVAILABLE_STATUSES = frozenset({"unavailable", "unsupported"})
+# A host's defensive refusal of a call beyond its turn-wide allowance: the allowance reason, never a
+# paid-provider failure (closure V2 section 2.2). The whole-plan preflight normally prevents it.
+_ALLOWANCE_EXHAUSTED_STATUS = "allowance_exhausted"
 
 
 class _Unavailable(Exception):
@@ -182,7 +185,12 @@ class ContextEngine:
             # (Fable CP2 review).
             prior = None
             chunks = self._plan([by_seq[seq] for seq in covered], None, limits, reserve)
-        if len(chunks) > parameters.max_maintenance_calls:
+        # The whole plan must fit before any call: the parameters' bound, and the host's remaining
+        # turn-wide allowance when it supplies one (release supplement V3).
+        allowance = parameters.max_maintenance_calls
+        if limits.maintenance_calls_remaining is not None:
+            allowance = min(allowance, limits.maintenance_calls_remaining)
+        if len(chunks) > allowance:
             raise _Unavailable("maintenance allowance exceeded")
 
         summary_text = prior.summary_text if prior else None
@@ -256,6 +264,8 @@ class ContextEngine:
     def _accepted_summary(result: object, estimate: Callable[[str], int], reserve: int, max_bytes: int) -> str:
         if isinstance(result, MaintenanceResult) and result.status in _UNAVAILABLE_STATUSES:
             raise _Unavailable("maintenance unavailable")
+        if isinstance(result, MaintenanceResult) and result.status == _ALLOWANCE_EXHAUSTED_STATUS:
+            raise _Unavailable("maintenance allowance exceeded")
         if (
             not isinstance(result, MaintenanceResult)
             or result.status != "completed"

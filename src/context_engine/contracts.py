@@ -213,7 +213,12 @@ class ViewLimits:
     `estimate_history` must be subadditive over any strings the engine concatenates:
     `estimate_history(a + b) <= estimate_history(a) + estimate_history(b)`. The engine relies on it to
     count a maintenance input as the sum of its pieces; a `ceil(r * UTF-8 bytes)` profile with
-    non-negative overhead satisfies it. Each assembled input is still checked before its call."""
+    non-negative overhead satisfies it. Each assembled input is still checked before its call.
+
+    `maintenance_calls_remaining` is execution state, not checkpoint identity: the calls this view may
+    still make when its host has already spent part of a turn-wide allowance (a repack). The whole chunk
+    plan must fit `min(parameters.max_maintenance_calls, maintenance_calls_remaining)` before any call.
+    None leaves only the parameters' bound (release supplement V3, 2026-10-04)."""
 
     history_input_tokens: int
     source_max_bytes: int
@@ -223,6 +228,7 @@ class ViewLimits:
     summary_max_bytes: int
     estimate_history: Callable[[str], int]
     estimator_id: str
+    maintenance_calls_remaining: int | None = None
 
     def __post_init__(self) -> None:
         for name in ("history_input_tokens", "source_max_bytes", "transient_max_bytes", "maintenance_input_tokens", "maintenance_output_tokens"):
@@ -230,6 +236,8 @@ class ViewLimits:
         _int("ViewLimits", "summary_max_bytes", self.summary_max_bytes, minimum=1)
         if self.summary_max_bytes >= self.transient_max_bytes:
             raise ContractError("ViewLimits.summary_max_bytes must be below transient_max_bytes")
+        if self.maintenance_calls_remaining is not None:
+            _int("ViewLimits", "maintenance_calls_remaining", self.maintenance_calls_remaining)
         if not callable(self.estimate_history):
             raise ContractError("ViewLimits.estimate_history must be callable")
         _text("ViewLimits", "estimator_id", self.estimator_id, nonempty=True)

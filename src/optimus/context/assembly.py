@@ -351,6 +351,11 @@ class _TurnMaintenance:
         self.calls = 0
         self.raised = False
 
+    @property
+    def remaining(self) -> int:
+        """Calls this turn may still make, for the engine's whole-plan preflight."""
+        return max(0, self._allowance - self.calls)
+
     def __call__(self, request: MaintenanceRequest) -> MaintenanceResult:
         if self._host is None:
             return MaintenanceResult(summary_text=None, attempt_ids=(), status="unavailable", finish_status=None)
@@ -545,7 +550,11 @@ class AttachedTurn:
         self, history_tokens: int, checkpoint: SummaryCheckpoint | None, *, phase: Literal["prepare", "repack"]
     ) -> PreparedView:
         assert self._snapshot is not None and self._maintenance is not None
-        limits = dataclasses.replace(self._attachment.limits, history_input_tokens=history_tokens)
+        # The remaining turn-wide allowance travels in the limits, never the parameters, so a repack
+        # keeps the parameters digest and can reuse this turn's summary (release supplement V3).
+        limits = dataclasses.replace(
+            self._attachment.limits, history_input_tokens=history_tokens, maintenance_calls_remaining=self._maintenance.remaining
+        )
         self._maintenance.raised = False
         try:
             view = self._attachment.engine.prepare_view(
