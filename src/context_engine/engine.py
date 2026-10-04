@@ -11,12 +11,13 @@ view is unavailable and no maintenance runs. Then:
 - sliding window: the newest whole turns that fit stay exact and the rest are omitted from model
   context, never skipping an oversized newest turn, with zero maintenance calls.
 
-Maintenance is planned in whole-turn chunks before any call. A later chunk's prior summary is
-counted at its maximum length, so every planned input fits. A plan that needs more calls than allowed,
-or a single turn larger than the maintenance input, is unavailable with zero calls. A valid checkpoint
-is reused, or merged incrementally with only the turns it does not yet cover, only while its text
-still passes the current summary bound, estimator and format; otherwise the range is rebuilt from
-source within the same limits. The engine writes nothing; it returns a candidate the host may publish.
+Maintenance is planned in whole-turn chunks before any call, against both the token and the UTF-8
+byte limit of a maintenance input. A later chunk's prior summary is counted at its maximum token
+estimate and byte length, so every planned input fits both. A plan that needs more calls than allowed,
+or a single turn that cannot fit, is unavailable with zero calls. A valid checkpoint is reused, or
+merged incrementally with only the turns it does not yet cover, only while its text still passes the
+current summary token and byte bounds, estimator and format; otherwise the range is rebuilt from source
+within the same limits. The engine writes nothing; it returns a candidate the host may publish.
 """
 
 from __future__ import annotations
@@ -167,7 +168,7 @@ class ContextEngine:
             if (
                 reused is not None
                 and covered[: len(reused.covered_turn_ids)] == reused.covered_turn_ids
-                and self._text_rejection(reused.summary_text, estimate, reserve) is None
+                and self._text_rejection(reused.summary_text, estimate, reserve, limits.summary_max_bytes) is None
             ):
                 prior = reused
 
@@ -202,7 +203,7 @@ class ContextEngine:
                     format_version=parameters.format_version,
                 )
             )
-            summary_text = self._accepted_summary(result, estimate, reserve)
+            summary_text = self._accepted_summary(result, estimate, reserve, limits.summary_max_bytes)
         if cancelled():
             raise _Unavailable("cancelled")
         if summary_text is None or covered_so_far != covered:
@@ -219,32 +220,40 @@ class ContextEngine:
 
     @staticmethod
     def _plan(remaining: list[OrdinaryTurn], prior: SummaryCheckpoint | None, limits: ViewLimits, reserve: int) -> list[list[OrdinaryTurn]]:
-        """Whole-turn chunks, each fitting the maintenance input with its prior summary at its
-        known length (a reused checkpoint) or its maximum length (an earlier chunk's output)."""
+        """Whole-turn chunks, each fitting both the maintenance input's token limit and the transient
+        byte limit, with its prior summary at its known size (a reused checkpoint) or its maximum size
+        (an earlier chunk's output). Tokens are the sum of the pieces' estimates, an upper bound for the
+        subadditive estimator `ViewLimits` requires; bytes add exactly (Codex's final corrections C2)."""
         estimate = limits.estimate_history
         header, separator = estimate(PRIOR_SUMMARY_HEADER), estimate(_SEPARATOR)
+        header_bytes, separator_bytes = len(PRIOR_SUMMARY_HEADER.encode("utf-8")), len(_SEPARATOR.encode("utf-8"))
         prior_cost: int | None = estimate(PRIOR_SUMMARY_HEADER + prior.summary_text) if prior else None
+        prior_bytes: int | None = len((PRIOR_SUMMARY_HEADER + prior.summary_text).encode("utf-8")) if prior else None
         chunks: list[list[OrdinaryTurn]] = []
         index = 0
         while index < len(remaining):
             used = 0 if prior_cost is None else prior_cost + separator
+            used_bytes = 0 if prior_bytes is None else prior_bytes + separator_bytes
             chunk: list[OrdinaryTurn] = []
             while index < len(remaining):
-                turn_cost = estimate(render_ordinary_turn(remaining[index]))
-                extra = turn_cost + (separator if chunk else 0)
-                if used + extra > limits.maintenance_input_tokens:
+                rendered = render_ordinary_turn(remaining[index])
+                extra = estimate(rendered) + (separator if chunk else 0)
+                extra_bytes = len(rendered.encode("utf-8")) + (separator_bytes if chunk else 0)
+                if used + extra > limits.maintenance_input_tokens or used_bytes + extra_bytes > limits.transient_max_bytes:
                     break
                 used += extra
+                used_bytes += extra_bytes
                 chunk.append(remaining[index])
                 index += 1
             if not chunk:
                 raise _Unavailable("turn exceeds maintenance input")
             chunks.append(chunk)
             prior_cost = header + reserve
+            prior_bytes = header_bytes + limits.summary_max_bytes
         return chunks
 
     @staticmethod
-    def _accepted_summary(result: object, estimate: Callable[[str], int], reserve: int) -> str:
+    def _accepted_summary(result: object, estimate: Callable[[str], int], reserve: int, max_bytes: int) -> str:
         if isinstance(result, MaintenanceResult) and result.status in _UNAVAILABLE_STATUSES:
             raise _Unavailable("maintenance unavailable")
         if (
@@ -254,17 +263,18 @@ class ContextEngine:
             or not result.summary_text
         ):
             raise _Unavailable("maintenance failed")
-        rejection = ContextEngine._text_rejection(result.summary_text, estimate, reserve)
+        rejection = ContextEngine._text_rejection(result.summary_text, estimate, reserve, max_bytes)
         if rejection is not None:
             raise _Unavailable(rejection)
         return result.summary_text
 
     @staticmethod
-    def _text_rejection(text: str, estimate: Callable[[str], int], reserve: int) -> str | None:
+    def _text_rejection(text: str, estimate: Callable[[str], int], reserve: int, max_bytes: int) -> str | None:
         """Why summary text is not acceptable now, or None. The one test for fresh output and for
         a cached checkpoint alike, so the two cannot drift apart (Codex CP2 R1): within the current
-        reserve under the current estimator, and well formed."""
-        if estimate(text) > reserve:
+        reserve under the current estimator and within the summary byte bound (Codex's final
+        corrections C2), and well formed."""
+        if estimate(text) > reserve or len(text.encode("utf-8")) > max_bytes:
             return "summary exceeds bound"
         try:
             parse_summary(text)

@@ -33,7 +33,8 @@ import time
 import tracemalloc
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_FLOOR, Decimal
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -41,12 +42,13 @@ from context_engine import (
     HistorySnapshot,
     MaintenanceRequest,
     MaintenanceResult,
+    OrdinaryTurn,
     ProtectedTurnState,
     StrategyParameters,
     SummaryCheckpoint,
     ViewLimits,
 )
-from context_engine.engine import PRIOR_SUMMARY_HEADER, ContextEngine
+from context_engine.engine import _SEPARATOR, PRIOR_SUMMARY_HEADER, ContextEngine
 from context_engine.selection import render_ordinary_turn, render_protected_state
 from context_engine.summary import PROMPT_VERSION, SECTIONS, SUMMARY_FORMAT, build_summary_prompt
 from optimus.acp.conversation import (
@@ -198,6 +200,13 @@ def ratio_estimator(ratio: Decimal) -> Callable[[str], int]:
     return estimate
 
 
+def summary_max_bytes_for(summary_tokens: int, ratio: Decimal) -> int:
+    """`floor(S / r)`: the most UTF-8 bytes a summary within `S` tokens can have under a
+    `ceil(r * bytes)` estimator, so the byte bound never rejects what the token bound admits (Codex's
+    final corrections C2). Exact decimal arithmetic."""
+    return int((Decimal(summary_tokens) / ratio).to_integral_value(rounding=ROUND_FLOOR))
+
+
 def summary_of_tokens(tokens: int, ratio: Decimal) -> str:
     """A valid `context-summary-v1` summary as long as `tokens` allows under `ratio`."""
     bodies = ["synthetic", "-", "-", "-", "-", "-"]
@@ -233,11 +242,15 @@ class EngineFixture:
     max_calls: int = 1_000
     anchor_tokens: int = 8_192
     hybrid_tail_tokens: int | None = None  # twice the compaction tail when not given
+    source_max_bytes: int = HUGE
+    transient_max_bytes: int = HUGE
 
     @classmethod
-    def from_proposal(cls, proposal: Mapping[str, Any], *, tier: str = "cheap") -> EngineFixture:
-        """The proposed values themselves, at the byte-level bound, for the proposed-policy rows."""
+    def from_proposal(cls, proposal: Mapping[str, Any], *, tier: str = "cheap", ratio: Decimal = Decimal("1")) -> EngineFixture:
+        """The proposed values themselves, under a `ceil(ratio * bytes)` estimator (the byte-level bound
+        by default), with the proposal's engine source and transient byte bounds."""
         return cls(
+            ratio=ratio,
             history_input_tokens=proposal["history_input_tokens_by_tier"][tier],
             tail_tokens=proposal["compaction_tail_input_tokens"],
             summary_tokens=proposal["summary_output_tokens"],
@@ -245,6 +258,8 @@ class EngineFixture:
             max_calls=proposal["max_maintenance_calls"],
             anchor_tokens=proposal["anchor_input_tokens"],
             hybrid_tail_tokens=proposal["hybrid_tail_input_tokens"],
+            source_max_bytes=proposal["view_source_max_bytes"],
+            transient_max_bytes=proposal["transient_max_bytes"],
         )
 
     def parameters(self) -> StrategyParameters:
@@ -258,13 +273,14 @@ class EngineFixture:
             format_version=SUMMARY_FORMAT,
         )
 
-    def limits(self, *, source_max_bytes: int = HUGE, transient_max_bytes: int = HUGE) -> ViewLimits:
+    def limits(self, *, source_max_bytes: int | None = None, transient_max_bytes: int | None = None) -> ViewLimits:
         return ViewLimits(
             history_input_tokens=self.history_input_tokens,
-            source_max_bytes=source_max_bytes,
-            transient_max_bytes=transient_max_bytes,
+            source_max_bytes=self.source_max_bytes if source_max_bytes is None else source_max_bytes,
+            transient_max_bytes=self.transient_max_bytes if transient_max_bytes is None else transient_max_bytes,
             maintenance_input_tokens=self.maintenance_input_tokens,
             maintenance_output_tokens=self.summary_tokens,
+            summary_max_bytes=summary_max_bytes_for(self.summary_tokens, self.ratio),
             estimate_history=ratio_estimator(self.ratio),
             estimator_id=f"utf8-bytes-ratio:{self.ratio}",
         )
@@ -590,11 +606,76 @@ def sanitizer_scaling(prose_kib: Sequence[int], token_kib: Sequence[int]) -> dic
     }
 
 
-def chunk_capacity(proposal: Mapping[str, Any]) -> int:
-    """Source tokens one non-first maintenance call can take at the byte-level bound: the input
-    less the prior summary at its maximum, its header and one separator (`engine._plan`)."""
-    header = len(PRIOR_SUMMARY_HEADER.encode("utf-8"))
-    return proposal["maintenance_input_tokens"] - proposal["summary_output_tokens"] - header - 1
+CHECK_RATIOS = (Decimal("1"), Decimal("0.5"), Decimal("0.25"), Decimal("0.2"))
+"""Estimator ratios the call allowance is checked at: the measured ones and 0.2, where the transient
+byte bound binds before the token bound (Codex's final corrections C2)."""
+
+
+def _ceil_tokens(text: str, ratio: Decimal) -> int:
+    return math.ceil(len(text.encode("utf-8")) * ratio)
+
+
+def effective_summary_tokens(proposal: Mapping[str, Any]) -> int:
+    """`S`: the engine's summary reserve, the smaller of the strategy's summary cap and the
+    maintenance output limit (the summarizer's output reserve)."""
+    return min(proposal["summary_output_tokens"], proposal["summarizer_output_reserve"])
+
+
+def chunk_capacity(proposal: Mapping[str, Any], ratio: Decimal = Decimal("1")) -> dict[str, int]:
+    """What one non-first maintenance call can take for turns and their separators, in each budget,
+    under a `ceil(ratio * bytes)` estimator: the input less the prior summary at its maximum (header,
+    `S` tokens or `floor(S / ratio)` bytes) and one separator (`engine._plan`)."""
+    summary_tokens = effective_summary_tokens(proposal)
+    summary_bytes = summary_max_bytes_for(summary_tokens, ratio)
+    header_bytes, separator_bytes = len(PRIOR_SUMMARY_HEADER.encode("utf-8")), len(_SEPARATOR.encode("utf-8"))
+    return {
+        "tokens": proposal["maintenance_input_tokens"] - _ceil_tokens(PRIOR_SUMMARY_HEADER, ratio) - summary_tokens - _ceil_tokens(_SEPARATOR, ratio),
+        "bytes": proposal["transient_max_bytes"] - header_bytes - summary_bytes - separator_bytes,
+        "summary_max_bytes": summary_bytes,
+    }
+
+
+def smallest_rendered_turn_bytes() -> int:
+    """No ordinary turn renders shorter than an empty one with sequence 1."""
+    return len(render_ordinary_turn(OrdinaryTurn(seq=1, user_prompt="", plan_text="", completion_text="")).encode("utf-8"))
+
+
+def whole_turn_worst_calls(proposal: Mapping[str, Any], ratio: Decimal) -> dict[str, Any]:
+    """A proven bound on the calls a cold rebuild of the whole engine source can need, whole turns
+    only, under a `ceil(ratio * bytes)` estimator.
+
+    Greedy packing closes a chunk only when its content plus a separator and the next turn would exceed
+    a budget, so any two consecutive chunks together exceed `capacity - separator` in a budget that
+    closed the first. With `U` the total cost of all turns and inner separators, `floor(n / 2) <
+    U / (capacity - separator)` summed over the budgets that can close a chunk, so `n <= 2 * ceil(X) - 1`.
+    A turn's token cost is at least `ratio` times its bytes, so when `ratio * byte capacity >= token
+    capacity` a byte overflow is always a token overflow and only the token budget counts. `U` counts
+    every turn at its rounded-up token cost and a separator per turn, the number of turns being at
+    most the source over the smallest rendered turn."""
+    capacity = chunk_capacity(proposal, ratio)
+    source = proposal["view_source_max_bytes"]
+    turns = source // smallest_rendered_turn_bytes()
+    separator_tokens, separator_bytes = _ceil_tokens(_SEPARATOR, ratio), len(_SEPARATOR.encode("utf-8"))
+    token_room, byte_room = capacity["tokens"] - separator_tokens, capacity["bytes"] - separator_bytes
+    if token_room <= 0 or byte_room <= 0:
+        return {"calls": None, "binding": None, **capacity}
+    token_cost = math.ceil(ratio * source) + turns + turns * separator_tokens
+    byte_cost = source + turns * separator_bytes
+    tokens_only = ratio * capacity["bytes"] >= capacity["tokens"]
+    x = Fraction(token_cost, token_room) + (0 if tokens_only else Fraction(byte_cost, byte_room))
+    return {"calls": 2 * math.ceil(x) - 1, "binding": "tokens" if tokens_only else "tokens or bytes", **capacity}
+
+
+def largest_summarizable_turn_bytes(proposal: Mapping[str, Any], ratio: Decimal) -> dict[str, int]:
+    """The largest single rendered turn a maintenance call can take, in bytes, under a
+    `ceil(ratio * bytes)` estimator: after a prior summary (steady state) and as the first turn of a
+    cold rebuild (no prior summary)."""
+    capacity = chunk_capacity(proposal, ratio)
+    tokens_to_bytes = lambda tokens: int((Decimal(tokens) / ratio).to_integral_value(rounding=ROUND_FLOOR))  # noqa: E731
+    return {
+        "steady_state": min(tokens_to_bytes(capacity["tokens"]), capacity["bytes"]),
+        "oldest_turn_of_a_cold_rebuild": min(tokens_to_bytes(proposal["maintenance_input_tokens"]), proposal["transient_max_bytes"]),
+    }
 
 
 def _history_of_turns(rendered_turn_bytes: int, total_bytes: int) -> tuple[AttachedConversationState, dict[int, tuple[ApprovalFact, ...]]]:
@@ -604,12 +685,17 @@ def _history_of_turns(rendered_turn_bytes: int, total_bytes: int) -> tuple[Attac
     return build_state("ascii", total_bytes, turn_bytes=rendered_turn_bytes - overhead)
 
 
-def proposed_policy_rows(proposal: Mapping[str, Any]) -> dict[str, Any]:
-    """The proposed values themselves, at the byte-level bound, on a history the attached storage
-    class can still admit a turn on: a cold rebuild (a strategy switch, or no reusable checkpoint),
-    the steady-state turn that reuses the previous checkpoint, and the whole-turn worst case for the
-    call allowance (every turn just over half a chunk, so each call carries one turn)."""
-    fixture = EngineFixture.from_proposal(proposal)
+def proposed_policy_rows(proposal: Mapping[str, Any], ratios: Sequence[Decimal] = CHECK_RATIOS) -> dict[str, Any]:
+    """The proposed values themselves, under each estimator ratio, on a history the attached storage
+    class can still admit a turn on: a cold rebuild (a strategy switch, or no reusable checkpoint), the
+    steady-state turn that reuses the previous checkpoint, and an adverse whole-turn case (every turn
+    just over half of the binding chunk capacity, so each call carries one turn). The engine applies the
+    proposal's source and transient byte bounds."""
+    return {str(ratio): _proposed_policy_rows_at(proposal, ratio) for ratio in ratios}
+
+
+def _proposed_policy_rows_at(proposal: Mapping[str, Any], ratio: Decimal) -> dict[str, Any]:
+    fixture = EngineFixture.from_proposal(proposal, ratio=ratio)
     history_bytes = proposal["source_max_bytes"] - proposal["record_reservation_bytes"]
     rows: dict[str, Any] = {}
 
@@ -629,7 +715,9 @@ def proposed_policy_rows(proposal: Mapping[str, Any]) -> dict[str, Any]:
     approvals[seq] = approval_facts(seq, 1)
     steady, reading = measure(lambda: turn_pipeline(state, approvals, strategy="compaction", fixture=fixture, checkpoint=cold["checkpoint"]))
     rows["steady_state_turn"] = row(steady, reading, state)
-    worst_turn = chunk_capacity(proposal) // 2 + 1
+    capacity = chunk_capacity(proposal, ratio)
+    binding_bytes = min(int((Decimal(capacity["tokens"]) / ratio).to_integral_value(rounding=ROUND_FLOOR)), capacity["bytes"])
+    worst_turn = binding_bytes // 2 + 1
     state, approvals = _history_of_turns(worst_turn, history_bytes)
     worst, reading = measure(lambda: turn_pipeline(state, approvals, strategy="compaction", fixture=fixture))
     rows["cold_rebuild_worst_whole_turns"] = {**row(worst, reading, state), "rendered_turn_bytes": worst_turn}
@@ -948,13 +1036,16 @@ def check_proposal(proposal: Mapping[str, Any], *, policy: Any, plan_bytes: Sequ
     # (Fable CP4 review MAJOR-1): the perfect-packing minimum, and the whole-turn worst case, when
     # every turn is just over half a chunk so each call carries one turn. The allowance must cover the
     # worst case, or a strategy switch on such a history is refused.
-    capacity = chunk_capacity(p)
-    if capacity > 0:
-        min_calls = math.ceil(p["source_max_bytes"] / capacity)
-        worst_calls = math.ceil(p["source_max_bytes"] / (capacity // 2 + 1))
-    else:
-        min_calls = worst_calls = None
-    need(worst_calls is not None and worst_calls <= p["max_maintenance_calls"], "the call allowance cannot rebuild the whole source in its whole-turn worst case")
+    # The summary byte bound is derived, floor(S / r), and must sit below the transient bound; the call
+    # allowance must cover the proven whole-turn worst case in both budgets (Codex's final corrections C2).
+    worst_by_ratio = {str(ratio): whole_turn_worst_calls(p, ratio) for ratio in CHECK_RATIOS}
+    for ratio, worst in worst_by_ratio.items():
+        need(0 < worst["summary_max_bytes"] < p["transient_max_bytes"], f"the derived summary byte bound at ratio {ratio} must be below the transient bound")
+        need(
+            worst["calls"] is not None and worst["calls"] <= p["max_maintenance_calls"],
+            f"the call allowance cannot rebuild the whole source in its whole-turn worst case at ratio {ratio}",
+        )
+    worst_calls = worst_by_ratio["1"]["calls"]
 
     usable_implementer = ceiling - p["implementer_output_reserve"]
     # D7 (ADR-014): the 524288-byte floor already includes the current prompt (admission measures the
@@ -963,20 +1054,19 @@ def check_proposal(proposal: Mapping[str, Any], *, policy: Any, plan_bytes: Sequ
     coverage = {
         "plans_within_implementer_reserve": {str(r): round(sum(1 for b in plan_bytes if math.ceil(b * r) <= p["implementer_output_reserve"]) / len(plan_bytes), 4) for r in ESTIMATOR_RATIOS},
         "records_within_reservation": round(sum(1 for b in record_bytes_measured if b <= p["record_reservation_bytes"]) / len(record_bytes_measured), 4),
-        "cold_rebuild_calls_min_at_byte_bound": min_calls,
-        "cold_rebuild_calls_whole_turn_worst_at_byte_bound": worst_calls,
+        "cold_rebuild_whole_turn_worst_by_ratio": worst_by_ratio,
         "cold_rebuild_list_price_usd": _cold_rebuild_cost(p, policy, summarizers, worst_calls, summary_prompt_tokens),
         "absent_floor_max_ratio": round(usable_implementer / floor_request, 4),
-        "largest_single_turn_tokens_summarizable": {"steady_state": capacity, "oldest_turn_of_a_cold_rebuild": p["maintenance_input_tokens"]},
+        "largest_single_turn_bytes_summarizable_by_ratio": {str(ratio): largest_summarizable_turn_bytes(p, ratio) for ratio in CHECK_RATIOS},
         "trigger_binding_term_by_tier": binding,
     }
     return {"violations": violations, "coverage": coverage}
 
 
 def _cold_rebuild_cost(p: Mapping[str, Any], policy: Any, summarizers: Sequence[Mapping[str, Any]], calls: int | None, prompt_tokens: int) -> dict[str, str]:
-    """Illustrative list-price cost of a worst-case cold rebuild on each summarizer route: the whole
-    source once, every later call's prior summary and header, each call's fixed prompt; every call's
-    summary as output. No call is made."""
+    """Illustrative list-price cost of a worst-case cold rebuild on each summarizer route, at the
+    byte-level bound: the whole source once, every later call's prior summary and header, each call's
+    fixed prompt; every call's summary as output. No call is made."""
     if calls is None:
         return {}
     header = len(PRIOR_SUMMARY_HEADER.encode("utf-8"))

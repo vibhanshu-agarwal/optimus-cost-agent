@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
+import math
+import random
+from fractions import Fraction
 
 import pytest
 
@@ -82,6 +85,7 @@ def limits(history: int = 100_000, **changes: object) -> ViewLimits:
         transient_max_bytes=10_000_000,
         maintenance_input_tokens=100_000,
         maintenance_output_tokens=200,
+        summary_max_bytes=800,  # a character is at most 4 UTF-8 bytes
         estimate_history=chars,
         estimator_id="chars-v1",
     )
@@ -331,10 +335,14 @@ def test_source_beyond_its_limit_is_unavailable() -> None:
 
 
 def test_maintenance_input_beyond_the_transient_bound_is_refused_before_the_call() -> None:
+    # The planner counts bytes as well as tokens (Codex's final corrections C2), so a turn that cannot
+    # fit the transient bound is refused at planning, before any call; the check of each assembled
+    # input stays as the backstop (see the non-subadditive estimator test).
     snap = make_snapshot([30, 30, 30])
     maintenance = FakeMaintenance()
-    v = view(snap, "compaction", params(compaction_tail_input_tokens=cost(snap, 3)), lim=limits(transient_max_bytes=50), maintenance=maintenance)
-    assert (v.available, v.reason, maintenance.requests) == (False, "maintenance input exceeded", [])
+    lim = limits(transient_max_bytes=50, summary_max_bytes=40)
+    v = view(snap, "compaction", params(compaction_tail_input_tokens=cost(snap, 3)), lim=lim, maintenance=maintenance)
+    assert (v.available, v.reason, maintenance.requests) == (False, "turn exceeds maintenance input", [])
 
 
 def test_a_summary_over_its_bound_makes_the_view_unavailable() -> None:
@@ -649,3 +657,227 @@ def test_a_checkpoint_passed_to_prepare_view_must_be_a_checkpoint() -> None:
     with pytest.raises(ContractError):
         view(make_snapshot([10]), "compaction", params(), checkpoint="not a checkpoint")  # type: ignore[arg-type]
     assert SummaryCheckpoint  # imported for the type
+
+
+# --- Dual-budget packing (CP4 correction C2) -----------------------------------------------------------
+#
+# Codex's final corrections (2026-10-04): every maintenance input must fit both its token limit and the
+# transient UTF-8 byte limit, with a later chunk's prior summary counted at its maximum token estimate
+# and byte length. Estimators below are `ceil(r * UTF-8 bytes)`, the supported profile.
+
+_UNITS = {"ascii": "abcde ", "latin": "éàüöñ ", "cjk": "漢字仮名文 ", "emoji": "🙂🚀🧪🔧🎯 "}
+
+
+def ratio_estimator(ratio: Fraction):
+    return lambda text: math.ceil(len(text.encode("utf-8")) * ratio)
+
+
+def byte_limits(ratio: Fraction, *, maintenance_input: int, transient: int, summary_tokens: int, history: int = 10_000_000) -> ViewLimits:
+    return ViewLimits(
+        history_input_tokens=history,
+        source_max_bytes=10**9,
+        transient_max_bytes=transient,
+        maintenance_input_tokens=maintenance_input,
+        maintenance_output_tokens=summary_tokens,
+        summary_max_bytes=math.floor(summary_tokens / ratio),  # floor(S / r): never rejects what S admits
+        estimate_history=ratio_estimator(ratio),
+        estimator_id=f"utf8-bytes-ratio:{ratio}",
+    )
+
+
+def text_of(alphabet: str, size: int) -> str:
+    """About `size` UTF-8 bytes of space-separated words, never more."""
+    unit = _UNITS[alphabet]
+    text = unit * (size // len(unit.encode("utf-8")))
+    while len(text.encode("utf-8")) > size:
+        text = text[:-1]
+    return text
+
+
+def turns_of(sizes: list[int], alphabet: str = "ascii", *, start: int = 1) -> list[OrdinaryTurn]:
+    return [OrdinaryTurn(seq=seq, user_prompt=text_of(alphabet, size), plan_text="", completion_text=f"c{seq}") for seq, size in enumerate(sizes, start=start)]
+
+
+def snapshot_of(turns: list[OrdinaryTurn], *, session: str = "s-c2") -> HistorySnapshot:
+    turns_tuple = tuple(turns)
+    protected = tuple(ProtectedTurnState(seq=t.seq, outcome="completed", effect_state="none", approval_facts=()) for t in turns_tuple)
+    revision = HistoryRevision(session_key=session, generation=len(turns_tuple), last_committed_seq=turns_tuple[-1].seq, digest=history_digest(turns_tuple, protected))
+    return HistorySnapshot(revision=revision, turns=turns_tuple, protected=protected)
+
+
+def rendered_bytes(turn: OrdinaryTurn) -> int:
+    return len(render_ordinary_turn(turn).encode("utf-8"))
+
+
+class MaximalSummary:
+    """A valid summary exactly `summary_max_bytes` long (ASCII, so its estimate stays within the token
+    cap), or `fixed` text when given; records every request."""
+
+    def __init__(self, lim: ViewLimits, *, fixed: str | None = None) -> None:
+        self.requests: list[MaintenanceRequest] = []
+        self._lim, self._fixed = lim, fixed
+
+    def __call__(self, request: MaintenanceRequest) -> MaintenanceResult:
+        self.requests.append(request)
+        text = self._fixed if self._fixed is not None else summary_text(f"c{len(self.requests)}", length=self._lim.summary_max_bytes)
+        return MaintenanceResult(summary_text=text, attempt_ids=(f"a{len(self.requests)}",), status="completed", finish_status="stop")
+
+
+def assert_within(lim: ViewLimits, requests: list[MaintenanceRequest]) -> None:
+    for request in requests:
+        assert lim.estimate_history(request.input_text) <= lim.maintenance_input_tokens
+        assert len(request.input_text.encode("utf-8")) <= lim.transient_max_bytes
+
+
+def compaction(summary_tokens: int, calls: int) -> StrategyParameters:
+    return params(compaction_tail_input_tokens=0, summary_output_tokens=summary_tokens, max_maintenance_calls=calls)
+
+
+def test_a_low_ratio_cold_rebuild_of_about_900_kib_is_available_within_the_allowance() -> None:
+    """Claude's simplicity-review probe B as a regression: at 0.2 tokens per byte the token-only planner
+    packed a chunk over the 524288-byte transient bound, so every cold rebuild was refused, zero calls."""
+    ratio = Fraction(1, 5)
+    lim = byte_limits(ratio, maintenance_input=131_072, transient=524_288, summary_tokens=8_192)
+    rng = random.Random(12)
+    snap = snapshot_of(turns_of([rng.randrange(4_000, 13_000) for _ in range(110)]))
+    assert sum(rendered_bytes(turn) for turn in snap.turns) > 900 * 1024
+    maintenance = MaximalSummary(lim)
+
+    v = view(snap, "compaction", compaction(8_192, 18), lim=lim, maintenance=maintenance)
+
+    assert (v.available, v.reason) == (True, None)
+    assert 1 < len(maintenance.requests) <= 18
+    assert_within(lim, maintenance.requests)
+    assert v.covered_turn_ids == tuple(turn.seq for turn in snap.turns)
+
+
+@pytest.mark.parametrize("ratio", [Fraction(1), Fraction(1, 2), Fraction(1, 4), Fraction(1, 5)], ids=["1", "0.5", "0.25", "0.2"])
+@pytest.mark.parametrize("alphabet", sorted(_UNITS))
+def test_every_planned_input_fits_both_budgets_fresh_and_reused(ratio, alphabet) -> None:
+    lim = byte_limits(ratio, maintenance_input=4_096, transient=16_384, summary_tokens=512)
+    # The largest turn a non-first chunk can take in each budget: the tokens left beside a maximal prior
+    # summary, as bytes, and the bytes left beside it.
+    token_room = lim.maintenance_input_tokens - lim.estimate_history(PRIOR_SUMMARY_HEADER) - 512 - lim.estimate_history("\n")
+    capacity = min(math.floor(token_room / ratio), lim.transient_max_bytes - len(PRIOR_SUMMARY_HEADER) - lim.summary_max_bytes - 1)
+    rng = random.Random(f"{ratio}-{alphabet}")
+    sizes = [rng.choice([capacity // 40, capacity // 7, capacity // 2 - 60, int(capacity * 0.8)]) for _ in range(45)]
+    turns = turns_of(sizes, alphabet)
+    assert max(rendered_bytes(turn) for turn in turns) <= capacity  # every turn fits: no false refusal
+    first, later = turns[:40], turns[40:]
+
+    fresh = MaximalSummary(lim)
+    v1 = view(snapshot_of(first), "compaction", compaction(512, 100), lim=lim, maintenance=fresh)
+    assert (v1.available, v1.reason) == (True, None)
+    assert len(fresh.requests) > 1
+    assert_within(lim, fresh.requests)
+
+    reused = MaximalSummary(lim)
+    v2 = view(snapshot_of(first + later), "compaction", compaction(512, 100), lim=lim, checkpoint=v1.checkpoint, maintenance=reused)
+    assert (v2.available, v2.reason) == (True, None)
+    assert reused.requests and reused.requests[0].input_text.startswith(PRIOR_SUMMARY_HEADER)  # merged, not rebuilt
+    assert_within(lim, reused.requests)
+
+
+def test_an_assembled_input_exactly_at_the_byte_limit_is_sent_and_one_byte_more_splits() -> None:
+    ratio = Fraction(1, 100)  # tokens never bind here
+    turns = turns_of([900, 1_100])
+    exact = rendered_bytes(turns[0]) + 1 + rendered_bytes(turns[1])
+
+    at_limit = byte_limits(ratio, maintenance_input=10**6, transient=exact, summary_tokens=5)
+    maintenance = MaximalSummary(at_limit)
+    v = view(snapshot_of(turns), "compaction", compaction(5, 3), lim=at_limit, maintenance=maintenance)
+    assert v.available and [len(r.input_text.encode("utf-8")) for r in maintenance.requests] == [exact]
+
+    over = byte_limits(ratio, maintenance_input=10**6, transient=exact - 1, summary_tokens=5)
+    maintenance = MaximalSummary(over)
+    v = view(snapshot_of(turns), "compaction", compaction(5, 3), lim=over, maintenance=maintenance)
+    assert v.available and len(maintenance.requests) == 2
+    assert_within(over, maintenance.requests)
+
+
+def test_a_single_turn_one_byte_over_the_transient_bound_is_refused_before_any_call() -> None:
+    ratio = Fraction(1, 100)
+    turns = turns_of([3_000])
+    size = rendered_bytes(turns[0])
+
+    lim = byte_limits(ratio, maintenance_input=10**6, transient=size, summary_tokens=5)
+    fits = MaximalSummary(lim)
+    assert view(snapshot_of(turns), "compaction", compaction(5, 3), lim=lim, maintenance=fits).available
+    assert len(fits.requests) == 1
+
+    lim = byte_limits(ratio, maintenance_input=10**6, transient=size - 1, summary_tokens=5)
+    refused = MaximalSummary(lim)
+    v = view(snapshot_of(turns), "compaction", compaction(5, 3), lim=lim, maintenance=refused)
+    assert (v.available, v.reason, refused.requests) == (False, "turn exceeds maintenance input", [])
+
+
+def test_a_plan_over_the_call_allowance_by_bytes_is_refused_before_any_call() -> None:
+    ratio = Fraction(1, 100)
+    turns = turns_of([2_000, 2_000])
+    lim = byte_limits(ratio, maintenance_input=10**6, transient=rendered_bytes(turns[0]) + 1_000, summary_tokens=5)
+    maintenance = MaximalSummary(lim)
+
+    v = view(snapshot_of(turns), "compaction", compaction(5, 1), lim=lim, maintenance=maintenance)
+
+    assert (v.available, v.reason, maintenance.requests) == (False, "maintenance allowance exceeded", [])
+
+
+def test_a_summary_exactly_at_the_byte_bound_is_accepted_and_one_byte_more_is_not() -> None:
+    # A token cap of 100 at 0.01 tokens per byte allows 10,000 bytes, so only the byte bound decides.
+    lim = dataclasses.replace(byte_limits(Fraction(1, 100), maintenance_input=10**6, transient=100_000, summary_tokens=100), summary_max_bytes=2_000)
+    snap = snapshot_of(turns_of([500, 500]))
+
+    exact = view(snap, "compaction", compaction(100, 3), lim=lim, maintenance=MaximalSummary(lim, fixed=summary_text("s", length=2_000)))
+    over = view(snap, "compaction", compaction(100, 3), lim=lim, maintenance=MaximalSummary(lim, fixed=summary_text("s", length=2_001)))
+
+    assert (exact.available, exact.reason) == (True, None)
+    assert (over.available, over.reason) == (False, "summary exceeds bound")
+
+
+def test_a_reused_summary_over_todays_byte_bound_is_rebuilt_from_source() -> None:
+    # The same token cap and parameters, so only the byte bound differs between the two turns.
+    roomy = dataclasses.replace(byte_limits(Fraction(1, 100), maintenance_input=10**6, transient=100_000, summary_tokens=100), summary_max_bytes=4_000)
+    tight = dataclasses.replace(roomy, summary_max_bytes=2_000)
+    turns = turns_of([500, 500, 500, 500])
+    old = view(snapshot_of(turns[:3]), "compaction", compaction(100, 3), lim=roomy, maintenance=MaximalSummary(roomy))
+    assert old.checkpoint is not None and len(old.checkpoint.summary_text.encode("utf-8")) == 4_000
+
+    maintenance = MaximalSummary(tight)
+    v = view(snapshot_of(turns), "compaction", compaction(100, 3), lim=tight, checkpoint=old.checkpoint, maintenance=maintenance)
+
+    assert (v.available, v.reason) == (True, None)
+    assert not maintenance.requests[0].input_text.startswith(PRIOR_SUMMARY_HEADER)  # from source, not the old summary
+    assert maintenance.requests[0].covered_turn_ids[0] == 1
+
+
+def test_a_non_subadditive_estimator_never_sends_an_oversized_input() -> None:
+    """The planner sums per-piece estimates, which `ViewLimits` allows only for a subadditive
+    estimator. A deliberately non-conforming one under-counts the joined input; the check of each
+    assembled input before its call still refuses it."""
+
+    def superadditive(text: str) -> int:
+        n = len(text.encode("utf-8"))
+        return n + n * n // 1_000_000
+
+    turns = turns_of([1_000] * 10)
+    pieces = sum(superadditive(render_ordinary_turn(turn)) for turn in turns) + 9 * superadditive("\n")
+    lim = dataclasses.replace(
+        byte_limits(Fraction(1), maintenance_input=pieces, transient=10**6, summary_tokens=5), estimate_history=superadditive, estimator_id="superadditive-test"
+    )
+    assert superadditive("\n".join(render_ordinary_turn(turn) for turn in turns)) > lim.maintenance_input_tokens
+    maintenance = MaximalSummary(lim)
+
+    v = view(snapshot_of(turns), "compaction", compaction(5, 3), lim=lim, maintenance=maintenance)
+
+    assert (v.available, v.reason, maintenance.requests) == (False, "maintenance input exceeded", [])
+
+
+@pytest.mark.parametrize("summary_max_bytes", [0, 10_000_000])
+def test_the_summary_byte_bound_is_positive_and_below_the_transient_bound(summary_max_bytes) -> None:
+    with pytest.raises(ContractError, match="summary_max_bytes"):
+        limits(summary_max_bytes=summary_max_bytes)
+
+
+def test_the_summary_byte_bound_has_no_default() -> None:
+    with pytest.raises(TypeError):
+        ViewLimits(100, 1_000, 1_000, 100, 10, estimate_history=chars, estimator_id="chars-v1")  # type: ignore[call-arg]

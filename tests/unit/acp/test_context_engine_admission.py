@@ -111,6 +111,7 @@ def make_attachment(
             transient_max_bytes=source_max,
             maintenance_input_tokens=400_000,
             maintenance_output_tokens=300,
+            summary_max_bytes=1200,  # floor(300 / 0.25) for this ceil(bytes / 4) estimator
             estimate_history=estimate,
             estimator_id="utf8-bytes-div-4-test",
         ),

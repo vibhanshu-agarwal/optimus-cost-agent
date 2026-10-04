@@ -72,6 +72,7 @@ def limits(history: int = 2000) -> ViewLimits:
         transient_max_bytes=1_000_000,
         maintenance_input_tokens=4000,
         maintenance_output_tokens=300,
+        summary_max_bytes=1200,  # floor(300 / 0.25) for this ceil(bytes / 4) estimator
         estimate_history=estimate,
         estimator_id="utf8-bytes-div-4-test",
     )

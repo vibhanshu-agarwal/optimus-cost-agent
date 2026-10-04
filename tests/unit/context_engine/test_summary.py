@@ -119,7 +119,7 @@ def _params(**changes: object) -> StrategyParameters:
 
 
 def _limits(**changes: object) -> ViewLimits:
-    base = ViewLimits(100_000, 10_000_000, 10_000_000, 100_000, 400, len, "chars-v1")
+    base = ViewLimits(100_000, 10_000_000, 10_000_000, 100_000, 400, 1600, len, "chars-v1")  # 4 bytes per character
     return dataclasses.replace(base, **changes)  # type: ignore[arg-type]
 
 

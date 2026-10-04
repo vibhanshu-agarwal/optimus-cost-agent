@@ -202,19 +202,34 @@ class StrategyParameters:
 
 @dataclass(frozen=True, slots=True)
 class ViewLimits:
-    """Finite bounds for one view, and the host's verified history estimator."""
+    """Finite bounds for one view, and the host's verified history estimator.
+
+    `summary_max_bytes` bounds the UTF-8 length of a complete sanitized summary, fresh or reused, beside
+    its token bound: a token bound is not a byte bound, and every maintenance input must fit both
+    `maintenance_input_tokens` and `transient_max_bytes` (Codex's final corrections C2). The host derives
+    it from its verified estimator, `floor(S / r)` for a `ceil(r * UTF-8 bytes)` profile and summary
+    token cap `S`, so the byte bound never rejects a summary the token bound admits.
+
+    `estimate_history` must be subadditive over the complete strings given to the engine:
+    `estimate_history(a + b) <= estimate_history(a) + estimate_history(b)`. The engine relies on it to
+    count a maintenance input as the sum of its pieces; a `ceil(r * UTF-8 bytes)` profile with
+    non-negative overhead satisfies it. Each assembled input is still checked before its call."""
 
     history_input_tokens: int
     source_max_bytes: int
     transient_max_bytes: int
     maintenance_input_tokens: int
     maintenance_output_tokens: int
+    summary_max_bytes: int
     estimate_history: Callable[[str], int]
     estimator_id: str
 
     def __post_init__(self) -> None:
         for name in ("history_input_tokens", "source_max_bytes", "transient_max_bytes", "maintenance_input_tokens", "maintenance_output_tokens"):
             _int("ViewLimits", name, getattr(self, name))
+        _int("ViewLimits", "summary_max_bytes", self.summary_max_bytes, minimum=1)
+        if self.summary_max_bytes >= self.transient_max_bytes:
+            raise ContractError("ViewLimits.summary_max_bytes must be below transient_max_bytes")
         if not callable(self.estimate_history):
             raise ContractError("ViewLimits.estimate_history must be callable")
         _text("ViewLimits", "estimator_id", self.estimator_id, nonempty=True)
