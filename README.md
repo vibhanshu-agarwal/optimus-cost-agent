@@ -903,10 +903,10 @@ optimus-cost-agent/
 | Document | Purpose |
 |----------|---------|
 | [docs/README.md](docs/README.md) | Index of every current document; older versions are in each folder's `archive/` |
-| [docs/Optimus-Cost-Agent-Architecture-v2.18.pdf](docs/Optimus-Cost-Agent-Architecture-v2.18.pdf) | High-level design |
-| [docs/Optimus-Cost-Agent-LLD-v2.41.pdf](docs/Optimus-Cost-Agent-LLD-v2.41.pdf) | Low-level design |
-| [docs/Optimus-Cost-Agent-Test-Strategy-v1.7.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.7.pdf) | Testing approach |
-| [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.3.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.3.pdf) | Execution guardrails |
+| [docs/Optimus-Cost-Agent-Architecture-v2.19.pdf](docs/Optimus-Cost-Agent-Architecture-v2.19.pdf) | High-level design |
+| [docs/Optimus-Cost-Agent-LLD-v2.42.pdf](docs/Optimus-Cost-Agent-LLD-v2.42.pdf) | Low-level design |
+| [docs/Optimus-Cost-Agent-Test-Strategy-v1.8.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.8.pdf) | Testing approach |
+| [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.4.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.4.pdf) | Execution guardrails |
 | [AGENTS.md](AGENTS.md) | Agent behavior, logging, safety, and testing gates |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Human and agent contribution workflow |
 | [plan backlog](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md) | Sole live registry; the flat `plans/archive/` holds terminal history |

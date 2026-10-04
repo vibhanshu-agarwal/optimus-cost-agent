@@ -14,12 +14,12 @@ it and remove its line below. A test checks that this index lists every current 
 
 | Document | What it is |
 |---|---|
-| [Architecture (HLD) v2.18](Optimus-Cost-Agent-Architecture-v2.18.pdf) | High-level design |
-| [LLD v2.41](Optimus-Cost-Agent-LLD-v2.41.pdf) | Low-level design |
-| [Test Strategy v1.7](Optimus-Cost-Agent-Test-Strategy-v1.7.pdf) | Testing approach |
-| [Agent Execution Guardrails and Workflow Strategy v1.3](Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.3.pdf) | Execution guardrails |
+| [Architecture (HLD) v2.19](Optimus-Cost-Agent-Architecture-v2.19.pdf) | High-level design |
+| [LLD v2.42](Optimus-Cost-Agent-LLD-v2.42.pdf) | Low-level design |
+| [Test Strategy v1.8](Optimus-Cost-Agent-Test-Strategy-v1.8.pdf) | Testing approach |
+| [Agent Execution Guardrails and Workflow Strategy v1.4](Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.4.pdf) | Execution guardrails |
 | [Architecture Roadmap v10](Optimus-Architecture-Roadmap-v10.pdf) | Long-range roadmap |
-| [Publication sources for the current PDFs](sources/gateway-mcp-authoritative-document-reversal/) | Sources the HLD v2.18, LLD v2.41, Guardrails v1.3 and Test Strategy v1.7 were built from |
+| [Publication sources for the current PDFs](sources/plan-12-2-context-engine-closure/) | Sources the HLD v2.19, LLD v2.42, Guardrails v1.4 and Test Strategy v1.8 were built from (Plan 12.2 Context Engine closure; reviewed local filing candidates) |
 
 ## Decision records (ADRs)
 
@@ -46,6 +46,8 @@ relevant records before proposing a change in their area.
 | [ADR-015: Cost-stop removal sequencing](decisions/ADR-015-cost-stop-removal-sequencing.md) | After accounting/D6, without waiting for ADR-009 |
 | [ADR-016: Checkpoint cadence](decisions/ADR-016-checkpoint-review-cadence.md) | Fable then Codex at at most four checkpoints; local task commits; Package A publication |
 | [ADR-017: Package A coverage residual](decisions/ADR-017-package-a-coverage-exception.md) | Exact one-time four-statement exception at 38a465f; result remains NOT MET |
+| [ADR-018: Plan 12 CP4 numeric policy](decisions/ADR-018-plan12-cp4-numeric-policy.md) | Measured numeric set, whole-turn availability limitation and the D7 request-capacity exception; verbatim D7 record pending |
+| [ADR-019: Plan 12 Task 1 policy integration](decisions/ADR-019-plan12-task1-policy-integration.md) | Accepted Task 1 mechanisms and the proposed governed integration of ADR-003 to 006 |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 
 ## Research (input for Plan 12)
@@ -80,7 +82,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
-| [Plan 12.2: Context Engine (v3)](superpowers/plans/2026-10-01-plan-12-2-context-engine-implementation_v3.md) | Complete v3 with checkpoint cadence and the CP4 corrections C1–C3; Package A delivered, CP1–CP3 released offline |
+| [Plan 12.2: Context Engine (v4)](superpowers/plans/2026-10-01-plan-12-2-context-engine-implementation_v4.md) | Complete v4 with the CP4 offline closure; offline batch accepted at cf9bb9d, full CP4 open; earlier editions are in `archive/` |
 | [Plan 12.1: Plan/Chat advisory answers](superpowers/plans/2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | Selectable read-only Chat with conversation carriage |
 | [Plan 11.29: GitHub Issues migration](superpowers/plans/2026-10-04-plan-11-29-github-issues-migration.md) | Open work moves to GitHub Issues, shown in a live status page |
 | [Plan 11.7 v3: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | Resume an ACP session in Zed |
@@ -96,8 +98,8 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Document | What it is |
 |---|---|
-| [Plan 12.2 Context Engine design (v2)](superpowers/specs/2026-10-01-plan-12-2-context-engine-design_v2.md) | Three history strategies, exact host facts, floor, registry and cost integration; v2 carries the CP4 corrections C1–C3 |
-| [Plan 12.2 Task 1 contracts (v2)](superpowers/specs/2026-10-02-plan-12-2-task1-contracts_v2.md) | Accepted 2026-10-02: engine data, summary format, registry/trust/capacity, host integration, D6 cost disposition; v2 carries the CP4 corrections C1–C3 |
+| [Plan 12.2 Context Engine design (v3)](superpowers/specs/2026-10-01-plan-12-2-context-engine-design_v3.md) | Three history strategies, exact host facts, floor, registry and cost integration; v3 adds the CP4 measured adoption and D7 disposition |
+| [Plan 12.2 Task 1 contracts (v3)](superpowers/specs/2026-10-02-plan-12-2-task1-contracts_v3.md) | Engine data, summary format, registry/trust/capacity, host integration, D6; v3 adds the CP4 numeric adoption and the trusted test composition. The 2026-10-02 acceptance belongs to the archived first edition |
 | [Plan 12.1 advisory-answer design](superpowers/specs/2026-09-29-plan-12-1-plan-chat-advisory-answer-design.md) | ACP Agent/Chat mode, prose-answer and history contract |
 | [ACP runtime hardening audit design](superpowers/specs/2026-08-29-plan-11-26-acp-runtime-hardening-audit-design.md) | Governing audit for ACP runtime hardening |
 | [Plan 11.28 parallel local test context design](superpowers/specs/2026-10-02-plan-11-28-parallel-local-test-context-design.md) | Selection boundary, native ownership, validated ancestry and proof-based child isolation |
@@ -110,6 +112,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Document | What it is |
 |---|---|
+| [Plan 12.2 CP4 offline review disposition](superpowers/reviews/2026-10-04-plan-12-2-cp4-offline-review-disposition.md) | Codex accepts the offline batch at cf9bb9d with declared scope; five rulings; full CP4 remains open |
 | [Plan 11.25 producer-instrumentation correction](superpowers/reviews/2026-10-01-plan-11-25-effect-instrumentation-correction.md) | Checked historical steps do not establish current runner instrumentation; Plan 12 owns the repair |
 | [A2A ledger independent audit](superpowers/reviews/evidence-handoff-a2a-ledger-independent-audit.md) | Findings the open ledger slices fix |
 | [CI baseline report exceptions](superpowers/reviews/2026-09-06-baseline-report-exceptions.json) | Live exception set for the CI guardrail track |
