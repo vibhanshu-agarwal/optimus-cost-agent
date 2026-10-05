@@ -1283,6 +1283,110 @@
     "hook-run repository scanners list files from the default index, not a partial commit's temporary index: an extra staged file can refuse; a deletion staged outside the commit can hide a kept file (CI backstop; pre-existing GIT_* isolation); LOW; required Stage B control + fix under P11-FEAT-TEST-PROFILES before plan closure",
     "Task 6 final-run timings retained as evidence, never written back; Stage B snapshot refresh under the same owner"
    ]
+  },
+  "task6": {
+   "status": "Stage A Task 6 local gates measured at acc2a1c: PASS (Windows, WSL); local acceptance finalized by Codex with the operator-approved Stage A-only Windows checkout exception; Fable 5.1 SOUND WITH AMENDMENTS",
+   "measured_source": {
+    "commit": "git-sha1:acc2a1cadb435352f0e26ece58ffb4faba92cf3c",
+    "tree": "git-sha1:64266896398ceaa2f92c0013af2af731c10d20cd",
+    "pyproject": "sha256:9fee0c4cb628efb255d926e4213c31b3e6797ce73c22456d8e353aa940ba0432",
+    "uv_lock": "sha256:f1caae185d41b02de2bf9a1cc4970e2517278c8a12b3a4728dd71fc2d826a097"
+   },
+   "recorded_by_later_commit": "results are bound to acc2a1c; the documentation commit that records them is not itself measured",
+   "commands": [
+    "uv run --no-sync pytest --cov --cov-branch --cov-fail-under=0 --cov-report=term-missing --cov-report=json:tmp/coverage/full.json -v",
+    "uv run --no-sync python -m tools.testing.coverage_products report --coverage-json tmp/coverage/full.json"
+   ],
+   "claims": {
+    "windows_full_suite": {
+     "status": "PASS",
+     "run": "20261005T075433-47356-fcfdf0",
+     "passed": 5427,
+     "skipped": 40,
+     "deselected": 111,
+     "selected": 5467,
+     "record": "COMPLETE, exit 0, native valid, guard pytest_process_guard, protection full",
+     "qualifications": [
+      "parent=not_found:ancestor_exited"
+     ],
+     "interpreter": "CPython 3.14.4",
+     "coverage_json": "sha256:0b1f7e12d350f9021c021bcd7f2d8aedb5bdbccfeff81aa36974c687a7efc167"
+    },
+    "wsl_full_suite": {
+     "status": "PASS (qualified)",
+     "run": "20261005T075522-438-1b3ada",
+     "passed": 5293,
+     "skipped": 174,
+     "deselected": 111,
+     "selected": 5467,
+     "qualifications": [
+      "native=unsupported",
+      "guard=unsupported_platform",
+      "parent=unsupported",
+      "guest wall clock uncertain"
+     ],
+     "interpreter": "CPython 3.14.6",
+     "coverage_json": "sha256:d7c33c18b353d5fa5fb5b5592bb1407602868ebc52010acfd29a87f80e06a62f"
+    },
+    "optimus_floor": {
+     "status": "PASS",
+     "windows_percent": 87.8722,
+     "wsl_percent": 87.2047,
+     "floor": 80
+    },
+    "model_policy_floor": {
+     "status": "N/A",
+     "why": "package absent on this source"
+    },
+    "context_engine_floor": {
+     "status": "N/A",
+     "why": "package absent on this source"
+    },
+    "a2a": {
+     "status": "informational",
+     "windows_percent": 68.4165,
+     "wsl_percent": 65.9629
+    },
+    "task0_gap_predicate": {
+     "status": "PASS",
+     "platform": "windows",
+     "transitions": 16371,
+     "k": 1637,
+     "first_median_ms": 0.372,
+     "last_median_ms": 0.395,
+     "ratio": 1.062,
+     "negative_gaps": 0,
+     "gap_sum_s": 18.3,
+     "wsl_informational_ratio": 0.781
+    },
+    "slow_node_census": {
+     "status": "qualified",
+     "windows": "233 over 2 s, 0 default-tier",
+     "wsl": "77 over 2 s, 1 default-tier: tests/unit/mcp/test_local_ipc.py::test_remote_consume_after_listener_stop_fails_quickly 2.002 s",
+     "disposition": "pin-only exception; explicit core rule + measurement refresh = first required Stage B source change (P11-FEAT-TEST-PROFILES)"
+    },
+    "windows_checkout": {
+     "status": "operator-approved Stage A-only exception",
+     "operator_words": "Yes approve windows run above",
+     "recorded_utc": "2026-10-05T09:31:33Z",
+     "topology": "v4 calls for an independent frozen acceptance checkout; the Windows run used the clean frozen implementing lane at the pin. The operator approved retaining it as a Stage A-only exception (2026-10-05 09:31:33 UTC, Codex chat `01a10617-9940-72c0-a5e2-e3f8c3241055`): \"Yes approve windows run above\". The exception rests on the unchanged pin and source identities, the report's clean-tree and post-start rewrite checks, and the independent WSL clone. No Windows rerun is required, frozen v4 is unchanged, and the exception does not extend to future runs. The command approval (C1) alone did not grant it."
+    },
+    "remote_linux_ci_and_safety_rows": {
+     "status": "UNKNOWN",
+     "why": "push/PR and publication held; no comparable CI reports"
+    }
+   },
+   "provenance_notes": [
+    "drivers first copied the report's collect-only session; corrected run records named above; report binding unaffected (auto == explicit)",
+    "coverage meta.timestamp is host-local: each report ran on its measuring host",
+    "pre-existing RuntimeWarning from tests/unit/acp/test_entrypoint.py on both platforms",
+    "shared host: timings are evidence only"
+   ],
+   "receipts": {
+    "final_evidence": "plan-11-30-task6-stage-a-final-evidence-20261005 (seal sha256:38b9b8fac7c5c24b614d909e91bd698e5d461d87a8f1a1a16020cccafd1673ca)",
+    "pin_docs_commit": "plan-11-30-task6-docs-commit-20261005 (seal sha256:6de9b0f9a433addef0f01bc982250dbd042975f851a2fd888aec474789a3e829)"
+   },
+   "required_stage_b_owner": "P11-FEAT-TEST-PROFILES (Tasks 4-5, the local_ipc explicit rule, the partial-commit scanner control and fix)"
   }
  }
 }

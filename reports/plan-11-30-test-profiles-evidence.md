@@ -2,7 +2,9 @@
 
 **Plan:** `docs/superpowers/plans/2026-10-04-plan-11-30-test-profiles-implementation_v4.md` (approved working bytes SHA-256 `8A40DEF6D627EDC722D9FA925BBB0C193DE433ECCB91D2DCA19F1DA6AFC5C790`; LF-normalised blob `7D07ADA39CE1F8987E529C7FD8838952B4607F6F2CBD8773D39220D44DB6AF1E`, differing only by CRLF on lines 32–33).
 **Machine-readable index:** [`plan-11-30-test-profiles-manifest.json`](plan-11-30-test-profiles-manifest.json).
-**Status:** Task 0 complete pending Checkpoint A (Fable 5.1, then Codex). Every result here is provisional development evidence bound to the stated source identity. The final full-run confirmation of the overhead fix belongs to the first delivery's Task 6. Tasks 1–6 are not started.
+**Status (2026-10-05):** Stage A (Tasks 0–3) is accepted and locally committed. Its Task 6 final gates ran at `acc2a1c`, pass on Windows and WSL, and are accepted locally (section "Task 6"). Remote Linux CI and the safety-row comparison are UNKNOWN. Stage B (Tasks 4–5, and the partial-commit correction) is required and open under `P11-FEAT-TEST-PROFILES`. Nothing is pushed.
+
+*Historical intake status, kept as written:* Task 0 complete pending Checkpoint A (Fable 5.1, then Codex). Every result here is provisional development evidence bound to the stated source identity. The final full-run confirmation of the overhead fix belongs to the first delivery's Task 6. Tasks 1–6 are not started.
 
 This report is the plan's single evidence report. Each later stage appends its own sections and never relabels an earlier one.
 
@@ -174,10 +176,10 @@ Same node-list bytes, flags and frozen environment as the pre-fix runs; both cov
 
 ### Residuals and owners
 
-- The host's per-process close cost still applies to files that tests themselves write after the Pillow trigger, inside their own phases. Phase sum fell 203.5 → 181.3 s rather than staying flat. Diagnosing or isolating the trigger test is outside Task 0. Owner: `P11-FEAT-TEST-PROFILES` (custody pending Codex).
+- The host's per-process close cost still applies to files that tests themselves write after the Pillow trigger, inside their own phases. Phase sum fell 203.5 → 181.3 s rather than staying flat. Diagnosing or isolating the trigger test is outside Task 0. Owner: `P11-FEAT-TEST-PROFILES` (custody assigned in the backlog's Task 0 residual entry).
 - At microsecond precision the §6 predicate's absolute medians are small. A future full run whose first-decile median reaches 0 µs would be UNKNOWN by contract.
 - Plan 11.28 activation, cleanup and branch-folding holds are unchanged.
-- `tests/unit/tools/test_run_context_boundaries.py` still plants two malformed/misfiled entries in the real registry and announces one nested run there. This is by ruling: it is `try/finally`-cleaned and proves live ancestry against the real outer run. A run interrupted inside that window would leave `zzz-*` entries the maintenance tool keeps forever. Owner: `P11-FEAT-TEST-PROFILES` (custody pending Codex).
+- `tests/unit/tools/test_run_context_boundaries.py` still plants two malformed/misfiled entries in the real registry and announces one nested run there. This is by ruling: it is `try/finally`-cleaned and proves live ancestry against the real outer run. A run interrupted inside that window would leave `zzz-*` entries the maintenance tool keeps forever. Owner: `P11-FEAT-TEST-PROFILES` (custody assigned in the backlog's Task 0 residual entry).
 - The host registry exceeds 512 entries, so every run's parent is UNKNOWN (`registry_partial`) until an authorised archival reduces it.
 
 ### Raw receipts
@@ -649,3 +651,51 @@ v4 allows a default `core` tier only for cheap nodes: measured setup+call+teardo
 - A Windows commit runs native platform tests and records the WSL obligation for the next checkpoint (unchanged from Task 2).
 - Inside a hook run, tests strip `GIT_*`, so repository scanners read the worktree's default index rather than a partial commit's temporary index. pre-commit aligns the working tree's file contents with the commit, but those scanners take their file list from the default index. For a partial commit (`git commit -- <paths>`) that list can differ from the commit's. A file staged outside the commit is scanned and can make the hook refuse. A file whose deletion is staged outside the commit is not listed although the commit keeps it (the probe demonstrates this file-list divergence), so a commit that removes that file's declaration could pass. This is the test session's existing `GIT_*` isolation, unchanged by Task 3. A commit with everything staged is unaffected. `commit -a` after a plain `rm` of a tracked file also diverges, but in the refusing direction: the default index still lists the file, which is missing, and the inventory fails closed. CI's full run on the pushed tree remains the backstop. Graded LOW by Fable and Codex. It is required Stage B work under `P11-FEAT-TEST-PROFILES`: a failing real partial-commit scanner control and the narrowest reviewed fix, before Plan 11.30 closes. The end-to-end false pass is reasoned, not reproduced.
 - Test timings measured by the Task 6 final runs are retained as evidence and never written back into the measured candidate. A later snapshot refresh belongs to Stage B, under the same owner. Any newly demonstrated slow node with a default tier needs a recorded disposition before Stage A sign-off.
+
+## Task 6 — Stage A final gates at `acc2a1c` (2026-10-05)
+
+**Status: accepted. Stage A's local Task 6 gates pass on Windows and WSL. Codex verified them independently and finalized local acceptance, with the operator-approved Windows checkout exception below. Fable 5.1: SOUND WITH AMENDMENTS.** Every result in this section was measured at `acc2a1c`. A later documentation commit records them; it is not itself measured.
+
+### What was measured
+
+- **Pin.** `acc2a1cadb435352f0e26ece58ffb4faba92cf3c` (tree `64266896…`): Task 3 `1b300cf` plus Codex's pre-pin documentation commit, after its current-state audit. `pyproject.toml` `9fee0c4c…`, `uv.lock` `f1caae18…`. Clean tree before and after both runs.
+- **Commands** (the operator-authorized substitution for v4's unsupported `run_profile --profile full`; frozen v4 unchanged), run serially with one coverage writer per checkout:
+  - `uv run --no-sync pytest --cov --cov-branch --cov-fail-under=0 --cov-report=term-missing --cov-report=json:tmp/coverage/full.json -v`
+  - `uv run --no-sync python -m tools.testing.coverage_products report --coverage-json tmp/coverage/full.json`
+- **Windows:** the implementing lane at the pin; Python 3.14.4, uv 0.11.29; the environment matched the lock (`uv sync --frozen --dry-run`: no changes).
+- **WSL:** a fresh clone at the pin with its own environment and data (`/root/p1130-t6-20261005T075438`); Python 3.14.6, uv 0.11.31, `TMPDIR` unset.
+
+### Results
+
+| | Windows | WSL |
+|---|---|---|
+| Full suite | exit 0; 5,427 passed, 40 skipped, 111 deselected (47 min 58 s) | exit 0; 5,293 passed, 174 skipped, 111 deselected (26 min 3 s) |
+| Raw recount (`phases.jsonl`) | 5,419 call passes + 8 recorder-control nodes with setup and teardown only = 5,427; skips 21 at setup + 19 at call | 5,285 + 8 = 5,293; skips 165 + 9 |
+| Run record | `20261005T075433-47356-fcfdf0`: active, default selection, 5,467 selected / 111 deselected, no collection or recording errors, COMPLETE, exit 0; native job valid, guard `pytest_process_guard`, protection full; qualification `parent=not_found:ancestor_exited` | `20261005T075522-438-1b3ada`: same selection and terminal result; qualifications native unsupported, guard `unsupported_platform`, parent unsupported (WSL's weaker labels) |
+| Optimus (floor 80) | **87.8722 %**: 15,089/16,659 statements + 3,474/4,466 branches — pass | **87.2047 %**: 14,972/16,659 + 3,450/4,466 — pass |
+| Model policy / Context Engine | absent on this source: N/A | N/A |
+| A2A (informational) | 68.4165 % | 65.9629 % |
+| Coverage data | 202 rows (every current source file), coverage 7.14.3 with branches, all seven safety-module rows; SHA-256 `0b1f7e12…` | 202 rows, seven safety rows; `d7c33c18…` |
+| Report binding | automatic and explicit `--run-record` agree | automatic and explicit agree |
+| Nodes over 2 s | 233, none with a default tier | 77, one with a default tier (below) |
+
+Products are measured as (covered statements + covered branches) / (statements + branches), unrounded. The Windows and WSL Optimus figures differ in a way consistent with WSL's additional skips and platform-specific paths; skip counts alone do not prove that cause, and no cross-platform subtraction is made.
+
+**Task 0's full-run confirmation (v4 §6, Windows):** **PASS**. Over 16,371 phase transitions (k = 1,637), the first-decile median gap is 0.372 ms and the last 0.395 ms: ratio 1.062, within 2. There are no negative gaps, and the gap sum is 18.3 s. WSL's ratio, 0.781, is informational only, because the guest's wall clock jumps.
+
+### Qualifications
+
+- **Run-record provenance.** Both run drivers first copied the product report's own collect-only session (same node count, no phases) as "the run". The corrected files name the active default-selection runs above. The product report's own binding was unaffected: automatic and explicit lookups agree on both platforms. The wrong copies are kept as harness-error history.
+- **Coverage timestamps are host-local.** coverage.py writes a naive local time, and the binding converts it with the measuring host's zone. So the report must run on the host that measured. WSL's data read on the Windows host would fall 5.5 hours outside its run. Each report ran on its own host: Windows wrote at 08:42:29Z, WSL at 08:23:27Z, each inside its run.
+- **One warning, pre-existing.** `'optimus.acp.__main__' found in sys.modules`, from `tests/unit/acp/test_entrypoint.py::test_module_entrypoint_exists`, on both platforms. It is unrelated to this plan.
+- **Shared host.** Other lanes may have run during these tests. Timings are evidence only, with no solo-host claim, and they are not written back into the measured candidate.
+- **One new slow node with a default tier.** `tests/unit/mcp/test_local_ipc.py::test_remote_consume_after_listener_stop_fails_quickly` took 2.002 s on WSL (call 2.0016 s) and 1.016 s on Windows. It is a designed bounded IPC-timeout wait, in-process. Codex's recorded disposition: an exception for this pin only. The explicit `core` rule ("designed bounded IPC-timeout wait; platform-dependent (1.0 s Windows, 2.0 s WSL)") and this observation's measurement refresh are the first required Stage B source change, under `P11-FEAT-TEST-PROFILES`. `acc2a1c` is not rewritten and no final suite is repeated.
+- **Windows checkout.** v4 calls for an independent frozen acceptance checkout; the Windows run used the clean frozen implementing lane at the pin. The operator approved retaining it as a Stage A-only exception (2026-10-05 09:31:33 UTC, Codex chat `01a10617-9940-72c0-a5e2-e3f8c3241055`): "Yes approve windows run above". The exception rests on the unchanged pin and source identities, the report's clean-tree and post-start rewrite checks, and the independent WSL clone. No Windows rerun is required, frozen v4 is unchanged, and the exception does not extend to future runs. The command approval (C1) alone did not grant it.
+
+### Still open
+
+- Remote Linux CI and the base/candidate safety-row comparison: UNKNOWN until a publication grant and comparable CI reports.
+- Stage B: Tasks 4–5, the explicit rule above, and the partial-commit scanner control and fix (LOW). All are required and owned by `P11-FEAT-TEST-PROFILES`.
+- Push, PR, merge and cleanup: held.
+
+Evidence: `plan-11-30-task6-stage-a-final-evidence-20261005` (69 files, seal `38b9b8fa…`); the pin's documentation commit `plan-11-30-task6-docs-commit-20261005` (seal `6de9b0f9…`).

@@ -1,5 +1,58 @@
 # Plan 11.30 — Task 3 / Stage A Codex review
 
+## Stage A Task 6 — local acceptance finalized
+
+Reviewed 2026-10-05 (UTC review clock 09:17:24). Evidence pin `acc2a1cadb435352f0e26ece58ffb4faba92cf3c`, tree `64266896398ceaa2f92c0013af2af731c10d20cd`. Operator-relayed packet `2026-10-05-claude-task6-stage-a-final-packet-plan-11-30.md`, SHA-256 `c388e2808475b497ca16d58b625bfd17f29e309e645c2be075f375dd6b232406`. Codex verified all 69 seal members; seal `38b9b8fac7c5c24b614d909e91bd698e5d461d87a8f1a1a16020cccafd1673ca`. Read both sealed Fable returned verdict summaries: SOUND WITH AMENDMENTS; the first has 0 major/3 minor findings. These summaries are retained as returned, not claimed as an original independent transcript export.
+
+### A — Local measured results
+
+The local measured tests, product floors and Windows Task 0 full-run confirmation are accepted at acc2a1c. The operator approved the Stage A-only checkout exception below on 2026-10-05, finalizing local Task 6 technical/procedural acceptance without a rerun. Remote CI/safety, documentary delivery and complete Stage A delivery remain open.
+
+| Evidence at acc2a1c | Windows | WSL |
+|---|---|---|
+| Full run | 5,427 passed, 40 skipped, 111 deselected | 5,293 passed, 174 skipped, 111 deselected |
+| Selection/terminal | 5,467 selected, zero collection/recording errors, COMPLETE/ACTIVE, exit 0 | Same selection/terminal result |
+| Validity | Valid Windows native/full process guard; parent=not_found:ancestor_exited | native/guard/parent unsupported qualifications retained |
+| Optimus full branch-inclusive coverage | 87.87218934911243%, passes 80% | 87.20473372781065%, passes 80% |
+| A2A | 68.41654778887303%, informational | 65.96291012838802%, informational |
+| Context Engine/model policy | Absent, N/A | Absent, N/A |
+| Nodes above 2 seconds | 233; no default-origin nodes | 77; one default-origin node addressed in B |
+
+Independent raw-phase recount includes eight setup/teardown-only recorder controls: Windows 5,419 call passes + 8, WSL 5,285 + 8. Selected/deselected record states reconcile to 5,467/111, not 5,578 selected. Independent Windows gap calculation: 16,371 transitions, k=1,637; first median 0.00037200000001291755 s, last 0.00039499999957115506 s, ratio 1.0618279557995667 <=2; zero negative gaps; gap sum 18.347725000017682 s. This satisfies Task 0's outstanding full-run predicate. WSL ratio 0.7814245808579946 remains informational, with guest wall-clock uncertainty; no Windows parity or cross-platform performance claim.
+
+Both reports have 202 current tracked source rows. Codex independently checked row-set equality and every statement/branch count against coverage.py's analysis of the actual pinned source; both product predicates pass and all seven safety rows exist. Coverage SHA-256: Windows `0b1f7e12d350f9021c021bcd7f2d8aedb5bdbccfeff81aa36974c687a7efc167`, WSL `d7c33c18b353d5fa5fb5b5592bb1407602868ebc52010acfd29a87f80e06a62f`. Write timestamps convert on the measuring hosts to 08:42:28.998986Z / 08:23:26.614389Z, inside their runs. Automatic and explicit report outputs agree on both platforms. Collection binding is supported by those retained CLI proofs; Codex did not rerun full collection. Its additional label-based digest probes could not reconstruct the eight withheld labels and are not extra passing selection proof. No files changed or tests rerun during these probes.
+
+Actual clean HEAD/tree/config/lock match the pin; latest tracked Windows source/test/config mtime predates the run. Docs commit acc2a1c contains exactly the five released path bytes; its 17-file seal `6de9b0f9a433addef0f01bc982250dbd042975f851a2fd888aec474789a3e829` verifies. Docs commit hooks completed successfully with YAML/TOML not applicable and its 149-node commit profile passing. Fresh full-tree Ruff passes. The reports' original wrong-session copies remain harness-error history; the corrected ACTIVE full run records, not PASSIVE collection sessions, support this review. The RuntimeWarning is present in both full outputs and concerns the pre-existing entrypoint test. Coverage differences are consistent with additional WSL skips/platform-specific paths, but skip counts alone do not establish sole causation. No cross-platform safety subtraction is accepted; comparable Linux base/candidate evidence is still missing.
+
+### Windows checkout deviation — operator-approved Stage A exception
+
+Recorded 2026-10-05 09:31:33 UTC. Direct operator reply in Codex chat `01a10617-9940-72c0-a5e2-e3f8c3241055`, immediately after relaying the request to retain the existing Windows run:
+
+> Yes approve windows run above
+
+Decider: Vibhanshu (operator). Status: Accepted for this existing Stage A Windows run at `acc2a1cadb435352f0e26ece58ffb4faba92cf3c`. Frozen v4 calls for an independent acceptance checkout; Windows instead used the clean frozen implementing lane. Its unchanged pin, source identities, report checks and independent WSL clone support the joint Fable/Claude/Codex recommendation to retain it. The explicit operator exception resolves that procedural departure; no Windows rerun is required. C1's earlier command approval alone did not grant this exception. Frozen v4 remains byte-identical, and this decision grants no general exception for future runs.
+
+Codex finalizes local Stage A Task 6 acceptance on the already-verified evidence above. The seven-path documentary release below may proceed after its normal checks; no further topology or local-commit approval is needed. Remote CI/safety, complete delivery, required Stage B and publication/cleanup boundaries remain unchanged.
+
+### B — Recorded C2 disposition of the new WSL slow node
+
+Accept the reviewed, source-bound classification exception for this pin only. `tests/unit/mcp/test_local_ipc.py::test_remote_consume_after_listener_stop_fails_quickly` totals 2.002187 s on WSL (call 2.001567 s), versus 1.015521 s Windows. This is a genuine >2-second omission, not rounding it down. The current test deliberately waits for bounded IPC failure in-process and asserts completion under 3 seconds; there is no child process to justify proc. Claude/Fable/Codex agree explicit core is correct and preserves today's tier/selection.
+
+Required first Stage B source change under existing `P11-FEAT-TEST-PROFILES`: add the explicit core node rule with rationale “designed bounded IPC-timeout wait; platform-dependent (1.0 s Windows, 2.0 s WSL)” and include the retained observation in the pre-Stage-B measurement refresh. Verify classification/selection and affected Windows/WSL controls. Do not rewrite acc2a1c or repeat both final suites for this metadata-only classification. This is the recorded C2 disposition before Stage A sign-off, with named required custody; no scope exclusion or plan closure waiver. Task 4/5 and partial-commit correction remain required.
+
+### C — Post-run documentary follow-up
+
+Select a tracked post-run report/docs follow-up, rather than leaving required evidence only in external delivery packets. Codex repaired its misplaced ADR-016 index row in D:. Claude may prepare the report/manifest Task 6 section and import the following reviewed governance delta. Preserve every seal and the original acc2a1c evidence; do not rerun the product report at the descendant and imply it was measured there.
+
+Required report content: both full commands/run IDs, measured HEAD/tree/config/lock/interpreters, raw counts with the eight controls, product row counts/formula/percentages, gap fields and values, weaker WSL labels/clock uncertainty, the new slow-node disposition, corrected run-picker provenance, auto/explicit binding agreement, measuring-host timezone requirement, warning, host-overlap qualification and the approved Stage A-only Windows checkout exception and exact operator words. Fix the two Task 0 owner clauses to current `P11-FEAT-TEST-PROFILES` custody. The report's opening “Task 0 pending / Tasks 1–6 not started” is also stale: add current overall status and label the original intake status as historical; keep failed/INVALID original receipts and snapshot claims intact. Qualify the platform coverage explanation as consistent with skips/platform paths, not solely proven by skip counts.
+
+The manifest must name the acc2a1c measured source and immutable Windows/WSL receipt/coverage identities, explicit per-claim PASS/qualified/UNKNOWN status, approved Stage A-only topology disposition, required Stage B owner and remote CI/safety UNKNOWN. A later documentation commit has its own identity; it records results at acc2a1c and receives normal docs/hook checks, never an inherited full-run claim for its new HEAD. This is an express bounded post-run documentation-recording disposition under C2, not a source/test/config/lock change.
+
+Claude may prepare exactly these seven paths now: `reports/plan-11-30-test-profiles-evidence.md`, `reports/plan-11-30-test-profiles-manifest.json`, `docs/README.md`, `docs/decisions/README.md`, `docs/decisions/ADR-016-test-cadence-product-coverage-and-staged-delivery.md`, `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md`, and this Task 3 review. Under existing local reviewer delegation, one normal-hook docs/report commit of this exact bounded content is expressly released now, with the topology condition fulfilled by the operator approval above. Before committing, the report must accurately record that approval, fresh docs/secrets/Ruff/diff/LF checks must pass, and staged paths/source identities must be verified. No SKIP/no --no-verify; no implementation or new explicit-core rule in that commit. Retain normal-hook/commit blobs/status receipts and seal them. No further operator commit permission is required for that bounded release; stop for review if content or source scope changes.
+
+This documentary follow-up does not release Stage A publication, merge, cleanup or a full rerun. Stage B remains owned/open and its already-approved sequencing still applies; do not describe it as cancelled. Codex implemented no code, changed no pinned checkout, and started no full tests.
+
+
 ## Task 6 command substitution authorized — 2026-10-05
 
 Recorded 2026-10-05 06:07:16 UTC. Direct operator words in Codex chat `01a10617-9940-72c0-a5e2-e3f8c3241055`, immediately after Codex verified Task 3 delivery and restated the jointly recommended pending command substitution:
