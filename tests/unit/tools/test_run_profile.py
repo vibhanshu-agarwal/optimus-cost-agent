@@ -47,6 +47,38 @@ def _sha(repo: Path, name: str) -> str:
     return hashlib.sha256((repo / name).read_bytes()).hexdigest()
 
 
+def test_inside_a_real_partial_commit_hook_the_commit_view_is_git_s_temporary_index(repo: Path, tmp_path: Path) -> None:
+    """`git commit -- <path>` runs its hooks on a temporary index named by GIT_INDEX_FILE. The hook's commit view is
+    exactly that partial commit, not the separately staged index; the hook's refusal leaves no commit behind."""
+    head = _git(repo, "rev-parse", "HEAD")
+    _write(repo, "b.py", "b = 'staged in the real index'\n")
+    _git(repo, "add", "b.py")
+    _write(repo, "a.py", "a = 'only this file is committed'\n")
+    seen = tmp_path / "seen.json"
+    script = tmp_path / "hook.py"
+    script.write_text(
+        "import json, os, sys\nfrom pathlib import Path\n"
+        f"sys.path.insert(0, {str(run_profile.ROOT)!r})\n"
+        "from tools.testing import run_profile\n"
+        "found = run_profile.change_set(Path.cwd(), 'commit', None)\n"
+        f"Path({str(seen)!r}).write_text(json.dumps({{'index': os.environ.get('GIT_INDEX_FILE'),"
+        " 'changes': [[c.status, c.path] for c in found.changes], 'provisional': [path for path, _ in found.provisional]}))\n"
+        "sys.exit(1)\n",
+        encoding="utf-8",
+    )
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.write_text(f'#!/bin/sh\nexec "{Path(sys.executable).as_posix()}" "{script.as_posix()}"\n', encoding="utf-8")
+    hook.chmod(0o755)
+    with pytest.raises(subprocess.CalledProcessError):
+        _git(repo, "commit", "-q", "-m", "partial", "--", "a.py")
+    found = json.loads(seen.read_text(encoding="utf-8"))
+    assert found["index"] and Path(found["index"]).name != "index"  # git's temporary index for the partial commit
+    # a.py is what this commit stages; b.py, staged only in the real index, is working-tree divergence from the
+    # temporary index: selected and hashed as provisional. Read from the real index, the two would swap.
+    assert sorted(found["changes"]) == [["M", "a.py"], ["M", "b.py"]] and found["provisional"] == ["b.py"]
+    assert _git(repo, "rev-parse", "HEAD") == head and _git(repo, "diff", "--cached", "--name-only") == "b.py"
+
+
 def test_the_commit_view_is_the_index_against_head_and_never_an_earlier_commit(repo: Path) -> None:
     base = _git(repo, "rev-parse", "HEAD")
     _write(repo, "b.py", "b = 2\n")

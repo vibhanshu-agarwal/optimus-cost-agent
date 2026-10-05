@@ -68,6 +68,32 @@ def test_ci_dependency_sync_is_locked() -> None:
     ]
 
 
+def test_the_commit_hook_runs_the_commit_profile_coverage_free_on_every_commit() -> None:
+    """The hook keeps its id and the label CI pairs it with, and selects this commit's tests instead of the full
+    suite. It runs even when no staged file matches a filter (a deletion-only commit still selects importers)."""
+    config = yaml.safe_load((ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8"))
+    hooks = {hook["id"]: hook for repo in config["repos"] for hook in repo["hooks"]}
+    hook = hooks["optimus-pytest-coverage"]
+    assert hook["name"] == "optimus-check: pytest-coverage"
+    assert shlex.split(hook["entry"]) == ["python", "-m", "tools.testing.run_profile", "--profile", "commit"]
+    assert (hook["language"], hook["pass_filenames"], hook.get("always_run")) == ("system", False, True)
+    assert "stages" not in hook and "files" not in hook and "--cov" not in hook["entry"]
+
+
+def test_ci_runs_the_full_default_suite_with_every_product_measured_and_gated() -> None:
+    """CI keeps its check label and the unchanged default full invocation; only the coverage flags widen to every
+    configured product, and the product report then applies the floors. CI never selects a profile."""
+    text = (ROOT / ".github" / "workflows" / "guardrails.yml").read_text(encoding="utf-8")
+    steps = yaml.safe_load(text)["jobs"]["clean-environment-recheck"]["steps"]
+    step = next(step for step in steps if step.get("name") == "optimus-check: pytest-coverage")
+    assert [shlex.split(line) for line in step["run"].strip().splitlines()] == [
+        ["uv", "run", "pytest", "--cov", "--cov-branch", "--cov-fail-under=0", "--cov-report=term-missing",
+         "--cov-report=json:tmp/coverage/full.json", "-v"],
+        ["uv", "run", "python", "-m", "tools.testing.coverage_products", "report", "--coverage-json", "tmp/coverage/full.json"],
+    ]
+    assert "run_profile" not in text and "--profile" not in text
+
+
 def test_default_agent_config_paths_include_nested_agents_cursor_rules_and_root_mcp(tmp_path):
     nested = tmp_path / "packages" / "api"
     nested.mkdir(parents=True)

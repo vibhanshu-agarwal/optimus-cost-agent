@@ -14,6 +14,28 @@ pytestmark = pytest.mark.usefixtures("isolated_windows_known_folders")
 from optimus.acp import __main__ as acp_main
 from tests.unit.acp.conftest import FakeKeyring, authorize_workspace_for_test
 
+_HOST_STARTERS = ("ensure_local_redis", "ensure_local_phoenix", "ensure_local_gateway")
+
+
+@pytest.fixture(autouse=True)
+def _no_host_infrastructure(monkeypatch):
+    """main() auto-starts local Redis, Phoenix and the Gateway with real TCP probes and `docker` commands on this machine
+    (measured 22.8 s while local Redis was down). A test that reaches one must stub it; reaching the real one fails here,
+    after the test, even when main() swallowed the error."""
+    reached: list[str] = []
+    for name in _HOST_STARTERS:
+        monkeypatch.setattr(acp_main, name, lambda *_a, _name=name, **_k: reached.append(_name))
+    yield reached
+    assert reached == [], f"the test reached the real {reached}; stub it like its siblings"
+
+
+def test_the_host_starter_tripwire_records_every_starter_main_reaches(_no_host_infrastructure: list[str]) -> None:
+    assert sorted(_HOST_STARTERS) == sorted(name for name in vars(acp_main) if name.startswith("ensure_local_"))
+    for name in _HOST_STARTERS:
+        assert getattr(acp_main, name)("redis://127.0.0.1:6379/0") is None  # recorded, not run
+    assert _no_host_infrastructure == list(_HOST_STARTERS)
+    _no_host_infrastructure.clear()  # reached on purpose here; any other test that reaches one fails at teardown
+
 
 def _base_env(*, gateway_url: str = "http://127.0.0.1:8765") -> dict[str, str]:
     return {
@@ -839,6 +861,7 @@ def test_gateway_child_construction_ignores_os_environ_mutated_after_capture(mon
         return None
 
     monkeypatch.setattr(acp_main, "append_launch_audit_event", mutating_append_audit)
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *_a, **_k: None)
     monkeypatch.setattr(acp_main, "ensure_local_gateway", fake_ensure_local_gateway)
     _patch_common(monkeypatch)
 

@@ -124,11 +124,27 @@ uv sync --frozen --extra dev
 ```
 
 From that worktree, use its prepared environment without another sync. A full default-selection
-coverage run is:
+coverage run measures every configured product package:
 
 ```bash
-uv run --no-sync pytest --cov=optimus --cov-branch --cov-report=term-missing
+uv run --no-sync pytest --cov --cov-branch --cov-fail-under=0 --cov-report=term-missing --cov-report=json:tmp/coverage/full.json
 ```
+
+Then gate each product against that run: Optimus (aggregate), model policy and Context Engine
+at 80 % unrounded when present; A2A is reported, not enforced. The report accepts only the full
+default selection of the committed source it runs on, and fails closed on unknown packages,
+missing rows or stale data:
+
+```bash
+uv run --no-sync python -m tools.testing.coverage_products report --coverage-json tmp/coverage/full.json
+```
+
+The commit hook (`optimus-check: pytest-coverage`) runs the tests that this commit's staged
+changes select, coverage-free, with a bounded broad fallback for configuration and unmapped
+changes: `python -m tools.testing.run_profile --profile commit`. Use `--profile quick` for the
+working tree against HEAD while developing. Checkpoints run
+`python -m tools.testing.run_profile --profile checkpoint --base <recorded SHA>`. CI runs the full
+suite with coverage and the product gates.
 
 For a focused run that must not write coverage, for example:
 

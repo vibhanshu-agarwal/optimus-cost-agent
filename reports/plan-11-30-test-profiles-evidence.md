@@ -544,3 +544,108 @@ Against the original reviewed manifest (class `28bc1799…`, 724 eligible): the 
 - **Recorder clock**: fixed at the recorder; other code that reads a patchable clock during a test is not audited here.
 - **WSL wall-clock timestamps** (Fable C2): in attempt 3 the WSL guest wall clock advanced about 47 s (audits) and 15 s (selected) more than monotonic time (VM time re-sync: wall spans 602.0 s and 243.8 s against 554.8 s and 228.5 s monotonic, pytest 555.02 s and 228.70 s; inter-phase wall gaps up to 24.3 s, Windows at most 0.044 s). WSL `started_utc`/`finished_utc`/phase `at` values are therefore accurate only to about a minute. No claim here depends on them: WSL runs serially without load, counts and outcomes are unaffected, and the lane-overlap statement survives a one-minute error. Gap arithmetic on WSL records needs this caveat.
 - **Scans seen through path joins only** (Fable M3): a gate that scans the docs solely through a loose pathspec string (for example `tracked_repository_files(..., pathspecs=["docs"])`) would be invisible to the prose scanner rule. None exists outside `tests/unit/docs/**` today, and `tools/doc_paths.py` joins `REPO_ROOT / "docs"`, so it is reached.
+
+## Task 3 — Product coverage gates and commit-hook wiring (2026-10-04)
+
+**Status: complete, uncommitted (base `1f8ca30`); corrected for Codex's bounded hold T3-M1; Fable 5.1 SOUND WITH AMENDMENTS on the build, the final evidence and the T3-M1 disposition (all applied); awaiting Codex.** Final Task 3 diff `4373b171f4f7…` (14 files). Coverage floors on real full-run data, the safety-row baseline and remote CI evidence belong to Stage A's Task 6.
+
+### What was built
+
+| File | Responsibility |
+|---|---|
+| `tools/testing/coverage_products.py` | Classifies every tracked production package under `src/` into exactly one product (unknown or doubly claimed fails closed); measures each product unrounded with coverage.py's formula and gates Optimus (aggregate), model policy (own floor) and Context Engine at 80 when present, A2A reported only; binds the report to one full default-selection run of this source; compares the seven safety-critical module rows between a base and a candidate report |
+| `.pre-commit-config.yaml` | The `optimus-check: pytest-coverage` hook keeps its id and label and now runs `python -m tools.testing.run_profile --profile commit`, coverage-free, `always_run` |
+| `.github/workflows/guardrails.yml` | Same check label and default full invocation; coverage widened to bare `--cov --cov-branch --cov-fail-under=0` with a JSON report, then the product gate. CI selects no profile and changes no run-record activation |
+| `CONTRIBUTING.md`, `AGENTS.md` | The full coverage and product-gate commands; the commit hook is coverage-free |
+| `tests/profiles.toml` (T3-M1) | Explicit rules for every node measured over 2 s on the Task 3 source, and the `[measurement]` snapshot united with those runs |
+| `tests/unit/acp/test_main_wiring.py` (T3-M1) | A host-starter tripwire for the module, and the one test that reached the real `ensure_local_redis` helper now stubs it |
+
+### Coverage contract (as built)
+
+- **Packages.** Importable top-level directories of tracked Python files under `src/`; distribution metadata (`*.egg-info`) is never a package. Optimus = `optimus`, `optimus_gateway`, `optimus_security`, `optimus_model_policy`; Context Engine = `context_engine`; A2A = `evidence_handoff`, `evidence_handoff_runtime`. Absent future packages are N/A on this source; when one appears its floor applies. A gates control keeps `[tool.coverage.run] source` equal to the discovered packages.
+- **Measurement.** (covered lines + covered branches) / (statements + branches), unrounded, `>= 80`: exactly 80 passes, 79.99 (displayed as 80 %) fails. A present enforced product with nothing to measure fails.
+- **Complete, current data.** Every current source file needs a row; a row for a file not in the source fails; each row's statement and branch counts must equal coverage.py's own analysis of the current file under the repository's exclusions (a real coverage.py run proves the parity); line-only data fails.
+- **Full-run binding.** The run-context terminal record must support a result (`run_profile.record_validity`, exit 0), be the default selection with no collection errors, have selected exactly the default universe collected from this source now (count and node-digest set), name this HEAD, `pyproject.toml` and `uv.lock`, and contain the report's write time (local-naive coverage timestamps are converted with the host zone; up to 5 minutes after the terminal record). The source, tests and configuration must be clean, and none of their tracked files may have been rewritten after the run started (a dirty run followed by `git stash`/`checkout` is refused — Fable T1). Without `--run-record`, the record is the one largest default-selection run containing the write time; a tie is no answer.
+- **Safety rows.** Base against candidate for the seven named `optimus` modules: missing rows, different coverage versions or line-only data are refused; any increase in missing lines or branches, or a lower unrounded percentage, is a regression. The output names both reports' SHA-256 (Fable T2); platform, interpreter and the base main-push SHA remain custody of the evidence that names the CI runs.
+
+### Controls and mutation
+
+- `test_coverage_products.py`: 37 collected controls from 26 test functions (classification, floors and boundary, model policy, Context Engine, A2A, empty product, rows and drift, real coverage.py parity, every binding clause, the post-start rewrite end to end, run lookup, safety rows and their file digests, sanitized output).
+- `test_ci_parity.py`: the hook entry, label, `always_run` and coverage-free state; the CI step's exact commands and the absence of any profile selection.
+- `test_run_profile.py`: a real temporary-index control — `git commit -- a.py` with `b.py` staged only in the real index runs a pre-commit hook on git's temporary index (`GIT_INDEX_FILE`); the runner's commit view stages `a.py`, holds `b.py` as provisional, and the hook's refusal leaves no commit (this closes Checkpoint B's F9).
+- Mutation (per the ledger; the harness's output was not retained): 29 of 29 Task 3 mutants in `task3/mutate_task3.py` killed, plus the two review-amendment mutants, which were run outside that script. That missing output is not recoverable proof.
+- T3-M1 mutation (harness output retained, `task3m1/mutate_t3m1.py` → `mutation4/`): 8 of 8 killed, each by its intended assertion. Five drop one new rule entry (the slow-node guard names the node), one removes the test's `ensure_local_redis` stub (the tripwire), and two weaken the tripwire (its control).
+- Declarations the guards required once the new files were tracked: one coverage.py child site (census), four logging sinks (shared sanitizer, each with a demonstrating test), the run-record glob as a reviewed non-repository walker, the cheap-launcher review, five new current-source guards tiered `gates`.
+
+### Verification
+
+| Check | Platform | Result |
+|---|---|---|
+| Focused gate on the final source: the brief's command, the whole `gates` tier, the Tasks 1–2 gate files, docs, retirement and naming guards, and the three T3-M1 modules | Windows | 1,140 passed, 2 skipped (run 20261005T024356-34788-3864a3; records COMPLETE, native valid, guard pytest_process_guard, protection full; 0 default-tier nodes over 2 s) |
+| Brief command + cross-cutting guards + the three T3-M1 modules, native clone at `1f8ca30` + the final diff, `TMPDIR=/tmp` | WSL | 648 passed, 24 skipped (0 default-tier nodes over 2 s) |
+| Same, `TMPDIR` unset | WSL | 648 passed, 24 skipped (0 default-tier nodes over 2 s) |
+| ast-grep (pre-commit's environment), Ruff, detect-secrets, the local secret scan, `git diff --check` | Windows | clean |
+| The same focused gate on the pre-T3-M1 13-file diff `913926d1…` (historical) | Windows / WSL | 1,048 passed, 2 skipped / 555 passed, 24 skipped in both `TMPDIR` states |
+
+**The actual commit hook, exercised without a commit.** In a fresh disposable Windows clone (`1f8ca30` + the final Task 3 diff, all 14 files byte-identical to the lane), the whole change was staged in the clone's own index, and `GIT_INDEX_FILE` was set to `.git/index` — exactly what git sets for a normal `git commit`, as a scratch-repository probe confirmed. `pre-commit run optimus-pytest-coverage` then ran the real hook (exercise 5).
+
+Earlier exercises are retained, each as evidence for its own source only:
+
+- **Exercise 3** (the 13-file diff `913926d1…`, same setup): pass, 5,107 selected, 5,067 passed, 40 skipped, record valid.
+- **Exercise 4** (the T3-M1 candidate before Fable's two wording amendments, `fa49dce6…`): pass, 5,105 selected, 5,065 passed, 40 skipped, record valid; 133 nodes over 2 s, none with a default tier.
+
+Exercises 1 and 2 refused; both refusals came from a setup that did not match a real commit:
+
+- **Exercise 1** (before the review amendments) staged only `.pre-commit-config.yaml` and `CONTRIBUTING.md` from an index that also held the two new files as intent-to-add entries. pre-commit stashed the unstaged declarations those files need, so three repository-scanner tests reported them undeclared (4,472 passed, 3 failed, 37 skipped; hook exit 1, no commit).
+- **Exercise 2** (the 13-file source) staged all 13 files into a separate index file named by `GIT_INDEX_FILE`, leaving the clone's default index at HEAD. The test session strips `GIT_*`, so the same three scanners listed the default index, could not see the new files, and reported their declarations as stale (5,064 passed, 3 failed, 40 skipped; hook exit 1, no commit).
+- The probe shows a normal commit's hook index *is* the default index, so neither split arises from a commit with everything staged, which is how Task 3 will be committed. Partial commits do diverge (residual below).
+
+- Selection: view `commit`, 5105 selected / 362 deselected, changes .github/workflows/guardrails.yml, .pre-commit-config.yaml, AGENTS.md, CONTRIBUTING.md, docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json, tests/profiles.toml, tests/unit/acp/test_main_wiring.py, tests/unit/guardrails/test_ci_parity.py, tests/unit/guardrails/test_tracked_file_scanners.py, tests/unit/tools/run_context_child_sites.json, tests/unit/tools/test_coverage_products.py, tests/unit/tools/test_run_profile.py, tests/unit/tools/test_test_profiles.py, tools/testing/coverage_products.py, provisional 0, fallback `broad: .github/workflows/guardrails.yml; broad: .pre-commit-config.yaml; broad: tests/profiles.toml`, obligations `wsl-platform: next checkpoint`.
+- Verdict: **pass** (exit 0).
+- Tests: selected subrun 20261005T022750-56116-11591b: 5105 nodes, 5065 passed, 40 skipped, 0 failed (per-node outcome from the run record's phases.jsonl; pre-commit hides a passing hook's output); hook exit 0.
+
+| Subrun | Run ID | Nodes | Exit | Record | Qualifications |
+|---|---|---|---|---|---|
+| `selected` | `20261005T022750-56116-11591b` | 5105 | exit 0 | valid | parent=not_found:ancestor_exited |
+
+HEAD before=1f8ca301c435377bdd29f7e5c54159ebb06d0c1c after=1f8ca301c435377bdd29f7e5c54159ebb06d0c1c (no commit created)
+
+### T3-M1: explicit rules for measured slow nodes (Codex's bounded hold)
+
+v4 allows a default `core` tier only for cheap nodes: measured setup+call+teardown over 2 seconds requires an explicit rule. The guard checked only the old reference snapshot, so four nodes measured over 2 s in exercise 3 still had a default tier (Codex T3-M1).
+
+- **Census.** Every retained run of the 13-file Task 3 source was checked, not only exercise 3:
+  - Windows exercises 3 and 2 (5,107 nodes each) and the focused gate (1,050);
+  - WSL's two final runs (579 each).
+
+  Six nodes over 2 s had a default tier. Exercise 1 (pre-amendment source) and two earlier lane runs add nothing.
+- **Root causes.**
+  - The conftest-parametrised selector control's 19–27 s was setup: the module's shared collection of the whole default universe (a nested `pytest --collect-only`), billed to whichever node requests it first.
+  - `test_main_wiring.py::test_gateway_child_construction_ignores_os_environ_mutated_after_capture` did not stub `ensure_local_redis`, unlike the other tests in the original 69-test module. So `main()` reached the real `ensure_local_redis` helper, whose conditional implementation can probe Docker and attempt a container start or create, then poll for readiness; it fails open, so the test still passed. The tripwire and the timings support that reach: 22.8 s with about 1 s of CPU while local Redis was down, and 0.28 s once it was up. The runs kept no per-command subprocess trace. The `optimus-redis` container's recorded start (2026-10-04T22:01:11Z) postdates both slow reaches and is not attributable to them.
+- **Rules** (the reasons are the cost contract, not duration alone):
+
+  | Node | Before | After | Why |
+  |---|---|---|---|
+  | `test_test_profiles.py::test_a_session_hook_change_selects_the_run_context_controls` (both parameters) | core | gates | It holds the manifest against the current collected universe, like every other user of that shared collection (the manifest's own guards) |
+  | `test_run_p11_fu_10_acpx_error_code_evidence.py::test_acpx_timeout_kills_every_descendant` (both parameters) | core | proc | It kills a real process tree on a 5 s timeout, like the capture-timeout probe |
+  | `test_server_reader_ownership.py::test_seam4_b2_teardown_completes_in_a_child_while_the_parent_holds_stdin_open` | core | proc | It spawns and times a teardown child |
+  | `test_coverage_products.py::test_a_real_repository_s_current_full_run_data_is_evaluated_end_to_end` | core | proc | It runs Git children in a per-test repository |
+  | `test_main_wiring.py::test_gateway_child_construction_ignores_os_environ_mutated_after_capture` | core | core (explicit) | It is in-process once stubbed; the rule records the root cause |
+
+- **The wiring fix.** A module-level tripwire replaces `ensure_local_redis`, `ensure_local_phoenix` and `ensure_local_gateway` with recorders and fails any test that reaches one, at teardown, even when `main()` swallows the error. Exactly one test reached one, and it now stubs it like its siblings. A control pins the tripwire to every `ensure_local_*` name `main()` imports. This is the one file outside the plan's file map; a tier would have misdescribed a unit test that runs Docker on the host.
+- **Selection changes,** all deliberate:
+  - The selector control now runs on every code or data commit, with the other manifest guards that already pay for the shared collection.
+  - The four `proc` nodes leave broad fallback and the quick profile. They are still selected when their own tool, product or test changes (verified by simulation), and full and CI runs are unchanged.
+  - No tags changed.
+- **Measurement input.** `[measurement]` now lists the reference snapshot united with every retained run above: 164 → 235 nodes. Its source text names those runs, including exercise 2's setup-attributable exit 1. Runs on the corrected candidate (exercises 4 and 5, these gates) are checked against the same rule and retained as evidence; they are not written back, since that would change the candidate again. The Task 6 final run's timings will likewise stay evidence (Codex C2). Exercises 4 and 5 found no node over 2 s with a default tier.
+- **Review.** Fable 5.1's bounded disposition was SOUND WITH AMENDMENTS. It recomputed the census independently and verified the selection consequences by simulation. Its two wording amendments (exercise 2's exit status in the measurement source; the launcher-review notes for the two files whose launching nodes are now `proc`) are applied, which is why exercise 5 was run on the amended bytes.
+
+### Residuals
+
+- The product floors have not yet run on real full-run data: the first full Windows coverage run (and the full WSL run and actual CI) is Stage A's Task 6. If a product is below 80 then, CI fails by design.
+- The CI wiring is in the workflow file but has not run remotely: push and PR stay held, so CI-backed claims remain pending, not complete.
+- The safety-row comparison needs the base SHA's retained main-push Linux CI report and the candidate's CI report (Task 6).
+- Child-subprocess execution coverage remains the stated limitation. The post-start rewrite check relies on file modification times on the same host.
+- A Windows commit runs native platform tests and records the WSL obligation for the next checkpoint (unchanged from Task 2).
+- Inside a hook run, tests strip `GIT_*`, so repository scanners read the worktree's default index rather than a partial commit's temporary index. pre-commit aligns the working tree's file contents with the commit, but those scanners take their file list from the default index. For a partial commit (`git commit -- <paths>`) that list can differ from the commit's. A file staged outside the commit is scanned and can make the hook refuse. A file whose deletion is staged outside the commit is not listed although the commit keeps it (the probe demonstrates this file-list divergence), so a commit that removes that file's declaration could pass. This is the test session's existing `GIT_*` isolation, unchanged by Task 3. A commit with everything staged is unaffected. `commit -a` after a plain `rm` of a tracked file also diverges, but in the refusing direction: the default index still lists the file, which is missing, and the inventory fails closed. CI's full run on the pushed tree remains the backstop. Graded LOW by Fable and Codex. It is required Stage B work under `P11-FEAT-TEST-PROFILES`: a failing real partial-commit scanner control and the narrowest reviewed fix, before Plan 11.30 closes. The end-to-end false pass is reasoned, not reproduced.
+- Test timings measured by the Task 6 final runs are retained as evidence and never written back into the measured candidate. A later snapshot refresh belongs to Stage B, under the same owner. Any newly demonstrated slow node with a default tier needs a recorded disposition before Stage A sign-off.

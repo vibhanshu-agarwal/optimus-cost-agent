@@ -1123,6 +1123,166 @@
     "WSL wall-clock timestamps accurate to about a minute in attempt 3 (guest wall clock jumped ~47 s / ~15 s vs monotonic); no claim depends on them"
    ],
    "post_edit_receipts": "optimus-handoff/test-profiles-research/plan-11-30-checkpoint-b-report-receipts-20261004"
+  },
+  "task3": {
+   "status": "complete; uncommitted (base 1f8ca30); Codex bounded hold T3-M1 corrected; Fable 5.1 SOUND WITH AMENDMENTS x3 applied; awaiting Codex",
+   "base_commit": "git-sha1:1f8ca301c435377bdd29f7e5c54159ebb06d0c1c",
+   "final_diff_sha256": "sha256:4373b171f4f771a25b91b249560cdb8ba7a6e7f0959e8dd83d21ae4994b947e5",
+   "sources_sha256": {
+    "tools/testing/coverage_products.py": "sha256:dd4d016594de9094c5f690f43557ef584e719bf07fb5036493dc3c23a6edf6e5",
+    "tests/unit/tools/test_coverage_products.py": "sha256:f5050f2b19fae01a42f9a1f637e2137b244e6110439b3b07a15150e9aa1ab82a",
+    ".pre-commit-config.yaml": "sha256:dfc3cff9b69a95cc76658d54e2feb03343ea7e66b48b4cfd5585cb0c182fa3fe",
+    ".github/workflows/guardrails.yml": "sha256:300842b32b58602095416b473613412e43d3316dfe70f912a8864f02250fd1c3",
+    "tests/unit/guardrails/test_ci_parity.py": "sha256:2cc1b287ff42788cffd32b502e60ac330b749dcb7242d00d37b5117d54def30a",
+    "tests/unit/tools/test_run_profile.py": "sha256:bc079269d5273afc3bfdd7fd54481cda8001c3eb39d52fa244d8ea7da0177f1c",
+    "tests/profiles.toml": "sha256:be1afc9a7258f53bf99115a49d77e3488d09ce5e7bbeecc9c31ee867c40024b6",
+    "CONTRIBUTING.md": "sha256:3584f1356a83c1dda3f41758e7fd7b062e0a0376f5bf474b19033b8a074802b6",
+    "AGENTS.md": "sha256:7f6d4be28ca010018ade3d66e03e53e5bcab9da6aa0c4096ef743c4e3c387c40",
+    "tests/unit/acp/test_main_wiring.py": "sha256:26bf7d483e369ca3528082fa10171d9a0af1f2252529e8c3e290d1cb01642dc6",
+    "tests/unit/tools/test_test_profiles.py": "sha256:901962a720bf0f685152ea6358a6cf23092a81c3d7be87c68f85deb5e0945a52"
+   },
+   "verification": {
+    "windows_focused_gate": "1,140 passed, 2 skipped (run 20261005T024356-34788-3864a3; records COMPLETE, native valid, guard pytest_process_guard, protection full; 0 default-tier nodes over 2 s)",
+    "wsl_tmpdir_set": "648 passed, 24 skipped (0 default-tier nodes over 2 s)",
+    "wsl_tmpdir_unset": "648 passed, 24 skipped (0 default-tier nodes over 2 s)"
+   },
+   "earlier_hook_exercises": [
+    "exercise 1 (pre-amendment; two files staged beside intent-to-add entries): 4472 passed, 3 failed, 37 skipped, hook exit 1 - setup",
+    "exercise 2 (13-file source in a separate GIT_INDEX_FILE, default index at HEAD): 5064 passed, 3 failed, 40 skipped, hook exit 1 - setup (scanners listed the default index)",
+    "exercise 3 (13-file diff 913926d1, full stage): pass, 5107 selected, 5067 passed, 40 skipped, run 20261004T221712-34340-4aae75",
+    "exercise 4 (T3-M1 candidate before Fable's wording amendments, fa49dce6): pass, 5105 selected, 5065 passed, 40 skipped, run 20261005T020842-30516-cec7bb; 0 default-tier nodes over 2 s"
+   ],
+   "t3m1": {
+    "finding": "Codex T3-M1: nodes measured over 2 s on the Task 3 source still had the default core tier (v4 design 1 requires explicit rules)",
+    "census": "every retained run of the 13-file source (Windows exercise 3, exercise 2, focused gate; WSL final x2): 6 default-tier nodes over 2 s",
+    "rules": {
+     "tests/unit/tools/test_test_profiles.py::test_a_session_hook_change_selects_the_run_context_controls": "core -> gates (manifest guard; shared universe collection)",
+     "tests/unit/tools/test_run_p11_fu_10_acpx_error_code_evidence.py::test_acpx_timeout_kills_every_descendant": "core -> proc (process-tree kill on a 5 s timeout)",
+     "tests/unit/acp/test_server_reader_ownership.py::test_seam4_b2_teardown_completes_in_a_child_while_the_parent_holds_stdin_open": "core -> proc (teardown child)",
+     "tests/unit/tools/test_coverage_products.py::test_a_real_repository_s_current_full_run_data_is_evaluated_end_to_end": "core -> proc (Git children in a per-test repository)",
+     "tests/unit/acp/test_main_wiring.py::test_gateway_child_construction_ignores_os_environ_mutated_after_capture": "core -> explicit core (in-process once ensure_local_redis is stubbed)"
+    },
+    "root_causes": [
+     "selector control: setup = the module's shared default-universe collection child, paid by the first requester",
+     "wiring test: reached the real ensure_local_redis helper while local Redis was down (its conditional implementation can probe Docker and attempt a container start/create with readiness polling; fail-open); tripwire and timing support the reach, no per-command subprocess trace; the container start at 2026-10-04T22:01:11Z postdates both slow reaches and is not attributable to them"
+    ],
+    "wiring_fix": "module host-starter tripwire (ensure_local_redis/phoenix/gateway recorders, teardown assertion; control pins every ensure_local_* name main() imports); the one reaching test stubs ensure_local_redis",
+    "measurement": "slow_nodes 164 -> 235: reference snapshot united with every retained run of the 13-file source; runs on the corrected candidate are census-checked and retained, not written back",
+    "selection_changes": "selector control runs on every code/data commit (gates); four proc nodes leave broad fallback and quick but stay selected by their own dependencies; full and CI unchanged; no tag changes",
+    "mutation": "8/8 killed by the intended assertions, harness output retained (task3m1/mutation4)",
+    "review": "Fable 5.1 bounded disposition SOUND WITH AMENDMENTS (exercise 2 exit status in the measurement source; launcher-review notes) - applied"
+   },
+   "hook_exercise": {
+    "setup": "fresh disposable clone, 14 files staged in its own index, GIT_INDEX_FILE=.git/index as for a normal commit",
+    "tests": "selected subrun 20261005T022750-56116-11591b: 5105 nodes, 5065 passed, 40 skipped, 0 failed (per-node outcome from the run record's phases.jsonl; pre-commit hides a passing hook's output)",
+    "verdict": "pass",
+    "exit": 0,
+    "detail": "",
+    "selected": 5105,
+    "changes": [
+     [
+      "M",
+      ".github/workflows/guardrails.yml",
+      null
+     ],
+     [
+      "M",
+      ".pre-commit-config.yaml",
+      null
+     ],
+     [
+      "M",
+      "AGENTS.md",
+      null
+     ],
+     [
+      "M",
+      "CONTRIBUTING.md",
+      null
+     ],
+     [
+      "M",
+      "docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json",
+      null
+     ],
+     [
+      "M",
+      "tests/profiles.toml",
+      null
+     ],
+     [
+      "M",
+      "tests/unit/acp/test_main_wiring.py",
+      null
+     ],
+     [
+      "M",
+      "tests/unit/guardrails/test_ci_parity.py",
+      null
+     ],
+     [
+      "M",
+      "tests/unit/guardrails/test_tracked_file_scanners.py",
+      null
+     ],
+     [
+      "M",
+      "tests/unit/tools/run_context_child_sites.json",
+      null
+     ],
+     [
+      "A",
+      "tests/unit/tools/test_coverage_products.py",
+      null
+     ],
+     [
+      "M",
+      "tests/unit/tools/test_run_profile.py",
+      null
+     ],
+     [
+      "M",
+      "tests/unit/tools/test_test_profiles.py",
+      null
+     ],
+     [
+      "A",
+      "tools/testing/coverage_products.py",
+      null
+     ]
+    ],
+    "fallback": [
+     "broad: .github/workflows/guardrails.yml",
+     "broad: .pre-commit-config.yaml",
+     "broad: tests/profiles.toml"
+    ],
+    "obligations": [
+     "wsl-platform: next checkpoint"
+    ],
+    "subruns": [
+     {
+      "name": "selected",
+      "run_id": "20261005T022750-56116-11591b",
+      "nodes": 5105,
+      "exit": 0,
+      "record_problem": null,
+      "qualifications": [
+       "parent=not_found:ancestor_exited"
+      ]
+     }
+    ]
+   },
+   "review": "Fable 5.1 SOUND WITH AMENDMENTS (T1 post-start rewrite check, T2 compared-report digests, T3 AGENTS.md, T4 hook expectations) - applied; final evidence check SOUND WITH AMENDMENTS (report text: commit -a qualification, 37 controls, mutation provenance) - applied; T3-M1 bounded disposition SOUND WITH AMENDMENTS - applied",
+   "mutation": "per ledger (harness output not retained): 29/29 Task 3 mutants (task3/mutate_task3.py) + 2 review-amendment mutants (run outside that script) killed",
+   "residuals": [
+    "floors not yet on real full-run data (Task 6)",
+    "CI wiring not yet run remotely (push/PR held)",
+    "safety-row baseline needs base main-push and candidate CI reports (Task 6)",
+    "child-subprocess coverage limitation",
+    "post-start rewrite check uses same-host modification times",
+    "hook-run repository scanners list files from the default index, not a partial commit's temporary index: an extra staged file can refuse; a deletion staged outside the commit can hide a kept file (CI backstop; pre-existing GIT_* isolation); LOW; required Stage B control + fix under P11-FEAT-TEST-PROFILES before plan closure",
+    "Task 6 final-run timings retained as evidence, never written back; Stage B snapshot refresh under the same owner"
+   ]
   }
  }
 }

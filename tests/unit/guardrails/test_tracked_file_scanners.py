@@ -146,6 +146,7 @@ ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
     "tools/run_redaction_gate_live_evidence.py:run_inspect:rglob:*": "Inspects a generated live-evidence output tree.",
     "tools/run_redaction_gate_live_evidence.py:run_inspect:rglob:manifest.json": "Finds generated manifests in a live-evidence output tree.",
     "tools/run_redaction_gate_live_evidence.py:run_verify:rglob:*": "Verifies a generated live-evidence output tree.",
+    "tools/testing/coverage_products.py:find_full_run:glob:*/run.json": "Finds this checkout's run-context records in the git-ignored tmp/test-runs folder; they are run evidence written by test sessions, not repository files.",
     "tools/verify_plan99_noneditable_install.py:select_wheel:glob:*.whl": "Selects a wheel generated in an isolated build directory.",
     "tests/unit/acp/test_main5_guard.py:_guarded_probe:glob:*.jsonl": "Reads refusal rows written by this helper's guarded child in its tmp_path log directory.",
     "tests/unit/acp/test_main5_guard.py:test_ambiguous_directory_descriptor_is_refused_and_recorded:glob:*.jsonl": "Reads the ambiguous-descriptor refusal ledger generated beneath this test's tmp_path.",

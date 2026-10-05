@@ -3769,6 +3769,38 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.testing.coverage_products:_print_verdict:stdout_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 3. The product coverage gate prints one line per product (fixed product names, unrounded percentages, covered/total statement and branch counts, floor, status and the reviewed package names) and one line per problem; problem text names repository paths and run facts, so it passes through the shared sanitizer and is bounded to 300 characters.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.coverage_products (sanitized_text)",
+      "test_node": "tests/unit/tools/test_coverage_products.py::test_printed_problems_pass_the_shared_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.coverage_products:evaluate:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 3. A package classification failure (a fixed message naming the unreviewed or doubly claimed package directory) becomes the verdict's one problem; problems reach output only through the gate's printing, which passes them through the shared sanitizer bounded to 300 characters.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.coverage_products (sanitized_text when printed)",
+      "test_node": "tests/unit/tools/test_coverage_products.py::test_printed_problems_pass_the_shared_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.coverage_products:main:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 3. An input failure (OSError or ValueError reading the coverage JSON or run record, whose text can name paths) becomes one printed line through the shared sanitizer, bounded to 300 characters, and exit 2.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.coverage_products (sanitized_text)",
+      "test_node": "tests/unit/tools/test_coverage_products.py::test_an_input_failure_line_passes_the_shared_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.coverage_products:main:stdout_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 3. The coverage gate's command line prints the SHA-256 digests of the two compared report files and a fixed summary for the safety-row comparison, its per-module problems (fixed module paths and counts), a fixed line when no full run record is found, and input failures (OSError/ValueError text naming paths); every variable text passes through the shared sanitizer and is bounded to 300 characters.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.coverage_products (sanitized_text)",
+      "test_node": "tests/unit/tools/test_coverage_products.py::test_an_input_failure_line_passes_the_shared_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.testing.run_profile:_write_json:json_serialization",
       "policy": "shared-sanitize",
       "rationale": "Plan 11.30 Task 2. _write_json writes the profile runner's selection record and run evidence manifest under tmp/test-profiles. The selection record holds the profile, label, view, platform, base and HEAD SHAs, diff and manifest/classification digests, changed and provisional repository paths with working-byte digests, counts, node digests with run-context labels (never raw node IDs, some of which carry credential-shaped test parameters), reasons grouped to node digests, fallback, domains, platform triggers and obligations; the run manifest holds subrun names, run IDs, modes, exit codes, node counts, digests, UTC times, each subrun's record problem token and qualification labels, the stability verdict and a detail line (failed subrun names and exit codes, record problems, or a sanitized start failure). Each is refused if the shared sanitizer would change it (the selection record raises before anything runs; a refused run manifest exits invalid).",

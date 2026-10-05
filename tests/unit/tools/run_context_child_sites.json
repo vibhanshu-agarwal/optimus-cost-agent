@@ -248,6 +248,12 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
   },
+  "tests/unit/tools/test_coverage_products.py::test_the_report_counts_equal_coverage_py_s_own_analysis_of_the_source#1": {
+   "mechanism": "python:module",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "coverage.py (`python -m coverage run`, then `coverage json`) on a synthetic tmp_path package this test writes, which imports only `sys`; no product code runs. An ordinary child proven by the census at the acceptance candidate (Plan 11.30 Task 3)."
+  },
   "tests/unit/tools/test_debug_trace_message_rule.py::_scan#1": {
    "mechanism": "indirect",
    "disposition": "non_python",

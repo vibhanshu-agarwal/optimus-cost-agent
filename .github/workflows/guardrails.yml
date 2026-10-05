@@ -76,4 +76,6 @@ jobs:
           uv run pre-commit run optimus-secret-scan-ci-production --all-files --hook-stage manual
 
       - name: "optimus-check: pytest-coverage"
-        run: uv run pytest --cov=optimus --cov-branch --cov-report=term-missing -v
+        run: |
+          uv run pytest --cov --cov-branch --cov-fail-under=0 --cov-report=term-missing --cov-report=json:tmp/coverage/full.json -v
+          uv run python -m tools.testing.coverage_products report --coverage-json tmp/coverage/full.json
