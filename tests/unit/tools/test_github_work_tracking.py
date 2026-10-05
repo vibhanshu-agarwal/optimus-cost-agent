@@ -2914,3 +2914,56 @@ def test_every_inbound_pool_link_in_the_tracked_files_is_a_reviewed_anchor() -> 
     inventory = gwt.load_inventory(MANIFEST)
     files = {path: data.decode("utf-8", "replace") for path, data in gwt._checkout_files(ROOT) if path != gwt.POOL_PATH}
     assert gwt.inbound_pool_anchors(files) <= set(inventory.compat_anchors)  # what cutover-docs would require of the stub
+
+
+# ==== Plan 11.29 batch 7 (Codex ruling 2026-10-05, option B): a candidate source owner has no issue to bind to ====
+
+_CANDIDATE_OWNED = ("P11-FU-30", "P11-FU-34", "P11-FU-38", "P11-FU-39", "P11-FU-41")
+_BOUND_OWNER = "(bound as the native parent at migration; the native link carries the current one)"
+
+
+def _real_drafts() -> tuple[gwt.Inventory, dict[str, str]]:
+    inventory = gwt.load_inventory(MANIFEST)
+    sources = gwt.read_sources_at(inventory.baseline_commit, inventory.read_paths)
+    return inventory, {draft.record_id: draft.body for draft in gwt.draft_issues(inventory, sources)}
+
+
+def _owner_fact(body: str) -> list[str]:
+    return [line for line in body.splitlines() if line.startswith("- **Source owner")]
+
+
+def test_a_candidate_owned_record_states_its_owner_without_claiming_a_native_binding() -> None:
+    inventory, drafts = _real_drafts()
+    kinds = {record.id: record.kind for record in inventory.records}
+    owned = {r.id: r.parent for r in inventory.records if r.disposition == "migrate" and r.parent and kinds[r.parent] == "candidate"}
+    assert set(_CANDIDATE_OWNED) <= set(owned)  # the five batch 7 records, and the pilot P11-FU-40 beside them
+    for record_id, owner in owned.items():
+        assert _owner_fact(drafts[record_id]) == [
+            f"- **Source owner (historical):** `{owner}`. This source ownership does not by itself establish a GitHub parent link."
+        ]
+        assert _BOUND_OWNER not in drafts[record_id]
+    assert {owned[record_id] for record_id in _CANDIDATE_OWNED} == {"P11.26-CAND-1-RESOURCE-LIFETIME", "P11.26-CAND-2-TELEMETRY-CONTRACT"}
+
+
+def test_every_other_owner_keeps_the_native_binding_wording() -> None:
+    inventory, drafts = _real_drafts()
+    kinds = {record.id: record.kind for record in inventory.records}
+    others = [r for r in inventory.records if r.disposition == "migrate" and r.parent and kinds[r.parent] != "candidate"]
+    assert {"P11-FU-20", "P11.25-FU-1", "P12-FU-1", "P11-FU-31", "plan:11.28"} <= {r.id for r in others}
+    for record in others:
+        assert _owner_fact(drafts[record.id]) == [f"- **Source owner:** `{record.parent}` {_BOUND_OWNER}."]
+    for record in inventory.records:  # a record without an owner states none
+        if record.disposition == "migrate" and not record.parent and record.id in drafts:  # an external issue has no draft
+            assert _owner_fact(drafts[record.id]) == []
+
+
+def test_the_selection_never_changes_a_candidate_owned_body() -> None:
+    inventory = gwt.load_inventory(MANIFEST)
+    drafts = gwt.draft_issues(inventory, gwt.read_sources_at(inventory.baseline_commit, inventory.read_paths))
+    client = FakeGitHub(_pilot_issues(), _pilot_labels())
+    bodies = []
+    for selected in (frozenset({"P11-FU-38"}), frozenset({"P11-FU-38", "P11-FU-39", "P11-FU-41"}), frozenset(_CANDIDATE_OWNED)):
+        batch = gwt.plan_migration(inventory, drafts, gwt.read_issues(client), gwt.read_labels(client), selected)
+        assert not [c for c in batch.conflicts if "P11-FU-38" in c or "P11-FU-39" in c or "P11-FU-41" in c]
+        bodies.append(next(op.payload["body"] for op in batch.operations if op.op == "create-issue" and op.target == "P11-FU-38"))
+    assert bodies[0] == bodies[1] == bodies[2] and "(historical):** `P11.26-CAND-1-RESOURCE-LIFETIME`" in bodies[0]

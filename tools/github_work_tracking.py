@@ -1262,9 +1262,16 @@ def render_body(
     if record.severity:
         facts.append(f"- **Source severity:** {record.severity} (historical; separate from scheduling priority).")
     if record.parent:
-        facts.append(
-            f"- **Source owner:** `{record.parent}` (bound as the native parent at migration; the native link carries the current one)."
-        )
+        owner = next((other for other in inventory.records if other.id == record.parent), None)
+        if owner is not None and owner.kind == "candidate":
+            # A candidate is a source sub-record that has no issue of its own, so no native parent is bound to it.
+            facts.append(
+                f"- **Source owner (historical):** `{record.parent}`. This source ownership does not by itself establish a GitHub parent link."
+            )
+        else:
+            facts.append(
+                f"- **Source owner:** `{record.parent}` (bound as the native parent at migration; the native link carries the current one)."
+            )
     if record.related:
         facts.append(f"- **Related:** {', '.join(f'`{related}`' for related in record.related)}.")
     if record.duplicate_rationale:
