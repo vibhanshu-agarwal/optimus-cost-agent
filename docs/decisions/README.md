@@ -125,7 +125,7 @@ by this folder.
 | [014](ADR-014-all-session-request-guard-floor-clarification.md) | All-session request guard and unchanged source floor; completes [ADR-003](ADR-003-context-ceiling-and-history-limits.md) D7 interpretation | Accepted-with-open-items; full-floor/estimator evidence owed | Operator | 2026-10-01 |
 | [015](ADR-015-cost-stop-removal-sequencing.md) | Cost-stop removal after accounting/D6; completes [ADR-005](ADR-005-cost-alerts-not-limits.md) sequencing, clarifies [ADR-009](ADR-009-loop-control-without-stopping-the-user.md) dependency | Accepted-with-open-items; D6 and migration owed | Operator | 2026-10-01 |
 
-| [016](ADR-016-test-cadence-product-coverage-and-staged-delivery.md) | Test cadence, product coverage, registry mechanisms and staged turnaround delivery | Accepted-with-open-items; Checkpoints A/B accepted, progress exception approved; stage-final evidence owed | Operator policy; mechanisms agreed by Claude/Codex | 2026-10-04 |
+| [016](ADR-016-test-cadence-product-coverage-and-staged-delivery.md) | Test cadence, product coverage, registry mechanisms and staged turnaround delivery | Accepted-with-open-items; Tasks 0–3 locally accepted/delivered; progress exception and Task 6 command substitution approved; final evidence owed | Operator policy; mechanisms agreed by Claude/Codex | 2026-10-04 |
 
 **Evidence in the repository:** [industry practice and model catalog, 2026-09-30](2026-09-30-industry-context-cost-and-model-evidence.md).
 It holds the survey of how eight coding agents handle context and spend, the OpenRouter catalog snapshot
