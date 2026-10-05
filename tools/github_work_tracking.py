@@ -2066,9 +2066,12 @@ def anchor_problems(stub: str, anchors: Iterable[str]) -> list[str]:
 
 
 def inbound_pool_anchors(files: Mapping[str, str]) -> set[str]:
-    """Every fragment any of ``files`` links on the pool file."""
-    pattern = re.compile(rf"{re.escape(POOL_FILE)}#([A-Za-z0-9_-]+)")
-    return {anchor for text in files.values() for anchor in pattern.findall(text)}
+    """Every fragment any of ``files`` links on the live pool file.
+
+    A permalink pinned to a commit (``/blob/<40 hex>/…``) resolves against the pool at that commit forever, so the stub
+    need not keep its anchor; a branch or relative link follows the live file and must keep resolving."""
+    pattern = re.compile(rf"(?P<pinned>/blob/[0-9a-f]{{40}}/[^\s)#]*?)?{re.escape(POOL_FILE)}#(?P<anchor>[A-Za-z0-9_-]+)")
+    return {match["anchor"] for text in files.values() for match in pattern.finditer(text) if not match["pinned"]}
 
 
 def frozen_problems(read: Callable[[str], bytes | None], inventory: Inventory) -> list[str]:

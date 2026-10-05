@@ -2894,3 +2894,23 @@ def test_a_malformed_or_glued_issue_placeholder_is_refused(tmp_path: Path, place
     _git_add(root)
     with pytest.raises(ValueError, match="malformed"):  # the cutover never leaves such a document unfilled
         gwt.cutover_docs(inventory, root, POOL.encode("utf-8"), CUTOVER, {})
+
+
+# Found by the preview's full suite after merging the fixes above: the kept pilot passages link the pool at commit
+# 980dad0, and such a commit-pinned permalink was counted as a link the stub must keep.
+
+
+def test_a_commit_pinned_permalink_is_not_an_inbound_pool_link() -> None:
+    plans = f"https://github.com/{gwt.REPO}/blob"
+    files = {
+        "tools/rules.py": f'TEXT = "[old]({plans}/{"a" * 40}/docs/superpowers/plans/{gwt.POOL_FILE}#pinned-anchor)"',
+        "docs/a.md": f"[live]({plans}/main/docs/superpowers/plans/{gwt.POOL_FILE}#branch-anchor) and [rel](plans/{gwt.POOL_FILE}#rel-anchor)",
+    }
+    # A pinned permalink resolves against the pool at its own commit forever, so the stub need not keep its anchor.
+    assert gwt.inbound_pool_anchors(files) == {"branch-anchor", "rel-anchor"}
+
+
+def test_every_inbound_pool_link_in_the_tracked_files_is_a_reviewed_anchor() -> None:
+    inventory = gwt.load_inventory(MANIFEST)
+    files = {path: data.decode("utf-8", "replace") for path, data in gwt._checkout_files(ROOT) if path != gwt.POOL_PATH}
+    assert gwt.inbound_pool_anchors(files) <= set(inventory.compat_anchors)  # what cutover-docs would require of the stub
