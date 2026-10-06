@@ -196,7 +196,7 @@ def _full_run(**changes: object) -> dict[str, object]:
         "completeness": "COMPLETE", "exit_status": 0, "collection_errors": 0,
         "selected": len(_UNIVERSE), "selection_sha256": _digest(_UNIVERSE),
         "native": {"supported": False, "attempted": False, "enrolled": False}, "guard_mode": "unsupported_platform",
-        "protection": "none", "parent_run": {"status": "unsupported"},
+        "protection": "none", "parent_run": {"status": "unsupported"}, "audit_depth": "full",
     }
     record.update(changes)
     return record
@@ -211,6 +211,15 @@ _DURING = datetime(2026, 10, 5, 1, 9, tzinfo=timezone.utc)
 
 def test_coverage_from_the_full_default_run_of_this_source_is_accepted() -> None:
     assert cp.full_run_problems(_full_run(), _meta(_DURING), _identity()) == []
+
+
+def test_coverage_from_a_reduced_depth_or_unlabelled_run_is_refused() -> None:
+    quick = cp.full_run_problems(_full_run(audit_depth="quick"), _meta(_DURING), _identity())
+    assert quick == ["the run's own record cannot support a result: audit_depth_quick"]
+    unlabelled = _full_run()
+    del unlabelled["audit_depth"]
+    assert cp.full_run_problems(unlabelled, _meta(_DURING), _identity()) == [
+        "the run's own record cannot support a result: audit_depth_missing"]
 
 
 @pytest.mark.parametrize(("changes", "identity", "problem"), [

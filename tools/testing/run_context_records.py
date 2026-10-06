@@ -194,6 +194,18 @@ _FIELDS = _Table({
     # Whether the run's own registry announcement was withdrawn before this record was written.
     "registry_withdrawal": _one_of("done", "failed"),
     "members": {"ok": _flag, "complete": _flag, "error": _optional(_count), "identities": [_IDENTITY]},
+    # Plan 11.30 Task 4, terminal records only: the session's effective `--audit-depth` and each reduced-depth
+    # budget a test used (its probe entry, the repeats it ran against the full count, and its node).
+    "audit_depth": _one_of("full", "quick"),
+    "audit_budgets": [_Table({
+        "entry": _text(LABEL), "depth": _one_of("full", "quick"), "repeats": _count, "full_repeats": _count,
+        "node": _text(_DIGEST), "label": _optional(_text(LABEL)),
+    }, required=("entry", "depth", "repeats", "full_repeats", "node", "label"))],
+    # ... and each current measurement a test reused instead of executing, with the test that measured it.
+    "audit_reuse": [_Table({
+        "entry": _text(LABEL), "node": _text(_DIGEST), "label": _optional(_text(LABEL)),
+        "from_node": _text(_DIGEST), "from_label": _optional(_text(LABEL)),
+    }, required=("entry", "node", "label", "from_node", "from_label"))],
 }, required=("schema", "checkpoint", "run_id", "mode", "reason", "root"))
 
 

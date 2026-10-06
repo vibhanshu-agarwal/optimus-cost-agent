@@ -236,6 +236,12 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
   },
+  "tests/unit/tools/plan1126_runtime_audit/test_measurement_reuse.py::test_the_terminal_record_names_every_reuse#1": {
+   "mechanism": "python:nested_pytest",
+   "disposition": "nested_pytest",
+   "proof": "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
+   "basis": "Nested pytest of this repository with its temporary folders, and so its run registry, under the test's tmp_path: an active child guards itself; collection-only children execute no test."
+  },
   "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_cli_script_runs_directly_from_outside_repository#1": {
    "mechanism": "python:script_file",
    "disposition": "census",

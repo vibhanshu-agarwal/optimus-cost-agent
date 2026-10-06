@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import uuid
 from collections.abc import Iterator
 from decimal import Decimal
@@ -125,15 +126,31 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     """
     for key in [name for name in os.environ if name.startswith("GIT_")]:
         _INHERITED_GIT_ENV[key] = os.environ.pop(key)
+    _end_audit_export_reuse()
+
+
+def _end_audit_export_reuse() -> None:
+    """Plan 11.30 Task 4: the audit's export cache and measurement reuse never outlive a session. Only an
+    imported audit has them, so nothing is imported here."""
+    source = sys.modules.get("tools.plan1126_runtime_audit.source")
+    if source is not None:
+        source.clear_export_cache()
+    measurement = sys.modules.get("tools.plan1126_runtime_audit.measurement")
+    if measurement is not None:
+        measurement.clear_measurement_reuse()
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """Restore whatever `pytest_sessionstart` removed; leave no trace in the parent."""
     os.environ.update(_INHERITED_GIT_ENV)
     _INHERITED_GIT_ENV.clear()
+    _end_audit_export_reuse()
     context = session.config.stash.get(_RUN_CONTEXT, None)
     if context is not None:
-        session.config.stash[_RUN_CONTEXT_FINAL] = run_context.finish_run(context, int(exitstatus))
+        # The effective --audit-depth and the budgets used go into the terminal record (Plan 11.30 Task 4).
+        plugin = session.config.pluginmanager.get_plugin(pytest_plugins[0])
+        audit = None if plugin is None else plugin.audit_record(session.config)
+        session.config.stash[_RUN_CONTEXT_FINAL] = run_context.finish_run(context, int(exitstatus), audit=audit)
 
 
 @pytest.fixture(autouse=True)

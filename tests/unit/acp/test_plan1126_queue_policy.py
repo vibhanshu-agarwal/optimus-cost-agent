@@ -199,13 +199,14 @@ def _child_case(case: str) -> dict:
 
 
 def _measure_entry(entry: str, **options) -> tuple[dict, list[dict]]:
-    """Drive the REAL public measurement path and return (inventory, observations)."""
+    """Drive the REAL public measurement path and return (inventory, observations). An identical measurement
+    already taken in this session is reused, and the run record names it (Plan 11.30 Task 4)."""
+    from tests.support.profiles_plugin import measure_current_entry
     from tools.plan1126_runtime_audit.current_envelope import default_measurement_plan
-    from tools.plan1126_runtime_audit.measurement import run_fresh_measurement
 
     root = Path(__file__).resolve().parents[3]
     plan = default_measurement_plan(repository_root=root, entries=(entry,), options=options)[0]
-    _binding, result = run_fresh_measurement(
+    _binding, result = measure_current_entry(
         source=plan.source, spec=plan.spec, entry=entry,
         options=plan.options, repository_root=root,
     )

@@ -7,6 +7,7 @@ schema = "test-profiles-v1"
 tier = "audit-current"
 paths = [
   "tests/unit/acp/test_plan1126_shutdown.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_measurement_reuse.py",
 ]
 why = "Plan 11.26 audit files that measure the current tree: read current sources from the repository root or spawn measurement children against it. Exceptions are node rules."
 
@@ -505,6 +506,8 @@ nodes = [
   "tests/unit/tools/test_test_profiles.py::test_a_single_file_session_loads_the_plugin",
   "tests/unit/tools/test_test_profiles.py::test_an_unknown_or_change_selected_profile_is_a_usage_error",
   "tests/unit/tools/test_test_profiles.py::test_a_profile_never_changes_how_the_run_context_classifies_the_session",
+  "tests/unit/tools/test_test_profiles.py::test_the_effective_audit_depth_and_budget_are_in_the_terminal_record_and_summary",
+  "tests/unit/tools/test_test_profiles.py::test_an_unknown_audit_depth_is_a_usage_error",
 ]
 why = "Plugin controls: real nested pytest sessions of this repository (collection-only and one active run)."
 
@@ -539,6 +542,13 @@ nodes = [
   "tests/unit/acp/test_main_wiring.py::test_gateway_child_construction_ignores_os_environ_mutated_after_capture",
 ]
 why = "Measured 22.8 s in two runs of the Task 3 source because it reached the real local Redis start (TCP probe, docker commands, a 15 s readiness wait) while local Redis was down. It now stubs ensure_local_redis like its siblings, under the module's host-starter tripwire, and is in-process (under 0.1 s): reviewed core."
+
+[[rules]]
+tier = "core"
+nodes = [
+  "tests/unit/mcp/test_local_ipc.py::test_remote_consume_after_listener_stop_fails_quickly",
+]
+why = "Designed bounded IPC-timeout wait; platform-dependent (1.0 s Windows, 2.0 s WSL). Measured 2.002 s on WSL in the Stage A Task 6 full run (1.016 s on Windows): in-process, no child process, reviewed core."
 
 [[tags]]
 name = "concurrency"
@@ -659,7 +669,7 @@ files = [
 why = "Dynamic launch: the unmarked end-to-end tests spawn the real ACP stdio process, which imports the optimus package."
 
 [measurement]
-source = "Windows reference run 20261002T203101-45752-c1999b at 3538de06 (default selection with coverage; its run.json records exit 1 and completeness INVALID, so it is diagnostic data, not acceptance, and nodes it did not reach are unmeasured), united before the Stage A pin with every retained run of the Task 3 source (1f8ca30 + diff 913926d1): Windows 20261004T221712-34340-4aae75 and 20261004T215557-17192-e9c32f (commit hook, 5,107 nodes each; the second exited 1 on three setup-attributable scanner failures, and its phase measurements are retained) and 20261004T215305-42564-d460ab (focused gate, 1,050), WSL 20261004T215259-491-d7123e and 20261004T215431-1206-a5a1d0 (579 each). A node is listed when setup+call+teardown exceeded explicit_seconds in any of them. Final-run timings are retained as evidence, never written back after the run; the Stage B refresh belongs to P11-FEAT-TEST-PROFILES."
+source = "Windows reference run 20261002T203101-45752-c1999b at 3538de06 (default selection with coverage; its run.json records exit 1 and completeness INVALID, so it is diagnostic data, not acceptance, and nodes it did not reach are unmeasured), united with every retained run of the Task 3 source (1f8ca30 + diff 913926d1: Windows 20261004T221712-34340-4aae75 and 20261004T215557-17192-e9c32f, commit hook, 5,107 nodes each, the second exiting 1 on three setup-attributable scanner failures with its phase measurements retained; 20261004T215305-42564-d460ab, focused gate, 1,050; WSL 20261004T215259-491-d7123e and 20261004T215431-1206-a5a1d0, 579 each), and refreshed at Stage B's start with the Stage A Task 6 full runs at acc2a1c (Windows 20261005T075433-47356-fcfdf0 and WSL 20261005T075522-438-1b3ada, 5,467 selected each). A node is listed when setup+call+teardown exceeded explicit_seconds in any of them. Final-run timings are retained as evidence, never written back into a measured candidate."
 explicit_seconds = 2.0
 slow_nodes = [
   "tests/e2e/acp/test_multi_turn_conversation.py::test_admission_cap_exact_boundary_still_refuses",
@@ -706,6 +716,9 @@ slow_nodes = [
   "tests/unit/acp/test_plan1126_queue_policy.py::test_h9_refuses_an_inventory_discovered_from_a_different_source",
   "tests/unit/acp/test_plan1126_queue_policy.py::test_h9_refuses_to_measure_a_source_it_is_not_executing",
   "tests/unit/acp/test_plan1126_semantic_errors.py::test_h6_h7_artifact_recomputes_coverage_findings_and_scope_out_debt",
+  "tests/unit/acp/test_plan1126_session_lease.py::test_binding_gate_rejects_intake_with_mismatched_baseline_identity",
+  "tests/unit/acp/test_plan1126_session_lease.py::test_binding_presence_gate_derives_provisional_overlay_and_stops",
+  "tests/unit/acp/test_plan1126_session_lease.py::test_binding_scope_out_names_every_deferred_obligation_and_next_gate",
   "tests/unit/acp/test_plan1126_session_lease.py::test_h10_artifact_is_scoped_out_without_runtime_or_live_evidence",
   "tests/unit/acp/test_plan1126_shutdown.py::test_a_historical_inventory_with_a_current_measurement_is_refused",
   "tests/unit/acp/test_plan1126_shutdown.py::test_close_is_idempotent_across_discovered_paths",
@@ -787,6 +800,7 @@ slow_nodes = [
   "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_valid_utf8_with_cp1252_undecodable_text_cannot_hide_a_canary[parent-utf8-on]",
   "tests/unit/guardrails/test_tracked_file_scanners.py::test_every_filesystem_walker_is_migrated_or_has_a_reviewed_non_repository_reason",
   "tests/unit/mcp/test_client_catalog.py::test_budget_exceeded_aggregate_bytes_yields_no_catalog",
+  "tests/unit/mcp/test_local_ipc.py::test_remote_consume_after_listener_stop_fails_quickly",
   "tests/unit/optimus_gateway/test_request_body_rejection.py::test_stalled_client_with_production_defaults_completes_under_external_watchdog",
   "tests/unit/telemetry/test_plan1126_runtime_contract.py::test_h8_artifact_recomputes_s2_cost_coverage_and_findings",
   "tests/unit/telemetry/test_plan1126_runtime_contract.py::test_runtime_event_schema_generated_10000_cases",
@@ -819,7 +833,13 @@ slow_nodes = [
   "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_the_v1_envelope_rejects_fresh_measurements",
   "tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_cli_discovers_pinned_inventory",
   "tests/unit/tools/plan1126_runtime_audit/test_duplication.py::test_duplication_inventory_is_deterministic_and_reconciles_prior_seeds",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_cost_proposal_selects_latest_complete_measurement_generation",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_inventory_and_offline_subcommands_perform_offline_work",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_cost_proposal_updates_measurements_and_keeps_live_rows_unrun",
   "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_terminal_command_runs_once_only_after_tier_evidence_exists",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_timeout_terminates_descendants_that_inherit_capture_pipes[middle-exited]",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_timeout_terminates_descendants_that_inherit_capture_pipes[parent-alive]",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py::test_offline_timeout_terminates_descendants_that_inherit_capture_pipes[parent-exited]",
   "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_floor_lowered_below_an_executing_distribution_is_refused_before_evidence",
   "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_floor_lowered_below_an_executing_module_is_refused_before_evidence",
   "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_a_null_handoff_measures_missing_through_the_public_path",
@@ -827,10 +847,12 @@ slow_nodes = [
   "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_an_omitted_rollback_measures_missing_through_the_public_path",
   "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_h5_probe_branches_are_closure_checked_too",
   "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_measured_revision_demonstrates_every_scenario",
+  "tests/unit/tools/plan1126_runtime_audit/test_shutdown_diagnostics.py::test_a_leaked_task_is_attributed_to_the_exact_repeat_that_left_it",
   "tests/unit/tools/plan1126_runtime_audit/test_shutdown_diagnostics.py::test_a_task_that_finishes_during_the_thread_diagnostic_join_stays_in_its_row",
   "tests/unit/tools/plan1126_runtime_audit/test_shutdown_diagnostics.py::test_a_thread_that_exits_during_the_task_scan_keeps_its_target_and_stack",
   "tests/unit/tools/test_coverage_products.py::test_a_real_repository_s_current_full_run_data_is_evaluated_end_to_end",
   "tests/unit/tools/test_git_env_immunity.py::test_central_protection_keeps_the_surrounding_repository_untouched",
+  "tests/unit/tools/test_git_env_immunity.py::test_without_central_protection_the_hazard_is_real",
   "tests/unit/tools/test_plan1126_unrun_binding.py::test_scopeout_manifest_mutations_fail_closed[add]",
   "tests/unit/tools/test_plan1126_unrun_binding.py::test_scopeout_manifest_mutations_fail_closed[remove]",
   "tests/unit/tools/test_plan1126_unrun_binding.py::test_scopeout_manifest_mutations_fail_closed[rename]",
@@ -841,6 +863,8 @@ slow_nodes = [
   "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_import_closure_refuses_a_genuinely_unlisted_reachable_module",
   "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_import_closure_refuses_each_seam2_module_when_unlisted[src/optimus/acp/failure_notes.py]",
   "tests/unit/tools/test_probe_p11_zed_session_load.py::test_establishing_import_closure_refuses_each_seam2_module_when_unlisted[src/optimus/acp/harness_runtime.py]",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_launch_timeout_kills_every_descendant_of_the_launched_process[middle-exited]",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_launch_timeout_kills_every_descendant_of_the_launched_process[parent-alive]",
   "tests/unit/tools/test_run_context.py::test_a_nested_default_pytest_completes_and_names_this_run_as_its_parent",
   "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
   "tests/unit/tools/test_run_context.py::test_other_selections_stay_passive[arguments0-collection_only-0]",
@@ -876,6 +900,8 @@ slow_nodes = [
   "tests/unit/tools/test_run_p11_fu_10_acpx_error_code_evidence.py::test_acpx_timeout_kills_every_descendant[parent-alive]",
   "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_capture_timeout_terminates_parent_and_descendant_in_an_isolated_probe[delayed-start]",
   "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_capture_timeout_terminates_parent_and_descendant_in_an_isolated_probe[normal-start]",
+  "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_drive_session_timeout_kills_every_descendant_of_the_capture_child[middle-exited]",
+  "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::test_drive_session_timeout_kills_every_descendant_of_the_capture_child[parent-alive]",
   "tests/unit/tools/test_run_profile.py::test_a_dry_run_commit_writes_a_conforming_selection_record_and_runs_nothing",
   "tests/unit/tools/test_run_profile.py::test_a_failed_repeat_stops_the_lane_and_is_kept",
   "tests/unit/tools/test_run_profile.py::test_a_load_that_stops_beginning_its_tests_keeps_what_already_ran_and_is_invalid",

@@ -19,6 +19,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from tools.testing import run_context_guard as guard
 from tools.testing import run_context_records as records
@@ -555,9 +556,29 @@ def completeness(context: RunContext) -> str:
     return "TRUNCATED" if context.truncated else "COMPLETE"
 
 
-def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
+def _audit_fields(audit: dict[str, Any]) -> dict[str, object]:
+    """The session's effective audit depth, every reduced-depth budget a test used and every current measurement
+    a test reused, with the test that measured it (Plan 11.30 Task 4)."""
+    return {
+        "audit_depth": audit["depth"],
+        "audit_budgets": [
+            {"entry": item["entry"], "depth": item["depth"], "repeats": item["repeats"], "full_repeats": item["full_repeats"],
+             "node": _node(str(item["nodeid"])), "label": _label(str(item["nodeid"]))}
+            for item in audit["budgets"]
+        ],
+        "audit_reuse": [
+            {"entry": item["entry"], "node": _node(str(item["nodeid"])), "label": _label(str(item["nodeid"])),
+             "from_node": _node(str(item["from_nodeid"])), "from_label": _label(str(item["from_nodeid"]))}
+            for item in audit["reused"]
+        ],
+    }
+
+
+def finish_run(context: RunContext, exit_status: int, *, audit: dict[str, Any] | None = None) -> dict[str, object]:
     """Withdraw the announcement, then write the terminal record. The job handle is deliberately
-    kept until the interpreter exits.
+    kept until the interpreter exits. `audit` is the session's effective audit depth, the budgets its tests
+    used and the measurements they reused; it is written in the terminal record only, never in the shared
+    registry announcement.
 
     Nothing here raises into pytest: a failure anywhere in the terminal work leaves pytest's own
     exit status in place and makes the record INVALID. The registry withdrawal comes before the
@@ -570,6 +591,8 @@ def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
     try:
         try:
             final.update(_terminal(context, exit_status))
+            if audit is not None:
+                final.update(_audit_fields(audit))
         except Exception as error:  # noqa: BLE001 - the terminal facts could not be established
             context.counts["recording_errors"] += 1
             final["terminal_failure"] = _failure_token(error)

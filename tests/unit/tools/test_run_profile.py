@@ -168,6 +168,7 @@ def test_a_subrun_is_an_active_recorded_run_of_exactly_its_nodes(tmp_path: Path)
     assert result.started_utc and result.finished_utc and result.started_utc <= result.finished_utc
     assert result.argfile.read_text(encoding="utf-8").splitlines() == [_REPEAT]
     assert "-k" not in result.command and "--count" not in result.command  # original internal depth
+    assert "--audit-depth=full" in result.command and result.audit_depth == "full"  # asked for, and recorded by the run
     # Its own terminal record supports a pass: real supported Windows needs no qualification; POSIX keeps its weaker labels.
     assert result.problem is None
     assert result.executing_utc and result.executing_until_utc and result.executing_until_utc <= result.finished_utc
@@ -284,6 +285,7 @@ def _terminal(platform: str = "win32", **changes: object) -> dict[str, object]:
         "guard_mode": "pytest_process_guard" if windows else "unsupported_platform",
         "protection": "full" if windows else "none",
         "parent_run": {"status": "none"} if windows else {"status": "unsupported"},
+        "audit_depth": "full",
     }
     if windows:
         record.update({"accounting": {"ok": True, "total_processes": 9}, "members": {"ok": True, "complete": True, "identities": []}})
@@ -305,6 +307,9 @@ def _terminal(platform: str = "win32", **changes: object) -> dict[str, object]:
     ({"native": {"supported": False, "attempted": False, "enrolled": False}}, "native_unsupported"),
     ({"guard_mode": "not_installed"}, "guard_not_installed"),
     ({"guard_mode": "unsupported_platform"}, "guard_unsupported_platform"),
+    # Reduced-depth audits are never evidence the runner can count (Plan 11.30 Task 4), nor is a record that does not say.
+    ({"audit_depth": "quick"}, "audit_depth_quick"),
+    ({"audit_depth": _GONE}, "audit_depth_missing"),
 ])
 def test_an_exit_zero_active_record_without_terminal_or_capability_evidence_cannot_support_a_pass(
     changes: dict[str, object], problem: str,

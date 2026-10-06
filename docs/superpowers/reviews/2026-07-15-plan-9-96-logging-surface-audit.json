@@ -3561,6 +3561,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan1126_runtime_audit.measurement:measurement_identity:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 11.30 Task 4 test-session measurement reuse: canonicalizes the reuse key material (the fresh child's request payload, the audit depth, platform and interpreter, and the inherited environment except PYTEST_CURRENT_TEST) solely to compute a SHA-256 key; the encoded bytes are not persisted, logged or exported, and the returned key holds no input value. Only test helpers call it; production measurement never reuses.",
+      "sanitizer": "digest-only functional path; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_measurement_reuse.py::test_the_reuse_key_is_a_digest_that_writes_nothing_and_holds_no_environment_value",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan1126_runtime_audit.measurement:run_fresh_measurement:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Serializes the measurement request sent on stdin to a fresh child interpreter: the specification, the bound repository source text (product and probe modules) the child must execute, the entry name, options and the repository root path. Destination is the child process only; the parent parses the child's stdout and, on failure, surfaces the LAST stderr line inside a typed ExecutingSourceMismatch. This entry describes the request contract; the referenced test proves executing-source freshness of that request, not a general content-safety property of arbitrary request payloads.",

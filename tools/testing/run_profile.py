@@ -149,6 +149,7 @@ class SubrunResult:
     load_run_id: str | None = None  # a repeat: the one load run that ran for the whole of it
     problem: str | None = "not_validated"  # why its own run record cannot support a pass; None when it can
     qualifications: tuple[str, ...] = ()  # the weaker, legitimate labels a supporting record still carries
+    audit_depth: str | None = None  # the effective --audit-depth its own terminal record states
 
 
 _WINDOWS_GUARDS = ("pytest_process_guard", "main5_guard_present")
@@ -172,6 +173,9 @@ def record_validity(record: dict[str, object] | None, exit_code: int | None) -> 
         return f"records_{record.get('completeness')}", ()
     if record.get("exit_status") != exit_code:
         return "exit_status_differs", ()
+    # Until quick/full parity (G) is accepted, only a full-depth run counts; a record that does not say is not one.
+    if record.get("audit_depth") != "full":
+        return f"audit_depth_{record.get('audit_depth') or 'missing'}", ()
     windows = record.get("platform") == "win32"
     native = record.get("native") if isinstance(record.get("native"), dict) else {}
     qualifications: list[str] = []
@@ -229,7 +233,7 @@ def start_subrun(root: Path, out_dir: Path, name: str, nodes: tuple[str, ...], *
     folder.mkdir(parents=True, exist_ok=True)
     argfile = folder / "nodes.txt"
     argfile.write_bytes("".join(f"{node}\n" for node in nodes).encode("utf-8"))
-    command = (sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "--no-cov", "-q", f"@{argfile}")
+    command = (sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "--no-cov", "-q", "--audit-depth=full", f"@{argfile}")
     launched = time.time()
     # Like any pytest run, the session writes to the console; its identity, mode and times come from its
     # own run records, so no raw test output is kept here.
@@ -291,6 +295,7 @@ def finish_subrun(root: Path, result: SubrunResult, process: subprocess.Popen[by
     if located is not None:
         folder, record = located
         result.run_id, result.mode, result.reason = str(record.get("run_id")), str(record.get("mode")), str(record.get("reason"))
+        result.audit_depth = None if record.get("audit_depth") is None else str(record.get("audit_depth"))
         result.started_utc = _record_time(record.get("started_utc"))
         if not result.terminated:
             result.finished_utc = _record_time(record.get("finished_utc"))
@@ -495,6 +500,7 @@ def _subrun_entry(result: SubrunResult) -> dict[str, object]:
         "nodes": len(result.nodes), "nodes_sha256": _digest(result.argfile.read_bytes()), "started_utc": result.started_utc,
         "executing_utc": result.executing_utc, "executing_until_utc": result.executing_until_utc,
         "finished_utc": result.finished_utc, "terminated": result.terminated, "load_run_id": result.load_run_id,
+        "audit_depth": result.audit_depth,
         "record_problem": result.problem, "qualifications": list(result.qualifications),
     }
 

@@ -209,11 +209,11 @@ def test_profile_probe_noop() -> None:
     """A do-nothing core target for the nested runs below."""
 
 
-def _pytest(tmp_path: Path, *arguments: str) -> tuple[int, str]:
+def _pytest(tmp_path: Path, *arguments: str, extra_env: dict[str, str] | None = None) -> tuple[int, str]:
     """A real nested pytest of this repository. Its temporary folders (and so its run registry) are tmp_path's."""
     scratch = tmp_path / "child-temp"
     scratch.mkdir(exist_ok=True)
-    env = {**os.environ, "TMPDIR": str(scratch), "TEMP": str(scratch), "TMP": str(scratch)}
+    env = {**os.environ, "TMPDIR": str(scratch), "TEMP": str(scratch), "TMP": str(scratch), **(extra_env or {})}
     completed = subprocess.run(
         [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-q", *arguments],
         cwd=_ROOT, env=env, capture_output=True, text=True, timeout=300, check=False,
@@ -279,6 +279,92 @@ def test_an_unknown_or_change_selected_profile_is_a_usage_error(tmp_path: Path) 
         code, output = _pytest(tmp_path, "--collect-only", "--profile", name, _THIS)
         assert code == 4, output
         assert "--profile" in output and "core" in output, output
+
+
+# --- `--audit-depth` (Task 4): only the enumerated H5 repeat budget is lowered, and the run's own record says so. ---
+
+_AUDIT_LINE = re.compile(r"audit-depth: depth=(?P<depth>\S+)(?P<rest>.*)")
+_RUN_ID = re.compile(r"test-run-context: .* run=(?P<run>\S+)")
+_BUDGET_PROBE = f"{_THIS}::test_audit_budget_probe"
+
+
+def test_audit_budget_probe(request: pytest.FixtureRequest) -> None:
+    """A nested-run target that asks for the H5 budget. In an ordinary run it asks for nothing, so no budget is recorded."""
+    if os.environ.get("OPTIMUS_AUDIT_BUDGET_PROBE") != "1":
+        return
+    budget = request.getfixturevalue("audit_budget")
+    assert budget("h5.shutdown_schedule")["repeats"] in {1, 100}
+
+
+def test_only_the_h5_repeat_budget_is_lowered_and_full_is_the_sealed_count() -> None:
+    from tests.support import profiles_plugin as plugin
+
+    # H4's 1,000 seeds, the S1 windows and every other probe have no quick budget: they always run full.
+    assert plugin.AUDIT_BUDGETS == {"h5.shutdown_schedule": {"full": {"repeats": 100}, "quick": {"repeats": 1}}}
+    for name in ("audit-artifact.schema.json", "audit-artifact-v2.schema.json"):
+        schema = json.loads((_ROOT / "tests" / "fixtures" / "plan1126_runtime_audit" / name).read_text(encoding="utf-8"))
+        sealed = schema["$defs"]["shutdownScheduleObservations"]["properties"]["repeats_per_family"]["const"]
+        assert plugin.AUDIT_BUDGETS["h5.shutdown_schedule"]["full"]["repeats"] == sealed, name
+    with pytest.raises(ValueError, match="no reduced-depth budget"):
+        plugin.audit_options("quick", "h4.delivery_characterization")
+    assert plugin.audit_options("full", "h5.shutdown_schedule") == {"repeats": 100}
+
+
+@pytest.mark.parametrize(
+    ("arguments", "probe", "depth", "budgets"),
+    [
+        ((), True, "full", 100),
+        (("--audit-depth=quick",), True, "quick", 1),
+        (("--audit-depth=quick",), False, "quick", None),
+        ((), False, "full", None),
+    ],
+)
+def test_the_effective_audit_depth_and_budget_are_in_the_terminal_record_and_summary(
+    tmp_path: Path, arguments: tuple[str, ...], probe: bool, depth: str, budgets: int | None,
+) -> None:
+    from tools.testing import run_context, run_context_records
+
+    code, output = _pytest(tmp_path, *arguments, _BUDGET_PROBE, extra_env={"OPTIMUS_AUDIT_BUDGET_PROBE": "1" if probe else "0"})
+    assert code == 0, output
+    found = _RUN_ID.search(output)
+    assert found is not None, output
+    record = run_context_records.read_record(_ROOT / "tmp" / "test-runs" / found["run"] / "run.json")
+    assert record is not None and record["checkpoint"] == "terminal", output
+    assert record["audit_depth"] == depth
+    expected = [] if budgets is None else [{
+        "entry": "h5.shutdown_schedule", "depth": depth, "repeats": budgets, "full_repeats": 100,
+        "node": run_context._node(_BUDGET_PROBE), "label": run_context._label(_BUDGET_PROBE),  # noqa: SLF001
+    }]
+    assert record["audit_budgets"] == expected
+    line = _AUDIT_LINE.search(output)
+    if depth == "full" and budgets is None:
+        assert line is None, output  # an ordinary full run's output is unchanged
+        return
+    assert line is not None and line["depth"] == depth, output
+    assert ("REDUCED-DEPTH" in line["rest"]) == (depth == "quick"), output
+    assert (f"h5.shutdown_schedule repeats={budgets}/100" in line["rest"]) == (budgets is not None), output
+
+
+def test_a_nested_session_restores_the_outer_session_s_audit_state() -> None:
+    """A session started inside another (an in-process `pytest.main`) has its own depth and reuse list, and
+    ending it gives the outer session back exactly its own."""
+    from tests.support import profiles_plugin as plugin
+
+    outer = plugin.current_audit_session()
+    inner_config = SimpleNamespace(getoption=lambda name: "quick")
+    plugin.pytest_configure(inner_config)  # type: ignore[arg-type]
+    try:
+        inner = plugin.current_audit_session()
+        assert inner is not outer and inner["depth"] == "quick" and inner["reused"] == []
+    finally:
+        plugin.pytest_unconfigure(inner_config)  # type: ignore[arg-type]
+    assert plugin.current_audit_session() is outer
+
+
+def test_an_unknown_audit_depth_is_a_usage_error(tmp_path: Path) -> None:
+    code, output = _pytest(tmp_path, "--collect-only", "--audit-depth=deep", _BUDGET_PROBE)
+    assert code == 4, output
+    assert "--audit-depth: invalid choice: 'deep'" in output, output
 
 
 @pytest.mark.parametrize(
