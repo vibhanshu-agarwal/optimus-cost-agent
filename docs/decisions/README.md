@@ -53,6 +53,19 @@ by this folder.
        answers on October 1 UTC occurred on October 2 in the operator's timezone.
      - S1/S2 remain the provenance of their frozen records. S3 is external archival provenance,
        not a build/test/runtime input; no raw transcript is added to the repository.
+   - **Source S4.** CP4 offline-release export of session `4162c45b-36f9-4cec-adb6-722ec3b28cb2`,
+     taken on 2026-10-07: `optimus-handoff\decisions-sources\2026-10-07-claude-session-context-engine-cp4-d7-export.zip`.
+     - SHA-256 `4E1EA17C35BF0E0C6B744A579A911E9B769313969C19430CDCEF47F3FA20A862`.
+     - It is a single-file ZIP of the session's raw transcript JSONL (71,505 records), made by the
+       operator. The app's Export refuses sessions over 200 MB, and this one was 238 MB. Codex
+       confirmed that the single-file ZIP is sufficient provenance (2026-10-07).
+     - It covers the operator's 2026-10-04 offline release (`2026-10-04T11:26:55.284Z`, 16:56:55 IST;
+       record `b34978ea-d159-41c0-bee3-ad74a26a5bb2`, line 57140), quoted in ADR-018.
+       - Claude checked inside the archive that the message equals, unchanged, the "Offline and free
+         release" block of Codex's sealed release text (SHA-256 `404354cf…`).
+       - Codex independently confirmed the message.
+     - S4 is external archival provenance, not a build/test/runtime input. No raw transcript is
+       added to the repository.
 2. **Label the decider.** Each record says who decided: the operator, an agent (Claude or Codex), or an
    agent proposal still awaiting the operator. A value an agent chose must never read as an operator
    requirement.
@@ -126,7 +139,7 @@ by this folder.
 | [015](ADR-015-cost-stop-removal-sequencing.md) | Cost-stop removal after accounting/D6; completes [ADR-005](ADR-005-cost-alerts-not-limits.md) sequencing, clarifies [ADR-009](ADR-009-loop-control-without-stopping-the-user.md) dependency | Accepted-with-open-items; D6 and migration owed | Operator | 2026-10-01 |
 | [016](ADR-016-checkpoint-review-cadence.md) | At most four checkpoint reviews; Fable then Codex; local focused-test commits and Package A publication | Accepted | Operator | 2026-10-02 |
 | [017](ADR-017-package-a-coverage-exception.md) | Exact four-statement coverage residual at 38a465f | Accepted; terminal result remains NOT MET | Operator | 2026-10-01 |
-| [018](ADR-018-plan12-cp4-numeric-policy.md) | Plan 12 CP4 measured numeric policy, whole-turn availability limitation and the D7 request-capacity exception; completes [ADR-003](ADR-003-context-ceiling-and-history-limits.md) numeric policy within Plan 12.2 | Proposed filing candidate; operator acceptance reported in the 2026-10-04 offline release; verbatim D7 record pending a registered session export | Operator (verbatim record pending); drafted by Codex, filed by Claude | 2026-10-04 |
+| [018](ADR-018-plan12-cp4-numeric-policy.md) | Plan 12 CP4 measured numeric policy, whole-turn availability limitation and the D7 request-capacity exception; completes [ADR-003](ADR-003-context-ceiling-and-history-limits.md) numeric policy within Plan 12.2 | Proposed filing candidate; the operator's 2026-10-04 acceptance is quoted verbatim from source S4 | Operator (2026-10-04, source S4); drafted by Codex, filed by Claude | 2026-10-04 |
 | [019](ADR-019-plan12-task1-policy-integration.md) | Plan 12 accepted Task 1 mechanisms and governed integration; partial completion/clarification of [ADR-003](ADR-003-context-ceiling-and-history-limits.md) to [ADR-006](ADR-006-summarizer-model.md) | Proposed governed integration; the Task 1 mechanisms keep their 2026-10-02 acceptance in the archived first editions | Operator (2026-10-02 acceptance); integration proposed by Codex | 2026-10-04 |
 
 **Package A delivery:** [local accepted implementation and evidence](../superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md);

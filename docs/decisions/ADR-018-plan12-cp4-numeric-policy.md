@@ -1,6 +1,6 @@
 # ADR-018 — Plan 12 CP4 measured policy and whole-turn availability
 
-**Status:** Filing candidate; verbatim operator acceptance record pending. **Date:** 2026-10-04. ID allocated at local filing (see Record allocation below). Codex drafts; Claude reviews; offline implementation release is reported in the sealed return; the verbatim D7 operator record and governed filing remain pending.
+**Status:** Filing candidate; the operator's verbatim acceptance is recorded under D7 below (ADR-011 source S4, registered 2026-10-07). **Date:** 2026-10-04. ID allocated at local filing (see Record allocation below). Codex drafts; Claude reviews; offline implementation release is reported in the sealed return; governed filing remains pending.
 
 ## Context
 
@@ -24,6 +24,8 @@ Measurements support bounded fixtures, not a guarantee that every admitted sourc
 
 Claude records the 2026-10-04 human offline release as accepting the numeric set and D7 disclosure. This architect review does not supply the missing saved transcript or invent the operator’s exact words. On acceptance, file the operator's exact disposition, reviewed package identity and any narrower scope in this record. Preserve predecessor records and sealed measurements unchanged; update only current index links and the authoritative tracking venue according to actual Plan 11.29 cutover under separate filing authority.
 
+Filed 2026-10-07: the operator's exact words, the reviewed package identity and the transcript source are recorded under **Operator decision** below.
+
 
 Record allocation: ADR-018 was allocated at local filing on 2026-10-05 from the then-current index, whose last record is ADR-017 on `main` `a929aab`; no branch or worktree holds ADR-018 or later. The concurred curated-tier draft (2026-10-02) is unfiled and reserves no number; it takes the next free number at its own filing. If it reaches `main` first, this unpublished record is renumbered before its first merge.
 
@@ -35,7 +37,23 @@ Retain inclusive 524288-byte absent-engine canonical storage/admission and its s
 
 At cf9bb9d, r=1 Agent usable input is 229376; maximum planning material is 43795 bytes, leaving at most 185581 history/prompt bytes before additional overhead (35.40% of storage). Earlier dea4624 measurements remain historical.
 
-**Operator decision:** PENDING saved session export under ADR-011. Insert the exact operator words, date, transcript reference and reviewed package identity during authorized filing. Do not treat this placeholder as an approval quotation.
+**Operator decision (verbatim, ADR-011 source S4).** The operator sent this message on 2026-10-04 at 16:56:55 IST (`2026-10-04T11:26:55.284Z`). It is record `b34978ea-d159-41c0-bee3-ad74a26a5bb2`, line 57140 of the S4 transcript.
+
+- **Who wrote the words.** Codex drafted them as proposed release text: the "Offline and free release" block of `plan12-closure-release-supplement/release-text.md`, SHA-256 `404354cf4bc576a3a60f94e1455a6a2b18238b997d08de5ef0202921e0ec1844`.
+- **Who decided.** The operator sent that block unchanged as their own release.
+
+Its first two paragraphs are the acceptance this record files. The message's own quote markers are shown here as a block quote.
+
+> Claude, I accept Codex's Plan 12.2 closure V2 package as corrected by the Plan 12 closure release supplement dated 2026-10-04, the recommended numeric set, one finite repack and the disclosed whole-turn availability limitation. Where they differ, the supplement controls.
+>
+> I accept the named D7 request-capacity exception under ADR-014: inclusive 524288-byte absent-engine storage/admission remains, but it does not guarantee all stored history fits a model request. With r=1 and the measured maximum Agent planning material, history/prompt capacity is at most 185557 bytes before further overhead, 35.39% of that storage allowance. This is an envelope-specific upper bound; accumulated history can prevent further requests until a new thread or an available smaller engine view is used. Exact counting is deferred and would not guarantee universal full-floor fit. Implement the capacity-specific absent-engine refusals and request-capacity meter/80% warning; preserve a separately labelled 80% storage notice. Keep production enforcement inactive.
+
+- **The rest of the message.** It authorizes bounded local offline completion and the free inspection, and keeps paid, live, activation and publication work held. This record does not restate it.
+- **Reviewed package identity.**
+  - The V2 package is Codex's `plan12-closure-draft-v2`: 111 payloads sealed by a `SHA256SUMS.txt` whose own SHA-256 is `3fbe8c57223b215ba2b07fe27fa534d4b561d2ae31aa07b334eaf6187e8291d8`.
+  - The supplement is `plan12-closure-release-supplement`: 6 payloads sealed by a `SHA256SUMS.txt` whose own SHA-256 is `0fc6844f8c4c1642a5673844bc8ab26c1b61331d22577cd65478d019af3c2e80`. Its review disposition has SHA-256 `7e3487d88fdaae584dfee1e283e20eccaaf185decb1d0edea4b1b96cbb39ba3e`.
+  - Both packages verified against their seals on 2026-10-07.
+- **Two measurements.** The quoted 185557 bytes (35.39%) is the dea4624 measurement in force at the decision. The 185581 bytes (35.40%) at cf9bb9d, above, is the later re-measurement. Neither replaces the other.
 
 Keep StrategyParameters and its checkpoint digest unchanged across the turn. Pass ViewLimits.maintenance_calls_remaining = max(0, 18 - callbacks_already_consumed) for initial preparation and each repack; this execution-state field is outside summary identity. The engine preflights the complete chunk plan against min(parameters.max_maintenance_calls, remaining) before any callback. Zero remaining permits a valid zero-call reused/sliding view and refuses a plan needing calls. Reuse still requires matching source, coverage, estimator and token/byte bounds. Retain the host defensive counter and allowance classification; repack checkpoints remain unpublished.
 

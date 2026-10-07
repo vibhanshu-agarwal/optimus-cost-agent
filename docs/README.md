@@ -46,7 +46,7 @@ relevant records before proposing a change in their area.
 | [ADR-015: Cost-stop removal sequencing](decisions/ADR-015-cost-stop-removal-sequencing.md) | After accounting/D6, without waiting for ADR-009 |
 | [ADR-016: Checkpoint cadence](decisions/ADR-016-checkpoint-review-cadence.md) | Fable then Codex at at most four checkpoints; local task commits; Package A publication |
 | [ADR-017: Package A coverage residual](decisions/ADR-017-package-a-coverage-exception.md) | Exact one-time four-statement exception at 38a465f; result remains NOT MET |
-| [ADR-018: Plan 12 CP4 numeric policy](decisions/ADR-018-plan12-cp4-numeric-policy.md) | Measured numeric set, whole-turn availability limitation and the D7 request-capacity exception; verbatim D7 record pending |
+| [ADR-018: Plan 12 CP4 numeric policy](decisions/ADR-018-plan12-cp4-numeric-policy.md) | Measured numeric set, whole-turn availability limitation and the D7 request-capacity exception; the operator's acceptance is quoted verbatim (source S4) |
 | [ADR-019: Plan 12 Task 1 policy integration](decisions/ADR-019-plan12-task1-policy-integration.md) | Accepted Task 1 mechanisms and the proposed governed integration of ADR-003 to 006 |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 

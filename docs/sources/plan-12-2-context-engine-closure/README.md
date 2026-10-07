@@ -15,7 +15,7 @@ Codex prepared the documents as architect and reviewer. Claude filed them locall
   - The PDFs are `docs/archive/Optimus-Cost-Agent-*-v{2.18,2.41,1.3,1.7}.pdf`.
   - The Markdown files are the archived Plan 12.2 design v2, implementation plan v3 and Task 1 contracts v2.
 - **Byte identity of the filed files:** every file here copied from the packet (all but this README), the four PDFs, the plan, the specs and the review disposition match their sealed hashes, with two exceptions.
-  - ADR-018 and ADR-019 differ from the packet's drafts only in their ID-allocation lines.
+  - ADR-019 differs from the packet's draft only in its ID-allocation lines. ADR-018 differs in those lines and, since 2026-10-07, in its verbatim D7 record and the status lines that pointed to it.
   - `sources/replacement-audit.json` and `sources/structural-repair-map.json` are CRLF in the packet. The repository's `.gitattributes` (`text=auto eol=lf`) stores them with LF, so their blobs differ from the sealed bytes only in line endings; removing the CRs reproduces each blob exactly.
 
 ## Contents
@@ -42,16 +42,17 @@ These files carry SHA-256 digests on many lines (the build manifest, validation 
 
 ## Rebuilding
 
-A rebuild runs from the sealed packet, not from this folder.
+A rebuild runs from a working copy of the sealed packet, never from this folder or the sealed original.
 
 1. Verify the packet against its `SHA256SUMS.txt`.
-2. Run `python sources/tools/build_drafts.py` there, in an environment with reportlab, pypdf and the Windows Arial fonts.
+2. Copy it to a separate working directory. The builder writes into its own packet root, so never run it in the sealed original.
+3. In the copy, run `python sources/tools/build_drafts.py` in an environment with reportlab, pypdf and the Windows Arial fonts.
 
 A rebuild changes bytes, so it needs new hashes and a new rendered review. Never commit a rebuilt PDF over a filed edition.
 
 ## Boundary
 
 - **ADR-018 (numeric policy and D7)** and **ADR-019 (Task 1 and D6 integration)** are the decision records filed with these documents.
-- ADR-018 keeps its D7 operator-decision placeholder until the operator's saved session export is registered. The placeholder is not an approval record.
+- ADR-018 quotes the operator's D7 acceptance verbatim from ADR-011 source S4, registered 2026-10-07. `closure-proposal.md` and `sources/14-context-engine.md` are sealed packet copies written before S4, so they still describe that record as pending.
 - Still required before full CP4: real route and estimator eligibility, a genuine summary-quality receipt, and the real-editor Task 13. They remain UNRUN unless the operator separately records a disposition.
 - Still held: paid and live work, activation, shipped Haiku-default removal, sandbox synchronization, push, PR and merge.
