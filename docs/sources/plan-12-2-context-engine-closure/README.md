@@ -15,7 +15,7 @@ Codex prepared the documents as architect and reviewer. Claude filed them locall
   - The PDFs are `docs/archive/Optimus-Cost-Agent-*-v{2.18,2.41,1.3,1.7}.pdf`.
   - The Markdown files are the archived Plan 12.2 design v2, implementation plan v3 and Task 1 contracts v2.
 - **Byte identity of the filed files:** every file here copied from the packet (all but this README), the four PDFs, the plan, the specs and the review disposition match their sealed hashes, with two exceptions.
-  - ADR-019 differs from the packet's draft only in its ID-allocation lines. ADR-018 differs in those lines and, since 2026-10-07, in its verbatim D7 record and the status lines that pointed to it.
+  - ADR-019 differs from the packet's draft in its ID-allocation lines and the correction pointing to filed source S4. ADR-018 differs in its ID-allocation lines, verbatim D7 record and acceptance/status wording. Plan v4 also has a subsequent four-line Prerequisites-table correction (the required classification header and three row classifications); it no longer matches the sealed plan bytes. These unpublished repository corrections preserve the original sealed packet unchanged and are recorded in their local filing commit.
   - `sources/replacement-audit.json` and `sources/structural-repair-map.json` are CRLF in the packet. The repository's `.gitattributes` (`text=auto eol=lf`) stores them with LF, so their blobs differ from the sealed bytes only in line endings; removing the CRs reproduces each blob exactly.
 
 ## Contents

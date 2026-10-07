@@ -30,7 +30,7 @@
 
 ## Prerequisites
 
-| Prerequisite | Satisfied today? | Owner | Unsatisfied classification / next action |
+| Prerequisite | Satisfied today? | Owner | If unsatisfied: genuinely hard, or merely unauthorized? |
 |---|---|---|---|
 | Accepted C1/C2 offline correction and clean candidate | yes | Claude / Codex | `dea4624`; retain exact full-suite/focused-delta attribution. |
 | Complete governed successors and migration proposal prepared | yes | Codex | This local draft package; review/acceptance/filing remain merely unauthorized. |
@@ -40,12 +40,12 @@
 | Conservative r=1 profile for exact test routes | no | Claude evidence / reviewers | Genuinely absent route-specific tokenizer/framing proof; JSON/config inspection only. Expanding or unknown normalization remains ineligible. |
 | Exact endpoint/window/output/finish/price facts for an enabled route | no | Claude evidence | Genuinely absent current proof; public investigation merely unauthorized. Old registry/model names are not current availability claims. |
 | Incremental fixture and evaluator | yes | Claude | Existing two-step calculator fixture and evaluation tool; paid receipt genuinely absent and paid execution merely unauthorized. |
-| acpx/Zed versions, RedisTimeSeries capability, Gateway health, trusted launcher/configuration and approved scratch target | unknown | Claude intake / operator for machine operations | Early read-only inventory before any live dependency. Classify each as present, merely unauthorized, genuinely absent or genuinely hard. No missing fact becomes PASS. |
+| acpx/Zed versions, RedisTimeSeries capability, Gateway health, trusted launcher/configuration and approved scratch target | unknown | Claude intake / operator for machine operations | Genuinely absent verification evidence; early read-only inventory before any live dependency. Classify each as present, merely unauthorized, genuinely absent or genuinely hard. No missing fact becomes PASS. |
 | Trusted test composition, enforcement and eligible test-process default | no | Claude under offline release; Fable/Codex review | Genuinely absent at dea4624. Mandatory build/injection/negative tests before live evidence. Production enforcement/Haiku-default removal stay separately held rollout requirements. |
 | Production attachment/bootstrap | no | Existing Plan 12 owner | Genuinely absent production constructor; tested process composition does not activate shipped defaults. |
-| Task 2 producer proof on the actual test/production base | unknown | Claude / Codex review | Verify exact base/ancestry and existing real WRITE/TEST/cancellation proof before attachment claims. Historical unit facts are insufficient. |
+| Task 2 producer proof on the actual test/production base | unknown | Claude / Codex review | Genuinely absent current-base verification evidence; verify exact base/ancestry and existing real WRITE/TEST/cancellation proof before attachment claims. Historical unit facts are insufficient. |
 | Real services, credentials, TTY and editor operations | no | Operator | Merely unauthorized for this closure phase; bounded proposal in section 6. |
-| Push, PR, merge and activation | no | Operator | Deliberately held; not required to authorize bounded local evidence. |
+| Push, PR, merge and activation | no | Operator | Merely unauthorized; deliberately held and not required to authorize bounded local evidence. |
 
 Early intake is the first action after release. It must resolve unknown fixture/launch/service prerequisites and calculate current request/cost envelopes before dependent calls. This prevents an approved dollar ceiling being mistaken for evidence that a route or launch exists.
 
