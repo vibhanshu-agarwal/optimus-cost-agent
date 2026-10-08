@@ -732,6 +732,41 @@ Exercise real descendant trees and cleanup failures; demonstrate that consolidat
 retains the guarded test runner's attribution and protection contracts. Neither lane's
 independent acceptance is a consolidation pass; scheduling and implementation are separate.
 
+### P11-FU-43: Planning-progress notice ordering race
+
+**Status:** Open.
+**Origin:** 2026-10-08, [PR #277](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/277), guardrails run `37820129633`, attempt 1.
+`tests/unit/acp/test_debug_trace_call_sites.py::test_full_session_wire_output_is_identical_under_diagnostic_failure[redaction-fails]`
+failed on message order alone; the run had 1 failed and 6672 passed.
+- **Mechanism:** in `src/optimus/acp/spec.py`, `_session_progress_observer` submits
+  `_emit_planning_progress` from the planning worker with `asyncio.run_coroutine_threadsafe` and
+  discards the future. `_in_worker` waits for the planner, not for that send, so the
+  "Planning turn N of M" chunk is unordered against the plan notification and the permission request.
+- **Not new:** both functions are AST-identical at `a929aab`, before PR #276. The test is unchanged since `c9838c4`.
+- **Already owned:** this is an observed ordering consequence of the escaped `run_coroutine_threadsafe` child that
+  the Plan 11.26 audit already records as unregistered and unjoined
+  (`test_task_supervision_inventory_is_independent_complete_and_receiver_safe`).
+- **Rerun:** one rerun of the failed job was authorized; a pass clears that CI attempt, not this defect.
+
+**Designated future plan / owner:** `P11.26-CAND-1-RESOURCE-LIFETIME`, existing lifecycle owner,
+under `P11-FEAT-ACP-RUNTIME-HARDENING`. `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION` keeps custody of the
+CI timing observation only. Plan 12 takes no product-fix obligation.
+**Trigger or acceptance criteria:** a separately authorized fix with these properties:
+- **Ordering:** on the normal path, the planning-progress send settles before the dependent plan and
+  permission messages are emitted.
+- **Bounded waiting:** the wait never blocks the event-loop thread. A bare unbounded `.result()` is not acceptable.
+- **Cancellation and transport teardown:** prohibited sends are suppressed, pending progress is settled or
+  cancelled, and the worker is unblocked.
+- **Scope:** keep best-effort progress semantics and the single outbound writer. Add no executor, unbounded
+  queue or general lifecycle rewrite.
+- **Regression test:** it holds progress delivery while the planner finishes, then checks the required
+  order. It covers cancellation/EOF and outbound failure without leaks or hangs.
+- **Existing checks stay:** keep the diagnostic-condition matrix and the gateway-call/settlement checks.
+  Do not delete the assertion, sort messages or add sleeps. Frozen historical audit baselines stay unchanged.
+
+**Evidence:** handoff folder `pr277-ci-failure/` (CI log, probe script, findings). The reported 40-of-40
+local Windows ordering is an observation, not a race frequency.
+
 ## Plan 11.26 H4 verifier follow-ups from Seam 2 checkpoint A
 
 **Raised:** 2026-09-09. **Governance filing commissioned:** 2026-09-10.
@@ -871,6 +906,7 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P11-FU-39` | Process-tree timeout and captured-pipe cleanup class | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria in entry; deferred from Closed FU33 |
 | `P11-FU-40` | Real Zed process containment and live-only tree-kill path | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria in entry; deferred from Closed FU33 |
 | `P11-FU-41` | Windows job-object binding owner consolidation | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria in entry; deferred from Closed FU33 |
+| `P11-FU-43` | Planning-progress notice ordering race | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria and evidence in entry; observed in PR #277 CI |
 
 ## Evidence and handoff feature registry
 
