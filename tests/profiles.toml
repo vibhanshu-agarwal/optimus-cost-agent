@@ -280,6 +280,7 @@ why = "The provider-balance retirement guard and its allowlist check. A glob, no
 tier = "gates"
 nodes = [
   "tests/integration/release/test_phase1_release_gate_cli.py::test_readme_documents_spawnable_acp_agent_contract",
+  "tests/unit/tools/test_tracked_repository_files.py::test_every_index_listing_reads_the_commit_s_index_or_is_reviewed",
   "tests/integration/release/test_phase1_release_gate_cli.py::test_release_cli_accepts_agent_harness_task_filter_text",
   "tests/integration/release/test_phase1_release_gate_cli.py::test_release_cli_runs_preflight_before_agent_harness",
   "tests/integration/release/test_phase1_release_gate_cli.py::test_release_cli_wires_redis_backed_agent_harness",
@@ -460,6 +461,7 @@ paths = [
   "tests/unit/tools/test_run_context_lifecycle.py",
   "tests/unit/tools/test_run_context_reviewed_programs.py",
   "tests/unit/tools/test_run_context_targets.py",
+  "tests/unit/tools/test_run_context_xdist.py",
   "tests/unit/tools/test_process_tree.py",
 ]
 why = "Run-context and process-tree tests: nested pytest sessions, job objects and process kills; selected by tools/testing/** and tools/process_tree.py changes (v4 design contract 1)."
@@ -521,6 +523,7 @@ nodes = [
   "tests/unit/tools/test_test_profiles.py::test_the_concurrency_tag_follows_its_maintained_signal",
   "tests/unit/tools/test_test_profiles.py::test_the_platform_tag_follows_its_maintained_signal",
   "tests/unit/tools/test_test_profiles.py::test_every_file_that_launches_a_child_has_a_reviewed_tier",
+  "tests/unit/tools/test_test_profiles.py::test_no_core_file_that_launches_a_child_runs_on_xdist_workers",
   "tests/unit/tools/test_test_profiles.py::test_current_source_guards_are_gates_or_audit_current",
   "tests/unit/tools/test_test_profiles.py::test_every_selection_declaration_still_names_something",
   "tests/unit/tools/test_test_profiles.py::test_a_session_hook_change_selects_the_run_context_controls",
@@ -549,6 +552,14 @@ nodes = [
   "tests/unit/mcp/test_local_ipc.py::test_remote_consume_after_listener_stop_fails_quickly",
 ]
 why = "Designed bounded IPC-timeout wait; platform-dependent (1.0 s Windows, 2.0 s WSL). Measured 2.002 s on WSL in the Stage A Task 6 full run (1.016 s on Windows): in-process, no child process, reviewed core."
+
+[[rules]]
+tier = "core"
+nodes = [
+  "tests/unit/tools/test_run_context_xdist_probes.py::test_xdist_probe",
+  "tests/unit/tools/test_run_context_xdist_probes.py::test_xdist_serial_probe",
+]
+why = "The do-nothing targets the xdist controls run on real workers (Plan 11.30 Task 5): in-process and empty outside those nested runs, so core, and admitted to core-parallel."
 
 [[tags]]
 name = "concurrency"
@@ -606,6 +617,7 @@ paths = [
   "tests/unit/tools/test_run_context_child_sites.py",
   "tests/unit/tools/test_run_context_lifecycle.py",
   "tests/unit/tools/test_run_plan996_acpx_security_evidence.py",
+  "tests/unit/tools/test_run_context_xdist.py",
   "tests/unit/tools/test_run_profile.py",
 ]
 why = "Maintained signal: the module reads the running platform (sys.platform, os.name, platform.system()...), so its behaviour or selection differs between Windows and POSIX."
@@ -924,3 +936,29 @@ slow_nodes = [
   "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory",
   "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
 ]
+
+# Plan 11.30 Task 5: the reviewed xdist rule. Core nodes run on two xdist workers (core-parallel) unless they are
+# tagged concurrency or platform, or listed here; the rest of core runs serially (core-serial). v4 design contract 5.
+[parallel]
+serial = [
+  "tests/unit/tools/test_run_context_xdist_probes.py::test_xdist_serial_probe",
+  "tests/integration/evidence/test_subprocess_truncation.py",
+  "tests/integration/release/test_phase1_release_gate_cli.py",
+  "tests/unit/acp/test_plan1126_queue_policy.py",
+  "tests/unit/acp/test_server_reader_ownership.py",
+  "tests/unit/acp/test_stdio_ndjson.py",
+  "tests/unit/guardrails/test_ci_parity.py",
+  "tests/unit/guardrails/test_local_secret_scan_encoding.py",
+  "tests/unit/optimus_gateway/test_request_body_rejection.py",
+  "tests/unit/support/test_concurrency_diagnostics.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_render.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py",
+  "tests/unit/tools/test_coverage_products.py",
+  "tests/unit/tools/test_debug_trace_message_rule.py",
+  "tests/unit/tools/test_plan1126_unrun_binding.py",
+  "tests/unit/tools/test_registry_maintenance.py",
+  "tests/unit/tools/test_run_plan996_acpx_security_evidence.py",
+  "tests/unit/tools/test_test_profiles.py",
+]
+why = "Core tests are in-process product and tool tests with no child process, gate, audit or timing domain; each xdist worker is its own interpreter with its own temporary folders, so they share no in-process state. Listed nodes stay serial: they share a cross-process resource, or (the xdist serial probe) are the runner's serial-remainder control."

@@ -79,6 +79,97 @@ def test_inside_a_real_partial_commit_hook_the_commit_view_is_git_s_temporary_in
     assert _git(repo, "rev-parse", "HEAD") == head and _git(repo, "diff", "--cached", "--name-only") == "b.py"
 
 
+def test_inside_a_real_partial_commit_hook_a_test_run_scans_the_commit_s_own_index(repo: Path, tmp_path: Path) -> None:
+    """Plan 11.30 residual (Task 3, LOW): a test run strips every GIT_* variable, so its repository scanners listed
+    the default index, where a deletion staged outside a partial commit hid a file the commit keeps. The runner hands
+    its subruns git's commit index under non-GIT_ names, and the scanner lists that index."""
+    _git(repo, "rm", "-q", "--cached", "b.py")  # staged outside the commit; b.py stays on disk and in the commit
+    _write(repo, "a.py", "a = 'only this file is committed'\n")
+    seen = tmp_path / "seen.json"
+    script = tmp_path / "hook.py"
+    root = str(run_profile.ROOT)
+    child_code = (f"import json, sys; sys.path.insert(0, {root!r}); from pathlib import Path; "
+                  "from tools.tracked_repository_files import tracked_repository_files as t; "
+                  "print(json.dumps([p.name for p in t(Path.cwd(), pathspecs=['.'])]))")
+    script.write_text("\n".join([
+        "import subprocess, sys",
+        "from pathlib import Path",
+        f"sys.path.insert(0, {root!r})",
+        "from tools.testing import run_profile",
+        "child = {k: v for k, v in run_profile.subrun_environment(None).items() if not k.startswith('GIT_')}",
+        f"out = subprocess.run([sys.executable, '-c', {child_code!r}], env=child, capture_output=True, text=True, check=True).stdout",
+        f"Path({str(seen)!r}).write_text(out)",
+        "sys.exit(1)",
+    ]) + "\n", encoding="utf-8")
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.write_text(f'#!/bin/sh\nexec "{Path(sys.executable).as_posix()}" "{script.as_posix()}"\n', encoding="utf-8")
+    hook.chmod(0o755)
+    with pytest.raises(subprocess.CalledProcessError):
+        _git(repo, "commit", "-q", "-m", "partial", "--", "a.py")
+    listed = json.loads(seen.read_text(encoding="utf-8"))
+    assert "b.py" in listed and "a.py" in listed, listed  # the commit keeps b.py; the default index had dropped it
+    assert "b.py" not in _git(repo, "ls-files").split()  # the default index, as staged outside the commit
+
+
+# Inherited product launch variables a subrun may carry.
+_INHERITED = {"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765", "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic fixture value the launch gate classifies
+              "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0"}
+
+
+def test_the_names_a_commit_hook_subrun_receives_pass_the_product_launch_gate(tmp_path: Path) -> None:
+    """Plan 11.30 Task 5 commit attempt 1 (Codex Option A): inside a commit hook git sets GIT_INDEX_FILE, and the
+    runner forwards the commit's index to its subruns. Every test that starts the agent then classifies its inherited
+    environment through the product's launch gate, which refuses any OPTIMUS_* name it does not know -- so 69 agent
+    entry-point tests failed in the hook. The forwarded names lie outside the product's namespace; inherited product
+    variables pass through unchanged."""
+    from optimus.acp.launch_gate import resolve_launch_candidate
+    from optimus.acp.launch_policy import LOCAL_GATEWAY_PREFIX, LaunchEnvironmentSnapshot
+    from optimus.acp.operator_paths import OperatorPaths
+    from optimus.acp.trusted_paths import WorkspaceIdentity, present_git_context
+
+    # MAIN-5 runner metadata is inherited too: the guard below concerns only the names the runner adds.
+    inherited = {**_INHERITED, "OPTIMUS_TEST_VENV": str(tmp_path / "venv")}
+    env = run_profile.subrun_environment({**inherited, "GIT_INDEX_FILE": str(tmp_path / "next-index")})
+    launch = {name: value for name, value in env.items() if name != "OPTIMUS_TEST_VENV"}  # not an agent launch variable
+    resolve_launch_candidate(  # the real inherited-environment classification; must not raise
+        snapshot=LaunchEnvironmentSnapshot.capture(launch),
+        workspace_identity=WorkspaceIdentity(
+            format_version=3, lexical_path="/tmp/test-workspace", canonical_path="/tmp/test-workspace", device=1,
+            inode=12345, git_context=present_git_context("/tmp/test-workspace", "/tmp/test-workspace/.git"),
+            digest="a" * 64,
+        ),
+        operator_paths=OperatorPaths(
+            workspace_root=tmp_path, config_root=tmp_path / "config", runtime_root=tmp_path / ".optimus",
+            debug_log_path=tmp_path / ".optimus" / "debug-acp.ndjson",
+            gateway_log_path=tmp_path / ".optimus" / "local-gateway.log",
+        ),
+        hmac_key=b"test-gate-hmac-key-32-bytes!!!!",
+    )
+    added = sorted(set(env) - set(inherited) - {"GIT_INDEX_FILE"})
+    assert added and not [name for name in added if name.startswith(("OPTIMUS_", LOCAL_GATEWAY_PREFIX))], added
+    assert {name: env[name] for name in inherited} == inherited  # inherited names, product or MAIN-5, untouched
+    assert run_profile.subrun_environment(dict(inherited)) == inherited  # outside a hook nothing is added
+
+
+def test_an_agent_entry_point_test_passes_under_the_environment_a_commit_hook_subrun_receives(tmp_path: Path) -> None:
+    """The same, end to end: a real agent entry-point test that failed in the hook (exit 2,
+    UNCLASSIFIED_VARIABLE), run as a nested pytest under exactly the environment the runner hands a subrun when git
+    names this repository's own index."""
+    index = _git(run_profile.ROOT, "rev-parse", "--path-format=absolute", "--git-path", "index")
+    base = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    scratch = tmp_path / "child-temp"
+    scratch.mkdir()
+    env = {**run_profile.subrun_environment({**base, "GIT_INDEX_FILE": index}),
+           "TMPDIR": str(scratch), "TEMP": str(scratch), "TMP": str(scratch)}
+    completed = subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-q", "--no-cov",
+         "tests/unit/acp/test_main_check_config.py::test_check_config_uses_preflight_and_exits_zero"],
+        cwd=run_profile.ROOT, env=env, capture_output=True, text=True, timeout=600, check=False,
+    )
+    output = completed.stdout + completed.stderr
+    assert completed.returncode == 0 and "UNCLASSIFIED_VARIABLE" not in output, output
+
+
 def test_the_commit_view_is_the_index_against_head_and_never_an_earlier_commit(repo: Path) -> None:
     base = _git(repo, "rev-parse", "HEAD")
     _write(repo, "b.py", "b = 2\n")
@@ -472,3 +563,142 @@ def test_a_repeat_counts_only_inside_its_load_s_recorded_test_phases() -> None:
     stopped = _timed("load-3", 0, 50, executing=5, until=40, problem="no_terminal_record", terminated=True)
     assert run_profile.covers(stopped, _timed("repeat-6", 10, 30))
     assert not run_profile.covers(stopped, _timed("repeat-7", 10, 45))
+
+
+# --- Plan 11.30 Task 5: core on xdist workers and its serial remainder ----------------------------------------
+
+_XDIST_PROBES = tuple(f"tests/unit/tools/test_run_context_xdist_probes.py::test_xdist_probe[{index}]" for index in range(4))
+_XDIST_SERIAL = "tests/unit/tools/test_run_context_xdist_probes.py::test_xdist_serial_probe"
+_XDIST_VALID = {"workers": 2, "verdict": "valid", "capability": "native", "problems": [], "identities": []}
+
+
+def test_core_partitions_into_disjoint_parallel_and_serial_sets_that_make_up_core() -> None:
+    classification = profiles.Classification(
+        {"t::a": "core", "t::b": "core", "t::c": "proc"}, {}, {}, (), frozenset({"t::a"}))
+    parallel, serial = run_profile.core_partition(classification)
+    assert (parallel, serial) == (("t::a",), ("t::b",))
+    assert run_profile.core_partition(classification, workers=0) == ((), ("t::a", "t::b"))
+
+
+def test_a_parallel_subrun_needs_its_controller_s_valid_two_worker_verdict() -> None:
+    assert run_profile.record_validity(_terminal(xdist=_XDIST_VALID), 0, workers=2) == (None, ())
+    assert run_profile.record_validity(_terminal(), 0, workers=2) == ("xdist_missing", ())
+    assert run_profile.record_validity(_terminal(xdist={**_XDIST_VALID, "workers": 1}), 0, workers=2) == ("xdist_workers_1", ())
+    assert run_profile.record_validity(_terminal(xdist={**_XDIST_VALID, "verdict": "INVALID"}), 0, workers=2) == ("xdist_INVALID", ())
+    assert run_profile.record_validity(_terminal(xdist=_XDIST_VALID), 0) == ("xdist_unexpected", ())  # a serial subrun never has workers
+    weaker = run_profile.record_validity(_terminal("linux", xdist={**_XDIST_VALID, "capability": "weaker"}), 0, workers=2)
+    assert weaker[0] is None and weaker[1][-1] == "xdist=weaker"
+
+
+def test_a_subrun_that_selected_other_tests_than_it_was_given_cannot_support_a_pass() -> None:
+    nodes = ("t::a", "t::b")
+    digest = run_profile.selection_digest(nodes)
+    assert run_profile.record_validity(_terminal(selection_sha256=digest), 0, nodes=nodes) == (None, ())
+    assert run_profile.record_validity(_terminal(selection_sha256=digest), 0, nodes=("t::a",)) == ("selection_differs", ())
+
+
+def test_core_runs_on_two_real_workers_and_a_serial_remainder(tmp_path: Path) -> None:
+    manifest = profiles.load_manifest((run_profile.ROOT / "tests" / "profiles.toml").read_text(encoding="utf-8"))
+    classification = profiles.classify_nodes((*_XDIST_PROBES, _XDIST_SERIAL), manifest)
+    verdict, code, subruns, partition, detail = run_profile.execute_core(
+        run_profile.ROOT, tmp_path / "out", classification, workers=2, env=_env(tmp_path))
+    assert (verdict, code) == ("pass", run_profile.EXIT_PASS), detail
+    assert [result.name for result in subruns] == ["core-parallel", "core-serial"]
+    parallel, serial = subruns
+    assert set(parallel.nodes) == set(_XDIST_PROBES) and serial.nodes == (_XDIST_SERIAL,)
+    assert {"-n", "2", "--max-worker-restart=0", "--dist", "worksteal"} <= set(parallel.command) and "-n" not in serial.command
+    assert parallel.problem is None and serial.problem is None, (parallel, serial)
+    assert partition["disjoint"] is True and partition["union_sha256"] == partition["core_sha256"]
+    assert (partition["core"], partition["parallel"], partition["serial"]) == (5, 4, 1)
+    serial_only = run_profile.execute_core(run_profile.ROOT, tmp_path / "serial", classification, workers=0, env=_env(tmp_path))
+    assert serial_only[0] == "pass" and [result.name for result in serial_only[2]] == ["core"], serial_only[4]
+
+
+def test_a_dry_run_core_writes_its_partition_and_runs_nothing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_profile.main(["--profile", "core", "--workers", "2", "--dry-run", "--output", str(tmp_path)])
+    line = capsys.readouterr().out.strip().splitlines()[-1]
+    assert code == run_profile.EXIT_PASS, line
+    assert "profile=core workers=2" in line and "verdict=dry-run" in line, line
+    record_path = Path(line.split("record=", 1)[1])
+    assert record_path.parent.parent == tmp_path
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    assert record["schema"] == "test-profile-partition-v1" and record["disjoint"] is True
+    assert record["parallel"] + record["serial"] == record["core"] and record["parallel"] > 0
+    assert record["union_sha256"] == record["core_sha256"]
+    assert not (record_path.parent / "subruns").exists()  # nothing ran
+
+
+def test_workers_apply_to_core_only(capsys: pytest.CaptureFixture[str]) -> None:
+    assert run_profile.main(["--profile", "commit", "--workers", "2", "--dry-run"]) == run_profile.EXIT_INPUT
+    assert "--workers applies to --profile core only" in capsys.readouterr().out
+
+
+# --- Plan 11.30 Task 5: R5's changed-input quick switch (G accepted at Task 4) ------------------------------------
+
+
+def test_only_a_subrun_asked_for_quick_depth_accepts_a_quick_record_and_says_so() -> None:
+    assert run_profile.record_validity(_terminal(audit_depth="quick"), 0, audit_depth="quick") == (None, ("audit_depth=quick",))
+    assert run_profile.record_validity(_terminal(audit_depth="quick"), 0) == ("audit_depth_quick", ())  # full by default
+    assert run_profile.record_validity(_terminal(), 0, audit_depth="quick") == ("audit_depth_full", ())  # asked != ran
+
+
+def test_a_commit_runs_its_selected_current_audits_at_quick_depth(tmp_path: Path) -> None:
+    selection = profiles.Selection("commit", "selected", (_REPEAT,), {_REPEAT: "depends on x"}, (), (), {}, (), (), (), "quick")
+    classification = profiles.Classification({_REPEAT: "audit-current"}, {}, {}, ())
+    verdict, code, subruns, outcome, detail = run_profile.execute(
+        run_profile.ROOT, tmp_path / "out", selection, classification, env=_env(tmp_path))
+    assert (verdict, code, outcome) == ("pass", run_profile.EXIT_PASS, None), detail
+    (audit,) = subruns
+    assert audit.name == "audit-current" and "--audit-depth=quick" in audit.command and audit.audit_depth == "quick"
+    assert audit.problem is None and "audit_depth=quick" in audit.qualifications
+
+
+def test_a_subrun_s_record_is_the_new_one_with_its_pid_whatever_the_wall_clock_says(tmp_path: Path) -> None:
+    """WSL Task 5 attempt 2: the WSL2 wall clock stepped back 3.3 s between two launches, and the recency check
+    (record start no earlier than launch - 1 s) rejected the subrun's own valid record. A subrun's record is the one
+    folder with its pid that did not exist at launch, judged without comparing clocks across processes."""
+    from tools.testing import run_context_records as records
+
+    runs = tmp_path / "tmp" / "test-runs"
+
+    def record(name: str, pid: int, started: str) -> None:
+        records.write_record(runs / name / "run.json", {
+            "checkpoint": "terminal", "run_id": f"20261007T000000-{pid}-abcdef", "mode": "active",
+            "reason": "default_selection", "root": {"pid": pid, "creation_time": None}, "started_utc": started,
+        })
+
+    record("old", 4242, "2030-01-01T00:00:00+00:00")  # same pid, any time: it existed at launch
+    existing = run_profile.existing_runs(tmp_path)
+    assert existing == frozenset({"old"})
+    record("new", 4242, "2000-01-01T00:00:00+00:00")  # created after launch, though its clock says long before
+    found = run_profile._run_record(tmp_path, 4242, existing)  # noqa: SLF001
+    assert found is not None and found[0].name == "new"
+    assert run_profile._run_record(tmp_path, 4243, existing) is None  # noqa: SLF001
+
+
+def test_a_subrun_s_record_prefers_its_own_root_and_never_guesses_between_two(tmp_path: Path) -> None:
+    """Fable Task 5 finding 7: a nested session the subrun starts is a new folder too. The subrun's own record names
+    it as root; a root-parent match counts only when no root matches, and two equal candidates match nothing."""
+    from tools.testing import run_context_records as records
+
+    runs = tmp_path / "tmp" / "test-runs"
+
+    def record(name: str, pid: int, parent: int | None = None) -> None:
+        payload: dict[str, object] = {
+            "checkpoint": "terminal", "run_id": f"20261007T000000-{pid}-abcdef", "mode": "active",
+            "reason": "default_selection", "root": {"pid": pid, "creation_time": None},
+        }
+        if parent is not None:
+            payload["root_parent"] = {"pid": parent, "creation_time": None}
+        records.write_record(runs / name / "run.json", payload)
+
+    existing = run_profile.existing_runs(tmp_path)
+    record("nested", 5151, parent=4242)  # started by the subrun's own process
+    record("own", 4242)
+    found = run_profile._run_record(tmp_path, 4242, existing)  # noqa: SLF001
+    assert found is not None and found[0].name == "own"
+    record("launched", 6000, parent=7000)  # Windows: the runner starts a launcher, the session is its child
+    found = run_profile._run_record(tmp_path, 7000, existing)  # noqa: SLF001
+    assert found is not None and found[0].name == "launched"
+    record("twin", 4242)
+    assert run_profile._run_record(tmp_path, 4242, existing) is None  # noqa: SLF001 - ambiguous: no guess

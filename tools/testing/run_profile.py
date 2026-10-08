@@ -28,6 +28,7 @@ from tools import process_tree
 from tools.testing import run_context
 from tools.testing import run_context_records as records
 from tools.testing import test_profiles as profiles
+from tools.tracked_repository_files import COMMIT_INDEX_FILE, COMMIT_INDEX_ROOT
 
 
 def _git(root: Path, *arguments: str) -> bytes:
@@ -135,7 +136,8 @@ class SubrunResult:
     command: tuple[str, ...]
     argfile: Path
     pid: int = 0
-    launched: float = 0.0  # time.time() at launch: a run record older than this is another process's
+    launched: float = 0.0  # time.time() at launch
+    existing: frozenset[str] = frozenset()  # run folders present at launch: none of them is this subrun's record
     exit_code: int | None = None
     run_id: str | None = None
     mode: str | None = None
@@ -150,17 +152,33 @@ class SubrunResult:
     problem: str | None = "not_validated"  # why its own run record cannot support a pass; None when it can
     qualifications: tuple[str, ...] = ()  # the weaker, legitimate labels a supporting record still carries
     audit_depth: str | None = None  # the effective --audit-depth its own terminal record states
+    workers: int = 0  # xdist workers it ran on (Plan 11.30 Task 5); 0 is serial
+    depth: str = "full"  # the --audit-depth it was asked for: quick only for a commit's current audits (R5 after G)
+    check_selection: bool = False  # whether its record must have selected exactly its nodes
 
 
 _WINDOWS_GUARDS = ("pytest_process_guard", "main5_guard_present")
 
 
-def record_validity(record: dict[str, object] | None, exit_code: int | None) -> tuple[str | None, tuple[str, ...]]:
+def selection_digest(nodes: tuple[str, ...]) -> str:
+    """The digest a run record states for its selected tests, computed the same way from a node list."""
+    digest = hashlib.sha256()
+    for nodeid in sorted(nodes):
+        digest.update(run_context._node(nodeid).encode("ascii"))  # noqa: SLF001
+    return digest.hexdigest()
+
+
+def record_validity(
+    record: dict[str, object] | None, exit_code: int | None, *, workers: int = 0, nodes: tuple[str, ...] | None = None,
+    audit_depth: str = "full",
+) -> tuple[str | None, tuple[str, ...]]:
     """Whether a finished subrun's own run record supports a pass: its first problem (None when there is none) and
     the qualifications a supporting record still carries. Records arrive through `records.read_record`, so they
     already conform to the run-context field table; this reads their terminal facts as the run's summary line does.
     A capability the platform claims (Windows: a valid native job and a guard) must hold; POSIX's unsupported
-    labels and an UNKNOWN parent are qualifications, never failures."""
+    labels and an UNKNOWN parent are qualifications, never failures. A subrun on xdist `workers` needs its
+    controller's valid verdict on exactly that many workers; a serial one must have had none. Given `nodes`, the
+    record must have selected exactly those tests (Plan 11.30 Task 5)."""
     if record is None:
         return "no_run_record", ()
     if record.get("checkpoint") != "terminal" or not record.get("finished_utc"):
@@ -173,9 +191,22 @@ def record_validity(record: dict[str, object] | None, exit_code: int | None) -> 
         return f"records_{record.get('completeness')}", ()
     if record.get("exit_status") != exit_code:
         return "exit_status_differs", ()
-    # Until quick/full parity (G) is accepted, only a full-depth run counts; a record that does not say is not one.
-    if record.get("audit_depth") != "full":
+    # A run counts only at the depth it was asked for: full, except a commit's current audits at quick (R5 after G,
+    # accepted at Plan 11.30 Task 4). A record that does not say is not one.
+    if record.get("audit_depth") != audit_depth:
         return f"audit_depth_{record.get('audit_depth') or 'missing'}", ()
+    xdist = record.get("xdist")
+    if workers:
+        if not isinstance(xdist, dict):
+            return "xdist_missing", ()
+        if xdist.get("workers") != workers:
+            return f"xdist_workers_{xdist.get('workers')}", ()
+        if xdist.get("verdict") != "valid":
+            return f"xdist_{xdist.get('verdict')}", ()
+    elif xdist is not None:
+        return "xdist_unexpected", ()
+    if nodes is not None and record.get("selection_sha256") != selection_digest(nodes):
+        return "selection_differs", ()
     windows = record.get("platform") == "win32"
     native = record.get("native") if isinstance(record.get("native"), dict) else {}
     qualifications: list[str] = []
@@ -206,6 +237,10 @@ def record_validity(record: dict[str, object] | None, exit_code: int | None) -> 
             qualifications.append("processes=QUERY_FAILED")  # as the run's own summary line says
         if not (isinstance(members, dict) and members.get("ok") and members.get("complete")):
             qualifications.append("members=incomplete")
+    if audit_depth != "full":
+        qualifications.append(f"audit_depth={audit_depth}")  # reduced-depth evidence: never a checkpoint or final
+    if workers and isinstance(xdist, dict) and xdist.get("capability") != "native":
+        qualifications.append(f"xdist={xdist.get('capability')}")  # no creation-time ancestry or job member list
     return None, tuple(qualifications)
 
 
@@ -227,40 +262,80 @@ def _stop_all_owned() -> None:
     _OWNED.clear()
 
 
-def start_subrun(root: Path, out_dir: Path, name: str, nodes: tuple[str, ...], *, env: dict[str, str] | None = None) -> tuple[SubrunResult, subprocess.Popen[bytes]]:
-    """Start one pytest session of exactly `nodes` under the unchanged default selection (so ACTIVE)."""
+XDIST_WORKERS = 2  # the reviewed worker count (v4 design contract 5: start with -n 2, never auto)
+
+
+def subrun_environment(env: dict[str, str] | None) -> dict[str, str]:
+    """A subrun's environment: `env` (default: this process's), plus, inside a commit hook, git's commit index under
+    the non-GIT_ names the repository's scanners honour -- a test run strips every GIT_* variable, so without them a
+    scanner would list the default index rather than the commit's (Plan 11.30 Task 3 residual). A hook runs at the
+    top of the repository being committed, which is where a relative index path starts."""
+    result = dict(os.environ if env is None else env)
+    index = result.get("GIT_INDEX_FILE")
+    if index:
+        here = Path.cwd().resolve()
+        result[COMMIT_INDEX_FILE] = str(Path(index) if Path(index).is_absolute() else here / index)
+        result[COMMIT_INDEX_ROOT] = str(here)
+    return result
+
+
+def start_subrun(
+    root: Path, out_dir: Path, name: str, nodes: tuple[str, ...], *, env: dict[str, str] | None = None,
+    workers: int = 0, check_selection: bool = False, depth: str = "full",
+) -> tuple[SubrunResult, subprocess.Popen[bytes]]:
+    """Start one pytest session of exactly `nodes` under the unchanged default selection (so ACTIVE); with
+    `workers`, the reviewed core-parallel profile on that many xdist workers, never restarted."""
     folder = out_dir / name
     folder.mkdir(parents=True, exist_ok=True)
     argfile = folder / "nodes.txt"
     argfile.write_bytes("".join(f"{node}\n" for node in nodes).encode("utf-8"))
-    command = (sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "--no-cov", "-q", "--audit-depth=full", f"@{argfile}")
-    launched = time.time()
+    # worksteal: an idle worker takes a busy one's unstarted tests (load, xdist's default, measured one worker idle for
+    # most of the run behind the other's queue of slow tests; Plan 11.30 Task 5).
+    parallel = ("-n", str(workers), "--dist", "worksteal", "--max-worker-restart=0", "--profile", "core-parallel") if workers else ()
+    command = (sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "--no-cov", "-q", f"--audit-depth={depth}", *parallel, f"@{argfile}")
+    launched, existing = time.time(), existing_runs(root)
     # Like any pytest run, the session writes to the console; its identity, mode and times come from its
     # own run records, so no raw test output is kept here.
-    process = process_tree.popen(list(command), cwd=root, env=env)
+    process = process_tree.popen(list(command), cwd=root, env=subrun_environment(env))
     _OWNED[process.pid] = process
-    return SubrunResult(name, nodes, command, argfile, pid=process.pid, launched=launched, process_alive=True), process
+    return SubrunResult(name, nodes, command, argfile, pid=process.pid, launched=launched, existing=existing, process_alive=True,
+                        workers=workers, check_selection=check_selection, depth=depth), process
 
 
-def _run_record(root: Path, pid: int, launched: float) -> tuple[Path, dict[str, object]] | None:
-    """The run record of the session this subrun process started: same pid, started after its launch."""
+def existing_runs(root: Path) -> frozenset[str]:
+    """The run folders present now: a subrun's own record is one that was not among them at its launch."""
+    try:
+        return frozenset(folder.name for folder in (root / "tmp" / "test-runs").iterdir() if folder.is_dir())
+    except OSError:
+        return frozenset()
+
+
+def _run_record(root: Path, pid: int, existing: frozenset[str]) -> tuple[Path, dict[str, object]] | None:
+    """The run record of the session this subrun process started: a folder created after its launch whose root (or,
+    on Windows, the root's parent) is the process this runner started. No wall clock is compared across processes:
+    WSL2's stepped backwards between two launches in the Task 5 validation."""
     runs = root / "tmp" / "test-runs"
     try:
-        folders = [folder for folder in runs.iterdir() if folder.is_dir()]
+        folders = [folder for folder in runs.iterdir() if folder.is_dir() and folder.name not in existing]
     except OSError:
         return None
+    roots: list[tuple[Path, dict[str, object]]] = []
+    children: list[tuple[Path, dict[str, object]]] = []
     for folder in folders:
         record = records.read_record(folder / "run.json")
         if record is None:
             continue
-        # On Windows a venv's python.exe is a launcher: the session's root is its child, so the
-        # process this runner started appears as the root's parent.
-        pids = {identity.get("pid") for identity in (record.get("root"), record.get("root_parent")) if isinstance(identity, dict)}
-        started = _record_time(record.get("started_utc"))
-        recent = started is not None and datetime.fromisoformat(started).timestamp() >= launched - 1.0
-        if pid in pids and recent:
-            return folder, record
-    return None
+        root, parent = record.get("root"), record.get("root_parent")
+        if isinstance(root, dict) and root.get("pid") == pid:
+            roots.append((folder, record))
+        elif isinstance(parent, dict) and parent.get("pid") == pid:
+            # On Windows a venv's python.exe is a launcher: the session's root is its child, so the process this
+            # runner started appears as the root's parent. A session the subrun itself starts can look the same,
+            # so this counts only when no record names the process as its root.
+            children.append((folder, record))
+    # Fable Task 5 finding 7: never the first of several candidates; an ambiguous match is no match.
+    chosen = roots or children
+    return chosen[0] if len(chosen) == 1 else None
 
 
 def _first_phase_at(folder: Path) -> float | None:
@@ -272,7 +347,7 @@ def wait_until_executing(root: Path, result: SubrunResult, process: subprocess.P
     """Block until the subrun has begun its first test phase (True) or has ended without one (False)."""
     deadline = time.monotonic() + _START_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
-        found = _run_record(root, result.pid, result.launched)
+        found = _run_record(root, result.pid, result.existing)
         if found is not None and _first_phase_at(found[0]) is not None:
             return True
         if process.poll() is not None:
@@ -290,8 +365,11 @@ def finish_subrun(root: Path, result: SubrunResult, process: subprocess.Popen[by
     result.exit_code = process.wait()
     _OWNED.pop(process.pid, None)
     result.process_alive = False
-    located = _run_record(root, result.pid, result.launched)
-    result.problem, result.qualifications = record_validity(None if located is None else located[1], result.exit_code)
+    located = _run_record(root, result.pid, result.existing)
+    result.problem, result.qualifications = record_validity(
+        None if located is None else located[1], result.exit_code, workers=result.workers, audit_depth=result.depth,
+        nodes=result.nodes if result.check_selection else None,
+    )
     if located is not None:
         folder, record = located
         result.run_id, result.mode, result.reason = str(record.get("run_id")), str(record.get("mode")), str(record.get("reason"))
@@ -308,8 +386,11 @@ def finish_subrun(root: Path, result: SubrunResult, process: subprocess.Popen[by
     return result
 
 
-def run_subrun(root: Path, out_dir: Path, name: str, nodes: tuple[str, ...], *, env: dict[str, str] | None = None) -> SubrunResult:
-    result, process = start_subrun(root, out_dir, name, nodes, env=env)
+def run_subrun(
+    root: Path, out_dir: Path, name: str, nodes: tuple[str, ...], *, env: dict[str, str] | None = None,
+    workers: int = 0, check_selection: bool = False, depth: str = "full",
+) -> SubrunResult:
+    result, process = start_subrun(root, out_dir, name, nodes, env=env, workers=workers, check_selection=check_selection, depth=depth)
     try:
         return finish_subrun(root, result, process)
     finally:
@@ -500,7 +581,7 @@ def _subrun_entry(result: SubrunResult) -> dict[str, object]:
         "nodes": len(result.nodes), "nodes_sha256": _digest(result.argfile.read_bytes()), "started_utc": result.started_utc,
         "executing_utc": result.executing_utc, "executing_until_utc": result.executing_until_utc,
         "finished_utc": result.finished_utc, "terminated": result.terminated, "load_run_id": result.load_run_id,
-        "audit_depth": result.audit_depth,
+        "audit_depth": result.audit_depth, "workers": result.workers,
         "record_problem": result.problem, "qualifications": list(result.qualifications),
     }
 
@@ -529,7 +610,9 @@ def execute(
             outcome = overlap(root, out_dir / "subruns", audits, selection.concurrency, env=env, progress=progress)
             subruns += [*outcome.loads, *outcome.attempts]
         elif audits:
-            subruns.append(run_subrun(root, out_dir / "subruns", "audit-current", audits, env=env))
+            # A commit's selected current audits run at quick depth (R5 after G); a checkpoint's at full.
+            depth = "quick" if selection.audit_depth == "quick" else "full"
+            subruns.append(run_subrun(root, out_dir / "subruns", "audit-current", audits, env=env, depth=depth))
     except profiles.SelectionError as error:  # a subrun that never began its tests: the run itself failed
         _stop_all_owned()
         stopped = records.sanitized_text(str(error))[:300]
@@ -554,21 +637,116 @@ def execute(
     return "pass", EXIT_PASS, subruns, outcome, ""
 
 
+def core_partition(classification: profiles.Classification, *, workers: int = XDIST_WORKERS) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Core's nodes split for a run on `workers` xdist workers: the reviewed parallel set and the serial remainder,
+    disjoint and together exactly core. Without workers everything is serial."""
+    core = profiles.profile_members(classification, "core")
+    parallel = profiles.profile_members(classification, "core-parallel") if workers else frozenset()
+    serial = core - parallel
+    if parallel & serial or parallel | serial != core:
+        raise profiles.SelectionError("the core partition is not a disjoint cover of core")
+    return tuple(sorted(parallel)), tuple(sorted(serial))
+
+
+def execute_core(
+    root: Path, out_dir: Path, classification: profiles.Classification, *, workers: int,
+    env: dict[str, str] | None = None,
+) -> tuple[str, int, list[SubrunResult], dict[str, object], str]:
+    """Run core: on `workers` xdist workers, the reviewed parallel set then the serial remainder, each its own ACTIVE
+    run whose record must have selected exactly its nodes (and, on workers, carry its controller's valid verdict);
+    without workers, one serial run. Returns the verdict, its exit code, the subruns, the partition and a detail."""
+    parallel, serial = core_partition(classification, workers=workers)
+    core = tuple(sorted((*parallel, *serial)))
+    partition: dict[str, object] = {
+        "workers": workers, "core": len(core), "parallel": len(parallel), "serial": len(serial),
+        "core_sha256": selection_digest(core), "parallel_sha256": selection_digest(parallel),
+        "serial_sha256": selection_digest(serial), "union_sha256": selection_digest(tuple(sorted({*parallel, *serial}))),
+        "disjoint": not set(parallel) & set(serial),
+    }
+    subruns: list[SubrunResult] = []
+    if parallel:
+        subruns.append(run_subrun(root, out_dir / "subruns", "core-parallel", parallel, env=env, workers=workers, check_selection=True))
+    if serial:
+        subruns.append(run_subrun(root, out_dir / "subruns", "core-serial" if workers else "core", serial, env=env, check_selection=True))
+    if not subruns:
+        return "empty-selection", EXIT_PASS, subruns, partition, ""
+    failed = [f"{result.name} exited {result.exit_code}" for result in subruns if result.exit_code not in (0, None)]
+    if failed:
+        return "failed", EXIT_TESTS_FAILED, subruns, partition, "; ".join(failed)
+    problems = [f"{result.name}: {result.problem}" for result in subruns if result.problem is not None]
+    if problems:
+        return "invalid", EXIT_INVALID, subruns, partition, "; ".join(problems)
+    return "pass", EXIT_PASS, subruns, partition, ""
+
+
+PARTITION_SCHEMA = "test-profile-partition-v1"
+
+
+def _main_core(workers: int, dry_run: bool, out_dir: Path, invocation: str) -> int:
+    """`--profile core`: the whole core tier, its reviewed parallel set on xdist workers and the rest serially."""
+    try:
+        manifest = profiles.load_manifest((ROOT / "tests" / "profiles.toml").read_text(encoding="utf-8"))
+        classification = profiles.classify_nodes(collect_universe(ROOT), manifest)
+        parallel, serial = core_partition(classification, workers=workers)
+    except (OSError, profiles.ManifestError, profiles.ClassificationError, profiles.SelectionError) as error:
+        print(failure_line("core", error))
+        return EXIT_INPUT
+    head = _git(ROOT, "rev-parse", "--verify", "-q", "HEAD").decode().strip() if _has_commit(ROOT, "HEAD") else None
+    core = tuple(sorted((*parallel, *serial)))
+    record: dict[str, object] = {
+        "schema": PARTITION_SCHEMA, "profile": "core", "platform": sys.platform, "head": head, "workers": workers,
+        "manifest_sha256": manifest.digest, "classification_sha256": classification_digest(classification),
+        "working_sha256": _digest(_git(ROOT, "diff", "--binary")),
+        "core": len(core), "parallel": len(parallel), "serial": len(serial),
+        "core_sha256": selection_digest(core), "parallel_sha256": selection_digest(parallel),
+        "serial_sha256": selection_digest(serial), "union_sha256": selection_digest(tuple(sorted({*parallel, *serial}))),
+        "disjoint": not set(parallel) & set(serial),
+        "parallel_nodes": [run_context._node(node) for node in parallel],  # noqa: SLF001 - digests, like the node stream
+        "serial_nodes": [run_context._node(node) for node in serial],  # noqa: SLF001
+    }
+    out_dir.mkdir(parents=True, exist_ok=True)
+    record_sha = _write_json(out_dir / "selection.json", record)
+    summary = f"test-profile: profile=core workers={workers} core={len(core)} parallel={len(parallel)} serial={len(serial)}"
+    if dry_run:
+        print(f"{summary} verdict=dry-run record={out_dir / 'selection.json'}")
+        return EXIT_PASS
+    verdict, code, subruns, partition, detail = execute_core(ROOT, out_dir, classification, workers=workers)
+    run_manifest: dict[str, object] = {
+        "schema": RUN_SCHEMA, "invocation": invocation, "profile": "core", "platform": sys.platform,
+        "verdict": verdict, "exit": code, "detail": detail, "selection_sha256": record_sha,
+        "subruns": [_subrun_entry(result) for result in subruns], "stability": None, "obligations": [],
+        "partition": partition,
+    }
+    if not records.unchanged_by_shared_sanitizer(run_manifest):
+        print(f"{summary} verdict=invalid detail=evidence manifest refused by the shared sanitizer")
+        return EXIT_INVALID
+    _write_json(out_dir / "manifest.json", run_manifest)
+    print(f"{summary} verdict={verdict}{f' detail={detail}' if detail else ''} manifest={out_dir / 'manifest.json'}")
+    return code
+
+
 def failure_line(profile: str, error: Exception) -> str:
     """The one line an input failure prints. Its detail names repository paths, so it passes the shared sanitizer."""
     return f"test-profile: profile={profile} verdict=input-failure detail={records.sanitized_text(str(error))[:300]}"
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m tools.testing.run_profile", description="Run a change-selected test profile.")
-    parser.add_argument("--profile", required=True, choices=profiles.CHANGE_SELECTED)
+    parser = argparse.ArgumentParser(prog="python -m tools.testing.run_profile", description="Run a change-selected test profile, or core.")
+    parser.add_argument("--profile", required=True, choices=(*profiles.CHANGE_SELECTED, "core"))
     parser.add_argument("--base", default=None, help="checkpoint: the recorded immutable checkpoint base SHA")
     parser.add_argument("--exact", action="store_true", help="refuse uncommitted divergence (exact-source acceptance)")
     parser.add_argument("--dry-run", action="store_true", help="select and write the selection record; run nothing")
     parser.add_argument("--output", type=Path, default=None, help="evidence folder (default: tmp/test-profiles)")
+    parser.add_argument("--workers", type=int, choices=(0, XDIST_WORKERS), default=0,
+                        help="core: run the reviewed parallel set on this many xdist workers, then the rest serially")
     arguments = parser.parse_args(argv)
     invocation = f"{datetime.now(timezone.utc):%Y%m%dT%H%M%S}-{os.getpid()}-{secrets.token_hex(3)}"
     out_dir = (arguments.output or ROOT / "tmp" / "test-profiles") / invocation
+    if arguments.profile == "core":
+        return _main_core(arguments.workers, arguments.dry_run, out_dir, invocation)
+    if arguments.workers:
+        print(failure_line(arguments.profile, profiles.SelectionError("--workers applies to --profile core only")))
+        return EXIT_INPUT
     try:
         manifest = profiles.load_manifest((ROOT / "tests" / "profiles.toml").read_text(encoding="utf-8"))
         changes = change_set(ROOT, arguments.profile, arguments.base, exact=arguments.exact)

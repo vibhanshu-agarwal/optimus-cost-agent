@@ -3705,19 +3705,27 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.testing.run_context_records:write_record:json_serialization",
+      "key": "tools.testing.run_context_records:_persist:json_serialization",
       "policy": "shared-sanitize",
-      "rationale": "write_record serializes a record only after checking it against one typed field table: a field that is not listed (at any depth), a caller-supplied schema, a malformed identifier or text with control characters is refused, and so is a record that the shared sanitizer would change or that exceeds the size limit. The table has no free-text field, so a command line, environment value or exception text has nowhere to be stored. Checkout-derived text that fails these checks is withheld by the producer and named in the record.",
+      "rationale": "_persist (behind write_record and, for xdist worker records, write_worker_record) serializes a record only after checking it against one typed field table: a field that is not listed (at any depth), a caller-supplied schema, a malformed identifier or text with control characters is refused, and so is a record that the shared sanitizer would change or that exceeds the size limit. The table has no free-text field, so a command line, environment value or exception text has nowhere to be stored. Checkout-derived text that fails these checks is withheld by the producer and named in the record.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed after the typed field table in tools.testing.run_context_records",
       "test_node": "tests/unit/tools/test_run_context_boundaries.py::test_the_writer_refuses_a_record_outside_the_field_table",
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.testing.run_context_records:write_record:text_file_write",
+      "key": "tools.testing.run_context_records:_persist:text_file_write",
       "policy": "shared-sanitize",
-      "rationale": "write_record writes that checked record atomically to the worktree's ignored tmp/test-runs folder and to a temporary registry folder, both outside the protected application folders. It is the run context's only persistence sink, and read_record applies the same field table before any stored value is used.",
+      "rationale": "_persist (behind write_record and, for xdist worker records, write_worker_record) writes that checked record atomically to the worktree's ignored tmp/test-runs folder and to a temporary registry folder, both outside the protected application folders. It is the run context's only persistence sink, and read_record applies the same field table before any stored value is used.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed after the typed field table in tools.testing.run_context_records",
       "test_node": "tests/unit/tools/test_run_context_boundaries.py::test_the_writer_refuses_a_record_outside_the_field_table",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_context_xdist:sign:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 11.30 Task 5: canonicalizes an xdist worker record (run ID, worker ID, process identity, ancestry, guard mode and source facts) solely to compute its HMAC-SHA256 signature under the run's per-run secret; the encoded bytes are not persisted, logged or exported, and the signature holds no record value. The signed record itself is persisted only through the run context's single sink and its typed field table.",
+      "sanitizer": "digest-only functional path; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_context_xdist.py::test_a_worker_signature_is_a_digest_that_writes_nothing_and_holds_no_record_value",
       "evidence_tier": "unit"
     },
     {
@@ -3844,6 +3852,14 @@
       "key": "tools.testing.run_profile:main:stdout_export",
       "policy": "shared-sanitize",
       "rationale": "Plan 11.30 Task 2. The runner prints one summary line (profile, label, selected/deselected counts, fallback and platform tokens, obligations, verdict, the run's detail line and the evidence path it created under tmp/test-profiles), progress events (subrun names and exit codes), and input-failure lines built by failure_line through the shared sanitizer. Subrun pytest sessions write to the console as any pytest run does; the runner keeps none of their output.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.run_profile (sanitized_text for failure details)",
+      "test_node": "tests/unit/tools/test_run_profile.py::test_an_input_failure_line_passes_the_shared_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_profile:_main_core:stdout_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 5. `--profile core` prints one summary line (worker count, core/parallel/serial node counts, verdict, the run's detail line and the evidence path it created under tmp/test-profiles) and input-failure lines built by failure_line through the shared sanitizer. Its subrun pytest sessions write to the console as any pytest run does; the runner keeps none of their output.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.run_profile (sanitized_text for failure details)",
       "test_node": "tests/unit/tools/test_run_profile.py::test_an_input_failure_line_passes_the_shared_sanitizer",
       "evidence_tier": "unit"

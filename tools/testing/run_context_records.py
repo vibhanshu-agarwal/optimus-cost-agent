@@ -52,6 +52,10 @@ _VERSION = re.compile(r"[A-Za-z0-9.+-]{1,40}")
 _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?\+00:00")
 _TOKEN = re.compile(r"[A-Za-z0-9_]{1,48}")
 _PLACE = re.compile(r"[A-Za-z0-9_.:<>\[\]]{1,80}")
+# Plan 11.30 Task 5: an xdist worker's ID, and a problem the controller found with its workers.
+WORKER = re.compile(r"gw\d{1,3}")
+_PROBLEM = re.compile(r"[a-z_]{1,40}(?::gw\d{1,3})?")
+WORKER_SCHEMA = "test-run-context-worker-v1"
 
 _Check = Callable[[object], bool]
 
@@ -128,10 +132,11 @@ _STREAMS: dict[str, _Table] = {
         "node": _text(_DIGEST), "label": _optional(_text(LABEL)), "state": _one_of("selected", "deselected"),
     }, required=("node", "label", "state")),
     # One test phase as pytest reported it. `at` and `seconds` are relative to the start of the run.
+    # `worker`: the xdist worker that ran the phase, when the run had workers (Plan 11.30 Task 5).
     "phases": _Table({
         "node": _text(_DIGEST), "when": _one_of("setup", "call", "teardown"),
         "outcome": _one_of("passed", "failed", "skipped"), "at": _seconds, "seconds": _seconds,
-        "reason": _text(REASON),
+        "reason": _text(REASON), "worker": _text(WORKER),
     }, required=("node", "when", "outcome", "at", "seconds")),
     # What else was running, read at a phase boundary. `gap` is the time since the previous sample.
     "samples": _Table({
@@ -206,7 +211,38 @@ _FIELDS = _Table({
         "entry": _text(LABEL), "node": _text(_DIGEST), "label": _optional(_text(LABEL)),
         "from_node": _text(_DIGEST), "from_label": _optional(_text(LABEL)),
     }, required=("entry", "node", "label", "from_node", "from_label"))],
+    # Plan 11.30 Task 5, terminal records of a run with xdist workers: the controller's verdict on them.
+    "xdist": _Table({
+        "workers": _count, "verdict": _one_of("valid", "INVALID"), "capability": _one_of("native", "weaker"),
+        "problems": [_text(_PROBLEM)],
+        "identities": [_Table({"worker": _text(WORKER), "pid": _count, "creation_time": _optional(_count)},
+                              required=("worker", "pid", "creation_time"))],
+        # Members of the run's job still running at the end, each with its parent process (a worker, usually).
+        "escaped": [_Table({"pid": _count, "creation_time": _optional(_count), "parent_pid": _optional(_count)},
+                           required=("pid", "creation_time", "parent_pid"))],
+    }, required=("workers", "verdict", "capability", "problems", "identities")),
 }, required=("schema", "checkpoint", "run_id", "mode", "reason", "root"))
+
+# One xdist worker's own record, beside its controller's run record (Plan 11.30 Task 5). The controller signs
+# nothing; the worker signs this with the run's secret, which the controller handed it over xdist's channel.
+_WORKER_FIELDS = _Table({
+    "schema": _one_of(WORKER_SCHEMA),
+    "run_id": _text(RUN_ID),
+    "worker": _text(WORKER),
+    "pid": _count,
+    "creation_time": _optional(_count),
+    "ancestry": _Table({
+        "status": _one_of("controller", "pid_ancestry", "not_found"),
+        "method": _one_of("validated_process_ancestry", "proc_parent_chain"), "reason": _text(_TOKEN),
+    }, required=("status",)),
+    "guard_mode": _text(_TOKEN),
+    "facts": _Table({
+        "python": _optional(_text(_VERSION)), "pytest": _optional(_text(_VERSION)),
+        "lock_sha256": _optional(_text(_DIGEST)), "config_sha256": _optional(_text(_DIGEST)),
+        "head": _optional(_text(COMMIT)),
+    }, required=("python", "pytest", "lock_sha256", "config_sha256", "head")),
+    "signature": _text(_DIGEST),
+}, required=("schema", "run_id", "worker", "pid", "creation_time", "ancestry", "guard_mode", "facts", "signature"))
 
 
 def _violation(value: object, rule: object, place: str) -> str | None:
@@ -268,6 +304,34 @@ def write_record(target: Path, payload: dict[str, object]) -> None:
     found = violation(record)
     if found is not None:
         raise RecordRejected(found)
+    _persist(target, record)
+
+
+def write_worker_record(target: Path, payload: dict[str, object]) -> None:
+    """Persist one xdist worker's signed record (Plan 11.30 Task 5) through the same checks and the same sink."""
+    if "schema" in payload:
+        raise RecordRejected("record.schema")
+    record = {"schema": WORKER_SCHEMA, **payload}
+    found = _violation(record, _WORKER_FIELDS, "record")
+    if found is not None:
+        raise RecordRejected(found)
+    _persist(target, record)
+
+
+def read_worker_record(source: Path) -> dict[str, object] | None:
+    """One worker record, or None when it is missing, too large, malformed or breaks its field table."""
+    try:
+        if source.stat().st_size > MAX_RECORD_BYTES:
+            return None
+        payload = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return payload if _violation(payload, _WORKER_FIELDS, "record") is None else None
+
+
+def _persist(target: Path, record: dict[str, object]) -> None:
+    """The run context's single persistence sink: a conforming record, unchanged by the shared sanitizer, written
+    atomically within the size ceiling."""
     if not unchanged_by_shared_sanitizer(record):
         raise RecordRejected("shared_sanitizer")
     body = json.dumps(record, indent=1, sort_keys=True)

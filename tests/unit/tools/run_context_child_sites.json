@@ -440,6 +440,24 @@
    "proof": "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
    "basis": "Runs only inside a planted nested run; a nested default pytest on the held target."
   },
+  "tests/unit/tools/test_run_context_xdist.py::_nested#1": {
+   "mechanism": "python:nested_pytest",
+   "disposition": "nested_pytest",
+   "proof": "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
+   "basis": "Nested pytest of this repository with its temporary folders, and so its run registry, under the test's tmp_path: an active child guards itself; collection-only children execute no test."
+  },
+  "tests/unit/tools/test_run_context_xdist.py::test_an_interrupted_controller_leaves_no_worker_running#1": {
+   "mechanism": "python:nested_pytest",
+   "disposition": "nested_pytest",
+   "proof": "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
+   "basis": "Nested pytest of this repository on two xdist workers, its temporary folders under the test's tmp_path: the active controller guards itself and each worker installs its own guard before collection; the test kills the controller and checks that no worker survives it."
+  },
+  "tests/unit/tools/test_run_context_xdist_probes.py::test_xdist_probe#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "literal_program",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "The literal sleep program (imports only time, no product import), started only inside the nested grandchild control and ended by the controller's job on Windows or by the test itself."
+  },
   "tests/unit/tools/test_run_plan996_acpx_security_evidence.py::_assert_capture_timeout_terminates_tree#1": {
    "mechanism": "python:script_file",
    "disposition": "tripwire_at_site",
@@ -451,6 +469,12 @@
    "disposition": "census",
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "The profile runner (`python -m tools.testing.run_profile --dry-run`) with its temporary folders under tmp_path: it reads Git and runs one collection-only pytest, executing no test; an ordinary child proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_run_profile.py::test_an_agent_entry_point_test_passes_under_the_environment_a_commit_hook_subrun_receives#1": {
+   "mechanism": "python:nested_pytest",
+   "disposition": "nested_pytest",
+   "proof": "tests/unit/tools/test_run_context.py::test_a_nested_pytest_is_guarded_too",
+   "basis": "Nested pytest of this repository with its temporary folders under the test's tmp_path, under the environment the profile runner hands a commit-hook subrun: an active child guards itself; it runs one agent entry-point unit test, whose agent dependencies that test replaces."
   },
   "tests/unit/tools/test_run_profile.py::test_an_interrupted_lane_stops_only_its_own_processes#1": {
    "mechanism": "python:inline_script",

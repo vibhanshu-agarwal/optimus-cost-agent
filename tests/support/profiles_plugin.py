@@ -74,8 +74,54 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
+@pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config) -> None:
+    _refuse_unsupported_parallel(config)
     _SESSIONS.append({"depth": str(config.getoption("audit_depth")), "reused": []})
+
+
+# Plan 11.30 Task 5: xdist runs only the reviewed core-parallel profile, with two workers, no worker restarts, load or
+# worksteal distribution and no coverage (coverage stays one serial writer). Anything else is refused here, before the run
+# starts and before xdist creates a worker.
+PARALLEL_PROFILE = "core-parallel"
+PARALLEL_WORKERS = 2
+
+
+def _refuse_unsupported_parallel(config: pytest.Config) -> None:
+    if hasattr(config, "workerinput"):
+        return  # a worker of a controller that already passed this check
+    workers = config.getoption("numprocesses", default=None)
+    if not workers and not config.getoption("tx", default=None):
+        return
+    problems = []
+    if config.getoption("test_profile") != PARALLEL_PROFILE:
+        problems.append(f"only --profile {PARALLEL_PROFILE} runs on xdist workers")
+    if workers != PARALLEL_WORKERS:
+        problems.append(f"exactly -n {PARALLEL_WORKERS}")
+    if str(config.getoption("maxworkerrestart", default=None)) != "0":
+        problems.append("--max-worker-restart=0 (a crashed worker is never replaced)")
+    if config.getoption("dist", default=None) not in ("load", "worksteal"):
+        problems.append("--dist load or worksteal only (each test runs once, on one worker)")
+    if config.getoption("looponfail", default=False):
+        problems.append("no --looponfail")
+    if config.getoption("cov_source", default=None) and not config.getoption("no_cov", default=False):
+        problems.append("no coverage: coverage stays one serial writer")
+    if problems:
+        raise pytest.UsageError("TEST_RUN_CONTEXT_XDIST_REFUSED: " + "; ".join(problems))
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node, error: object) -> None:  # noqa: ANN001 - xdist's WorkerController
+    del error
+    summary = (getattr(node, "workeroutput", None) or {}).get("p1130_profile_summary")
+    if isinstance(summary, str) and _SUMMARY not in node.config.stash:
+        node.config.stash[_SUMMARY] = summary  # the workers selected; the controller reports it
+
+
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    workeroutput = getattr(session.config, "workeroutput", None)
+    if workeroutput is not None and _SUMMARY in session.config.stash:
+        workeroutput["p1130_profile_summary"] = session.config.stash[_SUMMARY]
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:

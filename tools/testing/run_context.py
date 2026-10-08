@@ -421,6 +421,9 @@ def record_phase(context: RunContext, report: object) -> None:
             longrepr = getattr(report, "longrepr", None)
             detail = longrepr[2] if isinstance(longrepr, tuple) and len(longrepr) == 3 else getattr(report, "wasxfail", "")
             entry["reason"] = _reason(detail)
+        worker = getattr(report, "worker_id", None)
+        if isinstance(worker, str) and records.WORKER.fullmatch(worker):
+            entry["worker"] = worker  # an xdist worker ran it; the controller records it (Plan 11.30 Task 5)
         _append(context, "phases", [entry])
         if _monotonic() - context.last_sample >= SAMPLE_INTERVAL_SECONDS:
             sample_run(context, "phase")
@@ -574,11 +577,14 @@ def _audit_fields(audit: dict[str, Any]) -> dict[str, object]:
     }
 
 
-def finish_run(context: RunContext, exit_status: int, *, audit: dict[str, Any] | None = None) -> dict[str, object]:
+def finish_run(
+    context: RunContext, exit_status: int, *, audit: dict[str, Any] | None = None, xdist: dict[str, Any] | None = None,
+) -> dict[str, object]:
     """Withdraw the announcement, then write the terminal record. The job handle is deliberately
     kept until the interpreter exits. `audit` is the session's effective audit depth, the budgets its tests
     used and the measurements they reused; it is written in the terminal record only, never in the shared
-    registry announcement.
+    registry announcement. `xdist` is the controller's verdict on its workers (Plan 11.30 Task 5): any verdict but
+    valid makes the record INVALID.
 
     Nothing here raises into pytest: a failure anywhere in the terminal work leaves pytest's own
     exit status in place and makes the record INVALID. The registry withdrawal comes before the
@@ -593,6 +599,10 @@ def finish_run(context: RunContext, exit_status: int, *, audit: dict[str, Any] |
             final.update(_terminal(context, exit_status))
             if audit is not None:
                 final.update(_audit_fields(audit))
+            if xdist is not None:
+                final["xdist"] = dict(xdist)
+                if xdist.get("verdict") != "valid":
+                    context.counts["recording_errors"] += 1
         except Exception as error:  # noqa: BLE001 - the terminal facts could not be established
             context.counts["recording_errors"] += 1
             final["terminal_failure"] = _failure_token(error)
@@ -713,4 +723,7 @@ def summary_line(context: RunContext, final: dict[str, object] | None) -> str:
         streams = final.get("streams") or {}
         parts += [f"records={final.get('completeness')}", f"phases={streams.get('phases') if isinstance(streams, dict) else 0}",
                   f"exit={final.get('exit_status')}"]
+        xdist = final.get("xdist")
+        if isinstance(xdist, dict):
+            parts.append(f"xdist={xdist.get('verdict')}:workers={xdist.get('workers')}:{xdist.get('capability')}")
     return " ".join(str(part) for part in parts)

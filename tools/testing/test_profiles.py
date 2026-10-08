@@ -24,10 +24,14 @@ TIERS = ("core", "gates", "proc", "audit-current", "audit-sealed", "e2e-local")
 DEFAULT_TIER = "core"
 DEFAULT_ORIGIN = "default"
 TAGS = ("concurrency", "platform")
-# Static profiles: a tier set or a tag. `full` is the unchanged default selection.
+# Static profiles: a tier set, a tag, or one side of core's reviewed parallel split. `full` is the unchanged
+# default selection. `core-parallel` is the only selection xdist workers may run (Plan 11.30 Task 5): core nodes
+# the manifest's reviewed [parallel] rule admits; `core-serial` is the rest of core.
 STATIC_PROFILES = {
     "full": None,
     "core": ("tier", frozenset({"core"})),
+    "core-parallel": ("parallel", True),
+    "core-serial": ("parallel", False),
     "proc": ("tier", frozenset({"proc"})),
     "audit": ("tier", frozenset({"audit-current", "audit-sealed"})),
     "platform": ("tag", "platform"),
@@ -38,7 +42,8 @@ _TAG_KEYS = {"name", "paths", "nodes", "why"}
 _MEASUREMENT_KEYS = {"source", "explicit_seconds", "slow_nodes"}
 _SELECTION_KEYS = {"broad_paths", "prose_gates", "platform_paths"}
 _INPUT_KEYS = {"paths", "tiers", "files", "why"}
-_TOP_KEYS = {"schema", "rules", "tags", "measurement", "selection", "inputs"}
+_PARALLEL_KEYS = {"serial", "why"}
+_TOP_KEYS = {"schema", "rules", "tags", "measurement", "selection", "inputs", "parallel"}
 
 
 class ManifestError(ValueError):
@@ -81,6 +86,9 @@ class ProfileManifest:
     prose_gates: tuple[str, ...] = ()
     platform_paths: tuple[str, ...] = ()
     inputs: tuple[InputRule, ...] = ()
+    # The reviewed [parallel] rule's serial patterns, or None when the manifest has no such rule (then no node is
+    # admitted to xdist workers).
+    parallel_serial: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -89,6 +97,8 @@ class Classification:
     origins: dict[str, str]
     tags: dict[str, frozenset[str]]
     unmatched: tuple[str, ...]
+    # Core nodes admitted to xdist workers by the reviewed [parallel] rule (Plan 11.30 Task 5).
+    parallel: frozenset[str] = frozenset()
 
 
 def _strings(value: object, where: str) -> tuple[str, ...]:
@@ -195,8 +205,22 @@ def load_manifest(text: str) -> ProfileManifest:
     if not isinstance(input_tables, list):
         raise ManifestError("inputs must be an array of tables")
     inputs = tuple(_input(table, f"inputs[{index}]") for index, table in enumerate(input_tables, 1))
+    parallel = _parallel(data["parallel"]) if "parallel" in data else None
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    return ProfileManifest(rules, tags, source, float(seconds), slow, digest, broad, prose, platform, inputs)
+    return ProfileManifest(rules, tags, source, float(seconds), slow, digest, broad, prose, platform, inputs, parallel)
+
+
+def _parallel(table: object) -> tuple[str, ...]:
+    """The reviewed [parallel] rule: the core patterns that stay serial, and why the rest may run on xdist workers."""
+    if not isinstance(table, dict) or sorted(set(table) - _PARALLEL_KEYS):
+        raise ManifestError(f"parallel: unknown keys {sorted(set(table) - _PARALLEL_KEYS) if isinstance(table, dict) else 'not a table'}")
+    why = table.get("why")
+    if not isinstance(why, str) or not why.strip():
+        raise ManifestError("parallel: a reviewed rule needs a non-empty why")
+    serial = _strings(table.get("serial", []), "parallel.serial")
+    if len(set(serial)) != len(serial):
+        raise ManifestError("parallel.serial: a pattern appears more than once")
+    return serial
 
 
 def _node_match(nodeid: str, pattern: str) -> bool:
@@ -245,7 +269,27 @@ def classify_nodes(nodeids: tuple[str, ...], manifest: ProfileManifest) -> Class
         for rule in (*manifest.rules, *manifest.tags) for pattern in rule.patterns
         if (rule.label, pattern) not in deciding
     )
-    return Classification(tiers, origins, tags, unmatched)
+    parallel, dead = _parallel_members(tiers, tags, manifest.parallel_serial)
+    return Classification(tiers, origins, tags, unmatched + dead, parallel)
+
+
+def _parallel_members(
+    tiers: dict[str, str], tags: dict[str, frozenset[str]], serial: tuple[str, ...] | None,
+) -> tuple[frozenset[str], tuple[str, ...]]:
+    """The core nodes admitted to xdist workers, and the serial patterns that match no core node. Without a reviewed
+    rule nothing is admitted. A tagged node (concurrency, platform) always stays serial."""
+    if serial is None:
+        return frozenset(), ()
+    core = [node for node, tier in tiers.items() if tier == "core"]
+
+    def kept_serial(node: str, pattern: str) -> bool:
+        return _node_match(node, pattern) if "::" in pattern else _file(node).full_match(pattern)
+
+    dead = tuple(f"parallel: {pattern}" for pattern in serial if not any(kept_serial(node, pattern) for node in core))
+    admitted = frozenset(
+        node for node in core if not tags.get(node) and not any(kept_serial(node, pattern) for pattern in serial)
+    )
+    return admitted, dead
 
 
 def profile_members(classification: Classification, profile: str) -> frozenset[str]:
@@ -258,6 +302,9 @@ def profile_members(classification: Classification, profile: str) -> frozenset[s
     kind, wanted = selector
     if kind == "tier":
         return frozenset(node for node, tier in classification.tiers.items() if tier in wanted)
+    if kind == "parallel":
+        core = frozenset(node for node, tier in classification.tiers.items() if tier == "core")
+        return core & classification.parallel if wanted else core - classification.parallel
     return frozenset(node for node, tags in classification.tags.items() if wanted in tags)
 
 
@@ -355,7 +402,7 @@ class Selection:
     obligations: tuple[str, ...]
     provisional: tuple[tuple[str, str | None], ...]
     concurrency: tuple[str, ...]  # checkpoint: the selected nodes repeated under load
-    audit_depth: str  # "full" at a checkpoint; "none" while R5 keeps current audits out of commits
+    audit_depth: str  # "full" at a checkpoint; "quick" when a commit selects a current audit (R5 after G); else "none"
 
 
 def parse_name_status(raw: bytes) -> tuple[Change, ...]:
@@ -646,9 +693,11 @@ def select_tests(changes: ChangeSet, classification: Classification, dependencie
     current_audits = [node for node, tier in tiers.items() if tier == "audit-current"]
     if profile == "checkpoint":
         add(current_audits, "checkpoint: full-depth current audit")
-    else:
+    elif profile != "commit":
         for node in current_audits:
-            reasons.pop(node, None)  # R5: current audits are checkpoint-only at commit until audit optimization G
+            reasons.pop(node, None)
+    # R5 after G (accepted at Plan 11.30 Task 4): a commit keeps the current audits a changed input reached (by
+    # dependency or declared input; broad fallback adds only core and gates) and runs them at quick depth.
     if profile == "quick":
         for node in [node for node in reasons if tiers.get(node) != "core"]:
             reasons.pop(node)
@@ -660,8 +709,8 @@ def select_tests(changes: ChangeSet, classification: Classification, dependencie
         members = [node for node in nodes if tiers[node] == tier]
         if members:
             domains[tier] = f"included: {reasons[members[0]]}"
-        elif tier == "audit-current" and profile != "checkpoint":
-            domains[tier] = "omitted: R5 keeps current audits checkpoint-only at commit until audit optimization G"
+        elif tier == "audit-current" and profile == "quick":
+            domains[tier] = "omitted: the quick profile runs core only"
         else:
             domains[tier] = "omitted: no dependency or declared input of this domain changed"
     label = "selected"
@@ -674,5 +723,5 @@ def select_tests(changes: ChangeSet, classification: Classification, dependencie
         fallback=tuple(fallback), platform_triggers=real_triggers, domains=domains,
         obligations=(WSL_OBLIGATION,) if real_triggers and profile == "commit" else (),
         provisional=tuple(changes.provisional), concurrency=concurrency,
-        audit_depth="full" if profile == "checkpoint" else "none",
+        audit_depth="full" if profile == "checkpoint" else "quick" if any(tiers[node] == "audit-current" for node in nodes) else "none",
     )

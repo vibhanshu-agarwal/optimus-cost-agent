@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from tools.doc_paths import link_resolves, resolves_with_archive
+from tools.tracked_repository_files import index_environment
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PLANS_ROOT = REPO_ROOT / "docs/superpowers/plans"
@@ -101,6 +102,7 @@ def _tracked_repository_files() -> tuple[Path, ...]:
         check=True,
         capture_output=True,
         text=True,
+        env=index_environment(REPO_ROOT),  # inside a commit hook's test run: the commit's own index
     ).stdout.split("\0")
     return tuple(REPO_ROOT / relative_path for relative_path in tracked if relative_path)
 

@@ -143,10 +143,12 @@ def test_a_module_change_selects_its_transitive_relative_and_string_importers(
     found = _select(classification, dependencies, _m("src/pkg/core.py"))
     assert _files(found) == {
         "tests/unit/test_core.py", "tests/unit/test_leaf.py", "tests/unit/test_strings.py", "tests/unit/test_proc.py",
-        *_ALL_GATES,
+        "tests/unit/test_audit.py", *_ALL_GATES,
     }
     assert found.fallback == () and found.label == "selected"
-    assert "tests/unit/test_audit.py::test_a" not in found.nodes  # R5: current audits are checkpoint-only at commit
+    # G accepted (Plan 11.30 Task 4): a commit keeps the current audit its change reaches, at quick depth.
+    assert found.reasons["tests/unit/test_audit.py::test_a"].startswith("depends on src/pkg/core.py")
+    assert found.audit_depth == "quick"
     assert found.reasons["tests/unit/test_core.py::test_b[1]"].startswith("depends on src/pkg/core.py")
 
 
@@ -292,7 +294,10 @@ def test_no_single_change_turns_a_commit_into_the_full_suite(
     for path in _TRACKED:
         found = _select(classification, dependencies, _m(path))
         assert set(found.nodes) < set(_NODES), path
-        assert "tests/unit/test_audit.py::test_a" not in found.nodes, path
+        if "tests/unit/test_audit.py::test_a" in found.nodes:  # only a change that reaches it, and only at quick depth
+            assert found.audit_depth == "quick" and not found.reasons["tests/unit/test_audit.py::test_a"].startswith("fallback"), path
+        else:
+            assert found.audit_depth == "none", path
         if not path.startswith("tests/e2e/"):
             assert "tests/e2e/test_e2e.py::test_a" not in found.nodes, path
 
@@ -307,6 +312,25 @@ def test_a_platform_source_triggers_native_platform_nodes_and_a_wsl_obligation(
         assert found.obligations == ("wsl-platform: next checkpoint",)
     quiet = _select(classification, dependencies, _m("src/pkg/core.py"))
     assert quiet.platform_triggers == () and quiet.obligations == ()
+
+
+def test_after_g_a_commit_runs_only_the_current_audits_its_changes_reach_and_only_at_quick_depth(
+    classification: profiles.Classification, dependencies: profiles.DependencyMap,
+) -> None:
+    """Plan 11.30 Task 5 (G accepted at Task 4): R5's changed-input quick switch. A commit keeps a current audit only
+    when a changed input reaches it (never through broad fallback), and runs it at quick depth; the quick profile has
+    none; a checkpoint runs every current audit at full depth."""
+    reached = _select(classification, dependencies, _m("src/pkg/core.py"))
+    assert "tests/unit/test_audit.py::test_a" in reached.nodes and reached.audit_depth == "quick"
+    assert reached.domains["audit-current"].startswith("included: depends on src/pkg/core.py"), reached.domains
+    unreached = _select(classification, dependencies, _m("src/pkg/winonly.py"))
+    assert "tests/unit/test_audit.py::test_a" not in unreached.nodes and unreached.audit_depth == "none"
+    assert unreached.domains["audit-current"].startswith("omitted"), unreached.domains
+    broad = _select(classification, dependencies, _m("pyproject.toml"))
+    assert "tests/unit/test_audit.py::test_a" not in broad.nodes and broad.audit_depth == "none"
+    quick = _select(classification, dependencies, _m("src/pkg/core.py"), profile="quick")
+    assert "tests/unit/test_audit.py::test_a" not in quick.nodes and quick.audit_depth == "none"
+    assert _select(classification, dependencies, _m("src/pkg/core.py"), profile="checkpoint").audit_depth == "full"
 
 
 def test_a_checkpoint_adds_all_gates_and_full_depth_current_audits_even_for_prose(

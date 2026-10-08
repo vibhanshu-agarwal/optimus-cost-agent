@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -86,3 +88,64 @@ def test_inventory_fails_when_a_tracked_file_is_missing(tmp_path: Path) -> None:
 
     with pytest.raises(TrackedFileInventoryError, match="tracked_file_missing"):
         tracked_repository_files(root, pathspecs=("src",))
+
+
+def _commit_index(root: Path) -> Path:
+    """A partial commit's index (what git names GIT_INDEX_FILE for `git commit -- <path>`): HEAD, nothing removed."""
+    index = root / ".git" / "next-index-test.lock"
+    subprocess.run(["git", "read-tree", "HEAD"], cwd=root, check=True, capture_output=True,
+                   env={**os.environ, "GIT_INDEX_FILE": str(index)})
+    return index
+
+
+def test_inside_a_commit_hook_run_the_scanner_lists_the_commit_s_own_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Plan 11.30 residual (Task 3, LOW): a test run inside a partial-commit hook has GIT_* stripped, so the scanner
+    listed the default index. A deletion staged outside the commit then hid a file the commit keeps. The runner names
+    the commit's index under non-GIT_ names; the scanner lists it, for that repository only."""
+    root = _repository(tmp_path)
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "base")
+    index = _commit_index(root)
+    _git(root, "rm", "-q", "--cached", "tests/tracked.py")  # staged outside the commit; the file stays on disk
+    assert _relative(root, tracked_repository_files(root, pathspecs=["tests"])) == ()  # the default index
+    monkeypatch.setenv("TEST_RUN_COMMIT_INDEX_FILE", str(index))
+    monkeypatch.setenv("TEST_RUN_COMMIT_INDEX_ROOT", str(root))
+    assert _relative(root, tracked_repository_files(root, pathspecs=["tests"])) == ("tests/tracked.py",)
+    (tmp_path / "other").mkdir()
+    other = _repository(tmp_path / "other")  # another repository is never listed through this commit's index
+    (other / "tests" / "other_only.py").write_text("OTHER = True\n", encoding="utf-8")
+    _git(other, "add", "tests/other_only.py")  # tracked only there: the commit's index would not list it
+    assert _relative(other, tracked_repository_files(other, pathspecs=["tests"])) == ("tests/other_only.py", "tests/tracked.py")
+    index.unlink()  # a named commit index that is gone: refused, never an empty listing
+    with pytest.raises(TrackedFileInventoryError, match="commit_index_missing"):
+        tracked_repository_files(root, pathspecs=["tests"])
+
+
+_COMMIT_INDEX = "lists the repository through index_environment, so inside a commit hook's test run it reads the commit's index"
+# Every tracked Python file that lists a Git index, and why that listing cannot read the default index where a commit's
+# own index is meant (Plan 11.30 Task 3 residual, enumerated as a class).
+_INDEX_LISTINGS = {
+    "tools/tracked_repository_files.py": _COMMIT_INDEX,
+    "tools/doc_paths.py": _COMMIT_INDEX,
+    "tests/unit/docs/test_docs_index.py": _COMMIT_INDEX,
+    "tests/unit/docs/test_plan_directory_hygiene.py": _COMMIT_INDEX,
+    "tools/testing/run_profile.py": "the runner itself: it runs inside the commit hook, where git's own GIT_INDEX_FILE is in force",
+    "tools/probe_p11_zed_session_load.py": "a manually run probe digests its own checkout; no test run executes that listing",
+    "tests/unit/guardrails/test_ci_parity.py": "its listing programs run in per-test fixture repositories, never the repository being committed",
+    "tests/unit/tools/test_probe_p11_zed_session_load.py": "a stand-in for git that the probe's isolated copies must never call",
+    "tests/unit/tools/test_run_profile.py": "lists a per-test fixture repository's default index, which is the subject",
+}
+
+
+def test_every_index_listing_reads_the_commit_s_index_or_is_reviewed() -> None:
+    root = Path(__file__).resolve().parents[3]
+    needle = re.compile("[\"']ls-" + "files[\"']")
+    found = {
+        path.relative_to(root).as_posix(): path.read_text(encoding="utf-8")
+        for path in tracked_repository_files(root, pathspecs=["tools", "tests", "src"])
+        if path.suffix == ".py" and needle.search(path.read_text(encoding="utf-8"))
+    }
+    assert sorted(set(found) - set(_INDEX_LISTINGS)) == [], "an unreviewed Git index listing"
+    assert sorted(set(_INDEX_LISTINGS) - set(found)) == [], "a reviewed listing no longer exists"
+    for name, why in _INDEX_LISTINGS.items():
+        if why == _COMMIT_INDEX:
+            assert "index_environment(" in found[name], name

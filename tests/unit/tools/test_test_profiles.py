@@ -142,7 +142,47 @@ def test_static_profiles_select_by_tier_or_tag_and_full_selects_everything() -> 
     assert profiles.profile_members(found, "concurrency") == frozenset()
     with pytest.raises(profiles.ClassificationError, match="commit"):
         profiles.profile_members(found, "commit")
-    assert set(profiles.STATIC_PROFILES) == {"full", "core", "proc", "audit", "platform", "concurrency"}
+    assert set(profiles.STATIC_PROFILES) == {
+        "full", "core", "core-parallel", "core-serial", "proc", "audit", "platform", "concurrency",
+    }
+
+
+_PARALLEL_RULES = (
+    '[[rules]]\ntier = "proc"\npaths = ["tests/unit/b/test_two.py"]\nwhy = "spawns"\n'
+    '[[tags]]\nname = "concurrency"\nnodes = ["tests/unit/a/test_one.py::test_y[1]"]\nwhy = "race"\n'
+    '[[tags]]\nname = "platform"\nnodes = ["tests/unit/a/test_one.py::test_y[2]"]\nwhy = "native"\n'
+)
+
+
+def test_core_splits_into_a_reviewed_parallel_set_and_a_serial_remainder() -> None:
+    """Plan 11.30 Task 5: only core nodes the reviewed [parallel] rule admits run on xdist workers. Tagged
+    concurrency and platform nodes and the rule's serial list stay serial; together the two are exactly core."""
+    manifest = _manifest(
+        _PARALLEL_RULES + '[parallel]\nserial = ["tests/unit/a/test_one.py::TestGroup"]\nwhy = "shares a fixed path"\n'
+    )
+    found = profiles.classify_nodes(_NODES, manifest)
+    core = profiles.profile_members(found, "core")
+    parallel = profiles.profile_members(found, "core-parallel")
+    serial = profiles.profile_members(found, "core-serial")
+    assert parallel == {"tests/unit/a/test_one.py::test_x", "tests/e2e/test_three.py::test_v"}
+    assert serial == {
+        "tests/unit/a/test_one.py::test_y[1]", "tests/unit/a/test_one.py::test_y[2]", "tests/unit/a/test_one.py::TestGroup::test_z",
+    }
+    assert parallel | serial == core and not parallel & serial
+    assert found.unmatched == ()
+
+
+def test_without_a_reviewed_parallel_rule_nothing_runs_in_parallel() -> None:
+    found = profiles.classify_nodes(_NODES, _manifest(_PARALLEL_RULES))
+    assert profiles.profile_members(found, "core-parallel") == frozenset()
+    assert profiles.profile_members(found, "core-serial") == profiles.profile_members(found, "core")
+
+
+def test_a_serial_pattern_that_matches_no_core_node_is_a_dead_rule() -> None:
+    manifest = _manifest(_PARALLEL_RULES + '[parallel]\nserial = ["tests/unit/z/test_gone.py"]\nwhy = "gone"\n')
+    assert profiles.classify_nodes(_NODES, manifest).unmatched == ("parallel: tests/unit/z/test_gone.py",)
+    with pytest.raises(profiles.ManifestError, match="parallel"):
+        _manifest('[parallel]\nserial = ["tests/x.py"]\n')  # a reviewed rule states why
 
 
 def test_a_measured_slow_node_needs_an_explicit_rule_even_to_stay_core() -> None:
@@ -351,7 +391,8 @@ def test_a_nested_session_restores_the_outer_session_s_audit_state() -> None:
     from tests.support import profiles_plugin as plugin
 
     outer = plugin.current_audit_session()
-    inner_config = SimpleNamespace(getoption=lambda name: "quick")
+    # Like pytest's Config.getoption: one option set, every other one at its default.
+    inner_config = SimpleNamespace(getoption=lambda name, default=None: {"audit_depth": "quick"}.get(name, default))
     plugin.pytest_configure(inner_config)  # type: ignore[arg-type]
     try:
         inner = plugin.current_audit_session()
@@ -477,6 +518,7 @@ _REVIEWED_CHEAP_LAUNCHERS = {
     "tests/unit/tools/test_debug_trace_message_rule.py": _MIXED,
     "tests/unit/tools/test_plan1126_unrun_binding.py": _MIXED,
     "tests/unit/tools/test_registry_maintenance.py": "one literal child whose identity the PID-reuse controls end; tool unit tests",
+    "tests/unit/tools/test_run_context_xdist_probes.py": "the xdist targets: one literal sleep grandchild, started only inside the nested grandchild control; otherwise empty",
     "tests/unit/tools/test_run_plan996_acpx_security_evidence.py": _MIXED,
     "tests/unit/tools/test_test_profiles.py": _MIXED,
 }
@@ -594,6 +636,20 @@ def test_every_file_that_launches_a_child_has_a_reviewed_tier(classification: pr
     cheap = {file for file in {key.split("::", 1)[0] for key in sites} if "core" in files.get(file, set())}
     assert sorted(cheap - set(_REVIEWED_CHEAP_LAUNCHERS)) == [], "a launching file has unreviewed core nodes"
     assert sorted(set(_REVIEWED_CHEAP_LAUNCHERS) - cheap) == [], "a reviewed launcher no longer has core nodes"
+
+
+# The xdist targets launch a child only inside the nested grandchild control, where that launch is the subject.
+_PARALLEL_LAUNCHERS = {"tests/unit/tools/test_run_context_xdist_probes.py"}
+
+
+def test_no_core_file_that_launches_a_child_runs_on_xdist_workers(classification: profiles.Classification) -> None:
+    """Plan 11.30 Task 5, v4 design contract 5: subprocess ownership stays serial. Every core node in a file with a
+    mapped launch site is outside core-parallel (the reviewed [parallel] rule lists the file)."""
+    sites = json.loads((_ROOT / "tests" / "unit" / "tools" / "run_context_child_sites.json").read_text(encoding="utf-8"))["sites"]
+    launching = {key.split("::", 1)[0] for key in sites} - _PARALLEL_LAUNCHERS
+    admitted = profiles.profile_members(classification, "core-parallel")
+    assert sorted({node.split("::", 1)[0] for node in admitted} & launching) == [], "a launching file runs on xdist workers"
+    assert any(node.split("::", 1)[0] in _PARALLEL_LAUNCHERS for node in admitted), "the xdist targets are not admitted"
 
 
 def test_current_source_guards_are_gates_or_audit_current(classification: profiles.Classification) -> None:

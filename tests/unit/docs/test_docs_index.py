@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 from tools.doc_paths import ARCHIVE_DIRNAME, DOCS_ROOT
+from tools.tracked_repository_files import index_environment
 
 INDEX = DOCS_ROOT / "README.md"
 MARKDOWN_LINK = re.compile(r"\[[^]]*\]\((?P<target>[^)#]+)(?:#[^)]*)?\)")
@@ -55,6 +56,7 @@ def _tracked_document_names() -> list[str]:
     completed = subprocess.run(
         ["git", "ls-files", "-z", "--", "docs"],
         cwd=DOCS_ROOT.parent, check=True, capture_output=True, text=True, encoding="utf-8",
+        env=index_environment(DOCS_ROOT.parent),  # inside a commit hook's test run: the commit's own index
     )
     names = [name for name in completed.stdout.split("\0") if name]
     assert names, "the tracked-document inventory came back empty"
