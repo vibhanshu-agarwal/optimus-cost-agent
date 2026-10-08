@@ -118,3 +118,21 @@
 - The **implementing agent** must, on any pickup (new session, context loss, agent switch), read the log's "Current State" section first before mutating the worktree — then verify it against the actual tree (`git status`, digests, key code), never trusting it blindly.
 - Treat the log's recorded rulings and classifications as settled decisions, not proposals. Do not re-derive or contradict a decision already recorded there. If new evidence genuinely conflicts with a recorded ruling, stop and flag it explicitly; never silently reclassify. (A fresh no-context agent that re-derived a settled ruling and got it wrong is the exact failure this log prevents.)
 - A reviewing agent's private/tooling memory, if any, is only the durability backstop for total worktree loss; the in-repo log is the shared, agent-readable source of truth, because one agent cannot read another's private memory.
+
+## Operator-directed review cadence (2026-10-02)
+- Plan three or four sensible implementation checkpoints per plan, at most four; do not add per-task
+  Codex reviews or reviews between checkpoints. Each checkpoint is reviewed by Fable 5.1 first,
+  followed by one consolidated Codex review. Claude implements and resolves the findings.
+- Keep focused test cycles and local task commits between checkpoints; reviewer approval is a
+  checkpoint gate, not a gate on each local task commit. Routine mechanics do not add review steps.
+- For the remaining Plan 12.2 scope, CP1 = Tasks 4-5, CP2 = 6-8, CP3 = 9-11, CP4 = 12-13.
+  The operator approved skipping only `optimus-pytest-coverage` on intervening local commits after
+  focused tests pass. Run every other applicable hook. Run one full suite with coverage at each
+  checkpoint before Fable and Codex reviews; keep all actual pass/fail/skip/unrun results visible.
+- If Fable findings produce fixes after the full run, run their focused checks and disclose the
+  full-suite-tested commit plus the exact fix delta to Codex; do not claim that the earlier full
+  run tested later bytes. A failed or invalidated gate remains visible within that checkpoint.
+- This overrides earlier per-task review/local-commit conditions. It grants no other hook bypass,
+  paid/live call, service change or merge authority. See
+  [ADR-016](docs/decisions/ADR-016-checkpoint-review-cadence.md); the sole backlog owns current
+  scope and gates.

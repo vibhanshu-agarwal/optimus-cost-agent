@@ -1,0 +1,416 @@
+[
+  {
+    "document": "hld",
+    "baseline_page": 3,
+    "old": "one-key, one-budget, one-ledger thesis",
+    "new": "one-key, one-account, one-ledger model",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 3,
+    "old": "policy and budget controls",
+    "new": "trusted policy, capacity and finite work controls",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 3,
+    "old": "policy, budget, attribution, aggregator",
+    "new": "policy, capacity, attribution, aggregator",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 4,
+    "old": "LangGraph Stateful Router (Claude Haiku 4.5 Triage Gate) for escalation route evaluation.",
+    "new": "host-selected eligible fixed-model path under the curated registry. Auto classification and automatic escalation remain deferred.",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 6,
+    "old": "max 100k context tokens, preferred HAIKU model tier.",
+    "new": "verified 262144-token total request ceiling including output; eligible fixed model.",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 6,
+    "old": "max 150k context tokens, preferred PRO model tier.",
+    "new": "verified 262144-token total request ceiling including output; eligible fixed model.",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 6,
+    "old": "max 250k context tokens, preferred PRO model tier.",
+    "new": "verified 262144-token total request ceiling including output; eligible fixed model.",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 7,
+    "old": "policy + budget + usage",
+    "new": "policy + capacity + usage",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 8,
+    "old": "triage routing",
+    "new": "trusted fixed-model routing",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 9,
+    "old": "Router (Triage Gate) Haiku classifies task -> routes to cheapest sufficient model",
+    "new": "Registry (Fixed-model Path) Explicit eligible role/model -> verified approved endpoint",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 9,
+    "old": "Pro/Opus tier.",
+    "new": "ineligible or unnecessarily expensive route.",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 10,
+    "old": "the current run’s USD budget",
+    "new": "complete request capacity and finite work controls",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 13,
+    "old": "the same Gateway budget policy",
+    "new": "the same Gateway trust, capacity and accounting policy",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 13,
+    "old": "cheap, budgeted classifier",
+    "new": "cheap, finitely bounded classifier",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 13,
+    "old": "Agent Execution Guardrails & Workflow Strategy v1.0",
+    "new": "Agent Execution Guardrails & Workflow Strategy v1.4",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 2,
+    "old": "GLM-5.2 input caching",
+    "new": "verified route input caching",
+    "count": 1
+  },
+  {
+    "document": "lld",
+    "baseline_page": 2,
+    "old": "budget authority",
+    "new": "request capacity and accounting authority",
+    "count": 1
+  },
+  {
+    "document": "lld",
+    "baseline_page": 2,
+    "old": "Budget + usage ledger",
+    "new": "Capacity + usage ledger",
+    "count": 1
+  },
+  {
+    "document": "lld",
+    "baseline_page": 3,
+    "old": "provenance, and run budget",
+    "new": "provenance, complete request capacity and finite work",
+    "count": 1
+  },
+  {
+    "document": "lld",
+    "baseline_page": 4,
+    "old": "loopback Gateway policy and budget",
+    "new": "loopback Gateway trust, capacity and accounting",
+    "count": 1
+  },
+  {
+    "document": "lld",
+    "baseline_page": 20,
+    "old": "A transient call has at most three attempts; every retry records attempt number, classification, latency, and disposition.",
+    "new": "For model requests the accepted maximum is one primary and at most one explicitly permitted same-role recovery attempt after a known eligible transport/provider failure. Fixed-model fallback is off by default; every actual attempt records identity, latency, classification and disposition.",
+    "count": 1
+  },
+  {
+    "document": "lld",
+    "baseline_page": 30,
+    "old": "Budget Enforce current-run USD cap against Gateway ledger before billable dispatch",
+    "new": "Capacity Enforce complete request plus one verified output reserve before every model attempt",
+    "count": 1
+  },
+  {
+    "document": "lld",
+    "baseline_page": 30,
+    "old": "ledger.require_budget_capacity(request.run_id, request.max_cost_usd)",
+    "new": "require_final_capacity_and_output(request, policy)",
+    "count": 1
+  },
+  {
+    "document": "lld",
+    "baseline_page": 36,
+    "old": "Bound transient attempts at three and classify permanent failures.",
+    "new": "For model requests use one primary plus at most one explicitly permitted same-role recovery attempt; fixed-model fallback is off. Classify permanent/unknown-cost failures without automatic retry.",
+    "count": 1
+  },
+  {
+    "document": "lld",
+    "baseline_page": 38,
+    "old": "T est Strategy v1.5",
+    "new": "Test Strategy v1.8",
+    "count": 1
+  },
+  {
+    "document": "lld",
+    "baseline_page": 38,
+    "old": "at least 80% aggregate production-code coverage",
+    "new": "at least 80% aggregate coverage plus independently enforced product and Plan 12 package floors",
+    "count": 1
+  },
+  {
+    "document": "lld",
+    "baseline_page": 39,
+    "old": "USD budget, provider- reported cost",
+    "new": "finite work controls, provider-reported cost",
+    "count": 1
+  },
+  {
+    "document": "lld",
+    "baseline_page": 39,
+    "old": "Workflow Strategy v1.1",
+    "new": "Workflow Strategy v1.4",
+    "count": 1
+  },
+  {
+    "document": "lld",
+    "baseline_page": 39,
+    "old": "LoopBudgetPolicy (max_iterations, max_budget_usd, max_wall_clock_minutes)",
+    "new": "LoopBudgetPolicy (max_iterations, max_wall_clock_minutes, repeated_failure_limit; monetary policy only for explicitly capped evaluation callers)",
+    "count": 1
+  },
+  {
+    "document": "lld",
+    "baseline_page": 39,
+    "old": "COMPLETED | MAX_ITERATIONS | BUDGET_EXHAUSTED | WALL_CLOCK | REPEATED_FAILURE | HUMAN_HALT",
+    "new": "COMPLETED | MAX_ITERATIONS | WALL_CLOCK | REPEATED_FAILURE | HUMAN_HALT; BUDGET_EXHAUSTED only for independent evaluation",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 2,
+    "old": "the same budget and trust discipline",
+    "new": "the same finite-work and trust discipline",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 2,
+    "old": "Gateway budget and observability ledger",
+    "new": "Gateway capacity, accounting and observability controls",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 6,
+    "old": "cheap, budgeted model",
+    "new": "cheap, finitely bounded model",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 6,
+    "old": "the same budget discipline",
+    "new": "the same trust, capacity and accounting discipline",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 7,
+    "old": "optional classifier is budgeted and rare",
+    "new": "optional classifier is finitely bounded and rare",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 10,
+    "old": "max_budget_usd Gateway USD cap across the whole loop, reconciled from provider- reported cost.",
+    "new": "evaluation monetary ceiling Only for independently authorized evaluation callers; product loops have no dollar stop after migration.",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 10,
+    "old": "max_budget_usd is the separately reviewed USD field rename; it does not add a cross-run limit.",
+    "new": "Retain exactly-once cost accounting and configured alerts. Product count/time/failure controls remain finite; evaluation monetary policy is explicitly scoped.",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 11,
+    "old": "and max_budget_usd is enforced by the same local Gateway budget policy against provider-reported cost as every other call.",
+    "new": "and uses the same trusted route/capacity and actual-cost accounting contracts. Product evaluators have no dollar stop after migration; independently capped evaluations keep their explicit ceiling.",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 12,
+    "old": "Cheap evaluator + hard budgets",
+    "new": "Cheap evaluator + finite work bounds",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 12,
+    "old": "strict budget",
+    "new": "finite work bound",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 12,
+    "old": "Rare, budgeted, off the hot path",
+    "new": "Rare, bounded, off the hot path",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 12,
+    "old": "account, USD budget, provider-reported cost ledger",
+    "new": "account, finite work/capacity controls, provider-reported cost ledger",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 14,
+    "old": "max_iterations, max_budget_credits,",
+    "new": "max_iterations, repeated_failure_limit,",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 14,
+    "old": "COMPLETED | MAX_ITERATIONS | BUDGET_EXHAUSTED",
+    "new": "COMPLETED | MAX_ITERATIONS",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 14,
+    "old": "    # | WALL_CLOCK | REPEATED_FAILURE | HUMAN_HALT",
+    "new": "    # | WALL_CLOCK | REPEATED_FAILURE | HUMAN_HALT\n    # independent evaluation may add a scoped monetary exhaustion reason",
+    "count": 1
+  },
+  {
+    "document": "guardrails",
+    "baseline_page": 15,
+    "old": "on budget exhaustion, and on repeated- failure detection",
+    "new": "on wall-clock exhaustion and repeated-failure detection",
+    "count": 1
+  },
+  {
+    "document": "test",
+    "baseline_page": 3,
+    "old": "Coverage remains at least 80% aggregate Python production code",
+    "new": "Coverage includes the 80% aggregate floor, independent product floors and separate 80% Plan 12 package floors under section 8A",
+    "count": 1
+  },
+  {
+    "document": "test",
+    "baseline_page": 4,
+    "old": "after max_retries=3 consecutive gate failures, state transitions to Terminated and user_escalation signal emitted.",
+    "new": "at the configured finite work boundary, state transitions truthfully and a stop report is emitted. Pin the current three planning rounds, 30 minutes and two repeated failures separately.",
+    "count": 1
+  },
+  {
+    "document": "test",
+    "baseline_page": 6,
+    "old": "Malformed or missing provider usage/cost fails closed.",
+    "new": "Malformed or missing successful provider usage/cost remains invalid; the stage records explicit unknown cost and preserves known subtotals without latching the product session closed.",
+    "count": 1
+  },
+  {
+    "document": "test",
+    "baseline_page": 9,
+    "old": "tenacity retries up to max_retries=3; succeeds on 3rd attempt; retry_count=2 in metadata.",
+    "new": "an explicitly recovery-enabled same-role request makes at most one recovery; succeeds on attempt two with both attempt receipts. Fixed-model recovery-off makes only one attempt.",
+    "count": 1
+  },
+  {
+    "document": "test",
+    "baseline_page": 9,
+    "old": "BudgetExhaustedError: ABORT_WITH_REPORT; run terminates; cost_usd at time of abort recorded in ledger.",
+    "new": "Independent evaluation budget exhaustion stops that evaluation and preserves receipts. A successful product response above the former $0.05 is delivered; no product dollar stop remains after migration.",
+    "count": 1
+  },
+  {
+    "document": "test",
+    "baseline_page": 9,
+    "old": "max_retries=3 exceeded: ESCALATE_TO_USER returned; prior_failures injected into user escalation payload.",
+    "new": "Finite configured attempts exhausted: report the true failure and all attempt identities; no retry-until-pass.",
+    "count": 1
+  },
+  {
+    "document": "test",
+    "baseline_page": 9,
+    "old": "Gateway returns 503 twice, then 200: agent retries twice, succeeds; working tree unchanged after failed attempts; final patch applied only on success.",
+    "new": "Gateway returns one known eligible failure then success: explicit recovery-enabled same-role request uses two attempts; fixed-model recovery-off does not retry. No failed attempt mutates the working tree.",
+    "count": 1
+  },
+  {
+    "document": "test",
+    "baseline_page": 9,
+    "old": "Fitness gate fails on attempts 1 and 2, passes on attempt 3: replan_context() is injected with failure summaries on attempts 2 and 3; final patch differs from attempt 1.",
+    "new": "Fitness failures use configured planning/time/repeated-failure boundaries; targeted replan context is supplied only while those bounds permit continuation. Pin the actual stop and effect evidence.",
+    "count": 1
+  },
+  {
+    "document": "test",
+    "baseline_page": 9,
+    "old": "Budget exhausted mid-run: run terminates gracefully; partial telemetry is flushed; no partial file writes occur in the working tree.",
+    "new": "Evaluation cap exhaustion stops only its approved evaluation. Product count/time/cancellation/permission failures preserve truthful telemetry and effect state; do not relabel them as dollar exhaustion.",
+    "count": 1
+  },
+  {
+    "document": "test",
+    "baseline_page": 13,
+    "old": "Workflow Strategy v1.0",
+    "new": "Workflow Strategy v1.4",
+    "count": 1
+  },
+  {
+    "document": "test",
+    "baseline_page": 13,
+    "old": "on budget exhaustion, and on repeated-failure detection",
+    "new": "on wall-clock exhaustion and repeated-failure detection",
+    "count": 1
+  },
+  {
+    "document": "test",
+    "baseline_page": 14,
+    "old": "completion / max-iter / budget / repeated failure",
+    "new": "completion / max-iter / wall-clock / repeated failure",
+    "count": 1
+  },
+  {
+    "document": "hld",
+    "baseline_page": 11,
+    "old": "Gateway applies policy and budget controls; diagram auth + policy / budget precheck",
+    "new": "Gateway authenticates trusted policy and complete input/output capacity; request/ledger/OTLP edges retained",
+    "count": 1,
+    "kind": "full semantic page/diagram replacement"
+  }
+]

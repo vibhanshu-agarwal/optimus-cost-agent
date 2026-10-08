@@ -32,6 +32,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 MANIFEST_SCHEMA_VERSION = 1
+# Plan 12.2 Task 5: a manifest that binds a trusted model registry is version 2 and signs the
+# registry's approval literal. Version 1 manifests (no registry) keep their exact bytes.
+MANIFEST_REGISTRY_SCHEMA_VERSION = 2
 MANIFEST_MAX_AGE_SECONDS = 60
 
 # Plan 9.96, Task 5 Batch 3 (review finding): the SINGLE shared source for
@@ -101,6 +104,7 @@ class GatewayChildManifest:
     expires_at: datetime
     nonce: str
     signature: str
+    model_registry: str | None = None
 
 
 def read_manifest_hmac_key(keyring_backend: Any) -> bytes:
@@ -139,6 +143,7 @@ def _canonical_fields(
     issued_at: str,
     expires_at: str,
     nonce: str,
+    model_registry: str | None = None,
 ) -> dict[str, Any]:
     """Canonical field mapping used for BOTH signing and serialization.
 
@@ -146,8 +151,11 @@ def _canonical_fields(
     divergence produces a signature that can never match, which is exactly
     the class of bug that made Task 4's candidate/approval digest
     computation permanently incompatible before the shared-function fix.
+
+    ``model_registry`` is present only in a version-2 manifest, so a manifest without a registry
+    signs exactly the version-1 field set.
     """
-    return {
+    fields: dict[str, Any] = {
         "schema_version": schema_version,
         "policy_version": policy_version,
         "workspace_digest": workspace_digest,
@@ -162,6 +170,9 @@ def _canonical_fields(
         "expires_at": expires_at,
         "nonce": nonce,
     }
+    if model_registry is not None:
+        fields["model_registry"] = model_registry
+    return fields
 
 
 def _compute_signature(fields: dict[str, Any], *, hmac_key: bytes) -> str:
@@ -182,9 +193,11 @@ def build_gateway_child_manifest(
     shared_secret: str,
     hmac_key: bytes,
     policy_version: str,
+    model_registry: str | None = None,
 ) -> GatewayChildManifest:
     """Build a signed manifest. issued_at/expires_at are exactly
-    MANIFEST_MAX_AGE_SECONDS apart."""
+    MANIFEST_MAX_AGE_SECONDS apart. ``model_registry`` is the trusted registry's approval literal
+    (Plan 12.2 Task 5), or None while registry enforcement is inactive."""
     if provider != _GATEWAY_PROVIDER:
         raise LaunchManifestError(code="MANIFEST_PROVIDER_INVALID")
 
@@ -195,8 +208,9 @@ def build_gateway_child_manifest(
     provider_fp = _fingerprint_credential(provider_api_key, field_name="provider_api_key", hmac_key=hmac_key)
     shared_fp = _fingerprint_credential(shared_secret, field_name="shared_secret", hmac_key=hmac_key)
 
+    schema_version = MANIFEST_SCHEMA_VERSION if model_registry is None else MANIFEST_REGISTRY_SCHEMA_VERSION
     fields = _canonical_fields(
-        schema_version=MANIFEST_SCHEMA_VERSION,
+        schema_version=schema_version,
         policy_version=policy_version,
         workspace_digest=workspace_digest,
         security_snapshot_digest=security_snapshot_digest,
@@ -209,11 +223,12 @@ def build_gateway_child_manifest(
         issued_at=now.isoformat(),
         expires_at=expires_at.isoformat(),
         nonce=nonce,
+        model_registry=model_registry,
     )
     signature = _compute_signature(fields, hmac_key=hmac_key)
 
     return GatewayChildManifest(
-        schema_version=MANIFEST_SCHEMA_VERSION,
+        schema_version=schema_version,
         policy_version=policy_version,
         workspace_digest=workspace_digest,
         security_snapshot_digest=security_snapshot_digest,
@@ -227,6 +242,7 @@ def build_gateway_child_manifest(
         expires_at=expires_at,
         nonce=nonce,
         signature=signature,
+        model_registry=model_registry,
     )
 
 
@@ -248,6 +264,8 @@ def serialize_gateway_child_manifest(manifest: GatewayChildManifest) -> str:
         "nonce": manifest.nonce,
         "signature": manifest.signature,
     }
+    if manifest.model_registry is not None:
+        data["model_registry"] = manifest.model_registry
     return json.dumps(data, sort_keys=True, separators=(",", ":"))
 
 
@@ -261,6 +279,7 @@ def verify_gateway_child_manifest(
     shared_secret: str,
     bind_host: str,
     bind_port: int,
+    model_registry: str | None = None,
 ) -> GatewayChildManifest:
     """Verify a serialized manifest against the Gateway's actual construction
     inputs. Rejects missing, expired, mismatched, or invalid manifests.
@@ -275,6 +294,10 @@ def verify_gateway_child_manifest(
     presenting the same credentials, exfiltrating the provider API key to an
     unapproved endpoint. This is caught the same way bind_host/bind_port
     mismatches are.
+
+    ``model_registry`` is the approval literal of the registry this Gateway composed itself (Plan
+    12.2 Task 5), or None when it enforces none. The manifest must bind exactly that value: a
+    registry the Gateway does not enforce, or one it does but the manifest omits, fails closed.
     """
     try:
         data = json.loads(serialized)
@@ -296,10 +319,17 @@ def verify_gateway_child_manifest(
             issued_at=data["issued_at"],
             expires_at=data["expires_at"],
             nonce=data["nonce"],
+            model_registry=data.get("model_registry"),
         )
         signature = data["signature"]
-    except (KeyError, TypeError) as exc:
+    except (KeyError, TypeError, AttributeError) as exc:
         raise LaunchManifestError(code="MANIFEST_CORRUPT", detail="missing required field") from exc
+
+    signed_registry = fields.get("model_registry")
+    if signed_registry is not None and not isinstance(signed_registry, str):
+        raise LaunchManifestError(code="MANIFEST_CORRUPT", detail="model_registry must be a string")
+    if (fields["schema_version"] == MANIFEST_REGISTRY_SCHEMA_VERSION) != (signed_registry is not None):
+        raise LaunchManifestError(code="MANIFEST_CORRUPT", detail="schema version and model_registry disagree")
 
     expected_signature = _compute_signature(fields, hmac_key=hmac_key)
     if not hmac.compare_digest(signature, expected_signature):
@@ -341,6 +371,9 @@ def verify_gateway_child_manifest(
     if data["bind_host"] != bind_host or data["bind_port"] != bind_port:
         raise LaunchManifestError(code="MANIFEST_BIND_MISMATCH")
 
+    if signed_registry != model_registry:
+        raise LaunchManifestError(code="MANIFEST_MODEL_REGISTRY_MISMATCH")
+
     return GatewayChildManifest(
         schema_version=data["schema_version"],
         policy_version=data["policy_version"],
@@ -356,4 +389,5 @@ def verify_gateway_child_manifest(
         expires_at=expires_at,
         nonce=data["nonce"],
         signature=signature,
+        model_registry=signed_registry,
     )

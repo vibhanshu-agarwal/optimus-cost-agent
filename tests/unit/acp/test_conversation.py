@@ -24,7 +24,7 @@ from optimus.acp.shapes import build_usage_update
 
 def _state(tmp_path: Path, *, environ: dict[str, str] | None = None) -> ConversationState:
     env = {
-        "OPTIMUS_API_KEY": "opt-test-key-abcdefghijklmnopqrstuvwxyz",
+        "OPTIMUS_API_KEY": "opt-test-key-abcdefghijklmnopqrstuvwxyz",  # pragma: allowlist secret - synthetic test fixture
         "OPTIMUS_GATEWAY_URL": "https://gw.example/v1",
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         **(environ or {}),
@@ -66,8 +66,8 @@ def test_canonical_render_is_deterministic_and_keys_by_turn_seq() -> None:
 def test_sanitization_identical_across_consumers(tmp_path: Path) -> None:
     workspace = tmp_path / "ws"
     workspace.mkdir()
-    secret_key = "sk-ant-abcdefghijklmnopqrstuvwxyz0123456789"
-    password = "hunter%402"
+    secret_key = "sk-ant-abcdefghijklmnopqrstuvwxyz0123456789"  # pragma: allowlist secret - synthetic test fixture
+    password = "hunter%402"  # pragma: allowlist secret - synthetic test fixture
     decoded = "hunter@2"
     env = {
         "OPTIMUS_API_KEY": secret_key,
@@ -284,7 +284,8 @@ def test_build_usage_update_uses_uint64_integers() -> None:
             "sessionUpdate": "usage_update",
             "used": 10,
             "size": 131_072,
-            "cost": {"amount": "0.25", "currency": "USD"},
+            # ACP v1 Cost.amount is a JSON number (Plan 12.2 Task 3).
+            "cost": {"amount": 0.25, "currency": "USD"},
         },
     }
     omitted = build_usage_update(session_id="s1", used=1, size=131_072, cost=None)

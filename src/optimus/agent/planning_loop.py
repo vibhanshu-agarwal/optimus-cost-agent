@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -18,10 +18,19 @@ from optimus.agent.directives import (
     parse_mcp_call_line,
     parse_mcp_list_line,
 )
-from optimus.agent.models import AgentMcpToolOutput, AgentToolCall
+from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
 from optimus.agent.prompts import build_multi_turn_planner_input, format_mcp_evidence_envelope
 from optimus.agent.tools import AgentToolbox
 from optimus.agent.workspace_context import DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
+from optimus.gateway.attempts import (
+    AttemptIntegrityError,
+    ProviderAttempt,
+    attempts_from_failure,
+    attempts_from_response,
+    first_error,
+    is_input_capacity_refusal,
+    is_preflight_refusal,
+)
 from optimus.gateway.errors import GatewayError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
@@ -35,6 +44,11 @@ from optimus.runtime.state import RuntimeContext
 from optimus.telemetry.subjects import sanitize_workspace_text
 
 PlanningGatewayUsageCallback = Callable[[GatewayUsage, int, int], None]
+# (planning turn, wire attempt, every provider attempt of that request, the route identity it was
+# bound to or None when unbound): one call per host request, known or unknown (Codex CP3 ruling R3/R4).
+PlanningAttemptCallback = Callable[[int, int, tuple[ProviderAttempt, ...], Any], None]
+# A request whose required notice was not delivered: never sent, so it certainly cost nothing.
+_NOT_SENT = ProviderAttempt(number=1, outcome="not_sent", cost_usd=Decimal("0"))
 
 PLANNING_OBSERVATION_MAX_BYTES = 4 * 1024
 PLANNING_NEW_READ_MAX_BYTES = 12 * 1024
@@ -89,9 +103,11 @@ class PlanningLoopPolicy(BaseModel):
     max_planning_turns: int = Field(default=3, ge=1)
     max_wall_clock_minutes: int = Field(default=30, ge=1)
 
-    def to_loop_budget_policy(self, *, max_cost_usd: Decimal) -> LoopBudgetPolicy:
-        if max_cost_usd <= Decimal("0"):
-            raise ValueError("max_cost_usd must be positive before constructing a planning loop")
+    def to_loop_budget_policy(self, *, max_cost_usd: Decimal | None = None) -> LoopBudgetPolicy:
+        """The loop's finite work controls; a dollar bound only for an evaluation caller's explicit cap
+        (Plan 12.2 Task 11). A product planning loop has none."""
+        if max_cost_usd is not None and max_cost_usd <= Decimal("0"):
+            raise ValueError("an evaluation cap must be positive before constructing a planning loop")
         return LoopBudgetPolicy(
             max_iterations=self.max_planning_turns,
             max_budget_usd=max_cost_usd,
@@ -183,7 +199,9 @@ class PlanningProgressEvent(BaseModel):
     total_cost_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     cost_complete: bool = True
     unknown_cost_attempt_count: int = Field(default=0, ge=0)
-    remaining_budget_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    # An evaluation caller's remaining explicit cap; None on every product run, which has no dollar bound
+    # (Plan 12.2 Task 11).
+    remaining_budget_usd: Decimal | None = Field(default=None, ge=Decimal("0"))
     gateway_request_ids: tuple[str, ...] = ()
     wire_retry_count: int = Field(default=0, ge=0)
     stop_reason: str | None = None
@@ -235,12 +253,6 @@ def planning_read_telemetry_fields(
 
 
 PlanningProgressObserver = Callable[[PlanningProgressEvent], None]
-
-
-def run_planning_with_budget(max_cost_usd: Decimal) -> PlanningLoopResult:
-    if max_cost_usd <= Decimal("0"):
-        return PlanningLoopResult(stop_reason="PLANNING_BUDGET_EXHAUSTED", settled_turns=0)
-    raise NotImplementedError("planning loop runner is implemented in a later task")
 
 
 def pack_planning_evidence(
@@ -723,13 +735,42 @@ def planning_corrective_text(
             "Planning stopped because a gateway attempt cost could not be verified; "
             "no further retry was dispatched."
         ),
+        "PLANNING_GATEWAY_REFUSED": (
+            "Planning stopped because the model gateway refused the request before sending it to any "
+            "model. Nothing was charged, stored or changed."
+        ),
+        "PLANNING_NOTICE_UNDELIVERED": (
+            "Planning stopped because the required notice for this model could not be shown, so the "
+            "request was not sent. Nothing was stored or changed."
+        ),
         "PLANNING_UNPARSEABLE_RESPONSE": (
             "Planning stopped after repeated responses that did not match the required directive grammar."
+        ),
+        "PLANNING_OUTPUT_TRUNCATED": (
+            "Planning stopped because the model's reply reached its output limit before the plan was "
+            "complete. Nothing was stored, offered for approval or changed."
+        ),
+        "PLANNING_OUTPUT_UNFINISHED": (
+            "Planning stopped because a content filter or a provider error ended the model's reply before "
+            "it finished. Nothing was stored, offered for approval or changed."
         ),
         "PLANNING_BUDGET_EXHAUSTED": "Planning stopped because the run budget was exhausted.",
         "PLANNING_WALL_CLOCK_EXHAUSTED": "Planning stopped because the wall-clock limit was reached.",
         "PLANNING_TURN_LIMIT_EXHAUSTED": "Planning stopped before a final plan could be settled.",
         "PLANNING_HALTED": "Planning was halted before settlement.",
+        "CONTEXT_CAPACITY_EXCEEDED": (
+            "Planning stopped because its next request would not fit the model's input capacity, even "
+            "with a smaller view of the conversation. That request was not sent, and nothing was stored "
+            "or changed. A shorter prompt or a narrower request that involves fewer workspace files may "
+            "help. If earlier conversation history is the cause, start a new thread."
+        ),
+        # The Gateway's final guard refused the complete request as over the route's input capacity, with
+        # no smaller view tried (release supplement V1; Codex's exact text, 2026-10-04).
+        "PLANNING_INPUT_CAPACITY_EXCEEDED": (
+            "Planning stopped because its next request exceeds the model's input capacity. That request was "
+            "not sent to a model. A shorter prompt or a narrower request involving fewer workspace files may "
+            "help. If earlier conversation history is the cause, start a new thread. This thread stays open."
+        ),
         "PLANNING_OBSERVATION_BUDGET_EXHAUSTED": (
             "Planning stopped because carried observation evidence exceeds the allowed budget."
         ),
@@ -762,7 +803,7 @@ class PlanningLoopRunner:
         policy: PlanningLoopPolicy,
         workspace_root: Path,
         execution_mode: ExecutionMode,
-        max_cost_usd: Decimal,
+        max_cost_usd: Decimal | None = None,
         guard: PreToolGuard | None = None,
         now: Callable[[], datetime] | None = None,
         halt_requested: Callable[[], bool] | None = None,
@@ -772,6 +813,9 @@ class PlanningLoopRunner:
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
         operation_control: object | None = None,
+        context_packer: ContextPacker | None = None,
+        attempt_callback: PlanningAttemptCallback | None = None,
+        route_binder: Any | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -794,6 +838,9 @@ class PlanningLoopRunner:
         self._client_mcp_service = client_mcp_service
         self._mcp_permission_broker = mcp_permission_broker
         self._operation_control = operation_control
+        self._context_packer = context_packer
+        self._attempt_callback = attempt_callback
+        self._route_binder = route_binder
 
     def run(
         self,
@@ -805,8 +852,10 @@ class PlanningLoopRunner:
         initial_workspace_file_sizes: dict[str, int] | None = None,
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
+        conversation_envelope: str = "",
     ) -> PlanningLoopResult:
-        if self._max_cost_usd <= Decimal("0"):
+        # Only an evaluation caller's explicit cap can stop planning on money (Plan 12.2 Task 11).
+        if self._max_cost_usd is not None and self._max_cost_usd <= Decimal("0"):
             return PlanningLoopResult(stop_reason="PLANNING_BUDGET_EXHAUSTED", settled_turns=0)
 
         from optimus.loops.tools import GuardedLoopToolExecutor
@@ -836,6 +885,10 @@ class PlanningLoopRunner:
             client_mcp_service=service,
             mcp_permission_broker=broker,
             operation_control=self._operation_control,
+            conversation_envelope=conversation_envelope,
+            context_packer=self._context_packer,
+            attempt_callback=self._attempt_callback,
+            route_binder=self._route_binder,
         )
         controller = GoalLoopController(
             policy=iteration_runner.loop_budget_policy,
@@ -878,7 +931,7 @@ class _PlanningIterationRunner:
         execution_mode: ExecutionMode,
         policy: PlanningLoopPolicy,
         loop_budget_policy: LoopBudgetPolicy,
-        max_cost_usd: Decimal,
+        max_cost_usd: Decimal | None,
         now: Callable[[], datetime],
         usage_callback: PlanningGatewayUsageCallback | None,
         retry_controller: RetryController,
@@ -888,10 +941,18 @@ class _PlanningIterationRunner:
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
         operation_control: object | None = None,
+        conversation_envelope: str = "",
+        context_packer: ContextPacker | None = None,
+        attempt_callback: PlanningAttemptCallback | None = None,
+        route_binder: Any | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
         self._task = task
+        self._attempt_callback = attempt_callback
+        self._route_binder = route_binder
+        self._conversation_envelope = conversation_envelope
+        self._context_packer = context_packer
         self._initial_workspace_context = initial_workspace_context
         self._initial_workspace_file_sizes = initial_workspace_file_sizes
         self._workspace_root = workspace_root
@@ -936,6 +997,14 @@ class _PlanningIterationRunner:
             mcp_permission_broker=mcp_permission_broker,
         )
 
+    def _cap_reached(self, spent: Decimal) -> bool:
+        """Whether an evaluation caller's explicit cap is spent; a product run has no cap (Plan 12.2 Task 11)."""
+        return self._max_cost_usd is not None and spent >= self._max_cost_usd
+
+    def _remaining_cap(self, spent: Decimal) -> Decimal | None:
+        """The evaluation cap left, for telemetry only; None on a product run, which has no dollar bound."""
+        return None if self._max_cost_usd is None else max(Decimal("0"), self._max_cost_usd - spent)
+
     def _typed_planning_failure(
         self,
         *,
@@ -969,74 +1038,137 @@ class _PlanningIterationRunner:
         if self._usage_callback is not None:
             self._usage_callback(usage, planning_turn, wire_attempt)
 
+    def _report_attempts(self, planning_turn: int, wire_attempt: int, attempts: tuple[ProviderAttempt, ...], identity: Any) -> None:
+        if self._attempt_callback is not None:
+            self._attempt_callback(planning_turn, wire_attempt, attempts, identity)
+
     def _invoke_planning_gateway(
         self,
         *,
         planning_turn: int,
         prompt: str,
     ) -> tuple[GatewayResponse, Decimal]:
+        from optimus.retry.policy import PermanentGatewayError as _PermanentStop
+
         cost_before = self._total_cost_usd
         wire_attempt = 0
+        bound: Any | None = None
+        # How this request's sequence ended, for its stop reason (sequence-local, not loop-wide).
+        ended = {"unsent": False, "unknown": False, "refused": False, "over_capacity": False}
+        # An attempt that cannot be attributed or recorded truthfully (a Gateway report that names no
+        # attempt, a conflicting receipt, a divergent ledger record) is an integrity error. Everything
+        # that can still be recorded is recorded first; then it fails the turn loudly after the retry
+        # funnel, never as a gateway failure (Fable CP3 correction review MINOR-1; Codex CP3 correction
+        # ruling C1).
+        integrity: list[Exception] = []
+
+        def capture(action: Callable[[], Any]) -> None:
+            try:
+                action()
+            except Exception as error:  # noqa: BLE001 - held for after the retry funnel
+                integrity.append(error)
 
         def operation() -> GatewayResponse:
-            nonlocal wire_attempt
+            nonlocal wire_attempt, bound
             wire_attempt += 1
             control = self._operation_control
             op_id = f"gateway:{planning_turn}:{wire_attempt}"
+
+            def complete(terminal: str) -> None:
+                if control is not None:
+                    from optimus.acp.lifecycle import DirectiveKind
+
+                    control.complete_directive(DirectiveKind.GATEWAY, op_id, terminal)
+
+            if self._route_binder is not None and bound is None:
+                # One binding per payload, after the halt check and before the lease, so a request
+                # whose notice was not delivered is never a started provider attempt. An identical
+                # transport retry reuses it with its own attempt identity (Codex CP3 ruling R4).
+                if self._halt_requested():
+                    raise _PermanentStop("gateway attempt suppressed by turn control")
+                bound = self._route_binder.bind(stage="planning", input_text=prompt)
+                if bound is None:
+                    ended["unsent"] = True
+                    capture(lambda: self._report_attempts(planning_turn, wire_attempt, (_NOT_SENT,), self._route_binder.identity))
+                    raise _PermanentStop("required notice not delivered; nothing was sent")
+            identity = bound.identity if bound is not None else None
+
+            def account(usage: GatewayUsage | None, classify: Callable[[], tuple[ProviderAttempt, ...]]) -> tuple[ProviderAttempt, ...] | None:
+                """Settled usage to the totals and the ledger, then every attempt to the receipt sink,
+                or, for a report that cannot be attributed, the records its integrity error carries.
+                No failure stops the next step. Returns None when anything failed."""
+                held = len(integrity)
+                if usage is not None:
+                    capture(lambda: self._record_reported_gateway_usage(usage, planning_turn, wire_attempt))
+                try:
+                    attempts = classify()
+                except AttemptIntegrityError as error:
+                    integrity.append(error)
+                    attempts = error.attempts
+                capture(lambda: self._report_attempts(planning_turn, wire_attempt, attempts, identity))
+                return attempts if len(integrity) == held else None
+
             if control is not None:
                 from optimus.acp.lifecycle import DirectiveKind
 
                 control.register_operations([(DirectiveKind.GATEWAY, op_id)])
                 lease = control.try_start(DirectiveKind.GATEWAY, op_id)
                 if not lease.granted:
-                    from optimus.retry.policy import PermanentGatewayError as _PermanentStop
-
                     raise _PermanentStop("gateway attempt suppressed by turn control")
+            if self._context_packer is not None:
+                # Plan 12.2 Task 10: the attached meter reads only inputs actually sent.
+                self._context_packer.record_dispatch(prompt)
+            elif self._route_binder is not None:
+                # Release supplement V1: without an engine, the request meter reads the bound route's capacity.
+                self._route_binder.record_dispatch(prompt)
+            metadata: dict[str, Any] = {
+                "run_id": self._run_id,
+                "session_id": self._session_id,
+                "purpose": "planning_turn",
+                "planning_turn": planning_turn,
+            }
+            binding: dict[str, Any] = {}
+            if bound is not None:
+                metadata["request_id"] = bound.request_id
+                binding["route_binding"] = bound.binding
             try:
                 response = self._gateway_client.create_response(
-                    model=self._model,
-                    input_text=prompt,
-                    metadata={
-                        "run_id": self._run_id,
-                        "session_id": self._session_id,
-                        "purpose": "planning_turn",
-                        "planning_turn": planning_turn,
-                    },
+                    model=self._model, input_text=prompt, metadata=metadata, **binding
                 )
             except GatewayError as exc:
-                # Typed gateway error — check for reported usage.
+                # One classifier for every stage (Codex CP3 ruling R3): each provider attempt is
+                # reported, a proven preflight refusal costs nothing, and anything without settled
+                # usage stays unknown. Settled usage is recorded first, so a paid attempt reaches the
+                # totals and the ledger even if its report then fails.
                 usage = getattr(exc, "gateway_usage", None)
-                if usage is not None:
-                    if control is not None:
-                        from optimus.acp.lifecycle import DirectiveKind
-
-                        control.complete_directive(DirectiveKind.GATEWAY, op_id, "failed")
-                    self._record_reported_gateway_usage(usage, planning_turn, wire_attempt)
-                    # Budget gate: if aggregate is at/above cap, stop immediately.
-                    if self._total_cost_usd >= self._max_cost_usd:
-                        from optimus.retry.policy import PermanentGatewayError as _PermanentStop
-
-                        raise _PermanentStop("budget exhausted after reported failed attempt") from exc
-                    # Re-raise for normal RetryController classification.
-                    raise
-                if control is not None:
-                    from optimus.acp.lifecycle import DirectiveKind
-
-                    control.complete_directive(DirectiveKind.GATEWAY, op_id, "cost_unknown")
-                # No valid usage — unknown cost. Terminal regardless of retryability.
-                self._cost_complete = False
-                self._unknown_cost_attempt_count += 1
-                from optimus.retry.policy import PermanentGatewayError as _PermanentStop
-
-                raise _PermanentStop("unknown transport cost") from exc
+                attempts = account(usage, lambda exc=exc: attempts_from_failure(exc))
+                if attempts is None:
+                    complete("cost_unknown")
+                    raise _PermanentStop("attempt accounting integrity error") from exc
+                unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)
+                complete("cost_unknown" if unknown else "failed")
+                if unknown:
+                    # Unknown cost: terminal regardless of retryability.
+                    self._cost_complete = False
+                    self._unknown_cost_attempt_count += unknown
+                    ended["unknown"] = True
+                    raise _PermanentStop("unknown transport cost") from exc
+                if is_preflight_refusal(exc):
+                    ended["refused"] = True
+                    ended["over_capacity"] = is_input_capacity_refusal(exc)
+                    raise _PermanentStop("refused before any upstream attempt") from exc
+                # An evaluation caller's explicit cap: at/above it, stop immediately (Plan 12.2 Task 11).
+                if usage is not None and self._cap_reached(self._total_cost_usd):
+                    raise _PermanentStop("budget exhausted after reported failed attempt") from exc
+                # Re-raise for normal RetryController classification.
+                raise
             except Exception as exc:
-                if control is not None:
-                    from optimus.acp.lifecycle import DirectiveKind
-
-                    control.complete_directive(DirectiveKind.GATEWAY, op_id, "cost_unknown")
+                complete("cost_unknown")
                 # Unexpected non-Gateway exception — treat as unknown cost.
                 self._cost_complete = False
                 self._unknown_cost_attempt_count += 1
+                ended["unknown"] = True
+                account(None, lambda exc=exc: attempts_from_failure(exc))
                 from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
 
                 if debug_trace_enabled():
@@ -1053,21 +1185,23 @@ class _PlanningIterationRunner:
                         hypothesis_id="P9.95-USAGE-UNKNOWN",
                         run_id=self._run_id,
                     )
-                from optimus.retry.policy import PermanentGatewayError as _PermanentStop
-
                 raise _PermanentStop("unknown transport cost") from exc
 
-            if control is not None:
-                from optimus.acp.lifecycle import DirectiveKind
-
-                control.complete_directive(DirectiveKind.GATEWAY, op_id, "succeeded")
-            # Success path — record usage exactly once.
-            self._record_reported_gateway_usage(
-                response.gateway_usage, planning_turn, wire_attempt
-            )
+            complete("succeeded")
+            # Success path — record usage exactly once, before the attempts are classified.
+            attempts = account(response.gateway_usage, lambda: attempts_from_response(response))
+            if attempts is None:
+                raise _PermanentStop("attempt accounting integrity error")
+            # A routed success can follow an earlier attempt whose cost is unknown; it stays unknown.
+            unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)
+            if unknown:
+                self._cost_complete = False
+                self._unknown_cost_attempt_count += unknown
             return response
 
         retry_result = self._retry_controller.run(operation)
+        if integrity:
+            raise first_error(integrity)
 
         # Map RetryResult to planning outcomes.
         sequence_cost = self._total_cost_usd - cost_before
@@ -1078,11 +1212,17 @@ class _PlanningIterationRunner:
             return retry_result.value, sequence_cost
 
         # Terminal failure — determine stop reason.
-        if not self._cost_complete:
+        if ended["unsent"]:
+            raise _PlanningGatewayInvocationError("PLANNING_NOTICE_UNDELIVERED", reported_cost_usd=sequence_cost)
+        if ended["unknown"]:
             raise _PlanningGatewayInvocationError(
                 "PLANNING_GATEWAY_COST_UNKNOWN", reported_cost_usd=sequence_cost
             )
-        if self._total_cost_usd >= self._max_cost_usd:
+        if ended["over_capacity"]:
+            raise _PlanningGatewayInvocationError("PLANNING_INPUT_CAPACITY_EXCEEDED", reported_cost_usd=sequence_cost)
+        if ended["refused"]:
+            raise _PlanningGatewayInvocationError("PLANNING_GATEWAY_REFUSED", reported_cost_usd=sequence_cost)
+        if self._cap_reached(self._total_cost_usd):
             raise _PlanningGatewayInvocationError(
                 "PLANNING_BUDGET_EXHAUSTED", reported_cost_usd=sequence_cost
             )
@@ -1092,7 +1232,6 @@ class _PlanningIterationRunner:
 
     def run_iteration(self, state: IterationState, tools: LoopToolExecutorProtocol) -> IterationOutcome:
         planning_turn = state.iteration + 1
-        remaining_budget = max(Decimal("0"), self._max_cost_usd - state.cost_usd_spent)
         remaining_wall_clock = max(
             0,
             self._policy.max_wall_clock_minutes - state.elapsed_minutes(now=self._now()),
@@ -1116,25 +1255,49 @@ class _PlanningIterationRunner:
                 summary=str(exc),
                 cost_usd=Decimal("0"),
             )
-        prompt = build_multi_turn_planner_input(
-            self._task,
-            planning_turn=planning_turn,
-            max_planning_turns=self._policy.max_planning_turns,
-            remaining_budget_usd=remaining_budget,
-            remaining_wall_clock_minutes=remaining_wall_clock,
-            carried_observations_envelope=carried_envelope,
-            current_read_evidence_envelope=current_envelope,
-            mcp_evidence_envelope=self._mcp_evidence_envelope,
-            initial_workspace_context=self._initial_workspace_context if planning_turn == 1 else "",
-            initial_workspace_file_sizes=(
-                self._initial_workspace_file_sizes if planning_turn == 1 else {}
-            ),
-            evidence_limits=(
-                PLANNING_OBSERVATION_MAX_BYTES,
-                PLANNING_NEW_READ_MAX_BYTES,
-                DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES,
-            ),
-        )
+        mcp_evidence_envelope = self._mcp_evidence_envelope
+
+        def build(conversation_envelope: str) -> str:
+            return build_multi_turn_planner_input(
+                self._task,
+                planning_turn=planning_turn,
+                max_planning_turns=self._policy.max_planning_turns,
+                remaining_wall_clock_minutes=remaining_wall_clock,
+                carried_observations_envelope=carried_envelope,
+                current_read_evidence_envelope=current_envelope,
+                mcp_evidence_envelope=mcp_evidence_envelope,
+                initial_workspace_context=self._initial_workspace_context if planning_turn == 1 else "",
+                initial_workspace_file_sizes=(
+                    self._initial_workspace_file_sizes if planning_turn == 1 else {}
+                ),
+                evidence_limits=(
+                    PLANNING_OBSERVATION_MAX_BYTES,
+                    PLANNING_NEW_READ_MAX_BYTES,
+                    DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES,
+                ),
+                conversation_envelope=conversation_envelope,
+            )
+
+        if self._context_packer is None:
+            prompt = build(self._conversation_envelope)
+        else:
+            # An attached turn: files and evidence grow every round, so each complete request is
+            # fitted to the route's usable input, repacking the history view when needed (Plan 12.2
+            # Task 9). Nothing that does not fit is sent.
+            fitted = self._context_packer.fit(build)
+            if fitted is None and self._halt_requested():
+                return self._typed_planning_failure(
+                    stop_reason="PLANNING_HALTED",
+                    summary="planning was halted while its request was being fitted",
+                    cost_usd=Decimal("0"),
+                )
+            if fitted is None:
+                return self._typed_planning_failure(
+                    stop_reason="CONTEXT_CAPACITY_EXCEEDED",
+                    summary="the planning request does not fit the model's usable input",
+                    cost_usd=Decimal("0"),
+                )
+            prompt = fitted
         # MCP evidence is one-shot for the turn that just received it.
         self._mcp_evidence_envelope = ""
         try:
@@ -1148,6 +1311,22 @@ class _PlanningIterationRunner:
             )
         # Success path — cost already recorded inside _invoke_planning_gateway via
         # _record_reported_gateway_usage; do NOT append/add again here.
+
+        # A reply cut off at its output limit is never a candidate, even if its prefix parses as a
+        # valid plan: stop before parsing, storing, approval or execution (Plan 12.2 Task 5).
+        if getattr(response, "length_limited", False):
+            return self._typed_planning_failure(
+                stop_reason="PLANNING_OUTPUT_TRUNCATED",
+                summary="planning response was cut off at the model's output limit",
+                cost_usd=attempt_cost,
+            )
+        # Likewise a reply a content filter or provider error ended (operator decision 2026-10-02).
+        if getattr(response, "stopped_unfinished", False):
+            return self._typed_planning_failure(
+                stop_reason="PLANNING_OUTPUT_UNFINISHED",
+                summary="planning response was ended by a content filter or provider error",
+                cost_usd=attempt_cost,
+            )
 
         try:
             decision = parse_planning_turn(response.output_text)
@@ -1236,10 +1415,7 @@ class _PlanningIterationRunner:
                         source_sha256s=sha256s,
                         read_byte_counts=byte_counts,
                         total_cost_usd=self._total_cost_usd,
-                        remaining_budget_usd=max(
-                            Decimal("0"),
-                            self._max_cost_usd - state.cost_usd_spent - attempt_cost,
-                        ),
+                        remaining_budget_usd=self._remaining_cap(state.cost_usd_spent + attempt_cost),
                         gateway_request_ids=tuple(self._gateway_request_ids),
                         wire_retry_count=self._last_wire_retry_count,
                     )
@@ -1301,7 +1477,8 @@ class _PlanningIterationRunner:
         raise AssertionError(f"unsupported planning decision: {decision.kind}")
 
     def _planning_resource_stop_after_final_plan(self, *, state: IterationState) -> str | None:
-        if state.cost_usd_spent >= self.loop_budget_policy.max_budget_usd:
+        cap = self.loop_budget_policy.max_budget_usd
+        if cap is not None and state.cost_usd_spent >= cap:  # an evaluation cap only (Plan 12.2 Task 11)
             return "PLANNING_BUDGET_EXHAUSTED"
         if state.elapsed_minutes(now=self._now()) >= self.loop_budget_policy.max_wall_clock_minutes:
             return "PLANNING_WALL_CLOCK_EXHAUSTED"
@@ -1434,7 +1611,7 @@ class _PlanningIterationRunner:
                 settled_turn=result.settled_turns,
                 max_planning_turns=self._policy.max_planning_turns,
                 total_cost_usd=self._total_cost_usd,
-                remaining_budget_usd=max(Decimal("0"), self._max_cost_usd - self._total_cost_usd),
+                remaining_budget_usd=self._remaining_cap(self._total_cost_usd),
                 gateway_request_ids=tuple(self._gateway_request_ids),
                 wire_retry_count=self._last_wire_retry_count,
                 stop_reason=result.stop_reason,

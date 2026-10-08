@@ -33,12 +33,19 @@ def build_plan_session_update(*, session_id: str, plan_text: str, entry_status: 
     }
 
 
+AGENT_MESSAGE_BLOCK_SEPARATOR = "\n\n"
+"""Ends every agent message block. ACP `agent_message_chunk`s are pieces of one
+streamed agent message, so a client joins consecutive chunks; Optimus sends each
+chunk as a whole block (progress line, notice, completion), and without a break a
+client renders "...will be refused.Planning turn 1 of 3.No repository change..."."""
+
+
 def build_agent_message_chunk_notification(*, session_id: str, text: str) -> dict[str, Any]:
     return {
         "sessionId": session_id,
         "update": {
             "sessionUpdate": "agent_message_chunk",
-            "content": text_content_block(text),
+            "content": text_content_block(text + AGENT_MESSAGE_BLOCK_SEPARATOR),
         },
     }
 
@@ -89,13 +96,11 @@ def build_current_mode_update_notification(*, session_id: str, current_mode_id: 
     }
 
 
-def build_config_option_update_notification(*, session_id: str, current_mode_id: str) -> dict[str, Any]:
+def build_config_option_update_notification(*, session_id: str, config_options: list[dict[str, Any]]) -> dict[str, Any]:
+    """A ``config_option_update`` carrying the full current set (Plan 12.2 Task 10)."""
     return {
         "sessionId": session_id,
-        "update": {
-            "sessionUpdate": "config_option_update",
-            "configOptions": build_mode_config_options(current_mode_id=current_mode_id),
-        },
+        "update": {"sessionUpdate": "config_option_update", "configOptions": config_options},
     }
 
 
@@ -284,7 +289,11 @@ def build_usage_update(
     size: int,
     cost: Decimal | None = None,
 ) -> dict[str, Any]:
-    """ACP UsageUpdate: used/size are uint64 token gauges (floor(bytes/4))."""
+    """ACP UsageUpdate: used/size are uint64 token gauges (floor(bytes/4)).
+
+    ACP v1 `Cost.amount` is a JSON number (double), not a string; a client may drop a cost it
+    cannot read. The session total stays exact in `Decimal` and is converted only for the wire.
+    """
     if used < 0 or size < 0:
         raise ValueError("used and size must be non-negative integers")
     update: dict[str, Any] = {
@@ -293,7 +302,7 @@ def build_usage_update(
         "size": int(size),
     }
     if cost is not None:
-        update["cost"] = {"amount": format(cost, "f"), "currency": "USD"}
+        update["cost"] = {"amount": float(cost), "currency": "USD"}
     return {"sessionId": session_id, "update": update}
 
 

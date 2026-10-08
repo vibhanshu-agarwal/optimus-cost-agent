@@ -146,6 +146,12 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
    "basis": "Skips unless the MAIN-5 runner sets MAIN5_RUNNER_PROBE; not launched in an ordinary run. The program is a literal."
   },
+  "tests/unit/context_engine/test_boundaries.py::test_a_fresh_interpreter_importing_the_engine_loads_no_forbidden_package#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
   "tests/unit/guardrails/test_ci_parity.py::_run#1": {
    "mechanism": "indirect",
    "disposition": "non_python",
@@ -471,6 +477,18 @@
    "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
   },
   "tests/unit/tools/test_verify_plan987_acpx_evidence.py::test_post_capture_verifier_is_directly_executable#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_the_extraction_probe_detects_a_host_package_loaded_with_the_engine#1": {
+   "mechanism": "python:script_file",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_the_extraction_probe_reports_a_clean_engine_import_and_is_caught_in_a_checkout#1": {
    "mechanism": "python:script_file",
    "disposition": "census",
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",

@@ -1,0 +1,160 @@
+# Optimus model policy: reviewed defaults (ADR-004 decision 8; Plan 12.2 spec 9.2; Task 1 contracts §4).
+#
+# Prices are ADR-004's pinned-route USD per million tokens (input / output), 2026-09-30.
+# Endpoint windows and max outputs come from the OpenRouter catalog snapshot of 2026-09-30
+# (docs/decisions/2026-09-30-industry-context-cost-and-model-evidence.md, section C). They are
+# recorded but NOT verified: the free drift check (tools/check_model_registry_drift.py) must confirm
+# each endpoint before a route can be used. No route estimator or output reserve has been measured yet
+# (D1-D3, Plan 12.2 Task 12), so this policy admits no model for any role until those are reviewed in.
+# Unknown facts stay null; nothing here is guessed. Change this file only through a reviewed PR.
+#
+# This file must stay strict YAML: no anchors, aliases, merge keys or custom tags; quote dates.
+
+schema_version: 1
+policy_version: "2026-10-02.1"
+fixture: false
+context_ceiling_tokens: 262144
+output_reserve_tokens: {}
+estimators: {}
+role_price_blends: {}
+alerts:
+  thresholds_usd: []
+
+models:
+  qwen/qwen3.7-flash:
+    origin: china
+    tier: ultra-cheap
+    prices: {input_usd_per_million: "0.03", output_usd_per_million: "0.13"}
+    data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
+    capabilities: {native_tools: false, text_planning_grammar: false, structured_output: false, reasoning_levels: []}
+    default_reasoning: null
+    route:
+      estimator: unmeasured
+      endpoints:
+        - {provider: alibaba, quantization: null, context_window_tokens: 1000000, max_output_tokens: 65536, verified: false, observed_on: "2026-09-30"}
+    evidence: ["2026-09-30 catalog snapshot, section C; summarizer only (ADR-004 item 7)"]
+
+  openai/gpt-6-luna:
+    origin: non-china
+    tier: ultra-cheap
+    prices: {input_usd_per_million: "0.10", output_usd_per_million: "0.50"}
+    data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
+    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: []}
+    default_reasoning: null
+    route:
+      estimator: unmeasured
+      endpoints:
+        - {provider: openai, quantization: null, context_window_tokens: 1050000, max_output_tokens: 128000, verified: false, observed_on: "2026-09-30"}
+    evidence: ["2026-09-30 catalog snapshot, section C"]
+
+  deepseek/deepseek-v4.1-flash:
+    origin: china
+    tier: cheap
+    prices: {input_usd_per_million: "0.15", output_usd_per_million: "0.60"}
+    data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
+    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: []}
+    default_reasoning: null
+    route:
+      estimator: unmeasured
+      endpoints:
+        - {provider: deepseek, quantization: null, context_window_tokens: 1048576, max_output_tokens: 943718, verified: false, observed_on: "2026-09-30"}
+    evidence: ["2026-09-30 catalog snapshot, section C; first-party DeepSeek route, not the cheaper fp4 builds"]
+
+  z-ai/glm-5.3-flash:
+    origin: china
+    tier: cheap
+    prices: {input_usd_per_million: "0.15", output_usd_per_million: "0.50"}
+    data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
+    capabilities: {native_tools: true, text_planning_grammar: false, structured_output: true, reasoning_levels: []}
+    default_reasoning: null
+    route:
+      estimator: unmeasured
+      endpoints:
+        - {provider: z-ai, quantization: fp8, context_window_tokens: 1048575, max_output_tokens: 943717, verified: false, observed_on: "2026-09-30"}
+    evidence: ["Listed without a role so the operator can re-enable it (ADR-004 item 5)"]
+
+  google/gemini-3.8-flash:
+    origin: non-china
+    tier: cheap
+    prices: {input_usd_per_million: "0.75", output_usd_per_million: "3.75"}
+    data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
+    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: []}
+    default_reasoning: null
+    route:
+      estimator: unmeasured
+      endpoints:
+        - {provider: google, quantization: null, context_window_tokens: null, max_output_tokens: null, verified: false}
+    evidence: ["Replaces 3.7 at the same price (ADR-004 item 6); window and max output not yet recorded"]
+
+  z-ai/glm-5.3:
+    origin: china
+    tier: cheap
+    prices: {input_usd_per_million: "1.40", output_usd_per_million: "4.40"}
+    data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
+    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: []}
+    default_reasoning: null
+    route:
+      estimator: unmeasured
+      endpoints:
+        - {provider: z-ai, quantization: null, context_window_tokens: 1048575, max_output_tokens: 943717, verified: false, observed_on: "2026-09-30"}
+    evidence: ["2026-09-30 catalog snapshot, section C; complex-task fallback"]
+
+  meta/muse-spark-1.3-contributor:
+    origin: non-china
+    tier: cheap
+    prices: {input_usd_per_million: "0.10", output_usd_per_million: "0.20"}
+    data_use: {provider_may_train_on_inputs: "yes", disclosure: contributor}
+    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: false, reasoning_levels: [low, medium, high, xhigh]}
+    default_reasoning: null
+    route:
+      estimator: unmeasured
+      endpoints:
+        - {provider: meta, quantization: null, context_window_tokens: 1000000, max_output_tokens: null, verified: false, observed_on: "2026-09-30"}
+    evidence: ["Operator's medium default with a warning (ADR-004 decision 7); max reasoning is Standard-only"]
+
+  meta/muse-spark-1.3:
+    origin: non-china
+    tier: cheap
+    prices: {input_usd_per_million: "1.25", output_usd_per_million: "4.25"}
+    data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
+    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: false, reasoning_levels: [low, medium, high, xhigh, max]}
+    default_reasoning: null
+    route:
+      estimator: unmeasured
+      endpoints:
+        - {provider: meta, quantization: null, context_window_tokens: null, max_output_tokens: null, verified: false}
+    evidence: ["ADR-004 decision 8; window and max output not yet recorded"]
+
+  anthropic/claude-sonnet-5.5:
+    origin: non-china
+    tier: review
+    prices: {input_usd_per_million: "2.00", output_usd_per_million: "10.00"}
+    data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
+    capabilities: {native_tools: true, text_planning_grammar: false, structured_output: true, reasoning_levels: []}
+    default_reasoning: null
+    route:
+      estimator: unmeasured
+      endpoints:
+        - {provider: anthropic, quantization: null, context_window_tokens: 1000000, max_output_tokens: 128000, verified: false, observed_on: "2026-09-30"}
+    evidence: ["2026-09-30 catalog snapshot, section C; reviewer role is dormant until its artifact contract"]
+
+  moonshotai/kimi-k3:
+    origin: china
+    tier: review
+    prices: {input_usd_per_million: "3.00", output_usd_per_million: "15.00"}
+    data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
+    capabilities: {native_tools: true, text_planning_grammar: false, structured_output: true, reasoning_levels: []}
+    default_reasoning: null
+    route:
+      estimator: unmeasured
+      endpoints:
+        - {provider: moonshotai, quantization: null, context_window_tokens: 1048576, max_output_tokens: 943718, verified: false, observed_on: "2026-09-30"}
+    evidence: ["2026-09-30 catalog snapshot, section C; 'probably' listed (ADR-004 open item 1)"]
+
+roles:
+  medium: [meta/muse-spark-1.3-contributor, deepseek/deepseek-v4.1-flash, google/gemini-3.8-flash, meta/muse-spark-1.3]
+  complex: [google/gemini-3.8-flash, z-ai/glm-5.3]
+  escalation: [google/gemini-3.8-flash, z-ai/glm-5.3]
+  easy: [openai/gpt-6-luna]
+  summarizer: [qwen/qwen3.7-flash, openai/gpt-6-luna]
+  reviewer: [anthropic/claude-sonnet-5.5, moonshotai/kimi-k3]

@@ -4,13 +4,18 @@ import asyncio
 import contextlib
 import inspect
 import itertools
+import sys
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
+from context_engine import SummaryCheckpoint
 from optimus.acp.conversation import (
+    AttachedConversationState,
+    ConversationDisposition,
     ConversationOutcome,
     ConversationSanitizer,
     ConversationSanitizerInputs,
@@ -35,6 +40,14 @@ from optimus.acp.lifecycle import (
     TurnControl,
     TurnResponseEnvelope,
 )
+from optimus.acp.session_config import (
+    SLIDING_ACTIVE_TEXT,
+    STRATEGY_CONFIG_ID,
+    STRATEGY_IDS,
+    ConfigPublication,
+    SessionConfigSnapshot,
+    build_session_config_options,
+)
 from optimus.acp.settlement import (
     ConversationCommit,
     EffectState,
@@ -50,22 +63,29 @@ from optimus.acp.shapes import (
     build_agent_message_chunk_notification,
     build_config_option_update_notification,
     build_current_mode_update_notification,
-    build_mode_config_options,
     build_plan_session_update,
     build_planning_progress_notification,
     build_request_permission_params,
     build_session_mode_state,
     build_tool_call_notification,
+    build_usage_update,
     new_approval_id,
     new_tool_call_id,
     tool_kind_for_name,
 )
 from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus
 from optimus.agent.planning_loop import PlanningProgressEvent
+from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
+from optimus.context.assembly import AttachedTurn, ContextAttachment
 from optimus.mcp.client_catalog import ClientMcpOneCallApproval
 from optimus.mcp.client_config import ClientMcpConfigError
 from optimus.mcp.client_disposition import AcpMcpPermissionBroker, ClientMcpRuntime, ClientMcpSessionState
 from optimus.runtime.modes import ExecutionMode
+from optimus.usage.cost_alerts import AlertPolicy, AlertTracker, CostScopeSummary
+from optimus.usage.turn_settlement import TurnCostSummary, TurnSettlement, receipt_from_maintenance
+
+if TYPE_CHECKING:
+    from optimus.gateway.route_binding import RoutePolicy, TurnRouteBinder
 
 ACP_PROTOCOL_VERSION = 1
 
@@ -73,9 +93,132 @@ ACP_PROTOCOL_VERSION = 1
 # ExecutionMode.PLAN is deliberately not selectable from ACP.
 _MODE_BY_ID: dict[str, ExecutionMode] = {AGENT_MODE_ID: ExecutionMode.AGENT, CHAT_MODE_ID: ExecutionMode.CHAT}
 _ID_BY_MODE: dict[ExecutionMode, str] = {mode: mode_id for mode_id, mode in _MODE_BY_ID.items()}
-_MODE_SETTER_METHODS = frozenset({"session/set_mode", "session/set_config_option"})
+_CONFIG_SETTER_METHODS = frozenset({"session/set_mode", "session/set_config_option"})
 _CHAT_CANCELLED_TEXT = "Chat answer cancelled before it was shown."
 _CHAT_FAILURE_FALLBACK_TEXT = "Chat could not answer this prompt. Please try again."
+
+CAPACITY_WARNING_TEXT = (
+    "Heads-up: this conversation has used about 80% of its context budget. "
+    "Please start a new thread soon; once it is full, new prompts in this thread will be refused."
+)
+"""Sent once, when an admitted prompt or a committed reply first projects the conversation
+past 80% of `CONVERSATION_MAX_BYTES` (operator ruling 2026-08-20; Plan 12.2 Task 3)."""
+
+CAPACITY_REFUSAL_TEXT = (
+    "This conversation has reached its context limit, so this prompt was refused. "
+    "Please start a new thread to continue."
+)
+
+CAPACITY_REACHED_TEXT = (
+    "This conversation has now reached its context limit. "
+    "Please start a new thread to continue; new prompts in this thread will be refused."
+)
+"""Sent when a committed reply itself fills the conversation, so the user learns of it
+before their next prompt is refused."""
+
+# Plan 12.2 Task 9: attached Context Engine notices. Each names its limiting condition and whether the
+# thread can continue; none is a content-policy refusal (design spec 8.2, 10).
+CONTEXT_FALLBACK_TEXT = (
+    "The {strategy} context strategy is unavailable for this prompt. The full conversation history will be "
+    "used if it fits the model's request limit."
+)
+# One fixed message per known engine reason, naming the limit and the recovery that can actually help;
+# an unknown reason is never shown verbatim (Codex's final corrections C1, 2026-10-04). The common ending
+# speaks only of answer/planning dispatch: summarization attempts may already have run and been charged.
+CONTEXT_UNAVAILABLE_ENDING = "This thread stays open. No answer or plan was requested for this prompt."
+CONTEXT_UNAVAILABLE_TEXTS: dict[str, str] = {
+    "turn exceeds maintenance input": (
+        "An earlier turn is too large for {strategy} to summarize with the current limits. Choose Sliding window "
+        "to continue with less ordinary conversation history, or start a new thread. Sliding window may omit all "
+        "ordinary history if even the newest turn does not fit."
+    ),
+    "exact authority exceeds history capacity": (
+        "The recorded execution outcomes and approval facts exceed this thread's context allowance. Start a new "
+        "thread; changing context strategy will not make those required facts smaller."
+    ),
+    "history capacity too small for a summary": (
+        "The {strategy} summary and required history do not fit this thread's context allowance. Choose Sliding "
+        "window to continue with less ordinary conversation history, or start a new thread."
+    ),
+    "maintenance input exceeded": (
+        "The {strategy} strategy cannot summarize this history within its input or call limits. Choose Sliding "
+        "window to continue with less ordinary conversation history, or start a new thread."
+    ),
+    "maintenance allowance exceeded": (
+        "The {strategy} strategy cannot summarize this history within its input or call limits. Choose Sliding "
+        "window to continue with less ordinary conversation history, or start a new thread."
+    ),
+    "maintenance failed": (
+        "The {strategy} summary could not be completed or accepted. Retrying may help and may incur another "
+        "summarization charge. You can also choose Sliding window to continue with less ordinary conversation "
+        "history."
+    ),
+    "summary malformed": (
+        "The {strategy} summary could not be completed or accepted. Retrying may help and may incur another "
+        "summarization charge. You can also choose Sliding window to continue with less ordinary conversation "
+        "history."
+    ),
+    "summary exceeds bound": (
+        "The {strategy} summary could not be completed or accepted. Retrying may help and may incur another "
+        "summarization charge. You can also choose Sliding window to continue with less ordinary conversation "
+        "history."
+    ),
+    "maintenance unavailable": (
+        "Summarization is unavailable with this thread's current model and settings. Choose Sliding window to "
+        "continue with less ordinary conversation history, or retry after summarization becomes available."
+    ),
+    "source exceeds limit": "The stored conversation exceeds the context engine's source limit. Start a new thread.",
+}
+CONTEXT_UNAVAILABLE_UNKNOWN_TEXT = (
+    "The {strategy} context strategy could not prepare this conversation. You can try Sliding window with less "
+    "ordinary conversation history, or start a new thread."
+)
+CONTEXT_RESERVATION_TEXT = (
+    "This prompt would not leave enough room in this conversation's storage for a reply, so nothing was "
+    "sent to the model. This thread stays open: a shorter prompt may fit."
+)
+CONTEXT_PLAN_TOO_LARGE_TEXT = (
+    "The plan is too large to keep in this conversation's history, so it was not offered for approval "
+    "and nothing was changed. Ask for a smaller change."
+)
+_CONTEXT_CANCELLED_TEXT = "Cancelled before the model was asked."
+# An attached session's storage limit is not the model's context, so its notices name storage
+# (design spec 8.4, 10). Engine-absent sessions keep the texts above.
+ATTACHED_STORAGE_WARNING_TEXT = (
+    "Heads-up: this conversation has used about 80% of its storage limit. "
+    "Please start a new thread soon; once its storage is full, new prompts in this thread will be refused."
+)
+ATTACHED_STORAGE_REFUSAL_TEXT = (
+    "This conversation's storage is full, so this prompt was refused. Please start a new thread to continue."
+)
+ATTACHED_STORAGE_REACHED_TEXT = (
+    "This conversation's storage is now full. "
+    "Please start a new thread to continue; new prompts in this thread will be refused."
+)
+# Release supplement V1 (D7 request-capacity exception): with a trusted route policy and no engine, the
+# 80% storage notice names storage and says a model request can be refused sooner; the request meter and
+# its separate 80% warning read the complete request the Gateway's final guard admits. Neither promises a
+# number of future turns. Without a route policy (today's inactive enforcement) the texts above are kept.
+ABSENT_STORAGE_WARNING_TEXT = (
+    "Heads-up: this conversation has used about 80% of its storage limit. Please start a new thread soon; "
+    "once its storage is full, new prompts in this thread will be refused. A model request can be refused "
+    "sooner, when it exceeds the model's input capacity."
+)
+REQUEST_CAPACITY_WARNING_TEXT = (
+    "Heads-up: this prompt's model request used 80% or more of the model's input capacity. A later request "
+    "that exceeds that capacity will be refused. A shorter prompt or a narrower request involving fewer "
+    "workspace files may help; if earlier conversation history is the cause, start a new thread."
+)
+REQUEST_WARNING_FRACTION = 0.8
+_NOTICE_FLUSH_TIMEOUT_SECONDS = 30.0
+_STRATEGY_LABELS = {"compaction": "compaction", "hybrid": "hybrid", "sliding_window": "sliding window"}
+
+
+def context_unavailable_text(reason: str | None, strategy: str) -> str:
+    """The refusal for an attached view that could not be built and a full history over the floor:
+    the fixed message for a known engine reason, the generic one otherwise, then the common ending."""
+    message = CONTEXT_UNAVAILABLE_TEXTS.get(reason or "", CONTEXT_UNAVAILABLE_UNKNOWN_TEXT)
+    return f"{message.format(strategy=strategy)} {CONTEXT_UNAVAILABLE_ENDING}"
 
 
 def resolve_max_planning_turns(environ: Mapping[str, str]) -> int | None:
@@ -123,10 +266,32 @@ class AcpSpecSession:
     execution_mode: ExecutionMode = ExecutionMode.AGENT
     client_mcp_state: ClientMcpSessionState | None = None
     conversation: ConversationState | None = None
-    # Plan 12.1: serializes mode setters for this session; prompts never take it.
-    mode_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False, compare=False)
-    # True while a committed mode change has not yet sent both of its paired updates.
-    mode_updates_pending: bool = False
+    # Plan 12.1 / 12.2 Task 10: serializes every config setter for this session; prompts never take it.
+    config_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False, compare=False)
+    # The one publication state every setter shares: what is committed but not yet confirmed.
+    config_publication: ConfigPublication = field(default_factory=ConfigPublication, repr=False, compare=False)
+    # Plan 12.2 Task 10: set by a committed switch to sliding, cleared by its confirmed notice or a switch away.
+    sliding_notice_pending: bool = False
+    # Release supplement V1: set once the 80% request-capacity warning is confirmed delivered.
+    request_warning_sent: bool = False
+    # Plan 12.2 Task 9, attached sessions only: the strategy the next turn captures, the published
+    # summary checkpoint and the host's exact approval facts per turn. None/empty when absent.
+    context_strategy: str | None = None
+    context_checkpoint: SummaryCheckpoint | None = None
+    context_approvals: dict[int, tuple[ApprovalFact, ...]] = field(default_factory=dict, repr=False, compare=False)
+    # Plan 12.2 Task 11: every model attempt of this session, settled exactly once, and the cost
+    # alert crossings already reported.
+    cost_settlement: TurnSettlement = field(default_factory=TurnSettlement, repr=False, compare=False)
+    alert_tracker: AlertTracker = field(default_factory=AlertTracker, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        # The conversation's cost is one projection over this session's receipts, updated whenever a
+        # receipt arrives - including after a turn's terminal finalization (Codex CP3 ruling R2).
+        self.cost_settlement.subscribe(self._project_turn_cost)
+
+    def _project_turn_cost(self, turn_id: str, summary: TurnCostSummary) -> None:
+        if self.conversation is not None:
+            self.conversation.project_turn_cost(turn_id, known_usd=summary.known_subtotal_usd, complete=summary.complete)
 
 
 @dataclass
@@ -139,6 +304,11 @@ class AcpPromptTurn:
     pending_permission_request_id: str | int | None = None
     permission_tool_call_id: str | None = None
     permission_handle: Any | None = None
+    # Plan 12.2: an attached turn's captured context, its packer and its dispatch readings.
+    attached: AttachedTurn | None = None
+    # Codex CP3 ruling R4: the turn's request binder for the trusted planning/answer route, captured
+    # before any await. None while no route policy is configured (registry enforcement inactive).
+    route_binder: TurnRouteBinder | None = None
 
     @property
     def run_id(self) -> str:
@@ -264,6 +434,9 @@ class AcpDuplexAdapter:
         sanitizer_inputs: ConversationSanitizerInputs | None = None,
         notice_control: NoticeControl | None = None,
         settlement_sink: Any | None = None,
+        context_attachment: ContextAttachment | None = None,
+        alert_policies: tuple[AlertPolicy, ...] = (),
+        route_policy: RoutePolicy | None = None,
     ) -> None:
         self._runner = runner
         self._workspace_root = Path(workspace_root).resolve()
@@ -282,6 +455,17 @@ class AcpDuplexAdapter:
         )
         self._notice_control = notice_control
         self._settlement_sink = settlement_sink
+        # Plan 12.2 Task 9: fixes every new session's storage class. None keeps the engine-absent floor.
+        self._context_attachment = context_attachment
+        # Plan 12.2 Task 11: operator-configured cost alerts (turn and session scopes); none by default,
+        # and no amount is invented. A daily scope needs a reconciled durable ledger, which this host
+        # does not have: such a policy is refused here, never counted per process or silently dropped.
+        if any(policy.scope == "day" for policy in alert_policies):
+            raise ValueError("daily cost alerts need a reconciled durable ledger (P9.85-FU-3); this host has none")
+        self._alert_policies = tuple(alert_policies)
+        # Codex CP3 ruling R4: the injected trusted planning/answer route policy. None keeps today's
+        # unbound requests; nothing attaches one at startup (activation hold).
+        self._route_policy = route_policy
         self._closed = False
 
     def _remove_active_turn(self, session_id: str, turn_seq: int, control: TurnControl) -> bool:
@@ -313,7 +497,15 @@ class AcpDuplexAdapter:
         )
 
     def _new_conversation(self) -> ConversationState:
-        return ConversationState(ConversationSanitizer(self._sanitizer_inputs))
+        sanitizer = ConversationSanitizer(self._sanitizer_inputs)
+        attachment = self._context_attachment
+        if attachment is None:
+            return ConversationState(sanitizer)
+        return AttachedConversationState(
+            sanitizer,
+            source_max_bytes=attachment.source_max_bytes,
+            record_reservation_bytes=attachment.record_reservation_bytes,
+        )
 
     def _planner_inputs(
         self,
@@ -401,8 +593,8 @@ class AcpDuplexAdapter:
             return self._non_turn(await self._handle_session_new(request), ownership_slot)
         if method == "session/prompt":
             return await self._handle_session_prompt(request, ownership_slot=ownership_slot)
-        if method in _MODE_SETTER_METHODS:
-            return self._non_turn(await self._handle_mode_change(request, method=method), ownership_slot)
+        if method in _CONFIG_SETTER_METHODS:
+            return self._non_turn(await self._handle_config_change(request, method=method), ownership_slot)
         if method in {"session/update", "session/request_permission"}:
             return self._non_turn(
                 error_response(request_id, JsonRpcError(code=METHOD_NOT_FOUND, message=f"method not found: {method}")),
@@ -488,15 +680,21 @@ class AcpDuplexAdapter:
         return {
             "sessionId": session.session_id,
             "modes": build_session_mode_state(current_mode_id=mode_id),
-            "configOptions": build_mode_config_options(current_mode_id=mode_id),
+            "configOptions": build_session_config_options(self._config_snapshot(session)),
         }
 
-    async def _handle_mode_change(self, request: dict[str, Any], *, method: str) -> dict[str, Any]:
+    @staticmethod
+    def _config_snapshot(session: AcpSpecSession) -> SessionConfigSnapshot:
+        """Every advertised selector's current value (Plan 12.2 Task 10)."""
+        return SessionConfigSnapshot(mode_id=_ID_BY_MODE[session.execution_mode], strategy=session.context_strategy)
+
+    async def _handle_config_change(self, request: dict[str, Any], *, method: str) -> dict[str, Any]:
         """One validation-and-update path for ``session/set_mode`` and ``session/set_config_option``.
 
-        Answered without waiting for an in-flight turn: an admitted turn keeps the
-        mode it captured, so a change only affects the next prompt. Invalid
-        requests leave the canonical mode and both projections untouched.
+        Answered without waiting for an in-flight turn: an admitted turn keeps the settings it
+        captured, so a change only affects the next prompt. The context strategy is settable only on
+        an attached session; elsewhere it is an unknown option and can never attach the engine.
+        Invalid requests leave every value and every projection untouched.
         """
         request_id = request.get("id")
 
@@ -506,58 +704,89 @@ class AcpDuplexAdapter:
         params = request.get("params")
         if not isinstance(params, dict) or not isinstance(params.get("sessionId"), str):
             return invalid("invalid request")
+        mode: ExecutionMode | None = None
+        strategy: str | None = None
         if method == "session/set_mode":
             mode_id = params.get("modeId")
+            if not isinstance(mode_id, str) or mode_id not in _MODE_BY_ID:
+                return invalid("unsupported mode")
+            mode = _MODE_BY_ID[mode_id]
         else:
             config_id = params.get("configId")
             if not isinstance(config_id, str):
                 return invalid("invalid request")
-            if config_id != MODE_CONFIG_ID:
+            if config_id == MODE_CONFIG_ID:
+                if params.get("type") == "boolean":
+                    return invalid("config option value type mismatch")
+                mode_id = params.get("value")
+                if not isinstance(mode_id, str) or mode_id not in _MODE_BY_ID:
+                    return invalid("unsupported mode")
+                mode = _MODE_BY_ID[mode_id]
+            elif config_id == STRATEGY_CONFIG_ID and self._context_attachment is not None:
+                if params.get("type") == "boolean":
+                    return invalid("config option value type mismatch")
+                strategy = params.get("value")
+                if not isinstance(strategy, str) or strategy not in STRATEGY_IDS:
+                    return invalid("unsupported context strategy")
+            else:
                 return invalid("unknown config option")
-            if params.get("type") == "boolean":
-                return invalid("config option value type mismatch")
-            mode_id = params.get("value")
-        if not isinstance(mode_id, str) or mode_id not in _MODE_BY_ID:
-            return invalid("unsupported mode")
         session = self._sessions.get(params["sessionId"])
         if session is None:
             return invalid("unknown session")
 
-        # Serialized per session: the state change, both paired updates and the
-        # response value belong to this request alone. The prompt path never
-        # takes this lock, so an admitted or admitting turn is not held up.
-        async with session.mode_lock:
-            await self._apply_session_mode(session, _MODE_BY_ID[mode_id])
+        # Serialized per session: the state change, its updates and the response value belong to
+        # this request alone. The prompt path never takes this lock, so no turn is held up, and no
+        # setter ever waits for a model call or a permission answer.
+        async with session.config_lock:
+            await self._apply_session_config(session, mode=mode, strategy=strategy)
             if method == "session/set_mode":
                 return success_response(request_id=request_id, result={})
             return success_response(
                 request_id=request_id,
-                result={"configOptions": build_mode_config_options(current_mode_id=mode_id)},
+                result={"configOptions": build_session_config_options(self._config_snapshot(session))},
             )
 
-    async def _apply_session_mode(self, session: AcpSpecSession, mode: ExecutionMode) -> None:
-        """Commit ``mode`` once, then send both paired updates. Caller holds ``session.mode_lock``.
+    async def _apply_session_config(
+        self, session: AcpSpecSession, *, mode: ExecutionMode | None, strategy: str | None
+    ) -> None:
+        """Commit any change once, then publish what is pending. Caller holds ``session.config_lock``.
 
-        Each update must be confirmed as flushed. If either fails, is ambiguous or is
-        suppressed, the change stays committed but marked pending, so the next
-        setter re-sends both updates even when it repeats the same mode.
+        A mode change pends ``current_mode_update`` and the full set; a strategy-only change pends only
+        the full set, so it never announces a mode change. Each update must be confirmed as flushed.
+        If one fails, is ambiguous or is suppressed, the change stays committed and pending, and the
+        next setter republishes the whole current set even when it repeats a value.
         """
-        if session.execution_mode is mode and not session.mode_updates_pending:
+        publication = session.config_publication
+        mode_changed = mode is not None and session.execution_mode is not mode
+        strategy_changed = strategy is not None and session.context_strategy != strategy
+        if mode_changed:
+            assert mode is not None
+            session.execution_mode = mode
+        if strategy_changed:
+            session.context_strategy = strategy
+            # A switch to sliding owes the next admitted turn its notice; switching away cancels it.
+            session.sliding_notice_pending = strategy == "sliding_window"
+        if mode_changed or strategy_changed:
+            publication.commit(mode_changed=mode_changed)
+        pending = publication.pending_updates()
+        if not pending:
             return
-        session.execution_mode = mode
-        session.mode_updates_pending = True
-        mode_id = _ID_BY_MODE[mode]
+        revision = publication.revision
+        snapshot = self._config_snapshot(session)
+        if "current_mode_update" in pending:
+            await self._outbound.notify(
+                "session/update",
+                build_current_mode_update_notification(session_id=session.session_id, current_mode_id=snapshot.mode_id),
+                require_flushed=True,
+            )
         await self._outbound.notify(
             "session/update",
-            build_current_mode_update_notification(session_id=session.session_id, current_mode_id=mode_id),
+            build_config_option_update_notification(
+                session_id=session.session_id, config_options=build_session_config_options(snapshot)
+            ),
             require_flushed=True,
         )
-        await self._outbound.notify(
-            "session/update",
-            build_config_option_update_notification(session_id=session.session_id, current_mode_id=mode_id),
-            require_flushed=True,
-        )
-        session.mode_updates_pending = False
+        publication.confirmed(revision)
 
     async def _handle_session_new(self, request: dict[str, Any]) -> dict[str, Any]:
         params = request.get("params")
@@ -577,6 +806,9 @@ class AcpDuplexAdapter:
 
         # Provisional in-memory session after input-shape validation.
         session = self._sessions.create(cwd=cwd, conversation=self._new_conversation())
+        if self._context_attachment is not None:
+            session.context_strategy = self._context_attachment.initial_strategy
+            session.sliding_notice_pending = session.context_strategy == "sliding_window"
         empty_state = ClientMcpSessionState(session_id=session.session_id)
         session.client_mcp_state = empty_state
 
@@ -707,22 +939,82 @@ class AcpDuplexAdapter:
             hypothesis_id="H1",
         )
         # endregion
-        try:
-            if admission.crosses_warning and self._notice_control is not None:
-                if conversation.note_warning_threshold_for_attempt(admission.projected_bytes):
-                    self._notice_control.allocate_warning_sequence()
-
-            planner_task, conversation_envelope = self._planner_inputs(
-                conversation, admission.sanitized_user_prompt, turn.execution_mode
+        # Plan 12.2 Task 9: an attached turn captures its history, strategy and checkpoint now,
+        # before any await a setter could interleave with.
+        attached_turn = (
+            AttachedTurn.capture(
+                attachment=self._context_attachment,
+                session_key=session_id,
+                records=conversation.records,
+                approvals=session.context_approvals,
+                generation=conversation.generation,
+                sanitizer=conversation.sanitizer,
+                strategy=session.context_strategy or self._context_attachment.initial_strategy,
+                mode=turn.execution_mode,
+                checkpoint=session.context_checkpoint,
+                current_prompt=admission.sanitized_user_prompt,
+                turn_seq=turn_seq,
+                cancelled=turn.turn_control.halt_requested,
+                deliver_notice=self._blocking_notice(session_id, asyncio.get_running_loop()),
+                record_receipt=lambda receipt: session.cost_settlement.record_attempt(receipt_from_maintenance(receipt)),
+                record_integrity_failure=lambda receipt: session.cost_settlement.record_integrity_failure(
+                    receipt_from_maintenance(receipt).turn_id
+                ),
             )
-            planning_fields: dict[str, object] = {
-                "run_id": run_id,
-                "session_id": session_id,
-                "task": planner_task,
-                "execution_mode": turn.execution_mode,
-                "workspace_root": session.cwd,
-                "conversation_envelope": conversation_envelope,
-            }
+            if self._context_attachment is not None
+            else None
+        )
+        turn.attached = attached_turn
+        if self._route_policy is not None:
+            turn.route_binder = self._route_policy.capture(
+                session_id=session_id, turn_seq=turn_seq, deliver_notice=self._blocking_notice(session_id, asyncio.get_running_loop())
+            )
+        try:
+            if admission.crosses_warning and conversation.note_warning_threshold_for_attempt(
+                admission.projected_bytes
+            ):
+                await self._emit_capacity_notice(
+                    session_id=session_id, conversation=conversation, text=self._warning_text(), is_warning=True
+                )
+            if attached_turn is not None and attached_turn.strategy == "sliding_window" and session.sliding_notice_pending:
+                await self._emit_sliding_notice(session)
+
+            if attached_turn is None:
+                planner_task, conversation_envelope = self._planner_inputs(
+                    conversation, admission.sanitized_user_prompt, turn.execution_mode
+                )
+                planning_fields: dict[str, object] = {
+                    "run_id": run_id,
+                    "session_id": session_id,
+                    "task": planner_task,
+                    "execution_mode": turn.execution_mode,
+                    "workspace_root": session.cwd,
+                    "conversation_envelope": conversation_envelope,
+                }
+            else:
+                stopped = await self._prepare_attached_context(
+                    request_id=request.get("id"),
+                    session=session,
+                    conversation=conversation,
+                    turn=turn,
+                    attached_turn=attached_turn,
+                    sanitized_user_prompt=admission.sanitized_user_prompt,
+                    ownership_slot=ownership_slot,
+                )
+                if stopped is not None:
+                    return stopped
+                admitted = attached_turn.admitted
+                assert admitted is not None
+                planning_fields = {
+                    "run_id": run_id,
+                    "session_id": session_id,
+                    "task": admitted.current_prompt,
+                    "execution_mode": turn.execution_mode,
+                    "workspace_root": session.cwd,
+                    "conversation_envelope": admitted.conversation_envelope,
+                    "selection_text": admitted.selection_text,
+                    "context_digest": admitted.digest,
+                }
             if self._max_planning_turns is not None:
                 planning_fields["max_planning_turns"] = self._max_planning_turns
             planning_request = AgentRunRequest(**planning_fields)
@@ -741,7 +1033,9 @@ class AcpDuplexAdapter:
                     loop,
                 )
 
-            planning_result = await asyncio.to_thread(
+            planning_result = await self._in_worker(
+                session,
+                turn,
                 self._runner.run,
                 planning_request,
                 **self._runner_runtime_kwargs(
@@ -749,12 +1043,17 @@ class AcpDuplexAdapter:
                     session=session,
                     halt_requested=turn.turn_control.halt_requested,
                     operation_control=turn.turn_control,
+                    context_packer=attached_turn,
+                    stage_receipts=session.cost_settlement.record_attempt,
+                    route_binder=turn.route_binder,
+                    integrity_failure=session.cost_settlement.record_integrity_failure,
                 ),
             )
-            conversation.apply_planning_cost_once(
-                turn_seq,
-                cost_usd=planning_result.total_cost_usd,
-                cost_complete=planning_result.cost_complete,
+            self._apply_turn_cost(
+                session,
+                turn,
+                planning_cost=planning_result.total_cost_usd,
+                planning_complete=planning_result.cost_complete,
             )
             # region agent log
             acp_debug_log(
@@ -778,6 +1077,29 @@ class AcpDuplexAdapter:
                     sanitized_user_prompt=admission.sanitized_user_prompt,
                     result=planning_result,
                     ownership_slot=ownership_slot,
+                )
+            if (
+                attached_turn is not None
+                and planning_result.status is AgentRunStatus.AWAITING_APPROVAL
+                and not self._plan_record_fits(
+                    conversation, turn_seq, admission.sanitized_user_prompt, planning_result.candidate_plan_text or ""
+                )
+            ):
+                # Design spec 4.2: a plan the attached record cannot keep fails before approval or any
+                # effect, and its exact failed outcome is kept instead of the plan.
+                await self._emit_final_text(session_id=session_id, text=CONTEXT_PLAN_TOO_LARGE_TEXT, turn=turn)
+                await self._commit_turn(
+                    conversation=conversation,
+                    turn=turn,
+                    sanitized_user_prompt=admission.sanitized_user_prompt,
+                    result=planning_result.model_copy(update={"candidate_plan_text": None}),
+                    outcome=ConversationOutcome.FAILED,
+                    completion_text=CONTEXT_PLAN_TOO_LARGE_TEXT,
+                )
+                return self._turn(
+                    success_response(request_id=request.get("id"), result={"stopReason": "end_turn"}),
+                    turn_control,
+                    ownership_slot,
                 )
             await self._emit_result_updates(session_id=session_id, result=planning_result, planning=True, turn=turn)
             if turn.turn_control.halt_requested():
@@ -840,6 +1162,16 @@ class AcpDuplexAdapter:
                 hypothesis_id="GAP1",
             )
             # endregion
+            if attached_turn is not None:
+                # The host's exact decision for this artifact, decided as the application below is.
+                session.context_approvals[turn_seq] = (
+                    approval_fact_from_permission(
+                        turn_seq=turn_seq,
+                        artifact_hash=planning_result.plan_hash,
+                        permission_result=permission_result,
+                        halted=turn.turn_control.halt_requested(),
+                    ),
+                )
             if turn.turn_control.halt_requested() or not _permission_approved(permission_result):
                 await self._commit_turn(
                     conversation=conversation,
@@ -865,12 +1197,17 @@ class AcpDuplexAdapter:
                     )
                 }
             )
-            approved_result = await asyncio.to_thread(
+            approved_result = await self._in_worker(
+                session,
+                turn,
                 self._runner.run,
                 approved_request,
                 **self._runner_runtime_kwargs(
                     session=session,
                     operation_control=turn.turn_control,
+                    stage_receipts=session.cost_settlement.record_attempt,
+                    route_binder=turn.route_binder,
+                    integrity_failure=session.cost_settlement.record_integrity_failure,
                 ),
             )
             # region agent log
@@ -911,6 +1248,8 @@ class AcpDuplexAdapter:
                 hypothesis_id="H1",
             )
             # endregion
+            # A live exit still reports any threshold this turn crossed (Codex CP3 ruling R2).
+            await self._emit_exit_cost_alerts(turn)
             return self._turn(
                 error_response(
                     request_id=request.get("id"),
@@ -919,7 +1258,19 @@ class AcpDuplexAdapter:
                 turn_control,
                 ownership_slot,
             )
+        except Exception:
+            # An exception after a paid attempt is still a live exit: its crossings are reported
+            # once, in this turn, before the failure propagates as it always has (Codex CP3 ruling R2).
+            await self._emit_exit_cost_alerts(turn)
+            raise
         finally:
+            # Every exit projects what this turn's receipts settled; the projection is idempotent and
+            # later receipts keep updating it (Plan 12.2 Task 11; Codex CP3 ruling R2).
+            self._apply_settled_cost(session, turn)
+            self._report_context_faults(turn)
+            # Recompute after any cancellation so settlement telemetry is exact even for a turn that
+            # ends without a commit (Plan 12.2 Task 2). After transport teardown this is a no-op.
+            turn.turn_control.refresh_effect_state()
             turn.turn_control.finalize_once(self._placeholder_settlement(turn))
 
     async def _refuse_prompt(
@@ -932,9 +1283,14 @@ class AcpDuplexAdapter:
         ownership_slot: ResponseOwnershipSlot | None,
     ) -> NonTurnResponseEnvelope:
         del conversation
+        full = reason in {"cap", "cap_closed", "reservation"}
         message = (
-            "Conversation capacity is exhausted; this prompt was refused."
-            if reason in {"cap", "cap_closed"}
+            CONTEXT_RESERVATION_TEXT
+            if reason == "reservation"
+            else ATTACHED_STORAGE_REFUSAL_TEXT
+            if full and self._storage_labelled
+            else CAPACITY_REFUSAL_TEXT
+            if full
             else "Conversation delivery is indeterminate; this prompt was refused."
             if reason == "delivery_indeterminate"
             else "This prompt was refused."
@@ -945,9 +1301,120 @@ class AcpDuplexAdapter:
                 "session/update",
                 build_agent_message_chunk_notification(session_id=session_id, text=message),
             )
+        # A full conversation ends the turn normally rather than as a "refusal": Zed hides a refused
+        # turn's text behind a generic content-policy banner, and the user must see "start a new
+        # thread" (sandbox Zed live check, 2026-09-29). The conversation disposition, not the stop
+        # reason, records that capacity refused it.
         return self._non_turn(
-            success_response(request_id=request_id, result={"stopReason": "refusal"}),
+            success_response(request_id=request_id, result={"stopReason": "end_turn" if full else "refusal"}),
             ownership_slot,
+        )
+
+    async def _prepare_attached_context(
+        self,
+        *,
+        request_id: str | int | None,
+        session: AcpSpecSession,
+        conversation: ConversationState,
+        turn: AcpPromptTurn,
+        attached_turn: AttachedTurn,
+        sanitized_user_prompt: str,
+        ownership_slot: ResponseOwnershipSlot | None,
+    ) -> TurnResponseEnvelope | None:
+        """Prepare an attached turn's view off the event loop (Plan 12.2 Task 9; design spec 8).
+
+        Returns the turn's response when it stops here, or None to dispatch. A cancelled turn sends
+        and publishes nothing and is committed as cancelled. An unavailable engine whose full history
+        is over the floor is refused with zero planning/answer calls and no commit: the thread stays
+        OPEN and the next turn tries again. Every maintenance attempt was already recorded.
+        """
+        outcome = await self._in_worker(session, turn, attached_turn.prepare)
+        self._report_context_faults(turn, outcome=outcome.kind)
+        halted = turn.turn_control.halt_requested()
+        if outcome.kind in {"cancelled", "unavailable"} or halted:
+            # No planning or answer call follows; any summaries already paid for still count.
+            self._apply_settled_cost(session, turn)
+        strategy = _STRATEGY_LABELS[attached_turn.strategy]  # captured; a setter during maintenance never changes it
+        if outcome.kind == "cancelled" or halted:
+            await self._commit_turn(
+                conversation=conversation,
+                turn=turn,
+                sanitized_user_prompt=sanitized_user_prompt,
+                result=_context_stop_result(turn, _CONTEXT_CANCELLED_TEXT),
+                outcome=ConversationOutcome.CANCELLED,
+                completion_text=_CONTEXT_CANCELLED_TEXT,
+            )
+            return self._turn(success_response(request_id=request_id, result={"stopReason": "cancelled"}), turn.turn_control, ownership_slot)
+        if outcome.kind == "unavailable":
+            await self._emit_final_text(
+                session_id=turn.session_id, text=context_unavailable_text(outcome.reason, strategy), turn=turn
+            )
+            await self._emit_cost_alerts(turn)
+            return self._turn(success_response(request_id=request_id, result={"stopReason": "end_turn"}), turn.turn_control, ownership_slot)
+        checkpoint = attached_turn.checkpoint_to_publish(current_generation=conversation.generation, cancelled=halted)
+        if checkpoint is not None:
+            session.context_checkpoint = checkpoint
+        if outcome.kind == "fallback":
+            # Live-only and best-effort, before any dispatch; never stored in the canonical history.
+            with contextlib.suppress(Exception):
+                await self._outbound.notify(
+                    "session/update",
+                    build_agent_message_chunk_notification(
+                        session_id=turn.session_id, text=CONTEXT_FALLBACK_TEXT.format(strategy=strategy)
+                    ),
+                )
+        return None
+
+    @property
+    def _storage_labelled(self) -> bool:
+        """Whether this adapter's conversation limit is storage, not the model's context: attached, or
+        absent under a trusted route policy whose requests the Gateway guards (release supplement V1)."""
+        return self._context_attachment is not None or self._route_policy is not None
+
+    def _warning_text(self) -> str:
+        if self._context_attachment is not None:
+            return ATTACHED_STORAGE_WARNING_TEXT
+        return ABSENT_STORAGE_WARNING_TEXT if self._route_policy is not None else CAPACITY_WARNING_TEXT
+
+    async def _emit_sliding_notice(self, session: AcpSpecSession) -> None:
+        """The first admitted turn after a switch to sliding says so, once (design spec 10).
+
+        Live-only and best-effort: only a confirmed flush clears the obligation, so a failed or
+        ambiguous send is tried again on the next admitted sliding turn; it never fails this turn."""
+        payload = build_agent_message_chunk_notification(session_id=session.session_id, text=SLIDING_ACTIVE_TEXT)
+        try:
+            await self._outbound.notify("session/update", payload, require_flushed=True)
+        except Exception:  # noqa: BLE001 - a notice failure never fails the turn
+            return
+        session.sliding_notice_pending = False
+
+    def _blocking_notice(self, session_id: str, loop: asyncio.AbstractEventLoop) -> Any:
+        """A notice channel for work off the event loop: delivers `text` to this session and returns
+        True only once the send is confirmed as flushed, within a finite wait."""
+
+        def deliver(text: str) -> bool:
+            payload = build_agent_message_chunk_notification(session_id=session_id, text=text)
+            future = asyncio.run_coroutine_threadsafe(
+                self._outbound.notify("session/update", payload, require_flushed=True), loop
+            )
+            try:
+                future.result(timeout=_NOTICE_FLUSH_TIMEOUT_SECONDS)
+            except Exception:  # noqa: BLE001 - unconfirmed: nothing that needs the notice is sent
+                future.cancel()
+                return False
+            return True
+
+        return deliver
+
+    @staticmethod
+    def _plan_record_fits(conversation: ConversationState, turn_seq: int, sanitized_user_prompt: str, plan_text: str) -> bool:
+        """Whether this turn's record can keep its plan and still commit a result within the attached
+        source limit: the reply is bounded at commit, the plan and facts never are."""
+        assert isinstance(conversation, AttachedConversationState)
+        return conversation.plan_fits(
+            turn_seq,
+            sanitized_user_prompt=sanitized_user_prompt,
+            sanitized_plan_text=conversation.sanitize_text(plan_text) if plan_text else "",
         )
 
     async def _finish_chat_turn(
@@ -1036,9 +1503,207 @@ class AcpDuplexAdapter:
             sanitized_plan_text=plan_text,
             sanitized_completion_text=completion,
             outcome=outcome,
-            effect_state=EffectState.NONE,
+            # The effect the turn's operations actually settled, recomputed after any cancellation
+            # (Plan 12.2 Task 2). A turn that started no WRITE or TEST, including every Chat turn,
+            # settles NONE.
+            effect_state=turn.turn_control.refresh_effect_state(),
         )
         conversation.commit_after_final_flush(decision)
+        # A long reply can cross 80% (or fill the conversation outright) after an admission that
+        # was well below it; tell the user now, not at the refusal. A reply past the cap never
+        # gets the "soon" warning, even when an earlier disposition kept it from closing.
+        if decision.closes_cap and conversation.disposition is ConversationDisposition.CAP_CLOSED:
+            await self._emit_capacity_notice(
+                session_id=turn.session_id,
+                conversation=conversation,
+                text=ATTACHED_STORAGE_REACHED_TEXT if self._storage_labelled else CAPACITY_REACHED_TEXT,
+                is_warning=False,
+            )
+        elif (
+            not decision.closes_cap
+            and decision.crosses_warning
+            and conversation.note_warning_threshold_for_attempt(decision.projected_bytes)
+        ):
+            await self._emit_capacity_notice(
+                session_id=turn.session_id, conversation=conversation, text=self._warning_text(), is_warning=True
+            )
+        await self._emit_usage_update(session_id=turn.session_id, conversation=conversation, turn=turn)
+        await self._emit_request_capacity_warning(turn)
+        await self._emit_cost_alerts(turn)
+
+    def _apply_turn_cost(
+        self, session: AcpSpecSession, turn: AcpPromptTurn, *, planning_cost: Decimal, planning_complete: bool
+    ) -> None:
+        """A runner's own reported total, kept only for a runner that reports no planning or answer
+        receipt for the turn (one that does not report its attempts). Receipts, when present, are the
+        turn's cost and its projection never adds this claim: no second debit (Codex CP3 ruling R2)."""
+        self._apply_settled_cost(session, turn)
+        if any(r.stage in {"planning", "answer"} for r in session.cost_settlement.receipts(turn.run_id)):
+            return
+        session.conversation.apply_planning_cost_once(turn.turn_seq, cost_usd=planning_cost, cost_complete=planning_complete)
+
+    @staticmethod
+    def _apply_settled_cost(session: AcpSpecSession, turn: AcpPromptTurn) -> None:
+        """Project the turn's settled receipts (every stage) into the conversation, ordered with every
+        other projection of this session. Idempotent: the turn's entry is replaced, never added to."""
+        conversation = session.conversation
+        session.cost_settlement.project(
+            turn.run_id,
+            lambda turn_id, summary: conversation.project_turn_cost(
+                turn_id, known_usd=summary.known_subtotal_usd, complete=summary.complete
+            ),
+        )
+
+    async def _in_worker(self, session: AcpSpecSession, turn: AcpPromptTurn, function: Any, *args: Any, **kwargs: Any) -> Any:
+        """Run `function` off the event loop as one invocation of this turn: the turn's cost stays
+        incomplete while the worker runs, even after this coroutine stops waiting for it (transport
+        teardown), and a worker that never started can never start later (Codex CP3 ruling R2)."""
+        invocation = session.cost_settlement.open_invocation(turn.run_id)
+
+        def call() -> Any:
+            if not invocation.start():
+                return None  # its turn already stopped waiting; nothing may run now
+            try:
+                return function(*args, **kwargs)
+            finally:
+                invocation.end()
+
+        try:
+            return await asyncio.to_thread(call)
+        finally:
+            invocation.abandon_unstarted()
+
+    async def _emit_exit_cost_alerts(self, turn: AcpPromptTurn) -> None:
+        """Alerts for a live exit that did not commit. Never after transport teardown: the facts stay
+        in the settlement, and no live send is attempted (Codex CP3 ruling R2)."""
+        if turn.turn_control.transport_abandoned():
+            return
+        with contextlib.suppress(Exception):
+            await self._emit_cost_alerts(turn)
+
+    def _report_context_faults(self, turn: AcpPromptTurn, *, outcome: str | None = None) -> None:
+        """One content-free operator line per attached-view fault (Codex CP3 ruling M2): the turn's
+        run id, the phase and a bounded category, never exception text, history, summary, credential or
+        engine reason. Best-effort: it never fails the turn."""
+        attached = turn.attached
+        if attached is None:
+            return
+        try:
+            for fault in attached.take_faults():
+                print(
+                    f"optimus.acp: context fault run_id={turn.run_id} phase={fault.phase} "
+                    f"category={fault.category} outcome={outcome or 'repack_refused'}",
+                    file=sys.stderr,
+                )
+        except Exception:  # noqa: BLE001 - a diagnostic never fails the turn
+            return
+
+    async def _emit_cost_alerts(self, turn: AcpPromptTurn) -> None:
+        """Report each configured cost threshold this turn or session has newly reached, once, as a
+        live notice. Alerts never refuse, stop or delay anything; a failed send is dropped."""
+        session = self._sessions.get(turn.session_id)
+        if session is None or not self._alert_policies:
+            return
+        settlement = session.cost_settlement
+        turn_summary = settlement.settle_turn(turn.run_id)
+        session_summary = settlement.settle_all()
+        summaries = {
+            "turn": CostScopeSummary(
+                scope="turn", scope_id=turn.run_id, known_subtotal_usd=turn_summary.known_subtotal_usd, complete=turn_summary.complete
+            ),
+            "session": CostScopeSummary(
+                scope="session",
+                scope_id=turn.session_id,
+                known_subtotal_usd=session_summary.known_subtotal_usd,
+                complete=session_summary.complete,
+            ),
+        }
+        for policy in self._alert_policies:
+            for notice in session.alert_tracker.new_notices(summaries[policy.scope], policy):
+                with contextlib.suppress(Exception):
+                    await self._outbound.notify(
+                        "session/update", build_agent_message_chunk_notification(session_id=turn.session_id, text=notice.text)
+                    )
+
+    async def _emit_capacity_notice(
+        self,
+        *,
+        session_id: str,
+        conversation: ConversationState,
+        text: str,
+        is_warning: bool,
+    ) -> None:
+        """Deliver a capacity notice: the one-time 80% warning or the "limit reached" notice.
+
+        Best-effort: a failed send never fails the turn. The send demands a confirmed flush, and
+        the warning is confirmed only then. A failed or ambiguous write re-arms it, so the next
+        opportunity (this turn's commit, or the next admission) sends it again: a possible
+        duplicate warning is preferred to a lost one. The `NoticeControl` warning sequence, when
+        present, is bookkeeping retired as soon as the attempt settles. Main has no
+        `session/load`, so the notice is live-only: nothing stores or replays it.
+        """
+        handle = (
+            self._notice_control.allocate_warning_sequence()
+            if is_warning and self._notice_control is not None
+            else None
+        )
+        payload = build_agent_message_chunk_notification(session_id=session_id, text=text)
+        try:
+            await self._outbound.notify("session/update", payload, require_flushed=True)
+        except Exception:
+            if is_warning:
+                conversation.rearm_warning_attempt()
+        else:
+            if is_warning:
+                conversation.confirm_warning_flushed()
+        finally:
+            if handle is not None and self._notice_control is not None:
+                self._notice_control.abort_warning_sequence(handle)
+
+    async def _emit_usage_update(
+        self, *, session_id: str, conversation: ConversationState, turn: AcpPromptTurn | None = None
+    ) -> None:
+        """Send the ACP `usage_update` meter after a committed turn, with the session's cost only
+        when it is complete.
+
+        Engine-absent without a route policy (inactive enforcement): estimated context used/size
+        (storage bytes // 4). Attached (Plan 12.2 Task 10; design spec 8.4), and engine-absent under a
+        trusted route policy (release supplement V1): the largest complete planning/answer input actually
+        sent during the turn against that request's usable capacity; summarizer calls are excluded, and
+        a turn that sent nothing, or whose request the Gateway refused, gets no reading.
+
+        Live-only and best-effort: it is never stored or replayed, and a failed send never fails
+        the turn. A refusal commits nothing, so it sends no new reading.
+        """
+        gauge = conversation.usage_gauge()
+        used, size = gauge.used, gauge.size
+        if turn is not None and (turn.attached is not None or turn.route_binder is not None):
+            reading = turn.attached.largest_dispatch() if turn.attached is not None else turn.route_binder.largest_dispatch()
+            if reading is None:
+                return
+            used, size = reading.tokens, reading.capacity
+        payload = build_usage_update(session_id=session_id, used=used, size=size, cost=gauge.cost)
+        with contextlib.suppress(Exception):
+            await self._outbound.notify("session/update", payload)
+
+    async def _emit_request_capacity_warning(self, turn: AcpPromptTurn) -> None:
+        """Release supplement V1: once a session's engine-absent request reaches 80% of its usable input
+        capacity under a trusted route policy, say so, once. It reads the same reading as the meter, so a
+        refused request (no reading) gets its capacity refusal instead. Separate from the storage notice;
+        live-only and best-effort: only a confirmed flush retires it, and a failed send never fails the
+        turn."""
+        session = self._sessions.get(turn.session_id)
+        if session is None or session.request_warning_sent or turn.attached is not None or turn.route_binder is None:
+            return
+        reading = turn.route_binder.largest_dispatch()
+        if reading is None or reading.tokens < REQUEST_WARNING_FRACTION * reading.capacity:
+            return
+        payload = build_agent_message_chunk_notification(session_id=turn.session_id, text=REQUEST_CAPACITY_WARNING_TEXT)
+        try:
+            await self._outbound.notify("session/update", payload, require_flushed=True)
+        except Exception:  # noqa: BLE001 - a notice failure never fails the turn
+            return
+        session.request_warning_sent = True
 
     async def _request_permission(self, *, turn: AcpPromptTurn, result: AgentRunResult) -> dict[str, Any]:
         tool_call_id = new_tool_call_id()
@@ -1079,6 +1744,10 @@ class AcpDuplexAdapter:
         planning_progress_observer: Any | None = None,
         halt_requested: Any | None = None,
         operation_control: Any | None = None,
+        context_packer: Any | None = None,
+        stage_receipts: Any | None = None,
+        route_binder: Any | None = None,
+        integrity_failure: Any | None = None,
     ) -> dict[str, Any]:
         """Pass client-MCP runtime kwargs only when the runner accepts them."""
         kwargs: dict[str, Any] = {}
@@ -1098,6 +1767,14 @@ class AcpDuplexAdapter:
             _maybe("halt_requested", halt_requested)
         if operation_control is not None:
             _maybe("operation_control", operation_control)
+        if context_packer is not None:
+            _maybe("context_packer", context_packer)
+        if stage_receipts is not None:
+            _maybe("stage_receipts", stage_receipts)
+        if route_binder is not None:
+            _maybe("route_binder", route_binder)
+        if integrity_failure is not None:
+            _maybe("integrity_failure", integrity_failure)
         _maybe("client_mcp_service", _client_mcp_service(session))
         _maybe("mcp_permission_broker", self._mcp_permission_broker_for(session))
         return kwargs
@@ -1254,13 +1931,18 @@ _PLANNING_TERMINAL_STOP_REASONS = frozenset(
     {
         "PLANNING_GATEWAY_FAILURE",
         "PLANNING_GATEWAY_COST_UNKNOWN",
+        "PLANNING_GATEWAY_REFUSED",
+        "PLANNING_INPUT_CAPACITY_EXCEEDED",
+        "PLANNING_NOTICE_UNDELIVERED",
         "PLANNING_REPEATED_READ_REQUEST",
         "PLANNING_UNPARSEABLE_RESPONSE",
-        "PLANNING_BUDGET_EXHAUSTED",
+        "PLANNING_OUTPUT_TRUNCATED",
+        "PLANNING_OUTPUT_UNFINISHED",
         "PLANNING_WALL_CLOCK_EXHAUSTED",
         "PLANNING_TURN_LIMIT_EXHAUSTED",
         "PLANNING_HALTED",
         "PLANNING_MODEL_REFUSED",
+        "CONTEXT_CAPACITY_EXCEEDED",
         "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
         "PLANNING_READ_BUDGET_EXHAUSTED",
         "PLANNING_READ_INVALID_RANGE",
@@ -1317,6 +1999,23 @@ def _text_from_content_blocks(blocks: list[Any]) -> str:
         if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str):
             texts.append(block["text"])
     return "\n".join(texts).strip()
+
+
+def _context_stop_result(turn: AcpPromptTurn, text: str) -> AgentRunResult:
+    """The result a turn records when it stopped before any planning or answer call."""
+    return AgentRunResult(
+        run_id=turn.run_id,
+        session_id=turn.session_id,
+        execution_mode=turn.execution_mode,
+        status=AgentRunStatus.TERMINATED,
+        final_state="TERMINATED",
+        output_text=text,
+        tool_calls=(),
+        total_cost_usd=Decimal("0"),
+        mutation_count=0,
+        provider_keys_resolvable=(),
+        stop_reason="cancelled",
+    )
 
 
 def _conversation_outcome(result: AgentRunResult) -> ConversationOutcome:

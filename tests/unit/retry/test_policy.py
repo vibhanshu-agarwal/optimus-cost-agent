@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
 
 import pytest
 
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
 from optimus.retry.policy import (
-    BudgetExhaustedError,
     FailureKind,
     FailureSeverity,
     PermanentGatewayError,
@@ -50,7 +48,9 @@ def test_named_failure_classes_map_to_expected_kinds():
     assert classify_failure(ProviderRateLimitError("slow down")).kind is FailureKind.RATE_LIMIT
     assert classify_failure(PermanentGatewayError("bad auth")).kind is FailureKind.PERMANENT
     assert classify_failure(PolicyViolationError("blocked")).kind is FailureKind.POLICY_VIOLATION
-    assert classify_failure(BudgetExhaustedError("cap reached", cost_usd=Decimal("0.041"))).kind is FailureKind.BUDGET_EXHAUSTED
+    # Plan 12.2 Task 11 removed the product dollar-stop error and its kind: a cost is never a retry
+    # classification (ADR-005, ADR-015). The test keeps its name: the logging-surface manifest pins it.
+    assert "budget_exhausted" not in {kind.value for kind in FailureKind}
 
 
 def test_retry_policy_retries_transient_failures_up_to_three_attempts():

@@ -10,7 +10,7 @@ import pytest
 
 from optimus.acp.errors import METHOD_NOT_FOUND
 from optimus.acp.launch_approvals import KeyringApprovalStore
-from optimus.acp.shapes import build_plan_session_update
+from optimus.acp.shapes import AGENT_MESSAGE_BLOCK_SEPARATOR, build_plan_session_update
 from optimus.acp.spec import (
     _PLANNING_TERMINAL_STOP_REASONS,
     ACP_PROTOCOL_VERSION,
@@ -287,10 +287,11 @@ async def test_session_prompt_never_lets_optimus_live_max_cost_usd_override_agen
     AgentRunRequest through this adapter, by construction. This test locks
     that absence in as a regression guard: every AgentRunRequest actually
     constructed by _handle_session_prompt keeps max_cost_usd at its
-    Pydantic default (Decimal("0.05")) regardless of what
-    OPTIMUS_LIVE_MAX_COST_USD is set to in the process environment --
-    proving the negative Step 5 explicitly asks for, not just asserting it
-    by inspection."""
+    Pydantic default regardless of what OPTIMUS_LIVE_MAX_COST_USD is set to
+    in the process environment -- proving the negative Step 5 explicitly
+    asks for, not just asserting it by inspection. Since Plan 12.2 Task 11
+    that default is None: a product (ACP) request has no dollar cap at all,
+    and ACP never sets one."""
     import os
 
     runner = _RecordingCompletedRunner()
@@ -327,7 +328,7 @@ async def test_session_prompt_never_lets_optimus_live_max_cost_usd_override_agen
         else:
             os.environ["OPTIMUS_LIVE_MAX_COST_USD"] = previous
 
-    assert runner.requests[0].max_cost_usd == Decimal("0.05")
+    assert runner.requests[0].max_cost_usd is None
 
 
 async def test_initialize_returns_spec_capabilities(tmp_path):
@@ -629,7 +630,7 @@ async def test_workspace_context_failure_surfaces_corrective_refusal_message(tmp
         for item in outbound.notifications
         if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
     ]
-    assert messages[-1] == failure_text
+    assert messages[-1] == failure_text + AGENT_MESSAGE_BLOCK_SEPARATOR
     assert messages[-1] != "Turn completed."
 
 
@@ -689,7 +690,7 @@ async def test_unparseable_plan_completion_does_not_echo_raw_model_output(tmp_pa
     ]
     assert response["result"]["stopReason"] == "end_turn"
     assert outbound.requests == []
-    assert messages[-1] == corrective_text
+    assert messages[-1] == corrective_text + AGENT_MESSAGE_BLOCK_SEPARATOR
     assert raw_sentinel not in messages[-1]
 
 
@@ -784,14 +785,16 @@ async def test_multi_turn_planning_emits_progress_before_final_permission(tmp_pa
         if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
         and "Planning turn" in item["params"]["update"]["content"]["text"]
     ]
-    assert progress_chunks == ["Planning turn 1 of 3: reading 2 guarded ranges."]
+    assert progress_chunks == ["Planning turn 1 of 3: reading 2 guarded ranges." + AGENT_MESSAGE_BLOCK_SEPARATOR]
     assert len([item for item in outbound.requests if item["method"] == "session/request_permission"]) == 1
     assert permission_request["params"]["options"][0]["metadata"]["planHash"] == "hash-final"
     assert response["result"]["stopReason"] == "end_turn"
 
 
 async def test_planning_failure_emits_end_turn_without_permission(tmp_path):
-    corrective_text = "Planning stopped because the run budget was exhausted."
+    # A product (ACP) run has no dollar stop since Plan 12.2 Task 11, so a terminal planning stop it can
+    # still reach stands in for the former budget case.
+    corrective_text = "Planning stopped because the wall-clock limit was reached."
 
     class PlanningFailureRunner:
         def run(self, request, *, planning_progress_observer=None):
@@ -807,7 +810,7 @@ async def test_planning_failure_emits_end_turn_without_permission(tmp_path):
                 total_cost_usd=Decimal("0.05"),
                 mutation_count=0,
                 provider_keys_resolvable=(),
-                stop_reason="PLANNING_BUDGET_EXHAUSTED",
+                stop_reason="PLANNING_WALL_CLOCK_EXHAUSTED",
                 plan_hash=None,
             )
 
@@ -843,7 +846,7 @@ async def test_planning_failure_emits_end_turn_without_permission(tmp_path):
         for item in outbound.notifications
         if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
     ]
-    assert messages[-1] == corrective_text
+    assert messages[-1] == corrective_text + AGENT_MESSAGE_BLOCK_SEPARATOR
     outbound_blob = str(outbound.requests) + str(outbound.notifications)
     assert "planHash" not in outbound_blob
 
@@ -901,7 +904,7 @@ async def test_planning_model_refused_emits_sanitized_text_without_permission(tm
         for item in outbound.notifications
         if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
     ]
-    assert messages[-1] == refusal
+    assert messages[-1] == refusal + AGENT_MESSAGE_BLOCK_SEPARATOR
     outbound_blob = str(outbound.requests) + str(outbound.notifications)
     assert "planHash" not in outbound_blob
 
@@ -1166,7 +1169,10 @@ async def test_planning_observation_overflow_emits_end_turn_not_internal_error(t
         for item in outbound.notifications
         if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
     ]
-    assert messages[-1] == "Planning stopped because carried observation evidence exceeds the allowed budget."
+    assert messages[-1] == (
+        "Planning stopped because carried observation evidence exceeds the allowed budget."
+        + AGENT_MESSAGE_BLOCK_SEPARATOR
+    )
     assert outbound.requests == []
 
 
@@ -1238,7 +1244,7 @@ async def test_unknown_cost_emits_end_turn_without_permission_request(tmp_path):
         for item in outbound.notifications
         if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
     ]
-    assert messages[-1] == corrective_text
+    assert messages[-1] == corrective_text + AGENT_MESSAGE_BLOCK_SEPARATOR
 
 
 # --- P11-FU-9 Task 6: client mcpServers disposition on session/new ---
@@ -2216,7 +2222,10 @@ async def test_cap_closed_refusal_is_explanatory_not_jsonrpc_error(tmp_path):
         },
     )
     assert "error" not in response
-    assert response["result"]["stopReason"] == "refusal"
+    # Plan 12.2 Task 3: a full conversation ends the turn normally so a client shows the
+    # explanation; the CAP_CLOSED disposition, not the stop reason, records the refusal.
+    assert response["result"]["stopReason"] == "end_turn"
+    assert session.conversation.disposition is ConversationDisposition.CAP_CLOSED
     assert session.conversation.records == before
     assert any(
         n["params"]["update"]["sessionUpdate"] == "agent_message_chunk" for n in outbound.notifications

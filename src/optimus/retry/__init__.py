@@ -1,6 +1,5 @@
 from optimus.retry.gated_run import GatedAttempt, GatedRetryResult, GatedRetryRunner
 from optimus.retry.policy import (
-    BudgetExhaustedError,
     FailureClassification,
     FailureKind,
     FailureSeverity,
@@ -18,7 +17,6 @@ from optimus.retry.policy import (
 )
 
 __all__ = [
-    "BudgetExhaustedError",
     "FailureClassification",
     "FailureKind",
     "FailureSeverity",

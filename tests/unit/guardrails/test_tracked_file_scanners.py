@@ -147,6 +147,7 @@ ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
     "tools/run_redaction_gate_live_evidence.py:run_inspect:rglob:manifest.json": "Finds generated manifests in a live-evidence output tree.",
     "tools/run_redaction_gate_live_evidence.py:run_verify:rglob:*": "Verifies a generated live-evidence output tree.",
     "tools/verify_plan99_noneditable_install.py:select_wheel:glob:*.whl": "Selects a wheel generated in an isolated build directory.",
+    "tools/check_product_coverage.py:run_full_suite:glob:.coverage*": "Removes generated coverage data files (`.coverage`, `.coverage.<suffix>`) at the repository root before the one full-suite run; run output, never repository assets.",
     "tests/unit/acp/test_main5_guard.py:_guarded_probe:glob:*.jsonl": "Reads refusal rows written by this helper's guarded child in its tmp_path log directory.",
     "tests/unit/acp/test_main5_guard.py:test_ambiguous_directory_descriptor_is_refused_and_recorded:glob:*.jsonl": "Reads the ambiguous-descriptor refusal ledger generated beneath this test's tmp_path.",
     "tests/unit/acp/test_main5_guard.py:test_audit_guard_allows_pipe_file_descriptors:glob:*.jsonl": "Checks the fixture child's tmp_path guard ledgers for unexpected pipe-descriptor refusals.",

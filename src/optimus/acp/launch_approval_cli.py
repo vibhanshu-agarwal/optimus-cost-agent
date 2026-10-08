@@ -66,6 +66,9 @@ from optimus.mcp.client_trust import (
     write_client_mcp_durable_from_fingerprint,
 )
 from optimus.mcp.local_ipc import PendingClientMcpCandidateEndpoint, SafeCandidateSnapshot
+from optimus_model_policy import RegistryError
+from optimus_model_policy.binding import BindingError, trusted_approval_literal
+from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 from optimus_security.sanitization import mask_uri_userinfo
 
@@ -109,6 +112,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         required=True,
         help="Approval mode: durable (persists) or one-shot (single use).",
     )
+    approve_parser.add_argument(
+        "--plan12-test-profile",
+        choices=TEST_PROFILE_NAMES,
+        default=None,
+        help="Reviewed Plan 12.2 test profile whose exact effective hash the approval binds (must match the target's own --plan12-test-profile).",
+    )
     # Remaining args after -- are the target argv for one-shot spawning.
     approve_parser.add_argument(
         "target_argv",
@@ -135,6 +144,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--elevated-debug",
         action="store_true",
         help="Enable elevated diagnostic output for this launch.",
+    )
+    run_parser.add_argument(
+        "--plan12-test-profile",
+        choices=TEST_PROFILE_NAMES,
+        default=None,
+        help="Reviewed Plan 12.2 test profile whose exact effective hash the approval binds (must match the target's own --plan12-test-profile).",
     )
     run_parser.add_argument(
         "target_argv",
@@ -219,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "approve":
-            return _cmd_approve(workspace_root, mode=args.mode, target_argv=args.target_argv)
+            return _cmd_approve(workspace_root, mode=args.mode, target_argv=args.target_argv, test_profile=args.plan12_test_profile)
         if args.command == "inspect":
             return _cmd_inspect(workspace_root)
         if args.command == "revoke":
@@ -229,7 +244,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "setup-credentials":
             return _cmd_setup_credentials(workspace_root)
         if args.command == "run":
-            return _cmd_run(workspace_root, target_argv=args.target_argv, elevated_debug=args.elevated_debug)
+            return _cmd_run(
+                workspace_root, target_argv=args.target_argv, elevated_debug=args.elevated_debug, test_profile=args.plan12_test_profile
+            )
         if args.command == "run-gateway":
             return _cmd_run_gateway_default(
                 workspace_root,
@@ -328,6 +345,7 @@ def _resolve_candidate(
     *,
     snapshot: LaunchEnvironmentSnapshot,
     operator_paths: OperatorPaths,
+    test_profile: str | None = None,
 ) -> LaunchCandidate:
     """Resolve the full launch candidate from an already-captured context.
 
@@ -362,6 +380,7 @@ def _resolve_candidate(
         workspace_state=workspace_state,
         operator_paths=operator_paths,
         hmac_key=store.hmac_key,
+        test_profile=test_profile,
     )
     return candidate
 
@@ -397,14 +416,14 @@ def _strip_separator(argv: list[str]) -> list[str]:
     return argv
 
 
-def _cmd_approve(workspace_root: Path, *, mode: str, target_argv: list[str]) -> int:
+def _cmd_approve(workspace_root: Path, *, mode: str, target_argv: list[str], test_profile: str | None = None) -> int:
     """Author a durable or one-shot approval."""
     _require_tty()
     target_argv = _strip_separator(target_argv)
 
     snapshot, paths = _prepare_approval_context(workspace_root)
     store, _ = _resolve_store(workspace_root)
-    candidate = _resolve_candidate(workspace_root, store, snapshot=snapshot, operator_paths=paths)
+    candidate = _resolve_candidate(workspace_root, store, snapshot=snapshot, operator_paths=paths, test_profile=test_profile)
 
     # Display the effective configuration for operator review.
     _display_candidate(candidate)
@@ -746,7 +765,7 @@ def _cmd_setup_credentials(workspace_root: Path) -> int:
     return run_setup_wizard(config_root=roots.default_config_root)
 
 
-def _cmd_run(workspace_root: Path, *, target_argv: list[str], elevated_debug: bool) -> int:
+def _cmd_run(workspace_root: Path, *, target_argv: list[str], elevated_debug: bool, test_profile: str | None = None) -> int:
     """Run a command with an existing durable approval.
 
     For --elevated-debug: creates a diagnostic grant, substitutes
@@ -759,7 +778,7 @@ def _cmd_run(workspace_root: Path, *, target_argv: list[str], elevated_debug: bo
 
     snapshot, paths = _prepare_candidate_context(workspace_root)
     store, _ = _resolve_store(workspace_root)
-    candidate = _resolve_candidate(workspace_root, store, snapshot=snapshot, operator_paths=paths)
+    candidate = _resolve_candidate(workspace_root, store, snapshot=snapshot, operator_paths=paths, test_profile=test_profile)
 
     try:
         authorized = authorize_launch(
@@ -922,6 +941,14 @@ def _cmd_run_gateway(
     print(f"  Bind: {bind_host}:{bind_port}")
     print()
 
+    # Plan 12.2 Task 5: the Gateway refuses to start unless the manifest binds its own registry, so an
+    # untrustworthy registry stops here with a typed message (None while enforcement is inactive).
+    try:
+        model_registry = trusted_approval_literal()
+    except (BindingError, RegistryError) as exc:
+        print(f"optimus-trust run-gateway: model registry is not trustworthy ({exc.code}).", file=sys.stderr)
+        return 2
+
     workspace_identity = resolve_workspace_identity(workspace_root)
     hmac_key_source = KeyringApprovalStore(
         keyring_backend=credential_keyring_backend, runtime_root=trusted_roots.approval_runtime_root
@@ -943,6 +970,8 @@ def _cmd_run_gateway(
         shared_secret=shared_secret,
         hmac_key=hmac_key_source.hmac_key,
         policy_version=LAUNCH_POLICY_COMPATIBILITY,
+        # Plan 12.2 Task 5: the Gateway refuses to start unless this matches its own registry.
+        model_registry=model_registry,
     )
     serialized_manifest = serialize_gateway_child_manifest(manifest)
 

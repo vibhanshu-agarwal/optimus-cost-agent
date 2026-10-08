@@ -828,15 +828,20 @@ def _scan_content_for_secrets(
     # False-positive risk of coincidental concatenations is accepted — this is
     # a fail-closed evidence gate, and quarantine-and-investigate is the
     # correct outcome.
+    #
+    # A second, whitespace-trimmed join is scanned too: Optimus ends every agent
+    # message block with a paragraph break (shapes.AGENT_MESSAGE_BLOCK_SEPARATOR,
+    # Plan 12.2 Task 3), which would otherwise sit between the halves of a split
+    # secret. Scanning both joins can only add detections, never remove one.
     strings_by_path = _extract_decoded_strings_by_path(content)
     for _path, values in strings_by_path.items():
-        joined_decoded = "".join(values)
+        joins = ("".join(values), "".join(value.rstrip() for value in values))
         for i, secret in enumerate(known_secrets):
-            if secret and secret in joined_decoded:
+            if secret and any(secret in joined for joined in joins):
                 rules_fired.append(f"joined_decoded_secret_leak:artifact={artifact_name}:index={secret_start_index + i}")
-        if _BEARER_PATTERN.search(joined_decoded):
+        if any(_BEARER_PATTERN.search(joined) for joined in joins):
             rules_fired.append(f"joined_decoded_bearer_token_pattern:artifact={artifact_name}")
-        if _SECRET_ASSIGNMENT_PATTERN.search(joined_decoded):
+        if any(_SECRET_ASSIGNMENT_PATTERN.search(joined) for joined in joins):
             rules_fired.append(f"joined_decoded_secret_assignment_pattern:artifact={artifact_name}")
 
     return rules_fired

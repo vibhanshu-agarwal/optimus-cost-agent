@@ -1157,7 +1157,7 @@ expectation.
 
 **Design source:** `docs/context-window-optimization-strategy.md` (standalone canonical design note; no HLD/LLD/Test Strategy anchors yet - see the Cross-Cutting section above)
 
-**Context/intelligence implementation plan:** The planned file is `docs/superpowers/plans/YYYY-MM-DD-context-window-optimization-intelligent-selection.md`. The original sequence deferred its creation until after the v1.0 gate and stable prerequisites. The 2026-09-29 operator direction below leaves its creation date undecided; no such context/intelligence file exists yet. The separate first slice, [Plan 12.1 Plan/Chat advisory answers](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md), now has an implementation plan.
+**Context/intelligence implementation plan:** Plan 12.2 was first filed through PR #214 (`1f7b6a2`, 2026-10-01) as its [first implementation plan](archive/2026-10-01-plan-12-2-context-engine-implementation.md) and [first design](../specs/archive/2026-10-01-plan-12-2-context-engine-design.md). The current editions, [implementation plan v4](2026-10-01-plan-12-2-context-engine-implementation_v4.md) and [design v3](../specs/2026-10-01-plan-12-2-context-engine-design_v3.md), are filed locally and await publication; they do not inherit PR #214's filing. Package A has local offline acceptance at 38a465f with the exact four-statement residual; [delivery](../reviews/2026-10-02-plan-12-2-package-a-delivery.md). The CP4 offline batch is accepted at cf9bb9d ([disposition](../reviews/2026-10-04-plan-12-2-cp4-offline-review-disposition.md)); full CP4 remains open. This is not engine delivery or live proof. The [sole backlog](2026-07-23-consolidated-deferred-followups-backlog.md#plan-12-context-engine-package-a-custody) owns publication, contracts and the open CP4 obligations. Plan 12.1 remains separate.
 
 **User story:** As the agent runtime, I select, pack, summarize, invalidate, evict, and measure context under a cost- and freshness-aware policy, so the agent gets smarter while fully-loaded cost goes down, without ever silently dropping required evidence to fit a budget.
 
@@ -1168,8 +1168,9 @@ above. This does not make any Plan 12 item a v1.0 requirement. The Plan/Chat adv
 residual (`P12-FU-1`) was ruled out of v1.0 and carried into Plan 12. It and its separately owned
 non-AGENT conversation dependency (`P11.25-FU-1`) are scheduled first in
 [Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md), on a separate branch
-from `main`, not in the Optimus sandbox. The timing of the broader context/intelligence plan file
-named above remains undecided. The pool's `Plan 12` row owns live status.
+from `main`, not in the Optimus sandbox. Plan 12.2 was subsequently filed and Package A locally
+accepted; the sandbox retains its reported effect-producer gap until separately synchronized.
+The pool's `Plan 12` row owns live status; ADR-016 records the four-checkpoint cadence.
 
 **Source anchors:**
 - `docs/context-window-optimization-strategy.md` - Context Type x Mechanism Matrix, Selection Pipeline, Selection Model, Freshness and Dependency Precedence, Prompt Packing and Cost Controls, Compaction, Offline Promotion Gates, Online Guardrails, Context Regret, Baseline and Ablation Plan, Calibration Items.

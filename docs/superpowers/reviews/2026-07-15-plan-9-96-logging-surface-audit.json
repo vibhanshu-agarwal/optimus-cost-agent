@@ -577,6 +577,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.conversation:render_model_conversation:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.conversation:render_model_conversation:json_serialization serializes the same already-sanitized five-field conversation records as render_conversation_envelope, in numeric turn order and declared field order, as the planner's history (Plan 12.2 Task 3, F3); it is not a diagnostic export, and the storage serializer alone measures the cap.",
+      "sanitizer": "conversation sanitizer applied before render; schema-limited five-field records only",
+      "test_node": "tests/unit/acp/test_conversation_model_order.py::test_model_turn_and_field_order",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.outbound_writer:DedicatedOutboundWriter._process_item:json_serialization",
       "policy": "protocol-only",
       "rationale": "Functional protocol serialization at optimus.acp.outbound_writer:DedicatedOutboundWriter._process_item:json_serialization encodes already-formed ACP NDJSON payloads for the dedicated writer transport; sanitizing would corrupt the protocol contract.",
@@ -1001,9 +1009,9 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.agent.runner:AgentRunner._run_approved_from_store:exception_export",
+      "key": "optimus.agent.runner:AgentRunner._apply_stored_plan:exception_export",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.agent.runner:AgentRunner._run_approved_from_store:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
+      "rationale": "Inspection: optimus.agent.runner:AgentRunner._apply_stored_plan:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/agent/test_runner.py::test_approved_agent_run_replays_stored_plan_without_second_gateway_call",
       "evidence_tier": "unit"
@@ -1521,9 +1529,9 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_message:json_serialization",
+      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient._request:json_serialization",
       "policy": "protocol-only",
-      "rationale": "Functional protocol serialization at optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_message:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
+      "rationale": "Inspection: _request serializes the outbound chat-completions request body (model, messages and, under an enforced model policy, the output cap, route controls and reasoning level) for the provider call it builds; the JSON is sent upstream, never persisted or logged.",
       "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
       "evidence_tier": "unit"
@@ -3710,6 +3718,254 @@
       "rationale": "write_record writes that checked record atomically to the worktree's ignored tmp/test-runs folder and to a temporary registry folder, both outside the protected application folders. It is the run context's only persistence sink, and read_record applies the same field table before any stored value is used.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed after the typed field table in tools.testing.run_context_records",
       "test_node": "tests/unit/tools/test_run_context_boundaries.py::test_the_writer_refuses_a_record_outside_the_field_table",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.responses:policy_refusal:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects the Plan 12.2 model-policy refusal text at optimus_gateway.responses:policy_refusal:exception_export before it leaves the Gateway as an HTTP error body; the refusal carries a stable code and a fixed or field-name detail, and sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_model_policy.py::test_unsupported_binding_shapes_are_rejected_not_ignored",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.binding:_sha256_canonical:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _sha256_canonical serializes route and payload identities to canonical JSON only as SHA-256 hash input for the Plan 12.2 route binding; the JSON is never persisted or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_binding.py::test_payload_digest_covers_model_roles_content_cap_and_reasoning",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.registry:_canonical_hash:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _canonical_hash serializes the validated, non-secret model registry to canonical JSON only as SHA-256 input for its effective hash; the JSON is never persisted or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_registry.py::test_the_effective_hash_ignores_formatting_but_tracks_content",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.registry:load_registry:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: load_registry wraps a schema validation failure of the curated, non-secret registry YAML in a typed RegistryError; production callers (launch gate, Gateway startup) export only its stable code, never the detail.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_launch_gate_model_registry.py::test_an_untrustworthy_registry_blocks_launch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_model_registry_drift:_save_snapshot:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _save_snapshot re-serializes only the public OpenRouter catalog and endpoint responses, fetched without any credential, into the operator-chosen snapshot directory as drift evidence.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_model_registry_drift.py::test_a_fetched_snapshot_saves_only_the_public_responses",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_model_registry_drift:_save_snapshot:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _save_snapshot writes only the public, credential-free catalog and endpoint responses to the operator-chosen snapshot directory; no request header, key or local diagnostic reaches the files.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_model_registry_drift.py::test_a_fetched_snapshot_saves_only_the_public_responses",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_model_registry_drift:main:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch; the only matching call is argparse parser.error with a fixed usage message, not a logger.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_model_registry_drift.py::test_the_report_reads_saved_responses_and_never_edits_the_registry",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_model_registry_drift:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints only the exception type name to stderr when the catalog is unavailable; no exception text, URL body or credential is exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_model_registry_drift.py::test_an_unreadable_catalog_exits_2",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_model_registry_drift:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints the registry version, a hash prefix, the snapshot path and drift lines built from registry IDs and public catalog facts; no credential or local diagnostic is printed.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_model_registry_drift.py::test_the_report_reads_saved_responses_and_never_edits_the_registry",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_message_once:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: create_message_once round-trips the approved provider routing controls (endpoint slugs, quantizations and flags from the trusted registry) through JSON to copy them into the outbound request; nothing is persisted or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_route_attempts.py::test_the_real_client_sends_the_reasoning_level_and_returns_the_reply",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_message_once:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: create_message_once calls urllib's OpenerDirector.open, the provider HTTP request that urlopen makes, through an opener whose connections record whether the attempt connected; it opens no file, and the reply is parsed in memory, never persisted or logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_route_attempts.py::test_a_wrapped_send_phase_tls_failure_is_one_uncertain_attempt_end_to_end",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "context_engine.contracts:StrategyParameters.digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: StrategyParameters.digest canonicalizes the strategy's integer allocations and its prompt/format version strings as a SHA-256 input and returns only the digest; no conversation text, credential or diagnostic content is serialized, persisted or logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_checkpoints.py::test_the_parameter_digest_is_deterministic_and_covers_every_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.adapter:ApprovalFact.render:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Inspection: ApprovalFact.render serializes one host-issued approval fact (turn number, plan artifact hash, granted/denied/cancelled decision and scope) into the exact canonical string the Context Engine carries in memory as protected turn state; it contains no prompt, plan or credential text and is never persisted or logged.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/agent/test_context_authority_projection.py::test_an_approval_fact_renders_exactly_and_canonically",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "context_engine.selection:render_ordinary_turn:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Inspection: render_ordinary_turn serializes one committed turn's already-sanitized ordinary text (the host adapter sanitizes before the engine sees it) as the functional unit the history estimator measures and that maintenance input carries to the host's injected summarizer call; the engine persists and logs nothing.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/context_engine/test_selection.py::test_an_ordinary_turn_renders_whole_in_its_real_field_order",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "context_engine.selection:render_protected_state:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Inspection: render_protected_state serializes one turn's exact host authority (outcome, effect state and host-rendered approval facts) so the history estimator can reserve its capacity first; it is never sent to maintenance, persisted or logged.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/context_engine/test_selection.py::test_protected_state_renders_every_fact_verbatim",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:evaluate_summary:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: evaluate_summary puts str() of a SummaryFormatError into the fact report; every such message is a fixed format-rule string from context_engine.summary (for example 'wrapper delimiter in summary'), never summary text, a credential or a local diagnostic.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evaluate_context_summarizer.py::test_each_negative_control_fails_on_its_own_check",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:fixture_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: fixture_digest canonicalizes the synthetic, non-sensitive calculator-constraints-v1 fixture solely as a SHA-256 input and returns only the digest.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evaluate_context_summarizer.py::test_the_fixture_digest_is_its_canonical_content_not_its_bytes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main serializes either the paid-call envelope (registry model IDs, routes, prices, token and cost bounds, digests) or a fact report over a saved summary of the synthetic fixture; no credential, prompt beyond the fixture, or local diagnostic is serialized.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evaluate_context_summarizer.py::test_the_command_line_checks_a_saved_summary",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints only the envelope or the fact report described for its json_serialization surface, for the operator reviewing qualification before any paid call; the tool makes no network call and reads no credential.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evaluate_context_summarizer.py::test_the_command_line_checks_a_saved_summary",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.assembly:_exact_turn:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Inspection: _exact_turn serializes one committed turn's already-sanitized ordinary text (the host adapter sanitizes every record into the snapshot), with its plan wrapped in the inert historical-plan markers, as one line of the model-facing history view an attached turn sends as untrusted conversation data; it is never persisted or logged.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/agent/test_context_selection.py::test_the_rendered_view_wraps_the_summary_inert_and_keeps_plans_inert",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:AcpDuplexAdapter._report_context_faults:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Content-free by construction (Codex CP3 ruling M2): one operator line per attached-view fault naming only the host-minted turn run id, the phase ('prepare' or 'repack'), a category from the bounded ContextFault vocabulary (validated at construction; an unlisted engine reason maps to 'other') and the turn outcome. No exception text, history, summary, credential or engine reason string is formatted or retained; a send failure is contained.",
+      "sanitizer": "content-free by construction: generated run id and allowlisted phase/category/outcome codes",
+      "test_node": "tests/unit/acp/test_late_receipts.py::test_a_view_fault_leaves_one_content_free_operator_line",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.measure_context_engine_limits:completion_status:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: completion_status writes one fixed synthetic source line into its own temporary workspace for the runner to plan against; no runtime, credential or diagnostic data.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_limits.py::test_the_quick_report_has_every_section",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.measure_context_engine_limits:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main serializes the measurement report: synthetic-history sizes, timings, peaks, boundary outcomes and registry route facts; no prompt, credential or provider data.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_limits.py::test_the_quick_report_has_every_section",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.measure_context_engine_limits:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints only the report path it wrote, as controlled operational status, and does not retain it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_limits.py::test_the_quick_report_has_every_section",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan99_noneditable_install:_extraction_probe:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _extraction_probe writes the fixed EXTRACTION_PROBE script into the isolated scratch workspace; it carries no runtime or credential data.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_the_extraction_probe_reports_a_clean_engine_import_and_is_caught_in_a_checkout",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_product_coverage:main:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main exports only CoverageGateError text into the report and stderr; every message is built by the gate from fixed wording, src package names, src-relative file paths, group names and coverage percentages, and a groups-file read failure names only the exception type. No credential, environment value or test output is included.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_product_coverage.py::test_report_mode_needs_the_identified_dataset",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_product_coverage:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main serializes the gate report (run command basename and arguments, pytest exit, timestamps, dataset SHA-256, per-floor percentages and verdict) for the operator-chosen report path; no environment, credential or source content is serialized.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_product_coverage.py::test_run_mode_launches_the_one_fixed_selection_and_keeps_its_true_exit",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_product_coverage:main:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch; the only matching calls are argparse parser.error with fixed usage messages, not a logger.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_product_coverage.py::test_report_mode_needs_the_identified_dataset",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_product_coverage:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints only the gate's own failure lines (fixed wording, package and group names, percentages and the pytest exit code) to stderr.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_product_coverage.py::test_run_mode_launches_the_one_fixed_selection_and_keeps_its_true_exit",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_product_coverage:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints one line per floor (name, percentage, floor, required or informational, PASS or BELOW); no credential or local diagnostic is printed.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_product_coverage.py::test_run_mode_launches_the_one_fixed_selection_and_keeps_its_true_exit",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_product_coverage:main:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main writes only the gate report and its run record, the JSON described above, to the operator-chosen report path; nothing else is persisted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_check_product_coverage.py::test_run_mode_launches_the_one_fixed_selection_and_keeps_its_true_exit",
       "evidence_tier": "unit"
     }
   ]

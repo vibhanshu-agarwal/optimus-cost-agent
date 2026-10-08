@@ -183,7 +183,11 @@ def test_chat_gateway_error_without_usage_is_an_unknown_cost_failure(tmp_path):
 
 
 def test_chat_over_budget_answer_is_terminated_as_budget_exhausted(tmp_path):
-    result = AgentRunner(gateway_client=_Gateway(cost="0.06"), model="m").run(_chat_request(_workspace(tmp_path)))
+    """Only an independently authorized evaluation caller's explicit cap withholds an answer (Plan 12.2
+    Task 11); a product request has none, and its answer above the former $0.05 is delivered
+    (test_product_cost_policy)."""
+    request = _chat_request(_workspace(tmp_path)).model_copy(update={"max_cost_usd": Decimal("0.05")})
+    result = AgentRunner(gateway_client=_Gateway(cost="0.06"), model="m").run(request)
 
     assert result.status is AgentRunStatus.TERMINATED
     assert result.stop_reason == "BUDGET_EXHAUSTED"

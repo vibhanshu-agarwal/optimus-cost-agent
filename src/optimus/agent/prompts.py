@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from decimal import Decimal
 
 from optimus.agent.models import AgentMcpToolOutput
 
 AGENT_PLANNER_PROMPT_VERSION = "AGENT_PLANNER_PROMPT_VERSION:2026-07-12"
+# Plan 12.2 Task 11: the remaining-dollar line is gone (the planner never plans around money).
 MULTI_TURN_PLANNER_PROMPT_VERSION = (
-    "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a"
+    "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-10-04-plan-12-2-task-11"
 )
 
 WORKSPACE_FILES_HEADER = (
@@ -180,7 +180,6 @@ def build_multi_turn_planner_input(
     *,
     planning_turn: int,
     max_planning_turns: int,
-    remaining_budget_usd: Decimal,
     remaining_wall_clock_minutes: int,
     carried_observations_envelope: str = "",
     current_read_evidence_envelope: str = "",
@@ -188,12 +187,18 @@ def build_multi_turn_planner_input(
     initial_workspace_context: str = "",
     initial_workspace_file_sizes: Mapping[str, int] | None = None,
     evidence_limits: tuple[int, int, int] | None = None,
+    conversation_envelope: str = "",
 ) -> str:
-    sections = [
-        f"{MULTI_TURN_PLANNER_PROMPT_VERSION}\n",
+    # Plan 12.2 Task 9: an attached turn's history view comes before the task, in its own section,
+    # and the task is only the current prompt. An absent-engine turn passes no envelope (its history
+    # is inside the task), so its input is byte-identical to before.
+    sections = [f"{MULTI_TURN_PLANNER_PROMPT_VERSION}\n"]
+    history = conversation_envelope.strip()
+    if history:
+        sections.append(f"{_CONVERSATION_HEADER}\n{history}\n{_CONVERSATION_FOOTER}\n")
+    sections += [
         f"Task: {task}\n",
         f"Planning turn: {planning_turn} of {max_planning_turns}\n",
-        f"Remaining budget (USD): {remaining_budget_usd}\n",
         f"Remaining wall-clock minutes: {remaining_wall_clock_minutes}\n",
     ]
     if evidence_limits is not None:

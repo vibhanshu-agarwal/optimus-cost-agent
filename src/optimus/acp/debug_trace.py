@@ -312,7 +312,8 @@ def log_planning_replan_event(event: PlanningProgressEvent, *, stop_reason: str 
             "reported_aggregate_cost_usd": str(event.total_cost_usd),
             "cost_complete": event.cost_complete,
             "unknown_cost_attempt_count": event.unknown_cost_attempt_count,
-            "remaining_budget_usd": str(event.remaining_budget_usd),
+            # An evaluation caller's remaining explicit cap only; absent on product runs (Plan 12.2 Task 11).
+            **({} if event.remaining_budget_usd is None else {"remaining_budget_usd": str(event.remaining_budget_usd)}),
             "read_identities": list(event.read_identities),
             "read_byte_counts": list(event.read_byte_counts),
             "source_sha256s": list(event.source_sha256s),
