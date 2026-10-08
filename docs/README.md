@@ -112,6 +112,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Document | What it is |
 |---|---|
+| [Plan 12.2 CP4 offline delivery disposition](superpowers/reviews/2026-10-08-plan-12-2-cp4-offline-delivery-disposition.md) | Operator decision, 2026-10-08: offline delivery through 2068366 is complete; Luna qualification, the summary-quality receipt and real-editor Task 13 are deferred as UNRUN obligations; not a full CP4 pass |
 | [Plan 12.2 CP4 offline review disposition](superpowers/reviews/2026-10-04-plan-12-2-cp4-offline-review-disposition.md) | Codex accepts the offline batch at cf9bb9d with declared scope; five rulings; full CP4 remains open |
 | [Plan 11.25 producer-instrumentation correction](superpowers/reviews/2026-10-01-plan-11-25-effect-instrumentation-correction.md) | Checked historical steps do not establish current runner instrumentation; Plan 12 owns the repair |
 | [A2A ledger independent audit](superpowers/reviews/evidence-handoff-a2a-ledger-independent-audit.md) | Findings the open ledger slices fix |
