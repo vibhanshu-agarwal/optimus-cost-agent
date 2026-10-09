@@ -48,8 +48,9 @@ __all__ = [
 
 # Gateway model-policy refusals raised before any upstream attempt (optimus_gateway.model_policy
 # admit_request/parse_route_binding and optimus_model_policy.capacity.guard_request).
-# FINISH_STATUS_UNVERIFIED is raised after a completed, billed attempt and always carries its usage,
-# so it is not here. A test keeps this set equal to the Gateway's codes.
+# FINISH_STATUS_UNVERIFIED and the experimental route's reply checks (EMPIRICAL_* other than
+# EMPIRICAL_ROUTE_STOPPED) are raised after a completed, billed attempt and always carry its usage,
+# so they are not here. A test keeps this set equal to the Gateway's codes.
 PREFLIGHT_REFUSAL_CODES = frozenset(
     {
         "BINDING_MALFORMED",
@@ -59,6 +60,7 @@ PREFLIGHT_REFUSAL_CODES = frozenset(
         "CAPACITY_REFUSED",
         "DISCLOSURE_INVALID",
         "DISCLOSURE_REQUIRED",
+        "EMPIRICAL_ROUTE_STOPPED",
         "ESTIMATOR_UNKNOWN",
         "ESTIMATOR_UNVERIFIED",
         "INPUT_EXCEEDS_CAPACITY",

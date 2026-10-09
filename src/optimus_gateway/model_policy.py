@@ -43,12 +43,15 @@ from optimus_model_policy.binding import (
     route_digest,
     verify_disclosure,
 )
+from optimus_model_policy.experimental import ExperimentalRoute, experimental_route
 
 __all__ = [
     "AdmittedRequest",
+    "EmpiricalRouteStop",
     "GatewayModelPolicy",
     "ModelPolicyRefusal",
     "admit_request",
+    "check_experimental_reply",
     "check_finish_status",
     "parse_route_binding",
 ]
@@ -68,6 +71,22 @@ class ModelPolicyRefusal(Exception):
         super().__init__(f"model policy refused the request ({code}){': ' + detail if detail else ''}")
 
 
+class EmpiricalRouteStop:
+    """Once tripped by a failed experimental-route check, the route admits no further request for the
+    rest of this Gateway's life. A tripped stop cannot be cleared."""
+
+    def __init__(self) -> None:
+        self._code: str | None = None
+
+    @property
+    def code(self) -> str | None:
+        return self._code
+
+    def trip(self, code: str) -> None:
+        if self._code is None:
+            self._code = code
+
+
 @dataclass(frozen=True)
 class GatewayModelPolicy:
     """The trusted snapshot, the hash launch approved and the per-launch disclosure key."""
@@ -76,6 +95,7 @@ class GatewayModelPolicy:
     approved_hash: str
     disclosure_key: bytes = field(repr=False)
     eligible_models: frozenset[str] = field(init=False)
+    route_stop: EmpiricalRouteStop = field(default_factory=EmpiricalRouteStop, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.snapshot.policy.fixture:
@@ -105,6 +125,9 @@ class AdmittedRequest:
     request_id: str
     reasoning: str | None
     """The route's approved reasoning level, sent as ``reasoning.effort`` (None: the route has none)."""
+    experimental: ExperimentalRoute | None = None
+    """The reviewed experimental test route this request was admitted under, if any: every reply is
+    then checked with :func:`check_experimental_reply`."""
 
 
 def parse_route_binding(request_body: Mapping[str, Any], policy: GatewayModelPolicy | None) -> RouteBinding | None:
@@ -134,6 +157,9 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
         raise ModelPolicyRefusal("UNKNOWN_MODEL", "only exact registry model IDs are routed")
     if model not in policy.eligible_models:
         raise ModelPolicyRefusal("MODEL_NOT_ELIGIBLE", "the model holds no eligible role in this snapshot")
+    experimental = experimental_route(snapshot, model)
+    if experimental is not None and policy.route_stop.code is not None:
+        raise ModelPolicyRefusal("EMPIRICAL_ROUTE_STOPPED", f"an earlier reply failed {policy.route_stop.code}", status=503)
 
     # The Gateway's upstream request is one user message holding the final flattened input.
     messages = (Message(role="user", content=input_text),)
@@ -176,7 +202,38 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
         decision=decision,
         request_id=binding.request_id,
         reasoning=entry.default_reasoning,
+        experimental=experimental,
     )
+
+
+def check_experimental_reply(admitted: AdmittedRequest, result: Any) -> None:
+    """Check one completed reply against what the experimental route assumed (Codex disposition,
+    2026-10-09). The router metadata must name the expected provider (identity, not an exact variant),
+    report one attempt and no pipeline stage, and the reported prompt tokens must not exceed the
+    empirical estimate the request was admitted under. A failure is a permanent (422) billed result.
+    A pass shows only that this request fitted."""
+    route = admitted.experimental
+    if route is None:
+        return
+    provider = getattr(result, "resolved_provider", None)
+    attempt = getattr(result, "router_attempt", None)
+    pipeline = getattr(result, "router_pipeline", None)
+    if provider is None:
+        raise ModelPolicyRefusal("EMPIRICAL_PROVIDER_MISSING", "the reply carries no selected router provider", status=422)
+    if provider != route.provider_name:
+        raise ModelPolicyRefusal("EMPIRICAL_PROVIDER_MISMATCH", f"router provider {provider!r}, expected {route.provider_name!r}", status=422)
+    if attempt is None or pipeline is None:
+        raise ModelPolicyRefusal("EMPIRICAL_ROUTER_METADATA_MISSING", "the reply carries no router attempt or pipeline record", status=422)
+    if attempt != 1:
+        raise ModelPolicyRefusal("EMPIRICAL_ROUTER_FALLBACK", f"the router reports attempt {attempt}", status=422)
+    if pipeline:
+        raise ModelPolicyRefusal("EMPIRICAL_ROUTER_PIPELINE", f"the router ran {', '.join(pipeline)}", status=422)
+    if result.input_tokens > admitted.decision.input_tokens:
+        raise ModelPolicyRefusal(
+            "EMPIRICAL_ESTIMATE_EXCEEDED",
+            f"reported {result.input_tokens} prompt tokens, estimated at most {admitted.decision.input_tokens}",
+            status=422,
+        )
 
 
 def check_finish_status(finish_reason: str | None) -> None:

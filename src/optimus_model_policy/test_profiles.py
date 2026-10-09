@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Final
 
 from optimus_model_policy.binding import BindingError, packaged_defaults, trusted_snapshot
+from optimus_model_policy.experimental import HAIKU_QUALIFICATION_HASH
 from optimus_model_policy.registry import RegistryError, RegistrySnapshot, load_registry
 
 __all__ = ["TEST_PROFILE_NAMES", "TEST_PROFILES", "TestProfile", "compose_test_profile_snapshot", "registry_for_launch"]
@@ -48,15 +49,15 @@ class TestProfile:
 
 
 TEST_PROFILES: Final[dict[str, TestProfile]] = {
-    # Profile A: qualification and absent-engine behaviour. It records the 2026-10-04 free inspection's
-    # observed public facts for the baseline candidate, unverified: its tokenizer is not established by
-    # publisher configuration, every endpoint's quantization is unknown and the registry-priced endpoint
-    # is a base slug. It therefore admits no model, and a launch with it refuses before any call.
+    # Profile A: qualification and absent-engine behaviour, on Claude Haiku 5.5 (operator release,
+    # 2026-10-09). Its route facts come from the 2026-10-09 free inspection; its empirical estimator and
+    # provider-family slug are admitted only through experimental.py, bound to this exact hash. Luna
+    # stays ineligible: its 2026-10-04 facts never established a tokenizer.
     "qualification": TestProfile(
         name="qualification",
         override="test_profile_qualification.yaml",
-        effective_hash="0539d26660457618add2de9266c541975cb30f3927860e9c68da01152f3551a0",  # pragma: allowlist secret - registry identity, not a credential
-        model_id="openai/gpt-6-luna",
+        effective_hash=HAIKU_QUALIFICATION_HASH,
+        model_id="anthropic/claude-haiku-5.5",
         role="easy",
         output_cap=32768,
     ),

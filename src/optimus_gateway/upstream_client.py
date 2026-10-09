@@ -61,6 +61,12 @@ class ProviderMessageResult:
     finish_reason: str | None = None
     """The provider's own finish status, lower-cased (``stop``, ``length``, ...); ``None`` when the
     provider reported none. Never synthesized (Plan 12.2 Task 5)."""
+    router_attempt: int | None = None
+    """OpenRouter's 1-indexed successful routing attempt (above 1: earlier attempts fell back); ``None``
+    without router metadata."""
+    router_pipeline: tuple[str, ...] | None = None
+    """The ``type`` of every router pipeline stage that materially changed the request or response
+    (compression, guardrails, ...); empty when none ran, ``None`` without router metadata."""
 
 
 class UpstreamClient(Protocol):
@@ -415,8 +421,11 @@ def parse_openai_chat_completion(
     metadata = body.get("openrouter_metadata")
     if metadata is not None and not isinstance(metadata, dict):
         raise RuntimeError("upstream response has malformed router metadata")
-    resolved_provider = _optional_string(metadata, "provider", "router metadata")
-    metadata_model = _optional_string(metadata, "model", "router metadata")
+    selected = _selected_endpoint(metadata)
+    resolved_provider = _optional_string(selected, "provider", "router metadata")
+    metadata_model = _optional_string(selected, "model", "router metadata")
+    router_attempt = _optional_nonnegative_int(metadata, "attempt", "router metadata attempt")
+    router_pipeline = _router_pipeline(metadata)
     resolved_model = _optional_string(body, "model", "model") or metadata_model
     model_version = _optional_string(body, "model_version", "model version")
 
@@ -453,7 +462,36 @@ def parse_openai_chat_completion(
         reasoning_tokens=reasoning_tokens,
         cache_age_seconds=cache_age_seconds,
         finish_reason=finish_reason,
+        router_attempt=router_attempt,
+        router_pipeline=router_pipeline,
     )
+
+
+def _selected_endpoint(metadata: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The router metadata's selected endpoint (documented shape: ``endpoints.available[]`` entries with
+    ``provider``, ``model`` and ``selected``), or None when no entry is selected. More than one selected
+    entry, or a malformed shape, is refused rather than guessed."""
+    if metadata is None or "endpoints" not in metadata:
+        return None
+    endpoints = metadata["endpoints"]
+    available = endpoints.get("available") if isinstance(endpoints, dict) else None
+    if not isinstance(available, list) or not all(isinstance(entry, dict) for entry in available):
+        raise RuntimeError("upstream response has malformed router metadata endpoints")
+    if any(not isinstance(entry.get("selected", False), bool) for entry in available):
+        raise RuntimeError("upstream response has malformed router metadata selection")
+    chosen = [entry for entry in available if entry.get("selected") is True]
+    if len(chosen) > 1:
+        raise RuntimeError("upstream response has ambiguous router metadata selection")
+    return chosen[0] if chosen else None
+
+
+def _router_pipeline(metadata: dict[str, Any] | None) -> tuple[str, ...] | None:
+    if metadata is None:
+        return None
+    stages = metadata.get("pipeline", [])
+    if not isinstance(stages, list) or not all(isinstance(stage, dict) and isinstance(stage.get("type"), str) for stage in stages):
+        raise RuntimeError("upstream response has malformed router metadata pipeline")
+    return tuple(stage["type"] for stage in stages)
 
 
 def _required_nonnegative_int(value: object, field: str) -> int:

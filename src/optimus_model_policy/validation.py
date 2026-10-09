@@ -12,6 +12,9 @@ for a role only when it is explicitly assigned to that role and every hard requi
 * summarizer: a passing ``context-summary-v1`` receipt for this exact route and reasoning setting;
 * reviewer and classifier are dormant, so they are never eligible.
 
+The one reviewed test profile listed in ``experimental.py`` (by exact snapshot hash) may use its
+provider-family slug and its empirical estimator; every other snapshot keeps both rules above.
+
 Eligible models are ordered by per-token price dominance (no dearer on both input and output, and
 cheaper on one); an exact tie puts the China-origin model first. Crossed prices need a declared
 role blend; without one the role's ordering is unresolved and nothing is eligible for it.
@@ -25,6 +28,7 @@ from decimal import Decimal
 from functools import cmp_to_key
 
 from optimus_model_policy.binding import WIRE_QUANTIZATIONS, WIRE_REASONING_EFFORTS
+from optimus_model_policy.experimental import EMPIRICAL_ESTIMATOR_METHOD, experimental_route
 from optimus_model_policy.registry import (
     DORMANT_ROLES,
     IMPLEMENTER_ROLES,
@@ -81,7 +85,14 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
     )
     if inexpressible:
         issue("ROUTE_QUANTIZATION_NOT_EXPRESSIBLE", f"quantizations {inexpressible} have no upstream filter value")
-    base_slugs = sorted({endpoint.provider for endpoint in endpoints if "/" not in endpoint.provider})
+    experimental = experimental_route(snapshot, model_id)
+    base_slugs = sorted(
+        {
+            endpoint.provider
+            for endpoint in endpoints
+            if "/" not in endpoint.provider and (experimental is None or endpoint.provider != experimental.provider_family)
+        }
+    )
     if base_slugs:
         # OpenRouter routes a base slug to every variant and region of that provider, so the request
         # could not be held to the approved endpoint; only an exact variant slug is expressible.
@@ -107,7 +118,7 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
     estimator = policy.estimators.get(entry.route.estimator)
     if estimator is None:
         issue("ESTIMATOR_UNKNOWN", f"route estimator {entry.route.estimator!r} is not defined")
-    elif not estimator.verified:
+    elif not estimator.verified and not (experimental is not None and estimator.method == EMPIRICAL_ESTIMATOR_METHOD):
         issue("ESTIMATOR_UNVERIFIED", f"route estimator {entry.route.estimator!r} is not verified")
 
     if entry.default_reasoning is not None and entry.default_reasoning not in entry.capabilities.reasoning_levels:

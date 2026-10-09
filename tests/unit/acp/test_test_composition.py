@@ -6,9 +6,11 @@ not bind it); the host refuses a composition other than the one the authorized c
 Gateway composes the same profile itself and refuses a manifest naming another hash; the server hands
 the trusted route policy to every session adapter. Production composition is unchanged.
 
-The real ``qualification`` profile admits no model today (its tokenizer, finish and reasoning facts are
-unverified), so the positive mechanism is shown with a SYNTHETIC, test-only profile whose facts are
-marked verified here and nowhere else. It is not a real profile, approval or admissible live route.
+The real ``qualification`` profile is Claude Haiku 5.5 on its provider-family route with an empirical
+estimate (operator release and Codex disposition, 2026-10-09); both exceptions hold only for its pinned
+hash (``optimus_model_policy.experimental``). The ordinary verified-route mechanism is also shown with a
+SYNTHETIC, test-only profile whose facts are marked verified here and nowhere else. It is not a real
+profile, approval or admissible live route.
 """
 
 from __future__ import annotations
@@ -42,6 +44,7 @@ _ENV = {
     "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
 }
 LUNA = "openai/gpt-6-luna"
+HAIKU = "anthropic/claude-haiku-5.5"
 
 # SYNTHETIC test-only facts: the estimator and endpoint are marked verified so the mechanism can be
 # exercised end to end. Never a real profile, never shipped, never a qualification claim.
@@ -70,7 +73,8 @@ def synthetic_profile(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     override.write_text(SYNTHETIC_OVERRIDE, encoding="utf-8")
     pinned = load_registry(packaged_defaults(), override).effective_hash
     real = profiles.TEST_PROFILES["qualification"]
-    monkeypatch.setitem(profiles.TEST_PROFILES, "qualification", profiles.TestProfile(**{**real.__dict__, "effective_hash": pinned}))
+    swapped = profiles.TestProfile(**{**real.__dict__, "effective_hash": pinned, "model_id": LUNA})
+    monkeypatch.setitem(profiles.TEST_PROFILES, "qualification", swapped)
     monkeypatch.setattr(profiles, "_override_path", lambda _profile: override)
     return pinned
 
@@ -140,11 +144,18 @@ def test_a_composition_other_than_the_one_the_authorized_candidate_digested_is_r
     assert caught.value.code == "TEST_PROFILE_NOT_APPROVED"
 
 
-def test_the_real_qualification_profile_has_no_eligible_model_yet() -> None:
+def test_the_real_qualification_profile_composes_haiku_on_its_provider_family_route() -> None:
     snapshot = profiles.compose_test_profile_snapshot("qualification")
     composition = compose_test_composition("qualification", approved_literal=approval_literal(snapshot))
+
+    model = composition.agent_model({"OPTIMUS_AGENT_MODEL": "claude-haiku"}, cli_model=None)  # the alias never wins
+    policy = composition.route_policy(model_id=model, shared_secret="test-key")  # pragma: allowlist secret - synthetic
+    assert model == HAIKU
+    assert (policy.identity.model_id, policy.identity.role, policy.identity.route, policy.identity.quantizations, policy.output_cap) == (
+        HAIKU, "easy", ("anthropic",), ("unknown",), 32_768
+    )  # fmt: skip
     with pytest.raises(AgentModelError):
-        composition.agent_model(_ENV, cli_model=None)
+        composition.agent_model(_ENV, cli_model=LUNA)
 
 
 def test_a_synthetic_eligible_profile_composes_its_exact_model_and_route(synthetic_profile: str) -> None:
@@ -307,13 +318,16 @@ def test_a_profile_launch_without_its_approval_stops_before_any_side_effect(laun
     assert started == []
 
 
-def test_the_approved_real_qualification_profile_stops_on_its_missing_facts(launch, tmp_path: Path, capsys) -> None:
+def test_the_approved_real_qualification_profile_composes_the_gateway_and_server(launch, tmp_path: Path) -> None:
+    """With fakes for Redis, the Gateway and the server: no network and no upstream call."""
     keyring, started = launch
     authorize_workspace_for_test(env=_ENV, workspace_root=tmp_path, fake_keyring=keyring, test_profile="qualification")
 
-    assert acp_main.main(["--workspace-root", str(tmp_path), "--plan12-test-profile", "qualification"]) == 2
-    assert "AGENT_MODEL_INVALID" in capsys.readouterr().err
-    assert started == []  # no Redis, Gateway or server: zero upstream calls
+    assert acp_main.main(["--workspace-root", str(tmp_path), "--plan12-test-profile", "qualification"]) == 0
+    real = profiles.TEST_PROFILES["qualification"].effective_hash
+    assert [entry for entry in started if entry[0] == "gateway"] == [("gateway", "qualification", "optimus-model-registry-v1:" + real)]
+    [(_, composition)] = [entry for entry in started if entry[0] == "server"]
+    assert composition.snapshot.effective_hash == real and composition.profile.model_id == HAIKU
 
 
 def test_an_approved_synthetic_profile_composes_the_gateway_and_server(launch, synthetic_profile: str, tmp_path: Path) -> None:

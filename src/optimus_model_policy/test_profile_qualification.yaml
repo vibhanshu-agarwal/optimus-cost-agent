@@ -1,30 +1,48 @@
-# Plan 12.2 test profile "qualification" (profile A; closure release supplement V2, 2026-10-04).
+# Plan 12.2 test profile "qualification" (profile A): Claude Haiku 5.5 experimental test route.
 #
 # Reviewed test data applied over defaults.yaml for a named test launch only; never shipped policy and
 # never selected without its pinned effective hash in an HMAC-approved launch (test_profiles.py).
 #
-# Route (Codex Luna inspection disposition, 2026-10-04): the existing candidate on the exact
-# first-party openai/fast endpoint, the publisher's literal quantization "unknown" (a filter category,
-# not a known precision), its own prices and an explicit "none" reasoning setting. Facts observed in the
-# 2026-10-04 free inspection (OpenRouter endpoints metadata, sha256 51b00d39...653c): context 1050000,
-# max completion 128000, prompt $0.20/M, completion $1.00/M.
+# Authority: operator release (2026-10-09) of Plan 12.2 testing on Claude Haiku 5.5 per Codex's Haiku
+# disposition, with an empirical size estimate and generic Anthropic routing as test-only exceptions.
+# Both exceptions are source-owned in experimental.py and bound to this file's exact composed hash; a
+# copy with any changed policy value gets the ordinary refusals. Luna stays ineligible (defaults unchanged).
 #
-# Still unverified, so this profile admits no model and a launch with it refuses before any call:
-# - the endpoint (finish semantics and "none" reasoning support are not established);
-# - the estimator: the publisher's tokenizer mapping does not name gpt-6-luna, so no conservative
-#   non-expanding profile is proven; it stays unmeasured rather than a placeholder.
+# Facts from the 2026-10-09 free inspection (stage-a-haiku-inspection, MANIFEST 36080ac0...):
+# - OpenRouter lists one first-party endpoint, tag "anthropic" (a base slug: provider-family routing,
+#   not an exact variant), quantization literal "unknown", context 1,000,000, max output 128,000.
+# - Anthropic: retirement not sooner than 2027-10-07. Prices $0.10/$0.50 per M up to 100,000 prompt
+#   tokens and $0.50/$2.50 above. The registry records the HIGHER tier so every reservation is
+#   conservative; reported usage and cost remain the provider's own.
+# - Reasoning is optional on OpenRouter (supported efforts max, xhigh, high, medium, low); this profile
+#   sets "low" explicitly rather than relying on the default.
+# - The tokenizer is unpublished. The estimator is an EMPIRICAL engineering estimate: one token per
+#   UTF-8 byte plus a framing allowance, checked against reported usage on every call. It stays
+#   verified: false; the exception, not the flag, admits it.
 # Output reserves are the accepted closure values. Change this file only through a reviewed change that
-# also re-pins its effective hash.
+# also re-pins its effective hash in experimental.py.
 
 output_reserve_tokens: {implementer: 32768, summarizer: 8192}
 
+estimators:
+  haiku-5-5-empirical: {method: utf8-bytes-ratio-empirical, tokens_per_byte: "1", per_message_tokens: 16, fixed_tokens: 256, verified: false}
+
 models:
-  openai/gpt-6-luna:
-    prices: {input_usd_per_million: "0.20", output_usd_per_million: "1.00"}
-    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: [none]}
-    default_reasoning: none
+  anthropic/claude-haiku-5.5:
+    origin: non-china
+    tier: ultra-cheap
+    prices: {input_usd_per_million: "0.50", output_usd_per_million: "2.50"}
+    data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
+    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: [low, medium, high, xhigh, max]}
+    default_reasoning: low
     route:
-      estimator: unmeasured
+      estimator: haiku-5-5-empirical
       endpoints:
-        - {provider: openai/fast, quantization: unknown, context_window_tokens: 1050000, max_output_tokens: 128000, verified: false, observed_on: "2026-10-04"}
-    evidence: ["2026-10-04 free inspection (openai/fast observed facts); tokenizer, finish and reasoning-none support unverified"]
+        - {provider: anthropic, quantization: unknown, context_window_tokens: 1000000, max_output_tokens: 128000, verified: true, observed_on: "2026-10-09"}
+    evidence:
+      - "2026-10-09 free inspection: OpenRouter endpoints/models listing, Anthropic model page; provider-family route"
+      - "text_planning_grammar is a test assumption checked by Task 13's Agent cases, not a publisher fact"
+
+roles:
+  easy: [anthropic/claude-haiku-5.5]
+  summarizer: [anthropic/claude-haiku-5.5]

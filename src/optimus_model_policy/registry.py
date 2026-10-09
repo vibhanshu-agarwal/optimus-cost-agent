@@ -296,7 +296,7 @@ class SummaryReceipt(BaseModel):
 class EstimatorProfile(BaseModel):
     model_config = _FROZEN
 
-    method: Literal["utf8-bytes-ratio"]
+    method: Literal["utf8-bytes-ratio", "utf8-bytes-ratio-empirical"]
     tokens_per_byte: Annotated[Decimal, Field(gt=0, le=4, allow_inf_nan=False), _CanonicalJson]
     per_message_tokens: StrictCount
     fixed_tokens: StrictCount

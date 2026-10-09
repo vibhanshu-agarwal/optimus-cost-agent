@@ -6,7 +6,15 @@ from decimal import Decimal
 from typing import Any
 
 from optimus_gateway.model_mapping import resolve_model_id
-from optimus_gateway.model_policy import ModelPolicyRefusal, admit_request, check_finish_status, parse_route_binding
+from optimus_gateway.model_policy import (
+    AdmittedRequest,
+    GatewayModelPolicy,
+    ModelPolicyRefusal,
+    admit_request,
+    check_experimental_reply,
+    check_finish_status,
+    parse_route_binding,
+)
 from optimus_gateway.models import (
     GatewayServiceConfig,
     ModelRequestValidationError,
@@ -143,6 +151,8 @@ def _run_enforced_completion(
                 _sleep(_RECOVERY_DELAY_SECONDS)
                 continue
             code = f"UPSTREAM_ATTEMPT_{failure.outcome.upper()}"
+            if failure.outcome == ATTEMPT_UNCERTAIN:
+                _stop_experimental_route(policy, admitted, code)  # possibly billed, usage unknown
             return 502, {"error": sanitize_error_message(f"upstream attempt failed ({code})"), "code": code, **correlation}
 
     gateway_usage = _gateway_usage(config=config, model=model, provider_result=provider_result, gateway_request_id=attempt_id)
@@ -151,16 +161,26 @@ def _run_enforced_completion(
         assert_gateway_usage_contract(gateway_usage)
     except ValueError:
         attempts.append(_attempt_record(number, attempt_id, ATTEMPT_UNCERTAIN))
+        _stop_experimental_route(policy, admitted, "UPSTREAM_ATTEMPT_UNCERTAIN")
         return 502, {"error": "upstream usage could not be verified", "code": "UPSTREAM_ATTEMPT_UNCERTAIN", **correlation}
     gateway_usage["cost_usd"] = format_cost_usd(provider_result.cost_usd)
     attempts.append(_attempt_record(number, attempt_id, ATTEMPT_COMPLETED, provider_request_id=provider_result.message_id))
     try:
         check_finish_status(getattr(provider_result, "finish_reason", None))
+        check_experimental_reply(admitted, provider_result)
     except ModelPolicyRefusal as exc:
         # The call happened and was billed: the error keeps its usage so the host records it.
+        _stop_experimental_route(policy, admitted, exc.code)
         status, body = policy_refusal(exc)
         return status, {**body, **correlation, "gateway_usage": gateway_usage}
     return 200, {**build_success(provider_result=provider_result, gateway_usage=gateway_usage), "route_attempts": attempts}
+
+
+def _stop_experimental_route(policy: GatewayModelPolicy, admitted: AdmittedRequest, code: str) -> None:
+    """On the experimental test route a failed or unverifiable reply stops every later call (Codex
+    disposition, 2026-10-09); ordinary routes keep their per-request failure handling."""
+    if admitted.experimental is not None:
+        policy.route_stop.trip(code)
 
 
 _RECOVERY_DELAY_SECONDS = 0.5

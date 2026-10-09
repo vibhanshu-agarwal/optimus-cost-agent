@@ -769,3 +769,37 @@ def test_the_command_line_checks_a_saved_summary(tmp_path: Path, capsys) -> None
     assert main(["check", "--summary", str(good), "--step", "final", "--finish-status", "length"]) == 1
     assert main(["envelope"]) == 0
     assert '"upper_cost_usd"' in capsys.readouterr().out
+
+
+# --- The Haiku 5.5 experimental profile (operator release and Codex disposition, 2026-10-09) ----------------
+
+
+def test_the_bound_adds_the_candidates_framing_allowance() -> None:
+    from dataclasses import replace
+
+    from context_engine.summary import build_summary_prompt
+    from optimus_model_policy.binding import MAX_ROUTE_ATTEMPTS
+
+    framed = replace(CANDIDATE, framing_tokens=272)
+    prompt_tokens = len(build_summary_prompt("source").encode("utf-8")) + 272
+    per_attempt = (prompt_tokens * Decimal("0.03") + 1200 * Decimal("0.13")) / Decimal(1_000_000)
+    assert request_upper_bound_usd("source", 1200, framed) == per_attempt * MAX_ROUTE_ATTEMPTS
+
+
+def test_the_haiku_envelope_reserves_framing_at_the_higher_price_tier_within_the_released_cap() -> None:
+    """The qualification profile's one summarizer: its empirical estimate (bytes plus 16 + 256 framing
+    tokens) is labelled as such, its prices are the recorded higher tier ($0.50/$2.50), and the whole
+    two-request, four-attempt envelope fits the operator's $0.05 qualification ceiling."""
+    from context_engine.engine import maintenance_input
+    from context_engine.summary import build_summary_prompt
+    from optimus_model_policy import test_profiles as profiles
+
+    [row] = paid_envelope(profiles.compose_test_profile_snapshot("qualification"), FIXTURE)
+
+    assert (row["model_id"], row["providers"], row["quantizations"], row["reasoning"]) == ("anthropic/claude-haiku-5.5", ["anthropic"], ["unknown"], "low")
+    assert row["structurally_eligible"] is True and row["blockers"] == []
+    assert row["input_estimate"] == "empirical: one token per UTF-8 byte plus 272 framing tokens; not a proven bound"
+    step1_bytes = len(build_summary_prompt(maintenance_input(None, [FIXTURE.turns[s] for s in FIXTURE.step1])).encode("utf-8"))
+    assert row["input_token_upper_bounds"][0] == step1_bytes + 272
+    assert (row["input_usd_per_million"], row["output_usd_per_million"]) == ("0.50", "2.50")
+    assert Decimal(row["upper_cost_usd"]) < Decimal("0.05")

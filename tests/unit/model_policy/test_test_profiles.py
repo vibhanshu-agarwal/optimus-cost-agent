@@ -6,7 +6,6 @@ unavailable profile, a changed override and a fixture policy refuse. Production 
 
 from __future__ import annotations
 
-from decimal import Decimal
 from importlib import resources
 from pathlib import Path
 
@@ -18,7 +17,7 @@ from optimus_model_policy import test_profiles as profiles
 from optimus_model_policy.binding import BindingError, packaged_defaults, trusted_snapshot
 from optimus_model_policy.registry import load_registry
 
-QUALIFICATION_HASH = "0539d26660457618add2de9266c541975cb30f3927860e9c68da01152f3551a0"  # pragma: allowlist secret - registry identity, not a credential
+QUALIFICATION_HASH = "048c1a2b3e7d3436d371e8964200064bb30f0a1a865c945f92a2fc09d3ba5cba"  # pragma: allowlist secret - registry identity, not a credential
 
 
 def test_production_composition_is_untouched() -> None:
@@ -48,31 +47,20 @@ def test_the_qualification_profile_composes_its_pinned_reviewed_snapshot() -> No
     assert profiles.registry_for_launch("qualification").effective_hash == QUALIFICATION_HASH
 
 
-def test_the_qualification_profile_records_the_reviewed_route_and_admits_no_model_yet() -> None:
-    """Codex's Luna disposition: exact openai/fast, the literal quantization filter "unknown", its own
-    prices and an explicit "none" reasoning setting. The tokenizer, finish and reasoning facts are not
-    established, so nothing is eligible and a launch with this profile refuses before any call."""
+def test_the_qualification_profile_keeps_luna_ineligible_and_the_summarizer_unqualified() -> None:
+    """Haiku replaces Luna in the profile's roles (defaults unchanged). The summarizer role still needs a
+    genuine passing receipt: none is fabricated in advance."""
     snapshot = profiles.compose_test_profile_snapshot("qualification")
-    luna = snapshot.policy.models["openai/gpt-6-luna"]
-    [endpoint] = luna.route.endpoints
-
-    assert (endpoint.provider, endpoint.quantization, endpoint.context_window_tokens, endpoint.max_output_tokens, endpoint.verified) == (
-        "openai/fast", "unknown", 1_050_000, 128_000, False
-    )  # fmt: skip
-    assert (luna.prices.input_usd_per_million, luna.prices.output_usd_per_million) == (Decimal("0.20"), Decimal("1.00"))
-    assert luna.default_reasoning == "none" and luna.route.allow_fallbacks is False
+    assert "openai/gpt-6-luna" not in snapshot.policy.roles[Role.EASY] + snapshot.policy.roles[Role.SUMMARIZER]
+    assert select_eligible_models(snapshot, Role.SUMMARIZER) == ()
+    codes = {issue.code for issue in validate_registry(snapshot) if issue.model_id == "anthropic/claude-haiku-5.5" and issue.role is Role.SUMMARIZER}
+    assert codes == {"SUMMARIZER_UNQUALIFIED"}
     assert snapshot.policy.output_reserve_tokens == {"implementer": 32_768, "summarizer": 8_192}
-
-    assert select_eligible_models(snapshot, Role.EASY) == () and select_eligible_models(snapshot, Role.SUMMARIZER) == ()
-    codes = {issue.code for issue in validate_registry(snapshot) if issue.model_id == "openai/gpt-6-luna"}
-    assert codes == {"ESTIMATOR_UNKNOWN", "ROUTE_UNVERIFIED", "SUMMARIZER_UNQUALIFIED"}
-    # The recorded literal "unknown" and the exact variant slug pass the existing rules unchanged.
-    assert not codes & {"ROUTE_QUANTIZATION_UNKNOWN", "ROUTE_QUANTIZATION_NOT_EXPRESSIBLE", "ROUTE_TARGET_NOT_EXACT"}
 
 
 def test_the_override_is_package_data() -> None:
     override = resources.files("optimus_model_policy").joinpath("test_profile_qualification.yaml")
-    assert override.is_file() and "openai/fast" in override.read_text(encoding="utf-8")
+    assert override.is_file() and "anthropic/claude-haiku-5.5" in override.read_text(encoding="utf-8")
 
 
 def _swap_override(monkeypatch: pytest.MonkeyPatch, path: Path, *, pinned: str) -> None:
@@ -84,7 +72,7 @@ def _swap_override(monkeypatch: pytest.MonkeyPatch, path: Path, *, pinned: str) 
 def test_a_changed_override_no_longer_matches_its_pin(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     original = resources.files("optimus_model_policy").joinpath("test_profile_qualification.yaml").read_text(encoding="utf-8")
     changed = tmp_path / "changed.yaml"
-    changed.write_text(original.replace('input_usd_per_million: "0.20"', 'input_usd_per_million: "0.01"'), encoding="utf-8")
+    changed.write_text(original.replace('input_usd_per_million: "0.50"', 'input_usd_per_million: "0.01"'), encoding="utf-8")
     _swap_override(monkeypatch, changed, pinned=QUALIFICATION_HASH)
 
     with pytest.raises(BindingError) as caught:

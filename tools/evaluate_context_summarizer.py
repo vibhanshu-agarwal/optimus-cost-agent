@@ -49,6 +49,7 @@ from optimus.acp.conversation import ConversationSanitizer, ConversationSanitize
 from optimus.context.maintenance import HostMaintenance, MaintenanceIdentity, MaintenanceReceipt, SummarizerCall, SummarizerResponse
 from optimus_model_policy import RegistrySnapshot, Role, load_registry, ordered_assignments, validate_registry
 from optimus_model_policy.binding import MAX_ROUTE_ATTEMPTS
+from optimus_model_policy.experimental import EMPIRICAL_ESTIMATOR_METHOD
 from optimus_model_policy.registry import SummaryReceipt
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "context_engine" / "calculator-constraints-v1.json"
@@ -242,6 +243,8 @@ class Candidate:
     reasoning: str | None
     input_usd_per_million: Decimal
     output_usd_per_million: Decimal
+    framing_tokens: int = 0
+    """The route estimator's allowance for one message's framing (per-message plus fixed tokens)."""
 
 
 class CapRefused(Exception):
@@ -249,16 +252,28 @@ class CapRefused(Exception):
 
 
 def _prompt_upper_bound_usd(prompt: str, max_output_tokens: int, candidate: Candidate) -> Decimal:
-    prompt_tokens = len(prompt.encode("utf-8"))
+    prompt_tokens = len(prompt.encode("utf-8")) + candidate.framing_tokens
     per_attempt = (prompt_tokens * candidate.input_usd_per_million + max_output_tokens * candidate.output_usd_per_million) / _MILLION
     return per_attempt * MAX_ROUTE_ATTEMPTS
 
 
 def request_upper_bound_usd(input_text: str, max_output_tokens: int, candidate: Candidate) -> Decimal:
-    """An upper bound for one request: input tokens bounded by UTF-8 bytes (no route estimator is
-    verified yet), the full output cap, and every provider attempt the route allows. It assumes the
-    output cap also bounds any reasoning tokens; CP4 confirms that per route."""
+    """The reservation for one request: one token per UTF-8 byte of the complete summary prompt plus the
+    route's framing allowance, the full output cap, and every provider attempt the route allows. It
+    assumes the output cap also bounds any reasoning tokens. For an empirical route estimator this is
+    an engineering estimate, not a proven bound: the Gateway checks reported usage on every call."""
     return _prompt_upper_bound_usd(build_summary_prompt(input_text), max_output_tokens, candidate)
+
+
+def _framing_tokens(snapshot: RegistrySnapshot, estimator_name: str) -> tuple[int, str]:
+    """The estimator's one-message framing allowance and how the input estimate should be described."""
+    estimator = snapshot.policy.estimators.get(estimator_name)
+    if estimator is None:
+        return 0, "utf8-bytes; no route estimator"
+    framing = estimator.per_message_tokens + estimator.fixed_tokens
+    if estimator.method == EMPIRICAL_ESTIMATOR_METHOD:
+        return framing, f"empirical: one token per UTF-8 byte plus {framing} framing tokens; not a proven bound"
+    return framing, f"one token per UTF-8 byte plus {framing} framing tokens"
 
 
 @dataclass(frozen=True, slots=True)
@@ -370,6 +385,7 @@ def paid_envelope(snapshot: RegistrySnapshot, fixture: Fixture) -> list[dict[str
     envelope = []
     for model_id in ordered_assignments(snapshot, Role.SUMMARIZER):
         entry = snapshot.policy.models[model_id]
+        framing, estimate = _framing_tokens(snapshot, entry.route.estimator)
         candidate = Candidate(
             model_id=model_id,
             providers=entry.route.providers,
@@ -377,6 +393,7 @@ def paid_envelope(snapshot: RegistrySnapshot, fixture: Fixture) -> list[dict[str
             reasoning=entry.default_reasoning,
             input_usd_per_million=entry.prices.input_usd_per_million,
             output_usd_per_million=entry.prices.output_usd_per_million,
+            framing_tokens=framing,
         )
         blockers = sorted(
             issue.code
@@ -398,10 +415,13 @@ def paid_envelope(snapshot: RegistrySnapshot, fixture: Fixture) -> list[dict[str
                 "requests": MAX_FIXTURE_CALLS,
                 "max_provider_attempts_per_request": MAX_ROUTE_ATTEMPTS,
                 "max_output_tokens": fixture.max_output_tokens,
+                "input_estimate": estimate,
                 "input_token_upper_bounds": [
-                    len(build_summary_prompt(step1_input).encode("utf-8")),
-                    len(build_summary_prompt(step2_without_summary).encode("utf-8")) + fixture.max_output_tokens,
+                    len(build_summary_prompt(step1_input).encode("utf-8")) + framing,
+                    len(build_summary_prompt(step2_without_summary).encode("utf-8")) + fixture.max_output_tokens + framing,
                 ],
+                "input_usd_per_million": str(candidate.input_usd_per_million),
+                "output_usd_per_million": str(candidate.output_usd_per_million),
                 "upper_cost_usd": str(step1_bound + step2_bound),
                 "fixture_digest": fixture.digest,
                 "prompt_digest": PROMPT_DIGEST,
