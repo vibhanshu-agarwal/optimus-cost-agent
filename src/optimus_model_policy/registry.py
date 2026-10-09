@@ -67,7 +67,8 @@ SUMMARY_FORMAT = "context-summary-v1"
 # validator version and the fixture's canonical digest.
 SUMMARY_PROMPT_DIGEST = "6d1b4e77d77f1a7331932633dbc39ae4f1c3bf5c4a79acf8aed9873b410902db"  # pragma: allowlist secret - public prompt digest
 SUMMARY_VALIDATOR = "context-summary-validator-v4"
-SUMMARY_FIXTURE_DIGEST = "10eafc91d3ca0025887e82ecf08136218bb1e886bfc5b627d72688fce8efd960"  # pragma: allowlist secret - public fixture digest
+# calculator-constraints-v2: v1 with the runtime summary output allocation (8,192 tokens, ADR-018).
+SUMMARY_FIXTURE_DIGEST = "f32fd04d25461f435daff8c39049b2468afe3e407e1c4a3a41c9992f3b5e8f19"  # pragma: allowlist secret - public fixture digest
 
 
 class RegistryError(Exception):

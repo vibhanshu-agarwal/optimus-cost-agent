@@ -394,10 +394,12 @@ def test_a_receipt_bound_to_every_qualification_key_makes_the_summarizer_eligibl
         {"quantizations": "[null]"},
         {"reasoning": "low"},
         {"fixture_digest": '"' + "0" * 64 + '"'},
+        # A receipt for the superseded fixture v1 (1,200-token output cap) never qualifies v2.
+        {"fixture_digest": '"10eafc91d3ca0025887e82ecf08136218bb1e886bfc5b627d72688fce8efd960"'},  # pragma: allowlist secret - public fixture digest
         {"prompt_digest": '"' + "0" * 64 + '"'},
         {"validator": "context-summary-validator-v0"},
     ],
-    ids=["model", "format", "route", "quantization", "quantization-unrecorded", "reasoning", "fixture", "prompt", "validator"],
+    ids=["model", "format", "route", "quantization", "quantization-unrecorded", "reasoning", "fixture", "fixture-v1", "prompt", "validator"],
 )
 def test_changing_any_qualification_key_withdraws_eligibility(tmp_path: Path, changes) -> None:
     snapshot = _with_receipt(tmp_path, _receipt(**changes))

@@ -21,8 +21,9 @@ from optimus.context.maintenance import SummarizerAttempt, SummarizerResponse
 from optimus_model_policy import load_registry
 from optimus_model_policy.registry import SummaryReceipt
 from tools.evaluate_context_summarizer import (
-    CARRIED_SUMMARY_MAX_BYTES,
     FIXTURE_PATH,
+    LIVE_DOLLAR_CAP,
+    SUMMARY_MAX_BYTES,
     Candidate,
     CapRefused,
     evaluate_summary,
@@ -98,7 +99,7 @@ def test_the_fixture_digest_is_its_canonical_content_not_its_bytes() -> None:
 
 
 def test_the_fixture_places_constraints_and_correction_inside_summarized_ranges() -> None:
-    assert FIXTURE.name == "calculator-constraints-v1"
+    assert FIXTURE.name == "calculator-constraints-v2"
     assert 1 in FIXTURE.step1 and 7 in FIXTURE.step2
     assert "ROUND_HALF_UP" in FIXTURE.turns[1].user_prompt and "ROUND_HALF_EVEN" in FIXTURE.turns[7].user_prompt
     assert set(FIXTURE.tail).isdisjoint(FIXTURE.step1 + FIXTURE.step2)
@@ -763,17 +764,25 @@ def test_a_known_total_over_the_cap_is_never_a_pass() -> None:
 # --- The carried-summary ceiling (Codex Haiku Stage A review M2) ------------------------------------------
 
 
-def padded(text: str, size: int) -> str:
-    """`text` with neutral filler in its work section, exactly `size` UTF-8 bytes long."""
-    marker = "which were ignored."
+def padded(text: str, size: int, *, marker: str = "which were ignored.", wide: bool = False) -> str:
+    """`text` with neutral filler after `marker`, exactly `size` UTF-8 bytes long. `wide` fills with
+    the three-byte character "€" where it can, so the character count stays well below the byte count."""
     base = text.replace(marker, marker + " Notes: ")
-    filler = size - len(base.encode("utf-8"))
-    assert filler >= 0
-    return base.replace(marker + " Notes: ", marker + " Notes: " + "a" * filler)
+    room = size - len(base.encode("utf-8"))
+    assert room >= 0
+    filler = "€" * (room // 3) + "a" * (room % 3) if wide else "a" * room
+    result = base.replace(marker + " Notes: ", marker + " Notes: " + filler)
+    assert len(result.encode("utf-8")) == size
+    return result
 
 
-def test_the_carry_ceiling_is_a_byte_count_separate_from_the_output_token_cap() -> None:
-    assert (CARRIED_SUMMARY_MAX_BYTES, FIXTURE.max_output_tokens) == (8192, 1200)
+FINAL_MARKER = "The plan was not approved."
+
+
+def test_the_byte_bound_and_the_output_allocation_are_the_same_number_in_different_units() -> None:
+    """The runtime allocation S = 8,192 tokens (ADR-018) and this profile's summary byte bound
+    floor(S / r) = 8,192 UTF-8 bytes (r = 1 token per byte): equal numbers, separate limits."""
+    assert (SUMMARY_MAX_BYTES, FIXTURE.max_output_tokens) == (8192, 8192)
 
 
 @pytest.mark.parametrize("size", [2000, 8192], ids=["over-1200-bytes", "at-the-ceiling"])
@@ -792,7 +801,7 @@ def test_a_fact_valid_step_one_summary_up_to_the_ceiling_is_carried_into_step_tw
 
 def test_a_step_one_summary_over_the_ceiling_keeps_its_attempt_and_leaves_step_two_unrun() -> None:
     """Checked before the second request is built: nothing is truncated, re-summarized or retried."""
-    first = padded(STEP1, CARRIED_SUMMARY_MAX_BYTES + 1)
+    first = padded(STEP1, SUMMARY_MAX_BYTES + 1)
     assert report(first, step="step1").passed
     fake = FakeSummarizer(first, FINAL)
 
@@ -819,7 +828,7 @@ def test_the_envelope_states_every_bound_before_any_call() -> None:
     envelope = paid_envelope(_packaged_registry(), FIXTURE)
     assert [row["model_id"] for row in envelope] == ["qwen/qwen3.7-flash", "openai/gpt-6-luna"]
     for row in envelope:
-        assert (row["requests"], row["max_provider_attempts_per_request"], row["max_output_tokens"]) == (2, 2, 1200)
+        assert (row["requests"], row["max_provider_attempts_per_request"], row["max_output_tokens"]) == (2, 2, 8192)
         assert Decimal(row["reserved_cost_usd"]) > 0
         assert row["prompt_digest"] == PROMPT_DIGEST and row["fixture_digest"] == FIXTURE.digest
         assert row["receipt_fields"] == list(SummaryReceipt.model_fields)
@@ -862,11 +871,11 @@ def test_the_envelope_reserves_the_carried_summary_at_its_byte_ceiling() -> None
     from optimus_model_policy import test_profiles as profiles
 
     [row] = paid_envelope(profiles.compose_test_profile_snapshot("qualification"), FIXTURE)
-    step2 = maintenance_input("a" * CARRIED_SUMMARY_MAX_BYTES, [FIXTURE.turns[s] for s in FIXTURE.step2])
+    step2 = maintenance_input("a" * SUMMARY_MAX_BYTES, [FIXTURE.turns[s] for s in FIXTURE.step2])
 
     assert row["carried_summary_max_bytes"] == 8192
     assert row["input_token_reservations"][1] == len(build_summary_prompt(step2).encode("utf-8")) + 272 == 10_030
-    assert row["reserved_cost_usd"] == "0.0246350"
+    assert (row["max_output_tokens"], row["reserved_cost_usd"]) == (8192, "0.0945550")
     assert row["reservation_basis"].startswith("empirical engineering reservation")
 
 
@@ -886,4 +895,76 @@ def test_the_haiku_envelope_reserves_framing_at_the_higher_price_tier_within_the
     step1_bytes = len(build_summary_prompt(maintenance_input(None, [FIXTURE.turns[s] for s in FIXTURE.step1])).encode("utf-8"))
     assert row["input_token_reservations"][0] == step1_bytes + 272
     assert (row["input_usd_per_million"], row["output_usd_per_million"]) == ("0.50", "2.50")
-    assert Decimal(row["reserved_cost_usd"]) < Decimal("0.05")
+    assert Decimal(row["reserved_cost_usd"]) <= LIVE_DOLLAR_CAP
+
+
+# --- Fixture v2: the runtime output allocation (Codex Stage B v2 disposition, 2026-10-09) ------------------
+
+V1_PATH = FIXTURE_PATH.with_name("calculator-constraints-v1.json")
+
+
+def test_fixture_v2_differs_from_v1_only_in_its_name_and_output_allocation() -> None:
+    """The predecessor stays as it was, with its own digest; every turn, fact, rule, step and tail of v2
+    is v1's."""
+    from tools.evaluate_context_summarizer import fixture_digest
+
+    v1 = json.loads(V1_PATH.read_text(encoding="utf-8"))
+    v2 = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+
+    assert (FIXTURE_PATH.name, fixture_digest(v1), fixture_digest(v2)) == (
+        "calculator-constraints-v2.json",
+        "10eafc91d3ca0025887e82ecf08136218bb1e886bfc5b627d72688fce8efd960",  # pragma: allowlist secret - public fixture digest
+        "f32fd04d25461f435daff8c39049b2468afe3e407e1c4a3a41c9992f3b5e8f19",  # pragma: allowlist secret - public fixture digest
+    )
+    assert (v1["fixture"], v1["evaluation"]["max_output_tokens"]) == ("calculator-constraints-v1", 1200)
+    assert (v2["fixture"], v2["evaluation"]["max_output_tokens"]) == ("calculator-constraints-v2", 8192)
+    v2["fixture"], v2["evaluation"]["max_output_tokens"] = v1["fixture"], v1["evaluation"]["max_output_tokens"]
+    assert v2 == v1
+
+
+def test_the_tool_qualifies_against_fixture_v2_while_v1_still_loads() -> None:
+    assert (FIXTURE.name, FIXTURE.digest, FIXTURE.max_output_tokens) == ("calculator-constraints-v2", "f32fd04d25461f435daff8c39049b2468afe3e407e1c4a3a41c9992f3b5e8f19", 8192)  # pragma: allowlist secret
+    v1 = load_fixture(V1_PATH)
+    assert (v1.name, v1.digest, v1.max_output_tokens) == ("calculator-constraints-v1", "10eafc91d3ca0025887e82ecf08136218bb1e886bfc5b627d72688fce8efd960", 1200)  # pragma: allowlist secret
+
+
+@pytest.mark.parametrize("wide", [False, True], ids=["ascii", "multibyte"])
+def test_a_step_one_summary_at_the_byte_bound_is_carried_and_one_byte_over_is_not(wide: bool) -> None:
+    at_bound = padded(STEP1, SUMMARY_MAX_BYTES, wide=wide)
+    over = padded(STEP1, SUMMARY_MAX_BYTES + 1, wide=wide)
+    if wide:
+        assert len(over) < SUMMARY_MAX_BYTES, "bytes are measured, not characters"
+
+    carried = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(at_bound, FINAL), dollar_cap=Decimal("1"), recorded_on="2026-10-09")
+    stopped = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(over, FINAL), dollar_cap=Decimal("1"), recorded_on="2026-10-09")
+
+    assert (carried.passed, carried.calls) == (True, 2)
+    assert (stopped.passed, stopped.calls, stopped.receipt) == (False, 1, None)
+    assert stopped.unrun == "step 2 UNRUN: the step 1 summary is 8193 UTF-8 bytes, over the 8192-byte carry ceiling"
+
+
+@pytest.mark.parametrize("wide", [False, True], ids=["ascii", "multibyte"])
+def test_a_final_summary_at_the_byte_bound_passes(wide: bool) -> None:
+    final = padded(FINAL, SUMMARY_MAX_BYTES, marker=FINAL_MARKER, wide=wide)
+
+    result = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(STEP1, final), dollar_cap=Decimal("1"), recorded_on="2026-10-09")
+
+    assert result.passed and result.receipt is not None and result.inadmissible is None
+    assert result.receipt["fixture_digest"] == "f32fd04d25461f435daff8c39049b2468afe3e407e1c4a3a41c9992f3b5e8f19"  # pragma: allowlist secret - public fixture digest
+
+
+@pytest.mark.parametrize("wide", [False, True], ids=["ascii", "multibyte"])
+def test_a_final_summary_one_byte_over_the_bound_is_not_admissible(wide: bool) -> None:
+    """Runtime admissibility, checked on the exact sanitized text before any receipt: the fact report
+    and every charge are kept, nothing is trimmed, re-summarized or re-run."""
+    final = padded(FINAL, SUMMARY_MAX_BYTES + 1, marker=FINAL_MARKER, wide=wide)
+    if wide:
+        assert len(final) < SUMMARY_MAX_BYTES, "bytes are measured, not characters"
+    fake = FakeSummarizer(STEP1, final)
+
+    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"), recorded_on="2026-10-09")
+
+    assert (result.passed, result.receipt, result.calls, len(fake.prompts)) == (False, None, 2, 2)
+    assert result.step1.passed and result.final is not None and result.final.passed
+    assert result.inadmissible == "the final summary is 8193 UTF-8 bytes, over the 8192-byte runtime bound"
+    assert [(r.outcome, r.cost_usd) for r in result.attempts] == [("completed", Decimal("0.0001"))] * 2

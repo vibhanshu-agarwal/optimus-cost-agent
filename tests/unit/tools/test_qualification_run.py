@@ -125,9 +125,9 @@ def test_a_passing_run_records_its_identity_first_and_emits_the_receipt_candidat
 
     assert code == 0
     assert gateway.identity_recorded_first == [True, True], "the run's identity is on disk before any dispatch"
-    # Every request is bound to the reviewed hash and the fixture's 1,200-token cap, not the agent's 32,768.
-    assert [(b["registry_hash"], b["output_cap"]) for b in gateway.bindings] == [(HAIKU_QUALIFICATION_HASH, 1200)] * 2
-    assert [(c["model"], c["max_tokens"], c["reasoning"]) for c in upstream.calls] == [(HAIKU, 1200, "low")] * 2
+    # Every request is bound to the reviewed hash and fixture v2's 8,192-token allocation, not the agent's 32,768.
+    assert [(b["registry_hash"], b["output_cap"]) for b in gateway.bindings] == [(HAIKU_QUALIFICATION_HASH, 8192)] * 2
+    assert [(c["model"], c["max_tokens"], c["reasoning"]) for c in upstream.calls] == [(HAIKU, 8192, "low")] * 2
     assert dict(upstream.calls[0]["provider_controls"])["only"] == ["anthropic"]
 
     run = _json(out / "run.json")
@@ -135,9 +135,16 @@ def test_a_passing_run_records_its_identity_first_and_emits_the_receipt_candidat
         "qualification", HAIKU_QUALIFICATION_HASH, HAIKU, ["anthropic"], "low",
     )
     assert (run["host_pid"], run["gateway_pid"], run["gateway_url"]) == (4100, 4200, "http://127.0.0.1:8765")
-    assert (run["dollar_cap_usd"], run["wall_clock_seconds"], run["max_requests"], run["max_provider_attempts"]) == ("0.05", 1800, 2, 4)
-    assert run["envelope"]["reserved_cost_usd"] == "0.0246350"
-    assert run["envelope"]["fixture_digest"] == tool.load_fixture().digest
+    assert (run["dollar_cap_usd"], run["wall_clock_seconds"], run["max_requests"], run["max_provider_attempts"]) == ("0.0993119", 1800, 2, 4)
+    # The released $0.10 is the cumulative Stage B ceiling: run 1 (fixture v1) already spent $0.0006881.
+    assert (run["stage_b_ceiling_usd"], run["prior_stage_b_spend_usd"]) == ("0.10", "0.0006881")
+    assert run["envelope"]["reserved_cost_usd"] == "0.0945550"
+    assert (run["fixture"], run["envelope"]["fixture_digest"], run["envelope"]["max_output_tokens"]) == (
+        "calculator-constraints-v2",
+        "f32fd04d25461f435daff8c39049b2468afe3e407e1c4a3a41c9992f3b5e8f19",  # pragma: allowlist secret - public fixture digest
+        8192,
+    )
+    assert len(run["fixture_file_sha256"]) == 64 and len(run["tool_sha256"]) == 64
     assert "OPTIMUS_API_KEY" not in json.dumps(run) and SHARED_SECRET not in (out / "run.json").read_text(encoding="utf-8")
 
     attempts = _lines(out / "attempts.jsonl")
@@ -150,6 +157,7 @@ def test_a_passing_run_records_its_identity_first_and_emits_the_receipt_candidat
     candidate = _json(out / "receipt-candidate.json")
     receipt = candidate["receipt"]
     assert (receipt["model_id"], receipt["providers"], receipt["reasoning"], receipt["result"]) == (HAIKU, ["anthropic"], "low", "pass")
+    assert receipt["fixture_digest"] == "f32fd04d25461f435daff8c39049b2468afe3e407e1c4a3a41c9992f3b5e8f19"  # pragma: allowlist secret - public fixture digest
     assert receipt["request_ids"] == [a["gateway_request_id"] for a in attempts]
     assert candidate["observed"]["resolved_providers"] == ["Anthropic", "Anthropic"]
     assert candidate["observed"]["reasoning_tokens"] == [40, 40]
@@ -197,7 +205,7 @@ def test_an_unknown_cost_is_recorded_as_unknown_and_stops_the_run(tmp_path: Path
 
 def test_a_step_one_summary_over_the_carry_ceiling_leaves_step_two_unrun(tmp_path: Path, monkeypatch) -> None:
     out = tmp_path / "run"
-    upstream = SummaryUpstream(padded(STEP1, tool.CARRIED_SUMMARY_MAX_BYTES + 1), FINAL)
+    upstream = SummaryUpstream(padded(STEP1, tool.SUMMARY_MAX_BYTES + 1), FINAL)
 
     code, _gateway = _run(monkeypatch, out, upstream)
 
@@ -318,42 +326,42 @@ def test_persisted_error_text_is_sanitized(tmp_path: Path, monkeypatch) -> None:
 
 def test_a_first_reply_above_the_grant_keeps_its_charge_and_leaves_step_two_unrun(tmp_path: Path, monkeypatch) -> None:
     out = tmp_path / "run"
-    upstream = SummaryUpstream(STEP1, FINAL, costs=("0.06",))
+    upstream = SummaryUpstream(STEP1, FINAL, costs=("0.11",))
 
     code, _gateway = _run(monkeypatch, out, upstream)
 
     assert code == 1 and len(upstream.calls) == 1
-    assert [a["cost_usd"] for a in _lines(out / "attempts.jsonl")] == ["0.06"]
+    assert [a["cost_usd"] for a in _lines(out / "attempts.jsonl")] == ["0.11"]
     outcome = _json(out / "outcome.json")
-    assert (outcome["status"], outcome["reported_cost_usd"], outcome["step1"]["passed"]) == ("budget", "0.06", True)
-    assert outcome["budget"] == "known spend 0.06 USD exceeds the 0.05 USD cap"
-    assert outcome["unrun"].startswith("step 2 UNRUN: known spend 0.06 USD plus step 2's reservation")
+    assert (outcome["status"], outcome["reported_cost_usd"], outcome["step1"]["passed"]) == ("budget", "0.11", True)
+    assert outcome["budget"] == "known spend 0.11 USD exceeds the 0.0993119 USD cap"
+    assert outcome["unrun"].startswith("step 2 UNRUN: known spend 0.11 USD plus step 2's reservation")
     assert not (out / "receipt-candidate.json").exists()
 
 
 def test_a_first_reply_leaving_too_little_for_step_two_dispatches_nothing_more(tmp_path: Path, monkeypatch) -> None:
     out = tmp_path / "run"
-    upstream = SummaryUpstream(STEP1, FINAL, costs=("0.045",))
+    upstream = SummaryUpstream(STEP1, FINAL, costs=("0.06",))
 
     code, _gateway = _run(monkeypatch, out, upstream)
 
     assert code == 1 and len(upstream.calls) == 1
     outcome = _json(out / "outcome.json")
-    assert (outcome["status"], outcome["reported_cost_usd"]) == ("budget", "0.045")
+    assert (outcome["status"], outcome["reported_cost_usd"]) == ("budget", "0.06")
     assert outcome["budget"] == outcome["unrun"] and "plus step 2's reservation" in outcome["unrun"]
     assert not (out / "receipt-candidate.json").exists()
 
 
 def test_a_last_reply_taking_the_total_over_the_grant_keeps_both_results_and_is_not_a_pass(tmp_path: Path, monkeypatch) -> None:
     out = tmp_path / "run"
-    upstream = SummaryUpstream(STEP1, FINAL, costs=("0.03", "0.03"))
+    upstream = SummaryUpstream(STEP1, FINAL, costs=("0.05", "0.05"))
 
     code, _gateway = _run(monkeypatch, out, upstream)
 
     assert code == 1 and len(upstream.calls) == 2
-    assert [a["cost_usd"] for a in _lines(out / "attempts.jsonl")] == ["0.03", "0.03"]
+    assert [a["cost_usd"] for a in _lines(out / "attempts.jsonl")] == ["0.05", "0.05"]
     outcome = _json(out / "outcome.json")
-    assert (outcome["status"], outcome["reported_cost_usd"], outcome["budget"]) == ("budget", "0.06", "known spend 0.06 USD exceeds the 0.05 USD cap")
+    assert (outcome["status"], outcome["reported_cost_usd"], outcome["budget"]) == ("budget", "0.10", "known spend 0.10 USD exceeds the 0.0993119 USD cap")
     assert outcome["step1"]["passed"] and outcome["final"]["passed"]
     assert not (out / "receipt-candidate.json").exists()
 
@@ -391,3 +399,23 @@ def test_secrets_in_provider_metadata_reach_no_output_artifact(tmp_path: Path, m
     candidate = _json(out / "receipt-candidate.json")
     assert candidate["receipt"]["request_ids"] == [a["gateway_request_id"] for a in attempts]
     assert candidate["observed"]["resolved_providers"] == ["Anthropic", "Anthropic"]
+
+
+
+# --- The final summary's runtime byte bound (Codex Stage B v2 disposition) ----------------------------------
+
+
+def test_a_final_summary_over_the_byte_bound_writes_no_candidate(tmp_path: Path, monkeypatch) -> None:
+    from tests.unit.tools.test_evaluate_context_summarizer import FINAL_MARKER
+
+    out = tmp_path / "run"
+    upstream = SummaryUpstream(STEP1, padded(FINAL, tool.SUMMARY_MAX_BYTES + 1, marker=FINAL_MARKER, wide=True))
+
+    code, _gateway = _run(monkeypatch, out, upstream)
+
+    assert code == 1 and len(upstream.calls) == 2
+    assert [a["cost_usd"] for a in _lines(out / "attempts.jsonl")] == ["0.001", "0.001"]
+    outcome = _json(out / "outcome.json")
+    assert (outcome["status"], outcome["step1"]["passed"], outcome["final"]["passed"]) == ("fail", True, True)
+    assert outcome["inadmissible"] == "the final summary is 8193 UTF-8 bytes, over the 8192-byte runtime bound"
+    assert not (out / "receipt-candidate.json").exists()

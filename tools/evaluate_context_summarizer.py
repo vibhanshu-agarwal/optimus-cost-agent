@@ -74,12 +74,16 @@ from optimus_model_policy.experimental import EMPIRICAL_ESTIMATOR_METHOD, experi
 from optimus_model_policy.registry import SummaryReceipt
 from optimus_model_policy.test_profiles import compose_test_profile_snapshot
 
-FIXTURE_PATH = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "context_engine" / "calculator-constraints-v1.json"
+# v2 is v1 with the runtime summary output allocation, 8,192 tokens (ADR-018), in place of v1's
+# 1,200-token test cap. v1 stays as the fixture of Stage B run 1 (Codex Stage B v2 disposition).
+FIXTURE_PATH = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "context_engine" / "calculator-constraints-v2.json"
 MAX_FIXTURE_CALLS = 2
-# The step 1 summary carried into step 2, in UTF-8 bytes: a run control selected by Codex (Haiku Stage
-# A review M2), separate from the fixture's output token cap, which does not bound a summary's bytes.
-# A longer summary is never truncated: the run stops with step 2 unrun.
-CARRIED_SUMMARY_MAX_BYTES = 8192
+# A summary's runtime byte bound, floor(S / r) (ADR-018): 8,192 UTF-8 bytes for the qualification
+# profile's S = 8,192 tokens and empirical r = 1 token per byte. A separate limit from the output
+# allocation, which does not bound a summary's bytes. The step 1 summary is checked before it is
+# carried into step 2 (over it, step 2 is unrun) and the final summary before any receipt (over it, the
+# run is not a pass); neither is ever truncated.
+SUMMARY_MAX_BYTES = 8192
 _MILLION = Decimal(1_000_000)
 # Sentences end at . ! or ? followed by whitespace, or at a newline. A decimal point is not an end;
 # a semicolon joins clauses that belong together ("ROUND_HALF_UP; now ROUND_HALF_EVEN"), so the
@@ -319,10 +323,14 @@ class QualificationResult:
     budget: str | None = None
     """Why the run is not a success on budget grounds, whatever its quality findings: the known spend
     exceeds the cap, the spend is unknown, or too little budget was left for step 2."""
+    inadmissible: str | None = None
+    """Why the final summary would be refused at runtime, whatever its fact report: over the byte bound.
+    A run control beside the validator, which is unchanged."""
 
     @property
     def passed(self) -> bool:
-        return self.final is not None and self.step1.passed and self.final.passed and self.budget is None
+        quality = self.final is not None and self.step1.passed and self.final.passed
+        return quality and self.budget is None and self.inadmissible is None
 
 
 def run_qualification(
@@ -408,25 +416,29 @@ def run_qualification(
 
     first = step(maintenance_input(None, [turns[seq] for seq in fixture.step1]), fixture.step1)
     step1 = evaluate_summary(first.summary_text, first.finish_status, fixture.step1_facts, fixture.rules)
-    final, unrun, budget = None, None, None
+    final, unrun, budget, inadmissible = None, None, None, None
     if step1.passed:
         carried = len((first.summary_text or "").encode("utf-8"))
         # Merge the step 1 summary with the newer turns, as the runtime's incremental path does.
         step2_input = maintenance_input(first.summary_text, [turns[seq] for seq in fixture.step2])
-        if carried > CARRIED_SUMMARY_MAX_BYTES:
-            unrun = f"step 2 UNRUN: the step 1 summary is {carried} UTF-8 bytes, over the {CARRIED_SUMMARY_MAX_BYTES}-byte carry ceiling"
+        if carried > SUMMARY_MAX_BYTES:
+            unrun = f"step 2 UNRUN: the step 1 summary is {carried} UTF-8 bytes, over the {SUMMARY_MAX_BYTES}-byte carry ceiling"
         elif (refused := unaffordable(build_summary_prompt(step2_input), fixture.max_output_tokens, "step 2")) is not None:
             unrun = budget = f"step 2 UNRUN: {refused}"
         else:
             second = step(step2_input, fixture.step1 + fixture.step2)
             final = evaluate_summary(second.summary_text, second.finish_status, fixture.final_facts, fixture.rules)
+            # The exact sanitized text the runtime would store, measured before any receipt.
+            stored = len((second.summary_text or "").encode("utf-8"))
+            if stored > SUMMARY_MAX_BYTES:
+                inadmissible = f"the final summary is {stored} UTF-8 bytes, over the {SUMMARY_MAX_BYTES}-byte runtime bound"
     request_ids = tuple(r.gateway_request_id for r in receipts if r.gateway_request_id)
     reported = known_spend()
     if reported is not None and reported > dollar_cap:
         budget = f"known spend {reported} USD exceeds the {dollar_cap} USD cap"
     elif reported is None and final is not None:
         budget = "the run's total cost is unknown"
-    result = QualificationResult(candidate, step1, final, calls, request_ids, reported, None, tuple(receipts), unrun, budget)
+    result = QualificationResult(candidate, step1, final, calls, request_ids, reported, None, tuple(receipts), unrun, budget, inadmissible)
     if not result.passed:
         return result
     receipt = {
@@ -442,7 +454,7 @@ def run_qualification(
         "recorded_on": recorded_on,
         "result": "pass",
     }
-    return QualificationResult(candidate, step1, final, calls, request_ids, reported, receipt, tuple(receipts), unrun, budget)
+    return QualificationResult(candidate, step1, final, calls, request_ids, reported, receipt, tuple(receipts), unrun, budget, inadmissible)
 
 
 # --- The paid envelope ---------------------------------------------------------------------------------
@@ -473,7 +485,7 @@ def paid_envelope(snapshot: RegistrySnapshot, fixture: Fixture) -> list[dict[str
     issues = validate_registry(snapshot)
     step1_input = maintenance_input(None, [fixture.turns[seq] for seq in fixture.step1])
     # Step 2 carries the step 1 summary, at most the carry ceiling in bytes (a longer one is not sent).
-    step2_input = maintenance_input("a" * CARRIED_SUMMARY_MAX_BYTES, [fixture.turns[seq] for seq in fixture.step2])
+    step2_input = maintenance_input("a" * SUMMARY_MAX_BYTES, [fixture.turns[seq] for seq in fixture.step2])
     envelope = []
     for model_id in ordered_assignments(snapshot, Role.SUMMARIZER):
         candidate = _candidate(snapshot, model_id)
@@ -496,7 +508,7 @@ def paid_envelope(snapshot: RegistrySnapshot, fixture: Fixture) -> list[dict[str
                 "requests": MAX_FIXTURE_CALLS,
                 "max_provider_attempts_per_request": MAX_ROUTE_ATTEMPTS,
                 "max_output_tokens": fixture.max_output_tokens,
-                "carried_summary_max_bytes": CARRIED_SUMMARY_MAX_BYTES,
+                "carried_summary_max_bytes": SUMMARY_MAX_BYTES,
                 "input_estimate": estimate,
                 "reservation_basis": RESERVATION_BASIS,
                 "input_token_reservations": [
@@ -518,7 +530,12 @@ def paid_envelope(snapshot: RegistrySnapshot, fixture: Fixture) -> list[dict[str
 # --- The paid run --------------------------------------------------------------------------------------
 
 LIVE_PROFILE = "qualification"
-LIVE_DOLLAR_CAP = Decimal("0.05")  # the operator's released ceiling for this qualification
+# The operator's $0.10 (2026-10-09) is the cumulative Stage B ceiling: run 1 (fixture v1) already spent
+# $0.0006881, so this run may spend the rest (Codex Stage B v2 disposition, qualification 5).
+STAGE_B_CEILING = Decimal("0.10")
+PRIOR_STAGE_B_SPEND = Decimal("0.0006881")
+PRIOR_STAGE_B_RUN = "stage-b-qualification/run-1: fixture v1, FAIL at step 1, one attempt, $0.0006881"
+LIVE_DOLLAR_CAP = STAGE_B_CEILING - PRIOR_STAGE_B_SPEND
 LIVE_WALL_CLOCK_SECONDS = 30 * 60  # the released 30-minute limit
 LIVE_REQUEST_TIMEOUT_SECONDS = 300.0  # a request starts only if it can time out inside the limit
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -709,7 +726,12 @@ def run_live(
             "quantizations": list(candidate.quantizations),
             "reasoning": candidate.reasoning,
             "envelope": row,
+            "fixture": fixture.name,
+            "fixture_file_sha256": hashlib.sha256(FIXTURE_PATH.read_bytes()).hexdigest(),
             "dollar_cap_usd": str(LIVE_DOLLAR_CAP),
+            "stage_b_ceiling_usd": str(STAGE_B_CEILING),
+            "prior_stage_b_spend_usd": str(PRIOR_STAGE_B_SPEND),
+            "prior_stage_b_run": PRIOR_STAGE_B_RUN,
             "wall_clock_seconds": LIVE_WALL_CLOCK_SECONDS,
             "request_timeout_seconds": LIVE_REQUEST_TIMEOUT_SECONDS,
             "max_requests": MAX_FIXTURE_CALLS,
@@ -775,6 +797,7 @@ def run_live(
             "final": None if result.final is None else result.final.to_dict(),
             "unrun": result.unrun,
             "budget": result.budget,
+            "inadmissible": result.inadmissible,
             "dollar_cap_usd": str(LIVE_DOLLAR_CAP),
             "calls": result.calls,
             "provider_attempts": len(result.attempts),
