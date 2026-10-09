@@ -2,7 +2,8 @@
 
 **Plan:** `docs/superpowers/plans/2026-10-04-plan-11-30-test-profiles-implementation_v4.md` (approved working bytes SHA-256 `8A40DEF6D627EDC722D9FA925BBB0C193DE433ECCB91D2DCA19F1DA6AFC5C790`; LF-normalised blob `7D07ADA39CE1F8987E529C7FD8838952B4607F6F2CBD8773D39220D44DB6AF1E`, differing only by CRLF on lines 32–33).
 **Machine-readable index:** [`plan-11-30-test-profiles-manifest.json`](plan-11-30-test-profiles-manifest.json).
-**Status (2026-10-09):** Stage A (Tasks 0–3) and its Task 6 at `acc2a1c` are accepted and locally committed. Stage B Tasks 4–5 are accepted and locally committed, and the delivered Stage B source contains the Stage B corrections: b0 (the explicit `core` rule for the WSL IPC node and the slow-node measurement refresh) was delivered in Task 4 at `43eb190`, and the partial-index correction and the quick commit-audit switch in Task 5 at `66ddabf`. Checkpoint C and G were accepted on candidate C7c and Checkpoint D on candidate E (pairs5 median core wall improvement 26.2040537 %, E-source timing under ambient load). Stage B Task 6 (independent final Windows and WSL gates) has not run. Remote Linux CI and the safety-row comparison are UNKNOWN. Nothing is pushed. See "Current delivery and status (2026-10-09)".
+**Status (2026-10-09, 07:24 UTC):** Stage A and Stage B Tasks 4–5 are accepted and locally committed. The Stage B Task 6 final gates ran at the governance commit `3cece0a` (tree `fabb6720…`) on independent native Windows and WSL clones and pass: Optimus coverage 87.772781 % (Windows) and 87.214201 % (WSL), Windows gap ratio 1.001314. Codex accepted the local evidence on 2026-10-09 at 07:24:20 UTC. Remote Linux CI and the base/candidate safety-row comparison are UNKNOWN; complete Task 6 and plan closure remain open. Nothing is pushed. See "Current delivery and status (2026-10-09)" and "Stage B Task 6 — final gates at `3cece0a` (2026-10-09)".
+*Historical status at recording (committed with `3cece0a`, 2026-10-09), kept as written:* **Status (2026-10-09):** Stage A (Tasks 0–3) and its Task 6 at `acc2a1c` are accepted and locally committed. Stage B Tasks 4–5 are accepted and locally committed, and the delivered Stage B source contains the Stage B corrections: b0 (the explicit `core` rule for the WSL IPC node and the slow-node measurement refresh) was delivered in Task 4 at `43eb190`, and the partial-index correction and the quick commit-audit switch in Task 5 at `66ddabf`. Checkpoint C and G were accepted on candidate C7c and Checkpoint D on candidate E (pairs5 median core wall improvement 26.2040537 %, E-source timing under ambient load). Stage B Task 6 (independent final Windows and WSL gates) has not run. Remote Linux CI and the safety-row comparison are UNKNOWN. Nothing is pushed. See "Current delivery and status (2026-10-09)".
 *Historical status at recording (committed with `1c7be2d`, 2026-10-05), kept as written:* **Status (2026-10-05):** Stage A (Tasks 0–3) is accepted and locally committed. Its Task 6 final gates ran at `acc2a1c`, pass on Windows and WSL, and are accepted locally (section "Task 6"). Remote Linux CI and the safety-row comparison are UNKNOWN. Stage B (Tasks 4–5, and the partial-commit correction) is required and open under `P11-FEAT-TEST-PROFILES`. Nothing is pushed.
 
 *Historical intake status, kept as written:* Task 0 complete pending Checkpoint A (Fable 5.1, then Codex). Every result here is provisional development evidence bound to the stated source identity. The final full-run confirmation of the overhead fix belongs to the first delivery's Task 6. Tasks 1–6 are not started.
@@ -26,6 +27,7 @@ This is the report's one current-status section; it is updated in place. The sta
 | `1c7be2d` | docs: record Plan 11.30 Stage A Task 6 results at acc2a1c | the Stage A Task 6 report and docs |
 | `43eb190` | test: add Plan 11.30 audit depth, export cache and measurement reuse (Task 4) | Task 4 and Stage B's first change (b0) |
 | `66ddabf` | test: add Plan 11.30 core-only xdist, index scanning and quick commit audits (Task 5) | Task 5, the partial-commit correction and the quick commit-audit switch |
+| `3cece0a` | docs: record Plan 11.30 Stage B delivery before final gates | the seven-path governance commit; the measured Stage B Task 6 pin (tree `fabb6720…`) |
 
 Nothing is pushed. Push, PR, merge and cleanup are held.
 
@@ -34,7 +36,8 @@ Nothing is pushed. Push, PR, merge and cleanup are held.
 - **Stage A** (Tasks 0–3 and Task 6 at `acc2a1c`): accepted and locally committed, within the qualifications in its sections.
 - **Stage B Tasks 4–5:** accepted and locally committed. The delivered Stage B source contains the Stage B corrections: b0 (the explicit `core` rule for the WSL IPC node and the slow-node measurement refresh) was delivered in Task 4 at `43eb190`; the partial-index correction and the quick commit-audit switch were delivered in Task 5 at `66ddabf`.
 - **Checkpoint B's Task 5 worker obligation** (kill-on-close and attribution) is discharged for the accepted native Windows controller topology, by `test_an_interrupted_controller_leaves_no_worker_running`, `test_a_grandchild_left_running_by_a_worker_is_an_escaped_descendant` and the accepted D-M1 phase/channel controls. The real grandchild control checks parent-worker attribution, the INVALID verdict and termination. WSL keeps its weaker capability label. This does not discharge F4: the abrupt hard kill of the outer runner still orphans its subruns.
-- **Open:** Stage B Task 6 (independent final Windows and WSL gates; not run, see its section); remote Linux CI and the base/candidate safety-row comparison (UNKNOWN); the CI backstop for the partial-commit correction.
+- **Stage B Task 6 (updated 2026-10-09 07:24 UTC):** the final gates ran at `3cece0a` on independent native Windows and WSL clones and pass. Codex accepted the local evidence on 2026-10-09 at 07:24:20 UTC (section "Stage B Task 6 — final gates at `3cece0a` (2026-10-09)").
+- **Open:** remote Linux CI and the base/candidate safety-row comparison (UNKNOWN); the CI backstop for the partial-commit correction; complete Task 6 and plan closure. Push, PR, merge and cleanup are held, including the two final clones.
 
 ### Reconciliation of earlier open statements (2026-10-09)
 
@@ -43,11 +46,11 @@ The following earlier statements describe work that is now delivered. They are k
 - the Task 3 residuals on the partial-commit gap and the later snapshot refresh;
 - the Stage A Task 6 qualification calling the IPC rule "the first required Stage B source change", and its "Still open" list.
 
-The IPC rule and the measurement refresh were delivered at `43eb190`. The partial-index correction and the quick commit-audit switch were delivered at `66ddabf`. No source work from those statements remains required. The final full gates and the CI backstop remain open.
+The IPC rule and the measurement refresh were delivered at `43eb190`. The partial-index correction and the quick commit-audit switch were delivered at `66ddabf`. No source work from those statements remains required. The final full gates have since run and been accepted locally (2026-10-09 07:24 UTC); the CI backstop remains open. The earlier "Stage B Task 6 — not yet run" placeholder is historical.
 
 ### Provenance conventions
 
-- **Current authority** for the Stage B dispositions is Codex's dated sections in [`docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md`](../docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md), the newest being "Stage B Task 6 preparation — audit dispositions and final-byte gate" (recorded 2026-10-09 04:32:07 UTC). This report deliberately does not cite that file's current hash.
+- **Current authority** for the Stage B dispositions is Codex's dated sections in [`docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md`](../docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md), the newest being "Stage B Task 6 — local final evidence accepted; results composition released" (recorded 2026-10-09 07:24:20 UTC), after "Stage B Task 6 preparation — audit dispositions and final-byte gate" (recorded 2026-10-09 04:32:07 UTC). This report deliberately does not cite that file's current hash.
 - **Review snapshot read during drafting (2026-10-09):** SHA-256 `0d50118aea616e169593bc873c7ba3f829b521e4df06e28751cdf62b670572b2`. The file has changed since; this digest identifies only that snapshot.
 - **Abbreviated hashes** ending in "…" are display and provenance identifiers, not claims of full-digest verification; full digests are in the manifest. A historical snapshot hash identifies a retained sealed snapshot, not current bytes.
 - **Report-derived calculations** are labelled with their formula, inputs and candidate. They are kept apart from recorded values and from Codex's acceptance.
@@ -1132,6 +1135,8 @@ None of these rows is omitted required implementation. Each is accepted evidence
 
 **PLACEHOLDER. No Stage B Task 6 measurement exists. Nothing in this section is a result.**
 
+*Historical status at recording (committed with `3cece0a`, 2026-10-09). Current (2026-10-09 07:24 UTC): the final gates ran at `3cece0a` and Codex accepted the local evidence; see "Stage B Task 6 — final gates at `3cece0a` (2026-10-09)".*
+
 **Prerequisites, in order** (Codex, 2026-10-08 19:38:33 and 2026-10-09 04:32:07 UTC):
 1. Codex's current-state documentation audit (done 2026-10-09).
 2. A separately reviewed and released seven-path governance commit carrying this report, the manifest and five reviewer files.
@@ -1152,3 +1157,112 @@ The Stage A Windows checkout exception does not extend to Stage B. The native Wi
 **Still UNKNOWN:** the base main-push and candidate Linux CI safety-module reports. There is no extra Windows base-only run.
 
 **Not Stage B Task 6 evidence:** the commit-hook runs of `43eb190` and `66ddabf`; every checkpoint and pair run above; Stage A's results at `acc2a1c`.
+
+## Stage B Task 6 — final gates at `3cece0a` (2026-10-09)
+
+**Status: local evidence accepted** (Codex, 2026-10-09 07:24:20 UTC; see "Local acceptance" below). Every result in this section was measured at the pin `3cece0a887a80f2250cf1e720afcdd527136a412`, tree `fabb67208f0dbd2513a4c39618e82be05d14ab4a`. A later documentary commit that records these results is not itself the measured source.
+
+### Pin: the seven-path governance commit
+
+- **Commit:** `3cece0a887a80f2250cf1e720afcdd527136a412`, parent `66ddabfdf5bb3acccfffe39fa45f70b4b47924ad`, subject `docs: record Plan 11.30 Stage B delivery before final gates`.
+- **Paths:** exactly the seven released documentary paths: this report, the manifest, `docs/README.md`, `docs/decisions/README.md`, `docs/decisions/ADR-016-test-cadence-product-coverage-and-staged-delivery.md`, `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md` and `docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md`. The committed blobs equal the release table, and implementation, tests, configuration, lock and secrets baseline are unchanged from `66ddabf`.
+- **Hooks** (2026-10-09 05:31:45Z–05:38:57Z): every applicable normal hook passed; YAML and TOML had no files.
+- **Commit-profile hook:** `20261009T053202-52988-61dd41` verdict pass, obligation `wsl-platform: next checkpoint`. Its selected subrun `20261009T053233-48828-7c10ea` selected 4,567 nodes: **4,530 passed, 37 skipped**, exit 0. The record is valid, full-depth and ACTIVE, with qualification `parent=UNKNOWN:access_denied`. This is parent-HEAD hook evidence, distinct from the final runs below.
+
+### Commands, checkouts and environments
+
+**Commands.** Task 6 command substitution C1, run serially with one coverage writer per clone:
+- `uv run --no-sync pytest --cov --cov-branch --cov-fail-under=0 --cov-report=term-missing --cov-report=json:tmp/coverage/full.json -v`
+- `uv run --no-sync python -m tools.testing.coverage_products report --coverage-json tmp/coverage/full.json`
+
+| | Native Windows | WSL |
+|---|---|---|
+| Independent clone | `C:\worktrees\optimus-cost-agent-worktrees\optimus-cost-agent-wt-claude-p1130f`, detached at the pin, clean; path budget 227 of 260 | `/root/p1130-sb-t6-20261009T063925`, detached at the pin, clean |
+| Environment | the clone's own `.venv` from `uv sync --frozen` (dry-run: no changes; `uv lock --check` passes); Python 3.14.4, uv 0.11.29; pytest 9.1.1, pytest-cov 7.1.0, coverage 7.14.3 | its own frozen environment (no changes); Python 3.14.6, uv 0.11.31, Git 2.43; `TMPDIR` unset |
+| `pyproject.toml` / `uv.lock` | `a95422bc…` / `a1a25b3a…` (equal to the delivered source) | same hashes |
+| Time (UTC) | 05:40:53Z–06:36:25Z, together with Fable's read-only final review | 06:40:08Z–07:04:55Z, after Windows finished |
+
+Common package versions match. The platform differences are Windows-only `colorama`, `pywin32`, `pywin32-ctypes` and `tzdata`, and Linux-only `jeepney` and `secretstorage`. The recorded Python and uv versions differ by platform, so no identical-interpreter claim is made. Both clones and the implementing lane were clean at the pin after the runs.
+
+### Results (Codex's independent verification, 2026-10-09)
+
+| Evidence | Native Windows | WSL |
+|---|---|---|
+| Full run | `20261009T054057-42656-acf1b7`: **5,533 passed, 40 skipped, 111 deselected**, exit 0 (3,325.50 s; 1 warning) | `20261009T064009-595-4738a3`: **5,398 passed, 175 skipped, 111 deselected**, exit 0 (1,376.16 s) |
+| Selection, depth and validity | 5,573 selected; default selection, ACTIVE, COMPLETE, full audit depth, 0 collection and 0 recording errors; native job valid, guard `pytest_process_guard`, protection full; qualification `parent=not_found:ancestor_exited` | 5,573 selected; same selection and full depth; COMPLETE, ACTIVE; `native=unsupported`, `guard=unsupported_platform`, `parent=unsupported`, protection none |
+| H5 budget | full depth, `h5.shutdown_schedule` 100/100 | full depth, 100/100 |
+| Optimus production coverage (floor 80) | 15,076/16,659 statements + 3,466/4,466 branches = **87.772781 %**: PASS | 14,972/16,659 + 3,452/4,466 = **87.214201 %**: PASS |
+| Model policy / Context Engine | absent on this source: N/A | N/A |
+| A2A (informational, not enforced) | 3,824/5,312 + 972/1,698 = **68.416548 %** | 3,680/5,312 + 944/1,698 = **65.962910 %** |
+| Coverage JSON SHA-256 | `887cb5918b1ce394634fdd207e2b2530e6b389dd4694d1f466abcc8ebfeb397b` | `87ca25f1c189eaa6cabec6693deb53793b4520d7af7250ec0c9d7e1594229190` |
+| Coverage binding | automatic binding returns the full run; the explicit `--run-record` report agrees; corrected six-check binding receipt passes | automatic binding returns the full run; six-check binding receipt passes |
+| Recorded-order inter-phase gap (Task 0 predicate) | 16,689 transitions; first and last deciles 1,668 each; medians 0.380500 / 0.381000 ms; ratio **1.001314: PASS**; 0 negative gaps | 16,544 transitions; deciles 1,654 each; 0.649000 / 0.591500 ms; ratio **0.911402**, informational only; **2 negative gaps**, retained and not clamped |
+| Nodes over 2 s | 284, zero with an implicit (default-tier) classification | 76, zero with an implicit classification |
+
+Products are measured as (covered statements + covered branches) / (statements + branches), unrounded.
+
+- **Selected nodes.** The selected-node digest is `709277bb4db8b4c493a9be41f5e98fec551c0b0888cd744f075bb3de63b520d2` on both platforms. Raw phases cover exactly the selected nodes.
+- **Recorder controls without a call phase.** Eight known intentional recorder-control nodes have passing setup and teardown and no call phase. The pytest summaries corroborate them. This is not a missing-call failure.
+- **Coverage timestamps** are local-time data and must be interpreted on the measuring platform.
+- **The existing runpy ACP warning** remains disclosed.
+- **WSL qualifications** remain: unsupported protection and the guest clock. Its two negative gaps are not used for any Windows performance acceptance.
+
+### Pin gates (implementing lane at the pin, identity unchanged)
+
+- Changed-docs gate `pytest tests/unit/docs`, run `20261009T070554-35288-59b1d1`: **85 passed**. The record is active, default selection and COMPLETE, with parent UNKNOWN.
+- `ruff check --no-cache .`: clean.
+- `git diff --check 1c7be2d 3cece0a` and the worktree check: clean.
+- The manifest parses, and the pin was unchanged.
+
+Codex read and verified these retained gates; it did not rerun them. Its own fresh full-tree Ruff passes.
+
+### Host load (not idle)
+
+- **Windows** (30 s, read-only receipts): mean CPU 31.7 % before (Fable's read-only review active; Telegram and `TextInputHost` at about half a core each) and 19.2 % after.
+- **WSL:** 30-second `/proc/loadavg` and top-process snapshots, load average about 0.22 before and about 0.90 after, on 12 CPUs.
+
+Foreign load was recorded and not touched; no owned run overlapped. These runs are not idle-host measurements.
+
+### xdist speed
+
+These serial final runs **do not newly measure xdist speed**. Checkpoint D and the E-only pairs5 timing keep their own source-specific acceptance.
+
+### Fable 5.1 final review: SOUND WITH AMENDMENTS
+
+Fable's review (`fable-final-stageb.md`, SHA-256 `9bc401e86e7ff3e5a9adbeca4b34ab33163efd2a9f09b2672c661444d7dd0511`) found no defect in the delivered Stage B source and returned three Low amendments. Codex concurs.
+
+1. Prove the measured-run binding instead of choosing the record by the most `nodes.jsonl` lines. **Applied:** `bind_check.py`, and the WSL script takes its record from the product report's automatic binding.
+2. WSL ambient-load receipts. **Applied.**
+3. Rename the manifest's `current_delivery.head` to `delivered_source_head`. **Applied in this composition**, with the measured final HEAD and tree named separately.
+
+### Failed evidence collection (retained)
+
+The initial Windows collection chose the run folder with the most `nodes.jsonl` lines. It copied `20261009T063630-33472-602c76`, which is the product report's later collection session, started 06:36:30Z, after the measured window ended at 06:36:25Z.
+- **Retained as failed collection:** the misselected copy, its empty gap output (`gap-decile-misselected.json`) and the initial binding receipt (`bind-check.json`, 5 of 6 checks, incomplete because the product report does not print its run).
+- **The correction:** the corrected copy is the actual full session `20261009T054057-42656-acf1b7`. Automatic and explicit binding, the selection, window, pin and exit checks, and the recomputed gap support acceptance. The automatic-binding receipt is `bind-check-2.json`.
+- **No full test was rerun**, and no failed result is relabelled PASS.
+- **No future excuse:** this does not excuse the heuristic for future gates.
+
+### Local acceptance (Codex, 2026-10-09 07:24:20 UTC)
+
+Codex accepted the local governance delivery and the Stage B Task 6 evidence at `3cece0a887a80f2250cf1e720afcdd527136a412`, tree `fabb67208f0dbd2513a4c39618e82be05d14ab4a`. It independently verified:
+- both seals and all their members;
+- the seven committed blobs, parent and subject;
+- the normal-hook receipts;
+- the raw records;
+- the coverage arithmetic.
+
+The acceptance is agent-selected technical acceptance under the settled operator delegation, not publication authority.
+
+### Still open, stated separately from the local acceptance
+
+- **Remote Linux CI and the base/candidate safety-row comparison: UNKNOWN.** No extra Windows base-only full run is made; missing comparable reports stay UNKNOWN.
+- **Complete Task 6 and plan closure: open.**
+- **Push, PR, merge and cleanup are held**, including the two final clones. Services and paid calls are held too.
+- Residual owners are unchanged (section "Stage B residuals and owners"). The registry archival stays 723 of 724 archived, PARTIAL/NON-PASSING.
+
+### Receipts
+
+- `plan-11-30-stageb-task6-final-evidence-20261009`: 69 members, seal `69c9ff9aca4d3fb2c8c0e7a7a7feffc78cbbaa26b546b7c5836ee5d4aa37cea1`.
+- `plan-11-30-stageb-governance-commit-3cece0a-20261009`: 20 members, seal `1299d153cb3a80fe76589f6c1af69ba6d91a11b19b983e493782eba887753d0c`.
+- Final packet `2026-10-09-claude-stageb-task6-final-packet-plan-11-30.md`: SHA-256 `e32e3137e82bd59d6611ae062260f0cce3c105c2a6e5842945ebf63a06b1cfe8`.

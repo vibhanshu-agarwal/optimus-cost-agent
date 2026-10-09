@@ -9,10 +9,13 @@
  "report": "reports/plan-11-30-test-profiles-evidence.md",
  "status_convention": "Each section's 'status' string is the historical status at recording and is kept as written; 'status_recorded' dates it. 'current_delivery' holds the current state. Abbreviated hashes in prose are display identifiers; historical snapshot hashes identify retained sealed snapshots, not current bytes. New Stage B receipt locations are recorded as location_root + '/' + location_folder; older entries keep their original form.",
  "current_delivery": {
-  "as_of": "2026-10-09",
+  "as_of": "2026-10-09T07:24:20Z",
   "branch": "agent/claude/plan-11-30-test-profiles",
   "base": "git-sha1:a929aab2092876ab0d83ecc4e46896ae3a0935c0",
-  "head": "git-sha1:66ddabfdf5bb3acccfffe39fa45f70b4b47924ad",
+  "delivered_source_head": "git-sha1:66ddabfdf5bb3acccfffe39fa45f70b4b47924ad",
+  "delivered_source_head_note": "dated 2026-10-09: the drafting-time delivered source head (66ddabf, Task 5); renamed from 'head' per Fable final amendment 3; the seven-path governance commit on top of it is the measured final pin",
+  "measured_final_head": "git-sha1:3cece0a887a80f2250cf1e720afcdd527136a412",
+  "measured_final_tree": "git-sha1:fabb67208f0dbd2513a4c39618e82be05d14ab4a",
   "pushed": false,
   "commits": [
    {
@@ -50,23 +53,28 @@
    {
     "commit": "git-sha1:66ddabfdf5bb3acccfffe39fa45f70b4b47924ad",
     "delivers": "Task 5, partial-index correction, quick commit-audit switch"
+   },
+   {
+    "commit": "git-sha1:3cece0a887a80f2250cf1e720afcdd527136a412",
+    "delivers": "seven-path governance commit; the measured Stage B Task 6 pin"
    }
   ],
   "stage_a": "accepted and locally committed (Tasks 0-3; Task 6 at acc2a1c)",
-  "stage_b": "Tasks 4-5 accepted and locally committed; the delivered Stage B source contains the Stage B corrections (b0 in Task 4 at 43eb190; partial-index correction and quick switch in Task 5 at 66ddabf); Stage B Task 6 not run",
+  "stage_b": "Tasks 4-5 accepted and locally committed; the delivered Stage B source contains the Stage B corrections (b0 in Task 4 at 43eb190; partial-index correction and quick switch in Task 5 at 66ddabf); Stage B Task 6 final gates ran at 3cece0a and the local evidence was accepted by Codex 2026-10-09T07:24:20Z (sections.stageb_task6_final)",
   "checkpoint_b_task5_obligation": "discharged for the accepted native Windows controller topology; WSL weaker; F4 not discharged (sections.task5.checkpoint_b_worker_obligation)",
-  "reconciliation": "statements in the historical sections that show the IPC rule, measurement refresh, partial-commit correction or quick switch as open are historical; those were delivered at 43eb190 and 66ddabf; no source work from them remains required",
+  "reconciliation": "statements in the historical sections that show the IPC rule, measurement refresh, partial-commit correction or quick switch as open are historical; those were delivered at 43eb190 and 66ddabf; no source work from them remains required; the Stage B Task 6 placeholder (sections.stageb_task6) is historical",
   "open": [
-   "Stage B Task 6 final gates (independent Windows and WSL checkouts)",
    "remote Linux CI and base/candidate safety-row comparison (UNKNOWN)",
    "partial-commit correction CI backstop",
-   "push, PR, merge and cleanup held"
+   "complete Task 6 and plan closure",
+   "push, PR, merge and cleanup held (including the two final clones)"
   ],
   "authority": {
    "review_file": "docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md",
-   "current_section": "Stage B Task 6 preparation - audit dispositions and final-byte gate",
-   "recorded_utc": "2026-10-09T04:32:07Z",
-   "hash_policy": "the review file's current hash is deliberately not cited (no report/review self-hash cycle)"
+   "current_section": "Stage B Task 6 - local final evidence accepted; results composition released",
+   "recorded_utc": "2026-10-09T07:24:20Z",
+   "hash_policy": "the review file's current hash is deliberately not cited (no report/review self-hash cycle)",
+   "previous_section": "Stage B Task 6 preparation - audit dispositions and final-byte gate (2026-10-09T04:32:07Z)"
   },
   "review_snapshot_read_during_drafting": {
    "date": "2026-10-09",
@@ -2457,6 +2465,12 @@
   },
   "stageb_task6": {
    "status": "not_run",
+   "status_recorded": {
+    "convention": "historical status at recording, kept as written; current state in current_delivery",
+    "first_committed_with": "git-sha1:3cece0a887a80f2250cf1e720afcdd527136a412",
+    "date": "2026-10-09",
+    "superseded_by": "sections.stageb_task6_final"
+   },
    "placeholder": true,
    "prerequisites": [
     "Codex current-state documentation audit: done 2026-10-09 (ruling recorded 04:32:07 UTC)",
@@ -2495,6 +2509,219 @@
     "wsl": "/root/p1130-sb-t6-<UTC>",
     "rule": "independent clones detached at the pin, each with its own frozen environment, coverage data and run records; the Stage A Windows checkout exception does not extend; Windows full run with Fable's read-only review, WSL after Windows, no overlap"
    }
+  },
+  "stageb_task6_final": {
+   "status": "local evidence accepted by Codex 2026-10-09T07:24:20Z at the measured pin; Linux CI and safety comparison UNKNOWN; Task 6 and plan closure open",
+   "measured_source": {
+    "commit": "git-sha1:3cece0a887a80f2250cf1e720afcdd527136a412",
+    "tree": "git-sha1:fabb67208f0dbd2513a4c39618e82be05d14ab4a",
+    "parent": "git-sha1:66ddabfdf5bb3acccfffe39fa45f70b4b47924ad",
+    "pyproject": "sha256:a95422bcae40efab3a0fec635de8f23c4c29349324d01d873b15879822fed957",
+    "uv_lock": "sha256:a1a25b3afa02e8ff5e660a6a5a7f27980b58d1f6e60811fe083f689852297a5b"
+   },
+   "recorded_by_later_commit": "results are bound to 3cece0a; the documentary commit that records them is not the measured source",
+   "governance_commit": {
+    "subject": "docs: record Plan 11.30 Stage B delivery before final gates",
+    "paths": [
+     "docs/README.md",
+     "docs/decisions/ADR-016-test-cadence-product-coverage-and-staged-delivery.md",
+     "docs/decisions/README.md",
+     "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md",
+     "docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md",
+     "reports/plan-11-30-test-profiles-evidence.md",
+     "reports/plan-11-30-test-profiles-manifest.json"
+    ],
+    "unchanged_from_parent": "implementation, tests, configuration, lock and secrets baseline",
+    "hooks_utc": "2026-10-09T05:31:45Z..05:38:57Z; all applicable passed; YAML/TOML no files",
+    "commit_profile": "20261009T053202-52988-61dd41 verdict pass, obligation wsl-platform: next checkpoint",
+    "selected_run": "20261009T053233-48828-7c10ea: 4567 selected, 4530 passed, 37 skipped, exit 0; valid full-depth ACTIVE",
+    "qualifications": [
+     "parent=UNKNOWN:access_denied"
+    ],
+    "binding": "parent-HEAD hook evidence, distinct from the final runs"
+   },
+   "commands": {
+    "ruling": "Task 6 command substitution C1",
+    "run": [
+     "uv run --no-sync pytest --cov --cov-branch --cov-fail-under=0 --cov-report=term-missing --cov-report=json:tmp/coverage/full.json -v",
+     "uv run --no-sync python -m tools.testing.coverage_products report --coverage-json tmp/coverage/full.json"
+    ]
+   },
+   "checkouts": {
+    "windows": {
+     "clone": "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p1130f",
+     "state": "detached at the pin, clean before and after; path budget 227 of 260",
+     "environment": "own .venv via uv sync --frozen (dry-run no changes; uv lock --check passes); Python 3.14.4, uv 0.11.29; pytest 9.1.1, pytest-cov 7.1.0, coverage 7.14.3",
+     "window_utc": "2026-10-09T05:40:53Z..06:36:25Z, with Fable's read-only final review"
+    },
+    "wsl": {
+     "clone": "/root/p1130-sb-t6-20261009T063925",
+     "state": "detached at the pin, clean before and after",
+     "environment": "own frozen environment (no changes); Python 3.14.6, uv 0.11.31, Git 2.43; TMPDIR unset",
+     "window_utc": "2026-10-09T06:40:08Z..07:04:55Z, after Windows finished"
+    },
+    "packages": "common versions match; Windows-only colorama, pywin32, pywin32-ctypes, tzdata; Linux-only jeepney, secretstorage; Python/uv versions differ by platform; no identical-interpreter claim",
+    "lane": "implementing lane clean and unchanged at the pin throughout"
+   },
+   "claims": {
+    "windows_full_suite": {
+     "status": "PASS",
+     "run": "20261009T054057-42656-acf1b7",
+     "passed": 5533,
+     "skipped": 40,
+     "deselected": 111,
+     "selected": 5573,
+     "record": "default selection, ACTIVE, COMPLETE, full audit depth, 0 collection and 0 recording errors; native job valid, guard pytest_process_guard, protection full",
+     "qualifications": [
+      "parent=not_found:ancestor_exited"
+     ],
+     "h5_budget": "100/100 (full depth)",
+     "duration_s": 3325.5,
+     "coverage_json": "sha256:887cb5918b1ce394634fdd207e2b2530e6b389dd4694d1f466abcc8ebfeb397b"
+    },
+    "wsl_full_suite": {
+     "status": "PASS (qualified)",
+     "run": "20261009T064009-595-4738a3",
+     "passed": 5398,
+     "skipped": 175,
+     "deselected": 111,
+     "selected": 5573,
+     "record": "same selection and full depth; COMPLETE, ACTIVE; protection none",
+     "qualifications": [
+      "native=unsupported",
+      "guard=unsupported_platform",
+      "parent=unsupported",
+      "guest wall clock uncertain"
+     ],
+     "h5_budget": "100/100 (full depth)",
+     "duration_s": 1376.16,
+     "coverage_json": "sha256:87ca25f1c189eaa6cabec6693deb53793b4520d7af7250ec0c9d7e1594229190"
+    },
+    "selected_node_digest": "sha256:709277bb4db8b4c493a9be41f5e98fec551c0b0888cd744f075bb3de63b520d2 (both platforms); raw phases cover exactly the selected nodes",
+    "recorder_controls_without_call": "eight known intentional recorder-control nodes have passing setup/teardown and no call phase, corroborated by pytest summaries; not a missing-call failure",
+    "optimus_floor": {
+     "status": "PASS",
+     "floor": 80,
+     "windows": {
+      "statements": "15076/16659",
+      "branches": "3466/4466",
+      "percent": 87.772781
+     },
+     "wsl": {
+      "statements": "14972/16659",
+      "branches": "3452/4466",
+      "percent": 87.214201
+     }
+    },
+    "model_policy_floor": {
+     "status": "N/A",
+     "why": "package absent on this source"
+    },
+    "context_engine_floor": {
+     "status": "N/A",
+     "why": "package absent on this source"
+    },
+    "a2a": {
+     "status": "informational, not enforced",
+     "windows": {
+      "statements": "3824/5312",
+      "branches": "972/1698",
+      "percent": 68.416548
+     },
+     "wsl": {
+      "statements": "3680/5312",
+      "branches": "944/1698",
+      "percent": 65.96291
+     }
+    },
+    "coverage_binding": "automatic binding returns the true full record on each platform; Windows explicit-record and automatic reports agree; corrected six-check binding receipts pass on both platforms; coverage timestamps are local-time data interpreted on the measuring platform",
+    "task0_gap_predicate": {
+     "status": "PASS",
+     "platform": "windows",
+     "transitions": 16689,
+     "k": 1668,
+     "first_median_ms": 0.3805,
+     "last_median_ms": 0.381,
+     "ratio": 1.001314,
+     "negative_gaps": 0
+    },
+    "wsl_gap_informational": {
+     "transitions": 16544,
+     "k": 1654,
+     "first_median_ms": 0.649,
+     "last_median_ms": 0.5915,
+     "ratio": 0.911402,
+     "negative_gaps": 2,
+     "note": "informational only; negative gaps retained, not clamped, not used for Windows acceptance"
+    },
+    "slow_node_census": {
+     "windows": "284 over 2 s, 0 implicit/default-tier",
+     "wsl": "76 over 2 s, 0 implicit/default-tier"
+    },
+    "xdist_speed": "not newly measured by these serial runs; Checkpoint D and E-only pairs5 keep their source-specific acceptance"
+   },
+   "pin_gates": {
+    "docs_gate": "pytest tests/unit/docs run 20261009T070554-35288-59b1d1: 85 passed; active, default selection, COMPLETE, parent UNKNOWN",
+    "ruff": "ruff check --no-cache . clean",
+    "diff_checks": "git diff --check 1c7be2d 3cece0a and worktree clean",
+    "manifest": "parses; pin unchanged",
+    "reviewer": "Codex read and verified these retained gates (not rerun); Codex fresh full-tree Ruff passes"
+   },
+   "host_load": {
+    "windows": "mean CPU 31.7 % before (Fable read-only review active; Telegram and TextInputHost about half a core each), 19.2 % after",
+    "wsl": "30 s /proc/loadavg and top-process snapshots: about 0.22 before, about 0.90 after, 12 CPUs",
+    "note": "not idle; foreign load recorded, not touched; no owned overlap"
+   },
+   "warnings": "the existing runpy ACP warning remains disclosed",
+   "fable_final": {
+    "verdict": "SOUND WITH AMENDMENTS; three Low; no delivered-source defect; Codex concurs",
+    "review_sha256": "sha256:9bc401e86e7ff3e5a9adbeca4b34ab33163efd2a9f09b2672c661444d7dd0511",
+    "amendment_1": "prove measured-run binding instead of the most-nodes heuristic: applied (bind_check.py; WSL record from automatic binding)",
+    "amendment_2": "WSL ambient-load receipts: applied",
+    "amendment_3": "rename current_delivery.head to delivered_source_head and name the measured final head/tree separately: applied in this composition"
+   },
+   "failed_evidence_collection": {
+    "what": "the initial Windows collection chose the run folder with the most nodes.jsonl lines and copied 20261009T063630-33472-602c76, the product report's later collection session (started 06:36:30Z, after the measured window ended 06:36:25Z)",
+    "retained": [
+     "misselected copy run-misselected-20261009T063630-33472-602c76",
+     "empty gap output gap-decile-misselected.json",
+     "initial incomplete binding receipt bind-check.json (5 of 6 checks)"
+    ],
+    "correction": "the corrected copy is the actual full session 20261009T054057-42656-acf1b7; automatic/explicit binding, selection/window/pin/exit checks and the recomputed gap support acceptance (bind-check-2.json)",
+    "rerun": "no full test was rerun; no failed result is relabelled PASS",
+    "future": "does not excuse the heuristic for future gates"
+   },
+   "local_acceptance": {
+    "by": "Codex",
+    "recorded_utc": "2026-10-09T07:24:20Z",
+    "scope": "local governance delivery and Stage B Task 6 evidence at 3cece0a / tree fabb6720",
+    "verified": "both seals and all members, the seven committed blobs, parent/subject, normal-hook receipts, raw records and coverage arithmetic",
+    "nature": "agent-selected technical acceptance under the settled operator delegation; not publication authority"
+   },
+   "remote_linux_ci_and_safety_rows": {
+    "status": "UNKNOWN",
+    "why": "push/PR and publication held; no comparable base main-push and candidate CI reports; no extra Windows base-only run"
+   },
+   "still_open": [
+    "complete Task 6 and plan closure",
+    "push, PR, merge and cleanup held (including both final clones); services and paid calls held",
+    "residual owners unchanged; registry archival 723/724 PARTIAL/NON-PASSING unchanged"
+   ],
+   "raw_receipts": [
+    {
+     "location_root": "optimus-handoff/test-profiles-research",
+     "location_folder": "plan-11-30-stageb-task6-final-evidence-20261009",
+     "files": 69,
+     "sha256sums_sha256": "sha256:69c9ff9aca4d3fb2c8c0e7a7a7feffc78cbbaa26b546b7c5836ee5d4aa37cea1"
+    },
+    {
+     "location_root": "optimus-handoff/test-profiles-research",
+     "location_folder": "plan-11-30-stageb-governance-commit-3cece0a-20261009",
+     "files": 20,
+     "sha256sums_sha256": "sha256:1299d153cb3a80fe76589f6c1af69ba6d91a11b19b983e493782eba887753d0c"
+    }
+   ],
+   "final_packet_sha256": "sha256:e32e3137e82bd59d6611ae062260f0cce3c105c2a6e5842945ebf63a06b1cfe8"
   }
  }
 }

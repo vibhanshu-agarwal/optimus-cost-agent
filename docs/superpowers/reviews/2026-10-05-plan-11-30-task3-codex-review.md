@@ -1,5 +1,91 @@
 # Plan 11.30 — Task 3 / Stage A Codex review
 
+## Stage B Task 6 — local final evidence accepted; results composition released
+
+Recorded 2026-10-09 07:24:20 UTC. This is an agent-selected technical acceptance under the settled operator delegation, not new operator policy or publication authority. Final packet SHA-256 `e32e3137e82bd59d6611ae062260f0cce3c105c2a6e5842945ebf63a06b1cfe8`; final evidence seal `69c9ff9aca4d3fb2c8c0e7a7a7feffc78cbbaa26b546b7c5836ee5d4aa37cea1` (69 members); governance-commit seal `1299d153cb3a80fe76589f6c1af69ba6d91a11b19b983e493782eba887753d0c` (20 members). Codex independently verified both seals and all members, the actual seven committed blobs, parent/subject, normal-hook receipts, raw records and coverage arithmetic.
+
+**ACCEPT local governance delivery and Stage B Task 6 evidence at `3cece0a887a80f2250cf1e720afcdd527136a412`, tree `fabb67208f0dbd2513a4c39618e82be05d14ab4a`.** Parent is `66ddabfdf5bb3acccfffe39fa45f70b4b47924ad`. Exactly the seven released documentary paths changed; implementation/tests/config/lock/baseline did not. All applicable normal hooks passed; YAML/TOML had no files. The commit profile selected 4,567: 4,530 passed, 37 skipped, exit 0, valid full-depth ACTIVE record with `parent=UNKNOWN:access_denied`. This parent-HEAD hook evidence is distinct from the new final runs.
+
+### Independently verified final results
+
+| Evidence | Native Windows | WSL |
+|---|---|---|
+| Full run | `20261009T054057-42656-acf1b7`: 5,533 passed / 40 skipped / 111 deselected, exit 0 | `20261009T064009-595-4738a3`: 5,398 passed / 175 skipped / 111 deselected, exit 0 |
+| Selection/depth/validity | 5,573 selected; default selection, ACTIVE, COMPLETE, full audit depth; native valid/full guard; `parent=not_found:ancestor_exited` | Same selection and full depth; COMPLETE/ACTIVE; native/guard/parent unsupported, protection none |
+| Optimus production coverage | 15,076/16,659 statements + 3,466/4,466 branches = **87.772781%**, PASS floor 80 | 14,972/16,659 + 3,452/4,466 = **87.214201%**, PASS floor 80 |
+| A2A informational coverage | 3,824/5,312 + 972/1,698 = **68.416548%**, not enforced | 3,680/5,312 + 944/1,698 = **65.962910%**, not enforced |
+| Recorded-order inter-phase gap | 16,689 transitions; first/last deciles 1,668 each; medians 0.380500/0.381000 ms; ratio **1.001314**, PASS; no negative gaps | 16,544 transitions; deciles 1,654 each; 0.649000/0.591500 ms; ratio **0.911402**, informational only; two negative gaps retained |
+| Nodes over two seconds | 284, zero implicit/default-tier classifications | 76, zero implicit/default-tier classifications |
+
+Both runs use independent detached clones, separate frozen environments/data, the approved C1 serial coverage command and full H5 100/100 budget. Windows finished before WSL started. Both clones and the implementing lane are still clean at the pin. Selected-node digest is `709277bb4db8b4c493a9be41f5e98fec551c0b0888cd744f075bb3de63b520d2` on both platforms. Raw phases cover exactly the selected nodes; eight known intentional recorder controls have no call phase but passing setup/teardown, corroborated by pytest summaries. This is not a new missing-call failure.
+
+Automatic coverage binding was independently executed through the existing environment on each measuring platform and returned the true full record; Windows explicit-record and automatic product reports agree. Both corrected six-check binding receipts pass. Coverage timestamps are local-time data and must be interpreted on the measuring platform. Common package versions match; Windows-only colorama/pywin32/pywin32-ctypes/tzdata and Linux-only jeepney/secretstorage are platform differences. Recorded Python/uv versions differ by platform; do not claim identical interpreters.
+
+Fresh reviewer full-tree Ruff passes. Retained pin gates: docs **85 passed**, active/default/COMPLETE with parent UNKNOWN; Ruff/diff checks clean, valid manifest and unchanged pin. Those retained tests were read and verified, not rerun by Codex. The existing runpy ACP warning remains disclosed. Host load was recorded, not idle: Windows 31.7% before / 19.2% after; WSL has 30-second /proc/process snapshots. WSL unsupported protection and guest-clock qualifications remain; two negative gaps are not clamped or used for Windows performance acceptance. These serial final runs do not newly measure xdist speed: Checkpoint D and E-only pairs5 retain their own source-specific acceptance.
+
+### Fable amendments and corrected collection history
+
+Fable final review SHA-256 `9bc401e86e7ff3e5a9adbeca4b34ab33163efd2a9f09b2672c661444d7dd0511`: SOUND WITH AMENDMENTS, three LOW, no delivered-source defect. Codex concurs. Amendments 1/2 are accepted as applied: proof of measured-run binding and WSL ambient-load receipts. Amendment 3 is expressly authorized in the documentary follow-up: rename `current_delivery.head` to `delivered_source_head` with a dated drafting-source explanation; separately name measured final HEAD/tree.
+
+The initial Windows collection chose `20261009T063630-33472-602c76`, the product report's later collection session outside the measured window. Its copy, empty gap output and initial incomplete binding receipt remain sealed as failed evidence collection. The corrected copy is the actual earlier full session; automatic/explicit binding, selection/window/pin/exit checks and recomputed gap support acceptance. No full test was rerun, no failed result is relabelled PASS, and this does not excuse the heuristic for future gates.
+
+### Bounded results composition; exact commit grant still pending
+
+**Release Claude to prepare exactly seven documentary paths:** the two existing report/manifest files plus `docs/README.md`, `docs/decisions/README.md`, the sole backlog, ADR-016 and this formal review. Use the immutable five-file reviewer snapshot identified in the shared checkpoint log, not later changing reviewer bytes. Do not stage the ignored checkpoint log, frozen plans, `.gitattributes`, source/tests/config/lock/baseline or raw/private evidence. No implementation change is authorized.
+
+Append a dated Stage B Task 6 section/manifest entry bound to measured `3cece0a` and the full run IDs, hashes and qualifications above. Preserve prior report lines and manifest results, source pins, failed/INVALID histories, archival 723/724 PARTIAL/NON-PASSING and all residual owners. Reconcile current-status wording; apply Fable's head-field clarification. State local acceptance separately from Linux CI and base/candidate safety UNKNOWN. A later documentary commit does not become the source of these full-run measurements, and no self-commit/hash repair is required.
+
+Run fresh changed-docs tests, both existing secret scans with unchanged baseline, full-tree Ruff, JSON/LF/diff checks, named seven-path identity and unchanged source/config/lock checks. Return the assembled two files and complete seven-path byte table/staged diff plus sealed receipts. **The local commit is HOLD until those concrete final bytes are checked and a separate one-attempt normal-hook release is filed.** This is the existing final-byte gate, not an additional operator decision or code checkpoint. No new Fable source review or full Windows/WSL run solely for these documentary edits; new source drift or failure requires disposition. Do not commit yet or retry-to-green.
+
+### CI direction and remaining authority
+
+Prepare the results write-up first, then the concrete publication-readiness handoff identifying the final branch/HEAD, current main drift, proposed push/PR scope and the exact base-main/candidate Linux CI coverage receipts required by Task 6. Preserve coverage version/branch/config comparability and per-file safety totals/misses. Missing comparable reports remain UNKNOWN; no extra Windows base-only full run is commissioned. Narrow CI coverage wiring is already in scope, but that is not a push/PR grant. Complete Task 6/plan closure, push/PR/merge, cleanup, services/paid calls and other Plan 11.28 activation remain held. No project commit or implementation by Codex.
+
+## Stage B governance final bytes — accepted; one local commit and conditional final runs released
+
+Recorded 2026-10-09 05:27:50 UTC. This supersedes the preceding final-byte HOLD without changing the frozen plan or the already staged candidate. Operator-relayed final-byte packet SHA-256 `2b08c5fec9a6250ce97f74a8a38bf4a36e0c55de206f2134ab43495b2f679fa6`; 25-member preflight seal `bb3240d6d78a7105d3919744212815983ffe46373d3d2b33767002bb140074fa`. **The complete seven-path documentary candidate is ACCEPTED.** Codex verified the packet, seal and every member, actual lane HEAD `66ddabfdf5bb3acccfffe39fa45f70b4b47924ad`, exact staged/working file equality, no other modified or untracked paths, and staged binary diff SHA-256 `93b81b64732469250dca64b6ce06f390174ae344b4e71da1dd6f2ee1a039633c`.
+
+### Accepted interpretations and evidence
+
+1. **Historical JSON status:** additive `status_recorded` objects correctly date the original historical `status` strings. All previous manifest sections are content-identical apart from those objects; other historical metadata is unchanged. `current_delivery` is a dated composition snapshot at `66ddabf`, not the unknown future governance commit or a final measured pin. The nine listed commits and first-recording commit metadata are provenance. Six new Stage B sections distinguish candidate measurements from delivered source; Stage B Task 6 remains `not_run` with null measurements. No self-commit/hash update is required after this commit.
+2. **P11-FU-39:** “lifecycle-tooling inventory custody, if taken up as future work” is accepted. It points to the existing process-tree/captured-pipe inventory owner, not a proven additional defect, commissioned fix or broad closure. P11-FU-32 owns the separate TEST_VENV observation. This does not change another lane's plan, status or authority.
+3. **Current-status placement:** the near-top dated section is appropriate. All original report lines survive in order, with the original opening status retained verbatim behind its historical label. Additive annotations reconcile delivered residuals and retain every original source/qualification. The append-only evidence rule protects historical results; it does not prohibit a clearly distinguished current-status section. No relabelled old measurement is accepted.
+
+Codex reviewed the assembled additions against the previously reviewed section drafts and dispositions, verified preservation of all previous full digests, 16 exactly reconstructible sealed-location pairs, LF/no-BOM/final-newline and JSON style. Independently recomputed all five medians, ratios of means and newly displayed means of per-pair improvements. The recorded walls, calculated figures and reviewer assertions are separated. Unknown WSL splits, ambient-load/foreign-overlap qualifiers, failed attempts, e2 survivor, serial-cache guarantee boundary and source-specific performance acceptance remain.
+
+Retained preflight: docs gate **85 passed**, run `20261009T051552-52612-f3cfb3`, ACTIVE/default-selection/COMPLETE/exit 0/native-valid/full guard with `parent=not_found`; staged-set local secret scan and detect-secrets exit 0 with unchanged baseline; staged/working diff checks clean. Fresh independent full-tree Ruff and both diff checks pass on the actual lane candidate. These focused docs receipts establish the documentary gate, not new full-suite/final coverage evidence.
+
+The custom literal-link check is **exit 1, with 10 missing references**, not a blanket passing link scan. Codex verified all 10 targets already occur in both `66ddabf` and base main `a929aab`; no Plan 11.30 link defect is introduced. The changed-docs gate passes. Do not repair other-lane historical paths in this seven-path batch or add test/scanner exemptions. This qualification is accepted for this local documentary release; it does not waive later relevant closing/merge freshness checks.
+
+### Exact one-commit release
+
+**Expressly release Claude to make one local commit of exactly the following seven staged paths at these SHA-256 values**, in `agent/claude/plan-11-30-test-profiles`, parent `66ddabfdf5bb3acccfffe39fa45f70b4b47924ad`:
+
+| Path | SHA-256 of working and staged bytes |
+|---|---|
+| `docs/README.md` | `56ee26fa50a96fbf30df8288f57589b655b08b1db53cb2f0eb8fd0ce0d216b05` |
+| `docs/decisions/README.md` | `0bed8783a556012e45b91eaa4a8c09ad667b932a9da51488cecf6ecd45291364` |
+| `docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md` | `f4593b35a7e1fd71a637d1079e0ceebf7c6bb2469fd5cec579042abbdcf65a4b` |
+| `docs/decisions/ADR-016-test-cadence-product-coverage-and-staged-delivery.md` | `3e8320819a3b322e35c46a99b62683aebba6f4625e06cfbec5dac45572878cfc` |
+| `docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md` | `26cee1c2762fd325fc217f9f1c4439aef8f91b80eb8ffc1adb445630ced18a4e` |
+| `reports/plan-11-30-test-profiles-evidence.md` | `48b26b2770d523576a4fc7f009007851be01ea559a6fa802cff6bd47dd8fbe7e` |
+| `reports/plan-11-30-test-profiles-manifest.json` | `80fadde54db5d0275ab631e43105ed512ab26a7ad2d9fcbb343eed388773a5e5` |
+
+Subject: `docs: record Plan 11.30 Stage B delivery before final gates`.
+
+Use normal applicable hooks, no SKIP and no `--no-verify`. Before committing re-check parent, exactly seven staged paths, all seven hashes, no unstaged/untracked changes and unchanged source/config/lock/baseline. The reviewed documentary candidate has fresh checks; do not rerun the entire preflight solely because this release was filed. New changes, drift or material delay require the affected checks again. Any hook failure stops; retain stdout/stderr, verdict, index/working identity and seal, report it, and do not make an automatic retry or source change. The grant expires after this single attempt.
+
+**Do not re-import this new release prose or later reviewer-file changes into the staged candidate.** The five earlier audit-snapshot hashes above are final for this commit. This dated authorization and the ignored shared reviewer checkpoint log govern execution; they do not add an eighth path or force a self-referential governance-import loop. Later review/delivery/final-result filings belong to the appropriate subsequent documentary batch. The ignored log, `.gitattributes`, frozen plans, source, tests, CI/config/lock files and scratch/private artefacts are excluded.
+
+### Conditional Stage B Task 6 execution release
+
+After the one commit succeeds with all applicable normal hooks, verify its subject/parent/exact seven committed blobs against this table and staging, a clean tree and unchanged implementation/config/lock. Record and seal the commit receipts. **Then Claude is expressly released to execute the existing local Stage B Task 6 without another operator or pre-run approval round.** The actual successful governance commit HEAD/tree is the final pin; `66ddabf` is the pre-commit source snapshot. Report the delivery promptly; evidence acceptance remains a later Fable-then-Codex decision.
+
+Follow the confirmed command/topology section below: independent frozen native Windows and WSL clones, each detached at the actual pin, its own frozen environment/data and one serial coverage writer; record before/after source, command, interpreter/dependencies/config and host/owned-process identities. Preserve full default selection and full audit depth. Windows full coverage and Fable 5.1 read-only final review start together; WSL full coverage follows after Windows finishes, never overlapping measured chains. Use the exact C1 serial full pytest/product-report commands, verify coverage bound to that full run, apply the recorded-order Windows Task 0 gap predicate, retain unsupported WSL labels and slow-node classifications. No xdist coverage, extra base Windows run or new paid/live service action is commissioned. Run the remaining Task 6 gates, seal attributable evidence and return the final packet. A failed/INVALID/missing record or unmet prerequisite stops the dependent acceptance claim; preserve the attempt and seek disposition rather than retrying to green.
+
+This completes the pre-pin documentary audit within the reviewed local scope. It does not accept unrun final evidence, remote Linux CI/base-candidate safety reports, complete plan closure, publication, push/PR/merge, cleanup or other Plan 11.28 activation. Codex changed reviewer governance only and made no implementation or project commit.
+
+
 ## Stage B Task 6 preparation — audit dispositions and final-byte gate
 
 Recorded 2026-10-09 04:32:07 UTC. Preparation packet SHA-256 `baed89eb474b73234df46d2cc5aaf8e80f56cdddf4293c927a7e01afa4e57508`; 15-member preparation seal `ae94f6b4ed4f28b4800c538c35f6466e6c62fd959124fe4779f1e46cc7e5fd10`. Reviewed the complete report-section draft `cccf67c6a03f3de0be77e4e726268f982cc69bd8cd768f886a597413af2d3dc5` and manifest-section draft `0a99bf7aab3cedfad2e561cdf8f42b59f6684f551298d5a490ce8dd9d414527f`, notes and preparation plan. These are sections, **not the two assembled final report files**. Codex independently verified 42 delivered source-blob hashes, all 13 distinct referenced seal identities and the five pair sets' arithmetic. That seal-identity check is not a new recount of every member of the older seals, which were reviewed at their original gates. Lane remains clean at delivered `66ddabf`; no final run exists.
