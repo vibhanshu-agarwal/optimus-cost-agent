@@ -12,6 +12,7 @@ and a scripted upstream stands in for the provider.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 from decimal import Decimal
@@ -43,10 +44,11 @@ def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
 class SummaryUpstream(RecordingUpstream):
     """The provider: scripted summaries, prompt tokens at one per byte, documented router evidence."""
 
-    def __init__(self, *texts: str, provider: str = "Anthropic", **kwargs: Any) -> None:
+    def __init__(self, *texts: str, provider: str = "Anthropic", costs: tuple[str, ...] = (), **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.texts = list(texts)
         self.provider = provider
+        self.costs = list(costs)
 
     def _result(self, model: str) -> ProviderMessageResult:
         prompt_tokens = len(self.calls[-1]["input_text"].encode("utf-8"))
@@ -57,7 +59,7 @@ class SummaryUpstream(RecordingUpstream):
             output_tokens=300,
             total_tokens=prompt_tokens + 300,
             billing_units=prompt_tokens + 300,
-            cost_usd=Decimal("0.001"),
+            cost_usd=Decimal(self.costs.pop(0)) if self.costs else Decimal("0.001"),
             provider="openrouter",
             resolved_provider=self.provider,
             requested_model=model,
@@ -309,3 +311,83 @@ def test_persisted_error_text_is_sanitized(tmp_path: Path, monkeypatch) -> None:
     assert code == 1
     error = _json(out / "outcome.json")["error"]
     assert error.startswith("RuntimeError: clock failed near") and SYNTHETIC_KEY not in error
+
+
+# --- Spending is settled from reported costs (Codex correction-batch review M3) ------------------------------
+
+
+def test_a_first_reply_above_the_grant_keeps_its_charge_and_leaves_step_two_unrun(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "run"
+    upstream = SummaryUpstream(STEP1, FINAL, costs=("0.06",))
+
+    code, _gateway = _run(monkeypatch, out, upstream)
+
+    assert code == 1 and len(upstream.calls) == 1
+    assert [a["cost_usd"] for a in _lines(out / "attempts.jsonl")] == ["0.06"]
+    outcome = _json(out / "outcome.json")
+    assert (outcome["status"], outcome["reported_cost_usd"], outcome["step1"]["passed"]) == ("budget", "0.06", True)
+    assert outcome["budget"] == "known spend 0.06 USD exceeds the 0.05 USD cap"
+    assert outcome["unrun"].startswith("step 2 UNRUN: known spend 0.06 USD plus step 2's reservation")
+    assert not (out / "receipt-candidate.json").exists()
+
+
+def test_a_first_reply_leaving_too_little_for_step_two_dispatches_nothing_more(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "run"
+    upstream = SummaryUpstream(STEP1, FINAL, costs=("0.045",))
+
+    code, _gateway = _run(monkeypatch, out, upstream)
+
+    assert code == 1 and len(upstream.calls) == 1
+    outcome = _json(out / "outcome.json")
+    assert (outcome["status"], outcome["reported_cost_usd"]) == ("budget", "0.045")
+    assert outcome["budget"] == outcome["unrun"] and "plus step 2's reservation" in outcome["unrun"]
+    assert not (out / "receipt-candidate.json").exists()
+
+
+def test_a_last_reply_taking_the_total_over_the_grant_keeps_both_results_and_is_not_a_pass(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "run"
+    upstream = SummaryUpstream(STEP1, FINAL, costs=("0.03", "0.03"))
+
+    code, _gateway = _run(monkeypatch, out, upstream)
+
+    assert code == 1 and len(upstream.calls) == 2
+    assert [a["cost_usd"] for a in _lines(out / "attempts.jsonl")] == ["0.03", "0.03"]
+    outcome = _json(out / "outcome.json")
+    assert (outcome["status"], outcome["reported_cost_usd"], outcome["budget"]) == ("budget", "0.06", "known spend 0.06 USD exceeds the 0.05 USD cap")
+    assert outcome["step1"]["passed"] and outcome["final"]["passed"]
+    assert not (out / "receipt-candidate.json").exists()
+
+
+# --- Provider metadata is redacted where it is persisted (Codex correction-batch review M4) -------------------
+
+
+class LeakyMetadata(SummaryUpstream):
+    """Valid replies whose provider metadata carries a patterned secret and the run's known secret."""
+
+    def _result(self, model: str) -> ProviderMessageResult:
+        return dataclasses.replace(
+            super()._result(model),
+            message_id=f"gen-{SHARED_SECRET}",
+            resolved_model=f"{model}:{SYNTHETIC_KEY}",
+            model_version=SYNTHETIC_KEY,
+        )
+
+
+def test_secrets_in_provider_metadata_reach_no_output_artifact(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "run"
+
+    code, _gateway = _run(monkeypatch, out, LeakyMetadata(STEP1, FINAL))
+
+    assert code == 0, "routing checks compare the raw in-memory values; redaction is for persistence only"
+    leaks = {path.name for path in out.iterdir() for secret in (SYNTHETIC_KEY, SHARED_SECRET) if secret in path.read_text(encoding="utf-8")}
+    assert leaks == set()
+    # Structure, accounting and classification survive; only the provider-supplied text is redacted.
+    attempts = _lines(out / "attempts.jsonl")
+    assert [(a["outcome"], a["cost_usd"], a["resolved_provider"]) for a in attempts] == [("completed", "0.001", "Anthropic")] * 2
+    usage = attempts[0]["usage"]
+    assert isinstance(usage["input_tokens"], int) and usage["output_tokens"] == 300 and usage["reasoning_tokens"] == 40
+    assert usage["gateway_request_id"] == attempts[0]["gateway_request_id"] and usage["cost_usd"] == "0.001"
+    assert "**********" in (usage["resolved_model"], usage["model_version"], usage["provider_request_id"])
+    candidate = _json(out / "receipt-candidate.json")
+    assert candidate["receipt"]["request_ids"] == [a["gateway_request_id"] for a in attempts]
+    assert candidate["observed"]["resolved_providers"] == ["Anthropic", "Anthropic"]

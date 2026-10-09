@@ -724,18 +724,40 @@ def test_a_call_whose_bound_passes_the_cap_is_never_made() -> None:
 
 
 def test_the_cap_can_stop_the_second_call_after_the_first() -> None:
+    """Step 2 runs only if the known spend plus its full reservation fits; otherwise step 1's charge and
+    findings are kept and step 2 is unrun (Codex correction-batch review M3)."""
     from context_engine.engine import maintenance_input
 
     first_bound = request_upper_bound_usd(maintenance_input(None, [FIXTURE.turns[s] for s in FIXTURE.step1]), FIXTURE.max_output_tokens, CANDIDATE)
     fake = FakeSummarizer(STEP1, FINAL)
-    with pytest.raises(CapRefused):
-        run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=first_bound, recorded_on="2026-10-02")
-    assert len(fake.prompts) == 1
+
+    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=first_bound, recorded_on="2026-10-02")
+
+    assert len(fake.prompts) == 1 and result.step1.passed
+    assert (result.passed, result.final, result.receipt) == (False, None, None)
+    assert result.unrun.startswith("step 2 UNRUN: known spend 0.0001 USD plus step 2's reservation")
+    assert result.budget == result.unrun
 
 
-def test_unknown_cost_is_reported_as_unknown() -> None:
-    result = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(STEP1, FINAL, cost=None), dollar_cap=Decimal("1"), recorded_on="2026-10-02")
-    assert result.passed and result.reported_cost_usd is None
+def test_unknown_cost_is_reported_as_unknown_and_stops_further_dispatch() -> None:
+    fake = FakeSummarizer(STEP1, FINAL, cost=None)
+
+    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"), recorded_on="2026-10-02")
+
+    assert len(fake.prompts) == 1 and result.step1.passed
+    assert (result.passed, result.reported_cost_usd, result.receipt) == (False, None, None)
+    assert result.budget == "step 2 UNRUN: an earlier attempt's cost is unknown, so the remaining budget is unknown"
+
+
+def test_a_known_total_over_the_cap_is_never_a_pass() -> None:
+    """A breach first known from the last response keeps both steps' findings but is not a pass."""
+    fake = FakeSummarizer(STEP1, FINAL, cost=Decimal("0.3"))
+
+    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("0.5"), recorded_on="2026-10-02")
+
+    assert len(fake.prompts) == 2 and result.step1.passed and result.final is not None and result.final.passed
+    assert (result.passed, result.receipt, result.reported_cost_usd) == (False, None, Decimal("0.6"))
+    assert result.budget == "known spend 0.6 USD exceeds the 0.5 USD cap"
 
 
 # --- The carried-summary ceiling (Codex Haiku Stage A review M2) ------------------------------------------

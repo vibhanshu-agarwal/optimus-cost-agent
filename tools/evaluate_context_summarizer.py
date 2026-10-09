@@ -274,7 +274,8 @@ class Candidate:
 
 
 class CapRefused(Exception):
-    """A call whose upper cost bound would pass the authorized dollar cap is never made."""
+    """A call is never made when the known spend plus its full reservation would pass the dollar cap, or
+    when an earlier cost is unknown."""
 
 
 def _prompt_upper_bound_usd(prompt: str, max_output_tokens: int, candidate: Candidate) -> Decimal:
@@ -315,10 +316,13 @@ class QualificationResult:
     attempts: tuple[MaintenanceReceipt, ...] = ()
     unrun: str | None = None
     """Why step 2 was not run although step 1 passed, if so."""
+    budget: str | None = None
+    """Why the run is not a success on budget grounds, whatever its quality findings: the known spend
+    exceeds the cap, the spend is unknown, or too little budget was left for step 2."""
 
     @property
     def passed(self) -> bool:
-        return self.final is not None and self.step1.passed and self.final.passed
+        return self.final is not None and self.step1.passed and self.final.passed and self.budget is None
 
 
 def run_qualification(
@@ -335,7 +339,6 @@ def run_qualification(
     the run then raises."""
     turns = fixture.turns
     calls = 0
-    authorized = Decimal(0)
     receipts: list[MaintenanceReceipt] = []
 
     def record(receipt: MaintenanceReceipt) -> None:
@@ -343,15 +346,31 @@ def run_qualification(
         if on_receipt is not None:
             on_receipt(receipt)
 
+    def known_spend() -> Decimal | None:
+        """Every physical attempt settled at its reported cost; None once any cost is unknown."""
+        costs = [r.cost_usd for r in receipts]
+        return None if any(cost is None for cost in costs) else sum(costs, Decimal(0))  # type: ignore[arg-type]
+
+    def unaffordable(prompt: str, max_output_tokens: int, label: str) -> str | None:
+        """Why a request may not be sent: the known spend plus its full reservation (every safe resend
+        included) must fit the cap, and an unknown spend stops further dispatch (Codex correction-batch
+        review M3). A charge already made cannot be undone; the next call can be prevented."""
+        spent = known_spend()
+        if spent is None:
+            return "an earlier attempt's cost is unknown, so the remaining budget is unknown"
+        bound = _prompt_upper_bound_usd(prompt, max_output_tokens, candidate)
+        if spent + bound > dollar_cap:
+            return f"known spend {spent} USD plus {label}'s reservation {bound} USD exceeds the {dollar_cap} USD cap"
+        return None
+
     def capped(*, prompt: str, max_output_tokens: int) -> SummarizerResponse:
         """The candidate call, made only within the call and dollar caps."""
-        nonlocal authorized, calls
+        nonlocal calls
         if calls >= MAX_FIXTURE_CALLS:
             raise CapRefused("the fixture allows two calls per candidate")
-        bound = _prompt_upper_bound_usd(prompt, max_output_tokens, candidate)
-        if authorized + bound > dollar_cap:
-            raise CapRefused(f"upper bound {authorized + bound} USD exceeds the cap {dollar_cap} USD")
-        authorized += bound
+        refused = unaffordable(prompt, max_output_tokens, "this request")
+        if refused is not None:
+            raise CapRefused(refused)
         calls += 1
         return summarize(prompt=prompt, max_output_tokens=max_output_tokens)
 
@@ -389,19 +408,25 @@ def run_qualification(
 
     first = step(maintenance_input(None, [turns[seq] for seq in fixture.step1]), fixture.step1)
     step1 = evaluate_summary(first.summary_text, first.finish_status, fixture.step1_facts, fixture.rules)
-    final, unrun = None, None
+    final, unrun, budget = None, None, None
     if step1.passed:
         carried = len((first.summary_text or "").encode("utf-8"))
+        # Merge the step 1 summary with the newer turns, as the runtime's incremental path does.
+        step2_input = maintenance_input(first.summary_text, [turns[seq] for seq in fixture.step2])
         if carried > CARRIED_SUMMARY_MAX_BYTES:
             unrun = f"step 2 UNRUN: the step 1 summary is {carried} UTF-8 bytes, over the {CARRIED_SUMMARY_MAX_BYTES}-byte carry ceiling"
+        elif (refused := unaffordable(build_summary_prompt(step2_input), fixture.max_output_tokens, "step 2")) is not None:
+            unrun = budget = f"step 2 UNRUN: {refused}"
         else:
-            # Merge the step 1 summary with the newer turns, as the runtime's incremental path does.
-            second = step(maintenance_input(first.summary_text, [turns[seq] for seq in fixture.step2]), fixture.step1 + fixture.step2)
+            second = step(step2_input, fixture.step1 + fixture.step2)
             final = evaluate_summary(second.summary_text, second.finish_status, fixture.final_facts, fixture.rules)
     request_ids = tuple(r.gateway_request_id for r in receipts if r.gateway_request_id)
-    costs = [r.cost_usd for r in receipts]
-    reported = None if any(cost is None for cost in costs) else sum(costs, Decimal(0))  # type: ignore[arg-type]
-    result = QualificationResult(candidate, step1, final, calls, request_ids, reported, None, tuple(receipts), unrun)
+    reported = known_spend()
+    if reported is not None and reported > dollar_cap:
+        budget = f"known spend {reported} USD exceeds the {dollar_cap} USD cap"
+    elif reported is None and final is not None:
+        budget = "the run's total cost is unknown"
+    result = QualificationResult(candidate, step1, final, calls, request_ids, reported, None, tuple(receipts), unrun, budget)
     if not result.passed:
         return result
     receipt = {
@@ -417,7 +442,7 @@ def run_qualification(
         "recorded_on": recorded_on,
         "result": "pass",
     }
-    return QualificationResult(candidate, step1, final, calls, request_ids, reported, receipt, tuple(receipts), unrun)
+    return QualificationResult(candidate, step1, final, calls, request_ids, reported, receipt, tuple(receipts), unrun, budget)
 
 
 # --- The paid envelope ---------------------------------------------------------------------------------
@@ -523,9 +548,29 @@ def _append_json(path: Path, value: Any) -> None:
         os.fsync(handle.fileno())
 
 
-def _receipt_record(receipt: MaintenanceReceipt) -> dict[str, Any]:
+# Persisted as-is: identifiers this host or its Gateway minted, the attempt classification, numbers
+# written as strings, and the requested model and Gateway provider (this run's own configuration).
+# The evidence sanitizer's entropy rule would otherwise erase the identifiers that link attempts to the
+# receipt. Every other string can carry provider-supplied text (Codex correction-batch review M4).
+_UNREDACTED_KEYS = frozenset({"attempt_id", "gateway_request_id", "outcome", "cost_usd", "recorded_at", "model", "provider"})
+
+
+def _redacted(value: Any, sanitizer: ConversationSanitizer, key: str | None = None) -> Any:
+    """`value` with every string not under an unredacted key passed through the evidence sanitizer;
+    structure, numbers and the attempt classification are kept. Only what is written is redacted: the
+    runtime compares the raw values in memory."""
+    if isinstance(value, dict):
+        return {name: _redacted(item, sanitizer, name) for name, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_redacted(item, sanitizer, key) for item in value]
+    if isinstance(value, str) and key not in _UNREDACTED_KEYS:
+        return sanitizer.sanitize(value)
+    return value
+
+
+def _receipt_record(receipt: MaintenanceReceipt, sanitizer: ConversationSanitizer) -> dict[str, Any]:
     usage = receipt.gateway_usage
-    return {
+    record = {
         "attempt_id": receipt.attempt_id,
         "gateway_request_id": receipt.gateway_request_id,
         "outcome": receipt.outcome,
@@ -540,6 +585,7 @@ def _receipt_record(receipt: MaintenanceReceipt) -> dict[str, Any]:
         "resolved_model": receipt.resolved_model,
         "usage": None if usage is None else usage.model_dump(mode="json"),
     }
+    return _redacted(record, sanitizer)
 
 
 def _evidence_sanitizer(*known_secrets: str) -> ConversationSanitizer:
@@ -568,8 +614,8 @@ def run_live(
     clock: Callable[[], float] = time.monotonic,
 ) -> int:
     """The paid two-request qualification of the reviewed profile through the operator-started host's
-    Gateway. Exit 0: both steps passed and a receipt candidate was written; 1: the run failed or
-    stopped (its evidence is kept); 2: refused before any request.
+    Gateway. Exit 0: both steps passed within the cap and a receipt candidate was written; 1: the run
+    failed on quality, on budget or stopped (its evidence is kept); 2: refused before any request.
 
     `out` is a new directory: `run.json` (identity, written before the first dispatch),
     `attempts.jsonl` and `responses.jsonl` (appended as they arrive), `outcome.json` (always, last) and
@@ -684,7 +730,7 @@ def run_live(
             dollar_cap=LIVE_DOLLAR_CAP,
             recorded_on=recorded_on,
             registry_hash=snapshot.effective_hash,
-            on_receipt=lambda receipt: _append_json(out / "attempts.jsonl", _receipt_record(receipt)),
+            on_receipt=lambda receipt: _append_json(out / "attempts.jsonl", _receipt_record(receipt, evidence)),
         )
     except BaseException as exc:
         # Every attempt already recorded stays on disk; an interrupted request's cost is unknown.
@@ -702,28 +748,34 @@ def run_live(
             return 1
         raise
 
-    passed = result.passed and result.reported_cost_usd is not None and len(result.attempts) <= MAX_FIXTURE_CALLS * MAX_ROUTE_ATTEMPTS
+    known = result.reported_cost_usd
+    passed = result.passed and known is not None and known <= LIVE_DOLLAR_CAP and len(result.attempts) <= MAX_FIXTURE_CALLS * MAX_ROUTE_ATTEMPTS
     if passed:
         usages = [r.gateway_usage for r in result.attempts if r.outcome == "completed" and r.gateway_usage is not None]
         _write_json(
             out / "receipt-candidate.json",
             {
                 "receipt": result.receipt,
-                "observed": {
-                    "resolved_providers": [usage.resolved_provider for usage in usages],
-                    "resolved_models": [usage.resolved_model for usage in usages],
-                    "reasoning_tokens": [usage.reasoning_tokens for usage in usages],
-                },
+                "observed": _redacted(
+                    {
+                        "resolved_providers": [usage.resolved_provider for usage in usages],
+                        "resolved_models": [usage.resolved_model for usage in usages],
+                        "reasoning_tokens": [usage.reasoning_tokens for usage in usages],
+                    },
+                    evidence,
+                ),
                 "note": "a candidate for review: it qualifies nothing and enables no attached engine by itself",
             },
         )
     _write_json(
         out / "outcome.json",
         {
-            "status": "pass" if passed else "fail",
+            "status": "pass" if passed else ("budget" if result.budget is not None else "fail"),
             "step1": result.step1.to_dict(),
             "final": None if result.final is None else result.final.to_dict(),
             "unrun": result.unrun,
+            "budget": result.budget,
+            "dollar_cap_usd": str(LIVE_DOLLAR_CAP),
             "calls": result.calls,
             "provider_attempts": len(result.attempts),
             "reported_cost_usd": None if result.reported_cost_usd is None else str(result.reported_cost_usd),
