@@ -450,3 +450,34 @@ def test_a_final_summary_reinstating_the_old_rule_writes_no_candidate_and_keeps_
     failed = [(c["id"], c["detail"].split(":")[0]) for c in outcome["final"]["checks"] if not c["passed"]]
     assert failed == [("half-up-superseded", "asserted as current")]
     assert not (out / "receipt-candidate.json").exists()
+
+
+
+# --- Every old-rule occurrence accounted, end to end (Codex M5 review of a04e33b) --------------------------------
+# The review's first three accounting reproductions each wrote a passing receipt candidate here at a04e33b.
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "ROUND_HALF_UP was superseded; ROUND_HALF_UP is what calc.py uses.",
+        "ROUND_HALF_UP was superseded; new totals take ROUND_HALF_UP.",
+        "ROUND_HALF_UP was superseded; round half up with ROUND_HALF_UP.",
+    ],
+    ids=["relative-current", "new-totals", "round-half-up"],
+)
+def test_a_final_summary_with_an_unaccounted_old_rule_claim_writes_no_candidate(tmp_path: Path, monkeypatch, line: str) -> None:
+    out = tmp_path / "run"
+    upstream = SummaryUpstream(STEP1, with_case("work", line))
+
+    code, _gateway = _run(monkeypatch, out, upstream)
+
+    assert code == 1 and len(upstream.calls) == 2
+    assert [(a["outcome"], a["cost_usd"]) for a in _lines(out / "attempts.jsonl")] == [("completed", "0.001")] * 2
+    assert len(_lines(out / "responses.jsonl")) == 2
+    outcome = _json(out / "outcome.json")
+    assert (outcome["status"], outcome["provider_attempts"], outcome["reported_cost_usd"]) == ("fail", 2, "0.002")
+    assert (outcome["step1"]["passed"], outcome["final"]["passed"]) == (True, False)
+    failed = [(c["id"], c["detail"].split(":")[0]) for c in outcome["final"]["checks"] if not c["passed"]]
+    assert failed == [("half-up-superseded", "unsupported mention")]
+    assert not (out / "receipt-candidate.json").exists()

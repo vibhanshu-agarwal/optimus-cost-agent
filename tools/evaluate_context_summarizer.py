@@ -125,7 +125,7 @@ class Fixture:
     history: SourceHistory
 
 
-# Validator v5 (Codex historical-checker review, 2026-10-09). An unmarked mention of a superseded rule
+# Validator v5 (Codex historical-checker review, 2026-10-09). An otherwise unaccounted mention of a superseded rule
 # is excused only as a dated record of a creation event the fixture's own source records as completed
 # before its correction, written in the Work and evidence or Source chronology section as
 # "Seq N: [The source records that] Created <artifact> <payload>" or "... <artifact> was created
@@ -171,8 +171,8 @@ _ROUND_COMPLEMENT = (
     r"(?:(?:all|every|each|the|new|future)\s+)?(?:(?:amounts?|values?|results?|numbers?|totals?|calculations?|outputs?|sums?)\s+)?"
     r"(?:to\s+[\w.]+(?:\s+(?:decimal\s+)?places?)?\s+)?(?:with|using|by|via|per|under)\s+"
 )
-_CURRENT_USE = (
-    # The rule as an object.
+# The rule as an object.
+_USE_OBJECT = (
     r"\b(?:use|uses|apply|applies|keep|keeps|retain|retains|require|requires|adopt|adopts|reinstate|reinstates|restore|restores"
     r"|implement|implements|employ|employs|enforce|enforces|prefer|prefers|choose|chooses|select|selects|enable|enables)\s+" + _RULE_NP,
     r"\b(?:keep|keeps|keeping|continue|continues|continuing|still|now|resume|resumes|go on|goes on|carry on|carries on)\s+(?:to\s+)?"
@@ -186,6 +186,9 @@ _CURRENT_USE = (
     r"\b(?:stick|sticks|keep|keeps|hold|holds|adhere|adheres)\s+to\s+" + _RULE_NP,
     r"\b(?:rely|relies|depend|depends)\s+on\s+" + _RULE_NP,
     r"\b(?:leave|leaves)\s+" + _RULE_NP + r"\s+(?:in\s+place|as\s+is|unchanged|alone|untouched)\b",
+)
+_CURRENT_USE = (
+    *_USE_OBJECT,
     # An instruction not to withdraw the rule keeps it: the negation is part of the claim.
     r"\b(?:do\s+not|don't|never|must\s+not|mustn't|should\s+not|shouldn't)\s+" + _WITHDRAW + r"\s+" + _RULE_NP,
     # The rule as a subject.
@@ -209,6 +212,139 @@ _CURRENT_USE = (
 )
 # A contrast right before a current use governs it: the old rule is what the clause does not use.
 _CONTRAST = r"\b(?:instead of|rather than|replacing|superseding|overriding)\s+(?:(?:the|a|an|that|this|its)\s+|" + _STALE + r"\s+)*$"
+
+# Occurrence accounting (Codex M5 review of a04e33b, 2026-10-09). A sentence-wide marker no longer accepts an
+# unrecognized claim: every occurrence of the superseded rule must lie inside a supported non-current construction
+# that spans its whole claim, from a clause start to a clause end, or inside an exact dated source record.
+# Anything else fails as unsupported, current or not. The constructions are a bounded grammar in code: free text
+# inside them never holds the rule, a negation or a joining word, and their withdrawal verbs are the fixture's own
+# (`{wd}`). Whether an accounted statement states the supersession is still decided by the fixture's markers and
+# verbs, inside that statement.
+_NEGATING = r"\b(?:not|never|no|nor|neither|none|nothing|nobody|cannot|without|avoid\w*|stop\w*|refus\w*|fail\w*|forg[eo]t\w*)\b|n't\b"
+_JOINING = r"\b(?:and|or|but|yet|except|unless|although|though|while|whereas|however|which|who|if|whether|would|could|might)\b"
+_CONTINUING = r"\b(?:still|currently|itself)\b"
+_FREE = r"(?:(?!{rule}|" + _NEGATING + "|" + _JOINING + "|" + _CONTINUING + r")(?:[^.;:()\n,]|\.(?=\S)))+"
+_WHEN = r"(?:later|since|then|now|already|also|subsequently|eventually|explicitly)"
+_PREP = r"(?:by|with|to|in|at|for|from|on|after|during|per|under|until|till|before|as\s+of)"
+_ADJUNCTS = r"(?:\s+(?:" + _WHEN + r"|anymore|everywhere|entirely|completely)\b)*(?:\s+" + _PREP + r"\s+" + _FREE + r")?"
+_HEAD_NOUN = r"[)`'\"]?(?:\s+(?:rounding(?:\s+(?:mode|rule|method|setting))?|mode|rule|method|setting))?"
+# A parenthetical label naming the rule's source or age: "(the seq 1 rule)", "(the original rule)".
+_LABEL = r"(?:\s*\(\s*(?:the\s+)?(?:(?:seq|turn)\s+\d+|" + _STALE + r")(?:\s+(?:rounding\s+)?(?:rule|mode|one|constraint|setting))?\s*\))?"
+_RULE_REF = _RULE_NP + _HEAD_NOUN + _LABEL
+# The rule as a subject, with its source ("from seq 1", "(the seq 1 rule)") or an appositive ("ROUND_HALF_UP, the
+# original rule,").
+_RULE_HEAD = (
+    r"(?:(?:rounding|quanti[sz]ing)\s+(?:with|using|by)\s+|(?:the\s+)?use\s+of\s+|using\s+|applying\s+)?" + _RULE_REF
+    + r"(?:\s+(?:from|in|of)\s+(?:seq|turn)\s+\d+)?"
+    + r"(?:\s*,\s*(?:the|its)\s+(?:" + _STALE + r"\s+)*(?:rounding\s+)?(?:rule|mode|one))?\s*,?"
+)
+_PASSIVE = r"(?:was|were|is|are|has\s+been|have\s+been|had\s+been|got|gets|(?:must|should|shall|will|can|may|is\s+to|are\s+to)\s+be)"
+_NOT_NOW = r"(?:not|never|no\s+longer)"
+_IN_USE = (
+    r"(?:used|applied|kept|retained|allowed|permitted|required|needed|valid|current|active|(?:the\s+)?default"
+    r"|in\s+(?:use|effect|force|place)|(?:the\s+)?(?:current\s+)?(?:rounding\s+(?:mode|rule)|rule|mode|one))"
+)
+_REINSTATED = r"(?:used|applied|kept|retained|allowed|reinstated|restored)"
+# A non-current predicate of the rule: "is not used anymore", "must not be used", "no longer applies", "remains
+# superseded", "is the old rule".
+_NOT_IN_USE = (
+    r"(?:(?:is|are|was|were)\s+" + _NOT_NOW + r"\s+(?:being\s+)?" + _IN_USE
+    + r"|(?:isn't|aren't|wasn't|weren't)\s+(?:being\s+)?" + _IN_USE
+    + r"|(?:must|should|shall|will|can|may)\s+" + _NOT_NOW + r"\s+be\s+" + _REINSTATED
+    + r"|(?:mustn't|shouldn't|can't|cannot|won't)\s+be\s+" + _REINSTATED
+    + r"|(?:no\s+longer|never)\s+(?:applies|apply|governs|holds)|(?:does\s+not|doesn't|did\s+not|didn't)\s+(?:apply|govern)"
+    + r"|(?:remains|stays|(?:must|should)\s+(?:remain|stay))\s+{wd}"
+    + r"|(?:is|was)\s+the\s+" + _STALE + r"\s+(?:rounding\s+)?(?:rule|mode|one|default|setting))"
+)
+_ROUNDED = r"(?:rounded|quanti[sz]ed|done|performed|handled|computed)"
+_BY_USING = r"(?:using\s+|applying\s+|(?:rounding|quanti[sz]ing)\s+(?:with|using|by)\s+)?"
+# Tails that complete a claim: a relative clause or a reason stating the withdrawal, then prepositional trailers.
+_RELATIVE = (
+    r"\s*,?\s*which\s+(?:" + _PASSIVE + r"\s+(?:" + _WHEN + r"\s+)?{wd}|(?:" + _FREE + r"\s+)?{wd}|(?:is|was)\s+no\s+longer\s+(?:used|applied))"
+    + _ADJUNCTS
+)
+_REASON = (
+    r"(?:\s*[:;]\s*|\s*,?\s*(?:since|because|as)\s+)(?:it|this)\s+" + _PASSIVE + r"\s+(?:" + _WHEN + r"\s+)?{wd}" + _ADJUNCTS
+    + r"|\s*\(\s*(?:(?:it|this)\s+" + _PASSIVE + r"\s+)?(?:" + _WHEN + r"\s+)?{wd}" + _ADJUNCTS + r"\s*\)"
+)
+_ANAPHORIC = r"\s*[;,]\s*(?:" + _FREE + r"\s+)?(?=\w+(?:ed|es)\b){wd}\s+it\b" + _ADJUNCTS
+_AND_NOT_IN_USE = r"\s*,?\s+and\s+" + _NOT_IN_USE + _ADJUNCTS
+_TRAILERS = r"(?:\s*,\s*" + _PREP + r"\s+" + _FREE + r")*"
+_TAIL = r"(?:" + _RELATIVE + "|" + _REASON + "|" + _AND_NOT_IN_USE + r")?" + _TRAILERS
+# A claim ends at a closing parenthesis or the sentence end; at a semicolon, colon or opening parenthesis unless a
+# pronoun, a description of the old rule, a conjunction or a predicate continues it; and at a comma or conjunction
+# only before a new subject.
+_OLD_RULE = r"(?:the|its)\s+" + _STALE + r"\s+(?:rounding\s+)?(?:rule|mode|one|setting)\b"
+_CONTINUES = (
+    r"(?:(?:it|this|that|they|these|those|still|also|and|but|yet|is|are|was|were|remains|stays|must|should|shall|will|can|may"
+    r"|keeps|continues|applies|governs)\b|" + _OLD_RULE + r"|\w+\s+(?:it|this|that|them)\b)"
+)
+_NEW_SUBJECT = (
+    r"(?!" + _OLD_RULE + r")(?:the|a|an|its|their|our|every|each|all|both|seq\s+\d+|turn\s+\d+|rounding|decimal|amounts?|totals?"
+    r"|results?|values?|inputs?|logging|tests?|[a-z]\w*[_.]\w+|\d[\d.]*)\b"
+)
+_CLAUSE_END = (
+    r"(?=\s*(?:[)!?]|\.(?:\s|$)|$)|\s*[;:(](?!\s*" + _CONTINUES + r")"
+    r"|\s*,\s*(?:(?:and|but|so|while|whereas)\s+)?" + _NEW_SUBJECT + r"|\s+(?:and|but|so|while|whereas)\s+" + _NEW_SUBJECT + r")"
+)
+_CLAUSE_START = re.compile(r"(?:^|[;:(,]|\b(?:and|but|so|while|whereas)\b)\s*(?:[-*]\s+|\d+\.\s+)?")
+_NON_CURRENT = (
+    # A withdrawal: "ROUND_HALF_UP was superseded by that correction", "That correction overrides ROUND_HALF_UP",
+    # "Replace the old ROUND_HALF_UP with ...", ", replacing ROUND_HALF_UP", "was not replaced until seq 7".
+    _RULE_HEAD + r"\s+" + _PASSIVE + r"\s+(?:" + _WHEN + r"\s+)?{wd}" + _ADJUNCTS + _TAIL,
+    _RULE_HEAD + r"\s+(?:was|were|had)\s+(?:not|never)\s+(?:been\s+)?{wd}\s+(?:until|till|before)\s+" + _FREE + _TAIL,
+    r"(?:" + _FREE + r"\s+(?=\w+(?:ed|es)\b))?{wd}\s+" + _RULE_REF + _ADJUNCTS + _TAIL,
+    # A non-current predicate.
+    _RULE_HEAD + r"\s+" + _NOT_IN_USE + _ADJUNCTS + _TAIL,
+    # A protective instruction: a negated current use, "stop using ...", "do not replace ROUND_HALF_EVEN with ...".
+    r"(?:do\s+not|don't|never|must\s+not|mustn't|should\s+not|shouldn't|no\s+longer)\s+(?:" + "|".join(_USE_OBJECT) + r")"
+    + _HEAD_NOUN + _ADJUNCTS + _TAIL,
+    r"(?:stop|stops|stopped|avoid|avoids|avoided|cease|ceases|ceased)\s+(?:using|applying|keeping|(?:rounding|quanti[sz]ing)\s+(?:with|using|by))\s+"
+    + _RULE_REF + _ADJUNCTS + _TAIL,
+    r"(?:do\s+not|don't|never)\s+(?:replace|swap|change|switch)\s+" + _FREE + r"\s+(?:with|for|to|back\s+to)\s+" + _RULE_REF + _ADJUNCTS + _TAIL,
+    _FREE + r"\s+(?:(?:is|are|was|were)\s+" + _NOT_NOW + r"\s+(?:being\s+)?|(?:(?:must|should|shall|will|can|may)\s+" + _NOT_NOW
+    + r"|mustn't|shouldn't|can't|cannot|won't)\s+be\s+)" + _ROUNDED + r"\s+" + _ROUND_COMPLEMENT + _RULE_REF + _ADJUNCTS + _TAIL,
+    # A contrast: "Rounding is ROUND_HALF_EVEN, not ROUND_HALF_UP", "(not ROUND_HALF_UP)", "... instead of ROUND_HALF_UP
+    # in calc.py", "ROUND_HALF_EVEN rather than the old ROUND_HALF_UP applies", "Instead of rounding with ROUND_HALF_UP, ...".
+    r"(?:" + _FREE + r"\s*,?\s+)?(?:not|never)\s+" + _RULE_REF + _ADJUNCTS + _TAIL,
+    r"(?:" + _FREE + r"\s+)?(?:instead\s+of|rather\s+than)\s+" + _BY_USING + _RULE_REF
+    + r"(?:\s+(?:is|are)\s+(?:now\s+)?(?:used|applied|the\s+(?:current\s+)?(?:rounding\s+)?(?:rule|mode))|\s+(?:now\s+)?(?:applies|governs))?"
+    + _ADJUNCTS + _TAIL,
+    r"(?:instead\s+of|rather\s+than)\s+" + _BY_USING + _RULE_REF + r"\s*,?\s+" + _FREE + _TAIL,
+    # A past use with its supersession, or a past identity: "Seq 1 used ROUND_HALF_UP, which was later superseded",
+    # "Rounding was ROUND_HALF_UP", "The old rounding mode is ROUND_HALF_UP", "The rounding mode is no longer ROUND_HALF_UP".
+    r"(?:" + _FREE + r"\s+)?(?:used|applied|relied\s+on|had\s+used|(?:rounded|quanti[sz]ed)\s+(?:with|using|by))\s+" + _RULE_REF + _ADJUNCTS
+    + r"(?:" + _RELATIVE + "|" + _ANAPHORIC + r")" + _TRAILERS,
+    r"(?:" + _FREE + r"\s+)?(?:(?:was|were)(?:\s+(?:previously|formerly|originally|initially|once))?|used\s+to\s+be|previously|formerly"
+    r"|originally|initially)\s+" + _RULE_REF + _ADJUNCTS + _TAIL,
+    r"(?:the\s+)?" + _STALE + r"\s+(?:rounding\s+)?(?:mode|rule|one|default|setting)\s+(?:is|was)\s+" + _RULE_REF + _ADJUNCTS + _TAIL,
+    r"(?:the\s+)?(?:current\s+)?(?:rounding(?:\s+(?:mode|rule))?|mode|rule)\s+(?:is|was)\s+(?:no\s+longer|not)\s+" + _RULE_REF + _ADJUNCTS + _TAIL,
+    # A transition: "changed from ROUND_HALF_UP to ...", "ROUND_HALF_UP -> ROUND_HALF_EVEN", "ROUND_HALF_UP; now ROUND_HALF_EVEN".
+    r"(?:" + _FREE + r"\s+)?(?:{wd}|changes|change|moved|moves|move|switched|switches|switch|went)\s+"
+    r"(?:(?:the\s+)?(?:rounding(?:\s+(?:mode|rule))?|mode|rule)\s+|it\s+)?from\s+" + _RULE_REF
+    + r"(?:\s+to\s+" + _FREE + r")?" + _ADJUNCTS + _TAIL,
+    _RULE_REF + r"\s*(?:->|=>|→)\s*" + _FREE + _TAIL,
+    _RULE_REF + r"\s*[;,]\s*now\s+" + _FREE + _TAIL,
+)
+
+
+def _non_current(rule: str, rules: FactRules) -> list[re.Pattern[str]]:
+    """The supported non-current constructions for one superseded rule, each ending at a clause end."""
+    withdrawal = r"\b(?:" + "|".join(f"(?:{verb})\\w*" for verb in rules.verbs) + ")"
+    return [re.compile("(?:" + template.format(rule=re.escape(rule), wd=withdrawal) + ")" + _CLAUSE_END) for template in _NON_CURRENT]
+
+
+def _accounted(sentence: str, constructions: Sequence[re.Pattern[str]]) -> list[tuple[int, int]]:
+    """The spans of `sentence` that a supported construction covers, each from a clause start to a clause end."""
+    starts = sorted({match.end() for match in _CLAUSE_START.finditer(sentence)})
+    return [found.span() for start in starts for pattern in constructions if (found := pattern.match(sentence, start)) is not None]
+
+
+def _states_supersession(statement: str, rules: FactRules) -> bool:
+    """A fixture marker, or a fixture verb no adjacent negation reverses, inside one accounted statement."""
+    return any(_asserted(marker, statement, ()) for marker in rules.markers) or any(
+        _asserted(verb, statement, (rules.verb_negation,)) for verb in rules.verbs
+    )
 
 
 def _normalized(text: str) -> str:
@@ -391,27 +527,25 @@ def evaluate_summary(
             ]
             current = [pattern.format(rule=re.escape(rule)) for pattern in _CURRENT_USE]
             asserted = [sentence for _, sentence in mentions if any(_asserted(pattern, sentence, (*negation, _CONTRAST)) for pattern in current)]
-            # Markers ("previously", "anymore") are never reversed; a verb is reversed only by a
-            # negation right before it ("was not superseded"), not by one elsewhere ("is not used
-            # (replaced in turn 7)").
-            marked = [
-                sentence
-                for _, sentence in mentions
-                if any(_asserted(marker, sentence, ()) for marker in rules.markers)
-                or any(_asserted(verb, sentence, (rules.verb_negation,)) for verb in rules.verbs)
-            ]
-            unmarked = [
-                sentence
-                for name, sentence in mentions
-                if sentence not in marked and not (history is not None and name in _HISTORY_SECTIONS and history.excuses(sentence))
-            ]
+            # Every occurrence must lie inside a supported non-current statement or an exact dated source
+            # record; the supersession must be stated inside an accounted statement, never by a record or
+            # by a marker elsewhere in the sentence.
+            constructions = _non_current(rule, rules)
+            unsupported, stated = [], False
+            for name, sentence in mentions:
+                if history is not None and name in _HISTORY_SECTIONS and history.excuses(sentence):
+                    continue
+                spans = _accounted(sentence, constructions)
+                if any(not any(start <= found.start() < end for start, end in spans) for found in re.finditer(re.escape(rule), sentence)):
+                    unsupported.append(sentence)
+                stated = stated or any(_states_supersession(sentence[start:end], rules) for start, end in spans)
             if not mentions:
                 passed, detail = False, "not mentioned"
             elif asserted:
                 passed, detail = False, f"asserted as current: {asserted[0]!r}"
-            elif unmarked:
-                passed, detail = False, f"unmarked mention: {unmarked[0]!r}"
-            elif not marked:
+            elif unsupported:
+                passed, detail = False, f"unsupported mention: {unsupported[0]!r}"
+            elif not stated:
                 # A historical record is excused; it never states the supersession itself.
                 passed, detail = False, "no mention states it as superseded"
             else:

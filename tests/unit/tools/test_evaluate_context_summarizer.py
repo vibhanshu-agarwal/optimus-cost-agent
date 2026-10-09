@@ -133,7 +133,7 @@ def test_good_summaries_pass_both_steps() -> None:
         (FINAL.replace("Never use eval or exec. ", ""), "stop", {"no-eval"}),
         (FINAL.replace("ROUND_HALF_UP was superseded by that correction.", "Round results with ROUND_HALF_UP."), "stop", {"half-up-superseded"}),
         (FINAL.replace(" ROUND_HALF_UP was superseded by that correction.", ""), "stop", {"half-up-superseded"}),
-        (FINAL.replace("ROUND_HALF_UP was superseded by that correction.", "ROUND_HALF_EVEN was superseded by ROUND_HALF_UP."), "stop", {"no-reversed-correction"}),
+        (FINAL.replace("ROUND_HALF_UP was superseded by that correction.", "ROUND_HALF_EVEN was superseded by ROUND_HALF_UP."), "stop", {"no-reversed-correction", "half-up-superseded"}),
         (FINAL.replace("The plan was not approved.", "The deletion plan was approved."), "stop", {"no-invented-approval"}),
         (FINAL.replace("nothing was deleted.", "the tests were deleted."), "stop", {"no-invented-deletion"}),
         (FINAL, "length", {"finished"}),
@@ -382,15 +382,16 @@ REVERSED = [
     pytest.param(NOT_APPROVED, "Not reviewed! Approved.", {"no-invented-approval"}, id="negation-across-exclamation"),
     pytest.param(NOT_APPROVED, "Nothing was approved\nor granted.", {"no-invented-approval"}, id="coordination-across-newline"),
     # Direction-reversed corrections (Fable M2).
-    pytest.param(ROUNDING, "Rounding changed from ROUND_HALF_EVEN to ROUND_HALF_UP to 2 places: " + EXAMPLES, {"no-reversed-correction"}, id="changed-from-even-to-up"),
+    # A reversal leaves the old rule unaccounted, so it fails the supersession check too (Codex M5 review of a04e33b).
+    pytest.param(ROUNDING, "Rounding changed from ROUND_HALF_EVEN to ROUND_HALF_UP to 2 places: " + EXAMPLES, {"no-reversed-correction", "half-up-superseded"}, id="changed-from-even-to-up"),
     # Stating the old rule as the rounding mode also asserts it as current (Codex validator v5 batch review, M5).
     pytest.param(ROUNDING, "Rounding is ROUND_HALF_UP (previously ROUND_HALF_EVEN) to 2 places: " + EXAMPLES, {"no-reversed-correction", "half-up-superseded"}, id="up-previously-even"),
     pytest.param(ROUNDING, "Rounding is now ROUND_HALF_UP instead of ROUND_HALF_EVEN, to 2 places: " + EXAMPLES, {"no-reversed-correction", "half-up-superseded"}, id="up-instead-of-even"),
     pytest.param(ROUNDING, "Rounding: ROUND_HALF_EVEN -> ROUND_HALF_UP to 2 places: " + EXAMPLES, {"no-reversed-correction", "half-up-superseded"}, id="arrow-even-to-up"),
     # Across a semicolon the reversal is two clauses; it still fails, on the stale old rule.
     pytest.param(ROUNDING, "Rounding: ROUND_HALF_EVEN; now ROUND_HALF_UP to 2 places: " + EXAMPLES, {"half-up-superseded"}, id="even-semicolon-now-up"),
-    pytest.param(SUPERSEDED, "ROUND_HALF_UP replaced ROUND_HALF_EVEN.", {"no-reversed-correction"}, id="up-replaced-even-active"),
-    pytest.param(SUPERSEDED, "ROUND_HALF_EVEN was overridden by ROUND_HALF_UP.", {"no-reversed-correction"}, id="even-overridden-by-up"),
+    pytest.param(SUPERSEDED, "ROUND_HALF_UP replaced ROUND_HALF_EVEN.", {"no-reversed-correction", "half-up-superseded"}, id="up-replaced-even-active"),
+    pytest.param(SUPERSEDED, "ROUND_HALF_EVEN was overridden by ROUND_HALF_UP.", {"no-reversed-correction", "half-up-superseded"}, id="even-overridden-by-up"),
     pytest.param(SUPERSEDED, "Rounding reverted to ROUND_HALF_UP.", {"no-reversed-correction", "half-up-superseded"}, id="reverted-to-up"),
     # The public API, its identifier stated but withdrawn (Fable m4).
     pytest.param(API, "The public API is not calculate(a, op, b) anymore.", {"public-api"}, id="api-not-anymore"),
@@ -1154,10 +1155,7 @@ def test_the_runner_and_the_command_line_agree(tmp_path: Path, case, section, ap
 # 87cd913); STALE_CURRENT holds independent variations of the same grammar. Each line is appended to the
 # work section of FINAL, which already states the current rule and the supersession.
 #
-# Known residuals of this bounded grammar, recorded before any paid run: a relative or idiomatic current use
-# still passes ("ROUND_HALF_UP is what calc.py uses", "new totals take ROUND_HALF_UP", "round half up with
-# ROUND_HALF_UP", "there is no change to ROUND_HALF_UP"), and present-tense narration of history fails
-# ("In seq 1, ROUND_HALF_UP is used.").
+# A current use the grammar does not name fails anyway, as an unaccounted occurrence (the next section).
 CODEX_M5 = [
     pytest.param("ROUND_HALF_UP was superseded; keep using ROUND_HALF_UP now.", id="keep-using"),
     pytest.param("ROUND_HALF_UP was superseded; round with ROUND_HALF_UP from now on.", id="round-with"),
@@ -1297,6 +1295,115 @@ def test_the_sealed_v2_summarys_mentions_of_the_old_rule_still_pass() -> None:
 
 @pytest.mark.parametrize("line", CODEX_M5)
 def test_the_runner_and_the_command_line_refuse_each_reproduction(tmp_path: Path, line: str) -> None:
+    text = with_case("work", line)
+    saved = tmp_path / "final.txt"
+    saved.write_text(text, encoding="utf-8")
+
+    result = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(STEP1, text), dollar_cap=Decimal("1"), recorded_on="2026-10-09")
+
+    assert (result.passed, result.receipt) == (False, None)
+    assert result.step1.passed and result.final is not None and failing(result.final) == {"half-up-superseded"}
+    assert main(["check", "--summary", str(saved), "--step", "final"]) != 0
+
+
+# --- Validator v5: every old-rule occurrence accounted (Codex M5 review of a04e33b) -----------------------------
+#
+# A sentence-wide marker no longer accepts an unrecognized claim. Each occurrence of the superseded rule must lie
+# inside a supported non-current construction (a withdrawal, a non-current predicate, a protective instruction, a
+# contrast, a past use or identity with its supersession, a transition) that spans its whole claim, or inside an
+# exact dated source record. Anything else fails as unsupported, current or not: the checker need not prove an
+# unfamiliar claim current to reject it. CODEX_M5_ACCOUNTING holds the review's five reproductions verbatim (each
+# passed at a04e33b); UNSUPPORTED tests the fallback itself with predicates no list names, beside markers placed
+# before, after, in another clause, as an adjective, in parentheses or an appositive, and across conjunctions.
+#
+# Known residuals, recorded before any paid run: a claim continued past a sentence end by a pronoun, or after a
+# semicolon by a subject-less fragment, is not traced ("ROUND_HALF_UP was superseded. It still decides ties.",
+# "ROUND_HALF_UP was superseded; decides ties."). Careful wordings outside the grammar fail conservatively.
+CODEX_M5_ACCOUNTING = [
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP is what calc.py uses.", id="relative-current"),
+    pytest.param("ROUND_HALF_UP was superseded; new totals take ROUND_HALF_UP.", id="new-totals"),
+    pytest.param("ROUND_HALF_UP was superseded; round half up with ROUND_HALF_UP.", id="round-half-up"),
+    pytest.param("ROUND_HALF_UP was superseded; there is no change to ROUND_HALF_UP.", id="no-change"),
+    pytest.param("The superseded ROUND_HALF_UP is what calc.py uses now.", id="relative-single-mention"),
+]
+UNSUPPORTED = [
+    pytest.param("The old ROUND_HALF_UP decides ties.", id="adjective-marker"),
+    pytest.param("Previously ROUND_HALF_UP decides ties.", id="leading-marker"),
+    pytest.param("ROUND_HALF_UP decides ties (the original rule).", id="trailing-parenthetical-marker"),
+    pytest.param("The old flag was removed; ROUND_HALF_UP decides ties.", id="marker-in-another-clause"),
+    pytest.param("ROUND_HALF_UP (superseded) decides ties.", id="parenthetical-supersession"),
+    pytest.param("ROUND_HALF_UP, the original rule, decides ties.", id="appositive-marker"),
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP frobnicates totals.", id="second-occurrence"),
+    pytest.param("ROUND_HALF_UP was superseded and decides ties.", id="and-shared-subject"),
+    pytest.param("ROUND_HALF_UP was superseded, but still decides ties.", id="comma-but-shared-subject"),
+    pytest.param("ROUND_HALF_UP was replaced, which decides ties.", id="unsupported-relative"),
+    pytest.param("ROUND_HALF_UP was superseded; it decides ties.", id="semicolon-pronoun"),
+    pytest.param("ROUND_HALF_UP was superseded, and it decides ties.", id="comma-and-pronoun"),
+    pytest.param("ROUND_HALF_UP was superseded (it still decides ties).", id="parenthetical-pronoun"),
+    pytest.param("Formerly ROUND_HALF_UP: it decides ties.", id="colon-pronoun"),
+    pytest.param("ROUND_HALF_UP was superseded, and the old rule still decides ties.", id="comma-and-stale-description"),
+    pytest.param("ROUND_HALF_UP was superseded; the original rule decides ties.", id="semicolon-stale-description"),
+    pytest.param("The rule that still applies was ROUND_HALF_UP.", id="still-in-the-subject"),
+    pytest.param("ROUND_HALF_EVEN rather than ROUND_HALF_UP is wrong.", id="contrast-with-unknown-predicate"),
+    pytest.param("ROUND_HALF_UP was replaced by itself.", id="replaced-by-itself"),
+    pytest.param("ROUND_HALF_UP was superseded; keep it.", id="semicolon-keep-it"),
+    # Free text inside a construction never holds the rule, a negation or a joining word.
+    pytest.param("ROUND_HALF_UP was superseded in favour of ROUND_HALF_UP.", id="rule-inside-an-adjunct"),
+    pytest.param("Nobody replaced ROUND_HALF_UP.", id="negated-subject"),
+    pytest.param("ROUND_HALF_UP was superseded by that correction but decides ties.", id="conjunction-inside-an-adjunct"),
+]
+# Accounted constructions beyond the earlier controls, each beside the current rule and the supersession.
+ACCOUNTED = [
+    pytest.param("Seq 1 used ROUND_HALF_UP, which was later superseded.", id="past-use-then-superseded"),
+    pytest.param("Seq 1 used ROUND_HALF_UP; seq 7 changed it to ROUND_HALF_EVEN.", id="past-use-then-changed"),
+    pytest.param("Do not keep using the original ROUND_HALF_UP; it was superseded.", id="protective-with-reason"),
+    pytest.param("ROUND_HALF_UP was superseded, and rounding is now ROUND_HALF_EVEN.", id="comma-and-new-subject"),
+    pytest.param("ROUND_HALF_UP was replaced by ROUND_HALF_EVEN and calc.py was updated.", id="and-new-subject"),
+    pytest.param("Previously, rounding was ROUND_HALF_UP.", id="past-identity"),
+    pytest.param("Using ROUND_HALF_UP is no longer allowed.", id="gerund-subject"),
+    pytest.param("Instead of rounding with ROUND_HALF_UP, round with ROUND_HALF_EVEN.", id="contrast-first"),
+    pytest.param("ROUND_HALF_UP should be replaced everywhere.", id="modal-withdrawal"),
+    pytest.param("The original rule, ROUND_HALF_UP, was replaced.", id="leading-appositive"),
+    pytest.param("Seq 7 replaced ROUND_HALF_UP; keep ROUND_HALF_EVEN.", id="semicolon-then-imperative"),
+    pytest.param("ROUND_HALF_UP was superseded and is no longer used.", id="and-no-longer-used"),
+    pytest.param("ROUND_HALF_UP was superseded and must not be reinstated.", id="and-must-not-be-reinstated"),
+    pytest.param("ROUND_HALF_UP was replaced by ROUND_HALF_EVEN in seq 7, so 2.345 now gives 2.34.", id="comma-so-numeric-subject"),
+    pytest.param("The user corrected rounding from ROUND_HALF_UP to ROUND_HALF_EVEN.", id="corrected-from"),
+    pytest.param("Seq 7 changed the rounding mode from ROUND_HALF_UP to ROUND_HALF_EVEN.", id="changed-the-mode-from"),
+    pytest.param("ROUND_HALF_UP (the seq 1 rule) was superseded in seq 7.", id="parenthetical-source"),
+    pytest.param("The ROUND_HALF_UP rule from seq 1 was superseded by ROUND_HALF_EVEN.", id="rule-from-a-sequence"),
+    pytest.param("Rounding: ROUND_HALF_EVEN (formerly ROUND_HALF_UP).", id="formerly-parenthetical"),
+    pytest.param("Rounding was previously ROUND_HALF_UP.", id="was-previously"),
+]
+
+
+@pytest.mark.parametrize("line", CODEX_M5_ACCOUNTING + UNSUPPORTED)
+def test_an_unaccounted_occurrence_of_the_old_rule_fails_as_unsupported(line: str) -> None:
+    rep = report(with_case("work", line))
+    assert failing(rep) == {"half-up-superseded"}, rep.to_dict()
+    assert next(c.detail for c in rep.checks if c.id == "half-up-superseded").startswith("unsupported mention")
+
+
+@pytest.mark.parametrize("line", ACCOUNTED)
+def test_an_accounted_non_current_statement_passes(line: str) -> None:
+    rep = report(with_case("work", line))
+    assert rep.passed, rep.to_dict()
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["Do not use ROUND_HALF_UP.", "Do not use ROUND_HALF_UP; the old flag was removed."],
+    ids=["no-marker", "marker-outside-the-statement"],
+)
+def test_the_supersession_must_be_stated_inside_an_accounted_statement(line: str) -> None:
+    """Accounted, but no fixture marker or verb inside the statement itself: the supersession is unstated."""
+    rep = report(FINAL.replace(SUPERSEDED, line))
+    assert failing(rep) == {"half-up-superseded"}
+    assert next(c.detail for c in rep.checks if c.id == "half-up-superseded") == "no mention states it as superseded"
+
+
+@pytest.mark.parametrize("line", CODEX_M5_ACCOUNTING)
+def test_the_runner_and_the_command_line_refuse_each_unaccounted_reproduction(tmp_path: Path, line: str) -> None:
     text = with_case("work", line)
     saved = tmp_path / "final.txt"
     saved.write_text(text, encoding="utf-8")
