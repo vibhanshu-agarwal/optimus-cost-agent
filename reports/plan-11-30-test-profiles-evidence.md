@@ -2,11 +2,55 @@
 
 **Plan:** `docs/superpowers/plans/2026-10-04-plan-11-30-test-profiles-implementation_v4.md` (approved working bytes SHA-256 `8A40DEF6D627EDC722D9FA925BBB0C193DE433ECCB91D2DCA19F1DA6AFC5C790`; LF-normalised blob `7D07ADA39CE1F8987E529C7FD8838952B4607F6F2CBD8773D39220D44DB6AF1E`, differing only by CRLF on lines 32–33).
 **Machine-readable index:** [`plan-11-30-test-profiles-manifest.json`](plan-11-30-test-profiles-manifest.json).
-**Status (2026-10-05):** Stage A (Tasks 0–3) is accepted and locally committed. Its Task 6 final gates ran at `acc2a1c`, pass on Windows and WSL, and are accepted locally (section "Task 6"). Remote Linux CI and the safety-row comparison are UNKNOWN. Stage B (Tasks 4–5, and the partial-commit correction) is required and open under `P11-FEAT-TEST-PROFILES`. Nothing is pushed.
+**Status (2026-10-09):** Stage A (Tasks 0–3) and its Task 6 at `acc2a1c` are accepted and locally committed. Stage B Tasks 4–5 are accepted and locally committed, and the delivered Stage B source contains the Stage B corrections: b0 (the explicit `core` rule for the WSL IPC node and the slow-node measurement refresh) was delivered in Task 4 at `43eb190`, and the partial-index correction and the quick commit-audit switch in Task 5 at `66ddabf`. Checkpoint C and G were accepted on candidate C7c and Checkpoint D on candidate E (pairs5 median core wall improvement 26.2040537 %, E-source timing under ambient load). Stage B Task 6 (independent final Windows and WSL gates) has not run. Remote Linux CI and the safety-row comparison are UNKNOWN. Nothing is pushed. See "Current delivery and status (2026-10-09)".
+*Historical status at recording (committed with `1c7be2d`, 2026-10-05), kept as written:* **Status (2026-10-05):** Stage A (Tasks 0–3) is accepted and locally committed. Its Task 6 final gates ran at `acc2a1c`, pass on Windows and WSL, and are accepted locally (section "Task 6"). Remote Linux CI and the safety-row comparison are UNKNOWN. Stage B (Tasks 4–5, and the partial-commit correction) is required and open under `P11-FEAT-TEST-PROFILES`. Nothing is pushed.
 
 *Historical intake status, kept as written:* Task 0 complete pending Checkpoint A (Fable 5.1, then Codex). Every result here is provisional development evidence bound to the stated source identity. The final full-run confirmation of the overhead fix belongs to the first delivery's Task 6. Tasks 1–6 are not started.
 
 This report is the plan's single evidence report. Each later stage appends its own sections and never relabels an earlier one.
+
+## Current delivery and status (2026-10-09)
+
+This is the report's one current-status section; it is updated in place. The status lines of the dated sections below are **historical status at recording**: they are kept as written, and where one no longer describes the current state it carries a dated annotation. The manifest follows the same convention: its top-level `current_delivery` holds the current state, and each section's `status` string is historical.
+
+### Local commits on `agent/claude/plan-11-30-test-profiles` (base `main` `a929aab`)
+
+| Commit | Subject | Delivers |
+|---|---|---|
+| `e3fe91f` | docs(plan-11.30): file approved intake and decisions | intake documents |
+| `d562e95` | fix(testing): stabilize run records and validate registry receipts | Task 0 |
+| `0a66609` | docs: record Plan 11.30 Checkpoint B acceptance | Checkpoint B acceptance record |
+| `1f8ca30` | test: add Plan 11.30 profiles and checkpoint selection | Tasks 1–2 |
+| `1b300cf` | test: add Plan 11.30 product coverage gates and commit-profile hook | Task 3 |
+| `acc2a1c` | docs: record Plan 11.30 Task 3 acceptance and Task 6 authorization | the Stage A Task 6 measured pin |
+| `1c7be2d` | docs: record Plan 11.30 Stage A Task 6 results at acc2a1c | the Stage A Task 6 report and docs |
+| `43eb190` | test: add Plan 11.30 audit depth, export cache and measurement reuse (Task 4) | Task 4 and Stage B's first change (b0) |
+| `66ddabf` | test: add Plan 11.30 core-only xdist, index scanning and quick commit audits (Task 5) | Task 5, the partial-commit correction and the quick commit-audit switch |
+
+Nothing is pushed. Push, PR, merge and cleanup are held.
+
+### Status
+
+- **Stage A** (Tasks 0–3 and Task 6 at `acc2a1c`): accepted and locally committed, within the qualifications in its sections.
+- **Stage B Tasks 4–5:** accepted and locally committed. The delivered Stage B source contains the Stage B corrections: b0 (the explicit `core` rule for the WSL IPC node and the slow-node measurement refresh) was delivered in Task 4 at `43eb190`; the partial-index correction and the quick commit-audit switch were delivered in Task 5 at `66ddabf`.
+- **Checkpoint B's Task 5 worker obligation** (kill-on-close and attribution) is discharged for the accepted native Windows controller topology, by `test_an_interrupted_controller_leaves_no_worker_running`, `test_a_grandchild_left_running_by_a_worker_is_an_escaped_descendant` and the accepted D-M1 phase/channel controls. The real grandchild control checks parent-worker attribution, the INVALID verdict and termination. WSL keeps its weaker capability label. This does not discharge F4: the abrupt hard kill of the outer runner still orphans its subruns.
+- **Open:** Stage B Task 6 (independent final Windows and WSL gates; not run, see its section); remote Linux CI and the base/candidate safety-row comparison (UNKNOWN); the CI backstop for the partial-commit correction.
+
+### Reconciliation of earlier open statements (2026-10-09)
+
+The following earlier statements describe work that is now delivered. They are kept as historical text:
+- the 2026-10-05 top status line;
+- the Task 3 residuals on the partial-commit gap and the later snapshot refresh;
+- the Stage A Task 6 qualification calling the IPC rule "the first required Stage B source change", and its "Still open" list.
+
+The IPC rule and the measurement refresh were delivered at `43eb190`. The partial-index correction and the quick commit-audit switch were delivered at `66ddabf`. No source work from those statements remains required. The final full gates and the CI backstop remain open.
+
+### Provenance conventions
+
+- **Current authority** for the Stage B dispositions is Codex's dated sections in [`docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md`](../docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md), the newest being "Stage B Task 6 preparation — audit dispositions and final-byte gate" (recorded 2026-10-09 04:32:07 UTC). This report deliberately does not cite that file's current hash.
+- **Review snapshot read during drafting (2026-10-09):** SHA-256 `0d50118aea616e169593bc873c7ba3f829b521e4df06e28751cdf62b670572b2`. The file has changed since; this digest identifies only that snapshot.
+- **Abbreviated hashes** ending in "…" are display and provenance identifiers, not claims of full-digest verification; full digests are in the manifest. A historical snapshot hash identifies a retained sealed snapshot, not current bytes.
+- **Report-derived calculations** are labelled with their formula, inputs and candidate. They are kept apart from recorded values and from Codex's acceptance.
 
 ## Task 0 — Windows overhead, registry pollution and archival design
 
@@ -24,6 +68,8 @@ This report is the plan's single evidence report. Each later stage appends its o
 | WSL | Ubuntu-24.04, kernel 6.18.40.1-microsoft-standard-WSL2, Python 3.14.6, uv 0.11.31; separate native clone and frozen env |
 | pytest-xdist | not installed; version and compatibility are selected in Task 5 (no install is authorised by Task 0) |
 | Host security product | Bitdefender Antivirus active; Microsoft Defender passive (`AMRunningMode: Not running`) |
+
+*Historical snapshot (annotation 2026-10-09): this table records the Task 0 environment. pytest-xdist 3.8.0 and execnet 2.1.2 were added to the lock in Task 5 (`66ddabf`), not retroactively in Task 0.*
 
 ### Provenance inputs (v4 Task 0 item 1)
 
@@ -285,6 +331,8 @@ The release says a changed class stops execution, and the fresh manifest goes ba
 
 **Status: complete, uncommitted** (base `d562e95`; a commit waits for Codex's answer on Task 1–2 commits). Receipts: `optimus-handoff/test-profiles-research/plan-11-30-task1-evidence-20261004/`.
 
+*Historical status at recording (committed with `1f8ca30`, 2026-10-05). Current (2026-10-09): Tasks 1–2 are committed in `1f8ca30`; see "Current delivery and status (2026-10-09)".*
+
 ### What was built
 
 | File | Responsibility |
@@ -363,6 +411,8 @@ The real registry listing changed during the Windows runs only through another l
 ## Task 2 — Per-commit selector, bounded broad fallback and supported-load checkpoint runner (2026-10-04)
 
 **Status: complete, uncommitted.** Base `d562e95`; Task 1 lies beneath it. Receipts: `optimus-handoff/test-profiles-research/plan-11-30-task2-evidence-20261004/`.
+
+*Historical status at recording (committed with `1f8ca30`, 2026-10-05). Current (2026-10-09): Tasks 1–2 are committed in `1f8ca30`; see "Current delivery and status (2026-10-09)".*
 
 ### What was built
 
@@ -465,6 +515,8 @@ Checkpoint B's own `--profile checkpoint` runs on Windows and WSL follow in the 
 
 **Status: attempt 3 passed on the final Tasks 1–2 source on both platforms; Fable 5.1 accepted (SOUND WITH AMENDMENTS, report-only, applied); awaiting Codex.** Nothing is committed: the Task 1–2 commits (coverage-hook skip only) need Fable then Codex to accept Checkpoint B on this tested source. Push, PR and merge stay held.
 
+*Historical status at recording (committed with `1f8ca30`, 2026-10-05). Current (2026-10-09): Codex accepted Checkpoint B (recorded in `0a66609`), and Tasks 1–2 are committed in `1f8ca30`.*
+
 Checkpoint B runs the change-selected `checkpoint` profile itself (`python -m tools.testing.run_profile --profile checkpoint --base a929aab2092876ab0d83ecc4e46896ae3a0935c0`) on native Windows and real WSL: the cumulative Tasks 0–2 selection from main, every current audit at full depth, the triggered platform lanes, Windows concurrency repeats overlapping the current audit and serial WSL concurrency without load. No full suite.
 
 ### Attempts (all sealed; failures and invalid runs retained)
@@ -547,9 +599,13 @@ Against the original reviewed manifest (class `28bc1799…`, 724 eligible): the 
 - **WSL wall-clock timestamps** (Fable C2): in attempt 3 the WSL guest wall clock advanced about 47 s (audits) and 15 s (selected) more than monotonic time (VM time re-sync: wall spans 602.0 s and 243.8 s against 554.8 s and 228.5 s monotonic, pytest 555.02 s and 228.70 s; inter-phase wall gaps up to 24.3 s, Windows at most 0.044 s). WSL `started_utc`/`finished_utc`/phase `at` values are therefore accurate only to about a minute. No claim here depends on them: WSL runs serially without load, counts and outcomes are unaffected, and the lane-overlap statement survives a one-minute error. Gap arithmetic on WSL records needs this caveat.
 - **Scans seen through path joins only** (Fable M3): a gate that scans the docs solely through a loose pathspec string (for example `tracked_repository_files(..., pathspecs=["docs"])`) would be invisible to the prose scanner rule. None exists outside `tests/unit/docs/**` today, and `tools/doc_paths.py` joins `REPO_ROOT / "docs"`, so it is reached.
 
+*Annotation (2026-10-09): F9 was closed by Task 3's real temporary-index hook control (`1b300cf`). The Task 5 worker kill-on-close and attribution obligation is discharged for the accepted native Windows controller topology (Stage B Task 5 section, "Checkpoint B worker obligation"); WSL keeps its weaker label. F4, the abrupt runner kill, is not discharged.*
+
 ## Task 3 — Product coverage gates and commit-hook wiring (2026-10-04)
 
 **Status: complete, uncommitted (base `1f8ca30`); corrected for Codex's bounded hold T3-M1; Fable 5.1 SOUND WITH AMENDMENTS on the build, the final evidence and the T3-M1 disposition (all applied); awaiting Codex.** Final Task 3 diff `4373b171f4f7…` (14 files). Coverage floors on real full-run data, the safety-row baseline and remote CI evidence belong to Stage A's Task 6.
+
+*Historical status at recording (committed with `1b300cf`, 2026-10-05). Current (2026-10-09): Codex accepted Task 3 with T3-M1 resolved and verified its local delivery at `1b300cf`.*
 
 ### What was built
 
@@ -652,6 +708,8 @@ v4 allows a default `core` tier only for cheap nodes: measured setup+call+teardo
 - Inside a hook run, tests strip `GIT_*`, so repository scanners read the worktree's default index rather than a partial commit's temporary index. pre-commit aligns the working tree's file contents with the commit, but those scanners take their file list from the default index. For a partial commit (`git commit -- <paths>`) that list can differ from the commit's. A file staged outside the commit is scanned and can make the hook refuse. A file whose deletion is staged outside the commit is not listed although the commit keeps it (the probe demonstrates this file-list divergence), so a commit that removes that file's declaration could pass. This is the test session's existing `GIT_*` isolation, unchanged by Task 3. A commit with everything staged is unaffected. `commit -a` after a plain `rm` of a tracked file also diverges, but in the refusing direction: the default index still lists the file, which is missing, and the inventory fails closed. CI's full run on the pushed tree remains the backstop. Graded LOW by Fable and Codex. It is required Stage B work under `P11-FEAT-TEST-PROFILES`: a failing real partial-commit scanner control and the narrowest reviewed fix, before Plan 11.30 closes. The end-to-end false pass is reasoned, not reproduced.
 - Test timings measured by the Task 6 final runs are retained as evidence and never written back into the measured candidate. A later snapshot refresh belongs to Stage B, under the same owner. Any newly demonstrated slow node with a default tier needs a recorded disposition before Stage A sign-off.
 
+*Historical at recording (committed with `1b300cf`, 2026-10-05). Reconciliation (2026-10-09): the partial-commit source correction was delivered at `66ddabf` (Stage B Task 5), and the measurement snapshot refresh (b0) at `43eb190` (Stage B Task 4). No source work from these residuals remains required; the final full gate and the CI backstop remain open.*
+
 ## Task 6 — Stage A final gates at `acc2a1c` (2026-10-05)
 
 **Status: accepted. Stage A's local Task 6 gates pass on Windows and WSL. Codex verified them independently and finalized local acceptance, with the operator-approved Windows checkout exception below. Fable 5.1: SOUND WITH AMENDMENTS.** Every result in this section was measured at `acc2a1c`. A later documentation commit records them; it is not itself measured.
@@ -698,4 +756,399 @@ Products are measured as (covered statements + covered branches) / (statements +
 - Stage B: Tasks 4–5, the explicit rule above, and the partial-commit scanner control and fix (LOW). All are required and owned by `P11-FEAT-TEST-PROFILES`.
 - Push, PR, merge and cleanup: held.
 
+*Historical status at recording (committed with `1c7be2d`, 2026-10-05), including the qualification above that calls the explicit `core` rule "the first required Stage B source change". Reconciliation (2026-10-09): that rule and the measurement refresh were delivered at `43eb190`; Tasks 4–5, the partial-commit correction and the quick commit-audit switch are delivered at `66ddabf`. Remote Linux CI, the safety-row comparison and Stage B Task 6 remain open; push, PR, merge and cleanup remain held.*
+
 Evidence: `plan-11-30-task6-stage-a-final-evidence-20261005` (69 files, seal `38b9b8fa…`); the pin's documentation commit `plan-11-30-task6-docs-commit-20261005` (seal `6de9b0f9…`).
+
+## Task 4 — Audit depth, export cache and measurement reuse (2026-10-05 to 2026-10-07)
+
+**Status: accepted and locally committed.** Codex accepted Task 4, Checkpoint C and G on candidate C7c (2026-10-06 18:40:36 UTC). The first commit attempt FAILED in the hooks (an untracked new test was an unclassified child launch site). The bounded 19-path retry committed `43eb19078a07d06e2d91d0913674b24af3616730` (parent `1c7be2d`), and Codex verified that delivery (2026-10-06 21:17:42 UTC). Every result below is bound to the candidate it names. The hook runs of the delivery name the parent HEAD `1c7be2d`; they are not independent `43eb190` final or coverage evidence.
+
+The Task 4 commit also carries Stage B's first change (b0): the explicit `core` rule for `tests/unit/mcp/test_local_ipc.py::test_remote_consume_after_listener_stop_fails_quickly` and the slow-node measurement refresh.
+
+### What was built
+
+| File | Responsibility |
+|---|---|
+| `tests/support/profiles_plugin.py` | `--audit-depth=full\|quick` (default `full`). The only budget is `AUDIT_BUDGETS = {"h5.shutdown_schedule": full 100 / quick 1}`; any other probe is refused. `audit_budget` fixture, the `audit-depth:` summary line (`REDUCED-DEPTH` when quick), and a per-session audit state kept as a stack (pushed at configure, popped at unconfigure) |
+| `tools/testing/run_context.py`, `run_context_records.py` | Additive optional fields in the run's **terminal** record only: `audit_depth`, `audit_budgets`, `audit_reuse`. Never in the start payload, which is also the host-wide registry announcement that older validators read |
+| `tools/testing/run_profile.py` | Passes `--audit-depth=full` to every subrun. `record_validity` refuses a terminal record whose `audit_depth` is missing or not `full` |
+| `tests/conftest.py` | Hands the plugin's audit record to the recorder; clears the export and reuse caches at session start and finish (through `sys.modules`, without importing the audit package) |
+| `tools/plan1126_runtime_audit/source.py` | Session export cache for `git archive` of a resolved commit: read-only, thread-local, bounded to each thread's most recent export, keyed by the effective export inputs (below). A failed export is never cached |
+| `tools/plan1126_runtime_audit/measurement.py` | Measurement reuse: `measurement_identity`, `MeasurementReuse`, `session_measurement_reuse`, `clear_measurement_reuse`; the key binds installed dependency integrity |
+| `tools/plan1126_runtime_audit/current_envelope.py` | Additive `measure_current(measure=…)`, defaulting to `run_fresh_measurement`; only test helpers pass another |
+| `tests/unit/acp/test_plan1126_shutdown.py`, `test_plan1126_queue_policy.py`, `tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py` | The H5 test takes its repeat count from `audit_budget`; the three helpers opt in to reuse |
+| `tests/unit/tools/plan1126_runtime_audit/test_measurement_reuse.py` (new), `test_source.py` | Reuse controls; export-cache controls against real Git repositories |
+| `tests/unit/tools/test_test_profiles.py`, `test_run_profile.py`, `test_coverage_products.py` | Budget table bound to both schemas' `repeats_per_family` constant; nested-session depth record and summary; unknown-depth usage error; depth refusals in `record_validity` and the coverage binding |
+| `tests/profiles.toml` | b0 rule and `[measurement]` 235 → 251 nodes; audit-current path rule for the reuse test; plugin-controls rule extended |
+| `docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json` | One additive safe-by-construction entry, `measurement:measurement_identity:json_serialization` (480 → 481 keys); accepted by Codex as a bounded living-manifest classification |
+| `tests/unit/tools/run_context_child_sites.json` | One `nested_pytest` entry for `test_measurement_reuse.py::test_the_terminal_record_names_every_reuse#1` (82 → 83 sites), added for the retry |
+
+### Contract as built
+
+**b0 (first Stage B change).** `[measurement]` was refreshed with the Stage A Task 6 full runs (Windows `20261005T075433-47356-fcfdf0`, 233 nodes over 2 s; WSL `20261005T075522-438-1b3ada`, 77): 235 → 251 nodes. The slow-node guard then failed on exactly the IPC node (RED, which is also the rule-removed mutant); the explicit `core` rule with Codex's reason made it GREEN. Tier and tags are unchanged, so selection is unchanged. Windows `test_test_profiles` + `test_local_ipc` 66 passed; WSL clone 66 passed with TMPDIR set and unset. Patch `8ab3e5cfc6b6…`.
+
+**Depth and budgets** (Codex's shared-contract answers Q1–Q5, Plan 11.26 owner `P11-FEAT-ACP-RUNTIME-HARDENING`; Claude concurred with every qualification).
+- H5: quick = 1 repeat per applicable close-path × terminal-cause family; full = 100; same node identity. Quick execution of the repeat-100-named node is labelled reduced depth and is never repeat-100 or accumulation evidence.
+- H4 (1,000 seeds and the literal corpus), the S1 windows and every other probe run at their existing counts. Plan 11.26 code, schemas, records and CLI are unchanged.
+- Checkpoint, final and coverage operations require full depth. Commits stayed full until G was accepted; the changed-input quick switch is a separate Task 5-stage change (below).
+
+**Export cache key (as accepted on C7c).** Repository; resolved commit; path set; a digest of the export arguments, `git version` and `git config --list`; every attribute source by content (`info/attributes`, `git var GIT_ATTR_GLOBAL`, `GIT_ATTR_SYSTEM`, the raw bytes of every `.gitattributes` blob of the exported tree read with `git ls-tree -r -z` and `git cat-file --batch`); `attr.tree` / `GIT_ATTR_SOURCE` by the tree they resolve to; replace refs and their environment switches; repository and object-store redirection. Reuse is refused (key `None`) whenever an input cannot be established, whenever `export-subst` is in effect (its output follows the wall clock and HEAD decoration), and whenever a configured `filter` smudge/process driver meets a `filter=` attribute in effect. The real sealed commit keeps a reusable key on this host.
+
+**Measurement reuse key.** The child's exact payload (measured source, bound identity text, specification, entry and options), depth, platform and interpreter, the inherited environment minus `PYTEST_CURRENT_TEST`, and verified installed dependency content for the specification plus the entry's requirement floor. A hit returns a deep copy, names the measuring test, executes no probe and mints no execution context; it is refused if the earlier binding's dependency files differ from the installed content. Failures are never stored. The store is thread-local and session-scoped. Production code and the CLI never reuse.
+
+### Measurement before caching (Codex Q4)
+
+Five rebuild/envelope/schema nodes, measured on `1c7be2d` + the working diff before any cache code (`stageb/task4/cache-measure/`): plain walls 112.1 / 75.7 / 21.1 / 21.0 / 22.3 s. Full-document jsonschema validation of the 30.8 MB sealed or successor payload took 12.7–13.8 s each, about 130 s of about 276 s across the five; `git archive` of the same commit about 0.96 s, seven times per `_verify_artifact`; the fresh identity probe about 1.55 s. Codex recomputed the Stage A audit-current baseline from raw phases as 936.741816 s for 67 nodes, of which H5 is 534.613345 s; the 409.5 s quick projection is an estimate, not a measured run.
+
+The dominant cost, schema validation, lies outside both v4 cache keys; only identical (schema, payload) pairs could be memoized and successor payloads differ per test. Codex assigned it as optional, unscheduled custody (residuals).
+
+**Cache effect, contended (C6 Windows formal full, which overlapped the WSL chain):** against Stage A, the successor node 100.87 → 77.41 s; three reuse nodes 25.55 → 19.38, 24.36 → 17.89 and 24.15 → 16.94 s; the CLI node 100.88 → 117.68 s (fresh CLI subprocesses cannot reuse, and each reader now pays about a dozen bounded Git calls for its key). Codex: no clean overall cache-saving claim is made.
+
+### Controls and mutation
+
+- Depth: 9 RED for the expected reasons, then GREEN (`test_test_profiles` + `test_run_profile` + `test_coverage_products` 158 passed). The unknown-depth control first passed for the wrong reason and was tightened to require the choices message.
+- Export cache and reuse: every correction round was RED on the previous candidate and GREEN after (outputs in the Checkpoint C seals).
+- Injected H5 faults at both depths: f1 (one cause family under-closes) is refused by the observation model inside the child; f2 (a planted persistent thread, a valid observation) fails the repeat-100 node's own leak assertion. Killed on Windows by the mutation harness and on WSL by injection into the clone, restored from HEAD each time (C6 and C7c).
+- Mutation on the accepted candidate C7c: **52 of 53 killed** (`mutation11`, lane identity equal before and after). `e2` (export key without the repository) is a survivor: unkilled by design, not proven equivalent; the repository component stays as the backstop against inputs not enumerated. The full history is in the Checkpoint C section.
+
+### Delivery
+
+| Attempt | When (UTC) | Result | Receipts (seal) |
+|---|---|---|---|
+| 1 (18 paths) | hooks 2026-10-06 18:44:24Z–19:13:55Z | **FAILED, no commit.** Hygiene, Ruff, Bandit, ast-grep, config-trust and secret-scan passed; `pytest-coverage` failed. Commit profile manifest `20261006T184438-59604-3f56c9`, selected run `20261006T184508-34948-35da0c`: 1 failed, 5,169 passed, 40 skipped (Codex recount; COMPLETE/ACTIVE/native-valid, exit 1). The failure: `test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof` named the new reuse test's nested pytest. The guard enumerates git-tracked files; the reuse test had been untracked in every earlier run, so the launch site first became visible when staged | `plan-11-30-task4-commit-attempt1-failed-20261007` (14 files, `86a233763a97…`) |
+| 2 (19 paths: the 18 plus one sites entry identical to `test_test_profiles.py::_pytest#1`) | pre-retry checks: guard + proof + reuse 202 passed, gates 336 passed, Ruff and `git diff --check` clean; hooks 2026-10-06 19:25:45Z–19:52:10Z | **Committed `43eb190`.** All applicable hooks passed (YAML had no files). Commit profile `20261006T192556-46092-095959` verdict pass, obligation `wsl-platform: next checkpoint`. Selected run `20261006T192622-56960-ebe4f2`: 5,210 nodes, 5,170 passed, 40 skipped, exit 0, COMPLETE/ACTIVE/full depth/native valid, `parent=not_found:ancestor_exited`. Of the 5,170, 5,162 have passing call phases; the other 8 are the `test_run_context_lifecycle.py` recorder controls whose call phase is not recorded by design (same node set as the C7c checkpoint main run); the pytest summary confirms 5,170 passed. 18 committed blobs equal the C7c table; map `c31ee8c3…`; lane clean | `plan-11-30-task4-commit-43eb190-delivery-20261007` (27 files, `9fdae92adbf1…`) |
+
+Codex's attempt-1 ruling (2026-10-06 19:18:34 UTC) recorded that its own Checkpoint C review also missed the index-visibility requirement, and set the **checkpoint visibility rule**: every candidate new file must be staged or intent-to-add before index-based inventories run, with HEAD, status and diff identities recorded.
+
+## Checkpoint C — Stage B through Task 4 (2026-10-05 to 2026-10-06)
+
+**Status: accepted on C7c** (Codex, 2026-10-06 18:40:36 UTC), after Fable 5.1's final C7c SOUND. Codex HELD C2 (C-M1, C-M2) and C6 (C-M3). Passing executions on those candidates are retained as passing history, not acceptance of the cache they ran. Frozen v4 is unchanged. All candidates share base `1c7be2da61263e6fa47092346f65218104388740` and the same 18 paths.
+
+### Candidates
+
+| Label | Working diff (`git diff --binary` SHA-256) | Reuse test SHA-256 | What changed | Disposition |
+|---|---|---|---|---|
+| pre-amendment formal source | `de18263dfc8e7d6580925c9d5bb3834f9bac85820160046485492196ecd13a27` | `47b6f2f622c8…` | first complete Task 4 | Windows and WSL formal parity runs only |
+| Checkpoint C candidate C1 | `41ee2f9cd72e90f87ccbad61d0d654e3c1921489d5f9da96bf03436b67901f6f` | `a48ce88fe574…` | Fable first-pass amendments F1–F4 | checkpoint FAILED (below) |
+| C2 | `9fc1385b6a9dddf09c082813b71dbc385a66a898ed3880f61c3e89f75199bd29` | `2d789300953a…` | digest-only control; Plan 9.96 entry | checkpoint passed; Codex HOLD: C-M1, C-M2 |
+| C3 | `8e9c94ff4db29d9a5dee4c678f06abf6ba0d90fff9888289a6f37318b3d674e8` | `5dd7be7725fc…` | C-M1/C-M2 corrections | runs STOPPED for Fable's C3 amendments |
+| C4 | clean diff `7b19f9280bd5ae2d2fbb9171f02d52932177a8e4dac969a5a60b5b2240cf60f8` | `5dd7be7725fc…` | `attr.tree`/`GIT_ATTR_SOURCE` by tree; undecodable output fails closed | patch `c05d6d7f…` and its backup are **INVALID** (taken while a mutant was applied); not used for any run |
+| C5 | `9aef8a442de31a9ff3bed349c598ae5e380eb3f2eefa403302f3183f57cee4ff` | `6db052a67683…` | replace refs, mailmap, environment switches | superseded by C6 after Fable's C5 check |
+| C6 | `c6fe012ea8bd4cfa1a678fec88967feab4a9af0650acb8d95f870c500d49bd32` | `6db052a67683…` | filter drivers, export-subst key, redirection | checkpoint passed; Codex HOLD: C-M3 |
+| C7 | `bce944098c503c895e36bc62bb218dfa4fe8ae780d2deb5d56eb7ed8caaf4dfc` | `6db052a67683…` | export-subst in effect → never reuse | Fable: SOUND WITH AMENDMENTS (pre-validation) |
+| C7b | `19a65daca87cf6eb3f722639405177e36c7f2d2bb83412507604cbfda5e5fd01` | `6db052a67683…` | raw-byte attribute detection; mailmap keying removed | Fable: SOUND WITH AMENDMENTS |
+| **C7c** | **`0fc9024f86febcb59422200c5214e930f39751dbda0a44e13931c281fd63ac1f`** | **`6db052a6768363ad9bd05885a30960558bac6fe82301c062f6f13dc6e3a42026`** | byte-level `ls-tree`; `cat-file` parsed by header | Fable SOUND; **Codex ACCEPTED** |
+
+### Findings and corrections
+
+| Round | Finding | Disposition |
+|---|---|---|
+| Fable first pass (on the pre-amendment source) | SOUND WITH AMENDMENTS, five MINOR. F1: H9 was not reused across files. Claude's ledger cause (known-folder redirection) was wrong and is struck; the real cause was Claude's own control clearing the running session's store. F2: export key lacked `.git/info/attributes`. F3: mutant r12 (key without the payload) added. F4: plugin audit state became a stack. F5: no session token for worker threads (ruling) | F1–F4 fixed test-first in Checkpoint C candidate C1; F5 ruling accepted by Fable. Codex later qualified F5 to today's serial topology: Task 5 may not inherit a cross-session worker-cache guarantee without its own proof |
+| Checkpoint C run 1 (Checkpoint C candidate C1) | FAILED on both platforms on one gates-tier guard: `test_verify_plan996_logging_surfaces.py::test_checked_in_manifest_covers_current_surface_inventory`, `UNCLASSIFIED_SINK tools.plan1126_runtime_audit.measurement:measurement_identity:json_serialization`. Claude's focused Task 4 runs had not included the gates tier | The failing guard was the RED; added a digest-only control and the Plan 9.96 entry; all 336 gates-tier nodes passed → C2 |
+| Codex C-M1 (major, on C2) | The export key hashed config text (including a `core.attributesFile` path) but not the global attribute file's content; Codex reproduced a stale export on Windows and WSL | Fixed in C3 (content of every attribute source), widened by Claude's own audit to replace refs (a real stale export: cached `A = 1` after `git replace` made it `A = 9`) and mailmap sources in C5 |
+| Codex C-M2 (major, on C2) | The reuse key omitted installed dependency-file integrity; a hit revalidated nothing (Codex fault injection: key identical, verifier called 0 times) | Fixed in C3: the key binds verified dependency content; a hit whose binding disagrees with installed files is refused |
+| Fable C3 check | SOUND WITH AMENDMENTS: MAJOR `attr.tree`/`GIT_ATTR_SOURCE` bound only by text; MINOR undecodable Git output escaped the key path | Fixed in C4 (Claude's probe: neither changes archive output on Git 2.56 or 2.43; bound anyway) |
+| Fable C5 check | SOUND WITH AMENDMENTS, three MINOR: filter drivers, export-subst placeholders reading refs and history, `GIT_DIR`-family redirection; reword the e2 ruling | Fixed in C6; e2 reworded to "unkilled by design" |
+| Codex C-M3 (bounded major, on C6) | The export-subst key omitted the detached HEAD object: `$Format:%D$` stale after detached HEAD moves; reproduced on Windows and WSL Git 2.43 | Claude reproduced it and found the same class for `%cr`/`%ar` (wall-clock dates, stale after 3 s on both platforms), so a HEAD-object key would not cover it. C7: export-subst in effect → never reuse (Codex accepted this replacement for its prescribed key) |
+| Fable C7 / C7b / C7c (before expensive validation, as Codex required) | C7: MEDIUM four `git grep` detection gaps (NUL byte in `.gitattributes`, attributes marking it binary or `-diff`, `GIT_LITERAL_PATHSPECS=1`, symlinked `.gitattributes`), each reproduced on 2.56 and 2.43; LOW remove mailmap keying. C7b: LOW-MEDIUM a non-UTF-8 tree path crashed on Windows; LOW a rule line ending " missing" disabled reuse. C7c: SOUND | Each fixed test-first; C7c accepted |
+
+### Checkpoint C runs
+
+`python -m tools.testing.run_profile --profile checkpoint --base 1c7be2d`. Windows runs the main selection, then the full-depth audit-current subrun as load with three concurrency repeats inside it; WSL runs the selection and audits serially without load. Counts marked † are Codex's independent raw recounts. Counts marked ‡ are reported in Claude's ledger only and were not independently recounted.
+
+| Candidate | Platform | Profile | Selected | Main subrun | Audit (full depth) | Repeats | Verdict |
+|---|---|---|---|---|---|---|---|
+| Checkpoint C candidate C1 | Windows | `20261005T132919-60064-5f4507` | 5,138 / 349 deselected | `20261005T132955-38776-f1257b`: 1 failed, 5,026 passed, 38 skipped ‡, exit 1 | `20261005T140041-37216-a21b44` 73 passed (817.29 s) | 3 × (373 passed, 8 skipped), stability complete | **FAILED** |
+| Checkpoint C candidate C1 | WSL | `20261005T132940-435-b79cdb` | 5,138 | `20261005T133008-459-3f6684`: 1 failed, 4,974 passed, 90 skipped ‡, exit 1 | `20261005T134608-4725-1bd160` 73 passed ‡ | — | **FAILED** |
+| C2 | Windows | `20261005T142119-3620-122aef` | 5,266 / 222 | `20261005T142148-31388-555572`: 5,152 passed, 40 skipped † | `20261005T145000-61796-f9f754` 74 passed † | `…145004-58048-8a4f3f`, `…145105-59008-6ab62d`, `…145154-34684-a0d12d`: 373/8 each †, complete | pass (held) |
+| C2 | WSL | `20261005T142137-433-860a9f` | 5,266 | `20261005T142157-456-31e8f9`: 5,192 nodes, exit 0; passed/skipped split not established in this summary | `20261005T143625-4800-ef0381` 74 nodes, exit 0 | — | pass (held) |
+| C6 | Windows | `20261005T192150-56284-034800` | 5,277 / 222 | `20261005T192219-47988-57f35d`: 5,160 passed, 40 skipped † | `20261005T195104-33780-5e488f` 77 passed † | `…195107-44768-283849`, `…195203-51036-27d952`, `…195251-32816-62c630`: 373/8 each †, complete | pass (held) |
+| C6 | WSL | `20261005T185622-22840-381e21` | 5,277 | `20261005T185633-22860-e96e81`: 5,200 nodes, exit 0; passed/skipped split not established in this summary | `20261005T191221-32102-3fc5b3` 77 nodes, exit 0 | — | pass (held) |
+| **C7c** | Windows | `20261006T165203-17936-8e9c8e` | 5,287 / 222 (= 5,210 main + 77 audits) | `20261006T165231-17364-a27677`: 5,170 passed, 40 skipped † | `20261006T172240-34904-cec2b9` 77 passed † | `…172245-58920-2d7c69`, `…172354-11236-036a75`, `…172445-41728-634eda`: 373/8 each †, complete | **pass, accepted** |
+| **C7c** | WSL | `20261006T163015-16613-b5b03e` | 5,287 | `20261006T163028-16633-001370`: 5,120 passed, 90 skipped † | `20261006T164406-23777-c2a176` 77 passed † | — | **pass, accepted** |
+
+Every subrun of the passing checkpoints ran at full depth with no record problem. Windows qualifications: `parent=not_found:ancestor_exited` only. WSL: `native=unsupported`, `guard=unsupported_platform`, `parent=unsupported`. The WSL clone on C7c held all 18 files byte-identical to the lane (`c7-wsl/files-wsl.sha256`); its `git diff` hash differs only through Git 2.43's diff formatting.
+
+Supporting C7c checks: Windows gates tier 336 passed, Task 4 controls 580 passed, full-tree Ruff clean (identity unchanged before and after); WSL narrow controls 203 passed / 7 skipped with TMPDIR set and unset.
+
+### G — full/quick parity and failure parity
+
+| Source | Platform | Full | Quick | Comparison |
+|---|---|---|---|---|
+| pre-amendment `de18263d…` | Windows | `20261005T120957-14020-8dfeac`: 340 passed in 1,361.04 s; budget h5 100/100 | `20261005T123242-55416-27ae6c`: 340 passed in 821.34 s; h5 1/100 | selection digests, node sets and per-node phase outcomes equal; audit-current 846.1 s full vs 344.4 s quick (73 nodes) |
+| pre-amendment `de18263d…` | WSL | `20261005T130159-2430-08a42c`: 340 passed in 833.1 s | `20261005T125106-1325-6756ef`: 340 passed in 597.6 s | g1 controls 444 passed / 42 skipped, TMPDIR set and unset |
+| Checkpoint C candidate C1 `41ee2f9c…` | WSL | `20261005T140601-12489-a55ae8`: 340 passed in 822.26 s | `20261005T135514-11250-da20cb`: 340 passed in 591.48 s | — |
+| C2 | WSL | `20261005T145457-12585-ca6a4f`: 341 passed in 768.92 s | `20261005T144454-11337-ef490f`: 341 passed in 553.95 s | there is no exact C2 Windows formal-parity claim; Codex: none is made from unchanged depth code alone |
+| C6 | Windows | `20261005T183720-53128-0ac4b8`: 352 passed in 1,588.18 s (contended) | `20261005T190351-47188-da123a`: 352 passed in 1,077.37 s | equal digests, nodes, outcomes |
+| C6 | WSL | `20261005T184105-10570-d49b64`: 352 passed in 822.91 s | `20261005T182958-4363-79233b`: 352 passed in 608.04 s | equal |
+| **C7c** | Windows | **`20261006T161146-44836-9d6430`**: 362 passed in 1,441.66 s (contended) | **`20261006T163550-59340-0cbf8e`**: 362 passed in 971.36 s | Codex recomputed: identical digests, 362 nodes and outcomes, COMPLETE/ACTIVE/exit 0, H5 100 vs 1 |
+| **C7c** | WSL | **`20261006T161559-7035-a43e79`**: 362 passed in 802.29 s | **`20261006T160531-3383-de57ec`**: 362 passed in 586.20 s | same |
+
+Failure parity on C7c: f1 and f2 fail as required at quick and full depth on both platforms (Windows through the mutation harness; WSL injected into the clone and restored from HEAD). Codex accepted G for the Task 4 mechanism on C7c. G does not authorize quick depth for checkpoints, final runs or coverage gates, and supplies no fresh independent repeat or repeat-100 claim at quick depth. Windows formal timings overlapped the WSL chain; no clean cache-saving or Task 5 speed claim follows from them.
+
+### Mutation history (Task 4 harness `mutate_task4.py`; restore from a byte copy, empty `PYTHONPYCACHEPREFIX`)
+
+| Run | Source | Result |
+|---|---|---|
+| mutation1 | pre-amendment | 25/26; e2 survived (a real control gap: fixed with a twin repository) |
+| mutation3 | after the e2 control fix | e1–e6 6/6 |
+| mutation6 | Checkpoint C candidate C1 amendments | r12, e7, d9 3/3 |
+| cumulative to C2 | C2 | 32/32 (d1–d9, e1–e7, r1–r12, f1q/f1f/f2q/f2f), e2 killed only after its control fix (ledger correction of an earlier "30/30") |
+| mutation7 | C3 | c1–c5, m1–m4, e7 10/10 |
+| mutation8 | C4 | 39/43: r5 and r10 stale anchors; r8 survived (a real control gap introduced by the F1 fix, then fixed); e2 survived |
+| mutation9 | C5 | 46/47; e2 |
+| mutation10 | C6 | 50/51; e2 |
+| **mutation11** | **C7c** | **52/53; e2 unkilled by design** |
+
+### Retained failed, invalid and stopped attempts
+
+- Checkpoint C run 1 on Checkpoint C candidate C1: FAILED on Windows and WSL (above).
+- C3 controls on Windows: 548 passed, 1 FAILED: `test_run_profile.py::test_every_counted_repeat_is_completely_overlapped_by_one_load_run` returned `unrun` ("only 2 of 3 repeats were completely overlapped in 4 attempts"), the designed refusal, never a false pass. Isolated reruns passed in 31, 42 and 58 s; it passed on C5, C6, C7c and in every checkpoint. Codex: a non-passing designed UNRUN; LOW margin custody (residuals).
+- C3 Windows formal run STOPPED mid full run and C3 WSL STOPPED after narrow controls (187 passed / 7 skipped), for Fable's C3 amendments. The surviving lane pytest tree and its children were stopped; no lane python process remained.
+- C4 patch and backup `plan-11-30-lane-backup-stageb-c4-20261005T1618-INVALID-mutant-snapshot`: INVALID, taken while a mutant was applied; kept, never used.
+- C5 WSL chain STOPPED after narrow controls (190 passed / 7 skipped) because Fable's C5 check required C6.
+- C7c WSL attempt 1: FAILED before any test (`uv` not on PATH in a non-login shell); kept as `c7-wsl/attempt1-uv-not-on-path/`.
+- C2 and C6 passing checkpoints: retained as passing executions of held candidates, not acceptance.
+
+### Codex acceptance (2026-10-06 18:40:36 UTC)
+
+Task 4 and Checkpoint C ACCEPTED on C7c; G ACCEPTED for the Task 4 mechanism; the 18-path local commit released. Codex independently verified all 123 seal members (seal `980af30a…`), the lane identity and all 18 Windows/WSL source bytes, reproduced C-M3's fix as passing on native Windows, and recounted the raw checkpoint and formal records above. The pre-existing Windows `_run` reader-thread behaviour on other non-UTF-8 Git output fails loudly and is out of this correction's scope. Stage A's acceptance remains tied to `acc2a1c` and is not a C7c final measurement.
+
+Receipts: `plan-11-30-task4-budget-inventory-20261005` (seal `76a581e2…`); `plan-11-30-checkpoint-c-evidence-20261005` (pre-amendment formal source, Checkpoint C candidate C1, C2; 51 files, `f1df55db…`); `plan-11-30-checkpoint-c-c6-evidence-20261005` (C3–C6, 37 files, `7a5f1e59…`); `plan-11-30-checkpoint-c-c7c-evidence-20261006` (C7–C7c, 123 files, `980af30a…`).
+
+## Task 5 — Core-only xdist under one controller-owned run, partial-commit index scanning, quick commit audits (2026-10-07 to 2026-10-08)
+
+**Status: accepted on candidate E; delivered locally at `66ddabf` (Task 5 delivery section).** Codex accepted Task 5 and Checkpoint D on E, including the partial-commit scanner correction and the quick commit-audit switch, after the pairs5 timing receipt (2026-10-08 15:23:56 UTC). Candidate F (Option A rename) and the exact pragma later changed four test-harness files; Codex carried E's worker, selection and performance acceptance forward to them without new pairs or checkpoint runs. pairs5 is E timing evidence, not a measurement of F or `66ddabf`.
+
+Base for every Task 5 candidate: `43eb19078a07d06e2d91d0913674b24af3616730`.
+
+### What was built
+
+| File | Responsibility |
+|---|---|
+| `pyproject.toml`, `uv.lock` | `pytest-xdist>=3.6` in the dev extra; the lock adds only pytest-xdist 3.8.0 and execnet 2.1.2 |
+| `tools/testing/run_context_xdist.py` (new) | Controller verdict and worker start/output: signed worker records (HMAC), job-membership confirmation of each worker, phase facts per `(node, when)` with the receiving channel and outcome, execution checks, escaped-descendant attribution, `finish_controller` guarded to INVALID `controller_failure` |
+| `tools/testing/run_context.py`, `run_context_records.py` | `phases.worker`, the terminal `xdist` table, the worker-record table and a shared `_persist` sink; `finish_run(xdist=…)` (a non-valid verdict makes the record INVALID); summary `xdist=` |
+| `tests/conftest.py` | Worker and controller hooks; guard installed in workers before collection; an INVALID verdict forces `session.exitstatus = INTERNAL_ERROR` when pytest would otherwise exit OK, before `finish_run`, so the record and the exit agree |
+| `tests/support/profiles_plugin.py` | Pre-spawn refusal of `-n/--dist/--tx/--numprocesses` unless profile `core-parallel`, `-n 2`, `--max-worker-restart=0`, `--dist load\|worksteal`, no looponfail, no coverage |
+| `tools/testing/test_profiles.py`, `tests/profiles.toml` | `core-parallel` = core tier minus tagged nodes minus the reviewed `[parallel].serial` list (the serial probe plus 18 core files that launch child processes, enforced by a gate); `core-serial` = the remainder |
+| `tools/testing/run_profile.py` | `--profile core --workers 2`: disjoint, complete partition, selection digests, xdist verdict, `--dist worksteal`; subrun record matched by run folders created after launch with the subrun's own root PID first (no cross-process wall clock); commit-index forwarding; quick commit audits |
+| `tools/tracked_repository_files.py`, `tools/doc_paths.py`, `tests/unit/docs/test_docs_index.py`, `test_plan_directory_hygiene.py` | Partial-commit correction: `index_environment` honours the forwarded commit index for that repository only (missing named index → `commit_index_missing`); the index-listing sites route through it |
+| `tests/support/xdist_faults.py` (new) | Real two-worker fault plugin (`missing_call`, `foreign_node`) |
+| `tests/unit/tools/test_run_context_xdist.py` (new), `test_run_context_xdist_probes.py` (new), `test_run_profile.py`, `test_test_profiles.py`, `test_test_profile_selection.py`, `test_tracked_repository_files.py` | Controls (below) |
+| `tests/unit/tools/run_context_child_sites.json` | Four entries: two `nested_pytest`, one `literal_program` grandchild, and (candidate F) one `nested_pytest` for the hook-environment test |
+| Plan 9.96 manifest JSON | `write_record` keys renamed to `_persist`; `run_context_xdist:sign:json_serialization` (digest-only, demonstrating test); `run_profile:_main_core:stdout_export` |
+
+### Contract as built
+
+- **One controller-owned run.** xdist runs only as the runner's `core-parallel` subrun. The controller keeps the unchanged job, guard, registry, streams and verdict; workers never start a run, enrol or open its streams. Run metadata reaches workers in execnet `workerinput`, never the environment, and is popped once validated.
+- **Workers.** Install the guard in `pytest_configure` before collection; check ancestry to the controller (Windows: creation-time ancestry; elsewhere the `/proc` parent chain, labelled `xdist=weaker`); write one signed record.
+- **INVALID verdict** on: a missing, unsigned or mismatched record; identity, ancestry, guard or source differences; a crash; lost, duplicate or unknown-worker phases; collection disagreement; a worker the controller could not confirm in its job; a reused identity; a worker still running after 15 s; unknown job members; escaped descendants (attributed to their parent worker); and, after D-M1, `unselected_phase`, `node_incomplete`, `call_missing` (passing setup, no call), `call_unexpected` (call after a non-passing setup), `mixed_owner` and `attribution:<gw>`. An INVALID verdict forces a non-zero exit.
+- **Coverage stays serial.** `-n` with coverage is refused before spawn (ruling; Codex: shard combination is unnecessary while every coverage gate is serial).
+- **Partial-commit correction (Task 3 LOW residual).** Inside a commit hook the runner forwards git's `GIT_INDEX_FILE` to every subrun under harness names; as delivered these are `TEST_RUN_COMMIT_INDEX_FILE` / `TEST_RUN_COMMIT_INDEX_ROOT` (renamed from `OPTIMUS_COMMIT_INDEX_*` in candidate F). A guard enumerates all 9 index-listing sites: 4 read the commit's index, 5 are reviewed exemptions. RED: `test_inside_a_commit_hook_run_the_scanner_lists_the_commit_s_own_index` (a kept file hidden by a deletion staged outside the commit) and a real partial-commit hook test.
+- **Quick commit audits (R5 after G).** A commit keeps only the current audits its changed inputs reach (never through broad fallback), runs them at `audit_depth=quick`, and `record_validity` accepts a quick record only for a subrun asked for quick, adding qualification `audit_depth=quick`. Checkpoint and final profiles stay full.
+
+### Fable 5.1 findings 1–7
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | MEDIUM: the controller never validated a worker's identity itself (self-report only; a dead identity passed `survivor`) | Controller confirms job membership at node collection; `membership:<gw>` when unconfirmed on native |
+| 2 | LOW: the run secret was readable by worker tests | `workerinput.pop` after validation |
+| 3 | LOW: `finish_controller` unguarded | wrapped; INVALID `controller_failure` and `finish_run` still called |
+| 4 | LOW: a native run without the run's job judged as having no escaped descendants | `members_unknown` |
+| 5 | LOW: escaped descendants unattributed | `escaped: [{pid, creation_time, parent_pid}]` |
+| 6 | Info: a crash also yields xdist's synthetic `???` report → `unknown_worker` | kept (fail-closed, cosmetic; Codex: no fix needed) |
+| 7 | LOW (candidate-b round): `_run_record` could return another new folder | root PID match first, `root_parent` only when none, ambiguity → `None` |
+
+Fable rounds: candidate `361b5ab0…` (pre-validation) SOUND WITH AMENDMENTS (1–6); candidate b `a23a74d0ef8a…` SOUND WITH AMENDMENTS (1–5 closed; new 7; WSL clock-step diagnosis confirmed from the records); candidate D SOUND (its first confirmation attempt failed on a Fable rate limit, 429, before any verdict); candidate E SOUND; candidate F SOUND; pairs5 receipt SOUND WITH AMENDMENTS.
+
+### WSL failures (retained)
+
+| Attempt | Source | Result | Root cause and fix |
+|---|---|---|---|
+| WSL 1 | `43eb190` + `4e33ffb04e1d…` (clone `/root/p1130-t5-20261007T044039`) | focused 441 passed, 46 skipped, **1 FAILED**: `test_a_worker_without_run_metadata_refuses_to_start`. Worker gw1 refused correctly and the record was INVALID, but xdist on Linux **exited 0** although gw1's tests never ran. Core `--workers 2` verdict pass (2,745/1,357) | An INVALID verdict left a passing exit status (the same faults also exited 0 on Windows). Fixed test-first: the conftest forces a non-zero exit and the record's exit equals it (4 RED on Windows, then GREEN) |
+| WSL 2 | `43eb190` + `361b5ab00801…` (clone `/root/p1130-t5-20261007T050143`) | focused 444 passed, 46 skipped, **1 FAILED**: `test_core_runs_on_two_real_workers_and_a_serial_remainder` ("core-serial: no_run_record"). Core `--workers 2` verdict pass (4,104 = 2,747 + 1,357) | The serial subrun's record `20261007T050313-939` was valid but its `started_utc` was 3.3 s earlier than the parallel subrun's although its process was created later: the WSL2 wall clock stepped back, and the runner's cross-process recency check rejected the subrun's own record. A pre-existing Task 2 runner fragility. Fixed test-first: match only run folders created after launch, no cross-process wall-clock comparison |
+
+### Matched pairs (three serial vs two-worker core pairs, native Windows; caller wall includes collection, runner work and every inter-subrun pause)
+
+**Recorded values** (caller walls from each set's sealed `summary.txt`; candidate source as recorded in `identity-before.txt`):
+
+| Attempt | Source | Serial walls (s) | Two-worker walls (s) | Disposition |
+|---|---|---|---|---|
+| pairs | `43eb190` + `4077f44e5769…`; `--dist load`; partition 2,883 / 1,219 (core 4,102) | 266.948 / 273.500 / 274.160 | 236.519 / 236.298 / 237.647 | **FAILED** (< 20 %). Cause measured: `--dist load` imbalance (gw0 idle from 56 s while gw1 ran to 138 s). Also exposed 18 child-launching core files admitted to workers |
+| pairs2 | `43eb190` + `4e33ffb04e1d…`; worksteal; launchers serial; 2,745 / 1,357 | 269.693 / 274.867 / 274.066 | 201.561 / 209.377 / 210.218 | pre-Fable source history; not evidence for a later candidate |
+| pairs3 | candidate D `e24d2425…`; 2,747 / 1,357 (core 4,104) | 317.297 / 314.818 / 312.165 | 231.156 / 260.334 / 232.359 | numeric target met on D; does not transfer to E (Codex). Loaded host (stray process, below). Pair 2: an unexplained ~30 s gap between the parallel record's finish (08:24:36.7Z) and the serial record's start (08:25:06.9Z) |
+| pairs4 | candidate E `2bd48b7d…` | 302.639 / 285.049 / 283.997 | 208.253 / 218.128 / 220.092 | an actual loaded-host result on E (stray process); kept; Codex required an unloaded confirmation |
+| **pairs5** | **candidate E `2bd48b7d…`**, Codex-commissioned | **298.708 / 277.770 / 268.679** | **247.869 / 204.983 / 200.993** | **PASS, accepted** (below) |
+
+**Report-derived calculations** (computed by this report from the recorded walls above, each for its own candidate; inputs are the three serial walls S and three two-worker walls W of one set):
+- median improvement = `1 - median(W) / median(S)`, the plan's acceptance definition;
+- ratio of means = `1 - mean(W) / mean(S)`;
+- mean per-pair improvement = `mean(1 - W_i / S_i)`.
+
+| Attempt (candidate) | median(S) / median(W) (s) | Median improvement | Ratio of means | Mean per-pair improvement | Per pair |
+|---|---|---|---|---|---|
+| pairs (`4077f44e…`) | 273.500 / 236.519 | 13.521389 % | 12.784554 % | 12.773059 % | 11.40 / 13.60 / 13.32 % |
+| pairs2 (`4e33ffb0…`) | 274.066 / 209.377 | 23.603439 % | 24.122127 % | 24.128482 % | 25.26 / 23.83 / 23.30 % |
+| pairs3 (D) | 314.818 / 232.359 | 26.192594 % | 23.343818 % | 23.340072 % | 27.15 / 17.31 / 25.57 % |
+| pairs4 (E) | 285.049 / 218.128 | 23.477016 % | 25.836397 % | 25.722222 % | 31.19 / 23.48 / 22.50 % |
+| pairs5 (E) | 277.770 / 204.983 | 26.204054 % | 22.636268 % | 22.805276 % | 17.02 / 26.20 / 25.19 % |
+
+**Recorded assertions and Codex's figures**, kept separate from the calculations above:
+- Claude's ledger and packets recorded 13.5 % (pairs), 23.6 % (pairs2), 26.2 % (pairs3) and 23.48 % (pairs4), and the pairs5 receipt recorded 26.204054 %. The pairs3 and pairs4 packets' "mean" (23.3 %, 25.84 %) is the ratio of means.
+- Codex recomputed pairs3 as a 26.1926 % median and a 23.3438 % mean, and pairs4 as 23.477016 % and 25.836397 %; both means are ratios of means.
+- For pairs5 Codex gave 26.2040537135 % (median), 22.6362675811 % (ratio of means) and 22.8052762367 % (mean of per-pair improvements).
+- Codex's 2026-10-09 audit independently recomputed the five medians and ratios and found they agree with these calculations.
+
+Acceptance uses only Codex's pairs5 median on candidate E.
+
+In every pair set all 9 subrun records were valid and all 12 recorded-order gap predicates passed (serial runs, and per worker for parallel subruns; decile ratios 0.887–1.45 in pairs, 1.02–1.393 in pairs2, 1.05–1.372 in pairs3, 1.093–1.295 in pairs4; pairs5 below). On core 4,104 (pairs3 onward):
+- every serial run had 4,067 passing calls and 37 skips;
+- each parallel subrun had 2,737 passing calls and 10 skips (7 call-skipped, 3 setup-skipped);
+- each serial remainder had 1,330 passing calls and 27 skips.
+
+On core 4,102 the serial runs had 4,065 and 37.
+
+Also retained, not a pair:
+- The correctness probe `core-probe1` on the pairs-attempt-1 source: `core-parallel` `20261007T034059-32712-4ee8d1` 2,873 passed / 10 skipped; `core-serial` `20261007T034323-25080-1b964a` 1,192 passed / 27 skipped; qualification `parent=UNKNOWN:access_denied`.
+- One Checkpoint D core run on D: 221.8 s step wall, which the ledger recorded as about 19 % against pairs2's serial median. It is a single run, not a matched pair.
+
+### D-M1 → candidate E
+
+Codex (2026-10-07 08:45:34 UTC, on D): **D-M1 (major).** `Controller.phase` kept only `(node, when) → worker`, so balanced totals could hide a missing call after a passing setup, a node's phases split across workers, or a phase for an unselected node. Codex demonstrated all three with in-memory counterexamples against D's own fixture, on Windows and WSL.
+
+- **RED on D** (`task5/dm1/red.txt`): 7 failed, 3 passed. Unit controls for Codex's three cases plus `call_unexpected` and channel attribution; and two **real** nested two-worker faults, `missing_call` (gw1 runs one test with pytest's setup-only switch: setup and teardown sent, no call, counts balanced) and `foreign_node` (gw1 sends a counted report for an unselected node through xdist's own channel), both with verdict `valid` on D. The legitimate-sequence control and the existing complete-run control passed.
+- **Fix** (existing controller seam): `Controller.phases` maps `(node, when)` to `(channel worker, outcome)`; phases are attributed by `report.node.gateway.id`, the worker's own `worker_id` kept only as its claim (ruling); the verdict's `_execution_problems()` adds the checks listed under the contract. Serial recorder streams are untouched.
+- **GREEN on E:** xdist + probes 44 passed (both real faults INVALID, named problem, non-zero exit equal to the recorded exit); runner 66 passed; Ruff clean. Mutants x50–x56: 7/7 killed (x54 attributes by the claim; x56 requires a call after every setup and is killed by the legitimate control).
+- **Candidate E** = `43eb190` + `2bd48b7d2702dd978ec3abbf0a65108afab757442fd1109d0f3568b435d83cd2` (changes vs D: `run_context_xdist.py`, `test_run_context_xdist.py`, `xdist_faults.py`; 23 paths, 4 new files intent-to-add).
+
+Codex closed D-M1 (2026-10-07 12:27:23 UTC): seven bounded direct controls pass on native Windows and the E WSL clone; these are unit-model assertions, and the retained real nested faults exercise `missing_call` and `foreign_node` through actual two-worker sessions.
+
+### Stray-process disclosure
+
+At 10:57:34 IST on 2026-10-07 one of Claude's diagnostic commands left an inline Python process (PID 24500, with parents 51640, 57404, 48376, 18456) running. It did no plan work and wrote nothing to the lane or evidence. At 17:48:16 IST it had used 24,257 CPU-seconds (about one core; a 10-second sample showed 0.99 CPU-s/s). It overlapped every timed run after 10:57: the Windows mutation `mutation-t5` and WSL Checkpoint D on C, Windows Checkpoint D on D, pairs3, the D-M1 work, and the whole E chain (WSL and Windows Checkpoint D on E and pairs4, 14:35:09–16:31:40 IST). The Checkpoint D packet's and the D-M1 packet's statements that nothing else of Claude's was running are superseded by the addendum (`43c3ade4…`).
+
+Codex's disposition: correctness verdicts stand; pairs3 and pairs4 stay as loaded-host results; the addendum's expectation that the load understated the benefit is unmeasured and no direction or adjustment is accepted; the stale PID list must never be used to stop processes. Codex commissioned pairs5.
+
+### pairs5 acceptance
+
+Preconditions (2026-10-08, 19:34–19:40 IST): identity `43eb190` + `2bd48b7d…` with all 23 file hashes equal to E's record and the 4 new files index-visible; `uv sync --frozen --extra dev --dry-run` "Would make no changes", freeze hash `e56fd1c3…`, pytest 9.1.1, pytest-xdist 3.8.0, execnet 2.1.2; the stray chain absent (host restarted about 17:24 IST), established from fresh process identities and CPU sampling, with nothing stopped.
+
+Ambient load: load-pre (19:39:34, 30 s) mean 27.2 % of 12 logical processors, `TextInputHost` about 0.94 core; a foreign pytest from another session started at 19:40:04 and its end before pairs5 (19:40:49) is unreceipted. load-post (20:05:50) mean 15.2 %, `TextInputHost` about 1.01 core, no foreign pytest. Two earlier load receipts are kept (attempt 1: probe format error; attempt 2: 37.1 % with a foreign Claude session's pytest running in another repository). **pairs5 is not an idle-host result**; foreign overlap during the run is UNKNOWN. It is timing evidence for candidate E only, not a measurement of the delivered HEAD (`66ddabf`) or of candidate F.
+
+Result (19:40:49–20:05:49 IST, `matched_pairs.sh` exit 0, identity unchanged after): median serial 277.770 s, two-worker 204.983 s, **median improvement 26.2040537135 % ≥ 20 %: PASS** (Codex recomputation). Per pair 17.02 / 26.20 / 25.19 %; acceptance uses the specified median, not each pair. All 9 terminal records pass E's `record_validity`; all 12 gap predicates pass with zero negative gaps (decile ratios 0.917–1.32); each invocation covers the identical 4,104-node set, two-worker subruns disjoint 2,747 + 1,357.
+
+| Pair | Serial run | Two-worker runs (parallel; serial remainder) |
+|---|---|---|
+| 1 | `20261008T141120-40872-943969` | `20261008T141614-46124-145be9`; `20261008T141838-38244-be891d` |
+| 2 | `20261008T142021-49528-172f13` | `20261008T142455-49196-ce5411`; `20261008T142642-40480-669ec5` |
+| 3 | `20261008T142820-16952-54ab69` | `20261008T143249-7456-d888e8`; `20261008T143437-44564-b983eb` |
+
+Pair 1's two-worker run has 31.5 s between the parallel record's finish (14:18:07.30Z) and the serial record's start (14:18:38.76Z), against 3.9 s and 6.7 s in pairs 2 and 3: the second occurrence of the ~30 s pause. It is charged in the caller wall; its cause is UNKNOWN (no process-exit timestamp separates controller shutdown from the next launch).
+
+Receipt `2026-10-08-claude-pairs5-timing-receipt-plan-11-30.md` (`df3376ea…`); Fable review copy `0baac9ba…`; seal `plan-11-30-pairs5-timing-20261008` (89 files, `f00f5851…`).
+
+### Checkpoint B worker obligation (annotation 2026-10-09)
+
+Checkpoint B left a required Task 5 obligation: worker kill-on-close and attribution. Codex's 2026-10-09 audit discharged it **for the accepted native Windows controller topology**. The evidence is `tests/unit/tools/test_run_context_xdist.py::test_an_interrupted_controller_leaves_no_worker_running` and `::test_a_grandchild_left_running_by_a_worker_is_an_escaped_descendant`, together with the accepted D-M1 phase/channel controls. The real grandchild control checks parent-worker attribution, the INVALID verdict and termination. WSL keeps its weaker capability label (`xdist=weaker`). This does not discharge Checkpoint B's F4: an abrupt hard kill of the outer runner can still orphan its subruns, and no arbitrary forced-kill cleanup is promised.
+
+### Mutation (Task 5 harness `mutate_task5.py`)
+
+| Run | Source | Result |
+|---|---|---|
+| mutation-t5 | C `5b9a13f9…` | 47/49; x17 (verdict with `survivors=None` never asserted `members_unknown`) and x45 (the other-repository check tracked the same file as the committed repository) survived: test gaps, no code defect |
+| mutation-t5-recheck | D `e24d2425…` | x17, x45 killed (2/2) after the two tests were strengthened |
+| mutation-dm1 | E `2bd48b7d…` | x50–x56 7/7 |
+
+## Checkpoint D — Stage B through Task 5 (2026-10-07)
+
+**Status: accepted on E** (Codex, 2026-10-08 15:23:56 UTC). Codex HELD D for D-M1 (2026-10-07 08:45:34 UTC), then accepted E's correctness evidence and closed D-M1 (12:27:23 UTC), holding only for unloaded timing, which pairs5 supplied.
+
+### On candidate D (Windows) and C (WSL)
+
+Candidate C = `43eb190` + `5b9a13f9268d5021af19897e0c061e45ee9e47d84a0b2b964e7035728e46ced3`. Candidate D = `43eb190` + `e24d24252795ad2fb0a8042a8fba23f5cd0e5e822f9ed257d7a7de01d4d3582f`; D differs from C only in two test files (`test_run_context_xdist.py`, `test_tracked_repository_files.py`), with no production change.
+
+| Platform | Source | Checks |
+|---|---|---|
+| Windows (`cpd-win`, one serial chain, identity unchanged) | D | gates 336 passed; controls 614 passed; Ruff clean; core `--workers 2` (`20261007T061804-49108-e96f0a`: parallel `20261007T061825-54076-0d6c8b`, serial `20261007T062030-39260-1e6273`) pass, 4,104 = 2,747 + 1,357; checkpoint `20261007T062146-39684-ced0e3` pass, 5,421 selected / 142 deselected, broad fallback: main `20261007T062215-30976-13c1f9` 5,304 passed / 40 skipped †, audit load `20261007T065540-33148-609230` 77 passed †, repeats `…065544-55672-b82e14`, `…065641-30952-55b517`, `…065728-4112-5bb42f` 373/8 each †, stability complete |
+| WSL (`cpd-wsl`, clone `/root/p1130-cpd-20261007T053553`, Git 2.43) | **C** | focused 500 passed / 47 skipped, TMPDIR set and unset; core `--workers 2` pass (`20261007T053931-1524-45b6d5`; `xdist=weaker`); checkpoint `20261007T054107-3866-5b3585` pass, 5,421 / 142: main `20261007T054124-3887-d409f3` 5,251 passed / 93 skipped †, audit `20261007T055731-11228-93b4f5` 77 passed † |
+| WSL delta (`cpd-wsl-d`, clone `/root/p1130-cpd-d-20261007T060658`) | D | the two changed test files: 39 passed / 1 skipped, TMPDIR set and unset; all 23 files byte-identical lane vs clone (clone whole-diff hash `cdfc1bfa…` differs only by Git 2.43 diff formatting) |
+
+Codex: the full WSL chain is C-source evidence, not a relabelled exact-D run; the bounded C→D composition is acceptable for the unchanged production paths. The Windows mutation run shared the host with WSL's focused and core runs.
+
+### On candidate E (serial chain 14:35–16:31 IST, 2026-10-07; loaded by the stray process)
+
+| Platform | Checks |
+|---|---|
+| WSL (`cpd-wsl-e`, clone `/root/p1130-cpd-20261007T090512`, all 23 files byte-identical to the lane) | focused 508 passed / 47 skipped, TMPDIR set and unset; core `--workers 2` pass (`20261007T090926-1587-a89bcf`: parallel `…090934-1597-046dcd` 2,747 passed †, serial `…091004-3219-f981c8` 1,317 passed / 40 skipped †; `xdist=weaker`); checkpoint `20261007T091054-3931-37f5f4` pass, 5,429 / 142: main `20261007T091109-3951-879862` 5,259 passed / 93 skipped †, audit `20261007T092632-11405-f997a0` 77 passed † |
+| Windows (`cpd-win-e`, identity before = after) | gates 336 passed; controls 622 passed; Ruff clean; core `--workers 2` pass (`20261007T094509-42020-906df7`: parallel `…094530-47288-a21877` 2,737 / 10 †, serial `…094724-57008-18aa55` 1,330 / 27 †); checkpoint `20261007T094843-60836-d03a96` pass, 5,429 / 142 (2,857 s): main `20261007T094911-37452-8dfc41` 5,312 passed / 40 skipped †, audit load `20261007T102313-39468-e4071f` 77 passed †, repeats `…102317-12100-0f8fab`, `…102415-54184-8c95da`, `…102502-29384-0514a5` 373/8 each †, stability complete |
+| Timing | pairs4 (loaded; above), then pairs5 (above) |
+
+† Codex raw recount. Qualifications retained: Windows `parent=not_found:ancestor_exited`; WSL `native=unsupported`, `guard=unsupported_platform`, `parent=unsupported`, `xdist=weaker`. Codex: the background load qualifies the environment; passing executions do not prove every possible unloaded interleaving would pass.
+
+### What Codex accepted
+
+Task 5 and Checkpoint D on E, including the partial-commit scanner correction (named commit-index propagation scoped to the owning repository, missing-index refusal, inventory-site controls and Fable's real-hook probes; no optional index-selection bypass) and the profile-specific changed-input quick audit switch (never through broad fallback; full checkpoint, final and coverage protection retained). Also accepted as mechanisms: the controller/job/metadata guard architecture, the conservative serial partition, worksteal scheduling, serial-only coverage, `_run_record`'s own-root preference and ambiguity refusal, and the cosmetic `???` report. pairs5 at 26.2040537 % supplies the matched timing. Receipts: `plan-11-30-checkpoint-d-evidence-20261007` (candidates b/C/D, 1,497 files, `de697a9d…`); `plan-11-30-checkpoint-d-e-evidence-20261007` (all of D's evidence unchanged plus E, 2,356 files, `62c8c21a…`); addendum `43c3ade4…` (outside the seal); `plan-11-30-pairs5-timing-20261008` (`f00f5851…`).
+
+## Task 5 delivery — local commit `66ddabf` (2026-10-08)
+
+**Status: delivered and verified.** Codex verified the delivery (2026-10-08 19:38:33 UTC): commit `66ddabfdf5bb3acccfffe39fa45f70b4b47924ad`, parent `43eb190`, exactly 23 paths, all committed blobs equal to the released post-pragma table, lane clean, fresh full-tree Ruff passes. The hook records name the parent HEAD `43eb190`; with the verified staged/committed bytes they bind to the delivered source, but **they are not independent `66ddabf` full-coverage or final measurements**.
+
+| Attempt | Source | Hooks (UTC) | Result | Receipts (seal) |
+|---|---|---|---|---|
+| 1 | E (`2bd48b7d…`) | 2026-10-08 15:31:41Z–16:17:28Z | **FAILED, no commit.** `pytest-coverage` failed: commit profile `20261008T153159-2800-2953a7` (5,428 selected / 143 deselected, broad) verdict failed; selected `20261008T153230-55460-6de6f3` 69 failed / 5,242 passed / 40 skipped, exit 1, record COMPLETE/ACTIVE/full/native-valid (Codex recount); quick audit `20261008T161048-37976-08a2f7` 77 passed, valid with `audit_depth=quick`. Every failure was in the ACP entry point (`test_main_wiring.py` 46, `test_launch_approval_cli.py` 17, `test_main_check_config.py` 4, `test_main_debug_trace.py` 2) with 88 refusals `UNCLASSIFIED_VARIABLE: OPTIMUS_COMMIT_INDEX_FILE`: inside a hook the runner forwarded the commit index as `OPTIMUS_COMMIT_INDEX_*`, and the product launch gate refuses any unclassified `OPTIMUS_*` name. Checkpoints, controls and pairs had run without `GIT_INDEX_FILE`; the real partial-commit hook control ran only the scanner. Implementation, Fable and Codex review all missed this boundary | `plan-11-30-task5-commit-attempt1-failed-20261008` (29 files, `c41851de…`) |
+| — | Option A → candidate F (`7cc417fecbfac10c7ec8aa93c8b9c5dfbf4ab8973050727e98ccbb7c1227df71`) | — | Codex selected Option A (16:21:35 UTC): rename to `TEST_RUN_COMMIT_INDEX_FILE` / `_ROOT`; no product, launch-gate or registry edit, no `OPTIMUS_*` alias. RED on E: the real `resolve_launch_candidate` over the runner's subrun environment raised `UNCLASSIFIED_VARIABLE`, and a nested ACP entry-point test exited 2. GREEN on F: runner + scanner + child-site tests 256 passed. Changes vs E: two constants and a comment in `tools/tracked_repository_files.py`, two `setenv` names, two runner regression tests with an `_INHERITED` table, one sites entry. Windows: hook-environment rehearsal 138 passed / 6 skipped with 0 `UNCLASSIFIED_VARIABLE`, gates 336, affected controls 269, Ruff and `git diff --check HEAD` clean. WSL (fresh clone, 23 files byte-identical): controls 261 passed / 8 skipped with TMPDIR set and unset, rehearsal 144 passed, 0 `UNCLASSIFIED_VARIABLE`. Fable F: SOUND. Codex accepted F and released one retry (17:51:59 UTC) | `plan-11-30-task5-option-a-evidence-20261008` (40 files, `a693e9b0…`) |
+| 2 | F | 2026-10-08 17:54:43Z–18:30:53Z | **FAILED, no commit.** `secret-scan` failed: detect-secrets `Secret Keyword` at `tests/unit/tools/test_run_profile.py:115`, the synthetic `OPTIMUS_API_KEY` fixture value in the new `_INHERITED` table; a read-only scan of the 23 staged files found exactly that one. `pytest-coverage` **passed**: commit profile `20261008T175455-47292-051c06` verdict pass; selected `20261008T175524-54796-e7cd81` exit 0, full/ACTIVE/COMPLETE/native-valid: 5,305 passing call phases, 19 call-skipped, 21 setup-skipped, zero failed phases, and 8 known recorder-control nodes with no call row (5,353 nodes). This is a call-phase count, not a pytest summary total. Quick audit `20261008T182426-47628-a8bda8` 77 passed. This confirmed the namespace fix under the real hook. Claude had not run the local secret scan over the staged set before committing | `plan-11-30-task5-commit-attempt2-failed-20261009` (28 files, `408df6b3…`) |
+| — | exact pragma | — | Codex released (18:45:18 UTC) exactly one allowlist comment on line 115; expected file SHA-256 `3dbbcb1a63b6…` (applied and matched; one-line delta; AST equal to F; Codex proved before exit 1 / after exit 0 with the unchanged baseline on scratch copies). Pre-commit: regressions 2 passed, Ruff clean, 23 re-staged by name, staged blobs equal the table, `git diff --check` clean, `python -X utf8 tools/local_secret_scan.py --baseline .secrets.baseline src <23 staged files>` exit 0, staged diff `2184d40ce611…` | (in the delivery seal) |
+| 3 | F + pragma | 2026-10-08 18:58:07Z–19:36:01Z | **Committed `66ddabf`.** All applicable hooks passed (YAML had no files). Commit profile `20261008T185820-46316-861d92` verdict pass, obligation `wsl-platform: next checkpoint`; selected `20261008T185847-48092-647199` exit 0, full/ACTIVE/COMPLETE/native-valid, `parent=not_found:ancestor_exited`: 5,305 passing call phases, 19 call-skipped, 21 setup-skipped, zero failed, 8 known no-call recorder controls (call-phase count, not a pytest summary total); quick audit `20261008T192958-22616-a85679` 77 passing calls, exit 0, valid with `audit_depth=quick`. Committed paths and blobs equal the released table; message equals the release; `git status --porcelain --untracked-files=all` empty | `plan-11-30-task5-commit-66ddabf-delivery-20261009` (39 files, `7b89fec9469e…`); delivery receipt `5813197f…` |
+
+**Correction to the Option A packet** (`db1584c4…`). Its disclosure said the full normal-hook run "cannot be rehearsed short of committing". That was wrong. Task 3 had already run the real hook without creating a commit: in a disposable clone, with the change staged in the clone's own index and `GIT_INDEX_FILE` set to `.git/index` as for a normal commit, `pre-commit run optimus-pytest-coverage` ran the actual hook (Task 3 exercises 1–5, HEAD unchanged). Codex recorded that the claim was not needed for acceptance and commissioned no further rehearsal; the actual retry remained the required proof.
+
+**Process rule added by Codex (attempt 2):** the explicit staged-set local secret scan is part of future local commit preflight; it complements the normal hooks and grants no bypass.
+
+## Stage B residuals and owners (2026-10-09)
+
+None of these rows is omitted required implementation. Each is accepted evidence, a qualified observation, a guarantee boundary, optional custody or an evidence obligation, as stated.
+
+| Residual | Kind and status | Owner |
+|---|---|---|
+| A recurring ~30 s pause between the parallel record's finish and the serial record's start (pairs3 pair 2 on D; pairs5 pair 1 on E, 31.5 s) | Optional, unscheduled observation. Cause UNKNOWN; charged in caller wall; the median target passes. Not a correctness defect or closure blocker; no source change or timing run commissioned | `P11-FEAT-TEST-PROFILES` (backlog: inter-subrun timing observation custody) |
+| Overlap-control margin: the fixed 25 s synthetic load window of `test_every_counted_repeat_is_completely_overlapped_by_one_load_run` is sensitive to host contention | LOW, optional, unscheduled. One designed UNRUN on Checkpoint C candidate C3 is retained as non-passing; no future overlap gate is waived | `P11-FEAT-TEST-PROFILES` (backlog: overlap-control margin custody) |
+| Validation cost: repeated full-document validation of the 30.8 MB sealed or successor payload (12.7–13.8 s each; about 130 of 276 s across five nodes) | Optional, unscheduled optimization. A measured cost, not proof of achievable saving; audit-contract changes coordinate with `P11-FEAT-ACP-RUNTIME-HARDENING` | `P11-FEAT-TEST-PROFILES` (backlog: validation-cost optimization custody) |
+| `OPTIMUS_TEST_VENV` (MAIN-5 runner metadata) is not classified in `launch_policy`; the Option A test keeps it out of the gate call and asserts only pass-through | A pre-existing observation, noted by Fable on candidate F. The Option A rename preserves launch policy; no rename, classification change or new item is commissioned | existing `P11-FU-32` under `P11-FEAT-ACP-RUNTIME-HARDENING` |
+| Mutant e2 (export key without the repository) survives | Accepted survivor evidence: unkilled by design and not proven equivalent; the repository component stays as the backstop for unenumerated inputs | Task 4 as accepted |
+| Cache cost (C6 and C7c formal timings; the CLI node slower) | Qualified observation: contended, mixed; no cache-saving claim | — |
+| Cache thread topology: the conftest clears only the calling thread's stores (F5); audit-current probes are outside the core-parallel partition | Guarantee boundary of Task 4: no cross-session worker-cache guarantee; no new cache work accepted | `P11-FEAT-TEST-PROFILES` (backlog: recorded with the MAIN-5 custody paragraph) |
+| Pre-existing Windows `_run` reader-thread behaviour on non-UTF-8 Git output other than tree paths | Fails loudly, never stale; outside the C-M3 correction; no repair commissioned | existing `P11-FU-39` (lifecycle-tooling inventory custody), if taken up as future work |
+| xdist with coverage refused; PASSIVE parallel runs on Windows always INVALID; the xdist test file's platform tag triggers broad fallback and platform obligations | Accepted mechanisms and fail-closed behaviour | `P11-FEAT-TEST-PROFILES` |
+| Checkpoint B F4: abrupt hard kill of the outer runner orphans its subruns | Not discharged by Task 5 (the worker obligation is discharged for native Windows only, above) | `P11-FEAT-TEST-PROFILES` |
+| Commit-hook records of `43eb190` and `66ddabf` carry `wsl-platform: next checkpoint` and name their parent HEADs | They bind to the delivered bytes but are not final measurements; an evidence obligation for Stage B Task 6 | `P11-FEAT-TEST-PROFILES` |
+| Partial-commit correction: CI backstop | A held evidence obligation, not a current pass; the source correction is delivered | `P11-FEAT-TEST-PROFILES` |
+| Remote Linux CI and base/candidate safety-row comparison | UNKNOWN until a publication grant and comparable CI reports | `P11-FEAT-TEST-PROFILES` |
+| Stage A residuals: registry archival PARTIAL/NON-PASSING with one refused member; registry over 512 entries; written-file close latency; boundaries-file interruption window; zero-µs first-decile medians UNKNOWN; WSL wall-clock minute-scale uncertainty | Unchanged by Stage B | as recorded in the earlier sections and the backlog |
+
+## Stage B Task 6 — not yet run (PLACEHOLDER)
+
+**PLACEHOLDER. No Stage B Task 6 measurement exists. Nothing in this section is a result.**
+
+**Prerequisites, in order** (Codex, 2026-10-08 19:38:33 and 2026-10-09 04:32:07 UTC):
+1. Codex's current-state documentation audit (done 2026-10-09).
+2. A separately reviewed and released seven-path governance commit carrying this report, the manifest and five reviewer files.
+3. After that commit passes its hooks and leaves a clean tree, its actual HEAD and tree become the final pin. `66ddabf` is not the pin.
+
+**Commands.** The operator-approved Task 6 command substitution C1 applies to Stage B (Codex, 2026-10-09):
+- `uv run --no-sync pytest --cov --cov-branch --cov-fail-under=0 --cov-report=term-missing --cov-report=json:tmp/coverage/full.json -v`
+- `uv run --no-sync python -m tools.testing.coverage_products report --coverage-json tmp/coverage/full.json`
+
+Default selection and full audit depth stay intact, with one serial coverage writer per checkout. `--cov-fail-under=0` waives neither the per-product floors nor the safety-module comparison. The Task 0 recorded-order gap predicate uses the same full Windows run; WSL gap performance stays informational.
+
+**Checkouts.** Two independent clones, each detached at the pin with its own frozen environment, coverage data and run records:
+- Windows: `C:\worktrees\optimus-cost-agent-worktrees\optimus-cost-agent-wt-claude-p1130f`;
+- WSL: `/root/p1130-sb-t6-<UTC>`.
+
+The Stage A Windows checkout exception does not extend to Stage B. The native Windows full run starts together with Fable's read-only final review; WSL runs after Windows finishes, with no overlap of the measured chains.
+
+**Still UNKNOWN:** the base main-push and candidate Linux CI safety-module reports. There is no extra Windows base-only run.
+
+**Not Stage B Task 6 evidence:** the commit-hook runs of `43eb190` and `66ddabf`; every checkpoint and pair run above; Stage A's results at `acc2a1c`.

@@ -44,7 +44,7 @@ relevant records before proposing a change in their area.
 | [ADR-013: Plan 12 effect repair](decisions/ADR-013-plan12-effect-producer-repair.md) | First code step; real WRITE/TEST boundaries and cancellation; later Package A authority |
 | [ADR-014: Request guard and source floor](decisions/ADR-014-all-session-request-guard-floor-clarification.md) | ADR-003 clarification with full-floor route evidence required |
 | [ADR-015: Cost-stop removal sequencing](decisions/ADR-015-cost-stop-removal-sequencing.md) | After accounting/D6, without waiting for ADR-009 |
-| [ADR-016: Test cadence and staged delivery](decisions/ADR-016-test-cadence-product-coverage-and-staged-delivery.md) | Accepted policy/mechanisms and Plan 11.30 progress exception; Tasks 0–3 locally accepted/delivered; local Task 6 accepted with approved checkout exception; report/docs delivery and CI/safety open |
+| [ADR-016: Test cadence and staged delivery](decisions/ADR-016-test-cadence-product-coverage-and-staged-delivery.md) | Accepted policy/mechanisms and Plan 11.30 progress exception; Tasks 0–3 locally accepted/delivered; local Task 6 accepted with approved checkout exception; report/docs delivered at 1c7be2d; Stage B Task 4/C/G accepted and local delivery verified at `43eb190`; Task 5/D accepted and local delivery verified at `66ddabf`; Stage B Task 6 pre-pin audit dispositions filed; final report bytes and seven-path governance release next; CI/safety open |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 
 ## Research (input for Plan 12)
@@ -109,7 +109,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Document | What it is |
 |---|---|
-| [Plan 11.30 Task 3 review](superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md) | Task 3 local commit verified at 1b300cfe; normal hooks passed; local Task 6 accepted with approved checkout exception; seven-path normal-hook documentary commit released |
+| [Plan 11.30 Task 3 review](superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md) | Task 3 local commit verified at 1b300cfe; normal hooks passed; local Task 6 accepted with approved checkout exception; seven-path normal-hook documentary delivery verified at 1c7be2d; Task 4/C/G accepted; local delivery verified at `43eb190`; Task 5/D accepted and local delivery verified at `66ddabf`; Stage B Task 6 pre-pin audit dispositions filed; final report bytes and seven-path governance release next |
 | [Plan 11.30 Checkpoint B review](superpowers/reviews/2026-10-05-plan-11-30-checkpoint-b-codex-review.md) | Tasks 1–2 accepted; combined local delivery release, partial archival qualification and Task 3 pickup |
 | [Plan 11.25 producer-instrumentation correction](superpowers/reviews/2026-10-01-plan-11-25-effect-instrumentation-correction.md) | Checked historical steps do not establish current runner instrumentation; Plan 12 owns the repair |
 | [A2A ledger independent audit](superpowers/reviews/evidence-handoff-a2a-ledger-independent-audit.md) | Findings the open ledger slices fix |
