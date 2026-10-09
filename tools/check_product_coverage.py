@@ -12,6 +12,14 @@ apply unchanged. Report mode: ``--data-file`` with the ``--run-record`` that run
 already identified full-suite dataset without rerunning tests; a dataset whose hash no longer matches
 its record is stale and refused.
 
+``--coverage-json`` (either mode) also writes coverage.py's own JSON report of the same loaded dataset:
+per-file statement/branch totals and misses keyed by repository-relative ``src/`` paths, for the base
+and candidate safety-module comparison (Plan 11.30 v5 I1). It is never a second test run; a dataset that
+cannot be exported, or rows that are not repository-relative, fail the gate. The run record also carries
+the commit and tree before and after the run, whether the checkout was clean before and after, the
+groups policy loaded, and the configuration, lock, coverage engine and interpreter identities: receipts
+for a later validity check, which this gate's own verdict neither uses nor replaces.
+
 The commit-profile hook is not this gate: until the profiles lane lands it keeps its existing entry and
 pyproject's interim Optimus-only floor (release supplement, 2026-10-04).
 """
@@ -22,6 +30,7 @@ import argparse
 import hashlib
 import io
 import json
+import platform
 import subprocess
 import sys
 import time
@@ -153,10 +162,11 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def report_dataset(data_file: Path, config: GroupsConfig, *, repo: Path) -> dict[str, object]:
+def report_dataset(data_file: Path, config: GroupsConfig, *, repo: Path, json_out: Path | None = None) -> dict[str, object]:
     """Each floor's percentage from one dataset, with the configured precision and comparison: coverage's
     own fail-under rule, as pytest-cov and `coverage report --fail-under` apply it (the total rounded to
-    the configured precision is compared with the floor)."""
+    the configured precision is compared with the floor). With `json_out`, the same loaded dataset is
+    also exported as coverage's JSON report."""
     import coverage
     from coverage.exceptions import NoDataError
     from coverage.results import display_covered, should_fail_under
@@ -198,7 +208,28 @@ def report_dataset(data_file: Path, config: GroupsConfig, *, repo: Path) -> dict
                 "passed": passed,
             }
         )
-    return {"data_file_sha256": _sha256(data_file), "precision": precision, "floors": rows}
+    result: dict[str, object] = {"data_file_sha256": _sha256(data_file), "precision": precision, "floors": rows}
+    if json_out is not None:
+        result["coverage_json_sha256"] = export_json(cov, json_out, measured=len(measured))
+    return result
+
+
+def export_json(cov: object, json_out: Path, *, measured: int) -> str:
+    """Coverage's own JSON report of the dataset already loaded in `cov`: never another test run. Every
+    measured file must appear once, keyed by its repository-relative `src/` path (the gate runs from the
+    repository root, as CI does), so a base and a candidate report compare row by row."""
+    from coverage.exceptions import CoverageException
+
+    try:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        cov.json_report(outfile=str(json_out))  # type: ignore[attr-defined]
+        rows = json.loads(json_out.read_text(encoding="utf-8")).get("files", {})
+    except (CoverageException, OSError, ValueError) as exc:
+        raise CoverageGateError(f"cannot export the coverage JSON report: {type(exc).__name__}") from exc
+    names = [name.replace("\\", "/") for name in rows]
+    if len(names) != measured or not all(name.startswith("src/") for name in names):
+        raise CoverageGateError("coverage JSON rows are not the measured files keyed by repository-relative src/ paths")
+    return _sha256(json_out)
 
 
 Runner = Callable[[Sequence[str], Path], int]
@@ -211,17 +242,50 @@ def _run_pytest(command: Sequence[str], cwd: Path) -> int:
 
 
 def candidate_identity(repo: Path) -> dict[str, object]:
-    """The commit this run measures and whether the tree differed from it (Fable CP4 release review m7);
-    unknown outside a git checkout."""
+    """The commit this run measures, its tree (a pull-request run measures GitHub's merge commit, whose
+    tree is what a branch head is compared by) and whether the checkout differed from it: complete
+    `git status --porcelain`, so an edited tool, groups file or untracked file counts, ignored outputs do
+    not (Fable CP4 release review m7). Unknown outside a git checkout."""
     try:
         head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
+        tree = subprocess.run(["git", "rev-parse", "HEAD^{tree}"], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
         status = subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=True).stdout
     except (OSError, subprocess.CalledProcessError):
-        return {"git_head": None, "worktree_dirty": None}
-    return {"git_head": head, "worktree_dirty": bool(status.strip())}
+        return {"git_head": None, "git_tree": None, "worktree_dirty": None}
+    return {"git_head": head, "git_tree": tree, "worktree_dirty": bool(status.strip())}
 
 
-def run_full_suite(repo: Path, *, runner: Runner = _run_pytest, python: str = sys.executable) -> dict[str, object]:
+def run_receipts(repo: Path, groups: Path) -> dict[str, object]:
+    """What the run measured with besides its commit: the groups policy file it loaded, configuration and
+    lock bytes, the coverage engine and its configuration, and the interpreter. A safety comparison needs
+    the same coverage version, configuration and policy on both sides; these are its receipts, not an
+    authenticated snapshot."""
+    import coverage
+
+    def digest(name: str) -> str | None:
+        path = repo / name
+        return _sha256(path) if path.is_file() else None
+
+    policy = groups.resolve()
+    try:
+        policy_path = policy.relative_to(repo.resolve()).as_posix()
+    except ValueError:  # a policy file outside the repository is named by its absolute path
+        policy_path = policy.as_posix()
+    config = tomllib.loads((repo / "pyproject.toml").read_text(encoding="utf-8"))
+    return {
+        "groups_path": policy_path,
+        "groups_sha256": _sha256(policy),
+        "pyproject_sha256": digest("pyproject.toml"),
+        "uv_lock_sha256": digest("uv.lock"),
+        "coverage_version": coverage.__version__,
+        "coverage_config": config.get("tool", {}).get("coverage"),
+        "python_implementation": platform.python_implementation(),
+        "python_version": platform.python_version(),
+        "platform": sys.platform,
+    }
+
+
+def run_full_suite(repo: Path, *, groups: Path, runner: Runner = _run_pytest, python: str = sys.executable) -> dict[str, object]:
     data_file = repo / ".coverage"
     # Only coverage data files (`.coverage`, `.coverage.<suffix>`), never `.coveragerc`: a stale dataset
     # must never be reported as this run's.
@@ -229,16 +293,21 @@ def run_full_suite(repo: Path, *, runner: Runner = _run_pytest, python: str = sy
         if stale.is_file() and (stale.name == ".coverage" or stale.name.startswith(".coverage.")):
             stale.unlink()
     command = [python, *FULL_SUITE_ARGS]
-    identity = candidate_identity(repo)
+    identity = {**candidate_identity(repo), **run_receipts(repo, groups)}
     started = time.time()
     exit_code = runner(command, repo)
+    finished = time.time()
+    after = candidate_identity(repo)  # the checkout once the child exited: a change during the run shows
     record: dict[str, object] = {
         "schema": RUN_RECORD_SCHEMA,
         **identity,
+        "git_head_after": after["git_head"],
+        "git_tree_after": after["git_tree"],
+        "worktree_dirty_after": after["worktree_dirty"],
         "command": [Path(command[0]).name, *command[1:]],
         "pytest_exit": exit_code,
         "started": started,
-        "finished": time.time(),
+        "finished": finished,
         "data_file": data_file.name,
     }
     if data_file.is_file():
@@ -265,6 +334,7 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner = _run_pytest, rep
     parser.add_argument("--run-record", type=Path, help="the run record --run-full-suite wrote for --data-file")
     parser.add_argument("--groups", type=Path, required=True)
     parser.add_argument("--report-json", type=Path, required=True)
+    parser.add_argument("--coverage-json", type=Path, help="also export coverage's JSON report of the same dataset")
     args = parser.parse_args(argv)
     if args.run_full_suite and args.run_record is not None:
         parser.error("--run-record belongs to --data-file")
@@ -272,6 +342,8 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner = _run_pytest, rep
         parser.error("--data-file needs the --run-record that identifies it as a full-suite dataset")
 
     error: str | None = None
+    if args.coverage_json is not None and args.coverage_json.is_file():
+        args.coverage_json.unlink()  # an earlier export must never pass as this run's
     measured: dict[str, object] | None = None
     try:
         config = load_groups(args.groups)
@@ -280,7 +352,7 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner = _run_pytest, rep
         config, error = None, str(exc)
 
     if args.run_full_suite:
-        run = run_full_suite(repo, runner=runner) if config is not None else {"schema": RUN_RECORD_SCHEMA, "pytest_exit": None}
+        run = run_full_suite(repo, groups=args.groups, runner=runner) if config is not None else {"schema": RUN_RECORD_SCHEMA, "pytest_exit": None}
         data_file = repo / ".coverage"
     else:
         data_file = args.data_file
@@ -293,7 +365,7 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner = _run_pytest, rep
                 error = error or "dataset is not the one its run record identifies (stale or foreign data)"
     if config is not None and error is None:
         try:
-            measured = report_dataset(data_file, config, repo=repo)
+            measured = report_dataset(data_file, config, repo=repo, json_out=args.coverage_json)
         except CoverageGateError as exc:
             error = str(exc)
 
@@ -304,6 +376,10 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner = _run_pytest, rep
         (args.report_json.with_suffix(".run.json")).write_text(json.dumps(run, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if "git_head" in run:
         print(f"coverage dataset: git_head {run['git_head']} worktree_dirty {run['worktree_dirty']}")
+    if "git_head_after" in run:
+        print(f"coverage dataset after the run: git_head {run['git_head_after']} worktree_dirty {run['worktree_dirty_after']}")
+    if measured is not None and "coverage_json_sha256" in measured:
+        print(f"coverage json: {args.coverage_json} sha256 {measured['coverage_json_sha256']}")
     for row in (measured or {}).get("floors", []):
         label = "required" if row["enforced"] else "informational"
         verdict_text = "PASS" if row["passed"] else "BELOW"
