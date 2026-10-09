@@ -135,13 +135,80 @@ _DATED = re.compile(r"(?:[-*]\s+)?seq\s+(\d+):\s+(?:the source records that\s+)?
 _ACTIVE_CREATION = re.compile(r"created\s+(\S+)\s+(.+)")
 _PASSIVE_CREATION = re.compile(r"(\S+)\s+was created\s+(.+)")
 # An affirmative current use of a superseded rule (an instruction, a requirement or a present use) fails
-# whatever marker, record or replacement stands beside it. A local negation governs it as it governs
-# every other claim: "do not use ROUND_HALF_UP" is not a current use.
-_CURRENT_USE = (
-    r"\b(?:use|uses|apply|applies|keep|keeps)\s+(?:the\s+)?{rule}\b",
-    r"\b{rule}\s+(?:is|remains|stays)\s+(?:(?:still|now|also)\s+)?(?:required|mandatory|current|in (?:effect|use|force))\b",
-    r"\b(?:still|now)\s+(?:uses?|using|requires?|applies|applying)\s+(?:the\s+)?{rule}\b",
+# whatever marker, record or replacement stands beside it (Codex validator v5 batch review, M5). A bounded
+# lexical grammar, not a parser, in three shapes:
+# - the rule as an object: a use, keep, select or reinstating verb, a continuation ("keep using", "continue
+#   with", "still apply"), a rounding verb, active or passive ("round amounts with", "totals are quantized
+#   using"), or a switch ("switch to", "set the rounding mode to") before a noun phrase naming the rule
+#   ("the original ROUND_HALF_UP", "the rounding mode ROUND_HALF_UP", "decimal.ROUND_HALF_UP");
+# - the rule as a subject: a present or modal requirement ("is still being used", "must be applied", "can
+#   still be used", "still applies", "remains", "remains the default", "is the rule to use");
+# - the rule as the rounding mode a clause states ("the rounding mode is still ROUND_HALF_UP", "rounding
+#   must be ROUND_HALF_UP").
+# A local negation governs a match it precedes ("do not keep using ..."), as it governs every other claim,
+# and so does a contrast ("ROUND_HALF_EVEN rather than ROUND_HALF_UP applies"). Only the listed adverbs may
+# stand inside a predicate, so a negated predicate never matches ("must not be used", "is no longer the
+# rounding mode"). The patterns are code, so the validator version covers them; `{rule}` is the rule.
+_ADVERBS = r"(?:(?:still|now|also|again|always|currently)\s+)*"
+_STALE = r"(?:original|old|older|previous|prior|earlier|initial|former|superseded|legacy|same|existing)"
+_CURRENT = r"(?:current|active|default|required|correct|right|only|live|governing|applicable)"
+_MODE = r"(?:rounding\s+(?:mode|rule|method|setting)|rounding|mode|rule|method|setting|default|choice|one)"
+_RULE_NP = (
+    r"(?:(?:the|a|an|that|this|its)\s+)?(?:" + _STALE + r"\s+)*(?:(?:rounding\s+)?(?:mode|rule|method|setting)\s+|rounding\s+)?"
+    r"(?:rounding\s*=\s*)?[(`'\"]?(?:decimal\.)?{rule}\b"
 )
+_RULE_SUBJECT = r"\b{rule}[)`'\"]?(?:\s+(?:rounding(?:\s+(?:mode|rule|method|setting))?|mode|rule|method|setting))?\s+"
+_MODAL = r"(?:must|should|shall|will|can|may|has\s+to|have\s+to|needs?\s+to|is\s+to|are\s+to)"
+_PRESENT_USE = (
+    r"(?:being\s+)?(?:used|applied|kept|retained|enforced|required|mandatory|needed|necessary|preferred|allowed|permitted|valid|unchanged"
+    r"|current|active|(?:the\s+)?default|in\s+(?:effect|use|force|place))\b"
+)
+_ROUND_VERB = r"(?:round|rounds|quanti[sz]e|quanti[sz]es)"
+_WITHDRAW = r"(?:drop|remove|replace|change|abandon|retire|discard|deprecate|override|supersede|stop\s+using|stop\s+applying)"
+_WITHDRAWN = r"(?:dropped|removed|replaced|changed|abandoned|retired|discarded|deprecated|overridden|superseded|superceded)"
+# A rounding verb's object, precision and preposition: "amounts to 0.01 with", "to 2 decimal places using".
+_ROUND_COMPLEMENT = (
+    r"(?:(?:all|every|each|the|new|future)\s+)?(?:(?:amounts?|values?|results?|numbers?|totals?|calculations?|outputs?|sums?)\s+)?"
+    r"(?:to\s+[\w.]+(?:\s+(?:decimal\s+)?places?)?\s+)?(?:with|using|by|via|per|under)\s+"
+)
+_CURRENT_USE = (
+    # The rule as an object.
+    r"\b(?:use|uses|apply|applies|keep|keeps|retain|retains|require|requires|adopt|adopts|reinstate|reinstates|restore|restores"
+    r"|implement|implements|employ|employs|enforce|enforces|prefer|prefers|choose|chooses|select|selects|enable|enables)\s+" + _RULE_NP,
+    r"\b(?:keep|keeps|keeping|continue|continues|continuing|still|now|resume|resumes|go on|goes on|carry on|carries on)\s+(?:to\s+)?"
+    r"(?:(?:use|using|apply|applying)\s+|(?:" + _ROUND_VERB + r"|rounding|quanti[sz]ing)\s+" + _ROUND_COMPLEMENT + r")" + _RULE_NP,
+    r"\b(?:continue|continues|continuing|stick|sticks|sticking|stay|stays|staying|go|goes|carry on|carries on|proceed|proceeds)\s+with\s+" + _RULE_NP,
+    r"\b" + _ROUND_VERB + r"\s+" + _ROUND_COMPLEMENT + _RULE_NP,
+    r"\b(?:is|are|gets?|" + _MODAL + r"\s+be)\s+" + _ADVERBS + r"(?:being\s+)?(?:rounded|quanti[sz]ed|done|performed|handled|computed)\s+"
+    + _ROUND_COMPLEMENT + _RULE_NP,
+    r"\b(?:switch|switches|change|changes|move|moves|return|returns|revert|reverts|go|goes|default|defaults)\s+(?:back\s+)?to\s+" + _RULE_NP,
+    r"\b(?:set|sets)\s+(?:the\s+)?(?:rounding(?:\s+(?:mode|rule|method|setting))?|mode|rule|it)\s+(?:back\s+)?to\s+" + _RULE_NP,
+    r"\b(?:stick|sticks|keep|keeps|hold|holds|adhere|adheres)\s+to\s+" + _RULE_NP,
+    r"\b(?:rely|relies|depend|depends)\s+on\s+" + _RULE_NP,
+    r"\b(?:leave|leaves)\s+" + _RULE_NP + r"\s+(?:in\s+place|as\s+is|unchanged|alone|untouched)\b",
+    # An instruction not to withdraw the rule keeps it: the negation is part of the claim.
+    r"\b(?:do\s+not|don't|never|must\s+not|mustn't|should\s+not|shouldn't)\s+" + _WITHDRAW + r"\s+" + _RULE_NP,
+    # The rule as a subject.
+    _RULE_SUBJECT + r"(?:is|are|remains|stays)\s+" + _ADVERBS + _PRESENT_USE,
+    _RULE_SUBJECT + _MODAL + r"\s+" + _ADVERBS + r"(?:be|remain|stay)\s+" + _ADVERBS + _PRESENT_USE,
+    _RULE_SUBJECT + r"(?:" + _MODAL + r"\s+" + _ADVERBS + r"(?:remain|stay)|remains|stays)(?=\s*(?:[.;,!?)]|$))",
+    _RULE_SUBJECT + _ADVERBS + r"(?:applies|governs)\b",
+    _RULE_SUBJECT + _MODAL + r"\s+" + _ADVERBS + r"(?:apply|govern)\b",
+    # A withdrawal of the rule required not to happen, or denied: "must not be replaced", "was not superseded"
+    # (but not "was not replaced until seq 7", which dates the withdrawal).
+    _RULE_SUBJECT + r"(?:" + _MODAL + r"\s+(?:not|never)|mustn't|shouldn't|can't|cannot|won't)\s+be\s+" + _WITHDRAWN + r"\b",
+    _RULE_SUBJECT + r"(?:(?:is|was|has|have)\s+(?:not|never)|isn't|wasn't|hasn't|haven't)\s+(?:been\s+)?" + _WITHDRAWN
+    + r"\b(?!\s+(?:until|till|before)\b)",
+    _RULE_SUBJECT + r"(?:(?:remains|stays)\s+" + _ADVERBS + r"|is\s+(?:(?:still|now|also|again|currently)\s+)+)the\s+(?:" + _CURRENT + r"\s+)?" + _MODE + r"\b",
+    _RULE_SUBJECT + r"is\s+the\s+" + _CURRENT + r"\s+" + _MODE + r"\b",
+    _RULE_SUBJECT + r"is\s+the\s+" + _MODE + r"\s+(?:to\s+(?:use|apply|follow)|in\s+(?:effect|use|force|place)|now|going\s+forward|from\s+now\s+on)\b",
+    # The rule as the rounding mode a clause states.
+    r"(?:^|[;:,(]|\b(?:and|but|so|yet|while)\b)\s*(?:[-*]\s+)?(?:the\s+)?(?:" + _CURRENT + r"\s+)?"
+    r"(?:rounding(?:\s+(?:mode|rule|method|setting))?|mode|rule|method|setting)\s+"
+    r"(?:is|remains|stays|" + _MODAL + r"\s+" + _ADVERBS + r"(?:be|remain|stay))\s+" + _ADVERBS + _RULE_NP,
+)
+# A contrast right before a current use governs it: the old rule is what the clause does not use.
+_CONTRAST = r"\b(?:instead of|rather than|replacing|superseding|overriding)\s+(?:(?:the|a|an|that|this|its)\s+|" + _STALE + r"\s+)*$"
 
 
 def _normalized(text: str) -> str:
@@ -323,7 +390,7 @@ def evaluate_summary(
                 if rule in sentence
             ]
             current = [pattern.format(rule=re.escape(rule)) for pattern in _CURRENT_USE]
-            asserted = [sentence for _, sentence in mentions if any(_asserted(pattern, sentence, negation) for pattern in current)]
+            asserted = [sentence for _, sentence in mentions if any(_asserted(pattern, sentence, (*negation, _CONTRAST)) for pattern in current)]
             # Markers ("previously", "anymore") are never reversed; a verb is reversed only by a
             # negation right before it ("was not superseded"), not by one elsewhere ("is not used
             # (replaced in turn 7)").

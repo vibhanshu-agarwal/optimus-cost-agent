@@ -383,8 +383,9 @@ REVERSED = [
     pytest.param(NOT_APPROVED, "Nothing was approved\nor granted.", {"no-invented-approval"}, id="coordination-across-newline"),
     # Direction-reversed corrections (Fable M2).
     pytest.param(ROUNDING, "Rounding changed from ROUND_HALF_EVEN to ROUND_HALF_UP to 2 places: " + EXAMPLES, {"no-reversed-correction"}, id="changed-from-even-to-up"),
-    pytest.param(ROUNDING, "Rounding is ROUND_HALF_UP (previously ROUND_HALF_EVEN) to 2 places: " + EXAMPLES, {"no-reversed-correction"}, id="up-previously-even"),
-    pytest.param(ROUNDING, "Rounding is now ROUND_HALF_UP instead of ROUND_HALF_EVEN, to 2 places: " + EXAMPLES, {"no-reversed-correction"}, id="up-instead-of-even"),
+    # Stating the old rule as the rounding mode also asserts it as current (Codex validator v5 batch review, M5).
+    pytest.param(ROUNDING, "Rounding is ROUND_HALF_UP (previously ROUND_HALF_EVEN) to 2 places: " + EXAMPLES, {"no-reversed-correction", "half-up-superseded"}, id="up-previously-even"),
+    pytest.param(ROUNDING, "Rounding is now ROUND_HALF_UP instead of ROUND_HALF_EVEN, to 2 places: " + EXAMPLES, {"no-reversed-correction", "half-up-superseded"}, id="up-instead-of-even"),
     pytest.param(ROUNDING, "Rounding: ROUND_HALF_EVEN -> ROUND_HALF_UP to 2 places: " + EXAMPLES, {"no-reversed-correction", "half-up-superseded"}, id="arrow-even-to-up"),
     # Across a semicolon the reversal is two clauses; it still fails, on the stale old rule.
     pytest.param(ROUNDING, "Rounding: ROUND_HALF_EVEN; now ROUND_HALF_UP to 2 places: " + EXAMPLES, {"half-up-superseded"}, id="even-semicolon-now-up"),
@@ -1144,3 +1145,164 @@ def test_the_runner_and_the_command_line_agree(tmp_path: Path, case, section, ap
 
     assert result.passed is expected
     assert (main(["check", "--summary", str(saved), "--step", "final"]) == 0) is expected
+
+
+# --- Validator v5: the current-use veto (Codex validator v5 batch review, M5) --------------------------------
+#
+# A present or future instruction or requirement to use the superseded rule fails whatever marker, record
+# or replacement stands beside it. CODEX_M5 holds the review's seven reproductions verbatim (each passed at
+# 87cd913); STALE_CURRENT holds independent variations of the same grammar. Each line is appended to the
+# work section of FINAL, which already states the current rule and the supersession.
+#
+# Known residuals of this bounded grammar, recorded before any paid run: a relative or idiomatic current use
+# still passes ("ROUND_HALF_UP is what calc.py uses", "new totals take ROUND_HALF_UP", "round half up with
+# ROUND_HALF_UP", "there is no change to ROUND_HALF_UP"), and present-tense narration of history fails
+# ("In seq 1, ROUND_HALF_UP is used.").
+CODEX_M5 = [
+    pytest.param("ROUND_HALF_UP was superseded; keep using ROUND_HALF_UP now.", id="keep-using"),
+    pytest.param("ROUND_HALF_UP was superseded; round with ROUND_HALF_UP from now on.", id="round-with"),
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP must be used for new calculations.", id="passive-must-be-used"),
+    pytest.param("ROUND_HALF_UP was superseded; continue with ROUND_HALF_UP.", id="continue-with"),
+    pytest.param("Use the original ROUND_HALF_UP for the next implementation.", id="use-original"),
+    pytest.param("ROUND_HALF_UP was superseded; use the rounding mode ROUND_HALF_UP now.", id="rounding-mode"),
+    pytest.param("The superseded ROUND_HALF_UP is the rule to use now.", id="the-rule-to-use"),
+]
+STALE_CURRENT = [
+    # Continuation verbs and their complements.
+    pytest.param("ROUND_HALF_UP was replaced; keep applying ROUND_HALF_UP to totals.", id="keep-applying"),
+    pytest.param("The old rule was dropped, but continue using the previous ROUND_HALF_UP.", id="continue-using-previous"),
+    pytest.param("ROUND_HALF_UP was superseded, yet calc.py continues to use ROUND_HALF_UP.", id="continues-to-use"),
+    pytest.param("Previously ROUND_HALF_UP; stick with ROUND_HALF_UP for totals.", id="stick-with"),
+    pytest.param("ROUND_HALF_UP was overridden; still apply decimal.ROUND_HALF_UP.", id="still-apply-qualified-name"),
+    pytest.param("Keep rounding with the earlier ROUND_HALF_UP.", id="keep-rounding-with"),
+    # Rounding verbs, with an object or a precision before the rule.
+    pytest.param("ROUND_HALF_UP was superseded; round amounts using ROUND_HALF_UP.", id="round-amounts-using"),
+    pytest.param("ROUND_HALF_UP was superseded; calc.py rounds totals with ROUND_HALF_UP.", id="rounds-totals-with"),
+    pytest.param("Round to 2 places with the original ROUND_HALF_UP.", id="round-to-places-with"),
+    pytest.param("ROUND_HALF_UP was superseded; quantize results to 0.01 with ROUND_HALF_UP.", id="quantize-to-cents-with"),
+    pytest.param("ROUND_HALF_UP was superseded; keep quantizing with ROUND_HALF_UP.", id="keep-quantizing-with"),
+    pytest.param("ROUND_HALF_UP was superseded; totals are rounded with ROUND_HALF_UP.", id="passive-rounded-with"),
+    pytest.param("ROUND_HALF_UP was superseded; rounding is done using ROUND_HALF_UP.", id="rounding-is-done-using"),
+    # Other verbs that select the rule.
+    pytest.param("ROUND_HALF_UP was superseded; use rounding=ROUND_HALF_UP in quantize.", id="keyword-argument"),
+    pytest.param("ROUND_HALF_UP was superseded; switch to ROUND_HALF_UP.", id="switch-to"),
+    pytest.param("ROUND_HALF_UP was superseded; set the rounding mode to ROUND_HALF_UP.", id="set-mode-to"),
+    pytest.param("ROUND_HALF_UP was superseded; calc.py defaults to ROUND_HALF_UP.", id="defaults-to"),
+    pytest.param("ROUND_HALF_UP was superseded; implement ROUND_HALF_UP for totals.", id="implement"),
+    pytest.param("ROUND_HALF_UP was superseded; stick to ROUND_HALF_UP.", id="stick-to"),
+    pytest.param("ROUND_HALF_UP was superseded; rely on ROUND_HALF_UP for totals.", id="rely-on"),
+    pytest.param("ROUND_HALF_UP was superseded; leave ROUND_HALF_UP in place.", id="leave-in-place"),
+    # An instruction or requirement not to withdraw the rule keeps it, and so does a denied withdrawal.
+    pytest.param("ROUND_HALF_UP was superseded; do not replace ROUND_HALF_UP.", id="do-not-replace"),
+    pytest.param("ROUND_HALF_UP was superseded; never drop the original ROUND_HALF_UP.", id="never-drop"),
+    pytest.param("ROUND_HALF_UP was superseded; don't stop using ROUND_HALF_UP.", id="dont-stop-using"),
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP must not be replaced.", id="must-not-be-replaced"),
+    pytest.param("The old ROUND_HALF_UP was not superseded.", id="old-not-superseded"),
+    # Passive and modal requirements, and other current predicates of the rule.
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP should be applied to every total.", id="should-be-applied"),
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP is still used.", id="is-still-used"),
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP is used for totals.", id="is-used"),
+    pytest.param("The original ROUND_HALF_UP rule must still be applied.", id="rule-must-still-be-applied"),
+    pytest.param("ROUND_HALF_UP was replaced; ROUND_HALF_UP will be used from now on.", id="will-be-used"),
+    pytest.param("ROUND_HALF_UP was dropped; ROUND_HALF_UP needs to be applied.", id="needs-to-be-applied"),
+    pytest.param("Previously ROUND_HALF_UP; ROUND_HALF_UP still applies.", id="still-applies"),
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP remains the default.", id="remains-the-default"),
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP is still the rounding mode.", id="is-still-the-mode"),
+    pytest.param("The earlier ROUND_HALF_UP is the current rule.", id="is-the-current-rule"),
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP is still being used.", id="still-being-used"),
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP can still be used.", id="can-still-be-used"),
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP is preferred for totals.", id="is-preferred"),
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP remains unchanged.", id="remains-unchanged"),
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP remains.", id="bare-remains"),
+    pytest.param("ROUND_HALF_UP was superseded; rounding must be ROUND_HALF_UP.", id="rounding-must-be"),
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP will still apply.", id="will-still-apply"),
+    pytest.param("ROUND_HALF_UP was superseded; ROUND_HALF_UP is still the one to use.", id="still-the-one"),
+    # The rule as the rounding mode a clause states.
+    pytest.param("ROUND_HALF_UP was superseded; the rounding mode is still ROUND_HALF_UP.", id="mode-is-still"),
+    pytest.param("ROUND_HALF_UP was superseded, but rounding remains ROUND_HALF_UP.", id="rounding-remains"),
+    # Noun phrases naming the old rule.
+    pytest.param("ROUND_HALF_UP was superseded; apply the previous rounding mode ROUND_HALF_UP.", id="apply-previous-mode"),
+    pytest.param("Use the old rounding rule (ROUND_HALF_UP) for new totals.", id="use-old-rule-parenthesized"),
+    pytest.param("ROUND_HALF_UP was superseded; reinstate the superseded ROUND_HALF_UP.", id="reinstate-superseded"),
+    # A negation or marker in another clause never governs the instruction.
+    pytest.param("Do not use floats; keep using ROUND_HALF_UP.", id="negation-in-another-clause"),
+    pytest.param("Never use eval, and continue with ROUND_HALF_UP.", id="negation-across-comma-and"),
+    pytest.param("The old flag was removed and ROUND_HALF_UP must be used.", id="marker-in-another-clause"),
+    pytest.param("No network calls are made, so round with ROUND_HALF_UP.", id="negation-across-comma"),
+]
+# Paired safe controls: a negation that governs the instruction itself, a predicate it is part of, and
+# past or contrastive mentions. Each keeps passing beside the current rule and the supersession.
+PROTECTIVE = [
+    pytest.param("Do not keep using the original ROUND_HALF_UP.", id="do-not-keep-using"),
+    pytest.param("Never round with the old ROUND_HALF_UP.", id="never-round-with"),
+    pytest.param("The old ROUND_HALF_UP must not be used.", id="must-not-be-used"),
+    pytest.param("Do not continue with ROUND_HALF_UP; it was superseded.", id="do-not-continue-with"),
+    pytest.param("ROUND_HALF_UP should no longer be applied.", id="should-no-longer-be-applied"),
+    pytest.param("ROUND_HALF_UP no longer applies.", id="no-longer-applies"),
+    pytest.param("ROUND_HALF_UP is no longer the rounding mode.", id="no-longer-the-mode"),
+    pytest.param("The rounding mode is no longer ROUND_HALF_UP.", id="mode-no-longer"),
+    pytest.param("Stop using the original ROUND_HALF_UP.", id="stop-using"),
+    pytest.param("Avoid rounding with the previous ROUND_HALF_UP.", id="avoid-rounding-with"),
+    pytest.param("Never reinstate the superseded ROUND_HALF_UP.", id="never-reinstate"),
+    pytest.param("Rounding with ROUND_HALF_UP was replaced by ROUND_HALF_EVEN.", id="gerund-subject-replaced"),
+    pytest.param("ROUND_HALF_UP is the old rule; ROUND_HALF_EVEN is the current rule.", id="old-rule-then-current-rule"),
+    pytest.param("The old rounding mode is ROUND_HALF_UP; the current one is ROUND_HALF_EVEN.", id="old-mode-is"),
+    pytest.param("ROUND_HALF_EVEN instead of ROUND_HALF_UP is used now.", id="instead-of-then-used"),
+    pytest.param("ROUND_HALF_EVEN rather than the old ROUND_HALF_UP applies to totals.", id="rather-than-then-applies"),
+    pytest.param("ROUND_HALF_UP must stay superseded.", id="must-stay-superseded"),
+    pytest.param("ROUND_HALF_UP remains superseded.", id="remains-superseded"),
+    pytest.param("Totals are no longer rounded with ROUND_HALF_UP.", id="no-longer-rounded-with"),
+    pytest.param("Amounts must not be quantized with the old ROUND_HALF_UP.", id="must-not-be-quantized"),
+    pytest.param("ROUND_HALF_UP can no longer be used.", id="can-no-longer-be-used"),
+    pytest.param("Do not switch to ROUND_HALF_UP; it was replaced.", id="do-not-switch-to"),
+    pytest.param("Rounding switched from ROUND_HALF_UP to ROUND_HALF_EVEN.", id="switched-from"),
+    pytest.param("ROUND_HALF_EVEN replaces ROUND_HALF_UP, which is no longer used.", id="which-is-no-longer-used"),
+    pytest.param("Replace the old ROUND_HALF_UP with ROUND_HALF_EVEN.", id="replace-imperative"),
+    pytest.param("Do not replace ROUND_HALF_EVEN with the old ROUND_HALF_UP.", id="do-not-replace-the-new-rule"),
+    pytest.param("The original ROUND_HALF_UP was not replaced until seq 7.", id="not-replaced-until"),
+    pytest.param("ROUND_HALF_UP is the old one.", id="the-old-one"),
+]
+# The sealed Stage B v2 final summary's mentions of the old rule (stage-b-qualification-v2/run-1,
+# responses.jsonl), copied as test data: a careful real summary, its dated source record included, keeps
+# passing, and its past payload ("using Decimal and ROUND_HALF_UP") is not read as a present directive.
+SEALED_V2 = [
+    ("constraints", "- Round every result to 2 places with ROUND_HALF_EVEN. This is the current rounding rule. Seq 7 superseded the earlier ROUND_HALF_UP rule (seq 1 and the original constraint), and the user said the change applies from the start."),
+    ("decisions", "- Seq 1: The plan was to define calculate(a, op, b) over Decimal and quantize results to 0.01. The rounding mode in that plan was ROUND_HALF_UP, which seq 7 later superseded with ROUND_HALF_EVEN."),
+    ("decisions", "- Seq 7: The user corrected the rounding mode to ROUND_HALF_EVEN. The plan was to quantize with ROUND_HALF_EVEN instead of ROUND_HALF_UP in calc.py."),
+    ("work", "- Seq 1: The source records that calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP. No test run is recorded."),
+    ("chronology", "7. Seq 7: The user corrected the rounding to ROUND_HALF_EVEN, replacing ROUND_HALF_UP. The plan was written and the change to calc.py was recorded with the two expected results."),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("line", CODEX_M5 + STALE_CURRENT)
+def test_a_current_use_of_the_superseded_rule_fails_beside_any_marker(line: str) -> None:
+    rep = report(with_case("work", line))
+    assert failing(rep) == {"half-up-superseded"}, rep.to_dict()
+    assert next(c.detail for c in rep.checks if c.id == "half-up-superseded").startswith("asserted as current")
+
+
+@pytest.mark.parametrize("line", PROTECTIVE)
+def test_a_protective_or_past_mention_beside_the_current_rule_passes(line: str) -> None:
+    rep = report(with_case("work", line))
+    assert rep.passed, rep.to_dict()
+
+
+def test_the_sealed_v2_summarys_mentions_of_the_old_rule_still_pass() -> None:
+    text = FINAL
+    for section, line in SEALED_V2:
+        text = with_case(section, line, base=text)
+    rep = report(text)
+    assert rep.passed, rep.to_dict()
+
+
+@pytest.mark.parametrize("line", CODEX_M5)
+def test_the_runner_and_the_command_line_refuse_each_reproduction(tmp_path: Path, line: str) -> None:
+    text = with_case("work", line)
+    saved = tmp_path / "final.txt"
+    saved.write_text(text, encoding="utf-8")
+
+    result = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(STEP1, text), dollar_cap=Decimal("1"), recorded_on="2026-10-09")
+
+    assert (result.passed, result.receipt) == (False, None)
+    assert result.step1.passed and result.final is not None and failing(result.final) == {"half-up-superseded"}
+    assert main(["check", "--summary", str(saved), "--step", "final"]) != 0
