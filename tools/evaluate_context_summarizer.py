@@ -41,6 +41,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from importlib import resources
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from context_engine import MaintenanceRequest, OrdinaryTurn
@@ -48,6 +49,7 @@ from context_engine.engine import maintenance_input
 from context_engine.summary import (
     PROMPT_DIGEST,
     PROMPT_VERSION,
+    SECTIONS,
     SUMMARY_FORMAT,
     VALIDATOR_VERSION,
     SummaryFormatError,
@@ -120,6 +122,71 @@ class Fixture:
     step1_facts: tuple[Mapping[str, Any], ...]
     final_facts: tuple[Mapping[str, Any], ...]
     rules: FactRules
+    history: SourceHistory
+
+
+# Validator v5 (Codex historical-checker review, 2026-10-09). An unmarked mention of a superseded rule
+# is excused only as a dated record of a creation event the fixture's own source records as completed
+# before its correction, written in the Work and evidence or Source chronology section as
+# "Seq N: [The source records that] Created <artifact> <payload>" or "... <artifact> was created
+# <payload>", matching the source event exactly. A limited lexical contract, not a paraphrase reader.
+_HISTORY_SECTIONS = frozenset({"Work and evidence", "Source chronology"})
+_DATED = re.compile(r"(?:[-*]\s+)?seq\s+(\d+):\s+(?:the source records that\s+)?(.+)")
+_ACTIVE_CREATION = re.compile(r"created\s+(\S+)\s+(.+)")
+_PASSIVE_CREATION = re.compile(r"(\S+)\s+was created\s+(.+)")
+# An affirmative current use of a superseded rule (an instruction, a requirement or a present use) fails
+# whatever marker, record or replacement stands beside it. A local negation governs it as it governs
+# every other claim: "do not use ROUND_HALF_UP" is not a current use.
+_CURRENT_USE = (
+    r"\b(?:use|uses|apply|applies|keep|keeps)\s+(?:the\s+)?{rule}\b",
+    r"\b{rule}\s+(?:is|remains|stays)\s+(?:(?:still|now|also)\s+)?(?:required|mandatory|current|in (?:effect|use|force))\b",
+    r"\b(?:still|now)\s+(?:uses?|using|requires?|applies|applying)\s+(?:the\s+)?{rule}\b",
+)
+
+
+def _normalized(text: str) -> str:
+    """Lower-cased, whitespace collapsed, one terminal period dropped."""
+    collapsed = " ".join(text.lower().split())
+    return collapsed.removesuffix(".")
+
+
+def _created(event: str, *, passive: bool) -> tuple[str, str] | None:
+    """The (artifact, payload) of a normalized creation event, active or (if allowed) passive."""
+    for pattern in (_ACTIVE_CREATION, _PASSIVE_CREATION) if passive else (_ACTIVE_CREATION,):
+        match = pattern.fullmatch(event)
+        if match is not None:
+            return match.group(1), match.group(2)
+    return None
+
+
+@dataclass(frozen=True, slots=True)
+class SourceHistory:
+    """The source events validator v5 may accept as history: every summarized turn before the correction
+    whose outcome is completed, whose effect is complete and whose completion is a creation event,
+    as (artifact, payload) by sequence. Derived from the fixture, never from a summary; missing or
+    other outcome or effect evidence contributes nothing."""
+
+    correction_seq: int
+    creations: Mapping[int, tuple[str, str]]
+
+    def excuses(self, sentence: str) -> bool:
+        match = _DATED.fullmatch(_normalized(sentence))
+        if match is None:
+            return False
+        seq = int(match.group(1))
+        recorded = self.creations.get(seq)
+        return seq < self.correction_seq and recorded is not None and _created(match.group(2), passive=True) == recorded
+
+
+def _source_history(raw_turns: Sequence[Mapping[str, Any]], summarized: set[int], correction_seq: int) -> SourceHistory:
+    creations = {}
+    for turn in raw_turns:
+        seq = turn["seq"]
+        if seq in summarized and seq < correction_seq and turn.get("outcome") == "completed" and turn.get("effect_state") == "complete":
+            event = _created(_normalized(turn["completion_text"]), passive=False)
+            if event is not None:
+                creations[seq] = event
+    return SourceHistory(correction_seq=correction_seq, creations=MappingProxyType(creations))
 
 
 def fixture_digest(raw: Mapping[str, Any]) -> str:
@@ -163,6 +230,7 @@ def load_fixture(path: Path = FIXTURE_PATH) -> Fixture:
         step1_facts=step1_facts,
         final_facts=final_facts,
         rules=rules,
+        history=_source_history(raw["turns"], set(step1 + step2), correction_turn),
     )
 
 
@@ -207,10 +275,19 @@ def _asserted(pattern: str, span: str, governors: Sequence[str]) -> list[str]:
     return found
 
 
-def evaluate_summary(text: str | None, finish_status: str | None, facts: Sequence[Mapping[str, Any]], rules: FactRules) -> FactReport:
+def evaluate_summary(
+    text: str | None,
+    finish_status: str | None,
+    facts: Sequence[Mapping[str, Any]],
+    rules: FactRules,
+    *,
+    history: SourceHistory | None = None,
+) -> FactReport:
+    """The fact report. `history` is the fixture's trusted source history; without it no mention of a
+    superseded rule is excused as a historical record."""
     checks = [FactCheck("finished", finish_status == "stop", f"finish status {finish_status!r}")]
     try:
-        parse_summary(text or "")
+        sections = parse_summary(text or "")
     except SummaryFormatError as exc:
         return FactReport(tuple([*checks, FactCheck("format", False, str(exc))]))
     checks.append(FactCheck("format", True, SUMMARY_FORMAT))
@@ -238,18 +315,40 @@ def evaluate_summary(text: str | None, finish_status: str | None, facts: Sequenc
             checks.append(FactCheck(fact["id"], bool(stated) and not denied, detail))
         elif "superseded" in fact:
             rule = fact["superseded"]
-            mentions = [sentence for sentence in sentences if rule in sentence]
+            # Each sentence that mentions the rule, with its section.
+            mentions = [
+                (name, sentence)
+                for name, body in zip(SECTIONS, sections.bodies, strict=True)
+                for sentence in _SENTENCE.split(body.lower())
+                if rule in sentence
+            ]
+            current = [pattern.format(rule=re.escape(rule)) for pattern in _CURRENT_USE]
+            asserted = [sentence for _, sentence in mentions if any(_asserted(pattern, sentence, negation) for pattern in current)]
             # Markers ("previously", "anymore") are never reversed; a verb is reversed only by a
             # negation right before it ("was not superseded"), not by one elsewhere ("is not used
             # (replaced in turn 7)").
-            stale = [
+            marked = [
                 sentence
-                for sentence in mentions
-                if not any(_asserted(marker, sentence, ()) for marker in rules.markers)
-                and not any(_asserted(verb, sentence, (rules.verb_negation,)) for verb in rules.verbs)
+                for _, sentence in mentions
+                if any(_asserted(marker, sentence, ()) for marker in rules.markers)
+                or any(_asserted(verb, sentence, (rules.verb_negation,)) for verb in rules.verbs)
             ]
-            passed = bool(mentions) and not stale
-            detail = "stated as superseded" if passed else ("not mentioned" if not mentions else f"stated as current: {stale[0]!r}")
+            unmarked = [
+                sentence
+                for name, sentence in mentions
+                if sentence not in marked and not (history is not None and name in _HISTORY_SECTIONS and history.excuses(sentence))
+            ]
+            if not mentions:
+                passed, detail = False, "not mentioned"
+            elif asserted:
+                passed, detail = False, f"asserted as current: {asserted[0]!r}"
+            elif unmarked:
+                passed, detail = False, f"unmarked mention: {unmarked[0]!r}"
+            elif not marked:
+                # A historical record is excused; it never states the supersession itself.
+                passed, detail = False, "no mention states it as superseded"
+            else:
+                passed, detail = True, "stated as superseded"
             checks.append(FactCheck(fact["id"], passed, detail))
         else:
             raise ValueError(f"unknown fact kind: {fact}")
@@ -415,7 +514,7 @@ def run_qualification(
         )
 
     first = step(maintenance_input(None, [turns[seq] for seq in fixture.step1]), fixture.step1)
-    step1 = evaluate_summary(first.summary_text, first.finish_status, fixture.step1_facts, fixture.rules)
+    step1 = evaluate_summary(first.summary_text, first.finish_status, fixture.step1_facts, fixture.rules, history=fixture.history)
     final, unrun, budget, inadmissible = None, None, None, None
     if step1.passed:
         carried = len((first.summary_text or "").encode("utf-8"))
@@ -427,7 +526,7 @@ def run_qualification(
             unrun = budget = f"step 2 UNRUN: {refused}"
         else:
             second = step(step2_input, fixture.step1 + fixture.step2)
-            final = evaluate_summary(second.summary_text, second.finish_status, fixture.final_facts, fixture.rules)
+            final = evaluate_summary(second.summary_text, second.finish_status, fixture.final_facts, fixture.rules, history=fixture.history)
             # The exact sanitized text the runtime would store, measured before any receipt.
             stored = len((second.summary_text or "").encode("utf-8"))
             if stored > SUMMARY_MAX_BYTES:
@@ -837,7 +936,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(paid_envelope(snapshot, fixture), indent=2))
         return 0
     facts = fixture.step1_facts if args.step == "step1" else fixture.final_facts
-    report = evaluate_summary(args.summary.read_text(encoding="utf-8"), args.finish_status, facts, fixture.rules)
+    report = evaluate_summary(args.summary.read_text(encoding="utf-8"), args.finish_status, facts, fixture.rules, history=fixture.history)
     print(json.dumps(report.to_dict(), indent=2))
     return 0 if report.passed else 1
 

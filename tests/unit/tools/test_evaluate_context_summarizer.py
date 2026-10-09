@@ -66,8 +66,9 @@ FINAL = summary(
 
 
 def report(text: str | None, step: str = "final", finish: str | None = "stop"):
+    """The tool's trusted evaluation: the fixture's facts, rules and source history."""
     facts = FIXTURE.step1_facts if step == "step1" else FIXTURE.final_facts
-    return evaluate_summary(text, finish, facts, FIXTURE.rules)
+    return evaluate_summary(text, finish, facts, FIXTURE.rules, history=FIXTURE.history)
 
 
 def failing(rep) -> set[str]:
@@ -968,3 +969,178 @@ def test_a_final_summary_one_byte_over_the_bound_is_not_admissible(wide: bool) -
     assert result.step1.passed and result.final is not None and result.final.passed
     assert result.inadmissible == "the final summary is 8193 UTF-8 bytes, over the 8192-byte runtime bound"
     assert [(r.outcome, r.cost_usd) for r in result.attempts] == [("completed", Decimal("0.0001"))] * 2
+
+
+
+# --- Validator v5: source-grounded history (Codex historical-checker review, 2026-10-09) ---------------------
+#
+# Codex's predeclared corpus (2026-10-09-plan12-historical-checker-corpus.json, SHA-256
+# 8aeedda717d6e63b0b9db37166439a2229ff9d8d61ea78752d2b9e1fb9bee674): each case appends one line to a
+# section of FINAL, optionally removing a sentence. Validator v4 rejected P01-P05 and accepted N10-N11.
+
+SECTION_KEYS = ["task", "constraints", "decisions", "work", "unresolved", "chronology"]
+CREATION = "calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP."
+
+CORPUS = [
+    ("P01-active-dated-source", "work", "Seq 1: Created calc.py with calculate(a, op, b) using Decimal and ROUND_HALF_UP.", None, True),
+    ("P02-passive-dated-source", "work", "Seq 1: calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP.", None, True),
+    ("P03-reported-dated-source", "work", "Seq 1: The source records that calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP.", None, True),
+    ("P04-case-and-space", "work", "- Seq 1: The source records that CALC.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP.", None, True),
+    ("P05-dated-chronology", "chronology", "Seq 1: calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP.", None, True),
+    ("P06-existing-local-marker", "work", "ROUND_HALF_UP was replaced by ROUND_HALF_EVEN.", None, True),
+    ("N01-undated-past", "work", "calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP.", None, False),
+    ("N02-unknown-sequence", "work", "Seq 0: calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP.", None, False),
+    ("N03-post-correction-sequence", "work", "Seq 7: calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP.", None, False),
+    ("N04-wrong-source-sequence", "work", "Seq 3: calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP.", None, False),
+    ("N05-invented-artifact", "work", "Seq 1: other.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP.", None, False),
+    ("N06-dated-current-claim", "work", "Seq 1: calc.py uses ROUND_HALF_UP now.", None, False),
+    ("N07-current-instruction", "work", "Use ROUND_HALF_UP for the next implementation.", None, False),
+    ("N08-history-then-stale-instruction", "work", "Seq 1: calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP. Use ROUND_HALF_UP now.", None, False),
+    ("N09-history-with-compound-stale", "work", "Seq 1: calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP and must still use ROUND_HALF_UP.", None, False),
+    ("N10-marker-cannot-excuse-current-clause", "work", "Previously ROUND_HALF_UP was used, but use ROUND_HALF_UP now.", None, False),
+    ("N11-superseded-but-reinstated", "work", "ROUND_HALF_UP was superseded; ROUND_HALF_UP is still required.", None, False),
+    ("N12-history-in-current-constraints", "constraints", "Seq 1: calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP.", None, False),
+    ("N13-negative-reported-event", "work", "Seq 1: The source does not record that calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP.", None, False),
+    ("N14-deletion-claim-beside-history", "work", "Seq 1: calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP. The tests directory was deleted.", None, False),
+    ("N15-approval-claim-beside-history", "work", "Seq 1: calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP. Every plan was approved.", None, False),
+    ("N16-history-without-current-rule", "work", "Seq 1: calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP.", "Rounding is now ROUND_HALF_EVEN to 2 places: 2.345 -> 2.34 and 2.355 -> 2.36.", False),
+    ("N17-history-without-supersession", "work", "Seq 1: calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP.", "ROUND_HALF_UP was superseded by that correction.", False),
+    ("N18-source-marker-does-not-excuse-reversal", "work", "Seq 1: calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP. ROUND_HALF_UP replaces ROUND_HALF_EVEN.", None, False),
+]  # fmt: skip
+
+
+def with_case(section: str, append: str, remove: str | None = None, base: str = FINAL) -> str:
+    """`base` with `append` as a new line at the end of `section`, and `remove` deleted wherever it is."""
+    from context_engine.summary import parse_summary
+
+    bodies = dict(zip(SECTION_KEYS, parse_summary(base).bodies, strict=True))
+    if remove is not None:
+        assert sum(body.count(remove) for body in bodies.values()) == 1, remove
+        bodies = {key: body.replace(remove, "").strip() or "None." for key, body in bodies.items()}
+    bodies[section] = f"{bodies[section]}\n{append}"
+    return summary(**bodies)
+
+
+def test_the_validator_is_v5_and_the_registry_pins_it() -> None:
+    from optimus_model_policy.registry import SUMMARY_VALIDATOR
+
+    assert VALIDATOR_VERSION == SUMMARY_VALIDATOR == "context-summary-validator-v5"
+
+
+@pytest.mark.parametrize(("case", "section", "append", "remove", "expected"), CORPUS, ids=[c[0] for c in CORPUS])
+def test_the_historical_corpus(case: str, section: str, append: str, remove: str | None, expected: bool) -> None:
+    rep = report(with_case(section, append, remove))
+    assert rep.passed is expected, rep.to_dict()
+
+
+@pytest.mark.parametrize("case", ["N10-marker-cannot-excuse-current-clause", "N11-superseded-but-reinstated"])
+def test_a_current_use_of_the_old_rule_cannot_borrow_another_clauses_marker(case: str) -> None:
+    """Validator v4 accepted both (a sentence-wide marker covered the other clause)."""
+    _, section, append, remove, _ = next(c for c in CORPUS if c[0] == case)
+    rep = report(with_case(section, append, remove))
+    assert failing(rep) == {"half-up-superseded"}
+    assert "asserted as current" in next(c.detail for c in rep.checks if c.id == "half-up-superseded")
+
+
+def test_without_the_source_history_no_historical_record_is_excused() -> None:
+    for case, section, append, remove, _expected in CORPUS[:5]:
+        text = with_case(section, append, remove)
+        bare = evaluate_summary(text, "stop", FIXTURE.final_facts, FIXTURE.rules)
+        assert failing(bare) == {"half-up-superseded"}, case
+        assert report(text).passed, case
+
+
+def test_history_alone_never_states_the_supersession() -> None:
+    """The exception excuses an accurate record; it cannot supply the required supersession statement."""
+    rep = report(with_case("work", "Seq 1: " + CREATION, "ROUND_HALF_UP was superseded by that correction."))
+    assert failing(rep) == {"half-up-superseded"}
+    assert next(c.detail for c in rep.checks if c.id == "half-up-superseded") == "no mention states it as superseded"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Seq 1: calc.py got created with calculate(a, op, b) using Decimal and ROUND_HALF_UP.",
+        "Seq 1: calc.py was built with calculate(a, op, b) using Decimal and ROUND_HALF_UP.",
+        "Seq 1: calc.py was created with calculate(a, op, b) using ROUND_HALF_UP.",
+        "Seq 1: calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP, and it still applies.",
+        "In seq 1, calc.py was created with calculate(a, op, b) using Decimal and ROUND_HALF_UP.",
+    ],
+    ids=["unknown-verb", "other-verb", "dropped-clause", "appended-clause", "unsupported-prefix"],
+)
+def test_an_unsupported_or_altered_record_stays_unexcused(line: str) -> None:
+    assert failing(report(with_case("work", line))) == {"half-up-superseded"}
+
+
+def _variant(tmp_path: Path, name: str, change) -> object:
+    raw = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+    change(raw)
+    path = tmp_path / f"{name}.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    return load_fixture(path)
+
+
+def _evaluate(fixture, line: str):
+    return evaluate_summary(with_case("work", line), "stop", fixture.final_facts, fixture.rules, history=fixture.history)
+
+
+def test_the_history_is_derived_from_the_supplied_source_not_a_fixed_sentence(tmp_path: Path) -> None:
+    """Another artifact and payload at seq 1: only that source's own record is excused."""
+
+    def money(raw) -> None:
+        raw["turns"][0]["completion_text"] = "Created money.py with total(x) using Decimal and ROUND_HALF_UP."
+
+    fixture = _variant(tmp_path, "money", money)
+
+    assert "half-up-superseded" not in failing(_evaluate(fixture, "Seq 1: money.py was created with total(x) using Decimal and ROUND_HALF_UP."))
+    assert "half-up-superseded" in failing(_evaluate(fixture, "Seq 1: " + CREATION))
+
+
+def test_only_a_record_before_the_source_correction_is_excused(tmp_path: Path) -> None:
+    line = "Seq 6: README.md was created with an Installation section using ROUND_HALF_UP."
+
+    def creation_at_6(raw) -> None:
+        raw["turns"][5]["completion_text"] = "Created README.md with an Installation section using ROUND_HALF_UP."
+
+    def correction_at_6(raw) -> None:
+        creation_at_6(raw)
+        raw["evaluation"]["correction_turn"] = 6
+
+    assert "half-up-superseded" not in failing(_evaluate(_variant(tmp_path, "before", creation_at_6), line))
+    assert "half-up-superseded" in failing(_evaluate(_variant(tmp_path, "at", correction_at_6), line))
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("outcome", "rejected"), ("outcome", "unknown"), ("outcome", None), ("effect_state", "none"), ("effect_state", None)],
+    ids=["rejected", "unknown-outcome", "missing-outcome", "proposed-only", "missing-effect"],
+)
+def test_only_completed_source_work_can_be_historical(tmp_path: Path, field: str, value) -> None:
+    def change(raw) -> None:
+        if value is None:
+            del raw["turns"][0][field]
+        else:
+            raw["turns"][0][field] = value
+
+    fixture = _variant(tmp_path, "outcome", change)
+
+    assert fixture.history.creations == {}
+    assert "half-up-superseded" in failing(_evaluate(fixture, "Seq 1: " + CREATION))
+
+
+def test_the_fixture_history_holds_only_the_completed_creation_before_the_correction() -> None:
+    assert FIXTURE.history.correction_seq == 7
+    assert FIXTURE.history.creations == {1: ("calc.py", "with calculate(a, op, b) using decimal and round_half_up")}
+
+
+@pytest.mark.parametrize(("case", "section", "append", "remove", "expected"), [CORPUS[2], CORPUS[9], CORPUS[15]], ids=["P03", "N04", "N10"])
+def test_the_runner_and_the_command_line_agree(tmp_path: Path, case, section, append, remove, expected) -> None:
+    """Both receive the same trusted fixture history: there is no weaker command-line route."""
+    text = with_case(section, append, remove)
+    saved = tmp_path / "final.txt"
+    saved.write_text(text, encoding="utf-8")
+
+    result = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(STEP1, text), dollar_cap=Decimal("1"), recorded_on="2026-10-09")
+
+    assert result.passed is expected
+    assert (main(["check", "--summary", str(saved), "--step", "final"]) == 0) is expected
