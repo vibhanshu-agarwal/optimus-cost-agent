@@ -8,7 +8,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from http.client import HTTPException
-from typing import Any, Literal, Protocol, TypeVar
+from typing import Any, Literal, NamedTuple, Protocol, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.request import (
     HTTPDefaultErrorHandler,
@@ -67,6 +67,9 @@ class ProviderMessageResult:
     router_pipeline: tuple[str, ...] | None = None
     """The ``type`` of every router pipeline stage that materially changed the request or response
     (compression, guardrails, ...); empty when none ran, ``None`` without router metadata."""
+    router_metadata_error: str | None = None
+    """Why the router metadata could not be read (malformed, or more than one selected endpoint). Its
+    routing fields are then all ``None``; the reply's usage and cost do not depend on it."""
 
 
 class UpstreamClient(Protocol):
@@ -418,15 +421,8 @@ def parse_openai_chat_completion(
     billing_units = _required_nonnegative_int(billing_units_value, "provider billing units")
     cost_usd = _provider_cost(usage.get("cost"))
 
-    metadata = body.get("openrouter_metadata")
-    if metadata is not None and not isinstance(metadata, dict):
-        raise RuntimeError("upstream response has malformed router metadata")
-    selected = _selected_endpoint(metadata)
-    resolved_provider = _optional_string(selected, "provider", "router metadata")
-    metadata_model = _optional_string(selected, "model", "router metadata")
-    router_attempt = _optional_nonnegative_int(metadata, "attempt", "router metadata attempt")
-    router_pipeline = _router_pipeline(metadata)
-    resolved_model = _optional_string(body, "model", "model") or metadata_model
+    router = _router_evidence(body.get("openrouter_metadata"))
+    resolved_model = _optional_string(body, "model", "model") or router.model
     model_version = _optional_string(body, "model_version", "model version")
 
     prompt_details = usage.get("prompt_tokens_details")
@@ -453,7 +449,7 @@ def parse_openai_chat_completion(
         billing_units=billing_units,
         cost_usd=cost_usd,
         provider="openrouter",
-        resolved_provider=resolved_provider,
+        resolved_provider=router.provider,
         requested_model=requested_model,
         resolved_model=resolved_model,
         model_version=model_version,
@@ -462,9 +458,38 @@ def parse_openai_chat_completion(
         reasoning_tokens=reasoning_tokens,
         cache_age_seconds=cache_age_seconds,
         finish_reason=finish_reason,
-        router_attempt=router_attempt,
-        router_pipeline=router_pipeline,
+        router_attempt=router.attempt,
+        router_pipeline=router.pipeline,
+        router_metadata_error=router.error,
     )
+
+
+class _RouterEvidence(NamedTuple):
+    provider: str | None = None
+    model: str | None = None
+    attempt: int | None = None
+    pipeline: tuple[str, ...] | None = None
+    error: str | None = None
+
+
+def _router_evidence(metadata: object) -> _RouterEvidence:
+    """What the router metadata says about routing, kept apart from billing (Codex Haiku Stage A
+    review M1): metadata that cannot be read leaves every routing field unknown and says why, so a
+    route that relies on it can refuse the reply, and the reply's valid usage is never discarded."""
+    if metadata is None:
+        return _RouterEvidence()
+    try:
+        if not isinstance(metadata, dict):
+            raise RuntimeError("upstream response has malformed router metadata")
+        selected = _selected_endpoint(metadata)
+        return _RouterEvidence(
+            provider=_optional_string(selected, "provider", "router metadata"),
+            model=_optional_string(selected, "model", "router metadata"),
+            attempt=_optional_nonnegative_int(metadata, "attempt", "router metadata attempt"),
+            pipeline=_router_pipeline(metadata),
+        )
+    except RuntimeError as exc:
+        return _RouterEvidence(error=str(exc))
 
 
 def _selected_endpoint(metadata: dict[str, Any] | None) -> dict[str, Any] | None:

@@ -14,6 +14,7 @@ only that this request fitted. Ordinary verified routes are unaffected.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -21,13 +22,16 @@ import pytest
 
 import optimus_gateway.responses as gateway_responses
 from optimus_gateway.responses import handle_responses_request
-from optimus_gateway.upstream_client import ProviderMessageResult
+from optimus_gateway.upstream_client import ProviderMessageResult, UrllibOpenAICompatibleClient
 from optimus_model_policy import test_profiles as profiles
 from tests.unit.optimus_gateway.model_policy_support import (
     AUTH,
+    PROVIDER_KEY,
     RecordingUpstream,
+    Wire,
     binding,
     gateway_config,
+    http_reply,
     model_policy,
     verified_snapshot,
 )
@@ -45,9 +49,23 @@ def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
 class Replying(RecordingUpstream):
     """Completed replies with scripted router evidence and reported prompt tokens."""
 
-    def __init__(self, *, provider: str | None = "Anthropic", attempt: int | None = 1, pipeline: tuple[str, ...] | None = (), input_tokens: int = ESTIMATE) -> None:
+    def __init__(
+        self,
+        *,
+        provider: str | None = "Anthropic",
+        attempt: int | None = 1,
+        pipeline: tuple[str, ...] | None = (),
+        input_tokens: int = ESTIMATE,
+        metadata_error: str | None = None,
+    ) -> None:
         super().__init__()
-        self.evidence = {"resolved_provider": provider, "router_attempt": attempt, "router_pipeline": pipeline, "input_tokens": input_tokens}
+        self.evidence = {
+            "resolved_provider": provider,
+            "router_attempt": attempt,
+            "router_pipeline": pipeline,
+            "input_tokens": input_tokens,
+            "router_metadata_error": metadata_error,
+        }
 
     def _result(self, model: str) -> ProviderMessageResult:
         base = super()._result(model)
@@ -87,6 +105,7 @@ def test_a_reply_that_matches_the_route_assumptions_passes_with_the_provider_fam
         ({"attempt": None}, "EMPIRICAL_ROUTER_METADATA_MISSING"),
         ({"pipeline": ("context_compression",)}, "EMPIRICAL_ROUTER_PIPELINE"),
         ({"pipeline": None}, "EMPIRICAL_ROUTER_METADATA_MISSING"),
+        ({"provider": None, "attempt": None, "pipeline": None, "metadata_error": "ambiguous"}, "EMPIRICAL_ROUTER_METADATA_MALFORMED"),
     ],
 )
 def test_a_failed_check_fails_the_billed_call_and_stops_the_route(evidence: dict[str, Any], code: str) -> None:
@@ -180,3 +199,63 @@ def test_a_failure_that_certainly_reached_no_model_does_not_stop_the_route() -> 
     assert (status, body["code"]) == (502, "UPSTREAM_ATTEMPT_NOT_SENT")
     status, body = _post(policy, Replying(), request_id="host-req-later")
     assert status == 200, body
+
+
+# --- Unreadable router metadata, end to end (Codex Haiku Stage A review M1) ----------------------------------
+
+_AMBIGUOUS = {
+    "requested": HAIKU,
+    "strategy": "direct",
+    "attempt": 1,
+    "endpoints": {"total": 2, "available": [{"provider": "Anthropic", "model": HAIKU, "selected": True}, {"provider": "Google", "model": HAIKU, "selected": True}]},
+}
+_STRING_PIPELINE = {**_AMBIGUOUS, "endpoints": {"total": 1, "available": [{"provider": "Anthropic", "model": HAIKU, "selected": True}]}, "pipeline": "context_compression"}
+
+
+def _reply(model: str, metadata: dict[str, Any]) -> bytes:
+    """A billed reply with valid usage (100 input, 20 output, $0.0001) and the given router metadata."""
+    body = {
+        "id": "gen-1",
+        "model": model,
+        "choices": [{"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120, "cost": "0.0001"},
+        "openrouter_metadata": metadata,
+    }
+    return http_reply(200, json.dumps(body).encode())
+
+
+def _real_client() -> UrllibOpenAICompatibleClient:
+    return UrllibOpenAICompatibleClient(api_key=PROVIDER_KEY, base_url="https://openrouter.ai/api/v1", sleep=lambda _s: None)
+
+
+@pytest.mark.parametrize("metadata", [_AMBIGUOUS, _STRING_PIPELINE], ids=["two-selected-endpoints", "string-pipeline"])
+def test_unreadable_router_metadata_keeps_the_billed_usage_and_stops_the_experimental_route(monkeypatch, metadata) -> None:
+    """Through the real client and the Gateway handler: the billed reply fails as a completed attempt
+    with its usage and cost, no provider is guessed, and the route stops."""
+    Wire(reply=_reply(HAIKU, metadata)).install(monkeypatch)
+    policy = _haiku_policy()
+
+    status, body = _post(policy, _real_client())
+
+    assert (status, body["code"], body["retryable"]) == (422, "EMPIRICAL_ROUTER_METADATA_MALFORMED", False)
+    usage = body["gateway_usage"]
+    assert (usage["input_tokens"], usage["output_tokens"], usage["cost_usd"], usage["resolved_provider"]) == (100, 20, "0.0001", None)
+    assert [attempt["outcome"] for attempt in body["route_attempts"]] == ["completed"]
+    assert _stopped_after(policy)
+
+
+@pytest.mark.parametrize("metadata", [_AMBIGUOUS, _STRING_PIPELINE], ids=["two-selected-endpoints", "string-pipeline"])
+def test_an_ordinary_route_keeps_its_accounting_when_router_metadata_is_unreadable(tmp_path: Path, monkeypatch, metadata) -> None:
+    Wire(reply=_reply("cn/alpha", metadata)).install(monkeypatch)
+    snapshot = verified_snapshot(tmp_path)
+
+    status, body = handle_responses_request(
+        authorization_header=AUTH,
+        request_body={"model": "cn/alpha", "input": "hi", "route_binding": binding(snapshot, input_text="hi")},
+        config=gateway_config(model_policy(snapshot)),
+        upstream_client=_real_client(),
+    )
+
+    assert status == 200, body
+    usage = body["gateway_usage"]
+    assert (usage["input_tokens"], usage["output_tokens"], usage["cost_usd"], usage["resolved_provider"]) == (100, 20, "0.0001", None)

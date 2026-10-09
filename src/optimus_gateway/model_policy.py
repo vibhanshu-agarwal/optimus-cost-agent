@@ -210,11 +210,15 @@ def check_experimental_reply(admitted: AdmittedRequest, result: Any) -> None:
     """Check one completed reply against what the experimental route assumed (Codex disposition,
     2026-10-09). The router metadata must name the expected provider (identity, not an exact variant),
     report one attempt and no pipeline stage, and the reported prompt tokens must not exceed the
-    empirical estimate the request was admitted under. A failure is a permanent (422) billed result.
-    A pass shows only that this request fitted."""
+    empirical estimate the request was admitted under. Unreadable router metadata fails too: no
+    provider is guessed. A failure is a permanent (422) billed result. A pass shows only that this
+    request fitted."""
     route = admitted.experimental
     if route is None:
         return
+    unreadable = getattr(result, "router_metadata_error", None)
+    if unreadable is not None:
+        raise ModelPolicyRefusal("EMPIRICAL_ROUTER_METADATA_MALFORMED", unreadable, status=422)
     provider = getattr(result, "resolved_provider", None)
     attempt = getattr(result, "router_attempt", None)
     pipeline = getattr(result, "router_pipeline", None)

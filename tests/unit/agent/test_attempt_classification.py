@@ -123,6 +123,7 @@ def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attemp
         "EMPIRICAL_PROVIDER_MISMATCH",
         "EMPIRICAL_PROVIDER_MISSING",
         "EMPIRICAL_ROUTER_FALLBACK",
+        "EMPIRICAL_ROUTER_METADATA_MALFORMED",
         "EMPIRICAL_ROUTER_METADATA_MISSING",
         "EMPIRICAL_ROUTER_PIPELINE",
         "FIXTURE_POLICY",

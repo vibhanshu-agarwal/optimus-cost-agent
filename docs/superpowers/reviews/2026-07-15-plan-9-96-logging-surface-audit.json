@@ -3809,6 +3809,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.upstream_client:_router_evidence:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.2 Haiku correction batch, Codex Stage A review M1): _router_evidence uses str(exc) only for RuntimeErrors raised by this module's own router-metadata validators (_selected_endpoint, _router_pipeline, _optional_string, _required_nonnegative_int), whose messages are fixed literals naming the defect; no provider text is interpolated. The value is kept in memory as ProviderMessageResult.router_metadata_error, never logged or persisted here; it leaves the Gateway only as the detail of the experimental route's EMPIRICAL_ROUTER_METADATA_MALFORMED refusal, which policy_refusal passes through sanitize_error_message before the HTTP response.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_upstream_client.py::test_malformed_router_metadata_keeps_the_billing_and_reports_the_defect",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "context_engine.contracts:StrategyParameters.digest:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: StrategyParameters.digest canonicalizes the strategy's integer allocations and its prompt/format version strings as a SHA-256 input and returns only the digest; no conversation text, credential or diagnostic content is serialized, persisted or logged.",
@@ -3867,9 +3875,73 @@
     {
       "key": "tools.evaluate_context_summarizer:main:stdout_export",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: main prints only the envelope or the fact report described for its json_serialization surface, for the operator reviewing qualification before any paid call; the tool makes no network call and reads no credential.",
+      "rationale": "Inspection: main prints only the envelope or the fact report described for its json_serialization surface, for the operator reviewing qualification before any paid call. For the paid run command main prints nothing: run_live writes its evidence files through _write_json and _append_json and its refusals to stderr through _refuse.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_evaluate_context_summarizer.py::test_the_command_line_checks_a_saved_summary",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_append_json:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _append_json appends one JSON line, fsynced so billed attempts survive a stopped run: per response to responses.jsonl (text sanitized with the runtime's evidence-redaction policy and the Gateway secret as a known secret, finish status, attempt IDs, outcomes and costs) and per attempt receipt to attempts.jsonl (identifiers, outcome, cost, finish status, provider, model and the Gateway's normalized usage). No raw diagnostic or credential is written.",
+      "sanitizer": "schema-limited result; free-text fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_qualification_run.py::test_persisted_model_text_is_sanitized_with_the_runtime_evidence_policy",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_append_json:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the records described for _append_json:file_open. _append_json appends one JSON line, fsynced so billed attempts survive a stopped run: per response to responses.jsonl (text sanitized with the runtime's evidence-redaction policy and the Gateway secret as a known secret, finish status, attempt IDs, outcomes and costs) and per attempt receipt to attempts.jsonl (identifiers, outcome, cost, finish status, provider, model and the Gateway's normalized usage). No raw diagnostic or credential is written.",
+      "sanitizer": "schema-limited result; free-text fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_qualification_run.py::test_persisted_model_text_is_sanitized_with_the_runtime_evidence_policy",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_append_json:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the records described for _append_json:file_open. _append_json appends one JSON line, fsynced so billed attempts survive a stopped run: per response to responses.jsonl (text sanitized with the runtime's evidence-redaction policy and the Gateway secret as a known secret, finish status, attempt IDs, outcomes and costs) and per attempt receipt to attempts.jsonl (identifiers, outcome, cost, finish status, provider, model and the Gateway's normalized usage). No raw diagnostic or credential is written.",
+      "sanitizer": "schema-limited result; free-text fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_qualification_run.py::test_persisted_model_text_is_sanitized_with_the_runtime_evidence_policy",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_error_text:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Inspection: _error_text renders an exception as its type and message only through the runtime's evidence-redaction sanitizer (ConversationSanitizer, which calls sanitize_for_persistence with EVIDENCE_REDACTION_POLICY; the run passes the Gateway shared secret as a known secret) before run_live persists it in outcome.json or _refuse prints it.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_qualification_run.py::test_persisted_error_text_is_sanitized",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_refuse:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _refuse prints one refusal line to stderr before any request: a fixed reason with the run directory path, registry blocker codes, the reservation and cap, or a credential-resolution error already passed through _error_text; never a credential value.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_qualification_run.py::test_missing_gateway_credentials_are_refused_before_anything_is_sent",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_write_json:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _write_json creates, in exclusive mode (never overwriting), one evidence file of the paid qualification run in its new operator-named run directory: run.json (run identity, profile hash, route, envelope, caps, Gateway URL and operator-stated PIDs, never the credential), outcome.json (status, fact reports over the sanitized summaries, counts, costs, request IDs and any error already passed through _error_text) or receipt-candidate.json (the receipt fields and the observed provider, model and reasoning-token counts). No raw diagnostic or credential is written.",
+      "sanitizer": "schema-limited result; free-text fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_qualification_run.py::test_a_passing_run_records_its_identity_first_and_emits_the_receipt_candidate",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_write_json:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the records described for _write_json:file_open. _write_json creates, in exclusive mode (never overwriting), one evidence file of the paid qualification run in its new operator-named run directory: run.json (run identity, profile hash, route, envelope, caps, Gateway URL and operator-stated PIDs, never the credential), outcome.json (status, fact reports over the sanitized summaries, counts, costs, request IDs and any error already passed through _error_text) or receipt-candidate.json (the receipt fields and the observed provider, model and reasoning-token counts). No raw diagnostic or credential is written.",
+      "sanitizer": "schema-limited result; free-text fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_qualification_run.py::test_a_passing_run_records_its_identity_first_and_emits_the_receipt_candidate",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_write_json:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the trailing newline of the records described for _write_json:file_open. _write_json creates, in exclusive mode (never overwriting), one evidence file of the paid qualification run in its new operator-named run directory: run.json (run identity, profile hash, route, envelope, caps, Gateway URL and operator-stated PIDs, never the credential), outcome.json (status, fact reports over the sanitized summaries, counts, costs, request IDs and any error already passed through _error_text) or receipt-candidate.json (the receipt fields and the observed provider, model and reasoning-token counts). No raw diagnostic or credential is written.",
+      "sanitizer": "schema-limited result; free-text fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_qualification_run.py::test_a_passing_run_records_its_identity_first_and_emits_the_receipt_candidate",
       "evidence_tier": "unit"
     },
     {

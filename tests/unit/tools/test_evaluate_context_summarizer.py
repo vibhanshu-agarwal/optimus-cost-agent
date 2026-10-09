@@ -21,6 +21,7 @@ from optimus.context.maintenance import SummarizerAttempt, SummarizerResponse
 from optimus_model_policy import load_registry
 from optimus_model_policy.registry import SummaryReceipt
 from tools.evaluate_context_summarizer import (
+    CARRIED_SUMMARY_MAX_BYTES,
     FIXTURE_PATH,
     Candidate,
     CapRefused,
@@ -737,6 +738,51 @@ def test_unknown_cost_is_reported_as_unknown() -> None:
     assert result.passed and result.reported_cost_usd is None
 
 
+# --- The carried-summary ceiling (Codex Haiku Stage A review M2) ------------------------------------------
+
+
+def padded(text: str, size: int) -> str:
+    """`text` with neutral filler in its work section, exactly `size` UTF-8 bytes long."""
+    marker = "which were ignored."
+    base = text.replace(marker, marker + " Notes: ")
+    filler = size - len(base.encode("utf-8"))
+    assert filler >= 0
+    return base.replace(marker + " Notes: ", marker + " Notes: " + "a" * filler)
+
+
+def test_the_carry_ceiling_is_a_byte_count_separate_from_the_output_token_cap() -> None:
+    assert (CARRIED_SUMMARY_MAX_BYTES, FIXTURE.max_output_tokens) == (8192, 1200)
+
+
+@pytest.mark.parametrize("size", [2000, 8192], ids=["over-1200-bytes", "at-the-ceiling"])
+def test_a_fact_valid_step_one_summary_up_to_the_ceiling_is_carried_into_step_two(size: int) -> None:
+    """A 1,200-token output cap does not bound the summary's bytes: a valid 2,000-byte summary, and
+    one of exactly 8,192 bytes, are carried whole."""
+    first = padded(STEP1, size)
+    assert report(first, step="step1").passed
+    fake = FakeSummarizer(first, FINAL)
+
+    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"), recorded_on="2026-10-02")
+
+    assert result.passed and result.calls == 2 and result.unrun is None
+    assert first in fake.prompts[1]
+
+
+def test_a_step_one_summary_over_the_ceiling_keeps_its_attempt_and_leaves_step_two_unrun() -> None:
+    """Checked before the second request is built: nothing is truncated, re-summarized or retried."""
+    first = padded(STEP1, CARRIED_SUMMARY_MAX_BYTES + 1)
+    assert report(first, step="step1").passed
+    fake = FakeSummarizer(first, FINAL)
+
+    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"), recorded_on="2026-10-02")
+
+    assert (result.passed, result.calls, result.final, result.receipt) == (False, 1, None, None)
+    assert result.step1.passed and len(fake.prompts) == 1
+    assert result.unrun == "step 2 UNRUN: the step 1 summary is 8193 UTF-8 bytes, over the 8192-byte carry ceiling"
+    assert [(r.attempt_id, r.outcome, r.cost_usd) for r in result.attempts] == [("gw-1", "completed", Decimal("0.0001"))]
+    assert result.reported_cost_usd == Decimal("0.0001")
+
+
 # --- The paid envelope and the command line -------------------------------------------------------------
 
 
@@ -752,7 +798,7 @@ def test_the_envelope_states_every_bound_before_any_call() -> None:
     assert [row["model_id"] for row in envelope] == ["qwen/qwen3.7-flash", "openai/gpt-6-luna"]
     for row in envelope:
         assert (row["requests"], row["max_provider_attempts_per_request"], row["max_output_tokens"]) == (2, 2, 1200)
-        assert Decimal(row["upper_cost_usd"]) > 0
+        assert Decimal(row["reserved_cost_usd"]) > 0
         assert row["prompt_digest"] == PROMPT_DIGEST and row["fixture_digest"] == FIXTURE.digest
         assert row["receipt_fields"] == list(SummaryReceipt.model_fields)
         assert len(row["quantizations"]) == len(row["providers"])
@@ -768,7 +814,7 @@ def test_the_command_line_checks_a_saved_summary(tmp_path: Path, capsys) -> None
     assert main(["check", "--summary", str(bad), "--step", "final"]) == 1
     assert main(["check", "--summary", str(good), "--step", "final", "--finish-status", "length"]) == 1
     assert main(["envelope"]) == 0
-    assert '"upper_cost_usd"' in capsys.readouterr().out
+    assert '"reserved_cost_usd"' in capsys.readouterr().out
 
 
 # --- The Haiku 5.5 experimental profile (operator release and Codex disposition, 2026-10-09) ----------------
@@ -786,6 +832,22 @@ def test_the_bound_adds_the_candidates_framing_allowance() -> None:
     assert request_upper_bound_usd("source", 1200, framed) == per_attempt * MAX_ROUTE_ATTEMPTS
 
 
+def test_the_envelope_reserves_the_carried_summary_at_its_byte_ceiling() -> None:
+    """Step 2's input reservation carries a summary of the full 8,192-byte ceiling, never the output
+    token cap, and every reservation is labelled empirical."""
+    from context_engine.engine import maintenance_input
+    from context_engine.summary import build_summary_prompt
+    from optimus_model_policy import test_profiles as profiles
+
+    [row] = paid_envelope(profiles.compose_test_profile_snapshot("qualification"), FIXTURE)
+    step2 = maintenance_input("a" * CARRIED_SUMMARY_MAX_BYTES, [FIXTURE.turns[s] for s in FIXTURE.step2])
+
+    assert row["carried_summary_max_bytes"] == 8192
+    assert row["input_token_reservations"][1] == len(build_summary_prompt(step2).encode("utf-8")) + 272 == 10_030
+    assert row["reserved_cost_usd"] == "0.0246350"
+    assert row["reservation_basis"].startswith("empirical engineering reservation")
+
+
 def test_the_haiku_envelope_reserves_framing_at_the_higher_price_tier_within_the_released_cap() -> None:
     """The qualification profile's one summarizer: its empirical estimate (bytes plus 16 + 256 framing
     tokens) is labelled as such, its prices are the recorded higher tier ($0.50/$2.50), and the whole
@@ -800,6 +862,6 @@ def test_the_haiku_envelope_reserves_framing_at_the_higher_price_tier_within_the
     assert row["structurally_eligible"] is True and row["blockers"] == []
     assert row["input_estimate"] == "empirical: one token per UTF-8 byte plus 272 framing tokens; not a proven bound"
     step1_bytes = len(build_summary_prompt(maintenance_input(None, [FIXTURE.turns[s] for s in FIXTURE.step1])).encode("utf-8"))
-    assert row["input_token_upper_bounds"][0] == step1_bytes + 272
+    assert row["input_token_reservations"][0] == step1_bytes + 272
     assert (row["input_usd_per_million"], row["output_usd_per_million"]) == ("0.50", "2.50")
-    assert Decimal(row["upper_cost_usd"]) < Decimal("0.05")
+    assert Decimal(row["reserved_cost_usd"]) < Decimal("0.05")

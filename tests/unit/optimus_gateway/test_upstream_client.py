@@ -141,10 +141,6 @@ def test_parse_openai_chat_completion_rejects_absent_provider_cost() -> None:
         (("choices",), [], "choices"),
         (("choices", 0, "message"), None, "message"),
         (("choices", 0, "message", "content"), None, "content"),
-        (("openrouter_metadata", "endpoints", "available", 0, "provider"), 42, "metadata"),
-        (("openrouter_metadata", "endpoints", "available"), "Anthropic", "metadata"),
-        (("openrouter_metadata", "attempt"), "1", "metadata"),
-        (("openrouter_metadata", "pipeline"), {"type": "x"}, "metadata"),
     ],
 )
 def test_parse_openai_chat_completion_rejects_malformed_required_fields(
@@ -158,6 +154,49 @@ def test_parse_openai_chat_completion_rejects_malformed_required_fields(
 
     with pytest.raises(RuntimeError, match=error):
         parse_openai_chat_completion(body, _openrouter_headers(), requested_model="claude-haiku")
+
+
+_SECOND_SELECTED = {"provider": "Google", "model": "anthropic/claude-haiku-4.5", "selected": True}
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("openrouter_metadata",), "Anthropic"),
+        (("openrouter_metadata", "endpoints", "available", 0, "provider"), 42),
+        (("openrouter_metadata", "endpoints", "available"), "Anthropic"),
+        (("openrouter_metadata", "endpoints", "available", 0, "selected"), "yes"),
+        (("openrouter_metadata", "endpoints", "available", 1), _SECOND_SELECTED),
+        (("openrouter_metadata", "attempt"), "1"),
+        (("openrouter_metadata", "pipeline"), {"type": "x"}),
+    ],
+    ids=["not-an-object", "provider", "endpoints", "selection", "ambiguous-selection", "attempt", "pipeline"],
+)
+def test_malformed_router_metadata_keeps_the_billing_and_reports_the_defect(path: tuple[str | int, ...], value: object) -> None:
+    """Routing evidence is not billing (Codex Haiku Stage A review M1): metadata that cannot be read
+    leaves every routing field unknown and says why, never guessing a provider, while the reply's valid
+    usage and cost are kept."""
+    body = _openrouter_body()
+    target: object = body
+    for segment in path[:-1]:
+        target = target[segment]  # type: ignore[index]
+    if isinstance(target, list) and path[-1] == len(target):
+        target.append(value)
+    else:
+        target[path[-1]] = value  # type: ignore[index]
+
+    result = parse_openai_chat_completion(body, _openrouter_headers(), requested_model="claude-haiku")
+
+    assert (result.input_tokens, result.output_tokens, result.cost_usd) == (42, 18, Decimal("0.00042"))
+    assert (result.resolved_provider, result.router_attempt, result.router_pipeline) == (None, None, None)
+    assert result.router_metadata_error and "router metadata" in result.router_metadata_error
+
+
+def test_readable_or_absent_router_metadata_reports_no_defect() -> None:
+    body = _openrouter_body()
+    assert parse_openai_chat_completion(body, _openrouter_headers(), requested_model="m").router_metadata_error is None
+    del body["openrouter_metadata"]
+    assert parse_openai_chat_completion(body, _openrouter_headers(), requested_model="m").router_metadata_error is None
 
 
 def test_parse_openai_chat_completion_accepts_unknown_additive_fields() -> None:
