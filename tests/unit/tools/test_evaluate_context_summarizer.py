@@ -885,7 +885,7 @@ def test_the_envelope_reserves_the_carried_summary_at_its_byte_ceiling() -> None
 def test_the_haiku_envelope_reserves_framing_at_the_higher_price_tier_within_the_released_cap() -> None:
     """The qualification profile's one summarizer: its empirical estimate (bytes plus 16 + 256 framing
     tokens) is labelled as such, its prices are the recorded higher tier ($0.50/$2.50), and the whole
-    two-request, four-attempt envelope fits the operator's $0.05 qualification ceiling."""
+    two-request, four-attempt envelope fits the run's Stage B allowance."""
     from context_engine.engine import maintenance_input
     from context_engine.summary import build_summary_prompt
     from optimus_model_policy import test_profiles as profiles

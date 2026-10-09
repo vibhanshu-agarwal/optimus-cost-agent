@@ -830,11 +830,16 @@ def paid_envelope(snapshot: RegistrySnapshot, fixture: Fixture) -> list[dict[str
 # --- The paid run --------------------------------------------------------------------------------------
 
 LIVE_PROFILE = "qualification"
-# The operator's $0.10 (2026-10-09) is the cumulative Stage B ceiling: run 1 (fixture v1) already spent
-# $0.0006881, so this run may spend the rest (Codex Stage B v2 disposition, qualification 5).
+# The operator's $0.10 (2026-10-09) is the cumulative Stage B ceiling. Both sealed paid runs (fixture v1:
+# $0.0006881, one attempt; fixture v2: $0.0020065, two attempts) already spent $0.0026946 over three physical
+# attempts, so a new run may spend the rest (Codex validator v5 paid re-test proposal, 2026-10-10).
 STAGE_B_CEILING = Decimal("0.10")
-PRIOR_STAGE_B_SPEND = Decimal("0.0006881")
-PRIOR_STAGE_B_RUN = "stage-b-qualification/run-1: fixture v1, FAIL at step 1, one attempt, $0.0006881"
+PRIOR_STAGE_B_SPEND = Decimal("0.0026946")
+PRIOR_STAGE_B_RUN = (
+    "stage-b-qualification/run-1: fixture v1, FAIL at step 1, one attempt, $0.0006881; "
+    "stage-b-qualification-v2/run-1: fixture v2, FAIL at the final step, two attempts, $0.0020065; "
+    "$0.0026946 over three physical attempts"
+)
 LIVE_DOLLAR_CAP = STAGE_B_CEILING - PRIOR_STAGE_B_SPEND
 LIVE_WALL_CLOCK_SECONDS = 30 * 60  # the released 30-minute limit
 LIVE_REQUEST_TIMEOUT_SECONDS = 300.0  # a request starts only if it can time out inside the limit

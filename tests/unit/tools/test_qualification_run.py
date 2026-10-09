@@ -135,9 +135,10 @@ def test_a_passing_run_records_its_identity_first_and_emits_the_receipt_candidat
         "qualification", HAIKU_QUALIFICATION_HASH, HAIKU, ["anthropic"], "low",
     )
     assert (run["host_pid"], run["gateway_pid"], run["gateway_url"]) == (4100, 4200, "http://127.0.0.1:8765")
-    assert (run["dollar_cap_usd"], run["wall_clock_seconds"], run["max_requests"], run["max_provider_attempts"]) == ("0.0993119", 1800, 2, 4)
-    # The released $0.10 is the cumulative Stage B ceiling: run 1 (fixture v1) already spent $0.0006881.
-    assert (run["stage_b_ceiling_usd"], run["prior_stage_b_spend_usd"]) == ("0.10", "0.0006881")
+    assert (run["dollar_cap_usd"], run["wall_clock_seconds"], run["max_requests"], run["max_provider_attempts"]) == ("0.0973054", 1800, 2, 4)
+    # The released $0.10 is the cumulative Stage B ceiling: both sealed runs already spent $0.0026946.
+    assert (run["stage_b_ceiling_usd"], run["prior_stage_b_spend_usd"]) == ("0.10", "0.0026946")
+    assert run["prior_stage_b_run"] == tool.PRIOR_STAGE_B_RUN
     assert run["envelope"]["reserved_cost_usd"] == "0.0945550"
     assert (run["fixture"], run["envelope"]["fixture_digest"], run["envelope"]["max_output_tokens"]) == (
         "calculator-constraints-v2",
@@ -334,7 +335,7 @@ def test_a_first_reply_above_the_grant_keeps_its_charge_and_leaves_step_two_unru
     assert [a["cost_usd"] for a in _lines(out / "attempts.jsonl")] == ["0.11"]
     outcome = _json(out / "outcome.json")
     assert (outcome["status"], outcome["reported_cost_usd"], outcome["step1"]["passed"]) == ("budget", "0.11", True)
-    assert outcome["budget"] == "known spend 0.11 USD exceeds the 0.0993119 USD cap"
+    assert outcome["budget"] == "known spend 0.11 USD exceeds the 0.0973054 USD cap"
     assert outcome["unrun"].startswith("step 2 UNRUN: known spend 0.11 USD plus step 2's reservation")
     assert not (out / "receipt-candidate.json").exists()
 
@@ -361,7 +362,7 @@ def test_a_last_reply_taking_the_total_over_the_grant_keeps_both_results_and_is_
     assert code == 1 and len(upstream.calls) == 2
     assert [a["cost_usd"] for a in _lines(out / "attempts.jsonl")] == ["0.05", "0.05"]
     outcome = _json(out / "outcome.json")
-    assert (outcome["status"], outcome["reported_cost_usd"], outcome["budget"]) == ("budget", "0.10", "known spend 0.10 USD exceeds the 0.0993119 USD cap")
+    assert (outcome["status"], outcome["reported_cost_usd"], outcome["budget"]) == ("budget", "0.10", "known spend 0.10 USD exceeds the 0.0973054 USD cap")
     assert outcome["step1"]["passed"] and outcome["final"]["passed"]
     assert not (out / "receipt-candidate.json").exists()
 
@@ -481,3 +482,60 @@ def test_a_final_summary_with_an_unaccounted_old_rule_claim_writes_no_candidate(
     failed = [(c["id"], c["detail"].split(":")[0]) for c in outcome["final"]["checks"] if not c["passed"]]
     assert failed == [("half-up-superseded", "unsupported mention")]
     assert not (out / "receipt-candidate.json").exists()
+
+
+
+# --- The Stage B ledger after both sealed runs (Codex validator v5 paid re-test proposal, 2026-10-10) -----------
+# The operator's $0.10 is the cumulative Stage B ceiling. Two sealed paid runs spent $0.0006881 (fixture v1, one
+# attempt) and $0.0020065 (fixture v2, two attempts): $0.0026946 over three physical attempts.
+
+
+def test_the_ledger_deducts_both_sealed_runs_and_the_full_reservation_still_fits() -> None:
+    assert tool.PRIOR_STAGE_B_SPEND == Decimal("0.0006881") + Decimal("0.0020065") == Decimal("0.0026946")
+    assert tool.LIVE_DOLLAR_CAP == tool.STAGE_B_CEILING - tool.PRIOR_STAGE_B_SPEND == Decimal("0.0973054")
+    [row] = tool.paid_envelope(profiles.compose_test_profile_snapshot("qualification"), tool.load_fixture())
+    reserved = Decimal(row["reserved_cost_usd"])
+    assert reserved == Decimal("0.0945550") <= tool.LIVE_DOLLAR_CAP
+    assert tool.PRIOR_STAGE_B_SPEND + reserved == Decimal("0.0972496")
+    assert tool.LIVE_DOLLAR_CAP - reserved == Decimal("0.0027504")
+    assert "stage-b-qualification/run-1" in tool.PRIOR_STAGE_B_RUN and "stage-b-qualification-v2/run-1" in tool.PRIOR_STAGE_B_RUN
+    assert "three physical attempts" in tool.PRIOR_STAGE_B_RUN
+
+
+def _step_two_reservation() -> Decimal:
+    """The launcher's own step 2 reservation when step 1 returns STEP1: its candidate, carried text and cap."""
+    from context_engine.engine import maintenance_input
+
+    fixture = tool.load_fixture()
+    candidate = tool._candidate(profiles.compose_test_profile_snapshot("qualification"), HAIKU)
+    step2_input = maintenance_input(STEP1, [fixture.turns[seq] for seq in fixture.step2])
+    return tool.request_upper_bound_usd(step2_input, fixture.max_output_tokens, candidate)
+
+
+@pytest.mark.parametrize(("over", "calls"), [(Decimal("0"), 2), (Decimal("0.0000001"), 1)], ids=["exactly-fits", "one-unit-over"])
+def test_step_two_is_admitted_only_while_its_whole_reservation_fits_the_new_allowance(tmp_path: Path, monkeypatch, over: Decimal, calls: int) -> None:
+    first = tool.LIVE_DOLLAR_CAP - _step_two_reservation() + over
+    out = tmp_path / "run"
+    upstream = SummaryUpstream(STEP1, FINAL, costs=(str(first), "0"))
+
+    _code, _gateway = _run(monkeypatch, out, upstream)
+
+    assert len(upstream.calls) == calls
+    if calls == 1:
+        outcome = _json(out / "outcome.json")
+        assert outcome["unrun"].startswith(f"step 2 UNRUN: known spend {first} USD plus step 2's reservation")
+        assert outcome["unrun"].endswith("exceeds the 0.0973054 USD cap")
+        assert not (out / "receipt-candidate.json").exists()
+
+
+@pytest.mark.parametrize(("last", "status"), [("0.0963054", "pass"), ("0.0963055", "budget")], ids=["total-at-the-allowance", "total-one-unit-over"])
+def test_a_settled_total_over_the_new_allowance_is_never_a_pass(tmp_path: Path, monkeypatch, last: str, status: str) -> None:
+    out = tmp_path / "run"
+    upstream = SummaryUpstream(STEP1, FINAL, costs=("0.001", last))
+
+    code, _gateway = _run(monkeypatch, out, upstream)
+
+    assert len(upstream.calls) == 2
+    outcome = _json(out / "outcome.json")
+    assert (outcome["status"], outcome["reported_cost_usd"]) == (status, str(Decimal("0.001") + Decimal(last)))
+    assert (code, (out / "receipt-candidate.json").exists()) == ((0, True) if status == "pass" else (1, False))
