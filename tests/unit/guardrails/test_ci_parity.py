@@ -81,16 +81,19 @@ def test_the_commit_hook_runs_the_commit_profile_coverage_free_on_every_commit()
 
 
 def test_ci_runs_the_full_default_suite_with_every_product_measured_and_gated() -> None:
-    """CI keeps its check label and the unchanged default full invocation; only the coverage flags widen to every
-    configured product, and the product report then applies the floors. CI never selects a profile."""
+    """CI keeps its check label and runs the one full default selection through the canonical product-coverage gate
+    (Plan 12.2, Test Strategy 8A), which applies the floors to that dataset; the validity layer then checks the same
+    export (Plan 11.30 v5 I2). CI never selects a profile."""
     text = (ROOT / ".github" / "workflows" / "guardrails.yml").read_text(encoding="utf-8")
     steps = yaml.safe_load(text)["jobs"]["clean-environment-recheck"]["steps"]
     step = next(step for step in steps if step.get("name") == "optimus-check: pytest-coverage")
     assert [shlex.split(line) for line in step["run"].strip().splitlines()] == [
-        ["uv", "run", "pytest", "--cov", "--cov-branch", "--cov-fail-under=0", "--cov-report=term-missing",
-         "--cov-report=json:tmp/coverage/full.json", "-v"],
-        ["uv", "run", "python", "-m", "tools.testing.coverage_products", "report", "--coverage-json", "tmp/coverage/full.json"],
+        ["uv", "run", "python", "tools/check_product_coverage.py", "--run-full-suite", "--groups", "tools/product-coverage-groups.json",
+         "--report-json", "${RUNNER_TEMP}/product-coverage/product-coverage-report.json",
+         "--coverage-json", "${RUNNER_TEMP}/product-coverage/coverage.json"],
     ]
+    validity = steps[steps.index(step) + 1]
+    assert validity["name"] == "Validate the product coverage run" and "coverage_products validate" in validity["run"]
     assert "run_profile" not in text and "--profile" not in text
 
 

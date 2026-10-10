@@ -38,7 +38,8 @@ def test_build_agent_message_chunk_notification_matches_acp_v1_shape():
         "sessionId": "sess-1",
         "update": {
             "sessionUpdate": "agent_message_chunk",
-            "content": {"type": "text", "text": "Done."},
+            # Plan 12.2 Task 3: every agent message block ends with a paragraph break.
+            "content": {"type": "text", "text": "Done.\n\n"},
         },
     }
 

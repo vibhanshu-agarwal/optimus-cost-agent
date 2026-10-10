@@ -350,8 +350,13 @@ class AcpStreamServer:
         client_mcp_runtime: Any | None = None,
         conversation_sanitizer_inputs: Any | None = None,
         redis_runtime: Any | None = None,
+        route_policy: Any | None = None,
     ) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
+        # Plan 12.2 closure (release supplement V2): the trusted planning/answer route policy of a
+        # reviewed test composition, passed into every ndjson session adapter. None keeps today's
+        # unbound requests; no production path supplies one (activation hold).
+        self._route_policy = route_policy
         # Plan 9.96, Task 5 Step 2: resolved once by build_configured_server()
         # from the authorized agent environ and threaded down into
         # AcpDuplexAdapter via serve_ndjson — never read from os.environ here.
@@ -372,6 +377,10 @@ class AcpStreamServer:
     @property
     def redis_runtime(self) -> Any | None:
         return self._redis_runtime
+
+    @property
+    def route_policy(self) -> Any | None:
+        return self._route_policy
 
     async def _close_redis_runtime_stage(self) -> None:
         """The LAST teardown stage: observe the retained runtime's single teardown.
@@ -513,6 +522,7 @@ class AcpStreamServer:
             sanitizer_inputs=self._conversation_sanitizer_inputs,
             notice_control=notice,
             settlement_sink=getattr(agent_runner, "event_sink", None),
+            route_policy=self._route_policy,
         )
         message_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         request_tasks: set[asyncio.Task[Any]] = set()

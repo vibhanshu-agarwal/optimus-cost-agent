@@ -1,6 +1,6 @@
-# ADR-016: Test cadence, product coverage and staged turnaround delivery
+# ADR-020: Test cadence, product coverage and staged turnaround delivery
 
-**Date:** 2026-10-04. **Status:** Accepted-with-open-items for operator policy; this record is an unpublished review draft until first merge. Claude agreed its substance subject to A1–A4; Codex applies those four corrections here. Checkpoints A and B accepted by Codex; stage-final evidence remains owed. **Decider:** operator for requirements, delivery route and narrow CI implementation authority; agents for implementation details and measured acceptance values. ADR-016 is available (latest existing record ADR-015).
+**Date:** 2026-10-04. **Status:** Accepted-with-open-items for operator policy; this record is an unpublished review draft until first merge. Claude agreed its substance subject to A1–A4; Codex applies those four corrections here. Checkpoints A and B accepted by Codex; stage-final evidence remains owed. **Decider:** operator for requirements, delivery route and narrow CI implementation authority; agents for implementation details and measured acceptance values. Allocated ADR-020 at integration with main (latest existing record ADR-019). This record was drafted and reviewed as ADR-016 before main filed ADR-016-checkpoint-review-cadence.md; reviews, evidence and sealed snapshots dated before the integration keep that draft number. Its source S5 was likewise drafted as S3.
 
 This record captures decisions, not a second work registry. Filing does not claim Task 0 complete. The consolidated backlog remains the sole status/owner/next-gate authority.
 
@@ -8,23 +8,23 @@ This record captures decisions, not a second work registry. Filing does not clai
 
 | Source | Identity and qualification |
 |---|---|
-| S3: original operator messages and approval context | Global source S3 in the [decision index](README.md). Four exact original messages from Codex chat `01a10617-9940-72c0-a5e2-e3f8c3241055`, exported as `2026-10-04-codex-plan-11-30-operator-decisions-export.json`, SHA-256 `3DDD90F7FCB52DE88059E8A4582CFF37A6EF27BDA816A32A34E986E39CFB20D5`. Explicitly scoped transcript excerpt, not a full conversation export. Raw export is archival provenance only; exact operator words and decisions are reproduced below. |
+| S5: original operator messages and approval context | Global source S5 in the [decision index](README.md). Four exact original messages from Codex chat `01a10617-9940-72c0-a5e2-e3f8c3241055`, exported as `2026-10-04-codex-plan-11-30-operator-decisions-export.json`, SHA-256 `3DDD90F7FCB52DE88059E8A4582CFF37A6EF27BDA816A32A34E986E39CFB20D5`. Explicitly scoped transcript excerpt, not a full conversation export. Raw export is archival provenance only; exact operator words and decisions are reproduced below. |
 | H1: new-chat test-profiles handoff | `2026-10-04-test-profiles-new-chat-handoff.md`, SHA-256 `B1CAFA8914BC79B5762F87F4C5FC4C7691C750344DC38D140B700B62D8990DBD`, reverified by Codex at Checkpoint A. Settled D1–D6 below are labelled paraphrases from this shared handoff, not verbatim original operator quotations. External file is archival provenance only. |
 | P1: approved complete contract | Plan 11.30 v4, approved raw SHA-256 `8A40DEF6D627EDC722D9FA925BBB0C193DE433ECCB91D2DCA19F1DA6AFC5C790`. Its two CRLF lines must survive Git storage; a scoped `-text whitespace=cr-at-eol` attribute preserves the approved pin. LF derivative `7D07ADA39CE1F8987E529C7FD8838952B4607F6F2CBD8773D39220D44DB6AF1E` is not a replacement approval. |
-| C1: Claude/Codex recommendation agreement | Claude concurrence response `2026-10-04-claude-concurrence-plan-11-30-v3.md`, SHA-256 `DFF868D0B255838F49EE5C03C351B75EBF0B88DC085E965C8DDDF823F080D2F4`; Codex accepted the staged-delivery objection and audit-load simplification in S3 before operator approval. |
+| C1: Claude/Codex recommendation agreement | Claude concurrence response `2026-10-04-claude-concurrence-plan-11-30-v3.md`, SHA-256 `DFF868D0B255838F49EE5C03C351B75EBF0B88DC085E965C8DDDF823F080D2F4`; Codex accepted the staged-delivery objection and audit-load simplification in S5 before operator approval. |
 | E1: accepted Checkpoint A snapshot | Claude lane `reports/plan-11-30-test-profiles-evidence.md`, SHA-256 `061FFD6AC366B2DD02920DBFCC942EA2C9CD88A6EEA063A0444D2B8FC31B1CD7`; `reports/plan-11-30-test-profiles-manifest.json`, SHA-256 `09E9076413D37E8626F6E55DE8AC114E091D6817067C2EFF080BC092F616F303`. Final eight source hashes independently match. Snapshot accepted for Task 0/Checkpoint A, not stage-final delivery. |
 | E2: follow-up and relayed operator progress decision | `2026-10-04-claude-checkpoint-a-e1-followup-packet-plan-11-30.md`, SHA-256 `1D58E6D633B651DB206933AAC706E192FD1933C3F41932B69C02CFB74396E4FC`. The operator relayed this packet in Codex chat on 2026-10-04. It reproduces the question-tool prompt, selected option and description from Claude's implementation chat; it is a hashed transcription, not an original chat export. The decision below is labelled paraphrase rather than an original-message quotation. External packet is provenance only. |
 
-Operator, verbatim, S3 message at `2026-10-04T10:02:14.535Z` giving the review/simplicity rules:
+Operator, verbatim, S5 message at `2026-10-04T10:02:14.535Z` giving the review/simplicity rules:
 
 > 1. I want both of you to agree
 > 2. Also keep the solution simple as possible. That does not mean you defer required functionality - but take the simpler to implement path
 
-Operator, verbatim, S3 reply at `2026-10-04T10:14:05.341Z`, after Codex asked approval at `2026-10-04T10:11:16.427Z` of v4 for implementation by another agent, the staged route and narrow CI change (with publication permissions kept separate):
+Operator, verbatim, S5 reply at `2026-10-04T10:14:05.341Z`, after Codex asked approval at `2026-10-04T10:11:16.427Z` of v4 for implementation by another agent, the staged route and narrow CI change (with publication permissions kept separate):
 
 > Yes. Agreed as per comments above
 
-Operator, verbatim, S3 implementing-agent assignment at `2026-10-04T10:17:01.533Z`:
+Operator, verbatim, S5 implementing-agent assignment at `2026-10-04T10:17:01.533Z`:
 
 > Claude will implement. Please create a task kickoff note for Claude
 

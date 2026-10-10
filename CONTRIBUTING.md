@@ -123,20 +123,23 @@ WSL/Linux use separate environments; do not sync or replace an environment while
 uv sync --frozen --extra dev
 ```
 
-From that worktree, use its prepared environment without another sync. A full default-selection
-coverage run measures every configured product package:
+From that worktree, use its prepared environment without another sync. The canonical product
+coverage gate runs the one full default selection, measuring every configured product package,
+and decides each floor on that dataset: the Optimus product group, Context Engine and model policy
+at 80 % with coverage's own precision-0 comparison (79.5 % compares as 80 %); Evidence Handoff and
+the aggregate are reported, not enforced. It also exports the same dataset as coverage JSON:
 
 ```bash
-uv run --no-sync pytest --cov --cov-branch --cov-fail-under=0 --cov-report=term-missing --cov-report=json:tmp/coverage/full.json
+uv run --no-sync python tools/check_product_coverage.py --run-full-suite --groups tools/product-coverage-groups.json --report-json tmp/coverage/product-coverage-report.json --coverage-json tmp/coverage/coverage.json
 ```
 
-Then gate each product against that run: Optimus (aggregate), model policy and Context Engine
-at 80 % unrounded when present; A2A is reported, not enforced. The report accepts only the full
-default selection of the committed source it runs on, and fails closed on unknown packages,
-missing rows or stale data:
+Then check that export's full-run validity; it decides no floor and runs no second suite. It
+binds the export to the gate's report and to exactly one full default session of this clean
+checkout (or the verified `--run-record` you name), and fails closed on unknown packages, missing
+rows, stale data or an unidentified or dirty run:
 
 ```bash
-uv run --no-sync python -m tools.testing.coverage_products report --coverage-json tmp/coverage/full.json
+uv run --no-sync python -m tools.testing.coverage_products validate --coverage-json tmp/coverage/coverage.json --gate-report tmp/coverage/product-coverage-report.json
 ```
 
 The commit hook (`optimus-check: pytest-coverage`) runs the tests that this commit's staged

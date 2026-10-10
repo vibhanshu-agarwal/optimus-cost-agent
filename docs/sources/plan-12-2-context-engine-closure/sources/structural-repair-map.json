@@ -1,0 +1,167 @@
+[
+  {
+    "doc": "hld",
+    "baseline_page": 3,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "hld",
+    "baseline_page": 4,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "hld",
+    "baseline_page": 6,
+    "method": "glyph/table/font reconstruction, visually verify"
+  },
+  {
+    "doc": "hld",
+    "baseline_page": 9,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "hld",
+    "baseline_page": 10,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "hld",
+    "baseline_page": 13,
+    "method": "glyph/table/font reconstruction, visually verify"
+  },
+  {
+    "doc": "hld",
+    "baseline_page": 2,
+    "method": "glyph/table/font reconstruction, visually verify"
+  },
+  {
+    "doc": "lld",
+    "baseline_page": 3,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "lld",
+    "baseline_page": 4,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "lld",
+    "baseline_page": 20,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "lld",
+    "baseline_page": 21,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "lld",
+    "baseline_page": 30,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "lld",
+    "baseline_page": 33,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "lld",
+    "baseline_page": 36,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "lld",
+    "baseline_page": 38,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "lld",
+    "baseline_page": 39,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "guardrails",
+    "baseline_page": 2,
+    "method": "glyph/table/font reconstruction, visually verify"
+  },
+  {
+    "doc": "guardrails",
+    "baseline_page": 6,
+    "method": "glyph/table/font reconstruction, visually verify"
+  },
+  {
+    "doc": "guardrails",
+    "baseline_page": 7,
+    "method": "glyph/table/font reconstruction, visually verify"
+  },
+  {
+    "doc": "guardrails",
+    "baseline_page": 10,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "guardrails",
+    "baseline_page": 11,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "guardrails",
+    "baseline_page": 12,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "guardrails",
+    "baseline_page": 14,
+    "method": "glyph/table/font reconstruction, visually verify"
+  },
+  {
+    "doc": "guardrails",
+    "baseline_page": 15,
+    "method": "glyph/table/font reconstruction, visually verify"
+  },
+  {
+    "doc": "guardrails",
+    "baseline_page": 16,
+    "method": "glyph/table/font reconstruction, visually verify"
+  },
+  {
+    "doc": "test",
+    "baseline_page": 2,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "test",
+    "baseline_page": 3,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "test",
+    "baseline_page": 4,
+    "method": "glyph/table/font reconstruction, visually verify"
+  },
+  {
+    "doc": "test",
+    "baseline_page": 6,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "test",
+    "baseline_page": 7,
+    "method": "glyph/table/font reconstruction, visually verify"
+  },
+  {
+    "doc": "test",
+    "baseline_page": 9,
+    "method": "published structured manuscript"
+  },
+  {
+    "doc": "test",
+    "baseline_page": 13,
+    "method": "glyph/table/font reconstruction, visually verify"
+  },
+  {
+    "doc": "test",
+    "baseline_page": 14,
+    "method": "glyph/table/font reconstruction, visually verify"
+  }
+]

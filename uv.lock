@@ -668,6 +668,7 @@ dependencies = [
     { name = "pillow" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "redis" },
 ]
 
@@ -706,6 +707,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.6" },
     { name = "python-dotenv", marker = "extra == 'dev'", specifier = ">=1.0" },
+    { name = "pyyaml", specifier = ">=6.0.2,<7" },
     { name = "redis", specifier = ">=5" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
 ]

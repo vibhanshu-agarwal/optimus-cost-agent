@@ -170,7 +170,7 @@ def selection_digest(nodes: tuple[str, ...]) -> str:
 
 def record_validity(
     record: dict[str, object] | None, exit_code: int | None, *, workers: int = 0, nodes: tuple[str, ...] | None = None,
-    audit_depth: str = "full",
+    audit_depth: str | None = "full",
 ) -> tuple[str | None, tuple[str, ...]]:
     """Whether a finished subrun's own run record supports a pass: its first problem (None when there is none) and
     the qualifications a supporting record still carries. Records arrive through `records.read_record`, so they
@@ -192,9 +192,14 @@ def record_validity(
     if record.get("exit_status") != exit_code:
         return "exit_status_differs", ()
     # A run counts only at the depth it was asked for: full, except a commit's current audits at quick (R5 after G,
-    # accepted at Plan 11.30 Task 4). A record that does not say is not one.
-    if record.get("audit_depth") != audit_depth:
-        return f"audit_depth_{record.get('audit_depth') or 'missing'}", ()
+    # accepted at Plan 11.30 Task 4). A record that does not say is not one. `None` asks for the key's absence: a base
+    # whose producer had no audit-depth option at all, proven by the caller at that exact SHA (Plan 11.30 v5 Q-C1); an
+    # explicit null, empty or other value never stands in for that absence.
+    if "audit_depth" not in record:
+        if audit_depth is not None:
+            return "audit_depth_missing", ()
+    elif audit_depth is None or record["audit_depth"] != audit_depth:
+        return f"audit_depth_{record['audit_depth']}", ()
     xdist = record.get("xdist")
     if workers:
         if not isinstance(xdist, dict):

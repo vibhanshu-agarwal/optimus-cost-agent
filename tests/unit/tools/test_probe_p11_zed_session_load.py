@@ -3970,6 +3970,37 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     seam2_committed = b"from optimus.acp.harness_runtime import" in head_bootstrap
     if not seam2_committed:
         expected -= seam2_paths
+    # Plan 12.2 Task 9 makes the ACP host import the attached-engine host modules (four paths); Task 10
+    # adds the full-set config module and, through the summarizer factory, the Contributor disclosure
+    # (two paths). Keyed on HEAD's spec, so each committed state pins its exact count.
+    head_spec = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/acp/spec.py")
+    task9_paths = frozenset(
+        {
+            "src/optimus/context/__init__.py",
+            "src/optimus/context/adapter.py",
+            "src/optimus/context/assembly.py",
+            "src/optimus/context/maintenance.py",
+        }
+    )
+    task10_paths = frozenset({"src/optimus/acp/session_config.py", "src/optimus/gateway/disclosure.py"})
+    task9_committed = b"from optimus.context.assembly import" in head_spec
+    task10_committed = b"from optimus.acp.session_config import" in head_spec
+    # Task 11 adds the turn settlement and cost alerts (two paths).
+    task11_paths = frozenset({"src/optimus/usage/cost_alerts.py", "src/optimus/usage/turn_settlement.py"})
+    task11_committed = b"from optimus.usage.turn_settlement import" in head_spec
+    if not task11_committed:
+        expected -= task11_paths
+    # The CP3 correction adds the one shared attempt classifier and the route binding the summarizer
+    # factory verifies identities with (two paths), keyed on HEAD's maintenance host.
+    correction_paths = frozenset({"src/optimus/gateway/attempts.py", "src/optimus/gateway/route_binding.py"})
+    head_maintenance = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/context/maintenance.py") if task9_committed else b""
+    correction_committed = b"from optimus.gateway.attempts import" in head_maintenance
+    if not correction_committed:
+        expected -= correction_paths
+    if not task9_committed:
+        expected -= task9_paths
+    if not task10_committed:
+        expected -= task10_paths
     # The P11-FU-33 batch adds exactly one module, which the probe itself imports to kill a timed-out
     # launch's whole process tree. Keyed on whether HEAD's probe carries that import: committed
     # predecessors keep their closure, and the batch pins one more path.
@@ -3978,11 +4009,25 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     tree_committed = b"from tools import process_tree" in head_probe
     if not tree_committed:
         expected -= {tree_path}
+    # The Plan 12.2 closure test composition (release supplement V2) adds one host module the entrypoint
+    # imports, keyed on HEAD's __main__.
+    composition_path = "src/optimus/acp/test_composition.py"
+    composition_committed = b"from optimus.acp.test_composition import" in head_main
+    if not composition_committed:
+        expected -= {composition_path}
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
+    assert (task9_paths <= closure) is task9_committed
+    assert (task10_paths <= closure) is task10_committed
+    assert (task11_paths <= closure) is task11_committed
+    assert (correction_paths <= closure) is correction_committed
     assert (tree_path in closure) is tree_committed
-    assert len(closure) == (136 if seam2_committed else 134 if seam3_committed else 133) + tree_committed
+    assert (composition_path in closure) is composition_committed
+    base = 136 if seam2_committed else 134 if seam3_committed else 133
+    assert len(closure) == base + (4 if task9_committed else 0) + (2 if task10_committed else 0) + (2 if task11_committed else 0) + (
+        2 if correction_committed else 0
+    ) + tree_committed + composition_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

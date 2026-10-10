@@ -39,6 +39,10 @@ Nothing is pushed. Push, PR, merge and cleanup are held.
 - **Stage B Task 6 (updated 2026-10-09 07:24 UTC):** the final gates ran at `3cece0a` on independent native Windows and WSL clones and pass. Codex accepted the local evidence on 2026-10-09 at 07:24:20 UTC (section "Stage B Task 6 — final gates at `3cece0a` (2026-10-09)").
 - **Open:** remote Linux CI and the base/candidate safety-row comparison (UNKNOWN); the CI backstop for the partial-commit correction; complete Task 6 and plan closure. Push, PR, merge and cleanup are held, including the two final clones.
 
+### Decision-record number at integration
+
+The Plan 11.30 decision record was drafted, reviewed and committed on this branch as `docs/decisions/ADR-016-test-cadence-product-coverage-and-staged-delivery.md`, citing source S3. Main had meanwhile filed its own ADR-016 to ADR-019 and sources S3/S4, so the integration renumbers the unpublished record ADR-020 and its source S5. Every dated section, receipt, manifest entry and sealed snapshot below keeps the draft number and path it recorded.
+
 ### Reconciliation of earlier open statements (2026-10-09)
 
 The following earlier statements describe work that is now delivered. They are kept as historical text:

@@ -14,7 +14,9 @@ from urllib.parse import urlparse
 
 from optimus.acp.launch_policy import project_gateway_tool_child_env
 from optimus.acp.local_gateway_secrets import ProviderCredentialResolution, _parse_env_gateway_file
+from optimus.agent.defaults import default_agent_model
 from optimus.config.gateway import _LOOPBACK_HOSTS, LOCAL_PROVIDER_KEY_NAMES
+from optimus_model_policy.binding import trusted_snapshot
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 
 # _LOOPBACK_HOSTS reused from optimus.config.gateway (agent-side package, already imported
@@ -55,7 +57,6 @@ _POLL_INTERVAL_SECONDS = 0.5
 _DEFAULT_REDIS_URL = "redis://127.0.0.1:6379/0"
 DEFAULT_REDIS_URL = _DEFAULT_REDIS_URL
 _DEFAULT_GATEWAY_URL = "http://127.0.0.1:8765"
-_DEFAULT_LOCAL_AGENT_MODEL = "claude-haiku"
 _PHOENIX_CONTAINER_NAME = "optimus-phoenix"
 _PHOENIX_IMAGE = "arizephoenix/phoenix:latest"
 _PHOENIX_PORT = 6006
@@ -111,7 +112,9 @@ def apply_local_defaults(
         return resolved
 
     if not resolved.get("OPTIMUS_AGENT_MODEL", "").strip():
-        resolved["OPTIMUS_AGENT_MODEL"] = _DEFAULT_LOCAL_AGENT_MODEL
+        # Plan 12.2 Task 5: one default source -- today's alias while registry enforcement is
+        # inactive, the trusted registry's medium default once it is active.
+        resolved["OPTIMUS_AGENT_MODEL"] = default_agent_model(trusted_snapshot())
     if not resolved.get("OPTIMUS_API_KEY", "").strip() and resolved_shared_secret:
         resolved["OPTIMUS_API_KEY"] = resolved_shared_secret
 
@@ -424,6 +427,8 @@ def ensure_local_gateway(
     config_root: Path | None = None,
     otlp_endpoint: str | None = None,
     log: Callable[[str], None] = _noop_log,
+    model_registry: str | None = None,
+    test_profile: str | None = None,
 ) -> LocalGatewayProcess | None:
     """Start the local Gateway child using ALREADY-RESOLVED credentials.
 
@@ -496,6 +501,7 @@ def ensure_local_gateway(
         shared_secret=shared_secret,
         hmac_key=manifest_hmac_key,
         policy_version=policy_version,
+        model_registry=model_registry,
     )
     serialized_manifest = serialize_gateway_child_manifest(manifest)
 
@@ -508,6 +514,9 @@ def ensure_local_gateway(
         return None
 
     try:
+        # A named Plan 12.2 test profile is passed by name only: the Gateway composes it from its own
+        # reviewed source and refuses unless the signed manifest binds that hash (release supplement V2).
+        profile_argv = [] if test_profile is None else ["--plan12-test-profile", test_profile]
         process = subprocess.Popen(
             [
                 sys.executable,
@@ -519,6 +528,7 @@ def ensure_local_gateway(
                 str(port),
                 "--manifest",
                 serialized_manifest,
+                *profile_argv,
             ],
             env=child_env,
             stdin=subprocess.DEVNULL,

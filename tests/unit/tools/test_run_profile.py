@@ -408,6 +408,17 @@ def test_an_exit_zero_active_record_without_terminal_or_capability_evidence_cann
     assert run_profile.record_validity(_terminal(**changes), 0) == (problem, ())
 
 
+def test_an_absent_audit_depth_is_valid_only_when_absence_was_asked_for_and_an_explicit_value_never_stands_in() -> None:
+    """Plan 11.30 v5 Q-C1: a base whose producer had no audit-depth option (proven at its exact SHA by the caller) is
+    checked with `audit_depth=None`, which requires the key to be absent; the ordinary default stays `full`."""
+    absent = _terminal("linux", audit_depth=_GONE)
+    assert run_profile.record_validity(absent, 0, audit_depth=None)[0] is None
+    assert run_profile.record_validity(absent, 0) == ("audit_depth_missing", ())
+    for recorded, problem in ((None, "audit_depth_None"), ("", "audit_depth_"), ("quick", "audit_depth_quick"), ("full", "audit_depth_full")):
+        assert run_profile.record_validity(_terminal("linux", audit_depth=recorded), 0, audit_depth=None) == (problem, ())
+    assert run_profile.record_validity(_terminal("linux", audit_depth=None), 0) == ("audit_depth_None", ())
+
+
 def test_a_missing_record_or_a_posix_guard_failure_cannot_support_a_pass() -> None:
     assert run_profile.record_validity(None, 0) == ("no_run_record", ())
     assert run_profile.record_validity(_terminal("linux", guard_mode="not_installed"), 0) == ("guard_not_installed", ())

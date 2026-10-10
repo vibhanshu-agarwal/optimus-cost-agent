@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -95,7 +96,10 @@ class AgentRunRequest(BaseModel):
     execution_mode: ExecutionMode
     workspace_root: Path
     approval: AgentApproval = Field(default_factory=AgentApproval)
-    max_cost_usd: Decimal = Field(default=Decimal("0.05"), ge=Decimal("0"))
+    # Plan 12.2 Task 11 (ADR-005, ADR-015): no product request has a dollar stop. None, the default, is
+    # the absence of any cap; ACP never sets one. A finite value is only an independently authorized
+    # evaluation caller's own cap (golden, test or evaluation runs), never a product default or sentinel.
+    max_cost_usd: Decimal | None = Field(default=None, ge=Decimal("0"))
     max_planning_turns: int = Field(default=3, ge=1)
     planning_wall_clock_minutes: int = Field(default=30, ge=1)
     skill_paths: tuple[Path, ...] = ()
@@ -103,6 +107,13 @@ class AgentRunRequest(BaseModel):
     # Plan 12.1 / P11.25-FU-1: prior conversation for the Chat path, rendered
     # separately from ``task`` (which then holds only the current prompt).
     conversation_envelope: str = ""
+    # Plan 12.2 Task 9: an attached Context Engine turn. ``task`` holds only the current prompt,
+    # ``conversation_envelope`` the rendered view (model history, both modes), ``selection_text``
+    # the exact text that selects workspace files and skills (current prompt, exact turns, protected
+    # facts; never a summary), and ``context_digest`` the admitted context a stored plan is bound to.
+    # None for every engine-absent and non-ACP caller, which keep their existing behavior.
+    selection_text: str | None = Field(default=None, min_length=1)
+    context_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @field_validator("execution_mode", mode="before")
     @classmethod
@@ -137,3 +148,17 @@ class AgentRunResult(BaseModel):
     plan_hash: str | None = None
     stop_reason: str | None = None
     candidate_plan_text: str | None = None
+
+
+class ContextPacker(Protocol):
+    """Fits one complete model request to its route's usable input (Plan 12.2 Task 9).
+
+    ``build`` renders the complete request around a history envelope. The packer returns the text to
+    send: with the admitted view when it fits, otherwise with a smaller view of the same captured
+    history within a finite allowance; ``None`` when nothing fits, and then nothing is sent."""
+
+    def fit(self, build: Callable[[str], str]) -> str | None: ...
+
+    def record_dispatch(self, text: str) -> None:
+        """Called as `text` is actually sent, once per attempt: the meter reads only real dispatches."""
+        ...

@@ -342,11 +342,13 @@ def _locator_present(report_text: str, locator: str) -> bool:
     return bool(locator) and locator in report_text
 
 
-def _check_common_summary(summary: EvidenceSummary, report_text: str) -> None:
+def _check_common_summary(summary: EvidenceSummary, report_text: str, *, prompt_version: str = PROMPT_VERSION) -> None:
+    """`prompt_version` is the planner prompt the evidence was captured under: the current one for a
+    Plan 9.87 claim, a frozen lane's own for a bridged historical claim."""
     _require(summary.get("schema_version") == EVIDENCE_SCHEMA_VERSION, "invalid schema_version")
     _require(bool(summary.get("session_id")), "missing session_id")
     _require(bool(summary.get("run_id")), "missing run_id")
-    _require(summary.get("prompt_version") == PROMPT_VERSION, "prompt_version mismatch")
+    _require(summary.get("prompt_version") == prompt_version, "prompt_version mismatch")
     _require(summary.get("usage_recorded") is True, "usage_recorded must be true")
     _require(float(summary.get("total_cost_usd", 0)) > 0, "total_cost_usd must be positive")
     debug_locator = summary.get("debug_trace_locator", "")
@@ -377,8 +379,8 @@ def _check_fu4a(summary: EvidenceSummary, report_text: str) -> None:
     _require(summary.get("terminal_reason") == "end_turn", "FU-4A requires end_turn")
 
 
-def _check_fu4b(summary: EvidenceSummary, report_text: str) -> None:
-    _check_common_summary(summary, report_text)
+def _check_fu4b(summary: EvidenceSummary, report_text: str, *, prompt_version: str = PROMPT_VERSION) -> None:
+    _check_common_summary(summary, report_text, prompt_version=prompt_version)
     _require(summary.get("scenario") == "replan", "FU-4B requires replan scenario")
     _require(summary.get("context_fits") is True, "FU-4B requires context_fits")
     turns = summary.get("turn_summaries", [])

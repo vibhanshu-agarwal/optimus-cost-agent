@@ -160,7 +160,8 @@ class GoalLoopController:
             return LoopStopReason.HUMAN_HALT
         if state.repeated_failure_count >= self._policy.repeated_failure_limit:
             return LoopStopReason.REPEATED_FAILURE
-        if state.cost_usd_spent >= self._policy.max_budget_usd:
+        cap = self._policy.max_budget_usd
+        if cap is not None and state.cost_usd_spent >= cap:  # an evaluation caller's explicit cap only (Plan 12.2 Task 11)
             return LoopStopReason.BUDGET_EXHAUSTED
         if state.elapsed_minutes(now=self._now()) >= self._policy.max_wall_clock_minutes:
             return LoopStopReason.WALL_CLOCK

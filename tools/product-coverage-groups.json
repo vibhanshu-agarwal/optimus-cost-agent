@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "groups": [
+    {"name": "optimus", "packages": ["optimus", "optimus_gateway", "optimus_security", "optimus_model_policy"], "floor": 80, "enforced": true},
+    {"name": "context_engine", "packages": ["context_engine"], "floor": 80, "enforced": true},
+    {"name": "evidence_handoff", "packages": ["evidence_handoff", "evidence_handoff_runtime"], "floor": 80, "enforced": false}
+  ],
+  "package_floors": [
+    {"package": "optimus_model_policy", "floor": 80, "enforced": true}
+  ],
+  "aggregate": {"floor": 80, "enforced": false}
+}

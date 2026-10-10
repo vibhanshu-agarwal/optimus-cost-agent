@@ -4,7 +4,7 @@ import json
 import math
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -12,11 +12,16 @@ from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.errors import GatewayHttpError
 from optimus.gateway.models import (
     GatewayResponse,
+    GatewayRouteAttempt,
     GatewayUsage,
     build_responses_payload,
     parse_gateway_response,
     parse_gateway_usage,
+    parse_route_attempts,
 )
+
+if TYPE_CHECKING:
+    from optimus_model_policy.binding import RouteBinding
 
 DEFAULT_GATEWAY_TIMEOUT_SECONDS = 30.0
 
@@ -75,8 +80,15 @@ class UrllibGatewayTransport:
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             gateway_usage = _try_parse_error_usage(detail)
+            gateway_code, retryable, route_attempts = _try_parse_error_correlation(detail)
             raise GatewayHttpError(
-                exc.code, detail or exc.reason, gateway_usage=gateway_usage
+                exc.code,
+                detail or exc.reason,
+                gateway_usage=gateway_usage,
+                gateway_code=gateway_code,
+                retryable=retryable,
+                route_attempts=route_attempts,
+                route_attempts_malformed=_route_attempts_dropped(detail, route_attempts),
             ) from exc
         except URLError as exc:
             raise GatewayHttpError(0, str(exc.reason)) from exc
@@ -119,14 +131,19 @@ class GatewayClient:
         model: str,
         input_text: str,
         metadata: dict[str, Any] | None = None,
+        route_binding: RouteBinding | None = None,
     ) -> GatewayResponse:
+        """``route_binding`` binds the trusted model registry, request identity, output cap and any
+        Contributor disclosure (Plan 12.2 Task 5); it is sent only once registry enforcement is active."""
         self._settings.validate_trusted_gateway()
         body = self._transport.post_json(
             GatewayRequest(
                 method="POST",
                 url=self._url("/v1/responses"),
                 headers=self._json_headers(),
-                payload=build_responses_payload(model=model, input_text=input_text, metadata=metadata),
+                payload=build_responses_payload(
+                    model=model, input_text=input_text, metadata=metadata, route_binding=route_binding
+                ),
                 timeout_seconds=self._timeout_seconds,
             )
         )
@@ -190,6 +207,40 @@ def _try_parse_error_usage(detail: str) -> GatewayUsage | None:
         return parse_gateway_usage(usage_body)
     except Exception:  # noqa: BLE001 — intentionally broad; invalid usage is not an error here
         return None
+
+
+def _try_parse_error_correlation(detail: str) -> tuple[str | None, bool | None, tuple[GatewayRouteAttempt, ...]]:
+    """The enforced-routing fields of an HTTP error body: its stable code, whether the host may
+    re-send, and the provider attempts made. A body without them (today's routing) yields
+    ``(None, None, ())``; malformed attempts are dropped without discarding ``retryable``."""
+    try:
+        decoded = json.loads(detail, parse_float=Decimal)
+    except (json.JSONDecodeError, ValueError):
+        return None, None, ()
+    if not isinstance(decoded, dict):
+        return None, None, ()
+    code = decoded.get("code") if isinstance(decoded.get("code"), str) else None
+    retryable = decoded.get("retryable") if isinstance(decoded.get("retryable"), bool) else None
+    attempts: tuple[GatewayRouteAttempt, ...] = ()
+    if "route_attempts" in decoded:
+        try:
+            attempts = parse_route_attempts(decoded["route_attempts"])
+        except Exception:  # noqa: BLE001 — a malformed record list is dropped, never fatal here
+            attempts = ()
+    return code, retryable, attempts
+
+
+def _route_attempts_dropped(detail: str, parsed: tuple[GatewayRouteAttempt, ...]) -> bool:
+    """Whether an error body carried a non-empty ``route_attempts`` value that parsing had to drop."""
+    if parsed:
+        return False
+    try:
+        decoded = json.loads(detail, parse_float=Decimal)
+    except (json.JSONDecodeError, ValueError):
+        return False
+    if not isinstance(decoded, dict) or "route_attempts" not in decoded:
+        return False
+    return decoded["route_attempts"] != []
 
 
 def _decode_gateway_json(body: str) -> dict[str, Any]:

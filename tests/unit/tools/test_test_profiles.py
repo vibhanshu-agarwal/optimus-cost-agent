@@ -507,6 +507,7 @@ _REVIEWED_CHEAP_LAUNCHERS = {
     "tests/unit/acp/test_plan1126_queue_policy.py": _MIXED,
     "tests/unit/acp/test_server_reader_ownership.py": _MIXED,
     "tests/unit/acp/test_stdio_ndjson.py": "its launch sites are runner-only plants, skipped in an ordinary run",
+    "tests/unit/context_engine/test_boundaries.py": _MIXED,
     "tests/unit/guardrails/test_ci_parity.py": _MIXED,
     "tests/unit/guardrails/test_local_secret_scan_encoding.py": _MIXED,
     "tests/unit/optimus_gateway/test_request_body_rejection.py": "one gateway child with the tripwire at the site; the file's cost is server shutdown polling",
@@ -521,6 +522,7 @@ _REVIEWED_CHEAP_LAUNCHERS = {
     "tests/unit/tools/test_run_context_xdist_probes.py": "the xdist targets: one literal sleep grandchild, started only inside the nested grandchild control; otherwise empty",
     "tests/unit/tools/test_run_plan996_acpx_security_evidence.py": _MIXED,
     "tests/unit/tools/test_test_profiles.py": _MIXED,
+    "tests/unit/tools/test_verify_plan99_noneditable_install.py": _MIXED,
 }
 
 
