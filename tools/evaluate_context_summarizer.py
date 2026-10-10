@@ -1355,6 +1355,18 @@ def verify_run(run_dir: Path) -> tuple[RunEvidence | None, list[str]]:
     )
 
 
+def _review_identities(evidence: RunEvidence) -> dict[str, str]:
+    """What a review must name to be about this assessment and this run."""
+    return {
+        "assessment": ASSESSMENT_VERSION,
+        "rubric_sha256": ASSESSMENT_RUBRIC_SHA256,
+        "run_id": evidence.run_id,
+        "run_manifest_sha256": evidence.manifest_sha256,
+        "fixture_digest": SUMMARY_FIXTURE_DIGEST,
+        "prompt_digest": SUMMARY_PROMPT_DIGEST,
+    }
+
+
 def _cited(entry: Mapping[str, Any]) -> bool:
     return all(isinstance(entry.get(key), str) and entry[key].strip() for key in ("source", "summary"))
 
@@ -1365,14 +1377,7 @@ def _review_reasons(review: Mapping[str, Any], evidence: RunEvidence) -> list[st
     who = review.get("reviewer")
     label = who if who in REVIEWERS else "a review"
     reasons = [] if who in REVIEWERS else ["the reviewer must be claude or codex"]
-    expected = {
-        "assessment": ASSESSMENT_VERSION,
-        "rubric_sha256": ASSESSMENT_RUBRIC_SHA256,
-        "run_id": evidence.run_id,
-        "run_manifest_sha256": evidence.manifest_sha256,
-        "fixture_digest": SUMMARY_FIXTURE_DIGEST,
-        "prompt_digest": SUMMARY_PROMPT_DIGEST,
-    }
+    expected = _review_identities(evidence)
     reasons += [f"{label}: its {key} does not match this assessment" for key, value in expected.items() if review.get(key) != value]
     if not (isinstance(review.get("exposure"), str) and review["exposure"].strip()):
         reasons.append(f"{label}: no exposure statement")
@@ -1401,6 +1406,8 @@ def _review_reasons(review: Mapping[str, Any], evidence: RunEvidence) -> list[st
                     reasons.append(f"{label}: {step} {item} lacks a source or summary citation")
                 elif entry["status"] != passing:
                     reasons.append(f"{label}: {step} {item} is {entry['status']}; the review does not pass")
+        if not isinstance(record.get("lexical"), dict):
+            reasons.append(f"{label}: {step} lexical resolutions must be an object")
         lexical = _mapping(record.get("lexical"))
         if set(lexical) != set(evidence.flags[step]):
             reasons.append(f"{label}: {step} lexical resolutions do not match the recorded lexical flags")
@@ -1413,8 +1420,12 @@ def _review_reasons(review: Mapping[str, Any], evidence: RunEvidence) -> list[st
             elif entry["resolution"] != "CLEARED":
                 reasons.append(f"{label}: {step} lexical flag {check} is CONFIRMED; the review does not pass")
         minor, material = record.get("minor"), record.get("material")
-        if not isinstance(minor, list) or not all(isinstance(m, dict) and isinstance(m.get("key"), str) and m["key"].strip() for m in minor):
-            reasons.append(f"{label}: {step} minor findings must be a list of keyed findings")
+        if not isinstance(minor, list):
+            reasons.append(f"{label}: {step} minor findings must be a list")
+        elif not all(isinstance(m, dict) and _text(m.get("key")) and _text(m.get("note")) for m in minor):
+            reasons.append(f"{label}: {step} each minor finding needs a non-empty key and note")
+        elif len({m["key"] for m in minor}) != len(minor):
+            reasons.append(f"{label}: {step} repeats a minor finding key")
         if not isinstance(material, list):
             reasons.append(f"{label}: {step} material findings must be a list")
         elif material:
@@ -1431,27 +1442,57 @@ def _minor_keys(review: Any, step: str) -> set[str]:
     return {str(m.get("key")) for m in (_mapping(minor).get("minor") or []) if isinstance(m, dict)}
 
 
-def _findings(review: Any) -> dict[str, Any]:
-    """A review's statuses as recorded, whatever their validity: the findings a denial keeps."""
-    steps = _mapping(_mapping(review).get("steps"))
-    return {
-        step: {
-            "R": {item: _mapping(entry).get("status") for item, entry in _mapping(record.get("R")).items()},
-            "F": {item: _mapping(entry).get("status") for item, entry in _mapping(record.get("F")).items()},
-            "lexical": {check: _mapping(entry).get("resolution") for check, entry in _mapping(record.get("lexical")).items()},
-            "minor": sorted(_minor_keys(review, step)),
-            "material": record.get("material"),
-            "overall": record.get("overall"),
-        }
-        for step, record in ((step, _mapping(record)) for step, record in steps.items())
-    }
+def _sanitized(value: Any, sanitizer: ConversationSanitizer) -> Any:
+    """An untrusted record with every string, keys included, through the evidence sanitizer: structure,
+    numbers, booleans and nulls are kept, and no key is exempt (unlike `_redacted`, whose exemptions are for
+    identifiers this host minted)."""
+    if isinstance(value, dict):
+        return {sanitizer.sanitize(str(key)): _sanitized(item, sanitizer) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_sanitized(item, sanitizer) for item in value]
+    if isinstance(value, str):
+        return sanitizer.sanitize(value)
+    return value
+
+
+def _retained(review: Any, evidence: RunEvidence | None, sanitizer: ConversationSanitizer) -> Any:
+    """A review kept whole and sanitized, except identity fields that equal this run's verified identities:
+    approved local identifiers, kept exact because the evidence sanitizer's entropy rule can erase a
+    standalone ID. A field that does not match stays sanitized."""
+    kept = _sanitized(review, sanitizer)
+    if evidence is None or not isinstance(review, dict):
+        return kept
+    kept.update({key: value for key, value in _review_identities(evidence).items() if review.get(key) == value})
+    steps, kept_steps = _mapping(review.get("steps")), _mapping(kept.get("steps"))
+    for step in REVIEW_ITEMS:
+        original, retained = _mapping(steps.get(step)), kept_steps.get(step)
+        if isinstance(retained, dict):
+            for key, value in (("response_sha256", evidence.response_sha256[step]), ("request_id", evidence.request_ids[step])):
+                if original.get(key) == value:
+                    retained[key] = value
+    return kept
+
+
+def _text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _inside(path: Path, root: Path) -> bool:
+    """Whether `path` is `root` or beneath it, after resolving both physically: symbolic links and Windows
+    junctions included, and case-insensitively where the platform's paths are."""
+    resolved, base = path.resolve(), root.resolve()
+    return resolved == base or base in resolved.parents
 
 
 def assess(*, run_dir: Path, reviews: Sequence[Path], release: str, out: Path) -> int:
     """The offline assessment of one sealed reviewed run. Exit 0: the run's records verify and both reviews
     pass, so `out` holds `assessment.json` and `receipt-candidate.json`; 1: denied, and `assessment.json`
-    keeps the findings and why, with no candidate; 2: refused before anything is written. The sealed run
-    is never written to, and a candidate qualifies nothing until it is reviewed and separately filed."""
+    keeps the findings and why, with no candidate; 2: refused before anything is written. The sealed
+    experiment (the run directory's folder) is never written to: an output at or beneath it is refused
+    before any write (Codex Stage 1 review, M1). A candidate qualifies nothing until it is reviewed and
+    separately filed."""
+    if _inside(out, run_dir.parent):
+        return _refuse(f"{out} is inside the sealed experiment {run_dir.parent}; write the assessment elsewhere", "assess")
     if out.exists():
         return _refuse(f"{out} exists; every assessment gets a new folder", "assess")
     if not release.strip():
@@ -1498,8 +1539,15 @@ def assess(*, run_dir: Path, reviews: Sequence[Path], release: str, out: Path) -
         "assessed_at": datetime.now(UTC).isoformat(),
         "run": None,
         "original_execution": None,
+        # Each review kept whole (exposure, cited items, lexical resolutions, minor notes, material findings)
+        # so the decision is explainable without the input files; the raw hash binds the submitted bytes,
+        # not this sanitized form (Codex Stage 1 review, M2).
         "reviews": [
-            {"reviewer": _redacted(_mapping(value).get("reviewer"), sanitizer), "sha256": digest, "overall": _redacted(_mapping(value).get("overall"), sanitizer), "steps": _redacted(_findings(value), sanitizer)}
+            {
+                "raw_input_sha256": digest,
+                "record": None if value is None else _retained(value, evidence, sanitizer),
+                "record_form": "the review as submitted, every string (keys included) through the evidence sanitizer",
+            }
             for digest, value in loaded
         ],
         "note": "a candidate for review only when status is pass: it qualifies nothing and enables no attached engine by itself",
