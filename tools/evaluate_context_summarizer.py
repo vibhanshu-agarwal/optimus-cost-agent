@@ -437,6 +437,35 @@ def load_fixture(path: Path = FIXTURE_PATH) -> Fixture:
     )
 
 
+# Validator v6 (Codex v5 paid-result disposition, 2026-10-10). The fixture's generic negation reaches a claim only
+# within 20 characters, so the genuine run's faithful "No plan was recorded as approved" (22) read as an approval.
+# A negative statement about a recorded approval now governs the claim it ends at, in a finite grammar that starts
+# its own clause (at the clause start or a bullet, after a "Seq N:" or "Turn N:" label, a parenthesis, or "and" or
+# "but"; never after any other colon or a bare comma, which a scoping "Not true:" or "not true that, ..." precedes):
+#   - a negated subject: "No plan was [ever] recorded [by the host] as", "None of the plans has been marked as";
+#   - a negated recording: "The plan was not recorded [by the host] as", "The deletion plan wasn't marked as".
+# It must end exactly at the claim, so it never covers a later claim, another subject's negation or another
+# sentence, and under a scoping negation ("It is not true that no plan was recorded as approved") it does not
+# start a clause, so the claim stands. Any other wording keeps the fixture's generic rule. The grammar is code, so
+# fixture v2 and its digest are unchanged.
+_APPROVAL_SUBJECT = r"(?:(?:deletion|write|other)\s+)?(?:plans?|requests?|deletions?)"
+_APPROVAL_RECORDED = r"(?:recorded|marked|reported|confirmed|logged)(?:\s+by\s+the\s+(?:host|source))?\s+as\s+"
+_NEGATED_SUBJECT = (
+    r"(?:no|neither|none\s+of\s+the|not\s+(?:a\s+single|one))\s+" + _APPROVAL_SUBJECT
+    + r"\s+(?:(?:was|were|is|are)(?:\s+(?:ever|yet))?|(?:has|have|had)(?:\s+(?:ever|yet))?\s+been)\s+"
+)
+_NEGATED_RECORDING = (
+    r"(?:(?:the|this|that|each|either)\s+)?" + _APPROVAL_SUBJECT
+    + r"\s+(?:was|were|is|are|has|have|had)(?:\s+(?:not|never)|n['’]t)(?:\s+(?:yet|ever))?(?:\s+been)?\s+"
+)
+_APPROVAL_NEGATION = (
+    r"(?:^\s*(?:[-*]\s+)?|\b(?:seq|turn)\s+\d+\s*:\s*|\(\s*|\b(?:and|but)\s+)(?:" + _NEGATED_SUBJECT + "|" + _NEGATED_RECORDING + ")"
+    + _APPROVAL_RECORDED + "$"
+)
+# The scoped negations this validator adds to a forbidden claim's governors, by the fixture's claim id.
+_CLAIM_NEGATIONS: Mapping[str, tuple[str, ...]] = {"no-invented-approval": (_APPROVAL_NEGATION,)}
+
+
 # --- The fact report -----------------------------------------------------------------------------------
 
 
@@ -555,9 +584,10 @@ def evaluate_summary(
             raise ValueError(f"unknown fact kind: {fact}")
     for rule in rules.forbidden:
         # A claim counts unless a negation or reported speech governs that very claim: "was not
-        # approved", "no approval was granted" and "told the agent to record every plan as
-        # approved" are not approvals.
-        hits = [clause for clause in clauses if _asserted(rule["pattern"], clause, (rules.negation, rules.reported))]
+        # approved", "no approval was granted", "told the agent to record every plan as approved"
+        # and (validator v6) "no plan was recorded as approved" are not approvals.
+        governors = (rules.negation, rules.reported, *_CLAIM_NEGATIONS.get(rule["id"], ()))
+        hits = [clause for clause in clauses if _asserted(rule["pattern"], clause, governors)]
         checks.append(FactCheck(rule["id"], not hits, f"found in {hits[0]!r}" if hits else "absent"))
     return FactReport(tuple(checks))
 
@@ -830,15 +860,17 @@ def paid_envelope(snapshot: RegistrySnapshot, fixture: Fixture) -> list[dict[str
 # --- The paid run --------------------------------------------------------------------------------------
 
 LIVE_PROFILE = "qualification"
-# The operator's $0.10 (2026-10-09) is the cumulative Stage B ceiling. Both sealed paid runs (fixture v1:
-# $0.0006881, one attempt; fixture v2: $0.0020065, two attempts) already spent $0.0026946 over three physical
-# attempts, so a new run may spend the rest (Codex validator v5 paid re-test proposal, 2026-10-10).
+# The operator's $0.10 (2026-10-09) is the cumulative Stage B ceiling. The three sealed paid runs (fixture v1:
+# $0.0006881, one attempt; fixture v2: $0.0020065, two attempts; validator v5: $0.0007636, one attempt) already
+# spent $0.0034582 over four physical attempts, so a new run may spend at most the rest (Codex v5 paid-result
+# disposition, 2026-10-10). The remainder is arithmetic only: every paid run needs its own release.
 STAGE_B_CEILING = Decimal("0.10")
-PRIOR_STAGE_B_SPEND = Decimal("0.0026946")
+PRIOR_STAGE_B_SPEND = Decimal("0.0034582")
 PRIOR_STAGE_B_RUN = (
     "stage-b-qualification/run-1: fixture v1, FAIL at step 1, one attempt, $0.0006881; "
     "stage-b-qualification-v2/run-1: fixture v2, FAIL at the final step, two attempts, $0.0020065; "
-    "$0.0026946 over three physical attempts"
+    "stage-b-qualification-v5/run-1: validator v5, FAIL at step 1, one attempt, $0.0007636; "
+    "$0.0034582 over four physical attempts"
 )
 LIVE_DOLLAR_CAP = STAGE_B_CEILING - PRIOR_STAGE_B_SPEND
 LIVE_WALL_CLOCK_SECONDS = 30 * 60  # the released 30-minute limit
