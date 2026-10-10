@@ -508,8 +508,10 @@ def test_a_step_one_summary_denying_any_recorded_approval_reaches_the_candidate(
         "No deletion occurred, and the plan was recorded as approved.",
         "It is not true that no plan was recorded as approved.",
         "No plan was recorded by the host as approved, and the deletion plan was recorded as approved.",
+        # Codex v6 review M1: b56c71f passed this and wrote a candidate.
+        "It is not true that (no plan was recorded by the host as approved).",
     ],
-    ids=["negative-other-clause", "double-negative", "protected-then-positive"],
+    ids=["negative-other-clause", "double-negative", "protected-then-positive", "m1-not-true-that-parenthesis"],
 )
 def test_a_step_one_fabricated_approval_still_fails_and_leaves_step_two_unsent(tmp_path: Path, monkeypatch, line: str) -> None:
     out = tmp_path / "run"
