@@ -61,12 +61,13 @@ SUMMARY_FORMAT = "context-summary-v1"
 """The accepted host-wrapped plain-text summary format (Task 1 contracts §3)."""
 
 # The rest of a summarizer qualification key (Task 1 contracts §3; Plan 12.2 Task 8). A receipt
-# qualifies a route only for these exact values: a changed prompt, validator or fixture invalidates
+# qualifies a route only for these exact values: a changed prompt, assessment or fixture invalidates
 # every receipt until the check is run and reviewed again. They are pinned here so this neutral package
-# need not import the engine; a cross-check test keeps them equal to the engine's prompt, its
-# validator version and the fixture's canonical digest.
+# need not import the engine; a cross-check test keeps them equal to the engine's prompt, the offline
+# assessment's version (tools/evaluate_context_summarizer.py, bound to its reviewed rubric) and the
+# fixture's canonical digest. A receipt judged by a lexical validator never matches.
 SUMMARY_PROMPT_DIGEST = "6d1b4e77d77f1a7331932633dbc39ae4f1c3bf5c4a79acf8aed9873b410902db"  # pragma: allowlist secret - public prompt digest
-SUMMARY_VALIDATOR = "context-summary-validator-v6"
+SUMMARY_VALIDATOR = "context-summary-assessment-v1.1"
 # calculator-constraints-v2: v1 with the runtime summary output allocation (8,192 tokens, ADR-018).
 SUMMARY_FIXTURE_DIGEST = "f32fd04d25461f435daff8c39049b2468afe3e407e1c4a3a41c9992f3b5e8f19"  # pragma: allowlist secret - public fixture digest
 

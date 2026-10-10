@@ -4,7 +4,8 @@ The `run` command is a client of the Gateway that the operator-started, profiled
 only the reviewed qualification profile, derives model, route, reasoning and prices from its pinned
 snapshot, and binds every request to that hash and the fixture's 1,200-token cap. It records the run's
 identity before dispatch and every attempt as it arrives, keeps that evidence when the run fails or
-raises, and emits a receipt candidate only after both quality steps pass.
+raises, and never emits a receipt candidate: a run whose automatic checks pass awaits the two offline
+reviews of `assess` (Codex qualification-method disposition, 2026-10-10).
 
 Offline: the real host Gateway client posts through the real Gateway handler under the Haiku policy,
 and a scripted upstream stands in for the provider.
@@ -105,7 +106,7 @@ class ProfiledGateway:
 def _run(monkeypatch: pytest.MonkeyPatch, out: Path, upstream: RecordingUpstream, **kwargs: Any) -> tuple[int, ProfiledGateway]:
     gateway = ProfiledGateway(upstream, out, interrupt_on=kwargs.pop("interrupt_on", None))
     monkeypatch.setattr("optimus.gateway.client.urlopen", gateway.urlopen)
-    code = tool.run_live(out=out, host_pid=4100, gateway_pid=4200, environ=ENVIRON, recorded_on="2026-10-09", **kwargs)
+    code = tool.run_live(out=out, host_pid=4100, gateway_pid=4200, environ=ENVIRON, **kwargs)
     return code, gateway
 
 
@@ -117,7 +118,7 @@ def _lines(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()] if path.exists() else []
 
 
-def test_a_passing_run_records_its_identity_first_and_emits_the_receipt_candidate(tmp_path: Path, monkeypatch) -> None:
+def test_a_passing_run_records_its_identity_first_and_awaits_review_without_a_candidate(tmp_path: Path, monkeypatch) -> None:
     out = tmp_path / "run-1"
     upstream = SummaryUpstream(STEP1, FINAL)
 
@@ -155,20 +156,18 @@ def test_a_passing_run_records_its_identity_first_and_emits_the_receipt_candidat
     # Each response's billing facts are on disk with it, before the runtime records its receipts.
     assert [[(a["outcome"], a["cost_usd"]) for a in r["attempts"]] for r in responses] == [[("completed", "0.001")]] * 2
 
-    candidate = _json(out / "receipt-candidate.json")
-    receipt = candidate["receipt"]
-    assert (receipt["model_id"], receipt["providers"], receipt["reasoning"], receipt["result"]) == (HAIKU, ["anthropic"], "low", "pass")
-    assert receipt["fixture_digest"] == "f32fd04d25461f435daff8c39049b2468afe3e407e1c4a3a41c9992f3b5e8f19"  # pragma: allowlist secret - public fixture digest
-    assert receipt["request_ids"] == [a["gateway_request_id"] for a in attempts]
-    assert candidate["observed"]["resolved_providers"] == ["Anthropic", "Anthropic"]
-    assert candidate["observed"]["reasoning_tokens"] == [40, 40]
+    # No candidate: only the offline `assess` can write one, after two passing reviews.
+    assert not (out / "receipt-candidate.json").exists()
+    # The observed route and reasoning stay in the attempt records that `assess` verifies.
+    assert [(a["usage"]["resolved_provider"], a["usage"]["reasoning_tokens"]) for a in attempts] == [("Anthropic", 40)] * 2
     outcome = _json(out / "outcome.json")
-    assert (outcome["status"], outcome["provider_attempts"], outcome["reported_cost_usd"]) == ("pass", 2, "0.002")
+    assert (outcome["status"], outcome["provider_attempts"], outcome["reported_cost_usd"]) == ("awaiting-review", 2, "0.002")
+    assert outcome["request_ids"] == [a["gateway_request_id"] for a in attempts]
 
 
 def test_a_pass_qualifies_nothing_by_itself(tmp_path: Path, monkeypatch) -> None:
-    """The receipt is only a candidate in the run directory: the profile's summarizer stays unqualified,
-    so no attached engine is enabled before the receipt is reviewed."""
+    """A run awaiting review writes no candidate: the profile's summarizer stays unqualified, so no
+    attached engine is enabled before two reviews pass and a reviewed receipt is filed."""
     code, _gateway = _run(monkeypatch, tmp_path / "run", SummaryUpstream(STEP1, FINAL))
 
     assert code == 0
@@ -272,7 +271,7 @@ def test_missing_gateway_credentials_are_refused_before_anything_is_sent(tmp_pat
     gateway = ProfiledGateway(SummaryUpstream(STEP1, FINAL), out)
     monkeypatch.setattr("optimus.gateway.client.urlopen", gateway.urlopen)
 
-    code = tool.run_live(out=out, host_pid=1, gateway_pid=2, environ={}, recorded_on="2026-10-09")
+    code = tool.run_live(out=out, host_pid=1, gateway_pid=2, environ={})
 
     assert (code, gateway.bindings, out.exists()) == (2, [], False)
 
@@ -397,9 +396,7 @@ def test_secrets_in_provider_metadata_reach_no_output_artifact(tmp_path: Path, m
     assert isinstance(usage["input_tokens"], int) and usage["output_tokens"] == 300 and usage["reasoning_tokens"] == 40
     assert usage["gateway_request_id"] == attempts[0]["gateway_request_id"] and usage["cost_usd"] == "0.001"
     assert "**********" in (usage["resolved_model"], usage["model_version"], usage["provider_request_id"])
-    candidate = _json(out / "receipt-candidate.json")
-    assert candidate["receipt"]["request_ids"] == [a["gateway_request_id"] for a in attempts]
-    assert candidate["observed"]["resolved_providers"] == ["Anthropic", "Anthropic"]
+    assert _json(out / "outcome.json")["request_ids"] == [a["gateway_request_id"] for a in attempts]
 
 
 
@@ -489,7 +486,7 @@ def test_a_final_summary_with_an_unaccounted_old_rule_claim_writes_no_candidate(
 # The genuine v5 run's step 1 failed on its faithful "No plan was recorded as approved, ..." (validator v6).
 
 
-def test_a_step_one_summary_denying_any_recorded_approval_reaches_the_candidate(tmp_path: Path, monkeypatch) -> None:
+def test_a_step_one_summary_denying_any_recorded_approval_completes_for_review(tmp_path: Path, monkeypatch) -> None:
     out = tmp_path / "run"
     upstream = SummaryUpstream(with_case("work", PAID_RUN_SENTENCE, base=STEP1), FINAL)
 
@@ -497,9 +494,9 @@ def test_a_step_one_summary_denying_any_recorded_approval_reaches_the_candidate(
 
     assert code == 0 and len(upstream.calls) == 2
     outcome = _json(out / "outcome.json")
-    assert (outcome["status"], outcome["provider_attempts"], outcome["reported_cost_usd"]) == ("pass", 2, "0.002")
+    assert (outcome["status"], outcome["provider_attempts"], outcome["reported_cost_usd"]) == ("awaiting-review", 2, "0.002")
     assert (outcome["step1"]["passed"], outcome["final"]["passed"]) == (True, True)
-    assert _json(out / "receipt-candidate.json")["receipt"]["validator"] == "context-summary-validator-v6"
+    assert not (out / "receipt-candidate.json").exists()
 
 
 @pytest.mark.parametrize(
@@ -574,7 +571,7 @@ def test_step_two_is_admitted_only_while_its_whole_reservation_fits_the_new_allo
         assert not (out / "receipt-candidate.json").exists()
 
 
-@pytest.mark.parametrize(("last", "status"), [("0.0955418", "pass"), ("0.0955419", "budget")], ids=["total-at-the-allowance", "total-one-unit-over"])
+@pytest.mark.parametrize(("last", "status"), [("0.0955418", "awaiting-review"), ("0.0955419", "budget")], ids=["total-at-the-allowance", "total-one-unit-over"])
 def test_a_settled_total_over_the_new_allowance_is_never_a_pass(tmp_path: Path, monkeypatch, last: str, status: str) -> None:
     out = tmp_path / "run"
     upstream = SummaryUpstream(STEP1, FINAL, costs=("0.001", last))
@@ -584,4 +581,4 @@ def test_a_settled_total_over_the_new_allowance_is_never_a_pass(tmp_path: Path, 
     assert len(upstream.calls) == 2
     outcome = _json(out / "outcome.json")
     assert (outcome["status"], outcome["reported_cost_usd"]) == (status, str(Decimal("0.001") + Decimal(last)))
-    assert (code, (out / "receipt-candidate.json").exists()) == ((0, True) if status == "pass" else (1, False))
+    assert (code, (out / "receipt-candidate.json").exists()) == ((0, False) if status == "awaiting-review" else (1, False))

@@ -8,8 +8,7 @@ Design spec 6.5-6.6 and Task 1 contracts 3. Only `run` makes paid calls. This mo
   Codex, it is a limited gate, not a statistical guarantee of model quality.
 - `run_qualification`: the two-step run against an injected summarizer. Step 1 summarizes the early
   turns; step 2 merges that summary with the turns holding the correction. It makes at most two
-  calls, checks a dollar cap before each, never retries until a pass, and yields receipt fields only
-  for a pass.
+  calls, checks a dollar cap before each and never retries until a pass. It yields no receipt.
 - `paid_envelope`: what the operator approves before any paid call. Per assigned summarizer it gives
   structural blockers other than the missing receipt, exact input/output caps, the attempt ceiling and
   the cost reservation.
@@ -17,12 +16,18 @@ Design spec 6.5-6.6 and Task 1 contracts 3. Only `run` makes paid calls. This mo
   Codex Haiku Stage A review, launcher ruling). A client of the Gateway that the operator-started,
   profiled host owns: it never starts a Gateway or contacts a provider itself, and the Gateway's own
   binding check refuses any other snapshot before a provider attempt. No other model client may use
-  that Gateway during the run: its route stop is not a concurrent admission barrier.
+  that Gateway during the run: its route stop is not a concurrent admission barrier. It never writes a
+  receipt candidate.
+- `assess`: offline, the only path to a receipt candidate (`context-summary-assessment-v1.1`). It
+  recomputes the mechanical checks from a sealed genuine run that Codex reviewed and released for
+  assessment, and requires two independent source-based reviews, Claude's and Codex's, that each pass
+  every rubric item for both steps.
 
 Usage:
     python tools/evaluate_context_summarizer.py envelope [--registry FILE] [--override FILE]
     python tools/evaluate_context_summarizer.py check --summary FILE --step {step1,final} [--finish-status stop]
     python tools/evaluate_context_summarizer.py run --profile qualification --host-pid PID --gateway-pid PID --out NEW_DIR
+    python tools/evaluate_context_summarizer.py assess --run RUN_DIR --review FILE --review FILE --release TEXT --out NEW_DIR
 """
 
 from __future__ import annotations
@@ -72,8 +77,8 @@ from optimus.context.maintenance import (
 from optimus.gateway.client import GatewayClient
 from optimus_model_policy import RegistrySnapshot, Role, load_registry, ordered_assignments, validate_registry
 from optimus_model_policy.binding import MAX_ROUTE_ATTEMPTS, disclosure_key
-from optimus_model_policy.experimental import EMPIRICAL_ESTIMATOR_METHOD, experimental_route
-from optimus_model_policy.registry import SummaryReceipt
+from optimus_model_policy.experimental import EMPIRICAL_ESTIMATOR_METHOD, HAIKU_QUALIFICATION_HASH, experimental_route
+from optimus_model_policy.registry import SUMMARY_FIXTURE_DIGEST, SUMMARY_PROMPT_DIGEST, SummaryReceipt
 from optimus_model_policy.test_profiles import compose_test_profile_snapshot
 
 # v2 is v1 with the runtime summary output allocation, 8,192 tokens (ADR-018), in place of v1's
@@ -652,7 +657,6 @@ class QualificationResult:
     calls: int
     request_ids: tuple[str, ...]
     reported_cost_usd: Decimal | None
-    receipt: dict[str, Any] | None
     # One receipt per provider attempt, from the runtime's callback: the evidence a paid run keeps.
     attempts: tuple[MaintenanceReceipt, ...] = ()
     unrun: str | None = None
@@ -666,6 +670,7 @@ class QualificationResult:
 
     @property
     def passed(self) -> bool:
+        """Every automatic check passed. That completes a run for review; it qualifies nothing."""
         quality = self.final is not None and self.step1.passed and self.final.passed
         return quality and self.budget is None and self.inadmissible is None
 
@@ -676,7 +681,6 @@ def run_qualification(
     summarize: SummarizerCall,
     *,
     dollar_cap: Decimal,
-    recorded_on: str,
     registry_hash: str | None = None,
     on_receipt: Callable[[MaintenanceReceipt], None] | None = None,
 ) -> QualificationResult:
@@ -775,23 +779,7 @@ def run_qualification(
         budget = f"known spend {reported} USD exceeds the {dollar_cap} USD cap"
     elif reported is None and final is not None:
         budget = "the run's total cost is unknown"
-    result = QualificationResult(candidate, step1, final, calls, request_ids, reported, None, tuple(receipts), unrun, budget, inadmissible)
-    if not result.passed:
-        return result
-    receipt = {
-        "model_id": candidate.model_id,
-        "format": SUMMARY_FORMAT,
-        "providers": list(candidate.providers),
-        "quantizations": list(candidate.quantizations),
-        "reasoning": candidate.reasoning,
-        "fixture_digest": fixture.digest,
-        "prompt_digest": PROMPT_DIGEST,
-        "validator": VALIDATOR_VERSION,
-        "request_ids": list(request_ids),
-        "recorded_on": recorded_on,
-        "result": "pass",
-    }
-    return QualificationResult(candidate, step1, final, calls, request_ids, reported, receipt, tuple(receipts), unrun, budget, inadmissible)
+    return QualificationResult(candidate, step1, final, calls, request_ids, reported, tuple(receipts), unrun, budget, inadmissible)
 
 
 # --- The paid envelope ---------------------------------------------------------------------------------
@@ -960,8 +948,8 @@ def _error_text(exc: BaseException, sanitizer: ConversationSanitizer) -> str:
     return sanitizer.sanitize(text)
 
 
-def _refuse(reason: str) -> int:
-    print(f"evaluate_context_summarizer run: REFUSED before any request: {reason}", file=sys.stderr)
+def _refuse(reason: str, command: str = "run") -> int:
+    print(f"evaluate_context_summarizer {command}: REFUSED before any {'request' if command == 'run' else 'output'}: {reason}", file=sys.stderr)
     return 2
 
 
@@ -971,16 +959,17 @@ def run_live(
     host_pid: int,
     gateway_pid: int,
     environ: Mapping[str, str],
-    recorded_on: str,
     clock: Callable[[], float] = time.monotonic,
 ) -> int:
     """The paid two-request qualification of the reviewed profile through the operator-started host's
-    Gateway. Exit 0: both steps passed within the cap and a receipt candidate was written; 1: the run
-    failed on quality, on budget or stopped (its evidence is kept); 2: refused before any request.
+    Gateway. Exit 0: both steps passed every automatic check within the cap, and the run awaits the two
+    offline reviews; 1: an automatic check failed, the budget stopped it or it stopped (its evidence is
+    kept); 2: refused before any request.
 
     `out` is a new directory: `run.json` (identity, written before the first dispatch),
-    `attempts.jsonl` and `responses.jsonl` (appended as they arrive), `outcome.json` (always, last) and
-    `receipt-candidate.json` (a pass only; it qualifies nothing until reviewed)."""
+    `attempts.jsonl` and `responses.jsonl` (appended as they arrive) and `outcome.json` (always, last).
+    No receipt candidate: only `assess` writes one, after two passing reviews of the sealed run (Codex
+    qualification-method disposition, 2026-10-10)."""
     if out.exists():
         return _refuse(f"{out} exists; every run gets a new directory")
     fixture = load_fixture()
@@ -1094,7 +1083,6 @@ def run_live(
             candidate,
             call,
             dollar_cap=LIVE_DOLLAR_CAP,
-            recorded_on=recorded_on,
             registry_hash=snapshot.effective_hash,
             on_receipt=lambda receipt: _append_json(out / "attempts.jsonl", _receipt_record(receipt, evidence)),
         )
@@ -1116,27 +1104,11 @@ def run_live(
 
     known = result.reported_cost_usd
     passed = result.passed and known is not None and known <= LIVE_DOLLAR_CAP and len(result.attempts) <= MAX_FIXTURE_CALLS * MAX_ROUTE_ATTEMPTS
-    if passed:
-        usages = [r.gateway_usage for r in result.attempts if r.outcome == "completed" and r.gateway_usage is not None]
-        _write_json(
-            out / "receipt-candidate.json",
-            {
-                "receipt": result.receipt,
-                "observed": _redacted(
-                    {
-                        "resolved_providers": [usage.resolved_provider for usage in usages],
-                        "resolved_models": [usage.resolved_model for usage in usages],
-                        "reasoning_tokens": [usage.reasoning_tokens for usage in usages],
-                    },
-                    evidence,
-                ),
-                "note": "a candidate for review: it qualifies nothing and enables no attached engine by itself",
-            },
-        )
     _write_json(
         out / "outcome.json",
         {
-            "status": "pass" if passed else ("budget" if result.budget is not None else "fail"),
+            # "awaiting-review": every automatic check passed, which qualifies nothing by itself.
+            "status": "awaiting-review" if passed else ("budget" if result.budget is not None else "fail"),
             "step1": result.step1.to_dict(),
             "final": None if result.final is None else result.final.to_dict(),
             "unrun": result.unrun,
@@ -1150,6 +1122,438 @@ def run_live(
         },
     )
     return 0 if passed else 1
+
+
+# --- The offline assessment (context-summary-assessment-v1.1) ------------------------------------------
+# Codex qualification-method disposition (2026-10-10), released by the operator. The lexical fact report
+# stays a diagnostic that a run executes. A summary qualifies only through two independent source-based
+# reviews, Claude's and Codex's, under the filed rubric, of a sealed genuine run whose records verify.
+# `run` never writes a candidate; `assess` writes one, into a new folder, only when the run's records verify
+# and both reviews pass every rubric item for both steps. Reviews are JSON records: hashes bind their
+# content, and the reviewed handoff workflow establishes their authorship and order.
+
+ASSESSMENT_VERSION = "context-summary-assessment-v1.1"
+RUBRIC_PATH = FIXTURE_PATH.with_name("context-summary-assessment-v1.1-rubric.md")
+# The exact bytes Codex reviewed (the repository checks text out with LF line endings).
+ASSESSMENT_RUBRIC_SHA256 = "d982589a06aee03e9f7b70bf5f842b01d976a1a033dfa4dfa1145a9a667c4b4c"  # pragma: allowlist secret - public rubric digest
+# Each step's applicable rubric items: (required facts, forbidden claims).
+REVIEW_ITEMS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = MappingProxyType(
+    {
+        "step1": (("R1", "R2", "R3", "R4", "R5", "R6", "R8", "R9"), ("F1", "F2", "F3", "F4", "F6", "F7")),
+        "final": (("R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9"), ("F1", "F2", "F3", "F4", "F5", "F6", "F7")),
+    }
+)
+REVIEWERS = ("claude", "codex")
+_R_STATUSES, _F_STATUSES, _RESOLUTIONS = ("PASS", "FAIL", "UNCERTAIN"), ("ABSENT", "PRESENT", "UNCERTAIN"), ("CLEARED", "CONFIRMED")
+_RUN_RECORDS = ("run.json", "attempts.jsonl", "responses.jsonl", "outcome.json")
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewedRun:
+    """A genuine sealed run that Codex reviewed and released for assessment: the identities its records must
+    match. A checksum alone never establishes that a run is genuine; this reviewed list does."""
+
+    manifest_sha256: str
+    commit: str
+    tool_sha256: str
+    executed_validator: str
+    prompt_digest: str
+    dollar_cap_usd: str
+    request_ids: tuple[str, ...]
+
+
+# Only the complete v6 run (Codex v6 result disposition, 2026-10-10). Other experiments and self-sealed
+# inputs are excluded: no general evidence-authentication subsystem.
+ASSESSABLE_RUNS: Mapping[str, ReviewedRun] = MappingProxyType(
+    {
+        # stage-b-qualification-v6/run-1: Haiku 5.5, fixture v2, executed validator v6 (FAIL at the final step).
+        "a37f6074135e4392b93b0826391defc0": ReviewedRun(  # pragma: allowlist secret - public run id
+            manifest_sha256="b2cbf077eba8a991bdd3423b0834c8a1d8bc79b8f49e9b9657ea932590825732",  # pragma: allowlist secret - public evidence digest
+            commit="80399ca110f36c98edffdc1ddc7d8efac4d2ad1f",  # pragma: allowlist secret - public commit
+            tool_sha256="d8a2c9218bbeb72a93f2f843f61bfa7bb51998b92bf1701bd368eaf363a2e54d",  # pragma: allowlist secret - public tool digest
+            executed_validator="context-summary-validator-v6",
+            prompt_digest="6d1b4e77d77f1a7331932633dbc39ae4f1c3bf5c4a79acf8aed9873b410902db",  # pragma: allowlist secret - public prompt digest
+            dollar_cap_usd="0.0965418",
+            request_ids=("gw-142d038d8be1423bba3a4c286f813726", "gw-52fac698887f4b69b98f33ad60e0650b"),  # pragma: allowlist secret - public request ids
+        ),
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class RunEvidence:
+    """A sealed run's records once every mechanical check passed."""
+
+    run_id: str
+    pins: ReviewedRun
+    manifest_sha256: str
+    run: Mapping[str, Any]
+    outcome: Mapping[str, Any]
+    response_sha256: Mapping[str, str]
+    request_ids: Mapping[str, str]
+    flags: Mapping[str, tuple[str, ...]]
+    process_identity_sha256: str
+
+
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _sealed_entries(manifest: bytes) -> dict[str, str]:
+    entries = {}
+    for line in manifest.decode("utf-8").splitlines():
+        digest, _, name = line.partition(" *")
+        entries[name] = digest
+    return entries
+
+
+def verify_run(run_dir: Path) -> tuple[RunEvidence | None, list[str]]:
+    """Mechanical checks M1-M5 of rubric v1.1, recomputed from a sealed run's records: the seal, the
+    reviewed identities, both replies, accounting and the recorded fact reports. Returns the evidence, or why
+    the run cannot be assessed; nothing missing or contradictory is filled in by judgment."""
+    folder, manifest = run_dir.parent, run_dir.parent / "MANIFEST.sha256"
+    if not (run_dir / "run.json").is_file() or not manifest.is_file():
+        return None, ["not a sealed run: a run directory with run.json, in a folder sealed by MANIFEST.sha256"]
+    try:
+        run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    except ValueError:
+        return None, ["not a sealed run: run.json is not JSON"]
+    pins = ASSESSABLE_RUNS.get(_mapping(run).get("run_id"))
+    if pins is None:
+        return None, ["not a run released for assessment"]
+    manifest_bytes = manifest.read_bytes()
+    sealed = _sealed_entries(manifest_bytes)
+    problems = [] if _sha256(manifest_bytes) == pins.manifest_sha256 else ["the seal is not the reviewed manifest"]
+    console = f"{run_dir.name}-console.log"
+    required = [*(f"{run_dir.name}/{name}" for name in _RUN_RECORDS), console, "process-identity.json"]
+    problems += [f"the seal omits {name}" for name in required if name not in sealed]
+    problems += [f"sealed file {name} is missing or altered" for name, digest in sealed.items() if not (folder / name).is_file() or _sha256((folder / name).read_bytes()) != digest]
+    present = {path.relative_to(folder).as_posix() for path in folder.rglob("*") if path.is_file()} - {"MANIFEST.sha256"}
+    problems += [f"unsealed file beside the run: {name}" for name in sorted(present - set(sealed))]
+    if problems:
+        return None, problems
+    try:
+        outcome = _mapping(json.loads((run_dir / "outcome.json").read_text(encoding="utf-8")))
+        responses = [_mapping(json.loads(line)) for line in (run_dir / "responses.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+        attempts = [_mapping(json.loads(line)) for line in (run_dir / "attempts.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    except ValueError:
+        return None, ["a sealed run record is not JSON"]
+    head = (folder / console).read_text(encoding="utf-8").splitlines()[:1]
+
+    # M5: the reviewed execution identity.
+    fixture, snapshot = load_fixture(), compose_test_profile_snapshot(LIVE_PROFILE)
+    envelope = _mapping(run.get("envelope"))
+    model_id = run.get("model_id")
+    candidate = _candidate(snapshot, model_id) if model_id in snapshot.policy.models else None
+    identity = [
+        ("the console log does not name the reviewed commit", bool(head) and head[0].startswith(f"HEAD={pins.commit} ")),
+        ("the run's tool is not the reviewed tool", run.get("tool_sha256") == pins.tool_sha256),
+        ("the executed validator is not the reviewed validator", envelope.get("validator") == pins.executed_validator),
+        ("the run's prompt is not the reviewed prompt", envelope.get("prompt_digest") == pins.prompt_digest == PROMPT_DIGEST == SUMMARY_PROMPT_DIGEST),
+        (
+            "the run's fixture is not the reviewed fixture",
+            run.get("fixture") == fixture.name
+            and run.get("fixture_file_sha256") == _sha256(FIXTURE_PATH.read_bytes())
+            and envelope.get("fixture_digest") == fixture.digest == SUMMARY_FIXTURE_DIGEST
+            and envelope.get("max_output_tokens") == fixture.max_output_tokens,
+        ),
+        ("the run's profile is not the reviewed qualification profile", run.get("profile") == LIVE_PROFILE and run.get("registry_hash") == snapshot.effective_hash == HAIKU_QUALIFICATION_HASH),
+        (
+            "the run's model route is not the profile's",
+            candidate is not None
+            and run.get("providers") == list(candidate.providers)
+            and run.get("quantizations") == list(candidate.quantizations)
+            and run.get("reasoning") == candidate.reasoning,
+        ),
+        ("the run's dollar cap is not the released cap", run.get("dollar_cap_usd") == pins.dollar_cap_usd),
+        ("the run's request and attempt limits are not the released limits", run.get("max_requests") == MAX_FIXTURE_CALLS and run.get("max_provider_attempts") == MAX_FIXTURE_CALLS * MAX_ROUTE_ATTEMPTS),
+    ]
+    problems += [reason for reason, holds in identity if not holds]
+
+    # M1-M3: both replies, complete, in format and within the byte bound; the recorded fact reports.
+    steps = tuple(REVIEW_ITEMS)
+    texts: dict[str, str] = {}
+    if [response.get("request") for response in responses] != [1, 2]:
+        problems.append("the run needs two replies, one per step: step 2 is UNRUN or a reply is missing or extra")
+    else:
+        for step, response, facts in zip(steps, responses, (fixture.step1_facts, fixture.final_facts), strict=True):
+            text, finish = response.get("text"), response.get("finish_status")
+            if finish != "stop":
+                problems.append(f"the {step} reply did not finish with stop")
+            if not isinstance(text, str):
+                problems.append(f"the {step} reply has no text")
+                continue
+            texts[step] = text
+            try:
+                parse_summary(text)
+            except SummaryFormatError:
+                problems.append(f"the {step} summary is not in the {SUMMARY_FORMAT} format")
+            if len(text.encode("utf-8")) > SUMMARY_MAX_BYTES:
+                problems.append(f"the {step} summary is over {SUMMARY_MAX_BYTES} UTF-8 bytes")
+            if outcome.get(step) != evaluate_summary(text, finish, facts, fixture.rules, history=fixture.history).to_dict():
+                problems.append(f"the recorded fact report for {step} does not match its reply")
+
+    # M4: every physical attempt accounted for, on the reviewed route, within the released limits.
+    attempt_ids = [attempt.get("gateway_request_id") for attempt in attempts]
+    linked = [_mapping(attempt).get("gateway_request_id") for response in responses for attempt in response.get("attempts") or ()]
+    if attempt_ids != linked:
+        problems.append("the attempt records do not link to the replies")
+    if attempt_ids != list(pins.request_ids) or outcome.get("request_ids") != list(pins.request_ids):
+        problems.append("the run's request IDs are not the reviewed request IDs")
+    if len(attempts) > MAX_FIXTURE_CALLS * MAX_ROUTE_ATTEMPTS or outcome.get("calls") != len(responses) or outcome.get("provider_attempts") != len(attempts):
+        problems.append("the recorded call and attempt counts do not match the records")
+    if any(not response.get("attempts") for response in responses):
+        problems.append("a reply links no attempt")
+    providers = {provider.lower() for provider in run.get("providers") or ()}
+    covered = {1: list(fixture.step1), 2: list(fixture.step1 + fixture.step2)}
+    for response in responses:
+        for link in response.get("attempts") or ():
+            matching = [a for a in attempts if a.get("gateway_request_id") == _mapping(link).get("gateway_request_id")]
+            if len(matching) != 1:
+                problems.append("a reply's attempt is not recorded exactly once")
+                continue
+            [attempt] = matching
+            usage = _mapping(attempt.get("usage"))
+            if attempt.get("outcome") != "completed" or attempt.get("finish_status") != "stop":
+                problems.append("an attempt did not complete with stop")
+            if str(attempt.get("resolved_provider") or "").lower() not in providers or usage.get("model") != model_id:
+                problems.append("an attempt resolved off the reviewed route")
+            if not isinstance(usage.get("output_tokens"), int) or usage["output_tokens"] > fixture.max_output_tokens:
+                problems.append("an attempt's output tokens exceed the output allocation")
+            if attempt.get("covered_turn_ids") != covered.get(response.get("request")):
+                problems.append("an attempt covered the wrong turns")
+    costs = [attempt.get("cost_usd") for attempt in attempts]
+    if any(cost is None for cost in costs) or any(_mapping(attempt.get("usage")).get("cost_usd") != attempt.get("cost_usd") for attempt in attempts):
+        problems.append("an attempt's cost is unknown or contradicts its usage record")
+    else:
+        total = sum((Decimal(cost) for cost in costs), Decimal(0))
+        if outcome.get("reported_cost_usd") is None or Decimal(outcome["reported_cost_usd"]) != total:
+            problems.append("the settled cost does not match the attempts' costs")
+        if total > Decimal(pins.dollar_cap_usd):
+            problems.append(f"the settled cost {total} USD is over the released {pins.dollar_cap_usd} USD cap (budget)")
+    problems += [f"the run recorded {key}: {outcome[key]}" for key in ("unrun", "budget", "inadmissible") if outcome.get(key) is not None]
+    if problems:
+        return None, problems
+    flags = {step: tuple(check["id"] for check in outcome[step]["checks"] if not check["passed"]) for step in steps}
+    return (
+        RunEvidence(
+            run_id=run["run_id"],
+            pins=pins,
+            manifest_sha256=pins.manifest_sha256,
+            run=run,
+            outcome=outcome,
+            response_sha256={step: _sha256(texts[step].encode("utf-8")) for step in steps},
+            request_ids={step: response["attempts"][-1]["gateway_request_id"] for step, response in zip(steps, responses, strict=True)},
+            flags=flags,
+            process_identity_sha256=sealed["process-identity.json"],
+        ),
+        [],
+    )
+
+
+def _cited(entry: Mapping[str, Any]) -> bool:
+    return all(isinstance(entry.get(key), str) and entry[key].strip() for key in ("source", "summary"))
+
+
+def _review_reasons(review: Mapping[str, Any], evidence: RunEvidence) -> list[str]:
+    """Why one review cannot count: an identity that is not this run's, an incomplete or uncited item, or a
+    finding that does not pass."""
+    who = review.get("reviewer")
+    label = who if who in REVIEWERS else "a review"
+    reasons = [] if who in REVIEWERS else ["the reviewer must be claude or codex"]
+    expected = {
+        "assessment": ASSESSMENT_VERSION,
+        "rubric_sha256": ASSESSMENT_RUBRIC_SHA256,
+        "run_id": evidence.run_id,
+        "run_manifest_sha256": evidence.manifest_sha256,
+        "fixture_digest": SUMMARY_FIXTURE_DIGEST,
+        "prompt_digest": SUMMARY_PROMPT_DIGEST,
+    }
+    reasons += [f"{label}: its {key} does not match this assessment" for key, value in expected.items() if review.get(key) != value]
+    if not (isinstance(review.get("exposure"), str) and review["exposure"].strip()):
+        reasons.append(f"{label}: no exposure statement")
+    steps = _mapping(review.get("steps"))
+    for step, (r_items, f_items) in REVIEW_ITEMS.items():
+        record = steps.get(step)
+        if not isinstance(record, dict):
+            reasons.append(f"{label}: no {step} record")
+            continue
+        if record.get("response_sha256") != evidence.response_sha256[step]:
+            reasons.append(f"{label}: {step} response_sha256 is not the sealed reply's")
+        if record.get("request_id") != evidence.request_ids[step]:
+            reasons.append(f"{label}: {step} request_id is not the sealed reply's request")
+        for group, items, statuses, passing in (("R", r_items, _R_STATUSES, "PASS"), ("F", f_items, _F_STATUSES, "ABSENT")):
+            entries = _mapping(record.get(group))
+            missing, extra = [item for item in items if item not in entries], [item for item in entries if item not in items]
+            if missing:
+                reasons.append(f"{label}: {step} lacks {', '.join(missing)}")
+            if extra:
+                reasons.append(f"{label}: {step} has items outside its rubric: {', '.join(map(str, extra))}")
+            for item in (item for item in items if item in entries):
+                entry = _mapping(entries[item])
+                if entry.get("status") not in statuses:
+                    reasons.append(f"{label}: {step} {item} has an unknown status")
+                elif not _cited(entry):
+                    reasons.append(f"{label}: {step} {item} lacks a source or summary citation")
+                elif entry["status"] != passing:
+                    reasons.append(f"{label}: {step} {item} is {entry['status']}; the review does not pass")
+        lexical = _mapping(record.get("lexical"))
+        if set(lexical) != set(evidence.flags[step]):
+            reasons.append(f"{label}: {step} lexical resolutions do not match the recorded lexical flags")
+        for check in (check for check in evidence.flags[step] if check in lexical):
+            entry = _mapping(lexical[check])
+            if entry.get("resolution") not in _RESOLUTIONS:
+                reasons.append(f"{label}: {step} lexical flag {check} has an unknown resolution")
+            elif not _cited(entry):
+                reasons.append(f"{label}: {step} lexical flag {check} lacks a source or summary citation")
+            elif entry["resolution"] != "CLEARED":
+                reasons.append(f"{label}: {step} lexical flag {check} is CONFIRMED; the review does not pass")
+        minor, material = record.get("minor"), record.get("material")
+        if not isinstance(minor, list) or not all(isinstance(m, dict) and isinstance(m.get("key"), str) and m["key"].strip() for m in minor):
+            reasons.append(f"{label}: {step} minor findings must be a list of keyed findings")
+        if not isinstance(material, list):
+            reasons.append(f"{label}: {step} material findings must be a list")
+        elif material:
+            reasons.append(f"{label}: {step} records a material finding; the review does not pass")
+        if record.get("overall") != "PASS":
+            reasons.append(f"{label}: {step} overall is not PASS; the review does not pass")
+    if review.get("overall") != "PASS":
+        reasons.append(f"{label}: overall is not PASS; the review does not pass")
+    return reasons
+
+
+def _minor_keys(review: Any, step: str) -> set[str]:
+    minor = _mapping(_mapping(review).get("steps")).get(step)
+    return {str(m.get("key")) for m in (_mapping(minor).get("minor") or []) if isinstance(m, dict)}
+
+
+def _findings(review: Any) -> dict[str, Any]:
+    """A review's statuses as recorded, whatever their validity: the findings a denial keeps."""
+    steps = _mapping(_mapping(review).get("steps"))
+    return {
+        step: {
+            "R": {item: _mapping(entry).get("status") for item, entry in _mapping(record.get("R")).items()},
+            "F": {item: _mapping(entry).get("status") for item, entry in _mapping(record.get("F")).items()},
+            "lexical": {check: _mapping(entry).get("resolution") for check, entry in _mapping(record.get("lexical")).items()},
+            "minor": sorted(_minor_keys(review, step)),
+            "material": record.get("material"),
+            "overall": record.get("overall"),
+        }
+        for step, record in ((step, _mapping(record)) for step, record in steps.items())
+    }
+
+
+def assess(*, run_dir: Path, reviews: Sequence[Path], release: str, out: Path) -> int:
+    """The offline assessment of one sealed reviewed run. Exit 0: the run's records verify and both reviews
+    pass, so `out` holds `assessment.json` and `receipt-candidate.json`; 1: denied, and `assessment.json`
+    keeps the findings and why, with no candidate; 2: refused before anything is written. The sealed run
+    is never written to, and a candidate qualifies nothing until it is reviewed and separately filed."""
+    if out.exists():
+        return _refuse(f"{out} exists; every assessment gets a new folder", "assess")
+    if not release.strip():
+        return _refuse("a release reference is required", "assess")
+    if _sha256(RUBRIC_PATH.read_bytes()) != ASSESSMENT_RUBRIC_SHA256:
+        return _refuse("the filed rubric is not the reviewed rubric", "assess")
+    sanitizer = _evidence_sanitizer()
+    evidence, reasons = verify_run(run_dir)
+    loaded: list[tuple[str | None, Any]] = []
+    for index, path in enumerate(reviews, start=1):
+        try:
+            raw = path.read_bytes()
+        except OSError:
+            loaded.append((None, None))
+            reasons.append(f"review {index} cannot be read")
+            continue
+        try:
+            value = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            value = None
+            reasons.append(f"review {index} is not a JSON document")
+        else:
+            if not isinstance(value, dict):
+                reasons.append(f"review {index} is not a JSON object")
+        loaded.append((_sha256(raw), value))
+    if len(loaded) != 2:
+        reasons.append("assess needs exactly two reviews, one from Claude and one from Codex")
+    elif sorted(str(_mapping(value).get("reviewer")) for _, value in loaded) != list(REVIEWERS):
+        reasons.append("the two reviews must come from Claude and Codex, one each")
+    if evidence is not None:
+        for _, value in loaded:
+            if isinstance(value, dict):
+                reasons += _review_reasons(value, evidence)
+        if len(loaded) == 2:
+            reasons += [f"{step} minor findings differ between the reviewers" for step in REVIEW_ITEMS if _minor_keys(loaded[0][1], step) != _minor_keys(loaded[1][1], step)]
+    status = "denied" if reasons else "pass"
+    record: dict[str, Any] = {
+        "assessment": ASSESSMENT_VERSION,
+        "rubric": RUBRIC_PATH.relative_to(_REPO_ROOT).as_posix(),
+        "rubric_sha256": ASSESSMENT_RUBRIC_SHA256,
+        "status": status,
+        "reasons": [sanitizer.sanitize(reason) for reason in reasons],
+        "release": sanitizer.sanitize(release),
+        "assessed_at": datetime.now(UTC).isoformat(),
+        "run": None,
+        "original_execution": None,
+        "reviews": [
+            {"reviewer": _redacted(_mapping(value).get("reviewer"), sanitizer), "sha256": digest, "overall": _redacted(_mapping(value).get("overall"), sanitizer), "steps": _redacted(_findings(value), sanitizer)}
+            for digest, value in loaded
+        ],
+        "note": "a candidate for review only when status is pass: it qualifies nothing and enables no attached engine by itself",
+    }
+    if evidence is not None:
+        run, outcome = evidence.run, evidence.outcome
+        record["run"] = {
+            "run_id": evidence.run_id,
+            "manifest_sha256": evidence.manifest_sha256,
+            "commit": evidence.pins.commit,
+            "tool_sha256": evidence.pins.tool_sha256,
+            "registry_hash": run["registry_hash"],
+            "fixture_digest": SUMMARY_FIXTURE_DIGEST,
+            "prompt_digest": SUMMARY_PROMPT_DIGEST,
+            "request_ids": list(evidence.pins.request_ids),
+            "response_sha256": dict(evidence.response_sha256),
+            "process_identity_sha256": evidence.process_identity_sha256,
+            "mechanical": "M1-M5 recomputed from the sealed records; live process checks cite process-identity.json",
+        }
+        record["original_execution"] = {
+            "validator": evidence.pins.executed_validator,
+            "status": outcome["status"],
+            "step1": _redacted(outcome["step1"], sanitizer),
+            "final": _redacted(outcome["final"], sanitizer),
+        }
+    out.mkdir(parents=True)
+    _write_json(out / "assessment.json", record)
+    if status != "pass" or evidence is None:
+        return 1
+    run = evidence.run
+    receipt = {
+        "model_id": run["model_id"],
+        "format": SUMMARY_FORMAT,
+        "providers": run["providers"],
+        "quantizations": run["quantizations"],
+        "reasoning": run["reasoning"],
+        "fixture_digest": SUMMARY_FIXTURE_DIGEST,
+        "prompt_digest": SUMMARY_PROMPT_DIGEST,
+        "validator": ASSESSMENT_VERSION,
+        # The original genuine request IDs and run date; the assessment date is in assessment.json.
+        "request_ids": list(evidence.pins.request_ids),
+        "recorded_on": run["started_at"][:10],
+        "result": "pass",
+    }
+    SummaryReceipt.model_validate(receipt)
+    _write_json(
+        out / "receipt-candidate.json",
+        {
+            "receipt": receipt,
+            "assessment_sha256": _sha256((out / "assessment.json").read_bytes()),
+            "note": "a candidate for review: it qualifies nothing and enables no attached engine by itself",
+        },
+    )
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1167,10 +1571,18 @@ def main(argv: list[str] | None = None) -> int:
     live.add_argument("--host-pid", type=int, required=True)
     live.add_argument("--gateway-pid", type=int, required=True)
     live.add_argument("--out", type=Path, required=True)
+    offline = commands.add_parser("assess", help="offline: write a receipt candidate only for a reviewed sealed run that two passing reviews cover")
+    offline.add_argument("--run", type=Path, required=True, help="the run directory inside its sealed experiment folder")
+    offline.add_argument("--review", type=Path, action="append", default=[], help="one reviewer's findings; give Claude's and Codex's")
+    offline.add_argument("--release", required=True, help="the operator release this assessment is made under")
+    offline.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     if args.command == "run":
-        recorded_on = datetime.now(UTC).date().isoformat()
-        return run_live(out=args.out, host_pid=args.host_pid, gateway_pid=args.gateway_pid, environ=os.environ, recorded_on=recorded_on)
+        return run_live(out=args.out, host_pid=args.host_pid, gateway_pid=args.gateway_pid, environ=os.environ)
+    if args.command == "assess":
+        code = assess(run_dir=args.run, reviews=args.review, release=args.release, out=args.out)
+        print(f"evaluate_context_summarizer assess: {('candidate written', 'denied', 'refused')[code]} ({args.out})")
+        return code
     fixture = load_fixture()
     if args.command == "envelope":
         if args.registry is None:

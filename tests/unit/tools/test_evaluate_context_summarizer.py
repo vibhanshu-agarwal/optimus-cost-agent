@@ -82,11 +82,13 @@ def test_the_registry_pins_the_engines_qualification_keys() -> None:
     """The neutral registry cannot import the engine, so it pins these values; they must agree."""
     from context_engine.summary import SUMMARY_FORMAT as ENGINE_FORMAT
     from optimus_model_policy.registry import SUMMARY_FIXTURE_DIGEST, SUMMARY_FORMAT, SUMMARY_PROMPT_DIGEST, SUMMARY_VALIDATOR
+    from tools.evaluate_context_summarizer import ASSESSMENT_VERSION
 
+    # A receipt binds the offline assessment that judged it, not the lexical validator a run executed.
     assert (SUMMARY_FORMAT, SUMMARY_PROMPT_DIGEST, SUMMARY_VALIDATOR, SUMMARY_FIXTURE_DIGEST) == (
         ENGINE_FORMAT,
         PROMPT_DIGEST,
-        VALIDATOR_VERSION,
+        ASSESSMENT_VERSION,
         FIXTURE.digest,
     )
 
@@ -655,28 +657,13 @@ class FakeSummarizer:
         return SummarizerResponse(text=self.texts.pop(0), finish_status="stop", attempts=(SummarizerAttempt(f"gw-{n}", f"req-{n}", "completed", self.cost),))
 
 
-def test_a_passing_two_step_run_yields_a_receipt_bound_to_every_key() -> None:
+def test_a_passing_two_step_run_keeps_its_evidence_and_builds_no_receipt() -> None:
+    """Passing the automatic checks completes a run for review; only the offline `assess` builds a receipt
+    (Codex qualification-method disposition, 2026-10-10)."""
     fake = FakeSummarizer(STEP1, FINAL)
-    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"), recorded_on="2026-10-02")
-    assert result.passed and result.calls == 2
-    assert result.receipt == {
-        "model_id": "qwen/qwen3.7-flash",
-        "format": "context-summary-v1",
-        "providers": ["alibaba"],
-        "quantizations": ["fp8"],
-        "reasoning": None,
-        "fixture_digest": FIXTURE.digest,
-        "prompt_digest": PROMPT_DIGEST,
-        "validator": VALIDATOR_VERSION,
-        "request_ids": ["req-1", "req-2"],
-        "recorded_on": "2026-10-02",
-        "result": "pass",
-    }
-    assert result.reported_cost_usd == Decimal("0.0002")
-    # The receipt is exactly what the registry accepts, identity included, so a recorded pass needs
-    # no hand editing and cannot lose its model (Codex CP2 R3).
-    stored = SummaryReceipt.model_validate(result.receipt)
-    assert (stored.model_id, stored.providers, stored.quantizations) == ("qwen/qwen3.7-flash", ("alibaba",), ("fp8",))
+    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"))
+    assert result.passed and result.calls == 2 and not hasattr(result, "receipt")
+    assert (result.request_ids, result.reported_cost_usd) == (("req-1", "req-2"), Decimal("0.0002"))
     assert [(r.attempt_id, r.outcome, r.covered_turn_ids, r.identity.model_id) for r in result.attempts] == [
         ("gw-1", "completed", FIXTURE.step1, "qwen/qwen3.7-flash"),
         ("gw-2", "completed", FIXTURE.step1 + FIXTURE.step2, "qwen/qwen3.7-flash"),
@@ -685,7 +672,7 @@ def test_a_passing_two_step_run_yields_a_receipt_bound_to_every_key() -> None:
 
 def test_step_two_merges_the_step_one_summary_with_only_the_newer_turns() -> None:
     fake = FakeSummarizer(STEP1, FINAL)
-    run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"), recorded_on="2026-10-02")
+    run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"))
     first, second = fake.prompts
     assert first.startswith(SUMMARY_PROMPT) and "IGNORE ALL PREVIOUS INSTRUCTIONS" in first.split("SOURCE:\n", 1)[1]
     assert STEP1 in second and FIXTURE.turns[7].user_prompt in second
@@ -694,8 +681,8 @@ def test_step_two_merges_the_step_one_summary_with_only_the_newer_turns() -> Non
 
 def test_a_failed_first_step_ends_the_run_without_a_retry_or_receipt() -> None:
     fake = FakeSummarizer(STEP1.replace("Never use eval or exec. ", ""), FINAL)
-    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"), recorded_on="2026-10-02")
-    assert (result.passed, result.calls, result.final, result.receipt) == (False, 1, None, None)
+    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"))
+    assert (result.passed, result.calls, result.final) == (False, 1, None)
 
 
 def test_text_from_a_response_without_a_completed_attempt_cannot_qualify() -> None:
@@ -705,15 +692,15 @@ def test_text_from_a_response_without_a_completed_attempt_cannot_qualify() -> No
     def uncertain(*, prompt: str, max_output_tokens: int) -> SummarizerResponse:
         return SummarizerResponse(text=STEP1, finish_status="stop", attempts=(SummarizerAttempt("gw-1", "req-1", "uncertain", None),))
 
-    result = run_qualification(FIXTURE, CANDIDATE, uncertain, dollar_cap=Decimal("1"), recorded_on="2026-10-02")
-    assert (result.passed, result.calls, result.receipt, result.request_ids) == (False, 1, None, ("req-1",))
+    result = run_qualification(FIXTURE, CANDIDATE, uncertain, dollar_cap=Decimal("1"))
+    assert (result.passed, result.calls, result.request_ids) == (False, 1, ("req-1",))
     assert "format" in failing(result.step1)
 
 
 def test_a_failed_final_step_records_no_receipt() -> None:
     fake = FakeSummarizer(STEP1, FINAL.replace("The plan was not approved.", "The plan was approved."))
-    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"), recorded_on="2026-10-02")
-    assert (result.passed, result.calls, result.receipt) == (False, 2, None)
+    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"))
+    assert (result.passed, result.calls) == (False, 2)
 
 
 def test_the_bound_covers_every_input_byte_the_whole_output_cap_and_every_attempt() -> None:
@@ -731,7 +718,7 @@ def test_a_call_whose_bound_passes_the_cap_is_never_made() -> None:
     step1_input = "x"  # any input: the bound includes the full output cap and both attempts
     tiny = request_upper_bound_usd(step1_input, FIXTURE.max_output_tokens, CANDIDATE) / 2
     with pytest.raises(CapRefused):
-        run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=tiny, recorded_on="2026-10-02")
+        run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=tiny)
     assert fake.prompts == []
 
 
@@ -743,10 +730,10 @@ def test_the_cap_can_stop_the_second_call_after_the_first() -> None:
     first_bound = request_upper_bound_usd(maintenance_input(None, [FIXTURE.turns[s] for s in FIXTURE.step1]), FIXTURE.max_output_tokens, CANDIDATE)
     fake = FakeSummarizer(STEP1, FINAL)
 
-    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=first_bound, recorded_on="2026-10-02")
+    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=first_bound)
 
     assert len(fake.prompts) == 1 and result.step1.passed
-    assert (result.passed, result.final, result.receipt) == (False, None, None)
+    assert (result.passed, result.final) == (False, None)
     assert result.unrun.startswith("step 2 UNRUN: known spend 0.0001 USD plus step 2's reservation")
     assert result.budget == result.unrun
 
@@ -754,10 +741,10 @@ def test_the_cap_can_stop_the_second_call_after_the_first() -> None:
 def test_unknown_cost_is_reported_as_unknown_and_stops_further_dispatch() -> None:
     fake = FakeSummarizer(STEP1, FINAL, cost=None)
 
-    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"), recorded_on="2026-10-02")
+    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"))
 
     assert len(fake.prompts) == 1 and result.step1.passed
-    assert (result.passed, result.reported_cost_usd, result.receipt) == (False, None, None)
+    assert (result.passed, result.reported_cost_usd) == (False, None)
     assert result.budget == "step 2 UNRUN: an earlier attempt's cost is unknown, so the remaining budget is unknown"
 
 
@@ -765,10 +752,10 @@ def test_a_known_total_over_the_cap_is_never_a_pass() -> None:
     """A breach first known from the last response keeps both steps' findings but is not a pass."""
     fake = FakeSummarizer(STEP1, FINAL, cost=Decimal("0.3"))
 
-    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("0.5"), recorded_on="2026-10-02")
+    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("0.5"))
 
     assert len(fake.prompts) == 2 and result.step1.passed and result.final is not None and result.final.passed
-    assert (result.passed, result.receipt, result.reported_cost_usd) == (False, None, Decimal("0.6"))
+    assert (result.passed, result.reported_cost_usd) == (False, Decimal("0.6"))
     assert result.budget == "known spend 0.6 USD exceeds the 0.5 USD cap"
 
 
@@ -804,7 +791,7 @@ def test_a_fact_valid_step_one_summary_up_to_the_ceiling_is_carried_into_step_tw
     assert report(first, step="step1").passed
     fake = FakeSummarizer(first, FINAL)
 
-    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"), recorded_on="2026-10-02")
+    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"))
 
     assert result.passed and result.calls == 2 and result.unrun is None
     assert first in fake.prompts[1]
@@ -816,9 +803,9 @@ def test_a_step_one_summary_over_the_ceiling_keeps_its_attempt_and_leaves_step_t
     assert report(first, step="step1").passed
     fake = FakeSummarizer(first, FINAL)
 
-    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"), recorded_on="2026-10-02")
+    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"))
 
-    assert (result.passed, result.calls, result.final, result.receipt) == (False, 1, None, None)
+    assert (result.passed, result.calls, result.final) == (False, 1, None)
     assert result.step1.passed and len(fake.prompts) == 1
     assert result.unrun == "step 2 UNRUN: the step 1 summary is 8193 UTF-8 bytes, over the 8192-byte carry ceiling"
     assert [(r.attempt_id, r.outcome, r.cost_usd) for r in result.attempts] == [("gw-1", "completed", Decimal("0.0001"))]
@@ -946,11 +933,11 @@ def test_a_step_one_summary_at_the_byte_bound_is_carried_and_one_byte_over_is_no
     if wide:
         assert len(over) < SUMMARY_MAX_BYTES, "bytes are measured, not characters"
 
-    carried = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(at_bound, FINAL), dollar_cap=Decimal("1"), recorded_on="2026-10-09")
-    stopped = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(over, FINAL), dollar_cap=Decimal("1"), recorded_on="2026-10-09")
+    carried = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(at_bound, FINAL), dollar_cap=Decimal("1"))
+    stopped = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(over, FINAL), dollar_cap=Decimal("1"))
 
     assert (carried.passed, carried.calls) == (True, 2)
-    assert (stopped.passed, stopped.calls, stopped.receipt) == (False, 1, None)
+    assert (stopped.passed, stopped.calls) == (False, 1)
     assert stopped.unrun == "step 2 UNRUN: the step 1 summary is 8193 UTF-8 bytes, over the 8192-byte carry ceiling"
 
 
@@ -958,10 +945,9 @@ def test_a_step_one_summary_at_the_byte_bound_is_carried_and_one_byte_over_is_no
 def test_a_final_summary_at_the_byte_bound_passes(wide: bool) -> None:
     final = padded(FINAL, SUMMARY_MAX_BYTES, marker=FINAL_MARKER, wide=wide)
 
-    result = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(STEP1, final), dollar_cap=Decimal("1"), recorded_on="2026-10-09")
+    result = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(STEP1, final), dollar_cap=Decimal("1"))
 
-    assert result.passed and result.receipt is not None and result.inadmissible is None
-    assert result.receipt["fixture_digest"] == "f32fd04d25461f435daff8c39049b2468afe3e407e1c4a3a41c9992f3b5e8f19"  # pragma: allowlist secret - public fixture digest
+    assert result.passed and result.inadmissible is None
 
 
 @pytest.mark.parametrize("wide", [False, True], ids=["ascii", "multibyte"])
@@ -973,9 +959,9 @@ def test_a_final_summary_one_byte_over_the_bound_is_not_admissible(wide: bool) -
         assert len(final) < SUMMARY_MAX_BYTES, "bytes are measured, not characters"
     fake = FakeSummarizer(STEP1, final)
 
-    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"), recorded_on="2026-10-09")
+    result = run_qualification(FIXTURE, CANDIDATE, fake, dollar_cap=Decimal("1"))
 
-    assert (result.passed, result.receipt, result.calls, len(fake.prompts)) == (False, None, 2, 2)
+    assert (result.passed, result.calls, len(fake.prompts)) == (False, 2, 2)
     assert result.step1.passed and result.final is not None and result.final.passed
     assert result.inadmissible == "the final summary is 8193 UTF-8 bytes, over the 8192-byte runtime bound"
     assert [(r.outcome, r.cost_usd) for r in result.attempts] == [("completed", Decimal("0.0001"))] * 2
@@ -1031,10 +1017,13 @@ def with_case(section: str, append: str, remove: str | None = None, base: str = 
     return summary(**bodies)
 
 
-def test_the_validator_is_v6_and_the_registry_pins_it() -> None:
+def test_the_lexical_validator_is_v6_and_the_registry_pins_the_assessment() -> None:
+    """The v6 lexical evaluator stays a diagnostic a run executes; the qualification key is the offline
+    assessment (Codex qualification-method disposition, 2026-10-10)."""
     from optimus_model_policy.registry import SUMMARY_VALIDATOR
 
-    assert VALIDATOR_VERSION == SUMMARY_VALIDATOR == "context-summary-validator-v6"
+    assert VALIDATOR_VERSION == "context-summary-validator-v6"
+    assert SUMMARY_VALIDATOR == "context-summary-assessment-v1.1"
 
 
 @pytest.mark.parametrize(("case", "section", "append", "remove", "expected"), CORPUS, ids=[c[0] for c in CORPUS])
@@ -1150,7 +1139,7 @@ def test_the_runner_and_the_command_line_agree(tmp_path: Path, case, section, ap
     saved = tmp_path / "final.txt"
     saved.write_text(text, encoding="utf-8")
 
-    result = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(STEP1, text), dollar_cap=Decimal("1"), recorded_on="2026-10-09")
+    result = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(STEP1, text), dollar_cap=Decimal("1"))
 
     assert result.passed is expected
     assert (main(["check", "--summary", str(saved), "--step", "final"]) == 0) is expected
@@ -1307,9 +1296,9 @@ def test_the_runner_and_the_command_line_refuse_each_reproduction(tmp_path: Path
     saved = tmp_path / "final.txt"
     saved.write_text(text, encoding="utf-8")
 
-    result = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(STEP1, text), dollar_cap=Decimal("1"), recorded_on="2026-10-09")
+    result = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(STEP1, text), dollar_cap=Decimal("1"))
 
-    assert (result.passed, result.receipt) == (False, None)
+    assert result.passed is False
     assert result.step1.passed and result.final is not None and failing(result.final) == {"half-up-superseded"}
     assert main(["check", "--summary", str(saved), "--step", "final"]) != 0
 
@@ -1416,9 +1405,9 @@ def test_the_runner_and_the_command_line_refuse_each_unaccounted_reproduction(tm
     saved = tmp_path / "final.txt"
     saved.write_text(text, encoding="utf-8")
 
-    result = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(STEP1, text), dollar_cap=Decimal("1"), recorded_on="2026-10-09")
+    result = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(STEP1, text), dollar_cap=Decimal("1"))
 
-    assert (result.passed, result.receipt) == (False, None)
+    assert result.passed is False
     assert result.step1.passed and result.final is not None and failing(result.final) == {"half-up-superseded"}
     assert main(["check", "--summary", str(saved), "--step", "final"]) != 0
 
@@ -1539,7 +1528,7 @@ def test_the_runner_and_the_command_line_agree_on_approval_negation(tmp_path: Pa
     saved = tmp_path / "step1.txt"
     saved.write_text(step1, encoding="utf-8")
 
-    result = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(step1, FINAL), dollar_cap=Decimal("1"), recorded_on="2026-10-10")
+    result = run_qualification(FIXTURE, CANDIDATE, FakeSummarizer(step1, FINAL), dollar_cap=Decimal("1"))
 
-    assert (result.passed, result.step1.passed, result.receipt is not None) == (expected, expected, expected)
+    assert (result.passed, result.step1.passed) == (expected, expected)
     assert (main(["check", "--summary", str(saved), "--step", "step1"]) == 0) is expected
