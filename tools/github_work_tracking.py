@@ -2680,9 +2680,14 @@ def main(argv: Sequence[str] | None = None, reader: SourceReader = read_sources_
             if not isinstance(mapping, dict):
                 raise ValueError("the mapping is not a JSON object of record ids to issue numbers")
             data = json.loads(args.inventory.read_text(encoding="utf-8"))
-            scope = read_scope(args.scope, inventory_from_data(data))
+            scope = None  # only a scoped finalize loads the inventory, so an unscoped one judges nothing it did not before
+            if args.scope is not None:
+                try:
+                    scope = read_scope(args.scope, inventory_from_data(data))
+                except OSError as error:  # an unreadable scope is refused like any other bad scope
+                    raise ValueError(f"the scope cannot be read: {type(error).__name__}") from None
             final = finalize_inventory(data, mapping, scope)
-        except (OSError, ValueError) as error:
+        except ValueError as error:
             print(json.dumps({"step": "STOP", "reason": str(error)}))
             return 2
         args.out.write_bytes(render_manifest(final).encode("utf-8"))

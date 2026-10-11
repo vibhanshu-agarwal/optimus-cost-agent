@@ -3597,3 +3597,23 @@ def test_only_the_two_reviewed_records_carry_the_new_fields() -> None:
     raw = {record["id"]: record for record in json.loads(MANIFEST.read_text(encoding="utf-8"))["records"]}
     assert {record_id for record_id, record in raw.items() if "status_current" in record} == {"plan:12.2"}
     assert {record_id for record_id, record in raw.items() if "source_updates" in record} == {"plan:12.2", "feature:plan-12"}
+
+
+def test_an_unscoped_finalize_does_not_load_or_judge_the_inventory(tmp_path: Path) -> None:
+    data = _good()
+    data["records"][0]["note_for_the_reader"] = "the loader would refuse this field; an unscoped finalize never loads the inventory"
+    inventory_path = tmp_path / "inventory.json"
+    inventory_path.write_text(json.dumps(data), encoding="utf-8")
+    migrating = {record["id"]: 300 + index for index, record in enumerate(data["records"]) if record["disposition"] == "migrate"}
+    migrating.update({"plan:11.23": 222, "P11-FU-20": 223})  # their reviewed targets
+    mapping_path = tmp_path / "mapping.json"
+    mapping_path.write_text(json.dumps(migrating), encoding="utf-8")
+    assert gwt.main(["finalize", str(inventory_path), "--mapping", str(mapping_path), "--out", str(tmp_path / "final.json")]) == 0
+    missing = tmp_path / "absent-scope.txt"  # an unreadable scope is a refusal, not a crash
+    assert (
+        gwt.main(
+            ["finalize", str(inventory_path), "--mapping", str(mapping_path), "--scope", str(missing), "--out", str(tmp_path / "x.json")]
+        )
+        == 2
+    )
+    assert not (tmp_path / "x.json").exists()
