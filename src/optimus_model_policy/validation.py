@@ -12,8 +12,8 @@ for a role only when it is explicitly assigned to that role and every hard requi
 * summarizer: a passing ``context-summary-v1`` receipt for this exact route and reasoning setting;
 * reviewer and classifier are dormant, so they are never eligible.
 
-The one reviewed test profile listed in ``experimental.py`` (by exact snapshot hash) may use its
-provider-family slug and its empirical estimator; every other snapshot keeps both rules above.
+The reviewed test profiles listed in ``experimental.py`` (each by its exact snapshot hash) may use their
+provider-family slug and empirical estimator; every other snapshot keeps both rules above.
 
 Eligible models are ordered by per-token price dominance (no dearer on both input and output, and
 cheaper on one); an exact tie puts the China-origin model first. Crossed prices need a declared

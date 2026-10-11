@@ -855,17 +855,19 @@ def paid_envelope(snapshot: RegistrySnapshot, fixture: Fixture) -> list[dict[str
 # --- The paid run --------------------------------------------------------------------------------------
 
 LIVE_PROFILE = "qualification"
-# The operator's $0.10 (2026-10-09) is the cumulative Stage B ceiling. The three sealed paid runs (fixture v1:
-# $0.0006881, one attempt; fixture v2: $0.0020065, two attempts; validator v5: $0.0007636, one attempt) already
-# spent $0.0034582 over four physical attempts, so a new run may spend at most the rest (Codex v5 paid-result
-# disposition, 2026-10-10). The remainder is arithmetic only: every paid run needs its own release.
+# The operator's $0.10 (2026-10-09) is the cumulative Stage B ceiling. The four sealed paid runs (fixture v1:
+# $0.0006881, one attempt; fixture v2: $0.0020065, two attempts; validator v5: $0.0007636, one attempt; validator
+# v6: $0.0018667, two attempts) spent $0.0053249 over six physical attempts, so a new run may spend at most the
+# rest (ledger corrected under the operator's approval of the offline preparation batch, 2026-10-11). The
+# remaining $0.0946751 is accounting only: every paid run needs its own release.
 STAGE_B_CEILING = Decimal("0.10")
-PRIOR_STAGE_B_SPEND = Decimal("0.0034582")
+PRIOR_STAGE_B_SPEND = Decimal("0.0053249")
 PRIOR_STAGE_B_RUN = (
     "stage-b-qualification/run-1: fixture v1, FAIL at step 1, one attempt, $0.0006881; "
     "stage-b-qualification-v2/run-1: fixture v2, FAIL at the final step, two attempts, $0.0020065; "
     "stage-b-qualification-v5/run-1: validator v5, FAIL at step 1, one attempt, $0.0007636; "
-    "$0.0034582 over four physical attempts"
+    "stage-b-qualification-v6/run-1: validator v6, FAIL at the final step, two attempts, $0.0018667; "
+    "$0.0053249 over six physical attempts"
 )
 LIVE_DOLLAR_CAP = STAGE_B_CEILING - PRIOR_STAGE_B_SPEND
 LIVE_WALL_CLOCK_SECONDS = 30 * 60  # the released 30-minute limit

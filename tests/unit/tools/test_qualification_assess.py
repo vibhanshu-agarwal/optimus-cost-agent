@@ -193,12 +193,14 @@ def test_two_passing_reviews_of_a_verified_run_yield_the_candidate_and_qualify_n
     assert [r["record"] for r in record["reviews"]] == [claude, codex]
     assert [r["raw_input_sha256"] for r in record["reviews"]] == [_sha(tmp_path / "review-0.json"), _sha(tmp_path / "review-1.json")]
     assert candidate["assessment_sha256"] == _sha(out / "assessment.json")
-    # The sealed experiment is untouched, and no profile is qualified by the candidate.
+    # The sealed experiment is untouched, and the candidate qualifies no profile: each still composes its
+    # reviewed pin, the qualification profile stays unqualified, and the attached profile's one filed receipt
+    # is the reviewed genuine one (offline preparation batch, 2026-10-11), never this synthetic run's.
     assert _snapshot(run_dir.parent) == sealed
-    for name in ("qualification", "attached"):
-        if profiles.TEST_PROFILES[name].override is not None:
-            issues = validate_registry(profiles.compose_test_profile_snapshot(name))
-            assert any(issue.code == "SUMMARIZER_UNQUALIFIED" for issue in issues)
+    issues = validate_registry(profiles.compose_test_profile_snapshot("qualification"))
+    assert any(issue.code == "SUMMARIZER_UNQUALIFIED" for issue in issues)
+    [filed] = profiles.compose_test_profile_snapshot("attached").policy.models[HAIKU].summary_receipts
+    assert filed.request_ids != receipt.request_ids
 
 
 def test_a_complete_run_with_a_lexical_flag_passes_only_once_both_reviews_resolve_it(tmp_path: Path, monkeypatch) -> None:

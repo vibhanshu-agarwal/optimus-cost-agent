@@ -133,3 +133,14 @@ def test_outside_the_pinned_profile_the_empirical_estimate_is_unverified(tmp_pat
 @pytest.mark.parametrize("pin", list(EXPERIMENTAL_ROUTES))
 def test_every_experimental_pin_is_a_reviewed_test_profile_hash(pin: str) -> None:
     assert pin in {profile.effective_hash for profile in profiles.TEST_PROFILES.values()}
+
+
+def test_the_attached_profile_has_the_same_experimental_route_under_its_own_hash() -> None:
+    """Profile B admits the same two exceptions, bound to its own pin (offline preparation batch, 2026-10-11)."""
+    attached = profiles.compose_test_profile_snapshot("attached")
+    route = experimental_route(attached, HAIKU)
+
+    assert route is not None and EXPERIMENTAL_ROUTES[attached.effective_hash] == route
+    assert (route.profile, route.model_id, route.provider_family, route.provider_name) == ("attached", HAIKU, "anthropic", "Anthropic")
+    assert {r.profile for r in EXPERIMENTAL_ROUTES.values()} == {"qualification", "attached"}
+    assert {pin for pin, r in EXPERIMENTAL_ROUTES.items()} == {profiles.TEST_PROFILES[r.profile].effective_hash for r in EXPERIMENTAL_ROUTES.values()}

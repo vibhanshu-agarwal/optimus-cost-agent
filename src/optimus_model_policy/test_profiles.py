@@ -15,8 +15,11 @@ None and the shipped defaults do not change. Activation remains a separate revie
 module is the reviewed test-process composition the binding rule's "reviewed code change" names.
 
 Verified facts enter a profile only through a reviewed change to its override and pinned hash. The
-``attached`` profile needs a genuine passing summary-quality receipt and its own reviewed hash and
-approval, so it is declared unavailable until then: no hash or receipt is fabricated in advance.
+``attached`` profile (profile B) is the qualification policy plus the one genuine summary-quality
+receipt Codex accepted (Stage 2, 2026-10-11), filed under the operator's approval of the offline
+preparation batch: its own reviewed hash, which a launch approval binds like any other. It qualifies the
+summarizer role for that test snapshot only. Composing it constructs no attached Context Engine: the
+host builds none for any profile, so engine attachment remains a separate reviewed change.
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ from pathlib import Path
 from typing import Final
 
 from optimus_model_policy.binding import BindingError, packaged_defaults, trusted_snapshot
-from optimus_model_policy.experimental import HAIKU_QUALIFICATION_HASH
+from optimus_model_policy.experimental import HAIKU_ATTACHED_HASH, HAIKU_QUALIFICATION_HASH
 from optimus_model_policy.registry import RegistryError, RegistrySnapshot, load_registry
 
 __all__ = ["TEST_PROFILE_NAMES", "TEST_PROFILES", "TestProfile", "compose_test_profile_snapshot", "registry_for_launch"]
@@ -61,15 +64,15 @@ TEST_PROFILES: Final[dict[str, TestProfile]] = {
         role="easy",
         output_cap=32768,
     ),
-    # Profile B: attached maintenance. Needs profile A's genuine passing receipt first.
+    # Profile B: attached maintenance. Profile A's policy plus its accepted receipt (operator approval of the
+    # offline preparation batch, 2026-10-11): the same model, test-agent role and output cap, its own hash.
     "attached": TestProfile(
         name="attached",
-        override=None,
-        effective_hash=None,
-        model_id=None,
-        role=None,
-        output_cap=None,
-        unavailable_reason="needs a genuine passing summary-quality receipt and its own reviewed hash and approval",
+        override="test_profile_attached.yaml",
+        effective_hash=HAIKU_ATTACHED_HASH,
+        model_id="anthropic/claude-haiku-5.5",
+        role="easy",
+        output_cap=32768,
     ),
 }
 TEST_PROFILE_NAMES: Final = tuple(TEST_PROFILES)
