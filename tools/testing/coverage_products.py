@@ -511,16 +511,21 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     try:
         if arguments.command == "compare":
-            sides = []
+            sides, unread = [], []
             for name in ("base", "candidate"):
                 data = getattr(arguments, name).read_bytes()
                 # Name the exact files compared, for the evidence that binds them to their CI runs.
                 print(f"coverage-products: compared {name} sha256 {hashlib.sha256(data).hexdigest()}")
+                # The run-context reader, as `validate` uses: a record it refuses identifies no run (Fable I4 S1).
+                record = records.read_record(getattr(arguments, f"{name}_run_record"))
+                if record is None:
+                    unread.append(f"{name}: the run-context record is missing, unreadable, oversized, malformed or outside the "
+                                  "run-record field table, so the run cannot be identified")
+                    continue
                 sides.append(Side(label=name, report=json.loads(getattr(arguments, f"{name}_report").read_bytes()), data=data,
-                                  record=json.loads(getattr(arguments, f"{name}_run_record").read_bytes()),
-                                  producer_offset=getattr(arguments, f"{name}_producer_utc_offset"),
+                                  record=record, producer_offset=getattr(arguments, f"{name}_producer_utc_offset"),
                                   depth_proof=name == "base" and arguments.base_audit_depth_proven_absent))
-            problems, qualifications = comparable_runs(*sides)
+            problems, qualifications = (unread, []) if unread else comparable_runs(*sides)
             problems = problems or compare_safety_rows(json.loads(sides[0].data), json.loads(sides[1].data))
             for qualification in qualifications:
                 print(f"coverage-products: qualification: {records.sanitized_text(qualification)[:300]}")

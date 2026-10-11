@@ -19,6 +19,7 @@ import pytest
 from tools import check_product_coverage as gate
 from tools.testing import coverage_products as cp
 from tools.testing import run_context
+from tools.testing import run_context_records as records
 
 _ROOT = Path(__file__).resolve().parents[3]
 
@@ -634,6 +635,60 @@ def test_the_safety_comparison_names_the_two_reports_it_compared(tmp_path: Path,
     assert all(hashlib.sha256((tmp_path / f"{name}.json").read_bytes()).hexdigest() in printed for name in ("base", "candidate"))
     assert "coverage-products: qualification: base: audit_depth_unrecorded:no-option-at-base" in printed
     assert "safety rows comparable, no regression" in printed
+
+
+def test_compare_reads_both_conforming_records_through_the_run_record_reader(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Positive control (Fable I4 S1): both sides' records conform to the run-context field table, so the shared reader
+    returns them unchanged, and the base's proven absent audit depth stays a qualification."""
+    argv = _write_sides(tmp_path, _base(), _candidate())
+    for side in (_base(), _candidate()):
+        assert records.read_record(tmp_path / f"{side.label}-run-record.json") == side.record
+    assert cp.main(argv) == cp.EXIT_PASS
+    printed = capsys.readouterr().out
+    assert "coverage-products: qualification: base: audit_depth_unrecorded:no-option-at-base" in printed
+    assert "safety rows comparable, no regression" in printed
+
+
+def test_a_safety_regression_is_still_reported_through_the_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The reader change leaves safety outcomes unchanged: a regressed module is still reported and fails."""
+    argv = _write_sides(tmp_path, _base(), _candidate(data=_safety(**{cp.SAFETY_MODULES[1]: (100, 94, 20, 18)})))
+    assert cp.main(argv) == cp.EXIT_REGRESSED
+    printed = capsys.readouterr().out
+    assert f"coverage-products: safety: {cp.SAFETY_MODULES[1]}: regressed from" in printed
+    assert "safety rows regressed or incomparable" in printed
+
+
+def _unexpected_field(record: dict[str, object]) -> bytes:
+    return json.dumps({**record, "unexpected_field": True}).encode("utf-8")
+
+
+def _malformed(record: dict[str, object]) -> bytes:
+    return json.dumps(record).encode("utf-8")[:-1]
+
+
+def _oversized(record: dict[str, object]) -> bytes:
+    body = json.dumps(record).encode("utf-8")
+    return body[:-1] + b" " * records.MAX_RECORD_BYTES + b"}"  # still valid JSON, but larger than any record may be
+
+
+@pytest.mark.parametrize("label", ["base", "candidate"])
+@pytest.mark.parametrize("damage", [_unexpected_field, _malformed, _oversized], ids=["unexpected-field", "malformed", "oversized"])
+def test_compare_refuses_a_record_the_run_record_reader_refuses(tmp_path: Path, capsys: pytest.CaptureFixture[str], label: str, damage: object) -> None:
+    """Fable I4 S1, reproduced by Codex (2026-10-10): `compare` loaded both run records with plain JSON, so a record the
+    run-context field table refuses (an out-of-table field, malformed, oversized) was compared as if valid. Each side's
+    record now goes through `records.read_record`; one it refuses makes the runs incomparable, named by side."""
+    base, candidate = _base(), _candidate()
+    argv = _write_sides(tmp_path, base, candidate)
+    side = base if label == "base" else candidate
+    (tmp_path / f"{label}-run-record.json").write_bytes(damage(side.record))  # type: ignore[operator]
+    assert records.read_record(tmp_path / f"{label}-run-record.json") is None
+    assert cp.main(argv) == cp.EXIT_REGRESSED
+    printed = capsys.readouterr().out
+    assert (f"coverage-products: safety: {label}: the run-context record is missing, unreadable, oversized, malformed "
+            "or outside the run-record field table, so the run cannot be identified") in printed
+    assert "safety rows regressed or incomparable" in printed
+    other = "candidate" if label == "base" else "base"
+    assert f"coverage-products: safety: {other}:" not in printed
 
 
 @pytest.mark.parametrize("missing", ["--base-run-record", "--candidate-run-record", "--base-producer-utc-offset", "--candidate-producer-utc-offset"])
