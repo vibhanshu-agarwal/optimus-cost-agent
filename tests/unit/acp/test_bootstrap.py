@@ -810,6 +810,29 @@ def test_the_configured_server_holds_the_same_redis_runtime_the_harness_built(mo
     assert runtime.closed == 0
 
 
+def test_only_a_stage_c_launch_consults_the_stage_c_attachment(monkeypatch, tmp_path):
+    """Plan 12.2 Task 13 (Stage C). MUTATION: the Stage C composition is consulted for every launch (the
+    ordinary host would load test-only code), or its attachment and seeder never reach the server."""
+    _lifetime_runtime(monkeypatch)
+    monkeypatch.setattr("optimus.acp.bootstrap.build_client_mcp_runtime", lambda **kwargs: _fake_client_runtime())
+    calls, attachment, seeder = [], object(), object()
+
+    def stage_c_attachment(**kwargs):
+        calls.append(kwargs)
+        return attachment, seeder
+
+    monkeypatch.setattr("optimus.acp.stage_c.stage_c_attachment", stage_c_attachment)
+
+    ordinary = build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+    assert ordinary.context_attachment is None and ordinary._session_seeder is None and calls == []  # noqa: SLF001
+
+    launch = object()
+    staged = build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2", stage_c=launch)
+    assert staged.context_attachment is attachment and staged._session_seeder is seeder  # noqa: SLF001
+    [call] = calls
+    assert call["launch"] is launch and call["composition"] is None
+
+
 def test_the_telemetry_sink_submits_through_the_retained_runtime(monkeypatch, tmp_path):
     """The sink must be bound to THIS runtime's owner, never to the shared tool loop."""
     from optimus.telemetry.redis_sink import RedisTelemetryEventSink

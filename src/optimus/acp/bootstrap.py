@@ -247,12 +247,15 @@ def build_configured_server(
                 shared_secret=settings.optimus_api_key.get_secret_value(),
             )
         # Plan 12.2 Task 13 (Stage C): only the approved attached test composition attaches the engine;
-        # the qualification composition and every unprofiled launch stay absent-engine.
-        from optimus.acp.stage_c import stage_c_attachment
+        # the qualification composition and every unprofiled launch stay absent-engine. A launch without
+        # Stage C never loads the Stage C module, so the ordinary host executes exactly what it did before.
+        context_attachment = session_seeder = None
+        if stage_c is not None:
+            from optimus.acp.stage_c import stage_c_attachment
 
-        context_attachment, session_seeder = stage_c_attachment(
-            composition=test_composition, launch=stage_c, gateway_client=gateway_client, shared_secret=settings.optimus_api_key.get_secret_value()
-        )
+            context_attachment, session_seeder = stage_c_attachment(
+                composition=test_composition, launch=stage_c, gateway_client=gateway_client, shared_secret=settings.optimus_api_key.get_secret_value()
+            )
         # Seam 2, checkpoint B: the server takes custody of the Redis runtime and closes
         # it as the last stage of its own teardown.
         return AcpStreamServer(

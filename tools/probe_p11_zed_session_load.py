@@ -239,6 +239,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/acp/settlement.py",
     "src/optimus/acp/shapes.py",
     "src/optimus/acp/spec.py",
+    "src/optimus/acp/stage_c.py",
     "src/optimus/acp/subprocess_env.py",
     "src/optimus/acp/test_composition.py",
     "src/optimus/acp/trusted_paths.py",
