@@ -3,7 +3,8 @@
 **Plan:** `docs/superpowers/plans/2026-10-04-plan-11-30-test-profiles-implementation_v4.md` (approved working bytes SHA-256 `8A40DEF6D627EDC722D9FA925BBB0C193DE433ECCB91D2DCA19F1DA6AFC5C790`; LF-normalised blob `7D07ADA39CE1F8987E529C7FD8838952B4607F6F2CBD8773D39220D44DB6AF1E`, differing only by CRLF on lines 32–33).
 **Live plan (since 2026-10-09):** `docs/superpowers/plans/2026-10-04-plan-11-30-test-profiles-implementation_v5.md`, approved frozen bytes SHA-256 `149002fa5c61b366900c535bee883dd07289dc2317bdf4064cff2e20a7f7035e`. The v4 line above is the original plan reference, kept as written; v4 is superseded and archived byte-identically at `docs/superpowers/plans/archive/2026-10-04-plan-11-30-test-profiles-implementation_v4.md`.
 **Machine-readable index:** [`plan-11-30-test-profiles-manifest.json`](plan-11-30-test-profiles-manifest.json).
-**Status (2026-10-11):** The live plan is approved frozen v5 (`149002fa…`). Stage A and Stage B are delivered and accepted locally (Stage B finals at `3cece0a`; results commit `26bd667`). I1 is on main: the coverage bootstrap merged through PR #279 at `4ed9b25`, and its main-push baseline is accepted. The I2/I3 integration merge `ea88814e` (tree `9048bc8d`) is committed locally and accepted. The I4 exact-source finals stay accepted exactly at the old acceptance pin `ea88814e` (2026-10-10). The S1 reader correction, with the S2 workflow comment and the I4 results composition, was delivered as local commit `343b233a` (single parent `ea88814e`, tree `8a39467d`) with normal hooks, and Codex accepted that delivery on 2026-10-11 together with the corrected-source I4 finals at it, the new measurement pin C: the Windows and WSL full canonical gates and validation pass on the 7,412-node universe; Optimus 89.4515 % (Windows) / 88.8835 % (WSL), Context Engine 95.9243 %, model policy 96.9880 %, Windows gap ratio 0.966. The forward WSL platform obligation is discharged at C only. The commit that records these results is a third, documentary-only HEAD; it is not measured. This documentary delivery, I5 (concrete operator push/PR authority after latest-main reconciliation, actual Linux CI and artifact origin, and the safety comparison), merge, closure, archival and cleanup are held; the lane branch is not pushed. See "Current delivery and status (2026-10-11)", "S1 delivery at `343b233a` (2026-10-11)" and "Corrected-source I4 finals at C `343b233a` (2026-10-11)".
+**Status (2026-10-11, after Codex's 10:45:23 UTC acceptance):** The live plan is approved frozen v5 (`149002fa…`). Stage A and Stage B are delivered and accepted locally (Stage B finals at `3cece0a`; results commit `26bd667`). I1 is on main: the coverage bootstrap merged through PR #279 at `4ed9b25`, and its main-push baseline is accepted. The I2/I3 integration merge `ea88814e` (tree `9048bc8d`) and its I4 exact-source finals stay accepted at the old acceptance pin `ea88814e`. The S1 correction is local commit C `343b233a`, and the corrected-source I4 finals are accepted at that measurement pin (Windows and WSL full canonical gates and validation pass on the 7,412-node universe; Optimus 89.4515 % / 88.8835 %). The documentary delivery D2 `281f8ce7` (single parent C, tree `a45e448d`) is accepted, and its forward WSL platform obligation is discharged (1,574 nodes reused from C plus the 55 `test_ci_parity` nodes run on WSL at D2). Under the operator's exact approval the branch was pushed at `281f8ce7` without force and PR #280 opened to `main`; the PR body's masterplan declaration was corrected under release. Codex accepted the candidate Linux CI and the seven-module safety comparison at the actual PR merge commit `1946713e` (tree equal to D2's; the commits are distinct, and the CI evidence is bound to `1946713e`): Optimus 88.8591 %, Context Engine 95.9243 % and model policy 96.9880 % pass; all seven safety modules are identical to the I1 baseline, so there is no regression. The commit that records these results (D3) is documentary only and is not measured; it and any update of the published branch each need their own bounded authority. Merge to main, main-push evidence at the actual main commit, terminal acceptance, closure, archival and cleanup are held. See "Current delivery and status (2026-10-11)", "D2 delivery and WSL discharge (2026-10-11)", "I5 publication and PR-body correction (2026-10-11)" and "I5 candidate CI and seven-module safety comparison (2026-10-11)".
+*Historical status at recording (committed with `281f8ce7`, 2026-10-11), kept as written:* **Status (2026-10-11):** The live plan is approved frozen v5 (`149002fa…`). Stage A and Stage B are delivered and accepted locally (Stage B finals at `3cece0a`; results commit `26bd667`). I1 is on main: the coverage bootstrap merged through PR #279 at `4ed9b25`, and its main-push baseline is accepted. The I2/I3 integration merge `ea88814e` (tree `9048bc8d`) is committed locally and accepted. The I4 exact-source finals stay accepted exactly at the old acceptance pin `ea88814e` (2026-10-10). The S1 reader correction, with the S2 workflow comment and the I4 results composition, was delivered as local commit `343b233a` (single parent `ea88814e`, tree `8a39467d`) with normal hooks, and Codex accepted that delivery on 2026-10-11 together with the corrected-source I4 finals at it, the new measurement pin C: the Windows and WSL full canonical gates and validation pass on the 7,412-node universe; Optimus 89.4515 % (Windows) / 88.8835 % (WSL), Context Engine 95.9243 %, model policy 96.9880 %, Windows gap ratio 0.966. The forward WSL platform obligation is discharged at C only. The commit that records these results is a third, documentary-only HEAD; it is not measured. This documentary delivery, I5 (concrete operator push/PR authority after latest-main reconciliation, actual Linux CI and artifact origin, and the safety comparison), merge, closure, archival and cleanup are held; the lane branch is not pushed. See "Current delivery and status (2026-10-11)", "S1 delivery at `343b233a` (2026-10-11)" and "Corrected-source I4 finals at C `343b233a` (2026-10-11)".
 *Historical status at recording (committed with `343b233a`, 2026-10-10), kept as written:* **Status (2026-10-10):** The live plan is approved frozen v5 (`149002fa…`). Stage A and Stage B are delivered and accepted locally (Stage B finals at `3cece0a`; results commit `26bd667`). I1 is on main: the coverage bootstrap merged through PR #279 at `4ed9b25`, and its main-push baseline is accepted. The I2/I3 integration merge `ea88814e` (tree `9048bc8d`) is committed locally and accepted, with its I3 evidence and WSL platform remainder. Codex accepted the I4 exact-source finals at `ea88814e` on 2026-10-10: the Windows and WSL full canonical gates and validation pass; Optimus 89.37 % (Windows) / 88.95 % (WSL), Context Engine 95.92 %, model policy 96.99 %, Windows gap ratio 1.003. Separately, the S1 reader correction is prepared and pending review; it needs a newly reviewed committed candidate pin before I5. I5 (publication/PR, candidate Linux CI and the safety comparison), closure and cleanup are held; the lane branch is not pushed. See "Current delivery and status (2026-10-10)" and "I4 — exact-source finals at `ea88814e` (2026-10-10)".
 *Historical status at recording (committed with `26bd667`, 2026-10-09), kept as written:* **Status (2026-10-09, 07:24 UTC):** Stage A and Stage B Tasks 4–5 are accepted and locally committed. The Stage B Task 6 final gates ran at the governance commit `3cece0a` (tree `fabb6720…`) on independent native Windows and WSL clones and pass: Optimus coverage 87.772781 % (Windows) and 87.214201 % (WSL), Windows gap ratio 1.001314. Codex accepted the local evidence on 2026-10-09 at 07:24:20 UTC. Remote Linux CI and the base/candidate safety-row comparison are UNKNOWN; complete Task 6 and plan closure remain open. Nothing is pushed. See "Current delivery and status (2026-10-09)" and "Stage B Task 6 — final gates at `3cece0a` (2026-10-09)".
 *Historical status at recording (committed with `3cece0a`, 2026-10-09), kept as written:* **Status (2026-10-09):** Stage A (Tasks 0–3) and its Task 6 at `acc2a1c` are accepted and locally committed. Stage B Tasks 4–5 are accepted and locally committed, and the delivered Stage B source contains the Stage B corrections: b0 (the explicit `core` rule for the WSL IPC node and the slow-node measurement refresh) was delivered in Task 4 at `43eb190`, and the partial-index correction and the quick commit-audit switch in Task 5 at `66ddabf`. Checkpoint C and G were accepted on candidate C7c and Checkpoint D on candidate E (pairs5 median core wall improvement 26.2040537 %, E-source timing under ambient load). Stage B Task 6 (independent final Windows and WSL gates) has not run. Remote Linux CI and the safety-row comparison are UNKNOWN. Nothing is pushed. See "Current delivery and status (2026-10-09)".
@@ -15,7 +16,7 @@ This report is the plan's single evidence report. Each later stage appends its o
 
 ## Current delivery and status (2026-10-11)
 
-This is the report's one current-status section; it is updated in place (last on 2026-10-11; it was dated 2026-10-10 before that, and 2026-10-09 before then). The status lines of the dated sections below are **historical status at recording**: they are kept as written, and where one no longer describes the current state it carries a dated annotation. The manifest follows the same convention: its top-level `current_delivery` holds the current state, and each section's `status` string is historical.
+This is the report's one current-status section; it is updated in place (last on 2026-10-11, after Codex's 10:45:23 UTC acceptance of the PR #280 CI and safety evidence; earlier on 2026-10-11 after the C acceptance; it was dated 2026-10-10 before that, and 2026-10-09 before then). The status lines of the dated sections below are **historical status at recording**: they are kept as written, and where one no longer describes the current state it carries a dated annotation. The manifest follows the same convention: its top-level `current_delivery` holds the current state, and each section's `status` string is historical.
 
 ### Local commits on `agent/claude/plan-11-30-test-profiles` (original base `main` `a929aab`; `main` `4ed9b25` merged in at `ea88814`)
 
@@ -34,8 +35,21 @@ This is the report's one current-status section; it is updated in place (last on
 | `26bd667` | docs: record Plan 11.30 Stage B final gates at 3cece0a | the Stage B results documentary commit; it records results measured at `3cece0a` and is not itself measured source |
 | `ea88814` | Merge main 4ed9b25 into the Plan 11.30 profiles lane: one canonical coverage gate, validity layer, ADR-020 | the I2/I3 integration merge (tree `9048bc8d`; parents `26bd667` then `4ed9b25`); the accepted I4 exact-source final pin |
 | `343b233` | fix(coverage): read compare's run records through the run-context reader; record I4 results | the S1 reader correction with the S2 workflow comment and the I4 results composition (tree `8a39467d`; single parent `ea88814e`); a new source candidate and the accepted corrected-source I4 measurement pin C |
+| `281f8ce` | docs: record Plan 11.30 S1 delivery and corrected-source finals at 343b233a | the D2 documentary delivery (tree `a45e448d`; single parent `343b233a`); documentary only, not measured source; pushed without force as the head of PR #280 |
 
-The lane branch is not pushed; its push, PR, merge to main and cleanup are held (I5). The commit that will record the 2026-10-11 results is a third, documentary-only HEAD after the old acceptance pin `ea88814e` and the new measurement pin C `343b233a`; it is not measured source. Separately, the I1 bootstrap was published from its own branch `agent/claude/plan-11-30-coverage-bootstrap` (commit `6f1935d`) and merged to main through PR #279 at `4ed9b25`, under the operator's bootstrap publication grant; that grant does not cover this lane.
+**Published and CI identities (2026-10-11).** Under the operator's exact approval, the branch was pushed without force at exactly `281f8ce77b6c7e8c43545e7c610b1aab475e5981` (D2) and [PR #280](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/280) was opened to `main` (base `4ed9b252bc63a4ffd7179c34083af28566bee0a7`). The PR's candidate Linux CI ran on the actual PR merge commit `1946713e6c86a4a1f6db7335955c982e980c404c` (parents base then branch; tree `a45e448db244e4f5cd78e38f4fa2e3b180b1e467`, equal to D2's). The trees are equal, but the commits are distinct: the CI evidence is bound to `1946713e`, not to the branch head. The commit that records these results (D3) is documentary only and is not measured source. Merge to main, cleanup and any update of the published branch are held; the existing push grant covered exact D2 only. Separately, the I1 bootstrap was published from its own branch `agent/claude/plan-11-30-coverage-bootstrap` (commit `6f1935d`) and merged to main through PR #279 at `4ed9b25`, under the operator's bootstrap publication grant; that grant does not cover this lane.
+
+*Superseded (2026-10-11, after Codex's 10:45:23 UTC acceptance), kept as written:* The lane branch is not pushed; its push, PR, merge to main and cleanup are held (I5). The commit that will record the 2026-10-11 results is a third, documentary-only HEAD after the old acceptance pin `ea88814e` and the new measurement pin C `343b233a`; it is not measured source. Separately, the I1 bootstrap was published from its own branch `agent/claude/plan-11-30-coverage-bootstrap` (commit `6f1935d`) and merged to main through PR #279 at `4ed9b25`, under the operator's bootstrap publication grant; that grant does not cover this lane.
+
+### Measured and documentary pins (kept separate)
+
+| Pin | Status |
+|---|---|
+| `ea88814e` | old acceptance: the I4 exact-source finals (2026-10-10) |
+| C `343b233a` | the local Windows and WSL corrected-source finals (2026-10-11) |
+| D2 `281f8ce7` | documentary; the published PR #280 head; not measured |
+| `1946713e` | the PR #280 CI merge ref: candidate Linux CI and the seven-module safety comparison |
+| D3 | the eventual commit recording these results; documentary only, not measured |
 
 ### Status
 
@@ -49,7 +63,12 @@ The lane branch is not pushed; its push, PR, merge to main and cleanup are held 
 - **I4 (accepted at `ea88814e`, 2026-10-10):** the Windows and WSL full canonical gates and validation pass; Optimus 89.37 % / 88.95 %, Context Engine 95.92 %, model policy 96.99 %, Windows gap ratio 1.003; the forward WSL platform obligation is discharged at this pin (section "I4 — exact-source finals at `ea88814e` (2026-10-10)"). This acceptance is exact-source and does not transfer to a later pin.
 - **S1 (delivered and accepted, 2026-10-11):** the `compare` reader correction, with the S2 workflow comment and the I4 results composition, is local commit `343b233a` (single parent `ea88814e`, tree `8a39467d`, 10 paths), delivered with normal hooks; Codex accepted the delivery with the disclosed receipt defect (section "S1 delivery at `343b233a` (2026-10-11)").
 - **Corrected-source I4 finals at C (accepted, 2026-10-11):** at the new measurement pin C `343b233a`, the Windows and WSL full canonical gates and validation pass on the 7,412-node universe; Optimus 89.4515 % / 88.8835 %, Context Engine 95.9243 %, model policy 96.9880 %, Windows gap ratio 0.966; S1's forward WSL platform obligation is discharged at C only (section "Corrected-source I4 finals at C `343b233a` (2026-10-11)"). The I4 acceptance at the old acceptance pin `ea88814e` stays as recorded and bound to that pin.
-- **Open (all held):** (1) this documentary delivery, under its own reviewed commit grant; (2) concrete operator push/PR authority for the lane after latest-main reconciliation (the bootstrap publication approval does not cover this branch); (3) actual Linux CI and artifact origin, and the seven-module safety comparison against the accepted I1 baseline; (4) merge to main, closure, archival and cleanup, including the Stage B, I4 and C final clones. The CI backstop for the partial-commit correction also remains open.
+- **D2 (delivered and accepted, 2026-10-11):** documentary commit `281f8ce7` (single parent C `343b233a`, tree `a45e448d`), delivered with normal hooks on the one released attempt; commit seal `0d64b375…`; the pre-attempt owned-process check is receipted (08:15:02Z, 0 lane-owned processes). Its hook run `20261011T081551-28460-343e44` (6,365 passed, 37 skipped, 0 failed) is coverage-free and not a final. D2's forward WSL platform obligation is discharged at D2: 1,574 nodes reused from C under Codex's input-specific scope disposition, plus the 55 `test_ci_parity` nodes run on WSL at D2 (run `20261011T083201-525-8c700e`, 55 passed); 1,629 in total, 0 failed or missing (section "D2 delivery and WSL discharge (2026-10-11)").
+- **I5 publication (2026-10-11):** under the operator's exact approval, the branch was pushed at exactly `281f8ce7` with no force, and PR #280 was opened to `main` (base `4ed9b252`) with the reviewed title and body. The original `Masterplan impact` run `38125646844` failed on a malformed declaration that Codex itself supplied; the body was corrected under release to `Master-plan impact: updated — HARDENING-TRACK-CI-GUARDRAILS` (r3 SHA-256 `e51d1be7…`), and the edited-event run `38126187842` succeeded. Both runs are kept (section "I5 publication and PR-body correction (2026-10-11)").
+- **I5 candidate Linux CI and safety (accepted 2026-10-11 10:45:23 UTC):** guardrails run `38125646691` on the PR merge commit `1946713e` succeeded; Optimus 88.8591 %, Context Engine 95.9243 % and model policy 96.9880 % pass; Evidence Handoff and the aggregate are informational; exactly one eligible full session, `20261011T084124-2858-534abb`; all seven safety modules are identical to the accepted I1 baseline, so there is no regression (section "I5 candidate CI and seven-module safety comparison (2026-10-11)"). The concrete merge-ref run and its provenance are accepted; universal metadata independence is not claimed, and the acceptance does not transfer automatically to a future main commit.
+- **Retained residuals (unchanged by the CI acceptance):** optional seam, overlap, cache-validation and lookup upkeep under `P11-FEAT-TEST-PROFILES`; the MAIN-5 environment observation under P11-FU-32; A2A, binding/desktop, hardening registry/activation and the existing finding owners, unchanged. Registry archival stays **723/724 PARTIAL/non-passing**, with the UNKNOWN entry untouched; successful CI does not clear it. S4 stays an explicit exactly-one evidence obligation, discharged for this candidate by the replay.
+- **Open (all held):** (1) the D3 documentary commit and any update of the published branch, each under its own bounded authority (the existing push grant was for exact D2 only); (2) merge to main, then main-push evidence at the actual main commit; (3) terminal acceptance, closure, archival and cleanup, including the Stage B, I4 and C final clones. The CI backstop for the partial-commit correction also remains open.
+- *Superseded (2026-10-11, after Codex's 10:45:23 UTC acceptance), kept as written:* the earlier 2026-10-11 bullet was "**Open (all held):** (1) this documentary delivery, under its own reviewed commit grant; (2) concrete operator push/PR authority for the lane after latest-main reconciliation (the bootstrap publication approval does not cover this branch); (3) actual Linux CI and artifact origin, and the seven-module safety comparison against the accepted I1 baseline; (4) merge to main, closure, archival and cleanup, including the Stage B, I4 and C final clones. The CI backstop for the partial-commit correction also remains open."
 - *Superseded (2026-10-11), kept as written:* the 2026-10-10 bullets were "**S1 (pending, separate from the I4 acceptance):** the `compare` reader correction, with the S2 workflow comment, is prepared test-first and pending Fable then Codex review. It then needs a separately released local commit that becomes a newly reviewed candidate pin, with its own verification disposition, before I5." and "**Open:** I5, that is publication/PR of the lane, candidate Linux CI and the base/candidate safety-row comparison (the base is the accepted I1 main-push run; the candidate side is UNKNOWN), and merge to main; the CI backstop for the partial-commit correction; plan closure. Cleanup is held, including the Stage B and I4 final clones."
 
 ### Decision-record number at integration
@@ -69,10 +88,13 @@ The IPC rule and the measurement refresh were delivered at `43eb190`. The partia
 
 **2026-10-11:** the S1 "pending" wording committed with `343b233a` (the 2026-10-10 top status line, the S1 bullet above and the "Still open" list of "I4 — exact-source finals at `ea88814e` (2026-10-10)") is an approval-time snapshot, not a claim that the later commit failed to land. It is kept as historical text. S1 was delivered at `343b233a` and accepted, and the corrected-source I4 finals at C were accepted (sections "S1 delivery at `343b233a` (2026-10-11)" and "Corrected-source I4 finals at C `343b233a` (2026-10-11)").
 
+**2026-10-11, after Codex's 10:45:23 UTC acceptance:** the wording committed with `281f8ce7` that describes the documentary delivery, publication or CI as held, or the lane branch as unpushed (the top status line now labelled historical, the superseded paragraph and bullet in the section above, and the "Still open" list of "Corrected-source I4 finals at C `343b233a` (2026-10-11)"), is an approval-time snapshot. It is kept as historical text. D2 was delivered and accepted, PR #280 was published, and its candidate Linux CI and safety comparison were accepted at merge ref `1946713e` (sections "D2 delivery and WSL discharge (2026-10-11)", "I5 publication and PR-body correction (2026-10-11)" and "I5 candidate CI and seven-module safety comparison (2026-10-11)"). Merge and closure remain held.
+
 ### Provenance conventions
 
 - **Current authority** for the Stage B dispositions is Codex's dated sections in [`docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md`](../docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md), the newest being "Stage B Task 6 — local final evidence accepted; results composition released" (recorded 2026-10-09 07:24:20 UTC), after "Stage B Task 6 preparation — audit dispositions and final-byte gate" (recorded 2026-10-09 04:32:07 UTC). This report deliberately does not cite that file's current hash.
-- **Current authority for the v5 integration (updated 2026-10-11):** Codex's dated sections in the same reviewer file, the newest being "S1 delivery and corrected-source I4 finals accepted — documentary composition released" (recorded 2026-10-11), after "S1/results batch accepted — one local commit attempt and conditional new-pin finals released" (2026-10-11). On 2026-10-10 the newest was "I4 accepted at ea88814e — bounded reader correction and results composition released", after "Integration delivery accepted — I4 exact-source finals released at ea88814e".
+- **Current authority for the v5 integration (updated 2026-10-11):** Codex's dated sections in the same reviewer file, the newest being "PR280 CI and safety accepted — final documentary composition released" (recorded 2026-10-11 10:45:23 UTC), after "PR280 declaration correction verified — main CI evidence remains pending" (2026-10-11). Earlier on 2026-10-11 the newest was "S1 delivery and corrected-source I4 finals accepted — documentary composition released", after "S1/results batch accepted — one local commit attempt and conditional new-pin finals released" (2026-10-11). On 2026-10-10 the newest was "I4 accepted at ea88814e — bounded reader correction and results composition released", after "Integration delivery accepted — I4 exact-source finals released at ea88814e".
+- **Review snapshots imported for the final documentary composition (D3, 2026-10-11, after the 10:45:23 UTC acceptance):** Codex's review file at SHA-256 `f8de3161ee834590af9c314c8a3c99dfb4fa0a1a7fd508afef600282b2a23613` and the reviewer-owned kickoff at SHA-256 `cc1058fd7490e59dc7d9a1e6f5240d8a754d857a890f18baef0c514e43189b27`, each copied byte for byte into `docs/superpowers/reviews/` from a verified immutable snapshot. These digests identify only those snapshots.
 - **Review snapshots imported for the 2026-10-11 documentary composition:** Codex's review file at SHA-256 `b8ba78f634c736aa8619f431b37b00e8b382c1a8d8a74512efc7a6e977f04696` and the refreshed reviewer-owned kickoff at SHA-256 `f5516cada46ed33f1a1074bb7be1fd85f95464e1df18b1151a2d7556ce518c8d`, each copied byte for byte into `docs/superpowers/reviews/` from a verified immutable snapshot. These digests identify only those snapshots.
 - **Review snapshot imported for the 2026-10-10 results composition:** SHA-256 `d665e5b467a189eb2399c6dd7d5aabe8c91ab62b3ecaa67abe06f6b313316f05`, copied byte for byte into `docs/superpowers/reviews/`. This digest identifies only that snapshot.
 - **Review snapshot read during drafting (2026-10-09):** SHA-256 `0d50118aea616e169593bc873c7ba3f829b521e4df06e28751cdf62b670572b2`. The file has changed since; this digest identifies only that snapshot.
@@ -1560,3 +1582,158 @@ All held:
 2. **Concrete operator push/PR authority** for the lane after latest-main reconciliation. The bootstrap publication approval does not cover this branch.
 3. **Actual Linux CI and artifact origin**, and the seven-module safety comparison against the accepted I1 baseline.
 4. **Merge to main, closure, archival and cleanup**, including the I4 and C final clones. Residual owners are unchanged.
+   - *Superseded in part (2026-10-11); the list above is kept as written:*
+     - Item 1 was delivered as documentary commit `281f8ce7` and accepted.
+     - Item 2 was granted and executed: the branch was pushed at `281f8ce7` and PR #280 opened.
+     - Item 3 was accepted at the PR merge ref `1946713e` (guardrails run `38125646691`; all seven safety rows identical to the I1 base).
+     - Item 4 stays held, together with this D3 documentary commit and any update of the published branch.
+
+     See "D2 delivery and WSL discharge (2026-10-11)", "I5 publication and PR-body correction (2026-10-11)" and "I5 candidate CI and seven-module safety comparison (2026-10-11)" below.
+
+## D2 delivery and WSL discharge (2026-10-11)
+
+**Status: accepted** (Codex, ["D2 local delivery accepted — bounded WSL CI-parity remainder released"](../docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md#d2-local-delivery-accepted--bounded-wsl-ci-parity-remainder-released), recorded 2026-10-11), and D2's forward WSL platform obligation **discharged at D2** (Codex, ["D2 WSL obligation discharged — publication readiness passed; operator grant pending"](../docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md#d2-wsl-obligation-discharged--publication-readiness-passed-operator-grant-pending), 2026-10-11). The release was "D2 documentary batch accepted — one normal-hook local commit attempt released" (2026-10-11): staged tree `a45e448d` on parent C `343b233a`, packet `f40e788440dfd9fc153ca52cbe83a5368da9375cd26402fa713730089fffa723`, seal `aa29f85ce1d892a9cdaf12f4a8d22da583fb7905b2013c3f8d85aa95679e74ed` (20 members). This section was added by the final documentary composition (D3); it is not measured source.
+
+Receipts, all in `C:\worktrees\optimus-cost-agent-worktrees\optimus-handoff\test-profiles-research\`:
+- **Delivery:** packet `2026-10-11-claude-plan-11-30-d2-delivery-packet.md` (`25ff70c2b24083d78e0bb726cd4c8b6457d7fd0565e7853ad08f8bcc3b488de3`); sealed `plan-11-30-d2-commit-attempt1-20261011`, seal `0d64b375d941799d20495bfb360562462c29add02325b0abe4b796df8c189c30` (20 members).
+- **WSL scope comparison:** sealed `plan-11-30-d2-wsl-scope-281f8ce7-20261011`, seal `687575f35825fe1d4d935f4a6501973b540e897e20bf4a2e6b476751e3472750` (2 members).
+- **WSL parity run:** packet `2026-10-11-claude-plan-11-30-d2-parity-packet.md` (`f819a0efdfe5a614f598130493b99ee397527dbf10f7812c5de4bdaaf6514d5d`); sealed `plan-11-30-d2-parity-and-publication-handoff-20261011`, seal `286fa9ad617628be9268c7eeaf24720e99526f13f9649585ca0c8d2128825e8c` (22 members).
+
+Codex verified all of these independently.
+
+### The commit
+
+| Item | Value |
+|---|---|
+| Commit | `281f8ce77b6c7e8c43545e7c610b1aab475e5981`: one attempt, normal hooks, no SKIP, `--no-verify` or retry |
+| Parent / tree | single parent C `343b233ab7b470690eb21fe20c4662460694955c` / `a45e448db244e4f5cd78e38f4fa2e3b180b1e467` (exactly the released tree) |
+| Subject | `docs: record Plan 11.30 S1 delivery and corrected-source finals at 343b233a` |
+| Paths | the 9 released paths, each blob equal to Codex's SHA-256 table: `docs/README.md`, ADR-020, `docs/decisions/README.md`, the backlog, the masterplan, the kickoff, the review file, this report and the manifest. Source, tools, tests, workflow, configuration, lock, baseline and pre-commit identities are unchanged from C |
+| Committed blobs | all 1,396 equal the staged index; status clean afterwards; remote main still `4ed9b25` |
+| Message | the commit object's message bytes equal the sealed `msg-d2.txt` (`bd5546464aa8424347702ed42fbd65129540646b8a954af2c886428cad505ecb`) |
+| Committer date / hooks | 2026-10-11T08:15:06Z; 08:15–08:22Z. Passed: trailing whitespace, file size, ruff, bandit, ast-grep, config-trust-scan, secret-scan and pytest-coverage. The yaml and toml hooks were skipped: no files |
+
+**The owned-process check, receipted this time.** `prerequisites.txt` records it with its time, exact command, script hash and result: at 2026-10-11T08:15:02Z, `proc_check.ps1` (in the seal) found **0 lane-owned Python/pytest processes**; six foreign Plan 12 Python processes were left untouched; host CPU 27 %. This is a new receipted check. It is not retrospective proof for S1's earlier missing receipt.
+
+### The commit-profile hook run (not a final)
+
+- **Run** `20261011T081551-28460-343e44`: terminal ACTIVE, COMPLETE, exit 0; valid with the qualification `parent=not_found:ancestor_exited`. Codex replayed it independently.
+- **Selection:** 6,402 of the 7,412 collected nodes (1,010 deselected), as Codex's verified dry run predicted (audit depth none; fallback `unmapped: reports/plan-11-30-test-profiles-manifest.json`). Coverage-free.
+- **Raw phases:** 6,365 call-passed, 37 skipped (18 at setup, 19 at call), 0 failed, 0 no-call nodes. The recorder-test nodes were not selected this time.
+- **Not a final full suite:** a coverage-free commit profile, not the 7,412 universe.
+- **Forward obligation:** the hook emitted `wsl-platform: next checkpoint` (a `fallback:broad` trigger on the unmapped manifest). It is discharged at D2; see below.
+
+### WSL scope disposition and the 55-node run at D2
+
+Codex accepted **input-specific reuse** of C's accepted WSL evidence for the **1,574** platform nodes outside `tests/unit/guardrails/test_ci_parity.py`. Implementation, dependency, configuration, policy and classification identities are unchanged, the platform scope is identical (1,629 platform-tagged nodes, `d79185015cc55b96a2fae2b6fd3d34fab82967e566cc3b73fba461672932c9ed`, set-equal at C and D2) and C's original qualifications are retained. This is an explicit obligation disposition for this documentary descendant. It does not turn C's raw records or coverage into D2 measurements.
+
+The **55** `test_ci_parity` nodes read the whole tracked-file list, so the changed documents are part of their input. Codex chose a small real WSL run for them rather than a qualification alone, because Windows evidence is not WSL evidence (only 45 of them were in the D2 Windows hook).
+
+| Item | Value |
+|---|---|
+| Checkout | fresh independent clone `/root/p1130-d2parity-20261011T083120` at `281f8ce7` (tree `a45e448d`), detached and clean; earlier acceptance clones untouched |
+| Environment | its own frozen environment; CPython 3.14.6, pytest 9.1.1, coverage 7.14.3 (not writing) |
+| Identity | head, tree, clean status, `pyproject.toml`, `uv.lock`, profiles, groups, pre-commit, baseline and the src/tools/tests `ls-tree` digest: equal before and after |
+| Node list | the retained 1,629-ID list's 55 `test_ci_parity` IDs, identical to D2's own classification; digest `241319bbdcacdc9f9524d4834c3a2c1ccb02f34627bec74ceb5c61760911165f` |
+| Command | `uv run --no-sync pytest --no-cov -p no:cacheprovider -q -rs @<nodes.txt>`, with normal selection and the root conftest; no addopts or marker override |
+| Result | **55 passed** in 11.47 s, exit 0; one serial attempt, no retry |
+| Record | `20261011T083201-525-8c700e`: ACTIVE, `default_selection`, terminal COMPLETE, exit 0, 55 selected, full depth, head `281f8ce7`; valid with `native=unsupported`, `guard=unsupported_platform`, `parent=unsupported`. Raw phases: 55 call-passed, 0 skipped, failed or missing |
+| Load | 0.54 before, 0.39 after |
+
+**Platform accounting for D2's forward obligation:**
+
+| Part | Nodes | Evidence |
+|---|---|---|
+| Reused from C under Codex's input-specific scope disposition | 1,574 | C's accepted WSL full run |
+| Run on WSL at D2 | 55 | run `20261011T083201-525-8c700e`, 55 passed |
+| **Total** | **1,629** | 0 failed or missing |
+
+D2's forward `wsl-platform: next checkpoint` obligation is **discharged at `281f8ce7`**. C's recorder, skip and capability qualifications are retained. C's full-run coverage and timing stay measured at C and are not relabelled as D2 measurements.
+
+## I5 publication and PR-body correction (2026-10-11)
+
+**Status: executed under the operator's exact approval; the body correction accepted** (Codex, ["PR280 publication verified — bounded masterplan declaration correction released"](../docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md#pr280-publication-verified--bounded-masterplan-declaration-correction-released) and ["PR280 declaration correction verified — main CI evidence remains pending"](../docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md#pr280-declaration-correction-verified--main-ci-evidence-remains-pending), both 2026-10-11). This section was added by the final documentary composition (D3).
+
+### The operator's approval
+
+Recorded in ["Operator publication approval — exact D2 branch push and one PR released"](../docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md#operator-publication-approval--exact-d2-branch-push-and-one-pr-released) (2026-10-11): a direct operator reply in Codex chat `01a10617-9940-72c0-a5e2-e3f8c3241055`, quoted there verbatim. It allowed Claude to push the branch at `281f8ce7` without force and to open the PR with the reviewed text; merge, closure and cleanup stay held. The grant covers exact D2 only, not a later HEAD.
+
+### Publication, as executed
+
+Receipts: sealed `plan-11-30-pr280-masterplan-impact-fix-20261011` in `C:\worktrees\optimus-cost-agent-worktrees\optimus-handoff\test-profiles-research\`, seal `55ff76a88d80d7b049d1037f9284cd944fdae4323f4a32a8813eea0d237190cc` (13 members); packet `2026-10-11-claude-plan-11-30-pr280-masterplan-impact-packet.md` (`e99ac5b54a3a16f4d46f0d9f7dca6602f0fed29cab24709668413c3cd24de15c`).
+
+| Item | Value |
+|---|---|
+| Pre-publication recheck (08:40:15Z) | branch `agent/claude/plan-11-30-test-profiles`, head `281f8ce7`, tree `a45e448d`, clean; frozen v5 `149002fa…`; source/tools/tests/workflow/configuration/lock `ls-tree` digest equal to C; remote branch absent; remote main `4ed9b25` |
+| Push (08:40:20Z) | `git push origin 281f8ce77b6c7e8c43545e7c610b1aab475e5981:refs/heads/agent/claude/plan-11-30-test-profiles`: a new branch, **no force**, exit 0; the remote branch is exactly `281f8ce7` |
+| PR (created 08:40:37Z) | [#280](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/280) to `main`, base `4ed9b252bc63a4ffd7179c34083af28566bee0a7`, head `281f8ce7`, with the reviewed title and body. The only extra body content is the disclosed Claude Code attribution line, which Codex accepted as attribution with no scope or authority effect |
+| Merge ref (08:40:56Z) | `1946713e6c86a4a1f6db7335955c982e980c404c`, parents `4ed9b252` then `281f8ce7`, tree `a45e448d`, equal to the lane tree. This is content equality only; CI binds to `1946713e` |
+
+### The masterplan declaration correction
+
+- **The failure:** the `Masterplan impact` workflow's original run **`38125646844`** (job `114429346409`, check `verify`) failed with "malformed Master-plan impact declaration". The reviewed body's declaration, which Codex itself supplied, matched neither strict form the checker accepts. Because the PR changes the masterplan, only the `updated` form was available. Codex reproduced the refusal with the real `tools.verify_masterplan_impact.verify` and the PR's actual 63 changed paths. The failed run and its retained failure log are kept.
+- **The correction:** Codex refined Claude's proposed r2 (the PR changes both the CI-guardrails custody row 268 and the capability row 296, not only row 296) and released r3, with the declaration `Master-plan impact: updated — HARDENING-TRACK-CI-GUARDRAILS`. The r3 body's UTF-8/LF SHA-256 is `e51d1be76de51505927e957ed1e8b13055a971be8730ed7ef835a51fbce72409`.
+- **The edit** (08:49:40–08:49:44Z; receipts `06-pr-body-edit.txt` and `07-runs-after-edit.txt` in the CI-safety seal below): the prechecks passed (PR open; head, base and title unchanged; live body equal to the published body apart from the transport newline). Then one `gh pr edit 280 --body-file pr-body-r3.md` ran, exit 0. The readback equals r3 apart from the transport newline and holds exactly one declaration line; the `gh api` output hashes are `53292092…` before and `f540afe9…` after. No tested source or head changed.
+- **The re-run:** the edited-event run **`38126187842`** (`pull_request`, attempt 1, head `281f8ce7`, 08:49:49Z–08:50:06Z) succeeded. This success does not erase the original failure; both runs are kept.
+
+## I5 candidate CI and seven-module safety comparison (2026-10-11)
+
+**Status: accepted** (Codex, ["PR280 CI and safety accepted — final documentary composition released"](../docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md#pr280-ci-and-safety-accepted--final-documentary-composition-released), recorded 2026-10-11 10:45:23 UTC) at the **actual PR merge commit, not the branch head**. Codex verified independently the packet `2026-10-11-claude-plan-11-30-pr280-ci-safety-packet.md` (`2ceb0e33c49e51730e24e5d58cf85b4bb755ca063d0ffd98a84d5eb11b2c93d1`) and the sealed `plan-11-30-pr280-ci-safety-1946713e-20261011` in `C:\worktrees\optimus-cost-agent-worktrees\optimus-handoff\test-profiles-research\`, all 94 members, seal `3f24e592ddf1ea89881fbdc39c38b46a5a91d212a23e5051875e5de39d1c45c2`. This section was added by the final documentary composition (D3). A pass here is not merge authority.
+
+### The tested commit
+
+- **Run:** guardrails run `38125646691`, attempt 1, event `pull_request`, job `114429345970` (`clean-environment-recheck`, `ubuntu-latest`): **success**. All 17 steps through upload succeeded, among them pytest-coverage (step 14), the product-coverage validation (15), the record copy (16) and the upload (17), and so did the four later cleanup and completion steps.
+- **Tested commit:** the actual PR **merge commit `1946713e6c86a4a1f6db7335955c982e980c404c`**, parents base `4ed9b252` then branch `281f8ce7`, tree `a45e448db244e4f5cd78e38f4fa2e3b180b1e467`. The retained checkout log, the gate receipt and the Git objects agree on it.
+  - The tree equals D2's, but **the commits are distinct**.
+  - The CI evidence is bound to `1946713e`, not to the branch head.
+- **Git-metadata wording:** Codex accepts this concrete merge-ref run and its provenance. The git-sensitive source and record tools bind the actual SHA and include it in the export and reuse identity; the inspected real-checkout paths consume committed content and provenance rather than any assertion about the branch's parent count. **Universal metadata independence is not claimed**, and the acceptance does not transfer automatically to a future main commit.
+
+### Artifact, coverage and floors
+
+- **Artifact:** `11697417824`, of run `38125646691`. Its ZIP SHA-256 `a86fc33d6dbeabbf7c613e8e453d2acd161d313e790b8546ae54d36a1a8c13ab` equals the GitHub digest.
+- **Coverage JSON:** `20bfdadd5a36000ce9413a7f780f5a1cd5d1ad11a905693ea0c86b951d926037`, covering the exact 226-file configured source inventory. The configuration, lock and groups hashes were recomputed from the tested commit.
+- **Floors**, measured and compared at precision 0:
+
+  | Product | Measured | Compared | Result |
+  |---|---|---|---|
+  | Optimus | 88.85913664394677 | 89 | pass |
+  | Context Engine | 95.92430858806405 | 96 | pass |
+  | Model policy | 96.98795180722891 | 97 | pass |
+  | Evidence Handoff | 65.96291012838802 | 66 | informational |
+  | Aggregate | 84.0469933529139 | 84 | informational |
+
+### Records, the full session and the outcome count
+
+- **Records:** all 67 uploaded run-context headers pass the schema reader.
+- **Exactly one full session:** `20261011T084124-2858-534abb`.
+  - ACTIVE, `default_selection`; 7,412 selected and 111 deselected; selection digest `a1006e75018a18b51783e94f83b82068bffcd2fae3f92670cba2f7ec36fa926a`; full audit depth; terminal COMPLETE; exit 0; no recording errors or withheld results.
+  - Valid with the POSIX labels `native=unsupported`, `guard=unsupported_platform`, `parent=unsupported`.
+- **Universe:** CI's own `validity.txt` names that session ("67 records considered") and establishes the own-checkout universe.
+- **Outcome count:** the job log reports **7,199 passed, 213 skipped, 111 deselected and one warning**. This is a **job-log outcome count, not a reviewer raw-phase recount**: the artifact exports run headers, not phase sidecars.
+- **Producer:** CPython 3.14.8 and coverage 7.14.3, the same as the base. UTC is **inferred, not a timezone receipt**; read as UTC, the JSON export landed 4.413324 s after the gate window.
+
+### Seven-module safety comparison
+
+Against the accepted I1 main-push base: run `37964416192`, artifact `11633307691`, coverage JSON `47994ad93b111d172d292e22d3757c8faaafd67a7005d2d690eed7771ad83d66`. The `compare` command read both records through the corrected S1 reader path and printed "safety rows comparable, no regression" (exit 0).
+
+| Module | Summaries, missing lines, missing branches |
+|---|---|
+| `tools/registry.py` | identical |
+| `runtime/mutation.py` | identical |
+| `gateway/models.py` | identical |
+| `evidence/ledger.py` | identical |
+| `acp/framing.py` | identical |
+| `retry/policy.py` | identical |
+| `tools/policy.py` | identical |
+
+- **No regression.**
+- Q-C1's proven base-only absent audit-depth option is retained (`base: audit_depth_unrecorded:no-option-at-base`).
+- Neither side has a Python patch mismatch.
+- The earlier C Windows and WSL measurements keep their original pin and qualifications.
+
+### Residuals and what stays held
+
+- **Retained residuals:** optional seam, overlap, cache-validation and lookup upkeep under `P11-FEAT-TEST-PROFILES`; the MAIN-5 environment observation under P11-FU-32; A2A, binding/desktop, hardening registry/activation and the existing finding owners, unchanged.
+- **Registry archival** stays **723/724 PARTIAL/non-passing**, with the UNKNOWN entry untouched. Successful CI does not clear it or authorize cleanup.
+- **S4** stays an explicit exactly-one evidence obligation. The replay above discharges it for this candidate.
+- **Still held:** the D3 documentary commit and any update of the published branch (each needs its own bounded authority; the existing push grant was for exact D2 only); merge to main, then main-push evidence at the actual main commit; terminal acceptance, closure, archival and cleanup.

@@ -2,6 +2,10 @@
 
 ## Current pickup — 2026-10-11
 
+PR280 candidate CI and seven-module safety evidence are accepted at actual CI merge SHA `1946713e`, with branch D2 `281f8ce7` kept distinct. Read the [current ruling](2026-10-05-plan-11-30-task3-codex-review.md#pr280-ci-and-safety-accepted--final-documentary-composition-released). Claude may compose the specified nine-path final documentary update and preflight, then obtain Fable/Codex final-byte review. No commit, later-head push, merge, closure, archival or cleanup is released. Preserve measured pin C, frozen v5 and all historical evidence. This paragraph supersedes the older pickup below.
+
+### Historical pickup before D2 publication and CI acceptance
+
 S1 delivery and corrected-source Windows/WSL I4 finals are accepted at `343b233ab7b470690eb21fe20c4662460694955c` / tree `8a39467d4607f29f1905a55e62844865f6f76fc3`; the forward WSL obligation is discharged with recorder-test and inherited skip-reason qualifications. Read the [current ruling](2026-10-05-plan-11-30-task3-codex-review.md#s1-delivery-and-corrected-source-i4-finals-accepted--documentary-composition-released) and verify actual clean source. Claude may compose the nine-path documentary follow-up and run its narrow checks, then obtain Fable and Codex final-byte review. No documentary commit is released yet. Keep measured pin C separate from later documentary HEAD. I5 publication, Linux CI/safety acceptance, merge, closure and cleanup remain held. Approved v5 stays byte-frozen; earlier sections below are historical grants.
 
 ## Historical integration pickup — 2026-10-09
