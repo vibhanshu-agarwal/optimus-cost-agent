@@ -74,6 +74,7 @@ Status, priority and ownership live only in the backlog; plans do not declare th
 |---|---|
 | [Plans folder guide](superpowers/plans/README.md) | How plans are added, revised and archived |
 | [Consolidated backlog](superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md) | The one live registry of work, status and next gates |
+| [Work status page](work-status.html) | Live table of GitHub issues, read on open (Plan 11.29). Until its cutover the backlog stays authoritative |
 | [Phase 1 roadmap](superpowers/plans/2026-07-01-phase-1-roadmap.md) | Historical sequencing of Phase 1 |
 | [Plan 11 v1.0 milestone charter](superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md) | What v1.0 must contain |
 | [Hardening masterplan](superpowers/plans/hardening-runtime-quality-masterplan.md) | The 15 hardening tracks and their status |

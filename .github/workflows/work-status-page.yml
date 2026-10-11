@@ -1,0 +1,26 @@
+name: Work status page
+
+# Plan 11.29: the live work-status page's offline fixtures. Node is needed only here, never by the
+# default pytest or pre-commit lanes. The tests read no network and install no packages.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  page-fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26.5.0"
+
+      - name: Run the page fixtures
+        run: node --test --test-reporter=spec tools/testing/work_status_page.test.cjs

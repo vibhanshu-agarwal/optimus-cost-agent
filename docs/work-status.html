@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Work status</title>
+<!--
+  Plan 11.29 live work-status view. Open this file from a checkout in a browser. On open, on Reload and on every
+  filter change it reads the repository's GitHub issues through the public REST API (GET only, no token) and shows
+  them as one table per product. GitHub issue state and labels are the only status authority; this page stores
+  nothing, writes nothing and never polls. A page left open shows its last read, not a continuously current view.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; background: light-dark(#ffffff, #0d1117); color: light-dark(#1f2328, #e6edf3); }
+  h1 { font-size: 24px; margin: 0 0 8px; }
+  h2 { font-size: 18px; margin: 24px 0 8px; }
+  p { margin: 8px 0; }
+  a { color: light-dark(#0969da, #79c0ff); }
+  .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  select, button { font: inherit; padding: 2px 8px; }
+  .scroll { overflow-x: auto; max-width: 1000px; }
+  table { width: 1000px; table-layout: fixed; border-collapse: collapse; }
+  col.status { width: 156px; }
+  col.priority { width: 68px; }
+  col.difficulty { width: 78px; }
+  col.estimate { width: 66px; }
+  col.owner { width: 100px; }
+  th, td { padding: 7px 8px; border: 1px solid light-dark(#d0d7de, #3d444d); text-align: left; vertical-align: top; }
+  th { background: light-dark(#f6f8fa, #161b22); font-weight: 600; }
+  th:not(:first-child), td:not(:first-child) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  td:first-child { overflow-wrap: anywhere; }
+  .note, .context, .progress { color: light-dark(#57606a, #9198a1); }
+  .context, .progress { font-size: 12px; }
+  .bad { color: light-dark(#cf222e, #ff7b72); font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Work status</h1>
+<div class="controls">
+  <label>Show <select id="state">
+    <option value="open" selected>Open</option>
+    <option value="closed">Closed</option>
+    <option value="all">All</option>
+  </select></label>
+  <button id="reload" type="button">Reload</button>
+  <a id="live" href="https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues">Open on GitHub</a>
+</div>
+<p class="note" id="stamp">Loading live data from GitHub…</p>
+<div id="out"></div>
+<p class="note">Status, Priority, Difficulty, Estimate and Owner come from each issue's <code>status:</code>, <code>priority:</code>,
+<code>difficulty:</code>, <code>estimate:</code> and <code>handler:</code> labels; a closed issue's status comes from GitHub's close reason.
+A missing, conflicting or unknown value is shown in red, never guessed. Sub-issues are listed under their parent.
+Issues without a recognized product and kind label are listed as untriaged.</p>
+
+<script type="application/json" id="work-status-vocabulary">
+{
+  "schema": "optimus-work-status-vocabulary-v1",
+  "repo": "vibhanshu-agarwal/optimus-cost-agent",
+  "statuses": {
+    "open": "Open",
+    "partially-implemented": "Partially implemented",
+    "promoted": "Promoted",
+    "blocked": "Blocked",
+    "active": "Active",
+    "not-drafted": "Not drafted",
+    "in-review": "In review",
+    "ready": "Ready",
+    "accepted-open": "Accepted open",
+    "unrun": "Unrun",
+    "unrun-binding": "Unrun (binding)"
+  },
+  "closed_reasons": {"completed": "Done", "not_planned": "Not planned"},
+  "dimensions": {
+    "priority": {"label": "priority", "values": {"high": "High", "medium": "Medium", "low": "Low"}},
+    "difficulty": {"label": "difficulty", "values": {"high": "High", "medium": "Medium", "low": "Low"}},
+    "estimate": {"label": "estimate", "values": {"na": "NA"}, "free_form": true},
+    "owner": {"label": "handler", "values": {"claude": "Claude", "codex": "Codex", "operator": "Operator", "unassigned": "Unassigned"}}
+  },
+  "products": {"optimus": "Optimus", "evidence-a2a": "Evidence/A2A"},
+  "kinds": {
+    "feature": "Feature",
+    "plan": "Plan",
+    "track": "Track",
+    "candidate": "Candidate",
+    "follow-up": "Follow-up",
+    "obligation": "Obligation",
+    "item": "Item"
+  }
+}
+</script>
+
+<script id="work-status-logic">
+(function (root) {
+  "use strict";
+
+  const MAX_PAGES = 50;
+  const MAX_DEPTH = 10;
+
+  function esc(value) {
+    return String(value).replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"}[c]));
+  }
+
+  function labelValues(issue, prefix) {
+    return (issue.labels || [])
+      .map((label) => (typeof label === "string" ? label : label && label.name) || "")
+      .filter((name) => name.toLowerCase().startsWith(prefix + ":")) // GitHub label names are case-insensitive
+      .map((name) => name.slice(prefix.length + 1));
+  }
+
+  // A cell is {text, bad}; rendering escapes text, so no issue or label text is ever treated as markup.
+  function cell(text, bad) {
+    return {text: String(text), bad: Boolean(bad)};
+  }
+
+  // The display name of a vocabulary entry, or null. Only an own string entry counts, so a label or close reason
+  // such as "constructor", "toString" or "__proto__" never reads an inherited object property.
+  function lookup(table, key) {
+    return typeof key === "string" && Object.prototype.hasOwnProperty.call(table, key) && typeof table[key] === "string"
+      ? table[key]
+      : null;
+  }
+
+  function statusCell(issue, vocab) {
+    const values = labelValues(issue, "status");
+    if (issue.state === "closed") {
+      if (values.length) {
+        return cell("conflict: closed but labelled status:" + values.join(", status:"), true);
+      }
+      const reason = lookup(vocab.closed_reasons, issue.state_reason);
+      return reason !== null ? cell(reason, false) : cell("Closed (reason unavailable)", true);
+    }
+    if (values.length === 0) return cell("missing status", true);
+    if (values.length > 1) return cell("conflict: " + values.join(", "), true);
+    const known = lookup(vocab.statuses, values[0]);
+    return known !== null ? cell(known, false) : cell("unknown: " + values[0], true);
+  }
+
+  function metadataCell(issue, dimension) {
+    const values = labelValues(issue, dimension.label);
+    if (values.length === 0) return cell("missing", true);
+    if (values.length > 1) return cell("conflict: " + values.join(", "), true);
+    const known = lookup(dimension.values, values[0]);
+    if (known !== null) return cell(known, false);
+    return dimension.free_form ? cell(values[0], false) : cell("unknown: " + values[0], true);
+  }
+
+  function singleKnown(issue, prefix, table) {
+    const values = labelValues(issue, prefix);
+    return values.length === 1 && lookup(table, values[0]) !== null ? values[0] : null;
+  }
+
+  function apiIssuePattern(repo) {
+    return new RegExp("^https://api\\.github\\.com/repos/" + repo.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&") + "/issues/(\\d+)$");
+  }
+
+  function issueUrl(issue, repo) {
+    const prefix = "https://github.com/" + repo + "/issues/";
+    const url = String(issue.html_url || "");
+    return url === prefix + issue.number ? url : null;
+  }
+
+  // Rows for one read: issues grouped by product (untriaged last), each tree rendered once, depth first.
+  function buildRows(issues, vocab) {
+    const pattern = apiIssuePattern(vocab.repo);
+    const byNumber = new Map(issues.map((issue) => [issue.number, issue]));
+    const parentOf = new Map();
+    const relationErrors = new Map();
+    for (const issue of issues) {
+      if (issue.parent_issue_url == null) continue;
+      const match = pattern.exec(String(issue.parent_issue_url));
+      if (!match) {
+        relationErrors.set(issue.number, "malformed parent link");
+        continue;
+      }
+      parentOf.set(issue.number, Number(match[1]));
+    }
+    const children = new Map();
+    for (const [child, parent] of parentOf) {
+      if (!byNumber.has(parent)) continue;
+      if (!children.has(parent)) children.set(parent, []);
+      children.get(parent).push(child);
+    }
+    const kindOrder = Object.keys(vocab.kinds);
+    const rank = (issue) => {
+      const kind = singleKnown(issue, "kind", vocab.kinds);
+      return kind === null ? kindOrder.length : kindOrder.indexOf(kind);
+    };
+    const order = (a, b) => rank(byNumber.get(a)) - rank(byNumber.get(b)) || a - b;
+    for (const list of children.values()) list.sort(order);
+
+    const placed = new Set();
+    const rows = [];
+    // Each issue has at most one parent, so a walk down from a root reaches every issue once and never meets a cycle:
+    // issues on (or under) a cycle are never reached and are placed below with that error. The walk keeps its own
+    // stack, so its depth never depends on the browser's call stack; a node past MAX_DEPTH is still shown once, with
+    // its own error, and nothing beneath it is dropped.
+    const roots = issues
+      .map((issue) => issue.number)
+      .filter((number) => !(parentOf.has(number) && byNumber.has(parentOf.get(number))))
+      .sort(order);
+    const pending = roots.map((number) => [number, 0]).reverse();
+    while (pending.length) {
+      const [number, depth] = pending.pop();
+      placed.add(number);
+      if (depth > MAX_DEPTH) relationErrors.set(number, "parent chain deeper than " + MAX_DEPTH + " levels");
+      rows.push({number, depth});
+      const kids = children.get(number) || [];
+      for (let i = kids.length - 1; i >= 0; i -= 1) pending.push([kids[i], depth + 1]);
+    }
+    for (const issue of issues) {
+      if (!placed.has(issue.number)) {
+        if (!relationErrors.has(issue.number)) relationErrors.set(issue.number, "parent cycle");
+        rows.push({number: issue.number, depth: 0});
+        placed.add(issue.number);
+      }
+    }
+
+    const groups = new Map();
+    for (const row of rows) {
+      const issue = byNumber.get(row.number);
+      const triaged = singleKnown(issue, "product", vocab.products) !== null && singleKnown(issue, "kind", vocab.kinds) !== null;
+      const product = triaged ? singleKnown(issue, "product", vocab.products) : null;
+      const key = triaged ? product : "untriaged";
+      if (!groups.has(key)) groups.set(key, []);
+      const parent = parentOf.get(row.number);
+      groups.get(key).push({
+        number: row.number,
+        depth: row.depth,
+        title: String(issue.title || ""),
+        url: issueUrl(issue, vocab.repo),
+        status: statusCell(issue, vocab),
+        cells: Object.keys(vocab.dimensions).map((name) => metadataCell(issue, vocab.dimensions[name])),
+        context: parent !== undefined && !byNumber.has(parent) ? parent : null,
+        contextUrl: parent !== undefined && !byNumber.has(parent) ? "https://github.com/" + vocab.repo + "/issues/" + parent : null,
+        relationError: relationErrors.get(row.number) || null,
+        progress: issue.sub_issues_summary && issue.sub_issues_summary.total
+          ? {completed: Number(issue.sub_issues_summary.completed) || 0, total: Number(issue.sub_issues_summary.total) || 0}
+          : null,
+      });
+    }
+    const sections = [];
+    for (const key of Object.keys(vocab.products)) {
+      if (groups.has(key)) sections.push({title: vocab.products[key], rows: groups.get(key)});
+    }
+    if (groups.has("untriaged")) sections.push({title: "Untriaged issues", rows: groups.get("untriaged")});
+    return sections;
+  }
+
+  function nextLink(header) {
+    const match = /<([^>]+)>;\s*rel="next"/.exec(header || "");
+    return match ? match[1] : null;
+  }
+
+  // One read cycle: every page of the selected issue state, pull requests dropped, duplicates removed.
+  async function loadView(client, vocab, stateFilter, population) {
+    if (!["open", "closed", "all"].includes(stateFilter)) throw new Error("unknown state filter " + stateFilter);
+    let url = "https://api.github.com/repos/" + vocab.repo + "/issues?state=" + stateFilter + "&per_page=100" +
+      (population && population.label ? "&labels=" + encodeURIComponent(population.label) : "");
+    const seen = new Map();
+    let requests = 0;
+    let rate = null;
+    for (let page = 0; url; page += 1) {
+      if (page >= MAX_PAGES) throw new Error("stopped after " + MAX_PAGES + " pages; the issue list did not end");
+      const response = await client(url);
+      requests += 1;
+      rate = {
+        limit: response.headers.get("x-ratelimit-limit"),
+        remaining: response.headers.get("x-ratelimit-remaining"),
+        reset: response.headers.get("x-ratelimit-reset"),
+      };
+      if (!response.ok) {
+        const limited = (response.status === 403 || response.status === 429) && rate.remaining === "0";
+        throw new Error(limited
+          ? "GitHub rate limit reached (" + rate.limit + " requests/hour for this network); it resets at " +
+            new Date(Number(rate.reset) * 1000).toLocaleTimeString()
+          : "GitHub answered HTTP " + response.status);
+      }
+      let batch;
+      try {
+        batch = await response.json();
+      } catch (error) {
+        throw new Error("GitHub returned a response that is not JSON");
+      }
+      if (!Array.isArray(batch)) throw new Error("GitHub returned an unexpected response shape");
+      for (const issue of batch) {
+        if (issue && !issue.pull_request && Number.isInteger(issue.number)) seen.set(issue.number, issue);
+      }
+      url = nextLink(response.headers.get("link"));
+    }
+    return {issues: Array.from(seen.values()), requests, rate};
+  }
+
+  function browserClient(fetchImpl) {
+    return (url) => fetchImpl(url, {method: "GET", headers: {Accept: "application/vnd.github+json"}, credentials: "omit"});
+  }
+
+  function renderCell(c) {
+    return "<td" + (c.bad ? " class=\"bad\"" : "") + ">" + esc(c.text) + "</td>";
+  }
+
+  function renderSections(sections) {
+    if (!sections.length) return "<p>No issues in this view.</p>";
+    return sections.map((section) =>
+      "<h2>" + esc(section.title) + " (" + section.rows.length + ")</h2><div class=\"scroll\"><table>" +
+      "<colgroup><col><col class=\"status\"><col class=\"priority\"><col class=\"difficulty\"><col class=\"estimate\"><col class=\"owner\"></colgroup>" +
+      "<thead><tr><th>Issue / Title</th><th>Status</th><th>Priority</th><th>Difficulty</th><th title=\"Planned Estimate\">Estimate</th><th>Owner</th></tr></thead><tbody>" +
+      section.rows.map((row) => {
+        const ref = row.url ? "<a href=\"" + esc(row.url) + "\">#" + row.number + "</a>" : "#" + row.number;
+        const indent = row.depth ? "<span style=\"padding-left:" + Math.min(row.depth, MAX_DEPTH) * 18 + "px\">↳ </span>" : "";
+        const progress = row.progress ? " <span class=\"progress\">(" + row.progress.completed + "/" + row.progress.total + " sub-issues done)</span>" : "";
+        const context = row.context ? " <span class=\"context\">(under <a href=\"" + esc(row.contextUrl) + "\">#" + row.context + "</a>)</span>" : "";
+        const relation = row.relationError ? " <span class=\"bad\">" + esc(row.relationError) + "</span>" : "";
+        return "<tr><td>" + indent + ref + " — " + esc(row.title) + progress + context + relation + "</td>" +
+          renderCell(row.status) + row.cells.map(renderCell).join("") + "</tr>";
+      }).join("") + "</tbody></table></div>").join("");
+  }
+
+  // Browser controller: a newer read always wins; a failed read clears the table rather than leaving stale rows.
+  function boot(doc, win) {
+    const vocab = JSON.parse(doc.getElementById("work-status-vocabulary").textContent);
+    const params = new win.URLSearchParams(win.location.search);
+    const population = params.get("label") ? {label: params.get("label")} : null;
+    const client = browserClient(win.fetch.bind(win));
+    const select = doc.getElementById("state");
+    const out = doc.getElementById("out");
+    const stamp = doc.getElementById("stamp");
+    const live = doc.getElementById("live");
+    let generation = 0;
+    const read = async () => {
+      const mine = ++generation;
+      const state = select.value;
+      const scope = {open: "open", closed: "closed", all: "open and closed"}[state] + " issues" +
+        (population ? " labelled “" + population.label + "”" : "");
+      live.href = "https://github.com/" + vocab.repo + "/issues?q=" + encodeURIComponent(
+        "is:issue" + (state === "all" ? "" : " is:" + state) + (population ? " label:" + population.label : ""));
+      stamp.textContent = "Reading " + scope + " from GitHub…";
+      try {
+        const view = await loadView(client, vocab, state, population);
+        if (mine !== generation) return;
+        out.innerHTML = renderSections(buildRows(view.issues, vocab));
+        stamp.textContent = "Live from GitHub — read " + new Date().toLocaleString() + " · " + view.issues.length +
+          " " + scope + " · " + view.requests + " request(s); " + (view.rate && view.rate.remaining !== null
+            ? view.rate.remaining + " of " + view.rate.limit + " left this hour" : "quota unknown") + ". Reload to refresh.";
+      } catch (error) {
+        if (mine !== generation) return;
+        out.innerHTML = "";
+        stamp.innerHTML = "<span class=\"bad\">Could not read GitHub: " + esc(error.message) +
+          ".</span> Nothing is shown rather than something stale; use “Open on GitHub”.";
+      }
+    };
+    select.addEventListener("change", read);
+    doc.getElementById("reload").addEventListener("click", read);
+    return read();
+  }
+
+  root.WorkStatus = {esc, labelValues, statusCell, metadataCell, buildRows, nextLink, loadView, browserClient, renderSections, boot};
+  if (root.document && root.document.getElementById && root.document.getElementById("work-status-vocabulary")) {
+    boot(root.document, root);
+  }
+})(globalThis);
+</script>
+</body>
+</html>
