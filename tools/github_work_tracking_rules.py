@@ -17,7 +17,7 @@ from __future__ import annotations
 import posixpath
 import re
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 from tools import github_work_tracking as gwt
 
@@ -35,7 +35,17 @@ READS = {**SOURCES, **CONTEXT}
 PIN_NOTE = "# pragma: allowlist secret - git blob id of this source at the baseline commit, not a secret"
 COMMIT_PIN_NOTE = "# pragma: allowlist secret - baseline git commit id, not a secret"
 ADOPTION_PIN_NOTE = "# pragma: allowlist secret - sha256 of the issue's public fields when its adoption was reviewed, not a secret"
+UPDATE_PIN_NOTE = "# pragma: allowlist secret - git commit id of the quoted source update, not a secret"
 PILOT_ISSUES = {"plan:11.23": 222, "P11-FU-20": 223, "P11-FU-40": 224, "A2A-C1": 225}
+# Two records whose pool row changed after the baseline (Plan 12.2 became Active; Plan 12's scope detail grew). Each is quoted
+# again as a dated source update from the commit where the changed text is committed and immutable, and Plan 12.2's reviewed
+# current status is the status label its issue must carry when authority moves. Migration evidence only: GitHub labels own
+# the status afterwards. record id -> ((date, commit, pool identity), ...); the quoted text is the identity's registry row cell.
+SOURCE_UPDATES = {
+    "plan:12.2": (("2026-10-11", "cb959a3848325708ad58e902fe906de98bc83e40", "Plan 12.2"),),  # pragma: allowlist secret
+    "feature:plan-12": (("2026-10-11", "cb959a3848325708ad58e902fe906de98bc83e40", "Plan 12"),),  # pragma: allowlist secret
+}
+CURRENT_STATUS = {"plan:12.2": "Active"}
 # Pilot option (a), proposed for Checkpoint 3: each pilot body has the source marker but no generated region, so the
 # migration may replace it whole with the generated region, and only while the live issue still has the fingerprint
 # read for that review (2026-10-04; task4/pilot-fingerprints.txt). Publication needs the separate write grant.
@@ -483,6 +493,7 @@ def _record(**fields) -> dict:
     record = {
         name: ([] if name in ("units", "aliases", "anchors", "related", "quotes", "retained") else None)
         for name in gwt.InventoryRecord.__dataclass_fields__
+        if name not in ("status_current", "source_updates")  # present only on the records that carry a reviewed correction
     }
     record.update(
         title="",
@@ -518,8 +529,28 @@ def _kind(identity: str) -> str:
     return "item"
 
 
-def draft_inventory(commit: str, sources: Mapping[str, bytes], plans: Mapping[str, bytes]) -> dict:
-    """The manifest data: ``sources`` holds ``READS`` at ``commit``, ``plans`` every docs-root plan file there."""
+def _source_updates(record_id: str, history: Callable[[str, str], bytes]) -> list[dict]:
+    """The dated source updates of a record: the identity's single registry row of the pool at each update's commit, quoted as
+    its last cell. ``history`` reads a file at a commit."""
+    updates = []
+    for date, update_commit, identity in SOURCE_UPDATES[record_id]:
+        text = history(update_commit, SOURCES["pool"]).decode("utf-8")
+        rows = [unit for unit in gwt.scan_source("pool", text).units if unit.kind == "row" and unit.identity == identity]
+        if len(rows) != 1:
+            raise ValueError(f"{record_id}: the pool at {update_commit} has {len(rows)} registry rows for {identity!r}, not one")
+        line = rows[0].line
+        cell = [cell.strip() for cell in text.splitlines()[line - 1].strip().strip("|").split(" | ")][-1]
+        updates.append(
+            {"date": date, "path": SOURCES["pool"], "line": line, "commit": update_commit, "commit_pin": UPDATE_PIN_NOTE, "text": cell}
+        )
+    return updates
+
+
+def draft_inventory(
+    commit: str, sources: Mapping[str, bytes], plans: Mapping[str, bytes], history: Callable[[str, str], bytes] = gwt.git_blob_bytes
+) -> dict:
+    """The manifest data: ``sources`` holds ``READS`` at ``commit``, ``plans`` every docs-root plan file there. ``history`` reads a
+    file at another commit, for the dated source updates only."""
     texts = {name: sources[name].decode("utf-8") for name in SOURCES}
     scans = {name: gwt.scan_source(name, texts[name]) for name in SOURCES}
     lines = {name: texts[name].splitlines() for name in SOURCES}
@@ -717,6 +748,13 @@ def draft_inventory(commit: str, sources: Mapping[str, bytes], plans: Mapping[st
         record["quotes"] = [list(quote) for quote in QUOTES.get(record["id"], ())]
         if record["id"] in PILOT_RETAINED:
             record["retained"] = list(PILOT_RETAINED[record["id"]])
+        if record["id"] in SOURCE_UPDATES:
+            updates = _source_updates(record["id"], history)
+            if record["id"] in CURRENT_STATUS:
+                first = updates[0]
+                link = f"https://github.com/{gwt.REPO}/blob/{first['commit']}/{first['path']}?plain=1#L{first['line']}"
+                record["status_current"] = {"status": CURRENT_STATUS[record["id"]], "evidence": link}
+            record["source_updates"] = updates
     return {
         "schema": gwt.SCHEMA,
         "baseline": {
