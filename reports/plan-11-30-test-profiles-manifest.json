@@ -10,7 +10,9 @@
   "path": "docs/superpowers/plans/2026-10-04-plan-11-30-test-profiles-implementation_v5.md",
   "approved_bytes_sha256": "sha256:149002fa5c61b366900c535bee883dd07289dc2317bdf4064cff2e20a7f7035e",
   "approved": "2026-10-09 (operator reply 'yes'; Codex record 13:28:24 UTC)",
-  "note": "added 2026-10-10; the 'plan' entry above is the original v4 reference, kept as written; v4 is superseded and archived byte-identically at docs/superpowers/plans/archive/2026-10-04-plan-11-30-test-profiles-implementation_v4.md"
+  "note": "added 2026-10-10; the 'plan' entry above is the original v4 reference, kept as written; v4 is superseded and archived byte-identically at docs/superpowers/plans/archive/2026-10-04-plan-11-30-test-profiles-implementation_v4.md",
+  "archived_path": "docs/superpowers/plans/archive/2026-10-04-plan-11-30-test-profiles-implementation_v5.md",
+  "archived_note": "terminal disposition (operator grant \"YES\", a direct operator reply in Codex chat on client date 2026-10-12, recorded by Codex at 2026-10-11 19:05:47 UTC, answering the exact question that approved closing Plan 11.30, archiving v5 and the kickoff, Checkpoint A, Checkpoint B dated 2026-10-05 and Task 3 records byte-for-byte, and one normal-hook closing commit): v5 completed and moved byte-identically (sha256:149002fa5c61b366900c535bee883dd07289dc2317bdf4064cff2e20a7f7035e) to the flat plan archive; 'path' above is its historical live location, kept as written"
  },
  "report": "reports/plan-11-30-test-profiles-evidence.md",
  "status_convention": "Each section's 'status' string is the historical status at recording and is kept as written; 'status_recorded' dates it. 'current_delivery' holds the current state. Abbreviated hashes in prose are display identifiers; historical snapshot hashes identify retained sealed snapshots, not current bytes. New Stage B receipt locations are recorded as location_root + '/' + location_folder; older entries keep their original form.",
@@ -87,6 +89,14 @@
    {
     "commit": "git-sha1:3dc85529c7f2e1d3df55d51c462848dfcafe31ea",
     "delivers": "on main, not on the lane branch: the normal merge of PR #280 (parents 4ed9b252 then 228b5f6f, tree bb4414e1); the actual main-push CI pin"
+   },
+   {
+    "commit": "git-sha1:24122680df45eafdfdb3631183279b9133f1636d",
+    "delivers": "on agent/claude/plan-11-30-terminal-docs, not on the lane branch: the D4 terminal documentary composition (tree 6687a86c, single parent main 3dc85529); documentary only, not measured source; pushed without force as the PR #281 head and merged"
+   },
+   {
+    "commit": "git-sha1:d5b4bec3c4760eeb31250c88dfcc9759b97ea6e4",
+    "delivers": "on main, not on the lane branch: the normal merge of PR #281 (parents 3dc85529 then 24122680, tree 6687a86c); the main-push CI pin for D4"
    }
   ],
   "stage_a": "accepted and locally committed (Tasks 0-3; Task 6 at acc2a1c)",
@@ -94,26 +104,26 @@
   "checkpoint_b_task5_obligation": "discharged for the accepted native Windows controller topology; WSL weaker; F4 not discharged (sections.task5.checkpoint_b_worker_obligation)",
   "reconciliation": "statements in the historical sections that show the IPC rule, measurement refresh, partial-commit correction or quick switch as open are historical; those were delivered at 43eb190 and 66ddabf; no source work from them remains required; the Stage B Task 6 placeholder (sections.stageb_task6) is historical",
   "open": [
-   "plan closure, terminal archival and cleanup (including the Stage B, I4 and C final clones), each held"
+   "cleanup (lane and docs worktrees, the Stage B, I4 and C final clones, WSL clones and scratch clones; sealed-evidence custody first) held for the operator's separate cleanup grant (operator grant \"YES\", a direct operator reply in Codex chat on client date 2026-10-12, recorded by Codex at 2026-10-11 19:05:47 UTC, answering the exact question that approved closing Plan 11.30, archiving v5 and the kickoff, Checkpoint A, Checkpoint B dated 2026-10-05 and Task 3 records byte-for-byte, and one normal-hook closing commit)"
   ],
   "authority": {
    "review_file": "docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md",
-   "current_section": "PR280 merge and actual main CI accepted - terminal documentary composition released",
-   "recorded_utc": "2026-10-11T13:19:00Z",
+   "current_section": "PR281 merge and actual main-push CI accepted - terminal disposition preparation released",
+   "recorded_utc": "2026-10-11T17:11:44Z",
    "hash_policy": "the review file's current hash is deliberately not cited (no report/review self-hash cycle)",
-   "previous_section": "Operator approval - exact PR280 normal merge and main-push verification (2026-10-11T12:54:14Z)",
-   "note": "updated 2026-10-11 after the 13:19:00 UTC acceptance; earlier on 2026-10-11 the values were current_section 'PR280 CI and safety accepted - final documentary composition released' (recorded '2026-10-11T10:45:23Z') after 'PR280 declaration correction verified - main CI evidence remains pending (2026-10-11)'. Earlier note: 'updated 2026-10-11 after the 10:45:23 UTC acceptance; earlier on 2026-10-11 the values were current_section 'S1 delivery and corrected-source I4 finals accepted - documentary composition released' (recorded '2026-10-11 (no time given in the entry)') after 'S1/results batch accepted - one local commit attempt and conditional new-pin finals released (2026-10-11)'. Earlier note: 'updated 2026-10-11; the 2026-10-10 values were current_section 'I4 accepted at ea88814e - bounded reader correction and results composition released' after 'Integration delivery accepted - I4 exact-source finals released at ea88814e'; the Stage B values were current_section 'Stage B Task 6 - local final evidence accepted; results composition released' (2026-10-09T07:24:20Z)''"
+   "previous_section": "PR281 actual merge identity verified - main-push CI running (2026-10-11T16:46:17Z), after Operator approval - exact PR281 normal merge and main-push verification (2026-10-11T15:53:03Z)",
+   "note": "updated 2026-10-11 after the 17:11:44 UTC acceptance; earlier on 2026-10-11 the values were current_section 'PR280 merge and actual main CI accepted - terminal documentary composition released' (recorded '2026-10-11T13:19:00Z') after 'Operator approval - exact PR280 normal merge and main-push verification (2026-10-11T12:54:14Z)'. Earlier note: 'updated 2026-10-11 after the 13:19:00 UTC acceptance; earlier on 2026-10-11 the values were current_section 'PR280 CI and safety accepted - final documentary composition released' (recorded '2026-10-11T10:45:23Z') after 'PR280 declaration correction verified - main CI evidence remains pending (2026-10-11)'. Earlier note: 'updated 2026-10-11 after the 10:45:23 UTC acceptance; earlier on 2026-10-11 the values were current_section 'S1 delivery and corrected-source I4 finals accepted - documentary composition released' (recorded '2026-10-11 (no time given in the entry)') after 'S1/results batch accepted - one local commit attempt and conditional new-pin finals released (2026-10-11)'. Earlier note: 'updated 2026-10-11; the 2026-10-10 values were current_section 'I4 accepted at ea88814e - bounded reader correction and results composition released' after 'Integration delivery accepted - I4 exact-source finals released at ea88814e'; the Stage B values were current_section 'Stage B Task 6 - local final evidence accepted; results composition released' (2026-10-09T07:24:20Z)'''"
   },
   "review_snapshot_read_during_drafting": {
    "date": "2026-10-09",
    "sha256": "sha256:0d50118aea616e169593bc873c7ba3f829b521e4df06e28751cdf62b670572b2",
    "note": "identifies only that snapshot; the file has changed since"
   },
-  "as_of_note": "dated 2026-10-11 after Codex's 'PR280 merge and actual main CI accepted - terminal documentary composition released' entry (recorded 2026-10-11T13:19:00Z); earlier on 2026-10-11 this read: 'dated 2026-10-11 after Codex's 'PR280 CI and safety accepted - final documentary composition released' entry (recorded 2026-10-11T10:45:23Z); earlier on 2026-10-11 this read: 'dated 2026-10-11: Codex's 'S1 delivery and corrected-source I4 finals accepted' entry (recorded 2026-10-11, no time given); previous as_of 2026-10-10 (Codex's 'I4 accepted at ea88814e' entry), and 2026-10-09T07:24:20Z (Stage B Task 6 acceptance) before that''",
+  "as_of_note": "dated 2026-10-11 after Codex's 'PR281 merge and actual main-push CI accepted - terminal disposition preparation released' entry (recorded 2026-10-11T17:11:44Z); earlier on 2026-10-11 this read: 'dated 2026-10-11 after Codex's 'PR280 merge and actual main CI accepted - terminal documentary composition released' entry (recorded 2026-10-11T13:19:00Z); earlier on 2026-10-11 this read: 'dated 2026-10-11 after Codex's 'PR280 CI and safety accepted - final documentary composition released' entry (recorded 2026-10-11T10:45:23Z); earlier on 2026-10-11 this read: 'dated 2026-10-11: Codex's 'S1 delivery and corrected-source I4 finals accepted' entry (recorded 2026-10-11, no time given); previous as_of 2026-10-10 (Codex's 'I4 accepted at ea88814e' entry), and 2026-10-09T07:24:20Z (Stage B Task 6 acceptance) before that'''",
   "base_note": "original draft base a929aab; main 4ed9b25 merged into the lane at ea88814e",
-  "measured_final_note": "dated 2026-10-11 after the 13:19:00 UTC acceptance: the local measured finals stay at pin C 343b233a / tree 8a39467d (sections.i4c_finals); CI was measured separately at three distinct commits, each bound to its own commit and none relabelled as a local final: the PR merge refs 1946713e / tree a45e448d (sections.i5_ci_safety) and 789586d7 / tree bb4414e1 (sections.d3_publication_ci), and the actual main commit 3dc85529 / tree bb4414e1 (sections.main_push_ci). Earlier note: 'dated 2026-10-11 after the 10:45:23 UTC acceptance: the local measured finals stay at pin C 343b233a / tree 8a39467d (sections.i4c_finals); the candidate Linux CI was measured separately at the PR #280 merge commit 1946713e / tree a45e448d (sections.i5_ci_safety) and is not relabelled as a local final or as the branch head. Earlier note: 'dated 2026-10-11: corrected-source I4 finals at pin C 343b233a / tree 8a39467d (sections.i4c_finals); earlier measured finals: I4 at ea88814e / tree 9048bc8d (sections.i4_finals, still accepted and bound to that pin), Stage A at acc2a1c (sections.task6), Stage B at 3cece0a / tree fabb6720 (sections.stageb_task6_final)''",
-  "pushed_note": "dated 2026-10-11 after the 13:19:00 UTC acceptance: D3 228b5f6f was pushed once without force to PR #280 (fast-forward 281f8ce..228b5f6) under the operator's conditional approval, which Codex cleared (sections.d3_publication_ci); PR #280 was then merged (merged_note). Earlier on 2026-10-11 this read: 'dated 2026-10-11: under the operator's exact approval the lane branch was pushed without force at exactly 281f8ce7 (D2) and PR #280 opened to main (base 4ed9b252); merge, cleanup and any update of the published branch held (sections.i5_publication). Previously: 'the lane branch is not pushed (I5 held); the separate I1 bootstrap branch agent/claude/plan-11-30-coverage-bootstrap (6f1935d) was pushed and merged to main through PR #279 at 4ed9b25''",
-  "plan_v5": "approved 2026-10-09 (sha256:149002fa...); v4 superseded and archived; approved bytes frozen",
+  "measured_final_note": "dated 2026-10-11 after the 17:11:44 UTC acceptance: the local measured finals stay at pin C 343b233a / tree 8a39467d (sections.i4c_finals); CI was measured separately at five distinct commits, each bound to its own commit and none relabelled as a local final: the PR #280 merge refs 1946713e (sections.i5_ci_safety) and 789586d7 (sections.d3_publication_ci), main 3dc85529 (sections.main_push_ci), the PR #281 merge ref fa7e1927 / tree 6687a86c (sections.pr281_publication_ci) and main d5b4bec3 / tree 6687a86c (sections.main_push_ci_d5b4bec3). Earlier note: 'dated 2026-10-11 after the 13:19:00 UTC acceptance: the local measured finals stay at pin C 343b233a / tree 8a39467d (sections.i4c_finals); CI was measured separately at three distinct commits, each bound to its own commit and none relabelled as a local final: the PR merge refs 1946713e / tree a45e448d (sections.i5_ci_safety) and 789586d7 / tree bb4414e1 (sections.d3_publication_ci), and the actual main commit 3dc85529 / tree bb4414e1 (sections.main_push_ci). Earlier note: 'dated 2026-10-11 after the 10:45:23 UTC acceptance: the local measured finals stay at pin C 343b233a / tree 8a39467d (sections.i4c_finals); the candidate Linux CI was measured separately at the PR #280 merge commit 1946713e / tree a45e448d (sections.i5_ci_safety) and is not relabelled as a local final or as the branch head. Earlier note: 'dated 2026-10-11: corrected-source I4 finals at pin C 343b233a / tree 8a39467d (sections.i4c_finals); earlier measured finals: I4 at ea88814e / tree 9048bc8d (sections.i4_finals, still accepted and bound to that pin), Stage A at acc2a1c (sections.task6), Stage B at 3cece0a / tree fabb6720 (sections.stageb_task6_final)'''",
+  "pushed_note": "dated 2026-10-11 after the 17:11:44 UTC acceptance: D4 24122680 was pushed once without force to the new branch agent/claude/plan-11-30-terminal-docs under the operator's exact approval, and PR #281 opened to main 3dc85529 (sections.pr281_publication_ci); PR #281 was then merged (merged_pr281_note). Earlier on 2026-10-11 this read: 'dated 2026-10-11 after the 13:19:00 UTC acceptance: D3 228b5f6f was pushed once without force to PR #280 (fast-forward 281f8ce..228b5f6) under the operator's conditional approval, which Codex cleared (sections.d3_publication_ci); PR #280 was then merged (merged_note). Earlier on 2026-10-11 this read: 'dated 2026-10-11: under the operator's exact approval the lane branch was pushed without force at exactly 281f8ce7 (D2) and PR #280 opened to main (base 4ed9b252); merge, cleanup and any update of the published branch held (sections.i5_publication). Previously: 'the lane branch is not pushed (I5 held); the separate I1 bootstrap branch agent/claude/plan-11-30-coverage-bootstrap (6f1935d) was pushed and merged to main through PR #279 at 4ed9b25'''",
+  "plan_v5": "approved 2026-10-09 (sha256:149002fa...); completed and archived byte-identically at docs/superpowers/plans/archive/2026-10-04-plan-11-30-test-profiles-implementation_v5.md (operator grant \"YES\", a direct operator reply in Codex chat on client date 2026-10-12, recorded by Codex at 2026-10-11 19:05:47 UTC, answering the exact question that approved closing Plan 11.30, archiving v5 and the kickoff, Checkpoint A, Checkpoint B dated 2026-10-05 and Task 3 records byte-for-byte, and one normal-hook closing commit); approved bytes frozen",
   "i1": "bootstrap merged to main through PR #279 at 4ed9b25; main-push baseline (run 37964416192) accepted with Q-C1/Q-C2/Q-C3 qualifications (sections.i1_bootstrap_baseline)",
   "i2_i3": "integration merge ea88814e (tree 9048bc8d) committed locally with normal hooks and accepted; I3 audits/stability and WSL platform remainder accepted and bound to tested trees caffe9ad/9048bc8d (sections.i2_i3_integration)",
   "i4": "exact-source finals accepted at ea88814e (2026-10-10): Windows and WSL full canonical gates and validation pass; Optimus 89.37/88.95, Context Engine 95.92, model policy 96.99, Windows gap ratio 1.003; forward WSL platform obligation discharged at this pin (sections.i4_finals); acceptance does not transfer to a later pin",
@@ -123,7 +133,7 @@
    "sha256": "sha256:d665e5b467a189eb2399c6dd7d5aabe8c91ab62b3ecaa67abe06f6b313316f05",
    "note": "copied byte for byte into docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md for the results composition; identifies only that snapshot"
   },
-  "open_note": "dated 2026-10-11 after the 13:19:00 UTC acceptance: all items held; no closure claim. The earlier 2026-10-11 list (after the 10:45:23 UTC acceptance) was: [\"the D3 documentary commit and any update of the published branch, each under its own bounded authority (the existing push grant was for exact D2 only)\", \"merge to main, then main-push evidence at the actual main commit\", \"terminal acceptance, plan closure, archival and cleanup (including the Stage B, I4 and C final clones)\", \"partial-commit correction CI backstop\"]; of it, the D3 commit and the branch update are done (sections.d3_delivery, sections.d3_publication_ci), merge and main-push evidence are done (sections.merge, sections.main_push_ci), terminal acceptance of the main-push CI is recorded, and the partial-commit correction CI backstop is discharged for this delivery (sections.backstop_discharge); closure, archival and cleanup stay held. Earlier note: 'dated 2026-10-11 after the 10:45:23 UTC acceptance: all items held. The earlier 2026-10-11 list was: [\"documentary delivery of the 2026-10-11 results (own reviewed commit grant; Fable then Codex review of the exact staged paths/tree/hashes first)\", \"I5: concrete operator push/PR authority for the lane after latest-main reconciliation (bootstrap publication approval does not cover this branch)\", \"I5: actual Linux CI and artifact origin, and the seven-module safety comparison against the accepted I1 baseline (sections.i1_bootstrap_baseline)\", \"merge to main, plan closure, archival and cleanup (including the Stage B, I4 and C final clones)\", \"partial-commit correction CI backstop\"]; its first three items are now done (D2 delivered and accepted, sections.d2_delivery; PR #280 published, sections.i5_publication; candidate Linux CI and the seven-module comparison accepted, sections.i5_ci_safety). Earlier note: 'dated 2026-10-11: all items held; the 2026-10-10 list began with 'S1 corrected-source delivery: review, local commit and new reviewed candidate pin before I5', now delivered and accepted (sections.s1_delivery, sections.i4c_finals)''",
+  "open_note": "dated 2026-10-11 after the 17:11:44 UTC acceptance: implementation and required validation are finished; no closure, archival or cleanup claim. The earlier 2026-10-11 list (after the 13:19:00 UTC acceptance) was: [\"plan closure, terminal archival and cleanup (including the Stage B, I4 and C final clones), each held\"]; it is unchanged in substance, now with a proposed terminal disposition. Earlier note: 'dated 2026-10-11 after the 13:19:00 UTC acceptance: all items held; no closure claim. The earlier 2026-10-11 list (after the 10:45:23 UTC acceptance) was: [\"the D3 documentary commit and any update of the published branch, each under its own bounded authority (the existing push grant was for exact D2 only)\", \"merge to main, then main-push evidence at the actual main commit\", \"terminal acceptance, plan closure, archival and cleanup (including the Stage B, I4 and C final clones)\", \"partial-commit correction CI backstop\"]; of it, the D3 commit and the branch update are done (sections.d3_delivery, sections.d3_publication_ci), merge and main-push evidence are done (sections.merge, sections.main_push_ci), terminal acceptance of the main-push CI is recorded, and the partial-commit correction CI backstop is discharged for this delivery (sections.backstop_discharge); closure, archival and cleanup stay held. Earlier note: 'dated 2026-10-11 after the 10:45:23 UTC acceptance: all items held. The earlier 2026-10-11 list was: [\"documentary delivery of the 2026-10-11 results (own reviewed commit grant; Fable then Codex review of the exact staged paths/tree/hashes first)\", \"I5: concrete operator push/PR authority for the lane after latest-main reconciliation (bootstrap publication approval does not cover this branch)\", \"I5: actual Linux CI and artifact origin, and the seven-module safety comparison against the accepted I1 baseline (sections.i1_bootstrap_baseline)\", \"merge to main, plan closure, archival and cleanup (including the Stage B, I4 and C final clones)\", \"partial-commit correction CI backstop\"]; its first three items are now done (D2 delivered and accepted, sections.d2_delivery; PR #280 published, sections.i5_publication; candidate Linux CI and the seven-module comparison accepted, sections.i5_ci_safety). Earlier note: 'dated 2026-10-11: all items held; the 2026-10-10 list began with 'S1 corrected-source delivery: review, local commit and new reviewed candidate pin before I5', now delivered and accepted (sections.s1_delivery, sections.i4c_finals)'''",
   "i4c": "corrected-source I4 finals accepted at pin C 343b233a (2026-10-11): Windows and WSL full canonical gates and validation pass on the 7412-node universe (sha256:a1006e75...); Optimus 89.4515/88.8835, Context Engine 95.9243, model policy 96.9880, Windows gap ratio 0.966; S1's forward WSL platform obligation discharged at C only, no advance clearance for later commits (sections.i4c_finals)",
   "s1_note": "dated 2026-10-11; on 2026-10-10 this read: 'reader correction (compare reads both records through records.read_record) with the S2 workflow comment: prepared test-first, uncommitted, pending Fable then Codex review; then a separately released local commit becomes a newly reviewed candidate pin with its own verification disposition before I5'",
   "pins": {
@@ -134,7 +144,10 @@
    "d3": "git-sha1:228b5f6f13ff7ac2852fb5f7e4c66aa754db6ce4 (documentary, the merged PR #280 head; not measured)",
    "d2": "git-sha1:281f8ce77b6c7e8c43545e7c610b1aab475e5981 (documentary, the first published PR #280 head; sections.d2_delivery)",
    "ci_merge_ref_d3": "git-sha1:789586d7e67482311c8f88544fab3d710df4fa83 (PR #280 merge ref for head D3, parents 4ed9b252 then 228b5f6f, tree bb4414e1; new-head candidate Linux CI and the seven-module safety comparison accepted 2026-10-11T12:44:49Z, sections.d3_publication_ci); kept separate from ci_merge_ref",
-   "main_commit": "git-sha1:3dc85529c7f2e1d3df55d51c462848dfcafe31ea (actual main, the PR #280 merge commit, parents 4ed9b252 then 228b5f6f, tree bb4414e1; main-push CI and the seven-module safety comparison accepted 2026-10-11T13:19:00Z, sections.main_push_ci); a distinct commit from 789586d7"
+   "main_commit": "git-sha1:3dc85529c7f2e1d3df55d51c462848dfcafe31ea (actual main, the PR #280 merge commit, parents 4ed9b252 then 228b5f6f, tree bb4414e1; main-push CI and the seven-module safety comparison accepted 2026-10-11T13:19:00Z, sections.main_push_ci); a distinct commit from 789586d7",
+   "d4": "git-sha1:24122680df45eafdfdb3631183279b9133f1636d (documentary, the merged PR #281 head; accepted 2026-10-11T15:08:56Z, sections.pr281_publication_ci.d4); not measured source",
+   "ci_merge_ref_d4": "git-sha1:fa7e192783b55c8bc66835f0be80b6bd19dc41a0 (PR #281 merge ref for head D4, parents 3dc85529 then 24122680, tree 6687a86c; candidate Linux CI and the seven-module safety comparison accepted 2026-10-11T15:51:33Z, sections.pr281_publication_ci); kept separate from main_commit_pr281",
+   "main_commit_pr281": "git-sha1:d5b4bec3c4760eeb31250c88dfcc9759b97ea6e4 (main, the PR #281 merge commit, parents 3dc85529 then 24122680, tree 6687a86c; main-push CI and the seven-module safety comparison accepted 2026-10-11T17:11:44Z, sections.main_push_ci_d5b4bec3); a distinct commit from fa7e1927"
   },
   "review_snapshots_imported_2026_10_11": {
    "date": "2026-10-11",
@@ -142,7 +155,7 @@
    "kickoff_sha256": "sha256:f5516cada46ed33f1a1074bb7be1fd85f95464e1df18b1151a2d7556ce518c8d",
    "note": "copied byte for byte from a verified immutable snapshot into docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md and docs/superpowers/reviews/2026-10-04-plan-11-30-claude-kickoff.md for the documentary composition; identifies only those snapshots"
   },
-  "pins_note": "dated 2026-10-11 after the 13:19:00 UTC acceptance; documentary_head previously read: 'D2 git-sha1:281f8ce77b6c7e8c43545e7c610b1aab475e5981 (documentary, the published PR #280 head; accepted 2026-10-11, sections.d2_delivery); not measured source'; d3 previously read: 'the eventual commit recording these results; documentary only, not measured'. Any later commit recording these results is documentary only, not measured. Earlier note: 'dated 2026-10-11 after the 10:45:23 UTC acceptance; documentary_head previously read: 'the eventual commit recording the 2026-10-11 results is a third, documentary-only HEAD; it is not measured source''",
+  "pins_note": "dated 2026-10-11 after the 17:11:44 UTC acceptance; d4, ci_merge_ref_d4 and main_commit_pr281 added; documentary_head, main_commit and every other pin unchanged (main_commit names the PR #280 main commit). Any later commit recording these results is documentary only, not measured. Earlier note: 'dated 2026-10-11 after the 13:19:00 UTC acceptance; documentary_head previously read: 'D2 git-sha1:281f8ce77b6c7e8c43545e7c610b1aab475e5981 (documentary, the published PR #280 head; accepted 2026-10-11, sections.d2_delivery); not measured source'; d3 previously read: 'the eventual commit recording these results; documentary only, not measured'. Any later commit recording these results is documentary only, not measured. Earlier note: 'dated 2026-10-11 after the 10:45:23 UTC acceptance; documentary_head previously read: 'the eventual commit recording the 2026-10-11 results is a third, documentary-only HEAD; it is not measured source'''",
   "d2": "delivered and accepted (2026-10-11): documentary commit 281f8ce7, single parent C 343b233a, tree a45e448d, 9 paths, normal hooks passed, commit seal sha256:0d64b375... (20 members); pre-attempt owned-process check receipted (08:15:02Z, 0 lane-owned); hook run 20261011T081551-28460-343e44 coverage-free, not a final; forward WSL platform obligation discharged at D2 (1574 reused from C + 55 test_ci_parity nodes run on WSL at D2 = 1629, 0 failed or missing) (sections.d2_delivery)",
   "i5_publication": "executed 2026-10-11 under the operator's exact approval: branch pushed at exactly 281f8ce7, no force; PR #280 opened to main (base 4ed9b252) with the reviewed title and body; original Masterplan impact run 38125646844 failed on a malformed declaration Codex supplied; body corrected under release (r3 sha256:e51d1be7...), edited-event run 38126187842 succeeded; both runs kept (sections.i5_publication)",
   "i5_ci_safety": "accepted 2026-10-11T10:45:23Z at the PR merge commit 1946713e (not the branch head): guardrails run 38125646691 success; Optimus 88.85913664394677 (89), Context Engine 95.92430858806405 (96), model policy 96.98795180722891 (97) pass; Evidence Handoff and aggregate informational; exactly one full session 20261011T084124-2858-534abb; seven safety modules identical to the I1 baseline, no regression (sections.i5_ci_safety)",
@@ -158,7 +171,7 @@
   "d3_publication_ci": "one ordinary non-force fast-forward push 281f8ce..228b5f6 to PR #280; new merge ref 789586d7; new-head CI and safety accepted 2026-10-11T12:44:49Z (guardrails run 38138401328; enforced floors pass; seven safety modules identical to the base), kept separate from 1946713e (sections.d3_publication_ci)",
   "pr_body_r4": "applied once at 2026-10-11T12:47:31Z and accepted 12:52:53Z: readback byte-exact r4 sha256:058f270e..., one declaration; edited-event Masterplan impact run 38140622909 passed (sections.pr_body_r4)",
   "main_push_ci": "accepted 2026-10-11T13:19:00Z at the actual main commit 3dc85529: guardrails run 38141258466 (push); Optimus 88.86725089256734 (89), Context Engine 95.92430858806405 (96), model policy 96.98795180722891 (97) pass; Evidence Handoff and aggregate informational; exactly one full session 20261011T125801-2635-8debac; all seven safety rows identical across the base, both PR refs and main (sections.main_push_ci)",
-  "coverage_variation": "disclosed evidence qualification: non-safety coverage in four ACP files varied between runs on identical measured source; cause unproven; optional LOW unscheduled coverage-reproducibility investigation under P11-FEAT-TEST-PROFILES (sections.coverage_variation)",
+  "coverage_variation": "disclosed evidence qualification: non-safety coverage in five unchanged files (four ACP files and src/optimus/mcp/client_sdk.py) varied between runs on identical measured source; cause unproven; optional LOW unscheduled coverage-reproducibility investigation under P11-FEAT-TEST-PROFILES (sections.coverage_variation, sections.fifth_varying_file). Updated 2026-10-11 after the 17:11:44 UTC acceptance; earlier this read: 'disclosed evidence qualification: non-safety coverage in four ACP files varied between runs on identical measured source; cause unproven; optional LOW unscheduled coverage-reproducibility investigation under P11-FEAT-TEST-PROFILES (sections.coverage_variation)'",
   "backstop_discharge": "partial-commit correction CI backstop DISCHARGED for this delivery (2026-10-11); not a claim that PR #280 was a partial commit (sections.backstop_discharge)",
   "adr_020": "first merged by PR #280 (main 3dc85529, 2026-10-11) and now byte-frozen, including its former unpublished-draft and status wording, which is historical; a later policy or decision correction needs a new record",
   "registry_archival": "723/724 PARTIAL/NON-PASSING, UNKNOWN entry untouched; main CI does not reconcile it",
@@ -167,7 +180,23 @@
    "review_sha256": "sha256:45416478a45536a52fc4ef202f432e245c2a95e5b0b38529f26f405666d245ac",
    "kickoff_sha256": "sha256:b132e2ab323d908266d67e9f7086791cc54102f7781dcc267bcbf5e45f5a9868",
    "note": "imported for the terminal documentary composition (D4) after the 13:19:00 UTC acceptance, byte for byte from a verified immutable snapshot into docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md and docs/superpowers/reviews/2026-10-04-plan-11-30-claude-kickoff.md; identifies only those snapshots"
-  }
+  },
+  "merged_pr281_note": "dated 2026-10-11: PR #281 merged with a normal merge commit into main as d5b4bec3 (parents 3dc85529 then 24122680, tree 6687a86c) at 2026-10-11T16:41:06Z; executed by the operator under the exact approval after Claude's permission classifier refused Claude's gh pr merge; GitHub attributes it to vibhanshu-agarwal; the exact command was not witnessed; both branches and the 30 worktrees retained (sections.pr281_merge). merged_note above records PR #280 and is unchanged",
+  "d4": "delivered and accepted (2026-10-11T15:08:56Z): documentary commit 24122680, single parent main 3dc85529, tree 6687a86c, 8 paths, normal hooks passed on the one released attempt, delivery seal sha256:4f5d1dc3... (21 members); 0 lane-owned processes at the pre-attempt check; hook run 20261011T145446-62020-1b7e76 (6365 passed, 37 skipped, 0 failed) coverage-free, not a final; WSL platform obligation discharged at D4 (1574 carried + 55 test_ci_parity nodes run on WSL at D4 = 1629) (sections.pr281_publication_ci.d4)",
+  "pr281_publication_ci": "D4 pushed once without force to the new branch and PR #281 opened under the operator's exact approval; candidate CI and safety accepted 2026-10-11T15:51:33Z at merge ref fa7e1927 (guardrails run 38150616433; enforced floors pass; seven safety modules identical to the base), kept separate from PR #280 and from main (sections.pr281_publication_ci)",
+  "pr281_merged": true,
+  "main_push_ci_d5b4bec3": "accepted 2026-10-11T17:11:44Z at main d5b4bec3: guardrails run 38156615091 (push); Optimus 88.82262252515417 (89), Context Engine 95.92430858806405 (96), model policy 96.98795180722891 (97) pass; Evidence Handoff and aggregate informational; exactly one full session 20261011T164344-2870-7feaa9; seven safety rows identical across all six datasets (sections.main_push_ci_d5b4bec3)",
+  "implementation_and_required_validation": "finished (2026-10-11, after the 17:11:44 UTC acceptance); Codex requires no further production implementation or full Windows/WSL source-final campaign",
+  "terminal_disposition": "executed (operator grant \"YES\", a direct operator reply in Codex chat on client date 2026-10-12, recorded by Codex at 2026-10-11 19:05:47 UTC, answering the exact question that approved closing Plan 11.30, archiving v5 and the kickoff, Checkpoint A, Checkpoint B dated 2026-10-05 and Task 3 records byte-for-byte, and one normal-hook closing commit): v5 moved byte-identically to docs/superpowers/plans/archive/2026-10-04-plan-11-30-test-profiles-implementation_v5.md, its live-registry row removed, the terminal state recorded in P11-FEAT-TEST-PROFILES (Open; v5 completed; residual LOW custody retained), mutable index/backlog/masterplan/report references repaired (sections.terminal_disposition)",
+  "review_snapshots_imported_d5": {
+   "date": "2026-10-11",
+   "review_sha256": "sha256:429f61e51819c0ec2a0f30499da8014cca43607acf81d575e3f3d81548ce1f13",
+   "kickoff_sha256": "sha256:b132e2ab323d908266d67e9f7086791cc54102f7781dcc267bcbf5e45f5a9868",
+   "note": "the review file was imported for the terminal disposition candidate (D5) after the 17:11:44 UTC acceptance, byte for byte from a verified immutable snapshot into docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md; the kickoff is unchanged since the D4 import and is not re-imported; these digests identify only those snapshots"
+  },
+  "terminal_disposition_note": "previous value (proposed state, 2026-10-11 after the 17:11:44 UTC acceptance), kept as written: \"proposed and held, not executed: v5 to the flat plan archive byte-identically, live-registry row removed, terminal state recorded in P11-FEAT-TEST-PROFILES, mutable index/backlog/masterplan/report references repaired; closure, archival and cleanup each await the operator's concrete grant after Fable then Codex review (sections.proposed_terminal_disposition)\"",
+  "open_terminal_note": "previous 'open' list (proposed state, 2026-10-11 after the 17:11:44 UTC acceptance), kept as written: [\"terminal disposition proposed (v5 byte-identical move to the flat archive, live-registry row removal, terminal state in P11-FEAT-TEST-PROFILES; sections.proposed_terminal_disposition); plan closure, terminal archival and cleanup (including the Stage B, I4 and C final clones) each held for the operator's concrete grant after Fable then Codex review\"]",
+  "plan_v5_note": "previous value, kept as written: \"approved 2026-10-09 (sha256:149002fa...); v4 superseded and archived; approved bytes frozen\""
  },
  "sections": {
   "task0": {
@@ -4150,6 +4179,514 @@
     "correction": "the real-repository reads in that file are _git_blob's (registered historical commits and the index); the line-244 rev-parse HEAD belongs to _commit_file, used only in temporary fixture repositories; conclusion unchanged; the sealed I5 wording stays historical; no universal git-metadata independence claimed",
     "accepted": "Codex 2026-10-11T12:44:49Z"
    }
+  },
+  "pr281_publication_ci": {
+   "status": "D4 delivered and accepted 2026-10-11T15:08:56Z; published under the operator's exact approval; PR #281 candidate CI and safety accepted by Codex 2026-10-11T15:51:33Z at the actual merge ref, kept separate from PR #280 and from main",
+   "status_recorded": "2026-10-11 (terminal disposition candidate D5)",
+   "authority_sections": [
+    "D4 final bytes accepted - one normal-hook commit and bounded WSL released (2026-10-11T14:12:42Z)",
+    "D4 delivery and WSL accepted - terminal-docs publication ready (2026-10-11T15:08:56Z)",
+    "Operator approval - exact D4 branch push and one terminal-docs PR (2026-10-11T15:16:39Z)",
+    "PR281 publication and CI accepted - separate merge approval pending (2026-10-11T15:51:33Z)"
+   ],
+   "d4": {
+    "release": {
+     "section": "D4 final bytes accepted - one normal-hook commit and bounded WSL released (2026-10-11T14:12:42Z)",
+     "staged_tree": "git-sha1:6687a86c24f1361984ccb2e0441d4c876cfcad68",
+     "packet_sha256": "sha256:a7c0f2d216424b580245862184834954b9ada52dead15d480b26c93da6266bbd",
+     "seal_sha256": "sha256:24c4700f217fccf0ff2081243fa53b6a73681e50e9e6e4362eea53445609193b",
+     "seal_members": 27
+    },
+    "commit": {
+     "commit": "git-sha1:24122680df45eafdfdb3631183279b9133f1636d",
+     "branch": "agent/claude/plan-11-30-terminal-docs",
+     "parent": "git-sha1:3dc85529c7f2e1d3df55d51c462848dfcafe31ea",
+     "tree": "git-sha1:6687a86c24f1361984ccb2e0441d4c876cfcad68",
+     "subject": "docs: record Plan 11.30 merged delivery and main CI acceptance",
+     "message_sha256": "sha256:720fd310ad10f64860ed7ba99b56e8daf2f754422ff55de81d5a90c02d63bf2d",
+     "paths_against_parent": 8,
+     "committer_date": "2026-10-11T20:23:41+05:30",
+     "hooks": "trailing-whitespace, file-size, ruff, bandit, ast-grep, config-trust-scan, secret-scan, pytest-coverage passed; yaml and toml skipped (no files); one attempt, no SKIP/--no-verify/retry",
+     "owned_process_check": "0 lane-owned processes; foreign processes counted and left untouched; no idle-host claim"
+    },
+    "hook_run": {
+     "run": "20261011T145446-62020-1b7e76",
+     "record": "ACTIVE, terminal COMPLETE, exit 0, 6402 selected, full depth; replayed independently by Codex",
+     "qualifications": [
+      "parent=not_found:ancestor_exited"
+     ],
+     "raw_phases": "setup 6384 passed / 18 skipped; call 6365 passed / 19 skipped; teardown 6402 passed; 0 failures or errors; so 6365 passed and 37 skipped, not 6402 passes",
+     "not_a_final": "coverage-free commit profile, neither the 7412 universe nor a coverage measurement",
+     "obligation": "wsl-platform: next checkpoint; discharged at D4 (wsl_obligation below)"
+    },
+    "wsl_obligation": {
+     "inputs_d3_to_d4": "the 8 docs/reports paths only; 0 non-doc paths; src, tools, tests, .github, pyproject.toml, uv.lock, profiles, groups, baseline and pre-commit equal",
+     "classification": {
+      "universe": 7412,
+      "universe_sha256": "sha256:a1006e75018a18b51783e94f83b82068bffcd2fae3f92670cba2f7ec36fa926a",
+      "platform": 1629,
+      "platform_sha256": "sha256:d79185015cc55b96a2fae2b6fd3d34fab82967e566cc3b73fba461672932c9ed",
+      "ci_parity": 55,
+      "ci_parity_sha256": "sha256:241319bbdcacdc9f9524d4834c3a2c1ccb02f34627bec74ceb5c61760911165f"
+     },
+     "wsl_run": {
+      "run": "20261011T150420-631-b81071",
+      "clone": "/root/p1130-d4parity-20261011T150242",
+      "checkout": "24122680 (tree 6687a86c), clean; identities equal before and after",
+      "environment": "own frozen environment; CPython 3.14.6, pytest 9.1.1, coverage 7.14.3; TMPDIR unset",
+      "command": "uv run --no-sync pytest --no-cov -p no:cacheprovider -q -rs @nodes.txt",
+      "result": "55 passed in 13.23 s, exit 0; one serial attempt, no retry",
+      "record": "ACTIVE, default_selection, terminal COMPLETE, exit 0, 55 selected, full depth, head 24122680; Codex's per-node raw replay: all 55 passed setup, call and teardown",
+      "qualifications": [
+       "native=unsupported",
+       "guard=unsupported_platform",
+       "parent=unsupported"
+      ]
+     },
+     "accounting": {
+      "carried": 1574,
+      "run_at_d4": 55,
+      "total": 1629,
+      "failed_or_missing": 0
+     },
+     "verdict": "D4's forward wsl-platform obligation discharged at 24122680; inherited recorder, skip and capability qualifications retained"
+    },
+    "acceptance_section": "D4 delivery and WSL accepted - terminal-docs publication ready (2026-10-11T15:08:56Z)",
+    "packet_sha256": "sha256:6b9575c5f9b9b846de24e14c6e2eb93f771f5e055967fe159eecb0cbfbcc4a07",
+    "seal_sha256": "sha256:4f5d1dc3b4563bddb9e292edfbee2b544be5d2af4edf101f6b337a0a1f893b71",
+    "seal_members": 21,
+    "wsl_seal_sha256": "sha256:f2bd5873416cea97d1240c9b592d86894d105195d30457b6b1bc46aaed7ee59b",
+    "wsl_seal_members": 26,
+    "publication_handoff_seal_sha256": "sha256:2eb9d546d638fad380c1060f7553682a479cd94e92a52c77eaeaa12156abaf5d",
+    "publication_handoff_seal_members": 10,
+    "raw_receipts": [
+     {
+      "location_root": "optimus-handoff/test-profiles-research",
+      "location_folder": "plan-11-30-d4-terminal-docs-batch-6687a86c-20261011"
+     },
+     {
+      "location_root": "optimus-handoff/test-profiles-research",
+      "location_folder": "2026-10-11-claude-plan-11-30-d4-terminal-docs-packet.md"
+     },
+     {
+      "location_root": "optimus-handoff/test-profiles-research",
+      "location_folder": "plan-11-30-d4-commit-attempt1-20261011"
+     },
+     {
+      "location_root": "optimus-handoff/test-profiles-research",
+      "location_folder": "plan-11-30-d4-wsl-parity-24122680-20261011"
+     },
+     {
+      "location_root": "optimus-handoff/test-profiles-research",
+      "location_folder": "plan-11-30-d4-publication-handoff-20261011"
+     },
+     {
+      "location_root": "optimus-handoff/test-profiles-research",
+      "location_folder": "2026-10-11-claude-plan-11-30-d4-delivery-packet.md"
+     }
+    ]
+   },
+   "operator_grant": {
+    "section": "Operator approval - exact D4 branch push and one terminal-docs PR (2026-10-11T15:16:39Z)",
+    "source": "direct operator reply in Codex chat 01a10617-9940-72c0-a5e2-e3f8c3241055",
+    "exact_words": "Approved. I have conveyed the approval already to Claude",
+    "released": "one ordinary non-force push of exact 24122680 to new refs/heads/agent/claude/plan-11-30-terminal-docs, then one PR into main 3dc85529 with the reviewed title and body"
+   },
+   "publication": {
+    "precheck_utc": "2026-10-11T15:16:39Z: branch and HEAD 24122680, tree 6687a86c, parent 3dc85529, clean; remote main 3dc85529; remote branch absent; body sha256:3c62faa4...; no PR from the branch",
+    "push_utc": "2026-10-11T15:16:42Z",
+    "push_command": "git push origin 24122680df45eafdfdb3631183279b9133f1636d:refs/heads/agent/claude/plan-11-30-terminal-docs",
+    "push_result": "new branch, exit 0",
+    "pr_create_utc": "2026-10-11T15:16:47Z",
+    "pr": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/281",
+    "title": "Plan 11.30: record merged delivery and main CI acceptance",
+    "body_sha256": "sha256:3c62faa42d8f33880ee56026f5e9ad07b43d2f717e2453d113a2b2d1383b3a0e",
+    "readback_utc": "2026-10-11T15:16:55Z: open, not a draft, head 24122680, base 3dc85529, exact title, body equal to the reviewed bytes, mergeable; auto-merge off"
+   },
+   "merge_ref": {
+    "commit": "git-sha1:fa7e192783b55c8bc66835f0be80b6bd19dc41a0",
+    "parents": [
+     "git-sha1:3dc85529c7f2e1d3df55d51c462848dfcafe31ea",
+     "git-sha1:24122680df45eafdfdb3631183279b9133f1636d"
+    ],
+    "tree": "git-sha1:6687a86c24f1361984ccb2e0441d4c876cfcad68",
+    "note": "tree equal to D4's; the commits are distinct; CI binds to fa7e1927"
+   },
+   "run": {
+    "workflow": "guardrails",
+    "run_id": "38150616433",
+    "attempt": 1,
+    "event": "pull_request",
+    "job": "114503125664 clean-environment-recheck (ubuntu-latest)",
+    "conclusion": "success; every step succeeded"
+   },
+   "masterplan_impact_run": "38150616412 (head 24122680): success; 'declaration is consistent with changed files'; 20 checker tests passed",
+   "artifact": {
+    "id": "11705774320",
+    "size_bytes": 290830,
+    "zip_sha256": "sha256:4acb1a35535c5df03efad31c048e9055ec5d0e8a9434afaf5b21130a41914c1d",
+    "note": "the downloaded ZIP equals the published digest; extracted files match the ZIP"
+   },
+   "coverage_json_sha256": "sha256:b244b984047808d04725e9b596f77bc6df5fac05e879ebf18240718c5d2cac04",
+   "coverage_json_files": 226,
+   "producer": "CPython 3.14.8, coverage 7.14.3, branch measurement; canonical command; configuration, lock and groups from the merge commit",
+   "floors_precision_0": {
+    "optimus": {
+     "measured": 88.87130801687763,
+     "compared": 89,
+     "status": "enforced, pass"
+    },
+    "context_engine": {
+     "measured": 95.92430858806405,
+     "compared": 96,
+     "status": "enforced, pass"
+    },
+    "model_policy": {
+     "measured": 96.98795180722891,
+     "compared": 97,
+     "status": "enforced, pass"
+    },
+    "evidence_handoff": {
+     "measured": 65.96291012838802,
+     "compared": 66,
+     "status": "informational, non-passing"
+    },
+    "aggregate": {
+     "measured": 84.05626835677849,
+     "compared": 84,
+     "status": "informational"
+    }
+   },
+   "floors_source": "gate report values (04-verify-candidate.txt), equal to the recomputed values; no informational result promoted to an enforced pass",
+   "records": "all 67 run-context headers pass the schema reader; none refused",
+   "full_session": {
+    "run": "20261011T151728-2654-a154f7",
+    "selected": 7412,
+    "deselected": 111,
+    "selection_sha256": "sha256:a1006e75018a18b51783e94f83b82068bffcd2fae3f92670cba2f7ec36fa926a",
+    "record": "ACTIVE, default_selection, full depth, terminal COMPLETE, exit 0, no recording errors or withheld results, streams reconciled; exactly one",
+    "qualifications": [
+     "native=unsupported",
+     "guard=unsupported_platform",
+     "parent=unsupported"
+    ],
+    "universe": "CI's own validity.txt names this session (67 records considered) and establishes its actual-checkout universe proof"
+   },
+   "outcome_count": {
+    "passed": 7199,
+    "skipped": 213,
+    "deselected": 111,
+    "warnings": 1,
+    "kind": "job-log count, not a raw-phase recount"
+   },
+   "utc": "producer UTC inferred, not environment-receipted; under that qualification the export lag is 2.713929 s",
+   "safety_comparison": {
+    "base": "sections.i1_bootstrap_baseline",
+    "modules": [
+     "tools/registry",
+     "runtime/mutation",
+     "gateway/models",
+     "evidence/ledger",
+     "acp/framing",
+     "retry/policy",
+     "tools/policy"
+    ],
+    "result": "compare exit 0, 'safety rows comparable, no regression'; all seven safety modules have identical statement, branch and missed counts across the base, both PR #280 runs, main 3dc85529 and PR #281",
+    "qualifications": [
+     "Q-C1 base-only absent audit depth retained (base: audit_depth_unrecorded:no-option-at-base)"
+    ],
+    "reviewer_checks": "Codex's fresh full-tree Ruff at D4 passes"
+   },
+   "git_metadata": "source, configuration and lock identical to main 3dc85529; the 789586d7 git-metadata assessment, with its line-244 correction, applies unchanged; evidence bound to fa7e1927, not relabelled to 24122680 or a main commit",
+   "packet_sha256": "sha256:3de54e8c3fdb83632a407d47e686b233e9f9e860bc9f08ae82edea7fdca94430",
+   "seal_sha256": "sha256:13251d2d4e95b5d02476b9c17f963c9c40671563ad0f397a9a46d23af35f99e5",
+   "seal_members": 109,
+   "raw_receipts": [
+    {
+     "location_root": "optimus-handoff/test-profiles-research",
+     "location_folder": "plan-11-30-pr281-ci-safety-fa7e1927-20261011"
+    },
+    {
+     "location_root": "optimus-handoff/test-profiles-research",
+     "location_folder": "2026-10-11-claude-plan-11-30-pr281-publication-ci-packet.md"
+    }
+   ]
+  },
+  "fifth_varying_file": {
+   "status": "disclosed evidence qualification under the existing LOW optional unscheduled P11-FEAT-TEST-PROFILES coverage-reproducibility custody; not a current failure, waiver or demonstrated defect (Codex 2026-10-11T15:51:33Z for the file, 2026-10-11T17:11:44Z for the main results)",
+   "status_recorded": "2026-10-11 (terminal disposition candidate D5)",
+   "supplements": "sections.coverage_variation, whose four-file wording is an accepted dated snapshot, kept as written",
+   "file": {
+    "path": "src/optimus/mcp/client_sdk.py",
+    "line": 338,
+    "code": "raise ClientMcpSdkError(\"OPERATION_TIMEOUT\") from exc in _call_async's except TimeoutError; reached only when a tool call exceeds the operation timeout",
+    "varies": "covered only at the PR #281 merge ref fa7e1927 (206/252 statements there, 205/252 in the five other runs); versus main 3dc85529 the only changed coverage row"
+   },
+   "production_bytes": "client_sdk.py and src/optimus/acp/ byte-identical from base 4ed9b252 to fa7e1927; all five varying files byte-identical from base to d5b4bec3",
+   "main_results_d5b4bec3": {
+    "new_varying_file": false,
+    "union": [
+     "src/optimus/acp/launch_approvals.py",
+     "src/optimus/acp/lifecycle.py",
+     "src/optimus/acp/local_infra.py",
+     "src/optimus/acp/ndjson_subprocess_session.py",
+     "src/optimus/mcp/client_sdk.py"
+    ],
+    "client_sdk_line_338": "missed at d5b4bec3, as everywhere except fa7e1927",
+    "lifecycle": "a sixth distinct state, 690/770 statements and 168/246 branches covered; versus the base additionally covers line 782 (branch 781->782, the writer_tokens != 0 early return); versus fa7e1927 misses lines 740-742, 747 and 985-986 (freeze_abandoned / abandon-time retirement); all within lines already recorded as varying",
+    "others": "launch_approvals.py, local_infra.py and ndjson_subprocess_session.py equal fa7e1927 and 3dc85529"
+   },
+   "values_unrounded": {
+    "base_4ed9b252": {
+     "optimus": 88.83479389808504,
+     "aggregate": 84.02844334518473,
+     "source": "sections.i1_bootstrap_baseline"
+    },
+    "pr_ref_1946713e": {
+     "optimus": 88.85913664394677,
+     "aggregate": 84.0469933529139,
+     "source": "sections.i5_ci_safety"
+    },
+    "pr_ref_789586d7": {
+     "optimus": 88.79827977929244,
+     "aggregate": 84.00061833359098,
+     "source": "sections.d3_publication_ci"
+    },
+    "main_3dc85529": {
+     "optimus": 88.86725089256734,
+     "aggregate": 84.05317668882363,
+     "source": "sections.main_push_ci"
+    },
+    "pr_ref_fa7e1927": {
+     "optimus": 88.87130801687763,
+     "aggregate": 84.05626835677849,
+     "source": "sections.pr281_publication_ci"
+    },
+    "main_d5b4bec3": {
+     "optimus": 88.82262252515417,
+     "aggregate": 84.01916834132014,
+     "source": "sections.main_push_ci_d5b4bec3"
+    }
+   },
+   "unchanged_products": "context_engine 95.92430858806405, model_policy 96.98795180722891, evidence_handoff 65.96291012838802 in all six runs; seven safety rows identical in all six",
+   "optimus_versus_base_at_d5b4bec3": "0.01217137293087 percentage points below the base; still compares as 89; no baseline aggregate non-regression policy implied",
+   "cause": "unproven; timing plausible, not isolated causal proof",
+   "required_action": "none: no source fix, tolerance, rerun or new implementation",
+   "custody": "unchanged owner and priority: optional LOW unscheduled coverage-reproducibility investigation under P11-FEAT-TEST-PROFILES, now five non-safety files",
+   "raw_receipts": [
+    {
+     "location_root": "optimus-handoff/test-profiles-research",
+     "location_folder": "plan-11-30-pr281-ci-safety-fa7e1927-20261011"
+    },
+    {
+     "location_root": "optimus-handoff/test-profiles-research",
+     "location_folder": "plan-11-30-main-push-ci-d5b4bec3-20261011"
+    }
+   ]
+  },
+  "pr281_merge": {
+   "status": "merged 2026-10-11T16:41:06Z; merge identity verified by Codex 2026-10-11T16:46:17Z; observed merge mode, parents, tree and preservation accepted by Codex 2026-10-11T17:11:44Z",
+   "status_recorded": "2026-10-11 (terminal disposition candidate D5)",
+   "operator_approval": {
+    "section": "Operator approval - exact PR281 normal merge and main-push verification (2026-10-11T15:53:03Z)",
+    "source": "direct operator reply in Codex chat 01a10617-9940-72c0-a5e2-e3f8c3241055",
+    "exact_words": "Approved. Claude may merge PR #281 at 24122680 into main 3dc85529 using a normal merge commit, preserving the branch and worktrees. Verify main-push CI afterward. Closure, archival and cleanup remain held."
+   },
+   "preflight_utc": "2026-10-11T15:58:55Z, read-only, every item matched: PR #281 open and mergeable (state clean), not a draft; head 24122680; base and main 3dc85529; merge ref fa7e1927, tree 6687a86c; exact title; body sha256:3c62faa4...; merge commits allowed, delete_branch_on_merge false; required contexts clean-environment-recheck (run 38150616433) and verify (run 38150616412) passing; docs worktree clean at 24122680, lane worktree clean at 228b5f6f; 30 worktrees",
+   "executed_by": "the operator: Claude's gh pr merge was refused by Claude Code's permission classifier and Claude did not work around it; GitHub attributes the merge to vibhanshu-agarwal; the exact command was not witnessed and none is recorded",
+   "observed_utc": "2026-10-11T16:41:25Z; rechecked 2026-10-11T17:07:54Z",
+   "main_commit": "git-sha1:d5b4bec3c4760eeb31250c88dfcc9759b97ea6e4",
+   "subject": "Merge pull request #281 from vibhanshu-agarwal/agent/claude/plan-11-30-terminal-docs",
+   "committer": "GitHub",
+   "merge_mode": "merge commit (not squash or rebase)",
+   "parents": [
+    "git-sha1:3dc85529c7f2e1d3df55d51c462848dfcafe31ea",
+    "git-sha1:24122680df45eafdfdb3631183279b9133f1636d"
+   ],
+   "parents_order": "previous main, then the approved D4",
+   "tree": "git-sha1:6687a86c24f1361984ccb2e0441d4c876cfcad68",
+   "tree_check": "equal to the approved tree",
+   "preservation": "branch agent/claude/plan-11-30-terminal-docs retained at 24122680; PR #280 branch still at 228b5f6f; worktree inventory byte-identical before and after (30 entries); docs worktree clean",
+   "relation_to_pr_ref": "fa7e1927 has the same tree and ordered parents but is a distinct commit; neither evidence set is relabelled as the other",
+   "acceptance_scope": "Codex accepts the observed merge mode, parents, tree and preservation; the operator's exact command is unwitnessed and not inferred; no cleanup authority follows",
+   "raw_receipts": [
+    {
+     "location_root": "optimus-handoff/test-profiles-research",
+     "location_folder": "plan-11-30-main-push-ci-d5b4bec3-20261011"
+    },
+    {
+     "location_root": "optimus-handoff/test-profiles-research",
+     "location_folder": "2026-10-11-claude-plan-11-30-pr281-main-push-ci-packet.md"
+    }
+   ]
+  },
+  "main_push_ci_d5b4bec3": {
+   "status": "accepted by Codex 2026-10-11T17:11:44Z at main d5b4bec3; kept separate from the PR #281 merge ref fa7e1927 and every earlier commit",
+   "status_recorded": "2026-10-11 (terminal disposition candidate D5)",
+   "acceptance_section": "PR281 merge and actual main-push CI accepted - terminal disposition preparation released (2026-10-11T17:11:44Z)",
+   "run": {
+    "workflow": "guardrails",
+    "run_id": "38156615091",
+    "attempt": 1,
+    "event": "push",
+    "branch": "main",
+    "job": "114520798091 clean-environment-recheck (ubuntu-latest)",
+    "conclusion": "success; every step succeeded",
+    "created_utc": "2026-10-11T16:43:03Z",
+    "start_note": "about two minutes after the merge; absent at a 16:42:07Z check; queueing is consistent with that, the cause is unproven"
+   },
+   "tested_commit": {
+    "commit": "git-sha1:d5b4bec3c4760eeb31250c88dfcc9759b97ea6e4",
+    "tree": "git-sha1:6687a86c24f1361984ccb2e0441d4c876cfcad68",
+    "binding": "job log git log -1 is d5b4bec3; the gate records git_head d5b4bec3, clean before and after; equal trees do not make another commit's acceptance this one's"
+   },
+   "artifact": {
+    "id": "11709196503",
+    "size_bytes": 290907,
+    "zip_sha256": "sha256:be3b651414b773dc49e919693e940544b06a8dbf96b1876688259c8a2ed843ab",
+    "note": "unexpired; the downloaded ZIP equals the published digest; extracted files match the ZIP"
+   },
+   "coverage_json_sha256": "sha256:116e86fabf87cfbe7e8a2807a53cf151c9f188a8986a36703b66dbb86cef7205",
+   "coverage_json_files": 226,
+   "producer": "CPython 3.14.8, coverage 7.14.3, branch measurement; canonical command; configuration, lock and groups derived from Git at d5b4bec3",
+   "floors_precision_0": {
+    "optimus": {
+     "measured": 88.82262252515417,
+     "compared": 89,
+     "status": "enforced, pass"
+    },
+    "context_engine": {
+     "measured": 95.92430858806405,
+     "compared": 96,
+     "status": "enforced, pass"
+    },
+    "model_policy": {
+     "measured": 96.98795180722891,
+     "compared": 97,
+     "status": "enforced, pass"
+    },
+    "evidence_handoff": {
+     "measured": 65.96291012838802,
+     "compared": 66,
+     "status": "informational, non-passing"
+    },
+    "aggregate": {
+     "measured": 84.01916834132014,
+     "compared": 84,
+     "status": "informational"
+    }
+   },
+   "floors_source": "gate report values (04-verify-candidate.txt), equal to the recomputed values; no informational result promoted to an enforced pass",
+   "optimus_versus_base": "0.01217137293087 percentage points below the base; no aggregate non-regression policy implied",
+   "records": "all 67 run-context headers pass the schema reader; none refused; other full-sized collection records are PASSIVE and excluded; start-only records retained",
+   "full_session": {
+    "run": "20261011T164344-2870-7feaa9",
+    "selected": 7412,
+    "deselected": 111,
+    "selection_sha256": "sha256:a1006e75018a18b51783e94f83b82068bffcd2fae3f92670cba2f7ec36fa926a",
+    "record": "ACTIVE, default_selection, full depth, terminal COMPLETE, exit 0, no recording errors or withheld results, streams reconciled; exactly one",
+    "qualifications": [
+     "native=unsupported",
+     "guard=unsupported_platform",
+     "parent=unsupported"
+    ],
+    "universe": "CI's own validity output names the same session and proves its universe at actual main",
+    "duration_s": 1157,
+    "duration_note": "session span 16:43:44Z to 17:03:01Z; no cause attributed to its length"
+   },
+   "outcome_count": {
+    "passed": 7199,
+    "skipped": 213,
+    "deselected": 111,
+    "warnings": 1,
+    "kind": "job-log count, not a raw-phase recount"
+   },
+   "utc": "producer UTC inferred; under that qualification the export lag is 4.724942 s",
+   "safety_comparison": {
+    "base": "sections.i1_bootstrap_baseline",
+    "modules": [
+     "tools/registry",
+     "runtime/mutation",
+     "gateway/models",
+     "evidence/ledger",
+     "acp/framing",
+     "retry/policy",
+     "tools/policy"
+    ],
+    "result": "compare exit 0, 'safety rows comparable, no regression'; seven safety-module statement, branch and missed counts identical across all six raw datasets (base, 1946713e, 789586d7, 3dc85529, fa7e1927, d5b4bec3)",
+    "qualifications": [
+     "Q-C1 base-depth qualification retained (base: audit_depth_unrecorded:no-option-at-base)"
+    ],
+    "reviewer_checks": "Codex's fresh full-tree Ruff at D4 passes"
+   },
+   "git_metadata": "source, configuration and lock identical to 3dc85529; the 789586d7 git-metadata assessment applies unchanged",
+   "unchanged": "registry archival 723/724 PARTIAL/NON-PASSING with the UNKNOWN entry untouched; partial-commit CI backstop stays discharged",
+   "packet_sha256": "sha256:ddd0740b1b675a412ce05eac4a81d12e00cfbfc195f80c4a210bff503cd32a86",
+   "seal_sha256": "sha256:96785f6f69acc4208c9cf09f815fb401bd792af8f34f1b541c7392e91498a3d1",
+   "seal_members": 107,
+   "raw_receipts": [
+    {
+     "location_root": "optimus-handoff/test-profiles-research",
+     "location_folder": "plan-11-30-main-push-ci-d5b4bec3-20261011"
+    },
+    {
+     "location_root": "optimus-handoff/test-profiles-research",
+     "location_folder": "2026-10-11-claude-plan-11-30-pr281-main-push-ci-packet.md"
+    }
+   ]
+  },
+  "proposed_terminal_disposition": {
+   "status": "proposed and held; not executed. Codex released terminal-disposition preparation only, not closure, archival execution, a commit or publication (2026-10-11T17:11:44Z)",
+   "status_recorded": "2026-10-11 (terminal disposition candidate D5)",
+   "finished": "implementation and required validation: PR #280 merged at 3dc85529 with main-push CI accepted; PR #281 merged at d5b4bec3 with main-push CI accepted; no further production implementation or full Windows/WSL source-final campaign required",
+   "proposed_change": [
+    "move the approved frozen v5 plan byte-identically to docs/superpowers/plans/archive/2026-10-04-plan-11-30-test-profiles-implementation_v5.md (bytes stay sha256:149002fa5c61b366900c535bee883dd07289dc2317bdf4064cff2e20a7f7035e); v5 has no relative Markdown links, so no relocation-equivalence entry is needed",
+    "remove its live-registry row, record the plan's terminal (completed) state in the P11-FEAT-TEST-PROFILES section and point that section's plan link at the archive",
+    "drop the v5 line from docs/README.md and update the remaining Plan 11.30 and ADR-020 index wording",
+    "update the masterplan Plan 11.30 clause and the report's plan reference",
+    "leave every review record, ADR-020 and the v5 bytes unchanged"
+   ],
+   "gate": "the operator's concrete closure and archival grant after Fable then Codex review of the exact composition; cleanup under its own separate grant after a read-only inventory",
+   "stays": "P11-FEAT-TEST-PROFILES residual custody (seam, overlap, cache-validation and lookup upkeep; LOW coverage reproducibility, five files; S3; tracked unscheduled items); P11-FU-32 MAIN-5; S4 exactly-one obligation; A2A, binding/desktop, hardening registry and activation owners; registry 723/724 PARTIAL/NON-PASSING with UNKNOWN untouched; backstop discharged",
+   "not_created": "no new plan, amendment or open-work pool"
+  },
+  "terminal_disposition": {
+   "status": "executed (operator grant \"YES\", a direct operator reply in Codex chat on client date 2026-10-12, recorded by Codex at 2026-10-11 19:05:47 UTC, answering the exact question that approved closing Plan 11.30, archiving v5 and the kickoff, Checkpoint A, Checkpoint B dated 2026-10-05 and Task 3 records byte-for-byte, and one normal-hook closing commit)",
+   "grant": "operator grant \"YES\", a direct operator reply in Codex chat on client date 2026-10-12, recorded by Codex at 2026-10-11 19:05:47 UTC, answering the exact question that approved closing Plan 11.30, archiving v5 and the kickoff, Checkpoint A, Checkpoint B dated 2026-10-05 and Task 3 records byte-for-byte, and one normal-hook closing commit",
+   "proposal": "sections.proposed_terminal_disposition (kept as written)",
+   "archived_path": "docs/superpowers/plans/archive/2026-10-04-plan-11-30-test-profiles-implementation_v5.md",
+   "frozen_sha256": "sha256:149002fa5c61b366900c535bee883dd07289dc2317bdf4064cff2e20a7f7035e",
+   "applied": [
+    "v5 moved byte-identically to the flat plan archive",
+    "live implementation plan registry row removed",
+    "P11-FEAT-TEST-PROFILES Status: Open; v5 completed; residual LOW custody retained",
+    "docs/README.md v5 row dropped; the kickoff and the Checkpoint A, Checkpoint B and Task 3 review rows removed",
+    "masterplan, ADR-020 index row and report references repaired",
+    "kickoff and three Plan 11.30 review records moved byte-for-byte to docs/superpowers/reviews/archive/ (Codex ruling 2026-10-11T18:15:36Z); clickable references in mutable documents repaired"
+   ],
+   "not_done": "cleanup is held for the operator's separate grant; registry 723/724 stays PARTIAL/NON-PASSING with the UNKNOWN member untouched; ADR-020 and the v5 bytes stay frozen",
+   "archived_records": [
+    {
+     "from": "docs/superpowers/reviews/2026-10-04-plan-11-30-claude-kickoff.md",
+     "to": "docs/superpowers/reviews/archive/2026-10-04-plan-11-30-claude-kickoff.md",
+     "sha256": "sha256:b132e2ab323d908266d67e9f7086791cc54102f7781dcc267bcbf5e45f5a9868"
+    },
+    {
+     "from": "docs/superpowers/reviews/2026-10-04-plan-11-30-checkpoint-a-codex-review.md",
+     "to": "docs/superpowers/reviews/archive/2026-10-04-plan-11-30-checkpoint-a-codex-review.md",
+     "sha256": "sha256:e9a652cfc0eba1e44cd8b5ecfcde18bd4a0f1fa0f192e7b66365a481ec07e520"
+    },
+    {
+     "from": "docs/superpowers/reviews/2026-10-05-plan-11-30-checkpoint-b-codex-review.md",
+     "to": "docs/superpowers/reviews/archive/2026-10-05-plan-11-30-checkpoint-b-codex-review.md",
+     "sha256": "sha256:8b16057f2b71ef338ec40a6e115ec36562cafc75d601e1ad08374811753f30c9"
+    },
+    {
+     "from": "docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md",
+     "to": "docs/superpowers/reviews/archive/2026-10-05-plan-11-30-task3-codex-review.md",
+     "sha256": "sha256:429f61e51819c0ec2a0f30499da8014cca43607acf81d575e3f3d81548ce1f13"
+    }
+   ]
   }
  }
 }
