@@ -694,6 +694,56 @@ def test_a_review_that_is_not_a_json_object_is_a_recorded_denial(tmp_path: Path,
     assert record["reviews"][1]["record"] == ["claude", "PASS"]
 
 
+@pytest.mark.parametrize("step", ["step1", "final"])
+@pytest.mark.parametrize("value", [7, True, 1.5, 0, None], ids=["integer", "boolean", "float", "zero", "null"])
+def test_a_minor_value_that_is_not_a_list_is_a_recorded_denial(tmp_path: Path, monkeypatch, step, value) -> None:
+    # Codex review of 6bf0a48: a scalar here crashed the reviewers' minor-key comparison, losing the record.
+    run_dir = _sealed_run(tmp_path, monkeypatch, STEP1, FINAL)
+    malformed = _edited(_review(run_dir, "codex"), ("steps", step, "minor"), value)
+
+    record = _denied(*_assess(tmp_path, run_dir, _review(run_dir, "claude"), malformed), f"codex: {step} minor findings must be a list")
+
+    assert (record["reviews"][1]["raw_input_sha256"], record["reviews"][1]["record"]) == (_sha(tmp_path / "review-1.json"), malformed)
+
+
+def _nested(review: dict[str, Any], depth: int) -> str:
+    """`review` as JSON text with an extra field nesting the document `depth` levels deep, counting the review
+    object and each value within it. Built as text, so no recursive encoder touches it."""
+    return json.dumps({**review, "extra": "NESTED"}).replace('"NESTED"', "[" * (depth - 1) + "]" * (depth - 1))
+
+
+def _assess_files(tmp_path: Path, run_dir: Path, claude: str, codex: str) -> tuple[int, Path, list[Path]]:
+    paths = [tmp_path / "claude.json", tmp_path / "codex.json"]
+    for path, text in zip(paths, (claude, codex), strict=True):
+        path.write_text(text, encoding="utf-8")
+    out = tmp_path / "assessment"
+    argv = ["assess", "--run", str(run_dir), "--review", str(paths[0]), "--review", str(paths[1]), "--release", RELEASE, "--out", str(out)]
+    return tool.main(argv), out, paths
+
+
+@pytest.mark.parametrize("depth", [None, 3_000, 100_000], ids=["one-past-the-limit", "past-the-interpreter-limit", "past-the-decoder-limit"])
+def test_a_review_nested_too_deeply_is_a_recorded_denial_that_keeps_its_hash(tmp_path: Path, monkeypatch, depth) -> None:
+    # Found by the enumeration probe for the Codex review of 6bf0a48: recursion past the interpreter's or the
+    # decoder's limit crashed assess, losing the record.
+    run_dir = _sealed_run(tmp_path, monkeypatch, STEP1, FINAL)
+    deep = _nested(_review(run_dir, "codex"), depth or tool.MAX_REVIEW_DEPTH + 1)
+
+    code, out, paths = _assess_files(tmp_path, run_dir, json.dumps(_review(run_dir, "claude")), deep)
+
+    record = _denied(code, out, f"review 2 nests deeper than {tool.MAX_REVIEW_DEPTH} levels")
+    assert [(r["raw_input_sha256"], r["record"]) for r in record["reviews"]] == [(_sha(paths[0]), _review(run_dir, "claude")), (_sha(paths[1]), None)]
+
+
+def test_a_review_nested_exactly_to_the_limit_is_assessed(tmp_path: Path, monkeypatch) -> None:
+    run_dir = _sealed_run(tmp_path, monkeypatch, STEP1, FINAL)
+    at_limit = _nested(_review(run_dir, "codex"), tool.MAX_REVIEW_DEPTH)
+
+    code, out, _ = _assess_files(tmp_path, run_dir, json.dumps(_review(run_dir, "claude")), at_limit)
+
+    assert code == 0, _json(out / "assessment.json")["reasons"]
+    assert _json(out / "assessment.json")["reviews"][1]["record"] == json.loads(at_limit)
+
+
 def test_the_assessment_keeps_complete_sanitized_reviews_beside_their_raw_hashes(tmp_path: Path, monkeypatch) -> None:
     final = with_case("constraints", FLAGGED, "ROUND_HALF_UP was superseded by that correction.")
     run_dir = _sealed_run(tmp_path, monkeypatch, STEP1, final)

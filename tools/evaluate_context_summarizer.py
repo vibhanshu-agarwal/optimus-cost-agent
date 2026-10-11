@@ -1144,6 +1144,9 @@ REVIEW_ITEMS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = MappingPro
     }
 )
 REVIEWERS = ("claude", "codex")
+# A review nests six levels deep (the review, steps, a step, R, an item, its status). A deeper document is a
+# recorded denial before any recursive step (sanitizing or writing it) could exceed the interpreter's limit.
+MAX_REVIEW_DEPTH = 32
 _R_STATUSES, _F_STATUSES, _RESOLUTIONS = ("PASS", "FAIL", "UNCERTAIN"), ("ABSENT", "PRESENT", "UNCERTAIN"), ("CLEARED", "CONFIRMED")
 _RUN_RECORDS = ("run.json", "attempts.jsonl", "responses.jsonl", "outcome.json")
 
@@ -1438,8 +1441,21 @@ def _review_reasons(review: Mapping[str, Any], evidence: RunEvidence) -> list[st
 
 
 def _minor_keys(review: Any, step: str) -> set[str]:
-    minor = _mapping(_mapping(review).get("steps")).get(step)
-    return {str(m.get("key")) for m in (_mapping(minor).get("minor") or []) if isinstance(m, dict)}
+    """The minor finding keys a review records for `step`: none unless they are a list, a shape
+    `_review_reasons` already denies (Codex review of 6bf0a48)."""
+    minor = _mapping(_mapping(_mapping(review).get("steps")).get(step)).get("minor")
+    return {str(m.get("key")) for m in minor if isinstance(m, dict)} if isinstance(minor, list) else set()
+
+
+def _depth(value: Any) -> int:
+    """How many levels a decoded JSON value nests, counting the value itself, measured without recursion."""
+    deepest, pending = 0, [(value, 1)]
+    while pending:
+        node, level = pending.pop()
+        deepest = max(deepest, level)
+        children = node.values() if isinstance(node, dict) else node if isinstance(node, list) else ()
+        pending.extend((child, level + 1) for child in children)
+    return deepest
 
 
 def _sanitized(value: Any, sanitizer: ConversationSanitizer) -> Any:
@@ -1514,8 +1530,14 @@ def assess(*, run_dir: Path, reviews: Sequence[Path], release: str, out: Path) -
         except (UnicodeDecodeError, ValueError):
             value = None
             reasons.append(f"review {index} is not a JSON document")
+        except RecursionError:
+            value = None
+            reasons.append(f"review {index} nests deeper than {MAX_REVIEW_DEPTH} levels")
         else:
-            if not isinstance(value, dict):
+            if _depth(value) > MAX_REVIEW_DEPTH:
+                value = None
+                reasons.append(f"review {index} nests deeper than {MAX_REVIEW_DEPTH} levels")
+            elif not isinstance(value, dict):
                 reasons.append(f"review {index} is not a JSON object")
         loaded.append((_sha256(raw), value))
     if len(loaded) != 2:
