@@ -3617,3 +3617,77 @@ def test_an_unscoped_finalize_does_not_load_or_judge_the_inventory(tmp_path: Pat
         == 2
     )
     assert not (tmp_path / "x.json").exists()
+
+
+# ---- Stage 1 technical review R1 (Codex, 2026-10-12): a scoped plan never reports success for a link it cannot make ----
+
+
+def _children_scope() -> tuple[str, ...]:
+    return tuple(record for record in SCOPE if record != "plan:12.1")  # plan:12.1 is the native parent of two of them
+
+
+def _targeted(tmp_path: Path, mapping: dict[str, int], skip: tuple[str, ...] = ()) -> tuple[gwt.Inventory, list[gwt.IssueDraft]]:
+    """The inventory as the cutover has it: each published record's issue is its reviewed target (a record without one whose marker is
+    on an issue is the unknown-write guard's case, which is not what these tests are about)."""
+    data = _scoped_data()
+    for record_id, number in mapping.items():
+        if record_id not in skip:
+            _records(data)[record_id]["target_issue"] = number
+    inventory = gwt.load_inventory(_write(tmp_path, _with_source(data, POOL)))
+    return inventory, gwt.draft_issues(inventory, {"pool": POOL.encode("utf-8")})
+
+
+def _plan_children(inventory: gwt.Inventory, drafts: list[gwt.IssueDraft], client: FakeGitHub, **kwargs: Any) -> gwt.MigrationBatch:
+    issues, labels = gwt.read_issues(client), gwt.read_labels(client)
+    return gwt.plan_migration(inventory, drafts, issues, labels, scope=frozenset(_children_scope()), **kwargs)
+
+
+def test_a_scoped_plan_refuses_an_unbound_child_whose_existing_parent_is_outside_the_scope(tmp_path: Path) -> None:
+    inventory, drafts, client = _published_scope(tmp_path)
+    numbers = _scoped_reconcile(inventory, drafts, client).mapping
+    targeted, targeted_drafts = _targeted(tmp_path, numbers)
+    client.issues[numbers["P12-FU-1"]]["parent_issue_url"] = None  # the required native link is missing
+    assert _scoped_reconcile(targeted, targeted_drafts, client, _children_scope()).problems  # reconcile rejects this state ...
+    batch = _plan_children(targeted, targeted_drafts, client)
+    assert not batch.ok and batch.operations == ()  # ... so the plan must not call it a clean no-op
+    assert len(batch.conflicts) == 1
+    conflict = batch.conflicts[0]
+    assert "'P12-FU-1'" in conflict and f"#{numbers['plan:12.1']}" in conflict and "outside the scope" in conflict
+    assert "binds only inside" in conflict
+
+
+def test_a_scoped_plan_refuses_a_new_child_whose_existing_parent_is_outside_the_scope(tmp_path: Path) -> None:
+    inventory, drafts, client = _published_scope(tmp_path)
+    numbers = _scoped_reconcile(inventory, drafts, client).mapping
+    del client.issues[numbers["P12-FU-1"]]  # the child does not exist yet: creating it would leave its link unmade
+    targeted, targeted_drafts = _targeted(tmp_path, numbers, skip=("P12-FU-1",))
+    batch = _plan_children(targeted, targeted_drafts, client)
+    assert not batch.ok and len(batch.conflicts) == 1 and "'P12-FU-1'" in batch.conflicts[0] and "outside the scope" in batch.conflicts[0]
+    assert not any(op.op == "bind-sub-issue" for op in batch.operations)  # no binding capability is added
+
+
+def test_a_scoped_plan_leaves_an_already_linked_child_of_an_outside_parent_alone(tmp_path: Path) -> None:
+    inventory, drafts, client = _published_scope(tmp_path)
+    numbers = _scoped_reconcile(inventory, drafts, client).mapping
+    targeted, targeted_drafts = _targeted(tmp_path, numbers)
+    batch = _plan_children(targeted, targeted_drafts, client)
+    assert batch.ok and batch.conflicts == () and batch.operations == ()  # correct links plan and reconcile normally
+    assert _scoped_reconcile(targeted, targeted_drafts, client, _children_scope()).problems == ()
+
+
+def test_a_scoped_plan_binds_nothing_to_an_outside_parent_that_has_no_issue(tmp_path: Path) -> None:
+    inventory, drafts, client = _scoped_world(tmp_path)  # nothing is published: plan:12.1 has no issue
+    batch = gwt.plan_migration(inventory, drafts, gwt.read_issues(client), gwt.read_labels(client), scope=frozenset({"P12-FU-1"}))
+    assert batch.ok and batch.conflicts == ()  # an owner without an issue is the candidate case: no link is expected
+    assert [op.op for op in batch.operations if op.op != "create-label"] == ["create-issue"]
+    assert _publish(tmp_path, batch, client)[0].outcome == "pass"
+    assert _scoped_reconcile(inventory, drafts, client, ("P12-FU-1",)).problems == ()
+
+
+def test_a_scoped_plan_does_not_refuse_an_unbound_child_it_was_not_asked_to_write(tmp_path: Path) -> None:
+    inventory, drafts, client = _published_scope(tmp_path)
+    numbers = _scoped_reconcile(inventory, drafts, client).mapping
+    targeted, targeted_drafts = _targeted(tmp_path, numbers)
+    client.issues[numbers["P12-FU-1"]]["parent_issue_url"] = None
+    batch = _plan_children(targeted, targeted_drafts, client, selected=frozenset({"H4"}))  # a selection that leaves P12-FU-1 out
+    assert batch.ok and batch.conflicts == () and batch.operations == ()

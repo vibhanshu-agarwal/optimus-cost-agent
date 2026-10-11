@@ -1776,6 +1776,14 @@ def plan_migration(
                     f"{where}: #{ref.number if ref else '?'} is already a native sub-issue of #{current}; the migration never re-parents"
                 )
             continue
+        if draft.parent in known and chosen(draft.record_id):
+            # The parent's issue exists outside the scope and the link is missing. A scope never writes to an outside issue, so
+            # planning nothing here would report success for a state that reconcile rejects: refuse it instead.
+            conflicts.append(
+                f"{where}: its parent {draft.parent!r} (#{known[draft.parent].number}) lies outside the scope and the child has no native"
+                " link to it; a scope binds only inside itself, so link it separately or widen the scope"
+            )
+            continue
         ends = {draft.record_id, draft.parent}
         if selection is not None and not (ends & selection and ends <= exists):
             continue  # it belongs to the batch that publishes the later of its two issues
