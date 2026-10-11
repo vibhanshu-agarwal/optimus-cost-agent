@@ -609,6 +609,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.launch_approval_cli:_initialize_stage_c_ledger:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Stage C release ceremony prints one fixed status line to stdout: the ledger was initialized for the release ID with its dollar, attempt and window limits, or an existing ledger was kept (never reset). No secret, path content or record is printed.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_stage_c_launch.py::test_the_approval_ceremony_creates_the_ledger_once_and_never_resets_it",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.stage_c:seed_identity:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonical JSON of the synthetic seed's approval facts, serialized only to compute the seed's SHA-256 beside its rendered records; never persisted or exported. The facts are fixed synthetic test data.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_stage_c_scenario.py::test_the_seed_is_the_pinned_synthetic_history_over_the_floor",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.launch_approval_cli:_cmd_approve:stderr_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.acp.launch_approval_cli:_cmd_approve:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
@@ -4094,6 +4110,62 @@
       "rationale": "Inspection: main prints one line per floor (name, percentage, floor, required or informational, PASS or BELOW); no credential or local diagnostic is printed.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_check_product_coverage.py::test_run_mode_launches_the_one_fixed_selection_and_keeps_its_true_exit",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_schedule:_attached_run:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. StageCGuard.open opens a temporary Stage C ledger created for the offline run, under a TemporaryDirectory, only to record the window the scenario's pause reads; the operator's ledger is never touched.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_attached_cases_are_the_real_packing_of_the_pinned_seed",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_schedule:_attached_run:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. The call is threading.Event.set, signalling that the offline run sent the cancel; no Redis or other store is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_attached_cases_are_the_real_packing_of_the_pinned_seed",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_schedule:sleep:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. The call is threading.Event.set, signalling that the offline cancellation pause began; no Redis or other store is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_attached_cases_are_the_real_packing_of_the_pinned_seed",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_schedule:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the computed schedule written to the operator's new output folder and its printed totals. The schedule holds computed limits, token bounds, reservations and attempt counts, case steps, expected observations, claims and stop rules, the synthetic prompts and file digests, and the offline run's content-free scenario events; it holds no credential, provider text or real conversation (the offline run's summaries are fixed synthetic text).",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_tool_writes_a_new_folder_and_never_reuses_one",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_schedule:main:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. The call is argparse's parser.error with a fixed usage message (the output folder exists); no runtime data reaches it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_tool_writes_a_new_folder_and_never_reuses_one",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_schedule:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints the schedule's computed totals (call and attempt counts, dollar ceiling, fit flags, shortfall) to stdout; no credential or conversation.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_tool_writes_a_new_folder_and_never_reuses_one",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_schedule:main:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes, into a new operator-named folder that must not exist, the schedule JSON and Markdown, the two synthetic paste files and the synthetic workspace files. The schedule holds computed limits, token bounds, reservations and attempt counts, case steps, expected observations, claims and stop rules, the synthetic prompts and file digests, and the offline run's content-free scenario events; it holds no credential, provider text or real conversation (the offline run's summaries are fixed synthetic text).",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_tool_writes_a_new_folder_and_never_reuses_one",
       "evidence_tier": "unit"
     },
     {

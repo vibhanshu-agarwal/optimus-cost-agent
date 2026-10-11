@@ -24,6 +24,7 @@ from optimus.telemetry.observability import GatewayObservabilityExporter
 from optimus.telemetry.redis_sink import RedisTelemetryEventSink
 
 if TYPE_CHECKING:
+    from optimus.acp.stage_c import StageCLaunch
     from optimus.acp.test_composition import TestComposition
 
 
@@ -163,6 +164,7 @@ def build_configured_server(
     model: str | None = None,
     gateway_timeout_seconds: float | None = None,
     test_composition: TestComposition | None = None,
+    stage_c: StageCLaunch | None = None,
 ) -> AcpStreamServer:
     """
     Builds and configures an `AcpStreamServer` instance with the specified environment
@@ -244,6 +246,13 @@ def build_configured_server(
                 model_id=test_composition.agent_model(environ, cli_model=model),
                 shared_secret=settings.optimus_api_key.get_secret_value(),
             )
+        # Plan 12.2 Task 13 (Stage C): only the approved attached test composition attaches the engine;
+        # the qualification composition and every unprofiled launch stay absent-engine.
+        from optimus.acp.stage_c import stage_c_attachment
+
+        context_attachment, session_seeder = stage_c_attachment(
+            composition=test_composition, launch=stage_c, gateway_client=gateway_client, shared_secret=settings.optimus_api_key.get_secret_value()
+        )
         # Seam 2, checkpoint B: the server takes custody of the Redis runtime and closes
         # it as the last stage of its own teardown.
         return AcpStreamServer(
@@ -253,6 +262,8 @@ def build_configured_server(
             conversation_sanitizer_inputs=conversation_sanitizer_inputs,
             redis_runtime=harness.redis_runtime,
             route_policy=route_policy,
+            context_attachment=context_attachment,
+            session_seeder=session_seeder,
         )
     except BaseException as exc:
         # Composition failed after the harness (and possibly the client-MCP runtime)

@@ -6,7 +6,7 @@ import inspect
 import itertools
 import sys
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -437,6 +437,7 @@ class AcpDuplexAdapter:
         context_attachment: ContextAttachment | None = None,
         alert_policies: tuple[AlertPolicy, ...] = (),
         route_policy: RoutePolicy | None = None,
+        session_seeder: Callable[[Any], None] | None = None,
     ) -> None:
         self._runner = runner
         self._workspace_root = Path(workspace_root).resolve()
@@ -466,6 +467,9 @@ class AcpDuplexAdapter:
         # Codex CP3 ruling R4: the injected trusted planning/answer route policy. None keeps today's
         # unbound requests; nothing attaches one at startup (activation hold).
         self._route_policy = route_policy
+        # Plan 12.2 Task 13 (Stage C): the approved scenario's one-time seeding of the launch's first new
+        # attached session. None (every other composition) seeds nothing.
+        self._session_seeder = session_seeder if context_attachment is not None else None
         self._closed = False
 
     def _remove_active_turn(self, session_id: str, turn_seq: int, control: TurnControl) -> bool:
@@ -809,6 +813,8 @@ class AcpDuplexAdapter:
         if self._context_attachment is not None:
             session.context_strategy = self._context_attachment.initial_strategy
             session.sliding_notice_pending = session.context_strategy == "sliding_window"
+            if self._session_seeder is not None:
+                self._session_seeder(session)
         empty_state = ClientMcpSessionState(session_id=session.session_id)
         session.client_mcp_state = empty_state
 

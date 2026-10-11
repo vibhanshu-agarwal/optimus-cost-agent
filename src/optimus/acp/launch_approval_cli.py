@@ -68,6 +68,13 @@ from optimus.mcp.client_trust import (
 from optimus.mcp.local_ipc import PendingClientMcpCandidateEndpoint, SafeCandidateSnapshot
 from optimus_model_policy import RegistryError
 from optimus_model_policy.binding import BindingError, trusted_approval_literal
+from optimus_model_policy.stage_c import (
+    STAGE_C_LITERAL_NAME,
+    StageCLedgerError,
+    compose_stage_c_envelope,
+    initialize_stage_c_ledger,
+    stage_c_ledger_path,
+)
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 from optimus_security.sanitization import mask_uri_userinfo
@@ -118,6 +125,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Reviewed Plan 12.2 test profile whose exact effective hash the approval binds (must match the target's own --plan12-test-profile).",
     )
+    approve_parser.add_argument(
+        "--plan12-stage-c",
+        action="store_true",
+        default=False,
+        help="Bind the shared Plan 12.2 Stage C test envelope (with a Stage C test profile; must match the target's own flag).",
+    )
     # Remaining args after -- are the target argv for one-shot spawning.
     approve_parser.add_argument(
         "target_argv",
@@ -150,6 +163,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=TEST_PROFILE_NAMES,
         default=None,
         help="Reviewed Plan 12.2 test profile whose exact effective hash the approval binds (must match the target's own --plan12-test-profile).",
+    )
+    run_parser.add_argument(
+        "--plan12-stage-c",
+        action="store_true",
+        default=False,
+        help="Bind the shared Plan 12.2 Stage C test envelope (with a Stage C test profile; must match the target's own flag).",
     )
     run_parser.add_argument(
         "target_argv",
@@ -234,7 +253,9 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "approve":
-            return _cmd_approve(workspace_root, mode=args.mode, target_argv=args.target_argv, test_profile=args.plan12_test_profile)
+            return _cmd_approve(
+                workspace_root, mode=args.mode, target_argv=args.target_argv, test_profile=args.plan12_test_profile, stage_c=args.plan12_stage_c
+            )
         if args.command == "inspect":
             return _cmd_inspect(workspace_root)
         if args.command == "revoke":
@@ -245,7 +266,11 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_setup_credentials(workspace_root)
         if args.command == "run":
             return _cmd_run(
-                workspace_root, target_argv=args.target_argv, elevated_debug=args.elevated_debug, test_profile=args.plan12_test_profile
+                workspace_root,
+                target_argv=args.target_argv,
+                elevated_debug=args.elevated_debug,
+                test_profile=args.plan12_test_profile,
+                stage_c=args.plan12_stage_c,
             )
         if args.command == "run-gateway":
             return _cmd_run_gateway_default(
@@ -346,6 +371,7 @@ def _resolve_candidate(
     snapshot: LaunchEnvironmentSnapshot,
     operator_paths: OperatorPaths,
     test_profile: str | None = None,
+    stage_c: bool = False,
 ) -> LaunchCandidate:
     """Resolve the full launch candidate from an already-captured context.
 
@@ -381,6 +407,7 @@ def _resolve_candidate(
         operator_paths=operator_paths,
         hmac_key=store.hmac_key,
         test_profile=test_profile,
+        stage_c=stage_c,
     )
     return candidate
 
@@ -416,14 +443,36 @@ def _strip_separator(argv: list[str]) -> list[str]:
     return argv
 
 
-def _cmd_approve(workspace_root: Path, *, mode: str, target_argv: list[str], test_profile: str | None = None) -> int:
+def _initialize_stage_c_ledger(candidate: LaunchCandidate) -> None:
+    """Plan 12.2 Task 13 (Stage C): the release ceremony creates the shared ledger once, after the operator
+    approved its envelope; an existing ledger is kept as it is, never reset. Launches only reopen it."""
+    ledger = stage_c_ledger_path(candidate.operator_paths.runtime_root)
+    envelope = compose_stage_c_envelope(ledger=ledger)
+    if envelope.literal != candidate.security_literals.get(STAGE_C_LITERAL_NAME):
+        raise LaunchGateError(code="STAGE_C_ENVELOPE_INVALID", detail="the approved envelope is not this release's")
+    try:
+        initialize_stage_c_ledger(ledger, envelope)
+    except StageCLedgerError as exc:
+        if exc.code != "STAGE_C_LEDGER_EXISTS":
+            raise LaunchGateError(code=exc.code, detail=exc.detail) from exc
+        print("optimus-trust: the Stage C ledger already exists and is kept as it is (never reset).")
+        return
+    print(
+        f"optimus-trust: Stage C ledger initialized for {envelope.release_id}: ${envelope.limit_usd}, {envelope.max_attempts} "
+        f"physical attempts, one {envelope.window_seconds // 60}-minute window from the first Stage C launch."
+    )
+
+
+def _cmd_approve(
+    workspace_root: Path, *, mode: str, target_argv: list[str], test_profile: str | None = None, stage_c: bool = False
+) -> int:
     """Author a durable or one-shot approval."""
     _require_tty()
     target_argv = _strip_separator(target_argv)
 
     snapshot, paths = _prepare_approval_context(workspace_root)
     store, _ = _resolve_store(workspace_root)
-    candidate = _resolve_candidate(workspace_root, store, snapshot=snapshot, operator_paths=paths, test_profile=test_profile)
+    candidate = _resolve_candidate(workspace_root, store, snapshot=snapshot, operator_paths=paths, test_profile=test_profile, stage_c=stage_c)
 
     # Display the effective configuration for operator review.
     _display_candidate(candidate)
@@ -454,11 +503,15 @@ def _cmd_approve(workspace_root: Path, *, mode: str, target_argv: list[str], tes
     if mode == "durable":
         store.write_durable(record)
         print(f"optimus-trust: durable approval written (id: {record.approval_id})")
+        if stage_c:
+            _initialize_stage_c_ledger(candidate)
         return 0
 
     # One-shot: write, spawn with placeholder substitution, delete on failure.
     nonce = secrets.token_bytes(32)
     handle = store.write_one_shot(record, nonce)
+    if stage_c:
+        _initialize_stage_c_ledger(candidate)
     launch_session_id = f"sess_{secrets.token_hex(12)}"
 
     if not target_argv:
@@ -765,7 +818,9 @@ def _cmd_setup_credentials(workspace_root: Path) -> int:
     return run_setup_wizard(config_root=roots.default_config_root)
 
 
-def _cmd_run(workspace_root: Path, *, target_argv: list[str], elevated_debug: bool, test_profile: str | None = None) -> int:
+def _cmd_run(
+    workspace_root: Path, *, target_argv: list[str], elevated_debug: bool, test_profile: str | None = None, stage_c: bool = False
+) -> int:
     """Run a command with an existing durable approval.
 
     For --elevated-debug: creates a diagnostic grant, substitutes
@@ -778,7 +833,7 @@ def _cmd_run(workspace_root: Path, *, target_argv: list[str], elevated_debug: bo
 
     snapshot, paths = _prepare_candidate_context(workspace_root)
     store, _ = _resolve_store(workspace_root)
-    candidate = _resolve_candidate(workspace_root, store, snapshot=snapshot, operator_paths=paths, test_profile=test_profile)
+    candidate = _resolve_candidate(workspace_root, store, snapshot=snapshot, operator_paths=paths, test_profile=test_profile, stage_c=stage_c)
 
     try:
         authorized = authorize_launch(

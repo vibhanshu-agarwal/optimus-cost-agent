@@ -45,6 +45,7 @@ def authorize_workspace_for_test(
     fake_keyring: FakeKeyring,
     runtime_root: Path | None = None,
     test_profile: str | None = None,
+    stage_c: bool = False,
 ) -> LaunchCandidate:
     """Author a durable approval for `env`/`workspace_root` using the exact
     same resolve_launch_candidate/build_approval_record sequence __main__.py
@@ -69,6 +70,7 @@ def authorize_workspace_for_test(
         operator_paths=paths,
         hmac_key=store.hmac_key,
         test_profile=test_profile,
+        stage_c=stage_c,
     )
     record = build_approval_record(
         mode="durable",
