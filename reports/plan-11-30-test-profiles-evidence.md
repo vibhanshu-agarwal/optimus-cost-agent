@@ -3,7 +3,8 @@
 **Plan:** `docs/superpowers/plans/2026-10-04-plan-11-30-test-profiles-implementation_v4.md` (approved working bytes SHA-256 `8A40DEF6D627EDC722D9FA925BBB0C193DE433ECCB91D2DCA19F1DA6AFC5C790`; LF-normalised blob `7D07ADA39CE1F8987E529C7FD8838952B4607F6F2CBD8773D39220D44DB6AF1E`, differing only by CRLF on lines 32–33).
 **Live plan (since 2026-10-09):** `docs/superpowers/plans/2026-10-04-plan-11-30-test-profiles-implementation_v5.md`, approved frozen bytes SHA-256 `149002fa5c61b366900c535bee883dd07289dc2317bdf4064cff2e20a7f7035e`. The v4 line above is the original plan reference, kept as written; v4 is superseded and archived byte-identically at `docs/superpowers/plans/archive/2026-10-04-plan-11-30-test-profiles-implementation_v4.md`.
 **Machine-readable index:** [`plan-11-30-test-profiles-manifest.json`](plan-11-30-test-profiles-manifest.json).
-**Status (2026-10-10):** The live plan is approved frozen v5 (`149002fa…`). Stage A and Stage B are delivered and accepted locally (Stage B finals at `3cece0a`; results commit `26bd667`). I1 is on main: the coverage bootstrap merged through PR #279 at `4ed9b25`, and its main-push baseline is accepted. The I2/I3 integration merge `ea88814e` (tree `9048bc8d`) is committed locally and accepted, with its I3 evidence and WSL platform remainder. Codex accepted the I4 exact-source finals at `ea88814e` on 2026-10-10: the Windows and WSL full canonical gates and validation pass; Optimus 89.37 % (Windows) / 88.95 % (WSL), Context Engine 95.92 %, model policy 96.99 %, Windows gap ratio 1.003. Separately, the S1 reader correction is prepared and pending review; it needs a newly reviewed committed candidate pin before I5. I5 (publication/PR, candidate Linux CI and the safety comparison), closure and cleanup are held; the lane branch is not pushed. See "Current delivery and status (2026-10-10)" and "I4 — exact-source finals at `ea88814e` (2026-10-10)".
+**Status (2026-10-11):** The live plan is approved frozen v5 (`149002fa…`). Stage A and Stage B are delivered and accepted locally (Stage B finals at `3cece0a`; results commit `26bd667`). I1 is on main: the coverage bootstrap merged through PR #279 at `4ed9b25`, and its main-push baseline is accepted. The I2/I3 integration merge `ea88814e` (tree `9048bc8d`) is committed locally and accepted. The I4 exact-source finals stay accepted exactly at the old acceptance pin `ea88814e` (2026-10-10). The S1 reader correction, with the S2 workflow comment and the I4 results composition, was delivered as local commit `343b233a` (single parent `ea88814e`, tree `8a39467d`) with normal hooks, and Codex accepted that delivery on 2026-10-11 together with the corrected-source I4 finals at it, the new measurement pin C: the Windows and WSL full canonical gates and validation pass on the 7,412-node universe; Optimus 89.4515 % (Windows) / 88.8835 % (WSL), Context Engine 95.9243 %, model policy 96.9880 %, Windows gap ratio 0.966. The forward WSL platform obligation is discharged at C only. The commit that records these results is a third, documentary-only HEAD; it is not measured. This documentary delivery, I5 (concrete operator push/PR authority after latest-main reconciliation, actual Linux CI and artifact origin, and the safety comparison), merge, closure, archival and cleanup are held; the lane branch is not pushed. See "Current delivery and status (2026-10-11)", "S1 delivery at `343b233a` (2026-10-11)" and "Corrected-source I4 finals at C `343b233a` (2026-10-11)".
+*Historical status at recording (committed with `343b233a`, 2026-10-10), kept as written:* **Status (2026-10-10):** The live plan is approved frozen v5 (`149002fa…`). Stage A and Stage B are delivered and accepted locally (Stage B finals at `3cece0a`; results commit `26bd667`). I1 is on main: the coverage bootstrap merged through PR #279 at `4ed9b25`, and its main-push baseline is accepted. The I2/I3 integration merge `ea88814e` (tree `9048bc8d`) is committed locally and accepted, with its I3 evidence and WSL platform remainder. Codex accepted the I4 exact-source finals at `ea88814e` on 2026-10-10: the Windows and WSL full canonical gates and validation pass; Optimus 89.37 % (Windows) / 88.95 % (WSL), Context Engine 95.92 %, model policy 96.99 %, Windows gap ratio 1.003. Separately, the S1 reader correction is prepared and pending review; it needs a newly reviewed committed candidate pin before I5. I5 (publication/PR, candidate Linux CI and the safety comparison), closure and cleanup are held; the lane branch is not pushed. See "Current delivery and status (2026-10-10)" and "I4 — exact-source finals at `ea88814e` (2026-10-10)".
 *Historical status at recording (committed with `26bd667`, 2026-10-09), kept as written:* **Status (2026-10-09, 07:24 UTC):** Stage A and Stage B Tasks 4–5 are accepted and locally committed. The Stage B Task 6 final gates ran at the governance commit `3cece0a` (tree `fabb6720…`) on independent native Windows and WSL clones and pass: Optimus coverage 87.772781 % (Windows) and 87.214201 % (WSL), Windows gap ratio 1.001314. Codex accepted the local evidence on 2026-10-09 at 07:24:20 UTC. Remote Linux CI and the base/candidate safety-row comparison are UNKNOWN; complete Task 6 and plan closure remain open. Nothing is pushed. See "Current delivery and status (2026-10-09)" and "Stage B Task 6 — final gates at `3cece0a` (2026-10-09)".
 *Historical status at recording (committed with `3cece0a`, 2026-10-09), kept as written:* **Status (2026-10-09):** Stage A (Tasks 0–3) and its Task 6 at `acc2a1c` are accepted and locally committed. Stage B Tasks 4–5 are accepted and locally committed, and the delivered Stage B source contains the Stage B corrections: b0 (the explicit `core` rule for the WSL IPC node and the slow-node measurement refresh) was delivered in Task 4 at `43eb190`, and the partial-index correction and the quick commit-audit switch in Task 5 at `66ddabf`. Checkpoint C and G were accepted on candidate C7c and Checkpoint D on candidate E (pairs5 median core wall improvement 26.2040537 %, E-source timing under ambient load). Stage B Task 6 (independent final Windows and WSL gates) has not run. Remote Linux CI and the safety-row comparison are UNKNOWN. Nothing is pushed. See "Current delivery and status (2026-10-09)".
 *Historical status at recording (committed with `1c7be2d`, 2026-10-05), kept as written:* **Status (2026-10-05):** Stage A (Tasks 0–3) is accepted and locally committed. Its Task 6 final gates ran at `acc2a1c`, pass on Windows and WSL, and are accepted locally (section "Task 6"). Remote Linux CI and the safety-row comparison are UNKNOWN. Stage B (Tasks 4–5, and the partial-commit correction) is required and open under `P11-FEAT-TEST-PROFILES`. Nothing is pushed.
@@ -12,9 +13,9 @@
 
 This report is the plan's single evidence report. Each later stage appends its own sections and never relabels an earlier one.
 
-## Current delivery and status (2026-10-10)
+## Current delivery and status (2026-10-11)
 
-This is the report's one current-status section; it is updated in place (last on 2026-10-10; it was dated 2026-10-09 before). The status lines of the dated sections below are **historical status at recording**: they are kept as written, and where one no longer describes the current state it carries a dated annotation. The manifest follows the same convention: its top-level `current_delivery` holds the current state, and each section's `status` string is historical.
+This is the report's one current-status section; it is updated in place (last on 2026-10-11; it was dated 2026-10-10 before that, and 2026-10-09 before then). The status lines of the dated sections below are **historical status at recording**: they are kept as written, and where one no longer describes the current state it carries a dated annotation. The manifest follows the same convention: its top-level `current_delivery` holds the current state, and each section's `status` string is historical.
 
 ### Local commits on `agent/claude/plan-11-30-test-profiles` (original base `main` `a929aab`; `main` `4ed9b25` merged in at `ea88814`)
 
@@ -32,8 +33,9 @@ This is the report's one current-status section; it is updated in place (last on
 | `3cece0a` | docs: record Plan 11.30 Stage B delivery before final gates | the seven-path governance commit; the measured Stage B Task 6 pin (tree `fabb6720…`) |
 | `26bd667` | docs: record Plan 11.30 Stage B final gates at 3cece0a | the Stage B results documentary commit; it records results measured at `3cece0a` and is not itself measured source |
 | `ea88814` | Merge main 4ed9b25 into the Plan 11.30 profiles lane: one canonical coverage gate, validity layer, ADR-020 | the I2/I3 integration merge (tree `9048bc8d`; parents `26bd667` then `4ed9b25`); the accepted I4 exact-source final pin |
+| `343b233` | fix(coverage): read compare's run records through the run-context reader; record I4 results | the S1 reader correction with the S2 workflow comment and the I4 results composition (tree `8a39467d`; single parent `ea88814e`); a new source candidate and the accepted corrected-source I4 measurement pin C |
 
-The lane branch is not pushed; its push, PR, merge to main and cleanup are held (I5). Separately, the I1 bootstrap was published from its own branch `agent/claude/plan-11-30-coverage-bootstrap` (commit `6f1935d`) and merged to main through PR #279 at `4ed9b25`, under the operator's bootstrap publication grant; that grant does not cover this lane.
+The lane branch is not pushed; its push, PR, merge to main and cleanup are held (I5). The commit that will record the 2026-10-11 results is a third, documentary-only HEAD after the old acceptance pin `ea88814e` and the new measurement pin C `343b233a`; it is not measured source. Separately, the I1 bootstrap was published from its own branch `agent/claude/plan-11-30-coverage-bootstrap` (commit `6f1935d`) and merged to main through PR #279 at `4ed9b25`, under the operator's bootstrap publication grant; that grant does not cover this lane.
 
 ### Status
 
@@ -45,8 +47,10 @@ The lane branch is not pushed; its push, PR, merge to main and cleanup are held 
 - **I1:** the coverage bootstrap merged to main through PR #279 at `4ed9b25`. Codex accepted its main-push baseline (run 37964416192) with the Q-C1/Q-C2/Q-C3 qualifications (section "I1 — coverage bootstrap on main via PR #279 and main-push baseline `4ed9b25` (2026-10-09)").
 - **I2/I3:** the integration merge `ea88814e` (tree `9048bc8d`) is committed locally with normal hooks and accepted. The I3 audits, stability repeats and WSL platform remainder are accepted and stay bound to their tested trees (section "I2/I3 — integration candidate, I3 evidence and the integration merge `ea88814e` (2026-10-10)").
 - **I4 (accepted at `ea88814e`, 2026-10-10):** the Windows and WSL full canonical gates and validation pass; Optimus 89.37 % / 88.95 %, Context Engine 95.92 %, model policy 96.99 %, Windows gap ratio 1.003; the forward WSL platform obligation is discharged at this pin (section "I4 — exact-source finals at `ea88814e` (2026-10-10)"). This acceptance is exact-source and does not transfer to a later pin.
-- **S1 (pending, separate from the I4 acceptance):** the `compare` reader correction, with the S2 workflow comment, is prepared test-first and pending Fable then Codex review. It then needs a separately released local commit that becomes a newly reviewed candidate pin, with its own verification disposition, before I5.
-- **Open:** I5, that is publication/PR of the lane, candidate Linux CI and the base/candidate safety-row comparison (the base is the accepted I1 main-push run; the candidate side is UNKNOWN), and merge to main; the CI backstop for the partial-commit correction; plan closure. Cleanup is held, including the Stage B and I4 final clones.
+- **S1 (delivered and accepted, 2026-10-11):** the `compare` reader correction, with the S2 workflow comment and the I4 results composition, is local commit `343b233a` (single parent `ea88814e`, tree `8a39467d`, 10 paths), delivered with normal hooks; Codex accepted the delivery with the disclosed receipt defect (section "S1 delivery at `343b233a` (2026-10-11)").
+- **Corrected-source I4 finals at C (accepted, 2026-10-11):** at the new measurement pin C `343b233a`, the Windows and WSL full canonical gates and validation pass on the 7,412-node universe; Optimus 89.4515 % / 88.8835 %, Context Engine 95.9243 %, model policy 96.9880 %, Windows gap ratio 0.966; S1's forward WSL platform obligation is discharged at C only (section "Corrected-source I4 finals at C `343b233a` (2026-10-11)"). The I4 acceptance at the old acceptance pin `ea88814e` stays as recorded and bound to that pin.
+- **Open (all held):** (1) this documentary delivery, under its own reviewed commit grant; (2) concrete operator push/PR authority for the lane after latest-main reconciliation (the bootstrap publication approval does not cover this branch); (3) actual Linux CI and artifact origin, and the seven-module safety comparison against the accepted I1 baseline; (4) merge to main, closure, archival and cleanup, including the Stage B, I4 and C final clones. The CI backstop for the partial-commit correction also remains open.
+- *Superseded (2026-10-11), kept as written:* the 2026-10-10 bullets were "**S1 (pending, separate from the I4 acceptance):** the `compare` reader correction, with the S2 workflow comment, is prepared test-first and pending Fable then Codex review. It then needs a separately released local commit that becomes a newly reviewed candidate pin, with its own verification disposition, before I5." and "**Open:** I5, that is publication/PR of the lane, candidate Linux CI and the base/candidate safety-row comparison (the base is the accepted I1 main-push run; the candidate side is UNKNOWN), and merge to main; the CI backstop for the partial-commit correction; plan closure. Cleanup is held, including the Stage B and I4 final clones."
 
 ### Decision-record number at integration
 
@@ -63,10 +67,13 @@ The IPC rule and the measurement refresh were delivered at `43eb190`. The partia
 
 **2026-10-10:** the 2026-10-09 top status line and the "Still open" list of "Stage B Task 6 — final gates at `3cece0a` (2026-10-09)" describe the state before the v5 integration; they are kept as historical text. Under v5, remote Linux CI and the base/candidate safety comparison are I5; the I1 base is accepted, the candidate side is not yet run.
 
+**2026-10-11:** the S1 "pending" wording committed with `343b233a` (the 2026-10-10 top status line, the S1 bullet above and the "Still open" list of "I4 — exact-source finals at `ea88814e` (2026-10-10)") is an approval-time snapshot, not a claim that the later commit failed to land. It is kept as historical text. S1 was delivered at `343b233a` and accepted, and the corrected-source I4 finals at C were accepted (sections "S1 delivery at `343b233a` (2026-10-11)" and "Corrected-source I4 finals at C `343b233a` (2026-10-11)").
+
 ### Provenance conventions
 
 - **Current authority** for the Stage B dispositions is Codex's dated sections in [`docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md`](../docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md), the newest being "Stage B Task 6 — local final evidence accepted; results composition released" (recorded 2026-10-09 07:24:20 UTC), after "Stage B Task 6 preparation — audit dispositions and final-byte gate" (recorded 2026-10-09 04:32:07 UTC). This report deliberately does not cite that file's current hash.
-- **Current authority for the v5 integration (2026-10-10):** Codex's dated sections in the same reviewer file, the newest being "I4 accepted at ea88814e — bounded reader correction and results composition released" (2026-10-10), after "Integration delivery accepted — I4 exact-source finals released at ea88814e".
+- **Current authority for the v5 integration (updated 2026-10-11):** Codex's dated sections in the same reviewer file, the newest being "S1 delivery and corrected-source I4 finals accepted — documentary composition released" (recorded 2026-10-11), after "S1/results batch accepted — one local commit attempt and conditional new-pin finals released" (2026-10-11). On 2026-10-10 the newest was "I4 accepted at ea88814e — bounded reader correction and results composition released", after "Integration delivery accepted — I4 exact-source finals released at ea88814e".
+- **Review snapshots imported for the 2026-10-11 documentary composition:** Codex's review file at SHA-256 `b8ba78f634c736aa8619f431b37b00e8b382c1a8d8a74512efc7a6e977f04696` and the refreshed reviewer-owned kickoff at SHA-256 `f5516cada46ed33f1a1074bb7be1fd85f95464e1df18b1151a2d7556ce518c8d`, each copied byte for byte into `docs/superpowers/reviews/` from a verified immutable snapshot. These digests identify only those snapshots.
 - **Review snapshot imported for the 2026-10-10 results composition:** SHA-256 `d665e5b467a189eb2399c6dd7d5aabe8c91ab62b3ecaa67abe06f6b313316f05`, copied byte for byte into `docs/superpowers/reviews/`. This digest identifies only that snapshot.
 - **Review snapshot read during drafting (2026-10-09):** SHA-256 `0d50118aea616e169593bc873c7ba3f829b521e4df06e28751cdf62b670572b2`. The file has changed since; this digest identifies only that snapshot.
 - **Abbreviated hashes** ending in "…" are display and provenance identifiers, not claims of full-digest verification; full digests are in the manifest. A historical snapshot hash identifies a retained sealed snapshot, not current bytes.
@@ -1438,5 +1445,118 @@ Codex matched the exact 1,629-ID platform list (`d7918501…`) to the WSL full r
 ### Still open, stated separately from the `ea88814e` acceptance
 
 - **S1 corrected-source delivery: pending.** The correction, with the S2 comment, is prepared and pending Fable then Codex review. It then needs a separately released local commit that becomes a newly reviewed candidate pin, with its own verification disposition, before I5. The `ea88814e` exact-source final claim does not transfer to it, and no source-equivalence waiver is granted.
+  - *Superseded (2026-10-11); the line above is kept as written:* S1 was delivered as local commit `343b233a` (single parent `ea88814e`, tree `8a39467d`) and accepted, and the corrected-source I4 finals at that commit (pin C) were accepted; see "S1 delivery at `343b233a` (2026-10-11)" and "Corrected-source I4 finals at C `343b233a` (2026-10-11)". The `ea88814e` finals remain bound to `ea88814e`.
 - **I5: held.** Publication, push and PR of the lane; candidate Linux CI and the base/candidate safety-row comparison against the accepted I1 base; merge to main.
 - **Closure and cleanup: held**, including the I4 clones. Residual owners are unchanged.
+
+## S1 delivery at `343b233a` (2026-10-11)
+
+**Status: accepted** (Codex, "S1 delivery and corrected-source I4 finals accepted — documentary composition released", recorded 2026-10-11), with the explicit receipt defect below. The release was "S1/results batch accepted — one local commit attempt and conditional new-pin finals released" (2026-10-11): staged batch `8a39467d` on parent `ea88814e`, packet `ec9181e9b784839afedc1c8e68eb8289e59db9ec3d2c5202bcf71d2e44467d97`, seal `efc70dfd8e510e3284446be128861e642313a1a51e669a131cd364cdce5257e4` (29 members). This section was added by the 2026-10-11 documentary composition; it is not measured source.
+
+Commit receipts: sealed `plan-11-30-s1-commit-attempt1-20261011` in `C:\worktrees\optimus-cost-agent-worktrees\optimus-handoff\test-profiles-research\`, seal `9df84d166cf877b4cc2e508a1984111a28e3c940030ac450b1dc26213a53d95c` (19 members), which Codex verified independently.
+
+### What the commit delivers
+
+- **S1:** `compare` now reads the base and candidate records through the existing `records.read_record`. An unreadable record on either side gets a labelled, path-free refusal. A missing record file is now exit 1 (incomparable), where it was previously exit 2 (an input failure naming the path); the commit message and this report disclose that change.
+- **S1 tests:** two positive controls through the real CLI and six RED controls (each side × unexpected field, malformed, oversized). These 8 new nodes enter the default selection, so the universe at this commit is 7,412 (I4's 7,404 plus 8).
+- **S2:** the `.github/workflows/guardrails.yml` comment now says that collection-only records can be uploaded after a pre-pytest gate failure but are not eligible full evidence.
+- **The I4 results composition** (report, manifest, ADR-020, indices, backlog and the 2026-10-10 review snapshot `d665e5b4…`).
+
+### The commit
+
+| Item | Value |
+|---|---|
+| Commit | `343b233ab7b470690eb21fe20c4662460694955c`: one attempt, normal hooks, no SKIP, `--no-verify` or retry |
+| Parent / tree | single parent `ea88814e4187c81c3a9781669bb2c17a71546949` / `8a39467d4607f29f1905a55e62844865f6f76fc3` |
+| Subject | `fix(coverage): read compare's run records through the run-context reader; record I4 results` |
+| Paths | exactly the 10 authorized paths, each blob equal to Codex's SHA-256 table: `.github/workflows/guardrails.yml`, `docs/README.md`, ADR-020, `docs/decisions/README.md`, the backlog, the review file, this report, the manifest, `tests/unit/tools/test_coverage_products.py` and `tools/testing/coverage_products.py` |
+| Committed blobs | all 1,396 equal the staged index; status clean afterwards; remote main still `4ed9b25` |
+| Message | the commit object's message bytes equal the sealed `msg-s1.txt` (`f433935b2e8e389b0768cac93cf022d74aa3e5579ac438dca57d3c50308f5c9a`) |
+| Committer date / hooks | 2026-10-11T05:08:43Z; all ten hooks passed (the toml hook was skipped: no files), 05:08:43–05:22:04Z |
+
+### The commit-profile hook run (not a final)
+
+- **Run** `20261011T050931-61376-f46efe`, 05:09:31–05:22:02Z, in the lane worktree: terminal ACTIVE, `default_selection`, COMPLETE, exit 0, 20,643 phases; native job valid, guard full; qualification `parent=not_found:ancestor_exited`. Codex replayed it independently.
+- **Selection:** 6,890 of the 7,412 collected nodes (522 deselected by the profile), chosen mainly by `fallback:broad` (5,242 nodes, from the workflow path and the manifest). Coverage-free.
+- **Raw phases:** 6,844 call-passed, 38 skipped, 8 qualified recorder-test passes without an outer call (the same eight `test_run_context_lifecycle` nodes), 0 failed. The pytest total is 6,852 passed.
+- **Not a final full suite.** The selection omits `audit-current` (selection `audit_depth` `none`), so the record's default `audit_depth: full` is the pytest option's default and proves no audit execution. It is not eligible as a final: 6,890 is not the 7,412 universe, it ran in the lane rather than a clean clone, and it produced no coverage dataset.
+- **Forward obligation:** the hook recorded `wsl-platform: next checkpoint` (a `fallback:broad` platform trigger under the commit profile). It was discharged at C only; see the next section.
+- The hook created 62 new run folders in the lane's `tmp/test-runs`; they are attributable by run ID and `worktree`, and are in neither finals clone.
+
+### Disclosures and Codex's rulings (2026-10-11)
+
+- **Missing pre-attempt owned-process receipt.** The release required a check for owned stray processes before the attempt. `prerequisites.txt` (05:08:39Z) and the commit script receipt every other prerequisite, but no process listing was retained. Claude's session-only claim (an in-session check at about 05:08Z: 0 lane-owned processes, 6 foreign Plan 12 processes, CPU 19 %) **remains unverified by retained evidence**. Codex accepted this completed delivery with that explicit receipt defect; the prerequisite checklist is not fully evidenced. The exact staged and committed source, the valid hook records and the separately receipted final-run process checks support acceptance, but the later check (the 05:24Z Windows load receipt) does not prove earlier absence. There is no retrospective receipt, new pin or rerun; the check is to be retained on future attempts.
+- **Commit message check.** The commit script's raw `%B` comparison printed `message_bytes_equal=no`; that was a formatting false negative. The commit-object message bytes are independently equal to `msg-s1.txt` (Fable by `cmp`; Codex independently). Both statements are kept together.
+
+## Corrected-source I4 finals at C `343b233a` (2026-10-11)
+
+**Status: accepted** (Codex, "S1 delivery and corrected-source I4 finals accepted — documentary composition released", recorded 2026-10-11). Every result here was measured at the new measurement pin C, commit `343b233ab7b470690eb21fe20c4662460694955c`, tree `8a39467d4607f29f1905a55e62844865f6f76fc3`. The old acceptance pin `ea88814e` and its finals (section "I4 — exact-source finals at `ea88814e` (2026-10-10)") stay as recorded and bound to that pin. This section, and the commit that records it, is a third, documentary-only HEAD; it is not measured. The finals were repeated at the corrected source with no equivalence waiver.
+
+Packet `2026-10-11-claude-plan-11-30-i4c-finals-packet.md` (`861236fec30ef7b700b556056d25a99f8c3a991e15da650875081744d0d30e63`); sealed `plan-11-30-i4c-finals-343b233a-20261011`, seal `b47f17490914f24e44b5ed27169e602ce5f69056fe69212e1cedace30ca19ba3` (76 members); summary `i4c-final-summary.md` (`fc2e4153…`).
+
+### Pin, commands and environments
+
+- **Identities**, equal in both clones before, after re-pin and after the run: `pyproject.toml` `86963ae6…`, `uv.lock` `b0aa71b6…`, `tools/product-coverage-groups.json` `55278b5e…`, `tests/profiles.toml` `1b656b4a…` (all equal to I4's), and src/tools/tests `ls-tree` digest `a827f630…` (it differs from I4's `771a6fd5…` only by the two changed source paths). All 1,396 tracked files are byte-identical across the clones; Codex hashed every Windows clone file against the committed blobs and the WSL clone.
+- **Commands:** exactly the approved v5 I4 sequence, as at I4: the canonical gate `uv run --no-sync python tools/check_product_coverage.py --run-full-suite --groups tools/product-coverage-groups.json --report-json tmp/coverage/product-coverage-report.json --coverage-json tmp/coverage/coverage.json`, then `uv run --no-sync python -m tools.testing.coverage_products validate --coverage-json tmp/coverage/coverage.json --gate-report tmp/coverage/product-coverage-report.json --run-record <the identified full-session run.json>`, on each producing machine.
+- **Windows:** independent clone `C:\worktrees\optimus-cost-agent-worktrees\optimus-cost-agent-wt-claude-p1130h`; CPython 3.14.4, pytest 9.1.1, pytest-cov 7.1.0, coverage 7.14.3, uv 0.11.29, Git 2.56.0; path budget 227/260.
+- **WSL:** independent clone `/root/p1130-i4c-20261011T061711`, started only after Windows wrote `DONE`; CPython 3.14.6, pytest 9.1.1, pytest-cov 7.1.0, coverage 7.14.3. The two timed runs did not overlap. The I4 clones (`…-p1130g` at `ea88814e`, `/root/p1130-i4-20261010T165139`) remain intact, so old and new records stay separately attributable.
+
+### Results (sealed receipts, Fable's sealed recount and Codex's independent verification)
+
+| Evidence | Native Windows | WSL |
+|---|---|---|
+| Canonical gate | exit 0, 05:24:41–06:15:32Z; pytest 7,372 passed, 40 skipped, 111 deselected (3,032.7 s) | exit 0, 06:17:52–06:41:36Z; pytest 7,236 passed, 176 skipped, 111 deselected (1,310.0 s) |
+| Full session | `20261011T052446-4340-f0f821` | `20261011T061753-630-549fc3` |
+| Raw phases | 7,364 call-passed plus 8 qualified recorder-test passes, 40 skipped, 0 failed, errored or missing | 7,228 call-passed plus the same 8, 176 skipped, 0 failed, errored or missing |
+| Universe | **7,412** selected nodes, digest `a1006e75018a18b51783e94f83b82068bffcd2fae3f92670cba2f7ec36fa926a` | same |
+| Record | terminal ACTIVE, `default_selection`, COMPLETE, full depth, exit 0; `parent=not_found:ancestor_exited` | terminal ACTIVE, `default_selection`, COMPLETE, full depth, exit 0; `native=unsupported`, `guard=unsupported_platform`, `parent=unsupported` |
+| Exactly one eligible full record | 1 of 99 at identification (`full-session.txt`); still 1 of 101 at Fable's recount | 1 of 67 at identification; still 1 of 68 at recount |
+| `validate` | exit 0, "full-run validity established" | exit 0, "full-run validity established" |
+| Optimus (floor 80, compared at precision 0) | **89.45147679324894 %** (89): PASS | **88.8834793898085 %** (89): PASS |
+| Context Engine (floor 80) | **95.92430858806405 %** (96): PASS | **95.92430858806405 %** (96): PASS |
+| Model policy (floor 80) | **96.98795180722891 %** (97): PASS | **96.98795180722891 %** (97): PASS |
+| Evidence Handoff (informational) | 68.41654778887303 % | 65.96291012838802 % |
+| Aggregate (informational) | 85.0301437625599 % (85) | 84.06554336064306 % (84) |
+| Coverage JSON | `1b800cc6b5388cd744d2f81bb692f170ff08676bb79bfe7db2302883c6e7693a` | `934d2043e77e5d8df637baf65350bbb8a35510c728cbb8b24668180a5627e74a` |
+| `.coverage` (post-run receipt) | `0d81e1dc7fa05ad49cb98207654a0ab8129b02a2287a05c5f6cf93257c4f0c4a` | `2156e95ce4548b91be087b7d4a700fda2581338e9b912ab1cd72f0904bfaade1` |
+| Gate report / `.run.json` | `8c0d1466…` / `84b94964…` | `486bcaa6…` / `1a6e0063…` |
+| Task 0 gap predicate | **PASS**: N 22,206, k 2,220, first/last-decile medians 0.322/0.311 ms, ratio **0.9658385086098185**, 0 negative gaps | informational only: N 22,060, k 2,206, 0.232/0.200 ms, ratio 0.8599137931489925, **3 negative gaps** (wall-clock steps) |
+
+Codex independently verified record validity, the raw outcomes and the gate receipts binding the clean unchanged head and tree, config, lock, groups, coverage JSON and raw data, and recomputed the floors and both gap ratios. The gate windows do not overlap. Codex's replay across the retained clone records finds exactly one matching full session per platform; named-record validation alone remains insufficient to prove uniqueness.
+
+### Qualifications (all kept)
+
+- **Recorder-test no-call 8:** in each run, eight `test_run_context_lifecycle` nodes pass with no outer call entry, because they swap `run_context._current`. They are not counted as independently recorded call passes.
+- **Capability labels:** Windows `parent=not_found:ancestor_exited`; WSL the weaker POSIX labels.
+- **WSL negative gaps:** three call→teardown gaps, one in each of three nodes (−4.8 ms, −334.1 ms and −388.5 ms). As at I4, `at` comes from the wall clock and `seconds` from `perf_counter`, and WSL2 stepped its wall clock during the run (the same PIDs' `STARTED` shifted from 06:17:07 to 06:18:58 between the load receipts). The WSL gap is informational; no WSL timing equivalence is asserted.
+- **Interpreters:** Windows CPython 3.14.4 versus WSL 3.14.6.
+- **Skip reasons:** the canonical `-q` command does not print `-rs`. The platform character of the 168 WSL platform skips rests on the accepted I3b review of the reasons for the identical scope.
+- **Extra PASSIVE collection records** from the `_bound_record` identification and from `validate` are not evidence; eligibility filters them out.
+- **Script header:** `win_i4c.sh` line 2 still cites the `ea88814e` release; attribution is exact through the pin argument, the hard-coded tree and the identity receipts.
+- **WSL host load:** 0.40 before and about 0.87 after; not idle.
+
+### Forward WSL platform obligation (discharged at C only)
+
+Codex independently matched the retained 1,629 platform IDs (`d79185015cc55b96a2fae2b6fd3d34fab82967e566cc3b73fba461672932c9ed`; `tests/profiles.toml` is unchanged and none of the 8 new nodes is platform-tagged) to the WSL full run's raw phases: **1,453 call-passed, 8 qualified recorder-test passes, 168 skips (167 at setup, 1 at call), 0 missing or failed.** S1's forward `wsl-platform: next checkpoint` obligation is **discharged at `343b233a` only**. The skip interpretation keeps the accepted identical-scope I3b reason qualification, because the canonical finals omit `-rs`. There is no advance clearance for later source commits.
+
+### Disclosure rulings (Codex, 2026-10-11)
+
+- **Plan 12 load at C: accepted with qualification, no rerun.** The Plan 12 cp4 lane's ACP qualification session and its gateway on 127.0.0.1:8765 (six Python processes, started about 16:13Z on 2026-10-10) were already running when the Windows final started; they were not owned by this lane and were not touched. The endpoint load receipts (05:24:09Z before, 06:16:08Z after) show the same foreign processes. Their presence throughout the run is *inferred* from their start times and the endpoint receipts; it was not continuously observed. Their sampled CPU rates stayed below the per-process threshold (the window mean was 35.6 % before, from a 74 % opening spike, and 8.7 % after). The host is not claimed idle. The Windows gap predicate passes and no phase failed. There is no foreign-process control and no timing-equivalence claim.
+- **Missing pre-attempt owned-process receipt:** see "S1 delivery at `343b233a` (2026-10-11)". The session-only claim remains unverified by retained evidence; the delivery is accepted with that explicit receipt defect; the prerequisite checklist is not called fully evidenced; there is no retrospective receipt.
+- **Static checks at C: an exit-code receipt only.** `static-at-pin-c.txt` (06:42:55–06:43:32Z, in the clean Windows clone at `343b233a`) records exit 0 for Ruff, "86 passed" with exit 0 for the docs controls, exit 0 for the secret scan, exit 0 for both diff checks, and clone status 0 before and after, but not the command lines. The reconstructed commands are: `ruff check --no-cache .`; the coverage-free docs controls (`pytest --no-cov -q -p no:cacheprovider tests/unit/docs`; run `20261011T064258-44028-1e92bd`, 86 selected); the local secret scan (`local_secret_scan` over `src` plus the files changed against main `4ed9b25`); and `git diff --check` against main `4ed9b25` and against the parent `ea88814e`. This reconstruction is **not** a new executed-command receipt.
+- **Commit message check:** the raw `%B` comparison was a false negative; the commit-object bytes are independently equal (section "S1 delivery at `343b233a` (2026-10-11)").
+- **Two launcher slips while preparing, retained with no results claimed from them.** A bare `python` call (the PyManager launcher in Git Bash) tried to launch a script by its shebang; bash crashed at startup and nothing ran. A later `python - … || …` call hung on stdin and was stopped, leaving no process. The scripts were then edited with an explicit interpreter.
+
+### Reviews
+
+- Fable 5.1 source review at C (`fable-final-i4c.md`, `4cbba2d5…`): SOUND WITH AMENDMENTS; no source defect. R-A (the Plan 12 disclosure) and R-D (the 7,412 universe) are carried above.
+- Fable 5.1 recount (`fable-i4c-recount.md`, `af02ae81…`): SOUND WITH AMENDMENTS, documentary only. F1 (the missing pre-attempt receipt) and F2 (the static-check commands) are disclosed above; F3 to F9 are kept as qualifications.
+- Codex (2026-10-11): accepted the S1 delivery and the finals at C; Fable's source review and recount stand as SOUND WITH AMENDMENTS, with the documentary qualifications above preserved.
+
+### Still open, stated separately from the C acceptance
+
+All held:
+1. **This documentary delivery**, under its own reviewed commit grant (Fable then Codex review of the exact final staged paths, tree and hashes first).
+2. **Concrete operator push/PR authority** for the lane after latest-main reconciliation. The bootstrap publication approval does not cover this branch.
+3. **Actual Linux CI and artifact origin**, and the seven-module safety comparison against the accepted I1 baseline.
+4. **Merge to main, closure, archival and cleanup**, including the I4 and C final clones. Residual owners are unchanged.

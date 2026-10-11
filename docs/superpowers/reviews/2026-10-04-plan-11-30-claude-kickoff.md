@@ -1,6 +1,10 @@
 # Plan 11.30 — Claude implementation kickoff
 
-## Integration pickup — 2026-10-09
+## Current pickup — 2026-10-11
+
+S1 delivery and corrected-source Windows/WSL I4 finals are accepted at `343b233ab7b470690eb21fe20c4662460694955c` / tree `8a39467d4607f29f1905a55e62844865f6f76fc3`; the forward WSL obligation is discharged with recorder-test and inherited skip-reason qualifications. Read the [current ruling](2026-10-05-plan-11-30-task3-codex-review.md#s1-delivery-and-corrected-source-i4-finals-accepted--documentary-composition-released) and verify actual clean source. Claude may compose the nine-path documentary follow-up and run its narrow checks, then obtain Fable and Codex final-byte review. No documentary commit is released yet. Keep measured pin C separate from later documentary HEAD. I5 publication, Linux CI/safety acceptance, merge, closure and cleanup remain held. Approved v5 stays byte-frozen; earlier sections below are historical grants.
+
+## Historical integration pickup — 2026-10-09
 
 I1 actual main-push baseline at `4ed9b252bc63a4ffd7179c34083af28566bee0a7` is accepted, including the qualified base-universe proof. Claude may perform v5 I2 and narrow I3 evidence preparation from clean profiles HEAD `26bd667`, with an exact-base history-preserving non-auto-committing merge. Read the [complete I2 grant](2026-10-05-plan-11-30-task3-codex-review.md#i1-main-push-baseline-accepted--bounded-i2-integration-execution-released) and unchanged [approved v5](../plans/2026-10-04-plan-11-30-test-profiles-implementation_v5.md), then verify actual tree. The complete grant governs scope and source/receipt/ADR/classification reconciliation; keep prior intake sections as historical provenance. No integration commit, final full runs, profiles publication or cleanup is released.
 

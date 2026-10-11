@@ -15,13 +15,13 @@
  "report": "reports/plan-11-30-test-profiles-evidence.md",
  "status_convention": "Each section's 'status' string is the historical status at recording and is kept as written; 'status_recorded' dates it. 'current_delivery' holds the current state. Abbreviated hashes in prose are display identifiers; historical snapshot hashes identify retained sealed snapshots, not current bytes. New Stage B receipt locations are recorded as location_root + '/' + location_folder; older entries keep their original form.",
  "current_delivery": {
-  "as_of": "2026-10-10",
+  "as_of": "2026-10-11",
   "branch": "agent/claude/plan-11-30-test-profiles",
   "base": "git-sha1:a929aab2092876ab0d83ecc4e46896ae3a0935c0",
-  "delivered_source_head": "git-sha1:ea88814e4187c81c3a9781669bb2c17a71546949",
-  "delivered_source_head_note": "dated 2026-10-10: the I2/I3 integration merge ea88814e, which is also the accepted I4 exact-source final pin; previously 66ddabf (Task 5, renamed from 'head' per Fable final amendment 3)",
-  "measured_final_head": "git-sha1:ea88814e4187c81c3a9781669bb2c17a71546949",
-  "measured_final_tree": "git-sha1:9048bc8dead2c5b3633703f04a2c2232ea2d29b6",
+  "delivered_source_head": "git-sha1:343b233ab7b470690eb21fe20c4662460694955c",
+  "delivered_source_head_note": "dated 2026-10-11: S1 delivery 343b233a (single parent ea88814e, tree 8a39467d), which is also the accepted corrected-source I4 measurement pin C; on 2026-10-10 it was ea88814e (the I2/I3 integration merge and I4 exact-source final pin); previously 66ddabf (Task 5, renamed from 'head' per Fable final amendment 3)",
+  "measured_final_head": "git-sha1:343b233ab7b470690eb21fe20c4662460694955c",
+  "measured_final_tree": "git-sha1:8a39467d4607f29f1905a55e62844865f6f76fc3",
   "pushed": false,
   "commits": [
    {
@@ -71,6 +71,10 @@
    {
     "commit": "git-sha1:ea88814e4187c81c3a9781669bb2c17a71546949",
     "delivers": "I2/I3 integration merge of main 4ed9b25 (tree 9048bc8d, parents 26bd667 then 4ed9b25); the accepted I4 exact-source final pin"
+   },
+   {
+    "commit": "git-sha1:343b233ab7b470690eb21fe20c4662460694955c",
+    "delivers": "S1 reader correction with the S2 workflow comment and the I4 results composition (tree 8a39467d, single parent ea88814e); a new source candidate and the accepted corrected-source I4 measurement pin C"
    }
   ],
   "stage_a": "accepted and locally committed (Tasks 0-3; Task 6 at acc2a1c)",
@@ -78,38 +82,52 @@
   "checkpoint_b_task5_obligation": "discharged for the accepted native Windows controller topology; WSL weaker; F4 not discharged (sections.task5.checkpoint_b_worker_obligation)",
   "reconciliation": "statements in the historical sections that show the IPC rule, measurement refresh, partial-commit correction or quick switch as open are historical; those were delivered at 43eb190 and 66ddabf; no source work from them remains required; the Stage B Task 6 placeholder (sections.stageb_task6) is historical",
   "open": [
-   "S1 corrected-source delivery: review, local commit and new reviewed candidate pin before I5",
-   "I5: publication/push/PR of the lane, candidate Linux CI and base/candidate safety-row comparison (base = accepted I1 main-push run; candidate UNKNOWN), merge to main",
-   "partial-commit correction CI backstop",
-   "plan closure",
-   "cleanup held (including the Stage B and I4 final clones)"
+   "documentary delivery of the 2026-10-11 results (own reviewed commit grant; Fable then Codex review of the exact staged paths/tree/hashes first)",
+   "I5: concrete operator push/PR authority for the lane after latest-main reconciliation (bootstrap publication approval does not cover this branch)",
+   "I5: actual Linux CI and artifact origin, and the seven-module safety comparison against the accepted I1 baseline (sections.i1_bootstrap_baseline)",
+   "merge to main, plan closure, archival and cleanup (including the Stage B, I4 and C final clones)",
+   "partial-commit correction CI backstop"
   ],
   "authority": {
    "review_file": "docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md",
-   "current_section": "I4 accepted at ea88814e - bounded reader correction and results composition released",
-   "recorded_utc": "2026-10-10 (no time given in the entry)",
+   "current_section": "S1 delivery and corrected-source I4 finals accepted - documentary composition released",
+   "recorded_utc": "2026-10-11 (no time given in the entry)",
    "hash_policy": "the review file's current hash is deliberately not cited (no report/review self-hash cycle)",
-   "previous_section": "Integration delivery accepted - I4 exact-source finals released at ea88814e (2026-10-10)",
-   "note": "updated 2026-10-10; the Stage B values were current_section 'Stage B Task 6 - local final evidence accepted; results composition released' (2026-10-09T07:24:20Z)"
+   "previous_section": "S1/results batch accepted - one local commit attempt and conditional new-pin finals released (2026-10-11)",
+   "note": "updated 2026-10-11; the 2026-10-10 values were current_section 'I4 accepted at ea88814e - bounded reader correction and results composition released' after 'Integration delivery accepted - I4 exact-source finals released at ea88814e'; the Stage B values were current_section 'Stage B Task 6 - local final evidence accepted; results composition released' (2026-10-09T07:24:20Z)"
   },
   "review_snapshot_read_during_drafting": {
    "date": "2026-10-09",
    "sha256": "sha256:0d50118aea616e169593bc873c7ba3f829b521e4df06e28751cdf62b670572b2",
    "note": "identifies only that snapshot; the file has changed since"
   },
-  "as_of_note": "dated 2026-10-10: Codex's 'I4 accepted at ea88814e' entry (recorded 2026-10-10, no time given); previous as_of 2026-10-09T07:24:20Z (Stage B Task 6 acceptance)",
+  "as_of_note": "dated 2026-10-11: Codex's 'S1 delivery and corrected-source I4 finals accepted' entry (recorded 2026-10-11, no time given); previous as_of 2026-10-10 (Codex's 'I4 accepted at ea88814e' entry), and 2026-10-09T07:24:20Z (Stage B Task 6 acceptance) before that",
   "base_note": "original draft base a929aab; main 4ed9b25 merged into the lane at ea88814e",
-  "measured_final_note": "dated 2026-10-10: I4 exact-source finals (sections.i4_finals); earlier measured finals: Stage A at acc2a1c (sections.task6), Stage B at 3cece0a / tree fabb6720 (sections.stageb_task6_final)",
+  "measured_final_note": "dated 2026-10-11: corrected-source I4 finals at pin C 343b233a / tree 8a39467d (sections.i4c_finals); earlier measured finals: I4 at ea88814e / tree 9048bc8d (sections.i4_finals, still accepted and bound to that pin), Stage A at acc2a1c (sections.task6), Stage B at 3cece0a / tree fabb6720 (sections.stageb_task6_final)",
   "pushed_note": "the lane branch is not pushed (I5 held); the separate I1 bootstrap branch agent/claude/plan-11-30-coverage-bootstrap (6f1935d) was pushed and merged to main through PR #279 at 4ed9b25",
   "plan_v5": "approved 2026-10-09 (sha256:149002fa...); v4 superseded and archived; approved bytes frozen",
   "i1": "bootstrap merged to main through PR #279 at 4ed9b25; main-push baseline (run 37964416192) accepted with Q-C1/Q-C2/Q-C3 qualifications (sections.i1_bootstrap_baseline)",
   "i2_i3": "integration merge ea88814e (tree 9048bc8d) committed locally with normal hooks and accepted; I3 audits/stability and WSL platform remainder accepted and bound to tested trees caffe9ad/9048bc8d (sections.i2_i3_integration)",
   "i4": "exact-source finals accepted at ea88814e (2026-10-10): Windows and WSL full canonical gates and validation pass; Optimus 89.37/88.95, Context Engine 95.92, model policy 96.99, Windows gap ratio 1.003; forward WSL platform obligation discharged at this pin (sections.i4_finals); acceptance does not transfer to a later pin",
-  "s1": "reader correction (compare reads both records through records.read_record) with the S2 workflow comment: prepared test-first, uncommitted, pending Fable then Codex review; then a separately released local commit becomes a newly reviewed candidate pin with its own verification disposition before I5",
+  "s1": "delivered and accepted (2026-10-11): local commit 343b233a, single parent ea88814e, tree 8a39467d, 10 paths, normal hooks passed, commit seal sha256:9df84d16... (19 members); accepted with the explicit missing pre-attempt owned-process receipt defect (sections.s1_delivery)",
   "review_snapshot_imported": {
    "date": "2026-10-10",
    "sha256": "sha256:d665e5b467a189eb2399c6dd7d5aabe8c91ab62b3ecaa67abe06f6b313316f05",
    "note": "copied byte for byte into docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md for the results composition; identifies only that snapshot"
+  },
+  "open_note": "dated 2026-10-11: all items held; the 2026-10-10 list began with 'S1 corrected-source delivery: review, local commit and new reviewed candidate pin before I5', now delivered and accepted (sections.s1_delivery, sections.i4c_finals)",
+  "i4c": "corrected-source I4 finals accepted at pin C 343b233a (2026-10-11): Windows and WSL full canonical gates and validation pass on the 7412-node universe (sha256:a1006e75...); Optimus 89.4515/88.8835, Context Engine 95.9243, model policy 96.9880, Windows gap ratio 0.966; S1's forward WSL platform obligation discharged at C only, no advance clearance for later commits (sections.i4c_finals)",
+  "s1_note": "dated 2026-10-11; on 2026-10-10 this read: 'reader correction (compare reads both records through records.read_record) with the S2 workflow comment: prepared test-first, uncommitted, pending Fable then Codex review; then a separately released local commit becomes a newly reviewed candidate pin with its own verification disposition before I5'",
+  "pins": {
+   "old_acceptance_pin": "git-sha1:ea88814e4187c81c3a9781669bb2c17a71546949 (I4 exact-source finals accepted 2026-10-10; stays as recorded, sections.i4_finals)",
+   "new_measurement_pin": "git-sha1:343b233ab7b470690eb21fe20c4662460694955c (pin C; corrected-source I4 finals accepted 2026-10-11, sections.i4c_finals)",
+   "documentary_head": "the eventual commit recording the 2026-10-11 results is a third, documentary-only HEAD; it is not measured source"
+  },
+  "review_snapshots_imported_2026_10_11": {
+   "date": "2026-10-11",
+   "review_sha256": "sha256:b8ba78f634c736aa8619f431b37b00e8b382c1a8d8a74512efc7a6e977f04696",
+   "kickoff_sha256": "sha256:f5516cada46ed33f1a1074bb7be1fd85f95464e1df18b1151a2d7556ce518c8d",
+   "note": "copied byte for byte from a verified immutable snapshot into docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md and docs/superpowers/reviews/2026-10-04-plan-11-30-claude-kickoff.md for the documentary composition; identifies only those snapshots"
   }
  },
  "sections": {
@@ -3066,6 +3084,237 @@
     {
      "location_root": "optimus-handoff/test-profiles-research",
      "location_folder": "plan-11-30-i4-finals-ea88814e-20261010"
+    }
+   ]
+  },
+  "s1_delivery": {
+   "status": "accepted by Codex 2026-10-11 with the explicit missing pre-attempt owned-process receipt defect",
+   "status_recorded": "2026-10-11 (documentary composition; a documentary-only descendant, not measured source)",
+   "release": {
+    "section": "S1/results batch accepted - one local commit attempt and conditional new-pin finals released (2026-10-11)",
+    "staged_tree": "git-sha1:8a39467d4607f29f1905a55e62844865f6f76fc3",
+    "packet_sha256": "sha256:ec9181e9b784839afedc1c8e68eb8289e59db9ec3d2c5202bcf71d2e44467d97",
+    "seal_sha256": "sha256:efc70dfd8e510e3284446be128861e642313a1a51e669a131cd364cdce5257e4",
+    "seal_members": 29
+   },
+   "acceptance_section": "S1 delivery and corrected-source I4 finals accepted - documentary composition released (2026-10-11)",
+   "commit": {
+    "commit": "git-sha1:343b233ab7b470690eb21fe20c4662460694955c",
+    "parent": "git-sha1:ea88814e4187c81c3a9781669bb2c17a71546949",
+    "tree": "git-sha1:8a39467d4607f29f1905a55e62844865f6f76fc3",
+    "subject": "fix(coverage): read compare's run records through the run-context reader; record I4 results",
+    "message_sha256": "sha256:f433935b2e8e389b0768cac93cf022d74aa3e5579ac438dca57d3c50308f5c9a",
+    "paths": [
+     ".github/workflows/guardrails.yml",
+     "docs/README.md",
+     "docs/decisions/ADR-020-test-cadence-product-coverage-and-staged-delivery.md",
+     "docs/decisions/README.md",
+     "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md",
+     "docs/superpowers/reviews/2026-10-05-plan-11-30-task3-codex-review.md",
+     "reports/plan-11-30-test-profiles-evidence.md",
+     "reports/plan-11-30-test-profiles-manifest.json",
+     "tests/unit/tools/test_coverage_products.py",
+     "tools/testing/coverage_products.py"
+    ],
+    "paths_check": "exactly the 10 authorized paths, each committed blob equal to Codex's SHA-256 release table",
+    "committed_blobs": "all 1396 equal the staged index; status clean afterwards; remote main still 4ed9b25",
+    "committer_date_utc": "2026-10-11T05:08:43Z",
+    "hooks": "all ten passed (toml skipped: no files), 05:08:43Z..05:22:04Z; one attempt, no SKIP/--no-verify/retry"
+   },
+   "delivers": {
+    "S1": "compare reads both records through records.read_record; an unreadable record gets a labelled, path-free refusal; a missing record file is now exit 1 (incomparable) instead of exit 2 (input failure naming the path), disclosed",
+    "S1_tests": "2 positive CLI controls + 6 RED controls (side x unexpected-field/malformed/oversized); the 8 new nodes make the universe 7412",
+    "S2": "workflow comment: collection-only records can be uploaded after a pre-pytest gate failure but are not eligible full evidence",
+    "results_composition": "the 2026-10-10 I4 results composition (report, manifest, ADR-020, indices, backlog, review snapshot sha256:d665e5b4...)"
+   },
+   "hook_run": {
+    "run": "20261011T050931-61376-f46efe",
+    "window_utc": "2026-10-11T05:09:31Z..05:22:02Z",
+    "where": "lane worktree; coverage-free commit profile",
+    "record": "terminal ACTIVE, default_selection, COMPLETE, exit 0, 20643 phases; native job valid, guard full; replayed independently by Codex",
+    "qualifications": [
+     "parent=not_found:ancestor_exited"
+    ],
+    "selection": "6890 selected of 7412 collected (522 deselected by the profile); fallback:broad 5242 (workflow path and manifest)",
+    "raw_phases": "6844 call-passed, 38 skipped, 8 qualified recorder-test passes without an outer call, 0 failed (pytest total 6852 passed)",
+    "not_a_final": "selection omits audit-current (selection audit_depth none); the record's default audit_depth full proves no audit execution; not eligible as a final (6890 != 7412 universe, not a clean clone, no coverage dataset)",
+    "obligation": "wsl-platform: next checkpoint (fallback:broad platform trigger under the commit profile); discharged at C only (sections.i4c_finals.wsl_platform_obligation)",
+    "new_run_folders": "62 in the lane's tmp/test-runs, attributable by run id and worktree; in neither finals clone"
+   },
+   "disclosures": {
+    "missing_pre_attempt_process_receipt": "the release's pre-attempt owned stray-process check has no retained receipt (prerequisites.txt 05:08:39Z covers every other prerequisite); Claude's session-only claim (about 05:08Z: 0 lane-owned, 6 foreign Plan 12 processes, CPU 19 %) remains unverified by retained evidence; Codex accepted the completed delivery with that explicit receipt defect; the prerequisite checklist is not called fully evidenced; the later 05:24Z load receipt does not prove earlier absence; no retrospective receipt, new pin or rerun; keep the check on future attempts",
+    "message_check": "the commit script's raw %B comparison printed message_bytes_equal=no, a formatting false negative; the commit-object message bytes are independently equal to msg-s1.txt"
+   },
+   "seal_sha256": "sha256:9df84d166cf877b4cc2e508a1984111a28e3c940030ac450b1dc26213a53d95c",
+   "seal_members": 19,
+   "raw_receipts": [
+    {
+     "location_root": "optimus-handoff/test-profiles-research",
+     "location_folder": "plan-11-30-s1-commit-attempt1-20261011"
+    },
+    {
+     "location_root": "optimus-handoff/test-profiles-research",
+     "location_folder": "2026-10-11-claude-plan-11-30-s1-results-batch-packet.md"
+    }
+   ]
+  },
+  "i4c_finals": {
+   "status": "accepted by Codex 2026-10-11 at pin C; the I4 acceptance at ea88814e stays as recorded and bound to that pin",
+   "status_recorded": "2026-10-11 (documentary composition; a third, documentary-only HEAD, not measured source)",
+   "measured_source": {
+    "commit": "git-sha1:343b233ab7b470690eb21fe20c4662460694955c",
+    "tree": "git-sha1:8a39467d4607f29f1905a55e62844865f6f76fc3",
+    "pyproject": "sha256:86963ae6e0d88666e3edc3ae0da4ffbf408d885c4e59ba9aa08be5d295f0e3ce",
+    "uv_lock": "sha256:b0aa71b62b238973d81fb4ecfc188d9ac2053a704225250cef698513f926d00b",
+    "product_coverage_groups": "sha256:55278b5e6cedc9b66576687c737ffab242b7aed04a8529e47314a8de258f8543",
+    "profiles_toml": "sha256:1b656b4a7e3e8ba8428b77324ace3bc76402b095d7a1d1aa3deeb32ef1e7d73c",
+    "src_tools_tests_ls_tree": "sha256:a827f630d6856dca863bcd11b6ba129bef900b70aba80d0bfb70b964839696f1",
+    "checkout_bytes": "all 1396 tracked files byte-identical between the clones; Codex hashed every Windows clone file against the committed blobs"
+   },
+   "packet_sha256": "sha256:861236fec30ef7b700b556056d25a99f8c3a991e15da650875081744d0d30e63",
+   "seal_sha256": "sha256:b47f17490914f24e44b5ed27169e602ce5f69056fe69212e1cedace30ca19ba3",
+   "seal_members": 76,
+   "summary_sha256": "sha256:fc2e41532e8e967d27687a52a0a2adba9005c0d4abd5f95dff85cedbbd925a10",
+   "commands": [
+    "uv run --no-sync python tools/check_product_coverage.py --run-full-suite --groups tools/product-coverage-groups.json --report-json tmp/coverage/product-coverage-report.json --coverage-json tmp/coverage/coverage.json",
+    "uv run --no-sync python -m tools.testing.coverage_products validate --coverage-json tmp/coverage/coverage.json --gate-report tmp/coverage/product-coverage-report.json --run-record <verified-full-session-run.json>"
+   ],
+   "checkouts": {
+    "windows": {
+     "clone": "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p1130h",
+     "environment": "CPython 3.14.4, pytest 9.1.1, pytest-cov 7.1.0, coverage 7.14.3, uv 0.11.29, Git 2.56.0; path budget 227/260",
+     "window_utc": "2026-10-11T05:24:41Z..06:15:32Z"
+    },
+    "wsl": {
+     "clone": "/root/p1130-i4c-20261011T061711",
+     "environment": "CPython 3.14.6, pytest 9.1.1, pytest-cov 7.1.0, coverage 7.14.3",
+     "window_utc": "2026-10-11T06:17:52Z..06:41:36Z, after Windows wrote DONE"
+    },
+    "state": "independent clean clones, pinned before and re-pinned after environment setup; frozen sync dry-run no changes; same clean pin after the runs; no Windows/WSL timed overlap; I4 clones intact"
+   },
+   "claims": {
+    "windows_full_suite": {
+     "status": "PASS",
+     "run": "20261011T052446-4340-f0f821",
+     "pytest": "7372 passed, 40 skipped, 111 deselected (3032.7 s)",
+     "raw_phases": "7364 call-passed + 8 recorder-test no-outer-call passes, 40 skipped, 0 failed/error/missing; 7412 selected",
+     "record": "terminal ACTIVE, default_selection, COMPLETE, full depth, exit 0",
+     "qualifications": [
+      "parent=not_found:ancestor_exited"
+     ],
+     "eligible": "exactly one eligible full record among 99 at identification (101 at Fable's recount)",
+     "validate": "exit 0, full-run validity established",
+     "coverage_json": "sha256:1b800cc6b5388cd744d2f81bb692f170ff08676bb79bfe7db2302883c6e7693a",
+     "coverage_data": "sha256:0d81e1dc7fa05ad49cb98207654a0ab8129b02a2287a05c5f6cf93257c4f0c4a",
+     "gate_report": "sha256:8c0d14664b69faa815515486903f640a154a33440bb4f6db3922e19b2563b962",
+     "gate_run_json": "sha256:84b9496402cdec60ae3166359c47e5017026085a0dd4a96786239771e6f7e1d7"
+    },
+    "wsl_full_suite": {
+     "status": "PASS (qualified)",
+     "run": "20261011T061753-630-549fc3",
+     "pytest": "7236 passed, 176 skipped, 111 deselected (1310.0 s)",
+     "raw_phases": "7228 call-passed + the same 8 qualified passes, 176 skipped, 0 failed/error/missing; 7412 selected",
+     "record": "terminal ACTIVE, default_selection, COMPLETE, full depth, exit 0",
+     "qualifications": [
+      "native=unsupported",
+      "guard=unsupported_platform",
+      "parent=unsupported"
+     ],
+     "eligible": "exactly one eligible full record among 67 at identification (68 at Fable's recount)",
+     "validate": "exit 0, full-run validity established",
+     "coverage_json": "sha256:934d2043e77e5d8df637baf65350bbb8a35510c728cbb8b24668180a5627e74a",
+     "coverage_data": "sha256:2156e95ce4548b91be087b7d4a700fda2581338e9b912ab1cd72f0904bfaade1",
+     "gate_report": "sha256:486bcaa68b9787635e35e7c192157c2ee670d0985eae261c380850d1cd28d884",
+     "gate_run_json": "sha256:1a6e0063d6376fe9b3e7302662c299b103a98fbb52088a64ed24f37befb3dfc5"
+    },
+    "floors": {
+     "status": "PASS (canonical precision 0, floor 80 each)",
+     "windows_percent": {
+      "optimus": 89.45147679324894,
+      "context_engine": 95.92430858806405,
+      "model_policy": 96.98795180722891
+     },
+     "wsl_percent": {
+      "optimus": 88.8834793898085,
+      "context_engine": 95.92430858806405,
+      "model_policy": 96.98795180722891
+     }
+    },
+    "informational": {
+     "evidence_handoff_percent": {
+      "windows": 68.41654778887303,
+      "wsl": 65.96291012838802
+     },
+     "aggregate_percent": {
+      "windows": 85.0301437625599,
+      "wsl": 84.06554336064306
+     }
+    },
+    "task0_gap_predicate": {
+     "status": "PASS",
+     "platform": "windows",
+     "transitions": 22206,
+     "k": 2220,
+     "first_median_ms": 0.322,
+     "last_median_ms": 0.311,
+     "ratio": 0.9658385086098185,
+     "negative_gaps": 0
+    },
+    "wsl_gap_informational": {
+     "transitions": 22060,
+     "k": 2206,
+     "first_median_ms": 0.232,
+     "last_median_ms": 0.2,
+     "ratio": 0.8599137931489925,
+     "negative_gaps": 3,
+     "note": "informational only; three call->teardown gaps of three nodes (-4.8 ms, -334.1 ms, -388.5 ms) from WSL2 wall-clock steps (at from the wall clock, seconds from perf_counter); no WSL timing equivalence"
+    },
+    "universe": 7412,
+    "universe_digest": "sha256:a1006e75018a18b51783e94f83b82068bffcd2fae3f92670cba2f7ec36fa926a",
+    "universe_note": "I4's 7404 plus the 8 new S1 test nodes; not I4's sha256:7145df24...",
+    "codex_verification": "independent record validity; raw outcomes; gate receipts bind clean unchanged head/tree, config/lock/groups, coverage JSON and raw data; floors and gaps recomputed; gate windows do not overlap; replay across retained clone records finds exactly one matching full session per platform (named-record validation alone remains insufficient to prove uniqueness); seals, blob hashes, parent/tree/message bytes, committed-versus-staged index and clean lane verified"
+   },
+   "wsl_platform_obligation": {
+    "status": "discharged at 343b233a only (source-specific; no advance clearance for later source commits)",
+    "platform_set": "1629 IDs sha256:d79185015cc55b96a2fae2b6fd3d34fab82967e566cc3b73fba461672932c9ed",
+    "outcome": "1453 call-passed, 8 qualified recorder-test passes, 168 skips (167 setup, 1 call), 0 missing/failed",
+    "qualification": "skip reasons not printed by the canonical -q command (no -rs); interpretation keeps the accepted identical-scope I3b reason qualification"
+   },
+   "qualifications": [
+    "recorder-test no-call 8 per run (test_run_context_lifecycle swaps run_context._current); not counted as independently recorded call passes",
+    "Windows parent=not_found:ancestor_exited; WSL weaker POSIX labels",
+    "WSL negative gaps (3) from wall-clock steps; WSL gap informational",
+    "Windows CPython 3.14.4 vs WSL 3.14.6 (patch difference); CI-candidate comparison belongs to I5",
+    "extra PASSIVE collection records from the finals' _bound_record identification and from validate are not evidence",
+    "win_i4c.sh line 2 still cites the ea88814e release; attribution exact through the pin argument, hard-coded tree and identity receipts",
+    "WSL load 0.40 before, about 0.87 after; not idle"
+   ],
+   "disclosure_rulings": {
+    "plan12_load": "accepted with qualification, no rerun: the Plan 12 cp4 ACP qualification session and gateway on 127.0.0.1:8765 (six python processes, started about 2026-10-10T16:13Z; not owned, not touched) appear in the endpoint load receipts (05:24:09Z, 06:16:08Z); presence throughout is inferred from start times and endpoints, not continuously observed; sampled CPU rates below the per-process threshold (window mean 35.6 % before from a 74 % opening spike, 8.7 % after); host not claimed idle; Windows gap predicate passes and no phase fails; no foreign-process control or timing-equivalence claim",
+    "missing_pre_attempt_process_receipt": "Claude's session-only claim remains unverified by retained evidence; delivery accepted with that explicit receipt defect; prerequisite checklist not called fully evidenced; no retrospective receipt (sections.s1_delivery.disclosures)",
+    "static_checks": "static-at-pin-c.txt (06:42:55Z..06:43:32Z, clean Windows clone at 343b233a) is an exit-code receipt only, without its command lines: Ruff exit 0, docs controls 86 passed with exit 0 (run 20261011T064258-44028-1e92bd), secret scan exit 0, both diff checks exit 0, clone status 0 before and after; reconstructed commands: ruff check --no-cache .; the coverage-free docs controls (pytest --no-cov -q -p no:cacheprovider tests/unit/docs); local_secret_scan over src plus the files changed against main 4ed9b25; git diff --check against main 4ed9b25 and against parent ea88814e; this reconstruction is not a new executed-command receipt",
+    "message_check": "raw %B comparison was a false negative; commit-object bytes independently equal (sections.s1_delivery.disclosures)",
+    "launcher_slips": "both retained, no results claimed from them: a bare python call (PyManager launcher in Git Bash) tried to launch a script by its shebang, bash crashed at startup and nothing ran; a later 'python - ... || ...' call hung on stdin and was stopped, leaving no process"
+   },
+   "reviews": {
+    "fable_final_source": "SOUND WITH AMENDMENTS (no source defect; R-A Plan 12 disclosure, R-D universe 7412), sha256:4cbba2d52f6c7154f77b026e607064aed6153d1837529e358731daea9db5fbda",
+    "fable_recount": "SOUND WITH AMENDMENTS (documentary only; F1 and F2 disclosed, F3-F9 kept as qualifications), sha256:af02ae81f80a1873a09d0dc1fbd08b1b9a408038790c690298360d24ef409b51",
+    "codex": "accepted 2026-10-11 (S1 delivery and corrected-source I4 finals accepted - documentary composition released)"
+   },
+   "still_open": [
+    "this documentary delivery under its own reviewed commit grant",
+    "concrete operator push/PR authority after latest-main reconciliation; bootstrap publication approval does not cover this branch",
+    "actual Linux CI and artifact origin, and the seven-module safety comparison against the accepted I1 baseline",
+    "merge, closure, archival and cleanup (including the I4 and C final clones); all held"
+   ],
+   "raw_receipts": [
+    {
+     "location_root": "optimus-handoff/test-profiles-research",
+     "location_folder": "2026-10-11-claude-plan-11-30-i4c-finals-packet.md"
+    },
+    {
+     "location_root": "optimus-handoff/test-profiles-research",
+     "location_folder": "plan-11-30-i4c-finals-343b233a-20261011"
     }
    ]
   }
