@@ -4,6 +4,7 @@ import argparse
 import os
 import sys
 from dataclasses import replace
+from pathlib import Path
 
 import keyring as _keyring_module
 
@@ -12,6 +13,7 @@ from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.server import serve_gateway
 from optimus_model_policy import RegistryError
 from optimus_model_policy.binding import BindingError, approval_literal, trusted_snapshot
+from optimus_model_policy.stage_c import StageCGuard, StageCLedgerError, compose_stage_c_envelope
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES, compose_test_profile_snapshot
 from optimus_security.launch_manifest import (
     LaunchManifestError,
@@ -70,7 +72,17 @@ def main(argv: list[str] | None = None) -> int:
             "its exact effective hash. Grants nothing by itself."
         ),
     )
+    parser.add_argument(
+        "--plan12-stage-c-ledger",
+        default=None,
+        help=(
+            "The resolved ledger of the shared Plan 12.2 Stage C test envelope, initialized by the release "
+            "ceremony. The envelope is composed here; the signed manifest must bind it. Never created here."
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.plan12_stage_c_ledger is not None and args.plan12_test_profile is None:
+        parser.error("--plan12-stage-c-ledger needs --plan12-test-profile")
 
     environ = dict(os.environ)
 
@@ -102,6 +114,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"optimus-local-gateway: model registry is not trustworthy ({exc.code}); refusing to start.", file=sys.stderr)
         return 2
 
+    # Plan 12.2 Task 13 (Stage C): compose the shared test envelope from the actual ledger argument and
+    # this Gateway's own source; the signed manifest must bind exactly its literal.
+    envelope = None
+    if args.plan12_stage_c_ledger is not None:
+        try:
+            envelope = compose_stage_c_envelope(ledger=Path(args.plan12_stage_c_ledger))
+        except BindingError as exc:
+            print(f"optimus-local-gateway: Stage C envelope is not usable ({exc.code}); refusing to start.", file=sys.stderr)
+            return 2
+
     try:
         hmac_key = read_manifest_hmac_key(_keyring_module)
         verify_gateway_child_manifest(
@@ -114,6 +136,7 @@ def main(argv: list[str] | None = None) -> int:
             bind_host=config.bind_host,
             bind_port=config.bind_port,
             model_registry=None if registry is None else approval_literal(registry),
+            stage_c_envelope=None if envelope is None else envelope.literal,
         )
     except LaunchManifestError as exc:
         print(f"optimus-local-gateway: manifest validation failed ({exc.code}); refusing to start.", file=sys.stderr)
@@ -127,18 +150,32 @@ def main(argv: list[str] | None = None) -> int:
             ),
         )
 
-    server = serve_gateway(config=config)
-    host, port = server.server_address
-    print(
-        f"optimus local gateway listening on http://{host}:{port} "
-        f"(provider={config.provider})",
-        flush=True,
-    )
+    guard = None
+    if envelope is not None:
+        try:
+            guard = StageCGuard.open(Path(envelope.ledger), envelope)
+        except (StageCLedgerError, OSError) as exc:
+            code = exc.code if isinstance(exc, StageCLedgerError) else "STAGE_C_LEDGER_UNREADABLE"
+            print(f"optimus-local-gateway: Stage C ledger cannot be opened ({code}); refusing to start.", file=sys.stderr)
+            return 2
+        config = replace(config, stage_c_guard=guard)
+
     try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("shutting down", flush=True)
-        server.shutdown()
+        server = serve_gateway(config=config)
+        host, port = server.server_address
+        print(
+            f"optimus local gateway listening on http://{host}:{port} "
+            f"(provider={config.provider})",
+            flush=True,
+        )
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("shutting down", flush=True)
+            server.shutdown()
+    finally:
+        if guard is not None:
+            guard.close()
     return 0
 
 

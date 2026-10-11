@@ -28,6 +28,7 @@ from optimus_model_policy.binding import (
     MAX_ROUTE_ATTEMPTS,
     RouteBinding,
 )
+from optimus_model_policy.stage_c import Admission, StageCRefusal, reservation_usd
 from optimus_security.sanitization import sanitize_for_persistence
 
 
@@ -119,6 +120,12 @@ def _run_enforced_completion(
     certainly reached no model (never sent, or rate-limited); an uncertain, possibly billed attempt is
     never re-sent. Every attempt has its own receipt identity and is reported, in order, in
     ``route_attempts``; every failure is marked non-retryable, so the host does not re-send either.
+
+    Under a Stage C guard (Plan 12.2 Task 13) each physical attempt, a safe resend included, is first
+    admitted by the guard, which persists its full reservation before dispatch; a refusal reaches no
+    provider. The attempt is settled once: a proven unbilled failure releases its dollars, an uncertain
+    one stops every later dispatch, and a completed reply's reported charge is settled before any reply
+    check can fail the call.
     """
     policy = config.model_policy
     assert policy is not None
@@ -132,11 +139,19 @@ def _run_enforced_completion(
     attempts: list[dict[str, Any]] = []
     correlation = {"route_request_id": admitted.request_id, "route_attempts": attempts, "retryable": False}
     provider_result: ProviderMessageResult | None = None
+    guard = config.stage_c_guard
+    admission: Admission | None = None
     number = 0
     while provider_result is None:
         # Bounded by the recovery rule below: only ``number < MAX_ROUTE_ATTEMPTS`` sends another.
         number += 1
         attempt_id = f"gw-{uuid.uuid4().hex}"
+        if guard is not None:
+            try:
+                admission = guard.admit(attempt_id=attempt_id, request_id=admitted.request_id, reserve_usd=_attempt_reservation(policy, admitted))
+            except StageCRefusal as exc:
+                status, body = policy_refusal(ModelPolicyRefusal(exc.code, exc.detail, status=503))
+                return status, {**body, **correlation}
         try:
             provider_result = upstream_client.create_message_once(
                 model=admitted.model_id,
@@ -146,6 +161,8 @@ def _run_enforced_completion(
                 reasoning=admitted.reasoning,
             )
         except UpstreamAttemptFailure as failure:
+            if admission is not None:
+                guard.settle_unbilled(admission, failure.outcome)  # an outcome not proven unbilled is unknown
             attempts.append(_attempt_record(number, attempt_id, failure.outcome, http_status=failure.http_status))
             if failure.recoverable and number < MAX_ROUTE_ATTEMPTS:
                 _sleep(_RECOVERY_DELAY_SECONDS)
@@ -154,15 +171,23 @@ def _run_enforced_completion(
             if failure.outcome == ATTEMPT_UNCERTAIN:
                 _stop_experimental_route(policy, admitted, code)  # possibly billed, usage unknown
             return 502, {"error": sanitize_error_message(f"upstream attempt failed ({code})"), "code": code, **correlation}
+        except BaseException:
+            if admission is not None:
+                guard.settle_unknown(admission, "attempt raised")
+            raise
 
     gateway_usage = _gateway_usage(config=config, model=model, provider_result=provider_result, gateway_request_id=attempt_id)
     gateway_usage.update(route_request_id=admitted.request_id, attempt=number)
     try:
         assert_gateway_usage_contract(gateway_usage)
     except ValueError:
+        if admission is not None:
+            guard.settle_unknown(admission, "usage unverifiable")
         attempts.append(_attempt_record(number, attempt_id, ATTEMPT_UNCERTAIN))
         _stop_experimental_route(policy, admitted, "UPSTREAM_ATTEMPT_UNCERTAIN")
         return 502, {"error": "upstream usage could not be verified", "code": "UPSTREAM_ATTEMPT_UNCERTAIN", **correlation}
+    if admission is not None:
+        guard.settle_charged(admission, provider_result.cost_usd)  # settled before any reply check can fail
     gateway_usage["cost_usd"] = format_cost_usd(provider_result.cost_usd)
     attempts.append(_attempt_record(number, attempt_id, ATTEMPT_COMPLETED, provider_request_id=provider_result.message_id))
     try:
@@ -174,6 +199,18 @@ def _run_enforced_completion(
         status, body = policy_refusal(exc)
         return status, {**body, **correlation, "gateway_usage": gateway_usage}
     return 200, {**build_success(provider_result=provider_result, gateway_usage=gateway_usage), "route_attempts": attempts}
+
+
+def _attempt_reservation(policy: GatewayModelPolicy, admitted: AdmittedRequest) -> Decimal:
+    """One attempt's full Stage C reservation: the final admitted input estimate and the bound output cap
+    (which also bounds reasoning output) at the registry's conservative prices."""
+    prices = policy.snapshot.policy.models[admitted.model_id].prices
+    return reservation_usd(
+        input_tokens=admitted.decision.input_tokens,
+        output_tokens=admitted.output_cap,
+        input_usd_per_million=prices.input_usd_per_million,
+        output_usd_per_million=prices.output_usd_per_million,
+    )
 
 
 def _stop_experimental_route(policy: GatewayModelPolicy, admitted: AdmittedRequest, code: str) -> None:

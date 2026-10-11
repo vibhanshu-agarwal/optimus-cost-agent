@@ -1401,6 +1401,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.__main__:main:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. main opens no file itself: StageCGuard.open reopens the Stage C ledger through optimus_model_policy.stage_c (classified there), only after the signed manifest binds the envelope composed from the ledger argument; a start never creates a ledger.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_main_stage_c.py::test_a_stage_c_gateway_guards_the_envelope_the_manifest_binds",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.__main__:main:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. The call is argparse's parser.error with a fixed usage message (--plan12-stage-c-ledger needs --plan12-test-profile); no runtime data reaches it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_main_stage_c.py::test_a_ledger_needs_a_test_profile",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.chat_completions:handle_chat_completions_request:exception_export",
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.chat_completions:handle_chat_completions_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
@@ -3734,6 +3750,54 @@
       "rationale": "Inspection: _sha256_canonical serializes route and payload identities to canonical JSON only as SHA-256 hash input for the Plan 12.2 route binding; the JSON is never persisted or exported.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/model_policy/test_binding.py::test_payload_digest_covers_model_roles_content_cap_and_reasoning",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.stage_c:StageCGuard.open:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: reopens the existing, initialized Stage C ledger in binary append mode for the guard's own records. The Stage C ledger (Plan 12.2 Task 13) records fixed fields only: the record kind (init, window, reserve, settle, halt), the release ID, the envelope literal (a digest), the limits, decimal reservations and provider-reported charges, attempt numbers, Gateway attempt IDs (gw- plus a UUID), host request IDs, attempt outcome codes, content-free reasons and timestamps. It never holds a prompt, provider text, usage payload or credential; the file lives under the operator's trusted runtime root.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_stage_c_ledger.py::test_the_ledger_records_no_prompt_credential_or_provider_text",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.stage_c:_Lock.__init__:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens the ledger's .lock file only to hold an exclusive operating-system lock for the Gateway's life; nothing is written to it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_stage_c_ledger.py::test_one_writer_holds_the_ledger",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.stage_c:_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonical JSON of the envelope fields or the fixed scenario catalogue, serialized only to compute its SHA-256; the text is never persisted or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_stage_c_envelope.py::test_the_envelope_binds_the_release_limits_profiles_scenarios_and_ledger",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.stage_c:_write_record:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes one ledger record, one JSON line, flushed and fsynced. The Stage C ledger (Plan 12.2 Task 13) records fixed fields only: the record kind (init, window, reserve, settle, halt), the release ID, the envelope literal (a digest), the limits, decimal reservations and provider-reported charges, attempt numbers, Gateway attempt IDs (gw- plus a UUID), host request IDs, attempt outcome codes, content-free reasons and timestamps. It never holds a prompt, provider text, usage payload or credential; the file lives under the operator's trusted runtime root.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_stage_c_ledger.py::test_the_ledger_records_no_prompt_credential_or_provider_text",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.stage_c:_write_record:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes one serialized ledger record line, then flushes and fsyncs it. The Stage C ledger (Plan 12.2 Task 13) records fixed fields only: the record kind (init, window, reserve, settle, halt), the release ID, the envelope literal (a digest), the limits, decimal reservations and provider-reported charges, attempt numbers, Gateway attempt IDs (gw- plus a UUID), host request IDs, attempt outcome codes, content-free reasons and timestamps. It never holds a prompt, provider text, usage payload or credential; the file lives under the operator's trusted runtime root.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_stage_c_ledger.py::test_the_ledger_records_no_prompt_credential_or_provider_text",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.stage_c:initialize_stage_c_ledger:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: creates the release's ledger once, in exclusive mode (never replacing or resetting one), for the release ceremony; it holds only the initialization record. The Stage C ledger (Plan 12.2 Task 13) records fixed fields only: the record kind (init, window, reserve, settle, halt), the release ID, the envelope literal (a digest), the limits, decimal reservations and provider-reported charges, attempt numbers, Gateway attempt IDs (gw- plus a UUID), host request IDs, attempt outcome codes, content-free reasons and timestamps. It never holds a prompt, provider text, usage payload or credential; the file lives under the operator's trusted runtime root.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_stage_c_ledger.py::test_the_ledger_is_initialized_once_and_never_reset",
       "evidence_tier": "unit"
     },
     {
