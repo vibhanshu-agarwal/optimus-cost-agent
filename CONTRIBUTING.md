@@ -123,12 +123,31 @@ WSL/Linux use separate environments; do not sync or replace an environment while
 uv sync --frozen --extra dev
 ```
 
-From that worktree, use its prepared environment without another sync. A full default-selection
-coverage run is:
+From that worktree, use its prepared environment without another sync. The canonical product
+coverage gate runs the one full default selection, measuring every configured product package,
+and decides each floor on that dataset: the Optimus product group, Context Engine and model policy
+at 80 % with coverage's own precision-0 comparison (79.5 % compares as 80 %); Evidence Handoff and
+the aggregate are reported, not enforced. It also exports the same dataset as coverage JSON:
 
 ```bash
-uv run --no-sync pytest --cov=optimus --cov-branch --cov-report=term-missing
+uv run --no-sync python tools/check_product_coverage.py --run-full-suite --groups tools/product-coverage-groups.json --report-json tmp/coverage/product-coverage-report.json --coverage-json tmp/coverage/coverage.json
 ```
+
+Then check that export's full-run validity; it decides no floor and runs no second suite. It
+binds the export to the gate's report and to exactly one full default session of this clean
+checkout (or the verified `--run-record` you name), and fails closed on unknown packages, missing
+rows, stale data or an unidentified or dirty run:
+
+```bash
+uv run --no-sync python -m tools.testing.coverage_products validate --coverage-json tmp/coverage/coverage.json --gate-report tmp/coverage/product-coverage-report.json
+```
+
+The commit hook (`optimus-check: pytest-coverage`) runs the tests that this commit's staged
+changes select, coverage-free, with a bounded broad fallback for configuration and unmapped
+changes: `python -m tools.testing.run_profile --profile commit`. Use `--profile quick` for the
+working tree against HEAD while developing. Checkpoints run
+`python -m tools.testing.run_profile --profile checkpoint --base <recorded SHA>`. CI runs the full
+suite with coverage and the product gates.
 
 For a focused run that must not write coverage, for example:
 

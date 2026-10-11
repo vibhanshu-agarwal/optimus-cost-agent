@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from collections.abc import Sequence
@@ -9,6 +10,12 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 _WINDOWS_ABSOLUTE = re.compile(r"^[A-Za-z]:/")
+# Plan 11.30: inside a commit hook, git names the index being committed in GIT_INDEX_FILE, but a test run strips every
+# GIT_* variable (tests/conftest.py). The profile runner hands that index to its test runs under these names, so a
+# scanner lists the commit's own files -- for the repository being committed only. The names stay outside the
+# product's OPTIMUS_* namespace: the agent's launch gate refuses any OPTIMUS_* name it does not know.
+COMMIT_INDEX_FILE = "TEST_RUN_COMMIT_INDEX_FILE"
+COMMIT_INDEX_ROOT = "TEST_RUN_COMMIT_INDEX_ROOT"
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +40,23 @@ def _normalize_pathspec(pathspec: str) -> str:
     return pure.as_posix()
 
 
+def index_environment(root: Path) -> dict[str, str] | None:
+    """The environment that lists `root`'s index: inside a commit hook's test run, the commit's own index (named by
+    the profile runner) when `root` is the repository being committed; otherwise None, the default index. A named
+    commit index that no longer exists is refused: listing it would read as an empty repository."""
+    index, owner = os.environ.get(COMMIT_INDEX_FILE), os.environ.get(COMMIT_INDEX_ROOT)
+    if not index or not owner:
+        return None
+    try:
+        if Path(owner).resolve() != root.resolve():
+            return None
+    except OSError:
+        return None
+    if not Path(index).is_file():
+        raise TrackedFileInventoryError("commit_index_missing", index)
+    return {**os.environ, "GIT_INDEX_FILE": index}
+
+
 def tracked_repository_files(
     project_root: Path, *, pathspecs: Sequence[str]
 ) -> tuple[Path, ...]:
@@ -42,6 +66,7 @@ def tracked_repository_files(
     except OSError as exc:
         raise TrackedFileInventoryError("project_root_invalid", str(project_root)) from exc
     normalized_pathspecs = tuple(_normalize_pathspec(item) for item in pathspecs)
+    environment = index_environment(root)
     try:
         completed = subprocess.run(  # noqa: S603
             ["git", "ls-files", "-z", "--", *normalized_pathspecs],
@@ -49,6 +74,7 @@ def tracked_repository_files(
             check=False,
             capture_output=True,
             shell=False,
+            env=environment,
         )
     except OSError as exc:
         raise TrackedFileInventoryError("git_ls_files_failed", type(exc).__name__) from exc

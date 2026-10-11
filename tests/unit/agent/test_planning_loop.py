@@ -19,7 +19,6 @@ from optimus.agent.planning_loop import (
     pack_planning_evidence,
     parse_planning_turn,
     planning_observation_carryover_bytes,
-    run_planning_with_budget,
 )
 from optimus.agent.workspace_context import DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
 
@@ -28,16 +27,14 @@ def test_planning_policy_defaults_to_three_turns_and_two_repeated_failures():
     policy = PlanningLoopPolicy()
     assert policy.max_planning_turns == 3
     assert policy.max_wall_clock_minutes == 30
-    loop_policy = policy.to_loop_budget_policy(max_cost_usd=Decimal("0.05"))
+    loop_policy = policy.to_loop_budget_policy()
     assert loop_policy.max_iterations == 3
-    assert loop_policy.max_budget_usd == Decimal("0.05")
+    assert loop_policy.max_budget_usd is None  # no product dollar bound (Plan 12.2 Task 11)
     assert loop_policy.repeated_failure_limit == 2
 
 
-def test_zero_run_budget_fails_before_loop_policy_construction():
-    result = run_planning_with_budget(Decimal("0"))
-    assert result.stop_reason == "PLANNING_BUDGET_EXHAUSTED"
-    assert result.settled_turns == 0
+def test_an_evaluation_cap_is_carried_into_the_loop_policy():
+    assert PlanningLoopPolicy().to_loop_budget_policy(max_cost_usd=Decimal("0.05")).max_budget_usd == Decimal("0.05")
 
 
 @pytest.mark.parametrize("turns", [0, -1])
@@ -56,9 +53,9 @@ def test_planning_policy_rejects_non_positive_wall_clock():
         PlanningLoopPolicy(max_wall_clock_minutes=0)
 
 
-def test_planning_policy_rejects_non_positive_budget_for_loop_policy():
+def test_planning_policy_rejects_a_non_positive_evaluation_cap_for_loop_policy():
     policy = PlanningLoopPolicy()
-    with pytest.raises(ValueError, match="max_cost_usd must be positive"):
+    with pytest.raises(ValueError, match="evaluation cap must be positive"):
         policy.to_loop_budget_policy(max_cost_usd=Decimal("0"))
 
 

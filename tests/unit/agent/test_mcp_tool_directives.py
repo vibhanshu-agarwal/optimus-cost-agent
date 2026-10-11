@@ -288,7 +288,6 @@ def test_both_prompt_grammars_document_only_generic_mcp_directives():
         "task",
         planning_turn=1,
         max_planning_turns=3,
-        remaining_budget_usd=Decimal("0.05"),
         remaining_wall_clock_minutes=30,
     )
     for prompt in (single, multi):
@@ -305,7 +304,6 @@ def test_multi_turn_prompt_marks_mcp_evidence_untrusted():
         "task",
         planning_turn=2,
         max_planning_turns=3,
-        remaining_budget_usd=Decimal("0.04"),
         remaining_wall_clock_minutes=12,
         mcp_evidence_envelope="MCP_BLOCK server=tools tool=lookup\nsafe\nEND_MCP_BLOCK\n",
     )

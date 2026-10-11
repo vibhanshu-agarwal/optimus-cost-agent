@@ -4,6 +4,21 @@ Local-first Python ACP (Agent Client Protocol) server for building **cost-aware 
 
 **Status:** Early initialization (Phase 1). Design docs and project standards are in place; application code is under active development.
 
+## Conversation floor and turn effects
+
+- Each ACP session keeps its full conversation up to a 512 KiB floor. The first time a prompt or a
+  reply takes it past 80%, the agent says once that the thread should move to a new one. A full
+  conversation is refused with a readable message, and the turn ends normally.
+- A live `usage_update` meter follows every committed turn. It carries the session cost only while
+  that cost is fully known.
+- Each agent message block ends with a paragraph break, and the model sees past turns in turn order.
+- Approved Agent turns record the real effect of their file writes and tests. A cancel during
+  approved execution stops any operation that has not started; one already running is not
+  interrupted.
+
+The optional Context Engine is not part of this. Details and limits are in the
+[Plan 12.2 Package A delivery record](docs/superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md).
+
 ## Features (Phase 1)
 
 - **Gateway-only credential runtime** — only `OPTIMUS_GATEWAY_URL` and `OPTIMUS_API_KEY` are required locally; no upstream provider credential is resolved in the agent process
@@ -148,7 +163,7 @@ and LangSmith is not a dependency.
 ### Phase 1 Retry, Fitness Gates, Golden Tasks, and Release Gate
 
 Plan 8 adds the Sprint 1 validation and release skeleton. `RetryController`
-classifies gateway, policy, budget, and fitness-gate failures into transient,
+classifies gateway, policy, and fitness-gate failures into transient,
 permanent, and escalate paths, caps transient retries at three with bounded
 backoff, and records retry metadata for telemetry. `CompositeFitnessGateRunner`
 runs required and optional checks, fails closed on exceptions, and blocks
@@ -207,13 +222,15 @@ fixture set described above.
 Plan 9 adds architectural support for bounded goal-driven loops and curated
 workflow skills. Loops are not the default execution mode. They are enabled only
 when a task has a machine-checkable completion condition and explicit
-`LoopBudgetPolicy` bounds for iterations, USD budget, wall-clock time, and
-repeated failures.
+`LoopBudgetPolicy` bounds for iterations, wall-clock time and repeated
+failures. A product loop has no dollar stop; only an independently authorized
+evaluation caller may pass its own explicit dollar cap (Plan 12.2 Task 11).
 
 Loop iterations persist progress to an append-only ledger and must use the same
 `PreToolGuard` and permission policy as ordinary Agent-mode tool calls. A loop
-that reaches completion, budget exhaustion, max iterations, wall-clock timeout,
-repeated failure, or human halt records a stable `LoopStopReason`.
+that reaches completion, max iterations, wall-clock timeout, repeated failure,
+human halt, or an evaluation caller's explicit dollar cap records a stable
+`LoopStopReason`.
 
 Skills are reviewed Markdown artifacts with frontmatter metadata. Trusted skills
 may be loaded only when their description or globs match the task. Draft skills
@@ -270,8 +287,8 @@ required file's complete content exceeds the single-pass context budget, the
 agent runs a bounded READ → observe → replan loop (default 3 turns, 30 minute
 wall clock, both overridable per request) instead of failing closed on every
 oversized reference. Every Gateway call across every turn — including
-retries — is charged against the same run-level `max_cost_usd` ceiling, and
-only the final settled plan is ever hashed, persisted, or exposed for ACP
+retries — is accounted to the run, with no product dollar stop (Plan 12.2
+Task 11), and only the final settled plan is ever hashed, persisted, or exposed for ACP
 approval; intermediate turns never surface a plan hash or a permission
 request. Implemented and live-verified 2026-07-12 over real `acpx` — see
 `reports/plan-9-85-multi-turn-acpx-evidence.md`. Model-initiated replanning
@@ -886,10 +903,10 @@ optimus-cost-agent/
 | Document | Purpose |
 |----------|---------|
 | [docs/README.md](docs/README.md) | Index of every current document; older versions are in each folder's `archive/` |
-| [docs/Optimus-Cost-Agent-Architecture-v2.18.pdf](docs/Optimus-Cost-Agent-Architecture-v2.18.pdf) | High-level design |
-| [docs/Optimus-Cost-Agent-LLD-v2.41.pdf](docs/Optimus-Cost-Agent-LLD-v2.41.pdf) | Low-level design |
-| [docs/Optimus-Cost-Agent-Test-Strategy-v1.7.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.7.pdf) | Testing approach |
-| [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.3.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.3.pdf) | Execution guardrails |
+| [docs/Optimus-Cost-Agent-Architecture-v2.19.pdf](docs/Optimus-Cost-Agent-Architecture-v2.19.pdf) | High-level design |
+| [docs/Optimus-Cost-Agent-LLD-v2.42.pdf](docs/Optimus-Cost-Agent-LLD-v2.42.pdf) | Low-level design |
+| [docs/Optimus-Cost-Agent-Test-Strategy-v1.8.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.8.pdf) | Testing approach |
+| [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.4.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.4.pdf) | Execution guardrails |
 | [AGENTS.md](AGENTS.md) | Agent behavior, logging, safety, and testing gates |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Human and agent contribution workflow |
 | [plan backlog](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md) | Sole live registry; the flat `plans/archive/` holds terminal history |

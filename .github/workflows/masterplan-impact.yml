@@ -1,4 +1,4 @@
-name: Work tracking impact
+name: Masterplan impact
 
 on:
   pull_request:
@@ -8,7 +8,6 @@ permissions:
   contents: read
 
 jobs:
-  # The job id stays `verify`: it is the required status-check context on main.
   verify:
     runs-on: ubuntu-latest
     steps:
@@ -29,14 +28,22 @@ jobs:
       - name: Record changed files
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: git diff --name-only --no-renames --diff-filter=ACMRD "$BASE_SHA"...HEAD > "$RUNNER_TEMP/work-tracking-changed-files.txt"
+        run: git diff --name-only --diff-filter=ACMRD "$BASE_SHA"...HEAD > "$RUNNER_TEMP/masterplan-changed-files.txt"
 
-      - name: Verify the work tracking impact declaration
+      - name: Record backlog diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: >-
+          git diff --unified=0 "$BASE_SHA"...HEAD
+          -- docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md > "$RUNNER_TEMP/masterplan-backlog.diff"
+
+      - name: Verify masterplan declaration
         run: >-
           uv run --frozen python tools/verify_masterplan_impact.py
           --event-file "$GITHUB_EVENT_PATH"
-          --changed-files-file "$RUNNER_TEMP/work-tracking-changed-files.txt"
-          --root .
+          --changed-files-file "$RUNNER_TEMP/masterplan-changed-files.txt"
+          --masterplan docs/superpowers/plans/hardening-runtime-quality-masterplan.md
+          --backlog-diff-file "$RUNNER_TEMP/masterplan-backlog.diff"
 
       - name: Test the verifier
         run: uv run --frozen pytest tests/unit/tools/test_verify_masterplan_impact.py -q

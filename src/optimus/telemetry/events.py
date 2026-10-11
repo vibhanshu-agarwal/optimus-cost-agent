@@ -505,22 +505,22 @@ class TelemetryEvent(BaseModel):
         iteration: int,
         stop_reason: str,
         cost_usd_spent: Decimal,
-        max_budget_usd: Decimal,
         summary: str,
+        max_budget_usd: Decimal | None = None,
     ) -> TelemetryEvent:
+        payload: dict[str, Any] = {"iteration": iteration, "stop_reason": stop_reason, "cost_usd_spent": cost_usd_spent}
+        # An evaluation caller's explicit cap only; a product loop has no dollar bound, so the key is
+        # absent rather than implying one (Plan 12.2 Task 11).
+        if max_budget_usd is not None:
+            payload["max_budget_usd"] = max_budget_usd
+        payload["summary"] = summary
         return cls(
             kind=TelemetryEventKind.GOAL_LOOP,
             run_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
-            payload={
-                "iteration": iteration,
-                "stop_reason": stop_reason,
-                "cost_usd_spent": cost_usd_spent,
-                "max_budget_usd": max_budget_usd,
-                "summary": summary,
-            },
+            payload=payload,
         )
 
     @classmethod

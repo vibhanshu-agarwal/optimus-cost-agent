@@ -44,6 +44,37 @@ by this folder.
        text. Codex verified the archive checksum and the scope/filing question-tool answers; Claude
        checked the exported selections. Raw S2 is archival provenance, not an operating/test/release input.
      - S1 remains the cited provenance for the frozen 2026-09-30 records; S2 adds later selections.
+   - **Source S3.** Fresh Package A/cadence export, session `4162c45b-36f9-4cec-adb6-722ec3b28cb2`,
+     taken on 2026-10-02 (Asia/Calcutta): `optimus-handoff\decisions-sources\2026-10-02-claude-session-context-engine-package-a-export.zip`.
+     - SHA-256 `9B89272060555D1542B14F25C37807F21C5763222D0A93CF2C1ECC791D642A66`.
+     - Covers the post-S2 local-commit selection, Task 3's narrow exception, standing checkpoint
+       cadence and Package A PR then CP1 selections. Operator text/tool-result selections were
+       checked directly inside the archive. Original UTC times are retained; the cadence/next-step
+       answers on October 1 UTC occurred on October 2 in the operator's timezone.
+     - S1/S2 remain the provenance of their frozen records. S3 is external archival provenance,
+       not a build/test/runtime input; no raw transcript is added to the repository.
+   - **Source S4.** CP4 offline-release export of session `4162c45b-36f9-4cec-adb6-722ec3b28cb2`,
+     taken on 2026-10-07: `optimus-handoff\decisions-sources\2026-10-07-claude-session-context-engine-cp4-d7-export.zip`.
+     - SHA-256 `4E1EA17C35BF0E0C6B744A579A911E9B769313969C19430CDCEF47F3FA20A862`.
+     - It is a single-file ZIP of the session's raw transcript JSONL (71,505 records), made by the
+       operator. The app's Export refuses sessions over 200 MB, and this one was 238 MB. Codex
+       confirmed that the single-file ZIP is sufficient provenance (2026-10-07).
+     - It covers the operator's 2026-10-04 offline release (`2026-10-04T11:26:55.284Z`, 16:56:55 IST;
+       record `b34978ea-d159-41c0-bee3-ad74a26a5bb2`, line 57140), quoted in ADR-018.
+       - Claude checked inside the archive that the message equals, unchanged, the "Offline and free
+         release" block of Codex's sealed release text (SHA-256 `404354cf…`).
+       - Codex independently confirmed the message.
+     - S4 is external archival provenance, not a build/test/runtime input. No raw transcript is
+       added to the repository.
+   - **Source S5.** Plan 11.30 operator messages dated 2026-10-04 in Codex chat
+     `01a10617-9940-72c0-a5e2-e3f8c3241055` (drafted as S3 on the Plan 11.30 branch before main filed S3/S4).
+     - External transcript excerpt: `optimus-handoff\decisions-sources\2026-10-04-codex-plan-11-30-operator-decisions-export.json`.
+     - SHA-256: `3DDD90F7FCB52DE88059E8A4582CFF37A6EF27BDA816A32A34E986E39CFB20D5`.
+     - Four exact original messages: review/simplicity instruction (`10:02:14.535Z`), Codex approval
+       question (`10:11:16.427Z`), operator approval (`10:14:05.341Z`) and Claude assignment
+       (`10:17:01.533Z`), all 2026-10-04 UTC. Explicitly scoped excerpt, not a full export.
+       ADR-020 reproduces operator words and authority boundaries. Raw S5 is archival provenance,
+       never an operating, test or release dependency; S1–S4 retain their existing meanings.
 2. **Label the decider.** Each record says who decided: the operator, an agent (Claude or Codex), or an
    agent proposal still awaiting the operator. A value an agent chose must never read as an operator
    requirement.
@@ -101,7 +132,7 @@ by this folder.
 | ADR | Title | Status | Decider | Date |
 |---|---|---|---|---|
 | [001](ADR-001-context-engine-separate-product.md) | The Context Engine is a separate, loosely coupled product; the Optimus floor stays | Accepted | Operator; details agreed by Claude and Codex | 2026-09-28 to 09-30 |
-| [002](ADR-002-history-strategies-and-picker.md) | History strategies (compaction default, hybrid, sliding window) and the IDE picker | Accepted; effect-repair placement clarified by [ADR-013](ADR-013-plan12-effect-producer-repair.md); repair evidence still owed | Operator; definitions agreed by Claude and Codex | 2026-09-29 to 09-30 |
+| [002](ADR-002-history-strategies-and-picker.md) | History strategies (compaction default, hybrid, sliding window) and the IDE picker | Accepted; effect-repair placement clarified by [ADR-013](ADR-013-plan12-effect-producer-repair.md); offline repair evidence accepted in Package A; main publication/live gates remain | Operator; definitions agreed by Claude and Codex | 2026-09-29 to 09-30 |
 | [003](ADR-003-context-ceiling-and-history-limits.md) | Context ceiling of about 256K for all models; history may exceed 512 KiB while the engine is attached; Haiku removed | Accepted-with-open-items; D7 interpretation completed by [ADR-014](ADR-014-all-session-request-guard-floor-clarification.md); measurement obligations remain | Operator | 2026-09-30 |
 | [004](ADR-004-curated-model-registry.md) | Curated model registry (YAML), tiers, origin rule, per-token selection among eligible models | Accepted-with-open-items | Operator; mechanism proposed by Claude, reviewed by Codex | 2026-09-30 |
 | [005](ADR-005-cost-alerts-not-limits.md) | Cost policy: alerts and warnings, not limits | Accepted; sequencing completed by [ADR-015](ADR-015-cost-stop-removal-sequencing.md); runtime migration still owed | Operator | 2026-09-30 |
@@ -112,15 +143,24 @@ by this folder.
 | [010](ADR-010-data-handling-for-chinese-model-routes.md) | Data handling on Chinese-model routes: no restriction now | Deferred | Operator | 2026-09-30 |
 | [011](ADR-011-how-decisions-are-recorded.md) | How decisions are recorded | Accepted | Operator (requirement and repository home); mechanism agreed by Claude and Codex | 2026-09-30 |
 | [012](ADR-012-cost-savings-report.md) | A cost-savings report is a Plan 12 feature | Accepted-with-open-items (requirement accepted; design proposed) | Operator; design by Claude, awaiting Codex | 2026-09-30 |
-| [013](ADR-013-plan12-effect-producer-repair.md) | Effect/cancellation repair as Plan 12’s first code step; completes [ADR-002](ADR-002-history-strategies-and-picker.md) delivery prerequisite, relates to [ADR-001](ADR-001-context-engine-separate-product.md) | Accepted-with-open-items; repair evidence owed | Operator; narrow mechanisms agreed by Claude/Codex | 2026-10-01 |
+| [013](ADR-013-plan12-effect-producer-repair.md) | Effect/cancellation repair as Plan 12’s first code step; completes [ADR-002](ADR-002-history-strategies-and-picker.md) delivery prerequisite, relates to [ADR-001](ADR-001-context-engine-separate-product.md) | Accepted-with-open-items; Package A offline repair accepted; main publication/live gates remain | Operator; narrow mechanisms agreed by Claude/Codex | 2026-10-01 |
 | [014](ADR-014-all-session-request-guard-floor-clarification.md) | All-session request guard and unchanged source floor; completes [ADR-003](ADR-003-context-ceiling-and-history-limits.md) D7 interpretation | Accepted-with-open-items; full-floor/estimator evidence owed | Operator | 2026-10-01 |
 | [015](ADR-015-cost-stop-removal-sequencing.md) | Cost-stop removal after accounting/D6; completes [ADR-005](ADR-005-cost-alerts-not-limits.md) sequencing, clarifies [ADR-009](ADR-009-loop-control-without-stopping-the-user.md) dependency | Accepted-with-open-items; D6 and migration owed | Operator | 2026-10-01 |
+| [016](ADR-016-checkpoint-review-cadence.md) | At most four checkpoint reviews; Fable then Codex; local focused-test commits and Package A publication | Accepted | Operator | 2026-10-02 |
+| [017](ADR-017-package-a-coverage-exception.md) | Exact four-statement coverage residual at 38a465f | Accepted; terminal result remains NOT MET | Operator | 2026-10-01 |
+| [018](ADR-018-plan12-cp4-numeric-policy.md) | Plan 12 CP4 measured numeric policy, whole-turn availability limitation and the D7 request-capacity exception; completes [ADR-003](ADR-003-context-ceiling-and-history-limits.md) numeric policy within Plan 12.2 | Accepted-with-open-items; numeric policy, one repack and whole-turn/D7 limitation accepted on 2026-10-04 (S4); route qualification, summary-quality evidence and real-editor Task 13 remain open; activation/publication held | Operator (2026-10-04, source S4); drafted by Codex, filed by Claude | 2026-10-04 |
+| [019](ADR-019-plan12-task1-policy-integration.md) | Plan 12 accepted Task 1 mechanisms and governed integration; partial completion/clarification of [ADR-003](ADR-003-context-ceiling-and-history-limits.md) to [ADR-006](ADR-006-summarizer-model.md) | Proposed governed integration; the Task 1 mechanisms keep their 2026-10-02 acceptance in the archived first editions | Operator (2026-10-02 acceptance); integration proposed by Codex | 2026-10-04 |
+| [020](ADR-020-test-cadence-product-coverage-and-staged-delivery.md) | Test cadence, product coverage, registry mechanisms and staged turnaround delivery | Accepted-with-open-items; Tasks 0–3 locally accepted/delivered; progress/command dispositions approved; local Task 6 accepted with approved checkout exception; report/docs delivered at 1c7be2d; Stage B Task 4/C/G accepted and local delivery verified at `43eb190`; Task 5/D accepted and local delivery verified at `66ddabf`; Stage B governance and local Task 6 accepted at measured `3cece0a`; results delivered at `26bd667`; Claude/Codex shared coverage responsibility clarified; v5 approved; I1 bootstrap local delivery verified at `6f1935d`; PR279 main-push baseline accepted at `4ed9b25`; current (2026-10-11): I1 merged on main via PR #279 (`4ed9b25`) and its main-push baseline accepted; I2/I3 integration merge committed locally at `ea88814e` (tree `9048bc8d`) and accepted, with I3 evidence including the WSL platform discharge; I4 exact-source finals accepted at `ea88814e` (Windows/WSL canonical gates and validation pass); S1 reader correction delivered at `343b233a` and accepted, with corrected-source I4 finals accepted at that pin (Windows/WSL canonical gates and validation pass; WSL platform obligation discharged at that pin only); documentary delivery `281f8ce7` accepted and its forward WSL platform obligation discharged; PR #280 published at `281f8ce7`, with its candidate Linux CI and seven-module safety comparison (no regression) accepted at merge ref `1946713e`; the D3 documentary commit, any branch update, merge, closure, archival and cleanup held; record unpublished until first merge | Operator policy; mechanisms agreed by Claude/Codex | 2026-10-04 |
+
+**Package A delivery:** [local accepted implementation and evidence](../superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md);
+the sole backlog records current publication/next gates. The frozen ADR-013 repair decision and
+Plan 11.25 correction remain unchanged; the repair exists on the Package A branch, not yet main.
 
 **Evidence in the repository:** [industry practice and model catalog, 2026-09-30](2026-09-30-industry-context-cost-and-model-evidence.md).
 It holds the survey of how eight coding agents handle context and spend, the OpenRouter catalog snapshot
 of the tier models, and their sources.
 
-**Related filed contract:** [Plan 12.2 design](../superpowers/specs/2026-10-01-plan-12-2-context-engine-design.md), [implementation plan](../superpowers/plans/2026-10-01-plan-12-2-context-engine-implementation.md) and [Plan 11.25 correction note](../superpowers/reviews/2026-10-01-plan-11-25-effect-instrumentation-correction.md). The predecessors are only partially completed/clarified, so ADR-001–012 remain current and unchanged; none moves to archive.
+**Related filed contract:** [Plan 12.2 design](../superpowers/specs/2026-10-01-plan-12-2-context-engine-design_v3.md) (v3), [implementation plan](../superpowers/plans/2026-10-01-plan-12-2-context-engine-implementation_v4.md) (v4; earlier editions are archived), [Task 1 contracts](../superpowers/specs/2026-10-02-plan-12-2-task1-contracts_v3.md) (v3; the operator's 2026-10-02 acceptance belongs to the archived [first contracts](../superpowers/specs/archive/2026-10-02-plan-12-2-task1-contracts.md) and [v2 plan](../superpowers/plans/archive/2026-10-01-plan-12-2-context-engine-implementation_v2.md)) and [Plan 11.25 correction note](../superpowers/reviews/2026-10-01-plan-11-25-effect-instrumentation-correction.md). The predecessors are only partially completed/clarified, so ADR-001–012 remain current and unchanged; none moves to archive.
 
 **Working papers outside the repository** (the operator's handoff folder,
 `optimus-handoff\plan-12-discovery\`). They are kept for provenance only; the records above are

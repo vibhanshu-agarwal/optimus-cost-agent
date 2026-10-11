@@ -15,6 +15,7 @@ child interpreter under a verified execution context and seals what it measured.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping
@@ -25,7 +26,7 @@ from .evidence_store import (
     verify_retained_evidence,
     write_evidence_sidecar,
 )
-from .measurement import MeasurementSpecification, run_fresh_measurement
+from .measurement import EnvironmentBinding, MeasurementSpecification, run_fresh_measurement
 from .model import (
     AUDIT_ARTIFACT_SCHEMA_V2,
     CURRENT_MEASUREMENT_SCHEMA_VERSION,
@@ -138,13 +139,18 @@ def measure_current(
     plans: tuple[MeasurementPlan, ...],
     repository_root: str | Path,
     evidence_directory: str | Path,
+    measure: Callable[..., tuple[EnvironmentBinding, Any]] | None = None,
 ) -> tuple[CurrentMeasurementRecord, ...]:
     """Run each plan in a fresh child, seal what it measured, then prove the seal resolves.
 
     The verification below runs **after** the measuring process has exited, from the
     written bytes only. That ordering is the point: a check performed inside the process
     that produced the evidence proves only that the process agreed with itself.
+
+    `measure` defaults to :func:`run_fresh_measurement`. Only test helpers pass another: the
+    Plan 11.30 session reuse of an identical earlier measurement, which the run record names.
     """
+    measure = measure or run_fresh_measurement
     evidence_directory = Path(evidence_directory)
     # PREFLIGHT, before anything is measured or written. Two plans for the same entry would
     # produce the same record id, and an artifact cannot carry two records with one id --
@@ -159,7 +165,7 @@ def measure_current(
     records: list[CurrentMeasurementRecord] = []
     for plan in plans:
         entry = plan.entry
-        binding, result = run_fresh_measurement(
+        binding, result = measure(
             source=plan.source,
             spec=plan.spec,
             entry=entry,

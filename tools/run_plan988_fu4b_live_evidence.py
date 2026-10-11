@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
+from optimus.agent.prompts import MULTI_TURN_PLANNER_PROMPT_VERSION  # noqa: E402
 from optimus.telemetry.subjects import sanitize_workspace_text  # noqa: E402
 from tools.run_plan987_acpx_live_evidence import (  # noqa: E402
     EvidenceSummary,
@@ -33,14 +34,14 @@ from tools.run_plan987_acpx_live_evidence import (  # noqa: E402
 PLAN988_SCHEMA_VERSION = "plan-9-88-fu4b-evidence-v1"
 EVIDENCE_LANE = "P9.88-FU4B"
 PREDICATE_ID = "P9.88-FU4B-QUALIFY-v1"
-BASELINE_IMPLEMENTATION_SHA = "d71b29390c7bafe57612bcc0ea3a0fcf5c06d7e9"
+BASELINE_IMPLEMENTATION_SHA = "d71b29390c7bafe57612bcc0ea3a0fcf5c06d7e9"  # pragma: allowlist secret - historical commit-identity pin
 BASELINE_FIXTURE_MANIFEST_SHA256 = (
-    "a642d014fe0317d3bb8d76fd03ce596721a5d223129da7150ee8c5b4cad082bd"
+    "a642d014fe0317d3bb8d76fd03ce596721a5d223129da7150ee8c5b4cad082bd"  # pragma: allowlist secret - fixture-manifest sha256 pin
 )
-BASELINE_TASK_SHA256 = "72ac1a176db8bbe91f8533aa1b701b36f319eeecb5860dcb03d8bfb363175252"
+BASELINE_TASK_SHA256 = "72ac1a176db8bbe91f8533aa1b701b36f319eeecb5860dcb03d8bfb363175252"  # pragma: allowlist secret - task sha256 pin
 BASELINE_FIXTURE_FILE_SHA256S = {
-    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8",
-    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",
+    "target.py": "96fb9c16da5fb69693ec7607d495f905f4162f40de2049a8891a3dee1643a4b8",  # pragma: allowlist secret - fixture sha256 pin
+    "policy.txt": "dcfe98c1394d297d51cc0d82b88ecb0c1cfccf71182cd7354c5bfef992a39908",  # pragma: allowlist secret - fixture sha256 pin
 }
 BASELINE_PROMPT_VERSION = "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu4c"
 LANE_PROMPT_VERSION = "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-07-12-plan-9-87-fu5a"
@@ -867,6 +868,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.pre_register and not args.run:
         return 0
+
+    if MULTI_TURN_PLANNER_PROMPT_VERSION != LANE_PROMPT_VERSION:
+        # The lane is frozen at its fu5a planner prompt. Once the product prompt changed (Plan 12.2 Task 11),
+        # a new attempt would run another prompt under this lane's label: the lane stays verifiable only.
+        print("Plan 9.88 FU-4B lane is frozen at its own planner prompt, which the current planner no longer uses; no new attempt can be captured", file=sys.stderr)
+        return 2
 
     if args.attempt is None or not args.implementation_sha:
         parser.error("--attempt and --implementation-sha are required")

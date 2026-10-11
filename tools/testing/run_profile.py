@@ -1,0 +1,798 @@
+"""Run a change-selected test profile: `python -m tools.testing.run_profile --profile NAME [--base SHA]`.
+
+Test tooling only (Plan 11.30). The runner reads Git and the tracked sources, selects with
+`tools/testing/test_profiles.py`, writes one selection record and one evidence manifest, and runs the
+selection as ordinary pytest subprocesses of this checkout under the unchanged default `-m`, so each
+subrun is an ACTIVE run-context run with its own records. Nothing here changes the index or HEAD.
+
+Git is read with the caller's environment on purpose: inside a pre-commit hook, Git points
+`GIT_INDEX_FILE` at the index being committed, and the commit profile must select from that index.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import secrets
+import subprocess
+import sys
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from tools import process_tree
+from tools.testing import run_context
+from tools.testing import run_context_records as records
+from tools.testing import test_profiles as profiles
+from tools.tracked_repository_files import COMMIT_INDEX_FILE, COMMIT_INDEX_ROOT
+
+
+def _git(root: Path, *arguments: str) -> bytes:
+    completed = subprocess.run(["git", *arguments], cwd=root, capture_output=True, check=False)  # noqa: S603, S607
+    if completed.returncode != 0:
+        raise profiles.SelectionError(f"git {arguments[0]} failed with exit {completed.returncode}")
+    return completed.stdout
+
+
+def _has_commit(root: Path, revision: str) -> bool:
+    completed = subprocess.run(  # noqa: S603, S607
+        ["git", "cat-file", "-e", f"{revision}^{{commit}}"], cwd=root, capture_output=True, check=False,
+    )
+    return completed.returncode == 0
+
+
+def _untracked(root: Path) -> tuple[profiles.Change, ...]:
+    names = _git(root, "ls-files", "--others", "--exclude-standard", "-z").decode("utf-8").split("\0")
+    return tuple(profiles.Change("A", name) for name in names if name)
+
+
+def _working_digest(root: Path, path: str) -> str | None:
+    try:
+        return hashlib.sha256((root / path).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _provisional(root: Path, changes: tuple[profiles.Change, ...]) -> tuple[tuple[str, str | None], ...]:
+    paths = {path for change in changes for path in (change.path, change.old_path) if path}
+    return tuple((path, _working_digest(root, path)) for path in sorted(paths))
+
+
+def _merged(*groups: tuple[profiles.Change, ...]) -> tuple[profiles.Change, ...]:
+    seen: dict[tuple[str, str | None], profiles.Change] = {}
+    for group in groups:
+        for change in group:
+            seen.setdefault((change.path, change.old_path), change)
+    return tuple(sorted(seen.values(), key=lambda change: (change.path, change.old_path or "")))
+
+
+def change_set(root: Path, profile: str, base: str | None, *, exact: bool = False) -> profiles.ChangeSet:
+    """The changes a profile selects from.
+
+    commit: the index against HEAD, plus unstaged divergence (tests run working bytes) as provisional.
+    quick: the working tree against HEAD, plus untracked files, all provisional.
+    checkpoint: the working tree against the recorded base, plus untracked files; whatever is not yet
+    committed is provisional. An unreadable base is an unavailable old view (the broad path).
+    `exact` refuses any provisional divergence: exact-source acceptance runs committed bytes only.
+    """
+    if profile == "checkpoint":
+        if not base:
+            raise profiles.SelectionError("a checkpoint needs --base <recorded checkpoint SHA>")
+    elif base:
+        raise profiles.SelectionError("--base applies to a checkpoint only; a commit is the index against HEAD")
+    diff = ("diff", "--name-status", "-z", "-M")
+    if profile == "commit":
+        staged = profiles.parse_name_status(_git(root, *diff, "--cached"))
+        unstaged = profiles.parse_name_status(_git(root, *diff))
+        changes, provisional = _merged(staged, unstaged), _provisional(root, unstaged)
+        old_graph = True
+    elif profile == "quick":
+        working = profiles.parse_name_status(_git(root, *diff, "HEAD")) if _has_commit(root, "HEAD") else ()
+        changes = _merged(working, _untracked(root))
+        provisional, old_graph = _provisional(root, changes), True
+    elif profile == "checkpoint":
+        if not _has_commit(root, base or ""):
+            return profiles.ChangeSet("checkpoint", (), (), old_graph=False)
+        untracked = _untracked(root)
+        changes = _merged(profiles.parse_name_status(_git(root, *diff, base or "")), untracked)
+        uncommitted = _merged(profiles.parse_name_status(_git(root, *diff, "HEAD")), untracked)
+        provisional, old_graph = _provisional(root, uncommitted), True
+    else:
+        raise profiles.SelectionError(f"profile {profile!r} is not change-selected; change-selected profiles are {list(profiles.CHANGE_SELECTED)}")
+    if exact and provisional:
+        raise profiles.SelectionError("exact-source acceptance refuses uncommitted divergence: " + ", ".join(path for path, _ in provisional))
+    return profiles.ChangeSet("checkpoint" if profile == "checkpoint" else "commit", changes, provisional, old_graph)
+
+
+# --- Supervised subruns ---------------------------------------------------------------------------------
+
+ROOT = Path(__file__).resolve().parents[2]
+SELECTION_SCHEMA = "test-profile-selection-v1"
+RUN_SCHEMA = "test-profile-run-v1"
+_OWNED: dict[int, subprocess.Popen[bytes]] = {}  # every subrun process this runner started and has not reaped
+_POLL_SECONDS = 0.2
+_START_TIMEOUT_SECONDS = 300.0
+
+
+def _iso(moment: datetime) -> str:
+    return moment.astimezone(timezone.utc).isoformat(timespec="microseconds")
+
+
+def _record_time(text: object) -> str | None:
+    try:
+        return _iso(datetime.fromisoformat(str(text)))
+    except ValueError:
+        return None
+
+
+@dataclass
+class SubrunResult:
+    name: str
+    nodes: tuple[str, ...]
+    command: tuple[str, ...]
+    argfile: Path
+    pid: int = 0
+    launched: float = 0.0  # time.time() at launch
+    existing: frozenset[str] = frozenset()  # run folders present at launch: none of them is this subrun's record
+    exit_code: int | None = None
+    run_id: str | None = None
+    mode: str | None = None
+    reason: str | None = None
+    started_utc: str | None = None
+    executing_utc: str | None = None  # when its first test phase began
+    executing_until_utc: str | None = None  # when its last recorded test phase ended
+    finished_utc: str | None = None
+    terminated: bool = False  # stopped by this runner, not finished on its own
+    process_alive: bool = False
+    load_run_id: str | None = None  # a repeat: the one load run that ran for the whole of it
+    problem: str | None = "not_validated"  # why its own run record cannot support a pass; None when it can
+    qualifications: tuple[str, ...] = ()  # the weaker, legitimate labels a supporting record still carries
+    audit_depth: str | None = None  # the effective --audit-depth its own terminal record states
+    workers: int = 0  # xdist workers it ran on (Plan 11.30 Task 5); 0 is serial
+    depth: str = "full"  # the --audit-depth it was asked for: quick only for a commit's current audits (R5 after G)
+    check_selection: bool = False  # whether its record must have selected exactly its nodes
+
+
+_WINDOWS_GUARDS = ("pytest_process_guard", "main5_guard_present")
+
+
+def selection_digest(nodes: tuple[str, ...]) -> str:
+    """The digest a run record states for its selected tests, computed the same way from a node list."""
+    digest = hashlib.sha256()
+    for nodeid in sorted(nodes):
+        digest.update(run_context._node(nodeid).encode("ascii"))  # noqa: SLF001
+    return digest.hexdigest()
+
+
+def record_validity(
+    record: dict[str, object] | None, exit_code: int | None, *, workers: int = 0, nodes: tuple[str, ...] | None = None,
+    audit_depth: str | None = "full",
+) -> tuple[str | None, tuple[str, ...]]:
+    """Whether a finished subrun's own run record supports a pass: its first problem (None when there is none) and
+    the qualifications a supporting record still carries. Records arrive through `records.read_record`, so they
+    already conform to the run-context field table; this reads their terminal facts as the run's summary line does.
+    A capability the platform claims (Windows: a valid native job and a guard) must hold; POSIX's unsupported
+    labels and an UNKNOWN parent are qualifications, never failures. A subrun on xdist `workers` needs its
+    controller's valid verdict on exactly that many workers; a serial one must have had none. Given `nodes`, the
+    record must have selected exactly those tests (Plan 11.30 Task 5)."""
+    if record is None:
+        return "no_run_record", ()
+    if record.get("checkpoint") != "terminal" or not record.get("finished_utc"):
+        return "no_terminal_record", ()
+    if record.get("mode") != "active":
+        return f"mode_{record.get('mode')}", ()
+    if "terminal_failure" in record:
+        return "terminal_failure", ()
+    if record.get("completeness") != "COMPLETE":
+        return f"records_{record.get('completeness')}", ()
+    if record.get("exit_status") != exit_code:
+        return "exit_status_differs", ()
+    # A run counts only at the depth it was asked for: full, except a commit's current audits at quick (R5 after G,
+    # accepted at Plan 11.30 Task 4). A record that does not say is not one. `None` asks for the key's absence: a base
+    # whose producer had no audit-depth option at all, proven by the caller at that exact SHA (Plan 11.30 v5 Q-C1); an
+    # explicit null, empty or other value never stands in for that absence.
+    if "audit_depth" not in record:
+        if audit_depth is not None:
+            return "audit_depth_missing", ()
+    elif audit_depth is None or record["audit_depth"] != audit_depth:
+        return f"audit_depth_{record['audit_depth']}", ()
+    xdist = record.get("xdist")
+    if workers:
+        if not isinstance(xdist, dict):
+            return "xdist_missing", ()
+        if xdist.get("workers") != workers:
+            return f"xdist_workers_{xdist.get('workers')}", ()
+        if xdist.get("verdict") != "valid":
+            return f"xdist_{xdist.get('verdict')}", ()
+    elif xdist is not None:
+        return "xdist_unexpected", ()
+    if nodes is not None and record.get("selection_sha256") != selection_digest(nodes):
+        return "selection_differs", ()
+    windows = record.get("platform") == "win32"
+    native = record.get("native") if isinstance(record.get("native"), dict) else {}
+    qualifications: list[str] = []
+    if native.get("enrolled") or native.get("attempted"):
+        if not (native.get("enrolled") and native.get("valid")):
+            return "native_invalid", ()
+    elif native.get("supported"):
+        return "native_not_enrolled", ()
+    elif windows:
+        return "native_unsupported", ()
+    else:
+        qualifications.append("native=unsupported")
+    guard = record.get("guard_mode")
+    if guard not in (_WINDOWS_GUARDS if windows else ("unsupported_platform",)):
+        return f"guard_{guard}", ()
+    if guard != "pytest_process_guard":
+        qualifications.append(f"guard={guard}")
+    elif record.get("protection") != "full":
+        qualifications.append(f"protection={record.get('protection')}")
+    parent = record.get("parent_run") if isinstance(record.get("parent_run"), dict) else {}
+    if parent.get("status") in ("UNKNOWN", "not_found"):
+        qualifications.append(f"parent={parent.get('status')}" + (f":{parent.get('reason')}" if parent.get("reason") else ""))
+    elif parent.get("status") == "unsupported":
+        qualifications.append("parent=unsupported")
+    if native.get("enrolled"):
+        accounting, members = record.get("accounting"), record.get("members")
+        if not (isinstance(accounting, dict) and accounting.get("ok")):
+            qualifications.append("processes=QUERY_FAILED")  # as the run's own summary line says
+        if not (isinstance(members, dict) and members.get("ok") and members.get("complete")):
+            qualifications.append("members=incomplete")
+    if audit_depth != "full":
+        qualifications.append(f"audit_depth={audit_depth}")  # reduced-depth evidence: never a checkpoint or final
+    if workers and isinstance(xdist, dict) and xdist.get("capability") != "native":
+        qualifications.append(f"xdist={xdist.get('capability')}")  # no creation-time ancestry or job member list
+    return None, tuple(qualifications)
+
+
+def owned_processes_alive() -> int:
+    """How many subrun processes this runner started are still running."""
+    return sum(1 for process in _OWNED.values() if process.poll() is None)
+
+
+def _stop(process: subprocess.Popen[bytes]) -> None:
+    """Stop one owned subrun tree. Never touches a process this runner did not start."""
+    if process.poll() is None:
+        process_tree.kill_tree(process)
+        process.wait(timeout=60)
+
+
+def _stop_all_owned() -> None:
+    for process in list(_OWNED.values()):
+        _stop(process)
+    _OWNED.clear()
+
+
+XDIST_WORKERS = 2  # the reviewed worker count (v4 design contract 5: start with -n 2, never auto)
+
+
+def subrun_environment(env: dict[str, str] | None) -> dict[str, str]:
+    """A subrun's environment: `env` (default: this process's), plus, inside a commit hook, git's commit index under
+    the non-GIT_ names the repository's scanners honour -- a test run strips every GIT_* variable, so without them a
+    scanner would list the default index rather than the commit's (Plan 11.30 Task 3 residual). A hook runs at the
+    top of the repository being committed, which is where a relative index path starts."""
+    result = dict(os.environ if env is None else env)
+    index = result.get("GIT_INDEX_FILE")
+    if index:
+        here = Path.cwd().resolve()
+        result[COMMIT_INDEX_FILE] = str(Path(index) if Path(index).is_absolute() else here / index)
+        result[COMMIT_INDEX_ROOT] = str(here)
+    return result
+
+
+def start_subrun(
+    root: Path, out_dir: Path, name: str, nodes: tuple[str, ...], *, env: dict[str, str] | None = None,
+    workers: int = 0, check_selection: bool = False, depth: str = "full",
+) -> tuple[SubrunResult, subprocess.Popen[bytes]]:
+    """Start one pytest session of exactly `nodes` under the unchanged default selection (so ACTIVE); with
+    `workers`, the reviewed core-parallel profile on that many xdist workers, never restarted."""
+    folder = out_dir / name
+    folder.mkdir(parents=True, exist_ok=True)
+    argfile = folder / "nodes.txt"
+    argfile.write_bytes("".join(f"{node}\n" for node in nodes).encode("utf-8"))
+    # worksteal: an idle worker takes a busy one's unstarted tests (load, xdist's default, measured one worker idle for
+    # most of the run behind the other's queue of slow tests; Plan 11.30 Task 5).
+    parallel = ("-n", str(workers), "--dist", "worksteal", "--max-worker-restart=0", "--profile", "core-parallel") if workers else ()
+    command = (sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "--no-cov", "-q", f"--audit-depth={depth}", *parallel, f"@{argfile}")
+    launched, existing = time.time(), existing_runs(root)
+    # Like any pytest run, the session writes to the console; its identity, mode and times come from its
+    # own run records, so no raw test output is kept here.
+    process = process_tree.popen(list(command), cwd=root, env=subrun_environment(env))
+    _OWNED[process.pid] = process
+    return SubrunResult(name, nodes, command, argfile, pid=process.pid, launched=launched, existing=existing, process_alive=True,
+                        workers=workers, check_selection=check_selection, depth=depth), process
+
+
+def existing_runs(root: Path) -> frozenset[str]:
+    """The run folders present now: a subrun's own record is one that was not among them at its launch."""
+    try:
+        return frozenset(folder.name for folder in (root / "tmp" / "test-runs").iterdir() if folder.is_dir())
+    except OSError:
+        return frozenset()
+
+
+def _run_record(root: Path, pid: int, existing: frozenset[str]) -> tuple[Path, dict[str, object]] | None:
+    """The run record of the session this subrun process started: a folder created after its launch whose root (or,
+    on Windows, the root's parent) is the process this runner started. No wall clock is compared across processes:
+    WSL2's stepped backwards between two launches in the Task 5 validation."""
+    runs = root / "tmp" / "test-runs"
+    try:
+        folders = [folder for folder in runs.iterdir() if folder.is_dir() and folder.name not in existing]
+    except OSError:
+        return None
+    roots: list[tuple[Path, dict[str, object]]] = []
+    children: list[tuple[Path, dict[str, object]]] = []
+    for folder in folders:
+        record = records.read_record(folder / "run.json")
+        if record is None:
+            continue
+        root, parent = record.get("root"), record.get("root_parent")
+        if isinstance(root, dict) and root.get("pid") == pid:
+            roots.append((folder, record))
+        elif isinstance(parent, dict) and parent.get("pid") == pid:
+            # On Windows a venv's python.exe is a launcher: the session's root is its child, so the process this
+            # runner started appears as the root's parent. A session the subrun itself starts can look the same,
+            # so this counts only when no record names the process as its root.
+            children.append((folder, record))
+    # Fable Task 5 finding 7: never the first of several candidates; an ambiguous match is no match.
+    chosen = roots or children
+    return chosen[0] if len(chosen) == 1 else None
+
+
+def _first_phase_at(folder: Path) -> float | None:
+    entries, _, _ = records.read_entries(folder / "phases.jsonl", "phases")
+    return float(entries[0]["at"]) if entries else None  # type: ignore[arg-type]
+
+
+def wait_until_executing(root: Path, result: SubrunResult, process: subprocess.Popen[bytes]) -> bool:
+    """Block until the subrun has begun its first test phase (True) or has ended without one (False)."""
+    deadline = time.monotonic() + _START_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        found = _run_record(root, result.pid, result.existing)
+        if found is not None and _first_phase_at(found[0]) is not None:
+            return True
+        if process.poll() is not None:
+            return False
+        time.sleep(_POLL_SECONDS)
+    raise profiles.SelectionError(f"subrun {result.name} did not begin a test phase within {_START_TIMEOUT_SECONDS:.0f} s")
+
+
+def finish_subrun(root: Path, result: SubrunResult, process: subprocess.Popen[bytes], *, terminate: bool = False) -> SubrunResult:
+    """Reap a subrun (stopping it first when asked) and read its identity and times from its records."""
+    if terminate and process.poll() is None:
+        _stop(process)
+        result.terminated = True
+        result.finished_utc = _iso(datetime.now(timezone.utc))
+    result.exit_code = process.wait()
+    _OWNED.pop(process.pid, None)
+    result.process_alive = False
+    located = _run_record(root, result.pid, result.existing)
+    result.problem, result.qualifications = record_validity(
+        None if located is None else located[1], result.exit_code, workers=result.workers, audit_depth=result.depth,
+        nodes=result.nodes if result.check_selection else None,
+    )
+    if located is not None:
+        folder, record = located
+        result.run_id, result.mode, result.reason = str(record.get("run_id")), str(record.get("mode")), str(record.get("reason"))
+        result.audit_depth = None if record.get("audit_depth") is None else str(record.get("audit_depth"))
+        result.started_utc = _record_time(record.get("started_utc"))
+        if not result.terminated:
+            result.finished_utc = _record_time(record.get("finished_utc"))
+        entries, _, _ = records.read_entries(folder / "phases.jsonl", "phases")
+        if entries and result.started_utc:
+            began = datetime.fromisoformat(result.started_utc)
+            result.executing_utc = _iso(began + timedelta(seconds=float(entries[0]["at"])))  # type: ignore[arg-type]
+            last = max(float(entry["at"]) + float(entry["seconds"]) for entry in entries)  # type: ignore[arg-type]
+            result.executing_until_utc = _iso(began + timedelta(seconds=last))
+    return result
+
+
+def run_subrun(
+    root: Path, out_dir: Path, name: str, nodes: tuple[str, ...], *, env: dict[str, str] | None = None,
+    workers: int = 0, check_selection: bool = False, depth: str = "full",
+) -> SubrunResult:
+    result, process = start_subrun(root, out_dir, name, nodes, env=env, workers=workers, check_selection=check_selection, depth=depth)
+    try:
+        return finish_subrun(root, result, process)
+    finally:
+        _stop(process)
+        _OWNED.pop(process.pid, None)
+
+
+def covers(load: SubrunResult, attempt: SubrunResult) -> bool:
+    """Whether a repeat ran wholly inside its load's recorded test phases: it began after the load's first phase
+    began and ended before the load's last recorded phase ended (not merely before the load's session ended).
+    The repeat's own record must support a pass; so must the load's, unless this runner stopped the load, whose
+    recorded phases still bound when it was executing."""
+    if attempt.problem is not None or (load.problem is not None and not load.terminated) or load.mode != "active":
+        return False
+    begun, until = load.executing_utc, load.executing_until_utc
+    started, ended = attempt.started_utc, attempt.finished_utc
+    return begun is not None and until is not None and started is not None and ended is not None and begun <= started and ended <= until
+
+
+@dataclass(frozen=True)
+class OverlapOutcome:
+    verdict: str  # "complete", "failed", "unrun" or "invalid" (a load never began its tests)
+    required: SubrunResult  # the checkpoint-required full-depth load run
+    loads: tuple[SubrunResult, ...]  # every load iteration, the required one first
+    attempts: tuple[SubrunResult, ...]  # every repeat that ran, in order
+    counted: tuple[SubrunResult, ...]  # the repeats one load run covered completely
+    detail: str
+
+
+def overlap(
+    root: Path, out_dir: Path, load_nodes: tuple[str, ...], repeat_nodes: tuple[str, ...], *, repeats: int = 3,
+    max_attempts: int | None = None, env: dict[str, str] | None = None, progress: Callable[[str], None] | None = None,
+) -> OverlapOutcome:
+    """Windows checkpoint stability: run `repeat_nodes` `repeats` times, each completely inside one running
+    load run of `load_nodes` (the required full-depth current audit; repeated only as needed to keep
+    the overlap). A repeat counts only when its load had begun executing before it started and was
+    still running when it ended. Failures stop the lane and are kept; nothing is retried to green."""
+    notify = progress or (lambda event: None)
+    limit = max_attempts or repeats * 3
+    loads: list[SubrunResult] = []
+    attempts: list[SubrunResult] = []
+    counted: list[SubrunResult] = []
+    covering: dict[int, SubrunResult] = {}  # attempt index -> the load that covered it
+    processes: dict[str, subprocess.Popen[bytes]] = {}
+    reaped: set[str] = set()
+    verdict, detail = "unrun", ""
+    try:
+        required, process = start_subrun(root, out_dir, "load-1", load_nodes, env=env)
+        loads.append(required)
+        processes[required.name] = process
+        notify("load-1 started")
+        current = required
+        while len(covering) < repeats and len(attempts) < limit and len(loads) <= limit:
+            try:
+                executing = wait_until_executing(root, current, processes[current.name])
+            except profiles.SelectionError as error:  # a load that never began its tests: stop, keep what ran
+                verdict, detail = "invalid", records.sanitized_text(str(error))[:300]
+                break
+            if not executing or processes[current.name].poll() is not None:
+                finish_subrun(root, current, processes[current.name])
+                reaped.add(current.name)
+                notify(f"{current.name} finished exit={current.exit_code}")
+                if current.exit_code != 0:
+                    verdict, detail = "failed", f"load run {current.name} exited {current.exit_code}"
+                    break
+                current, process = start_subrun(root, out_dir, f"load-{len(loads) + 1}", load_nodes, env=env)
+                loads.append(current)
+                processes[current.name] = process
+                notify(f"{current.name} started")
+                continue
+            name = f"repeat-{len(attempts) + 1}"
+            notify(f"{name} started")
+            attempt = run_subrun(root, out_dir, name, repeat_nodes, env=env)
+            attempts.append(attempt)
+            still_running = processes[current.name].poll() is None
+            notify(f"{name} finished exit={attempt.exit_code}")
+            if attempt.exit_code != 0:
+                verdict, detail = "failed", f"{name} exited {attempt.exit_code}"
+                break
+            if still_running:
+                covering[len(attempts) - 1] = current
+        for load in [load for load in loads if load.name not in reaped]:
+            alive = processes[load.name].poll() is None
+            # The required load always runs to its end; an extra load iteration is load only.
+            finish_subrun(root, load, processes[load.name], terminate=verdict in ("failed", "invalid") or (load is not required and alive))
+        for index, load in covering.items():
+            attempt = attempts[index]
+            if covers(load, attempt):
+                attempt.load_run_id = load.run_id
+                counted.append(attempt)
+        if verdict not in ("failed", "invalid"):
+            if required.exit_code != 0:
+                verdict, detail = "failed", f"required load run exited {required.exit_code}"
+            elif len(counted) >= repeats:
+                verdict, detail = "complete", f"{len(counted)} repeats each inside one load run's recorded test phases"
+            else:
+                verdict, detail = "unrun", f"only {len(counted)} of {repeats} repeats were completely overlapped in {len(attempts)} attempts"
+    finally:
+        _stop_all_owned()
+    return OverlapOutcome(verdict, loads[0], tuple(loads), tuple(attempts), tuple(counted), detail)
+
+
+# --- Selection record, execution and the command line ---------------------------------------------------
+
+EXIT_PASS, EXIT_TESTS_FAILED, EXIT_INPUT, EXIT_INVALID = 0, 1, 2, 3
+
+
+def _tracked(root: Path) -> tuple[str, ...]:
+    return tuple(name for name in _git(root, "ls-files", "-z").decode("utf-8").split("\0") if name)
+
+
+def repository_inputs(root: Path, changes: profiles.ChangeSet) -> tuple[dict[str, str], tuple[str, ...]]:
+    """Tracked files (plus new files the change set adds) and the working text of every Python source."""
+    added = tuple(change.path for change in changes.changes if change.status == "A")
+    tracked = tuple(sorted({*_tracked(root), *added}))
+    sources: dict[str, str] = {}
+    for path in tracked:
+        if path.endswith(".py"):
+            try:
+                sources[path] = (root / path).read_bytes().decode("utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue  # deleted in the working tree, or not text: its edges are unknown
+    return sources, tracked
+
+
+def collect_universe(root: Path, env: dict[str, str] | None = None) -> tuple[str, ...]:
+    """The node IDs of the unchanged default selection, collected by pytest itself."""
+    completed = subprocess.run(  # noqa: S603
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider"],
+        cwd=root, env=env, capture_output=True, check=False,
+    )
+    if completed.returncode != 0:
+        raise profiles.SelectionError(f"collecting the default selection failed with exit {completed.returncode}")
+    lines = completed.stdout.decode("utf-8", errors="replace").splitlines()
+    return tuple(line.strip() for line in lines if line.startswith("tests/") and "::" in line)
+
+
+def _digest(text: str | bytes) -> str:
+    return hashlib.sha256(text.encode("utf-8") if isinstance(text, str) else text).hexdigest()
+
+
+def classification_digest(classification: profiles.Classification) -> str:
+    return _digest("".join(f"{node}\t{classification.tiers[node]}\n" for node in sorted(classification.tiers)))
+
+
+def selection_record(
+    root: Path, changes: profiles.ChangeSet, selection: profiles.Selection, classification: profiles.Classification,
+    manifest: profiles.ProfileManifest, base: str | None,
+) -> dict[str, object]:
+    """The additive, versioned selection record: what was selected from what, and why."""
+    head = _git(root, "rev-parse", "--verify", "-q", "HEAD").decode().strip() if _has_commit(root, "HEAD") else None
+    grouped: dict[str, list[str]] = {}
+    for node in selection.nodes:
+        grouped.setdefault(selection.reasons[node], []).append(run_context._node(node))  # noqa: SLF001
+    record: dict[str, object] = {
+        "schema": SELECTION_SCHEMA, "profile": selection.profile, "label": selection.label, "view": changes.view,
+        "platform": sys.platform, "base": base, "head": head,
+        "index_sha256": _digest(_git(root, "diff", "--cached", "--binary")),
+        "working_sha256": _digest(_git(root, "diff", "--binary")),
+        "manifest_sha256": manifest.digest, "classification_sha256": classification_digest(classification),
+        "changes": [[change.status, change.path, change.old_path] for change in changes.changes],
+        "old_view_available": changes.old_graph,
+        "provisional": [[path, digest] for path, digest in selection.provisional],
+        "collected": len(classification.tiers), "selected": len(selection.nodes),
+        "deselected": len(classification.tiers) - len(selection.nodes),
+        # Node IDs are filesystem text (some carry credential-shaped test parameters): like the run-context
+        # node stream, the record keeps each node's digest and a label only where the sanitizer leaves it.
+        "nodes": [{"node": run_context._node(node), "label": run_context._label(node)} for node in selection.nodes],  # noqa: SLF001
+        "reasons": grouped,
+        "fallback": list(selection.fallback), "domains": selection.domains,
+        "platform_triggers": list(selection.platform_triggers), "obligations": list(selection.obligations),
+        "concurrency": list(selection.concurrency), "audit_depth": selection.audit_depth,
+    }
+    if not records.unchanged_by_shared_sanitizer(record):
+        raise profiles.SelectionError("the selection record would be changed by the shared sanitizer; nothing was run")
+    return record
+
+
+def _write_json(path: Path, value: dict[str, object]) -> str:
+    data = (json.dumps(value, indent=1, sort_keys=True) + "\n").encode("utf-8")
+    path.write_bytes(data)
+    return _digest(data)
+
+
+def _subrun_entry(result: SubrunResult) -> dict[str, object]:
+    return {
+        "name": result.name, "run_id": result.run_id, "mode": result.mode, "reason": result.reason, "exit": result.exit_code,
+        "nodes": len(result.nodes), "nodes_sha256": _digest(result.argfile.read_bytes()), "started_utc": result.started_utc,
+        "executing_utc": result.executing_utc, "executing_until_utc": result.executing_until_utc,
+        "finished_utc": result.finished_utc, "terminated": result.terminated, "load_run_id": result.load_run_id,
+        "audit_depth": result.audit_depth, "workers": result.workers,
+        "record_problem": result.problem, "qualifications": list(result.qualifications),
+    }
+
+
+def execute(
+    root: Path, out_dir: Path, selection: profiles.Selection, classification: profiles.Classification,
+    *, env: dict[str, str] | None = None, progress: Callable[[str], None] | None = None,
+) -> tuple[str, int, list[SubrunResult], OverlapOutcome | None, str]:
+    """Run the selection: one serial subrun; at a checkpoint, then the full-depth current audit, under which
+    Windows repeats the selected concurrency nodes three times (POSIX runs them once, serially, without load).
+    Returns the verdict, its exit code, the subruns, the overlap outcome and a detail line. A failure stays a
+    failure; a pass needs every finished subrun's own terminal record to support it."""
+    if selection.label != "selected":
+        return selection.label, EXIT_PASS, [], None, ""
+    audits = tuple(node for node in selection.nodes if classification.tiers[node] == "audit-current")
+    main = tuple(node for node in selection.nodes if node not in set(audits))
+    if not main and not audits:
+        return "empty-selection", EXIT_PASS, [], None, ""
+    subruns: list[SubrunResult] = []
+    outcome: OverlapOutcome | None = None
+    stopped: str | None = None
+    try:
+        if main:
+            subruns.append(run_subrun(root, out_dir / "subruns", "selected", main, env=env))
+        if audits and sys.platform == "win32" and selection.concurrency:
+            outcome = overlap(root, out_dir / "subruns", audits, selection.concurrency, env=env, progress=progress)
+            subruns += [*outcome.loads, *outcome.attempts]
+        elif audits:
+            # A commit's selected current audits run at quick depth (R5 after G); a checkpoint's at full.
+            depth = "quick" if selection.audit_depth == "quick" else "full"
+            subruns.append(run_subrun(root, out_dir / "subruns", "audit-current", audits, env=env, depth=depth))
+    except profiles.SelectionError as error:  # a subrun that never began its tests: the run itself failed
+        _stop_all_owned()
+        stopped = records.sanitized_text(str(error))[:300]
+    finished = [result for result in subruns if not result.terminated]
+    failed = [f"{result.name} exited {result.exit_code}" for result in finished if result.exit_code not in (0, None)]
+    if outcome is not None and outcome.verdict == "failed":
+        failed.append(outcome.detail)
+    if failed:
+        return "failed", EXIT_TESTS_FAILED, subruns, outcome, "; ".join(failed)
+    if outcome is not None and outcome.verdict == "invalid":
+        stopped = outcome.detail
+    if stopped is not None:
+        return "invalid", EXIT_INVALID, subruns, outcome, stopped
+    # A subrun whose own record cannot support a pass is named, even when it is also why repeats went uncounted.
+    problems = [f"{result.name}: {result.problem}" for result in finished if result.problem is not None]
+    if problems:
+        return "invalid", EXIT_INVALID, subruns, outcome, "; ".join(problems)
+    if outcome is not None and outcome.verdict == "unrun":
+        return "stability-unrun", EXIT_INVALID, subruns, outcome, outcome.detail
+    if outcome is not None and outcome.verdict != "complete":
+        return "invalid", EXIT_INVALID, subruns, outcome, f"unknown stability verdict {outcome.verdict}"
+    return "pass", EXIT_PASS, subruns, outcome, ""
+
+
+def core_partition(classification: profiles.Classification, *, workers: int = XDIST_WORKERS) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Core's nodes split for a run on `workers` xdist workers: the reviewed parallel set and the serial remainder,
+    disjoint and together exactly core. Without workers everything is serial."""
+    core = profiles.profile_members(classification, "core")
+    parallel = profiles.profile_members(classification, "core-parallel") if workers else frozenset()
+    serial = core - parallel
+    if parallel & serial or parallel | serial != core:
+        raise profiles.SelectionError("the core partition is not a disjoint cover of core")
+    return tuple(sorted(parallel)), tuple(sorted(serial))
+
+
+def execute_core(
+    root: Path, out_dir: Path, classification: profiles.Classification, *, workers: int,
+    env: dict[str, str] | None = None,
+) -> tuple[str, int, list[SubrunResult], dict[str, object], str]:
+    """Run core: on `workers` xdist workers, the reviewed parallel set then the serial remainder, each its own ACTIVE
+    run whose record must have selected exactly its nodes (and, on workers, carry its controller's valid verdict);
+    without workers, one serial run. Returns the verdict, its exit code, the subruns, the partition and a detail."""
+    parallel, serial = core_partition(classification, workers=workers)
+    core = tuple(sorted((*parallel, *serial)))
+    partition: dict[str, object] = {
+        "workers": workers, "core": len(core), "parallel": len(parallel), "serial": len(serial),
+        "core_sha256": selection_digest(core), "parallel_sha256": selection_digest(parallel),
+        "serial_sha256": selection_digest(serial), "union_sha256": selection_digest(tuple(sorted({*parallel, *serial}))),
+        "disjoint": not set(parallel) & set(serial),
+    }
+    subruns: list[SubrunResult] = []
+    if parallel:
+        subruns.append(run_subrun(root, out_dir / "subruns", "core-parallel", parallel, env=env, workers=workers, check_selection=True))
+    if serial:
+        subruns.append(run_subrun(root, out_dir / "subruns", "core-serial" if workers else "core", serial, env=env, check_selection=True))
+    if not subruns:
+        return "empty-selection", EXIT_PASS, subruns, partition, ""
+    failed = [f"{result.name} exited {result.exit_code}" for result in subruns if result.exit_code not in (0, None)]
+    if failed:
+        return "failed", EXIT_TESTS_FAILED, subruns, partition, "; ".join(failed)
+    problems = [f"{result.name}: {result.problem}" for result in subruns if result.problem is not None]
+    if problems:
+        return "invalid", EXIT_INVALID, subruns, partition, "; ".join(problems)
+    return "pass", EXIT_PASS, subruns, partition, ""
+
+
+PARTITION_SCHEMA = "test-profile-partition-v1"
+
+
+def _main_core(workers: int, dry_run: bool, out_dir: Path, invocation: str) -> int:
+    """`--profile core`: the whole core tier, its reviewed parallel set on xdist workers and the rest serially."""
+    try:
+        manifest = profiles.load_manifest((ROOT / "tests" / "profiles.toml").read_text(encoding="utf-8"))
+        classification = profiles.classify_nodes(collect_universe(ROOT), manifest)
+        parallel, serial = core_partition(classification, workers=workers)
+    except (OSError, profiles.ManifestError, profiles.ClassificationError, profiles.SelectionError) as error:
+        print(failure_line("core", error))
+        return EXIT_INPUT
+    head = _git(ROOT, "rev-parse", "--verify", "-q", "HEAD").decode().strip() if _has_commit(ROOT, "HEAD") else None
+    core = tuple(sorted((*parallel, *serial)))
+    record: dict[str, object] = {
+        "schema": PARTITION_SCHEMA, "profile": "core", "platform": sys.platform, "head": head, "workers": workers,
+        "manifest_sha256": manifest.digest, "classification_sha256": classification_digest(classification),
+        "working_sha256": _digest(_git(ROOT, "diff", "--binary")),
+        "core": len(core), "parallel": len(parallel), "serial": len(serial),
+        "core_sha256": selection_digest(core), "parallel_sha256": selection_digest(parallel),
+        "serial_sha256": selection_digest(serial), "union_sha256": selection_digest(tuple(sorted({*parallel, *serial}))),
+        "disjoint": not set(parallel) & set(serial),
+        "parallel_nodes": [run_context._node(node) for node in parallel],  # noqa: SLF001 - digests, like the node stream
+        "serial_nodes": [run_context._node(node) for node in serial],  # noqa: SLF001
+    }
+    out_dir.mkdir(parents=True, exist_ok=True)
+    record_sha = _write_json(out_dir / "selection.json", record)
+    summary = f"test-profile: profile=core workers={workers} core={len(core)} parallel={len(parallel)} serial={len(serial)}"
+    if dry_run:
+        print(f"{summary} verdict=dry-run record={out_dir / 'selection.json'}")
+        return EXIT_PASS
+    verdict, code, subruns, partition, detail = execute_core(ROOT, out_dir, classification, workers=workers)
+    run_manifest: dict[str, object] = {
+        "schema": RUN_SCHEMA, "invocation": invocation, "profile": "core", "platform": sys.platform,
+        "verdict": verdict, "exit": code, "detail": detail, "selection_sha256": record_sha,
+        "subruns": [_subrun_entry(result) for result in subruns], "stability": None, "obligations": [],
+        "partition": partition,
+    }
+    if not records.unchanged_by_shared_sanitizer(run_manifest):
+        print(f"{summary} verdict=invalid detail=evidence manifest refused by the shared sanitizer")
+        return EXIT_INVALID
+    _write_json(out_dir / "manifest.json", run_manifest)
+    print(f"{summary} verdict={verdict}{f' detail={detail}' if detail else ''} manifest={out_dir / 'manifest.json'}")
+    return code
+
+
+def failure_line(profile: str, error: Exception) -> str:
+    """The one line an input failure prints. Its detail names repository paths, so it passes the shared sanitizer."""
+    return f"test-profile: profile={profile} verdict=input-failure detail={records.sanitized_text(str(error))[:300]}"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="python -m tools.testing.run_profile", description="Run a change-selected test profile, or core.")
+    parser.add_argument("--profile", required=True, choices=(*profiles.CHANGE_SELECTED, "core"))
+    parser.add_argument("--base", default=None, help="checkpoint: the recorded immutable checkpoint base SHA")
+    parser.add_argument("--exact", action="store_true", help="refuse uncommitted divergence (exact-source acceptance)")
+    parser.add_argument("--dry-run", action="store_true", help="select and write the selection record; run nothing")
+    parser.add_argument("--output", type=Path, default=None, help="evidence folder (default: tmp/test-profiles)")
+    parser.add_argument("--workers", type=int, choices=(0, XDIST_WORKERS), default=0,
+                        help="core: run the reviewed parallel set on this many xdist workers, then the rest serially")
+    arguments = parser.parse_args(argv)
+    invocation = f"{datetime.now(timezone.utc):%Y%m%dT%H%M%S}-{os.getpid()}-{secrets.token_hex(3)}"
+    out_dir = (arguments.output or ROOT / "tmp" / "test-profiles") / invocation
+    if arguments.profile == "core":
+        return _main_core(arguments.workers, arguments.dry_run, out_dir, invocation)
+    if arguments.workers:
+        print(failure_line(arguments.profile, profiles.SelectionError("--workers applies to --profile core only")))
+        return EXIT_INPUT
+    try:
+        manifest = profiles.load_manifest((ROOT / "tests" / "profiles.toml").read_text(encoding="utf-8"))
+        changes = change_set(ROOT, arguments.profile, arguments.base, exact=arguments.exact)
+        sources, tracked = repository_inputs(ROOT, changes)
+        classification = profiles.classify_nodes(collect_universe(ROOT), manifest)
+        dependencies = profiles.build_dependency_map(sources, tracked, manifest)
+        selection = profiles.select_tests(changes, classification, dependencies, profiles.ProfileRequest(arguments.profile))
+        record = selection_record(ROOT, changes, selection, classification, manifest, arguments.base)
+    except (OSError, profiles.ManifestError, profiles.ClassificationError, profiles.SelectionError) as error:
+        print(failure_line(arguments.profile, error))
+        return EXIT_INPUT
+    out_dir.mkdir(parents=True, exist_ok=True)
+    record_sha = _write_json(out_dir / "selection.json", record)
+    fallback = "broad" if selection.fallback else "none"
+    summary = (
+        f"test-profile: profile={arguments.profile} label={selection.label} selected={len(selection.nodes)} "
+        f"deselected={len(classification.tiers) - len(selection.nodes)} fallback={fallback} "
+        f"platform={'triggered' if selection.platform_triggers else 'none'} obligations={','.join(selection.obligations) or 'none'}"
+    )
+    if arguments.dry_run:
+        print(f"{summary} verdict=dry-run record={out_dir / 'selection.json'}")
+        return EXIT_PASS
+    verdict, code, subruns, outcome, detail = execute(
+        ROOT, out_dir, selection, classification, progress=lambda event: print(f"test-profile: {event}", flush=True))
+    run_manifest: dict[str, object] = {
+        "schema": RUN_SCHEMA, "invocation": invocation, "profile": arguments.profile, "platform": sys.platform,
+        "verdict": verdict, "exit": code, "detail": detail, "selection_sha256": record_sha,
+        "subruns": [_subrun_entry(result) for result in subruns],
+        "stability": None if outcome is None else {
+            "verdict": outcome.verdict, "detail": outcome.detail, "required_load_run_id": outcome.required.run_id,
+            "counted_repeat_run_ids": [result.run_id for result in outcome.counted],
+        },
+        "obligations": list(selection.obligations),
+    }
+    if not records.unchanged_by_shared_sanitizer(run_manifest):
+        print(f"{summary} verdict=invalid detail=evidence manifest refused by the shared sanitizer")
+        return EXIT_INVALID
+    _write_json(out_dir / "manifest.json", run_manifest)
+    print(f"{summary} verdict={verdict}{f' detail={detail}' if detail else ''} manifest={out_dir / 'manifest.json'}")
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

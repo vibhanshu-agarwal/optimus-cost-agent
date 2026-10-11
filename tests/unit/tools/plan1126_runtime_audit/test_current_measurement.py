@@ -96,9 +96,13 @@ def _fabricated_binding() -> EnvironmentBinding:
 
 
 def _measure(entry: str, evidence_directory: Path, **options):
+    """Measure and seal into `evidence_directory`. An identical measurement already taken in this session is
+    reused (and named in the run record): these tests examine the sealed evidence, not a fresh execution."""
+    from tests.support.profiles_plugin import measure_current_entry
+
     plans = default_measurement_plan(repository_root=ROOT, entries=(entry,), options=options)
     return measure_current(
-        plans=plans, repository_root=ROOT, evidence_directory=evidence_directory
+        plans=plans, repository_root=ROOT, evidence_directory=evidence_directory, measure=measure_current_entry,
     )
 
 

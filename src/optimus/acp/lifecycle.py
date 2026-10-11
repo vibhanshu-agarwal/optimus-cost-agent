@@ -160,6 +160,19 @@ class TurnControl:
         with self._lock:
             return self._effect_state
 
+    def refresh_effect_state(self) -> EffectState:
+        """Recompute the settled effect from the current operation states and return it.
+
+        Plan 12.2 Task 2. Cancellation and a denied start mark work suppressed without recomputing
+        the effect, so a completed WRITE followed by a suppressed TEST would still read COMPLETE.
+        The commit path calls this to record PARTIAL. After transport teardown the frozen snapshot
+        is the authority, and its effect is returned unchanged.
+        """
+        with self._lock:
+            if not self._directives_frozen:
+                self._recompute_effect_and_cost_locked()
+            return self._effect_state
+
     @property
     def cost_complete(self) -> bool:
         with self._lock:

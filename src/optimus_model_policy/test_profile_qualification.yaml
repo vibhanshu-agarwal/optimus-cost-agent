@@ -1,0 +1,30 @@
+# Plan 12.2 test profile "qualification" (profile A; closure release supplement V2, 2026-10-04).
+#
+# Reviewed test data applied over defaults.yaml for a named test launch only; never shipped policy and
+# never selected without its pinned effective hash in an HMAC-approved launch (test_profiles.py).
+#
+# Route (Codex Luna inspection disposition, 2026-10-04): the existing candidate on the exact
+# first-party openai/fast endpoint, the publisher's literal quantization "unknown" (a filter category,
+# not a known precision), its own prices and an explicit "none" reasoning setting. Facts observed in the
+# 2026-10-04 free inspection (OpenRouter endpoints metadata, sha256 51b00d39...653c): context 1050000,
+# max completion 128000, prompt $0.20/M, completion $1.00/M.
+#
+# Still unverified, so this profile admits no model and a launch with it refuses before any call:
+# - the endpoint (finish semantics and "none" reasoning support are not established);
+# - the estimator: the publisher's tokenizer mapping does not name gpt-6-luna, so no conservative
+#   non-expanding profile is proven; it stays unmeasured rather than a placeholder.
+# Output reserves are the accepted closure values. Change this file only through a reviewed change that
+# also re-pins its effective hash.
+
+output_reserve_tokens: {implementer: 32768, summarizer: 8192}
+
+models:
+  openai/gpt-6-luna:
+    prices: {input_usd_per_million: "0.20", output_usd_per_million: "1.00"}
+    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: [none]}
+    default_reasoning: none
+    route:
+      estimator: unmeasured
+      endpoints:
+        - {provider: openai/fast, quantization: unknown, context_window_tokens: 1050000, max_output_tokens: 128000, verified: false, observed_on: "2026-10-04"}
+    evidence: ["2026-10-04 free inspection (openai/fast observed facts); tokenizer, finish and reasoning-none support unverified"]

@@ -8,7 +8,9 @@ import io
 import os
 import subprocess
 import tarfile
+import threading
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import Mapping
 
 
@@ -33,6 +35,31 @@ class SourceTree:
         return self._files[_validate_relative_path(path)]
 
 
+# Plan 11.30 Task 4: a session export cache. A read-only export of a whole commit is reused only by a reader
+# of the same repository, resolved commit, path set and exporting tool/configuration, in the same thread,
+# until the session ends (the root conftest clears it). Bounded: each thread holds only its most recent
+# export, as one live reader already does. A failed export is never cached.
+_EXPORT_ARGUMENTS = ("archive", "--format=tar")
+_WHOLE_TREE = "*"  # the path set every export covers
+# Environment that changes what an export of a fixed commit contains: attributes, replace objects, and which
+# repository and object store git actually reads, whatever the working directory.
+_EXPORT_ENVIRONMENT = (
+    "GIT_ATTR_NOSYSTEM", "GIT_ATTR_SOURCE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE",
+    "GIT_DIR", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+)
+_exported = threading.local()
+
+
+class _Unreusable(ValueError):
+    """An export whose bytes are not fixed by any keyed input (a filter driver or export-subst in effect): never
+    reused."""
+
+
+def clear_export_cache() -> None:
+    """End this thread's export reuse: called when a test session starts and when it ends."""
+    _exported.__dict__.clear()
+
+
 class GitCommitSource:
     """A source tree read from immutable Git objects by bounded subprocesses."""
 
@@ -40,7 +67,7 @@ class GitCommitSource:
 
     def __init__(self, commit: str, repository: Path | str = ".") -> None:
         self.repository = Path(repository).resolve()
-        self._archive: dict[str, bytes] | None = None
+        self._archive: Mapping[str, bytes] | None = None
         resolved = self._run("rev-parse", "--verify", f"{commit}^{{commit}} ".strip()).strip()
         if len(resolved) != 40 or any(ch not in "0123456789abcdef" for ch in resolved):
             raise ValueError("commit must resolve to an immutable commit object")
@@ -59,10 +86,105 @@ class GitCommitSource:
         )
         return completed.stdout
 
+    def _config_value(self, name: str) -> str:
+        """One configuration value, or "" when it is unset (git exits 1); any other failure raises."""
+        completed = subprocess.run(
+            ["git", "config", "--get", name],
+            cwd=self.repository, capture_output=True, text=True, encoding="utf-8",
+            timeout=self._GIT_TIMEOUT_SECONDS, env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+        )
+        if completed.returncode == 1:
+            return ""
+        if completed.returncode != 0:
+            raise subprocess.CalledProcessError(completed.returncode, completed.args)
+        return completed.stdout.strip()
+
+    def _located(self, path: str) -> Path:
+        return Path(path) if Path(path).is_absolute() else self.repository / path
+
+    def _content(self, path: str) -> str:
+        located = self._located(path)
+        return hashlib.sha256(located.read_bytes()).hexdigest() if located.is_file() else "absent"
+
+    def _git_bytes(self, *args: str, stdin: bytes | None = None) -> bytes:
+        """Raw git output: tree paths are bytes and need not be UTF-8."""
+        return subprocess.run(
+            ["git", *args], input=stdin, cwd=self.repository, check=True, capture_output=True,
+            timeout=self._GIT_TIMEOUT_SECONDS, env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+        ).stdout
+
+    def _attributes_in_effect(self, external: tuple[str, ...]) -> bytes:
+        """The raw bytes of every attribute source that may name a filter or export-subst: the external sources and
+        every .gitattributes blob of the exported tree, at any depth and in any mode (archive reads a symlink's blob
+        as rules too), never only what `git grep` chooses to print (Fable C7). Paths are compared as bytes; a blob
+        whose header is not `<id> <type> <size>` (missing, ambiguous) raises ValueError, so the key is None."""
+        found = b"".join(self._located(path).read_bytes() for path in external if self._located(path).is_file())
+        objects = b"".join(entry.split(b"\t", 1)[0].split(b" ")[2] + b"\n"
+                           for entry in self._git_bytes("ls-tree", "-r", "-z", self.commit).split(b"\0")
+                           if entry and entry.split(b"\t", 1)[1].rsplit(b"/", 1)[-1] == b".gitattributes")
+        if not objects:
+            return found
+        batch, at = self._git_bytes("cat-file", "--batch", stdin=objects), 0
+        while at < len(batch):
+            end = batch.index(b"\n", at)
+            header = batch[at:end].split(b" ")
+            if len(header) != 3:
+                raise ValueError("an attribute blob of the exported tree cannot be read")
+            size = int(header[2])
+            found += batch[end + 1:end + 1 + size]
+            at = end + 1 + size + 1
+        return found
+
+    def _export_rules(self) -> str:
+        """Every mutable input `git archive` applies to a fixed commit id, by CONTENT (configuration text is keyed
+        separately). Attributes: the repository's info/attributes, the global file (core.attributesFile or its
+        default location) and the system file, and an attribute tree (attr.tree / GIT_ATTR_SOURCE) by the tree it
+        resolves to now. Replace refs, which substitute objects inside the exported commit. Plus the environment
+        switches that disable or redirect these. The supported export passes no --worktree-attributes, so the
+        working tree's .gitattributes never applies. Inputs only export-subst placeholders read (where HEAD points,
+        refs, history, mailmap sources, the wall clock) are not keyed: an export they may shape is never reused."""
+        lines = [f"{name}={os.environ.get(name, '')}" for name in _EXPORT_ENVIRONMENT]
+        for label, named in (
+            ("attr.tree", self._config_value("attr.tree")),
+            ("GIT_ATTR_SOURCE", os.environ.get("GIT_ATTR_SOURCE", "")),
+        ):
+            if named:  # may name a moving ref: bind the tree it resolves to now
+                lines.append(f"{label} {named}\0{self._run('rev-parse', '--verify', '--end-of-options', named + '^{tree}').strip()}")
+        base = os.environ.get("GIT_REPLACE_REF_BASE") or "refs/replace/"
+        lines.append("replace\0" + self._run("for-each-ref", "--format=%(refname) %(objectname)", base))
+        external: list[str] = []
+        for query in (("rev-parse", "--git-path", "info/attributes"), ("var", "GIT_ATTR_GLOBAL"), ("var", "GIT_ATTR_SYSTEM")):
+            path = self._run(*query).strip()
+            external.append(path)
+            lines.append(f"{' '.join(query)}\0{path}\0{self._content(path)}")
+        lines.append("git-dir\0" + self._run("rev-parse", "--absolute-git-dir").strip())
+        in_effect = self._attributes_in_effect(tuple(external))
+        drivers = [line for line in self._run("config", "--list").splitlines()
+                   if line.startswith("filter.") and (".smudge=" in line or ".process=" in line)]
+        if b"filter=" in in_effect and drivers:
+            raise _Unreusable("a filter driver may shape this export")
+        if b"export-subst" in in_effect:  # placeholders read where HEAD points, refs, history and the wall clock (%cr)
+            raise _Unreusable("export-subst placeholders may shape this export")
+        return "\n".join(lines)
+
+    def _export_key(self) -> tuple[str, str, str, str] | None:
+        """Repository, resolved commit, path set, and the exporting tool invocation, configuration and every
+        export-rule input. None when an input cannot be established: that export is then never reused."""
+        try:
+            rules = self._export_rules()
+            tool = "\0".join((*_EXPORT_ARGUMENTS, self._run("version"), self._run("config", "--list"), rules))
+        except (OSError, ValueError, subprocess.SubprocessError):  # ValueError: undecodable git output
+            return None
+        return (str(self.repository), self.commit, _WHOLE_TREE, hashlib.sha256(tool.encode("utf-8")).hexdigest())
+
     def _load_archive(self) -> Mapping[str, bytes]:
         if self._archive is None:
+            key = self._export_key()
+            if key is not None and getattr(_exported, "key", None) == key:
+                self._archive = _exported.archive
+                return self._archive
             completed = subprocess.run(
-                ["git", "archive", "--format=tar", self.commit],
+                ["git", *_EXPORT_ARGUMENTS, self.commit],
                 cwd=self.repository,
                 check=True,
                 capture_output=True,
@@ -77,7 +199,10 @@ class GitCommitSource:
                     handle = bundle.extractfile(member)
                     if handle is not None:
                         archive[_validate_relative_path(member.name)] = handle.read()
-            self._archive = archive
+            # Read-only, so one reader cannot change what another reads; held only once complete.
+            self._archive = MappingProxyType(archive)
+            if key is not None:
+                _exported.key, _exported.archive = key, self._archive
         return self._archive
 
     def paths(self) -> tuple[str, ...]:

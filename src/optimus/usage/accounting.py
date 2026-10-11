@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
@@ -60,6 +61,9 @@ class UsageAccountingService:
     ) -> None:
         self.provider_ledger = provider_ledger or ProviderUsageLedger()
         self._event_sink = event_sink
+        # Summaries and planning/answer attempts can record from different worker threads; the
+        # ledger is replaced on each record, so recording is serialized (Plan 12.2 CP3 R5).
+        self._lock = threading.Lock()
 
     def record_gateway_usage(
         self,
@@ -93,7 +97,8 @@ class UsageAccountingService:
             native_unit=native_unit,
             price_snapshot_id=price_snapshot_id,
         )
-        self.provider_ledger = self.provider_ledger.record(usage)
+        with self._lock:
+            self.provider_ledger = self.provider_ledger.record(usage)
         if self._event_sink is not None:
             self._event_sink(
                 TelemetryEvent.gateway_usage(

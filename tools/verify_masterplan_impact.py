@@ -1,36 +1,41 @@
-"""Offline check of a pull request's ``Work tracking impact:`` declaration (Plan 11.29).
-
-The file keeps its historical name because the required ``verify`` job and the approved plan's commands run it. It
-reads only the pull-request body, the changed-file list and the checkout (its plan files and the sealed migration
-manifest); it makes no network request and does not judge whether the linked issues capture every finding.
-"""
+"""Fail-closed validation for the hardening masterplan PR declaration."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
-from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from tools import github_work_tracking as gwt  # noqa: E402 - the repository root is on the path only from here
-
-DECLARATION_PREFIX = "Work tracking impact:"
-NONE_PREFIX = "none:"
-MANIFEST = "reports/github-work-tracking-migration.json"
+DECLARATION_PREFIX = "Master-plan impact:"
+UPDATED_PREFIX = "updated — "
+NONE_PREFIX = "none: "
+TRACK_NAME = re.compile(r"HARDENING-TRACK-[A-Z0-9-]+")
+BOARD_ROW = re.compile(
+    r"^\| `(?P<track>HARDENING-TRACK-[A-Z0-9-]+)` "
+    r"\| (?P<plan>`|\[[^]]+\]\()(?:archive/)?"
+    r"(?P<filename>hardening-[a-z0-9-]+(?:_v[0-9]+)?\.md)"
+)
+MASTERPLAN_PATH = "docs/superpowers/plans/hardening-runtime-quality-masterplan.md"
+OWNING_BACKLOG_PATH = "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md"
+# Hardening status authority inside the shared backlog: `HARDENING-*` identifiers and
+# references to hardening documents (child plans and the masterplan itself).
+HARDENING_BACKLOG_CONTENT = re.compile(r"HARDENING-|hardening-")
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=__doc__)
     body_source = parser.add_mutually_exclusive_group(required=True)
     body_source.add_argument("--body-file", type=Path)
     body_source.add_argument("--event-file", type=Path)
     parser.add_argument("--changed-files-file", required=True, type=Path)
-    parser.add_argument("--root", type=Path, default=Path("."), help="the pull request's checkout")
+    parser.add_argument("--masterplan", required=True, type=Path)
+    parser.add_argument(
+        "--backlog-diff-file",
+        type=Path,
+        help="unified diff of the consolidated backlog between the PR base and head",
+    )
     return parser.parse_args()
 
 
@@ -42,80 +47,126 @@ def _read_body(args: argparse.Namespace) -> str:
     return body if isinstance(body, str) else ""
 
 
+def _board(masterplan: Path) -> tuple[set[str], set[str]]:
+    rows: list[tuple[str, str]] = []
+    for line in masterplan.read_text(encoding="utf-8").splitlines():
+        match = BOARD_ROW.match(line)
+        if match is None:
+            continue
+        rows.append((match.group("track"), match.group("filename")))
+    tracks = {track for track, _filename in rows}
+    child_plans = {filename for _track, filename in rows}
+    if len(rows) != 15 or len(tracks) != 15 or len(child_plans) != 15:
+        raise ValueError("masterplan must contain 15 unique track-to-child rows")
+    return tracks, child_plans
+
+
 def _declaration(body: str) -> str:
-    # Only what a reviewer sees counts: a declaration inside an HTML comment or fenced code is an example.
-    declarations = [line.strip() for line in gwt.visible_lines(body) if line.strip().startswith(DECLARATION_PREFIX)]
+    declarations = [
+        line.strip()
+        for line in body.splitlines()
+        if line.strip().startswith(DECLARATION_PREFIX)
+    ]
     if len(declarations) != 1:
-        raise ValueError(f"the pull request body must contain exactly one {DECLARATION_PREFIX} declaration")
+        raise ValueError("PR body must contain exactly one Master-plan impact declaration")
     return declarations[0].removeprefix(DECLARATION_PREFIX).strip()
 
 
-def _declared_issues(value: str) -> set[int] | None:
-    """The linked issue numbers, or ``None`` for a ``none:`` declaration with its rationale."""
-    if value.startswith(NONE_PREFIX):
-        if not value.removeprefix(NONE_PREFIX).strip():
-            raise ValueError("malformed none declaration: a concrete rationale is required")
-        return None
-    numbers = []
-    for item in (part.strip() for part in value.split(",")):
-        try:
-            numbers.append(gwt.issue_reference(item))
-        except ValueError:
-            raise ValueError(f"malformed {DECLARATION_PREFIX} declaration: {item!r} is not an issue of {gwt.REPO}") from None
-    repeated = sorted({number for number in numbers if numbers.count(number) > 1})
-    if repeated:
-        raise ValueError(f"the declaration links {', '.join(f'#{number}' for number in repeated)} more than once")
-    return set(numbers)
+def _changed_diff_lines(diff: str) -> list[str]:
+    """Return added/removed content lines, excluding file headers, hunk headers, and context."""
+    changed: list[str] = []
+    for line in diff.splitlines():
+        if line.startswith(("+++", "---")):
+            continue
+        if line.startswith(("+", "-")):
+            changed.append(line[1:])
+    return changed
 
 
-def _plan_issue(root: Path, path: str, manifest: dict[str, Any]) -> int | None:
-    """A changed plan's tracking issue: the sealed manifest's baseline identity for its path, which a header may repeat
-    but never replace; else its own header."""
-    file = root / path
-    header = gwt.tracking_issue(file.read_text(encoding="utf-8"), path) if file.is_file() else None
-    entry = manifest.get("plan_files", {}).get(path)
-    if entry is None:
-        return header
-    record = next((record for record in manifest.get("records", []) if record.get("id") == entry.get("record")), None)
-    sealed = record.get("target_issue") if record else None
-    if header is not None and header != sealed:
+def _reject_hardening_backlog_changes(backlog_diff: str | None) -> None:
+    """A `none` declaration may edit the shared backlog only outside hardening rows."""
+    if backlog_diff is None:
         raise ValueError(
-            f"{path} carries a tracking header for #{header}, but its sealed baseline identity is"
-            f" {f'#{sealed}' if sealed else 'not yet an issue'}; a sealed plan keeps its identity"
+            "backlog diff is required to verify a none declaration that changes the backlog"
         )
-    return sealed
+    changed_lines = _changed_diff_lines(backlog_diff)
+    if not changed_lines:
+        raise ValueError("backlog is listed as changed but its diff has no changed lines")
+    touched = [line for line in changed_lines if HARDENING_BACKLOG_CONTENT.search(line)]
+    if touched:
+        raise ValueError(
+            "none conflicts with changes to hardening status authority in "
+            f"{OWNING_BACKLOG_PATH} ({len(touched)} changed line(s) reference hardening content)"
+        )
 
 
-def verify(*, body: str, changed_files: set[str], root: Path) -> None:
-    """Raise ``ValueError`` unless the declaration is well formed and links every changed tracked plan's issue."""
-    manifest = json.loads((root / MANIFEST).read_text(encoding="utf-8"))
-    declared = _declared_issues(_declaration(body))
-    for path in sorted(changed_files):
-        if not (path.startswith(gwt.PLANS_DIR) and path.endswith(".md")):
-            continue
-        number = _plan_issue(root, path, manifest)
-        if number is None:
-            docs_root = "/" not in path.removeprefix(gwt.PLANS_DIR)
-            if docs_root and (root / path).is_file() and path not in manifest.get("plan_exemptions", {}):
-                raise ValueError(f"{path} is a new docs-root plan without a tracking header; add **Tracking issue:** <issue URL>")
-            continue
-        if declared is None:
-            raise ValueError(f"none conflicts with {path}, which is tracked by #{number}; link that issue")
-        if number not in declared:
-            raise ValueError(f"{path} is tracked by #{number}; link it in the declaration")
+def verify(
+    *,
+    body: str,
+    changed_files: set[str],
+    masterplan: Path,
+    backlog_diff: str | None = None,
+) -> None:
+    known_tracks, child_plans = _board(masterplan)
+    declaration = _declaration(body)
+    masterplan_path = MASTERPLAN_PATH
+    owning_backlog_path = OWNING_BACKLOG_PATH
+
+    if declaration.startswith(UPDATED_PREFIX):
+        raw_tracks = declaration.removeprefix(UPDATED_PREFIX)
+        tracks = [value.strip() for value in raw_tracks.split(",")]
+        if not tracks or any(TRACK_NAME.fullmatch(track) is None for track in tracks):
+            raise ValueError("malformed updated Master-plan impact declaration")
+        unknown = set(tracks) - known_tracks
+        if unknown:
+            raise ValueError(f"unknown track(s): {', '.join(sorted(unknown))}")
+        if masterplan_path not in changed_files:
+            raise ValueError("updated declaration must update the masterplan")
+        return
+
+    if declaration.startswith(NONE_PREFIX):
+        rationale = declaration.removeprefix(NONE_PREFIX).strip()
+        if not rationale:
+            raise ValueError("malformed none declaration: concrete rationale is required")
+        if masterplan_path in changed_files:
+            raise ValueError(f"none conflicts with changes to status authority: {masterplan_path}")
+        if owning_backlog_path in changed_files:
+            _reject_hardening_backlog_changes(backlog_diff)
+        for changed_file in changed_files:
+            normalized = changed_file.replace("\\", "/")
+            if not normalized.startswith("docs/superpowers/plans/"):
+                continue
+            if Path(normalized).name in child_plans:
+                raise ValueError(f"child plan changed without masterplan update: {normalized}")
+        return
+
+    raise ValueError("malformed Master-plan impact declaration")
 
 
 def main() -> int:
     args = _parse_args()
     try:
-        changed = {
-            line.strip().replace("\\", "/") for line in args.changed_files_file.read_text(encoding="utf-8").splitlines() if line.strip()
+        body = _read_body(args)
+        changed_files = {
+            line.strip().replace("\\", "/")
+            for line in args.changed_files_file.read_text(encoding="utf-8").splitlines()
+            if line.strip()
         }
-        verify(body=_read_body(args), changed_files=changed, root=args.root)
+        backlog_diff = (
+            args.backlog_diff_file.read_text(encoding="utf-8")
+            if args.backlog_diff_file is not None
+            else None
+        )
+        verify(
+            body=body,
+            changed_files=changed_files,
+            masterplan=args.masterplan,
+            backlog_diff=backlog_diff,
+        )
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        print(f"work-tracking-impact: {exc}", file=sys.stderr)
+        print(f"masterplan-impact: {exc}", file=sys.stderr)
         return 1
-    print("work-tracking-impact: the declaration is consistent with the changed files")
+    print("masterplan-impact: declaration is consistent with changed files")
     return 0
 
 

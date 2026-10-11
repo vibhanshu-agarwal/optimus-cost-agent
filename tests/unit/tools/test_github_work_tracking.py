@@ -2910,10 +2910,81 @@ def test_a_commit_pinned_permalink_is_not_an_inbound_pool_link() -> None:
     assert gwt.inbound_pool_anchors(files) == {"branch-anchor", "rel-anchor"}
 
 
-def test_every_inbound_pool_link_in_the_tracked_files_is_a_reviewed_anchor() -> None:
+def _tracked_files_at(commit: str, repo: Path = ROOT) -> dict[str, str]:
+    """Every file Git tracks at ``commit`` (any type can link the pool), decoded as the cutover decodes the checkout.
+
+    It reads the commit's own tree, never the working tree. A commit that is not there, or an object that will not
+    read, fails the test: nothing is skipped and nothing falls back to the files on disk."""
+    listing = subprocess.run(["git", "ls-tree", "-r", "-z", "--full-tree", commit], cwd=repo, check=True, capture_output=True).stdout
+    blobs: dict[str, str] = {}
+    for entry in filter(None, listing.split(b"\0")):
+        meta, _, path = entry.partition(b"\t")
+        _mode, kind, sha = meta.decode("ascii").split()
+        if kind == "blob":  # a submodule entry is a commit, not a readable file
+            blobs[path.decode("utf-8")] = sha
+    stream = subprocess.run(
+        ["git", "cat-file", "--batch"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        input="".join(f"{sha}\n" for sha in blobs.values()).encode("ascii"),
+    ).stdout
+    files, position = {}, 0
+    for path, sha in blobs.items():
+        end = stream.index(b"\n", position)
+        header = stream[position:end].split()
+        if len(header) != 3 or header[0].decode("ascii") != sha or header[1] != b"blob":
+            raise RuntimeError(f"{path} at {commit}: object {sha} did not read ({stream[position:end].decode('ascii', 'replace')})")
+        size = int(header[2])
+        files[path] = stream[end + 1 : end + 1 + size].decode("utf-8", "replace")
+        position = end + 1 + size + 1  # the object's bytes, then one newline
+    if position != len(stream):
+        raise RuntimeError(f"{commit}: {len(stream) - position} unread bytes after the last object")
+    return files
+
+
+# Plan 11.29 integration (Codex ruling 2026-10-11): this test is about the HISTORICAL baseline, not the current checkout. The
+# sealed manifest inventoried the repository at its baseline commit, so its reviewed compat_anchors must cover every pool anchor
+# linked from the files at THAT commit. Links other lanes add after the baseline do not belong to the sealed inventory; the cutover
+# meets them on the live tree and refuses an unreviewed anchor or a moved pool (render_pool_stub, cutover_docs and their tests above).
+
+
+def test_every_inbound_pool_link_in_the_baseline_tree_is_a_reviewed_anchor() -> None:
     inventory = gwt.load_inventory(MANIFEST)
-    files = {path: data.decode("utf-8", "replace") for path, data in gwt._checkout_files(ROOT) if path != gwt.POOL_PATH}
-    assert gwt.inbound_pool_anchors(files) <= set(inventory.compat_anchors)  # what cutover-docs would require of the stub
+    files = {path: text for path, text in _tracked_files_at(inventory.baseline_commit).items() if path != gwt.POOL_PATH}
+    found = gwt.inbound_pool_anchors(files)
+    assert found, "the baseline tree links no pool anchor: the scan read nothing, so it proves nothing"
+    assert found <= set(inventory.compat_anchors)  # what cutover-docs would require of the stub, for the inventoried tree
+
+
+def test_the_baseline_tree_reader_reads_the_commit_and_never_the_checkout(tmp_path: Path) -> None:
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args], cwd=tmp_path, check=True, capture_output=True
+        )
+
+    git("init", "-q")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "kept.md").write_text(f"[old]({gwt.POOL_FILE}#at-the-baseline)\n", encoding="utf-8")
+    (tmp_path / "blob.bin").write_bytes(b"\xff\xfe binary \x00 bytes")
+    git("add", "-A")
+    git("commit", "-q", "-m", "baseline")
+    baseline = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp_path, check=True, capture_output=True, text=True).stdout.strip()
+    # After the baseline: an edit, a staged addition and an untracked file, all of which a checkout scan would see.
+    (tmp_path / "docs" / "kept.md").write_text(f"[new]({gwt.POOL_FILE}#after-the-baseline)\n", encoding="utf-8")
+    (tmp_path / "docs" / "added.md").write_text(f"[new]({gwt.POOL_FILE}#added-later)\n", encoding="utf-8")
+    git("add", "docs/added.md")
+    (tmp_path / "untracked.md").write_text(f"[new]({gwt.POOL_FILE}#never-tracked)\n", encoding="utf-8")
+    files = _tracked_files_at(baseline, tmp_path)
+    assert set(files) == {"docs/kept.md", "blob.bin"}  # every file type, only what the commit tracked
+    assert gwt.inbound_pool_anchors(files) == {"at-the-baseline"}
+    assert files["blob.bin"] == b"\xff\xfe binary \x00 bytes".decode("utf-8", "replace")  # the cutover's decode policy
+
+
+@pytest.mark.parametrize("commit", ["f" * 40, "not-a-revision"])
+def test_the_baseline_tree_reader_fails_on_a_commit_it_cannot_read(commit: str) -> None:
+    with pytest.raises(subprocess.CalledProcessError):
+        _tracked_files_at(commit)
 
 
 # ==== Plan 11.29 batch 7 (Codex ruling 2026-10-05, option B): a candidate source owner has no issue to bind to ====

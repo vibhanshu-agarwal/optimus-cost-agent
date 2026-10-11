@@ -21,6 +21,7 @@ from jsonschema import Draft202012Validator
 from optimus.acp.errors import INTERNAL_ERROR, INVALID_REQUEST, AcpOutboundError
 from optimus.acp.outbound_writer import DedicatedOutboundWriter
 from optimus.acp.server import NdjsonOutboundChannel
+from optimus.acp.shapes import AGENT_MESSAGE_BLOCK_SEPARATOR
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus, AgentToolCall
 from optimus.runtime.modes import ExecutionMode
@@ -498,7 +499,8 @@ async def test_mode_change_during_a_chat_turn_applies_to_the_next_prompt_only(tm
     turn_updates = [u for u in _updates(outbound) if u["sessionUpdate"] not in {"current_mode_update", "config_option_update"}]
     assert [u["sessionUpdate"] for u in turn_updates if u["sessionUpdate"] == "plan"] == []
     answers = [u["content"]["text"] for u in turn_updates if u["sessionUpdate"] == "agent_message_chunk"]
-    assert answers == [CHAT_ANSWER]
+    # Plan 12.2 Task 3: every agent message block ends with a paragraph break.
+    assert answers == [CHAT_ANSWER + AGENT_MESSAGE_BLOCK_SEPARATOR]
     assert outbound.requests == [], "a Chat turn must never request permission"
 
     runner.entered.clear()
@@ -633,7 +635,9 @@ async def test_chat_failures_are_visible_non_success_turns_that_end_normally(tmp
     assert response["result"]["stopReason"] == "end_turn"
     updates = _updates(outbound)
     assert [u for u in updates if u["sessionUpdate"] == "plan"] == []
-    assert [u["content"]["text"] for u in updates if u["sessionUpdate"] == "agent_message_chunk"] == [message]
+    assert [u["content"]["text"] for u in updates if u["sessionUpdate"] == "agent_message_chunk"] == [
+        message + AGENT_MESSAGE_BLOCK_SEPARATOR
+    ]
     assert "Turn completed." not in json.dumps(updates)
     record = adapter._sessions.get(session_id).conversation.records[1]  # noqa: SLF001
     assert record.outcome.value != "completed"

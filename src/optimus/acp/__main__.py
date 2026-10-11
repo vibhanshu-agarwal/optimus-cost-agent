@@ -34,6 +34,7 @@ from optimus.acp.operator_paths import OperatorPathConfigurationError, resolve_a
 from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.acp.server import StdioByteReader, StdioByteWriter, StdioNdjsonLineReader, StdioNdjsonLineWriter
 from optimus.acp.subprocess_env import system_environ_view
+from optimus.acp.test_composition import compose_test_composition
 from optimus.acp.trusted_paths import (
     TrustedPathError,
     format_trusted_path_operator_message,
@@ -41,7 +42,11 @@ from optimus.acp.trusted_paths import (
     resolve_workspace_security_state,
     revalidate_workspace_security_state,
 )
+from optimus.agent.defaults import AgentModelError, resolve_agent_model
 from optimus.gateway.client import DEFAULT_GATEWAY_TIMEOUT_SECONDS, validate_gateway_timeout_seconds
+from optimus_model_policy import RegistryError
+from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError
+from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES
 
 
 def _print_log(message: str) -> None:
@@ -113,6 +118,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         metavar="SECONDS",
         help=f"Gateway request timeout in seconds for this process (default: {DEFAULT_GATEWAY_TIMEOUT_SECONDS:.1f}).",
     )
+    # Plan 12.2 closure (release supplement V2): select one reviewed, source-owned test profile by its
+    # fixed name. The name grants nothing: the launch approval must bind the profile's exact effective
+    # hash, and the Gateway composes the same profile itself. Absent, the composition is today's.
+    parser.add_argument(
+        "--plan12-test-profile",
+        choices=TEST_PROFILE_NAMES,
+        default=None,
+        help="Reviewed Plan 12.2 test profile; its launch approval must bind the profile's exact effective hash.",
+    )
     # Internal-only arguments (Plan 9.96, Task 5 Step 2). Never documented as
     # a public operator-facing flag beyond the optimus-trust CLI, which is
     # the only intended caller: it substitutes {approval_id}/
@@ -129,6 +143,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         parser.error("--with-local-phoenix cannot be combined with --no-auto-start")
     if args.with_local_phoenix and args.check_config and not args.strict:
         parser.error("--with-local-phoenix with --check-config requires --strict")
+    if args.plan12_test_profile is not None:
+        # A profiled launch starts its own profiled Gateway child and binds every request through the
+        # ndjson session adapters. A Gateway it did not start is unprofiled, the framed transport has no
+        # route policy, and strict check-config sends an unbound probe: each would only end in generic
+        # refusals (Fable CP4 release review M1, m2).
+        for flag, chosen in (("--no-auto-start", args.no_auto_start), ("--framed", args.framed), ("--strict", args.strict)):
+            if chosen:
+                parser.error(f"--plan12-test-profile cannot be combined with {flag}")
     return args
 
 
@@ -235,6 +257,7 @@ def _authorize_or_exit(
             workspace_state=workspace_state,
             operator_paths=operator_paths,
             hmac_key=store.hmac_key,
+            test_profile=args.plan12_test_profile,
         )
     except LaunchGateError as exc:
         print(f"optimus-agent: {exc.code}" + (f": {exc.detail}" if exc.detail else ""), file=sys.stderr)
@@ -506,11 +529,32 @@ def main(argv: list[str] | None = None) -> int:
     # default-filling, but now operates on the already-authorized projection
     # (never os.environ) and receives the already-resolved shared secret from
     # the candidate rather than re-resolving it.
-    agent_environ = apply_local_defaults(
-        candidate.agent_environ,
-        config_root=candidate.operator_paths.config_root,
-        resolved_shared_secret=candidate.shared_secret,
-    )
+    test_composition = None
+    try:
+        agent_environ = apply_local_defaults(
+            candidate.agent_environ,
+            config_root=candidate.operator_paths.config_root,
+            resolved_shared_secret=candidate.shared_secret,
+        )
+        if args.plan12_test_profile is not None:
+            # Release supplement V2: the named profile, re-composed from its reviewed source. The
+            # operator's approval binds it through the authorized candidate's snapshot digest
+            # (authorize_launch, above); this refuses any composition other than the one that
+            # candidate digested.
+            test_composition = compose_test_composition(
+                args.plan12_test_profile, approved_literal=candidate.security_literals.get(APPROVAL_LITERAL_NAME)
+            )
+            test_composition.agent_model(agent_environ, cli_model=args.model)
+        else:
+            # Plan 12.2 Task 5: under an enforced model registry an unusable model fails here with a
+            # typed message rather than inside the runtime composition. Inactive: today's rules.
+            resolve_agent_model(agent_environ, cli_model=args.model)
+    except AgentModelError as exc:
+        print(f"optimus-agent: AGENT_MODEL_INVALID: {exc}", file=sys.stderr)
+        return 2
+    except (BindingError, RegistryError) as exc:
+        print(f"optimus-agent: MODEL_REGISTRY_INVALID: {exc.code}", file=sys.stderr)
+        return 2
 
     def _start_local_dependencies() -> tuple[str | None, int | None]:
         """Start Redis (+ optional Phoenix). Returns (otlp_endpoint, error_exit)."""
@@ -537,6 +581,9 @@ def main(argv: list[str] | None = None) -> int:
             config_root=candidate.operator_paths.config_root,
             otlp_endpoint=otlp_endpoint,
             log=_print_log,
+            # Plan 12.2 Task 5: the registry literal the operator approved, or None while inactive.
+            model_registry=candidate.security_literals.get(APPROVAL_LITERAL_NAME),
+            test_profile=args.plan12_test_profile,
         )
 
     if args.check_config:
@@ -574,6 +621,16 @@ def main(argv: list[str] | None = None) -> int:
         if error_exit is not None:
             return error_exit
         gateway_process = _start_gateway(otlp_endpoint=otlp_endpoint)
+        if test_composition is not None and gateway_process is None:
+            # The profiled launch owns its profiled Gateway child. A Gateway already listening, or none
+            # at all, would refuse every bound request with a generic text (Fable CP4 release review M1).
+            print(
+                "optimus-agent: TEST_PROFILE_GATEWAY_NOT_STARTED: a test-profile launch must start its own "
+                "profiled Gateway; stop any Gateway already listening on the configured URL and see the "
+                "local gateway log.",
+                file=sys.stderr,
+            )
+            return 2
 
     # Single try/finally around BOTH build_configured_server(...) and serve(...): an earlier draft
     # of this plan wrapped only the serve() call, so an unexpected (non-StartupConfigurationError)
@@ -598,6 +655,8 @@ def main(argv: list[str] | None = None) -> int:
             }
             if args.gateway_timeout_seconds is not None:
                 build_server_kwargs["gateway_timeout_seconds"] = args.gateway_timeout_seconds
+            if test_composition is not None:
+                build_server_kwargs["test_composition"] = test_composition
             server = build_configured_server(**build_server_kwargs)
         except StartupConfigurationError as exc:
             print(f"optimus-agent: {exc.user_message}", file=sys.stderr)

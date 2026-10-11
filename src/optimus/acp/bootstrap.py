@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from optimus.acp.debug_trace import log_planning_replan_event, log_workspace_context_result
 from optimus.acp.dispatcher import JsonRpcDispatcher
@@ -22,6 +22,9 @@ from optimus.telemetry.fanout import TelemetryFanout
 from optimus.telemetry.jsonl import JsonlTelemetryWriter
 from optimus.telemetry.observability import GatewayObservabilityExporter
 from optimus.telemetry.redis_sink import RedisTelemetryEventSink
+
+if TYPE_CHECKING:
+    from optimus.acp.test_composition import TestComposition
 
 
 @dataclass(frozen=True)
@@ -77,6 +80,7 @@ def build_agent_harness_runtime(
     workspace_root: Path,
     model: str | None = None,
     gateway_timeout_seconds: float | None = None,
+    test_composition: TestComposition | None = None,
 ) -> AgentHarnessRuntime:
     """
     Builds an AgentRunner and the Redis runtime it runs on, as ONE owned lifetime.
@@ -132,7 +136,9 @@ def build_agent_harness_runtime(
             gateway_exporter=GatewayObservabilityExporter(settings=settings),
         )
 
-        agent_model = resolve_agent_model(environ, cli_model=model)
+        # A reviewed test composition (release supplement V2) fixes the exact eligible model; without
+        # one, today's resolution against the installed trusted snapshot.
+        agent_model = test_composition.agent_model(environ, cli_model=model) if test_composition is not None else resolve_agent_model(environ, cli_model=model)
         agent_runner = AgentRunner(
             gateway_client=gateway_client,
             model=agent_model,
@@ -156,6 +162,7 @@ def build_configured_server(
     workspace_root: Path | None = None,
     model: str | None = None,
     gateway_timeout_seconds: float | None = None,
+    test_composition: TestComposition | None = None,
 ) -> AcpStreamServer:
     """
     Builds and configures an `AcpStreamServer` instance with the specified environment
@@ -195,6 +202,7 @@ def build_configured_server(
         workspace_root=Path(workspace_root or "."),
         model=model,
         gateway_timeout_seconds=gateway_timeout_seconds,
+        test_composition=test_composition,
     )
     client_mcp_runtime = None
     try:
@@ -228,6 +236,14 @@ def build_configured_server(
             environ,
             workspace_root=resolved_workspace,
         )
+        # Release supplement V2: a reviewed test composition supplies the trusted route policy every
+        # session binds its requests with, for the same exact model the runner uses.
+        route_policy = None
+        if test_composition is not None:
+            route_policy = test_composition.route_policy(
+                model_id=test_composition.agent_model(environ, cli_model=model),
+                shared_secret=settings.optimus_api_key.get_secret_value(),
+            )
         # Seam 2, checkpoint B: the server takes custody of the Redis runtime and closes
         # it as the last stage of its own teardown.
         return AcpStreamServer(
@@ -236,6 +252,7 @@ def build_configured_server(
             client_mcp_runtime=client_mcp_runtime,
             conversation_sanitizer_inputs=conversation_sanitizer_inputs,
             redis_runtime=harness.redis_runtime,
+            route_policy=route_policy,
         )
     except BaseException as exc:
         # Composition failed after the harness (and possibly the client-MCP runtime)

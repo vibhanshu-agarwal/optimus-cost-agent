@@ -1,13 +1,28 @@
 from __future__ import annotations
 
+import functools
+import http.client
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from http.client import HTTPException
 from typing import Any, Literal, Protocol, TypeVar
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import (
+    HTTPDefaultErrorHandler,
+    HTTPErrorProcessor,
+    HTTPHandler,
+    HTTPSHandler,
+    OpenerDirector,
+    ProxyHandler,
+    Request,
+    UnknownHandler,
+    urlopen,
+)
+
+from optimus_model_policy.binding import ATTEMPT_NOT_SENT, ATTEMPT_REJECTED, ATTEMPT_UNCERTAIN
 
 T = TypeVar("T")
 
@@ -43,11 +58,25 @@ class ProviderMessageResult:
     cached_tokens: int | None = None
     reasoning_tokens: int | None = None
     cache_age_seconds: int | None = None
+    finish_reason: str | None = None
+    """The provider's own finish status, lower-cased (``stop``, ``length``, ...); ``None`` when the
+    provider reported none. Never synthesized (Plan 12.2 Task 5)."""
 
 
 class UpstreamClient(Protocol):
     def create_message(self, *, model: str, input_text: str) -> ProviderMessageResult:
-        """Call an upstream LLM API and return normalized text + usage."""
+        """Call an upstream LLM API and return normalized text + usage (today's routing)."""
+
+    def create_message_once(
+        self,
+        *,
+        model: str,
+        input_text: str,
+        max_tokens: int,
+        provider_controls: Mapping[str, Any],
+        reasoning: str | None,
+    ) -> ProviderMessageResult:
+        """One provider attempt under an enforced model policy; raises UpstreamAttemptFailure."""
 
 
 class RetryableUpstreamError(Exception):
@@ -125,13 +154,10 @@ class UrllibOpenAICompatibleClient:
         self._max_attempts = max_attempts
         self._sleep = sleep
         self._on_retry = on_retry
+        self._attempt_opener: OpenerDirector | None = None
 
-    def create_message(self, *, model: str, input_text: str) -> ProviderMessageResult:
-        payload = {
-            "model": model,
-            "messages": [{"role": "user", "content": input_text}],
-        }
-        request = Request(
+    def _request(self, payload: Mapping[str, Any], request_class: type[Request] = Request) -> Request:
+        return request_class(
             f"{self._base_url}/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
             headers={
@@ -141,6 +167,14 @@ class UrllibOpenAICompatibleClient:
             },
             method="POST",
         )
+
+    def create_message(self, *, model: str, input_text: str) -> ProviderMessageResult:
+        """Today's routing: one request with the legacy transient-fault retry loop."""
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": input_text}],
+        }
+        request = self._request(payload)
 
         def call() -> ProviderMessageResult:
             body, headers = _urlopen_json(
@@ -172,6 +206,141 @@ class UrllibOpenAICompatibleClient:
             sleep=self._sleep,
             on_attempt_failure=report_failure,
         )
+
+    def create_message_once(
+        self,
+        *,
+        model: str,
+        input_text: str,
+        max_tokens: int,
+        provider_controls: Mapping[str, Any],
+        reasoning: str | None,
+    ) -> ProviderMessageResult:
+        """Exactly one provider attempt under an enforced model policy (Plan 12.2 Task 5).
+
+        No retry happens here: the Gateway decides, per the attempt contract, whether a failed attempt
+        may be followed by one recovery attempt. A failure raises :class:`UpstreamAttemptFailure` saying
+        whether the request certainly never reached a model or may have run and been billed.
+
+        Wire mapping v1: the output cap is OpenRouter's ``max_tokens``, the approved endpoints are its
+        ``provider`` routing object, and the approved reasoning level is ``reasoning.effort``.
+        """
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "user", "content": input_text}],
+            "max_tokens": max_tokens,
+            "provider": json.loads(json.dumps(dict(provider_controls))),
+        }
+        if reasoning is not None:
+            payload["reasoning"] = {"effort": reasoning}
+        request = _attempt_of(self._request(payload, request_class=_AttemptRequest))
+        if self._attempt_opener is None:
+            self._attempt_opener = _build_attempt_opener()
+        try:
+            with self._attempt_opener.open(request, timeout=self._timeout_seconds) as response:
+                raw = response.read()
+                headers = {str(name).casefold(): str(value) for name, value in getattr(response, "headers", {}).items()}
+        except HTTPError as exc:
+            # A 4xx (other than a request timeout) is the provider refusing the request before any
+            # model ran; a 408, a 5xx or an unfollowed redirect may follow a model run that was billed.
+            refused = 400 <= exc.code < 500 and exc.code != 408
+            raise UpstreamAttemptFailure(ATTEMPT_REJECTED if refused else ATTEMPT_UNCERTAIN, http_status=exc.code) from exc
+        except (OSError, HTTPException) as exc:
+            # urllib wraps an OSError raised while connecting *or* while sending in the same URLError,
+            # so the exception's type cannot say whether the request left (an SSLError, a refusal or an
+            # unreachable host can each arise in either phase; Codex CP1 corrections review). The phase
+            # can: a failure before the connection was established delivered nothing, and any later
+            # failure may have reached a model that ran and was billed.
+            raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN if request.connected else ATTEMPT_NOT_SENT) from exc
+        try:
+            decoded = json.loads(raw.decode("utf-8"))
+            if not isinstance(decoded, dict):
+                raise RuntimeError("upstream response was not an object")
+            return parse_openai_chat_completion(decoded, headers, requested_model=model)
+        except (UnicodeError, ValueError, RuntimeError) as exc:
+            # A reply arrived but its usage cannot be verified: it may have been billed.
+            raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN) from exc
+
+
+class _AttemptRequest(Request):
+    """One enforced attempt's request. ``connected`` turns true once its connection is established (the
+    TCP connect, any proxy tunnel and the TLS handshake have all completed): the earliest point at which
+    request bytes may leave. Until then a failure certainly delivered nothing."""
+
+    connected = False
+
+
+class _MarksAttemptConnected:
+    """Mixed into an http.client connection: marks the attempt connected when ``connect()`` returns.
+    http.client connects lazily from its first ``send()``, before writing any request byte."""
+
+    def __init__(self, *args: Any, attempt: _AttemptRequest, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._attempt = attempt
+
+    def connect(self) -> None:
+        super().connect()  # type: ignore[misc]
+        self._attempt.connected = True
+
+
+class _AttemptHTTPConnection(_MarksAttemptConnected, http.client.HTTPConnection):
+    pass
+
+
+class _AttemptHTTPSConnection(_MarksAttemptConnected, http.client.HTTPSConnection):
+    pass
+
+
+def _attempt_of(req: Request) -> _AttemptRequest:
+    if not isinstance(req, _AttemptRequest):
+        # Fail closed: an untracked request could only ever be classified "not sent".
+        raise TypeError("an enforced attempt must be an _AttemptRequest")
+    return req
+
+
+class _AttemptHTTPHandler(HTTPHandler):
+    def http_open(self, req: Request) -> http.client.HTTPResponse:
+        return self.do_open(functools.partial(_AttemptHTTPConnection, attempt=_attempt_of(req)), req)
+
+
+class _AttemptHTTPSHandler(HTTPSHandler):
+    def https_open(self, req: Request) -> http.client.HTTPResponse:
+        # As the standard handler does, with the TLS context it built.
+        return self.do_open(functools.partial(_AttemptHTTPSConnection, attempt=_attempt_of(req)), req, context=self._context)  # type: ignore[attr-defined]
+
+
+def _build_attempt_opener() -> OpenerDirector:
+    """``urlopen``'s default handlers (proxies, HTTP error handling) with three differences:
+    - HTTP and HTTPS connections record their attempt's phase;
+    - there is no redirect handler, because an attempt is one exchange; following a redirect would send
+      again, to another URL, so a 3xx surfaces as an HTTP error and is classified by its status;
+    - there are no FTP, file or data handlers, so no other scheme can open an untracked connection; it
+      fails as an unknown URL type before anything is sent."""
+    opener = OpenerDirector()
+    for handler in (
+        ProxyHandler(),
+        UnknownHandler(),
+        _AttemptHTTPHandler(),
+        _AttemptHTTPSHandler(),
+        HTTPDefaultErrorHandler(),
+        HTTPErrorProcessor(),
+    ):
+        opener.add_handler(handler)
+    return opener
+
+
+class UpstreamAttemptFailure(Exception):
+    """One enforced provider attempt that did not complete, and what is known about it."""
+
+    def __init__(self, outcome: str, *, http_status: int | None = None) -> None:
+        self.outcome = outcome
+        self.http_status = http_status
+        super().__init__(f"upstream attempt {outcome}" + (f" ({http_status})" if http_status is not None else ""))
+
+    @property
+    def recoverable(self) -> bool:
+        """True only when the attempt certainly reached no model: never sent, or rate-limited (429)."""
+        return self.outcome == ATTEMPT_NOT_SENT or (self.outcome == ATTEMPT_REJECTED and self.http_status == 429)
 
 
 def _urlopen_json(
@@ -223,6 +392,10 @@ def parse_openai_chat_completion(
     output_text = message.get("content")
     if not isinstance(output_text, str):
         raise RuntimeError("upstream response missing message content")
+    # A missing or malformed finish status reads as None ("not reported"): it is never trusted as
+    # complete, and the billed call keeps its usage either way (Plan 12.2 Task 5).
+    raw_finish = first.get("finish_reason")
+    finish_reason = raw_finish.strip().casefold() if isinstance(raw_finish, str) and raw_finish.strip() else None
 
     usage = body.get("usage")
     if not isinstance(usage, dict):
@@ -279,6 +452,7 @@ def parse_openai_chat_completion(
         cached_tokens=cached_tokens,
         reasoning_tokens=reasoning_tokens,
         cache_age_seconds=cache_age_seconds,
+        finish_reason=finish_reason,
     )
 
 
