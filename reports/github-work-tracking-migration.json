@@ -636,7 +636,20 @@
    "review_note": null,
    "rationale": "live plan registry row",
    "quotes": [],
-   "retained": []
+   "retained": [],
+   "status_current": {
+    "status": "Active",
+    "evidence": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/cb959a3848325708ad58e902fe906de98bc83e40/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L60"
+   },
+   "source_updates": [
+    {
+     "date": "2026-10-11",
+     "path": "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md",
+     "line": 60,
+     "commit": "cb959a3848325708ad58e902fe906de98bc83e40", "commit_pin": "# pragma: allowlist secret - git commit id of the quoted source update, not a secret",
+     "text": "Package A offline technical delivery accepted at 38a465f, with exact NOT MET residual in ADR-017; docs PR #214 merge/base gate was satisfied. [Delivery](../reviews/2026-10-02-plan-12-2-package-a-delivery.md). Operator selected Package A docs/PR then CP1, and replaced per-task reviews with CP1 Tasks 4-5, CP2 6-8, CP3 9-11, CP4 12-13 (ADR-016/S3). The operator accepted the [first Task 1 contracts](../specs/archive/2026-10-02-plan-12-2-task1-contracts.md) and the [complete v2 plan](archive/2026-10-01-plan-12-2-context-engine-implementation_v2.md) on 2026-10-02, releasing CP1–CP3 offline; those archived editions keep that acceptance, and later editions do not inherit it. CP1 to CP3 are cleared offline. The CP4 offline batch is accepted at cf9bb9d on 2026-10-04 ([disposition](../reviews/2026-10-04-plan-12-2-cp4-offline-review-disposition.md)); its HLD v2.19, LLD v2.42, Guardrails v1.4 and Test Strategy v1.8 successors, plan v4, design v3, Task 1 contracts v3 and ADR-018/019 are filed. **Offline delivery merged:** Plan 12.2's accepted offline implementation and documentation through `7029340` merged into `main` on 2026-10-08 via [PR #276](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/276), merge commit `c509fc8`. Package A's commits are included, and [PR #216](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/216) is marked merged. The offline delivery and its merge gate are complete; this is not a full CP4 pass. Luna route/estimator qualification, the genuine summary-quality receipt and real-editor Task 13 remain Deferred/UNRUN under existing Plan 12.2 ownership, per the [2026-10-08 operator disposition](../reviews/2026-10-08-plan-12-2-cp4-offline-delivery-disposition.md). No further model investigation is commissioned. Paid/live execution, activation, production route enabling, Haiku-default removal and sandbox synchronization remain held. Each activation path requires its applicable real evidence and separate authority; offline acceptance and merge do not substitute for that evidence. ADR-018 quotes the operator's D7 acceptance verbatim from ADR-011 source S4 (registered 2026-10-07). D6/governed activation and paid/live/service gates remain separate. Paid/live/service/sandbox gates remain separate. Shared custody recorded before the 2026-10-04 offline closure edits: Plan 12.2 holds the narrow `HARDENING-ITEM-COVERAGE-SOURCE-SCOPE` assignment for the CI coverage step and its product-coverage gate (see the hardening masterplan's CI-guardrails row); Task 11's optional evaluation-budget telemetry fields stay within the existing event schemas owned by `P11.26-CAND-2-TELEMETRY-CONTRACT`, with no new event kind, sink or schema owner."
+    }
+   ]
   },
   {
    "id": "plan:12.1",
@@ -2046,7 +2059,16 @@
    "review_note": null,
    "rationale": "grouped source units with one identity",
    "quotes": [],
-   "retained": []
+   "retained": [],
+   "source_updates": [
+    {
+     "date": "2026-10-11",
+     "path": "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md",
+     "line": 354,
+     "commit": "cb959a3848325708ad58e902fe906de98bc83e40", "commit_pin": "# pragma: allowlist secret - git commit id of the quoted source update, not a secret",
+     "text": "Post-v1.0 context/intelligent selection remains outside v1.0 and proceeds in parallel by operator direction. Plan 12.1 retains its separate advisory-answer scope. Plan 12.2 Package A was accepted offline at 38a465f; [delivery](../reviews/2026-10-02-plan-12-2-package-a-delivery.md) and [custody](#plan-12-context-engine-package-a-custody). ADR-016 replaces per-task reviews with four package checkpoints; the operator accepted the [first Task 1 contracts](../specs/archive/2026-10-02-plan-12-2-task1-contracts.md) on 2026-10-02. CP1 to CP3 are cleared offline. The CP4 offline batch is accepted at cf9bb9d on 2026-10-04 ([disposition](../reviews/2026-10-04-plan-12-2-cp4-offline-review-disposition.md)); its HLD v2.19, LLD v2.42, Guardrails v1.4 and Test Strategy v1.8 successors, plan v4, design v3, Task 1 contracts v3 and ADR-018/019 are filed. **Offline delivery merged:** Plan 12.2's accepted offline implementation and documentation through `7029340` merged into `main` on 2026-10-08 via [PR #276](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/276), merge commit `c509fc8`. Package A's commits are included, and [PR #216](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/216) is marked merged. The offline delivery and its merge gate are complete; this is not a full CP4 pass. Luna route/estimator qualification, the genuine summary-quality receipt and real-editor Task 13 remain Deferred/UNRUN under existing Plan 12.2 ownership, per the [2026-10-08 operator disposition](../reviews/2026-10-08-plan-12-2-cp4-offline-delivery-disposition.md). No further model investigation is commissioned. Paid/live execution, activation, production route enabling, Haiku-default removal and sandbox synchronization remain held. Each activation path requires its applicable real evidence and separate authority; offline acceptance and merge do not substitute for that evidence. ADR-018 quotes the operator's D7 acceptance verbatim from ADR-011 source S4 (registered 2026-10-07). D6/governed activation and paid/live/service gates remain separate. Exact ADR-017 coverage residual and related observations have existing owners below. Wider engine/paid/live work is not delivered; designated Plan 12 follow-ups retain custody."
+    }
+   ]
   },
   {
    "id": "P11.26-CAND-1-RESOURCE-LIFETIME",

@@ -24,6 +24,11 @@ authority documents the inventory was built from and checks the inventory agains
 Unit keys are ``<source>:<line>`` against the exact source bytes, whose git blob ids the inventory pins. The reviewed
 drafting rules that produce the inventory live in ``tools.github_work_tracking_rules``; ``draft`` reproduces the
 committed inventory from its baseline commit.
+
+Status here is a migration expectation, not a registry. A ``--scope`` file narrows ``plan``, ``publish``, ``reconcile`` and
+``finalize`` to the records whose authority moves, without relaxing any check on them. After final acceptance the GitHub
+issues own current status: neither the baseline status, a record's ``status_current`` evidence nor a rerun of ``plan`` or
+``publish`` authorizes resetting what a later, legitimate edit of an issue says.
 """
 
 from __future__ import annotations
@@ -382,6 +387,11 @@ class InventoryRecord:
     quotes: tuple[tuple[str, str, str], ...] = ()
     # Reviewed passages of an adopted pilot's own body, quoted exactly in the body that replaces it.
     retained: tuple[str, ...] = ()
+    # One-time migration evidence, never a status registry. ``status_current`` ({"status", "evidence"}) is the reviewed status an
+    # issue must carry when authority moves, where the source changed after the baseline; it sets only the expected ``status:``
+    # label. ``source_updates`` are dated passages of a pinned source commit that changed after the baseline, quoted exactly.
+    status_current: Mapping[str, Any] | None = None
+    source_updates: tuple[Mapping[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -423,7 +433,7 @@ class CoverageReport:
 
 
 _RECORD_FIELDS = set(InventoryRecord.__dataclass_fields__)
-_TUPLE_FIELDS = ("units", "aliases", "anchors", "related", "retained")
+_TUPLE_FIELDS = ("units", "aliases", "anchors", "related", "retained", "source_updates")
 
 
 def inventory_from_data(data: Mapping) -> Inventory:
@@ -532,8 +542,11 @@ def validate_inventory(inventory: Inventory, sources: Mapping[str, bytes]) -> Co
 
     index = identity_index((record.id, record.aliases) for record in inventory.records)
     aliases: dict[str, str] = {}
+    source_paths = set(inventory.source_paths.values())
     for record in inventory.records:
         problems.extend(_record_problems(record, records, units, index))
+        problems.extend(_current_status_problems(record))
+        problems.extend(_source_update_shape_problems(record, source_paths))
         if record.disposition == "migrate":
             for alias in record.aliases:
                 if alias in aliases and aliases[alias] != record.id:
@@ -674,6 +687,120 @@ def _adoption_problems(inventory: Inventory, records: Mapping[str, InventoryReco
                 problems.append(f"{label}: retained pilot passage {index} carries a source marker, which would split the region")
             if record.retained.index(passage) != index - 1:
                 problems.append(f"{label}: retained pilot passage {index} appears more than once")
+    return problems
+
+
+_COMMIT_ID = re.compile(r"[0-9a-f]{40}")
+_UPDATE_FIELDS = frozenset({"date", "path", "line", "commit", "commit_pin", "text"})  # commit_pin only carries the secret-scan pragma
+_UPDATE_REQUIRED = frozenset({"date", "path", "line", "commit", "text"})
+
+
+def _current_status_problems(record: InventoryRecord) -> list[str]:
+    """A reviewed current status is a known status that has a reviewed label, with a permalink as its evidence."""
+    value = record.status_current
+    if value is None:
+        return []
+    label = f"record {record.id!r} status_current"
+    if record.disposition != "migrate":
+        return [f"{label}: only a migrating record carries one"]
+    if not isinstance(value, Mapping):
+        return [f"{label} must be an object with a status and its evidence"]
+    problems = []
+    if unknown := sorted(set(value) - {"status", "evidence"}):
+        problems.append(f"{label} has unknown fields {unknown}")
+    status, evidence = value.get("status"), value.get("evidence")
+    if not isinstance(status, str) or normalized_status(status) is None:
+        problems.append(f"{label}: {status!r} is not a known status")
+    elif status_label(status) not in LABEL_SPECS:
+        problems.append(f"{label}: {status!r} has no reviewed status label")
+    if not isinstance(evidence, str) or not evidence.strip():
+        problems.append(f"{label} needs its evidence")
+    elif not _PERMALINK.match(evidence):
+        problems.append(f"{label}: its evidence must be a permalink to a file of this repository at a commit")
+    return problems
+
+
+def _source_update_shape_problems(record: InventoryRecord, source_paths: set[str]) -> list[str]:
+    """Each source update is a dated, committed, exactly quoted passage of a baseline source; its text is checked against the
+    commit by ``source_update_problems``."""
+    if not record.source_updates:
+        return []
+    label = f"record {record.id!r} source update"
+    if record.disposition != "migrate":
+        return [f"{label}: only a migrating record carries one"]
+    problems = []
+    seen: set[tuple[Any, Any, Any]] = set()
+    for index, update in enumerate(record.source_updates, 1):
+        where = f"{label} {index}"
+        if not isinstance(update, Mapping):
+            problems.append(f"{where} must be an object")
+            continue
+        if unknown := sorted(set(update) - _UPDATE_FIELDS):
+            problems.append(f"{where} has unknown fields {unknown}")
+        if missing := sorted(_UPDATE_REQUIRED - set(update)):
+            problems.append(f"{where} lacks {missing}")
+        date, commit, path = update.get("date"), update.get("commit"), update.get("path")
+        line, text = update.get("line"), update.get("text")
+        if "date" in update and not _calendar_date(date):
+            problems.append(f"{where} date {date!r} is not a calendar date written YYYY-MM-DD")
+        if "commit" in update and not (isinstance(commit, str) and _COMMIT_ID.fullmatch(commit)):
+            problems.append(f"{where} commit {commit!r} is not a lowercase 40-hex commit id")
+        if "path" in update and path not in source_paths:
+            problems.append(f"{where} path {path!r} is not one of the baseline sources {sorted(source_paths)}")
+        if "line" in update and not (isinstance(line, int) and not isinstance(line, bool) and line >= 1):
+            problems.append(f"{where} line {line!r} is not a positive line number")
+        if "text" in update:
+            if not isinstance(text, str) or not text.strip():
+                problems.append(f"{where} text is empty")
+            else:
+                if text != text.strip():
+                    problems.append(f"{where} text has surrounding whitespace; quote it exactly")
+                if _MARKER.search(text) or _END_MARKER.search(text):
+                    problems.append(f"{where} text carries a source marker, which would split the generated region")
+        key = (commit, path, line)
+        if key in seen:
+            problems.append(f"{where} appears more than once (same commit, path and line)")
+        seen.add(key)
+    return problems
+
+
+def _calendar_date(value: Any) -> bool:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return False
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return False
+    return True
+
+
+def source_update_problems(inventory: Inventory, read: SourceReader) -> list[str]:
+    """Each source update's quoted text is on its cited line of its source file at its commit.
+
+    ``read`` is a source reader (``read_sources_at``). A commit or file that cannot be read is a problem, never a skip. Updates
+    with a malformed shape are left to ``validate_inventory``.
+    """
+    names = {path: name for name, path in inventory.source_paths.items()}
+    problems: list[str] = []
+    cache: dict[tuple[str, str], list[str] | str] = {}
+    for record in inventory.records:
+        for index, update in enumerate(record.source_updates, 1):
+            if not isinstance(update, Mapping) or not _UPDATE_REQUIRED <= set(update) or update["path"] not in names:
+                continue
+            where = f"record {record.id!r} source update {index}"
+            commit, path, line, text = update["commit"], update["path"], update["line"], update["text"]
+            if (commit, path) not in cache:
+                try:
+                    cache[commit, path] = read(commit, {names[path]: path})[names[path]].decode("utf-8").splitlines()
+                except (subprocess.CalledProcessError, KeyError, OSError, UnicodeDecodeError) as error:
+                    cache[commit, path] = f"cannot be read at {commit} ({type(error).__name__})"
+            lines = cache[commit, path]
+            if isinstance(lines, str):
+                problems.append(f"{where}: {path} {lines}")
+            elif not isinstance(line, int) or not 1 <= line <= len(lines):
+                problems.append(f"{where}: {path} at {commit[:12]} has no line {line}")
+            elif text not in lines[line - 1]:
+                problems.append(f"{where}: line {line} of {path} at {commit[:12]} does not contain the quoted text")
     return problems
 
 
@@ -855,9 +982,12 @@ TRIAL_LABEL = "shadow-pilot"
 WRITE_PAUSE_S = 1.0  # GitHub asks clients to wait at least a second between mutating requests
 TITLE_LIMIT, BODY_LIMIT = 256, 65_536
 MAX_PAGES = 100
+# Neutral on purpose: it stays true before and after the authority switch, because it names the one place that states who is
+# authoritative (the backlog's own `Moved` pointer) instead of asserting an owner.
 TRIAL_BANNER = (
-    "> **Staged copy for the tracking migration.** The repository pool remains authoritative until the cutover merge."
-    " This issue grants no implementation or live-run authority. Do not reference it with a closing keyword."
+    "> **Staged copy for the tracking migration.** Whether this issue or the consolidated backlog is authoritative for this record is stated only"
+    " by the backlog's pointer for it: a row or entry marked `Moved` that links this issue. Until that pointer is on the default branch, the backlog"
+    " remains authoritative. This issue grants no implementation or live-run authority. Do not reference it with a closing keyword."
 )
 _MARKER = re.compile(r"<!-- optimus-source: (\S+) -->")
 _END_MARKER = re.compile(r"<!-- /optimus-source: (\S+) -->")
@@ -1194,9 +1324,11 @@ def status_label(status: str | None) -> str:
 
 
 def record_labels(record: InventoryRecord, trial: bool) -> tuple[str, ...]:
-    """Source status, product and kind; source or default priority; the operator's Medium/NA/unassigned defaults."""
+    """Source status (or the reviewed current status, where the source changed after the baseline), product and kind; source or
+    default priority; the operator's Medium and NA defaults and the plan's unassigned handler."""
+    current = record.status_current["status"] if isinstance(record.status_current, Mapping) else record.status
     labels = {
-        status_label(record.status),
+        status_label(current),
         f"priority:{(record.priority or DEFAULT_PRIORITY).lower()}",
         "difficulty:medium",
         "estimate:na",
@@ -1327,6 +1459,19 @@ def render_body(
             span = f"L{first}" if first == last else f"L{first}-L{last}"
             out += [f"**`{path}` line {first}** ([at baseline]({blob_url(path, commit)}?plain=1#{span}))", ""]
             out += [normalize_links("\n".join(lines[source][first - 1 : last]), path, commit), ""]
+    for update in record.source_updates:
+        later, where, line = update["commit"], update["path"], update["line"]
+        out += [
+            f"## Historical source update, {update['date']} (`{later[:7]}`)",
+            "",
+            "The pinned source above is the baseline. This passage is the same record's text at that later commit, quoted exactly; it is"
+            " history, not a live status: this issue's state and labels carry the current status.",
+            "",
+            f"**`{where}` line {line}** ([at {later[:7]}]({blob_url(where, later)}?plain=1#L{line}))",
+            "",
+            quote_block(normalize_links(update["text"], where, later)),
+            "",
+        ]
     out.append(end_marker_comment(source_marker(record.id)))
     return "\n".join(out) + "\n"
 
@@ -1385,6 +1530,7 @@ class MigrationBatch:
     operations: tuple[Operation, ...]
     conflicts: tuple[str, ...]
     reused: Mapping[str, IssueRef]
+    scope: tuple[str, ...] | None = None  # the records a scoped plan is about; recorded in the batch only when one was given
 
     @property
     def ok(self) -> bool:
@@ -1402,6 +1548,7 @@ class MigrationBatch:
             "repo": self.repo,
             "baseline_commit": self.baseline_commit,
             "trial": self.trial,
+            **({} if self.scope is None else {"scope": list(self.scope)}),
             "budget": self.budget,
             "conflicts": list(self.conflicts),
             "reused": {record_id: {"number": ref.number, "id": ref.id} for record_id, ref in self.reused.items()},
@@ -1469,6 +1616,7 @@ def plan_migration(
     issues: Sequence[IssueSnapshot],
     labels: Mapping[str, LabelSpec],
     selected: frozenset[str] | None = None,
+    scope: frozenset[str] | None = None,
 ) -> MigrationBatch:
     """Every write a publication needs, in order (labels, issues, bindings), and every conflict that forbids it.
 
@@ -1476,14 +1624,19 @@ def plan_migration(
     creates and updates, and each binding with a selected end once both its issues exist. A record outside the
     selection whose source marker is on one issue is an earlier batch's identity. Conflicts are still found across the
     whole repository and inventory.
+
+    With ``scope`` (``--scope``), the plan is about exactly those records: a record outside it is neither planned nor
+    judged, and the batch records the scope. Source markers are still checked across the whole repository, and an issue of
+    an outside record is never written; it is only read, to resolve the native parent of a scoped child.
     """
     conflicts: list[str] = []
+    selection = selected if selected is not None else scope
 
     def chosen(record_id: str) -> bool:
-        return selected is None or record_id in selected
+        return selection is None or record_id in selection
 
-    drafts_by_id = {draft.record_id: draft for draft in drafts}
-    owners = {draft.marker: draft.record_id for draft in drafts}
+    drafts_by_id = {draft.record_id: draft for draft in drafts}  # every draft: a scoped child's parent may lie outside the scope
+    owners = {draft.marker: draft.record_id for draft in drafts}  # every marker: a foreign or repeated one is a defect anywhere
     by_number = {issue.number: issue for issue in issues}
     hits: dict[str, list[int]] = defaultdict(list)
     for issue in issues:
@@ -1494,6 +1647,16 @@ def plan_migration(
             conflicts.append(f"issue(s) {_issue_list(numbers)} carry source marker {marker!r}, which no migrating record owns")
         elif len(numbers) > 1:
             conflicts.append(f"source marker {marker!r} of {owners[marker]!r} is on more than one issue: {_issue_list(numbers)}")
+    known: dict[str, IssueRef] = {}  # an outside record's existing issue, read to resolve a scoped child's parent
+    if scope is not None:
+        for record in inventory.records:
+            if record.disposition == "migrate" and record.id not in scope:
+                draft = drafts_by_id.get(record.id)
+                marked = hits.get(draft.marker, []) if draft else []
+                number = marked[0] if len(marked) == 1 else record.target_issue
+                if number in by_number:
+                    known[record.id] = IssueRef(by_number[number].number, by_number[number].id)
+        drafts = [draft for draft in drafts if draft.record_id in scope]
     for draft in drafts:
         if not 0 < len(draft.title) <= TITLE_LIMIT or len(draft.body) > BODY_LIMIT:
             conflicts.append(
@@ -1525,7 +1688,7 @@ def plan_migration(
     reused: dict[str, IssueRef] = {}
     issue_ops = []
     for record in inventory.records:
-        if record.disposition != "migrate":
+        if record.disposition != "migrate" or (scope is not None and record.id not in scope):
             continue
         label = f"record {record.id!r}"
         if record.kind == "external-issue":  # reusing an existing issue is its own reviewed operation, never a write here
@@ -1606,7 +1769,7 @@ def plan_migration(
         if draft.parent not in drafts_by_id:
             conflicts.append(f"{where} has parent {draft.parent!r}, which has no drafted issue")
             continue
-        parent_ref = reused.get(draft.parent)
+        parent_ref = reused.get(draft.parent) or known.get(draft.parent)
         if current is not None:
             if parent_ref is None or current != parent_ref.number:
                 conflicts.append(
@@ -1614,7 +1777,7 @@ def plan_migration(
                 )
             continue
         ends = {draft.record_id, draft.parent}
-        if selected is not None and not (ends & selected and ends <= exists):
+        if selection is not None and not (ends & selection and ends <= exists):
             continue  # it belongs to the batch that publishes the later of its two issues
         bind_ops.append(
             Operation("bind-sub-issue", f"{draft.record_id} <- {draft.parent}", {"child": draft.record_id, "parent": draft.parent})
@@ -1622,7 +1785,9 @@ def plan_migration(
 
     trial = any(TRIAL_LABEL in draft.labels for draft in drafts)
     operations = tuple(label_ops + issue_ops + bind_ops)
-    return MigrationBatch(REPO, inventory.baseline_commit, trial, operations, tuple(conflicts), reused)
+    return MigrationBatch(
+        REPO, inventory.baseline_commit, trial, operations, tuple(conflicts), reused, None if scope is None else tuple(sorted(scope))
+    )
 
 
 # ---- publication: journal, write, validate; stop without retry ----
@@ -1795,6 +1960,9 @@ def publish_batch(
 class ReconciliationReport:
     problems: tuple[str, ...]
     mapping: Mapping[str, int]
+    # A scoped run only: each observed issue the scope does not map (never checked, never written), with the record that owns
+    # it by reviewed target or source marker, or ``None``.
+    untouched: Mapping[int, str | None] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -1822,17 +1990,25 @@ def _label_problems(draft: IssueDraft, issue: IssueSnapshot) -> list[str]:
 
 
 def reconcile(
-    inventory: Inventory, drafts: Sequence[IssueDraft], observed: Sequence[IssueSnapshot], selected: frozenset[str] | None = None
+    inventory: Inventory,
+    drafts: Sequence[IssueDraft],
+    observed: Sequence[IssueSnapshot],
+    selected: frozenset[str] | None = None,
+    scope: frozenset[str] | None = None,
 ) -> ReconciliationReport:
     """Each migrating record maps to exactly one open issue whose generated region, labels, native parent and (for a
     created issue) title match its draft.
 
     With ``selected`` (``--only``), a record outside the selection may have no issue yet. Every issue that exists is
     still checked in full, and source markers are checked across the whole repository.
+
+    With ``scope`` (``--scope``), the verdict is about exactly those records, which are checked as usual. A record outside
+    it is neither required nor judged, and its issues are reported as untouched. Source markers are scanned across the whole
+    repository regardless: a marker no record owns, or one on several issues, fails even when its record is outside the scope.
     """
     problems: list[str] = []
     drafts_by_id = {draft.record_id: draft for draft in drafts}
-    owners = {draft.marker for draft in drafts}
+    owners = {draft.marker: draft.record_id for draft in drafts}
     by_number = {issue.number: issue for issue in observed}
     hits: dict[str, list[IssueSnapshot]] = defaultdict(list)
     for issue in observed:
@@ -1843,9 +2019,21 @@ def reconcile(
             problems.append(
                 f"{_issue_list(issue.number for issue in issues)} carry source marker {marker!r}, which no migrating record owns"
             )
+        elif scope is not None and len(issues) > 1 and owners[marker] not in scope:  # a scoped record's duplicate is found below
+            problems.append(
+                f"record {owners[marker]!r} source marker is on more than one issue: {_issue_list(issue.number for issue in issues)}"
+            )
+    known: dict[str, int] = {}  # an outside record's existing issue, to resolve a scoped child's native parent
     mapping: dict[str, int] = {}
     for record in inventory.records:
         if record.disposition != "migrate":
+            continue
+        if scope is not None and record.id not in scope:
+            draft = drafts_by_id.get(record.id)
+            marked = hits.get(draft.marker, []) if draft else []
+            number = marked[0].number if len(marked) == 1 else record.target_issue
+            if number in by_number:
+                known[record.id] = number
             continue
         label = f"record {record.id!r}"
         if record.kind == "external-issue":
@@ -1887,7 +2075,7 @@ def reconcile(
         number = mapping.get(draft.record_id)
         if number is None:
             continue
-        expected = mapping.get(draft.parent) if draft.parent else None
+        expected = (mapping.get(draft.parent) or known.get(draft.parent)) if draft.parent else None
         actual = by_number[number].parent
         if actual != expected:
             problems.append(
@@ -1896,7 +2084,21 @@ def reconcile(
     shared = [number for number, count in Counter(mapping.values()).items() if count > 1]
     if shared:
         problems.append(f"{_issue_list(shared)} are mapped by more than one record")
-    return ReconciliationReport(tuple(problems), mapping)
+    untouched: dict[int, str | None] = {}
+    if scope is not None:
+        owner_of: dict[int, str] = {}
+        for record in inventory.records:
+            if record.disposition == "migrate" and record.target_issue is not None:
+                owner_of.setdefault(record.target_issue, record.id)
+        for marker, issues in hits.items():
+            for issue in issues:
+                if marker in owners:
+                    owner_of.setdefault(issue.number, owners[marker])
+        mapped = set(mapping.values())
+        untouched = {
+            issue.number: owner_of.get(issue.number) for issue in sorted(observed, key=lambda i: i.number) if issue.number not in mapped
+        }
+    return ReconciliationReport(tuple(problems), mapping, untouched)
 
 
 # ==== Task 4: offline governance gates ====
@@ -2123,11 +2325,14 @@ def stub_problems(text: str) -> list[str]:
     return problems
 
 
-def finalize_inventory(data: Mapping, mapping: Mapping[str, int]) -> dict:
+def finalize_inventory(data: Mapping, mapping: Mapping[str, int], scope: frozenset[str] | None = None) -> dict:
     """The manifest with each migrating record's issue from a sealed reconcile ``mapping`` (record id -> issue number).
 
     Every migrating record needs exactly one positive issue, an already reviewed target must agree, and no issue serves
     two records. The input is never changed.
+
+    With ``scope``, the mapping must name exactly the scoped records: only their ``target_issue`` fields are written, every
+    other record keeps what it has, and no scoped record may take an issue another record already targets.
     """
     final = copy.deepcopy(dict(data))
     records = {record["id"]: record for record in final["records"]}
@@ -2135,7 +2340,12 @@ def finalize_inventory(data: Mapping, mapping: Mapping[str, int]) -> dict:
     unknown = sorted(set(mapping) - migrating)
     if unknown:
         raise ValueError(f"the mapping names records that do not migrate: {unknown}")
-    missing = sorted(migrating - set(mapping))
+    if scope is not None:
+        if outside := sorted(set(mapping) - scope):
+            raise ValueError(f"the mapping names records outside the scope: {outside}")
+        if not_migrating := sorted(scope - migrating):
+            raise ValueError(f"the scope names records that do not migrate: {not_migrating}")
+    missing = sorted((migrating if scope is None else scope) - set(mapping))
     if missing:
         raise ValueError(f"migrating records without an issue in the mapping: {missing}")
     for record_id, number in mapping.items():
@@ -2147,6 +2357,15 @@ def finalize_inventory(data: Mapping, mapping: Mapping[str, int]) -> dict:
     shared = sorted(number for number, count in Counter(mapping.values()).items() if count > 1)
     if shared:
         raise ValueError(f"{_issue_list(shared)} map to more than one record")
+    if scope is not None:
+        taken = {
+            record["target_issue"]: record_id
+            for record_id, record in records.items()
+            if record_id not in scope and record.get("target_issue")
+        }
+        for record_id, number in mapping.items():
+            if number in taken:
+                raise ValueError(f"record {record_id!r} maps to #{number}, which record {taken[number]!r} already targets")
     for record_id, number in mapping.items():
         records[record_id]["target_issue"] = number
     return final
@@ -2293,16 +2512,40 @@ def read_selection(paths: Sequence[Path] | None, inventory: Inventory) -> frozen
     return frozenset(ids)
 
 
+def read_scope(path: Path | None, inventory: Inventory) -> frozenset[str] | None:
+    """The records a scoped run is about, from one file of ids (one per line); ``None`` (every record) without a file.
+
+    The scope is strict: an empty or blank-only file, a repeated id and an id the inventory does not migrate are refused, and
+    a refusal never falls back to an unscoped run.
+    """
+    if path is None:
+        return None
+    ids = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if not ids:
+        raise ValueError("the scope names no record")
+    unknown = sorted(set(ids) - {record.id for record in inventory.records if record.disposition == "migrate"})
+    if unknown:
+        raise ValueError(f"the scope names records the inventory does not migrate: {unknown}")
+    twice = sorted(record_id for record_id, count in Counter(ids).items() if count > 1)
+    if twice:
+        raise ValueError(f"the scope names {twice} more than once")
+    return frozenset(ids)
+
+
 def _github_command(args: argparse.Namespace, reader: SourceReader, client: GitHubClient) -> int:
     """``plan`` and ``reconcile`` only read GitHub; ``publish`` writes only a reviewed batch that a fresh plan equals.
-    ``--only`` selects records within the full inventory."""
+    ``--only`` selects records within the full inventory; ``--scope`` narrows the whole run to the records whose authority moves
+    (``--only`` must then lie inside it), and a refused scope never falls back to an unscoped run."""
     if args.command == "publish" and not args.execute:
         print(json.dumps({"step": "STOP", "reason": "publish writes to GitHub only with --execute"}))
         return 2
     inventory = load_inventory(args.inventory)
     try:
         selected = read_selection(args.only, inventory)
-    except (OSError, ValueError) as error:  # an unreadable or unreviewable selection is refused before any read
+        scope = read_scope(args.scope, inventory)
+        if selected is not None and scope is not None and not selected <= scope:
+            raise ValueError(f"the selection names records outside the scope: {sorted(selected - scope)}")
+    except (OSError, ValueError) as error:  # an unreadable or unreviewable selection or scope is refused before any read
         print(json.dumps({"step": "STOP", "reason": str(error)}))
         return 2
     if selected is not None and getattr(args, "mapping_out", None) is not None:
@@ -2310,8 +2553,13 @@ def _github_command(args: argparse.Namespace, reader: SourceReader, client: GitH
         return 2
     sources = reader(inventory.baseline_commit, inventory.read_paths)
     report = validate_inventory(inventory, sources)
-    if not report.ok:
-        print(json.dumps({"step": "STOP", "reason": f"the inventory has {len(report.problems)} problem(s); run validate"}))
+    update_problems = source_update_problems(inventory, reader)
+    if not report.ok or update_problems:
+        print(
+            json.dumps(
+                {"step": "STOP", "reason": f"the inventory has {len(report.problems) + len(update_problems)} problem(s); run validate"}
+            )
+        )
         return 2
     drafts = draft_issues(inventory, sources, trial=not args.final)
     try:
@@ -2320,14 +2568,19 @@ def _github_command(args: argparse.Namespace, reader: SourceReader, client: GitH
         print(json.dumps({"step": "STOP", "reason": str(error)}))
         return 2
     if args.command == "reconcile":
-        result = reconcile(inventory, drafts, issues, selected)
+        result = reconcile(inventory, drafts, issues, selected, scope)
         for problem in result.problems:
             print(f"PROBLEM: {problem}")
-        print(json.dumps({"ok": result.ok, "problems": len(result.problems), "mapped": len(result.mapping)}))
+        summary: dict[str, Any] = {"ok": result.ok, "problems": len(result.problems), "mapped": len(result.mapping)}
+        if scope is not None:  # what the scope left alone is named, so the report never reads as "all issues checked"
+            for number, owner in result.untouched.items():
+                print(f"UNTOUCHED: #{number} ({owner or 'no migration record'})")
+            summary |= {"scope": len(scope), "untouched": list(result.untouched)}
+        print(json.dumps(summary))
         if result.ok and args.mapping_out is not None:  # a mapping is evidence only when every record reconciles
             args.mapping_out.write_bytes((json.dumps(dict(result.mapping), indent=2, sort_keys=True) + "\n").encode("utf-8"))
         return 0 if result.ok else 1
-    batch = plan_migration(inventory, drafts, issues, labels, selected)
+    batch = plan_migration(inventory, drafts, issues, labels, selected, scope)
     text = render_batch(batch).encode("utf-8")
     if args.command == "plan":
         args.out.write_bytes(text)
@@ -2400,9 +2653,17 @@ def main(argv: Sequence[str] | None = None, reader: SourceReader = read_sources_
     for command in (plan, publish, check):
         command.add_argument("--final", action="store_true", help="final copies: no trial label or banner")
         command.add_argument("--only", type=Path, action="append", help="a file of record ids, one per line, to act on (repeatable)")
+        command.add_argument(
+            "--scope",
+            type=Path,
+            help="a file of record ids, one per line: the run is about exactly these records and leaves every other issue untouched",
+        )
     finalize = commands.add_parser("finalize", help="record each migrating record's issue from a reconcile mapping (offline)")
     finalize.add_argument("inventory", type=Path)
     finalize.add_argument("--mapping", type=Path, required=True)
+    finalize.add_argument(
+        "--scope", type=Path, help="a file of record ids: the mapping must name exactly these, and only their issues are recorded"
+    )
     finalize.add_argument("--out", type=Path, required=True)
     cutover = commands.add_parser("cutover-docs", help="write the pool stub and fill issue placeholders from a finalized manifest")
     cutover.add_argument("inventory", type=Path)
@@ -2418,8 +2679,10 @@ def main(argv: Sequence[str] | None = None, reader: SourceReader = read_sources_
             mapping = json.loads(args.mapping.read_text(encoding="utf-8"))
             if not isinstance(mapping, dict):
                 raise ValueError("the mapping is not a JSON object of record ids to issue numbers")
-            final = finalize_inventory(json.loads(args.inventory.read_text(encoding="utf-8")), mapping)
-        except ValueError as error:
+            data = json.loads(args.inventory.read_text(encoding="utf-8"))
+            scope = read_scope(args.scope, inventory_from_data(data))
+            final = finalize_inventory(data, mapping, scope)
+        except (OSError, ValueError) as error:
             print(json.dumps({"step": "STOP", "reason": str(error)}))
             return 2
         args.out.write_bytes(render_manifest(final).encode("utf-8"))
@@ -2453,10 +2716,11 @@ def main(argv: Sequence[str] | None = None, reader: SourceReader = read_sources_
 
     inventory = load_inventory(args.inventory)
     report = validate_inventory(inventory, reader(inventory.baseline_commit, inventory.read_paths))
-    for problem in report.problems:
+    problems = [*report.problems, *source_update_problems(inventory, reader)]
+    for problem in problems:
         print(f"PROBLEM: {problem}")
-    print(json.dumps({"ok": report.ok, "problems": len(report.problems), **report.counts}, sort_keys=True))
-    return 0 if report.ok else 1
+    print(json.dumps({"ok": not problems, "problems": len(problems), **report.counts}, sort_keys=True))
+    return 0 if not problems else 1
 
 
 if __name__ == "__main__":

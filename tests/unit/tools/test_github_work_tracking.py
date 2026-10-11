@@ -3038,3 +3038,562 @@ def test_the_selection_never_changes_a_candidate_owned_body() -> None:
         assert not [c for c in batch.conflicts if "P11-FU-38" in c or "P11-FU-39" in c or "P11-FU-41" in c]
         bodies.append(next(op.payload["body"] for op in batch.operations if op.op == "create-issue" and op.target == "P11-FU-38"))
     assert bodies[0] == bodies[1] == bodies[2] and "(historical):** `P11.26-CAND-1-RESOURCE-LIFETIME`" in bodies[0]
+
+
+# ==== Plan 11.29 Stage 1 (operator authority 2026-10-12): the scoped cutover tool ====
+#
+# The cutover moves authority for 49 records, not for the manifest's whole population. A scope names exactly those records. It
+# changes what a run is about, never how a record is checked: the global marker scan, the unscoped verdict and the unscoped batch
+# bytes stay as they were.
+
+SCOPE = ("plan:11.23", "P11-FU-20", "P11-FU-40", "plan:12.1", "P11.25-FU-1", "P12-FU-1", "H4")
+A2A_PILOT_BODY = "<!-- optimus-source: EVIDENCE-HANDOFF-A2A-C1 -->\n\npilot body without a generated region\n"
+
+
+def _scoped_data() -> dict[str, Any]:
+    """The fixture inventory plus the two kinds of record a scope leaves alone: the A2A pilot (#225) and an external issue (#33)."""
+    data = _good()
+    _records(data)["A2A-C1"]["target_issue"] = 225
+    data["records"].append(
+        _record(
+            id="issue:33",
+            kind="external-issue",
+            status="Open",
+            status_disposition="reconciled read-only; the issue is not migrated",
+            disposition="migrate",
+            units=[],
+            target_issue=33,
+        )
+    )
+    return data
+
+
+def _scoped_client() -> FakeGitHub:
+    a2a = _issue(225, title="A2A C1", body=A2A_PILOT_BODY, labels=[*PILOT_DEFAULTS, "status:open", "kind:obligation"])
+    external = _issue(33, title="External report", body="No migration marker here.", labels=["bug"])
+    return FakeGitHub([*_pilot_issues(), a2a, external], _pilot_labels())
+
+
+def _scoped_world(tmp_path: Path) -> tuple[gwt.Inventory, list[gwt.IssueDraft], FakeGitHub]:
+    inventory = gwt.load_inventory(_write(tmp_path, _with_source(_scoped_data(), POOL)))
+    return inventory, gwt.draft_issues(inventory, {"pool": POOL.encode("utf-8")}), _scoped_client()
+
+
+def _published_scope(tmp_path: Path) -> tuple[gwt.Inventory, list[gwt.IssueDraft], FakeGitHub]:
+    inventory, drafts, client = _scoped_world(tmp_path)
+    batch = gwt.plan_migration(inventory, drafts, gwt.read_issues(client), gwt.read_labels(client), scope=frozenset(SCOPE))
+    assert batch.conflicts == ()
+    assert _publish(tmp_path, batch, client)[0].outcome == "pass"
+    return inventory, drafts, client
+
+
+def _scoped_reconcile(
+    inventory: gwt.Inventory,
+    drafts: list[gwt.IssueDraft],
+    client: FakeGitHub,
+    scope: Sequence[str] = SCOPE,
+    selected: frozenset[str] | None = None,
+) -> gwt.ReconciliationReport:
+    return gwt.reconcile(inventory, drafts, gwt.read_issues(client), selected, frozenset(scope))
+
+
+def test_read_scope_is_none_without_a_file_and_the_reviewed_ids_with_one(tmp_path: Path) -> None:
+    inventory, _drafts, _client = _scoped_world(tmp_path)
+    assert gwt.read_scope(None, inventory) is None
+    assert gwt.read_scope(_selection(tmp_path, "scope", *SCOPE), inventory) == frozenset(SCOPE)
+
+
+@pytest.mark.parametrize(
+    ("ids", "expected"),
+    [
+        ((), "names no record"),
+        (("H4", "H4"), "more than once"),
+        (("P11-FU-999",), "'P11-FU-999'"),
+        (("A2A-M17",), "'A2A-M17'"),  # a history record does not migrate
+    ],
+)
+def test_read_scope_refuses_an_empty_duplicate_unknown_or_non_migrating_entry(tmp_path: Path, ids: tuple[str, ...], expected: str) -> None:
+    inventory, _drafts, _client = _scoped_world(tmp_path)
+    with pytest.raises(ValueError, match=re.escape(expected)):
+        gwt.read_scope(_selection(tmp_path, "bad", *ids), inventory)
+
+
+def test_read_scope_refuses_a_blank_only_file_and_a_missing_file(tmp_path: Path) -> None:
+    inventory, _drafts, _client = _scoped_world(tmp_path)
+    blank = tmp_path / "blank.txt"
+    blank.write_text("\n  \n\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="names no record"):
+        gwt.read_scope(blank, inventory)
+    with pytest.raises(OSError):
+        gwt.read_scope(tmp_path / "absent.txt", inventory)
+
+
+def test_cli_scope_refusals_come_before_any_github_read(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = _write(tmp_path, _with_source(_scoped_data(), POOL))
+    reader = lambda commit, paths: {"pool": POOL.encode("utf-8")}  # noqa: E731 - fixture reader
+    client = _scoped_client()
+    good = _selection(tmp_path, "good", *SCOPE)
+    reads = len(client.log)
+    refusals = {
+        "unknown": (("P11-FU-999",), "'P11-FU-999'"),
+        "history": (("A2A-M17",), "'A2A-M17'"),
+        "twice": (("H4", "H4"), "more than once"),
+        "empty": ((), "names no record"),
+    }
+    commands = {
+        "plan": ["plan", str(path), "--out", str(tmp_path / "out.json")],
+        "reconcile": ["reconcile", str(path)],
+        "publish": ["publish", str(path), "--batch", str(tmp_path / "absent.json"), "--evidence-dir", str(tmp_path / "ev"), "--execute"],
+    }
+    for name, (ids, expected) in refusals.items():
+        for command, argv in commands.items():
+            assert gwt.main([*argv, "--scope", str(_selection(tmp_path, name, *ids))], reader=reader, client=client) == 2
+            assert expected in json.loads(capsys.readouterr().out)["reason"], (command, name)
+    outside = _selection(tmp_path, "outside", "A2A-C1")  # --only must lie inside --scope
+    assert gwt.main([*commands["plan"], "--scope", str(good), "--only", str(outside)], reader=reader, client=client) == 2
+    assert "outside the scope" in json.loads(capsys.readouterr().out)["reason"]
+    assert gwt.main([*commands["plan"], "--scope", str(tmp_path / "absent.txt")], reader=reader, client=client) == 2
+    capsys.readouterr()
+    assert len(client.log) == reads and not (tmp_path / "out.json").exists()  # every refusal comes before any GitHub read
+    assert client.writes == []
+
+
+def test_a_scoped_reconcile_is_clean_while_out_of_scope_records_lack_issues_and_reports_what_it_left_alone(tmp_path: Path) -> None:
+    inventory, drafts, client = _published_scope(tmp_path)
+    report = _scoped_reconcile(inventory, drafts, client)
+    assert report.problems == () and report.ok
+    assert set(report.mapping) == set(SCOPE)  # exactly the scope: neither the A2A pilot nor the external issue
+    assert report.untouched == {33: "issue:33", 225: "A2A-C1"}  # #33 by its reviewed target, #225 by its marker
+
+    unscoped = gwt.reconcile(inventory, drafts, gwt.read_issues(client))  # the unscoped verdict is its own, unchanged result
+    assert not unscoped.ok and any("A2A-C1" in problem and "generated region" in problem for problem in unscoped.problems)
+    assert unscoped.untouched == {} and "issue:33" in unscoped.mapping
+
+
+def test_a_scoped_reconcile_neither_requires_nor_judges_an_out_of_scope_issue(tmp_path: Path) -> None:
+    inventory, drafts, client = _published_scope(tmp_path)
+    client.issues[225].update(body="rewritten by someone else", labels=[], title="whatever")  # the marker is gone, the labels are gone
+    client.issues[33].update(state="closed")
+    report = _scoped_reconcile(inventory, drafts, client)
+    assert report.problems == ()
+    assert report.untouched == {33: "issue:33", 225: "A2A-C1"}  # #225 is still named by its reviewed target
+
+
+def test_a_scoped_reconcile_still_scans_every_marker_in_the_repository(tmp_path: Path) -> None:
+    inventory, drafts, client = _published_scope(tmp_path)
+    cases = {
+        "no migrating record owns": ("<!-- optimus-source: P11-FU-999 -->", 900),
+        "'P11-FU-40' source marker is on more than one issue": ("<!-- optimus-source: P11-FU-40 -->", 901),
+        "'A2A-C1' source marker is on more than one issue": ("<!-- optimus-source: EVIDENCE-HANDOFF-A2A-C1 -->", 902),  # out of scope too
+    }
+    for expected, (body, number) in cases.items():
+        issues = [*client.issues.values(), _issue(number, body=body)]
+        problems = gwt.reconcile(inventory, drafts, gwt.read_issues(FakeGitHub(issues)), None, frozenset(SCOPE)).problems
+        assert any(expected in problem for problem in problems), (expected, problems)
+
+
+def test_a_scoped_reconcile_checks_every_in_scope_issue_in_full(tmp_path: Path) -> None:
+    inventory, drafts, client = _published_scope(tmp_path)
+    numbers = _scoped_reconcile(inventory, drafts, client).mapping
+    h4, child, parent = numbers["H4"], numbers["P12-FU-1"], numbers["plan:12.1"]
+
+    def broken(change: Any) -> list[str]:
+        issues = copy.deepcopy(client.issues)
+        change(issues)
+        return list(gwt.reconcile(inventory, drafts, gwt.read_issues(FakeGitHub(list(issues.values()))), None, frozenset(SCOPE)).problems)
+
+    cases = {
+        f"'H4': #{h4} body's generated region differs": lambda issues: issues[h4].update(
+            body=issues[h4]["body"].replace("<!-- /optimus-source: H4 -->", "edited\n<!-- /optimus-source: H4 -->")
+        ),
+        "needs exactly one valid priority label": lambda issues: issues[h4].update(
+            labels=[label for label in issues[h4]["labels"] if not label["name"].startswith("priority:")]
+        ),
+        f"#{h4} is closed during the migration": lambda issues: issues[h4].update(state="closed"),
+        "'P12-FU-1' has no issue carrying its source marker": lambda issues: issues.pop(child),
+        f"#{child}'s native parent is none, not #{parent}": lambda issues: issues[child].update(parent_issue_url=None),
+    }
+    for expected, change in cases.items():
+        problems = broken(change)
+        assert any(expected in problem for problem in problems), (expected, problems)
+
+
+def test_a_scoped_reconcile_expects_the_native_parent_even_when_the_parent_is_out_of_scope(tmp_path: Path) -> None:
+    inventory, drafts, client = _published_scope(tmp_path)
+    numbers = _scoped_reconcile(inventory, drafts, client).mapping
+    children = tuple(record for record in SCOPE if record != "plan:12.1")  # plan:12.1 is the native parent of two of them
+    assert _scoped_reconcile(inventory, drafts, client, children).problems == ()
+    client.issues[numbers["P12-FU-1"]]["parent_issue_url"] = None
+    problems = _scoped_reconcile(inventory, drafts, client, children).problems
+    assert any(f"#{numbers['P12-FU-1']}'s native parent is none, not #{numbers['plan:12.1']}" in problem for problem in problems)
+
+
+def test_a_selection_inside_a_scope_may_leave_other_scoped_records_without_an_issue(tmp_path: Path) -> None:
+    inventory, drafts, client = _scoped_world(tmp_path)
+    pilots = frozenset({"plan:11.23", "P11-FU-20"})
+    batch = gwt.plan_migration(inventory, drafts, gwt.read_issues(client), gwt.read_labels(client), pilots, frozenset(SCOPE))
+    assert batch.conflicts == () and {op.target for op in batch.operations if op.op == "update-issue"} == pilots
+    assert _publish(tmp_path, batch, client)[0].outcome == "pass"
+    assert _scoped_reconcile(inventory, drafts, client, selected=pilots).problems == ()
+    full = _scoped_reconcile(inventory, drafts, client).problems
+    assert sorted(problem.split("'")[1] for problem in full) == sorted(set(SCOPE) - pilots)  # the unselected scoped records are missing
+    assert all("has no issue carrying its source marker" in problem for problem in full)
+
+
+def test_a_scoped_plan_acts_only_on_its_scope_and_the_batch_records_it(tmp_path: Path) -> None:
+    inventory, drafts, client = _scoped_world(tmp_path)
+    issues, labels = gwt.read_issues(client), gwt.read_labels(client)
+    batch = gwt.plan_migration(inventory, drafts, issues, labels, scope=frozenset(SCOPE))
+    assert batch.conflicts == ()
+    assert {op.target for op in batch.operations if op.op in ("create-issue", "update-issue")} == set(SCOPE)
+    assert batch.to_data()["scope"] == sorted(SCOPE)
+    assert "A2A-C1" not in {ref for ref in batch.reused} and {ref.number for ref in batch.reused.values()} <= {222, 223}
+
+    unscoped = gwt.plan_migration(inventory, drafts, issues, labels, frozenset({"H4"}))
+    assert "scope" not in unscoped.to_data()  # an unscoped batch keeps its bytes: no scope key is added
+
+
+def test_a_scoped_plan_ignores_defects_of_out_of_scope_records_but_not_a_foreign_marker(tmp_path: Path) -> None:
+    inventory, drafts, client = _scoped_world(tmp_path)
+    issues, labels = gwt.read_issues(client), gwt.read_labels(client)
+    assert any("A2A-C1" in conflict for conflict in gwt.plan_migration(inventory, drafts, issues, labels).conflicts)
+    assert gwt.plan_migration(inventory, drafts, issues, labels, scope=frozenset(SCOPE)).conflicts == ()
+    foreign = FakeGitHub([*client.issues.values(), _issue(900, body="<!-- optimus-source: P11-FU-999 -->")], _pilot_labels())
+    conflicts = gwt.plan_migration(inventory, drafts, gwt.read_issues(foreign), gwt.read_labels(foreign), scope=frozenset(SCOPE)).conflicts
+    assert any("no migrating record owns" in conflict for conflict in conflicts)
+
+
+def test_cli_scoped_plan_publish_and_reconcile_round_trip(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = _write(tmp_path, _with_source(_scoped_data(), POOL))
+    reader = lambda commit, paths: {"pool": POOL.encode("utf-8")}  # noqa: E731 - fixture reader
+    client = _scoped_client()
+    scope = _selection(tmp_path, "scope", *SCOPE)
+    batch_path = tmp_path / "batch.json"
+    assert gwt.main(["plan", str(path), "--scope", str(scope), "--out", str(batch_path)], reader=reader, client=client) == 0
+    assert json.loads(batch_path.read_text(encoding="utf-8"))["scope"] == sorted(SCOPE)
+
+    publish = ["publish", str(path), "--batch", str(batch_path), "--pause-seconds", "0", "--execute"]
+    narrower = _selection(tmp_path, "narrower", *SCOPE[:-1])
+    assert gwt.main([*publish, "--evidence-dir", str(tmp_path / "wrong"), "--scope", str(narrower)], reader=reader, client=client) == 2
+    assert gwt.main([*publish, "--evidence-dir", str(tmp_path / "unscoped")], reader=reader, client=client) == 2
+    assert client.writes == []  # a different scope, or none, plans another batch than the reviewed one
+    assert gwt.main([*publish, "--evidence-dir", str(tmp_path / "run"), "--scope", str(scope)], reader=reader, client=client) == 0
+    written = {path.removeprefix(_api()) for _method, path, _payload in client.writes}
+    assert "issues/222" in written and "issues/225" not in written and "issues/33" not in written  # nothing outside the scope is written
+
+    capsys.readouterr()
+    mapping_path = tmp_path / "mapping.json"
+    assert gwt.main(["reconcile", str(path), "--scope", str(scope), "--mapping-out", str(mapping_path)], reader=reader, client=client) == 0
+    out = capsys.readouterr().out
+    assert "UNTOUCHED: #33 (issue:33)" in out and "UNTOUCHED: #225 (A2A-C1)" in out
+    summary = json.loads(out.strip().splitlines()[-1])
+    assert (
+        summary["ok"] is True and summary["scope"] == len(SCOPE) and summary["mapped"] == len(SCOPE) and summary["untouched"] == [33, 225]
+    )
+    assert set(json.loads(mapping_path.read_text(encoding="utf-8"))) == set(SCOPE)
+
+    refused = tmp_path / "refused.json"  # a mapping is still never written for a selection, and the unscoped verdict still fails
+    only = ["--only", str(_selection(tmp_path, "only", "H4"))]
+    assert (
+        gwt.main(["reconcile", str(path), "--scope", str(scope), *only, "--mapping-out", str(refused)], reader=reader, client=client) == 2
+    )
+    assert not refused.exists()
+    capsys.readouterr()
+    assert gwt.main(["reconcile", str(path)], reader=reader, client=client) == 1
+    assert "UNTOUCHED" not in capsys.readouterr().out
+
+
+def test_a_scoped_reconcile_writes_no_mapping_while_the_scoped_verdict_fails(tmp_path: Path) -> None:
+    path = _write(tmp_path, _with_source(_scoped_data(), POOL))
+    reader = lambda commit, paths: {"pool": POOL.encode("utf-8")}  # noqa: E731 - fixture reader
+    mapping_path = tmp_path / "mapping.json"
+    scope = _selection(tmp_path, "scope", *SCOPE)
+    assert (
+        gwt.main(
+            ["reconcile", str(path), "--scope", str(scope), "--mapping-out", str(mapping_path)], reader=reader, client=_scoped_client()
+        )
+        == 1
+    )
+    assert not mapping_path.exists()
+
+
+SCOPED_MAPPING = {"plan:11.23": 222, "P11-FU-20": 223, "P11-FU-40": 224, "plan:12.1": 240, "P11.25-FU-1": 241, "P12-FU-1": 242, "H4": 243}
+
+
+def test_scoped_finalize_writes_exactly_the_scoped_target_issues() -> None:
+    data = _scoped_data()
+    before = copy.deepcopy(data)
+    final = gwt.finalize_inventory(data, SCOPED_MAPPING, frozenset(SCOPE))
+    assert data == before  # the input is never changed
+    targets = {record["id"]: record.get("target_issue") for record in final["records"]}
+    assert {record_id: targets[record_id] for record_id in SCOPE} == SCOPED_MAPPING
+    assert targets["A2A-C1"] == 225 and targets["issue:33"] == 33  # out of scope: untouched
+    was = {record["id"]: record.get("target_issue") for record in before["records"]}
+    assert {record_id for record_id in targets if targets[record_id] != was[record_id]} == {
+        "P11-FU-40",
+        "plan:12.1",
+        "P11.25-FU-1",
+        "P12-FU-1",
+        "H4",
+    }
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        ({"H4": None}, "without an issue"),  # a scoped record missing from the mapping
+        ({"A2A-C1": 225}, "outside the scope"),  # a record the scope does not name
+        ({"plan:11.23": 999}, "reviewed target issue is #222"),
+        ({"H4": 240}, "more than one record"),
+        ({"plan:12.1": 225}, "already targets"),  # #225 is the reviewed target of the out-of-scope A2A-C1
+        ({"H4": 0}, "not a positive issue number"),
+    ],
+)
+def test_scoped_finalize_refuses_a_missing_extra_conflicting_shared_or_foreign_target(change: dict[str, int | None], expected: str) -> None:
+    mapping = {**SCOPED_MAPPING, **change}
+    mapping = {record_id: number for record_id, number in mapping.items() if number is not None}
+    with pytest.raises(ValueError, match=re.escape(expected)):
+        gwt.finalize_inventory(_scoped_data(), mapping, frozenset(SCOPE))
+
+
+def test_scoped_finalize_refuses_a_scope_record_that_does_not_migrate() -> None:
+    with pytest.raises(ValueError, match="do not migrate"):
+        gwt.finalize_inventory(_scoped_data(), {"A2A-M17": 300}, frozenset({"A2A-M17"}))
+
+
+def test_cli_finalize_scope_writes_only_the_scoped_targets_and_refuses_a_bad_scope(tmp_path: Path) -> None:
+    inventory_path = _write(tmp_path, _with_source(_scoped_data(), POOL))
+    mapping_path = tmp_path / "mapping.json"
+    mapping_path.write_text(json.dumps(SCOPED_MAPPING), encoding="utf-8")
+    scope = _selection(tmp_path, "scope", *SCOPE)
+    out = tmp_path / "final.json"
+    assert gwt.main(["finalize", str(inventory_path), "--mapping", str(mapping_path), "--scope", str(scope), "--out", str(out)]) == 0
+    final = gwt.finalize_inventory(json.loads(inventory_path.read_text(encoding="utf-8")), SCOPED_MAPPING, frozenset(SCOPE))
+    assert out.read_bytes() == gwt.render_manifest(final).encode("utf-8")
+
+    bad = _selection(tmp_path, "bad", "P11-FU-999")
+    refused = tmp_path / "refused.json"
+    assert gwt.main(["finalize", str(inventory_path), "--mapping", str(mapping_path), "--scope", str(bad), "--out", str(refused)]) == 2
+    assert (
+        gwt.main(["finalize", str(inventory_path), "--mapping", str(mapping_path), "--out", str(refused)]) == 2
+    )  # unscoped: not every record
+    assert not refused.exists()
+
+
+# ---- neutral trial wording: true before and after the switch ----
+
+NEUTRAL_BANNER = (
+    "> **Staged copy for the tracking migration.** Whether this issue or the consolidated backlog is authoritative for this record is stated only"
+    " by the backlog's pointer for it: a row or entry marked `Moved` that links this issue. Until that pointer is on the default branch, the backlog"
+    " remains authoritative. This issue grants no implementation or live-run authority. Do not reference it with a closing keyword."
+)
+
+
+def test_the_trial_banner_is_neutral_and_final_copies_carry_none(tmp_path: Path) -> None:
+    assert gwt.TRIAL_BANNER == NEUTRAL_BANNER
+    assert "until the cutover merge" not in gwt.TRIAL_BANNER  # no unconditional claim about who is authoritative
+    inventory = gwt.load_inventory(_write(tmp_path, _with_source(_good(), POOL)))
+    sources = {"pool": POOL.encode("utf-8")}
+    assert all(gwt.TRIAL_BANNER in draft.body for draft in gwt.draft_issues(inventory, sources, trial=True))
+    assert not any("Staged copy" in draft.body for draft in gwt.draft_issues(inventory, sources, trial=False))
+
+
+# ---- a reviewed current status and dated source updates: one-time migration evidence ----
+
+PLAN_121_LINE = int(_unit(POOL, "[Plan 12.1").split(":")[1])
+EVIDENCE = f"https://github.com/{gwt.REPO}/blob/{'a' * 40}/pool.md?plain=1#L{PLAN_121_LINE}"
+
+
+def _with_current(data: dict[str, Any], record_id: str, **change: Any) -> dict[str, Any]:
+    _records(data)[record_id]["status_current"] = {"status": "Active", "evidence": EVIDENCE, **change}
+    return data
+
+
+def _update(**change: Any) -> dict[str, Any]:
+    update = {"date": "2026-10-11", "path": "pool.md", "line": PLAN_121_LINE, "commit": "a" * 40, "text": "Dependency gate."}
+    return {**update, **change}
+
+
+def _with_update(data: dict[str, Any], record_id: str, **change: Any) -> dict[str, Any]:
+    _records(data)[record_id]["source_updates"] = [_update(**change)]
+    return data
+
+
+def _drafts_of(tmp_path: Path, data: dict[str, Any]) -> dict[str, gwt.IssueDraft]:
+    inventory = gwt.load_inventory(_write(tmp_path, _with_source(data, POOL)))
+    return {draft.record_id: draft for draft in gwt.draft_issues(inventory, {"pool": POOL.encode("utf-8")})}
+
+
+def test_status_current_sets_only_the_status_label_and_the_body_keeps_the_baseline_status(tmp_path: Path) -> None:
+    plain = _drafts_of(tmp_path, _good())["plan:12.1"]
+    current = _drafts_of(tmp_path, _with_current(_good(), "plan:12.1"))["plan:12.1"]
+    assert "status:blocked" in plain.labels and "status:active" not in plain.labels
+    assert "status:active" in current.labels and "status:blocked" not in current.labels
+    assert set(current.labels) - {"status:active"} == set(plain.labels) - {"status:blocked"}  # nothing else about the labels changes
+    assert any("Source status at baseline" in line and "Blocked" in line for line in current.body.splitlines())  # history stays history
+    assert current.body == plain.body  # the reviewed status is a label expectation, not new body text
+
+
+def test_a_reconcile_expects_the_reviewed_current_status_label(tmp_path: Path) -> None:
+    inventory, drafts, client = _published_scope(tmp_path)  # published as Blocked, the source status
+    assert _scoped_reconcile(inventory, drafts, client).problems == ()
+    data = _with_current(_scoped_data(), "plan:12.1")
+    moved = gwt.load_inventory(_write(tmp_path, _with_source(data, POOL)))
+    problems = _scoped_reconcile(moved, gwt.draft_issues(moved, {"pool": POOL.encode("utf-8")}), client).problems
+    assert any("plan:12.1" in problem and "status labels ['status:blocked'] are not ['status:active']" in problem for problem in problems)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("Active", "object"),
+        ({"status": "Active"}, "evidence"),
+        ({"status": "Active", "evidence": EVIDENCE, "note": "x"}, "unknown"),
+        ({"status": "Whenever", "evidence": EVIDENCE}, "known status"),
+        ({"status": "Closed", "evidence": EVIDENCE}, "label"),  # no reviewed status label exists for it
+        ({"status": "", "evidence": EVIDENCE}, "known status"),
+        ({"status": "Active", "evidence": "https://example.com/x"}, "permalink"),
+        ({"status": "Active", "evidence": EVIDENCE.replace("a" * 40, "main")}, "permalink"),
+    ],
+)
+def test_a_malformed_status_current_is_refused(tmp_path: Path, value: Any, expected: str) -> None:
+    data = _good()
+    _records(data)["plan:12.1"]["status_current"] = value
+    problems = _problems(tmp_path, data)
+    assert any("plan:12.1" in problem and "status_current" in problem and expected in problem for problem in problems), problems
+
+
+def test_status_current_and_source_updates_belong_to_a_migrating_record_only(tmp_path: Path) -> None:
+    data = _with_update(_with_current(_good(), "A2A-M17"), "A2A-M17")
+    problems = _problems(tmp_path, data)
+    assert sum("A2A-M17" in problem and "only a migrating record" in problem for problem in problems) == 2
+
+
+def test_a_source_update_renders_as_a_dated_historical_section_inside_the_generated_region(tmp_path: Path) -> None:
+    drafts = _drafts_of(tmp_path, _with_update(_good(), "plan:12.1"))
+    body = drafts["plan:12.1"].body
+    heading = f"## Historical source update, 2026-10-11 (`{'a' * 7}`)"
+    assert body.count(heading) == 1
+    start, end = gwt.generated_region(body, gwt.source_marker("plan:12.1"))  # type: ignore[misc]
+    assert start < body.index("## Source at baseline") < body.index(heading) < end  # after the baseline, inside the region
+    assert f"https://github.com/{gwt.REPO}/blob/{'a' * 40}/pool.md?plain=1#L{PLAN_121_LINE}" in body
+    assert "\n> Dependency gate.\n" in body and "history, not a live status" in body
+    assert not any("Historical source update" in draft.body for record_id, draft in drafts.items() if record_id != "plan:12.1")
+
+
+def test_several_source_updates_render_in_the_listed_order(tmp_path: Path) -> None:
+    data = _good()
+    _records(data)["plan:12.1"]["source_updates"] = [
+        _update(date="2026-10-11"),
+        _update(date="2026-10-12", commit="b" * 40, text="Task 6 live gate."),
+    ]
+    body = _drafts_of(tmp_path, data)["plan:12.1"].body
+    assert body.index("2026-10-11 (`aaaaaaa`)") < body.index("2026-10-12 (`bbbbbbb`)")
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        ({"surprise": 1}, "unknown field"),
+        ({"date": "11-10-2026"}, "date"),
+        ({"date": "2026-02-30"}, "date"),
+        ({"commit": "abc"}, "commit"),
+        ({"commit": "A" * 40}, "commit"),  # lowercase hex only
+        ({"path": "elsewhere.md"}, "path"),
+        ({"line": 0}, "line"),
+        ({"line": "8"}, "line"),
+        ({"text": ""}, "text"),
+        ({"text": " padded "}, "text"),
+        ({"text": "quotes <!-- optimus-source: x --> a marker"}, "marker"),
+    ],
+)
+def test_a_malformed_source_update_is_refused(tmp_path: Path, change: dict[str, Any], expected: str) -> None:
+    problems = _problems(tmp_path, _with_update(_good(), "plan:12.1", **change))
+    assert any("plan:12.1" in problem and "source update" in problem and expected in problem for problem in problems), problems
+
+
+def test_a_source_update_missing_a_field_or_repeated_is_refused(tmp_path: Path) -> None:
+    data = _good()
+    update = _update()
+    del update["text"]
+    _records(data)["plan:12.1"]["source_updates"] = [update]
+    assert any("source update" in problem and "text" in problem for problem in _problems(tmp_path, data))
+    _records(data)["plan:12.1"]["source_updates"] = [_update(), _update()]
+    assert any("source update" in problem and "more than once" in problem for problem in _problems(tmp_path, data))
+
+
+def _history(texts: dict[str, str]) -> Any:
+    def read(commit: str, paths: dict[str, str]) -> dict[str, bytes]:
+        if commit not in texts:
+            raise subprocess.CalledProcessError(128, ["git", "show"], stderr=b"unknown revision")
+        return {name: texts[commit].encode("utf-8") for name in paths}
+
+    return read
+
+
+def test_source_updates_are_verified_against_the_pool_at_their_commit(tmp_path: Path) -> None:
+    def inventory_with(**change: Any) -> gwt.Inventory:
+        return gwt.load_inventory(_write(tmp_path, _with_source(_with_update(_good(), "plan:12.1", **change), POOL)))
+
+    read = _history({"a" * 40: POOL})
+    assert gwt.source_update_problems(inventory_with(), read) == []
+    wrong_line = gwt.source_update_problems(inventory_with(line=7), read)  # the Plan 11.23 row, not the quoted one
+    assert len(wrong_line) == 1 and "plan:12.1" in wrong_line[0] and "line 7" in wrong_line[0] and "does not contain" in wrong_line[0]
+    past_end = gwt.source_update_problems(inventory_with(line=999), read)
+    assert len(past_end) == 1 and "no line 999" in past_end[0]
+    moved = gwt.source_update_problems(inventory_with(), _history({"a" * 40: POOL.replace("Dependency gate.", "Another gate.")}))
+    assert len(moved) == 1 and "does not contain" in moved[0]
+    unreadable = gwt.source_update_problems(inventory_with(commit="b" * 40), read)
+    assert len(unreadable) == 1 and "cannot be read at" in unreadable[0] and "b" * 40 in unreadable[0]
+
+
+def test_a_record_without_source_updates_needs_no_history_read(tmp_path: Path) -> None:
+    inventory = gwt.load_inventory(_write(tmp_path, _with_source(_good(), POOL)))
+
+    def never(commit: str, paths: dict[str, str]) -> dict[str, bytes]:
+        raise AssertionError("no source update, so no history read")
+
+    assert gwt.source_update_problems(inventory, never) == []
+
+
+def test_the_manifest_keeps_a_source_update_commit_on_one_line_with_its_scan_pin(tmp_path: Path) -> None:
+    pin = "# pragma: allowlist secret - git commit id, not a secret"
+    data = _good()
+    _records(data)["plan:12.1"]["source_updates"] = [
+        {"date": "2026-10-11", "path": "pool.md", "line": PLAN_121_LINE, "commit": "a" * 40, "commit_pin": pin, "text": "Dependency gate."}
+    ]
+    text = gwt.render_manifest(data)
+    line = next(line for line in text.splitlines() if "a" * 40 in line)
+    assert '"commit": "' + "a" * 40 in line and pin in line  # the secret scan's same-line pragma covers the hex id
+    assert gwt.load_inventory(_write(tmp_path, data)).records[1].source_updates[0]["commit"] == "a" * 40
+
+
+def test_the_loader_still_refuses_an_unknown_record_field(tmp_path: Path) -> None:
+    data = _good()
+    data["records"][0]["status_now"] = "Active"
+    with pytest.raises(ValueError, match="unknown fields"):
+        gwt.load_inventory(_write(tmp_path, data))
+
+
+# ---- the committed manifest: the reviewed corrections are verified at their pinned commit ----
+
+CUTOVER_SOURCE_COMMIT = "cb959a3848325708ad58e902fe906de98bc83e40"  # pragma: allowlist secret - git commit id, not a secret
+
+
+def test_the_committed_corrections_are_verified_against_their_pinned_commit() -> None:
+    inventory = gwt.load_inventory(MANIFEST)
+    records = {record.id: record for record in inventory.records}
+    assert records["plan:12.2"].status_current is not None and records["plan:12.2"].status_current["status"] == "Active"
+    assert CUTOVER_SOURCE_COMMIT in records["plan:12.2"].status_current["evidence"]
+    for record_id in ("plan:12.2", "feature:plan-12"):
+        updates = records[record_id].source_updates
+        assert len(updates) == 1 and updates[0]["commit"] == CUTOVER_SOURCE_COMMIT and updates[0]["date"] == "2026-10-11"
+        assert updates[0]["path"] == gwt.POOL_PATH
+    assert gwt.source_update_problems(inventory, gwt.read_sources_at) == []
+    assert not gwt.validate_inventory(inventory, gwt.read_sources_at(inventory.baseline_commit, inventory.read_paths)).problems
+
+
+def test_only_the_two_reviewed_records_carry_the_new_fields() -> None:
+    raw = {record["id"]: record for record in json.loads(MANIFEST.read_text(encoding="utf-8"))["records"]}
+    assert {record_id for record_id, record in raw.items() if "status_current" in record} == {"plan:12.2"}
+    assert {record_id for record_id, record in raw.items() if "source_updates" in record} == {"plan:12.2", "feature:plan-12"}
