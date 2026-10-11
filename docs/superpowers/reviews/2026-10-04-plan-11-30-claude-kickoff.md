@@ -2,6 +2,10 @@
 
 ## Current pickup — 2026-10-11
 
+PR280 is merged at actual main `3dc85529c7f2e1d3df55d51c462848dfcafe31ea`, and its main-push CI/artifact/full-session/floors/seven-module evidence is accepted separately from both PR refs. Read the [current terminal-composition ruling](2026-10-05-plan-11-30-task3-codex-review.md#pr280-merge-and-actual-main-ci-accepted--terminal-documentary-composition-released). Claude may compose/preflight the exact eight mutable docs/report paths on clean latest-main-based state, then obtain Fable/Codex final-byte review. ADR-020 is now first-merged and byte-frozen; update effective status in its mutable index only. Preserve measured pin C, source-specific qualifications, optional named custody and registry723/724 PARTIAL/NON-PASSING. The partial-commit delivery CI backstop is discharged; terminal documentary delivery remains pending. No commit/publication, closure, archival or cleanup is released by this pickup. No new full-suite measurement is requested for prose.
+
+### Historical pickup before D3 delivery and main merge
+
 PR280 candidate CI and seven-module safety evidence are accepted at actual CI merge SHA `1946713e`, with branch D2 `281f8ce7` kept distinct. Read the [current ruling](2026-10-05-plan-11-30-task3-codex-review.md#pr280-ci-and-safety-accepted--final-documentary-composition-released). Claude may compose the specified nine-path final documentary update and preflight, then obtain Fable/Codex final-byte review. No commit, later-head push, merge, closure, archival or cleanup is released. Preserve measured pin C, frozen v5 and all historical evidence. This paragraph supersedes the older pickup below.
 
 ### Historical pickup before D2 publication and CI acceptance
