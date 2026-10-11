@@ -150,15 +150,22 @@ async def test_only_the_launchs_first_new_session_is_seeded(tmp_path: Path, laun
     assert fresh.conversation.records == {} and fresh.context_approvals == {}
 
 
-async def test_a_session_whose_sanitizer_would_change_the_seed_is_not_seeded(tmp_path: Path, launch, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_a_session_whose_sanitizer_would_change_the_seed_is_refused_and_the_cases_are_unrun(tmp_path: Path, launch, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codex completion review: an unseeded session never stands in for the pinned >512 KiB case. The
+    designated session is refused with a readable UNRUN reason, and so is every later session of the launch."""
     attachment, scenario = _attached(launch, Gateway())
     adapter, _outbound, _runner = _adapter(tmp_path, attachment, scenario)
     monkeypatch.setitem(stage_c.STAGE_C_SCENARIOS[stage_c.STAGE_C_ATTACHED_SCENARIO]["seed"], "records_bytes", 1)  # as if sanitized differently
+    new = {"jsonrpc": "2.0", "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
 
-    session_id = await new_session(adapter, tmp_path, mode="chat")
+    first = await rpc(adapter, {**new, "id": "n1"})
+    later = await rpc(adapter, {**new, "id": "n2"})
 
-    assert session_of(adapter, session_id).conversation.records == {} and session_of(adapter, session_id).context_approvals == {}
-    assert scenario.events == ["seed refused: the session's sanitized seed is not the pinned seed"]
+    for response in (first, later):
+        assert "result" not in response and response["error"]["message"] == host.SEED_REFUSED_NOTICE
+    assert "UNRUN" in host.SEED_REFUSED_NOTICE
+    assert adapter._sessions._sessions == {}  # noqa: SLF001 - no provisional session survives
+    assert scenario.events == ["seed refused: the session's sanitized seed is not the pinned seed; the attached cases are UNRUN"]
 
 
 async def test_turns_of_another_session_never_drive_the_schedule(tmp_path: Path, launch) -> None:
@@ -268,7 +275,8 @@ async def test_a_cancel_during_the_pause_suppresses_the_second_call_and_keeps_th
 
 async def test_without_a_cancel_the_case_is_unrun_and_makes_no_further_call(tmp_path: Path, launch, cancel_first_turn) -> None:
     gateway = Gateway()
-    attachment, scenario = _attached(launch, gateway, sleep=lambda _seconds: None)
+    clocks = Clocks(T0)
+    attachment, scenario = _attached(launch, gateway, sleep=clocks.sleep, monotonic=clocks.monotonic)
     adapter, outbound, runner = _adapter(tmp_path, attachment, scenario)
     session_id = await new_session(adapter, tmp_path, mode="chat")
 
@@ -280,19 +288,92 @@ async def test_without_a_cancel_the_case_is_unrun_and_makes_no_further_call(tmp_
     assert scenario.events[-1] == "turn 1: UNRUN, cancellation not exercised"
 
 
-def test_the_pause_is_shortened_by_the_rest_of_the_shared_window(launch) -> None:
-    """Five seconds before the deadline the pause waits at most five seconds."""
-    ticks: list[float] = []
-    scenario = host.StageCScenario(ledger=launch.ledger, clock=lambda: T0 + timedelta(minutes=59, seconds=55), sleep=ticks.append, poll_seconds=1.0)
+class Clocks:
+    """The wall clock (the shared deadline's) and the elapsed-time clock, both advanced only by `sleep`:
+    `step` is how far one sleep really advances them (None: exactly the requested time)."""
+
+    def __init__(self, now: datetime, step: float | None = None) -> None:
+        self.now, self.elapsed, self.step = now, 0.0, step
+        self.requested: list[float] = []
+
+    def clock(self) -> datetime:
+        return self.now
+
+    def monotonic(self) -> float:
+        return self.elapsed
+
+    def sleep(self, seconds: float) -> None:
+        self.requested.append(seconds)
+        # A correct pause ends within 30 s of these clocks (600 polls); a pause that never ends fails here
+        # rather than hanging the run.
+        assert len(self.requested) <= 5_000, "the pause never ended"
+        advance = seconds if self.step is None else self.step
+        self.now += timedelta(seconds=advance)
+        self.elapsed += advance
+
+
+def _paused_call(launch, clocks: Clocks, *, cancelled=lambda: False, poll_seconds: float = 0.05):
+    scenario = host.StageCScenario(ledger=launch.ledger, clock=clocks.clock, sleep=clocks.sleep, monotonic=clocks.monotonic, poll_seconds=poll_seconds)
     notices: list[str] = []
-    scenario._turns, scenario._designated = 1, "s"  # noqa: SLF001
-    scenario._notices[1] = lambda text: notices.append(text) or True  # noqa: SLF001
-    call = scenario._pausing(1, lambda request: "called", lambda: False)  # noqa: SLF001
+    scenario._turns, scenario._designated = 7, "s"  # noqa: SLF001
+    scenario._notices[7] = lambda text: notices.append(text) or True  # noqa: SLF001
+    return scenario, notices, scenario._pausing(7, lambda request: "called", cancelled)  # noqa: SLF001
+
+
+def test_the_pause_is_shortened_by_the_rest_of_the_shared_window(launch) -> None:
+    """Five seconds before the deadline the pause waits at most five seconds, each sleep limited to what is left."""
+    clocks = Clocks(T0 + timedelta(minutes=59, seconds=55))
+    _scenario, notices, call = _paused_call(launch, clocks, poll_seconds=2.0)
 
     assert call("first") == "called"
     with pytest.raises(host.ScenarioCancellationNotExercised):
         call("second")
-    assert len(ticks) == 5 and "at most 5 seconds" in notices[0] and notices[1] == host.UNRUN_NOTICE
+    assert clocks.requested == [2.0, 2.0, 1.0] and clocks.elapsed == 5.0
+    assert "at most 5 seconds" in notices[0] and notices[1] == host.UNRUN_NOTICE
+
+
+def test_the_pause_is_bounded_by_elapsed_time_when_each_sleep_overruns(launch) -> None:
+    """Codex completion review R2: with 5 s left and every requested 0.05 s sleep really taking 1 s, the
+    pause ends at the deadline (5 sleeps), not after 101 polling cycles."""
+    clocks = Clocks(T0 + timedelta(minutes=59, seconds=55), step=1.0)
+    _scenario, notices, call = _paused_call(launch, clocks)
+
+    call("first")
+    with pytest.raises(host.ScenarioCancellationNotExercised):
+        call("second")
+    assert len(clocks.requested) == 5 and clocks.elapsed == 5.0 and notices[-1] == host.UNRUN_NOTICE
+
+
+def test_a_late_wake_ends_the_pause_without_another_cycle(launch) -> None:
+    """A scheduler that wakes the pause 40 s late (past its 30 s allowance) gets no further polling cycle."""
+    clocks = Clocks(T0, step=40.0)
+    _scenario, _notices, call = _paused_call(launch, clocks)
+
+    call("first")
+    with pytest.raises(host.ScenarioCancellationNotExercised):
+        call("second")
+    assert len(clocks.requested) == 1
+
+
+def test_a_cancel_is_seen_at_the_next_wake_and_the_call_proceeds_to_its_own_check(launch) -> None:
+    clocks = Clocks(T0)
+    _scenario, _notices, call = _paused_call(launch, clocks, cancelled=lambda: len(clocks.requested) >= 2)
+
+    call("first")
+    assert call("second") == "called"  # HostMaintenance's own cancellation check then suppresses it
+    assert len(clocks.requested) == 2
+
+
+def test_the_pause_counts_the_turns_maintenance_calls_across_its_views(launch) -> None:
+    """A repack's first call is the turn's second call: it pauses there too, never slipping past the pause."""
+    clocks = Clocks(T0)
+    scenario, notices, view = _paused_call(launch, clocks)
+    repack = scenario._pausing(7, lambda request: "called", lambda: False)  # noqa: SLF001
+
+    assert view("first") == "called" and notices == []
+    with pytest.raises(host.ScenarioCancellationNotExercised):
+        repack("repack's first")
+    assert notices[-1] == host.UNRUN_NOTICE
 
 
 def test_the_scenario_is_part_of_the_envelope(launch) -> None:

@@ -248,7 +248,9 @@ def build_configured_server(
             )
         # Plan 12.2 Task 13 (Stage C): only the approved attached test composition attaches the engine;
         # the qualification composition and every unprofiled launch stay absent-engine. A launch without
-        # Stage C never loads the Stage C module, so the ordinary host executes exactly what it did before.
+        # Stage C never builds or consults the Stage C attachment, so the serving composition executes what it
+        # did before (the Plan 11.26 S1 executed-closure audit). The entrypoint and the launch gate still
+        # import the Stage C modules for their flags; this is not a claim about the whole process's imports.
         context_attachment = session_seeder = None
         if stage_c is not None:
             from optimus.acp.stage_c import stage_c_attachment

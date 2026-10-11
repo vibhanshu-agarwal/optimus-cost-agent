@@ -54,6 +54,7 @@ __all__ = [
     "STAGE_C_WINDOW_SECONDS",
     "Admission",
     "GuardState",
+    "LedgerStatus",
     "StageCEnvelope",
     "StageCGuard",
     "StageCLedgerError",
@@ -64,6 +65,7 @@ __all__ = [
     "reservation_usd",
     "scenario_catalogue_digest",
     "stage_c_ledger_path",
+    "stage_c_ledger_status",
 ]
 
 STAGE_C_RELEASE_ID: Final = "plan12-2-stage-c-r1"
@@ -545,3 +547,30 @@ class StageCGuard:
             self._handle.close()
         finally:
             self._lock_file.release()
+
+
+# --- Read-only status between launches ------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LedgerStatus:
+    """The release ledger as a custody check sees it between client launches."""
+
+    lock_free: bool
+    state: GuardState
+
+
+def stage_c_ledger_status(path: Path, envelope: StageCEnvelope) -> LedgerStatus:
+    """Whether any Gateway holds the release ledger, and the totals and window the next start would replay
+    (Codex completion review R4). Read-only: it never writes the ledger, starts the window or repairs
+    anything; the lock is only probed, taken and released at once."""
+    if path.is_symlink() or not path.is_file():
+        raise StageCLedgerError("STAGE_C_LEDGER_MISSING", "initialize the release's ledger first; a check never creates one")
+    try:
+        _Lock(path.with_name(path.name + ".lock")).release()
+        lock_free = True
+    except StageCLedgerError:
+        lock_free = False
+    r = StageCGuard._replay_ledger(path, envelope)
+    outstanding = r.outstanding.reserve_usd if r.outstanding is not None else Decimal(0)
+    return LedgerStatus(lock_free, GuardState(r.attempts, r.charged, outstanding, r.halted, r.overrun, r.window_start, r.deadline))

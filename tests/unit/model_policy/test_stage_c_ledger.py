@@ -377,3 +377,53 @@ def test_the_ledger_records_no_prompt_credential_or_provider_text(opened) -> Non
     allowed = {"kind", "n", "attempt_id", "request_id", "reserve_usd", "result", "outcome", "cost_usd", "reason", "at", "start", "deadline",
                "envelope", "release_id", "limit_usd", "max_attempts", "window_seconds", "overrun"}  # fmt: skip
     assert all(set(record) <= allowed for record in _records(path))
+
+
+# --- Read-only status between launches (Codex completion review R4) ----------------------------------------------
+
+
+def test_the_status_reports_the_lock_and_the_replayed_totals_without_writing(opened) -> None:
+    reopen, _clock, path, envelope = opened
+    guard = reopen()
+    guard.settle_charged(_admit(guard, 1), Decimal("0.01"))
+    guard.settle_unbilled(_admit(guard, 2), "not_sent")
+
+    assert stage_c.stage_c_ledger_status(path, envelope).lock_free is False  # a Gateway holds it
+    guard.close()
+    before = path.read_bytes()
+    status = stage_c.stage_c_ledger_status(path, envelope)
+
+    assert path.read_bytes() == before  # never written, never repaired
+    s = status.state
+    assert status.lock_free is True
+    assert (s.attempts, s.charged_usd, s.outstanding_usd, s.halted, s.overrun) == (2, Decimal("0.01"), Decimal(0), None, False)
+    assert (s.window_start, s.deadline) == (T0, T0 + timedelta(hours=1))
+    reopen().close()  # the probe released the lock: the next Gateway still opens it
+
+
+def test_the_status_never_starts_the_window(tmp_path: Path) -> None:
+    path, envelope = _initialized(tmp_path)
+
+    status = stage_c.stage_c_ledger_status(path, envelope)
+
+    assert status.state.deadline is None and status.state.attempts == 0
+    assert [r["kind"] for r in _records(path)] == ["init"]
+
+
+def test_the_status_shows_an_unresolved_attempt_in_doubt(opened) -> None:
+    reopen, _clock, path, envelope = opened
+    guard = reopen()
+    _admit(guard, 1)  # reserved, never settled: a crash after reservation
+    guard.close()
+
+    status = stage_c.stage_c_ledger_status(path, envelope)
+
+    assert status.state.halted == "attempt 1 unresolved at restart (in doubt)" and status.state.outstanding_usd == RESERVE
+
+
+def test_the_status_refuses_a_missing_or_foreign_ledger(tmp_path: Path) -> None:
+    path = stage_c.stage_c_ledger_path(tmp_path)
+    envelope = stage_c.compose_stage_c_envelope(ledger=path)
+    with pytest.raises(StageCLedgerError) as caught:
+        stage_c.stage_c_ledger_status(path, envelope)
+    assert caught.value.code == "STAGE_C_LEDGER_MISSING"

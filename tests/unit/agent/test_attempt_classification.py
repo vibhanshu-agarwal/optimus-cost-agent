@@ -113,8 +113,11 @@ def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attemp
         SRC / "optimus_gateway" / "chat_completions.py",
         SRC / "optimus_model_policy" / "capacity.py",
         SRC / "optimus_model_policy" / "binding.py",
+        # Plan 12.2 Task 13 (Stage C): the guard's refusals, which the Gateway returns by their own code
+        # before any attempt is dispatched (Codex completion review R1).
+        SRC / "optimus_model_policy" / "stage_c.py",
     ]
-    pattern = re.compile(r'(?:ModelPolicyRefusal|_refuse|BindingError)\(\s*"([A-Z_]+)"|reason or "([A-Z_]+)"')
+    pattern = re.compile(r'(?:ModelPolicyRefusal|_refuse|BindingError|StageCRefusal)\(\s*"([A-Z_]+)"|reason or "([A-Z_]+)"')
     codes = {match for path in sources for pair in pattern.findall(path.read_text(encoding="utf-8")) for match in pair if match}
     # Raised after a completed, billed attempt (with its usage), or only at launch: never a preflight refusal.
     assert PREFLIGHT_REFUSAL_CODES == codes - {
@@ -127,6 +130,8 @@ def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attemp
         "EMPIRICAL_ROUTER_METADATA_MISSING",
         "EMPIRICAL_ROUTER_PIPELINE",
         "FIXTURE_POLICY",
+        "STAGE_C_LEDGER_NOT_ABSOLUTE",
+        "STAGE_C_PROFILE_UNAVAILABLE",
     }
     assert maintenance.PREFLIGHT_REFUSAL_CODES is PREFLIGHT_REFUSAL_CODES  # one classifier, not a copy
 

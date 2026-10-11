@@ -47,7 +47,10 @@ __all__ = [
 ]
 
 # Gateway model-policy refusals raised before any upstream attempt (optimus_gateway.model_policy
-# admit_request/parse_route_binding and optimus_model_policy.capacity.guard_request).
+# admit_request/parse_route_binding and optimus_model_policy.capacity.guard_request), and the Plan 12.2
+# Stage C test guard's refusals (optimus_model_policy.stage_c.StageCGuard.admit), which the Gateway returns
+# under their own code before the attempt they refuse is dispatched (Codex completion review R1). Listed
+# here rather than imported, so the host's call paths never load the Stage C module.
 # FINISH_STATUS_UNVERIFIED and the experimental route's reply checks (EMPIRICAL_* other than
 # EMPIRICAL_ROUTE_STOPPED) are raised after a completed, billed attempt and always carry its usage,
 # so they are not here. A test keeps this set equal to the Gateway's codes.
@@ -71,6 +74,13 @@ PREFLIGHT_REFUSAL_CODES = frozenset(
         "REGISTRY_HASH_MISMATCH",
         "ROUTE_UNVERIFIED",
         "SNAPSHOT_NOT_APPROVED",
+        "STAGE_C_ATTEMPTS_EXHAUSTED",
+        "STAGE_C_ATTEMPT_IN_FLIGHT",
+        "STAGE_C_BUDGET_EXHAUSTED",
+        "STAGE_C_HALTED",
+        "STAGE_C_LEDGER_WRITE_FAILED",
+        "STAGE_C_RESERVE_INVALID",
+        "STAGE_C_WINDOW_EXHAUSTED",
         "UNKNOWN_MODEL",
     }
 )

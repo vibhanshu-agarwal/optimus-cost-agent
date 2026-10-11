@@ -14,15 +14,18 @@ manifest through the envelope) adds three controls, none of them a client contro
 - the first new session of the launch is seeded with a deterministic synthetic history over the 512 KiB
   floor: ordinary turns and two explicitly synthetic approval facts, all labelled ``synthetic``. Facts are
   history, never authority: they authorize no artifact, execute no stored plan, create no operation
-  terminal and are no WRITE/TEST proof. Later sessions are not seeded and nothing is reloaded;
+  terminal and are no WRITE/TEST proof. Later sessions are not seeded and nothing is reloaded. A session
+  whose sanitizer would change the pinned seed is refused with a readable UNRUN reason, and so is every
+  later session of the launch: an unseeded session never stands in for the seeded case;
 - on the scheduled live turns of that session the engine is unavailable (simulated, and said so in a
   notice): the turn takes the real unavailable path, with no canned summary and no changed limit;
-- on the scheduled cancellation turn, after the first maintenance call has completed (its charge settled
-  by the Gateway's guard and its receipt recorded by ``HostMaintenance``) and before any second call, the
-  turn pauses, off the ACP event loop, for at most 30 seconds or the rest of the shared window, with a
-  content-free notice. A real client cancel then suppresses the second call through ``HostMaintenance``'s
-  own cancellation check. Without one the case ends UNRUN, keeps its charge and sends no further call.
-  This proves cancellation between maintenance calls, not interruption of an in-flight request.
+- on the scheduled cancellation turn, after the turn's first maintenance call has completed (its charge
+  settled by the Gateway's guard and its receipt recorded by ``HostMaintenance``) and before the turn's
+  second call (a repack's included), the turn pauses, off the ACP event loop, with a content-free notice,
+  for at most 30 seconds of elapsed time or the rest of the shared window, both rechecked on every wake. A
+  real client cancel then suppresses the second call through ``HostMaintenance``'s own cancellation check.
+  Without one the case ends UNRUN, keeps its charge and sends no further call. This proves cancellation
+  between maintenance calls, not interruption of an in-flight request.
 """
 
 from __future__ import annotations
@@ -102,6 +105,10 @@ PAUSE_NOTICE = (
     "now; it waits at most {seconds} seconds and makes no further call until you do."
 )
 UNRUN_NOTICE = "Stage C test scenario: UNRUN, cancellation not exercised. The first call's charge is kept; no further call is made."
+SEED_REFUSED_NOTICE = (
+    "Stage C test scenario refused: this session's sanitized seed is not the pinned seed, so the attached cases "
+    "are UNRUN. No session of this launch is created; no model call was made."
+)
 
 _SEED_PROMPT = "Synthetic Stage C seed turn {n}: summarize the calculator notes for step {n}."
 _SEED_WORDS = (
@@ -243,6 +250,7 @@ class StageCScenario:
         ledger: Path,
         clock: Callable[[], datetime] = _utc_now,
         sleep: Callable[[float], None] = time.sleep,
+        monotonic: Callable[[], float] = time.monotonic,
         poll_seconds: float = 0.05,
     ) -> None:
         spec = STAGE_C_SCENARIOS[STAGE_C_ATTACHED_SCENARIO]
@@ -254,10 +262,13 @@ class StageCScenario:
         self._ledger = ledger
         self._clock = clock
         self._sleep = sleep
+        self._monotonic = monotonic
         self._poll = poll_seconds
         self._lock = threading.Lock()
         self._designated: str | None = None
+        self._refused: str | None = None
         self._turns = 0
+        self._turn_calls: dict[int, int] = {}
         self._notices: dict[int, Callable[[str], bool]] = {}
         self._noticed: set[tuple[int, str]] = set()
         self.events: list[str] = []
@@ -267,18 +278,24 @@ class StageCScenario:
     def designated_session(self) -> str | None:
         return self._designated
 
-    def seed(self, session: Any) -> None:
-        """Seed the launch's first new session; every later session is left as it is."""
+    def seed(self, session: Any) -> str | None:
+        """Seed the launch's first new session; every later session is left as it is. Returns the reason to
+        refuse the session instead, when the pinned seed cannot be applied: then every later session of the
+        launch is refused too, so an unseeded session never stands in for the seeded case."""
         with self._lock:
+            if self._refused is not None:
+                return self._refused
             if self._designated is not None:
-                return
+                return None
             self._designated = session.session_id
         conversation = session.conversation
         records, approvals = seed_history(conversation.sanitizer)
         if seed_identity(records, approvals) != _pinned_seed():
             # The session's sanitizer would change the pinned bytes: never seed anything else.
-            self.events.append("seed refused: the session's sanitized seed is not the pinned seed")
-            return
+            with self._lock:
+                self._refused = SEED_REFUSED_NOTICE
+            self.events.append("seed refused: the session's sanitized seed is not the pinned seed; the attached cases are UNRUN")
+            return SEED_REFUSED_NOTICE
         for seq, record in records.items():
             decision = conversation.prepare_commit(
                 seq,
@@ -291,6 +308,7 @@ class StageCScenario:
             conversation.commit_after_final_flush(decision)
         session.context_approvals.update(approvals)
         self.events.append(f"seeded session with {len(records)} synthetic turns and {len(approvals)} synthetic approval facts")
+        return None
 
     def current_turn(self, session_key: str) -> int | None:
         with self._lock:
@@ -334,24 +352,30 @@ class StageCScenario:
 
         return _ScenarioEngine()
 
-    def _remaining_seconds(self) -> float:
-        deadline = ledger_deadline(self._ledger)
-        return 0.0 if deadline is None else (deadline - self._clock()).total_seconds()
-
     def _pausing(self, turn: int, maintenance: Callable[[Any], Any], cancelled: Callable[[], bool]) -> Callable[[Any], Any]:
-        calls = 0
+        """The cancellation turn's maintenance callback. Calls are counted across the turn's views (a
+        repack's first call is the turn's next call), and the pause before the scheduled call ends at 30
+        seconds of elapsed time or the shared deadline, whichever comes first, rechecked on every wake."""
 
         def call(request: Any) -> Any:
-            nonlocal calls
-            calls += 1
+            with self._lock:
+                calls = self._turn_calls[turn] = self._turn_calls.get(turn, 0) + 1
             if calls == self._pause_before:
-                wait = max(0.0, min(self._wait_seconds, self._remaining_seconds()))
+                deadline = ledger_deadline(self._ledger)
+
+                def window() -> float:
+                    return 0.0 if deadline is None else (deadline - self._clock()).total_seconds()
+
+                wait = max(0.0, min(self._wait_seconds, window()))
                 self._notify(turn, "pause", PAUSE_NOTICE.format(seconds=int(wait)))
                 self.events.append(f"turn {turn}: paused before maintenance call {calls} for at most {wait:.0f} s")
-                waited = 0.0
-                while not cancelled() and waited < wait:
-                    self._sleep(self._poll)
-                    waited += self._poll
+                started = self._monotonic()
+                while not cancelled():
+                    # Rechecked on every wake; a late wake counts in full and never buys another cycle.
+                    remaining = min(self._wait_seconds - (self._monotonic() - started), window())
+                    if remaining <= 0:
+                        break
+                    self._sleep(min(self._poll, remaining))
                 if not cancelled():
                     self._notify(turn, "unrun", UNRUN_NOTICE)
                     self.events.append(f"turn {turn}: UNRUN, cancellation not exercised")
@@ -432,6 +456,7 @@ def compose_stage_c_attachment(
     launch: StageCLaunch,
     clock: Callable[[], datetime] = _utc_now,
     sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
 ) -> tuple[ContextAttachment, StageCScenario]:
     """The attached Stage C launch's ``ContextAttachment`` and scenario. Refuses any other composition, a
     seed that is not the pinned one and a route the trusted snapshot does not give the summarizer."""
@@ -448,7 +473,7 @@ def compose_stage_c_attachment(
         model_id=identity.model_id, role=identity.role, route=identity.route, reasoning=identity.reasoning, quantizations=identity.quantizations
     )
     factory = gateway_summarizer_factory(gateway_client=gateway_client, route=route, snapshot=snapshot, disclosure_key=disclosure_key(shared_secret))
-    scenario = StageCScenario(ledger=launch.ledger, clock=clock, sleep=sleep)
+    scenario = StageCScenario(ledger=launch.ledger, clock=clock, sleep=sleep, monotonic=monotonic)
     attachment = ContextAttachment(
         engine=scenario.engine(ContextEngine()),
         parameters=limits.parameters,

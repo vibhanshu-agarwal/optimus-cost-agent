@@ -4113,11 +4113,51 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_stage_c_schedule:zed_args:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the Zed agent-server command for a runbook step: the optimus-agent executable path, the workspace path and fixed launch flags. No credential, approval id or launch material.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_every_launch_is_followed_by_a_custody_check_on_the_same_ledger",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_transition_check:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the custody receipt written to a new operator-named file. The custody receipt holds the check time, the release id, the ledger path, the Gateway URL and whether something listens on it, the ledger lock state, the remaining Optimus host or Gateway processes by id and image name only (never a command line, which carries signed launch material), the ledger's replayed totals and window, and the problems found; no credential, prompt or provider text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_transition_check.py::test_main_writes_a_new_receipt_and_exits_by_the_result",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_transition_check:main:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. The call is argparse's parser.error with a fixed usage message (the receipt file exists); no runtime data reaches it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_transition_check.py::test_main_writes_a_new_receipt_and_exits_by_the_result",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_transition_check:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints 'custody clear' or the problems found, and one line of the ledger's totals (attempts, charged dollars, the halt reason, the deadline). No credential, process command line or provider text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_transition_check.py::test_main_writes_a_new_receipt_and_exits_by_the_result",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_transition_check:main:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the custody receipt to a new operator-named file that must not exist. The custody receipt holds the check time, the release id, the ledger path, the Gateway URL and whether something listens on it, the ledger lock state, the remaining Optimus host or Gateway processes by id and image name only (never a command line, which carries signed launch material), the ledger's replayed totals and window, and the problems found; no credential, prompt or provider text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_transition_check.py::test_main_writes_a_new_receipt_and_exits_by_the_result",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan12_stage_c_schedule:_attached_run:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: AST overmatch. StageCGuard.open opens a temporary Stage C ledger created for the offline run, under a TemporaryDirectory, only to record the window the scenario's pause reads; the operator's ledger is never touched.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_attached_cases_are_the_real_packing_of_the_pinned_seed",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_measured_paths_are_the_real_packing_of_the_pinned_seed",
       "evidence_tier": "unit"
     },
     {
@@ -4125,7 +4165,7 @@
       "policy": "safe-by-construction",
       "rationale": "Inspection: AST overmatch. The call is threading.Event.set, signalling that the offline run sent the cancel; no Redis or other store is written.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_attached_cases_are_the_real_packing_of_the_pinned_seed",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_measured_paths_are_the_real_packing_of_the_pinned_seed",
       "evidence_tier": "unit"
     },
     {
@@ -4133,7 +4173,7 @@
       "policy": "safe-by-construction",
       "rationale": "Inspection: AST overmatch. The call is threading.Event.set, signalling that the offline cancellation pause began; no Redis or other store is written.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_attached_cases_are_the_real_packing_of_the_pinned_seed",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_measured_paths_are_the_real_packing_of_the_pinned_seed",
       "evidence_tier": "unit"
     },
     {
@@ -4163,7 +4203,7 @@
     {
       "key": "tools.plan12_stage_c_schedule:main:text_file_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: writes, into a new operator-named folder that must not exist, the schedule JSON and Markdown, the two synthetic paste files and the synthetic workspace files. The schedule holds computed limits, token bounds, reservations and attempt counts, case steps, expected observations, claims and stop rules, the synthetic prompts and file digests, and the offline run's content-free scenario events; it holds no credential, provider text or real conversation (the offline run's summaries are fixed synthetic text).",
+      "rationale": "Inspection: writes, into a new operator-named folder that must not exist, the schedule JSON and Markdown, the two synthetic paste files, the synthetic workspace files and the agent wrapper (the optimus-agent path, the workspace path and fixed launch flags; no credential). The schedule holds computed limits, token bounds, reservations and attempt counts, case steps, expected observations, claims and stop rules, the synthetic prompts and file digests, and the offline run's content-free scenario events; it holds no credential, provider text or real conversation (the offline run's summaries are fixed synthetic text).",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_tool_writes_a_new_folder_and_never_reuses_one",
       "evidence_tier": "unit"
