@@ -1,0 +1,322 @@
+# Plan 11.30 — Test Profiles Implementation Plan v2
+
+> **For agentic workers:** Use superpowers:executing-plans, or superpowers:subagent-driven-development only when the operator selects that execution method. Complete the approved tasks in order; checkbox completion requires the stated verification to have run and passed. Codex is architect/reviewer, not implementer.
+
+**Goal:** Reduce routine test turnaround while preserving default selection, current-code regression detection, platform obligations, full-suite coverage gates and attributable parallel-run evidence.
+
+**Architecture:** A declarative node classification and dependency manifest feed a deterministic change selector and additive pytest profile plugin. A separate command runner manages checkpoint repeats and full-suite product coverage reports. xdist is restricted to reviewed core nodes and extends the merged Plan 11.28 controller/worker ownership contract before use.
+
+**Tech stack:** Repository Python >=3.14, uv, pytest, pytest-asyncio, coverage.py, pytest-cov, Ruff, Git; proposed pytest-xdist dev dependency, version selected and locked during Task 0 after compatibility inspection.
+
+**Spec:** The Requirements and Design Contract below are the complete draft specification. The operator requested this concrete draft and relayed Claude's NOT READY review for amendment; neither this successor's mechanisms nor execution are approved yet. Implementation agents must obtain written approval of the complete contract before execution. No commit, push, PR, merge, paid call or service activation is granted here.
+
+## Authority, provenance and verified baseline
+
+Draft requested in the continuation of `Plan 11.28 — review`, source chat `01a102cf-63b3-7582-9cc0-81366e05127c`, delegation dated 2026-10-04. Operator response in this chat: "Use current main". Main was clean at `980dad08cece20e109a5ee4eeecfcde04df2d71c`; authorized fetch and fast-forward produced clean main `a929aab2092876ab0d83ecc4e46896ae3a0935c0`. This is the drafting baseline, not a future implementation acceptance pin. Allocation remains 11.30; 11.29 is already registered. This complete v2 supersedes the unapproved draft reviewed by Claude at SHA-256 `E267774CF1A24493DF4811988D3A4D795B8DB2D01B3384ECC28A52D5434CC1A7`; that draft is preserved byte-for-byte in `archive/2026-10-04-plan-11-30-test-profiles-implementation.md` under reviewed-disposition custody. No other lane's contract is changed.
+
+Read inputs: AGENTS.md, CLAUDE.md, CONTRIBUTING.md, the live backlog, docs index and evidence policy; ADR-001 and decision-log rules; Test Strategy v1.7 (especially §8A), relevant HLD v2.18/LLD v2.41 passages, and Plan 11.28 design/code. The Test Strategy owns coverage authority over older summary cross-references.
+
+Research provenance, not runtime/review dependencies:
+
+| Input | SHA-256 / identity | Qualification |
+|---|---|---|
+| New-chat handoff, 2026-10-04 | `B1CAFA8914BC79B5762F87F4C5FC4C7691C750344DC38D140B700B62D8990DBD` | Digest checked during intake; operator requirements reproduced below |
+| Claude research, corrected §13 / new §13.4, 2026-10-04 | Verified current pin `F991C06A7AE51A30A10CFA1CEFD7E7D472A012E303FED379028B45E384C6D9DE`; supersedes `EEE91C28…` and original `756227DF…` | Current correction relayed by operator for this revision. Windows overhead cause is **unknown**; append/antivirus attribution withdrawn. Older report statements remain marked superseded. |
+| Fable review, 2026-10-03 | Verified `DC97731B7997C14D97ADC51847F3CB7D6E6B8DC3B647E44447011F220BC6E3DA` | SOUND WITH AMENDMENTS against its original research version; not proof of review of the changed report bytes. All twelve dispositions retained in tasks below. |
+| Retained research data | `refrun-analysis.txt`, `tier-sizing.txt`, `win-vs-linux.txt`, `import-map.txt`; reference run `20261002T203101-45752-c1999b`, CI `36999076917` | Older `e9d6be0` import map; shared machine, failed Windows measurements and CI-UNRUN nodes; retained reference `run.json` directly checked: exit 1, completeness **INVALID**. Not current acceptance. |
+
+Claude review of the original draft: verified SHA-256 `8FEA78CF6D4167AD5689D99195EB45CEB6DC65E48A80D3B26C7A25FFFE2F3242`, verdict NOT READY, 7 MAJOR / 6 MINOR. The operator pasted that review's directions in this chat on 2026-10-04. The new Task 0 requirement is reported in that shared source as operator wording, "Lets do it as task 0 of this plan"; it is a reported quotation, not a direct quotation from this chat. Diagnose then remove growing Windows test overhead before xdist performance acceptance.
+
+The external handoff directory is archival provenance only. This complete draft carries the operative requirements; future tests and commands use repository paths. Task 0 files a sanitized repository research/evidence summary with verified retained-data hashes, original verdicts and limitations before those data support any acceptance claim.
+
+Observed current code: root conftest starts run context before collection, records deselection and phases, then finishes and withdraws its own registry entry. `classify()` preserves ACTIVE for approved-marker file/`-k` subsets; collect-only is PASSIVE. `registry_entries()` reads at most 512 JSON entries and reports `partial` beyond that. On 2026-10-04 the real user Windows temp registry contained **727 JSON filenames**; sandbox temp registry was absent. This is a listing count, not a validated/live-entry count. No entry was removed. Code inspection confirms `test_run_context_lifecycle.py` uses the real registry for terminal-fault controls and spawns planted runs from repository root with inherited TEMP/TMP before killing some of them. Corrected research attributes the 727 historical entries to removed 11.28 worktrees, not a +190/day leak. Those origins are research evidence to validate in Task 0; removed worktrees alone do not prove processes ended. Expected 2–4 orphan entries per full Windows run is a code-derived estimate, not a fresh measured rate.
+
+Latest retained timing input at accepted implementation `95505c4`: solo full 42:41, concurrent pair 44:20 each; core 163 s phase time + 417 s inter-phase gaps; run-context family 153 nodes and 1.35× paired slowdown. Derived table `tier-runs-95505c4.txt` was read and the solo terminal record directly checked: ACTIVE, COMPLETE, exit 0, with parent UNKNOWN due to registry_partial. COMPLETE does not erase that qualification. Corrected research reports approximately 8→80 ms Windows gaps and flat 2–4 ms Linux gaps; causation is not established. Do not treat these as current-main profile acceptance.
+
+Current source has `optimus`, `optimus_gateway`, `optimus_security`, `evidence_handoff`, `evidence_handoff_runtime`; Plan 12 packages are absent on this main. Hook/CI explicitly use `--cov=optimus`, narrowing the configured five-package source list. xdist is not declared in dev dependencies.
+
+## Requirements — settled operator decisions
+
+These are labelled paraphrases from the handoff and research §12, not newly invented operator quotations.
+
+| ID | Binding requirement |
+|---|---|
+| R1 / D1 | Pre-commit runs `commit`. Intermediate checkpoints run whole-checkpoint-diff selection, current-code audits at full depth, triggered platform tests on Windows and WSL, and concurrency/race repeats under load; **no full suite at intermediate checkpoints**. |
+| R2 / D1 | Final checkpoint runs **one full Windows suite with coverage**, in a supported separate lane started alongside Fable review. It is the only required full Windows run before merge; reuse it for the Windows pre-finalize obligation if source/configuration are unchanged. |
+| R3 / D2 | Coverage gates derive from full-suite data, not partial profiles. Optimus has an 80% gate; Context Engine has its own 80%; `optimus_model_policy` has its own 80% floor in addition to inclusion in Optimus. Safety-critical coverage must not regress without explicit review. |
+| R4 / D2 | Evidence handoff/A2A threshold is 80%, enforcement deferred until revisited. Interim figures are informational and create **no new-test obligation**. |
+| R5 / D3 | Option (c): `audit-current` at every checkpoint now; per commit at quick depth once audit optimization G is accepted. Checkpoints retain full depth. |
+| R6 / D4–D5 | HIGH priority, main-based; xdist is inside this plan on merged Plan 11.28. Plan 11.28 implementation prerequisite is satisfied by PR #227 `f8231e85`, registry filing #228 `f98567e`, shared guidance #229 `a929aab2`. |
+| R7 / D6 | No Windows CI runner or nightly lane is scheduled now. |
+| R8 | The 2026-07-31 full WSL pre-finalize run remains mandatory. Triggered WSL profiles and Linux PR CI do not replace it. |
+| R9 | Operator direction relayed in Claude's review: diagnose and fix growing Windows overhead as Task 0. Registry design is joint work, with Codex drafting; no workstation cleanup authority is implied. |
+
+## Global constraints and Explicit Exceptions
+
+Everything in this contract is in scope except the following named exclusions. An implementation agent cannot narrow it silently; substantive revisions use one complete `_vN` successor and operator approval.
+
+- Preserve approved `addopts`/effective `-m`, root conftest, existing node IDs, test paths and binding manifests. Profiles use `--profile`, never a replacement `-m` or cleared addopts. No move/rename of tests; `tests/unit/tools/run_context_child_sites.json` joins the no-move inventory. Task 0 lifecycle isolation and narrowly diagnosed overhead regression controls, plus Task 4 depth/cache controls, may edit tests while preserving node identities and full-depth assertions.
+- Independent worktrees and frozen environments; one coverage writer per worktree including hooks. Windows and WSL have separate environments. No environment sync while a run is active. No new shared-worktree coverage lock or automatic drift validator is presumed delivered by 11.28.
+- Record source/branch/HEAD/status before and after, interpreter, platform, config/lock identities, exact command, run ID, exit/output and terminal records. Dirty development results are provisional, bound to diff/hashes. Acceptance checkout stays unchanged. Phase-boundary sampling is not periodic monitoring; Windows jobs are not filesystem sandboxes.
+- INVALID, incomplete, absent, skipped and UNKNOWN evidence do not establish the corresponding claim. Preserve failures and detection-time verdicts; diagnostic joins never turn them into PASS. No retry-to-green acceptance, timeout widening, new exclusions or detector weakening.
+- Named live tiers keep real dependencies; ACP protocol claims use independent acpx. Profile machinery may use synthetic unit fixtures, which establish selector/ownership logic only, never live product acceptance.
+- Preserve one-key model and current unrelated tests/gates. Keep `optimus-check: pytest-coverage` labels in hook and CI; the label does not assert commit-profile coverage acceptance.
+
+| Explicit exception | Custody / boundary |
+|---|---|
+| Unrelated product behavior, optimization and debt remediation | Existing owners. Task 0's diagnosed harness/job/guard accumulation fix and Task 4's audit optimization are in scope; if diagnosis requires a product behavior change or new external mechanism, publish a complete reviewed successor before that change. Do not select a remedy before diagnosis. |
+| Plan 11.28 workflow activation, branch folding, worktree/WSL clone/fixture cleanup | `P11-FEAT-ACP-RUNTIME-HARDENING`; existing operator holds remain |
+| 693 unadjudicated scan findings and broader scanner debt | `P11-FU-31`; 11.28 delivery exception v2 does not transfer here; no blanket scan waiver |
+| Plan 12 implementation/CP4 correction or accepted-evidence repetition | Plan 12 / Plan 12.2 lane; coverage interface only here, no lane messages or modifications |
+| A2A coverage enforcement or new tests solely to lift its percentage | `EVIDENCE-HANDOFF-FEAT-A2A-LEDGER`; deferred operator requirement R4 |
+| Windows CI/nightly, CI job splitting, pre-push full hook, testmon/dynamic coverage-context TIA | `P11-FEAT-TEST-PROFILES` tracked unscheduled custody; not selected for this implementation |
+| Historical bound-node CI blind spot and missing live desktop marker remediation | `P11.26-UNRUN-BINDING` / `P11-FEAT-ZED-RESUME`; Task 0 verifies actual node/marker inventory and links disposition, without resolving their product/live evidence |
+| MAIN-5 overhead, broader FU-6/FU-33 reliability closure | `P11-FU-36`, `P11-FU-6`, `P11-FU-33`; preserve existing detector obligations and separate failures |
+
+## Prerequisites
+
+| Category / prerequisite | Satisfied today? | Owner | If unsatisfied: genuinely hard, or merely unauthorized? | Establishment / dependent task |
+|---|---|---|---|---|
+| Code/state: merged 11.28 + shared guidance; clean current main | yes | Reviewer | — | Intake pin above; Task 0 re-pin latest main |
+| Code/state: classification, dependency manifest and profile runner | no | Implementer | genuinely absent, buildable now | Tasks 1–3 before hook switch |
+| Cause of Windows overhead and regression fixture | unknown | Implementer; hardening co-owner if job/guard cause | genuinely hard until diagnosis establishes difficulty; Task 0 establishes, then schedules fix | Must precede xdist performance acceptance and first delivery gate |
+| Code/state: Context Engine/model-policy packages on main | no | Plan 12 lane | genuinely hard: external lane delivery/authority | Task 0 checks arrival; absent is N/A, never 100% coverage or an executed gate |
+| Machine: accurate registry inventory and approved housekeeping mechanism | unknown | Operator (machine state); hardening owner (design) | genuinely hard until identity/query ability established; cleanup authority is merely unauthorized | Task 0 before attribution/performance acceptance or activation |
+| Tooling: usable Git, Python 3.14, uv, frozen dev env, pytest/cov and compatible xdist | unknown | Implementer; operator for installation | early check distinguishes genuinely absent from merely unauthorized | Task 0 records versions/compatibility; no install authorized by this draft |
+| Platform: native Windows + real WSL Ubuntu, independent env/worktree | unknown | Operator | merely unauthorized if available; otherwise difficulty unknown | Task 0 checks WSL inventory/tooling before Tasks 2/5 or final gate |
+| Code/evidence: historical binding objects needed by bound audits | unknown | `P11.26-UNRUN-BINDING` owner | genuinely hard if unavailable from authorized source | Task 0 verifies availability on each platform; affected claims UNRUN until disposition |
+| Parallel lane: independent frozen acceptance checkout at exact candidate state | no | Implementer/operator | merely unauthorized to create/prepare | Prepare before final Fable review/full Windows run |
+| Human: Fable final review and independent Codex checkpoint review | unknown | Operator schedules reviewers | merely unauthorized | Task 0 establishes availability; no automatic messaging authority |
+| Services/credentials: ordinary profiles use default exclusions; no external service or paid provider needed | yes | Implementer | — | Preserve live markers; a live claim would require separately granted real service/acpx/credentials |
+| Authority: mechanism/implementation, local commits, publication, cleanup grants | no | Operator | merely unauthorized | Draft review first; separate specific grants later |
+| Workflow profile/record activation hold and comparable base/candidate Linux CI coverage receipts | unknown | Operator releases hold; reviewer verifies CI evidence | merely unauthorized for activation; genuinely hard until receipt/config comparability established | Task 0 verifies hold/receipt identities; Task 3 activation and Task 6 CI claim depend on disposition |
+| Cost: no paid model/service call needed for test-profiles acceptance | yes | Operator | — | Reviewer model usage and local resource time remain operational costs, not provider-test calls |
+
+Every unknown has a Task 0 check before its dependent work. Missing prerequisites block the relevant claim; they cannot be replaced with a fake, favorable skip or another lane's old receipt.
+
+## Design Contract — proposed mechanisms for review
+
+### 1. Classification, profiles and selector
+
+`tests/profiles.toml` holds exactly one cost tier per collected node: `core`, `gates`, `proc`, `audit-current`, `audit-sealed`, `e2e-local`. Default core is allowed for cheap new nodes; measured setup+call+teardown >2 seconds requires an explicit rule. Per-node overrides have documented precedence; conflicting/unmatched rules fail. Union equals the default eligible universe, preserving live exclusions. Concurrency/platform tags have consumers; no extra taxonomy ships.
+
+Current-source/HEAD guards are classified by behavior: S1 execution closure, Zed import closure, logging manifest, walker allowlist, debug-trace, naming/package/collector boundaries and credit surface belong to `gates` or `audit-current`. Current-tree helper callers are `audit-current`; pinned replay/seeded historical models are `audit-sealed`, never product concurrency. AST inspection plus explicit helper/launch/data declarations cannot prove arbitrary dynamic dependencies; fallback and final full runs cover that residual.
+
+Maintained signals seed tags: files importing `tests.support.concurrency` or `tests.support.fault_injection`, minus audit tiers, are concurrency candidates (research counted 22). Add reviewed explicit nodes for races not using those helpers and a guard rejecting lost/unaudited signals. Cross-check subprocess membership with `tests/unit/tools/run_context_child_sites.json` (research: 77 sites/29 files), plus Git-only launchers. These are inventory snapshots, not frozen totals. `test_run_context*` and `test_process_tree` are explicitly `proc`, selected by `tools/testing/**`, `tools/process_tree.py` and relevant `tests/support/child_*` changes, excluding only per-node current-source gates that must remain always required.
+
+| Profile | Selection and cadence |
+|---|---|
+| absent / `full` | Current approved default universe; identity selection, serial. |
+| `core` | Explicit core tier; matched Task 0 diagnostic and Task 5 performance input. |
+| `quick` | Change-selected core inner loop; `--lf`/`--ff` never acceptance. |
+| `commit` | **This commit's** staged changes against HEAD + relevant unstaged divergence; all applicable gates plus dependency-selected nodes. Current audits follow R5. |
+| `checkpoint` | Whole declared checkpoint-base..HEAD plus staged/development changes, all gates and all full-depth current audits; triggered Windows+WSL platform and repeat-under-load lanes. No full suite. |
+| `platform` | Reviewed Windows-only/POSIX-only/platform-branch and relevant host-following nodes; original skip/live semantics retained. |
+| `concurrency` | Current-product race/async/thread/teardown nodes; keep applicable FU-33 internal repeat obligations. |
+| `proc` | Explicit subprocess tier; serial focused execution and controlled separate-lane load vehicle. |
+| `audit` | Both audit tiers at full depth, focused use. |
+
+Commit is index-vs-HEAD, never branch merge-base accumulation. Checkpoint base is a recorded immutable reviewed SHA (default merge-base with freshly pinned main); never select only the last commit. NUL-safe paths/statuses handle rename/delete and both old/new dependency views. Tests execute working bytes: relevant unstaged/partially staged divergence is included and hashed as provisional evidence, or rejected for exact-source acceptance. Empty index is labelled no-commit-input; do not substitute an empty dependency graph for a passing commit.
+
+Reverse AST imports include relative/package init/tools/transitive dependencies. Manifest covers string imports, launches, fixtures, reports, logging manifest, secrets baseline and audit `*_SOURCE_PATHS`; no application imports/eval to discover dependencies. Declared expensive-domain input sets include owned test files/helpers, tools, configuration and data. Orchestration/config changes conservatively trigger the broad path and any *declared* affected expensive domains.
+
+**Standing prose rule:** `docs/**`, root `*.md` and prose `reports/**` always map to docs gates plus all known gates that read those documents, even for new files. They never request broad/full fallback. Extension/known schema is decisive: `reports/*.json`, binary fixtures and machine-readable data are not prose; explicit audit/data mappings still apply. Global commit gates may run alongside docs gates where required; no unrelated cost tier is selected solely because a prose path is new.
+
+**Bounded broad fallback:** unmapped non-prose paths, root conftest/shared support, pyproject/lock/hook/CI config, unavailable old graph or incomplete dependency mapping select all `core` + all `gates`, trigger Windows+WSL `platform`, and include affected `proc`/`audit-sealed`/`e2e-local` domains only via declared input rules. Checkpoints additionally require all `audit-current` at full depth plus concurrency repeats; commits retain R5 (checkpoint-only until G, then changed-input quick). No commit or intermediate checkpoint implicitly becomes full. Emit `fallback:broad` and exactly which expensive domains were included/omitted and why. The residual risk is an unknown dependency in an omitted expensive domain; final full Windows/WSL and full Linux CI remain its backstop, not a claim that broad selection proves every test. Invalid configuration/classification, unreadable changed paths or inability to enumerate inputs is an ordinary nonzero execution failure; it is not a mapping-approval/versioned-contract ceremony. No `SELECTION_BLOCKED`, bootstrap-map or special approval round for common config paths.
+
+Plugin adds `--profile` and calls `pytest_deselected`; unchanged effective `-m` composes with explicit targets/`-k`. UNRUN derives from final selected items after all deselection. No-profile collection node output and existing summary match baseline (variable run IDs/timestamps compared separately); single-file subprocess loads the plugin. Foreign config/overridden selection stays PASSIVE and cannot establish ACTIVE proof.
+
+A sanitized additive versioned selection record preserves native mode/reason and carries profile/depth, input view, base/head/index/diff, map/classification digests, selected/deselected identities and reasons. One machine-readable evidence manifest indexes these records and subruns. Unknown schema/version fails validation; profile metadata never overwrites protection semantics.
+
+### 2. Stop registry pollution, then archive positively ended entries
+
+First isolate all lifecycle-test-owned registry activity, including direct writes/checks, `_nested`, repeated sessions, `_plant` and nested pytest grandchildren. Parent controls and children share a test-only temp root: pass TEMP/TMP before child startup and monkeypatch the parent's `registry_root()` to the same synthetic directory. Keep the outer real acceptance run in its normal host registry and retain native job/guard behavior; redirecting test registry storage must not bypass process protection or live ancestry controls. No public production environment override is introduced unless separately reviewed.
+
+Negative-space control compares the real registry filenames **and bytes** before/after the lifecycle file while the outer run remains active. Use an isolated observation window, or attribute/remove only separately documented foreign changes from the comparison; do not freeze/kill other lanes or assert host-wide equality despite legitimate concurrent arrivals. Test normal/abrupt endings and terminal faults; test-owned entries never reach the real registry, and other real entries stay untouched.
+
+Extract one native `process_end_status(pid, creation_time)` predicate used by overlap reading and maintenance: positive absence (the native not-found outcome), creation-time mismatch (the recorded process ended; do not kill the replacement), or positively terminated handle => ENDED; access/query errors/incomplete identity => UNKNOWN; live matching process => LIVE. Preserve weaker Linux capability labels; mere `/proc` absence does not acquire Windows identity proof.
+
+Maintenance remains **operator-invoked, dry-run first**. Inventory exact IDs/schema/digests/worktree origins and positive-end results. Archive eligible files to `registry/ended/`, never delete them; retain one append-only receipt line per entry with source/target/digest/predicate/disposition. Shared class disposition is permitted for an exact inventoried set whose worktree is absent **and** root positively ENDED, including the historical 727-origin class if freshly verified. Missing worktree, age or reported provenance alone is insufficient. UNKNOWN, malformed, unreadable, live/replaced-content entries remain in place.
+
+Before archive, re-read identity and content; refuse if digest/status changed, destination exists unexpectedly or identity became uncertain. Use a same-volume move without overwrite and reconcile interrupted move/receipt state idempotently; any missing receipt/archive mismatch fails the maintenance claim. Exact manifest + reviewed class predicate allow one operator grant for the verified class, not 727 individual grants. No machine move is authorized by the plan draft. An automatic sweep is unselected.
+
+If unresolved entries still exceed 512, keep partial/UNKNOWN and withhold affected ancestry/overlap claims; don't raise the cap, ignore them or disable protection. Profile unit work can proceed while machine state is unresolved; valid active attribution for release still needs the relevant prerequisites.
+
+### 3. Full-suite coverage and safety-critical protection
+
+Proposed coverage classification partitions every importable production package under `src/` exactly once, excluding distribution metadata: Optimus = `optimus`, `optimus_gateway`, `optimus_security`, `optimus_model_policy` when present; Context Engine = `context_engine`; deferred A2A = `evidence_handoff`, `evidence_handoff_runtime`. The separate model-policy floor is an additional report over the same partitioned package, not a second membership. Unknown/new packages fail closed until reviewed. Missing future packages are explicitly N/A on that source SHA; when introduced, their named floors become mandatory without changing Plan 12 code.
+
+One default full suite produces bare `--cov --cov-branch --cov-fail-under=0` data, JSON and terminal reports. A coverage-report tool evaluates unrounded line/branch-derived coverage using coverage.py's canonical calculation per group at >=80; missing/zero-denominator required data fails. Optimus aggregate and model-policy floor both apply. A2A is printed informationally with enforcement=false, never changes exit status or requests tests. Partial profiles default to `--no-cov`; optional partial coverage is report-only, separately named and cannot satisfy full gates. Do not combine different sources/platforms/partial profiles into full acceptance.
+
+Use one controller-owned coverage writer/combine lifecycle per worktree; per-worker coverage shard files under that run are allowed only as one coordinated writer lifecycle in Task 5, not concurrent independent coverage commands. Child subprocess execution coverage remains an explicit limitation unless separately proven. Keep data source list in sync with package classification and negative-space tests; `--cov=optimus` must no longer silently narrow full acceptance.
+
+The Optimus product gate implements Test Strategy §8A's Phase 1 production-code coverage requirement; Context Engine (ADR-001) and evidence/A2A (R4) are separate products. A2A's decided deferral is not an unresolved spec conflict.
+
+Safety-critical baseline uses the **base SHA's retained main-push Linux CI report**, compared with the candidate's full Linux CI report on the same platform, interpreter/configuration/branch-measurement scope. Named modules are all in `optimus`: `tools/registry.py`, `runtime/mutation.py`, `gateway/models.py`, `evidence/ledger.py`, `acp/framing.py`, `retry/policy.py`, `tools/policy.py`. Existing retained reports `36999076917`/`37183034223` contain all seven per-file rows (directly inspected; framing 94%, ledger 100%). At delivery use the actual base SHA's report, not a convenient older run. Preserve statement/branch totals and misses, not rounded percentage alone. Broader product source inclusion must not invalidate the `optimus` module comparison; reject missing rows/config mismatches and obtain existing equivalent CI evidence, not another Windows baseline full run. Windows final per-file rows are separately informational; no cross-platform baseline subtraction. Zero unapproved regressions is required; missing comparable CI evidence is UNKNOWN and withholds that sign-off. Candidate CI execution remains subject to publication/activation authority. Do not rerun accepted Plan 12 CP4 work.
+
+### 4. Audit optimization and checkpoint stability
+
+`--audit-depth=full|quick`, default full. Full retains all current repeat counts, seeded schedule counts, measurement windows, assertions and failure semantics. Quick proposal: one execution of each distinct current probe shape, retain all required context/provenance and failure assertions, lower only explicitly enumerated repeat/sample budgets. Task 4 reviews exact per-probe budgets with the Plan 11.26 owner before coding; unsupported quick probes remain full or block activation, never silently disappear. Quick is labelled reduced-depth and cannot prove checkpoint stability or replace a repeat-100 obligation. Transition R5 to commit quick only after reviewed quick/full parity controls pass.
+
+Cache immutable baseline exports by commit + requested path set + tool/config version within session; current measurements keyed by exact source hashes, domain, depth, platform and environment. No reuse across source edits, seeds requiring independent observations, threads, sessions or incompatible shapes. Failure observations persist unchanged. Cached data cannot mint fresh execution contexts or merge repeat observations. Keep sealed inputs/approvals immutable; optimization of sealed replay is secondary and must not displace current-audit work.
+
+Checkpoint stability runs three separately attributable executions of every selected concurrency node at original internal depth **while another supported separate lane runs its proc tier** (or an already-authorized default run). Intermediate checkpoints never start a full suite merely to generate load. The runner owns a dedicated frozen load worktree/environment and records load run IDs, node/phase intervals, source/platform and overlap with each stability repeat. Repeat the proc workload as needed for complete overlap; retain every result, stop on workload/stability failure, and finish/clean up only owned load processes. No arbitrary busy thread or weak CPU-load proxy. If overlap cannot be demonstrated, that stability evidence is UNRUN/invalid; don't kill or require another lane to pause. Both lanes are coverage-free here, serial, with supported default marker/root conftest and native ownership; race/timing nodes never xdist.
+
+Platform triggers include divergent modules, path/case/line endings, keyring, ctypes/msvcrt, subprocess/env/shell and orchestration changes. Windows and real WSL execute triggered platform/concurrency obligations in distinct environments; incompatible nodes preserve reasons. Three is a proposed minimum for ordinary repeats; existing 100/200/plan-specific counts remain binding. Failed attempts/detection-time verdicts survive diagnostic joins; no automatic rerun-to-green.
+
+### 5. xdist compatibility contract
+
+Only explicitly reviewed parallel-safe `core` nodes, excluding gates/audits/subprocess ownership/global-state and concurrency/timing domains, may run distributed. Start with `-n 2`, not `auto`; larger counts require measured evidence. Dispatcher partitions selected nodes into disjoint parallel core and serial remainder, records their union/digests and prevents omissions/duplicates. `full` remains one serial invocation for accumulation/order coverage; checkpoint orchestration can accelerate core as a separate subrun. Unsupported `-n` with unsafe/all profiles fails before workers start, never distributes arbitrary nodes.
+
+Controller alone owns canonical run ID, Windows job/guard lifecycle, registry announcement, selection ledger and terminal verdict. Worker ID/process identity attach through authenticated run metadata and independently validated ancestry/creation identity, not an environment string alone. Each worker installs trusted-root redirection before collection in its interpreter and uses unique temp/resource namespaces. Workers never announce independent top-level ACTIVE runs or create unreviewed nested jobs. Each worker is in controller cleanup ownership and receives kill-on-close; worker grandchildren remain attributable to their worker and controller. Windows validity requires real native tests; WSL records its weaker capabilities explicitly.
+
+Worker events have isolated streams or controller serialization, deterministic duplicate detection and complete node/phase attribution; no concurrent append to the same file. Preserve collection/deselection agreement, UNRUN accounting, node counts and source identities. Worker crash, restart, missing stream, mismatched selection, invalid association, failed guard or escaped descendants makes the affected evidence INVALID even if pytest would otherwise pass. Disable automatic worker restart for acceptance (`--max-worker-restart=0`). Coverage shard combination has one controller authority and checks shard source/config/run identity before reporting. Nested subprocess pytest belongs to validated parent context, never falsely another worker. MAIN-5 and its explicit plugins/targets remain serial with baseline semantics; do not count this feature as activation of held MAIN-5 workflows.
+
+## Review Focus
+
+1. Unmapped dynamic/data/launch dependency or unavailable old graph must take the bounded broad path with explicit residuals; invalid inputs fail, never produce false selective PASS (Task 2).
+2. Profile deselection must not remove current-source gates or alter ACTIVE/UNRUN semantics (Task 1).
+3. Registry UNKNOWN/replaced content cannot authorize archival; positive creation-time mismatch proves only the recorded process ended and grants no authority over the replacement (Task 0).
+4. xdist worker crashes/children/guards cannot lose source attribution or leave survivors (Task 5).
+5. Coverage denominator drift, missing package rows or partial-data reuse cannot hide a product below 80 (Task 3).
+
+## File and interface map
+
+Paths below are proposed implementation ownership, not files implemented by this draft.
+
+| File | Responsibility |
+|---|---|
+| `tests/profiles.toml` | Tiers, maintained tags, data/launch/domain dependency declarations and bounded broad-fallback policy |
+| `tools/testing/test_profiles.py` | Pure classification and deterministic selection contracts |
+| `tests/support/test_profiles_plugin.py`; `tests/conftest.py` | Additive options/selection, final UNRUN and run-context integration |
+| `tools/testing/run_profile.py` | CLI cadence, platform/repeat/load dispatch and evidence manifests |
+| `tools/testing/coverage_products.py` | Product/package classification and full-data report gates |
+| `tools/testing/run_context.py`, `run_context_records.py`, `run_context_windows.py`, `run_context_guard.py`; `tests/unit/tools/test_run_context_lifecycle.py` | Task 0 narrow diagnosed overhead fix, shared end predicate and lifecycle-test registry isolation; later additive schema/worker guarantees |
+| `tools/testing/registry_maintenance.py` | Explicit inventory/dry-run and guarded authorized maintenance |
+| `tools/plan1126_runtime_audit/source.py`, `measurement.py`, affected current probe modules | Bounded cache/depth extension; exact path set pinned at Task 0 review |
+| `tests/unit/tools/test_test_profiles.py`, `test_test_profile_selection.py`, `test_run_profile.py`, `test_coverage_products.py`, `test_registry_maintenance.py`, `test_run_context_xdist.py` | Focused independent controls, including subprocess/native tests |
+| Existing run-context suites, current-measurement audit suites and CI-parity tests | Retained regression controls; edits only where this contract requires additive controls |
+| `pyproject.toml`, `uv.lock`, `.pre-commit-config.yaml`, `.github/workflows/guardrails.yml`, `AGENTS.md`, `CONTRIBUTING.md` | Dependency and approved cadence/coverage wiring, preserving labels/default selection |
+| `reports/plan-11-30-test-profiles-evidence.md` + `reports/plan-11-30-test-profiles-manifest.json` | One readable report and one machine-readable manifest with sections per claim/run; hashed raw/context/coverage receipts are retained evidence, not eleven new bespoke artifacts |
+
+Pure interfaces in `test_profiles.py`: `classify_nodes(nodeids: tuple[str, ...], manifest: ProfileManifest) -> Classification`; `select_tests(changes: ChangeSet, classification: Classification, dependencies: DependencyMap, request: ProfileRequest) -> Selection`. Records carry immutable source/map identities; Selection has node IDs, per-node reasons, platform triggers and `fallback_required` reasons. `coverage_products.py`: `evaluate_products(coverage_json: Path, package_roots: tuple[str, ...], full_run_manifest: Path) -> CoverageVerdict`; rejects non-full/source-mismatched input. `run_profile.py` CLI is `python -m tools.testing.run_profile --profile NAME [--base SHA] [--parallel-core 2]`; commit ignores cumulative base and uses index-vs-HEAD, checkpoint requires/resolves an immutable recorded base. It emits the shared manifest and exits nonzero for configuration/input failure, test failure or invalid evidence. `--profile proc` is the supported separate-lane load vehicle. Task 0 pins record schemas and fixture representations before dependent implementation; these public signatures are the draft contract.
+
+## Tasks and checkpoints
+
+All boxes are unchecked; commands are future gates, **UNRUN during planning**. Prepared independent environments use `uv run --no-sync`; sync only while idle. No commit/push/PR/merge, paid/service call, cleanup or workflow activation is an automatic step. Run Ruff before any separately authorized commit/sign-off.
+
+Two stages remain inside this complete plan. Stage A = Tasks 0–3, the first turnaround improvement. Stage B = Tasks 4–5, audit optimization and xdist. Task 6 is the final gate applied to the source actually delivered. **Proposed early delivery:** after Task 3 the operator may choose a bounded Stage A release, first completing Task 6 for that candidate, before authorizing Stage B. This is a stage-final gate, not an intermediate checkpoint full suite. A later changed Stage B candidate needs its own final evidence and cannot reuse Stage A's exact-source receipt. If early delivery is not selected, run Task 6 once after Task 5. Thus one Windows full run per separately chosen delivery candidate; no gratuitous repeats. R2/R8 still apply to each actual delivery, and approval of this draft must explicitly resolve the staged-delivery choice.
+
+Before the profile runner exists, Task 0/1 use baseline-config explicit node/file selections. Task 0 creates a reviewed **temporary** core node-ID argument file (no move/rename, no changed `-m`), excluding identified proc/audit/gate/e2e domains; pytest's installed argument parser supports `@file` (locally read). Hash selection and compare ACTIVE/PASSIVE runs using identical argument bytes. This is a diagnostic input file, not bootstrap-map/fallback policy. Checkpoints once the runner exists use `uv run --no-sync python -m tools.testing.run_profile --profile checkpoint --base <recorded-checkpoint-SHA>`; required WSL platform/load subruns run in their separate lane. Additional focused commands below don't replace full-depth audits/load repeats.
+
+### Task 0 — Diagnose/fix Windows overhead, isolate registry tests and design archival (6–10 hours, discovery-dependent)
+
+- [ ] Verify clean main/source/topology, versions/WSL/binding availability and current test/package/helper/launch inventory. Pin prerequisites before dependent work; validate research/review/current acceptance record hashes into the one evidence report/manifest.
+- [ ] **Diagnose first:** at same source/frozen native Windows environment and identical temporary core node list, run `uv run --no-sync pytest --no-cov @tmp/plan-11-30-core-nodeids.txt --durations=0` in default ACTIVE mode, then the same with `--test-run-context=passive`. No coverage, full suite or clearing addopts. Compare per-transition gaps (next phase start minus previous phase end) across first/last deciles, collection/phase wall time and host load; passive is diagnostic, never protection acceptance. Record exact exclusions so future classification matches the experiment.
+- [ ] If growth disappears, localize job/guard/per-test redirection path with hardening co-owner. If it remains, add diagnostic thread/handle/GC counters to existing phase-boundary samples when the five-second interval is eligible, then bisect test domains. No periodic sampler is presumed present. Keep expensive object-count probes diagnostic; quantify their measurement overhead. Record cause and ruled-out hypotheses; do not prescribe held-open append/AV exceptions from withdrawn attribution.
+- [ ] Present the narrow diagnosed fix and regression fixture for reviewer approval before coding. Use failing accumulation/regression control then minimal fix; preserve guard/job/census validity and failure semantics. Product behavior/new external scope requires a complete approved successor. Focused verify: `uv run --no-sync pytest --no-cov tests/unit/tools/test_run_context.py tests/unit/tools/test_run_context_boundaries.py tests/unit/tools/test_run_context_lifecycle.py`, adding the named new regression node in its owning file. Run platform-shaped fix controls on real WSL too.
+- [ ] Isolate direct lifecycle registry accesses and every planted/nested child's TEMP/TMP to one synthetic parent/child registry root; write failing controls for abrupt/normal/terminal-fault and real-registry byte/listing preservation. Verify lifecycle isolation on real Windows; foreign concurrent entries must be independently attributable, never suppressed. No real-host registry manipulation by unit controls.
+- [ ] Extract shared positive-ended predicate; design explicit dry-run archival/class disposition with Codex and hardening owner. Tests include LIVE/UNKNOWN/access failure/PID reuse/replaced bytes, destination conflict, interrupted move/receipt reconciliation. Gate: `uv run --no-sync pytest --no-cov tests/unit/tools/test_registry_maintenance.py tests/unit/tools/test_run_context_lifecycle.py`. Obtain exact inventory/class grant before any host archival; no blanket cleanup.
+- [ ] **Task 0 fix gate:** after the fix, matched ACTIVE core diagnostic has last-decile median gap <=2× first-decile; planted-registry controls pass, no weakened protection. Mandatory confirmation on the first delivery's one final full Windows run uses the same decile predicate (Task 6). A core pass alone does not close full-run overhead; no extra intermediate full run. Record absolute medians, sample counts, order, instrumentation and ratio; zero/insufficient transitions => UNKNOWN. xdist measurements wait for this full-run confirmation.
+- [ ] Keep ADR filing only because AGENTS.md / ADR-011 require repo-visible decision provenance: consolidate this plan's settled decisions and proposed mechanisms into one jointly reviewed unpublished record, with the corrected report/review/shared-source pins. File it after Claude/Codex agreement, not as a second work registry or new approval for requirements.
+
+**Checkpoint A:** review diagnosis, regression scope, lifecycle isolation/native proof and archival design. No full suite; core-only confirmation is provisional until final full predicate. Inability to establish cause/fix is a substantive Task 0 blocker with remaining estimate reported, not an invitation to mask it with xdist.
+
+### Task 1 — Classification and additive plugin (3–5 hours)
+
+- [ ] Write failing exactly-one tier, union/unmatched/conflict, duration-explicit, maintained-tag and current-source/helper classification guards; include S1/Zed closures, explicit proc run-context/process-tree nodes and preserved child-site identities.
+- [ ] Implement manifest/classifier/plugin, unchanged effective marker selection and conftest isolation; retain no-profile identity. Single-file subprocess collection, final UNRUN after deselection, explicit targets/`-k`, foreign PASSIVE/default ACTIVE and MAIN-5 plugin compatibility controls must pass.
+- [ ] Run `uv run --no-sync pytest --no-cov tests/unit/tools/test_test_profiles.py tests/unit/tools/test_run_context.py tests/unit/tools/test_run_context_boundaries.py tests/unit/tools/test_run_context_lifecycle.py tests/unit/tools/test_plan1126_unrun_binding.py tests/unit/guardrails/test_ci_parity.py`; zero unexplained selected/deselected changes.
+
+### Task 2 — Per-commit selector, bounded broad fallback and supported-load checkpoint runner (5–8 hours)
+
+- [ ] Write failing import/package/rename/delete/data/launch/string-import controls; index-vs-HEAD selects only current commit, whole-diff checkpoint includes earlier commits, unstaged divergence is hashed provisional. Plant dependency changes including fixture/report/baseline and dynamic launch domains.
+- [ ] Implement deterministic mapping/reasons. Test every common-config/non-prose fallback yields broad core/gates/platform plus only declared affected expensive domains; checkpoint adds all full audits/repeats. New prose docs/root MD/report prose never falls back; machine JSON data remains mapped/fallback. Assert no commit/intermediate invocation becomes full and no bootstrap/versioned-mapping approval.
+- [ ] Implement concurrency repeats overlapping a separate frozen proc lane with valid ownership/coverage-free records; assert complete overlap, original internal repeat depths, failures/UNKNOWN kept, interrupted cleanup and no foreign-process kill. Platform trigger requires real Windows+WSL; no full-run load launcher at intermediate checkpoints.
+- [ ] Run `uv run --no-sync pytest --no-cov tests/unit/tools/test_test_profile_selection.py tests/unit/tools/test_run_profile.py tests/unit/tools/test_test_profiles.py tests/unit/tools/test_run_context_child_sites.py` on real Windows and WSL; deterministic sets, zero missed planted dependencies and honest capability labels.
+
+**Checkpoint B:** cumulative Tasks 0–2 checkpoint selection, all full current audits, triggered platform lanes and concurrency repeats overlapping proc. No full suite. Codex reviews conservative fallback omissions and attribution; no common-file mapping-approval hold.
+
+### Task 3 — Product coverage and commit-hook wiring (3–5 hours)
+
+- [ ] Write failing unknown/duplicate/new-package/missing-data controls; Optimus >=80/model-policy <80 fails, Context Engine <80 fails, just-below/exactly80 boundary correct, A2A <80 informational, partial/source-mismatched data rejected. CI safety-module rows/configuration must be comparable.
+- [ ] Implement five-package-current and conditional future-package reports; keep Plan 12 corrections/lane untouched. Update hook to `python -m tools.testing.run_profile --profile commit`, coverage-free, all current non-pytest checks/labels preserved; prior commits are not reselected.
+- [ ] Prepare full-CI per-product report wiring retaining `optimus-check: pytest-coverage`. **Activation of profiles/run records in workflows remains held**: obtain exact hold release before applying/activating that wiring. Without it, hold the CI-dependent delivery claim; do not equate plan approval to release of 11.28 activation.
+- [ ] Run `uv run --no-sync pytest --no-cov tests/unit/tools/test_coverage_products.py tests/unit/tools/test_run_profile.py tests/unit/guardrails/test_ci_parity.py tests/unit/evidence/test_naming_boundaries.py`; exercise actual commit hook with a disposable reviewed index without creating a commit; no partial coverage acceptance.
+- [ ] **Early release point:** present Stage A evidence/review and operator delivery choice. Complete Task 6 for this candidate if early release is selected. Audit optimization and xdist remain Blocked/retained Tasks 4–5, not excluded/Closed. Stage A needs overhead full-run confirmation, registry isolation, coverage/cadence/fidelity gates and required CI activation disposition.
+
+### Task 4 — Audit optimization and D3 quick-depth transition (5–8 hours)
+
+- [ ] With Plan 11.26 owner, pin exact probe budgets and fail source/depth/cache/context/detection-time controls; preserve sealed hashes and full internal counts.
+- [ ] Implement immutable export/session cache and exact-source/domain/depth/environment current measurement keys; stale/cross-shape/repeat observations never mint new execution contexts.
+- [ ] Run `uv run --no-sync pytest --no-cov tests/unit/tools/plan1126_runtime_audit --audit-depth=full` and corresponding `--audit-depth=quick`, plus inventoried ACP/telemetry current-audit files. Every mandatory full probe executes; injected failure survives both depths.
+- [ ] Measure quick/full **audit** focused costs, not Task 0 ACTIVE/PASSIVE experiment again. Switch commit current audits to changed-input quick only after G accepted; checkpoints remain full. Unsupported quick domain stays full or blocks G completion, never disappears.
+
+**Checkpoint C:** whole diff through Task 4, standard checkpoint audits/platform/supported-load repeats; no full suite. Early Stage A final is historical and cannot prove later source.
+
+### Task 5 — Core-only xdist (7–10 hours)
+
+- [ ] After Task 0's full-run confirmation, verify official installed source/version behavior and lock compatible xdist dev dependency; refresh only idle independent environments. Use core serial baseline after the diagnosed fix. If Stage A wasn't delivered, defer xdist performance sign-off until Task 6 confirms full-run fix; correctness/native implementation can proceed from focused fix evidence.
+- [ ] Write failing controller/worker/real-process controls: forged/reused identity, absent guard, launcher/grandchild cleanup, crash/no restart, interrupted controller, concurrent append, collection disagreement, wrong source/config/schema, duplicate/missing phases/shards.
+- [ ] Implement controller ownership/worker guard/isolated streams, disjoint core+serial union and unsafe-profile pre-spawn rejection. One registry and coordinated coverage lifecycle; only owned processes cleaned.
+- [ ] Run `uv run --no-sync pytest --no-cov tests/unit/tools/test_run_context_xdist.py tests/unit/tools/test_run_context.py tests/unit/tools/test_run_context_boundaries.py tests/unit/tools/test_run_context_child_sites.py tests/unit/tools/test_run_context_lifecycle.py tests/unit/tools/test_test_profiles.py tests/unit/tools/test_run_profile.py` on native Windows/real WSL. Native worker claims need real children, not fakes.
+- [ ] Three matched serial vs two-worker **post-fix** core pairs: zero omitted/duplicate nodes, escaped children or invalid records; proposed median >=20% core wall improvement without increased failures. Report per-phase/decile gaps in both; improvement cannot mask unresolved overhead. If perf criterion fails, preserve serial and keep xdist objective unaccepted, not silently deferred/Closed.
+
+**Checkpoint D:** whole diff through Task 5; standard checkpoint full audits, platform and serial concurrency under supported proc load; no full suite.
+
+### Task 6 — Delivery-final exact-source gates (3–5 hours per selected delivery + run wall time)
+
+- [ ] Audit current-state docs/backlog/roadmap/README/index/hooks/CI beyond touched entries; preserve other-lane contracts and residual owners. Pin candidate source/config/lock and separate frozen final Windows/WSL lanes.
+- [ ] Start Fable review and **one serial default full Windows suite with coverage** together: `uv run --no-sync python -m tools.testing.run_profile --profile full`. Keep measured checkout unchanged and one coverage writer. This also confirms Task 0 fix: last-decile median inter-phase gap <=2× first-decile, positive sufficient transitions, absolute medians/sample counts recorded. No xdist/full partition for accumulation acceptance.
+- [ ] Run unchanged mandatory full WSL pre-finalize in its separate env/data file at same candidate source. Triggered WSL/green Linux CI do not replace it. Reuse the Windows final for pre-finalize if unchanged; no redundant Windows full.
+- [ ] Obtain base main-push and candidate full Linux CI per-file safety-module reports; preserve exact SHAs/config/platform and zero unapproved regressions. CI/publication/activation authority needed separately. Missing comparable report = UNKNOWN/hold claim, **no extra Windows base-only full run**.
+- [ ] Report per-product full coverage and deferred A2A informational rows; run `uv run --no-sync ruff check .`, changed docs gates and `git diff --check`. Preserve all failed/invalid runs and scan debt; no inherited blanket exception or retry-to-green.
+- [ ] Codex independently verifies files/diffs/manifests/receipt validity and doc freshness; update ignored checkpoint log. Any changed source after review invalidates exact-source final; another final attempt needs reviewed bounded disposition. Stage A delivery leaves Tasks 4–5 owned/open; complete plan closes only when all tasks/gates accepted. Operator grants any commit/push/PR/merge separately.
+
+## Acceptance and claim-to-evidence mapping
+
+Only **two new evidence deliverables**: `reports/plan-11-30-test-profiles-evidence.md` and `reports/plan-11-30-test-profiles-manifest.json`. Manifest sections below index existing hashed stdout/stderr, run-context/coverage/native receipts and archival append-only receipt; raw records are not eliminated or replaced by prose. Every run carries source/head/index/diff/config/lock, environment/platform, command/run ID, node/skip identities, exit/verdict, completeness and digests. Multiple stages append separate immutable run/claim entries, never relabel earlier receipts.
+
+| Claim / manifest section | Measurable acceptance | Evidence / task |
+|---|---|---|
+| overhead | Diagnosed cause, focused regression and final full Windows last-decile median gap <=2× first-decile; no weakened protection | Matched ACTIVE/PASSIVE core traces, regression controls, final full phases; Tasks 0/6 |
+| fidelity/classification | One tier/node, union equality, no unexplained default selection/output change, maintained tags/current-source gates/proc signals complete; correct ACTIVE/PASSIVE/UNRUN | Collection/plugin/native controls; Tasks 1–2 |
+| selection | Commit index-vs-HEAD, cumulative checkpoint, planted dependencies included, broad fallback reasons/expensive-domain omissions recorded, new prose never fallback/full | Synthetic repository/CLI controls; Task 2 |
+| registry | Planted/direct lifecycle controls never pollute host registry; only positively ended unchanged entries archived, LIVE/UNKNOWN preserved, receipts reconciled | Native isolation controls + authorized dry-run/class/archive receipts; Task 0 |
+| cadence/stability | No intermediate full, full current audits, real triggered Windows+WSL, >=3 ordinary repeats + original internal budgets under demonstrable proc/default-lane overlap | Run/context/overlap intervals and all verdicts; Tasks 2–6 |
+| audit | Full counts/assertions/context/detection unchanged; quick visibly reduced; stale cache invalidated | Parity/fault controls; Task 4 |
+| xdist | Post-fix native two-worker attribution/guard/cleanup; zero lost/duplicate nodes; >=20% proposed matched-core median gain without leak masking | Serial/worker traces and native controls; Task 5 |
+| coverage | Full Optimus >=80, present Context Engine >=80 and model-policy own >=80; unknown/missing source fails; A2A informational | Same-source full coverage JSON/product reports; Task 3/6 |
+| safety-critical | Base vs candidate full Linux CI modules/config comparable, zero unapproved regressions; Windows separately informational | Exact CI reports/SHAs/module totals+misses; Task 6 |
+| delivery | Stage-specific unchanged source, Fable/full Windows parallel lanes, full WSL, Ruff/doc gates, residual custody/holds maintained | Final report + manifest, Task 6 |
+
+## Review disposition — Claude M1–M7 / m1–m6
+
+| Finding | Disposition in this successor |
+|---|---|
+| M1 / m6 | Task 0 mandatory matched core ACTIVE/PASSIVE diagnosis then narrow fix; focused gate and final-full <=2× predicate; no prescribed append remedy. |
+| M2 | Isolate lifecycle source leak first; shared native ended predicate; archive with receipt and conditional missing-worktree+ENDED class disposition. No machine move authorized. |
+| M3 | Replace full/approval-block fallback and bootstrap mapping with deterministic broad core/gates/platform plus declared expensive domains; acknowledge residual risk. |
+| M4 | Commit = current staged-vs-HEAD; whole cumulative diff only checkpoints. |
+| M5 | Standing new-prose docs/root-MD/report rule; never fallback/full, machine data distinguished. |
+| M6 | Exact-base main-push vs candidate Linux CI rows; no extra Windows baseline run; configuration/rounding limits explicit. |
+| M7 | Tasks 0–3 Stage A early delivery point, later work retained; final gates apply to each separately elected delivery; one report/manifest; ADR retained solely under AGENTS/ADR-011; estimates revised. |
+| m1 | Tags seeded by maintained concurrency/fault-injection imports and child-site inventory; reviewed additions/negative-space guards; child-site keys preserved. |
+| m2 | Run-context/process-tree nodes explicitly proc, with domain triggers; current-source gates override by node. |
+| m3 | Load means separate supported proc/default lane overlap; no one-thread proxy or intermediate full launch. |
+| m4 | Current research F991C06A… pin and 95505c4 COMPLETE ACTIVE 42:41/44:20/core163+417 figures, UNKNOWN parent retained. |
+| m5 | Optimus gate implements Phase1 §8A; separate-product/A2A deferral has explicit authority. |
+
+These are Codex draft dispositions, not Claude's re-review or operator implementation approval.
+
+## Estimates, risks and completion boundaries
+
+Stage A active engineering **17–28 hours** (Tasks 0–3); Task 0's 6–10 hours is an investigation allowance, not a guaranteed root-cause/fix estimate. If cause cannot be isolated within it, retain measurements and report a revised reviewed schedule, never mask unresolved growth with xdist. Stage B **12–18 hours** (Tasks 4–5). Final gating **3–5 hours per separately elected delivery**, plus suite/reviewer/CI wall time: **32–51 hours** for one final delivery, **35–56** if Stage A and Stage B are separately delivered. Estimates are agent choices. Removing bootstrap rounds/extra Windows baseline/bespoke artifacts reduces ceremony; new diagnosis/isolation still has real cost.
+
+At 95505c4 retained full Windows cost was 42:41 solo/44:20 paired, core163+417 seconds; diagnosed post-fix timing is unmeasured. Earlier failed/shared 27:12 and invalid reference remain historical, not speed promises. Median per-test gaps, phase time, elapsed time, host load and selected/fallback rates are reported separately. Correctness/native validity precede speed.
+
+Preferred additive profiles + conservative selection + bounded post-fix core xdist. Marker-only profiles make supported runs passive; indiscriminate xdist risks ownership/global state and can hide accumulation; dynamic coverage TIA remains unselected. Bounded broad fallback deliberately trades selective precision for turnaround, with an explicit omitted-expensive-domain residual backstopped by final full runs/CI. It does not prove unknown dynamic dependencies are impossible.
+
+Residual live status stays in the sole backlog. `P11-FEAT-TEST-PROFILES` owns upkeep and Tasks 4–5 after any Stage A delivery; hardening co-owns overhead/job/guard/registry/worker guarantees; Plan 12 owns its packages/current acceptance; binding/FU/debt owners remain unchanged. Windows CI/nightly, optional CI split/pre-push/TIA remain unscheduled custody. Plan 11.29's future cutover is reconciled at pickup; no issue writes/other-lane messages are authorized.
+
+The operator reviews this draft first. All implementation, tests, installs, machine maintenance, acceptance runs and delivery remain unexecuted. The reviewer handoff log is `docs/superpowers/reviews/plan-11-30-review-checkpoints.md`, ignored and never staged. Approval freezes this contract under the versioned-successor policy; it does not authorize publication, merge or another lane's work.

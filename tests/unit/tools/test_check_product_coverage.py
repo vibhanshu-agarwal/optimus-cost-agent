@@ -462,8 +462,14 @@ def test_ci_keeps_the_one_full_run_and_uploads_its_evidence_even_when_it_fails()
     steps = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "guardrails.yml").read_text(encoding="utf-8"))["jobs"]["clean-environment-recheck"]["steps"]
     names = [step.get("name") for step in steps]
     position = names.index("optimus-check: pytest-coverage")
-    gate_step, copy, upload = steps[position : position + 3]
-    assert (copy["name"], upload["name"]) == ("Keep the full run's run-context records", "Upload product coverage evidence")
+    gate_step, validity, copy, upload = steps[position : position + 4]
+    assert (validity["name"], copy["name"], upload["name"]) == (
+        "Validate the product coverage run", "Keep the full run's run-context records", "Upload product coverage evidence")
+    # Plan 11.30 v5 I2: the same dataset's full-run validity, kept with the evidence; bash keeps its exit through tee.
+    assert (validity["if"], validity["shell"]) == ("${{ !cancelled() }}", "bash")
+    assert validity["run"] == (
+        'uv run python -m tools.testing.coverage_products validate --coverage-json "${RUNNER_TEMP}/product-coverage/coverage.json" '
+        '--gate-report "${RUNNER_TEMP}/product-coverage/product-coverage-report.json" | tee "${RUNNER_TEMP}/product-coverage/validity.txt"')
     assert shlex.split(gate_step["run"]) == [
         "uv", "run", "python", "tools/check_product_coverage.py", "--run-full-suite", "--groups", "tools/product-coverage-groups.json",
         "--report-json", "${RUNNER_TEMP}/product-coverage/product-coverage-report.json",

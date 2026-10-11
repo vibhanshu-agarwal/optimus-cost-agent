@@ -20,8 +20,8 @@ the commit and tree before and after the run, whether the checkout was clean bef
 groups policy loaded, and the configuration, lock, coverage engine and interpreter identities: receipts
 for a later validity check, which this gate's own verdict neither uses nor replaces.
 
-The commit-profile hook is not this gate: until the profiles lane lands it keeps its existing entry and
-pyproject's interim Optimus-only floor (release supplement, 2026-10-04).
+The commit hook is not this gate: it runs Plan 11.30's coverage-free commit profile. pyproject keeps
+`fail_under = 80`, which this gate's fixed full command overrides to 0 so the separate floors decide.
 """
 
 from __future__ import annotations

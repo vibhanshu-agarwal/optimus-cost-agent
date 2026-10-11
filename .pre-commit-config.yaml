@@ -49,8 +49,10 @@ repos:
         files: ^src/
         stages: [manual]
         pass_filenames: true
+      # Plan 11.30: this commit's tests (index against HEAD), coverage-free. CI runs the full suite with coverage.
       - id: optimus-pytest-coverage
         name: "optimus-check: pytest-coverage"
-        entry: pytest --cov=optimus --cov-branch --cov-report=term-missing
+        entry: python -m tools.testing.run_profile --profile commit
         language: system
         pass_filenames: false
+        always_run: true

@@ -77,15 +77,25 @@ jobs:
 
       # Plan 12.2 closure: one full default run, then separate floors on that dataset (Optimus product
       # group, context_engine and optimus_model_policy at 80% each; Evidence Handoff and the aggregate
-      # informational). The commit hook keeps its interim entry until the profiles lane lands.
-      # The same dataset is also exported as coverage JSON (per-file rows for the safety comparison).
+      # informational). The commit hook runs the coverage-free commit profile (Plan 11.30); coverage is decided
+      # here. The same dataset is also exported as coverage JSON (per-file rows for the safety comparison).
       - name: "optimus-check: pytest-coverage"
         run: uv run python tools/check_product_coverage.py --run-full-suite --groups tools/product-coverage-groups.json --report-json "${RUNNER_TEMP}/product-coverage/product-coverage-report.json" --coverage-json "${RUNNER_TEMP}/product-coverage/coverage.json"
 
+      # Plan 11.30 v5 I2: the full-run validity of that same dataset, never a second suite or floor. The export
+      # and report must bind to exactly one eligible full session of this clean checkout; the output is kept
+      # with the evidence (bash: pipefail keeps the validity exit through tee).
+      - name: Validate the product coverage run
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: uv run python -m tools.testing.coverage_products validate --coverage-json "${RUNNER_TEMP}/product-coverage/coverage.json" --gate-report "${RUNNER_TEMP}/product-coverage/product-coverage-report.json" | tee "${RUNNER_TEMP}/product-coverage/validity.txt"
+
       # Keep the gate's report, run record, coverage JSON and the run-context terminal records (the full
       # session is verified from them) for every run, failed runs included: the report keeps its real
-      # verdict. A gate that stopped before pytest leaves no record, so the copy fails and that run is no
-      # comparison evidence; a run that left nothing to upload fails at the upload as well.
+      # verdict. A gate that stopped before pytest leaves no full-session record; the validity step's own
+      # collection can still leave collection-only records, which are copied and uploaded but are never
+      # eligible full evidence, so that run is no comparison evidence. A run that left nothing to upload
+      # fails at the upload.
       - name: Keep the full run's run-context records
         if: ${{ !cancelled() }}
         run: mkdir -p "${RUNNER_TEMP}/product-coverage/test-runs" && cp --parents tmp/test-runs/*/run.json "${RUNNER_TEMP}/product-coverage/test-runs/"

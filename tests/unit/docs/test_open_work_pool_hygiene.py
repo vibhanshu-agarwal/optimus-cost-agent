@@ -49,6 +49,17 @@ PREREQUISITE_TABLE_COLUMNS = (
     "Owner",
     "If unsatisfied: genuinely hard, or merely unauthorized?",
 )
+# Codex's 2026-10-04 Plan 11.30 ruling: one approved plan's Tooling disposition predates the prefix grammar.
+# Only that cell of those exact raw bytes skips the prefix check; the plan and every other check are unchanged.
+FROZEN_DISPOSITION_EXCEPTIONS = {
+    (
+        "2026-10-04-plan-11-30-test-profiles-implementation_v4.md",
+        "8A40DEF6D627EDC722D9FA925BBB0C193DE433ECCB91D2DCA19F1DA6AFC5C790",  # pragma: allowlist secret
+    ): (
+        "Tooling: usable Git, Python 3.14, uv, frozen dev env, pytest/cov and compatible xdist",
+        "early check distinguishes genuinely absent from merely unauthorized",
+    ),
+}
 PLAN_DIRECTORY_GOVERNANCE_FILES = {
     "README.md",
     "2026-07-01-phase-1-roadmap.md",
@@ -576,7 +587,14 @@ def _markdown_table_cells(line: str) -> tuple[str, ...]:
     return tuple(cell.strip() for cell in stripped[1:-1].split("|"))
 
 
-def _assert_prerequisites_table(plan: str) -> None:
+def _frozen_disposition_exception(plan_path: Path) -> tuple[str, str] | None:
+    """The pinned (row, disposition) a plan may keep, only for exactly its approved bytes. The digest is of the
+    bytes whose text is checked (approved plans are `-text`, so they equal the committed blob)."""
+    digest = hashlib.sha256(plan_path.read_bytes()).hexdigest().upper()
+    return FROZEN_DISPOSITION_EXCEPTIONS.get((plan_path.name, digest))
+
+
+def _assert_prerequisites_table(plan: str, exception: tuple[str, str] | None = None) -> None:
     prerequisites = _h2_section(plan, "Prerequisites")
     lines = prerequisites.splitlines()
     for index, line in enumerate(lines[:-1]):
@@ -601,8 +619,9 @@ def _assert_prerequisites_table(plan: str) -> None:
             satisfied = row["Satisfied today?"].casefold()
             assert satisfied in {"yes", "no", "unknown"}
             assert row["Owner"].strip()
-            disposition = row["If unsatisfied: genuinely hard, or merely unauthorized?"].casefold()
-            if satisfied != "yes":
+            cell = row["If unsatisfied: genuinely hard, or merely unauthorized?"]
+            disposition = cell.casefold()
+            if satisfied != "yes" and (row[header[0]], cell) != exception:
                 assert disposition.startswith(
                     ("genuinely hard", "genuinely absent", "merely unauthorized")
                 )
@@ -960,7 +979,46 @@ def test_post_amendment_plans_declare_prerequisites_with_required_columns() -> N
     for plan_path in _post_amendment_plan_paths(_git_name_status_since_prerequisites_amendment()):
         if not plan_path.is_file():
             plan_path = PLANS_ROOT / "archive" / plan_path.name
-        _assert_prerequisites_table(_read(plan_path))
+        _assert_prerequisites_table(_read(plan_path), _frozen_disposition_exception(plan_path))
+
+
+def test_one_approved_plan_cell_is_the_only_prerequisite_disposition_exception(tmp_path: Path) -> None:
+    """Only the pinned cell of exactly the approved bytes skips the disposition-prefix check; every other check stays."""
+    (name, _digest), expected = next(iter(FROZEN_DISPOSITION_EXCEPTIONS.items()))
+    approved = PLANS_ROOT / name if (PLANS_ROOT / name).is_file() else PLANS_ROOT / "archive" / name
+    exception = _frozen_disposition_exception(approved)
+    text = _read(approved)
+
+    # The approved snapshot passes, and only because of its exception.
+    assert exception == expected
+    _assert_prerequisites_table(text, exception)
+    with pytest.raises(AssertionError):
+        _assert_prerequisites_table(text)
+
+    # The same bytes under another plan's name, and altered approved bytes, carry no exception.
+    other = tmp_path / "2026-10-05-another-plan.md"
+    other.write_bytes(approved.read_bytes())
+    altered = tmp_path / name
+    altered.write_bytes(approved.read_bytes() + b"\n")
+    assert _frozen_disposition_exception(other) is None
+    assert _frozen_disposition_exception(altered) is None
+    with pytest.raises(AssertionError):
+        _assert_prerequisites_table(_read(other), _frozen_disposition_exception(other))
+
+    # Under the exception, every other row and every other check of the excepted row still applies.
+    row, cell = expected
+    line = next(line for line in text.splitlines() if line.startswith(f"| {row} |"))
+    owner = _markdown_table_cells(line)[2]
+    for broken in (
+        text.replace("| merely unauthorized | Draft review first", "| n/a | Draft review first"),
+        text.replace("| merely unauthorized | Draft review first", f"| {cell} | Draft review first"),
+        text.replace(line, line.replace("| unknown |", "| maybe |", 1)),
+        text.replace(line, line.replace(f"| {owner} |", "| |", 1)),
+        text.replace(line, line.replace(cell, f"{cell} later", 1)),
+    ):
+        assert broken != text
+        with pytest.raises(AssertionError):
+            _assert_prerequisites_table(broken, exception)
 
 
 def test_guardrails_checkout_fetches_prerequisite_amendment_history() -> None:

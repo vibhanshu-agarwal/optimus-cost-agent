@@ -208,13 +208,14 @@ def _child_case(case: str) -> dict:
 
 
 def _measure_entry(entry: str, **options) -> tuple[dict, list[dict]]:
-    """Drive the REAL public measurement path and return (inventory, observations)."""
+    """Drive the REAL public measurement path and return (inventory, observations). An identical measurement
+    already taken in this session is reused, and the run record names it (Plan 11.30 Task 4)."""
+    from tests.support.profiles_plugin import measure_current_entry
     from tools.plan1126_runtime_audit.current_envelope import default_measurement_plan
-    from tools.plan1126_runtime_audit.measurement import run_fresh_measurement
 
     root = Path(__file__).resolve().parents[3]
     plan = default_measurement_plan(repository_root=root, entries=(entry,), options=options)[0]
-    _binding, result = run_fresh_measurement(
+    _binding, result = measure_current_entry(
         source=plan.source, spec=plan.spec, entry=entry,
         options=plan.options, repository_root=root,
     )
@@ -275,16 +276,20 @@ def run(owner, metrics, values):
     assert_no_offending_rows(references, lambda reference: "join" in reference, 'must hold for none: "join" in reference')
 
 
-def test_shutdown_causes_repeat_100_with_control_allowlist() -> None:
+def test_shutdown_causes_repeat_100_with_control_allowlist(audit_budget) -> None:
     # Through the REAL public path: a fresh child issues a context scoped to this entry,
     # and the entry discovers its inventory from the same tree the binding names. There is
     # no in-process route to these observations any more, which is the correction.
-    inventory, observations = _measure_entry("h5.shutdown_schedule", repeats=100)
+    # Full depth repeats every family 100 times, the sealed count. `--audit-depth=quick` runs each
+    # family once with every other check unchanged; the run's terminal record labels that reduced
+    # depth, and it never stands for the repeat-100 obligation (Plan 11.30 Task 4).
+    repeats = audit_budget("h5.shutdown_schedule")["repeats"]
+    inventory, observations = _measure_entry("h5.shutdown_schedule", repeats=repeats)
     applicable = {
         record["close_path_id"] for record in inventory["resources"] if record["schedule_applicable"]
     }
 
-    assert len(observations) == len(applicable) * len(_CAUSES) * 100
+    assert len(observations) == len(applicable) * len(_CAUSES) * repeats
     assert {item["terminal_cause"] for item in observations} == _CAUSES
     assert {item["close_path_id"] for item in observations} == applicable
     assert_no_offending_rows(observations, lambda item: not (item["complete"]), 'must hold for all: item["complete"]')
@@ -300,7 +305,7 @@ def test_shutdown_causes_repeat_100_with_control_allowlist() -> None:
         key = (item["close_path_id"], item["terminal_cause"])
         by_family[key] = by_family.get(key, 0) + 1
     assert set(by_family) == {(path, cause) for path in applicable for cause in _CAUSES}
-    assert set(by_family.values()) == {100}
+    assert set(by_family.values()) == {repeats}
 
 
 def test_close_is_idempotent_across_discovered_paths() -> None:

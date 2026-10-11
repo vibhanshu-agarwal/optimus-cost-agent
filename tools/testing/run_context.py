@@ -19,6 +19,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from tools.testing import run_context_guard as guard
 from tools.testing import run_context_records as records
@@ -28,6 +29,9 @@ OPTION_DEST = "test_run_context"
 ACTIVE = "active"
 PASSIVE = "passive"
 UNKNOWN = "UNKNOWN"
+# A registered root process, as `process_end_status` finds it.
+ENDED = "ENDED"
+LIVE = "LIVE"
 
 # The approved default selection, frozen here on purpose. A session's own configuration can be
 # replaced from the command line, the environment or another config file, so it is never the
@@ -81,11 +85,17 @@ class RunContext:
     selection: object = field(default_factory=hashlib.sha256)
     # True once this run's own registry announcement has been removed.
     registry_withdrawn: bool = False
+    # The run's open stream files, one per stream, closed when the run ends (Plan 11.30 Task 0).
+    held: dict[Path, object] = field(default_factory=dict)
 
 
 _sessions_started = 0
 _current: RunContext | None = None
 SAMPLE_INTERVAL_SECONDS = 5.0
+# The recorder's own clocks, bound at import. Tests patch the `time` module (often through a tool module's own
+# `time` attribute) while their phases are reported; the session recording them must not read their clock.
+_monotonic = time.monotonic
+_wall_time = time.time
 
 
 def current() -> RunContext | None:
@@ -263,7 +273,7 @@ def start_run(config: object) -> RunContext:
         context.parent_run = {"status": "unsupported"}
     if mode == ACTIVE:
         context.guard_mode = guard.install()
-    context.started_monotonic, context.started_wall = time.monotonic(), time.time()
+    context.started_monotonic, context.started_wall = _monotonic(), _wall_time()
     context.facts = _session_facts(worktree)
     if context.native.get("enrolled") and enrolled_before:
         # A later session in the same interpreter shares the job: its own activity is the
@@ -342,7 +352,7 @@ def _append(context: RunContext, stream: str, entries: list[dict[str, object]]) 
         context.truncated = True
         return
     try:
-        written = records.append_entries(context.record_dir / f"{stream}.jsonl", stream, batch)
+        written = records.append_entries(context.record_dir / f"{stream}.jsonl", stream, batch, held=context.held)  # type: ignore[arg-type]
         context.counts[stream] += len(batch)
         for digest in written:
             context.ledger[stream].update(digest)  # type: ignore[attr-defined]
@@ -404,18 +414,55 @@ def record_phase(context: RunContext, report: object) -> None:
     try:
         entry: dict[str, object] = {
             "node": _node(str(report.nodeid)), "when": str(report.when), "outcome": str(report.outcome),  # type: ignore[attr-defined]
-            "at": round(max(0.0, float(getattr(report, "start", context.started_wall)) - context.started_wall), 3),
-            "seconds": round(max(0.0, float(getattr(report, "duration", 0.0))), 3),
+            "at": round(max(0.0, float(getattr(report, "start", context.started_wall)) - context.started_wall), 6),
+            "seconds": round(max(0.0, float(getattr(report, "duration", 0.0))), 6),
         }
         if entry["outcome"] == "skipped":
             longrepr = getattr(report, "longrepr", None)
             detail = longrepr[2] if isinstance(longrepr, tuple) and len(longrepr) == 3 else getattr(report, "wasxfail", "")
             entry["reason"] = _reason(detail)
+        worker = getattr(report, "worker_id", None)
+        if isinstance(worker, str) and records.WORKER.fullmatch(worker):
+            entry["worker"] = worker  # an xdist worker ran it; the controller records it (Plan 11.30 Task 5)
         _append(context, "phases", [entry])
-        if time.monotonic() - context.last_sample >= SAMPLE_INTERVAL_SECONDS:
+        if _monotonic() - context.last_sample >= SAMPLE_INTERVAL_SECONDS:
             sample_run(context, "phase")
     except Exception:  # noqa: BLE001 - recording must never change a test's outcome
         context.counts["recording_errors"] += 1
+
+
+def process_end_status(pid: int, creation_time: int | None) -> tuple[str, str]:
+    """Whether a registered root process has positively ended: (`ENDED`, `LIVE` or `UNKNOWN`, basis).
+
+    The one predicate behind overlap reading and registry maintenance (Plan 11.30 Task 0). On Windows
+    the process is checked through one short-lived handle: the open says there is no such process
+    (`not_found`), the PID now names a process with another creation time, so the recorded one ended
+    and the replacement is not it (`replaced`), or a zero-time wait says it has terminated
+    (`terminated`). A denied or failed open or query, or an entry without a creation time, is
+    UNKNOWN, never absence. A running process with the recorded creation time is LIVE (`running`).
+    Elsewhere a missing `/proc/<pid>` is ENDED (`proc_absent`), and a present one proves no identity:
+    UNKNOWN (`proc_present`).
+    """
+    status, basis, _identity_read = _end_status(pid, creation_time)
+    return status, basis
+
+
+def _end_status(pid: int, creation_time: int | None) -> tuple[str, str, native.ProcessIdentity | None]:
+    """`process_end_status` plus the identity it read, so a caller never opens the process twice."""
+    if not native.supported():
+        return ((ENDED, "proc_absent", None) if not Path(f"/proc/{pid}").exists() else (UNKNOWN, "proc_present", None))
+    if not _whole_number(creation_time):
+        return UNKNOWN, "incomplete_identity", None
+    identity = native.process_identity(pid)
+    if not identity.opened and identity.error == native.ERROR_INVALID_PARAMETER:
+        return ENDED, "not_found", identity
+    if identity.creation_time is not None and identity.creation_time != creation_time:
+        return ENDED, "replaced", identity
+    if identity.live is False:
+        return ENDED, "terminated", identity
+    if identity.creation_time is None or identity.live is None:
+        return UNKNOWN, "query_failed", identity
+    return LIVE, "running", identity
 
 
 def other_runs(run_id: str) -> tuple[list[dict[str, object]], int, str, int]:
@@ -439,24 +486,19 @@ def other_runs(run_id: str) -> tuple[list[dict[str, object]], int, str, int]:
         pid, created = (root.get("pid"), root.get("creation_time")) if isinstance(root, dict) else (None, None)
         if not _whole_number(pid):
             continue
-        if native.supported():
-            if not _whole_number(created):
-                continue
-            identity = native.process_identity(pid)
-            if (not identity.opened and identity.error == native.ERROR_INVALID_PARAMETER) \
-                    or (identity.creation_time is not None and identity.creation_time != created) or identity.live is False:
-                ended += 1
-                continue
-            if identity.creation_time is None or identity.live is None:
-                relation = "unknown"
-            else:
-                member = native.is_member(identity)
-                relation = "own_job" if member is True else "outside" if member is False else "unknown"
-        else:
-            if not Path(f"/proc/{pid}").exists():
-                ended += 1
-                continue
+        if native.supported() and not _whole_number(created):
+            continue
+        status, _basis, identity = _end_status(pid, created)
+        if status == ENDED:
+            ended += 1
+            continue
+        if not native.supported():
             relation = "unverified"
+        elif status == UNKNOWN or identity is None:
+            relation = "unknown"
+        else:
+            member = native.is_member(identity)
+            relation = "own_job" if member is True else "outside" if member is False else "unknown"
         if len(listed) >= records.MAX_OTHER_RUNS:
             extra += 1
             continue
@@ -474,7 +516,7 @@ def sample_run(context: RunContext, checkpoint: str) -> None:
     There is no timer or thread, so a long phase has no sample inside it; `gap` shows that.
     """
     try:
-        now = time.monotonic()
+        now = _monotonic()
         others, extra, registry, ended = other_runs(context.run_id)
         entry: dict[str, object] = {
             "at": round(now - context.started_monotonic, 3),
@@ -517,9 +559,32 @@ def completeness(context: RunContext) -> str:
     return "TRUNCATED" if context.truncated else "COMPLETE"
 
 
-def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
+def _audit_fields(audit: dict[str, Any]) -> dict[str, object]:
+    """The session's effective audit depth, every reduced-depth budget a test used and every current measurement
+    a test reused, with the test that measured it (Plan 11.30 Task 4)."""
+    return {
+        "audit_depth": audit["depth"],
+        "audit_budgets": [
+            {"entry": item["entry"], "depth": item["depth"], "repeats": item["repeats"], "full_repeats": item["full_repeats"],
+             "node": _node(str(item["nodeid"])), "label": _label(str(item["nodeid"]))}
+            for item in audit["budgets"]
+        ],
+        "audit_reuse": [
+            {"entry": item["entry"], "node": _node(str(item["nodeid"])), "label": _label(str(item["nodeid"])),
+             "from_node": _node(str(item["from_nodeid"])), "from_label": _label(str(item["from_nodeid"]))}
+            for item in audit["reused"]
+        ],
+    }
+
+
+def finish_run(
+    context: RunContext, exit_status: int, *, audit: dict[str, Any] | None = None, xdist: dict[str, Any] | None = None,
+) -> dict[str, object]:
     """Withdraw the announcement, then write the terminal record. The job handle is deliberately
-    kept until the interpreter exits.
+    kept until the interpreter exits. `audit` is the session's effective audit depth, the budgets its tests
+    used and the measurements they reused; it is written in the terminal record only, never in the shared
+    registry announcement. `xdist` is the controller's verdict on its workers (Plan 11.30 Task 5): any verdict but
+    valid makes the record INVALID.
 
     Nothing here raises into pytest: a failure anywhere in the terminal work leaves pytest's own
     exit status in place and makes the record INVALID. The registry withdrawal comes before the
@@ -532,6 +597,12 @@ def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
     try:
         try:
             final.update(_terminal(context, exit_status))
+            if audit is not None:
+                final.update(_audit_fields(audit))
+            if xdist is not None:
+                final["xdist"] = dict(xdist)
+                if xdist.get("verdict") != "valid":
+                    context.counts["recording_errors"] += 1
         except Exception as error:  # noqa: BLE001 - the terminal facts could not be established
             context.counts["recording_errors"] += 1
             final["terminal_failure"] = _failure_token(error)
@@ -548,6 +619,8 @@ def finish_run(context: RunContext, exit_status: int) -> dict[str, object]:
         final.setdefault("terminal_failure", _failure_token(error))
     finally:
         _current = None
+        # Never leave a stream open past the run, even when the terminal work failed early.
+        records.close_held(context.held)  # type: ignore[arg-type]
     return final
 
 
@@ -595,6 +668,8 @@ def _terminal(context: RunContext, exit_status: int) -> dict[str, object]:
             # Still not written after the last attempt: the record is incomplete and says so.
             context.counts["recording_errors"] += 1
             context.pending[stream].clear()
+    if not records.close_held(context.held):  # type: ignore[arg-type]
+        context.counts["recording_errors"] += 1
     reconciled, read_back = _read_back(context)
     if not reconciled:
         context.counts["recording_errors"] += 1
@@ -648,4 +723,7 @@ def summary_line(context: RunContext, final: dict[str, object] | None) -> str:
         streams = final.get("streams") or {}
         parts += [f"records={final.get('completeness')}", f"phases={streams.get('phases') if isinstance(streams, dict) else 0}",
                   f"exit={final.get('exit_status')}"]
+        xdist = final.get("xdist")
+        if isinstance(xdist, dict):
+            parts.append(f"xdist={xdist.get('verdict')}:workers={xdist.get('workers')}:{xdist.get('capability')}")
     return " ".join(str(part) for part in parts)

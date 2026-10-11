@@ -23,6 +23,7 @@ import re
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+from typing import IO
 
 SCHEMA = "test-run-context-v1"
 MAX_RECORD_BYTES = 256 * 1024
@@ -51,6 +52,10 @@ _VERSION = re.compile(r"[A-Za-z0-9.+-]{1,40}")
 _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?\+00:00")
 _TOKEN = re.compile(r"[A-Za-z0-9_]{1,48}")
 _PLACE = re.compile(r"[A-Za-z0-9_.:<>\[\]]{1,80}")
+# Plan 11.30 Task 5: an xdist worker's ID, and a problem the controller found with its workers.
+WORKER = re.compile(r"gw\d{1,3}")
+_PROBLEM = re.compile(r"[a-z_]{1,40}(?::gw\d{1,3})?")
+WORKER_SCHEMA = "test-run-context-worker-v1"
 
 _Check = Callable[[object], bool]
 
@@ -127,10 +132,11 @@ _STREAMS: dict[str, _Table] = {
         "node": _text(_DIGEST), "label": _optional(_text(LABEL)), "state": _one_of("selected", "deselected"),
     }, required=("node", "label", "state")),
     # One test phase as pytest reported it. `at` and `seconds` are relative to the start of the run.
+    # `worker`: the xdist worker that ran the phase, when the run had workers (Plan 11.30 Task 5).
     "phases": _Table({
         "node": _text(_DIGEST), "when": _one_of("setup", "call", "teardown"),
         "outcome": _one_of("passed", "failed", "skipped"), "at": _seconds, "seconds": _seconds,
-        "reason": _text(REASON),
+        "reason": _text(REASON), "worker": _text(WORKER),
     }, required=("node", "when", "outcome", "at", "seconds")),
     # What else was running, read at a phase boundary. `gap` is the time since the previous sample.
     "samples": _Table({
@@ -193,7 +199,50 @@ _FIELDS = _Table({
     # Whether the run's own registry announcement was withdrawn before this record was written.
     "registry_withdrawal": _one_of("done", "failed"),
     "members": {"ok": _flag, "complete": _flag, "error": _optional(_count), "identities": [_IDENTITY]},
+    # Plan 11.30 Task 4, terminal records only: the session's effective `--audit-depth` and each reduced-depth
+    # budget a test used (its probe entry, the repeats it ran against the full count, and its node).
+    "audit_depth": _one_of("full", "quick"),
+    "audit_budgets": [_Table({
+        "entry": _text(LABEL), "depth": _one_of("full", "quick"), "repeats": _count, "full_repeats": _count,
+        "node": _text(_DIGEST), "label": _optional(_text(LABEL)),
+    }, required=("entry", "depth", "repeats", "full_repeats", "node", "label"))],
+    # ... and each current measurement a test reused instead of executing, with the test that measured it.
+    "audit_reuse": [_Table({
+        "entry": _text(LABEL), "node": _text(_DIGEST), "label": _optional(_text(LABEL)),
+        "from_node": _text(_DIGEST), "from_label": _optional(_text(LABEL)),
+    }, required=("entry", "node", "label", "from_node", "from_label"))],
+    # Plan 11.30 Task 5, terminal records of a run with xdist workers: the controller's verdict on them.
+    "xdist": _Table({
+        "workers": _count, "verdict": _one_of("valid", "INVALID"), "capability": _one_of("native", "weaker"),
+        "problems": [_text(_PROBLEM)],
+        "identities": [_Table({"worker": _text(WORKER), "pid": _count, "creation_time": _optional(_count)},
+                              required=("worker", "pid", "creation_time"))],
+        # Members of the run's job still running at the end, each with its parent process (a worker, usually).
+        "escaped": [_Table({"pid": _count, "creation_time": _optional(_count), "parent_pid": _optional(_count)},
+                           required=("pid", "creation_time", "parent_pid"))],
+    }, required=("workers", "verdict", "capability", "problems", "identities")),
 }, required=("schema", "checkpoint", "run_id", "mode", "reason", "root"))
+
+# One xdist worker's own record, beside its controller's run record (Plan 11.30 Task 5). The controller signs
+# nothing; the worker signs this with the run's secret, which the controller handed it over xdist's channel.
+_WORKER_FIELDS = _Table({
+    "schema": _one_of(WORKER_SCHEMA),
+    "run_id": _text(RUN_ID),
+    "worker": _text(WORKER),
+    "pid": _count,
+    "creation_time": _optional(_count),
+    "ancestry": _Table({
+        "status": _one_of("controller", "pid_ancestry", "not_found"),
+        "method": _one_of("validated_process_ancestry", "proc_parent_chain"), "reason": _text(_TOKEN),
+    }, required=("status",)),
+    "guard_mode": _text(_TOKEN),
+    "facts": _Table({
+        "python": _optional(_text(_VERSION)), "pytest": _optional(_text(_VERSION)),
+        "lock_sha256": _optional(_text(_DIGEST)), "config_sha256": _optional(_text(_DIGEST)),
+        "head": _optional(_text(COMMIT)),
+    }, required=("python", "pytest", "lock_sha256", "config_sha256", "head")),
+    "signature": _text(_DIGEST),
+}, required=("schema", "run_id", "worker", "pid", "creation_time", "ancestry", "guard_mode", "facts", "signature"))
 
 
 def _violation(value: object, rule: object, place: str) -> str | None:
@@ -255,6 +304,34 @@ def write_record(target: Path, payload: dict[str, object]) -> None:
     found = violation(record)
     if found is not None:
         raise RecordRejected(found)
+    _persist(target, record)
+
+
+def write_worker_record(target: Path, payload: dict[str, object]) -> None:
+    """Persist one xdist worker's signed record (Plan 11.30 Task 5) through the same checks and the same sink."""
+    if "schema" in payload:
+        raise RecordRejected("record.schema")
+    record = {"schema": WORKER_SCHEMA, **payload}
+    found = _violation(record, _WORKER_FIELDS, "record")
+    if found is not None:
+        raise RecordRejected(found)
+    _persist(target, record)
+
+
+def read_worker_record(source: Path) -> dict[str, object] | None:
+    """One worker record, or None when it is missing, too large, malformed or breaks its field table."""
+    try:
+        if source.stat().st_size > MAX_RECORD_BYTES:
+            return None
+        payload = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return payload if _violation(payload, _WORKER_FIELDS, "record") is None else None
+
+
+def _persist(target: Path, record: dict[str, object]) -> None:
+    """The run context's single persistence sink: a conforming record, unchanged by the shared sanitizer, written
+    atomically within the size ceiling."""
     if not unchanged_by_shared_sanitizer(record):
         raise RecordRejected("shared_sanitizer")
     body = json.dumps(record, indent=1, sort_keys=True)
@@ -293,12 +370,21 @@ def _load_record(source: Path) -> tuple[dict[str, object] | None, str]:
     return payload, "ok"
 
 
-def append_entries(target: Path, stream: str, entries: list[dict[str, object]], *, max_bytes: int = MAX_STREAM_BYTES) -> list[bytes]:
+def append_entries(
+    target: Path, stream: str, entries: list[dict[str, object]], *, max_bytes: int = MAX_STREAM_BYTES,
+    held: dict[Path, IO[str]] | None = None,
+) -> list[bytes]:
     """Append conforming entries to one of a run's streams. The run context's only other sink.
 
     Every entry is checked against its stream's table, the batch must be left unchanged by the
     shared sanitizer, and the file may not grow past its ceiling. Nothing is written otherwise.
     Returns a digest of each line written, so the caller can reconcile the stream later.
+
+    With `held`, the stream is opened once, kept in `held` and reused, and each append is written
+    and flushed to the operating system before this returns; `close_held` closes it. A stream that
+    fails is closed and dropped from `held`, so the next append opens it again. Plan 11.30 Task 0:
+    on some Windows hosts every close() of a written file blocks for longer as the process ages,
+    and one open and close per test phase made the gaps between phases grow over a whole run.
     """
     table = _STREAMS[stream]
     for entry in entries:
@@ -317,10 +403,20 @@ def append_entries(target: Path, stream: str, entries: list[dict[str, object]], 
     if existing + len(body.encode("utf-8")) > max_bytes:
         raise RecordTooLarge(TOO_LARGE)
     try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with open(target, "a", encoding="utf-8") as stream_file:
+        if held is None:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with open(target, "a", encoding="utf-8") as stream_file:
+                stream_file.write(body)
+        else:
+            stream_file = held.get(target)
+            if stream_file is None or stream_file.closed:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                stream_file = held[target] = open(target, "a", encoding="utf-8")  # noqa: SIM115 - closed by close_held
             stream_file.write(body)
+            stream_file.flush()
     except OSError as error:
+        if held is not None:
+            _drop_held(held, target)
         # Progress is unknown: bytes may have reached the stream before the failure. The stream is
         # restored to its length from before this append; only then may the batch be tried again.
         try:
@@ -333,6 +429,28 @@ def append_entries(target: Path, stream: str, entries: list[dict[str, object]], 
             raise AppendNotStarted from error
         raise AppendIntegrityUnknown from error
     return [line_digest(line) for line in lines]
+
+
+def _drop_held(held: dict[Path, IO[str]], target: Path) -> None:
+    """Forget a held stream after a failure; closing it may fail too, which changes nothing."""
+    stream_file = held.pop(target, None)
+    if stream_file is not None:
+        try:
+            stream_file.close()
+        except OSError:
+            pass
+
+
+def close_held(held: dict[Path, IO[str]]) -> bool:
+    """Close every held stream. True only when every close succeeded; nothing stays held either way."""
+    closed = True
+    while held:
+        target, stream_file = held.popitem()
+        try:
+            stream_file.close()
+        except OSError:
+            closed = False
+    return closed
 
 
 def line_digest(line: str) -> bytes:
