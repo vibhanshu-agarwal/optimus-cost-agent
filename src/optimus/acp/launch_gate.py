@@ -681,14 +681,19 @@ def resolve_launch_candidate(
 
     # 2e. Plan 12.2 Task 13 (Stage C): bind the shared test envelope, composed from source and the
     # trusted runtime root, so the operator approves the exact release, limits, scenarios and ledger.
-    stage_c_literal = None
+    stage_c_literal = stage_c_release = None
     if stage_c:
         if test_profile not in STAGE_C_PROFILES:
             raise LaunchGateError(code="STAGE_C_NEEDS_TEST_PROFILE", detail="a Stage C launch names one of its test profiles")
         try:
-            stage_c_literal = compose_stage_c_envelope(ledger=stage_c_ledger_path(operator_paths.runtime_root)).literal
+            envelope = compose_stage_c_envelope(ledger=stage_c_ledger_path(operator_paths.runtime_root))
         except BindingError as exc:
             raise LaunchGateError(code="STAGE_C_ENVELOPE_INVALID", detail=exc.code) from exc
+        stage_c_literal = envelope.literal
+        # What the operator sees beside the literal: the release and its limits, from the envelope itself.
+        stage_c_release = (
+            f"stage-c-release:{envelope.release_id}:${envelope.limit_usd}/{envelope.max_attempts} attempts/{envelope.window_seconds // 60} min"
+        )
         security_literals[STAGE_C_LITERAL_NAME] = stage_c_literal
 
     # 3. Compute security snapshot digest using the SINGLE shared function
@@ -726,7 +731,7 @@ def resolve_launch_candidate(
             LaunchDisplayRow(
                 name=STAGE_C_LITERAL_NAME,
                 tier=LaunchVariableTier.SECURITY,
-                source_class="stage-c-release:$0.50/24 attempts/60 min",
+                source_class=stage_c_release,
                 display_value=stage_c_literal,
                 decision="requires exact approval",
             )

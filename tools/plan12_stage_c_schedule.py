@@ -534,7 +534,12 @@ def build_schedule(*, summary_bytes: int = 8_192, reply_sizes: tuple[int, ...] =
         "schedule": SCHEDULE_VERSION,
         "source": {"head": head, "dirty": dirty, "attached_hash": snapshot.effective_hash, "qualification_hash": profiles.TEST_PROFILES["qualification"].effective_hash,
                    "scenario_catalogue": stage_c.scenario_catalogue_digest(), "seed": stage_c.STAGE_C_SCENARIOS[stage_c.STAGE_C_ATTACHED_SCENARIO]["seed"]},  # fmt: skip
-        "envelope": {"usd": str(limit_usd), "physical_attempts": limit_attempts, "window_minutes": stage_c.STAGE_C_WINDOW_SECONDS // 60},
+        "envelope": {
+            "release": stage_c.STAGE_C_RELEASE_ID,
+            "usd": str(limit_usd),
+            "physical_attempts": limit_attempts,
+            "window_minutes": stage_c.STAGE_C_WINDOW_SECONDS // 60,
+        },
         "fixed_request_material_bytes": fixed,
         "prompt_files": {name: {"bytes": len(text.encode("utf-8")), "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()} for name, text in PROMPT_FILES.items()},
         "workspace_files": {name: hashlib.sha256(text.encode("utf-8")).hexdigest() for name, text in WORKSPACE_FILES.items()},
@@ -572,7 +577,7 @@ def _markdown(schedule: Mapping[str, Any]) -> str:
     lines = [
         f"# Stage C executable schedule ({schedule['schedule']})",
         "",
-        f"Source {schedule['source']['head'][:12]}{' (dirty)' if schedule['source']['dirty'] else ''}; envelope ${schedule['envelope']['usd']} / "
+        f"Source {schedule['source']['head'][:12]}{' (dirty)' if schedule['source']['dirty'] else ''}; envelope {schedule['envelope']['release']}: ${schedule['envelope']['usd']} / "
         f"{schedule['envelope']['physical_attempts']} attempts / {schedule['envelope']['window_minutes']} minutes.",
         "",
         "## Conservative complete-case bound",

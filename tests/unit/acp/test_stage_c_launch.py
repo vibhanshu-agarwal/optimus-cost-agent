@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import sys
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -71,7 +72,8 @@ def test_a_stage_c_launch_binds_the_envelope_beside_the_profile(tmp_path: Path, 
     assert STAGE_C_LITERAL_NAME not in plain.security_literals
     assert staged.security_snapshot_digest != plain.security_snapshot_digest
     [row] = [row for row in staged.display_rows if row.name == STAGE_C_LITERAL_NAME]
-    assert (row.display_value, row.decision) == (envelope.literal, "requires exact approval") and "$0.50" in row.source_class
+    assert (row.display_value, row.decision) == (envelope.literal, "requires exact approval")
+    assert row.source_class == "stage-c-release:plan12-2-stage-c-r2:$8/138 attempts/60 min"  # the operator sees what is approved
 
 
 def test_both_profile_launches_bind_one_shared_envelope(tmp_path: Path) -> None:
@@ -94,6 +96,21 @@ def test_an_approval_with_or_without_the_envelope_authorizes_only_its_own_launch
     other, store = _candidate(tmp_path, keyring, test_profile="attached", stage_c_flag=launched)
     with pytest.raises(LaunchGateError) as caught:
         authorize_launch(candidate=other, store=store, launch_session_id="s1")
+    assert caught.value.code == "SNAPSHOT_MISMATCH"
+
+
+def test_an_approval_of_the_reviewed_r1_envelope_never_authorizes_an_r2_launch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Release r2 needs its own fresh bound approval: an approval of the superseded r1 envelope ($0.50, 24
+    attempts, its own ledger) is refused for the r2 launch."""
+    keyring = FakeKeyring()
+    with monkeypatch.context() as r1:
+        r1.setattr(stage_c, "STAGE_C_RELEASE_ID", "plan12-2-stage-c-r1")
+        r1.setattr(stage_c, "STAGE_C_LIMIT_USD", Decimal("0.50"))
+        r1.setattr(stage_c, "STAGE_C_MAX_ATTEMPTS", 24)
+        authorize_workspace_for_test(env=_ENV, workspace_root=tmp_path, fake_keyring=keyring, test_profile="attached", stage_c=True)
+    r2, store = _candidate(tmp_path, keyring, test_profile="attached", stage_c_flag=True)
+    with pytest.raises(LaunchGateError) as caught:
+        authorize_launch(candidate=r2, store=store, launch_session_id="s1")
     assert caught.value.code == "SNAPSHOT_MISMATCH"
 
 

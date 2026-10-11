@@ -3,7 +3,7 @@
 
 The ledger is initialized once, by the later release ceremony; every Gateway start only reopens it. Before
 each physical upstream attempt the guard checks the window, the attempt count and `known charges +
-outstanding reserves + the next full reserve <= $0.50`, and persists the reservation before dispatch.
+outstanding reserves + the next full reserve <= $8` (release r2), and persists the reservation before dispatch.
 Each attempt is settled once: a known charge, a proven unbilled outcome (its attempt still counts) or an
 unknown one, which stops every later dispatch. A restart replays the same totals and deadline; anything
 unresolved or unreadable stays in doubt and stops dispatch. One writer, one attempt in flight.
@@ -83,7 +83,7 @@ def test_the_ledger_is_initialized_once_and_never_reset(tmp_path: Path) -> None:
     path, envelope = _initialized(tmp_path)
     [init] = _records(path)
     assert (init["kind"], init["envelope"], init["release_id"], init["limit_usd"], init["max_attempts"], init["window_seconds"]) == (
-        "init", envelope.literal, stage_c.STAGE_C_RELEASE_ID, "0.50", 24, 3600
+        "init", envelope.literal, "plan12-2-stage-c-r2", "8", 138, 3600
     )  # fmt: skip
 
     with pytest.raises(StageCLedgerError) as caught:
@@ -141,21 +141,40 @@ def test_the_window_starts_at_the_first_open_and_restarts_never_extend_it(opened
 def test_dollars_admit_at_equality_and_refuse_one_unit_over(opened) -> None:
     reopen, *_ = opened
     guard = reopen()
-    guard.settle_charged(_admit(guard, 1, Decimal("0.30")), Decimal("0.30"))
+    guard.settle_charged(_admit(guard, 1, Decimal("7.80")), Decimal("7.80"))
     _refused(guard, "STAGE_C_BUDGET_EXHAUSTED", Decimal("0.2000001"))
-    admission = _admit(guard, 2, Decimal("0.20"))
+    admission = _admit(guard, 2, Decimal("0.20"))  # $7.80 + $0.20 = $8: equality is admissible
     assert admission.number == 2
-    assert guard.state.outstanding_usd == Decimal("0.20") and guard.state.charged_usd == Decimal("0.30")
+    assert guard.state.outstanding_usd == Decimal("0.20") and guard.state.charged_usd == Decimal("7.80")
 
 
-def test_attempts_admit_the_24th_and_refuse_the_25th_unbilled_ones_included(opened) -> None:
+def test_attempts_admit_the_138th_and_refuse_the_139th_unbilled_ones_included(opened) -> None:
     reopen, *_ = opened
     guard = reopen()
-    for n in range(1, 25):
+    for n in range(1, 139):
         admission = _admit(guard, n, Decimal("0.001"))
         guard.settle_unbilled(admission, "not_sent") if n % 2 else guard.settle_charged(admission, Decimal("0"))
-    assert guard.state.attempts == 24 and guard.state.charged_usd == Decimal("0")
+    assert guard.state.attempts == 138 and guard.state.charged_usd == Decimal("0")
     _refused(guard, "STAGE_C_ATTEMPTS_EXHAUSTED", Decimal("0.001"))
+
+
+def test_a_restart_replays_the_r2_totals_and_deadline_at_the_boundary(opened) -> None:
+    """Every launch and restart shares one r2 ledger: a restart 50 minutes in replays 137 attempts and $7.99,
+    keeps the deadline, admits exactly the last attempt and dollar, then refuses."""
+    reopen, clock, path, _ = opened
+    guard = reopen()
+    for n in range(1, 137):
+        guard.settle_unbilled(_admit(guard, n, Decimal("0.001")), "not_sent")
+    guard.settle_charged(_admit(guard, 137, Decimal("7.99")), Decimal("7.99"))
+    clock.now = T0 + timedelta(minutes=50)
+
+    guard = reopen()
+
+    assert (guard.state.attempts, guard.state.charged_usd, guard.state.deadline) == (137, Decimal("7.99"), T0 + timedelta(hours=1))
+    _refused(guard, "STAGE_C_BUDGET_EXHAUSTED", Decimal("0.0100001"))
+    guard.settle_charged(_admit(guard, 138, Decimal("0.01")), Decimal("0.01"))
+    _refused(guard, "STAGE_C_ATTEMPTS_EXHAUSTED", Decimal("0.000001"))
+    assert reopen().state.attempts == 138 and [r["kind"] for r in _records(path)].count("window") == 1
 
 
 def test_an_attempt_starts_only_if_it_can_time_out_inside_the_window(opened) -> None:

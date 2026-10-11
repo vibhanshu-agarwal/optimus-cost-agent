@@ -2,9 +2,12 @@
 agreement, 2026-10-11).
 
 One reviewed release shares one envelope across both test-profile launches (``qualification`` and
-``attached``), the acpx and Zed sessions and any authorized restart: at most $0.50 of known charges plus
-outstanding reservations, 24 physical upstream attempts (unbilled ones included) and one 60-minute window
-that starts at the first Stage C launch. Its literal binds the release, the limits, both profiles' pinned
+``attached``), the acpx and Zed sessions and any authorized restart: at most $8 of known charges plus
+outstanding reservations, 138 physical upstream attempts (unbilled ones included) and one 60-minute window
+that starts at the first Stage C Gateway open (release r2, the operator's release of 2026-10-12; it rounds
+up the accepted $7.518097 / 138-attempt complete-case reservation bound). Release r2 supersedes the
+reviewed r1 ($0.50, 24 attempts): it has its own ledger file and literal, so an r1 ledger is never opened,
+reset or overwritten, and an r1 approval never authorizes an r2 launch. Its literal binds the release, the limits, both profiles' pinned
 hashes, the fixed scenario catalogue and the resolved ledger file, and is carried by the HMAC launch
 approval and the Gateway child's signed manifest; the Gateway composes the same envelope itself.
 
@@ -68,9 +71,9 @@ __all__ = [
     "stage_c_ledger_status",
 ]
 
-STAGE_C_RELEASE_ID: Final = "plan12-2-stage-c-r1"
-STAGE_C_LIMIT_USD: Final = Decimal("0.50")
-STAGE_C_MAX_ATTEMPTS: Final = 24
+STAGE_C_RELEASE_ID: Final = "plan12-2-stage-c-r2"
+STAGE_C_LIMIT_USD: Final = Decimal("8")
+STAGE_C_MAX_ATTEMPTS: Final = 138
 STAGE_C_WINDOW_SECONDS: Final = 60 * 60
 STAGE_C_PROFILES: Final = ("qualification", "attached")
 ENVELOPE_LITERAL_PREFIX: Final = "optimus-stage-c-envelope-v1:"

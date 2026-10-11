@@ -170,7 +170,7 @@ def test_a_reply_that_fails_its_finish_check_keeps_its_settled_charge(guarded) -
 
 def test_an_exhausted_envelope_refuses_before_any_provider_call(guarded) -> None:
     policy, guard, _path, _ = guarded
-    guard.settle_charged(guard.admit(attempt_id="gw-" + "0" * 32, request_id="earlier", reserve_usd=Decimal("0.495")), Decimal("0.495"))  # the next reservation (about $0.0066) no longer fits
+    guard.settle_charged(guard.admit(attempt_id="gw-" + "0" * 32, request_id="earlier", reserve_usd=Decimal("7.995")), Decimal("7.995"))  # the next reservation (about $0.0066) no longer fits
     upstream = RecordingUpstream()
 
     status, body = _post(policy, guard, upstream)

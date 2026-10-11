@@ -92,7 +92,7 @@ def _host_error(status: int, body: dict[str, Any], monkeypatch: pytest.MonkeyPat
 
 
 def _exhaust_budget(guard, clock) -> None:
-    guard.settle_charged(guard.admit(attempt_id="gw-" + "0" * 32, request_id="earlier", reserve_usd=Decimal("0.495")), Decimal("0.495"))
+    guard.settle_charged(guard.admit(attempt_id="gw-" + "0" * 32, request_id="earlier", reserve_usd=Decimal("7.995")), Decimal("7.995"))
 
 
 def _exhaust_attempts(guard, clock) -> None:

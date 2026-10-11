@@ -106,9 +106,19 @@ def test_the_bound_totals_count_one_billed_attempt_and_two_physical_attempts_per
     totals = bound["totals"]
     assert totals["calls"] == calls and totals["physical_attempts_planned_max"] == [calls, 2 * calls]
     assert Decimal(totals["billed_attempt_bound_usd"]) == total.quantize(Decimal("0.000001"), rounding="ROUND_CEILING")
-    assert totals["fits_usd"] is (total <= Decimal("0.50")) and totals["fits_attempts_max"] is (2 * calls <= 24)
-    assert Decimal(totals["usd_shortfall"]) == max(Decimal(0), Decimal(totals["billed_attempt_bound_usd"]) - Decimal("0.50"))
+    limit, attempts = stage_c.STAGE_C_LIMIT_USD, stage_c.STAGE_C_MAX_ATTEMPTS
+    assert totals["fits_usd"] is (total <= limit) and totals["fits_attempts_max"] is (2 * calls <= attempts)
+    assert Decimal(totals["usd_shortfall"]) == max(Decimal(0), Decimal(totals["billed_attempt_bound_usd"]) - limit)
     assert bound["assumptions"] and all(isinstance(text, str) and text for text in bound["assumptions"])
+
+
+def test_the_r2_envelope_holds_the_accepted_complete_case_bound(schedule) -> None:
+    """The operator's release of 2026-10-12: $8 rounds the accepted $7.518097 bound up, and 138 attempts is
+    exactly its maximum (one safe resend per call). The bound itself is unchanged by the envelope."""
+    totals = schedule["bound"]["totals"]
+    assert (totals["calls"], totals["billed_attempt_bound_usd"], totals["physical_attempts_planned_max"]) == (69, "7.518097", [69, 138])
+    assert schedule["envelope"] == {"release": "plan12-2-stage-c-r2", "usd": "8", "physical_attempts": 138, "window_minutes": 60}
+    assert (totals["fits_usd"], totals["fits_attempts_planned"], totals["fits_attempts_max"], totals["usd_shortfall"]) == (True, True, True, "0")
 
 
 # --- Measured allocations on fixed fake replies -----------------------------------------------------------------
