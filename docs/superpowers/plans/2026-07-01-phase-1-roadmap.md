@@ -723,7 +723,8 @@ item is scheduled into a concrete implementation plan, keep its stable source ID
 promotion, date, plan-file link, evidence, and disposition in this backlog.
 
 **Open-work source of truth:** The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md)
-is the single source of truth for all open work; this roadmap preserves milestone scope, sequencing,
+is the source of truth for all open work that has not moved to a GitHub issue; a record it marks `Moved` has its live
+status in its issue ([ADR-021](../../decisions/ADR-021-bounded-github-authority-switch.md)). This roadmap preserves milestone scope, sequencing,
 historical narrative, and pointers rather than live open-item status.
 
 **Adding future items:** Add each genuinely deferred, unscheduled follow-up to the stable-ID catalog
@@ -1008,6 +1009,22 @@ the flake is reproduced, context known but has no deterministic causal edge or f
 that state and the future custody decision. This roadmap section retains the feasibility findings and
 historical analysis.
 
+## Work tracking maintenance (Tracked, Not Yet Scheduled)
+
+Tracked, Not Yet Scheduled. No implementation plan exists, and none is needed until this entry is scheduled (AGENTS.md, deferred-work
+custody). This entry is the continuing owner of two follow-ups that the bounded Plan 11.29 cutover left undelivered, recorded in the
+[consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md): `P11.29-FU-1`, an offline `Work tracking impact:`
+pull-request declaration replacing the masterplan-impact gate, and `P11.29-FU-2`, the `**Tracking issue:**` plan-header convention and
+its offline check. Plan 11.29 is their origin ([ADR-021](../../decisions/ADR-021-bounded-github-authority-switch.md)).
+
+- **Scope:** the two mechanisms that Plan 11.29's Task 4 and Design contract section 3 specified. Neither changes the status authority
+  of the 49 migrated records, and neither reopens the migration of the 87 records that retain their existing authorities.
+- **Priority and size:** priority Medium, difficulty Medium, estimate NA (none established).
+- **Custody:** implementer Claude; architect and reviewer Codex; the operator decides any merge. The existing `Master-plan impact:` gate
+  stays in force until `P11.29-FU-1` is delivered. This entry creates no GitHub issue.
+- **To schedule:** a reviewed plan or successor names the tasks and the acceptance criteria written in the two pool entries. Replacing a
+  required check is a policy change, and whether it needs its own decision record is for Codex to rule.
+
 ## Plan 11 (v1.0 Milestone; Unified Gateway Capabilities Broker and ACP Release)
 
 **Raised:** 2026-07-08, during Plan 9.7 review. The client-side zero-upstream-credential Gateway-only contract is already
@@ -1038,7 +1055,7 @@ enforcement; `P9.85-FU-3` remains parked pending the operator decision.
 
 This milestone-level snapshot retains terminal and historical Plan 11 lane outcomes. It does not
 publish a live lane's state or next gate: the
-[`consolidated open-work pool`](2026-07-23-consolidated-deferred-followups-backlog.md) owns those.
+[`consolidated open-work pool`](2026-07-23-consolidated-deferred-followups-backlog.md) owns those for every record not marked `Moved`, and the linked GitHub issue owns them for a `Moved` one.
 
 | Plan | Summary state | Evidence |
 |---|---|---|
