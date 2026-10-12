@@ -2263,11 +2263,13 @@ def test_p11_fu_20_is_partial_and_owned_by_live_blocked_plan_1123() -> None:
     pool = _read(OPTIMUS_POOL)
     live_item, live_state = _fu_index_rows(pool)["P11-FU-20"]
     # Live: the follow-up and the plan that owns it both moved, so the pool keeps their pointers, and the ownership is the
-    # sealed manifest's relation. The plan file stays at the root.
+    # sealed manifest's relation. The owning plan is found by name and must still be a live plan, at the plan root.
     moved = _moved_records()
     assert live_state == MOVED and _is_moved_entry(_entry_sections(pool)[f"P11-FU-20: {live_item}"])
     assert moved["P11-FU-20"]["parent"] == "plan:11.23" and "plan:11.23" in moved
-    assert (PLANS_ROOT / "2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md").is_file()
+    plan_1123 = doc_path("2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md")
+    assert plan_1123.is_file()
+    assert plan_1123.parent == PLANS_ROOT
     # What was recorded at the move (partial status, the unrun external gate, the broker facts) is read from the pinned base.
     pool = _pool_at_cutover_base()
     indexed = _fu_index_rows(pool)
@@ -2309,7 +2311,6 @@ def test_p11_fu_20_is_partial_and_owned_by_live_blocked_plan_1123() -> None:
     assert "Plan 11.20 is a terminal intermediate slice" in body
     assert _has_semantic_anchor_group(body, "Live", "Plan 11.23", "supersedes")
     assert "Task 6 remains blocked" in body
-    assert (PLANS_ROOT / "2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md").is_file()
 
     assert "_mcp_permission_broker_for" in body
     assert "disposition_for_new_session" in body
