@@ -75,6 +75,24 @@ by this folder.
        (`10:17:01.533Z`), all 2026-10-04 UTC. Explicitly scoped excerpt, not a full export.
        ADR-020 reproduces operator words and authority boundaries. Raw S5 is archival provenance,
        never an operating, test or release dependency; S1–S4 retain their existing meanings.
+   - **Source S6.** Plan 11.29 cutover-proposal request, operator message dated 2026-10-11 (23:29:18.943 IST;
+     UTC 17:59:18.943) in Codex chat `01a1027e-9c55-7952-979b-af01fd93aa9f`.
+     - External transcript excerpt: `optimus-handoff\decisions-sources\2026-10-11-codex-cutover-operator-excerpt.json`.
+     - SHA-256: `D79F6A29713E7EC054F5BE567634F07D57001193269FEE171234364747964AF8`.
+     - One exact original message (source line 3184, `2026-10-11T17:59:18.943Z`), extracted by Codex and checked
+       by Claude against the quoted text. Explicitly scoped excerpt, not a full export. ADR-021 reproduces the
+       operator's words and authority boundaries. Raw S6 is archival provenance, never an operating, test or
+       release dependency; S1–S5 retain their existing meanings.
+   - **Source S7.** Plan 11.29 mechanism acceptance, operator message dated 2026-10-12 (14:09:30.351 IST;
+     UTC 08:39:30.351) in the Claude Desktop session `7c7198ea-e124-4199-ab9c-49de5eda155d`.
+     - External transcript excerpt: `optimus-handoff\decisions-sources\2026-10-12-claude-cutover-mechanism-acceptance-excerpt.json`.
+     - SHA-256: `7D199F098C4AF58BB588467D56E576589066DBD5D3816116BE7843FB85BB289A`.
+     - One exact original record (source line 10327, `2026-10-12T08:39:30.351Z`): the operator's typed
+       "Accepted per wording above", sent with Codex's pasted acceptance wording, which it adopts by
+       reference. The pasted wording is agent text and the typed sentence is operator text. Extracted by
+       Codex and checked by Claude against the session transcript (text, times, ids). Explicitly scoped
+       excerpt, not a full export. ADR-021's index row records the acceptance and its limits. Raw S7 is
+       archival provenance, never an operating, test or release dependency; S1–S6 retain their existing meanings.
 2. **Label the decider.** Each record says who decided: the operator, an agent (Claude or Codex), or an
    agent proposal still awaiting the operator. A value an agent chose must never read as an operator
    requirement.
@@ -123,8 +141,8 @@ by this folder.
 
    A record accepted "with open items" may accept the requirement while its mechanism stays proposed.
    **No record commissions implementation** on its own.
-9. **Work lives in the backlog, not here.** The consolidated deferred-followups backlog remains the sole
-   live registry for work, owners, statuses and next gates. Filing a record does not close an existing
+9. **Work lives in the backlog or its issue, not here.** The consolidated deferred-followups backlog remains the
+   live registry for work, owners, statuses and next gates, except for records marked `Moved`, whose GitHub issues own them. Filing a record does not close an existing
    owner or authorize implementation or paid calls.
 
 ## Index
@@ -151,9 +169,10 @@ by this folder.
 | [018](ADR-018-plan12-cp4-numeric-policy.md) | Plan 12 CP4 measured numeric policy, whole-turn availability limitation and the D7 request-capacity exception; completes [ADR-003](ADR-003-context-ceiling-and-history-limits.md) numeric policy within Plan 12.2 | Accepted-with-open-items; numeric policy, one repack and whole-turn/D7 limitation accepted on 2026-10-04 (S4); route qualification, summary-quality evidence and real-editor Task 13 remain open; activation/publication held | Operator (2026-10-04, source S4); drafted by Codex, filed by Claude | 2026-10-04 |
 | [019](ADR-019-plan12-task1-policy-integration.md) | Plan 12 accepted Task 1 mechanisms and governed integration; partial completion/clarification of [ADR-003](ADR-003-context-ceiling-and-history-limits.md) to [ADR-006](ADR-006-summarizer-model.md) | Proposed governed integration; the Task 1 mechanisms keep their 2026-10-02 acceptance in the archived first editions | Operator (2026-10-02 acceptance); integration proposed by Codex | 2026-10-04 |
 | [020](ADR-020-test-cadence-product-coverage-and-staged-delivery.md) | Test cadence, product coverage, registry mechanisms and staged turnaround delivery | Accepted-with-open-items; Tasks 0–3 locally accepted/delivered; progress/command dispositions approved; local Task 6 accepted with approved checkout exception; report/docs delivered at 1c7be2d; Stage B Task 4/C/G accepted and local delivery verified at `43eb190`; Task 5/D accepted and local delivery verified at `66ddabf`; Stage B governance and local Task 6 accepted at measured `3cece0a`; results delivered at `26bd667`; Claude/Codex shared coverage responsibility clarified; v5 approved; I1 bootstrap local delivery verified at `6f1935d`; PR279 main-push baseline accepted at `4ed9b25`; current (2026-10-11): I1 merged on main via PR #279 (`4ed9b25`) and its main-push baseline accepted; I2/I3 integration merge committed locally at `ea88814e` (tree `9048bc8d`) and accepted, with I3 evidence including the WSL platform discharge; I4 exact-source finals accepted at `ea88814e` (Windows/WSL canonical gates and validation pass); S1 reader correction delivered at `343b233a` and accepted, with corrected-source I4 finals accepted at that pin (Windows/WSL canonical gates and validation pass; WSL platform obligation discharged at that pin only); documentary delivery `281f8ce7` accepted and its forward WSL platform obligation discharged; PR #280 published at `281f8ce7`, with its candidate Linux CI and seven-module safety comparison (no regression) accepted at merge ref `1946713e`; D3 documentary delivery `228b5f6f` accepted and its WSL platform obligation discharged; new-head CI accepted at merge ref `789586d7`; **effective status (2026-10-11, after Codex's 13:19:00 UTC acceptance): first merged to main by PR #280 at `3dc85529`, with its actual main-push CI and seven-module safety comparison accepted; the record is now byte-frozen.** Its dated "unpublished review draft until first merge" and status wording is historical and is not edited; a later policy or decision correction needs a new record. Current (2026-10-11, after Codex's 17:11:44 UTC acceptance): the terminal-docs PR #281 merged to main at `d5b4bec3` and its main-push CI accepted; the record's bytes are unchanged; Plan 11.30 v5 completed and archived (operator grant "YES", a direct operator reply in Codex chat on client date 2026-10-12, recorded by Codex at 2026-10-11 19:05:47 UTC, answering the exact question that approved closing Plan 11.30, archiving v5 and the kickoff, Checkpoint A, Checkpoint B dated 2026-10-05 and Task 3 records byte-for-byte, and one normal-hook closing commit). Cleanup held | Operator policy; mechanisms agreed by Claude/Codex | 2026-10-04 |
+| [021](ADR-021-bounded-github-authority-switch.md) | Bounded GitHub authority switch for 49 Optimus work records; no frozen ADR is changed | Accepted-with-open-items. The operator accepted the mechanism on 2026-10-12 at 14:09:30 IST (source S7: "Accepted per wording above", adopting the pasted wording): GitHub issues become authoritative at the separately approved cutover merge, the backlog keeps compact pointers and pinned history, unmigrated work keeps its existing authority, and the reviewed 49 pre-merge and 49 post-merge update sequence is accepted. The acceptance authorizes no further writes, merge, A2A, P11-FU-42 delivery or cleanup. The 49 pre-merge issue updates were published and verified on 2026-10-12. Activation is the merge of the PR that introduces this record and the reviewed authority-switch changes; the post-merge verification evidence records the actual merge hash. Open: the switch merge itself, the 49 post-merge issue updates and their verification | Operator (requirements and activation authority; words verbatim, source S6; mechanism accepted 2026-10-12, source S7); mechanism proposed by Claude and accepted by Codex with clarifications; drafted by Codex, filed by Claude | 2026-10-12 |
 
 **Package A delivery:** [local accepted implementation and evidence](../superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md);
-the sole backlog records current publication/next gates. The frozen ADR-013 repair decision and
+the backlog row, or the Plan 12.2 issue (#237) once that row is marked `Moved`, records current publication/next gates. The frozen ADR-013 repair decision and
 Plan 11.25 correction remain unchanged; the repair exists on the Package A branch, not yet main.
 
 **Evidence in the repository:** [industry practice and model catalog, 2026-09-30](2026-09-30-industry-context-cost-and-model-evidence.md).

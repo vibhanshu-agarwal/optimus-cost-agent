@@ -834,8 +834,12 @@ def test_draft_reproduces_the_committed_manifest_byte_for_byte() -> None:
     commit = json.loads(MANIFEST.read_text(encoding="utf-8"))["baseline"]["commit"]
     drafted = rules.draft_inventory(commit, gwt.read_sources_at(commit, rules.READS), gwt.read_plans_at(commit))
     committed = gwt.load_inventory(MANIFEST).records
-    if all(r.target_issue is not None for r in committed if r.disposition == "migrate"):  # finalized after publication
-        drafted = gwt.finalize_inventory(drafted, {r.id: r.target_issue for r in committed if r.target_issue is not None})
+    known = {record["id"]: record.get("target_issue") for record in drafted["records"]}
+    # The draft knows the reviewed targets (the four pilots and #33) and no other issue. The cutover recorded the rest only for
+    # the records it moved, so a manifest is the draft plus one scoped finalize of exactly those records, and nothing else.
+    moved = {r.id: r.target_issue for r in committed if r.target_issue is not None and known[r.id] is None}
+    if moved:
+        drafted = gwt.finalize_inventory(drafted, moved, frozenset(moved))
     assert gwt.render_manifest(drafted).encode("utf-8") == MANIFEST.read_bytes()
 
 
@@ -3029,7 +3033,9 @@ def test_every_other_owner_keeps_the_native_binding_wording() -> None:
 
 
 def test_the_selection_never_changes_a_candidate_owned_body() -> None:
-    inventory = gwt.load_inventory(MANIFEST)
+    # Planned from the draft's targets: the issues the cutover recorded in the committed manifest do not exist in this fixture.
+    commit = json.loads(MANIFEST.read_text(encoding="utf-8"))["baseline"]["commit"]
+    inventory = gwt.inventory_from_data(rules.draft_inventory(commit, gwt.read_sources_at(commit, rules.READS), gwt.read_plans_at(commit)))
     drafts = gwt.draft_issues(inventory, gwt.read_sources_at(inventory.baseline_commit, inventory.read_paths))
     client = FakeGitHub(_pilot_issues(), _pilot_labels())
     bodies = []

@@ -11,8 +11,8 @@
 program together with the newly measured hardening work, while preserving one
 authoritative custody location for every open item.
 
-**Architecture:** Status authority is a one-way parent projection: consolidated
-backlog → this masterplan → individual child plan → that plan's tasks. Each parent
+**Architecture:** Status authority is a one-way parent projection: the feature's
+issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232) → this masterplan → individual child plan → that plan's tasks. Each parent
 reports the state of its direct children; no document or task declares its own state.
 This masterplan owns cross-program sequencing, the exact 16-item new-work scope, and
 the status of its 15 independently reviewed child plans. The accepted Plan 11.26
@@ -42,10 +42,11 @@ implementation plan.
 
 ## Authority chain
 
-Promotion creates exactly one new backlog feature row:
-`HARDENING-FEAT-RUNTIME-QUALITY`, priority `HIGH`. That row alone reports this
-masterplan's current status. The masterplan does not repeat that status. The row does
-not absorb or replace
+Promotion created exactly one new backlog feature row:
+`HARDENING-FEAT-RUNTIME-QUALITY`, priority `HIGH`. Since the Plan 11.29 authority
+switch, issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232) alone reports this masterplan's current status; the
+backlog row is a pointer to it. The masterplan does not repeat that status. The feature
+does not absorb or replace
 `P11-FEAT-ACP-RUNTIME-HARDENING`, any `P11.26-CAND-*` row, any `T13-CAND-*` row, any
 `P11.26-UNRUN-*` obligation, or `P11-FU-30`.
 
@@ -73,8 +74,8 @@ field.
 
 ## Global constraints
 
-- Status ownership follows exactly one chain: consolidated backlog → masterplan →
-  child plans → tasks. The backlog reports the masterplan's status; this masterplan
+- Status ownership follows exactly one chain: issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232) → masterplan →
+  child plans → tasks. The issue reports the masterplan's status; this masterplan
   reports child-plan status; each child plan reports task status. No level reports its
   own status or duplicates a direct child's status in another register.
 - The G6/G7 custody tables are immutable historical acceptance records. This
@@ -88,7 +89,7 @@ field.
   continue to own pickup conflicts, owner-to-be, disposition, and next gate.
 - The 16 `HARDENING-ITEM-*` identities below are the only new-work custody introduced
   by this program. Adding a seventeenth requires a reviewed forward-only masterplan
-  successor and a corresponding backlog feature-scope update.
+  successor and a corresponding feature-scope update in issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232).
 - `P11-FU-30` remains owned by `P11.26-CAND-2-TELEMETRY-CONTRACT`. The logging child
   plan implements that existing custody; it does not create a second logging item.
 - Bounded admission remains owned by `P11.26-CAND-4-QUEUE-BACKPRESSURE`. Absence of a
@@ -147,8 +148,8 @@ field.
 | Five accepted runtime candidate dispositions | consolidated backlog Task 12 custody table | historical G6 acceptance record; reference candidate identity and sequence only |
 | Twelve accepted duplication candidate dispositions | consolidated backlog Task 13 custody table | historical G7 acceptance record; reference candidate identity and sequence only |
 | Three `UNRUN` obligation states and owners | consolidated backlog Task 12 custody table | reference obligation identity and ordering only |
-| `P11-FU-30` state and acceptance | consolidated backlog follow-up entry | route to the existing telemetry candidate only |
-| This masterplan's status | single `HARDENING-FEAT-RUNTIME-QUALITY` backlog row | never repeat here |
+| `P11-FU-30` state and acceptance | issue [#275](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/275) (formerly the backlog follow-up entry) | route to the existing telemetry candidate only |
+| This masterplan's status | issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232) (`HARDENING-FEAT-RUNTIME-QUALITY`) | never repeat here |
 | Sixteen newly measured hardening items | this masterplan | define stable identity, scope boundary, child plan, and acceptance gate |
 | Fifteen child-plan statuses | this masterplan's child-plan board | one row per child plan; no duplicate backlog registry row and no self-status inside the child |
 | Task status | owning child plan | checkbox/task table owned by the plan; task does not self-attest |
@@ -289,7 +290,7 @@ grant execution authority, and a child plan never edits its own row.
 | Capability | Usable now? | Honest boundary |
 |---|---|---|
 | Canonical Plan 11.26 runtime and duplication evidence | yes | accepted audit evidence and historical dispositions only; it authorizes no remediation |
-| Hardening sequencing and custody map | yes | this masterplan is the status authority for its 15 child plans through the promoted backlog row and hygiene tests |
+| Hardening sequencing and custody map | yes | this masterplan is the status authority for its 15 child plans through issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232) and hygiene tests |
 | CI guardrail child implementation plan | yes | Task 0 baseline is reviewer-accepted at `1ff7761`; Task 1 locked synchronization is accepted at `82798bd`; Tasks 2-6 retain separate review, execution, and commit gates |
 | Other hardening child implementation plans | no | the remaining fourteen reserved child filenames are untracked and `Not drafted`; small sandbox ports use the approved work-record exception above |
 | Required CI and production-only secret scanning | yes | `clean-environment-recheck` and `verify` remain required on main; CI scans tracked text under `src/` and rejects an empty inventory. PR #196's accepted local hook strictly validates selected text as UTF-8 before delegating, without a report-directory exclusion or expanded selection. The baseline remains exactly three frozen-v9 identities plus 31 approved report identities. The repair merged through PR #196 at `3b3093d3`; Windows/WSL platform evidence remains accepted, and every successor head must pass its own required checks. Historical UTF-16 transcripts reject if selected, and existing findings are not closed. |
@@ -463,6 +464,10 @@ Every pull request that changes a hardening child plan or its implementation mus
 
 ## Promotion mechanics
 
+*Historical: these mechanics describe the promotion changeset. At the Plan 11.29 authority
+switch the feature's status owner moved from the backlog row to issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232);
+see the Authority chain.*
+
 Promotion is one governance/control-plane changeset. It must:
 
 - create `docs/superpowers/plans/hardening-runtime-quality-masterplan.md`;
@@ -548,8 +553,8 @@ full-suite claim is made by the promotion.
   link state.
 
 Closure of this feature does not, by itself, close
-`P11-FEAT-ACP-RUNTIME-HARDENING`, `P11-FEAT-ZED-RESUME`, or any other feature. Their
-own backlog rows remain authoritative.
+`P11-FEAT-ACP-RUNTIME-HARDENING`, `P11-FEAT-ZED-RESUME`, or any other feature. Each
+remains authoritative in its own record: issues [#231](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/231) and [#230](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/230) for these two.
 
 ## Reviewer checklist
 
@@ -560,7 +565,7 @@ own backlog rows remain authoritative.
 - [ ] `P11-FU-30` is routed only to the existing telemetry candidate.
 - [ ] The 93 findings remain citations to canonical artifacts rather than copied rows.
 - [ ] The Prerequisites table contains the CI-required columns and nonempty dispositions.
-- [ ] The document contains no declaration of its own status; only the backlog row reports it.
+- [ ] The document contains no declaration of its own status; only issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232) reports it.
 - [ ] Exactly 15 child-plan rows exist, every row has one allowed status, and no child declares its own plan status.
 - [ ] The G6/G7 custody tables receive only the historical-record note; their tested tuples remain unchanged.
 - [ ] The masterplan is classified as governance; its child board, not the backlog live registry, owns hardening child-plan status.
