@@ -1,6 +1,6 @@
-# Plan 12.2 Stage C: live run and guard (release r2)
+# Plan 12.2 Stage C: live run and guard (release r3)
 
-> **Authority:** the operator's bounded Stage C release of 2026-10-12 ($8, 138 attempts, one shared 60-minute window), recorded by Codex.
+> **Authority:** the operator's new bounded Stage C grant of 2026-10-12 for release r3 ($8, 138 attempts, one shared 60-minute window), approving Codex's r3 proposal after r2 stopped at A2.
 > Use it only on the candidate Codex has verified, after the operator grants fresh launch approvals.
 > Test-only: no production enforcement, engine attachment, default or route change, publication, push or merge.
 
@@ -8,16 +8,16 @@ This is the single current sequence for the Stage C editor run (Plan 12.2 Task 1
 
 ## The release and its guard
 
-- **One envelope:** release `plan12-2-stage-c-r2` covers both test profiles (`qualification`, `attached`), every Zed and acpx launch, and every restart.
+- **One envelope:** release `plan12-2-stage-c-r3` covers both test profiles (`qualification`, `attached`), every Zed and acpx launch, and every restart.
   - At most **$8** of known charges plus outstanding reservations.
   - At most **138** physical upstream attempts, unbilled ones included.
   - **One 60-minute window**, starting at the first Stage C Gateway open.
   - It covers the accepted complete-case reservation bound: $7.518097, 69 calls, at most 138 attempts.
-- **One ledger:** `<workspace>/.optimus/plan12-stage-c/plan12-2-stage-c-r2.jsonl`.
+- **One ledger:** `<workspace>/.optimus/plan12-stage-c/plan12-2-stage-c-r3.jsonl`.
   - `optimus-trust approve ... --plan12-stage-c` creates it once; later approvals keep it as it is.
   - Every Gateway start only reopens it, under an exclusive lock: one writer, one attempt in flight.
   - It is never reset, and a restart never extends the window.
-  - The superseded r1 release ($0.50, 24 attempts) has its own ledger and approval literal; r2 never opens either.
+  - The superseded releases have their own ledgers and approval literals, and r3 never opens either: r2 ($8, 138 attempts; stopped at A2, its window expired) and r1 ($0.50, 24 attempts).
 - **Admission:** an attempt is dispatched only if:
   - it can time out inside the window;
   - the attempt count allows it;
@@ -37,7 +37,7 @@ This is the single current sequence for the Stage C editor run (Plan 12.2 Task 1
    `.venv\Scripts\python.exe tools\plan12_stage_c_schedule.py --out <new folder> --evidence <evidence folder>`
 
    It writes the case list, the pinned agent wrapper `run-optimus-agent.cmd`, the synthetic workspace, the paste files and the numbered runbook (`stage-c-schedule.md`, "Runbook").
-   The workspace has empty `notes/` and `scratch/` folders: the writer creates no parent folder, and r2's A2 stopped on a missing `scratch/`.
+   The workspace prepares every case target's folder: `notes/` (holding the calculator fixture) and an empty `scratch/`. No case target exists before the first launch. The writer creates no parent folder, and r2's A2 stopped on a missing `scratch/`.
 
 ## The sequence
 

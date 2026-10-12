@@ -3,7 +3,7 @@
 
 The ledger is initialized once, by the later release ceremony; every Gateway start only reopens it. Before
 each physical upstream attempt the guard checks the window, the attempt count and `known charges +
-outstanding reserves + the next full reserve <= $8` (release r2), and persists the reservation before dispatch.
+outstanding reserves + the next full reserve <= $8` (release r3), and persists the reservation before dispatch.
 Each attempt is settled once: a known charge, a proven unbilled outcome (its attempt still counts) or an
 unknown one, which stops every later dispatch. A restart replays the same totals and deadline; anything
 unresolved or unreadable stays in doubt and stops dispatch. One writer, one attempt in flight.
@@ -83,7 +83,7 @@ def test_the_ledger_is_initialized_once_and_never_reset(tmp_path: Path) -> None:
     path, envelope = _initialized(tmp_path)
     [init] = _records(path)
     assert (init["kind"], init["envelope"], init["release_id"], init["limit_usd"], init["max_attempts"], init["window_seconds"]) == (
-        "init", envelope.literal, "plan12-2-stage-c-r2", "8", 138, 3600
+        "init", envelope.literal, "plan12-2-stage-c-r3", "8", 138, 3600
     )  # fmt: skip
 
     with pytest.raises(StageCLedgerError) as caught:
@@ -158,8 +158,8 @@ def test_attempts_admit_the_138th_and_refuse_the_139th_unbilled_ones_included(op
     _refused(guard, "STAGE_C_ATTEMPTS_EXHAUSTED", Decimal("0.001"))
 
 
-def test_a_restart_replays_the_r2_totals_and_deadline_at_the_boundary(opened) -> None:
-    """Every launch and restart shares one r2 ledger: a restart 50 minutes in replays 137 attempts and $7.99,
+def test_a_restart_replays_the_release_totals_and_deadline_at_the_boundary(opened) -> None:
+    """Every launch and restart shares one release ledger: a restart 50 minutes in replays 137 attempts and $7.99,
     keeps the deadline, admits exactly the last attempt and dollar, then refuses."""
     reopen, clock, path, _ = opened
     guard = reopen()

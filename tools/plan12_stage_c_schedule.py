@@ -393,7 +393,7 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
     def zed_args(profile: str) -> str:
         return json.dumps({"command": str(paths.agent_exe), "args": ["--workspace-root", str(ws), "--plan12-test-profile", profile, "--plan12-stage-c"]})
 
-    step("operator", "stop the prior host", ["Stop the Stage B qualification host left running from 2026-10-10 (its owner presses Ctrl+C in its terminal); quit Zed."], [],
+    step("operator", "stop the prior host", ["Stop any earlier Optimus host still running (its owner presses Ctrl+C in its terminal); quit Zed."], [],
          "No acpx session or other client state from earlier runs is relied on.")  # fmt: skip
     step("approval", "L1 release approval (qualification)", [f'optimus-trust --workspace-root "{ws}" approve --mode durable --plan12-test-profile qualification --plan12-stage-c'],
          [str(ev / "L1" / "approve-console.txt")], "TTY 'y'. Creates the release ledger once; the window starts at the first Gateway open.")  # fmt: skip
