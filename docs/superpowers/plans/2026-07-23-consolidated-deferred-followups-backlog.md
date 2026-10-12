@@ -12,6 +12,9 @@ owner and next gate. This document keeps only that pointer, the anchor and a pin
 never evidence that the work is closed. Every other record stays authoritative here (the hardening tracks, items, candidates and
 obligations also through the hardening masterplan), including the evidence and A2A work.
 
+**Live view and fallback.** [`docs/work-status.html`](../../work-status.html), opened from a checkout in a browser, reads the
+repository's GitHub issues on every open and reload; the fallback is the [open issues on GitHub](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues?q=is%3Aissue%20is%3Aopen).
+
 Before this document existed, each follow-up lived only inside the "Deferred Follow-Ups" section of
 whichever plan originally raised it, cross-referenced (if at all) by a one-line mention in the
 roadmap. Two of them (Plan 9.98-FU-1 and FU-2) were fully implemented and merged without ever
@@ -344,8 +347,8 @@ in `AGENTS.md` and the Plan 11 charter. Preserve each document according to its 
 
 ## Feature slices
 
-The pool owns each Optimus feature's existence and state; the [Plan 11 v1.0 milestone charter](2026-07-25-plan-11-v1-milestone-charter.md)
-owns feature scope and sequencing. Plan 12 is listed so its post-v1.0 custody cannot fall off the
+For each feature not marked `Moved`, the pool owns existence and state (a `Moved` feature's authority is its GitHub issue); the
+[Plan 11 v1.0 milestone charter](2026-07-25-plan-11-v1-milestone-charter.md) owns feature scope and sequencing. Plan 12 is listed so its post-v1.0 custody cannot fall off the
 open-work inventory.
 
 | Identity                        | Status                | Priority   | Scope detail                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -770,6 +773,52 @@ is owned by this living pool and the committed evidence chain: the
 [Task 6 checkpoint](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task6-checkpoint.json).
 Do not reconcile those historical files by changing their status lines or checkboxes.
 
+## Work tracking maintenance (Plan 11.29 residuals)
+
+The two entries below are mechanisms that [Plan 11.29](2026-10-04-plan-11-29-github-issues-migration.md) specified and that the bounded
+49-record cutover ([ADR-021](../../decisions/ADR-021-bounded-github-authority-switch.md)) did not deliver. Plan 11.29 is their origin.
+Their continuing owner is the roadmap entry "Work tracking maintenance (Tracked, Not Yet Scheduled)" in the
+[Phase 1 roadmap](2026-07-01-phase-1-roadmap.md); no implementation plan and no GitHub issue exists for either. Difficulty is Medium and
+the estimate is NA for both (none established).
+
+### P11.29-FU-1: Work tracking impact declaration replacing the masterplan-impact gate
+
+**Status:** Open.
+**Origin:** 2026-10-12, Plan 11.29 Checkpoint 4. Task 4 (second checkbox) of [Plan 11.29](2026-10-04-plan-11-29-github-issues-migration.md)
+replaces the masterplan-impact mechanism with an offline `Work tracking impact:` pull-request declaration. The bounded cutover kept the
+existing `Master-plan impact:` gate (PR #285 declared `updated — <15 tracks>`), so the replacement is not delivered, and the existing
+gate stays in force until it is.
+
+**Designated future plan / owner:** the roadmap entry "Work tracking maintenance (Tracked, Not Yet Scheduled)" in the
+[Phase 1 roadmap](2026-07-01-phase-1-roadmap.md), which owns this entry and `P11.29-FU-2`; no implementation plan exists yet.
+Custody: implementer Claude; architect and reviewer Codex; the operator decides any merge. Replacing a required check is a policy
+change, and whether it needs its own decision record is for Codex to rule.
+**Trigger or acceptance criteria:** a separately authorized change with these properties:
+- **Declaration:** an offline `Work tracking impact:` declaration with repository-qualified issue links, or `none:` with a concrete
+  rationale; no mandatory legacy-track alias on new pull requests.
+- **Gate identity:** the required-check job identity is kept, and the verifier, its tests and the workflow change together.
+- **Validation:** declaration structure, plan-local tracking links and sealed baseline identities are checked offline; CI queries no
+  GitHub API.
+- **Test:** `test_issue_impact_declaration_offline` is written and passes.
+
+### P11.29-FU-2: Plan-header tracking-issue convention and offline check
+
+**Status:** Open.
+**Origin:** 2026-10-12, Plan 11.29 Checkpoint 4. Design contract section 3 and Task 4 of
+[Plan 11.29](2026-10-04-plan-11-29-github-issues-migration.md). The bounded cutover resolved the 49 records through the sealed
+migration manifest and added no plan header.
+
+**Designated future plan / owner:** the roadmap entry "Work tracking maintenance (Tracked, Not Yet Scheduled)" in the
+[Phase 1 roadmap](2026-07-01-phase-1-roadmap.md), which owns this entry and `P11.29-FU-1`; no implementation plan exists yet.
+Custody: implementer Claude; architect and reviewer Codex; the operator decides any merge.
+**Trigger or acceptance criteria:** a separately authorized change with these properties:
+- **Header:** new and mutable plan files carry a single `**Tracking issue:** <repository issue URL>` header.
+- **Offline check:** it validates the header alongside the filename and archive invariants.
+- **Frozen plans:** existing frozen plans cannot acquire the line; their baseline identity resolves through the sealed migration
+  manifest, with filename and blob identity verified, and no frozen predecessor byte is edited.
+- **Successors:** a substantive successor gains the header when it is independently authorized; successors are not created only to add
+  metadata, no central map is maintained and the manifest is not updated for future work.
+
 ## Follow-up status index
 
 The detailed entries own explanatory prose; tests enforce this index as the exact ID/title/status
@@ -854,6 +903,8 @@ priority or scheduling claim; their designated owner remains Plan 12.
 | `P11-FU-40` | Real Zed process containment and live-only tree-kill path | Moved | — | — | [#224](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/224) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L975-L975) |
 | `P11-FU-41` | Windows job-object binding owner consolidation | Moved | — | — | [#274](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/274) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L976-L976) |
 | `P11-FU-43` | Planning-progress notice ordering race | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria and evidence in entry; observed in PR #277 CI |
+| `P11.29-FU-1` | Work tracking impact declaration replacing the masterplan-impact gate | Open | MEDIUM | Roadmap entry: Work tracking maintenance (Tracked, Not Yet Scheduled) | Acceptance criteria and custody in entry |
+| `P11.29-FU-2` | Plan-header tracking-issue convention and offline check | Open | MEDIUM | Roadmap entry: Work tracking maintenance (Tracked, Not Yet Scheduled) | Acceptance criteria and custody in entry |
 
 ## Evidence and handoff feature registry
 
