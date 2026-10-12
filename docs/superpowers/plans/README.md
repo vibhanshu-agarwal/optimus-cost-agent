@@ -2,8 +2,8 @@
 
 This directory contains only governance documents and implementation plans that are still live.
 The [consolidated deferred-followups backlog](2026-07-23-consolidated-deferred-followups-backlog.md)
-is the sole authority for feature, defect, follow-up, plan status, priority, ownership, and next gate.
-Do not infer current status from a plan's checkboxes or prose.
+is the authority for feature, defect, follow-up, plan status, priority, ownership, and next gate of every record that has not moved to a
+GitHub issue; a row or entry marked `Moved` is authoritative in its linked issue. Do not infer current status from a plan's checkboxes or prose.
 
 ## Directory contract
 

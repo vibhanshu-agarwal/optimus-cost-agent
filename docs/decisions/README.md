@@ -131,8 +131,8 @@ by this folder.
 
    A record accepted "with open items" may accept the requirement while its mechanism stays proposed.
    **No record commissions implementation** on its own.
-9. **Work lives in the backlog, not here.** The consolidated deferred-followups backlog remains the sole
-   live registry for work, owners, statuses and next gates. Filing a record does not close an existing
+9. **Work lives in the backlog or its issue, not here.** The consolidated deferred-followups backlog remains the
+   live registry for work, owners, statuses and next gates, except for records marked `Moved`, whose GitHub issues own them. Filing a record does not close an existing
    owner or authorize implementation or paid calls.
 
 ## Index
@@ -162,7 +162,7 @@ by this folder.
 | [021](ADR-021-bounded-github-authority-switch.md) | Bounded GitHub authority switch for 49 Optimus work records; no frozen ADR is changed | Proposed mechanism, filed with the cutover PR. Activation is the merge of the PR that introduces this record and the reviewed authority-switch changes; the actual operator acceptance is to be recorded in this row before that merge, and post-merge finalization stays an open item until verified | Operator (requirements and activation authority; words verbatim, source S6); mechanism proposed by Claude and accepted by Codex with clarifications; drafted by Codex, filed by Claude | 2026-10-12 |
 
 **Package A delivery:** [local accepted implementation and evidence](../superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md);
-the sole backlog records current publication/next gates. The frozen ADR-013 repair decision and
+the backlog row, or the Plan 12.2 issue (#237) once that row is marked `Moved`, records current publication/next gates. The frozen ADR-013 repair decision and
 Plan 11.25 correction remain unchanged; the repair exists on the Package A branch, not yet main.
 
 **Evidence in the repository:** [industry practice and model catalog, 2026-09-30](2026-09-30-industry-context-cost-and-model-evidence.md).

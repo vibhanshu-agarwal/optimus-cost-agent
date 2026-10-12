@@ -69,13 +69,13 @@ relevant records before proposing a change in their area.
 
 ## Planning
 
-Status, priority and ownership live only in the backlog; plans do not declare their own status.
+Status, priority and ownership live only in the backlog or, for a `Moved` record, in its GitHub issue; plans do not declare their own status.
 
 | Document | What it is |
 |---|---|
 | [Plans folder guide](superpowers/plans/README.md) | How plans are added, revised and archived |
-| [Consolidated backlog](superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md) | The one live registry of work, status and next gates |
-| [Work status page](work-status.html) | Live table of GitHub issues, read on open (Plan 11.29). Until its cutover the backlog stays authoritative |
+| [Consolidated backlog](superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md) | Live registry of work, status and next gates for records not yet moved to GitHub issues (`Moved` rows link theirs) |
+| [Work status page](work-status.html) | Live view of GitHub issues for records the backlog marks 'Moved'; the linked issues are authoritative |
 | [Phase 1 roadmap](superpowers/plans/2026-07-01-phase-1-roadmap.md) | Historical sequencing of Phase 1 |
 | [Plan 11 v1.0 milestone charter](superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md) | What v1.0 must contain |
 | [Hardening masterplan](superpowers/plans/hardening-runtime-quality-masterplan.md) | The 15 hardening tracks and their status |
