@@ -233,6 +233,58 @@ def test_the_tool_writes_a_new_folder_and_never_reuses_one(tmp_path: Path, monke
         tool.main(["--out", str(out)])
 
 
+SCHEDULED_TARGETS = {"notes/chat-should-not-write.md", "scratch/stage-c-agent.txt", "scratch/acpx-denied.txt", "scratch/acpx-chat.txt"}
+
+
+def _generate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, schedule) -> Path:
+    monkeypatch.setattr(tool, "build_schedule", lambda **_kwargs: schedule)
+    out = tmp_path / "schedule"
+    assert tool.main(["--out", str(out)]) == 0
+    return out / "workspace"
+
+
+def test_every_scheduled_file_target_has_its_parent_prepared_and_is_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, schedule) -> None:
+    # r2's A2 failed: the writer needs an existing parent and the workspace had no scratch/ (Codex A2 stop return,
+    # 2026-10-12). Without the parent the absence checks of A6 and A7 would also pass whatever the client did.
+    assert set(tool.WORKSPACE_TARGETS) == SCHEDULED_TARGETS
+    workspace = _generate(tmp_path, monkeypatch, schedule)
+    for target in SCHEDULED_TARGETS:
+        assert (workspace / target).parent.is_dir(), target
+        assert not (workspace / target).exists(), target
+    assert not any((workspace / "scratch").iterdir())
+    assert schedule["workspace_dirs"] == ["notes", "scratch"] and sorted(schedule["workspace_targets"]) == sorted(SCHEDULED_TARGETS)
+
+
+def test_the_workspace_fixture_check_names_every_departure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, schedule) -> None:
+    workspace = _generate(tmp_path, monkeypatch, schedule)
+    (workspace / ".optimus" / "plan12-stage-c").mkdir(parents=True)  # the release ceremony's ledger folder is expected
+    assert tool.verify_workspace(workspace) == []
+    assert tool.main(["--verify-workspace", str(workspace)]) == 0
+    (workspace / "scratch").rmdir()
+    (workspace / "scratch-elsewhere.txt").write_text("x", encoding="utf-8")
+    (workspace / "notes" / "chat-should-not-write.md").write_text("hello", encoding="utf-8")
+    (workspace / "README.md").write_text("changed", encoding="utf-8")
+    problems = tool.verify_workspace(workspace)
+    assert problems == [
+        "README.md differs from the fixture",
+        "scratch/ is missing",
+        "notes/chat-should-not-write.md already exists",
+        "unexpected workspace entry: scratch-elsewhere.txt",
+    ]
+    assert tool.main(["--verify-workspace", str(workspace)]) == 1
+    assert tool.verify_workspace(tmp_path / "absent") == [f"{tmp_path / 'absent'} is not a directory"]
+
+
+def test_the_runbook_checks_the_workspace_fixture_before_the_first_launch(schedule) -> None:
+    steps = schedule["runbook"]["steps"]
+    kinds = [step["kind"] for step in steps]
+    fixture = kinds.index("fixture-check")
+    assert kinds.index("approval") < fixture < kinds.index("custody-check") < kinds.index("zed-launch")
+    workspace = schedule["runbook"]["paths"]["workspace"]
+    assert steps[fixture]["commands"] == [f'python tools/plan12_stage_c_schedule.py --verify-workspace "{workspace}"']
+    assert kinds.count("fixture-check") == 1  # A2 writes its artifact, so later launches cannot expect the targets absent
+
+
 def test_the_paste_files_hit_the_refusal_they_are_named_for(schedule) -> None:
     files = schedule["prompt_files"]
     usable = 262_144 - 32_768

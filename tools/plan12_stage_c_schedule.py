@@ -27,8 +27,12 @@ lock free, no host left; the same window and non-decreasing totals as the previo
 launch, and every launch shares the one release ledger and window. A schedule is a ceiling, not a promise
 that every case finishes: a guard stop, an expired window or a failed case leaves the rest UNRUN.
 
+The generated workspace prepares every case target's folder (the writer creates none) and holds no target;
+`--verify-workspace` checks exactly that before the first launch.
+
 Usage: python tools/plan12_stage_c_schedule.py --out <dir> [--summary-bytes N] [--reply-bytes N ...]
            [--agent-exe <optimus-agent.exe>] [--evidence <dir>]
+       python tools/plan12_stage_c_schedule.py --verify-workspace <workspace>
 """
 
 from __future__ import annotations
@@ -38,6 +42,7 @@ import asyncio
 import hashlib
 import json
 import math
+import re
 import subprocess
 import sys
 import tempfile
@@ -69,7 +74,7 @@ HAIKU = "anthropic/claude-haiku-5.5"
 T0 = datetime(2026, 10, 12, 9, 0, tzinfo=UTC)
 CAPACITY_PROMPT_BYTES = 430_000  # over the request capacity (229,376 input tokens) and the 80% storage warning, under storage
 STORAGE_PROMPT_BYTES = 530_000  # over the 524,288-byte absent-engine storage limit
-SCHEDULE_VERSION = "stage-c-schedule-v2"
+SCHEDULE_VERSION = "stage-c-schedule-v3"
 REPLY_SIZES = (3, 8_192, 32_768, 131_072)  # fake reply bytes per measured path; 131,072 = the 32,768-token cap at 4 bytes a token
 DEFAULT_UNRUN = "the guard refuses a call, the window ends or an earlier required case failed"
 CENT = Decimal("0.000001")
@@ -91,10 +96,24 @@ WORKSPACE_FILES = {
     "README.md": "# Stage C synthetic workspace\n\nA scratch workspace for the Plan 12.2 Stage C editor evidence. No real data.\n",
     "notes/calculator.md": "Calculator notes: use Decimal for every amount; round with ROUND_HALF_EVEN to two places.\n",
 }
+# The writer creates no parent folder, so every case target's folder is prepared (r2's A2 stopped on a missing
+# scratch/); without it the absence checks of A6 and A7 would hold whatever the client did.
+WORKSPACE_DIRS = ("notes", "scratch")
 A1_PROMPT = "Create a file named notes/chat-should-not-write.md containing the word hello."
 A2_PROMPT = "Create scratch/stage-c-agent.txt containing the single word ready."
 A6_PROMPT = "Create scratch/acpx-denied.txt containing denied."
 A7_PROMPT = "Write scratch/acpx-chat.txt containing hello."
+
+
+def _target(prompt: str) -> str:
+    match = re.search(r"\b[\w-]+/[\w.-]+\.\w+", prompt)
+    if match is None:
+        raise ValueError(f"no file target in {prompt!r}")
+    return match.group(0)
+
+
+# The files the A cases name: none exists before the first launch.
+WORKSPACE_TARGETS = tuple(_target(prompt) for prompt in (A1_PROMPT, A2_PROMPT, A6_PROMPT, A7_PROMPT))
 
 # Live attached turns of the designated (seeded) session, in order: (live turn, case, strategy set before it, prompt).
 ATTACHED_TURNS = (
@@ -378,6 +397,10 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
          "No acpx session or other client state from earlier runs is relied on.")  # fmt: skip
     step("approval", "L1 release approval (qualification)", [f'optimus-trust --workspace-root "{ws}" approve --mode durable --plan12-test-profile qualification --plan12-stage-c'],
          [str(ev / "L1" / "approve-console.txt")], "TTY 'y'. Creates the release ledger once; the window starts at the first Gateway open.")  # fmt: skip
+    step("fixture-check", "workspace fixture check (before L1)", [f'python tools/plan12_stage_c_schedule.py --verify-workspace "{ws}"'],
+         [str(ev / "checks" / "00-workspace-fixture.txt")],
+         "Must print 'workspace fixture clear' (exit 0): the fixture files unchanged, notes/ and scratch/ present, no case target written "
+         "yet and nothing else but the ceremony's .optimus; otherwise stop before any launch.")  # fmt: skip
     check("before-L1")
     step("zed-launch", "L1 Zed launch (qualification)", [f"Zed settings agent_servers Optimus: {zed_args('qualification')}"], [str(ev / "L1" / "zed-agent-server.json")],
          "Open the workspace in Zed and start a new Optimus thread: the host starts its own Gateway; the 60-minute window starts.")  # fmt: skip
@@ -543,6 +566,8 @@ def build_schedule(*, summary_bytes: int = 8_192, reply_sizes: tuple[int, ...] =
         "fixed_request_material_bytes": fixed,
         "prompt_files": {name: {"bytes": len(text.encode("utf-8")), "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()} for name, text in PROMPT_FILES.items()},
         "workspace_files": {name: hashlib.sha256(text.encode("utf-8")).hexdigest() for name, text in WORKSPACE_FILES.items()},
+        "workspace_dirs": list(WORKSPACE_DIRS),
+        "workspace_targets": list(WORKSPACE_TARGETS),
         "cases": rows,
         "claims": {claim: [case.case for case in cases if claim in case.claims] for claim in claims},
         "bound": bound,
@@ -616,20 +641,44 @@ def _markdown(schedule: Mapping[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def verify_workspace(workspace: Path) -> list[str]:
+    """The workspace before the first launch: the fixture files unchanged, the prepared folders present, no case
+    target written yet and nothing else (the release ceremony's .optimus folder aside). Returns the problems."""
+    if not workspace.is_dir():
+        return [f"{workspace} is not a directory"]
+    problems = [f"{name} differs from the fixture" for name, text in WORKSPACE_FILES.items()
+                if not (workspace / name).is_file() or (workspace / name).read_bytes() != text.encode("utf-8")]  # fmt: skip
+    problems += [f"{name}/ is missing" for name in WORKSPACE_DIRS if not (workspace / name).is_dir()]
+    problems += [f"{target} already exists" for target in WORKSPACE_TARGETS if (workspace / target).exists()]
+    expected = {*WORKSPACE_FILES, *WORKSPACE_DIRS, *WORKSPACE_TARGETS, ".optimus"}
+    entries = sorted(path.relative_to(workspace).as_posix() for path in workspace.rglob("*"))
+    problems += [f"unexpected workspace entry: {entry}" for entry in entries if entry not in expected and not entry.startswith(".optimus/")]
+    return problems
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--out", type=Path, required=True, help="a new folder for the schedule, its prompt files, the wrapper and the workspace")
+    parser.add_argument("--out", type=Path, help="a new folder for the schedule, its prompt files, the wrapper and the workspace")
+    parser.add_argument("--verify-workspace", type=Path, help="check a generated workspace before the first launch and exit (0 only when it is the fixture)")
     parser.add_argument("--summary-bytes", type=int, default=8_192, help="the summary size each fake summary call returns (8192 is the bound)")
     parser.add_argument("--reply-bytes", type=int, nargs="+", default=list(REPLY_SIZES), help="fake reply sizes, one measured path each")
     parser.add_argument("--agent-exe", type=Path, default=REPO_ROOT / ".venv" / "Scripts" / "optimus-agent.exe", help="the installed optimus-agent executable")
     parser.add_argument("--evidence", type=Path, default=None, help="where live evidence is saved (default: <out>/live-evidence)")
     args = parser.parse_args(argv)
+    if args.verify_workspace is not None:
+        problems = verify_workspace(args.verify_workspace)
+        print("\n".join(problems) if problems else "workspace fixture clear")
+        return 1 if problems else 0
+    if args.out is None:
+        parser.error("--out is required unless --verify-workspace is given")
     if args.out.exists():
         parser.error(f"{args.out} exists; every schedule gets a new folder")
     out = args.out.resolve()
     paths = RunbookPaths(agent_exe=args.agent_exe.resolve(), workspace=out / "workspace", evidence=(args.evidence or out / "live-evidence").resolve(), wrapper=out / "run-optimus-agent.cmd")
     schedule = build_schedule(summary_bytes=args.summary_bytes, reply_sizes=tuple(args.reply_bytes), paths=paths)
     args.out.mkdir(parents=True)
+    for name in WORKSPACE_DIRS:
+        (args.out / "workspace" / name).mkdir(parents=True)
     for name, text in {**PROMPT_FILES, **{f"workspace/{k}": v for k, v in WORKSPACE_FILES.items()}}.items():
         target = args.out / name
         target.parent.mkdir(parents=True, exist_ok=True)

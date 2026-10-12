@@ -37,12 +37,13 @@ This is the single current sequence for the Stage C editor run (Plan 12.2 Task 1
    `.venv\Scripts\python.exe tools\plan12_stage_c_schedule.py --out <new folder> --evidence <evidence folder>`
 
    It writes the case list, the pinned agent wrapper `run-optimus-agent.cmd`, the synthetic workspace, the paste files and the numbered runbook (`stage-c-schedule.md`, "Runbook").
+   The workspace has empty `notes/` and `scratch/` folders: the writer creates no parent folder, and r2's A2 stopped on a missing `scratch/`.
 
 ## The sequence
 
 Follow the generated runbook step by step. In outline:
 
-1. Approve the L1 release (`--plan12-test-profile qualification --plan12-stage-c`; TTY `y`), then run custody check 00.
+1. Approve the L1 release (`--plan12-test-profile qualification --plan12-stage-c`; TTY `y`). Run the workspace fixture check (`tools\plan12_stage_c_schedule.py --verify-workspace <ws>`, which must print `workspace fixture clear`), then custody check 00.
 2. Zed L1 launch, cases A1 to A5, quit Zed, custody check.
 3. acpx A6, the denied Agent case (one-shot `exec`), then a custody check.
 4. acpx A7, the Chat case:
