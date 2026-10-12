@@ -28,6 +28,11 @@ LIVE_REGISTRY_ROW = re.compile(
     r"^\| \[[^]]+\]\((?P<path>[^)]+\.md)\) "
     r"\| `(?P<state>Active|Blocked)` \| `(?P<owner>[^`]+)` \| (?P<next_gate>.+) \|$"
 )
+# A plan the Plan 11.29 cutover moved keeps its row, so the plan stays registered; its state and next gate are in the linked issue.
+MOVED_REGISTRY_ROW = re.compile(
+    r"^\| \[[^]]+\]\((?P<path>[^)]+\.md)\) \| Moved \| — \| "
+    r"\[#(?P<issue>\d+)\]\(https://github\.com/vibhanshu-agarwal/optimus-cost-agent/issues/(?P=issue)\) · \[pinned detail\]\([^)]+\) \|$"
+)
 MARKDOWN_LINK = re.compile(r"\[[^]]*\]\((?P<target>[^)]+)\)")
 PLAN_LEVEL_STATUS = re.compile(r"(?mi)^\*\*Status:\*\*|^Status:")
 # Exact (document, raw link text) pairs allowed to stay broken. Every entry
@@ -107,7 +112,7 @@ def _tracked_repository_files() -> tuple[Path, ...]:
     return tuple(REPO_ROOT / relative_path for relative_path in tracked if relative_path)
 
 
-def _live_registry_rows() -> list[re.Match[str]]:
+def _registry_section() -> str:
     text = BACKLOG.read_text(encoding="utf-8")
     section = re.search(
         r"^## Live implementation plan registry\n(?P<body>.*?)(?=^## )",
@@ -115,13 +120,30 @@ def _live_registry_rows() -> list[re.Match[str]]:
         flags=re.MULTILINE | re.DOTALL,
     )
     assert section is not None, "the consolidated backlog must own the live-plan registry"
+    return section.group("body")
+
+
+def _live_registry_rows() -> list[re.Match[str]]:
     rows = [
         match
-        for line in section.group("body").splitlines()
+        for line in _registry_section().splitlines()
         if (match := LIVE_REGISTRY_ROW.fullmatch(line)) is not None
     ]
     assert rows, "the live-plan registry must contain at least one Active or Blocked plan"
     return rows
+
+
+def _moved_registry_rows() -> list[re.Match[str]]:
+    return [
+        match
+        for line in _registry_section().splitlines()
+        if (match := MOVED_REGISTRY_ROW.fullmatch(line)) is not None
+    ]
+
+
+def _registered_paths() -> list[str]:
+    """Every plan the registry lists: the Active and Blocked rows, and the rows moved to an issue."""
+    return [match.group("path") for match in (*_live_registry_rows(), *_moved_registry_rows())]
 
 
 def _hardening_child_plan_rows() -> list[dict[str, str | None]]:
@@ -171,7 +193,7 @@ def _hardening_child_plan_rows() -> list[dict[str, str | None]]:
 
 
 def test_plan_root_contains_only_governance_and_registered_live_plans() -> None:
-    registry_paths = [match.group("path") for match in _live_registry_rows()]
+    registry_paths = _registered_paths()
     assert len(registry_paths) == len(set(registry_paths)), "live plans must be registered exactly once"
     assert all("/" not in path and "\\" not in path for path in registry_paths)
 
@@ -221,7 +243,7 @@ def test_hardening_masterplan_owns_exactly_fifteen_child_plan_statuses() -> None
 
 
 def test_plan_archive_is_flat_and_contains_no_registered_live_plan() -> None:
-    registry_paths = {match.group("path") for match in _live_registry_rows()}
+    registry_paths = set(_registered_paths())
     assert ARCHIVE_ROOT.is_dir()
     assert not [path for path in ARCHIVE_ROOT.iterdir() if path.is_dir()]
 
