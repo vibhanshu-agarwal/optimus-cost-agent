@@ -51,6 +51,7 @@ from optimus.acp.conversation import (
     ConversationTurn,
     render_conversation_envelope,
 )
+from optimus.acp.debug_trace import log_provider_attempts
 from optimus.acp.settlement import EffectState
 from optimus.context.adapter import ApprovalDecision, ApprovalFact
 from optimus.context.assembly import ContextAttachment, SummarizerRoute
@@ -472,7 +473,9 @@ def compose_stage_c_attachment(
     route = SummarizerRoute(
         model_id=identity.model_id, role=identity.role, route=identity.route, reasoning=identity.reasoning, quantizations=identity.quantizations
     )
-    factory = gateway_summarizer_factory(gateway_client=gateway_client, route=route, snapshot=snapshot, disclosure_key=disclosure_key(shared_secret))
+    factory = gateway_summarizer_factory(
+        gateway_client=gateway_client, route=route, snapshot=snapshot, disclosure_key=disclosure_key(shared_secret), attempt_observer=log_provider_attempts
+    )
     scenario = StageCScenario(ledger=launch.ledger, clock=clock, sleep=sleep, monotonic=monotonic)
     attachment = ContextAttachment(
         engine=scenario.engine(ContextEngine()),

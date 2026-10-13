@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import subprocess
 from collections.abc import Callable
@@ -51,6 +52,8 @@ if TYPE_CHECKING:
     from optimus.gateway.route_binding import BoundRequest, RouteIdentity, TurnRouteBinder
 
 WorkspaceContextObserver = Callable[[AgentRunRequest, WorkspaceContextResult], None]
+# Diagnostic only: receives `stage`, a lazy `correlation` and the classified `attempts` of one host request.
+ProviderAttemptObserver = Callable[..., None]
 _OVERSIZED_REQUIRED_CONTEXT_TRIGGER = "REQUIRED_WORKSPACE_FILE_TOO_LARGE"
 
 # Plan 12.1: visible corrective text for Chat's single-call terminal failures.
@@ -266,6 +269,7 @@ class AgentRunner:
         workspace_context_observer: WorkspaceContextObserver | None = None,
         usage_accounting: UsageAccountingService | None = None,
         planning_progress_observer: PlanningProgressObserver | None = None,
+        provider_attempt_observer: ProviderAttemptObserver | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -279,6 +283,7 @@ class AgentRunner:
         self._workspace_context_observer = workspace_context_observer
         self._usage_accounting = usage_accounting
         self._planning_progress_observer = planning_progress_observer
+        self._provider_attempt_observer = provider_attempt_observer
         self._transition_validator = TransitionValidator()
 
     @property
@@ -934,6 +939,23 @@ class AgentRunner:
             raise first_error(errors)
         return attempts
 
+    def _observe_attempts(
+        self, request: AgentRunRequest, *, settled_turn: int, wire_attempt: int, attempts: tuple[ProviderAttempt, ...]
+    ) -> None:
+        """Offer the classified attempts to the diagnostic observer, if any, after their receipts were offered
+        (Plan 12.2 r4 stop diagnosis). Diagnostic only: an ordinary failure never changes the run; cancellation
+        and other control flow still propagate."""
+        observer = self._provider_attempt_observer
+        if observer is None:
+            return
+        stage = "answer" if request.execution_mode is ExecutionMode.CHAT else "planning"
+        with contextlib.suppress(Exception):
+            observer(
+                stage=stage,
+                correlation=lambda: {"run_id": request.run_id, "session_id": request.session_id, "settled_turn": settled_turn, "wire_attempt": wire_attempt},
+                attempts=attempts,
+            )
+
     def _record_ledger_entry(
         self,
         request: AgentRunRequest,
@@ -975,6 +997,24 @@ class AgentRunner:
             raise
 
     def _report_attempts(
+        self,
+        request: AgentRunRequest,
+        scope: _RunScope,
+        *,
+        settled_turn: int,
+        wire_attempt: int,
+        attempts: tuple[ProviderAttempt, ...],
+        identity: RouteIdentity | None,
+    ) -> None:
+        """Report one host request's provider attempts to the receipt sink, then, whatever that did, offer them
+        to the diagnostic observer: every Chat and planning report (the classified attempts and a proven unsent
+        one alike) passes here once."""
+        try:
+            self._report_receipts(request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity)
+        finally:
+            self._observe_attempts(request, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts)
+
+    def _report_receipts(
         self,
         request: AgentRunRequest,
         scope: _RunScope,

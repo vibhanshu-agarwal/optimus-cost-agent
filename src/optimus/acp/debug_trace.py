@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from decimal import Decimal
 from importlib.metadata import PackageNotFoundError, version
@@ -21,6 +21,7 @@ from optimus_security.sanitization import session_correlation_tag
 
 if TYPE_CHECKING:
     from optimus.acp.launch_gate import AuthorizedLaunch
+    from optimus.gateway.attempts import ProviderAttempt
 _PROVENANCE_LOGGED = False
 DEFAULT_DEBUG_LOG_RELATIVE_PATH = Path(".optimus/debug-acp.ndjson")
 
@@ -281,6 +282,44 @@ def log_workspace_context_result(request: AgentRunRequest, result: WorkspaceCont
         },
         hypothesis_id="P9.8-CONTEXT",
         run_id=run_id,
+    )
+
+
+def _status(value: Any) -> int | None:
+    """An integer status as reported, else null: never inferred, never parsed from text."""
+    return value if type(value) is int else None
+
+
+def _attempt_fields(attempt: ProviderAttempt) -> dict[str, Any]:
+    """One attempt's content-free facts. A routed attempt's status is the upstream provider's; any other
+    record's is the outer host-to-Gateway status, kept apart so a Gateway 502 never reads as an upstream one."""
+    routed = attempt.routed is True
+    status = _status(attempt.http_status)
+    return {
+        "attempt": attempt.key,
+        "outcome": attempt.outcome,
+        "routed": routed,
+        "upstream_http_status": status if routed else None,
+        "gateway_http_status": None if routed else status,
+    }
+
+
+def log_provider_attempts(
+    *, stage: str, correlation: Callable[[], dict[str, Any]], attempts: Iterable[ProviderAttempt]
+) -> None:
+    """Record the content-free status of every provider attempt behind one host model request (Plan 12.2
+    r4 stop diagnosis; Codex disposition 2026-10-13): the attempts the host already classified, in order,
+    including failures before a safe recovery. Only the call correlation, the stage and each attempt's key,
+    outcome, routing and integer-or-null status are written; never a body, header, error text, key,
+    provider error type or identifier. Nothing is read with tracing disabled: `correlation` and `attempts`
+    are touched only inside the sink's supplier, whose failure is contained there."""
+    if not debug_trace_enabled():
+        return
+    acp_debug_log(
+        location="debug_trace.py:log_provider_attempts",
+        message="provider attempts classified",
+        data=lambda: {"stage": stage, **correlation(), "attempts": [_attempt_fields(attempt) for attempt in attempts]},
+        hypothesis_id="P12.2-ATTEMPT-STATUS",
     )
 
 

@@ -93,6 +93,23 @@ def test_only_an_attached_stage_c_launch_attaches_the_engine(launch) -> None:
     assert caught.value.code == "STAGE_C_ATTACHMENT_PROFILE"
 
 
+def test_the_attached_summarizer_offers_its_attempts_to_the_debug_trace(launch, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Plan 12.2 r4 stop diagnosis: every summarizer call of the attachment offers its classified attempts to
+    the opt-in debug log's content-free helper."""
+    from optimus.acp.debug_trace import log_provider_attempts
+
+    captured: dict[str, Any] = {}
+    real = host.gateway_summarizer_factory
+
+    def capturing(**kwargs: Any):
+        captured.update(kwargs)
+        return real(**kwargs)
+
+    monkeypatch.setattr(host, "gateway_summarizer_factory", capturing)
+    _attached(launch, Gateway())
+    assert captured["attempt_observer"] is log_provider_attempts
+
+
 def test_the_attachment_uses_the_accepted_limits_on_the_profiles_route(launch) -> None:
     attachment, _ = _attached(launch, Gateway())
     p, lim = attachment.parameters, attachment.limits

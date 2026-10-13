@@ -211,7 +211,7 @@ def test_bootstrap_reports_unreachable_redis(tmp_path, monkeypatch):
 
 
 def test_bootstrap_wires_workspace_context_observer(monkeypatch, tmp_path):
-    from optimus.acp.debug_trace import log_planning_replan_event, log_workspace_context_result
+    from optimus.acp.debug_trace import log_planning_replan_event, log_provider_attempts, log_workspace_context_result
 
     captured_kwargs: dict = {}
 
@@ -261,6 +261,7 @@ def test_bootstrap_wires_workspace_context_observer(monkeypatch, tmp_path):
 
     assert captured_kwargs["workspace_context_observer"] is log_workspace_context_result
     assert captured_kwargs["planning_progress_observer"] is log_planning_replan_event
+    assert captured_kwargs["provider_attempt_observer"] is log_provider_attempts  # Plan 12.2 r4 stop diagnosis
 
 
 def test_bootstrap_wires_one_telemetry_fanout_with_jsonl_redis_and_gateway_exporter(monkeypatch, tmp_path):

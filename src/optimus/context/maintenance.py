@@ -22,6 +22,7 @@ projection over the existing ledger.
 
 from __future__ import annotations
 
+import contextlib
 import itertools
 import uuid
 from collections.abc import Callable
@@ -253,12 +254,14 @@ class GatewaySummarizerCall:
         session_id: str,
         request_ids: Callable[[], str],
         bind: Callable[[str, str, int], RouteBinding | None] | None = None,
+        attempt_observer: Callable[..., None] | None = None,
     ) -> None:
         self._client = gateway_client
         self._model_id = model_id
         self._session_id = session_id
         self._request_ids = request_ids
         self._bind = bind
+        self._attempt_observer = attempt_observer
 
     def __call__(self, *, prompt: str, max_output_tokens: int) -> SummarizerResponse:
         request_id = self._request_ids()
@@ -275,14 +278,26 @@ class GatewaySummarizerCall:
             )
         except Exception as exc:  # noqa: BLE001 - every failure is classified; transport loss stays unknown
             try:
-                return SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, attempts_from_failure(exc)))
+                provider = attempts_from_failure(exc)
             except AttemptIntegrityError as error:
-                return _unattributable(request_id, error)
+                return self._observed(request_id, error.attempts, _unattributable(request_id, error))
+            return self._observed(request_id, provider, SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, provider)))
         try:
-            attempts = _attempts(request_id, attempts_from_response(response))
+            provider = attempts_from_response(response)
         except AttemptIntegrityError as error:
-            return _unattributable(request_id, error)
-        return SummarizerResponse(text=response.output_text, finish_status=response.finish_reason, attempts=attempts)
+            return self._observed(request_id, error.attempts, _unattributable(request_id, error))
+        attempts = _attempts(request_id, provider)
+        return self._observed(request_id, provider, SummarizerResponse(text=response.output_text, finish_status=response.finish_reason, attempts=attempts))
+
+    def _observed(self, request_id: str, provider: tuple[ProviderAttempt, ...], response: SummarizerResponse) -> SummarizerResponse:
+        """Offer the classified attempts to the diagnostic observer, if any, once the response carrying them is
+        built (Plan 12.2 r4 stop diagnosis), and return that response unchanged. Diagnostic only: an ordinary
+        failure never changes it; cancellation and other control flow still propagate."""
+        observer = self._attempt_observer
+        if observer is not None:
+            with contextlib.suppress(Exception):
+                observer(stage="summary", correlation=lambda: {"session_id": self._session_id, "request_id": request_id}, attempts=provider)
+        return response
 
 
 def _unattributable(request_id: str, error: AttemptIntegrityError) -> SummarizerResponse:
@@ -314,8 +329,11 @@ def gateway_summarizer_factory(
     route: SummarizerRoute,
     snapshot: Any | None,
     disclosure_key: bytes | None,
+    attempt_observer: Callable[..., None] | None = None,
 ) -> SummarizerFactory:
     """The production summarizer for an attachment: one `GatewaySummarizerCall` per turn.
+
+    `attempt_observer`, if given, is each call's diagnostic attempt observer (Plan 12.2 r4 stop diagnosis).
 
     With a trusted registry `snapshot` and launch `disclosure_key`, each request is route-bound and,
     for a Contributor route, the turn's notice is delivered before its disclosure is issued; without
@@ -360,6 +378,7 @@ def gateway_summarizer_factory(
             session_id=identity.session_id,
             request_ids=request_ids,
             bind=bind,
+            attempt_observer=attempt_observer,
         )
 
     return bind_turn

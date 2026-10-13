@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from optimus.acp.debug_trace import log_planning_replan_event, log_workspace_context_result
+from optimus.acp.debug_trace import log_planning_replan_event, log_provider_attempts, log_workspace_context_result
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.failure_notes import attach_failure_note
 from optimus.acp.harness_runtime import AgentHarnessRuntime
@@ -148,6 +148,7 @@ def build_agent_harness_runtime(
             event_sink=telemetry_sink,
             workspace_context_observer=log_workspace_context_result,
             planning_progress_observer=log_planning_replan_event,
+            provider_attempt_observer=log_provider_attempts,
         )
     except BaseException as exc:
         _rollback_redis_runtime(redis_runtime, exc)
