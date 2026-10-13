@@ -76,7 +76,7 @@ Status, priority and ownership live in the record's GitHub issue; the transition
 |---|---|
 | [Plans folder guide](superpowers/plans/README.md) | How plans are added, revised and archived |
 | [Consolidated backlog](superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md) | Transitional register: work, status and next gates only for records not yet moved to GitHub issues (`Moved` rows link theirs); it takes no new work entries (a new plan's issue-only registry pointer row excepted) |
-| [Work status page](work-status.html) | Live view of the repository's GitHub issues, the work register; the issues are authoritative. Fallback: the repository's open issues on GitHub, linked from the page and from the backlog |
+| [Work status table][work-status-hosted] | Live table of the repository's GitHub issues, the work register, hosted on GitHub Pages (no checkout needed); the issues are authoritative. Source: [`work-status.html`](work-status.html). Fallback: the repository's open issues on GitHub, linked from the page and from the backlog |
 | [Phase 1 roadmap](superpowers/plans/2026-07-01-phase-1-roadmap.md) | Historical sequencing of Phase 1 |
 | [Plan 11 v1.0 milestone charter](superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md) | What v1.0 must contain |
 | [Hardening masterplan](superpowers/plans/hardening-runtime-quality-masterplan.md) | The 15 hardening tracks and their status |
@@ -136,3 +136,5 @@ Live plans (each listed in the backlog's live plan registry):
 - [Older publication sources](sources/archive/)
 
 - [Plan 12.2 Package A delivery record](superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md) — local commits, offline acceptance, residual and evidence custody.
+
+[work-status-hosted]: https://vibhanshu-agarwal.github.io/optimus-cost-agent/work-status.html

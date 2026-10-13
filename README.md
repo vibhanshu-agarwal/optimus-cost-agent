@@ -4,6 +4,8 @@ Local-first Python ACP (Agent Client Protocol) server for building **cost-aware 
 
 **Status:** Early initialization (Phase 1). Design docs and project standards are in place; application code is under active development.
 
+**Live work status:** the [hosted table of the repository's GitHub issues](https://vibhanshu-agarwal.github.io/optimus-cost-agent/work-status.html) (no checkout needed). GitHub Issues are the work register and stay authoritative; the page is their live view.
+
 ## Conversation floor and turn effects
 
 - Each ACP session keeps its full conversation up to a 512 KiB floor. The first time a prompt or a
