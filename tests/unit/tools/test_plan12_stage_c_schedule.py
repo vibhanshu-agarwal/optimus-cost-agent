@@ -285,6 +285,58 @@ def test_the_runbook_checks_the_workspace_fixture_before_the_first_launch(schedu
     assert kinds.count("fixture-check") == 1  # A2 writes its artifact, so later launches cannot expect the targets absent
 
 
+def _dispatches(row: dict) -> bool:
+    return row["bound"]["answer_calls"] + row["bound"]["summary_calls"] > 0
+
+
+def test_the_meter_is_expected_only_where_a_request_is_dispatched(schedule) -> None:
+    # r3's A3 stopped: the schedule expected a request meter on a refused turn, but a refusal dispatches and
+    # commits nothing and so sends no reading (design spec 8.4; spec.py _emit_usage_update). The claim's
+    # positive check sits on its dispatched turn (Codex r3 stop return, 2026-10-13).
+    rows = [row for row in schedule["cases"] if "meter-versus-storage-notices" in row["claims"]]
+    assert [row["case"] for row in rows] == ["A3", "B3.1"]
+    assert [row["case"] for row in rows if _dispatches(row)] == ["B3.1"]
+    for row in schedule["cases"]:
+        if _dispatches(row):
+            assert tool.NO_METER_READING not in row["expected"], row["case"]
+            if row in rows:
+                assert tool.METER_READING in row["expected"], row["case"]
+        else:
+            assert tool.METER_READING not in row["expected"], row["case"]
+            if row in rows:
+                assert tool.NO_METER_READING in row["expected"], row["case"]
+    assert not any("the request meter, separate" in text for row in schedule["cases"] for text in row["expected"])
+
+
+def test_a_turn_that_makes_no_call_expects_no_ledger_record(schedule) -> None:
+    # The same class: a scheduled unavailable turn makes no call, so it has no reserve/settle record to collect.
+    for row in schedule["cases"]:
+        expects_records = any("reserve/settle records for the turn" in text for text in row["artifacts"])
+        assert expects_records == (_dispatches(row) and row["case"].startswith("B") and row["case"] != "B2"), row["case"]
+    assert [row["case"] for row in schedule["cases"] if tool.NO_LEDGER_RECORD in row["artifacts"]] == ["B6.4", "B6.5"]
+
+
+def test_a2_captures_the_permission_request_before_it_is_approved(schedule) -> None:
+    # r3's A2 evidence showed only the completed write (Codex r3 stop return): the exact artifact the operator
+    # approves is captured from the permission request itself, before the click; the host records no path.
+    [a2] = [row for row in schedule["cases"] if row["case"] == "A2"]
+    assert tool.A2_PERMISSION_CAPTURE in a2["artifacts"] and "scratch/stage-c-agent.txt" in tool.A2_PERMISSION_CAPTURE
+    capture = next(n for n, step in enumerate(a2["steps"]) if step.startswith("Capture the permission request"))
+    approve = next(n for n, step in enumerate(a2["steps"]) if step.startswith("Approve"))
+    assert capture < approve
+
+
+def test_a6_names_a_checkable_key_isolation_observation(schedule) -> None:
+    # Key isolation (Plan 9.9): no provider key in the environment passed to acpx; the host takes the key from the
+    # OS keyring. "The run reports no resolvable provider key" named nothing a working run reports; the check
+    # records variable names only, never values, before the exec.
+    [a6] = [row for row in schedule["cases"] if row["case"] == "A6"]
+    assert tool.KEY_ISOLATION_CHECK in a6["artifacts"]
+    assert not any("resolvable provider key" in text for row in schedule["cases"] for text in row["artifacts"] + row["expected"])
+    record = next(n for n, step in enumerate(a6["steps"]) if step.startswith("Before the exec, record the names"))
+    assert record < next(n for n, step in enumerate(a6["steps"]) if "exec command" in step)
+
+
 def test_the_paste_files_hit_the_refusal_they_are_named_for(schedule) -> None:
     files = schedule["prompt_files"]
     usable = 262_144 - 32_768

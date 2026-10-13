@@ -74,7 +74,7 @@ HAIKU = "anthropic/claude-haiku-5.5"
 T0 = datetime(2026, 10, 12, 9, 0, tzinfo=UTC)
 CAPACITY_PROMPT_BYTES = 430_000  # over the request capacity (229,376 input tokens) and the 80% storage warning, under storage
 STORAGE_PROMPT_BYTES = 530_000  # over the 524,288-byte absent-engine storage limit
-SCHEDULE_VERSION = "stage-c-schedule-v3"
+SCHEDULE_VERSION = "stage-c-schedule-v4"
 REPLY_SIZES = (3, 8_192, 32_768, 131_072)  # fake reply bytes per measured path; 131,072 = the 32,768-token cap at 4 bytes a token
 DEFAULT_UNRUN = "the guard refuses a call, the window ends or an earlier required case failed"
 CENT = Decimal("0.000001")
@@ -126,8 +126,26 @@ ATTACHED_TURNS = (
     (7, "B8", "hybrid", "Live turn 7: summarize the whole history again (this turn will be cancelled during maintenance)."),
 )
 SMALL_SESSION_PROMPT = "In one sentence: what is this scratch workspace for?"
+# The meter follows a committed, dispatched turn (design spec 8.4): a refused turn dispatches and commits
+# nothing, so it sends no new reading (r3's A3 stopped on the opposite expectation), and a turn that makes no
+# call leaves no ledger record to collect.
+METER_READING = (
+    "the request meter after the committed turn: the largest dispatched planning or answer input against its usable capacity, "
+    "separate from any storage notice"
+)
+NO_METER_READING = "no new request-meter reading: a refused turn dispatches and commits nothing, so it sends none (design spec 8.4)"
+NO_LEDGER_RECORD = "no Gateway reserve/settle record for the turn: the engine refuses before any call"
+# The host records the approved mutation but not the path a permission request named, so A2's exact artifact is
+# captured from the request itself, before the click (r3's A2 evidence showed only the completed write).
+A2_PERMISSION_CAPTURE = "a screenshot of the permission request taken before approval, naming exactly scratch/stage-c-agent.txt"
+# Key isolation (Plan 9.9): the environment passed to acpx holds no provider key; the host takes it from the OS
+# keyring. Recorded as variable names only, never values.
+KEY_ISOLATION_CHECK = (
+    "no provider key in the environment acpx passes to the agent: the names (never the values) of its key-like variables, "
+    "none a provider key; the host takes the key from the OS keyring"
+)
 _B_EXPECTED = {
-    "B3": ["the attached picker shows Mode and Context strategy", "a compaction view of the 576 KiB seeded history"],
+    "B3": ["the attached picker shows Mode and Context strategy", "a compaction view of the 576 KiB seeded history", METER_READING],
     "B4": ["the next turn reuses the checkpoint"],
     "B5": ["the sliding-window warning on the first admitted sliding turn"],
     "B6": [host.UNAVAILABLE_NOTICE, "the readable unavailable refusal: above the 512 KiB floor no full-history fallback"],
@@ -179,11 +197,14 @@ def _cases() -> list[Case]:
     cases = [
         Case("A1", zed_absent, "zed", "absent session 1 (Chat)", ["Switch the session to Chat.", f"Prompt: {A1_PROMPT}"],
              ["a Chat answer; no permission request"], ["the workspace has no notes/chat-should-not-write.md"], ["chat-non-mutation"], chat),
-        Case("A2", zed_absent, "zed", "absent session 1 (Agent)", ["Switch the session to Agent.", f"Prompt: {A2_PROMPT}", "Approve the exact artifact in the permission request."],
-             ["a session/request_permission naming exactly scratch/stage-c-agent.txt", "the turn completes after approval"], ["scratch/stage-c-agent.txt contains ready"],
+        Case("A2", zed_absent, "zed", "absent session 1 (Agent)",
+             ["Switch the session to Agent.", f"Prompt: {A2_PROMPT}", "Capture the permission request before approving it: it must name exactly scratch/stage-c-agent.txt.",
+              "Approve the exact artifact in the permission request."],
+             ["a session/request_permission naming exactly scratch/stage-c-agent.txt", "the turn completes after approval"],
+             [A2_PERMISSION_CAPTURE, "scratch/stage-c-agent.txt contains ready"],
              ["agent-exact-artifact-approval"], planning),
         Case("A3", zed_absent, "zed", "absent session 2 (Chat)", ["Paste the whole of capacity-prompt.txt as one prompt."],
-             ["the 80% storage warning notice", "the readable request-capacity refusal (INPUT_EXCEEDS_CAPACITY text)", "the request meter, separate from the storage notice"],
+             ["the 80% storage warning notice", "the readable request-capacity refusal (INPUT_EXCEEDS_CAPACITY text)", NO_METER_READING],
              ["zero upstream attempts for the turn in the Gateway ledger"], ["request-capacity-refusal", "meter-versus-storage-notices"],
              (0, 0, "the Gateway refuses the over-capacity input before any attempt")),
         Case("A4", zed_absent, "zed", "absent session 3 (Chat)", ["Paste the whole of storage-prompt.txt as one prompt."],
@@ -192,8 +213,10 @@ def _cases() -> list[Case]:
         Case("A5", zed_absent, "zed", "absent session 4", ["Change the mode, then open the mode and model options again.", "Open a new session and read its persisted default mode."],
              ["every option is still offered after the switch", "the new session shows the persisted default"], ["screenshots of both pickers"], ["absent-picker-and-persisted-default"],
              (0, 0, "no prompt is sent")),
-        Case("A6", acpx_absent, "acpx", "acpx one-shot session (Agent, denied)", ["The runbook's A6 exec command (one-shot, its own fresh session, every permission denied)."],
-             ["a permission request answered deny", "no file written"], ["acpx JSON transcript", "scratch/acpx-denied.txt absent", "the run reports no resolvable provider key"],
+        Case("A6", acpx_absent, "acpx", "acpx one-shot session (Agent, denied)",
+             ["Before the exec, record the names (never the values) of the key-like variables the command's environment holds: none may be a provider key.",
+              "The runbook's A6 exec command (one-shot, its own fresh session, every permission denied)."],
+             ["a permission request answered deny", "no file written"], ["acpx JSON transcript", "scratch/acpx-denied.txt absent", KEY_ISOLATION_CHECK],
              ["agent-exact-artifact-approval", "key-isolation"], planning),
         Case("A7", acpx_absent, "acpx", f"acpx named session {A7_SESSION} (Chat)", ["The runbook's A7 commands: a fresh named session, its mode set to Chat, the prompt, the close."],
              ["the Chat mode applied to the prompt's fresh runtime session before the prompt", "a Chat answer; no permission request"],
@@ -219,9 +242,10 @@ def _cases() -> list[Case]:
         steps = ([f"Set Context strategy to {change}."] if change else []) + [f"Prompt: {text}"]
         if case_id == "B8":
             steps.append("When the pause notice appears, press Cancel within 30 seconds.")
+        ledger = "the Gateway ledger's reserve/settle records for the turn" if bound[0] + bound[1] else NO_LEDGER_RECORD
         cases.append(
             Case(f"{case_id}.{live}", zed_attached, "zed", "seeded session (Chat; the launch's first new session)", steps, _B_EXPECTED[case_id],
-                 ["the Gateway ledger's reserve/settle records for the turn", "the session's cost settlement"], _B_CLAIMS[case_id], bound,
+                 [ledger, "the session's cost settlement"], _B_CLAIMS[case_id], bound,
                  f"cancellation not exercised within 30 s, or {DEFAULT_UNRUN}" if case_id == "B8" else DEFAULT_UNRUN)  # fmt: skip
         )
     cases.append(
