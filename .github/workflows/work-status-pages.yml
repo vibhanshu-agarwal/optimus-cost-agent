@@ -1,0 +1,53 @@
+name: Work status Pages
+
+# Publishes the live work-status table (docs/work-status.html, and only that file) as a static GitHub Pages site.
+# GitHub issues stay the status authority: the published page reads them in the viewer's browser (public REST API,
+# GET only, no token) and stores nothing. Pages must be set to the "GitHub Actions" source once (see the repository
+# settings); this workflow never runs on pull requests, and a manual run only deploys when it was started on main.
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/work-status.html
+      - .github/workflows/work-status-pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}work-status.html
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Assemble the site (the page and a redirect, nothing else)
+        run: |
+          mkdir _site
+          cp docs/work-status.html _site/work-status.html
+          printf '%s\n' '<!doctype html><meta charset="utf-8"><title>Work status</title><meta http-equiv="refresh" content="0; url=work-status.html"><a href="work-status.html">Work status</a>' > _site/index.html
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -14,7 +14,7 @@ owner and next gate. This document keeps only that pointer, the anchor and a pin
 never evidence that the work is closed. Every open non-A2A record has its issue. The frozen G6 and G7 custody tables below keep their historical tuples unchanged, and the hardening masterplan's board and custody tables keep sequencing and plan-file text only;
 the live state of the records they list is in the issues named in the masterplan's "GitHub issue map". The A2A work stays deferred here in its own sections.
 
-**Live view and fallback.** [`docs/work-status.html`](../../work-status.html), opened from a checkout in a browser, reads the
+**Live view and fallback.** The hosted [work status table](https://vibhanshu-agarwal.github.io/optimus-cost-agent/work-status.html) (source: [`docs/work-status.html`](../../work-status.html), which also opens from a checkout) reads the
 repository's GitHub issues on every open and reload; the fallback is the [open issues on GitHub](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues?q=is%3Aissue%20is%3Aopen).
 
 Before this document existed, each follow-up lived only inside the "Deferred Follow-Ups" section of
