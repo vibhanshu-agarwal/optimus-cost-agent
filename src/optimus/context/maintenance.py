@@ -26,7 +26,7 @@ import contextlib
 import itertools
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Protocol
@@ -82,12 +82,17 @@ class SummarizerResponse:
 
     `integrity_error` is set when the Gateway's report could not be attributed truthfully: `attempts`
     then holds what can still be recorded (the reported usage, unattributed, and the route attempts as
-    reported, unsettled) and there is no text. The host records them, then raises it."""
+    reported, unsettled) and there is no text. The host records them, then raises it.
+
+    `diagnostic`, when set, is the call's deferred diagnostic observation of its attempts (Plan 12.2 r4 stop
+    diagnosis; Codex M1 ruling): process-local, never one of the response's facts, never serialized. The host
+    runs it once, after offering every attempt to its receipt sink."""
 
     text: str | None
     finish_status: str | None
     attempts: tuple[SummarizerAttempt, ...]
     integrity_error: AttemptIntegrityError | None = None
+    diagnostic: Callable[[], None] | None = field(default=None, compare=False, repr=False)
 
 
 class SummarizerCall(Protocol):
@@ -174,16 +179,21 @@ class HostMaintenance:
         response = self._call(prompt=build_summary_prompt(request.input_text), max_output_tokens=request.max_output_tokens)
         # Every attempt is offered to the sink even if an earlier one is refused; the first refusal,
         # then any integrity error, is raised only after all were recorded (Codex CP3 correction ruling
-        # C2): a reported charge is never dropped because its report or a sibling receipt failed.
+        # C2): a reported charge is never dropped because its report or a sibling receipt failed. Only
+        # then does the response's diagnostic run, whatever happened (Codex M1 ruling): a cancellation it
+        # raises carries the accounting error it overtakes as its context.
         refused: list[Exception] = []
-        for attempt in response.attempts:
-            try:
-                self._record_attempt(request, response, attempt)
-            except Exception as error:  # noqa: BLE001 - offered every receipt first
-                refused.append(error)
-        held = [*refused, *((response.integrity_error,) if response.integrity_error is not None else ())]
-        if held:
-            raise first_error(held)
+        try:
+            for attempt in response.attempts:
+                try:
+                    self._record_attempt(request, response, attempt)
+                except Exception as error:  # noqa: BLE001 - offered every receipt first
+                    refused.append(error)
+            held = [*refused, *((response.integrity_error,) if response.integrity_error is not None else ())]
+            if held:
+                raise first_error(held)
+        finally:
+            _run_diagnostic(response)
         attempt_ids = tuple(attempt.attempt_id for attempt in response.attempts)
         if self._cancelled():
             return MaintenanceResult(summary_text=None, attempt_ids=attempt_ids, status="cancelled", finish_status=response.finish_status)
@@ -290,14 +300,25 @@ class GatewaySummarizerCall:
         return self._observed(request_id, provider, SummarizerResponse(text=response.output_text, finish_status=response.finish_reason, attempts=attempts))
 
     def _observed(self, request_id: str, provider: tuple[ProviderAttempt, ...], response: SummarizerResponse) -> SummarizerResponse:
-        """Offer the classified attempts to the diagnostic observer, if any, once the response carrying them is
-        built (Plan 12.2 r4 stop diagnosis), and return that response unchanged. Diagnostic only: an ordinary
-        failure never changes it; cancellation and other control flow still propagate."""
+        """The response, carrying the diagnostic observation of its classified attempts when an observer is set
+        (Plan 12.2 r4 stop diagnosis). Nothing runs here: the host runs it once, after offering every attempt to
+        its receipt sink (Codex M1 ruling)."""
         observer = self._attempt_observer
-        if observer is not None:
-            with contextlib.suppress(Exception):
-                observer(stage="summary", correlation=lambda: {"session_id": self._session_id, "request_id": request_id}, attempts=provider)
-        return response
+        if observer is None:
+            return response
+
+        def diagnostic() -> None:
+            observer(stage="summary", correlation=lambda: {"session_id": self._session_id, "request_id": request_id}, attempts=provider)
+
+        return replace(response, diagnostic=diagnostic)
+
+
+def _run_diagnostic(response: SummarizerResponse) -> None:
+    """The response's deferred diagnostic, if any. Diagnostic only: an ordinary failure never changes the result
+    or the accounting error being raised; cancellation and other control flow still propagate."""
+    if response.diagnostic is not None:
+        with contextlib.suppress(Exception):
+            response.diagnostic()
 
 
 def _unattributable(request_id: str, error: AttemptIntegrityError) -> SummarizerResponse:
@@ -333,7 +354,8 @@ def gateway_summarizer_factory(
 ) -> SummarizerFactory:
     """The production summarizer for an attachment: one `GatewaySummarizerCall` per turn.
 
-    `attempt_observer`, if given, is each call's diagnostic attempt observer (Plan 12.2 r4 stop diagnosis).
+    `attempt_observer`, if given, is each call's diagnostic attempt observer (Plan 12.2 r4 stop diagnosis),
+    attached to its responses for the host to run after their receipts.
 
     With a trusted registry `snapshot` and launch `disclosure_key`, each request is route-bound and,
     for a Contributor route, the turn's notice is delivered before its disclosure is issued; without
