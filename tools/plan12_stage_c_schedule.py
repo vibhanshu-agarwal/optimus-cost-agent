@@ -74,7 +74,7 @@ HAIKU = "anthropic/claude-haiku-5.5"
 T0 = datetime(2026, 10, 12, 9, 0, tzinfo=UTC)
 CAPACITY_PROMPT_BYTES = 430_000  # over the request capacity (229,376 input tokens) and the 80% storage warning, under storage
 STORAGE_PROMPT_BYTES = 530_000  # over the 524,288-byte absent-engine storage limit
-SCHEDULE_VERSION = "stage-c-schedule-v4"
+SCHEDULE_VERSION = "stage-c-schedule-v5"
 REPLY_SIZES = (3, 8_192, 32_768, 131_072)  # fake reply bytes per measured path; 131,072 = the 32,768-token cap at 4 bytes a token
 DEFAULT_UNRUN = "the guard refuses a call, the window ends or an earlier required case failed"
 CENT = Decimal("0.000001")
@@ -210,9 +210,20 @@ def _cases() -> list[Case]:
         Case("A4", zed_absent, "zed", "absent session 3 (Chat)", ["Paste the whole of storage-prompt.txt as one prompt."],
              ["the storage refusal (not the request-capacity refusal)"], ["zero upstream attempts"], ["storage-refusal"],
              (0, 0, "the host refuses the over-storage input before any request")),
-        Case("A5", zed_absent, "zed", "absent session 4", ["Change the mode, then open the mode and model options again.", "Open a new session and read its persisted default mode."],
-             ["every option is still offered after the switch", "the new session shows the persisted default"], ["screenshots of both pickers"], ["absent-picker-and-persisted-default"],
-             (0, 0, "no prompt is sent")),
+        # The engine-absent profile advertises Mode alone (Agent, Chat); no profile enables model selection
+        # (session_config.py), so A5 never asks for a model picker (Codex schedule v4 review M1).
+        Case("A5", zed_absent, "zed", "absent session 4",
+             ["Open the Mode selector and capture the advertised Agent and Chat choices. Change to the other mode, then reopen Mode and capture "
+              "both choices and the selected value.",
+              "Confirm the engine-absent profile advertises neither Context strategy nor a model selector; do not require controls that the "
+              "profile does not enable.",
+              "Open a new qualification session and capture the persisted default mode, matching the preceding selection. Send no prompt."],
+             ["Mode continues to offer Agent and Chat after switching; its selected value is correct.",
+              "Context strategy and model selection are absent under this exact qualification profile.",
+              "The new session displays the persisted mode."],
+             ["Screenshots of Mode before and after the change and of the new session's default.",
+              "A content-free observation of the advertised selector set (Mode only)."],
+             ["absent-picker-and-persisted-default"], (0, 0, "no prompt is sent")),
         Case("A6", acpx_absent, "acpx", "acpx one-shot session (Agent, denied)",
              ["Before the exec, record the names (never the values) of the key-like variables the command's environment holds: none may be a provider key.",
               "The runbook's A6 exec command (one-shot, its own fresh session, every permission denied)."],

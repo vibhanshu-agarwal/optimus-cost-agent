@@ -25,6 +25,7 @@ from context_engine.summary import build_summary_prompt
 from optimus.acp import stage_c as host
 from optimus.acp.conversation import CONVERSATION_MAX_BYTES
 from optimus.acp.launch_policy import DEFAULT_MAX_PLANNING_TURNS
+from optimus.acp.session_config import STRATEGY_CONFIG_ID, SessionConfigSnapshot, build_session_config_options
 from optimus_model_policy import stage_c
 from optimus_model_policy import test_profiles as profiles
 from tools import plan12_stage_c_schedule as tool
@@ -335,6 +336,27 @@ def test_a6_names_a_checkable_key_isolation_observation(schedule) -> None:
     assert not any("resolvable provider key" in text for row in schedule["cases"] for text in row["artifacts"] + row["expected"])
     record = next(n for n, step in enumerate(a6["steps"]) if step.startswith("Before the exec, record the names"))
     assert record < next(n for n, step in enumerate(a6["steps"]) if "exec command" in step)
+
+
+def test_the_picker_cases_expect_only_the_selectors_each_profile_advertises(schedule) -> None:
+    # Codex schedule v4 review M1: A5 required a model picker and "both pickers", but the engine-absent profile
+    # advertises Mode alone and no profile enables model selection (session_config.py). Checked against the real
+    # builders, not only the wording.
+    absent = build_session_config_options(SessionConfigSnapshot(mode_id="chat", strategy=None))
+    attached = build_session_config_options(SessionConfigSnapshot(mode_id="chat", strategy="compaction"))
+    assert [o["id"] for o in absent] == ["mode"] and [o["id"] for o in attached] == ["mode", STRATEGY_CONFIG_ID]
+    choices = [option["name"] for option in absent[0]["options"]]
+    assert choices == ["Agent", "Chat"]
+    [a5] = [row for row in schedule["cases"] if row["case"] == "A5"]
+    # Every advertised choice is an expected observation after the switch, not only a word somewhere in A5.
+    assert any("after switching" in item and all(name in item for name in choices) for item in a5["expected"])
+    assert any("persisted" in item for item in a5["expected"])
+    assert any("Context strategy and model selection are absent" in item for item in a5["expected"])
+    assert (a5["bound"]["answer_calls"], a5["bound"]["summary_calls"], a5["claims"]) == (0, 0, ["absent-picker-and-persisted-default"])
+    [b3] = [row for row in schedule["cases"] if row["case"] == "B3.1"]
+    assert "the attached picker shows Mode and Context strategy" in b3["expected"]
+    required = [text for row in schedule["cases"] for text in row["steps"] + row["expected"] + row["artifacts"]]
+    assert not any(phrase in text for text in required for phrase in ("both pickers", "model options", "model picker"))
 
 
 def test_the_paste_files_hit_the_refusal_they_are_named_for(schedule) -> None:
