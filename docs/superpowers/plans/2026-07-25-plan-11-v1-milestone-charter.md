@@ -3,8 +3,8 @@
 ## Status and baseline
 
 **Status:** Ratified milestone charter. The revised sub-plan map below records Plan 11 execution
-lanes; the [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md) owns
-live item-level status.
+lanes; the GitHub issues own live item-level status ([ADR-022](../../decisions/ADR-022-github-issues-as-the-work-register.md)); the transitional
+[consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md) owns it only for records not yet moved.
 
 **Baseline:** Ratified Plan 11 feature scope and sequencing. Detailed sub-plan specifications and
 implementations land through separate reviewed PRs; this charter does not replace their evidence or
@@ -64,7 +64,7 @@ parked `P9.85-FU-3` budget-enforcement question is not pulled into this charter'
 
 This map records charter scope, sequencing, and terminal lane history; it is not a live-status
 snapshot. The detailed feature sections below retain ratification-time design requirements; where
-they describe pre-pickup authorization or numbering, live work status is in the GitHub issue of each record the [consolidated pool](2026-07-23-consolidated-deferred-followups-backlog.md) marks `Moved` ([ADR-021](../../decisions/ADR-021-bounded-github-authority-switch.md)) and in the pool for every other record.
+they describe pre-pickup authorization or numbering, live work status is in the GitHub issue of each record the [consolidated pool](2026-07-23-consolidated-deferred-followups-backlog.md) marks `Moved` ([ADR-021](../../decisions/ADR-021-bounded-github-authority-switch.md)) and, until a record moves, in the transitional pool.
 
 The feature IDs are permanent, greppable slice identities. They use the `P11-FEAT-*` prefix;
 `FEAT` identifies milestone features and is distinct from `FU`, which identifies follow-ups. Slugs
@@ -80,8 +80,8 @@ such as the historical `9.8` -> `9.85` -> `9.975` sequence are forbidden going f
 `N.M.1` plan numbers are also forbidden.
 
 Feature IDs (`P11-FEAT-*`) and source IDs (`P9.8-FU-5`, `P11-FU-1`, and other stable backlog IDs)
-are the durable identifiers; plan numbers are not. Promotion is recorded as `Promoted -> Plan 11.N`
-with the date and plan-file link, matching the consolidated backlog's existing promotion rule.
+are the durable identifiers; plan numbers are not. Promotion is recorded in the record's GitHub issue ([ADR-022](../../decisions/ADR-022-github-issues-as-the-work-register.md)) with the date and plan-file link;
+a record still in the transitional backlog is promoted there as `Promoted -> Plan 11.N` with the date and plan-file link, matching the backlog's promotion rule.
 
 ## P11-FEAT-GATEWAY-CORE - Gateway Core and Observability Route
 
@@ -242,8 +242,9 @@ than inferred from the existence of a second IDE candidate.
 
 ## Backlog and completion gates
 
-The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md) is the
-source of truth for follow-ups discovered during Plan 11 feature work that have not moved to a GitHub issue.
+Follow-ups discovered during Plan 11 feature work are created as GitHub issues ([ADR-022](../../decisions/ADR-022-github-issues-as-the-work-register.md)); the
+[consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md) is the transitional source of truth only for
+those that have not yet moved to one.
 The carried `P9.8-FU-5` ([#253](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/253)), `P9.87-FU-1` ([#258](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/258)) and `P11-FU-4`
 ([#259](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/259)) evidence-freshness items live in those issues, which the pool points to. `P11-FU-1` is owned by
 `P11-FEAT-ZED-RESUME`, not parked. `P11-FU-2` is owned by

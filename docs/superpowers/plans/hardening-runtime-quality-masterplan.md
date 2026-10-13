@@ -556,6 +556,68 @@ Closure of this feature does not, by itself, close
 `P11-FEAT-ACP-RUNTIME-HARDENING`, `P11-FEAT-ZED-RESUME`, or any other feature. Each
 remains authoritative in its own record: issues [#231](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/231) and [#230](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/230) for these two.
 
+## GitHub issue map
+
+Plan 11.29 and [ADR-022](../../decisions/ADR-022-github-issues-as-the-work-register.md) moved the live state of this program to GitHub issues. Every track, item,
+candidate and obligation below has its own issue, which owns its status, priority and next gate; this masterplan keeps scope, sequencing, design and history.
+Where the status ownership chain above names the masterplan as the reporter of a child plan's status, the track's issue now reports it. The status column of the
+child-plan board is kept only as the plan-file consistency record that the hygiene tests check, and the status words in the custody tables are the record of the program's
+sequencing; neither is live status. The Task 12 and Task 13 custody tables in the consolidated backlog are historical acceptance records whose tuples stay unchanged.
+Where any of them disagrees with its issue, the issue is right. The delivered `HARDENING-ITEM-LOCKFILE-CI-ENFORCEMENT` has no issue.
+
+| Record | Kind | Issue | Parent record |
+|---|---|---|---|
+| `HARDENING-TRACK-RUFF-LINT` | track | [#310](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/310) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-RUFF-FORMAT` | track | [#311](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/311) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-CI-GUARDRAILS` | track | [#298](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/298) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-DEPENDENCY-WORKFLOW` | track | [#312](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/312) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-TEST-DOUBLES` | track | [#313](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/313) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-STATIC-TYPING` | track | [#314](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/314) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-AUDIT-TOOLING` | track | [#315](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/315) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-ANALYSIS-ORACLE` | track | [#316](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/316) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-LIFECYCLE-SIGNALS` | track | [#317](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/317) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-LOGGING-TELEMETRY` | track | [#318](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/318) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-SEMANTIC-ERRORS` | track | [#319](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/319) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-QUEUE-BACKPRESSURE` | track | [#320](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/320) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-REPEATABILITY` | track | [#321](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/321) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-PUBLIC-API-DOCS` | track | [#322](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/322) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-DUPLICATION` | track | [#323](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/323) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-ITEM-RUFF-LINT-RATCHET` | item | [#324](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/324) | `HARDENING-TRACK-RUFF-LINT` |
+| `HARDENING-ITEM-RUFF-FORMAT-MIGRATION` | item | [#325](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/325) | `HARDENING-TRACK-RUFF-FORMAT` |
+| `HARDENING-ITEM-COVERAGE-SOURCE-SCOPE` | item | [#299](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/299) | `HARDENING-TRACK-CI-GUARDRAILS` |
+| `HARDENING-ITEM-SECRET-SCAN-SCOPE` | item | [#300](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/300) | `HARDENING-TRACK-CI-GUARDRAILS` |
+| `HARDENING-ITEM-BANDIT-B310` | item | [#301](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/301) | `HARDENING-TRACK-CI-GUARDRAILS` |
+| `HARDENING-ITEM-DEPENDENCY-CVE-SCAN` | item | [#326](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/326) | `HARDENING-TRACK-DEPENDENCY-WORKFLOW` |
+| `HARDENING-ITEM-WORKFLOW-LINT-SECURITY` | item | [#327](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/327) | `HARDENING-TRACK-DEPENDENCY-WORKFLOW` |
+| `HARDENING-ITEM-AUTOSPEC-BOUNDARIES` | item | [#328](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/328) | `HARDENING-TRACK-TEST-DOUBLES` |
+| `HARDENING-ITEM-MYPY-SRC-RATCHET` | item | [#329](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/329) | `HARDENING-TRACK-STATIC-TYPING` |
+| `HARDENING-ITEM-AUDIT-INVENTORY-REDERIVATION` | item | [#330](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/330) | `HARDENING-TRACK-AUDIT-TOOLING` |
+| `HARDENING-ITEM-AUDIT-TOOL-TYPING` | item | [#331](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/331) | `HARDENING-TRACK-AUDIT-TOOLING` |
+| `HARDENING-ITEM-PYSCN-EVALUATION` | item | [#332](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/332) | `HARDENING-TRACK-ANALYSIS-ORACLE` |
+| `HARDENING-ITEM-SIGNAL-ADAPTER` | item | [#333](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/333) | `HARDENING-TRACK-LIFECYCLE-SIGNALS` |
+| `HARDENING-ITEM-EXCEPTION-SITE-DISPOSITION` | item | [#334](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/334) | `HARDENING-TRACK-SEMANTIC-ERRORS` |
+| `HARDENING-ITEM-PUBLIC-API-DOCSTRINGS` | item | [#335](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/335) | `HARDENING-TRACK-PUBLIC-API-DOCS` |
+| `P11.26-CAND-1-RESOURCE-LIFETIME` | candidate | [#302](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/302) | `P11-FEAT-ACP-RUNTIME-HARDENING` |
+| `P11.26-CAND-2-TELEMETRY-CONTRACT` | candidate | [#303](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/303) | `P11-FEAT-ACP-RUNTIME-HARDENING` |
+| `P11.26-CAND-3-SEMANTIC-ERROR-SELECTION` | candidate | [#304](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/304) | `P11-FEAT-ACP-RUNTIME-HARDENING` |
+| `P11.26-CAND-4-QUEUE-BACKPRESSURE` | candidate | [#305](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/305) | `P11-FEAT-ACP-RUNTIME-HARDENING` |
+| `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION` | candidate | [#306](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/306) | `P11-FEAT-ACP-RUNTIME-HARDENING` |
+| `T13-CAND-RUNNER-CONTRACTS` | candidate | [#336](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/336) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-AUDIT-PRIMITIVES` | candidate | [#337](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/337) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-CREDENTIAL-CONTRACTS` | candidate | [#338](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/338) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-SECURITY-TEXT` | candidate | [#339](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/339) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-DOMAIN-HTTPS` | candidate | [#340](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/340) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-LEDGER-ACCOUNTING` | candidate | [#341](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/341) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-REDACTION-LIFETIME` | candidate | [#342](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/342) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-DIRECTIVE-GRAMMAR` | candidate | [#343](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/343) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-EVIDENCE-SERVICE` | candidate | [#344](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/344) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-SHARED-DEFAULTS` | candidate | [#345](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/345) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-REDIS-HEALTH` | candidate | [#346](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/346) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-RETRY-TIMING` | candidate | [#347](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/347) | `HARDENING-TRACK-DUPLICATION` |
+| `P11.26-UNRUN-BINDING` | obligation | [#307](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/307) | `P11-FEAT-ZED-RESUME` |
+| `P11.26-UNRUN-REDIS` | obligation | [#308](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/308) | `P11-FEAT-ACP-RUNTIME-HARDENING` |
+| `P11.26-UNRUN-ZED` | obligation | [#309](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/309) | `P11-FEAT-ACP-RUNTIME-HARDENING` |
+
 ## Reviewer checklist
 
 - [ ] Exactly 16 unique `HARDENING-ITEM-*` identities exist and each is assigned to exactly one child-plan row.
