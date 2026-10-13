@@ -909,7 +909,7 @@ optimus-cost-agent/
 | [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.4.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.4.pdf) | Execution guardrails |
 | [AGENTS.md](AGENTS.md) | Agent behavior, logging, safety, and testing gates |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Human and agent contribution workflow |
-| [plan backlog](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md) | Live registry for work not yet moved to a GitHub issue (`Moved` rows link their issues); the flat `plans/archive/` holds terminal history |
+| [plan backlog](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md) | Transitional register of work not yet moved to a GitHub issue (`Moved` rows link their issues; it takes no new work entries); the flat `plans/archive/` holds terminal history |
 
 If HLD, LLD, and Test Strategy conflict, pause and resolve before implementing.
 

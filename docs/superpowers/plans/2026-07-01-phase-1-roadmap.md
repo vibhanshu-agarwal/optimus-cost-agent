@@ -720,16 +720,17 @@ it is the sole detailed ledger for those entries.
 
 **Retired allocation rule:** Do not reserve or allocate Plan 10.x numbers. When a pool item
 item is scheduled into a concrete implementation plan, keep its stable source ID and record the
-promotion, date, plan-file link, evidence, and disposition in this backlog.
+promotion, date, plan-file link, evidence, and disposition in its GitHub issue (in this backlog only for a record that has not moved).
 
-**Open-work source of truth:** The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md)
-is the source of truth for all open work that has not moved to a GitHub issue; a record it marks `Moved` has its live
-status in its issue ([ADR-021](../../decisions/ADR-021-bounded-github-authority-switch.md)). This roadmap preserves milestone scope, sequencing,
+**Open-work source of truth:** GitHub Issues are the work register ([ADR-022](../../decisions/ADR-022-github-issues-as-the-work-register.md)): a record's live status is in
+its issue. The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md) is transitional and holds live
+status only for a record that has not yet moved to an issue ([ADR-021](../../decisions/ADR-021-bounded-github-authority-switch.md)
+moved the first 49). This roadmap preserves milestone scope, sequencing,
 historical narrative, and pointers rather than live open-item status.
 
-**Adding future items:** Add each genuinely deferred, unscheduled follow-up to the stable-ID catalog
-and this pool unless it is explicitly designated to Plan 12. Follow-ups discovered during
-Plan 11 feature development use this same catalog; do not create a second Plan 11 pool or a new
+**Adding future items:** All new non-A2A work is issue-first ([ADR-022](../../decisions/ADR-022-github-issues-as-the-work-register.md)): create each genuinely deferred, unscheduled follow-up
+directly as a GitHub issue, do not add it to the pool or to this roadmap, and identify it by its issue number. Follow-ups discovered during
+Plan 11 feature development take the same route; do not create a second Plan 11 pool or a new
 Plan 10 lane. Plan 9.96's `P9.85-FU-7` and `P9.9-FU-1` are closed and must not be reintroduced here.
 
 **Status:** The former Plan 10.1, Plan 10.2, and Plan 10.3 lanes are closed with their evidence
@@ -802,7 +803,7 @@ assume the frozen helpers remain an acceptable current-evidence path.
 
 **Open-work custody:** The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md)
 entry [`P11-FU-4`](2026-07-23-consolidated-deferred-followups-backlog.md#p11-fu-4-re-pin-fu-4a-fu-5-live-evidence)
-owns the live state. The `P11-FEAT-ZED-RESUME` Zed live-evidence work should coordinate with this
+is a `Moved` pointer to [#259](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/259); that issue owns the live state. The `P11-FEAT-ZED-RESUME` Zed live-evidence work should coordinate with this
 re-pin where its capture path overlaps; this roadmap section retains the historical origin and
 analysis.
 
@@ -1004,8 +1005,8 @@ separate, independently provable defect that should not be lost.
 
 **Open-work custody:** The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md)
 entry [`P11-FU-5`](2026-07-23-consolidated-deferred-followups-backlog.md#p11-fu-5-windows-subprocess-handle-duplication-flake-winerror-650)
-owns the live state. This remains excluded from the initial Plan 11 feature scope and v1.0 gate because
-the flake is reproduced, context known but has no deterministic causal edge or fix; the pool records
+is a `Moved` pointer to [#260](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/260); that issue owns the live state. This remains excluded from the initial Plan 11 feature scope and v1.0 gate because
+the flake is reproduced, context known but has no deterministic causal edge or fix; the issue records
 that state and the future custody decision. This roadmap section retains the feasibility findings and
 historical analysis.
 
@@ -1013,16 +1014,17 @@ historical analysis.
 
 Tracked, Not Yet Scheduled. No implementation plan exists, and none is needed until this entry is scheduled (AGENTS.md, deferred-work
 custody). This entry is the continuing owner of two follow-ups that the bounded Plan 11.29 cutover left undelivered, recorded in the
-[consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md): `P11.29-FU-1`, an offline `Work tracking impact:`
-pull-request declaration replacing the masterplan-impact gate, and `P11.29-FU-2`, the `**Tracking issue:**` plan-header convention and
+[consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md) and, under
+[ADR-022](../../decisions/ADR-022-github-issues-as-the-work-register.md), tracked in GitHub issues: `P11.29-FU-1` ([#290](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/290)), an offline `Work tracking impact:`
+pull-request declaration replacing the masterplan-impact gate, and `P11.29-FU-2` ([#291](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/291)), the `**Tracking issue:**` plan-header convention and
 its offline check. Plan 11.29 is their origin ([ADR-021](../../decisions/ADR-021-bounded-github-authority-switch.md)).
 
 - **Scope:** the two mechanisms that Plan 11.29's Task 4 and Design contract section 3 specified. Neither changes the status authority
-  of the 49 migrated records, and neither reopens the migration of the 87 records that retain their existing authorities.
-- **Priority and size:** priority Medium, difficulty Medium, estimate NA (none established).
+  of the migrated records, and neither reopens the migration, which ADR-022 carried out for all non-A2A open work.
+- **Priority and size:** kept in the two issues ([#290](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/290) and [#291](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/291)); this entry does not repeat them.
 - **Custody:** implementer Claude; architect and reviewer Codex; the operator decides any merge. The existing `Master-plan impact:` gate
-  stays in force until `P11.29-FU-1` is delivered. This entry creates no GitHub issue.
-- **To schedule:** a reviewed plan or successor names the tasks and the acceptance criteria written in the two pool entries. Replacing a
+  stays in force until `P11.29-FU-1` is delivered. This entry creates no issue of its own; the two follow-ups are the issues named above.
+- **To schedule:** a reviewed plan or successor names the tasks and the acceptance criteria written in the two entries (kept in their issues). Replacing a
   required check is a policy change, and whether it needs its own decision record is for Codex to rule.
 
 ## Plan 11 (v1.0 Milestone; Unified Gateway Capabilities Broker and ACP Release)
@@ -1055,7 +1057,7 @@ enforcement; `P9.85-FU-3` remains parked pending the operator decision.
 
 This milestone-level snapshot retains terminal and historical Plan 11 lane outcomes. It does not
 publish a live lane's state or next gate: the
-[`consolidated open-work pool`](2026-07-23-consolidated-deferred-followups-backlog.md) owns those for every record not marked `Moved`, and the linked GitHub issue owns them for a `Moved` one.
+[`consolidated open-work pool`](2026-07-23-consolidated-deferred-followups-backlog.md) owns those only for a record not yet marked `Moved` (transitional, ADR-022); a record's GitHub issue owns them once it has moved.
 
 | Plan | Summary state | Evidence |
 |---|---|---|
@@ -1104,8 +1106,8 @@ is held as the last primary Plan 11 slice. Once the consolidated pool closes, th
 reviewer must record whether outward publication stays in 11.x-last or splits into a 13.x train; the
 v1.0 release-version contract and excluded-capability inventory remain in Plan 11 either way.
 
-**Historical Plan 11.7 context (non-authoritative; live status and next gate are in the consolidated
-backlog):** Plan 11.7 (`P11-FEAT-ZED-RESUME`) was partially implemented and blocked after the closed
+**Historical Plan 11.7 context (non-authoritative; live status and next gate are in the Plan 11.7 issue [#240](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/240),
+which the consolidated backlog's plan registry points to):** Plan 11.7 (`P11-FEAT-ZED-RESUME`) was partially implemented and blocked after the closed
 Plan 11.1/11.2/11.4/11.5/11.6 slices. Frozen Task 0 Steps 1-4 are sealed with disposition
 `stop_amend_plan_session_load_unreachable` (historical Zed 1.13.1 did not issue `session/load` after
 full restart). A 2026-08-15 re-probe at commit `71cb9ed` observed Zed `1.15.0 e17dc4f…`,
@@ -1187,7 +1189,7 @@ non-AGENT conversation dependency (`P11.25-FU-1`) are scheduled first in
 [Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md), on a separate branch
 from `main`, not in the Optimus sandbox. Plan 12.2 was subsequently filed and Package A locally
 accepted; the sandbox retains its reported effect-producer gap until separately synchronized.
-The pool's `Plan 12` row owns live status; ADR-016 records the four-checkpoint cadence.
+Plan 12's live status is in [#235](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/235) (the pool's `Plan 12` row is a `Moved` pointer to it); ADR-016 records the four-checkpoint cadence.
 
 **Source anchors:**
 - `docs/context-window-optimization-strategy.md` - Context Type x Mechanism Matrix, Selection Pipeline, Selection Model, Freshness and Dependency Precedence, Prompt Packing and Cost Controls, Compaction, Offline Promotion Gates, Online Guardrails, Context Regret, Baseline and Ablation Plan, Calibration Items.
