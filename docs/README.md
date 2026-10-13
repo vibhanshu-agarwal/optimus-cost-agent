@@ -63,7 +63,7 @@ relevant records before proposing a change in their area.
 | Document | What it is |
 |---|---|
 | [Local live dependencies runbook](runbooks/local-live-dependencies.md) | Starting Redis, the Gateway and Phoenix locally |
-| [Plan 12.2 Stage C live run runbook](runbooks/plan-12-2-stage-c-live-run.md) | The bounded Stage C test release (r3): its guard, launches, custody checks and stop rules |
+| [Plan 12.2 Stage C live run runbook](runbooks/plan-12-2-stage-c-live-run.md) | The bounded Stage C test release (r4): its guard, launches, custody checks and stop rules |
 | [Evidence and local artifact policy](governance/evidence-and-local-artifact-policy.md) | What counts as repository evidence |
 
 ## Planning

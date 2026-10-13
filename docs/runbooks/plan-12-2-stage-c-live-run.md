@@ -1,6 +1,6 @@
-# Plan 12.2 Stage C: live run and guard (release r3)
+# Plan 12.2 Stage C: live run and guard (release r4)
 
-> **Authority:** the operator's new bounded Stage C grant of 2026-10-12 for release r3 ($8, 138 attempts, one shared 60-minute window), approving Codex's r3 proposal after r2 stopped at A2.
+> **Authority:** the operator's new bounded Stage C grant of 2026-10-13 for release r4 ($8, 138 attempts, one shared 60-minute window), approving Codex's r4 proposal after r3 stopped at A3.
 > Use it only on the candidate Codex has verified, after the operator grants fresh launch approvals.
 > Test-only: no production enforcement, engine attachment, default or route change, publication, push or merge.
 
@@ -8,16 +8,16 @@ This is the single current sequence for the Stage C editor run (Plan 12.2 Task 1
 
 ## The release and its guard
 
-- **One envelope:** release `plan12-2-stage-c-r3` covers both test profiles (`qualification`, `attached`), every Zed and acpx launch, and every restart.
+- **One envelope:** release `plan12-2-stage-c-r4` covers both test profiles (`qualification`, `attached`), every Zed and acpx launch, and every restart.
   - At most **$8** of known charges plus outstanding reservations.
   - At most **138** physical upstream attempts, unbilled ones included.
   - **One 60-minute window**, starting at the first Stage C Gateway open.
   - It covers the accepted complete-case reservation bound: $7.518097, 69 calls, at most 138 attempts.
-- **One ledger:** `<workspace>/.optimus/plan12-stage-c/plan12-2-stage-c-r3.jsonl`.
+- **One ledger:** `<workspace>/.optimus/plan12-stage-c/plan12-2-stage-c-r4.jsonl`.
   - `optimus-trust approve ... --plan12-stage-c` creates it once; later approvals keep it as it is.
   - Every Gateway start only reopens it, under an exclusive lock: one writer, one attempt in flight.
   - It is never reset, and a restart never extends the window.
-  - The superseded releases have their own ledgers and approval literals, and r3 never opens either: r2 ($8, 138 attempts; stopped at A2, its window expired) and r1 ($0.50, 24 attempts).
+  - The superseded releases have their own ledgers and approval literals, and r4 never opens any of them: r3 ($8, 138 attempts; stopped at A3, its window expired), r2 ($8, 138 attempts; stopped at A2, its window expired) and r1 ($0.50, 24 attempts).
 - **Admission:** an attempt is dispatched only if:
   - it can time out inside the window;
   - the attempt count allows it;

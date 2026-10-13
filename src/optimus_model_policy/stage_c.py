@@ -4,11 +4,11 @@ agreement, 2026-10-11).
 One reviewed release shares one envelope across both test-profile launches (``qualification`` and
 ``attached``), the acpx and Zed sessions and any authorized restart: at most $8 of known charges plus
 outstanding reservations, 138 physical upstream attempts (unbilled ones included) and one 60-minute window
-that starts at the first Stage C Gateway open (release r3, the operator's new grant of 2026-10-12 after r2
-stopped at A2 on a fixture defect; it rounds up the accepted $7.518097 / 138-attempt complete-case
-reservation bound). Release r3 supersedes r2 ($8, 138 attempts; stopped and expired) and the reviewed r1
-($0.50, 24 attempts): each release has its own ledger file and literal, so an earlier ledger is never
-opened, reset or overwritten, and an earlier approval never authorizes an r3 launch. Its literal binds the release, the limits, both profiles' pinned
+that starts at the first Stage C Gateway open (release r4, the operator's new grant of 2026-10-13 after r3
+stopped at A3 on a schedule defect; it rounds up the accepted $7.518097 / 138-attempt complete-case
+reservation bound). Release r4 supersedes r3 and r2 ($8, 138 attempts each; stopped and expired) and the
+reviewed r1 ($0.50, 24 attempts): each release has its own ledger file and literal, so an earlier ledger is
+never opened, reset or overwritten, and an earlier approval never authorizes an r4 launch. Its literal binds the release, the limits, both profiles' pinned
 hashes, the fixed scenario catalogue and the resolved ledger file, and is carried by the HMAC launch
 approval and the Gateway child's signed manifest; the Gateway composes the same envelope itself.
 
@@ -72,7 +72,7 @@ __all__ = [
     "stage_c_ledger_status",
 ]
 
-STAGE_C_RELEASE_ID: Final = "plan12-2-stage-c-r3"
+STAGE_C_RELEASE_ID: Final = "plan12-2-stage-c-r4"
 STAGE_C_LIMIT_USD: Final = Decimal("8")
 STAGE_C_MAX_ATTEMPTS: Final = 138
 STAGE_C_WINDOW_SECONDS: Final = 60 * 60
