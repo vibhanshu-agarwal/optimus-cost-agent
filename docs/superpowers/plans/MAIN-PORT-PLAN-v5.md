@@ -12,9 +12,9 @@
 
 This canonical plan is filed in the dedicated main-based port lane. [#350](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/350) now records Claude confirmation, route/scope acceptance and the implementing handler. Task 1's [source and file freeze](../reports/2026-10-14-main7-port-checkpoint.md#source-and-file-freeze) identifies the dedicated delivery lane; The plan registry and documentation index point to this canonical home. V1, v2, the sandbox register and accepted tags remain byte-preserved. GitHub issues hold current work metadata; this plan records scope, decisions, a dated source comparison and future gates.
 
-The October 14 caller-review revision remains part of unpublished v3. Its pre-revision bytes and final revised bytes are backed up in `evidence/2026-10-14-main7-caller-review/`; the accompanying [caller evidence](../reports/2026-10-14-main7-port-checkpoint.md#source-and-file-freeze) records the source pin and scope of the inspection. The dated receipt preserves predecessor and review custody.
+The October 14 caller-review revision remains part of unpublished v3. Its pre-revision bytes, final revised bytes and original caller-review note remain in hash-backed archival custody outside this repository. The [dated source receipt](../reports/2026-10-14-main7-port-checkpoint.md#source-and-file-freeze) records the source pin, inspection scope and predecessor custody.
 
-The subsequent targeted agent-run revision promotes the bootstrap-wired return boundary to the primary regression and keeps accounting as an injected-path control. Its [review note](../reports/2026-10-14-main7-port-checkpoint.md#source-and-file-freeze) and hashed before/after draft copies preserve this change without altering the four production-file scope.
+The subsequent targeted agent-run revision promotes the bootstrap-wired return boundary to the primary regression and keeps accounting as an injected-path control. Its [dated source receipt](../reports/2026-10-14-main7-port-checkpoint.md#source-and-file-freeze) and hashed before/after draft copies preserve this change without altering the four production-file scope.
 
 ## Global constraints
 
@@ -40,7 +40,7 @@ The subsequent targeted agent-run revision promotes the bootstrap-wired return b
 | Plan 11.7 runtime | `c69fd48646645a487b2a9521db8a92c22e536f3a` is not an ancestor of pinned main; `lease_owner.py` and named durable runtime symbols are absent. Source `spec.py` has 2,040 lines and no `attach()`, superseding the 1,135-line observation. |
 | Main configuration | `pyproject.toml`, `uv.lock`, hooks and secret baseline all changed since v2. Re-derive execution commands and guardrail expectations from the actual target. |
 
-Full commands, hashes, blob identities, inspection failures and evidence limits are in [REVIEW.md](../reports/2026-10-14-main7-port-checkpoint.md#source-and-file-freeze). No red/green or execution-gate PASS was obtained.
+Full commands, hashes, blob identities and inspection failures remain in archival custody outside this repository; the [dated source receipt](../reports/2026-10-14-main7-port-checkpoint.md#source-and-file-freeze) records the source freeze and evidence limits. At that planning snapshot, no red/green or execution-gate PASS had been obtained.
 
 ## Dependency disposition and route choice
 

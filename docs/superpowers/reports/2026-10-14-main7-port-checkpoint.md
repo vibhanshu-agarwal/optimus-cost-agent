@@ -1,6 +1,6 @@
 # MAIN-7 port — dated local checkpoint receipt
 
-Captured 2026-10-14, Asia/Calcutta. [#350](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/350) owns live status, handler and next gate. This receipt describes the local source/behavior checkpoint, not technical acceptance, publication or merge. The complete contract is [v4](../plans/MAIN-PORT-PLAN-v5.md).
+Captured 2026-10-14, Asia/Calcutta. [#350](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/350) owns live status, handler and next gate. This receipt describes the local source/behavior checkpoint, not technical acceptance, publication or merge. The complete contract is [v5](../plans/MAIN-PORT-PLAN-v5.md).
 
 ## Source and file freeze
 
