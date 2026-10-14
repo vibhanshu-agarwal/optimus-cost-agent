@@ -97,8 +97,9 @@
 <div id="out"></div>
 <p class="note">Each issue is listed once, in the table for its kind. Status, Priority, Difficulty, Estimate and Owner come from the issue's
 <code>status:</code>, <code>priority:</code>, <code>difficulty:</code>, <code>estimate:</code> and <code>handler:</code> labels; a closed issue's status comes from
-GitHub's close reason and its title is struck through. “Belongs to” is the issue's native parent. Search and the column filters work together and apply to every
-table; the tiles that show a count of Blocked, High priority or Partially implemented issues apply the same filter. A missing, conflicting or unknown value, or a parent link that loops back (“parent cycle”),
+GitHub's close reason and its title is struck through. “Belongs to” is the issue's native parent. Search and the filters in a table's header work together and apply to that
+table only. The Product choice above the tables and the tiles that show a count of Blocked, High priority or Partially implemented issues apply to every table, on top of each table's own
+filters. A missing, conflicting or unknown value, or a parent link that loops back (“parent cycle”),
 is shown in red, never guessed, and an issue without a recognized product and kind label is listed as untriaged, whatever the filters. A table wider than
 the page scrolls inside its own section.</p>
 
@@ -252,11 +253,16 @@ the page scrolls inside its own section.</p>
     return filters;
   }
 
-  // The state of the open page: the filters (the Product choice is one of them), which tables are collapsed and the issue state read.
+  // The state of the open page. Every table keeps its own header filters, so a choice made in one table never reaches another.
+  // `page` holds the only choices that sit outside the tables and so apply to all of them: the toolbar Product and the tiles.
   function initialUi(vocab, state) {
     const collapsed = {};
-    for (const table of vocab.tables) collapsed[table.key] = Boolean(table.collapsed);
-    return {filters: emptyFilters(), collapsed, state};
+    const filters = {};
+    for (const table of vocab.tables) {
+      collapsed[table.key] = Boolean(table.collapsed);
+      filters[table.key] = emptyFilters();
+    }
+    return {page: emptyFilters(), filters, collapsed, state};
   }
 
   // Issues on a parent cycle or hanging under one. An issue has one parent, so a walk up from any issue either ends (a root, or a
@@ -405,6 +411,11 @@ the page scrolls inside its own section.</p>
     });
   }
 
+  // The rows one table shows: the page-wide choices first, then that table's own header filters, all of which must match.
+  function visibleRows(table, ui) {
+    return filterRows(filterRows(table.rows, ui.page, false), ui.filters[table.key], table.multiKind);
+  }
+
   // Values in vocabulary order; anything the vocabulary does not know (a bad value, a free-form estimate) comes after.
   function ordered(values, order) {
     const rank = (value) => {
@@ -499,7 +510,7 @@ the page scrolls inside its own section.</p>
     if (tile.column === undefined) {
       return "<div class=\"tile" + (tile.id === "attention" && tile.count ? " warn" : "") + "\"><b>" + tile.count + "</b><span>" + esc(tile.label) + "</span></div>";
     }
-    const pressed = ui.filters[tile.column] === tile.value;
+    const pressed = ui.page[tile.column] === tile.value;
     return "<button type=\"button\" class=\"tile\" data-tile-column=\"" + esc(tile.column) + "\" data-tile-value=\"" + esc(tile.value) +
       "\" aria-pressed=\"" + pressed + "\"><b>" + tile.count + "</b><span>" + esc(tile.label) + "</span></button>";
   }
@@ -524,11 +535,12 @@ the page scrolls inside its own section.</p>
       const label = headerLabel(column);
       const key = column === "title" ? "text" : column;
       const id = "flt-" + table.key + "-" + key;
-      const current = ui.filters[key];
+      const current = ui.filters[table.key][key];
       const title = has(HEADER_TITLES, column) ? " title=\"" + esc(HEADER_TITLES[column]) + "\"" : "";
+      const owner = " data-table=\"" + esc(table.key) + "\"";
       const control = column === "title"
-        ? "<input type=\"search\" data-filter=\"text\" id=\"" + id + "\" placeholder=\"Search # or title\" aria-label=\"Search " + esc(label) + " in " + esc(table.title) + "\" value=\"" + esc(current) + "\">"
-        : "<select data-filter=\"" + key + "\" id=\"" + id + "\" aria-label=\"Filter " + esc(label) + " in " + esc(table.title) + "\">" +
+        ? "<input type=\"search\" data-filter=\"text\"" + owner + " id=\"" + id + "\" placeholder=\"Search # or title\" aria-label=\"Search " + esc(label) + " in " + esc(table.title) + "\" value=\"" + esc(current) + "\">"
+        : "<select data-filter=\"" + key + "\"" + owner + " id=\"" + id + "\" aria-label=\"Filter " + esc(label) + " in " + esc(table.title) + "\">" +
           optionList(options[column], current, (value) => (column === "belongs" ? (value === "none" ? "No parent" : "#" + value) : value)) + "</select>";
       return "<th scope=\"col\" class=\"c-" + column + "\" aria-label=\"" + esc(label) + "\"" + title + "><span class=\"hl\">" + esc(label) + "</span>" + control + "</th>";
     }).join("") + "</tr></thead>";
@@ -563,7 +575,7 @@ the page scrolls inside its own section.</p>
     const total = table.rows.length;
     if (!total) return "";
     const collapsed = Boolean(ui.collapsed[table.key]);
-    const shown = filterRows(table.rows, ui.filters, table.multiKind);
+    const shown = visibleRows(table, ui);
     const word = countWord(ui.state, total);
     const count = shown.length === total ? total + " " + word : shown.length + " of " + total + " " + word;
     const head = "<h2><button type=\"button\" class=\"sh\" data-toggle=\"" + esc(table.key) + "\" aria-expanded=\"" + !collapsed + "\"><span class=\"chev\" aria-hidden=\"true\">" +
@@ -612,7 +624,8 @@ the page scrolls inside its own section.</p>
     productSelect.innerHTML = "<option value=\"\">All products</option>" + Object.keys(vocab.products).map((key) =>
       "<option value=\"" + esc(key) + "\">" + esc(vocab.products[key]) + "</option>").join("");
 
-    const activeFilters = () => FILTER_KEYS.filter((key) => (key === "text" ? ui.filters[key].trim() : ui.filters[key]) !== "").length;
+    const activeIn = (filters) => FILTER_KEYS.filter((key) => (key === "text" ? filters[key].trim() : filters[key]) !== "").length;
+    const activeFilters = () => Object.keys(ui.filters).reduce((sum, tableKey) => sum + activeIn(ui.filters[tableKey]), activeIn(ui.page));
     const syncClearLabel = () => {
       const active = activeFilters();
       clearButton.textContent = active ? "Clear filters (" + active + ")" : "Clear filters";
@@ -628,14 +641,14 @@ the page scrolls inside its own section.</p>
     };
     const draw = (focus) => {
       ui.state = view.state;
-      productSelect.value = ui.filters.product; // the toolbar choice and the Product column headers are one filter
+      productSelect.value = ui.page.product; // the toolbar Product is a page-wide choice; a Product header filter belongs to its table
       const model = buildModel(view.issues, vocab);
       out.innerHTML = renderPage(model, ui);
       fitTables();
       syncClearLabel();
       if (announce) {
         let matching = model.untriaged.length;
-        for (const table of model.tables) matching += filterRows(table.rows, ui.filters, table.multiKind).length;
+        for (const table of model.tables) matching += visibleRows(table, ui).length;
         announce.textContent = activeFilters() ? matching + " of " + model.summary.total + " issues match" : model.summary.total + " issues";
       }
       if (focus && focus.id) {
@@ -655,10 +668,12 @@ the page scrolls inside its own section.</p>
       if (event && event.isComposing) return; // an IME composition is finished by its own event; a redraw now would destroy it
       const target = event && event.target;
       const key = target && target.dataset && target.dataset.filter;
-      if (!view || !key || !has(ui.filters, key)) return;
+      const tableKey = target && target.dataset && target.dataset.table;
+      if (!view || !key || !tableKey || !has(ui.filters, tableKey) || !has(ui.filters[tableKey], key)) return;
       const value = String(target.value);
-      if (ui.filters[key] === value) return;
-      ui.filters[key] = value;
+      const filters = ui.filters[tableKey];
+      if (filters[key] === value) return;
+      filters[key] = value;
       draw({id: target.id, caret: typeof target.selectionStart === "number" ? target.selectionStart : null});
     };
     out.addEventListener("input", onFilter);
@@ -673,20 +688,21 @@ the page scrolls inside its own section.</p>
         ui.collapsed[data.toggle] = !ui.collapsed[data.toggle];
         draw(null);
         refocus("[data-toggle=\"" + data.toggle + "\"]");
-      } else if (data.tileColumn !== undefined && has(ui.filters, data.tileColumn)) {
-        ui.filters[data.tileColumn] = ui.filters[data.tileColumn] === data.tileValue ? "" : String(data.tileValue);
+      } else if (data.tileColumn !== undefined && has(ui.page, data.tileColumn)) {
+        ui.page[data.tileColumn] = ui.page[data.tileColumn] === data.tileValue ? "" : String(data.tileValue);
         draw(null);
         refocus("[data-tile-column=\"" + data.tileColumn + "\"][data-tile-value=\"" + data.tileValue + "\"]");
       }
     });
     clearButton.addEventListener("click", () => {
-      ui.filters = emptyFilters();
+      ui.page = emptyFilters();
+      for (const tableKey of Object.keys(ui.filters)) ui.filters[tableKey] = emptyFilters();
       productSelect.value = "";
       syncClearLabel();
       if (view) draw(null);
     });
     productSelect.addEventListener("change", () => {
-      ui.filters.product = productSelect.value;
+      ui.page.product = productSelect.value;
       syncClearLabel();
       if (view) draw(null);
     });
@@ -721,7 +737,7 @@ the page scrolls inside its own section.</p>
     return read();
   }
 
-  root.WorkStatus = {esc, labelValues, statusCell, metadataCell, emptyFilters, initialUi, buildModel, filterRows, filterOptions,
+  root.WorkStatus = {esc, labelValues, statusCell, metadataCell, emptyFilters, initialUi, buildModel, filterRows, visibleRows, filterOptions,
     nextLink, loadView, browserClient, renderPage, boot, STATUS_TONES};
   if (root.document && root.document.getElementById && root.document.getElementById("work-status-vocabulary")) {
     boot(root.document, root);
