@@ -476,7 +476,7 @@ def test_fanout_preserves_control_flow_exceptions(failed_sink, exception_type, c
     assert not [record for record in caplog.records if record.name == "optimus.telemetry.fanout"]
 
 
-def test_fanout_warning_reaches_stderr_with_debug_disabled(monkeypatch, capsys):
+def test_fanout_warning_reaches_stderr_with_debug_disabled(monkeypatch, capsys, caplog):
     import logging
     import sys
 
@@ -491,11 +491,16 @@ def test_fanout_warning_reaches_stderr_with_debug_disabled(monkeypatch, capsys):
 
     logger = logging.getLogger("optimus.telemetry.fanout")
     handler = logging.StreamHandler(sys.stderr)
+    monkeypatch.setattr(logger, "disabled", False)
     monkeypatch.setattr(logger, "handlers", [handler])
     monkeypatch.setattr(logger, "propagate", False)
-    monkeypatch.setattr(logger, "level", logging.WARNING)
-    fanout = TelemetryFanout(jsonl_writer=Writer(), redis_sink=lambda event: None, gateway_exporter=RecordingExporter(), batch_size=1)
-    fanout(_agent_run_event())
+    with caplog.at_level(logging.WARNING, logger=logger.name):
+        assert logger.isEnabledFor(logging.WARNING), (
+            f"fanout logger disabled={logger.disabled} level={logger.level} "
+            f"effective={logger.getEffectiveLevel()} manager.disable={logger.manager.disable}"
+        )
+        fanout = TelemetryFanout(jsonl_writer=Writer(), redis_sink=lambda event: None, gateway_exporter=RecordingExporter(), batch_size=1)
+        fanout(_agent_run_event())
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err.count("telemetry_sink_raised") == 1
