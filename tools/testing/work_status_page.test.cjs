@@ -105,7 +105,8 @@ function fakeWindow(fetchImpl, search = "") {
   return {location: {search}, URLSearchParams, fetch: fetchImpl, listeners, addEventListener: (type, fn) => { listeners[type] = fn; }};
 }
 
-const filterEvent = (key, value, id = `flt-follow-ups-${key}`) => ({target: {dataset: {filter: key}, value, id}});
+// A change in the header of one table: the control names its table (data-table) and carries a per-table id.
+const filterEvent = (key, value, table = "follow-ups") => ({target: {dataset: {filter: key, table}, value, id: `flt-${table}-${key}`}});
 
 // ---- cells: status and metadata dimensions ----
 test("test_closed_reason_mapping", () => {
@@ -218,7 +219,7 @@ test("test_product_is_a_column_a_row_names_and_a_filter_that_never_hides_untriag
   assert.deepEqual(run("evidence-a2a"), [4]);
   assert.deepEqual(run(""), [1, 4]);
   assert.deepEqual(plain(WS.filterOptions(rows, VOCAB).product), [{value: "optimus", label: "Optimus"}, {value: "evidence-a2a", label: "Evidence/A2A"}]);
-  const html = WS.renderPage(model, ui({filters: {...WS.emptyFilters(), product: "evidence-a2a"}}));
+  const html = WS.renderPage(model, uiWith("follow-ups", {product: "evidence-a2a"}));
   assert.match(html, /<tr><td class="c-title"><a [^>]*>#4<\/a> — <bdi>evidence one<\/bdi><\/td><td>Evidence\/A2A<\/td>/, "each row names its product beside its title");
   assert.doesNotMatch(html, /optimus one/);
   assert.match(html, /no labels/, "an untriaged issue is a data fault and stays visible");
@@ -241,7 +242,7 @@ test("test_belongs_to_names_the_parent_instead_of_nesting", () => {
   assert.equal(rows.get(40).relationError, "malformed parent link");
   assert.equal(rows.get(20).relationError, null);
   const evidenceChild = issue(21, [...FULL.slice(0, 5), "product:evidence-a2a", "kind:plan"], {parent_issue_url: parentUrl(10)});
-  const html = WS.renderPage(WS.buildModel([parent, evidenceChild], VOCAB, {}), ui({filters: {...WS.emptyFilters(), product: "evidence-a2a"}}));
+  const html = WS.renderPage(WS.buildModel([parent, evidenceChild], VOCAB, {}), uiWith("plans", {}, {product: "evidence-a2a"}));
   assert.match(html, /<bdi>Zed session resume<\/bdi>/, "the parent is named even when the product filter hides the parent's own row");
 });
 
@@ -352,6 +353,13 @@ test("test_filter_options_list_only_values_present_in_vocabulary_order", () => {
 
 // ---- rendering ----
 const ui = (patch = {}) => ({...WS.initialUi(VOCAB, "open"), ...patch});
+// A page state with header filters set in one table and, optionally, page-wide choices (the toolbar Product and the tiles).
+const uiWith = (tableKey, patch, page = {}) => {
+  const state = ui();
+  state.filters[tableKey] = {...WS.emptyFilters(), ...patch};
+  state.page = {...WS.emptyFilters(), ...page};
+  return state;
+};
 
 test("test_render_page_gives_every_header_its_full_text_and_a_filter", () => {
   const model = WS.buildModel([issue(1, FULL), issue(2, withKind("track")), issue(3, withKind("feature"))], VOCAB, {});
@@ -393,18 +401,17 @@ test("test_render_page_reflects_filter_state_and_counts", () => {
   const model = WS.buildModel([
     issue(1, withLabels({status: "status:blocked"}), {title: "blocked one"}), issue(2, FULL, {title: "plain two"}),
   ], VOCAB, {});
-  const filters = {...WS.emptyFilters(), status: "Blocked", text: "one"};
-  const html = WS.renderPage(model, ui({filters}));
+  const html = WS.renderPage(model, uiWith("follow-ups", {status: "Blocked", text: "one"}));
   assert.match(html, /<option value="Blocked" selected>Blocked<\/option>/);
   assert.match(html, /<option value="">All<\/option>/);
-  assert.match(html, /data-filter="text" id="flt-follow-ups-text" [^>]*value="one"/);
+  assert.match(html, /data-filter="text" data-table="follow-ups" id="flt-follow-ups-text" [^>]*value="one"/);
   assert.match(html, /<span class="count">1 of 2 open<\/span>/);
   assert.match(html, /blocked one/);
   assert.doesNotMatch(html, /plain two/);
-  const none = WS.renderPage(model, ui({filters: {...WS.emptyFilters(), text: "zzz"}}));
+  const none = WS.renderPage(model, uiWith("follow-ups", {text: "zzz"}));
   assert.match(none, /No matching issues/);
   // a filter value no row carries any more stays selectable so the state is visible
-  const stale = WS.renderPage(model, ui({filters: {...WS.emptyFilters(), owner: "Codex"}}));
+  const stale = WS.renderPage(model, uiWith("follow-ups", {owner: "Codex"}));
   assert.match(stale, /<option value="Codex" selected>Codex<\/option>/);
 });
 
@@ -423,7 +430,7 @@ test("test_render_page_rows_carry_belongs_to_status_chip_progress_and_closed_sty
 
 test("test_render_page_untriaged_rows_are_never_filtered_or_collapsed", () => {
   const model = WS.buildModel([issue(1, FULL), issue(2, ["status:open"], {title: "no kind yet"})], VOCAB, {});
-  const html = WS.renderPage(model, ui({filters: {...WS.emptyFilters(), text: "zzz"}}));
+  const html = WS.renderPage(model, uiWith("follow-ups", {text: "zzz"}, {status: "Blocked"}));
   assert.match(html, /no kind yet/);
   assert.match(html, /id="sec-untriaged"/);
   assert.doesNotMatch(html.split('id="sec-untriaged"')[1], /data-filter=/, "the untriaged table has no filter row");
@@ -434,8 +441,10 @@ test("test_render_page_tiles_filter_only_where_a_column_filter_exists", () => {
   const html = WS.renderPage(model, ui());
   assert.match(html, /<button type="button" class="tile" data-tile-column="status" data-tile-value="Blocked" aria-pressed="false"><b>1<\/b><span>Blocked<\/span><\/button>/);
   assert.match(html, /<div class="tile"><b>2<\/b><span>Open<\/span><\/div>/);
-  const pressed = WS.renderPage(model, ui({filters: {...WS.emptyFilters(), status: "Blocked"}}));
+  const pressed = WS.renderPage(model, uiWith("follow-ups", {}, {status: "Blocked"}));
   assert.match(pressed, /data-tile-value="Blocked" aria-pressed="true"/);
+  const tableChoice = WS.renderPage(model, uiWith("follow-ups", {status: "Blocked"}));
+  assert.match(tableChoice, /data-tile-value="Blocked" aria-pressed="false"/, "a status chosen inside a table is not the tile's page-wide choice");
   assert.match(html, /data-tile-column="priority" data-tile-value="High"/);
   assert.match(html, /data-tile-column="status" data-tile-value="Partially implemented"/);
 });
@@ -556,11 +565,11 @@ test("test_changing_a_column_filter_redraws_the_tables_and_keeps_the_typing_focu
   assert.doesNotMatch(elements.out.innerHTML, /plain follow-up/);
   assert.match(elements.out.innerHTML, /<span class="count">1 of 3 open<\/span>/);
   assert.deepEqual(focused.slice(-1), ["flt-follow-ups-status"], "focus returns to the control that changed");
-  fire("out", "input", filterEvent("text", "blocked", "flt-follow-ups-text"));
-  assert.match(elements.out.innerHTML, /data-filter="text" id="flt-follow-ups-text" [^>]*value="blocked"/);
+  fire("out", "input", filterEvent("text", "blocked"));
+  assert.match(elements.out.innerHTML, /data-filter="text" data-table="follow-ups" id="flt-follow-ups-text" [^>]*value="blocked"/);
   assert.deepEqual(focused.slice(-1), ["flt-follow-ups-text"]);
   const before = elements.out.innerHTML;
-  fire("out", "input", filterEvent("text", "blocked", "flt-follow-ups-text"));
+  fire("out", "input", filterEvent("text", "blocked"));
   assert.equal(elements.out.innerHTML, before, "an unchanged value does not redraw");
   fire("out", "change", {target: {dataset: {filter: "constructor"}, value: "x", id: "flt-x"}});
   fire("out", "change", {target: {dataset: {}, value: "x", id: "flt-y"}});
@@ -576,18 +585,144 @@ test("test_clear_filters_and_the_product_filter", async () => {
   assert.equal(elements.clear.textContent, "Clear filters (1)");
   elements.product.value = "evidence-a2a";
   fire("product", "change");
-  assert.match(elements.out.innerHTML, /<span class="count">0 of 3 open<\/span>/, "the toolbar Product choice is the page-wide product filter");
-  assert.match(elements.out.innerHTML, /<option value="evidence-a2a" selected>Evidence\/A2A<\/option>/, "and the Product column header shows it");
+  assert.match(elements.out.innerHTML, /<span class="count">0 of 3 open<\/span>/, "the toolbar Product choice is a page-wide filter that combines with the table's own Priority choice");
+  assert.doesNotMatch(elements.out.innerHTML, /<option value="evidence-a2a" selected>/, "and it is not shown as a choice made inside a table header");
   assert.equal(elements.clear.textContent, "Clear filters (2)");
-  fire("out", "change", filterEvent("product", "optimus", "flt-follow-ups-product"));
-  assert.equal(elements.product.value, "optimus", "a Product choice made in a table header is shown in the toolbar");
-  assert.match(elements.out.innerHTML, /blocked high/, "Priority High and Product Optimus together keep the one row that has both");
+  fire("out", "change", filterEvent("product", "optimus"));
+  assert.equal(elements.product.value, "evidence-a2a", "a Product choice made in a table header does not change the toolbar");
+  assert.equal(elements.clear.textContent, "Clear filters (3)");
+  elements.product.value = "";
+  fire("product", "change");
+  assert.match(elements.out.innerHTML, /blocked high/, "Priority High and the table's own Product Optimus together keep the one row that has both");
   assert.doesNotMatch(elements.out.innerHTML, /plain follow-up|evidence thing/);
+  assert.equal(elements.clear.textContent, "Clear filters (2)");
   fire("clear", "click");
   assert.equal(elements.clear.textContent, "Clear filters");
   assert.equal(elements.product.value, "", "Clear filters also clears the Product choice");
   assert.match(elements.out.innerHTML, /evidence thing/);
   assert.match(elements.out.innerHTML, /plain follow-up/);
+});
+
+// ---- a filter chosen in one table's header belongs to that table ----
+// Two features, two follow-ups and a plan: three tables that each carry a Status column.
+function threeTableFetch() {
+  const as = (status, kind) => [...withLabels({status}).slice(0, 6), `kind:${kind}`];
+  const issues = [
+    issue(10, as("status:open", "feature"), {title: "feature plain"}),
+    issue(11, as("status:partially-implemented", "feature"), {title: "feature partial"}),
+    issue(20, as("status:blocked", "follow-up"), {title: "followup blocked"}),
+    issue(21, as("status:open", "follow-up"), {title: "followup plain"}),
+    issue(22, as("status:active", "plan"), {title: "plan active"}),
+  ];
+  return async () => response(issues);
+}
+
+const section = (html, key) => html.split(`id="sec-${key}"`)[1].split("</section>")[0];
+const countOf = (html, key) => /<span class="count">([^<]*)<\/span>/.exec(section(html, key))[1];
+
+test("test_a_status_chosen_in_one_table_filters_that_table_only", async () => {
+  const {doc, elements, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(threeTableFetch()));
+  fire("out", "change", filterEvent("status", "Partially implemented", "features"));
+  const html = elements.out.innerHTML;
+  assert.equal(countOf(html, "features"), "1 of 2 open");
+  assert.match(section(html, "features"), /<option value="Partially implemented" selected>/);
+  assert.match(section(html, "features"), /feature partial/);
+  assert.doesNotMatch(section(html, "features"), /feature plain/);
+  for (const [key, count, rows] of [["follow-ups", "2 open", /followup blocked[\s\S]*followup plain/], ["plans", "1 open", /plan active/]]) {
+    assert.equal(countOf(html, key), count, `${key} is not filtered`);
+    assert.match(section(html, key), rows, `${key} keeps all its rows`);
+    assert.doesNotMatch(section(html, key), /<option [^>]*selected/, `${key} does not show the Features choice`);
+  }
+  assert.equal(elements.announce.textContent, "4 of 5 issues match");
+  fire("out", "change", filterEvent("status", "Blocked", "follow-ups"));
+  const both = elements.out.innerHTML;
+  assert.equal(countOf(both, "follow-ups"), "1 of 2 open");
+  assert.doesNotMatch(section(both, "follow-ups"), /followup plain/);
+  assert.equal(countOf(both, "features"), "1 of 2 open", "the earlier Features choice is untouched by the Follow-ups one");
+  assert.match(section(both, "features"), /<option value="Partially implemented" selected>/);
+  assert.equal(countOf(both, "plans"), "1 open");
+  assert.equal(elements.clear.textContent, "Clear filters (2)", "each table's choice is counted");
+});
+
+test("test_search_text_typed_in_one_table_searches_that_table_only", async () => {
+  const {doc, elements, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(threeTableFetch()));
+  fire("out", "input", filterEvent("text", "partial", "features"));
+  const html = elements.out.innerHTML;
+  assert.equal(countOf(html, "features"), "1 of 2 open");
+  assert.match(section(html, "features"), /data-filter="text" data-table="features" id="flt-features-text" [^>]*value="partial"/);
+  assert.equal(countOf(html, "follow-ups"), "2 open");
+  assert.match(section(html, "follow-ups"), /data-filter="text" data-table="follow-ups" id="flt-follow-ups-text" [^>]*value=""/);
+});
+
+test("test_every_filter_control_names_the_table_it_belongs_to", () => {
+  const model = WS.buildModel([issue(1, FULL), issue(2, withKind("feature")), issue(3, withKind("track"))], VOCAB, {});
+  const open = WS.initialUi(VOCAB, "open");
+  open.collapsed.hardening = false;
+  const html = WS.renderPage(model, open);
+  for (const table of ["follow-ups", "features", "hardening"]) {
+    const controls = [...section(html, table).matchAll(/<(?:select|input) [^>]*data-filter="[^"]+"[^>]*>/g)].map((m) => m[0]);
+    assert.ok(controls.length >= 8, `${table} has its filter row`);
+    for (const control of controls) assert.match(control, new RegExp(`data-table="${table}"`), control);
+  }
+});
+
+test("test_a_header_product_filter_is_that_tables_alone_but_the_toolbar_product_and_the_tiles_stay_page_wide", async () => {
+  const {doc, elements, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(threeTableFetch()));
+  fire("out", "change", filterEvent("product", "evidence-a2a", "features"));
+  assert.equal(elements.product.value, "", "the toolbar does not follow a table's own Product choice");
+  assert.equal(countOf(elements.out.innerHTML, "features"), "0 of 2 open");
+  assert.equal(countOf(elements.out.innerHTML, "follow-ups"), "2 open");
+  fire("clear", "click");
+  elements.product.value = "evidence-a2a";
+  fire("product", "change");
+  for (const [key, count] of [["features", "0 of 2 open"], ["follow-ups", "0 of 2 open"], ["plans", "0 of 1 open"]]) {
+    assert.equal(countOf(elements.out.innerHTML, key), count, `the toolbar Product choice reaches ${key}`);
+    assert.doesNotMatch(section(elements.out.innerHTML, key), /<option [^>]*selected/, `and is not shown as a choice made inside ${key}`);
+  }
+  fire("clear", "click");
+  fire("out", "click", {target: {dataset: {tileColumn: "status", tileValue: "Blocked"}}});
+  assert.equal(countOf(elements.out.innerHTML, "follow-ups"), "1 of 2 open", "a tile is a page-wide filter");
+  assert.equal(countOf(elements.out.innerHTML, "features"), "0 of 2 open");
+  assert.match(elements.out.innerHTML, /data-tile-value="Blocked" aria-pressed="true"/);
+  assert.doesNotMatch(section(elements.out.innerHTML, "follow-ups"), /<option [^>]*selected/, "and does not pose as a choice made in a table");
+});
+
+test("test_clear_filters_resets_every_table_and_the_page_wide_choices", async () => {
+  const {doc, elements, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(threeTableFetch()));
+  fire("out", "change", filterEvent("status", "Partially implemented", "features"));
+  fire("out", "input", filterEvent("text", "plain", "follow-ups"));
+  fire("out", "click", {target: {dataset: {tileColumn: "status", tileValue: "Blocked"}}});
+  assert.equal(elements.clear.textContent, "Clear filters (3)");
+  fire("clear", "click");
+  assert.equal(elements.clear.textContent, "Clear filters");
+  for (const [key, count] of [["features", "2 open"], ["follow-ups", "2 open"], ["plans", "1 open"]]) assert.equal(countOf(elements.out.innerHTML, key), count);
+  assert.doesNotMatch(elements.out.innerHTML, /<option [^>]*selected|aria-pressed="true"|value="plain"/);
+});
+
+test("test_table_filters_survive_a_reload_each_in_its_own_table", async () => {
+  const {doc, elements, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(threeTableFetch()));
+  fire("out", "change", filterEvent("status", "Partially implemented", "features"));
+  await fire("reload", "click");
+  assert.equal(countOf(elements.out.innerHTML, "features"), "1 of 2 open");
+  assert.equal(countOf(elements.out.innerHTML, "follow-ups"), "2 open");
+});
+
+test("test_a_filter_event_from_a_table_that_does_not_exist_is_ignored", async () => {
+  const {doc, elements, focused, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(threeTableFetch()));
+  const before = elements.out.innerHTML;
+  const drawn = focused.length;
+  for (const table of ["nope", "constructor", "__proto__", "hasOwnProperty", undefined]) {
+    fire("out", "change", {target: {dataset: {filter: "status", table}, value: "Blocked", id: "flt-x-status"}});
+  }
+  assert.equal(elements.out.innerHTML, before);
+  assert.equal(focused.length, drawn);
+  assert.equal(elements.clear.textContent, "Clear filters");
 });
 
 // ---- tables wider than the page scroll inside their own section ----
@@ -738,7 +873,7 @@ test("test_a_blank_search_is_not_an_active_filter_and_clear_resets_the_label_aft
   const {doc, elements, fire} = fakeDom();
   const replies = [response([issue(1, FULL, {title: "one"})]), response(null, {status: 500})];
   await load().boot(doc, fakeWindow(async () => replies.shift()));
-  fire("out", "input", filterEvent("text", "   ", "flt-follow-ups-text"));
+  fire("out", "input", filterEvent("text", "   "));
   assert.equal(elements.clear.textContent, "Clear filters", "whitespace filters nothing, so it is not counted");
   fire("out", "change", filterEvent("priority", "Medium"));
   assert.equal(elements.clear.textContent, "Clear filters (1)");
@@ -820,8 +955,12 @@ test("test_loading_state_is_a_live_region_and_filter_results_are_announced", asy
   const {doc, elements, fire} = fakeDom();
   await load().boot(doc, fakeWindow(populatedFetch()));
   assert.equal(elements.announce.textContent, "4 issues");
-  fire("out", "change", filterEvent("status", "Blocked"));
+  fire("out", "click", {target: {dataset: {tileColumn: "status", tileValue: "Blocked"}}});
   assert.equal(elements.announce.textContent, "1 of 4 issues match", "collapsed tables count too: the header shows how many match");
+  fire("clear", "click");
+  assert.equal(elements.announce.textContent, "4 issues");
+  fire("out", "change", filterEvent("status", "Blocked"));
+  assert.equal(elements.announce.textContent, "2 of 4 issues match", "a choice in one table narrows that table only");
   fire("clear", "click");
   assert.equal(elements.announce.textContent, "4 issues");
 });
@@ -832,7 +971,7 @@ test("test_tables_and_headers_have_unique_accessible_names", () => {
   assert.match(html, /<table aria-label="Follow-ups and defects">/);
   assert.match(html, /<table aria-label="Features">/);
   assert.match(html, /<table aria-label="Untriaged issues">/);
-  assert.match(html, /<th scope="col" class="c-priority" aria-label="Priority"><span class="hl">Priority<\/span><select data-filter="priority" id="flt-follow-ups-priority" aria-label="Filter Priority in Follow-ups and defects">/);
+  assert.match(html, /<th scope="col" class="c-priority" aria-label="Priority"><span class="hl">Priority<\/span><select data-filter="priority" data-table="follow-ups" id="flt-follow-ups-priority" aria-label="Filter Priority in Follow-ups and defects">/);
   assert.match(html, /aria-label="Search Issue \/ Title in Features"/);
   const labels = html.match(/aria-label="(?:Filter|Search) [^"]*"/g);
   assert.equal(new Set(labels).size, labels.length, "no two controls on the page share a name");
@@ -842,10 +981,10 @@ test("test_typing_waits_for_an_ime_composition_to_end", async () => {
   const {doc, elements, fire} = fakeDom();
   await load().boot(doc, fakeWindow(populatedFetch()));
   const before = elements.out.innerHTML;
-  fire("out", "input", {isComposing: true, target: {dataset: {filter: "text"}, value: "ni", id: "flt-follow-ups-text"}});
+  fire("out", "input", {isComposing: true, target: {dataset: {filter: "text", table: "follow-ups"}, value: "ni", id: "flt-follow-ups-text"}});
   assert.equal(elements.out.innerHTML, before, "a redraw mid-composition would destroy the composition");
-  fire("out", "compositionend", {target: {dataset: {filter: "text"}, value: "nihao", id: "flt-follow-ups-text"}});
-  assert.match(elements.out.innerHTML, /data-filter="text" id="flt-follow-ups-text" [^>]*value="nihao"/);
+  fire("out", "compositionend", {target: {dataset: {filter: "text", table: "follow-ups"}, value: "nihao", id: "flt-follow-ups-text"}});
+  assert.match(elements.out.innerHTML, /data-filter="text" data-table="follow-ups" id="flt-follow-ups-text" [^>]*value="nihao"/);
 });
 
 // ---- behaviour pinned by mutation testing: each test below fails when a deliberate fault is put into the page ----
@@ -1076,7 +1215,7 @@ test("test_the_caret_is_restored_where_the_user_was_typing", async () => {
   const carets = [];
   const byId = doc.getElementById;
   doc.getElementById = (id) => (/^flt-/.test(id) ? {id, focus() {}, setSelectionRange: (a, b) => carets.push([a, b])} : byId(id));
-  fire("out", "input", {target: {dataset: {filter: "text"}, value: "blocked", id: "flt-follow-ups-text", selectionStart: 3}});
+  fire("out", "input", {target: {dataset: {filter: "text", table: "follow-ups"}, value: "blocked", id: "flt-follow-ups-text", selectionStart: 3}});
   assert.deepEqual(carets, [[3, 3]]);
   fire("out", "change", filterEvent("status", "Blocked"));
   assert.deepEqual(carets, [[3, 3]], "a select has no caret to restore");
@@ -1139,7 +1278,7 @@ test("test_the_chevron_shows_collapsed_or_expanded_and_empty_kind_groups_are_not
 
 test("test_the_kind_filter_does_not_hide_rows_of_tables_without_a_kind_column", () => {
   const model = WS.buildModel([issue(1, FULL, {title: "plain follow-up"}), issue(2, withKind("track"), {title: "a hardening track"})], VOCAB, {});
-  const open = ui({filters: {...WS.emptyFilters(), kind: "Track"}});
+  const open = uiWith("follow-ups", {kind: "Track"});
   open.collapsed.hardening = false;
   const html = WS.renderPage(model, open);
   assert.match(html, /plain follow-up/);
@@ -1148,16 +1287,16 @@ test("test_the_kind_filter_does_not_hide_rows_of_tables_without_a_kind_column", 
 
 test("test_a_filtered_column_still_offers_every_value_of_the_table", () => {
   const model = WS.buildModel([issue(1, withLabels({status: "status:blocked"})), issue(2, FULL)], VOCAB, {});
-  const html = WS.renderPage(model, ui({filters: {...WS.emptyFilters(), status: "Blocked"}}));
+  const html = WS.renderPage(model, uiWith("follow-ups", {status: "Blocked"}));
   assert.match(html, /<select data-filter="status"[^>]*><option value="">All<\/option><option value="Open">Open<\/option><option value="Blocked" selected>Blocked<\/option><\/select>/);
 });
 
 test("test_an_unchanged_value_does_not_redraw_or_refocus_and_an_unknown_control_is_ignored", async () => {
   const {doc, focused, fire} = fakeDom();
   await load().boot(doc, fakeWindow(populatedFetch()));
-  fire("out", "input", filterEvent("text", "blocked", "flt-follow-ups-text"));
+  fire("out", "input", filterEvent("text", "blocked"));
   const drawn = focused.length;
-  fire("out", "change", filterEvent("text", "blocked", "flt-follow-ups-text"));
+  fire("out", "change", filterEvent("text", "blocked"));
   assert.equal(focused.length, drawn, "the change event that follows input carries the same value: no second redraw, no focus pulled back");
   for (const key of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
     fire("out", "change", {target: {dataset: {filter: key}, value: "x", id: "flt-" + key}});
@@ -1201,7 +1340,7 @@ test("test_text_escaping_and_url_validation", () => {
   assert.doesNotMatch(html, /evil\.example/);
   const good = WS.renderPage(WS.buildModel([issue(2, FULL)], VOCAB, {}), ui());
   assert.match(good, new RegExp(`href="https://github.com/${REPO}/issues/2"`));
-  const quoted = WS.renderPage(WS.buildModel([issue(3, FULL)], VOCAB, {}), ui({filters: {...WS.emptyFilters(), text: '"><img src=x onerror=1>'}}));
+  const quoted = WS.renderPage(WS.buildModel([issue(3, FULL)], VOCAB, {}), uiWith("follow-ups", {text: '"><img src=x onerror=1>'}));
   assert.doesNotMatch(quoted, /<img/);
 });
 
