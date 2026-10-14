@@ -2511,3 +2511,114 @@ def test_a2a_ledger_design_v2_is_the_live_successor_and_owns_the_channel() -> No
     ledger_row = _feature_row(pool, "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER")
     assert "[design v2](../specs/evidence-handoff-a2a-ledger-design_v2.md)" in ledger_row
     assert _feature_rows(pool)["EVIDENCE-HANDOFF-FEAT-A2A-CHANNEL"] == 1
+
+
+def _issue_only_plan_pointers(text: str, plans_root: Path = PLANS_ROOT) -> tuple[tuple[str, int], ...]:
+    """New ADR-022 pointers have no former backlog identity or local work metadata."""
+    tables = [table for table in _markdown_tables(text) if table[0][0] == "Live implementation plan registry"]
+    assert len(tables) == 1
+    _identity, header, rows = tables[0]
+    assert header == ("Plan", "State", "Backlog owner", "Next gate")
+    plan_link = re.compile(r"\[[^]\n]+\]\((?P<path>[A-Za-z0-9][A-Za-z0-9_.-]*\.md)\)")
+    issue_link = re.compile(r"\[#(?P<issue>[1-9]\d*)\]\(https://github\.com/vibhanshu-agarwal/optimus-cost-agent/issues/(?P=issue)\)")
+    plan_counts: Counter[str] = Counter()
+    issue_counts: Counter[int] = Counter()
+    pointers: list[tuple[str, int]] = []
+    for row in rows:
+        plan = plan_link.fullmatch(row["Plan"])
+        assert plan is not None, row
+        filename = plan.group("path")
+        plan_counts[filename] += 1
+        gate = row["Next gate"]
+        issue_prefix = issue_link.match(gate)
+        if issue_prefix is not None:
+            issue_counts[int(issue_prefix.group("issue"))] += 1
+        if row["State"] == "Moved":
+            # The unchanged historical checks validate the manifest and former-detail pin.
+            continue
+        if row["State"] in {"`Active`", "`Blocked`"} and not gate.startswith("[#"):
+            legacy_rows = [
+                prior
+                for identity, _header, prior_rows in _markdown_tables(_pool_at_cutover_base())
+                if identity[0] == "Live implementation plan registry"
+                for prior in prior_rows
+                if prior["State"] in {"`Active`", "`Blocked`"}
+            ]
+            assert any(prior["Plan"] == row["Plan"] for prior in legacy_rows), row
+            continue
+        assert row["State"] == row["Backlog owner"] == "—", row
+        issue = issue_link.fullmatch(gate)
+        assert issue is not None, row
+        assert (plans_root / filename).is_file(), filename
+        pointers.append((filename, int(issue.group("issue"))))
+    for filename, issue in pointers:
+        assert plan_counts[filename] == issue_counts[issue] == 1, (filename, issue)
+    return tuple(pointers)
+
+
+def _issue_only_registry_fixture(*rows: str) -> str:
+    return (
+        "## Live implementation plan registry\n\n"
+        "| Plan | State | Backlog owner | Next gate |\n"
+        "|---|---|---|---|\n" + "\n".join(rows) + "\n"
+    )
+
+
+def test_new_issue_only_plan_pointers_are_canonical_and_do_not_copy_work_metadata() -> None:
+    _issue_only_plan_pointers(_read(OPTIMUS_POOL))
+
+
+def test_issue_only_plan_pointer_accepts_distinct_existing_plans(tmp_path: Path) -> None:
+    for name in ("new-plan.md", "second.md"):
+        (tmp_path / name).write_text("# Scope\n", encoding="utf-8")
+    rows = (
+        f"| [New](new-plan.md) | — | — | [#350]({ISSUES_URL}350) |",
+        f"| [Second](second.md) | — | — | [#351]({ISSUES_URL}351) |",
+    )
+    assert _issue_only_plan_pointers(_issue_only_registry_fixture(*rows), tmp_path) == (
+        ("new-plan.md", 350), ("second.md", 351)
+    )
+
+
+@pytest.mark.parametrize(
+    "bad_row",
+    [
+        "| [New](new-plan.md) | Open | — | [#350]({url}350) |",
+        "| [New](new-plan.md) | `Blocked` | — | [#350]({url}350) |",
+        "| [New](new-plan.md) | `Blocked` | `codex` | pending tests |",
+        "| [New](new-plan.md) | `Active` | `codex` | implement now |",
+        "| [New](new-plan.md) | — | codex | [#350]({url}350) |",
+        "| [New](new-plan.md) | — | priority:high | [#350]({url}350) |",
+        "| [New](new-plan.md) | — | — | [#350]({url}350) pending tests |",
+        "| [New](new-plan.md) | — | — | [#350]({url}350) · [pinned detail](old.md) |",
+        "| [New](new-plan.md) | — | — | [#350]({url}351) |",
+        "| [New](new-plan.md) | — | — | [#0]({url}0) |",
+        "| [New](new-plan.md) | — | — | [#0350]({url}0350) |",
+        "| [New](new-plan.md) | — | — | [#350](https://example.com/issues/350) |",
+        "| [New](new-plan.md) | — | — | [#350]({url}350/) |",
+        "| [New](new-plan.md) | — | — | [#350]({url}350?state=open) |",
+        "| [New](new-plan.md) | — | — | [#350]({url}350) [#351]({url}351) |",
+        "| [New](missing.md) | — | — | [#350]({url}350) |",
+        "| [New](../new-plan.md) | — | — | [#350]({url}350) |",
+        "| [New](new-plan.md) extra | — | — | [#350]({url}350) |",
+        "| [New](new-plan.md) | — | [#350]({url}350) |",
+        "| [New](new-plan.md) | — | — | |",
+        "| [New](new-plan.md) | — | — | [#350]({url}350) | extra |",
+    ],
+)
+def test_issue_only_plan_pointer_rejects_injected_metadata_and_malformed_cells(tmp_path: Path, bad_row: str) -> None:
+    (tmp_path / "new-plan.md").write_text("# Scope\n", encoding="utf-8")
+    with pytest.raises(AssertionError):
+        _issue_only_plan_pointers(_issue_only_registry_fixture(bad_row.format(url=ISSUES_URL)), tmp_path)
+
+
+@pytest.mark.parametrize("second_plan,second_issue", [("new-plan.md", 351), ("second.md", 350)])
+def test_issue_only_plan_pointer_rejects_duplicate_plan_or_issue(tmp_path: Path, second_plan: str, second_issue: int) -> None:
+    for name in ("new-plan.md", "second.md"):
+        (tmp_path / name).write_text("# Scope\n", encoding="utf-8")
+    rows = (
+        f"| [New](new-plan.md) | — | — | [#350]({ISSUES_URL}350) |",
+        f"| [Second]({second_plan}) | — | — | [#{second_issue}]({ISSUES_URL}{second_issue}) |",
+    )
+    with pytest.raises(AssertionError):
+        _issue_only_plan_pointers(_issue_only_registry_fixture(*rows), tmp_path)

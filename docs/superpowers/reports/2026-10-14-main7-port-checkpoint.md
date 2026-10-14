@@ -1,0 +1,80 @@
+# MAIN-7 port — dated local checkpoint receipt
+
+Captured 2026-10-14, Asia/Calcutta. [#350](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/350) owns live status, handler and next gate. This receipt describes the local source/behavior checkpoint, not technical acceptance, publication or merge. The complete contract is [v4](../plans/MAIN-PORT-PLAN-v5.md).
+
+## Source and file freeze
+
+Fresh remote/main target: `d23a0e0683aeb2874a8e30af57aff795f77eb365`. Branch `agent/codex/main7-bounded-diagnostics-port` starts at that pin. MAIN-7 annotated source tag resolves to `9e523e29abde6d372fe38ac9e7d36e123650406b`; sandbox HEAD remains `f6b0b602291b933ac1f493f397cad2b6f53620bf`, with an empty post-tag range. The sandbox's three dirty documents remain backed up; no source or tag was changed.
+
+Original acceptance review MANIFEST SHA-256: `36d5cc6fe0f5ad7662be716b6a849bb054dbd8c4e9eb884be9055a7f9a29c663`; all 215 listed files verified, zero mismatches. Historical review: bounded diagnostics accepted, six valid red failures, 66 focused green passes; the first invalid red attempt remains invalid. Its sandbox-only hook substitution and Stage 3 dispositions do not authorize this port.
+
+Predecessor preservation SHA-256: v1 `e9d9d27047655120e51496545c9bb2c0096952692febda771cfce91789e53be9`; v2 `7942281b80d19a2d7c870e3dbd1bc12eefea3e34c462df5694de8b34042db874`; register `8d1bc1986ae3aadc38ba049c295d64262e239af83bae1ffd9531b542f7b59fb8`; final reviewed agent-run v3 `332be92327f7947cd336f8c2e1d59c559c728c96210d779004b6c7f94315e264`. These identify archival provenance; no command/test/review needs the workstation originals.
+
+| Product path | Base Git blob | Port boundary |
+|---|---|---|
+| `src/optimus/guardrails/audit.py` | `96b98d5c94d825659c6501693e6a128fe69c37ec` | Positive `max_events=16`, recent events, exact dropped count under existing Lock. |
+| `src/optimus/guardrails/pre_tool.py` | `830285b4e02de7f97a045d40ae7d061c0aeca725` | Limit/drop reader properties only; mandatory audit appends and decisions unchanged. |
+| `src/optimus/acp/dispatcher.py` | `fbecadcf725568c8a1b3dde7be1e143fb98a3723` | Recent-audit documentation and dropped-counter forwarding. |
+| `src/optimus/telemetry/fanout.py` | `c1ae81356b48bb323cd55eff662350f7d7c2a0a1` | Isolated R9 ordinary local-sink containment plus MAIN-7 bounded failure/results; only logging/dataclasses added to imports. |
+
+The three audit/reader changes use selected tagged hunks. Fanout adapts selected R9 definitions from `c69fd48` and tagged retention behavior, preserving main's existing settlement helper and Gateway parsing. No mixed commit cherry-pick, whole product-file transplant, runtime/MCP imports, Redis ownership changes, dependency/configuration changes, secret-baseline widening, profiling or shared logging-audit-manifest changes.
+
+Frozen test mutation paths: `tests/unit/agent/test_runner.py`, `tests/unit/usage/test_accounting.py`, `tests/unit/telemetry/test_fanout.py`, `tests/unit/acp/test_dispatcher.py`, new `tests/unit/guardrails/test_bounded_audit.py`, new `tests/unit/telemetry/test_fanout_bounded_diagnostics.py`. The dispatcher behavior test is included explicitly because its existing two-write coverage never exercised eviction. V4 specifies all contracts and controls.
+
+The complete nine-sender table was refreshed at the same main pin. The primary default composition remains bootstrap → AgentRunner → skills/loops/ACP settlement. Accounting has no construction or `usage_accounting=` wiring under source and remains a secondary injected-path control. Mandatory audits, provider/progress ledgers, session persistence and directly injected callbacks remain outside containment. No additional production caller edit was needed.
+
+## Attributed focused evidence
+
+Environment: the lane's own frozen Windows CPython 3.14.4, pytest 9.1.1, coverage 7.14.3 and Ruff 0.15.20. Setup `uv sync --frozen --extra dev`; runs use `uv run --no-sync` without changing repository addopts/root conftest. Each source snapshot was unchanged during its run. Development runs with test/code edits are provisional dirty-tree evidence, not exact-commit acceptance. Raw outputs, typed run records and source/config hashes are retained locally under ignored evidence storage with SHA-256 manifests.
+
+| Run | Exact command after `uv run --no-sync` | Result and interpretation |
+|---|---|---|
+| `20261013T194752-46604-54beb0` | `pytest --no-cov tests/unit/agent/test_runner.py tests/unit/telemetry/test_fanout.py tests/unit/usage/test_accounting.py tests/unit/acp/test_dispatcher.py` | Exit 0, 87 passed on untouched main. |
+| `20261013T195336-33552-3094f6` | `pytest --no-cov tests/unit/agent/test_runner.py::test_run_with_telemetry_fanout_preserves_completed_result_when_jsonl_fails tests/unit/usage/test_accounting.py::test_accounting_records_usage_when_jsonl_telemetry_fails` | Exit 1, both desired-behavior tests failed with controlled OSError after file/cost/completed-event and recorded-ledger assertions respectively. Product blobs still matched main. |
+| `20261013T195457-21564-1564db` | `pytest --no-cov tests/unit/guardrails/test_bounded_audit.py tests/unit/telemetry/test_fanout_bounded_diagnostics.py tests/unit/telemetry/test_fanout.py tests/unit/acp/test_dispatcher.py::test_dispatcher_keeps_recent_denials_and_forwards_exact_drop_count` | Exit 1, 13 failed and 19 passed before product changes. Retention/local-propagation failures are behavioral; old constructors' TypeError and missing new counter names are unsupported-API findings, not separate behavioral proof. Control-flow and mandatory-audit controls passed. |
+| `20261013T195550-60240-ea736a` | `pytest --no-cov tests/unit/agent/test_runner.py tests/unit/guardrails/test_bounded_audit.py tests/unit/telemetry/test_fanout_bounded_diagnostics.py tests/unit/telemetry/test_fanout.py tests/unit/usage/test_accounting.py tests/unit/acp/test_dispatcher.py` | Exit 0, 113 passed after the four-file adaptation; both primary/secondary regressions green. |
+| `20261013T195621-5492-4e7e9f` | `pytest --no-cov tests/unit/skills/test_registry.py tests/unit/skills/test_invocation.py tests/unit/retry/test_gated_run.py tests/unit/loops tests/unit/release/test_runner.py tests/unit/golden/test_runner.py tests/unit/guardrails/test_pre_tool_guard.py` | Exit 0, 77 passed, 1 skipped; skip node/reason preserved in raw context. |
+
+All five runs report active/default_selection, Windows native valid, pytest_process_guard, full protection and COMPLETE records, with original exit statuses preserved. The typed `run_context_records.read_record` reader is used; completeness and test success remain separate checks. The green source preceded Ruff's whitespace-only import fix; later checks must bind to final bytes.
+
+Initial Ruff exit 1: one I001 import-spacing finding in fanout. Targeted Ruff correction changed spacing only; `uv run --no-sync ruff check .` then passed. No test failure was retried without a corresponding implementation change. Mypy is not configured or installed in the current target's pinned development stack; this port adds no typing gate or dependency.
+
+## Remaining acceptance gates
+
+At this receipt, full protected Windows coverage, dataset validity, separate WSL/Linux, current hooks, independent execution review and publication gates are not yet discharged. The local checkpoint log carries later attributable run IDs and source pins; live work metadata stays in #350. A green focused test does not accept the full port, activate Plan 11.28 workflows, or establish live-service/memory-profile acceptance. Push, PR and merge remain separately authorized, and each issue edit requires operator approval.
+
+## Recorded setup and filing decisions
+
+The native worktree tool could not create a lane from the non-Git planning folder. Git fallback created a clean fresh-main lane; native attachment rejected it as unmanaged. The current evidence policy's C:/worktrees rule takes precedence over CONTRIBUTING's older sibling example. Git's cross-volume move failed with Improper link; a verified PowerShell move followed by worktree repair put the lane in the governed directory. The failed move and failed sandbox-local target-ref lookup are retained as setup errors, not product test verdicts.
+
+Canonical plan filing consolidates dated source/caller/agent-run evidence in this sanitized receipt and points to #350. Original drafts remain hash-backed archival provenance. This changes no acceptance contract or product scope. The issue-only plan registry pointer and documentation index are updated together; no second live work pool is added. Raw contexts, environment files and local review checkpoint logs are not staged.
+
+## Approved canonical-filing correction
+
+The operator approved complete v4 and its local correction on 2026-10-14. The two added mutation paths are `tests/unit/docs/test_plan_directory_hygiene.py` and `tests/unit/docs/test_open_work_pool_hygiene.py`. Four production and six behavior-test paths remain unchanged.
+
+The initial `Moved` filing failed the historical migration check: run `20261013T195850-3544-b1bfd5`, exit 1, one failed and 94 passed. Its typed terminal record is COMPLETE/exit 1; the wrapper failed UTF-8 decoding of cp1252 output before its after-source receipt, so its wrapper attribution is incomplete. This failed projection remains backed up; no historical source entry or migration record was invented. The replacement uses exactly two empty metadata cells and the single canonical #350 link, under ADR-022's new-plan exception. Existing sealed migration checks remain unchanged.
+
+The approved draft's SHA-256 is `074ee9c7e8ad5cdbd9af9d96760670b72ff1c6546ecf72efe662dcd59d1f559f`. Canonical filing repairs its relative evidence links to this receipt, declares the approved canonical home and removes the obsolete assertion that product reds/greens are still unrun; the contract and scope are preserved. The draft and failed filing remain byte-backed archival provenance. No GitHub write, push, PR or merge is covered by this local approval.
+
+## Dated v4 correction evidence
+
+Operator approval: complete v4 and its local correction, 2026-10-14. Desired registration behavior was red on the old helper: `20261013T204032-54648-db5120`, one failed, exit 1; the legitimate new plan was omitted. After the approved two-file check/helper correction and canonical filing, `20261013T204058-61296-bae8bd` passed all **234 tests** (121 docs checks and 113 MAIN-7 behavior tests), no skips, exit 0. Each source snapshot was unchanged during its run. Typed records are COMPLETE, active/default selection, native valid, full protection/full audit depth, zero recording errors. Ruff passed. These are dirty-tree development checks, not clean-source final acceptance.
+
+The first normal local-commit hook rejected the candidate. Selected run `20261013T200325-56724-929e5c`: one failed, 4,953 passed, 20 skipped, exit 1; COMPLETE/native valid/full protection/full audit depth. Failure: `test_checked_in_manifest_covers_current_surface_inventory` reports the new `optimus.telemetry.fanout:_report_local_sink_failure:logger_export` as UNCLASSIFIED_SINK. The subsequent 78-test audit run passed, with quick/reduced depth; it cannot supersede the failed selected run. The profile manifest remains failed. Raw output and both typed contexts are hash-backed in the local archival packet. HEAD remains the base; no local commit was created.
+
+Read-only inventory comparison found exactly that one missing surface: 531 existing entries, 532 discovered surfaces. The complete proposed one-entry addition validates in memory against main's current inventory and real unit test node. The shared manifest's before/after SHA-256 remains `670267a3909087e394678a498d9c3ceb2fdd1dd33a8e1380efb356eb8a53aa89`; it has not been edited. The additional artifact is outside v4's frozen mutation list, so complete v5 was prepared for separate operator approval (draft SHA-256 `c462064e6c811065adc98c3ab53c249d93a88ab98ad438b45a3c366ddabe3a8f`). Product and test mutation paths remain four and eight. Nothing bypasses the hook or removes the required warning. Final clean-source Windows/Linux gates, independent review and delivery have not been run.
+
+## Dated v5 adoption and independent checkpoint
+
+On 2026-10-14 the operator directly approved complete v5 and its single logging-inventory entry, normal local verification and commits. Issue body/labels/state edits, push, PR and merge retain separate approval. The approved draft SHA-256 is `c462064e6c811065adc98c3ab53c249d93a88ab98ad438b45a3c366ddabe3a8f`; archival custody preserves that draft, the prior uncommitted v4 projection and all failed attempts. Canonical filing repairs evidence links/home wording and normalizes two satisfied prerequisite cells to `yes` plus the three unknown-disposition prefixes; those edits change no acceptance contract or authority. The original planning snapshot remains dated provenance.
+
+Exactly one reviewed main-derived inventory entry was added, preserving all 531 prior entries and metadata. Source discovery now has 532 classified surfaces; the existing validator accepts the complete inventory. No sandbox inventory was copied. The prior `UNCLASSIFIED_SINK` failure remains a failed attempt, not overwritten by the correction.
+
+Claude's independent checkpoint review is comment 6155144124 on #350, bound to the earlier 16-path staged patch SHA-256 `18ed80dda6d4dc801029df084428c7d95d10da9d7ebbddcd4af16f0bfdce6868` and approved v5 draft. Independent reds reproduced both completed-result/ledger failures; the reviewed candidate passed 598 tests with one skip, context `20261013T205550-50632-fd3bd6`, COMPLETE/native valid/full protection. The logging inventory failure was reproduced; exactly the proposed entry in the isolated review worktree then passed 17 controls. Claude found no blocking checkpoint findings; this is not final acceptance. Serialized fanout remains unlocked and warning emission has no rate limit; those non-blocking observations remain with #303's broader reconciliation, with no new issue or product scope.
+
+The clean committed Windows product-coverage/validity and separate frozen Linux gates have not yet run at this adoption. Later results bind to their own exact source pin; no earlier dirty-tree or reduced-depth run is upgraded to final acceptance.
+
+## V5 focused verification
+
+Run `20261014T035234-45484-63d75d`: 250 passed, no skips, exit 0; the 16 existing inventory checks, all 121 docs checks and all 113 MAIN-7 behavior tests. Exact invocation after `uv run --no-sync`: `pytest --no-cov tests/unit/tools/test_verify_plan996_logging_surfaces.py tests/unit/docs tests/unit/agent/test_runner.py tests/unit/guardrails/test_bounded_audit.py tests/unit/telemetry/test_fanout_bounded_diagnostics.py tests/unit/telemetry/test_fanout.py tests/unit/usage/test_accounting.py tests/unit/acp/test_dispatcher.py`. Source snapshot unchanged during the run. Typed context COMPLETE, active/default selection, native valid/full protection/full audit depth, zero recording errors. Ruff passed. These are provisional development checks of the approved 17-path candidate; final clean committed gates are separate. The initial rejected commit/profile remains preserved.

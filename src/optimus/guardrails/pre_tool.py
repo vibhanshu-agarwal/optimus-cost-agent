@@ -168,6 +168,14 @@ class PreToolGuard:
     def audit_events(self) -> tuple[ToolInvocationAuditEvent, ...]:
         return self._audit_sink.events()
 
+    @property
+    def audit_event_limit(self) -> int:
+        return self._audit_sink.max_events
+
+    @property
+    def audit_events_dropped(self) -> int:
+        return self._audit_sink.dropped_count
+
     def _check_client_mcp(self, request: PreToolRequest) -> PreToolResult:
         if self._client_mcp_authorizer is None:
             result = PreToolResult(

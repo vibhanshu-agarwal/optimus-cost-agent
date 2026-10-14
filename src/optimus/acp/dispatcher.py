@@ -99,8 +99,12 @@ class JsonRpcDispatcher:
         return self._workspace_root
 
     def audit_events(self) -> tuple[ToolInvocationAuditEvent, ...]:
-        """Return every guard decision recorded across this dispatcher's lifetime."""
+        """Return recent guard decisions; older ones are counted by the guard."""
         return self._pre_tool_guard.audit_events()
+
+    @property
+    def audit_events_dropped(self) -> int:
+        return self._pre_tool_guard.audit_events_dropped
 
     def dispatch(self, request: dict[str, Any]) -> dict[str, Any]:
         request_id = request.get("id")

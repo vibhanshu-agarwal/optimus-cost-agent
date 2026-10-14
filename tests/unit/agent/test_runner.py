@@ -1197,3 +1197,74 @@ def test_agent_runner_run_accepts_keyword_only_mcp_runtime_without_request_field
     assert "client_mcp_service" not in result.model_dump()
     assert service.list_calls == ["tools"]
     assert all(call.tool_name != "lookup" for call in result.tool_calls)
+
+
+def test_run_with_telemetry_fanout_preserves_completed_result_when_jsonl_fails(tmp_path, monkeypatch, caplog, capsys):
+    import logging
+
+    from optimus.telemetry.fanout import TelemetryFanout
+    from optimus.telemetry.jsonl import JsonlTelemetryWriter
+
+    class RecordingExporter:
+        def __init__(self):
+            self.batches = []
+
+        def export(self, events):
+            self.batches.append(events)
+            return {"trace_batch_id": f"batch-{len(self.batches)}", "trace_ids": [],
+                    "delivery_state": "delivered", "retry_count": 0, "final_disposition": "delivered"}
+
+    target = tmp_path / "example.py"
+    target.write_text("def f():\n    return 1\n", encoding="utf-8")
+    writer = JsonlTelemetryWriter(tmp_path / ".optimus" / "telemetry.jsonl")
+    redis_events = []
+    exporter = RecordingExporter()
+    fanout = TelemetryFanout(jsonl_writer=writer, redis_sink=redis_events.append, gateway_exporter=exporter, batch_size=1)
+    runner = AgentRunner(
+        gateway_client=FakeGatewayClient('WRITE example.py\ndef f():\n    """Return one."""\n    return 1\n'),
+        model="glm-5.2", event_sink=fanout,
+    )
+    common = dict(run_id="run-1", task="Add a docstring to example.py", execution_mode=ExecutionMode.AGENT, workspace_root=tmp_path)
+    plan_result = runner.run(AgentRunRequest(**common))
+    before_redis, before_gateway = len(redis_events), len(exporter.batches)
+    healthy_append = writer.append
+    failed_events = []
+
+    def fail_completed_event(event):
+        if event.kind is not TelemetryEventKind.AGENT_RUN:
+            return healthy_append(event)
+        assert '"""Return one."""' in target.read_text(encoding="utf-8")
+        payload = event.to_json_dict()
+        assert payload["status"] == "completed"
+        assert payload["mutation_count"] == 1
+        assert payload["total_cost_usd"] == "0.002"
+        failed_events.append(event)
+        raise OSError("synthetic-private-sink-message")
+
+    monkeypatch.setattr(writer, "append", fail_completed_event)
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="optimus.telemetry.fanout"):
+        result = runner.run(AgentRunRequest(
+            **common, approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan_result.plan_hash),
+        ))
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert result.mutation_count == 1
+    assert result.total_cost_usd == Decimal("0.002")
+    assert '"""Return one."""' in target.read_text(encoding="utf-8")
+    assert len(failed_events) == 1
+    assert redis_events[before_redis:] == failed_events
+    assert exporter.batches[before_gateway:] == [tuple(failed_events)]
+    fanout.flush()
+    assert len(exporter.batches) == before_gateway + 1
+    assert len(fanout.local_sink_failures) == 1
+    failure = fanout.local_sink_failures[0]
+    assert (failure.sink, failure.event_kind, failure.reason_code, failure.exception_type) == (
+        "jsonl", "agent_run", "telemetry_sink_raised", "OSError",
+    )
+    warnings = [record for record in caplog.records if record.name == "optimus.telemetry.fanout"]
+    assert len(warnings) == 1
+    assert warnings[0].levelno == logging.WARNING
+    assert warnings[0].exc_info is None
+    assert "synthetic-private-sink-message" not in caplog.text + repr(failure)
+    assert capsys.readouterr().out == ""
