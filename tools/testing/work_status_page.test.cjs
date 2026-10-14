@@ -49,6 +49,8 @@ function issue(number, labels, extra = {}) {
 }
 
 const FULL = ["status:open", "priority:medium", "difficulty:medium", "estimate:na", "handler:unassigned", "product:optimus", "kind:follow-up"];
+const withKind = (kind) => [...FULL.slice(0, 6), `kind:${kind}`];
+const withLabels = (replace) => FULL.map((label) => replace[label.split(":")[0]] || label);
 
 function parentUrl(number) {
   return `https://api.github.com/repos/${REPO}/issues/${number}`;
@@ -65,33 +67,46 @@ function response(body, {status = 200, link = null, remaining = "59", raw = null
   };
 }
 
-function rowsByNumber(sections) {
-  const out = new Map();
-  for (const section of sections) for (const row of section.rows) out.set(row.number, {...row, section: section.title});
-  return out;
+function allRows(model) {
+  return [...model.tables.flatMap((table) => table.rows), ...model.untriaged];
 }
+
+function rowsByNumber(model) {
+  return new Map(allRows(model).map((row) => [row.number, row]));
+}
+
+const tableOf = (model, key) => model.tables.find((table) => table.key === key);
+const numbersOf = (rows) => plain(rows.map((row) => row.number));
 
 // ---- fake DOM for the browser controller ----
 function fakeDom() {
   const listeners = {};
+  const focused = [];
   const el = (id) => ({id, value: "", textContent: "", innerHTML: "", href: "",
     addEventListener: (type, fn) => { listeners[`${id}:${type}`] = fn; }});
   const elements = {
     "work-status-vocabulary": {textContent: JSON.stringify(VOCAB)},
     state: {...el("state"), value: "open"},
+    product: {...el("product"), value: ""},
+    clear: el("clear"),
     reload: el("reload"),
     out: el("out"),
     stamp: el("stamp"),
+    announce: el("announce"),
     live: el("live"),
   };
-  const doc = {getElementById: (id) => elements[id]};
-  return {doc, elements, fire: (id, type) => listeners[`${id}:${type}`]()};
+  const dynamic = (id) => ({id, value: "", focus: () => focused.push(id), setSelectionRange: () => {}});
+  const doc = {getElementById: (id) => elements[id] || (/^flt-/.test(id) ? dynamic(id) : undefined)};
+  return {doc, elements, focused, fire: (id, type, event) => listeners[`${id}:${type}`](event)};
 }
 
 function fakeWindow(fetchImpl, search = "") {
   return {location: {search}, URLSearchParams, fetch: fetchImpl};
 }
 
+const filterEvent = (key, value, id = `flt-follow-ups-${key}`) => ({target: {dataset: {filter: key}, value, id}});
+
+// ---- cells: status and metadata dimensions ----
 test("test_closed_reason_mapping", () => {
   const closed = (reason) => WS.statusCell(issue(1, [], {state: "closed", state_reason: reason}), VOCAB);
   assert.deepEqual({...closed("completed")}, {text: "Done", bad: false});
@@ -124,7 +139,7 @@ test("test_missing_and_conflicting_dimensions", () => {
   assert.deepEqual({...WS.statusCell(issue(1, ["Status:Open"]), VOCAB)}, {text: "unknown: Open", bad: true});
 });
 
-test("test_unknown_enum_and_unclassified_issue_visible", () => {
+test("test_unknown_enum_values_are_visible_never_guessed", () => {
   assert.deepEqual({...WS.statusCell(issue(1, ["status:weird"]), VOCAB)}, {text: "unknown: weird", bad: true});
   assert.deepEqual({...WS.metadataCell(issue(1, ["handler:somebody"]), VOCAB.dimensions.owner)}, {text: "unknown: somebody", bad: true});
   for (const name of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
@@ -135,22 +150,279 @@ test("test_unknown_enum_and_unclassified_issue_visible", () => {
     }
     // the free-form estimate rule stands: any value is shown as written
     assert.deepEqual({...WS.metadataCell(issue(1, ["estimate:" + name]), VOCAB.dimensions.estimate)}, {text: name, bad: false});
-    const odd = WS.buildRows([issue(2, [...FULL.slice(0, 5), "product:" + name, "kind:" + name])], VOCAB);
-    assert.deepEqual(plain(odd.map((s) => s.title)), ["Untriaged issues"], name);
+    const odd = WS.buildModel([issue(2, [...FULL.slice(0, 5), "product:" + name, "kind:" + name])], VOCAB, {});
+    assert.deepEqual(numbersOf(odd.untriaged), [2], name);
   }
   // each guard matters on its own: an inherited string entry, and an own entry that is not a display string
   const inherited = {label: "priority", values: Object.create({inherited: "Inherited"})};
   assert.deepEqual({...WS.metadataCell(issue(1, ["priority:inherited"]), inherited)}, {text: "unknown: inherited", bad: true});
   const numeric = {label: "priority", values: {weird: 5}};
   assert.deepEqual({...WS.metadataCell(issue(1, ["priority:weird"]), numeric)}, {text: "unknown: weird", bad: true});
-  const sections = WS.buildRows([issue(1, FULL), issue(2, ["status:open"]), issue(3, [...FULL.slice(0, 5), "product:mars", "kind:plan"])], VOCAB);
-  assert.deepEqual(plain(sections.map((s) => s.title)), ["Optimus", "Untriaged issues"]);
-  const rows = rowsByNumber(sections);
-  assert.equal(rows.get(2).section, "Untriaged issues");
-  assert.equal(rows.get(3).section, "Untriaged issues");
-  assert.equal(rows.size, 3, "every issue is visible");
 });
 
+// ---- the model: one flat table per kind group ----
+test("test_every_kind_belongs_to_exactly_one_table", () => {
+  const listed = VOCAB.tables.flatMap((table) => table.kinds);
+  assert.deepEqual([...listed].sort(), Object.keys(VOCAB.kinds).sort(), "every kind has a table");
+  assert.equal(new Set(listed).size, listed.length, "no kind is in two tables");
+  assert.equal(new Set(VOCAB.tables.map((table) => table.key)).size, VOCAB.tables.length, "table keys are unique");
+  assert.ok(VOCAB.tables.every((table) => table.key && table.title));
+  assert.deepEqual(VOCAB.tables.map((table) => table.key), ["features", "plans", "follow-ups", "hardening", "obligations"]);
+});
+
+test("test_issues_group_into_one_flat_table_per_kind_in_number_order", () => {
+  const issues = [
+    issue(9, withKind("follow-up")), issue(3, withKind("feature")), issue(7, withKind("follow-up")), issue(5, withKind("track")),
+    issue(6, withKind("candidate")), issue(4, withKind("obligation")), issue(2, withKind("plan")), issue(8, withKind("item")),
+  ];
+  const model = WS.buildModel(issues, VOCAB, {});
+  assert.deepEqual(plain(model.tables.map((table) => table.key)), VOCAB.tables.map((table) => table.key));
+  assert.deepEqual(numbersOf(tableOf(model, "features").rows), [3]);
+  assert.deepEqual(numbersOf(tableOf(model, "plans").rows), [2]);
+  assert.deepEqual(numbersOf(tableOf(model, "follow-ups").rows), [7, 9]);
+  assert.deepEqual(numbersOf(tableOf(model, "hardening").rows), [5, 8, 6], "a multi-kind table lists its kinds in the table's order, then by number");
+  assert.deepEqual(numbersOf(tableOf(model, "obligations").rows), [4]);
+  assert.deepEqual(plain(tableOf(model, "hardening").rows.map((row) => row.kind)), ["Track", "Item", "Candidate"]);
+  assert.equal(tableOf(model, "hardening").multiKind, true, "a table that holds several kinds shows a Kind column");
+  assert.equal(tableOf(model, "features").multiKind, false);
+  assert.ok(allRows(model).every((row) => row.depth === undefined), "rows are flat: nothing is nested");
+  assert.deepEqual(plain(model.untriaged), []);
+});
+
+test("test_collapsed_flags_come_from_the_vocabulary", () => {
+  const model = WS.buildModel([issue(1, FULL)], VOCAB, {});
+  assert.equal(tableOf(model, "hardening").collapsed, true);
+  assert.equal(tableOf(model, "obligations").collapsed, true);
+  assert.equal(tableOf(model, "features").collapsed, false);
+});
+
+test("test_unlabelled_or_unknown_issues_are_untriaged_and_a_product_filter_never_hides_them", () => {
+  const issues = [
+    issue(1, FULL), issue(2, ["status:open"]), issue(3, [...FULL.slice(0, 5), "product:mars", "kind:plan"]),
+    issue(4, [...FULL.slice(0, 5), "product:evidence-a2a", "kind:follow-up"]),
+  ];
+  const all = WS.buildModel(issues, VOCAB, {});
+  assert.deepEqual(numbersOf(all.untriaged), [2, 3]);
+  assert.equal(allRows(all).length, 4, "every issue is visible");
+  const optimus = WS.buildModel(issues, VOCAB, {product: "optimus"});
+  assert.deepEqual(numbersOf(tableOf(optimus, "follow-ups").rows), [1], "the other product is filtered out");
+  assert.deepEqual(numbersOf(optimus.untriaged), [2, 3], "an untriaged issue is a data fault and stays visible");
+  const evidence = WS.buildModel(issues, VOCAB, {product: "evidence-a2a"});
+  assert.deepEqual(numbersOf(tableOf(evidence, "follow-ups").rows), [4]);
+});
+
+test("test_belongs_to_names_the_parent_instead_of_nesting", () => {
+  const parent = issue(10, withKind("feature"), {title: "P11-FEAT-X: Zed session resume"});
+  const child = issue(20, withKind("plan"), {parent_issue_url: parentUrl(10)});
+  const absent = issue(30, FULL, {parent_issue_url: parentUrl(99)});
+  const foreign = issue(40, FULL, {parent_issue_url: "https://api.github.com/repos/someone/else/issues/1"});
+  const rows = rowsByNumber(WS.buildModel([parent, child, absent, foreign], VOCAB, {}));
+  assert.deepEqual(plain(rows.get(20).parent), {number: 10, title: "Zed session resume", url: `https://github.com/${REPO}/issues/10`});
+  assert.deepEqual(plain(rows.get(30).parent), {number: 99, title: null, url: `https://github.com/${REPO}/issues/99`}, "a parent outside the view is still a link");
+  assert.equal(rows.get(10).parent, null);
+  assert.equal(rows.get(40).parent, null);
+  assert.equal(rows.get(40).relationError, "malformed parent link");
+  assert.equal(rows.get(20).relationError, null);
+  const evidenceChild = issue(21, [...FULL.slice(0, 5), "product:evidence-a2a", "kind:plan"], {parent_issue_url: parentUrl(10)});
+  const filtered = rowsByNumber(WS.buildModel([parent, evidenceChild], VOCAB, {product: "evidence-a2a"}));
+  assert.equal(filtered.get(21).parent.title, "Zed session resume", "the parent's title is found even when its product is filtered out");
+  assert.equal(filtered.has(10), false);
+});
+
+test("test_a_parent_cycle_or_a_deep_chain_is_still_one_row_per_issue", () => {
+  const a = issue(41, FULL, {parent_issue_url: parentUrl(42)});
+  const b = issue(42, FULL, {parent_issue_url: parentUrl(41)});
+  const cycle = allRows(WS.buildModel([a, b], VOCAB, {}));
+  assert.deepEqual(numbersOf(cycle), [41, 42]);
+  assert.ok(cycle.every((row) => row.relationError === null), "a flat table has no hierarchy to break");
+  const chain = Array.from({length: 13}, (_, i) => issue(101 + i, FULL, i ? {parent_issue_url: parentUrl(100 + i)} : {}));
+  assert.equal(allRows(WS.buildModel(chain, VOCAB, {})).length, 13);
+});
+
+test("test_progress_and_closed_rows", () => {
+  const feature = issue(10, withKind("feature"), {sub_issues_summary: {total: 3, completed: 1}});
+  const done = issue(11, [], {state: "closed", state_reason: "completed"});
+  const rows = rowsByNumber(WS.buildModel([feature, issue(12, FULL), done], VOCAB, {}));
+  assert.deepEqual(plain(rows.get(10).progress), {completed: 1, total: 3});
+  assert.equal(rows.get(12).progress, null);
+  assert.equal(rows.get(11).closed, true);
+  assert.equal(rows.get(12).closed, false);
+  assert.equal(rows.get(11).cells.status.text, "Done");
+});
+
+// ---- summary tiles ----
+test("test_summary_counts_the_view", () => {
+  const issues = [
+    issue(1, withLabels({status: "status:blocked", priority: "priority:high"})),
+    issue(2, withLabels({status: "status:partially-implemented"})),
+    issue(3, FULL),
+    issue(4, withLabels({priority: "priority:high"})),
+    issue(5, withLabels({estimate: "estimate:na"}).filter((label) => !label.startsWith("priority:"))),
+    issue(6, ["status:open"]),
+  ];
+  const {summary} = WS.buildModel(issues, VOCAB, {});
+  assert.deepEqual(plain(summary), {total: 6, blocked: 1, high: 2, partial: 1, followUps: 5, attention: 2});
+});
+
+// ---- filters ----
+function filterFixture() {
+  const issues = [
+    issue(11, withLabels({status: "status:blocked", priority: "priority:high"}), {title: "Zed refusal rendering"}),
+    issue(12, FULL, {title: "Gateway flake", parent_issue_url: parentUrl(20)}),
+    issue(13, withLabels({status: "status:promoted", handler: "handler:codex"}), {title: "Zed resume probe", parent_issue_url: parentUrl(20)}),
+    issue(14, withLabels({priority: "priority:low", estimate: "estimate:3d"}), {title: "Naming alignment"}),
+    issue(20, withKind("feature"), {title: "F: Parent feature"}),
+  ];
+  return tableOf(WS.buildModel(issues, VOCAB, {}), "follow-ups").rows;
+}
+
+test("test_filter_rows_matches_search_text_case_insensitively_by_number_or_title", () => {
+  const rows = filterFixture();
+  const run = (text) => numbersOf(WS.filterRows(rows, {...WS.emptyFilters(), text}, false));
+  assert.deepEqual(run(""), [11, 12, 13, 14]);
+  assert.deepEqual(run("ZED"), [11, 13]);
+  assert.deepEqual(run("#12"), [12]);
+  assert.deepEqual(run("  flake "), [12]);
+  assert.deepEqual(run("nothing"), []);
+});
+
+test("test_filter_rows_dropdowns_match_the_displayed_cell_and_combine", () => {
+  const rows = filterFixture();
+  const run = (patch) => numbersOf(WS.filterRows(rows, {...WS.emptyFilters(), ...patch}, false));
+  assert.deepEqual(run({status: "Blocked"}), [11]);
+  assert.deepEqual(run({priority: "Medium"}), [12, 13]);
+  assert.deepEqual(run({estimate: "3d"}), [14]);
+  assert.deepEqual(run({owner: "Codex"}), [13]);
+  assert.deepEqual(run({difficulty: "Medium"}), [11, 12, 13, 14]);
+  assert.deepEqual(run({priority: "Medium", text: "zed"}), [13], "filters combine with AND");
+  assert.deepEqual(run({status: "Blocked", priority: "Low"}), []);
+});
+
+test("test_filter_rows_belongs_to_and_kind", () => {
+  const rows = filterFixture();
+  const run = (patch, hasKind) => numbersOf(WS.filterRows(rows, {...WS.emptyFilters(), ...patch}, hasKind));
+  assert.deepEqual(run({belongs: "20"}, false), [12, 13]);
+  assert.deepEqual(run({belongs: "none"}, false), [11, 14]);
+  assert.deepEqual(run({kind: "Track"}, false), [11, 12, 13, 14], "a kind filter is ignored by a table with no Kind column");
+  assert.deepEqual(run({kind: "Track"}, true), [], "and applied by a table that has one");
+  assert.deepEqual(run({kind: "Follow-up"}, true), [11, 12, 13, 14]);
+});
+
+test("test_filter_options_list_only_values_present_in_vocabulary_order", () => {
+  const rows = filterFixture();
+  const options = WS.filterOptions(rows, VOCAB);
+  const values = (list) => plain(list.map((option) => option.value));
+  assert.deepEqual(values(options.status), ["Open", "Promoted", "Blocked"]);
+  assert.deepEqual(values(options.priority), ["High", "Medium", "Low"]);
+  assert.deepEqual(values(options.difficulty), ["Medium"]);
+  assert.deepEqual(values(options.owner), ["Codex", "Unassigned"]);
+  assert.deepEqual(values(options.estimate), ["NA", "3d"]);
+  assert.deepEqual(values(options.belongs), ["20", "none"]);
+  assert.equal(options.belongs[0].label, "#20 Parent feature");
+  const unknown = filterFixture().concat(tableOf(WS.buildModel([issue(99, withLabels({priority: "priority:weird"}))], VOCAB, {}), "follow-ups").rows);
+  assert.equal(plain(WS.filterOptions(unknown, VOCAB).priority.at(-1).value), "unknown: weird", "a bad value is listed last so it can be found");
+});
+
+// ---- rendering ----
+const ui = (patch = {}) => ({...WS.initialUi(VOCAB, "open"), ...patch});
+
+test("test_render_page_gives_every_header_its_full_text_and_a_filter", () => {
+  const model = WS.buildModel([issue(1, FULL), issue(2, withKind("track")), issue(3, withKind("feature"))], VOCAB, {});
+  const open = WS.initialUi(VOCAB, "open");
+  open.collapsed.hardening = false;
+  const html = WS.renderPage(model, open);
+  for (const label of ["Issue / Title", "Belongs to", "Status", "Priority", "Difficulty", "Estimate", "Owner", "Kind"]) {
+    assert.ok(html.includes(`<span class="hl">${label}</span>`), `header ${label}`);
+  }
+  assert.equal((html.match(/<th scope="col"/g) || []).length, (html.match(/data-filter="/g) || []).length, "every header carries one filter");
+  assert.equal((html.match(/data-filter="kind"/g) || []).length, 1, "only the multi-kind table has a Kind column");
+  assert.match(html, /<th scope="col" class="c-title" aria-label="Issue \/ Title"><span class="hl">Issue \/ Title<\/span><input type="search" data-filter="text"/);
+  assert.match(html, /<th scope="col" class="c-estimate" aria-label="Estimate" title="Planned Estimate">/);
+});
+
+test("test_the_page_style_never_clips_text_or_forces_a_narrow_table", () => {
+  const style = /<style>([\s\S]*?)<\/style>/.exec(HTML)[1].replace(/\.sr-only\s*\{[^}]*\}/, ""); // the visually hidden live region is the one thing meant to be invisible
+  assert.doesNotMatch(style, /text-overflow/);
+  assert.doesNotMatch(style, /overflow:\s*hidden/);
+  assert.doesNotMatch(style, /table-layout:\s*fixed/);
+  assert.doesNotMatch(style, /width:\s*1000px/);
+  assert.match(style, /th,\s*td\s*\{[^}]*white-space:\s*nowrap/, "a header or value cell never wraps to a clipped width");
+});
+
+test("test_render_page_collapsed_tables_show_only_their_header_and_count", () => {
+  const model = WS.buildModel([issue(1, FULL, {title: "visible follow-up"}), issue(2, withKind("track"), {title: "hidden track"})], VOCAB, {});
+  const html = WS.renderPage(model, WS.initialUi(VOCAB, "open"));
+  assert.match(html, /data-toggle="hardening" aria-expanded="false"/);
+  assert.match(html, /data-toggle="follow-ups" aria-expanded="true"/);
+  assert.match(html, /visible follow-up/);
+  assert.doesNotMatch(html, /hidden track/);
+  assert.match(html, /<span class="count">1 open<\/span>/);
+  const open = WS.initialUi(VOCAB, "open");
+  open.collapsed.hardening = false;
+  assert.match(WS.renderPage(model, open), /hidden track/);
+});
+
+test("test_render_page_reflects_filter_state_and_counts", () => {
+  const model = WS.buildModel([
+    issue(1, withLabels({status: "status:blocked"}), {title: "blocked one"}), issue(2, FULL, {title: "plain two"}),
+  ], VOCAB, {});
+  const filters = {...WS.emptyFilters(), status: "Blocked", text: "one"};
+  const html = WS.renderPage(model, ui({filters}));
+  assert.match(html, /<option value="Blocked" selected>Blocked<\/option>/);
+  assert.match(html, /<option value="">All<\/option>/);
+  assert.match(html, /data-filter="text" id="flt-follow-ups-text" [^>]*value="one"/);
+  assert.match(html, /<span class="count">1 of 2 open<\/span>/);
+  assert.match(html, /blocked one/);
+  assert.doesNotMatch(html, /plain two/);
+  const none = WS.renderPage(model, ui({filters: {...WS.emptyFilters(), text: "zzz"}}));
+  assert.match(none, /No matching issues/);
+  // a filter value no row carries any more stays selectable so the state is visible
+  const stale = WS.renderPage(model, ui({filters: {...WS.emptyFilters(), owner: "Codex"}}));
+  assert.match(stale, /<option value="Codex" selected>Codex<\/option>/);
+});
+
+test("test_render_page_rows_carry_belongs_to_status_chip_progress_and_closed_style", () => {
+  const parent = issue(10, withKind("feature"), {title: "FEAT: Parent name", sub_issues_summary: {total: 2, completed: 1}});
+  const child = issue(20, withLabels({status: "status:blocked"}), {title: "Child plan", parent_issue_url: parentUrl(10)});
+  const done = issue(30, [], {title: "Finished thing", state: "closed", state_reason: "completed"});
+  const html = WS.renderPage(WS.buildModel([parent, child, done], VOCAB, {}), ui({state: "all"}));
+  assert.match(html, /1\/2 sub-issues done/);
+  assert.match(html, new RegExp(`<a href="https://github.com/${REPO}/issues/10">#10</a> <bdi>Parent name</bdi>`));
+  assert.match(html, /<span class="chip tone-danger">Blocked<\/span>/);
+  assert.match(html, /<tr class="closed">/);
+  assert.match(html, /<span class="chip tone-success">Done<\/span>/);
+  assert.match(html, /<span class="count">1 issue<\/span>/);
+});
+
+test("test_render_page_untriaged_rows_are_never_filtered_or_collapsed", () => {
+  const model = WS.buildModel([issue(1, FULL), issue(2, ["status:open"], {title: "no kind yet"})], VOCAB, {});
+  const html = WS.renderPage(model, ui({filters: {...WS.emptyFilters(), text: "zzz"}}));
+  assert.match(html, /no kind yet/);
+  assert.match(html, /id="sec-untriaged"/);
+  assert.doesNotMatch(html.split('id="sec-untriaged"')[1], /data-filter=/, "the untriaged table has no filter row");
+});
+
+test("test_render_page_tiles_filter_only_where_a_column_filter_exists", () => {
+  const model = WS.buildModel([issue(1, withLabels({status: "status:blocked"})), issue(2, FULL)], VOCAB, {});
+  const html = WS.renderPage(model, ui());
+  assert.match(html, /<button type="button" class="tile" data-tile-column="status" data-tile-value="Blocked" aria-pressed="false"><b>1<\/b><span>Blocked<\/span><\/button>/);
+  assert.match(html, /<div class="tile"><b>2<\/b><span>Open<\/span><\/div>/);
+  const pressed = WS.renderPage(model, ui({filters: {...WS.emptyFilters(), status: "Blocked"}}));
+  assert.match(pressed, /data-tile-value="Blocked" aria-pressed="true"/);
+  assert.match(html, /data-tile-column="priority" data-tile-value="High"/);
+  assert.match(html, /data-tile-column="status" data-tile-value="Partially implemented"/);
+});
+
+test("test_empty_model_says_so", () => {
+  assert.match(WS.renderPage(WS.buildModel([], VOCAB, {}), ui()), /No issues in this view/);
+});
+
+test("test_status_tones_only_name_known_statuses", () => {
+  for (const key of Object.keys(WS.STATUS_TONES)) assert.ok(Object.hasOwn(VOCAB.statuses, key), key);
+  assert.equal(WS.STATUS_TONES.blocked, "danger");
+});
+
+// ---- loading ----
 test("test_issue_list_pagination", async () => {
   const urls = [];
   const pages = {
@@ -174,57 +446,8 @@ test("test_issue_list_pagination", async () => {
   await assert.rejects(WS.loadView(endless, VOCAB, "open", null), /stopped after 50 pages/);
 });
 
-test("test_child_visible_without_selected_parent", () => {
-  const rows = rowsByNumber(WS.buildRows([issue(7, FULL, {parent_issue_url: parentUrl(5)})], VOCAB));
-  assert.equal(rows.get(7).depth, 0);
-  assert.equal(rows.get(7).context, 5);
-  assert.equal(rows.get(7).relationError, null);
-  const html = WS.renderSections(WS.buildRows([issue(7, FULL, {parent_issue_url: parentUrl(5)})], VOCAB));
-  assert.match(html, new RegExp(`\(under <a href="https://github.com/${REPO}/issues/5">#5</a>\)`), "the parent outside the view is a link");
-});
-
-test("test_multilevel_relations_render_once", () => {
-  const feature = issue(10, [...FULL.slice(0, 6), "kind:feature"], {sub_issues_summary: {total: 1, completed: 0}});
-  const plan = issue(20, [...FULL.slice(0, 6), "kind:plan"], {parent_issue_url: parentUrl(10)});
-  const item = issue(30, FULL, {parent_issue_url: parentUrl(20)});
-  const [section] = WS.buildRows([item, plan, feature], VOCAB);
-  assert.deepEqual(plain(section.rows.map((r) => [r.number, r.depth])), [[10, 0], [20, 1], [30, 2]]);
-  assert.deepEqual({...section.rows[0].progress}, {completed: 0, total: 1});
-
-  const parent = issue(60, [...FULL.slice(0, 6), "kind:feature"]);
-  const kids = [63, 61].map((n) => issue(n, FULL, {parent_issue_url: parentUrl(60)}));
-  const planKid = issue(62, [...FULL.slice(0, 6), "kind:plan"], {parent_issue_url: parentUrl(60)});
-  const ordered = WS.buildRows([...kids, planKid, parent], VOCAB)[0].rows.map((r) => r.number);
-  assert.deepEqual(plain(ordered), [60, 62, 61, 63], "children in vocabulary kind order, then by number");
-
-  const a = issue(41, FULL, {parent_issue_url: parentUrl(42)});
-  const b = issue(42, FULL, {parent_issue_url: parentUrl(41)});
-  const cyc = WS.buildRows([a, b], VOCAB)[0].rows;
-  assert.deepEqual(plain(cyc.map((r) => r.number).sort()), [41, 42], "each issue of a cycle is still shown once");
-  assert.ok(cyc.every((r) => r.relationError === "parent cycle"));
-
-  const chain = Array.from({length: 13}, (_, i) => issue(101 + i, FULL, i ? {parent_issue_url: parentUrl(100 + i)} : {}));
-  const deep = rowsByNumber(WS.buildRows(chain, VOCAB));
-  assert.equal(deep.size, 13, "a chain deeper than the limit is still shown once per issue");
-  assert.equal(deep.get(113).relationError, "parent chain deeper than 10 levels");
-  assert.ok(![...deep.values()].some((r) => r.relationError === "parent cycle"), "depth is not reported as a cycle");
-
-  const LIMIT = 5000;
-  const long = Array.from({length: LIMIT}, (_, i) => issue(1000 + i, FULL, i ? {parent_issue_url: parentUrl(999 + i)} : {}));
-  let built;
-  assert.doesNotThrow(() => { built = WS.buildRows(long, VOCAB); });
-  const numbers = built.flatMap((s) => s.rows.map((r) => r.number));
-  assert.equal(numbers.length, LIMIT);
-  assert.equal(new Set(numbers).size, LIMIT, "every issue of a full-population chain appears exactly once");
-  assert.equal(rowsByNumber(built).get(1000 + LIMIT - 1).relationError, "parent chain deeper than 10 levels");
-  assert.doesNotThrow(() => WS.renderSections(built));
-
-  const foreign = issue(50, FULL, {parent_issue_url: "https://api.github.com/repos/someone/else/issues/1"});
-  assert.equal(rowsByNumber(WS.buildRows([foreign], VOCAB)).get(50).relationError, "malformed parent link");
-});
-
-// A recursive walk needs a stack frame per level, so whether a 5,000-level chain fits depends on the host's stack.
-// This runs the exact page logic in a child Node with a deliberately small stack: only a bounded-stack walk passes.
+// A recursive walk needs a stack frame per level, so a deep parent chain must never cost stack. Flat tables have no walk,
+// and this keeps it that way: the exact page logic, in a child Node with a deliberately small stack.
 const SMALL_STACK_CHILD = `
   const {logic, vocab, labels, size} = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
   const context = require("node:vm").createContext({URLSearchParams});
@@ -234,18 +457,30 @@ const SMALL_STACK_CHILD = `
     html_url: "https://github.com/" + vocab.repo + "/issues/" + n, parent_issue_url: parent ? api + parent : null,
     labels: labels.map((name) => ({name}))});
   const chain = Array.from({length: size}, (_, i) => issue(1000 + i, i ? 999 + i : null));
-  const sections = context.WorkStatus.buildRows(chain, vocab);
-  context.WorkStatus.renderSections(sections);
-  const rows = sections.flatMap((s) => s.rows);
+  const model = context.WorkStatus.buildModel(chain, vocab, {});
+  const ui = context.WorkStatus.initialUi(vocab, "open");
+  context.WorkStatus.renderPage(model, ui);
+  const rows = model.tables.flatMap((t) => t.rows).concat(model.untriaged);
   process.stdout.write(rows.length + " " + new Set(rows.map((r) => r.number)).size);
 `;
 
-test("test_hierarchy_walk_is_bounded_on_a_small_stack", () => {
+test("test_a_large_chain_of_parents_renders_every_issue_once_on_a_small_stack", () => {
   const input = JSON.stringify({logic: block("work-status-logic"), vocab: VOCAB, labels: FULL, size: 5000});
   const run = spawnSync(process.execPath, ["--stack-size=150", "-e", SMALL_STACK_CHILD], {input, encoding: "utf8"});
   assert.equal(run.status, 0, `the page logic failed on a small stack: ${run.stderr.split("\n").find((l) => /Error/.test(l))}`);
   assert.equal(run.stdout, "5000 5000", "every issue of the chain appears exactly once");
 });
+
+// ---- browser controller ----
+function populatedFetch() {
+  const issues = [
+    issue(1, withLabels({status: "status:blocked", priority: "priority:high"}), {title: "blocked high"}),
+    issue(2, FULL, {title: "plain follow-up"}),
+    issue(3, withKind("track"), {title: "a hardening track"}),
+    issue(4, [...FULL.slice(0, 5), "product:evidence-a2a", "kind:follow-up"], {title: "evidence thing"}),
+  ];
+  return async () => response(issues);
+}
 
 test("test_late_fetch_cannot_replace_newer_filter", async () => {
   let releaseFirst;
@@ -285,17 +520,576 @@ test("test_failed_fetch_clears_rows", async () => {
   assert.match(empty.elements.stamp.textContent, /Live from GitHub/);
 });
 
+test("test_changing_a_column_filter_redraws_the_tables_and_keeps_the_typing_focus", async () => {
+  const {doc, elements, focused, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(populatedFetch()));
+  assert.match(elements.out.innerHTML, /plain follow-up/);
+  fire("out", "change", filterEvent("status", "Blocked"));
+  assert.match(elements.out.innerHTML, /blocked high/);
+  assert.doesNotMatch(elements.out.innerHTML, /plain follow-up/);
+  assert.match(elements.out.innerHTML, /<span class="count">1 of 3 open<\/span>/);
+  assert.deepEqual(focused.slice(-1), ["flt-follow-ups-status"], "focus returns to the control that changed");
+  fire("out", "input", filterEvent("text", "blocked", "flt-follow-ups-text"));
+  assert.match(elements.out.innerHTML, /data-filter="text" id="flt-follow-ups-text" [^>]*value="blocked"/);
+  assert.deepEqual(focused.slice(-1), ["flt-follow-ups-text"]);
+  const before = elements.out.innerHTML;
+  fire("out", "input", filterEvent("text", "blocked", "flt-follow-ups-text"));
+  assert.equal(elements.out.innerHTML, before, "an unchanged value does not redraw");
+  fire("out", "change", {target: {dataset: {filter: "constructor"}, value: "x", id: "flt-x"}});
+  fire("out", "change", {target: {dataset: {}, value: "x", id: "flt-y"}});
+  assert.equal(elements.out.innerHTML, before, "an unknown control is ignored");
+});
+
+test("test_clear_filters_and_the_product_filter", async () => {
+  const {doc, elements, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(populatedFetch()));
+  assert.match(elements.product.innerHTML, /<option value="">All products<\/option><option value="optimus">Optimus<\/option><option value="evidence-a2a">Evidence\/A2A<\/option>/);
+  assert.equal(elements.clear.textContent, "Clear filters");
+  fire("out", "change", filterEvent("priority", "High"));
+  assert.equal(elements.clear.textContent, "Clear filters (1)");
+  elements.product.value = "evidence-a2a";
+  fire("product", "change");
+  assert.match(elements.out.innerHTML, /<span class="count">0 of 1 open<\/span>/);
+  fire("clear", "click");
+  assert.equal(elements.clear.textContent, "Clear filters");
+  assert.match(elements.out.innerHTML, /evidence thing/);
+  assert.doesNotMatch(elements.out.innerHTML, /plain follow-up/, "clear removes column filters, not the product choice");
+  elements.product.value = "";
+  fire("product", "change");
+  assert.match(elements.out.innerHTML, /plain follow-up/);
+});
+
+test("test_tiles_toggle_a_column_filter_and_headers_toggle_collapse", async () => {
+  const {doc, elements, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(populatedFetch()));
+  fire("out", "click", {target: {dataset: {tileColumn: "status", tileValue: "Blocked"}}});
+  assert.doesNotMatch(elements.out.innerHTML, /plain follow-up/);
+  assert.match(elements.out.innerHTML, /data-tile-value="Blocked" aria-pressed="true"/);
+  fire("out", "click", {target: {dataset: {tileColumn: "status", tileValue: "Blocked"}}});
+  assert.match(elements.out.innerHTML, /plain follow-up/, "a second click clears the filter");
+  assert.doesNotMatch(elements.out.innerHTML, /a hardening track/);
+  fire("out", "click", {target: {dataset: {toggle: "hardening"}}});
+  assert.match(elements.out.innerHTML, /a hardening track/);
+  fire("out", "click", {target: {closest: () => ({dataset: {toggle: "hardening"}}), dataset: {}}});
+  assert.doesNotMatch(elements.out.innerHTML, /a hardening track/, "the nearest control is used when a child element is clicked");
+  fire("out", "click", {target: {dataset: {toggle: "no-such-table"}}});
+  fire("out", "click", {target: null});
+});
+
+test("test_filters_and_collapse_survive_a_reload", async () => {
+  const {doc, elements, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(populatedFetch()));
+  fire("out", "change", filterEvent("status", "Blocked"));
+  fire("out", "click", {target: {dataset: {toggle: "hardening"}}});
+  await fire("reload", "click");
+  assert.doesNotMatch(elements.out.innerHTML, /plain follow-up/);
+  assert.match(elements.out.innerHTML, /blocked high/);
+  assert.match(elements.out.innerHTML, /<span class="count">1 of 3 open<\/span>/);
+  assert.match(elements.out.innerHTML, /data-toggle="hardening" aria-expanded="true"/);
+});
+
+// ---- defects found by the independent review of this page ----
+test("test_attention_counts_an_untriaged_row_whose_only_fault_is_its_product_or_kind_label", () => {
+  const issues = [
+    issue(1, [...FULL.slice(0, 5), "product:mars", "kind:follow-up"]),
+    issue(2, FULL.slice(0, 6).concat([])),
+    issue(3, [...FULL.slice(0, 5), "kind:plan"]),
+    issue(4, FULL),
+  ];
+  const model = WS.buildModel(issues, VOCAB, {});
+  assert.deepEqual(numbersOf(model.untriaged), [1, 2, 3]);
+  assert.equal(model.summary.attention, 3);
+  const html = WS.renderPage(model, ui());
+  assert.match(html, /<div class="tile warn"><b>3<\/b><span>Need attention<\/span><\/div>/);
+});
+
+test("test_an_empty_label_value_is_a_red_fault_not_a_blank_cell", () => {
+  assert.deepEqual({...WS.metadataCell(issue(1, ["estimate:"]), VOCAB.dimensions.estimate)}, {text: "empty value", bad: true});
+  assert.deepEqual({...WS.metadataCell(issue(1, ["priority:"]), VOCAB.dimensions.priority)}, {text: "empty value", bad: true});
+  const rows = tableOf(WS.buildModel([issue(1, FULL), issue(2, withLabels({estimate: "estimate:"}))], VOCAB, {}), "follow-ups").rows;
+  assert.equal(WS.filterOptions(rows, VOCAB).estimate.some((option) => option.value === ""), false, "no option can collide with All");
+});
+
+test("test_no_parent_means_no_parent_link_at_all", () => {
+  const model = WS.buildModel([
+    issue(6, FULL, {parent_issue_url: "https://api.github.com/repos/someone/else/issues/1"}), issue(7, FULL),
+  ], VOCAB, {});
+  const rows = tableOf(model, "follow-ups").rows;
+  assert.deepEqual(numbersOf(WS.filterRows(rows, {...WS.emptyFilters(), belongs: "none"}, false)), [7], "a malformed link is a fault, not an absent parent");
+  const onlyMalformed = tableOf(WS.buildModel([issue(6, FULL, {parent_issue_url: "https://api.github.com/repos/someone/else/issues/1"})], VOCAB, {}), "follow-ups").rows;
+  assert.equal(WS.filterOptions(onlyMalformed, VOCAB).belongs.length, 0, "no No-parent choice when every row has a malformed link");
+});
+
+test("test_the_kind_dropdown_lists_kinds_in_the_order_the_table_groups_its_rows", () => {
+  const model = WS.buildModel([issue(1, withKind("track")), issue(2, withKind("item")), issue(3, withKind("candidate"))], VOCAB, {});
+  const hardening = tableOf(model, "hardening");
+  assert.deepEqual(plain(hardening.rows.map((row) => row.kind)), ["Track", "Item", "Candidate"]);
+  const open = WS.initialUi(VOCAB, "open");
+  open.collapsed.hardening = false;
+  const html = WS.renderPage(model, open);
+  assert.match(html, /<select data-filter="kind"[^>]*><option value="">All<\/option><option value="Track">Track<\/option><option value="Item">Item<\/option><option value="Candidate">Candidate<\/option><\/select>/);
+});
+
+test("test_a_long_belongs_to_label_is_cut_on_a_character_boundary", () => {
+  const parent = issue(77, withKind("feature"), {title: "ID: " + "😀".repeat(80)});
+  const child = issue(78, FULL, {parent_issue_url: parentUrl(77)});
+  const rows = tableOf(WS.buildModel([parent, child], VOCAB, {}), "follow-ups").rows;
+  const label = WS.filterOptions(rows, VOCAB).belongs[0].label;
+  assert.doesNotMatch(label, /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/, "no lone surrogate");
+  assert.ok(label.endsWith("…"));
+  assert.ok(Array.from(label).length <= 60);
+});
+
+test("test_issue_titles_are_bidi_isolated_so_they_cannot_reorder_the_text_around_them", () => {
+  const spoof = "Spoofed ‮esrever siht";
+  const parent = issue(10, withKind("feature"), {title: "FEAT: " + spoof});
+  const child = issue(11, FULL, {title: spoof, parent_issue_url: parentUrl(10)});
+  const html = WS.renderPage(WS.buildModel([parent, child, issue(12, [], {title: spoof})], VOCAB, {}), ui());
+  assert.equal(html.split(`<bdi>${spoof}</bdi>`).length - 1, 3, "the issue title in each row and the parent title are isolated");
+  assert.match(html, /<\/bdi> <span class="bad">product missing; kind missing<\/span>/, "the fault text sits outside the isolated title");
+});
+
+test("test_a_blank_search_is_not_an_active_filter_and_clear_resets_the_label_after_a_failed_read", async () => {
+  const {doc, elements, fire} = fakeDom();
+  const replies = [response([issue(1, FULL, {title: "one"})]), response(null, {status: 500})];
+  await load().boot(doc, fakeWindow(async () => replies.shift()));
+  fire("out", "input", filterEvent("text", "   ", "flt-follow-ups-text"));
+  assert.equal(elements.clear.textContent, "Clear filters", "whitespace filters nothing, so it is not counted");
+  fire("out", "change", filterEvent("priority", "Medium"));
+  assert.equal(elements.clear.textContent, "Clear filters (1)");
+  await fire("reload", "click");
+  assert.equal(elements.out.innerHTML, "");
+  fire("clear", "click");
+  assert.equal(elements.clear.textContent, "Clear filters", "the label follows the filters even when nothing is drawn");
+});
+
+
+// ---- accessibility and layout defects found by the independent review ----
+const STYLE = /<style>([\s\S]*?)<\/style>/.exec(HTML)[1];
+const cssRules = () => Array.from(STYLE.matchAll(/([^{}]+)\{([^}]*)\}/g), (m) => ({selector: m[1].trim(), body: m[2]}));
+
+test("test_filter_dropdowns_size_to_their_widest_option_so_the_chosen_value_is_never_cut", () => {
+  const rules = cssRules().filter((rule) => rule.selector === "th select");
+  assert.ok(rules.length > 0);
+  for (const rule of rules) {
+    assert.doesNotMatch(rule.body, /(^|;)\s*width:\s*100%/, "a percentage width lets the column squeeze the select to its label");
+  }
+  assert.ok(rules.some((rule) => /(^|;)\s*width:\s*auto/.test(rule.body)), "a select is as wide as its widest option");
+  const belongs = cssRules().find((rule) => rule.selector === "th.c-belongs select");
+  assert.ok(belongs && /min-width:\s*\d/.test(belongs.body), "the long parent list still keeps All readable");
+});
+
+test("test_the_sticky_header_only_applies_where_the_tables_fit_and_never_hides_a_focused_row", () => {
+  const sticky = /@media \(min-width: (\d+)px\) \{([^}]*\{[^}]*\}[^}]*)\}/.exec(STYLE);
+  const scroll = /@media \(max-width: (\d+)px\) \{ \.scroll \{ overflow-x: auto; \} \}/.exec(STYLE);
+  assert.ok(sticky && scroll);
+  assert.match(sticky[2], /position:\s*sticky/);
+  assert.equal(Number(sticky[1]), Number(scroll[1]) + 1, "exactly one of sticky headers and a scroll wrapper is on at any width");
+  assert.match(sticky[2], /scroll-padding-top:\s*\d/, "keyboard focus scrolls clear of the sticky header");
+});
+
+test("test_wide_values_wrap_instead_of_widening_the_table_and_long_parent_titles_break", () => {
+  const wrapped = cssRules().find((rule) => rule.selector === "td.bad, td.c-estimate");
+  assert.ok(wrapped && /white-space:\s*normal/.test(wrapped.body) && /max-width:\s*\d/.test(wrapped.body));
+  const belongs = cssRules().find((rule) => rule.selector === "th.c-belongs, td.c-belongs");
+  assert.ok(belongs && /overflow-wrap:\s*anywhere/.test(belongs.body));
+});
+
+test("test_a_pressed_tile_has_a_cue_that_does_not_depend_on_color", () => {
+  const pressed = cssRules().find((rule) => rule.selector === 'button.tile[aria-pressed="true"]');
+  assert.ok(pressed && /outline:\s*\d+px solid/.test(pressed.body), "an outline survives forced-colors mode");
+});
+
+test("test_loading_state_is_a_live_region_and_filter_results_are_announced", async () => {
+  assert.match(HTML, /<p class="note" id="stamp" role="status" aria-live="polite">/);
+  assert.match(HTML, /<p class="sr-only" id="announce" role="status" aria-live="polite"><\/p>/);
+  assert.ok(cssRules().some((rule) => rule.selector === ".sr-only" && /clip|clip-path/.test(rule.body)));
+  const {doc, elements, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(populatedFetch()));
+  assert.equal(elements.announce.textContent, "4 issues");
+  fire("out", "change", filterEvent("status", "Blocked"));
+  assert.equal(elements.announce.textContent, "1 of 4 issues match", "collapsed tables count too: the header shows how many match");
+  fire("clear", "click");
+  assert.equal(elements.announce.textContent, "4 issues");
+});
+
+test("test_tables_and_headers_have_unique_accessible_names", () => {
+  const model = WS.buildModel([issue(1, FULL), issue(2, withKind("feature")), issue(3, ["status:open"])], VOCAB, {});
+  const html = WS.renderPage(model, ui());
+  assert.match(html, /<table aria-label="Follow-ups and defects">/);
+  assert.match(html, /<table aria-label="Features">/);
+  assert.match(html, /<table aria-label="Untriaged issues">/);
+  assert.match(html, /<th scope="col" class="c-priority" aria-label="Priority"><span class="hl">Priority<\/span><select data-filter="priority" id="flt-follow-ups-priority" aria-label="Filter Priority in Follow-ups and defects">/);
+  assert.match(html, /aria-label="Search Issue \/ Title in Features"/);
+  const labels = html.match(/aria-label="(?:Filter|Search) [^"]*"/g);
+  assert.equal(new Set(labels).size, labels.length, "no two controls on the page share a name");
+});
+
+test("test_typing_waits_for_an_ime_composition_to_end", async () => {
+  const {doc, elements, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(populatedFetch()));
+  const before = elements.out.innerHTML;
+  fire("out", "input", {isComposing: true, target: {dataset: {filter: "text"}, value: "ni", id: "flt-follow-ups-text"}});
+  assert.equal(elements.out.innerHTML, before, "a redraw mid-composition would destroy the composition");
+  fire("out", "compositionend", {target: {dataset: {filter: "text"}, value: "nihao", id: "flt-follow-ups-text"}});
+  assert.match(elements.out.innerHTML, /data-filter="text" id="flt-follow-ups-text" [^>]*value="nihao"/);
+});
+
+// ---- behaviour pinned by mutation testing: each test below fails when a deliberate fault is put into the page ----
+const withoutStatus = FULL.filter((label) => !label.startsWith("status:"));
+
+test("test_closed_rows_get_a_chip_tone_from_their_close_reason", () => {
+  const model = WS.buildModel([issue(1, withoutStatus, {state: "closed", state_reason: "not_planned"}),
+    issue(2, withoutStatus, {state: "closed", state_reason: "completed"})], VOCAB, {});
+  const rows = rowsByNumber(model);
+  assert.equal(rows.get(1).tone, "neutral");
+  assert.equal(rows.get(2).tone, "success");
+  const html = WS.renderPage(model, ui({state: "closed"}));
+  assert.match(html, /<span class="chip tone-neutral">Not planned<\/span>/);
+  assert.match(html, /<span class="chip tone-success">Done<\/span>/);
+});
+
+test("test_every_vocabulary_status_has_the_tone_the_table_names_or_neutral", () => {
+  for (const key of Object.keys(VOCAB.statuses)) {
+    const model = WS.buildModel([issue(1, withLabels({status: "status:" + key}))], VOCAB, {});
+    const expected = Object.hasOwn(WS.STATUS_TONES, key) ? WS.STATUS_TONES[key] : "neutral";
+    assert.equal(allRows(model)[0].tone, expected, key);
+    assert.ok(WS.renderPage(model, ui()).includes(`<span class="chip tone-${expected}">${VOCAB.statuses[key]}</span>`), key);
+  }
+});
+
+test("test_a_tile_count_equals_the_rows_its_filter_keeps", () => {
+  const model = WS.buildModel([
+    issue(1, withLabels({status: "status:blocked"}), {state: "closed", state_reason: "completed"}),
+    issue(2, withLabels({status: "status:partially-implemented"}), {state: "closed", state_reason: "completed"}),
+    issue(3, withLabels({status: "status:blocked"})),
+  ], VOCAB, {});
+  const rows = allRows(model);
+  for (const tile of model.tiles.filter((t) => t.column !== undefined)) {
+    assert.equal(tile.count, rows.filter((row) => row.cells[tile.column].text === tile.value).length, `${tile.id} tile`);
+  }
+  assert.equal(model.summary.blocked, 1, "a closed issue is not blocked, whatever label it still carries");
+  assert.equal(model.summary.partial, 0);
+});
+
+test("test_an_issue_without_sub_issues_shows_no_progress", () => {
+  // GitHub sends {total: 0, completed: 0, percent_completed: 0} for an issue that has no sub-issues.
+  const model = WS.buildModel([issue(1, FULL, {sub_issues_summary: {total: 0, completed: 0, percent_completed: 0}})], VOCAB, {});
+  assert.equal(rowsByNumber(model).get(1).progress, null);
+  assert.doesNotMatch(WS.renderPage(model, ui()), /sub-issues done/);
+});
+
+test("test_only_the_priority_cell_carries_a_level_class_and_a_bad_one_is_red_instead", () => {
+  const model = WS.buildModel([
+    issue(1, withLabels({priority: "priority:high"})), issue(2, FULL), issue(3, withLabels({priority: "priority:low"})),
+    issue(4, withLabels({priority: "priority:weird"})),
+  ], VOCAB, {});
+  const html = WS.renderPage(model, ui());
+  assert.match(html, /<td class="pri-high">High<\/td>/);
+  assert.match(html, /<td class="pri-low">Low<\/td>/);
+  assert.match(html, /<td class="pri-medium">Medium<\/td>/);
+  assert.match(html, /<td class="bad">unknown: weird<\/td>/);
+  assert.equal((html.match(/class="pri-/g) || []).length, 3);
+});
+
+test("test_a_malformed_parent_link_needs_attention", () => {
+  const model = WS.buildModel([issue(1, FULL, {parent_issue_url: "https://api.github.com/repos/someone/else/issues/1"}), issue(2, FULL)], VOCAB, {});
+  assert.equal(rowsByNumber(model).get(1).relationError, "malformed parent link");
+  assert.equal(model.summary.attention, 1);
+  assert.match(WS.renderPage(model, ui()), /<div class="tile warn"><b>1<\/b><span>Need attention<\/span><\/div>/);
+});
+
+test("test_the_attention_tile_is_not_flagged_when_nothing_needs_attention", () => {
+  const html = WS.renderPage(WS.buildModel([issue(1, FULL), issue(2, withKind("track"))], VOCAB, {}), ui());
+  assert.match(html, /<div class="tile"><b>0<\/b><span>Need attention<\/span><\/div>/);
+  assert.doesNotMatch(html, /tile warn/);
+});
+
+test("test_a_vocabulary_without_a_high_priority_has_no_high_priority_tile", () => {
+  const noHigh = JSON.parse(JSON.stringify(VOCAB));
+  delete noHigh.dimensions.priority.values.high;
+  const model = WS.buildModel([issue(1, FULL)], noHigh, {});
+  assert.deepEqual(plain(model.tiles.map((tile) => tile.id)), ["total", "blocked", "partial", "followUps", "attention"]);
+  assert.doesNotMatch(WS.renderPage(model, WS.initialUi(noHigh, "open")), /data-tile-column="priority"/);
+  const noPriority = JSON.parse(JSON.stringify(VOCAB));
+  delete noPriority.dimensions.priority;
+  assert.equal(WS.buildModel([issue(1, FULL)], noPriority, {}).tiles.some((tile) => tile.id === "high"), false);
+});
+
+test("test_the_difficulty_dropdown_filters_rows", () => {
+  const rows = tableOf(WS.buildModel([
+    issue(1, withLabels({difficulty: "difficulty:low"})), issue(2, FULL), issue(3, withLabels({difficulty: "difficulty:high"})),
+  ], VOCAB, {}), "follow-ups").rows;
+  const run = (difficulty) => numbersOf(WS.filterRows(rows, {...WS.emptyFilters(), difficulty}, false));
+  assert.deepEqual(run("Low"), [1]);
+  assert.deepEqual(run("Medium"), [2]);
+  assert.deepEqual(run("High"), [3]);
+});
+
+test("test_every_filter_control_the_page_draws_is_a_filter_the_controller_keeps", async () => {
+  const model = WS.buildModel([issue(1, FULL), issue(2, withKind("track"))], VOCAB, {});
+  const open = WS.initialUi(VOCAB, "open");
+  open.collapsed.hardening = false;
+  const drawn = new Set(Array.from(WS.renderPage(model, open).matchAll(/data-filter="([^"]+)"/g), (m) => m[1]));
+  assert.equal(drawn.size, 8);
+  for (const key of drawn) assert.ok(Object.hasOwn(WS.emptyFilters(), key), `${key} must be a key of the filter state`);
+  const {doc, elements, fire} = fakeDom();
+  const issues = [issue(1, withLabels({handler: "handler:codex"}), {title: "codex one"}), issue(2, FULL, {title: "unassigned two"})];
+  await load().boot(doc, fakeWindow(async () => response(issues)));
+  fire("out", "change", filterEvent("owner", "Codex"));
+  assert.match(elements.out.innerHTML, /codex one/);
+  assert.doesNotMatch(elements.out.innerHTML, /unassigned two/);
+  assert.equal(elements.clear.textContent, "Clear filters (1)");
+});
+
+test("test_values_the_vocabulary_does_not_know_are_listed_alphabetically_after_the_known_ones", () => {
+  const rows = tableOf(WS.buildModel([
+    issue(1, withLabels({estimate: "estimate:3d"})), issue(2, withLabels({estimate: "estimate:1d"})),
+    issue(3, withLabels({estimate: "estimate:2d"})), issue(4, FULL),
+  ], VOCAB, {}), "follow-ups").rows;
+  assert.deepEqual(plain(WS.filterOptions(rows, VOCAB).estimate.map((option) => option.value)), ["NA", "1d", "2d", "3d"]);
+});
+
+test("test_belongs_to_choices_are_in_numeric_order", () => {
+  const rows = tableOf(WS.buildModel([
+    issue(100, withKind("feature")), issue(9, withKind("feature")), issue(10, withKind("feature")),
+    issue(201, FULL, {parent_issue_url: parentUrl(100)}), issue(202, FULL, {parent_issue_url: parentUrl(9)}),
+    issue(203, FULL, {parent_issue_url: parentUrl(10)}),
+  ], VOCAB, {}), "follow-ups").rows;
+  assert.deepEqual(plain(WS.filterOptions(rows, VOCAB).belongs.map((option) => option.value)), ["9", "10", "100"]);
+});
+
+test("test_the_status_dropdown_lists_close_reasons_before_faulty_values", () => {
+  const rows = tableOf(WS.buildModel([
+    issue(1, FULL), issue(2, withoutStatus, {state: "closed", state_reason: "completed"}),
+    issue(3, withoutStatus, {state: "closed", state_reason: "not_planned"}), issue(4, withoutStatus, {state: "closed", state_reason: null}),
+  ], VOCAB, {}), "follow-ups").rows;
+  assert.deepEqual(plain(WS.filterOptions(rows, VOCAB).status.map((option) => option.value)),
+    ["Open", "Done", "Not planned", "Closed (reason unavailable)"]);
+});
+
+test("test_a_belongs_to_label_of_exactly_the_limit_is_not_cut", () => {
+  const label = (title) => {
+    const rows = tableOf(WS.buildModel([issue(77, withKind("feature"), {title: "ID: " + title}), issue(78, FULL, {parent_issue_url: parentUrl(77)})], VOCAB, {}), "follow-ups").rows;
+    return WS.filterOptions(rows, VOCAB).belongs[0].label;
+  };
+  const exact = "x".repeat(56); // "#77 " is 4 characters, so this label is exactly 60
+  assert.equal(label(exact), "#77 " + exact);
+  const over = label("x".repeat(57)); // 61 characters: cut to 59 and an ellipsis
+  assert.equal(over, "#77 " + "x".repeat(55) + "…");
+  assert.equal(Array.from(over).length, 60);
+});
+
+test("test_a_parent_title_loses_only_an_identifier_prefix", () => {
+  const parentTitleOf = (title) => {
+    const model = WS.buildModel([issue(10, withKind("feature"), {title}), issue(20, FULL, {parent_issue_url: parentUrl(10)})], VOCAB, {});
+    return rowsByNumber(model).get(20).parent.title;
+  };
+  assert.equal(parentTitleOf("P11-FEAT-X: Zed resume"), "Zed resume");
+  assert.equal(parentTitleOf(": leading colon"), ": leading colon");
+  assert.equal(parentTitleOf("Fix the build: part two"), "Fix the build: part two", "prose before a colon is not an identifier");
+  assert.equal(parentTitleOf("no colon here"), "no colon here");
+});
+
+test("test_the_page_cap_is_exactly_fifty_requests", async () => {
+  let calls = 0;
+  const endless = async () => { calls += 1; return response([], {link: `<https://api.github.com/again>; rel="next"`}); };
+  await assert.rejects(WS.loadView(endless, VOCAB, "open", null), /stopped after 50 pages/);
+  assert.equal(calls, 50, "the 51st request is never made");
+  let n = 0;
+  const fifty = async () => { n += 1; return response([issue(n, FULL)], n < 50 ? {link: `<https://api.github.com/p${n + 1}>; rel="next"`} : {}); };
+  const view = await WS.loadView(fifty, VOCAB, "open", null);
+  assert.equal(view.requests, 50, "a list that ends on page 50 is read in full");
+  assert.equal(view.issues.length, 50);
+});
+
+test("test_a_label_is_url_encoded_and_an_unknown_state_is_refused_before_any_request", async () => {
+  const urls = [];
+  await WS.loadView(async (url) => { urls.push(url); return response([]); }, VOCAB, "open", {label: "needs review&x=1"});
+  assert.equal(urls[0], `https://api.github.com/repos/${REPO}/issues?state=open&per_page=100&labels=needs%20review%26x%3D1`);
+  let called = false;
+  await assert.rejects(WS.loadView(async () => { called = true; return response([]); }, VOCAB, "bogus", null), /unknown state filter bogus/);
+  assert.equal(called, false);
+});
+
+test("test_http_429_with_no_quota_left_is_a_rate_limit_but_other_failures_are_not", async () => {
+  await assert.rejects(WS.loadView(async () => response(null, {status: 429, remaining: "0"}), VOCAB, "open", null), /rate limit/);
+  await assert.rejects(WS.loadView(async () => response(null, {status: 403, remaining: "0"}), VOCAB, "open", null), /rate limit/);
+  await assert.rejects(WS.loadView(async () => response(null, {status: 403, remaining: "59"}), VOCAB, "open", null), /GitHub answered HTTP 403/);
+  await assert.rejects(WS.loadView(async () => response(null, {status: 429, remaining: "59"}), VOCAB, "open", null), /GitHub answered HTTP 429/);
+});
+
+test("test_columns_come_in_the_documented_order", () => {
+  const model = WS.buildModel([issue(1, FULL), issue(2, withKind("track"))], VOCAB, {});
+  const open = WS.initialUi(VOCAB, "open");
+  open.collapsed.hardening = false;
+  const heads = WS.renderPage(model, open).split("<thead>").slice(1)
+    .map((part) => [...part.split("</thead>")[0].matchAll(/<th scope="col" class="c-(\w+)"/g)].map((m) => m[1]));
+  assert.deepEqual(heads, [
+    ["title", "belongs", "status", "priority", "difficulty", "estimate", "owner"],
+    ["title", "kind", "belongs", "status", "priority", "difficulty", "estimate", "owner"],
+  ]);
+});
+
+test("test_a_late_failed_read_cannot_clear_a_newer_view", async () => {
+  let rejectFirst;
+  const first = new Promise((_, reject) => { rejectFirst = reject; });
+  let calls = 0;
+  const fetchImpl = async () => { calls += 1; return calls === 1 ? first : response([issue(2, FULL, {title: "newer read"})]); };
+  const {doc, elements, fire} = fakeDom();
+  const firstRead = load().boot(doc, fakeWindow(fetchImpl));
+  elements.state.value = "closed";
+  await fire("state", "change");
+  assert.match(elements.out.innerHTML, /newer read/);
+  rejectFirst(new Error("late network failure"));
+  await firstRead;
+  assert.match(elements.out.innerHTML, /newer read/);
+  assert.doesNotMatch(elements.stamp.innerHTML, /late network failure/);
+});
+
+test("test_the_total_tile_and_the_count_word_follow_the_state_that_was_read", () => {
+  const closed = (number) => issue(number, withoutStatus, {state: "closed", state_reason: "completed"});
+  const closedHtml = WS.renderPage(WS.buildModel([closed(1), closed(2)], VOCAB, {}), ui({state: "closed"}));
+  assert.match(closedHtml, /<span class="count">2 closed<\/span>/);
+  assert.match(closedHtml, /<div class="tile"><b>2<\/b><span>Closed<\/span><\/div>/);
+  const all = WS.renderPage(WS.buildModel([issue(1, FULL), issue(2, FULL)], VOCAB, {}), ui({state: "all"}));
+  assert.match(all, /<div class="tile"><b>2<\/b><span>Issues<\/span><\/div>/);
+  assert.match(all, /<span class="count">2 issues<\/span>/);
+});
+
+test("test_the_caret_is_restored_where_the_user_was_typing", async () => {
+  const {doc, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(populatedFetch()));
+  const carets = [];
+  const byId = doc.getElementById;
+  doc.getElementById = (id) => (/^flt-/.test(id) ? {id, focus() {}, setSelectionRange: (a, b) => carets.push([a, b])} : byId(id));
+  fire("out", "input", {target: {dataset: {filter: "text"}, value: "blocked", id: "flt-follow-ups-text", selectionStart: 3}});
+  assert.deepEqual(carets, [[3, 3]]);
+  fire("out", "change", filterEvent("status", "Blocked"));
+  assert.deepEqual(carets, [[3, 3]], "a select has no caret to restore");
+});
+
+test("test_a_row_whose_url_is_not_the_issue_page_has_no_link", () => {
+  const html = WS.renderPage(WS.buildModel([issue(1, FULL, {html_url: "https://evil.example/phish"})], VOCAB, {}), ui());
+  assert.match(html, /<td class="c-title">#1 — <bdi>Issue 1<\/bdi>/);
+  assert.doesNotMatch(html, /href="null"/);
+});
+
+test("test_a_single_product_fault_is_explained_in_the_row", () => {
+  const html = WS.renderPage(WS.buildModel([issue(1, [...FULL.slice(0, 5), "product:mars", "kind:follow-up"])], VOCAB, {}), ui());
+  assert.match(html, /<\/bdi> <span class="bad">product unknown: mars<\/span>/);
+});
+
+test("test_an_unrecognised_kind_label_is_escaped_and_shown_in_the_untriaged_kind_cell", () => {
+  const hostile = WS.renderPage(WS.buildModel([issue(1, [...FULL.slice(0, 6), "kind:<img src=x onerror=alert(1)>"])], VOCAB, {}), ui());
+  assert.doesNotMatch(hostile, /<img/);
+  assert.match(hostile, /<td>&lt;img src=x onerror=alert\(1\)&gt;<\/td>/);
+  const part = WS.renderPage(WS.buildModel([issue(2, [...FULL.slice(0, 6), "kind:mars"])], VOCAB, {}), ui()).split('id="sec-untriaged"')[1];
+  assert.match(part, /<th scope="col" class="c-kind">Kind<\/th>/);
+  assert.match(part, /<td>mars<\/td>/);
+});
+
+test("test_a_parent_outside_the_view_is_a_bare_link", () => {
+  const html = WS.renderPage(WS.buildModel([issue(30, FULL, {parent_issue_url: parentUrl(99)})], VOCAB, {}), ui());
+  assert.match(html, new RegExp(`<td class="c-belongs"><a href="https://github.com/${REPO}/issues/99">#99</a></td>`));
+  assert.doesNotMatch(html, /<bdi>null<\/bdi>/);
+});
+
+test("test_a_missing_value_cell_carries_the_bad_class", () => {
+  const noPriority = WS.renderPage(WS.buildModel([issue(1, FULL.filter((label) => !label.startsWith("priority:")))], VOCAB, {}), ui());
+  assert.match(noPriority, /<td class="bad">missing<\/td>/);
+  const noStatus = WS.renderPage(WS.buildModel([issue(1, withoutStatus)], VOCAB, {}), ui());
+  assert.match(noStatus, /<td class="bad">missing status<\/td>/);
+});
+
+test("test_open_on_github_mirrors_the_read", async () => {
+  const {doc, elements, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(populatedFetch()));
+  const href = (query) => `https://github.com/${REPO}/issues?q=${encodeURIComponent(query)}`;
+  assert.equal(elements.live.href, href("is:issue is:open"));
+  elements.state.value = "closed";
+  await fire("state", "change");
+  assert.equal(elements.live.href, href("is:issue is:closed"));
+  elements.state.value = "all";
+  await fire("state", "change");
+  assert.equal(elements.live.href, href("is:issue"));
+});
+
+test("test_the_chevron_shows_collapsed_or_expanded_and_empty_kind_groups_are_not_drawn", () => {
+  const html = WS.renderPage(WS.buildModel([issue(1, FULL), issue(2, withKind("track"))], VOCAB, {}), ui());
+  assert.match(html, /<span class="chev" aria-hidden="true">▸<\/span>Hardening work/);
+  assert.match(html, /<span class="chev" aria-hidden="true">▾<\/span>Follow-ups and defects/);
+  const lone = WS.renderPage(WS.buildModel([issue(1, FULL)], VOCAB, {}), ui());
+  assert.equal((lone.match(/<section class="sec"/g) || []).length, 1);
+  for (const key of ["features", "plans", "hardening", "obligations"]) assert.doesNotMatch(lone, new RegExp(`data-toggle="${key}"`));
+});
+
+test("test_the_kind_filter_does_not_hide_rows_of_tables_without_a_kind_column", () => {
+  const model = WS.buildModel([issue(1, FULL, {title: "plain follow-up"}), issue(2, withKind("track"), {title: "a hardening track"})], VOCAB, {});
+  const open = ui({filters: {...WS.emptyFilters(), kind: "Track"}});
+  open.collapsed.hardening = false;
+  const html = WS.renderPage(model, open);
+  assert.match(html, /plain follow-up/);
+  assert.match(html, /a hardening track/);
+});
+
+test("test_a_filtered_column_still_offers_every_value_of_the_table", () => {
+  const model = WS.buildModel([issue(1, withLabels({status: "status:blocked"})), issue(2, FULL)], VOCAB, {});
+  const html = WS.renderPage(model, ui({filters: {...WS.emptyFilters(), status: "Blocked"}}));
+  assert.match(html, /<select data-filter="status"[^>]*><option value="">All<\/option><option value="Open">Open<\/option><option value="Blocked" selected>Blocked<\/option><\/select>/);
+});
+
+test("test_an_unchanged_value_does_not_redraw_or_refocus_and_an_unknown_control_is_ignored", async () => {
+  const {doc, focused, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(populatedFetch()));
+  fire("out", "input", filterEvent("text", "blocked", "flt-follow-ups-text"));
+  const drawn = focused.length;
+  fire("out", "change", filterEvent("text", "blocked", "flt-follow-ups-text"));
+  assert.equal(focused.length, drawn, "the change event that follows input carries the same value: no second redraw, no focus pulled back");
+  for (const key of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+    fire("out", "change", {target: {dataset: {filter: key}, value: "x", id: "flt-" + key}});
+  }
+  assert.equal(focused.length, drawn, "a control that is not a filter never redraws the page");
+});
+
+test("test_after_a_click_focus_returns_to_that_very_control", async () => {
+  const {doc, elements, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(populatedFetch()));
+  const selectors = [];
+  elements.out.querySelector = (selector) => { selectors.push(selector); return {focus() {}}; };
+  fire("out", "click", {target: {dataset: {tileColumn: "status", tileValue: "Partially implemented"}}});
+  fire("out", "click", {target: {dataset: {toggle: "hardening"}}});
+  assert.deepEqual(selectors, ['[data-tile-column="status"][data-tile-value="Partially implemented"]', '[data-toggle="hardening"]']);
+});
+
+test("test_a_product_change_after_a_failed_read_is_ignored", async () => {
+  const {doc, elements, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(async () => response(null, {status: 500})));
+  assert.doesNotThrow(() => fire("product", "change"));
+  assert.equal(elements.out.innerHTML, "");
+});
+
+test("test_ampersands_and_entities_in_titles_are_escaped_exactly_once", () => {
+  assert.equal(WS.esc(`&<>"'`), "&amp;&lt;&gt;&quot;&#39;");
+  const html = WS.renderPage(WS.buildModel([issue(1, FULL, {title: "R&amp;D &lt;b&gt;"})], VOCAB, {}), ui());
+  assert.match(html, /<bdi>R&amp;amp;D &amp;lt;b&amp;gt;<\/bdi>/);
+});
+
+// ---- safety ----
 test("test_text_escaping_and_url_validation", () => {
   const hostile = issue(1, [...FULL.slice(1), "status:<img src=x onerror=alert(1)>"], {
     title: "<script>alert(1)</script>",
     html_url: "https://evil.example/phish",
   });
-  const html = WS.renderSections(WS.buildRows([hostile], VOCAB));
+  const child = issue(2, FULL, {title: "ok", parent_issue_url: parentUrl(1)});
+  const html = WS.renderPage(WS.buildModel([hostile, child], VOCAB, {}), ui());
   assert.doesNotMatch(html, /<script>|<img/);
   assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.doesNotMatch(html, /evil\.example/);
-  const good = WS.renderSections(WS.buildRows([issue(2, FULL)], VOCAB));
+  const good = WS.renderPage(WS.buildModel([issue(2, FULL)], VOCAB, {}), ui());
   assert.match(good, new RegExp(`href="https://github.com/${REPO}/issues/2"`));
+  const quoted = WS.renderPage(WS.buildModel([issue(3, FULL)], VOCAB, {}), ui({filters: {...WS.emptyFilters(), text: '"><img src=x onerror=1>'}}));
+  assert.doesNotMatch(quoted, /<img/);
 });
 
 test("test_only_get_requests_and_no_tokens", async () => {
