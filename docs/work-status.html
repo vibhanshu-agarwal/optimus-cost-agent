@@ -6,33 +6,77 @@
 <title>Work status</title>
 <!--
   Plan 11.29 live work-status view. Open this file from a checkout in a browser. On open, on Reload and on every
-  filter change it reads the repository's GitHub issues through the public REST API (GET only, no token) and shows
-  them as one table per product. GitHub issue state and labels are the only status authority; this page stores
-  nothing, writes nothing and never polls. A page left open shows its last read, not a continuously current view.
+  state change it reads the repository's GitHub issues through the public REST API (GET only, no token) and shows
+  them as one flat table per kind group, each row naming the issue it belongs to. GitHub issue state and labels are
+  the only status authority; this page stores nothing, writes nothing and never polls. Filters and collapsed tables
+  live only in the open page. A page left open shows its last read, not a continuously current view.
 -->
 <style>
-  :root { color-scheme: light dark; }
-  body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; background: light-dark(#ffffff, #0d1117); color: light-dark(#1f2328, #e6edf3); }
+  :root {
+    color-scheme: light dark;
+    --bd: light-dark(#d0d7de, #3d444d);
+    --bg2: light-dark(#f6f8fa, #161b22);
+    --muted: light-dark(#57606a, #9198a1);
+    --link: light-dark(#0969da, #79c0ff);
+    --danger: light-dark(#cf222e, #ff7b72);
+    --danger-bg: light-dark(#ffebe9, #4a1d22);
+    --warn: light-dark(#9a6700, #d29922);
+    --warn-bg: light-dark(#fff8c5, #3b2e0b);
+    --info: light-dark(#0969da, #79c0ff);
+    --info-bg: light-dark(#ddf4ff, #0c2d4d);
+    --ok: light-dark(#1a7f37, #3fb950);
+    --ok-bg: light-dark(#dafbe1, #0f2d1a);
+  }
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 24px auto; padding: 0 24px; max-width: 1680px; background: light-dark(#ffffff, #0d1117); color: light-dark(#1f2328, #e6edf3); }
   h1 { font-size: 24px; margin: 0 0 8px; }
-  h2 { font-size: 18px; margin: 24px 0 8px; }
   p { margin: 8px 0; }
-  a { color: light-dark(#0969da, #79c0ff); }
+  a { color: var(--link); }
   .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
-  select, button { font: inherit; padding: 2px 8px; }
-  .scroll { overflow-x: auto; max-width: 1000px; }
-  table { width: 1000px; table-layout: fixed; border-collapse: collapse; }
-  col.status { width: 156px; }
-  col.priority { width: 68px; }
-  col.difficulty { width: 78px; }
-  col.estimate { width: 66px; }
-  col.owner { width: 100px; }
-  th, td { padding: 7px 8px; border: 1px solid light-dark(#d0d7de, #3d444d); text-align: left; vertical-align: top; }
-  th { background: light-dark(#f6f8fa, #161b22); font-weight: 600; }
-  th:not(:first-child), td:not(:first-child) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  td:first-child { overflow-wrap: anywhere; }
-  .note, .context, .progress { color: light-dark(#57606a, #9198a1); }
-  .context, .progress { font-size: 12px; }
-  .bad { color: light-dark(#cf222e, #ff7b72); font-weight: 600; }
+  select, button, input { font: inherit; }
+  .controls select, .controls button { padding: 2px 8px; }
+  .note, .progress { color: var(--muted); }
+  .progress { font-size: 12px; }
+  .bad { color: var(--danger); font-weight: 600; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 0 16px; }
+  .tile { display: block; text-align: left; padding: 8px 12px; border: 1px solid transparent; border-radius: 8px; background: var(--bg2); color: inherit; }
+  button.tile { cursor: pointer; }
+  button.tile:hover { border-color: var(--bd); }
+  button.tile[aria-pressed="true"] { border-color: var(--link); outline: 2px solid var(--link); outline-offset: -2px; }
+  .tile b { display: block; font-size: 22px; font-weight: 600; line-height: 1.2; }
+  .tile span { color: var(--muted); font-size: 12px; }
+  .tile.warn b { color: var(--danger); }
+  .sec { border: 1px solid var(--bd); border-radius: 8px; margin: 0 0 14px; }
+  .sec > h2 { margin: 0; font-size: 15px; }
+  .sh { display: flex; width: 100%; gap: 8px; align-items: baseline; padding: 9px 12px; border: 0; border-radius: 8px; background: var(--bg2); color: inherit; font-weight: 600; text-align: left; }
+  button.sh { cursor: pointer; }
+  .sh .chev { display: inline-block; width: 1em; color: var(--muted); }
+  .sh .count, .sh .aside { color: var(--muted); font-weight: 400; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 7px 10px; border-top: 1px solid var(--bd); text-align: left; vertical-align: top; white-space: nowrap; }
+  th.c-title, td.c-title { white-space: normal; overflow-wrap: anywhere; min-width: 240px; width: 42%; }
+  th.c-belongs, td.c-belongs { white-space: normal; overflow-wrap: anywhere; min-width: 170px; max-width: 300px; }
+  td.bad, td.c-estimate { white-space: normal; overflow-wrap: anywhere; max-width: 10rem; }
+  thead th { background: var(--bg2); font-weight: 600; }
+  th .hl { display: block; margin-bottom: 4px; }
+  th select, th input { box-sizing: border-box; padding: 2px 4px; font-size: 12px; font-weight: 400; }
+  th input { width: 100%; }
+  th select { width: auto; max-width: 10rem; }
+  th.c-belongs select { width: 100%; min-width: 9rem; }
+  .scroll.scrolls { overflow-x: auto; }
+  .scroll.scrolls thead th { position: static; }
+  tr.closed td.c-title { text-decoration: line-through; color: var(--muted); }
+  tr.none td { color: var(--muted); text-align: center; }
+  .chip { display: inline-block; padding: 0 8px; border-radius: 10px; font-size: 12px; background: var(--bg2); color: var(--muted); }
+  .chip.tone-danger { background: var(--danger-bg); color: var(--danger); }
+  .chip.tone-warning { background: var(--warn-bg); color: var(--warn); }
+  .chip.tone-info { background: var(--info-bg); color: var(--info); }
+  .chip.tone-success { background: var(--ok-bg); color: var(--ok); }
+  td.pri-high { color: var(--danger); font-weight: 600; }
+  td.pri-low { color: var(--muted); }
+  .context { color: var(--muted); font-size: 12px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+  @media (min-width: 1280px) { thead th { position: sticky; top: 0; z-index: 1; } html { scroll-padding-top: 6rem; } }
+  @media (max-width: 1279px) { .scroll { overflow-x: auto; } }
 </style>
 </head>
 <body>
@@ -43,15 +87,20 @@
     <option value="closed">Closed</option>
     <option value="all">All</option>
   </select></label>
+  <label>Product <select id="product"><option value="">All products</option></select></label>
+  <button id="clear" type="button">Clear filters</button>
   <button id="reload" type="button">Reload</button>
   <a id="live" href="https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues">Open on GitHub</a>
 </div>
-<p class="note" id="stamp">Loading live data from GitHub…</p>
+<p class="note" id="stamp" role="status" aria-live="polite">Loading live data from GitHub…</p>
+<p class="sr-only" id="announce" role="status" aria-live="polite"></p>
 <div id="out"></div>
-<p class="note">Status, Priority, Difficulty, Estimate and Owner come from each issue's <code>status:</code>, <code>priority:</code>,
-<code>difficulty:</code>, <code>estimate:</code> and <code>handler:</code> labels; a closed issue's status comes from GitHub's close reason.
-A missing, conflicting or unknown value is shown in red, never guessed. Sub-issues are listed under their parent.
-Issues without a recognized product and kind label are listed as untriaged.</p>
+<p class="note">Each issue is listed once, in the table for its kind. Status, Priority, Difficulty, Estimate and Owner come from the issue's
+<code>status:</code>, <code>priority:</code>, <code>difficulty:</code>, <code>estimate:</code> and <code>handler:</code> labels; a closed issue's status comes from
+GitHub's close reason and its title is struck through. “Belongs to” is the issue's native parent. Search and the column filters work together and apply to every
+table; the tiles that show a count of Blocked, High priority or Partially implemented issues apply the same filter. A missing, conflicting or unknown value, or a parent link that loops back (“parent cycle”),
+is shown in red, never guessed, and an issue without a recognized product and kind label is listed as untriaged, whatever the filters. A table wider than
+the page scrolls inside its own section.</p>
 
 <script type="application/json" id="work-status-vocabulary">
 {
@@ -86,7 +135,14 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
     "follow-up": "Follow-up",
     "obligation": "Obligation",
     "item": "Item"
-  }
+  },
+  "tables": [
+    {"key": "features", "title": "Features", "kinds": ["feature"]},
+    {"key": "plans", "title": "Plans", "kinds": ["plan"]},
+    {"key": "follow-ups", "title": "Follow-ups and defects", "kinds": ["follow-up"]},
+    {"key": "hardening", "title": "Hardening work", "kinds": ["track", "item", "candidate"], "collapsed": true},
+    {"key": "obligations", "title": "Obligations", "kinds": ["obligation"], "collapsed": true}
+  ]
 }
 </script>
 
@@ -95,7 +151,18 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
   "use strict";
 
   const MAX_PAGES = 50;
-  const MAX_DEPTH = 10;
+  const FILTER_KEYS = ["text", "kind", "product", "belongs", "status", "priority", "difficulty", "estimate", "owner"];
+  const VALUE_FILTERS = ["status", "priority", "difficulty", "estimate", "owner"];
+  // The look of a status chip. A status not listed here is neutral.
+  const STATUS_TONES = {blocked: "danger", unrun: "danger", "unrun-binding": "danger", "partially-implemented": "warning",
+    "accepted-open": "warning", promoted: "info", "in-review": "info", active: "success", ready: "success"};
+  const HEADERS = {title: "Issue / Title", kind: "Kind", product: "Product", belongs: "Belongs to", status: "Status"};
+  const HEADER_TITLES = {estimate: "Planned Estimate"};
+  const OPTION_LABEL_LIMIT = 60;
+
+  function has(table, key) {
+    return Object.prototype.hasOwnProperty.call(table, key);
+  }
 
   function esc(value) {
     return String(value).replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"}[c]));
@@ -116,9 +183,7 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
   // The display name of a vocabulary entry, or null. Only an own string entry counts, so a label or close reason
   // such as "constructor", "toString" or "__proto__" never reads an inherited object property.
   function lookup(table, key) {
-    return typeof key === "string" && Object.prototype.hasOwnProperty.call(table, key) && typeof table[key] === "string"
-      ? table[key]
-      : null;
+    return typeof key === "string" && has(table, key) && typeof table[key] === "string" ? table[key] : null;
   }
 
   function statusCell(issue, vocab) {
@@ -140,6 +205,7 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
     const values = labelValues(issue, dimension.label);
     if (values.length === 0) return cell("missing", true);
     if (values.length > 1) return cell("conflict: " + values.join(", "), true);
+    if (values[0] === "") return cell("empty value", true);
     const known = lookup(dimension.values, values[0]);
     if (known !== null) return cell(known, false);
     return dimension.free_form ? cell(values[0], false) : cell("unknown: " + values[0], true);
@@ -148,6 +214,14 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
   function singleKnown(issue, prefix, table) {
     const values = labelValues(issue, prefix);
     return values.length === 1 && lookup(table, values[0]) !== null ? values[0] : null;
+  }
+
+  // Why a product or kind label does not place an issue: the same words the metadata cells use.
+  function labelProblem(issue, prefix, table) {
+    const values = labelValues(issue, prefix);
+    if (values.length === 0) return prefix + " missing";
+    if (values.length > 1) return prefix + " conflict: " + values.join(", ");
+    return lookup(table, values[0]) === null ? prefix + " unknown: " + values[0] : null;
   }
 
   function apiIssuePattern(repo) {
@@ -160,91 +234,208 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
     return url === prefix + issue.number ? url : null;
   }
 
-  // Rows for one read: issues grouped by product (untriaged last), each tree rendered once, depth first.
-  function buildRows(issues, vocab) {
-    const pattern = apiIssuePattern(vocab.repo);
-    const byNumber = new Map(issues.map((issue) => [issue.number, issue]));
+  // The part of a title after its identifier ("P11-FEAT-X: Zed resume" -> "Zed resume"); any other title is kept whole.
+  function shortTitle(title) {
+    const at = title.indexOf(": ");
+    return at > 0 && !/\s/.test(title.slice(0, at)) ? title.slice(at + 2) : title;
+  }
+
+  // Cuts by character, not by UTF-16 unit, so an emoji is never split.
+  function clip(text, limit) {
+    const chars = Array.from(text);
+    return chars.length > limit ? chars.slice(0, limit - 1).join("") + "…" : text;
+  }
+
+  function emptyFilters() {
+    const filters = {};
+    for (const key of FILTER_KEYS) filters[key] = "";
+    return filters;
+  }
+
+  // The state of the open page: the filters (the Product choice is one of them), which tables are collapsed and the issue state read.
+  function initialUi(vocab, state) {
+    const collapsed = {};
+    for (const table of vocab.tables) collapsed[table.key] = Boolean(table.collapsed);
+    return {filters: emptyFilters(), collapsed, state};
+  }
+
+  // Issues on a parent cycle or hanging under one. An issue has one parent, so a walk up from any issue either ends (a root, or a
+  // parent outside this read) or meets an issue of its own walk. The walk keeps its own path, never the call stack.
+  function cyclicIssues(byNumber, pattern) {
     const parentOf = new Map();
-    const relationErrors = new Map();
-    for (const issue of issues) {
-      if (issue.parent_issue_url == null) continue;
+    for (const issue of byNumber.values()) {
+      const match = issue.parent_issue_url == null ? null : pattern.exec(String(issue.parent_issue_url));
+      if (match && byNumber.has(Number(match[1]))) parentOf.set(issue.number, Number(match[1]));
+    }
+    const settled = new Set();
+    const cyclic = new Set();
+    for (const start of byNumber.keys()) {
+      if (settled.has(start)) continue;
+      const walk = new Set();
+      let node = start;
+      while (node !== undefined && !settled.has(node) && !walk.has(node)) {
+        walk.add(node);
+        node = parentOf.get(node);
+      }
+      const loops = node !== undefined && (walk.has(node) || cyclic.has(node));
+      for (const member of walk) {
+        settled.add(member);
+        if (loops) cyclic.add(member);
+      }
+    }
+    return cyclic;
+  }
+
+  function makeRow(issue, vocab, byNumber, pattern, cyclic, kindKey, productKey) {
+    let parent = null;
+    let relationError = null;
+    if (issue.parent_issue_url != null) {
       const match = pattern.exec(String(issue.parent_issue_url));
       if (!match) {
-        relationErrors.set(issue.number, "malformed parent link");
-        continue;
+        relationError = "malformed parent link";
+      } else {
+        const number = Number(match[1]);
+        const known = byNumber.get(number);
+        parent = {number, title: known ? shortTitle(String(known.title || "")) : null, url: "https://github.com/" + vocab.repo + "/issues/" + number};
+        if (cyclic.has(issue.number)) relationError = "parent cycle";
       }
-      parentOf.set(issue.number, Number(match[1]));
     }
-    const children = new Map();
-    for (const [child, parent] of parentOf) {
-      if (!byNumber.has(parent)) continue;
-      if (!children.has(parent)) children.set(parent, []);
-      children.get(parent).push(child);
+    const productValues = labelValues(issue, "product");
+    const product = productKey !== null ? vocab.products[productKey]
+      : (productValues.length === 0 ? "missing" : (productValues.length > 1 ? "conflict: " + productValues.join(", ") : "unknown: " + productValues[0]));
+    const cells = {status: statusCell(issue, vocab)};
+    for (const name of Object.keys(vocab.dimensions)) cells[name] = metadataCell(issue, vocab.dimensions[name]);
+    const closed = issue.state === "closed";
+    const statusKey = closed ? "closed" : singleKnown(issue, "status", vocab.statuses);
+    const problems = [labelProblem(issue, "product", vocab.products), labelProblem(issue, "kind", vocab.kinds)].filter(Boolean);
+    let tone = null;
+    if (!cells.status.bad) {
+      tone = closed ? (issue.state_reason === "completed" ? "success" : "neutral") : (has(STATUS_TONES, statusKey) ? STATUS_TONES[statusKey] : "neutral");
     }
-    const kindOrder = Object.keys(vocab.kinds);
-    const rank = (issue) => {
-      const kind = singleKnown(issue, "kind", vocab.kinds);
-      return kind === null ? kindOrder.length : kindOrder.indexOf(kind);
+    return {
+      number: issue.number,
+      title: String(issue.title || ""),
+      url: issueUrl(issue, vocab.repo),
+      kind: kindKey !== null ? vocab.kinds[kindKey] : (labelValues(issue, "kind")[0] || "missing"),
+      kindKey,
+      productKey,
+      product,
+      closed,
+      parent,
+      relationError,
+      progress: issue.sub_issues_summary && issue.sub_issues_summary.total
+        ? {completed: Number(issue.sub_issues_summary.completed) || 0, total: Number(issue.sub_issues_summary.total) || 0}
+        : null,
+      statusKey,
+      tone,
+      priorityKey: has(vocab.dimensions, "priority") ? singleKnown(issue, vocab.dimensions.priority.label, vocab.dimensions.priority.values) : null,
+      cells,
+      problems,
     };
-    const order = (a, b) => rank(byNumber.get(a)) - rank(byNumber.get(b)) || a - b;
-    for (const list of children.values()) list.sort(order);
+  }
 
-    const placed = new Set();
-    const rows = [];
-    // Each issue has at most one parent, so a walk down from a root reaches every issue once and never meets a cycle:
-    // issues on (or under) a cycle are never reached and are placed below with that error. The walk keeps its own
-    // stack, so its depth never depends on the browser's call stack; a node past MAX_DEPTH is still shown once, with
-    // its own error, and nothing beneath it is dropped.
-    const roots = issues
-      .map((issue) => issue.number)
-      .filter((number) => !(parentOf.has(number) && byNumber.has(parentOf.get(number))))
-      .sort(order);
-    const pending = roots.map((number) => [number, 0]).reverse();
-    while (pending.length) {
-      const [number, depth] = pending.pop();
-      placed.add(number);
-      if (depth > MAX_DEPTH) relationErrors.set(number, "parent chain deeper than " + MAX_DEPTH + " levels");
-      rows.push({number, depth});
-      const kids = children.get(number) || [];
-      for (let i = kids.length - 1; i >= 0; i -= 1) pending.push([kids[i], depth + 1]);
+  // One read becomes one flat table per kind group, an untriaged list and the counts the tiles show.
+  function buildModel(issues, vocab) {
+    const pattern = apiIssuePattern(vocab.repo);
+    const byNumber = new Map(issues.map((issue) => [issue.number, issue]));
+    const cyclic = cyclicIssues(byNumber, pattern);
+    const tableOfKind = new Map();
+    for (const table of vocab.tables) for (const kind of table.kinds) tableOfKind.set(kind, table);
+    const tables = vocab.tables.map((spec) => ({
+      key: spec.key, title: spec.title, kinds: spec.kinds, collapsed: Boolean(spec.collapsed), multiKind: spec.kinds.length > 1, rows: [],
+    }));
+    const tableByKey = new Map(tables.map((table) => [table.key, table]));
+    const untriaged = [];
+    for (const issue of issues.slice().sort((a, b) => a.number - b.number)) {
+      const kindKey = singleKnown(issue, "kind", vocab.kinds);
+      const productKey = singleKnown(issue, "product", vocab.products);
+      const row = makeRow(issue, vocab, byNumber, pattern, cyclic, kindKey, productKey);
+      const spec = kindKey !== null ? tableOfKind.get(kindKey) : undefined;
+      if (productKey === null || spec === undefined) {
+        untriaged.push(row);
+      } else {
+        tableByKey.get(spec.key).rows.push(row);
+      }
     }
-    for (const issue of issues) {
-      if (!placed.has(issue.number)) {
-        if (!relationErrors.has(issue.number)) relationErrors.set(issue.number, "parent cycle");
-        rows.push({number: issue.number, depth: 0});
-        placed.add(issue.number);
+    for (const table of tables) {
+      if (table.multiKind) {
+        const rank = (row) => table.kinds.indexOf(row.kindKey);
+        table.rows.sort((a, b) => rank(a) - rank(b) || a.number - b.number);
       }
     }
 
-    const groups = new Map();
-    for (const row of rows) {
-      const issue = byNumber.get(row.number);
-      const triaged = singleKnown(issue, "product", vocab.products) !== null && singleKnown(issue, "kind", vocab.kinds) !== null;
-      const product = triaged ? singleKnown(issue, "product", vocab.products) : null;
-      const key = triaged ? product : "untriaged";
-      if (!groups.has(key)) groups.set(key, []);
-      const parent = parentOf.get(row.number);
-      groups.get(key).push({
-        number: row.number,
-        depth: row.depth,
-        title: String(issue.title || ""),
-        url: issueUrl(issue, vocab.repo),
-        status: statusCell(issue, vocab),
-        cells: Object.keys(vocab.dimensions).map((name) => metadataCell(issue, vocab.dimensions[name])),
-        context: parent !== undefined && !byNumber.has(parent) ? parent : null,
-        contextUrl: parent !== undefined && !byNumber.has(parent) ? "https://github.com/" + vocab.repo + "/issues/" + parent : null,
-        relationError: relationErrors.get(row.number) || null,
-        progress: issue.sub_issues_summary && issue.sub_issues_summary.total
-          ? {completed: Number(issue.sub_issues_summary.completed) || 0, total: Number(issue.sub_issues_summary.total) || 0}
-          : null,
-      });
+    const counted = tables.flatMap((table) => table.rows).concat(untriaged);
+    const priority = has(vocab.dimensions, "priority") ? lookup(vocab.dimensions.priority.values, "high") : null;
+    const count = (test) => counted.filter(test).length;
+    const summary = {
+      total: counted.length,
+      blocked: count((row) => row.statusKey === "blocked"),
+      high: priority === null ? 0 : count((row) => row.cells.priority.text === priority),
+      partial: count((row) => row.statusKey === "partially-implemented"),
+      followUps: count((row) => row.kindKey === "follow-up"),
+      attention: count((row) => row.relationError !== null || row.problems.length > 0 || Object.keys(row.cells).some((name) => row.cells[name].bad)),
+    };
+    const tiles = [
+      {id: "total", count: summary.total},
+      {id: "blocked", label: vocab.statuses.blocked, count: summary.blocked, column: "status", value: vocab.statuses.blocked},
+      {id: "high", label: "High priority", count: summary.high, column: "priority", value: priority},
+      {id: "partial", label: vocab.statuses["partially-implemented"], count: summary.partial, column: "status", value: vocab.statuses["partially-implemented"]},
+      {id: "followUps", label: "Follow-ups", count: summary.followUps},
+      {id: "attention", label: "Need attention", count: summary.attention},
+    ].filter((tile) => tile.column === undefined || tile.value);
+    return {tables, untriaged, summary, tiles, dimensions: Object.keys(vocab.dimensions), vocab};
+  }
+
+  // The rows a table shows: search text, then each dropdown filter, all of which must match. A table with no Kind column
+  // ignores the kind filter.
+  function filterRows(rows, filters, hasKind) {
+    const query = String(filters.text || "").trim().toLowerCase();
+    return rows.filter((row) => {
+      if (query && ("#" + row.number + " " + row.title).toLowerCase().indexOf(query) === -1) return false;
+      if (filters.belongs) {
+        const wanted = filters.belongs;
+        if (wanted === "none" ? row.parent !== null || row.relationError !== null : row.parent === null || String(row.parent.number) !== wanted) return false;
+      }
+      if (hasKind && filters.kind && row.kind !== filters.kind) return false;
+      if (filters.product && row.productKey !== filters.product) return false;
+      for (const key of VALUE_FILTERS) {
+        if (filters[key] && row.cells[key].text !== filters[key]) return false;
+      }
+      return true;
+    });
+  }
+
+  // Values in vocabulary order; anything the vocabulary does not know (a bad value, a free-form estimate) comes after.
+  function ordered(values, order) {
+    const rank = (value) => {
+      const at = order.indexOf(value);
+      return at === -1 ? order.length : at;
+    };
+    return Array.from(new Set(values)).sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0));
+  }
+
+  // The dropdown choices of one table: only values that its rows carry.
+  function filterOptions(rows, vocab, kindOrder) {
+    const plainOptions = (values) => values.map((value) => ({value, label: value}));
+    const options = {
+      kind: plainOptions(ordered(rows.map((row) => row.kind), (kindOrder || Object.keys(vocab.kinds)).map((key) => vocab.kinds[key]))),
+      status: plainOptions(ordered(rows.map((row) => row.cells.status.text),
+        Object.keys(vocab.statuses).map((key) => vocab.statuses[key]).concat(Object.keys(vocab.closed_reasons).map((key) => vocab.closed_reasons[key])))),
+    };
+    for (const name of Object.keys(vocab.dimensions)) {
+      const spec = vocab.dimensions[name];
+      options[name] = plainOptions(ordered(rows.map((row) => row.cells[name].text), Object.keys(spec.values).map((key) => spec.values[key])));
     }
-    const sections = [];
-    for (const key of Object.keys(vocab.products)) {
-      if (groups.has(key)) sections.push({title: vocab.products[key], rows: groups.get(key)});
-    }
-    if (groups.has("untriaged")) sections.push({title: "Untriaged issues", rows: groups.get("untriaged")});
-    return sections;
+    options.product = ordered(rows.map((row) => row.productKey).filter((key) => key !== null), Object.keys(vocab.products))
+      .map((key) => ({value: key, label: vocab.products[key]}));
+    const parents = new Map();
+    for (const row of rows) if (row.parent !== null) parents.set(row.parent.number, row.parent.title);
+    options.belongs = Array.from(parents.keys()).sort((a, b) => a - b).map((number) => {
+      const title = parents.get(number);
+      return {value: String(number), label: clip("#" + number + (title ? " " + title : ""), OPTION_LABEL_LIMIT)};
+    });
+    if (rows.some((row) => row.parent === null && row.relationError === null)) options.belongs.push({value: "none", label: "No parent"});
+    return options;
   }
 
   function nextLink(header) {
@@ -295,38 +486,212 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
     return (url) => fetchImpl(url, {method: "GET", headers: {Accept: "application/vnd.github+json"}, credentials: "omit"});
   }
 
-  function renderCell(c) {
-    return "<td" + (c.bad ? " class=\"bad\"" : "") + ">" + esc(c.text) + "</td>";
+  function countWord(state, total) {
+    if (state === "open" || state === "closed") return state;
+    return total === 1 ? "issue" : "issues";
   }
 
-  function renderSections(sections) {
-    if (!sections.length) return "<p>No issues in this view.</p>";
-    return sections.map((section) =>
-      "<h2>" + esc(section.title) + " (" + section.rows.length + ")</h2><div class=\"scroll\"><table>" +
-      "<colgroup><col><col class=\"status\"><col class=\"priority\"><col class=\"difficulty\"><col class=\"estimate\"><col class=\"owner\"></colgroup>" +
-      "<thead><tr><th>Issue / Title</th><th>Status</th><th>Priority</th><th>Difficulty</th><th title=\"Planned Estimate\">Estimate</th><th>Owner</th></tr></thead><tbody>" +
-      section.rows.map((row) => {
-        const ref = row.url ? "<a href=\"" + esc(row.url) + "\">#" + row.number + "</a>" : "#" + row.number;
-        const indent = row.depth ? "<span style=\"padding-left:" + Math.min(row.depth, MAX_DEPTH) * 18 + "px\">↳ </span>" : "";
-        const progress = row.progress ? " <span class=\"progress\">(" + row.progress.completed + "/" + row.progress.total + " sub-issues done)</span>" : "";
-        const context = row.context ? " <span class=\"context\">(under <a href=\"" + esc(row.contextUrl) + "\">#" + row.context + "</a>)</span>" : "";
-        const relation = row.relationError ? " <span class=\"bad\">" + esc(row.relationError) + "</span>" : "";
-        return "<tr><td>" + indent + ref + " — " + esc(row.title) + progress + context + relation + "</td>" +
-          renderCell(row.status) + row.cells.map(renderCell).join("") + "</tr>";
-      }).join("") + "</tbody></table></div>").join("");
+  function renderTile(tile, ui) {
+    if (tile.id === "total") {
+      const label = {open: "Open", closed: "Closed"}[ui.state] || "Issues";
+      return "<div class=\"tile\"><b>" + tile.count + "</b><span>" + esc(label) + "</span></div>";
+    }
+    if (tile.column === undefined) {
+      return "<div class=\"tile" + (tile.id === "attention" && tile.count ? " warn" : "") + "\"><b>" + tile.count + "</b><span>" + esc(tile.label) + "</span></div>";
+    }
+    const pressed = ui.filters[tile.column] === tile.value;
+    return "<button type=\"button\" class=\"tile\" data-tile-column=\"" + esc(tile.column) + "\" data-tile-value=\"" + esc(tile.value) +
+      "\" aria-pressed=\"" + pressed + "\"><b>" + tile.count + "</b><span>" + esc(tile.label) + "</span></button>";
   }
 
-  // Browser controller: a newer read always wins; a failed read clears the table rather than leaving stale rows.
+  function optionList(options, current, labelOf) {
+    const list = options.slice();
+    if (current && !list.some((option) => option.value === current)) list.push({value: current, label: labelOf(current)});
+    return "<option value=\"\">All</option>" + list.map((option) =>
+      "<option value=\"" + esc(option.value) + "\"" + (option.value === current ? " selected" : "") + ">" + esc(option.label) + "</option>").join("");
+  }
+
+  function columnsOf(table, dimensions) {
+    return ["title"].concat(table.multiKind ? ["kind"] : [], ["product", "belongs", "status"], dimensions);
+  }
+
+  function headerLabel(column) {
+    return has(HEADERS, column) ? HEADERS[column] : column.charAt(0).toUpperCase() + column.slice(1);
+  }
+
+  function renderHead(table, columns, ui, options) {
+    return "<thead><tr>" + columns.map((column) => {
+      const label = headerLabel(column);
+      const key = column === "title" ? "text" : column;
+      const id = "flt-" + table.key + "-" + key;
+      const current = ui.filters[key];
+      const title = has(HEADER_TITLES, column) ? " title=\"" + esc(HEADER_TITLES[column]) + "\"" : "";
+      const control = column === "title"
+        ? "<input type=\"search\" data-filter=\"text\" id=\"" + id + "\" placeholder=\"Search # or title\" aria-label=\"Search " + esc(label) + " in " + esc(table.title) + "\" value=\"" + esc(current) + "\">"
+        : "<select data-filter=\"" + key + "\" id=\"" + id + "\" aria-label=\"Filter " + esc(label) + " in " + esc(table.title) + "\">" +
+          optionList(options[column], current, (value) => (column === "belongs" ? (value === "none" ? "No parent" : "#" + value) : value)) + "</select>";
+      return "<th scope=\"col\" class=\"c-" + column + "\" aria-label=\"" + esc(label) + "\"" + title + "><span class=\"hl\">" + esc(label) + "</span>" + control + "</th>";
+    }).join("") + "</tr></thead>";
+  }
+
+  function renderRow(row, columns) {
+    const ref = row.url ? "<a href=\"" + esc(row.url) + "\">#" + row.number + "</a>" : "#" + row.number;
+    const progress = row.progress ? " <span class=\"progress\">" + row.progress.completed + "/" + row.progress.total + " sub-issues done</span>" : "";
+    const problems = row.problems.length ? " <span class=\"bad\">" + esc(row.problems.join("; ")) + "</span>" : "";
+    const parts = columns.map((column) => {
+      if (column === "title") return "<td class=\"c-title\">" + ref + " — <bdi>" + esc(row.title) + "</bdi>" + progress + problems + "</td>";
+      if (column === "kind") return "<td>" + esc(row.kind) + "</td>";
+      if (column === "product") return "<td" + (row.productKey === null ? " class=\"bad\"" : "") + ">" + esc(row.product) + "</td>";
+      if (column === "belongs") {
+        if (row.parent) {
+          return "<td class=\"c-belongs\"><a href=\"" + esc(row.parent.url) + "\">#" + row.parent.number + "</a>" + (row.parent.title ? " <bdi>" + esc(row.parent.title) + "</bdi>" : "") +
+            (row.relationError ? " <span class=\"bad\">" + esc(row.relationError) + "</span>" : "") + "</td>";
+        }
+        return row.relationError ? "<td class=\"c-belongs bad\">" + esc(row.relationError) + "</td>" : "<td class=\"c-belongs\">—</td>";
+      }
+      const c = row.cells[column];
+      if (c.bad) return "<td class=\"bad\">" + esc(c.text) + "</td>";
+      if (column === "status") return "<td><span class=\"chip tone-" + row.tone + "\">" + esc(c.text) + "</span></td>";
+      // The free-form Estimate is the one value of unbounded length, so its cell carries the class that lets it wrap.
+      const cls = column === "priority" && row.priorityKey ? "pri-" + row.priorityKey : (column === "estimate" ? "c-estimate" : "");
+      return "<td" + (cls ? " class=\"" + esc(cls) + "\"" : "") + ">" + esc(c.text) + "</td>";
+    });
+    return "<tr" + (row.closed ? " class=\"closed\"" : "") + ">" + parts.join("") + "</tr>";
+  }
+
+  function renderTable(table, ui, model) {
+    const total = table.rows.length;
+    if (!total) return "";
+    const collapsed = Boolean(ui.collapsed[table.key]);
+    const shown = filterRows(table.rows, ui.filters, table.multiKind);
+    const word = countWord(ui.state, total);
+    const count = shown.length === total ? total + " " + word : shown.length + " of " + total + " " + word;
+    const head = "<h2><button type=\"button\" class=\"sh\" data-toggle=\"" + esc(table.key) + "\" aria-expanded=\"" + !collapsed + "\"><span class=\"chev\" aria-hidden=\"true\">" +
+      (collapsed ? "▸" : "▾") + "</span>" + esc(table.title) + " <span class=\"count\">" + esc(count) + "</span></button></h2>";
+    if (collapsed) return "<section class=\"sec\" id=\"sec-" + esc(table.key) + "\">" + head + "</section>";
+    const columns = columnsOf(table, model.dimensions);
+    const body = shown.length
+      ? shown.map((row) => renderRow(row, columns)).join("")
+      : "<tr class=\"none\"><td colspan=\"" + columns.length + "\">No matching issues</td></tr>";
+    return "<section class=\"sec\" id=\"sec-" + esc(table.key) + "\">" + head + "<div class=\"scroll\"><table aria-label=\"" + esc(table.title) + "\">" +
+      renderHead(table, columns, ui, filterOptions(table.rows, model.vocab, table.kinds)) + "<tbody>" + body + "</tbody></table></div></section>";
+  }
+
+  // Issues the labels cannot place are a data fault: always shown, never filtered, never collapsed.
+  function renderUntriaged(model, ui) {
+    if (!model.untriaged.length) return "";
+    const columns = columnsOf({multiKind: true}, model.dimensions);
+    const head = "<tr>" + columns.map((column) => "<th scope=\"col\" class=\"c-" + column + "\">" + esc(headerLabel(column)) + "</th>").join("") + "</tr>";
+    return "<section class=\"sec\" id=\"sec-untriaged\"><h2><span class=\"sh\">Untriaged <span class=\"count\">" + model.untriaged.length + " " +
+      countWord("all", model.untriaged.length) + "</span><span class=\"aside\">no recognized product and kind label; shown whatever the filters</span></span></h2>" +
+      "<div class=\"scroll\"><table aria-label=\"Untriaged issues\"><thead>" + head + "</thead><tbody>" + model.untriaged.map((row) => renderRow(row, columns)).join("") + "</tbody></table></div></section>";
+  }
+
+  function renderPage(model, ui) {
+    if (model.summary.total === 0) return "<p>No issues in this view.</p>";
+    return "<div class=\"tiles\">" + model.tiles.map((tile) => renderTile(tile, ui)).join("") + "</div>" +
+      model.tables.map((table) => renderTable(table, ui, model)).join("") + renderUntriaged(model, ui);
+  }
+
+  // Browser controller: a newer read always wins; a failed read clears the tables rather than leaving stale rows.
   function boot(doc, win) {
     const vocab = JSON.parse(doc.getElementById("work-status-vocabulary").textContent);
     const params = new win.URLSearchParams(win.location.search);
     const population = params.get("label") ? {label: params.get("label")} : null;
     const client = browserClient(win.fetch.bind(win));
     const select = doc.getElementById("state");
+    const productSelect = doc.getElementById("product");
+    const clearButton = doc.getElementById("clear");
     const out = doc.getElementById("out");
     const stamp = doc.getElementById("stamp");
     const live = doc.getElementById("live");
+    const announce = doc.getElementById("announce");
+    const ui = initialUi(vocab, select.value);
+    let view = null;
     let generation = 0;
+    productSelect.innerHTML = "<option value=\"\">All products</option>" + Object.keys(vocab.products).map((key) =>
+      "<option value=\"" + esc(key) + "\">" + esc(vocab.products[key]) + "</option>").join("");
+
+    const activeFilters = () => FILTER_KEYS.filter((key) => (key === "text" ? ui.filters[key].trim() : ui.filters[key]) !== "").length;
+    const syncClearLabel = () => {
+      const active = activeFilters();
+      clearButton.textContent = active ? "Clear filters (" + active + ")" : "Clear filters";
+    };
+    // A table wider than its section scrolls inside the section, and a scrolling table cannot also have a sticky header. This is
+    // measured, not guessed from the window width: what makes a table wide is its data.
+    const fitTables = () => {
+      const boxes = out.querySelectorAll ? out.querySelectorAll(".scroll") : [];
+      for (const box of boxes) {
+        box.classList.remove("scrolls");
+        if (box.scrollWidth > box.clientWidth + 1) box.classList.add("scrolls");
+      }
+    };
+    const draw = (focus) => {
+      ui.state = view.state;
+      productSelect.value = ui.filters.product; // the toolbar choice and the Product column headers are one filter
+      const model = buildModel(view.issues, vocab);
+      out.innerHTML = renderPage(model, ui);
+      fitTables();
+      syncClearLabel();
+      if (announce) {
+        let matching = model.untriaged.length;
+        for (const table of model.tables) matching += filterRows(table.rows, ui.filters, table.multiKind).length;
+        announce.textContent = activeFilters() ? matching + " of " + model.summary.total + " issues match" : model.summary.total + " issues";
+      }
+      if (focus && focus.id) {
+        const control = doc.getElementById(focus.id);
+        if (control && control.focus) {
+          control.focus();
+          if (focus.caret !== null && control.setSelectionRange) control.setSelectionRange(focus.caret, focus.caret);
+        }
+      }
+    };
+    const refocus = (selector) => {
+      const control = out.querySelector ? out.querySelector(selector) : null;
+      if (control && control.focus) control.focus();
+    };
+
+    const onFilter = (event) => {
+      if (event && event.isComposing) return; // an IME composition is finished by its own event; a redraw now would destroy it
+      const target = event && event.target;
+      const key = target && target.dataset && target.dataset.filter;
+      if (!view || !key || !has(ui.filters, key)) return;
+      const value = String(target.value);
+      if (ui.filters[key] === value) return;
+      ui.filters[key] = value;
+      draw({id: target.id, caret: typeof target.selectionStart === "number" ? target.selectionStart : null});
+    };
+    out.addEventListener("input", onFilter);
+    out.addEventListener("change", onFilter);
+    out.addEventListener("compositionend", onFilter);
+    out.addEventListener("click", (event) => {
+      let node = event && event.target;
+      if (node && node.closest) node = node.closest("[data-toggle],[data-tile-column]");
+      const data = node && node.dataset;
+      if (!view || !data) return;
+      if (data.toggle !== undefined && has(ui.collapsed, data.toggle)) {
+        ui.collapsed[data.toggle] = !ui.collapsed[data.toggle];
+        draw(null);
+        refocus("[data-toggle=\"" + data.toggle + "\"]");
+      } else if (data.tileColumn !== undefined && has(ui.filters, data.tileColumn)) {
+        ui.filters[data.tileColumn] = ui.filters[data.tileColumn] === data.tileValue ? "" : String(data.tileValue);
+        draw(null);
+        refocus("[data-tile-column=\"" + data.tileColumn + "\"][data-tile-value=\"" + data.tileValue + "\"]");
+      }
+    });
+    clearButton.addEventListener("click", () => {
+      ui.filters = emptyFilters();
+      productSelect.value = "";
+      syncClearLabel();
+      if (view) draw(null);
+    });
+    productSelect.addEventListener("change", () => {
+      ui.filters.product = productSelect.value;
+      syncClearLabel();
+      if (view) draw(null);
+    });
+    if (win.addEventListener) win.addEventListener("resize", fitTables);
+
     const read = async () => {
       const mine = ++generation;
       const state = select.value;
@@ -336,14 +701,16 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
         "is:issue" + (state === "all" ? "" : " is:" + state) + (population ? " label:" + population.label : ""));
       stamp.textContent = "Reading " + scope + " from GitHub…";
       try {
-        const view = await loadView(client, vocab, state, population);
+        const loaded = await loadView(client, vocab, state, population);
         if (mine !== generation) return;
-        out.innerHTML = renderSections(buildRows(view.issues, vocab));
-        stamp.textContent = "Live from GitHub — read " + new Date().toLocaleString() + " · " + view.issues.length +
-          " " + scope + " · " + view.requests + " request(s); " + (view.rate && view.rate.remaining !== null
-            ? view.rate.remaining + " of " + view.rate.limit + " left this hour" : "quota unknown") + ". Reload to refresh.";
+        view = {issues: loaded.issues, state};
+        draw(null);
+        stamp.textContent = "Live from GitHub — read " + new Date().toLocaleString() + " · " + loaded.issues.length +
+          " " + scope + " · " + loaded.requests + " request(s); " + (loaded.rate && loaded.rate.remaining !== null
+            ? loaded.rate.remaining + " of " + loaded.rate.limit + " left this hour" : "quota unknown") + ". Reload to refresh.";
       } catch (error) {
         if (mine !== generation) return;
+        view = null;
         out.innerHTML = "";
         stamp.innerHTML = "<span class=\"bad\">Could not read GitHub: " + esc(error.message) +
           ".</span> Nothing is shown rather than something stale; use “Open on GitHub”.";
@@ -354,7 +721,8 @@ Issues without a recognized product and kind label are listed as untriaged.</p>
     return read();
   }
 
-  root.WorkStatus = {esc, labelValues, statusCell, metadataCell, buildRows, nextLink, loadView, browserClient, renderSections, boot};
+  root.WorkStatus = {esc, labelValues, statusCell, metadataCell, emptyFilters, initialUi, buildModel, filterRows, filterOptions,
+    nextLink, loadView, browserClient, renderPage, boot, STATUS_TONES};
   if (root.document && root.document.getElementById && root.document.getElementById("work-status-vocabulary")) {
     boot(root.document, root);
   }
