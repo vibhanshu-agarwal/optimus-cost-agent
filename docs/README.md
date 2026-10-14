@@ -138,10 +138,3 @@ Live plans (each listed in the backlog's live plan registry):
 - [Plan 12.2 Package A delivery record](superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md) — local commits, offline acceptance, residual and evidence custody.
 
 [work-status-hosted]: https://vibhanshu-agarwal.github.io/optimus-cost-agent/work-status.html
-
-## MAIN-7 sandbox port
-
-| Document | What it is |
-|---|---|
-| [MAIN-7 port plan v5](superpowers/plans/MAIN-PORT-PLAN-v5.md) | Complete approved route C contract; live work metadata is in #350 |
-| [MAIN-7 dated local checkpoint receipt](superpowers/reports/2026-10-14-main7-port-checkpoint.md) | Source freeze, red/green evidence and qualified local results |
