@@ -53,14 +53,14 @@
   .sh .count, .sh .aside { color: var(--muted); font-weight: 400; font-size: 13px; }
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 7px 10px; border-top: 1px solid var(--bd); text-align: left; vertical-align: top; white-space: nowrap; }
-  th.c-title, td.c-title { white-space: normal; overflow-wrap: anywhere; min-width: 280px; width: 42%; }
+  th.c-title, td.c-title { white-space: normal; overflow-wrap: anywhere; min-width: 240px; width: 42%; }
   th.c-belongs, td.c-belongs { white-space: normal; overflow-wrap: anywhere; min-width: 170px; max-width: 300px; }
-  td.bad, td.c-estimate { white-space: normal; overflow-wrap: anywhere; max-width: 14rem; }
+  td.bad, td.c-estimate { white-space: normal; overflow-wrap: anywhere; max-width: 10rem; }
   thead th { background: var(--bg2); font-weight: 600; }
   th .hl { display: block; margin-bottom: 4px; }
   th select, th input { box-sizing: border-box; padding: 2px 4px; font-size: 12px; font-weight: 400; }
   th input { width: 100%; }
-  th select { width: auto; max-width: 100%; }
+  th select { width: auto; max-width: 10rem; }
   th.c-belongs select { width: 100%; min-width: 9rem; }
   tr.closed td.c-title { text-decoration: line-through; color: var(--muted); }
   tr.none td { color: var(--muted); text-align: center; }
@@ -512,7 +512,9 @@ in red, never guessed, and an issue without a recognized product and kind label 
       const c = row.cells[column];
       if (c.bad) return "<td class=\"bad\">" + esc(c.text) + "</td>";
       if (column === "status") return "<td><span class=\"chip tone-" + row.tone + "\">" + esc(c.text) + "</span></td>";
-      return "<td" + (column === "priority" && row.priorityKey ? " class=\"pri-" + esc(row.priorityKey) + "\"" : "") + ">" + esc(c.text) + "</td>";
+      // The free-form Estimate is the one value of unbounded length, so its cell carries the class that lets it wrap.
+      const cls = column === "priority" && row.priorityKey ? "pri-" + row.priorityKey : (column === "estimate" ? "c-estimate" : "");
+      return "<td" + (cls ? " class=\"" + esc(cls) + "\"" : "") + ">" + esc(c.text) + "</td>";
     });
     return "<tr" + (row.closed ? " class=\"closed\"" : "") + ">" + parts.join("") + "</tr>";
   }

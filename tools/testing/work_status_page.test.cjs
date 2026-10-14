@@ -695,6 +695,34 @@ test("test_wide_values_wrap_instead_of_widening_the_table_and_long_parent_titles
   assert.ok(belongs && /overflow-wrap:\s*anywhere/.test(belongs.body));
 });
 
+test("test_every_cell_class_the_style_sheet_targets_is_one_the_renderer_emits", () => {
+  // A rule for a class that no cell carries does nothing: the Estimate wrapping rule was exactly that.
+  const targeted = new Set();
+  for (const rule of cssRules()) for (const m of rule.selector.matchAll(/\b(td|th)\.([a-z][\w-]*)/g)) targeted.add(`${m[1]}.${m[2]}`);
+  assert.ok(targeted.size >= 7);
+  const model = WS.buildModel([
+    issue(1, withLabels({priority: "priority:high", estimate: "estimate:about two weeks of focused work"}), {parent_issue_url: parentUrl(2), title: "high"}),
+    issue(2, withLabels({priority: "priority:low"}), {title: "low"}),
+    issue(3, withLabels({priority: "priority:high"}).filter((label) => !label.startsWith("estimate:")), {title: "bad estimate"}),
+    issue(4, withKind("track"), {state: "closed", state_reason: "completed", title: "closed"}),
+  ], VOCAB, {});
+  const html = WS.renderPage(model, ui());
+  const emitted = new Set(Array.from(html.matchAll(/<(td|th)[^>]*class="([^"]+)"/g), (m) => m[2].split(" ").map((name) => `${m[1]}.${name}`)).flat());
+  for (const name of targeted) assert.ok(emitted.has(name), `the style sheet targets ${name} but no such cell is rendered`);
+});
+
+test("test_a_long_estimate_wraps_in_a_bounded_cell_and_cannot_widen_its_dropdown", () => {
+  const long = "about two weeks of focused work incl review";
+  const html = WS.renderPage(WS.buildModel([issue(1, withLabels({estimate: "estimate:" + long}))], VOCAB, {}), ui());
+  assert.ok(html.includes(`<td class="c-estimate">${long}</td>`), "the free-form Estimate cell carries the class the wrapping rule targets");
+  const bound = (rule) => Number(/max-width:\s*([\d.]+)rem/.exec(rule.body)[1]);
+  const cell = cssRules().find((rule) => rule.selector === "td.bad, td.c-estimate");
+  const dropdown = cssRules().find((rule) => rule.selector === "th select" && /max-width:\s*[\d.]+rem/.test(rule.body));
+  assert.ok(cell && dropdown, "both are bounded in rem: a percentage cannot bound a control the column is sized by");
+  assert.equal(bound(dropdown), bound(cell), "the dropdown and the cell bound the column to the same width");
+  assert.ok(bound(cell) <= 10, "narrow enough that every table still fits at the width where headers stick");
+});
+
 test("test_a_pressed_tile_has_a_cue_that_does_not_depend_on_color", () => {
   const pressed = cssRules().find((rule) => rule.selector === 'button.tile[aria-pressed="true"]');
   assert.ok(pressed && /outline:\s*\d+px solid/.test(pressed.body), "an outline survives forced-colors mode");
