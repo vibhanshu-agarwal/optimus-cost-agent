@@ -276,3 +276,81 @@ def test_accounting_service_records_zero_cost_package_advisory_context():
     assert ledger.entries[0].native_unit == "requests"
     assert ledger.entries[0].cost_usd == Decimal("0")
     assert ledger.entries[0].billing_units == 0
+
+
+def test_accounting_records_usage_when_jsonl_telemetry_fails(tmp_path, monkeypatch, caplog, capsys):
+    import logging
+
+    from optimus.telemetry.fanout import TelemetryFanout
+    from optimus.telemetry.jsonl import JsonlTelemetryWriter
+
+    class RecordingExporter:
+        def __init__(self):
+            self.batches = []
+
+        def export(self, events):
+            self.batches.append(events)
+            return {"trace_batch_id": f"batch-{len(self.batches)}", "trace_ids": [],
+                    "delivery_state": "delivered", "retry_count": 0, "final_disposition": "delivered"}
+
+    writer = JsonlTelemetryWriter(tmp_path / "telemetry.jsonl")
+    redis_events = []
+    exporter = RecordingExporter()
+    fanout = TelemetryFanout(jsonl_writer=writer, redis_sink=redis_events.append, gateway_exporter=exporter, batch_size=1)
+    service = UsageAccountingService(event_sink=fanout)
+    attempts = []
+
+    def fail_after_record(event):
+        ledger = service.provider_ledger
+        assert len(ledger.entries) == 1
+        assert ledger.entries[0].gateway_request_id == "gw-1"
+        assert ledger.total_cost_usd() == Decimal("0.003")
+        assert ledger.total_billing_units() == 3
+        attempts.append(event)
+        raise OSError("synthetic-private-sink-message")
+
+    monkeypatch.setattr(writer, "append", fail_after_record)
+    common = dict(run_id="run-1", session_id="session-1", request_id="req-1",
+                  occurred_at=datetime(2026, 7, 4, tzinfo=UTC), service="web.search", native_unit="tavily_credits")
+    with caplog.at_level(logging.WARNING, logger="optimus.telemetry.fanout"):
+        ledger = service.record_gateway_usage(gateway_usage("gw-1", "0.003", 3), **common)
+
+    assert ledger is service.provider_ledger
+    assert len(ledger.entries) == 1
+    assert ledger.total_cost_usd() == Decimal("0.003")
+    assert ledger.total_billing_units() == 3
+    assert len(attempts) == 1
+    assert redis_events == attempts
+    assert exporter.batches == [tuple(attempts)]
+    assert attempts[0].kind is TelemetryEventKind.GATEWAY_USAGE
+    assert len(fanout.local_sink_failures) == 1
+    failure = fanout.local_sink_failures[0]
+    assert (failure.sink, failure.event_kind, failure.reason_code, failure.exception_type) == (
+        "jsonl", "gateway_usage", "telemetry_sink_raised", "OSError",
+    )
+    warnings = [record for record in caplog.records if record.name == "optimus.telemetry.fanout"]
+    assert len(warnings) == 1
+    assert warnings[0].exc_info is None
+    assert "synthetic-private-sink-message" not in caplog.text + repr(failure)
+    assert capsys.readouterr().out == ""
+
+    # Rejected ledger writes still fail before any fanout delivery attempt.
+    with pytest.raises(DuplicateGatewayRequestError):
+        service.record_gateway_usage(gateway_usage("gw-1", "0.004", 3), **common)
+    assert service.provider_ledger is ledger
+    assert len(attempts) == len(redis_events) == len(exporter.batches) == 1
+    assert len(fanout.local_sink_failures) == len(warnings) == 1
+
+
+def test_accounting_preserves_direct_callback_failure():
+    def fail(event):
+        raise OSError("raw callback failure")
+
+    service = UsageAccountingService(event_sink=fail)
+    with pytest.raises(OSError, match="raw callback failure"):
+        service.record_gateway_usage(
+            gateway_usage("gw-1", "0.003", 3), run_id="run-1", session_id="session-1", request_id="req-1",
+            occurred_at=datetime(2026, 7, 4, tzinfo=UTC), service="web.search", native_unit="tavily_credits",
+        )
+    assert len(service.provider_ledger.entries) == 1
+    assert service.provider_ledger.total_cost_usd() == Decimal("0.003")

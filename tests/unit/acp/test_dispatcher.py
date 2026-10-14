@@ -912,3 +912,18 @@ def test_dispatcher_maps_security_advisory_tool_call_rejected_to_invalid_request
 
     assert response["error"]["code"] == -32600
     assert response["error"]["message"] == "max_calls_per_run exceeded"
+
+
+def test_dispatcher_keeps_recent_denials_and_forwards_exact_drop_count(tmp_path):
+    dispatcher = JsonRpcDispatcher(runtime_context=approved_agent_context(), workspace_root=tmp_path)
+    secret_path = tmp_path / ".env"
+    for index in range(20):
+        response = dispatcher.dispatch({
+            "jsonrpc": "2.0", "id": f"write-secret-{index}", "method": "optimus.mutation.writeFile",
+            "params": {"path": str(secret_path), "content": "blocked"},
+        })
+        assert response["error"]["code"] == MUTATION_FORBIDDEN
+    assert not secret_path.exists()
+    assert len(dispatcher.audit_events()) == 16
+    assert all(event.verdict == "BLOCK" for event in dispatcher.audit_events())
+    assert dispatcher.audit_events_dropped == 4

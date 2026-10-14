@@ -33,6 +33,11 @@ MOVED_REGISTRY_ROW = re.compile(
     r"^\| \[[^]]+\]\((?P<path>[^)]+\.md)\) \| Moved \| — \| "
     r"\[#(?P<issue>\d+)\]\(https://github\.com/vibhanshu-agarwal/optimus-cost-agent/issues/(?P=issue)\) · \[pinned detail\]\([^)]+\) \|$"
 )
+# ADR-022 permits new plans to register an issue without copying live work metadata.
+ISSUE_ONLY_REGISTRY_ROW = re.compile(
+    r"^\| \[[^]]+\]\((?P<path>[A-Za-z0-9][A-Za-z0-9_.-]*\.md)\) \| — \| — \| "
+    r"\[#(?P<issue>[1-9]\d*)\]\(https://github\.com/vibhanshu-agarwal/optimus-cost-agent/issues/(?P=issue)\) \|$"
+)
 MARKDOWN_LINK = re.compile(r"\[[^]]*\]\((?P<target>[^)]+)\)")
 PLAN_LEVEL_STATUS = re.compile(r"(?mi)^\*\*Status:\*\*|^Status:")
 # Exact (document, raw link text) pairs allowed to stay broken. Every entry
@@ -141,9 +146,17 @@ def _moved_registry_rows() -> list[re.Match[str]]:
     ]
 
 
+def _issue_only_registry_rows() -> list[re.Match[str]]:
+    return [
+        match
+        for line in _registry_section().splitlines()
+        if (match := ISSUE_ONLY_REGISTRY_ROW.fullmatch(line)) is not None
+    ]
+
+
 def _registered_paths() -> list[str]:
-    """Every plan the registry lists: the Active and Blocked rows, and the rows moved to an issue."""
-    return [match.group("path") for match in (*_live_registry_rows(), *_moved_registry_rows())]
+    """Registered transitional, migrated and newly issue-owned plans."""
+    return [match.group("path") for match in (*_live_registry_rows(), *_moved_registry_rows(), *_issue_only_registry_rows())]
 
 
 def _hardening_child_plan_rows() -> list[dict[str, str | None]]:
@@ -338,3 +351,13 @@ def test_repository_document_paths_in_text_resolve() -> None:
 
 def _resolves(path: Path) -> bool:
     return resolves_with_archive(path.resolve())
+
+
+def test_issue_only_plan_is_registered_without_local_work_metadata(monkeypatch) -> None:
+    section = (
+        "| [Legacy](legacy.md) | `Blocked` | `owner` | Existing gate |\n"
+        "| [New plan](new-plan.md) | — | — | "
+        "[#350](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/350) |\n"
+    )
+    monkeypatch.setitem(globals(), "_registry_section", lambda: section)
+    assert _registered_paths() == ["legacy.md", "new-plan.md"]

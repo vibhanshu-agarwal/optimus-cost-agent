@@ -4247,6 +4247,14 @@
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_check_product_coverage.py::test_run_mode_launches_the_one_fixed_selection_and_keeps_its_true_exit",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.telemetry.fanout:_report_local_sink_failure:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the fixed warning format exports only a fixed sink label, TelemetryEventKind value, fixed telemetry_sink_raised reason and exception class name. No exception message, traceback, event payload, prompt, response, credential or workspace location is passed to the logger.",
+      "sanitizer": "Four-field metadata-only construction in TelemetryFanout._attempt_local_sink; no exception text or event payload is exported.",
+      "test_node": "tests/unit/telemetry/test_fanout.py::test_fanout_warning_reaches_stderr_with_debug_disabled",
+      "evidence_tier": "unit"
     }
   ]
 }
