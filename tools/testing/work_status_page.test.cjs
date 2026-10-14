@@ -101,7 +101,8 @@ function fakeDom() {
 }
 
 function fakeWindow(fetchImpl, search = "") {
-  return {location: {search}, URLSearchParams, fetch: fetchImpl};
+  const listeners = {};
+  return {location: {search}, URLSearchParams, fetch: fetchImpl, listeners, addEventListener: (type, fn) => { listeners[type] = fn; }};
 }
 
 const filterEvent = (key, value, id = `flt-follow-ups-${key}`) => ({target: {dataset: {filter: key}, value, id}});
@@ -196,19 +197,35 @@ test("test_collapsed_flags_come_from_the_vocabulary", () => {
   assert.equal(tableOf(model, "features").collapsed, false);
 });
 
-test("test_unlabelled_or_unknown_issues_are_untriaged_and_a_product_filter_never_hides_them", () => {
-  const issues = [
-    issue(1, FULL), issue(2, ["status:open"]), issue(3, [...FULL.slice(0, 5), "product:mars", "kind:plan"]),
-    issue(4, [...FULL.slice(0, 5), "product:evidence-a2a", "kind:follow-up"]),
-  ];
-  const all = WS.buildModel(issues, VOCAB, {});
-  assert.deepEqual(numbersOf(all.untriaged), [2, 3]);
-  assert.equal(allRows(all).length, 4, "every issue is visible");
-  const optimus = WS.buildModel(issues, VOCAB, {product: "optimus"});
-  assert.deepEqual(numbersOf(tableOf(optimus, "follow-ups").rows), [1], "the other product is filtered out");
-  assert.deepEqual(numbersOf(optimus.untriaged), [2, 3], "an untriaged issue is a data fault and stays visible");
-  const evidence = WS.buildModel(issues, VOCAB, {product: "evidence-a2a"});
-  assert.deepEqual(numbersOf(tableOf(evidence, "follow-ups").rows), [4]);
+const MIXED_PRODUCTS = () => [
+  issue(1, FULL, {title: "optimus one"}), issue(2, ["status:open"], {title: "no labels"}),
+  issue(3, [...FULL.slice(0, 5), "product:mars", "kind:plan"], {title: "unknown product"}),
+  issue(4, [...FULL.slice(0, 5), "product:evidence-a2a", "kind:follow-up"], {title: "evidence one"}),
+];
+
+test("test_unlabelled_or_unknown_issues_are_untriaged_and_every_issue_is_visible", () => {
+  const model = WS.buildModel(MIXED_PRODUCTS(), VOCAB, {});
+  assert.deepEqual(numbersOf(model.untriaged), [2, 3]);
+  assert.equal(allRows(model).length, 4, "every issue is visible");
+});
+
+test("test_product_is_a_column_a_row_names_and_a_filter_that_never_hides_untriaged_issues", () => {
+  const model = WS.buildModel(MIXED_PRODUCTS(), VOCAB, {});
+  const rows = tableOf(model, "follow-ups").rows;
+  assert.deepEqual(plain(rows.map((row) => [row.number, row.product, row.productKey])), [[1, "Optimus", "optimus"], [4, "Evidence/A2A", "evidence-a2a"]]);
+  const run = (product) => numbersOf(WS.filterRows(rows, {...WS.emptyFilters(), product}, false));
+  assert.deepEqual(run("optimus"), [1]);
+  assert.deepEqual(run("evidence-a2a"), [4]);
+  assert.deepEqual(run(""), [1, 4]);
+  assert.deepEqual(plain(WS.filterOptions(rows, VOCAB).product), [{value: "optimus", label: "Optimus"}, {value: "evidence-a2a", label: "Evidence/A2A"}]);
+  const html = WS.renderPage(model, ui({filters: {...WS.emptyFilters(), product: "evidence-a2a"}}));
+  assert.match(html, /<tr><td class="c-title"><a [^>]*>#4<\/a> — <bdi>evidence one<\/bdi><\/td><td>Evidence\/A2A<\/td>/, "each row names its product beside its title");
+  assert.doesNotMatch(html, /optimus one/);
+  assert.match(html, /no labels/, "an untriaged issue is a data fault and stays visible");
+  assert.match(html, /unknown product/);
+  const untriaged = html.split('id="sec-untriaged"')[1];
+  assert.match(untriaged, /<td class="bad">missing<\/td>/, "a missing product is red in the Product column");
+  assert.match(untriaged, /<td class="bad">unknown: mars<\/td>/);
 });
 
 test("test_belongs_to_names_the_parent_instead_of_nesting", () => {
@@ -224,19 +241,29 @@ test("test_belongs_to_names_the_parent_instead_of_nesting", () => {
   assert.equal(rows.get(40).relationError, "malformed parent link");
   assert.equal(rows.get(20).relationError, null);
   const evidenceChild = issue(21, [...FULL.slice(0, 5), "product:evidence-a2a", "kind:plan"], {parent_issue_url: parentUrl(10)});
-  const filtered = rowsByNumber(WS.buildModel([parent, evidenceChild], VOCAB, {product: "evidence-a2a"}));
-  assert.equal(filtered.get(21).parent.title, "Zed session resume", "the parent's title is found even when its product is filtered out");
-  assert.equal(filtered.has(10), false);
+  const html = WS.renderPage(WS.buildModel([parent, evidenceChild], VOCAB, {}), ui({filters: {...WS.emptyFilters(), product: "evidence-a2a"}}));
+  assert.match(html, /<bdi>Zed session resume<\/bdi>/, "the parent is named even when the product filter hides the parent's own row");
 });
 
-test("test_a_parent_cycle_or_a_deep_chain_is_still_one_row_per_issue", () => {
-  const a = issue(41, FULL, {parent_issue_url: parentUrl(42)});
-  const b = issue(42, FULL, {parent_issue_url: parentUrl(41)});
-  const cycle = allRows(WS.buildModel([a, b], VOCAB, {}));
-  assert.deepEqual(numbersOf(cycle), [41, 42]);
-  assert.ok(cycle.every((row) => row.relationError === null), "a flat table has no hierarchy to break");
+test("test_a_parent_cycle_is_flagged_on_every_issue_on_or_under_it_and_a_chain_is_not", () => {
+  const issues = [
+    issue(41, FULL, {parent_issue_url: parentUrl(42)}), issue(42, FULL, {parent_issue_url: parentUrl(41)}),
+    issue(43, FULL, {parent_issue_url: parentUrl(41)}), // hangs under the cycle
+    issue(44, FULL, {parent_issue_url: parentUrl(44)}), // its own parent
+    issue(45, FULL, {parent_issue_url: parentUrl(46)}), issue(46, FULL), // an ordinary parent and child
+    issue(47, FULL, {parent_issue_url: parentUrl(999)}), // a parent outside the read ends the walk
+  ];
+  const model = WS.buildModel(issues, VOCAB, {});
+  const rows = rowsByNumber(model);
+  for (const number of [41, 42, 43, 44]) assert.equal(rows.get(number).relationError, "parent cycle", `#${number}`);
+  for (const number of [45, 46, 47]) assert.equal(rows.get(number).relationError, null, `#${number}`);
+  assert.equal(allRows(model).length, 7, "every issue is still one row");
+  assert.equal(model.summary.attention, 4);
+  assert.deepEqual(plain(rows.get(41).parent), {number: 42, title: "Issue 42", url: `https://github.com/${REPO}/issues/42`}, "the parent link stays");
+  const html = WS.renderPage(model, ui());
+  assert.equal((html.match(/<span class="bad">parent cycle<\/span>/g) || []).length, 4, "the warning is drawn beside the parent link");
   const chain = Array.from({length: 13}, (_, i) => issue(101 + i, FULL, i ? {parent_issue_url: parentUrl(100 + i)} : {}));
-  assert.equal(allRows(WS.buildModel(chain, VOCAB, {})).length, 13);
+  assert.ok(allRows(WS.buildModel(chain, VOCAB, {})).every((row) => row.relationError === null), "depth alone is not a fault in a flat table");
 });
 
 test("test_progress_and_closed_rows", () => {
@@ -331,7 +358,7 @@ test("test_render_page_gives_every_header_its_full_text_and_a_filter", () => {
   const open = WS.initialUi(VOCAB, "open");
   open.collapsed.hardening = false;
   const html = WS.renderPage(model, open);
-  for (const label of ["Issue / Title", "Belongs to", "Status", "Priority", "Difficulty", "Estimate", "Owner", "Kind"]) {
+  for (const label of ["Issue / Title", "Product", "Belongs to", "Status", "Priority", "Difficulty", "Estimate", "Owner", "Kind"]) {
     assert.ok(html.includes(`<span class="hl">${label}</span>`), `header ${label}`);
   }
   assert.equal((html.match(/<th scope="col"/g) || []).length, (html.match(/data-filter="/g) || []).length, "every header carries one filter");
@@ -461,14 +488,14 @@ const SMALL_STACK_CHILD = `
   const ui = context.WorkStatus.initialUi(vocab, "open");
   context.WorkStatus.renderPage(model, ui);
   const rows = model.tables.flatMap((t) => t.rows).concat(model.untriaged);
-  process.stdout.write(rows.length + " " + new Set(rows.map((r) => r.number)).size);
+  process.stdout.write(rows.length + " " + new Set(rows.map((r) => r.number)).size + " " + rows.filter((r) => r.relationError !== null).length);
 `;
 
 test("test_a_large_chain_of_parents_renders_every_issue_once_on_a_small_stack", () => {
   const input = JSON.stringify({logic: block("work-status-logic"), vocab: VOCAB, labels: FULL, size: 5000});
   const run = spawnSync(process.execPath, ["--stack-size=150", "-e", SMALL_STACK_CHILD], {input, encoding: "utf8"});
   assert.equal(run.status, 0, `the page logic failed on a small stack: ${run.stderr.split("\n").find((l) => /Error/.test(l))}`);
-  assert.equal(run.stdout, "5000 5000", "every issue of the chain appears exactly once");
+  assert.equal(run.stdout, "5000 5000 0", "every issue of the chain appears exactly once, and a long chain is not mistaken for a cycle");
 });
 
 // ---- browser controller ----
@@ -549,14 +576,72 @@ test("test_clear_filters_and_the_product_filter", async () => {
   assert.equal(elements.clear.textContent, "Clear filters (1)");
   elements.product.value = "evidence-a2a";
   fire("product", "change");
-  assert.match(elements.out.innerHTML, /<span class="count">0 of 1 open<\/span>/);
+  assert.match(elements.out.innerHTML, /<span class="count">0 of 3 open<\/span>/, "the toolbar Product choice is the page-wide product filter");
+  assert.match(elements.out.innerHTML, /<option value="evidence-a2a" selected>Evidence\/A2A<\/option>/, "and the Product column header shows it");
+  assert.equal(elements.clear.textContent, "Clear filters (2)");
+  fire("out", "change", filterEvent("product", "optimus", "flt-follow-ups-product"));
+  assert.equal(elements.product.value, "optimus", "a Product choice made in a table header is shown in the toolbar");
+  assert.match(elements.out.innerHTML, /blocked high/, "Priority High and Product Optimus together keep the one row that has both");
+  assert.doesNotMatch(elements.out.innerHTML, /plain follow-up|evidence thing/);
   fire("clear", "click");
   assert.equal(elements.clear.textContent, "Clear filters");
+  assert.equal(elements.product.value, "", "Clear filters also clears the Product choice");
   assert.match(elements.out.innerHTML, /evidence thing/);
-  assert.doesNotMatch(elements.out.innerHTML, /plain follow-up/, "clear removes column filters, not the product choice");
-  elements.product.value = "";
-  fire("product", "change");
   assert.match(elements.out.innerHTML, /plain follow-up/);
+});
+
+// ---- tables wider than the page scroll inside their own section ----
+test("test_a_table_wider_than_its_section_gets_a_scroll_wrapper_and_stops_being_sticky", async () => {
+  const box = (scrollWidth, clientWidth) => {
+    const classes = new Set();
+    return {scrollWidth, clientWidth, classes, classList: {add: (name) => classes.add(name), remove: (name) => classes.delete(name)}};
+  };
+  const wide = box(1444, 1217);
+  const fits = box(1215, 1217);
+  const {doc, elements} = fakeDom();
+  elements.out.querySelectorAll = (selector) => (selector === ".scroll" ? [wide, fits] : []);
+  const win = fakeWindow(populatedFetch());
+  await load().boot(doc, win);
+  assert.ok(wide.classes.has("scrolls"), "the table that does not fit scrolls inside its section");
+  assert.ok(!fits.classes.has("scrolls"), "a table that fits is left alone");
+  fits.scrollWidth = 1300;
+  wide.scrollWidth = 1100;
+  win.listeners.resize();
+  assert.ok(fits.classes.has("scrolls") && !wide.classes.has("scrolls"), "the check is repeated when the window is resized");
+});
+
+test("test_a_table_scrolls_only_when_it_is_wider_than_its_section_by_more_than_a_pixel_of_rounding", async () => {
+  const box = (scrollWidth) => {
+    const classes = new Set();
+    return {scrollWidth, clientWidth: 1217, classes, classList: {add: (name) => classes.add(name), remove: (name) => classes.delete(name)}};
+  };
+  const exact = box(1217);
+  const rounded = box(1218);
+  const wider = box(1219);
+  const {doc, elements} = fakeDom();
+  elements.out.querySelectorAll = () => [exact, rounded, wider];
+  await load().boot(doc, fakeWindow(populatedFetch()));
+  assert.ok(!exact.classes.has("scrolls"), "a table that exactly fits keeps its sticky header");
+  assert.ok(!rounded.classes.has("scrolls"), "one pixel of sub-pixel rounding is not overflow");
+  assert.ok(wider.classes.has("scrolls"), "two pixels is");
+});
+
+test("test_clear_resets_the_toolbar_product_even_when_nothing_could_be_read", async () => {
+  const {doc, elements, fire} = fakeDom();
+  await load().boot(doc, fakeWindow(async () => response(null, {status: 500})));
+  elements.product.value = "optimus";
+  fire("product", "change");
+  assert.equal(elements.clear.textContent, "Clear filters (1)");
+  fire("clear", "click");
+  assert.equal(elements.product.value, "", "the toolbar must not keep showing a product filter that Clear removed");
+  assert.equal(elements.clear.textContent, "Clear filters");
+});
+
+test("test_the_scroll_fallback_overrides_the_sticky_header", () => {
+  const scroll = cssRules().find((rule) => rule.selector === ".scroll.scrolls");
+  assert.ok(scroll && /overflow-x:\s*auto/.test(scroll.body));
+  const head = cssRules().find((rule) => rule.selector === ".scroll.scrolls thead th");
+  assert.ok(head && /position:\s*static/.test(head.body), "a scrolling table cannot also stick: the wider rule must win");
 });
 
 test("test_tiles_toggle_a_column_filter_and_headers_toggle_collapse", async () => {
@@ -859,7 +944,7 @@ test("test_every_filter_control_the_page_draws_is_a_filter_the_controller_keeps"
   const open = WS.initialUi(VOCAB, "open");
   open.collapsed.hardening = false;
   const drawn = new Set(Array.from(WS.renderPage(model, open).matchAll(/data-filter="([^"]+)"/g), (m) => m[1]));
-  assert.equal(drawn.size, 8);
+  assert.equal(drawn.size, 9);
   for (const key of drawn) assert.ok(Object.hasOwn(WS.emptyFilters(), key), `${key} must be a key of the filter state`);
   const {doc, elements, fire} = fakeDom();
   const issues = [issue(1, withLabels({handler: "handler:codex"}), {title: "codex one"}), issue(2, FULL, {title: "unassigned two"})];
@@ -954,8 +1039,8 @@ test("test_columns_come_in_the_documented_order", () => {
   const heads = WS.renderPage(model, open).split("<thead>").slice(1)
     .map((part) => [...part.split("</thead>")[0].matchAll(/<th scope="col" class="c-(\w+)"/g)].map((m) => m[1]));
   assert.deepEqual(heads, [
-    ["title", "belongs", "status", "priority", "difficulty", "estimate", "owner"],
-    ["title", "kind", "belongs", "status", "priority", "difficulty", "estimate", "owner"],
+    ["title", "product", "belongs", "status", "priority", "difficulty", "estimate", "owner"],
+    ["title", "kind", "product", "belongs", "status", "priority", "difficulty", "estimate", "owner"],
   ]);
 });
 

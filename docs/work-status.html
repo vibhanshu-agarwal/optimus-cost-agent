@@ -62,6 +62,8 @@
   th input { width: 100%; }
   th select { width: auto; max-width: 10rem; }
   th.c-belongs select { width: 100%; min-width: 9rem; }
+  .scroll.scrolls { overflow-x: auto; }
+  .scroll.scrolls thead th { position: static; }
   tr.closed td.c-title { text-decoration: line-through; color: var(--muted); }
   tr.none td { color: var(--muted); text-align: center; }
   .chip { display: inline-block; padding: 0 8px; border-radius: 10px; font-size: 12px; background: var(--bg2); color: var(--muted); }
@@ -96,8 +98,9 @@
 <p class="note">Each issue is listed once, in the table for its kind. Status, Priority, Difficulty, Estimate and Owner come from the issue's
 <code>status:</code>, <code>priority:</code>, <code>difficulty:</code>, <code>estimate:</code> and <code>handler:</code> labels; a closed issue's status comes from
 GitHub's close reason and its title is struck through. “Belongs to” is the issue's native parent. Search and the column filters work together and apply to every
-table; the tiles that show a count of Blocked, High priority or Partially implemented issues apply the same filter. A missing, conflicting or unknown value is shown
-in red, never guessed, and an issue without a recognized product and kind label is listed as untriaged, whatever the filters.</p>
+table; the tiles that show a count of Blocked, High priority or Partially implemented issues apply the same filter. A missing, conflicting or unknown value, or a parent link that loops back (“parent cycle”),
+is shown in red, never guessed, and an issue without a recognized product and kind label is listed as untriaged, whatever the filters. A table wider than
+the page scrolls inside its own section.</p>
 
 <script type="application/json" id="work-status-vocabulary">
 {
@@ -148,12 +151,12 @@ in red, never guessed, and an issue without a recognized product and kind label 
   "use strict";
 
   const MAX_PAGES = 50;
-  const FILTER_KEYS = ["text", "kind", "belongs", "status", "priority", "difficulty", "estimate", "owner"];
+  const FILTER_KEYS = ["text", "kind", "product", "belongs", "status", "priority", "difficulty", "estimate", "owner"];
   const VALUE_FILTERS = ["status", "priority", "difficulty", "estimate", "owner"];
   // The look of a status chip. A status not listed here is neutral.
   const STATUS_TONES = {blocked: "danger", unrun: "danger", "unrun-binding": "danger", "partially-implemented": "warning",
     "accepted-open": "warning", promoted: "info", "in-review": "info", active: "success", ready: "success"};
-  const HEADERS = {title: "Issue / Title", kind: "Kind", belongs: "Belongs to", status: "Status"};
+  const HEADERS = {title: "Issue / Title", kind: "Kind", product: "Product", belongs: "Belongs to", status: "Status"};
   const HEADER_TITLES = {estimate: "Planned Estimate"};
   const OPTION_LABEL_LIMIT = 60;
 
@@ -249,14 +252,41 @@ in red, never guessed, and an issue without a recognized product and kind label 
     return filters;
   }
 
-  // The state of the open page: filters, which tables are collapsed, the product choice and the issue state read.
+  // The state of the open page: the filters (the Product choice is one of them), which tables are collapsed and the issue state read.
   function initialUi(vocab, state) {
     const collapsed = {};
     for (const table of vocab.tables) collapsed[table.key] = Boolean(table.collapsed);
-    return {filters: emptyFilters(), collapsed, product: "", state};
+    return {filters: emptyFilters(), collapsed, state};
   }
 
-  function makeRow(issue, vocab, byNumber, pattern, kindKey, productKey) {
+  // Issues on a parent cycle or hanging under one. An issue has one parent, so a walk up from any issue either ends (a root, or a
+  // parent outside this read) or meets an issue of its own walk. The walk keeps its own path, never the call stack.
+  function cyclicIssues(byNumber, pattern) {
+    const parentOf = new Map();
+    for (const issue of byNumber.values()) {
+      const match = issue.parent_issue_url == null ? null : pattern.exec(String(issue.parent_issue_url));
+      if (match && byNumber.has(Number(match[1]))) parentOf.set(issue.number, Number(match[1]));
+    }
+    const settled = new Set();
+    const cyclic = new Set();
+    for (const start of byNumber.keys()) {
+      if (settled.has(start)) continue;
+      const walk = new Set();
+      let node = start;
+      while (node !== undefined && !settled.has(node) && !walk.has(node)) {
+        walk.add(node);
+        node = parentOf.get(node);
+      }
+      const loops = node !== undefined && (walk.has(node) || cyclic.has(node));
+      for (const member of walk) {
+        settled.add(member);
+        if (loops) cyclic.add(member);
+      }
+    }
+    return cyclic;
+  }
+
+  function makeRow(issue, vocab, byNumber, pattern, cyclic, kindKey, productKey) {
     let parent = null;
     let relationError = null;
     if (issue.parent_issue_url != null) {
@@ -267,8 +297,12 @@ in red, never guessed, and an issue without a recognized product and kind label 
         const number = Number(match[1]);
         const known = byNumber.get(number);
         parent = {number, title: known ? shortTitle(String(known.title || "")) : null, url: "https://github.com/" + vocab.repo + "/issues/" + number};
+        if (cyclic.has(issue.number)) relationError = "parent cycle";
       }
     }
+    const productValues = labelValues(issue, "product");
+    const product = productKey !== null ? vocab.products[productKey]
+      : (productValues.length === 0 ? "missing" : (productValues.length > 1 ? "conflict: " + productValues.join(", ") : "unknown: " + productValues[0]));
     const cells = {status: statusCell(issue, vocab)};
     for (const name of Object.keys(vocab.dimensions)) cells[name] = metadataCell(issue, vocab.dimensions[name]);
     const closed = issue.state === "closed";
@@ -285,6 +319,7 @@ in red, never guessed, and an issue without a recognized product and kind label 
       kind: kindKey !== null ? vocab.kinds[kindKey] : (labelValues(issue, "kind")[0] || "missing"),
       kindKey,
       productKey,
+      product,
       closed,
       parent,
       relationError,
@@ -300,10 +335,10 @@ in red, never guessed, and an issue without a recognized product and kind label 
   }
 
   // One read becomes one flat table per kind group, an untriaged list and the counts the tiles show.
-  function buildModel(issues, vocab, options) {
-    const product = options && options.product ? options.product : "";
+  function buildModel(issues, vocab) {
     const pattern = apiIssuePattern(vocab.repo);
     const byNumber = new Map(issues.map((issue) => [issue.number, issue]));
+    const cyclic = cyclicIssues(byNumber, pattern);
     const tableOfKind = new Map();
     for (const table of vocab.tables) for (const kind of table.kinds) tableOfKind.set(kind, table);
     const tables = vocab.tables.map((spec) => ({
@@ -314,11 +349,11 @@ in red, never guessed, and an issue without a recognized product and kind label 
     for (const issue of issues.slice().sort((a, b) => a.number - b.number)) {
       const kindKey = singleKnown(issue, "kind", vocab.kinds);
       const productKey = singleKnown(issue, "product", vocab.products);
-      const row = makeRow(issue, vocab, byNumber, pattern, kindKey, productKey);
+      const row = makeRow(issue, vocab, byNumber, pattern, cyclic, kindKey, productKey);
       const spec = kindKey !== null ? tableOfKind.get(kindKey) : undefined;
       if (productKey === null || spec === undefined) {
         untriaged.push(row);
-      } else if (!product || productKey === product) {
+      } else {
         tableByKey.get(spec.key).rows.push(row);
       }
     }
@@ -362,6 +397,7 @@ in red, never guessed, and an issue without a recognized product and kind label 
         if (wanted === "none" ? row.parent !== null || row.relationError !== null : row.parent === null || String(row.parent.number) !== wanted) return false;
       }
       if (hasKind && filters.kind && row.kind !== filters.kind) return false;
+      if (filters.product && row.productKey !== filters.product) return false;
       for (const key of VALUE_FILTERS) {
         if (filters[key] && row.cells[key].text !== filters[key]) return false;
       }
@@ -390,6 +426,8 @@ in red, never guessed, and an issue without a recognized product and kind label 
       const spec = vocab.dimensions[name];
       options[name] = plainOptions(ordered(rows.map((row) => row.cells[name].text), Object.keys(spec.values).map((key) => spec.values[key])));
     }
+    options.product = ordered(rows.map((row) => row.productKey).filter((key) => key !== null), Object.keys(vocab.products))
+      .map((key) => ({value: key, label: vocab.products[key]}));
     const parents = new Map();
     for (const row of rows) if (row.parent !== null) parents.set(row.parent.number, row.parent.title);
     options.belongs = Array.from(parents.keys()).sort((a, b) => a - b).map((number) => {
@@ -474,7 +512,7 @@ in red, never guessed, and an issue without a recognized product and kind label 
   }
 
   function columnsOf(table, dimensions) {
-    return ["title"].concat(table.multiKind ? ["kind"] : [], ["belongs", "status"], dimensions);
+    return ["title"].concat(table.multiKind ? ["kind"] : [], ["product", "belongs", "status"], dimensions);
   }
 
   function headerLabel(column) {
@@ -503,9 +541,11 @@ in red, never guessed, and an issue without a recognized product and kind label 
     const parts = columns.map((column) => {
       if (column === "title") return "<td class=\"c-title\">" + ref + " — <bdi>" + esc(row.title) + "</bdi>" + progress + problems + "</td>";
       if (column === "kind") return "<td>" + esc(row.kind) + "</td>";
+      if (column === "product") return "<td" + (row.productKey === null ? " class=\"bad\"" : "") + ">" + esc(row.product) + "</td>";
       if (column === "belongs") {
         if (row.parent) {
-          return "<td class=\"c-belongs\"><a href=\"" + esc(row.parent.url) + "\">#" + row.parent.number + "</a>" + (row.parent.title ? " <bdi>" + esc(row.parent.title) + "</bdi>" : "") + "</td>";
+          return "<td class=\"c-belongs\"><a href=\"" + esc(row.parent.url) + "\">#" + row.parent.number + "</a>" + (row.parent.title ? " <bdi>" + esc(row.parent.title) + "</bdi>" : "") +
+            (row.relationError ? " <span class=\"bad\">" + esc(row.relationError) + "</span>" : "") + "</td>";
         }
         return row.relationError ? "<td class=\"c-belongs bad\">" + esc(row.relationError) + "</td>" : "<td class=\"c-belongs\">—</td>";
       }
@@ -577,11 +617,21 @@ in red, never guessed, and an issue without a recognized product and kind label 
       const active = activeFilters();
       clearButton.textContent = active ? "Clear filters (" + active + ")" : "Clear filters";
     };
+    // A table wider than its section scrolls inside the section, and a scrolling table cannot also have a sticky header. This is
+    // measured, not guessed from the window width: what makes a table wide is its data.
+    const fitTables = () => {
+      const boxes = out.querySelectorAll ? out.querySelectorAll(".scroll") : [];
+      for (const box of boxes) {
+        box.classList.remove("scrolls");
+        if (box.scrollWidth > box.clientWidth + 1) box.classList.add("scrolls");
+      }
+    };
     const draw = (focus) => {
       ui.state = view.state;
-      ui.product = productSelect.value;
-      const model = buildModel(view.issues, vocab, {product: ui.product});
+      productSelect.value = ui.filters.product; // the toolbar choice and the Product column headers are one filter
+      const model = buildModel(view.issues, vocab);
       out.innerHTML = renderPage(model, ui);
+      fitTables();
       syncClearLabel();
       if (announce) {
         let matching = model.untriaged.length;
@@ -631,12 +681,16 @@ in red, never guessed, and an issue without a recognized product and kind label 
     });
     clearButton.addEventListener("click", () => {
       ui.filters = emptyFilters();
+      productSelect.value = "";
       syncClearLabel();
       if (view) draw(null);
     });
     productSelect.addEventListener("change", () => {
+      ui.filters.product = productSelect.value;
+      syncClearLabel();
       if (view) draw(null);
     });
+    if (win.addEventListener) win.addEventListener("resize", fitTables);
 
     const read = async () => {
       const mine = ++generation;
