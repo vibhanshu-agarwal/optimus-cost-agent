@@ -634,14 +634,14 @@ def test_a_hand_edited_zed_launch_is_refused(edit: str) -> None:
 
 
 def _zed_passing() -> list[dict]:
-    """What a passing Zed check records: the qualification double's new thread switched to Chat through the mode
-    config option, the attached double's new thread, and both doubles closed when Zed quit."""
-    zed_cwd = Path(r"C:\Users\pc\AppData\Local\Programs\Zed")
+    """What real Zed 1.24.2 recorded in r6 preparation: the qualification double's new thread switched to Chat through
+    the mode config option and the attached double's new thread. Zed's quit ends each agent process without closing
+    its input first (the launcher's job ends the Python double), so there is no exit record: shutdown is judged by no
+    double left running."""
     return [
-        _start(11, cwd=zed_cwd), _request(11, "initialize", protocolVersion=1), _request(11, "session/new", cwd=str(WS)),
+        _start(11), _request(11, "initialize", protocolVersion=1), _request(11, "session/new", cwd=str(WS)),
         _request(11, "session/set_config_option", configId="mode", value="chat"),
-        _start(12, args=ATTACHED_ARGS, cwd=zed_cwd), _request(12, "initialize", protocolVersion=1), _request(12, "session/new", cwd=str(WS)),
-        {"pid": 11, "event": "exit", "reason": "stdin closed"}, {"pid": 12, "event": "exit", "reason": "stdin closed"},
+        _start(12, args=ATTACHED_ARGS), _request(12, "initialize", protocolVersion=1), _request(12, "session/new", cwd=str(WS)),
     ]  # fmt: skip
 
 
@@ -675,13 +675,19 @@ def _without(records: list[dict], predicate) -> list[dict]:
         (lambda rs: _without(rs, lambda r: r.get("method") == "session/new" and r["pid"] == 12), "session/new"),
         (lambda rs: _without(rs, lambda r: r.get("method") == "initialize" and r["pid"] == 11), "initialize"),
         (lambda rs: [*rs[:3], _request(11, "session/load"), *rs[3:]], "session/load"),
-        (lambda rs: _without(rs, lambda r: r["event"] == "exit" and r["pid"] == 12), "did not exit"),
     ],
-    ids=["no-attached", "no-qualification", "argv", "executable", "no-chat", "agent-not-chat", "new-cwd", "no-new", "no-initialize", "load", "no-exit"],
+    ids=["no-attached", "no-qualification", "argv", "executable", "no-chat", "agent-not-chat", "new-cwd", "no-new", "no-initialize", "load"],
 )
 def test_each_zed_check_failure_is_a_problem(change, expected: str) -> None:
     problems = _zed_check(change(copy.deepcopy(_zed_passing())))
     assert problems and any(expected in p for p in problems), problems
+
+
+def test_a_graceful_exit_record_is_neither_required_nor_a_problem() -> None:
+    """A client that closes the agent's input lets the double record its exit; Zed's quit does not. Both pass when no
+    double is left running."""
+    graceful = [*_zed_passing(), {"pid": 11, "event": "exit", "reason": "stdin closed"}, {"pid": 12, "event": "exit", "reason": "stdin closed"}]
+    assert _zed_check(graceful) == [] and _zed_check(_zed_passing()) == []
 
 
 def test_a_double_left_running_after_zed_quit_is_a_problem() -> None:
@@ -727,6 +733,7 @@ def test_the_zed_fixture_and_check_write_new_files_only(tmp_path, monkeypatch) -
     assert (receipt["schema"], receipt["passed"], receipt["problems"]) == (rehearsal.ZED_RECEIPT_SCHEMA, True, [])
     assert receipt["record"]["sha256"] == rehearsal.sha256_file(record) and receipt["double_records"] == passing
     assert {launch["profile"] for launch in receipt["launches"]} == {"qualification", "attached"}
+    assert [launch["exit_record"] for launch in receipt["launches"]] == [False, False]  # recorded, never required
     with pytest.raises(FileExistsError):
         rehearsal.zed_check(fixture_dir / "zed-fixture.json", out)
 

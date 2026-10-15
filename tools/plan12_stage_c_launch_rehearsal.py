@@ -28,8 +28,10 @@ added to each entry's env. `--zed-fixture DIR --schedule S` builds the double an
 spaces and writes zed-fixture.json (the two entries and their selection shortcuts); Codex drives Zed 1.24.2 by
 hand. `--zed-check FIXTURE --out R` then judges the double's record - each launch's executable and argv,
 initialize first at protocol 1, a thread opened in the workspace, the qualification thread switched to Chat, both
-profiles launched, no session/load, every double exited and none left running - and writes a new receipt. Human
-trust and permission steps are never part of it.
+profiles launched, no session/load and no double left running after Zed quit - and writes a new receipt. Zed 1.24.2's
+quit ends each agent process without closing its input first (the launcher's job then ends the Python double), so a
+graceful exit record is recorded when present but never required. Human trust and permission steps are never part
+of it.
 
 Usage: python tools/plan12_stage_c_launch_rehearsal.py --schedule <stage-c-schedule.json> --out <receipt.json>
        python tools/plan12_stage_c_launch_rehearsal.py --verify <receipt.json> --schedule <stage-c-schedule.json>
@@ -465,9 +467,11 @@ def _chat_change(request: dict[str, Any]) -> str | None:
 
 def check_zed(records: list[dict[str, Any]], *, agent_exe: Path, workspace: Path, alive: Callable[[int], bool]) -> list[str]:
     """Every problem with a Zed launch check: each double Zed started must be a generated launch (its executable and
-    argv; Zed chooses the working folder, which is only recorded), answer initialize at protocol 1 first, open its
-    thread with session/new in the workspace and exit when Zed quits; both profiles must launch, a qualification thread
-    must switch to Chat, nothing may ask session/load and no double may be left running."""
+    argv; Zed chooses the working folder, which is only recorded), answer initialize at protocol 1 first and open its
+    thread with session/new in the workspace; both profiles must launch, a qualification thread must switch to Chat,
+    nothing may ask session/load and no double may be left running after Zed quit. Zed 1.24.2 ends an agent process at
+    quit without closing its input (r6 preparation's Zed check), so shutdown is judged by no double still running,
+    never by an exit record."""
     events: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for record in records:
         events[record["pid"]].append(record)
@@ -497,8 +501,6 @@ def check_zed(records: list[dict[str, Any]], *, agent_exe: Path, workspace: Path
             problems.append(f"double {pid}: no session/new (Zed opened no thread on it)")
         problems += [f"double {pid}: session/new in {new.get('cwd')!r}, not the workspace {str(workspace)!r}" for new in news
                      if not isinstance(new.get("cwd"), str) or not _same_path(new["cwd"], workspace)]  # fmt: skip
-        if not any(event["event"] == "exit" for event in seen):
-            problems.append(f"double {pid} did not exit when Zed quit")
     problems += [f"no {profile} launch: Zed never started that entry" for profile in ZED_LAUNCHES if not launched[profile]]
     if launched["qualification"] and not any(_chat_change(event) for pid in launched["qualification"] for event in events[pid]):
         problems.append("the qualification thread never switched to Chat")
@@ -561,7 +563,7 @@ def zed_check(fixture_path: Path, out: Path) -> int:
                 "cwd": record_entry["cwd"],
                 "methods": [event["method"] for event in seen if event["event"] == "request"],
                 "chat_via": next((via for event in seen if (via := _chat_change(event))), None),
-                "exited": any(event["event"] == "exit" for event in seen),
+                "exit_record": any(event["event"] == "exit" for event in seen),  # recorded, never required
             })  # fmt: skip
     receipt = {
         "schema": ZED_RECEIPT_SCHEMA,
