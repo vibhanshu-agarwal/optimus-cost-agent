@@ -4211,7 +4211,7 @@
     {
       "key": "tools.plan12_stage_c_acp_double:_record:file_open",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: appends one JSON line per event to the rehearsal record file named by PLAN12_REHEARSAL_RECORD, a temporary file the rehearsal owns. A line holds the double's own process id, its argv and working folder (the rehearsal's synthetic paths), the ACP method names it received, the session and mode ids it minted and acpx's permission outcome. No prompt text, credential, provider data or network content.",
+      "rationale": "Inspection: appends one JSON line per event to the record file named by PLAN12_REHEARSAL_RECORD, a file the rehearsal or the Zed check owns. A line holds the double's own process id, its argv and working folder (the rehearsal's synthetic paths), the ACP method names it received, the session ids it minted, each mode or context-strategy id a setter asked for and the client's permission outcome. No prompt text, credential, provider data or network content.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_double_answers_as_optimus_advertises_and_records_the_denial",
       "evidence_tier": "unit"
@@ -4219,7 +4219,7 @@
     {
       "key": "tools.plan12_stage_c_acp_double:_record:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: appends one JSON line per event to the rehearsal record file named by PLAN12_REHEARSAL_RECORD, a temporary file the rehearsal owns. A line holds the double's own process id, its argv and working folder (the rehearsal's synthetic paths), the ACP method names it received, the session and mode ids it minted and acpx's permission outcome. No prompt text, credential, provider data or network content.",
+      "rationale": "Inspection: appends one JSON line per event to the record file named by PLAN12_REHEARSAL_RECORD, a file the rehearsal or the Zed check owns. A line holds the double's own process id, its argv and working folder (the rehearsal's synthetic paths), the ACP method names it received, the session ids it minted, each mode or context-strategy id a setter asked for and the client's permission outcome. No prompt text, credential, provider data or network content.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_double_answers_as_optimus_advertises_and_records_the_denial",
       "evidence_tier": "unit"
@@ -4227,7 +4227,7 @@
     {
       "key": "tools.plan12_stage_c_acp_double:_record:text_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: appends one JSON line per event to the rehearsal record file named by PLAN12_REHEARSAL_RECORD, a temporary file the rehearsal owns. A line holds the double's own process id, its argv and working folder (the rehearsal's synthetic paths), the ACP method names it received, the session and mode ids it minted and acpx's permission outcome. No prompt text, credential, provider data or network content.",
+      "rationale": "Inspection: appends one JSON line per event to the record file named by PLAN12_REHEARSAL_RECORD, a file the rehearsal or the Zed check owns. A line holds the double's own process id, its argv and working folder (the rehearsal's synthetic paths), the ACP method names it received, the session ids it minted, each mode or context-strategy id a setter asked for and the client's permission outcome. No prompt text, credential, provider data or network content.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_double_answers_as_optimus_advertises_and_records_the_denial",
       "evidence_tier": "unit"
@@ -4235,7 +4235,7 @@
     {
       "key": "tools.plan12_stage_c_acp_double:_send:json_serialization",
       "policy": "protocol-only",
-      "rationale": "Inspection: the inert double's own ACP JSON-RPC replies to acpx on stdout, the protocol channel: a fixed capability and mode table, session ids it minted, a fixed permission request and fixed reply text. Nothing it received is echoed; no credential, provider data or network content.",
+      "rationale": "Inspection: the inert double's own ACP JSON-RPC replies to acpx or Zed on stdout, the protocol channel: a fixed capability, mode and config-option table (Optimus's own shapes), session ids it minted, fixed error messages, a fixed permission request and fixed reply text. Nothing it received is echoed beyond the mode or strategy id it accepted; no credential, provider data or network content.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_double_answers_as_optimus_advertises_and_records_the_denial",
       "evidence_tier": "unit"
@@ -4243,7 +4243,7 @@
     {
       "key": "tools.plan12_stage_c_acp_double:_send:text_write",
       "policy": "protocol-only",
-      "rationale": "Inspection: the inert double's own ACP JSON-RPC replies to acpx on stdout, the protocol channel: a fixed capability and mode table, session ids it minted, a fixed permission request and fixed reply text. Nothing it received is echoed; no credential, provider data or network content.",
+      "rationale": "Inspection: the inert double's own ACP JSON-RPC replies to acpx or Zed on stdout, the protocol channel: a fixed capability, mode and config-option table (Optimus's own shapes), session ids it minted, fixed error messages, a fixed permission request and fixed reply text. Nothing it received is echoed beyond the mode or strategy id it accepted; no credential, provider data or network content.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_double_answers_chat_without_asking_and_refuses_what_it_does_not_offer",
       "evidence_tier": "unit"
@@ -4267,7 +4267,7 @@
     {
       "key": "tools.plan12_stage_c_launch_rehearsal:main:stdout_export",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: prints 'rehearsal receipt fresh' or the gate's problems: receipt and schedule paths, the receipt's age, and which identity part (acpx, node, shell, double) changed. No credential, prompt or provider content.",
+      "rationale": "Inspection: prints 'rehearsal receipt fresh' or the gate's problems (receipt and schedule paths, the receipt's age, and which identity part - acpx, node, shell, double - changed), or the new Zed fixture's path. No credential, prompt or provider content.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_gate_command_prints_fresh_only_when_it_opens",
       "evidence_tier": "unit"
@@ -4310,6 +4310,62 @@
       "rationale": "Inspection: the launch-rehearsal receipt, written once to a new file. It holds the schedule's path, hash and version; the acpx, Node, shell and double identities (file hashes, versions and paths) and the pins; the generator's hash; the explicit executable and workspace substitution; each acpx command run (the rehearsal's synthetic paths and the schedule's fixed synthetic prompts); acpx's exit codes, stdout and stderr from runs against the inert double (ACP JSON-RPC with the double's fixed replies and acpx's own status lines); the double's records; and the problems. No credential exists in the run: the double holds none and no real agent, Gateway or provider is started.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_run_writes_one_new_receipt_with_every_outcome",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:zed_check:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Zed launch-check receipt, written once to a new file. It holds the problems; the fixture's path and hash; the schedule's path, hash and version; the installed Zed executable's path and hash; the record file's path and hash; each launch's process id, profile, working folder, ACP method names, Chat setter and exit; and the double's records (process ids, argv, folders, method names, minted session ids and mode or strategy ids). No credential, prompt or provider content: the double holds none and no real agent, Gateway or provider is started.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:zed_check:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Zed launch-check receipt, written once to a new file. It holds the problems; the fixture's path and hash; the schedule's path, hash and version; the installed Zed executable's path and hash; the record file's path and hash; each launch's process id, profile, working folder, ACP method names, Chat setter and exit; and the double's records (process ids, argv, folders, method names, minted session ids and mode or strategy ids). No credential, prompt or provider content: the double holds none and no real agent, Gateway or provider is started.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:zed_check:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints 'zed launch check passed' or the check's problems: process ids, synthetic paths, argv, ACP method names and profiles. No credential, prompt or provider content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:zed_check:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Zed launch-check receipt, written once to a new file. It holds the problems; the fixture's path and hash; the schedule's path, hash and version; the installed Zed executable's path and hash; the record file's path and hash; each launch's process id, profile, working folder, ACP method names, Chat setter and exit; and the double's records (process ids, argv, folders, method names, minted session ids and mode or strategy ids). No credential, prompt or provider content: the double holds none and no real agent, Gateway or provider is started.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:zed_fixture:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: zed-fixture.json, written once to a new file in a new folder. It holds the schedule's path, hash and version; the double's executable path and hash and its source hash; the synthetic workspace and record paths; the two Zed custom-agent entries (the double's path, the schedule's fixed launch arguments with the synthetic workspace, and the record variable's name and path); and two fixed selection shortcuts. No credential, prompt or provider content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:zed_fixture:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: zed-fixture.json, written once to a new file in a new folder. It holds the schedule's path, hash and version; the double's executable path and hash and its source hash; the synthetic workspace and record paths; the two Zed custom-agent entries (the double's path, the schedule's fixed launch arguments with the synthetic workspace, and the record variable's name and path); and two fixed selection shortcuts. No credential, prompt or provider content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:zed_fixture:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: zed-fixture.json, written once to a new file in a new folder. It holds the schedule's path, hash and version; the double's executable path and hash and its source hash; the synthetic workspace and record paths; the two Zed custom-agent entries (the double's path, the schedule's fixed launch arguments with the synthetic workspace, and the record variable's name and path); and two fixed selection shortcuts. No credential, prompt or provider content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
       "evidence_tier": "unit"
     },
     {

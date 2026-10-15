@@ -77,7 +77,7 @@ def test_a_stage_c_launch_binds_the_envelope_beside_the_profile(tmp_path: Path, 
     assert staged.security_snapshot_digest != plain.security_snapshot_digest
     [row] = [row for row in staged.display_rows if row.name == STAGE_C_LITERAL_NAME]
     assert (row.display_value, row.decision) == (envelope.literal, "requires exact approval")
-    assert row.source_class == "stage-c-release:plan12-2-stage-c-r5:$8/138 attempts/60 min"  # the operator sees what is approved
+    assert row.source_class == "stage-c-release:plan12-2-stage-c-r6:$8/138 attempts/60 min"  # the operator sees what is approved
 
 
 def test_both_profile_launches_bind_one_shared_envelope(tmp_path: Path) -> None:
@@ -106,18 +106,19 @@ def test_an_approval_with_or_without_the_envelope_authorizes_only_its_own_launch
 @pytest.mark.parametrize(
     ("release_id", "limit_usd", "max_attempts"),
     [
+        ("plan12-2-stage-c-r5", Decimal("8"), 138),
         ("plan12-2-stage-c-r4", Decimal("8"), 138),
         ("plan12-2-stage-c-r3", Decimal("8"), 138),
         ("plan12-2-stage-c-r2", Decimal("8"), 138),
         ("plan12-2-stage-c-r1", Decimal("0.50"), 24),
     ],
-    ids=["r4-same-limits", "r3-same-limits", "r2-same-limits", "r1"],
+    ids=["r5-same-limits", "r4-same-limits", "r3-same-limits", "r2-same-limits", "r1"],
 )
-def test_an_approval_of_an_earlier_release_never_authorizes_an_r5_launch(
+def test_an_approval_of_an_earlier_release_never_authorizes_an_r6_launch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, release_id: str, limit_usd: Decimal, max_attempts: int
 ) -> None:
-    """Release r5 needs its own fresh bound approval: an approval of r4, r3 or r2 (the same $8 / 138 attempts,
-    their own ledgers and expired windows) or of the reviewed r1 ($0.50, 24 attempts) is refused for the r5
+    """Release r6 needs its own fresh bound approval: an approval of r5, r4, r3 or r2 (the same $8 / 138 attempts,
+    their own ledgers and expired windows) or of the reviewed r1 ($0.50, 24 attempts) is refused for the r6
     launch."""
     keyring = FakeKeyring()
     with monkeypatch.context() as earlier:
@@ -125,10 +126,10 @@ def test_an_approval_of_an_earlier_release_never_authorizes_an_r5_launch(
         earlier.setattr(stage_c, "STAGE_C_LIMIT_USD", limit_usd)
         earlier.setattr(stage_c, "STAGE_C_MAX_ATTEMPTS", max_attempts)
         authorize_workspace_for_test(env=_ENV, workspace_root=tmp_path, fake_keyring=keyring, test_profile="attached", stage_c=True)
-    r5, store = _candidate(tmp_path, keyring, test_profile="attached", stage_c_flag=True)
-    assert stage_c.STAGE_C_RELEASE_ID == "plan12-2-stage-c-r5"
+    r6, store = _candidate(tmp_path, keyring, test_profile="attached", stage_c_flag=True)
+    assert stage_c.STAGE_C_RELEASE_ID == "plan12-2-stage-c-r6"
     with pytest.raises(LaunchGateError) as caught:
-        authorize_launch(candidate=r5, store=store, launch_session_id="s1")
+        authorize_launch(candidate=r6, store=store, launch_session_id="s1")
     assert caught.value.code == "SNAPSHOT_MISMATCH"
 
 

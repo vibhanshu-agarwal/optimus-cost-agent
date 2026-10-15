@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 
+from optimus.acp.session_config import SessionConfigSnapshot, build_session_config_options
+from optimus.acp.shapes import build_config_option_update_notification, build_current_mode_update_notification, build_session_mode_state
 from tools import plan12_stage_c_acp_double as double
 from tools import plan12_stage_c_launch_rehearsal as rehearsal
 from tools import plan12_stage_c_schedule as schedule_tool
@@ -205,12 +207,12 @@ def test_a_hand_edited_schedule_command_is_refused() -> None:
 # --- The inert double, in process ----------------------------------------------------------------------------------
 
 
-def _drive(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, lines: list[dict]) -> tuple[list[dict], list[dict]]:
+def _drive(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, lines: list[dict], args: list[str] = ARGS) -> tuple[list[dict], list[dict]]:
     record = tmp_path / "record.jsonl"
     monkeypatch.setenv(double.RECORD_ENV, str(record))
     out = io.StringIO()
     monkeypatch.setattr(double.sys, "stdout", out)
-    assert double.Double(io.StringIO("".join(json.dumps(line) + "\n" for line in lines))).run() == 0
+    assert double.Double(io.StringIO("".join(json.dumps(line) + "\n" for line in lines)), args=args).run() == 0
     sent = [json.loads(line) for line in out.getvalue().splitlines()]
     return sent, [json.loads(line) for line in record.read_text(encoding="utf-8").splitlines()]
 
@@ -517,3 +519,241 @@ def test_the_real_rehearsal_passes_through_the_pinned_acpx(tmp_path) -> None:
     receipt = tmp_path / "receipt.json"
     assert rehearsal.main(["--schedule", str(schedule), "--out", str(receipt)]) == 0
     assert json.loads(receipt.read_text(encoding="utf-8"))["passed"] is True
+
+
+# --- The double's session shapes are Optimus's own (r6 preparation: Zed 1.24.2 drives config options) -------------
+
+ATTACHED_ARGS = [*ARGS[:3], "attached", *ARGS[4:]]
+
+
+def _rpc(request_id, method: str, **params) -> dict:
+    return {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
+
+
+def _updates(sent: list[dict]) -> list[dict]:
+    return [m["params"] for m in sent if m.get("method") == "session/update"]
+
+
+@pytest.mark.parametrize(("args", "strategy"), [(ARGS, None), (ATTACHED_ARGS, "compaction")], ids=["qualification", "attached"])
+def test_the_doubles_new_session_is_optimuss_own_shape(monkeypatch, tmp_path, args: list[str], strategy: str | None) -> None:
+    """Real Optimus answers session/new with its modes and its configOptions (a mode select; an attached session adds
+    the context-strategy select, initially compaction). Zed 1.24.2 drives the config options, so the double must
+    advertise exactly these, built here by Optimus's own builders."""
+    sent, _ = _drive(monkeypatch, tmp_path, [_rpc(1, "session/new", cwd=str(WS))], args=args)
+    session = f"double-{os.getpid()}-1"
+    assert sent[0]["result"] == {
+        "sessionId": session,
+        "modes": build_session_mode_state(current_mode_id="agent"),
+        "configOptions": build_session_config_options(SessionConfigSnapshot(mode_id="agent", strategy=strategy)),
+    }
+
+
+@pytest.mark.parametrize(("args", "strategy"), [(ARGS, None), (ATTACHED_ARGS, "compaction")], ids=["qualification", "attached"])
+def test_the_double_changes_the_mode_through_either_setter_as_optimus_does(monkeypatch, tmp_path, args: list[str], strategy: str | None) -> None:
+    session = f"double-{os.getpid()}-1"
+    sent, records = _drive(monkeypatch, tmp_path, [
+        _rpc(1, "session/new", cwd=str(WS)),
+        _rpc(2, "session/set_config_option", sessionId=session, configId="mode", value="chat"),
+        _rpc(3, "session/set_mode", sessionId=session, modeId="agent"),
+        _rpc(4, "session/set_config_option", sessionId=session, configId="mode", value="agent"),
+    ], args=args)  # fmt: skip
+    chat = build_session_config_options(SessionConfigSnapshot(mode_id="chat", strategy=strategy))
+    agent = build_session_config_options(SessionConfigSnapshot(mode_id="agent", strategy=strategy))
+    assert next(m for m in sent if m.get("id") == 2)["result"] == {"configOptions": chat}
+    assert next(m for m in sent if m.get("id") == 3)["result"] == {}
+    assert next(m for m in sent if m.get("id") == 4)["result"] == {"configOptions": agent}  # unchanged: no update
+    assert _updates(sent) == [
+        build_current_mode_update_notification(session_id=session, current_mode_id="chat"),
+        build_config_option_update_notification(session_id=session, config_options=chat),
+        build_current_mode_update_notification(session_id=session, current_mode_id="agent"),
+        build_config_option_update_notification(session_id=session, config_options=agent),
+    ]
+    changes = [(r["method"], r.get("configId"), r.get("value") or r.get("modeId")) for r in records if r["event"] == "request"][1:]
+    assert changes == [("session/set_config_option", "mode", "chat"), ("session/set_mode", None, "agent"), ("session/set_config_option", "mode", "agent")]
+
+
+def test_the_strategy_is_settable_only_on_the_attached_double(monkeypatch, tmp_path) -> None:
+    session = f"double-{os.getpid()}-1"
+    lines = [_rpc(1, "session/new", cwd=str(WS)), _rpc(2, "session/set_config_option", sessionId=session, configId="context_strategy", value="hybrid")]
+    sent, _ = _drive(monkeypatch, tmp_path, lines, args=ATTACHED_ARGS)
+    hybrid = build_session_config_options(SessionConfigSnapshot(mode_id="agent", strategy="hybrid"))
+    assert next(m for m in sent if m.get("id") == 2)["result"] == {"configOptions": hybrid}
+    assert _updates(sent) == [build_config_option_update_notification(session_id=session, config_options=hybrid)]  # no mode update
+
+    sent, _ = _drive(monkeypatch, tmp_path, lines, args=ARGS)
+    assert next(m for m in sent if m.get("id") == 2)["error"] == {"code": -32600, "message": "unknown config option"}
+    assert _updates(sent) == []
+
+
+@pytest.mark.parametrize(
+    "request_",
+    [
+        {"configId": "mode", "value": "plan"},
+        {"configId": "model", "value": "any"},
+        {"configId": "context_strategy", "value": "everything"},
+    ],
+    ids=["unknown-mode", "unknown-option", "unknown-strategy"],
+)
+def test_the_double_refuses_what_optimus_refuses_and_changes_nothing(monkeypatch, tmp_path, request_: dict) -> None:
+    session = f"double-{os.getpid()}-1"
+    lines = [_rpc(1, "session/new", cwd=str(WS)), _rpc(2, "session/set_config_option", sessionId=session, **request_)]
+    sent, _ = _drive(monkeypatch, tmp_path, lines, args=ATTACHED_ARGS)
+    assert next(m for m in sent if m.get("id") == 2)["error"]["code"] == -32600 and _updates(sent) == []
+
+
+# --- The Zed launch check: the schedule's own Zed entries against the double ------------------------------------------
+
+L1, L2 = "L1 Zed launch (qualification)", "L2 Zed launch (attached)"
+RECORD = Path(r"C:\rehearsal root with spaces\double-record.jsonl")
+QUALIFICATION, ATTACHED = "stage-c-rehearsal-double-qualification", "stage-c-rehearsal-double-attached"  # the Zed entry names
+
+
+def test_the_zed_entries_are_the_schedules_own_launches_with_only_the_executable_and_workspace_substituted() -> None:
+    real = _schedule(Path(r"C:\venv\Scripts\optimus-agent.exe"), Path(r"C:\run\workspace"))
+    entries = rehearsal.zed_entries(real, agent_exe=EXE, workspace=WS, record=RECORD)
+    assert entries == {
+        QUALIFICATION: {"type": "custom", "command": str(EXE), "args": ARGS, "env": {double.RECORD_ENV: str(RECORD)}},
+        ATTACHED: {"type": "custom", "command": str(EXE), "args": ATTACHED_ARGS, "env": {double.RECORD_ENV: str(RECORD)}},
+    }
+    generated = {s["title"]: json.loads(s["commands"][0].removeprefix(rehearsal.ZED_PREFIX)) for s in _schedule(EXE, WS)["runbook"]["steps"] if s["kind"] == "zed-launch"}
+    assert [{k: e[k] for k in ("command", "args")} for e in entries.values()] == [generated[L1], generated[L2]]
+
+
+@pytest.mark.parametrize("edit", ["profile", "debug-trace", "missing-launch"])
+def test_a_hand_edited_zed_launch_is_refused(edit: str) -> None:
+    real = _schedule(Path(r"C:\venv\Scripts\optimus-agent.exe"), Path(r"C:\run\workspace"))
+    steps = real["runbook"]["steps"]
+    l1 = next(s for s in steps if s["title"] == L1)
+    if edit == "missing-launch":
+        steps.remove(l1)
+    else:
+        old = '"qualification"' if edit == "profile" else ', "--debug-trace"'
+        l1["commands"] = [l1["commands"][0].replace(old, '"attached"' if edit == "profile" else "")]
+    with pytest.raises(rehearsal.RehearsalError):
+        rehearsal.zed_entries(real, agent_exe=EXE, workspace=WS, record=RECORD)
+
+
+def _zed_passing() -> list[dict]:
+    """What a passing Zed check records: the qualification double's new thread switched to Chat through the mode
+    config option, the attached double's new thread, and both doubles closed when Zed quit."""
+    zed_cwd = Path(r"C:\Users\pc\AppData\Local\Programs\Zed")
+    return [
+        _start(11, cwd=zed_cwd), _request(11, "initialize", protocolVersion=1), _request(11, "session/new", cwd=str(WS)),
+        _request(11, "session/set_config_option", configId="mode", value="chat"),
+        _start(12, args=ATTACHED_ARGS, cwd=zed_cwd), _request(12, "initialize", protocolVersion=1), _request(12, "session/new", cwd=str(WS)),
+        {"pid": 11, "event": "exit", "reason": "stdin closed"}, {"pid": 12, "event": "exit", "reason": "stdin closed"},
+    ]  # fmt: skip
+
+
+def _zed_check(records: list[dict], alive=lambda pid: False) -> list[str]:
+    return rehearsal.check_zed(records, agent_exe=EXE, workspace=WS, alive=alive)
+
+
+def test_a_passing_zed_check_has_no_problem() -> None:
+    assert _zed_check(_zed_passing()) == []
+
+
+def test_a_chat_change_through_set_mode_also_passes() -> None:
+    records = [r if r.get("method") != "session/set_config_option" else _request(11, "session/set_mode", modeId="chat") for r in _zed_passing()]
+    assert _zed_check(records) == []
+
+
+def _without(records: list[dict], predicate) -> list[dict]:
+    return [r for r in records if not predicate(r)]
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        (lambda rs: _without(rs, lambda r: r["pid"] == 12), "no attached launch"),
+        (lambda rs: _without(rs, lambda r: r["pid"] == 11), "no qualification launch"),
+        (lambda rs: [{**r, "args": ARGS[:-1]} if r["event"] == "start" and r["pid"] == 11 else r for r in rs], "argv"),
+        (lambda rs: [{**r, "argv0": r"C:\other\optimus-agent.exe"} if r["event"] == "start" and r["pid"] == 12 else r for r in rs], "executable"),
+        (lambda rs: _without(rs, lambda r: r.get("method") == "session/set_config_option"), "Chat"),
+        (lambda rs: [{**r, "value": "agent"} if r.get("method") == "session/set_config_option" else r for r in rs], "Chat"),
+        (lambda rs: [{**r, "cwd": r"C:\elsewhere"} if r.get("method") == "session/new" and r["pid"] == 12 else r for r in rs], "session/new"),
+        (lambda rs: _without(rs, lambda r: r.get("method") == "session/new" and r["pid"] == 12), "session/new"),
+        (lambda rs: _without(rs, lambda r: r.get("method") == "initialize" and r["pid"] == 11), "initialize"),
+        (lambda rs: [*rs[:3], _request(11, "session/load"), *rs[3:]], "session/load"),
+        (lambda rs: _without(rs, lambda r: r["event"] == "exit" and r["pid"] == 12), "did not exit"),
+    ],
+    ids=["no-attached", "no-qualification", "argv", "executable", "no-chat", "agent-not-chat", "new-cwd", "no-new", "no-initialize", "load", "no-exit"],
+)
+def test_each_zed_check_failure_is_a_problem(change, expected: str) -> None:
+    problems = _zed_check(change(copy.deepcopy(_zed_passing())))
+    assert problems and any(expected in p for p in problems), problems
+
+
+def test_a_double_left_running_after_zed_quit_is_a_problem() -> None:
+    assert _zed_check(_zed_passing(), alive=lambda pid: pid == 12) == ["double 12 is still running after Zed quit"]
+
+
+def test_an_empty_record_is_a_problem() -> None:
+    assert "the double never started: Zed launched neither entry" in _zed_check([])
+
+
+@WINDOWS_ONLY
+def test_the_zed_fixture_and_check_write_new_files_only(tmp_path, monkeypatch) -> None:
+    """--zed-fixture builds the double and workspace under paths with spaces and writes the entries; --zed-check
+    judges the double's record and writes a receipt. Neither overwrites an earlier file."""
+    schedule_path = tmp_path / "stage-c-schedule.json"
+    schedule = {"schedule": "stage-c-schedule-v7", **_schedule(Path(r"C:\venv\Scripts\optimus-agent.exe"), Path(r"C:\run\workspace"))}
+    schedule_path.write_text(json.dumps(schedule), encoding="utf-8")
+
+    def build(root: Path) -> Path:
+        exe = root / "venv with spaces" / "Scripts" / "optimus-agent.exe"
+        exe.parent.mkdir(parents=True)
+        exe.write_bytes(b"MZ")
+        return exe
+
+    monkeypatch.setattr(rehearsal, "build_double", build)
+    fixture_dir = tmp_path / "zed check"
+    assert rehearsal.main(["--schedule", str(schedule_path), "--zed-fixture", str(fixture_dir)]) == 0
+    fixture = json.loads((fixture_dir / "zed-fixture.json").read_text(encoding="utf-8"))
+    exe, workspace, record = Path(fixture["double"]["exe"]), Path(fixture["workspace"]), Path(fixture["record"])
+    assert " " in str(exe) and " " in str(workspace) and workspace.is_dir() and not record.exists()
+    assert fixture["schedule"]["sha256"] == rehearsal.sha256_file(schedule_path)
+    assert fixture["entries"] == rehearsal.zed_entries(schedule, agent_exe=exe, workspace=workspace, record=record)
+    with pytest.raises(FileExistsError):
+        rehearsal.zed_fixture(schedule_path, fixture_dir)
+
+    passing = [{**r, "argv0": str(exe), "args": [r["args"][0], str(workspace), *r["args"][2:]]} if r["event"] == "start" else
+               ({**r, "cwd": str(workspace)} if r.get("method") == "session/new" else r) for r in _zed_passing()]  # fmt: skip
+    record.write_text("".join(json.dumps(r) + "\n" for r in passing), encoding="utf-8")
+    monkeypatch.setattr(rehearsal, "_alive", lambda pid: False)
+    out = tmp_path / "zed-check" / "receipt.json"
+    assert rehearsal.main(["--zed-check", str(fixture_dir / "zed-fixture.json"), "--out", str(out)]) == 0
+    receipt = json.loads(out.read_text(encoding="utf-8"))
+    assert (receipt["schema"], receipt["passed"], receipt["problems"]) == (rehearsal.ZED_RECEIPT_SCHEMA, True, [])
+    assert receipt["record"]["sha256"] == rehearsal.sha256_file(record) and receipt["double_records"] == passing
+    assert {launch["profile"] for launch in receipt["launches"]} == {"qualification", "attached"}
+    with pytest.raises(FileExistsError):
+        rehearsal.zed_check(fixture_dir / "zed-fixture.json", out)
+
+
+@WINDOWS_ONLY
+@pytest.mark.parametrize("changed", ["double", "schedule"])
+def test_a_double_or_schedule_changed_after_the_fixture_fails_the_zed_check(tmp_path, monkeypatch, changed: str) -> None:
+    schedule_path = tmp_path / "stage-c-schedule.json"
+    schedule = {"schedule": "stage-c-schedule-v7", **_schedule(Path(r"C:\venv\Scripts\optimus-agent.exe"), Path(r"C:\run\workspace"))}
+    schedule_path.write_text(json.dumps(schedule), encoding="utf-8")
+
+    def build(root: Path) -> Path:
+        exe = root / "venv with spaces" / "Scripts" / "optimus-agent.exe"
+        exe.parent.mkdir(parents=True)
+        exe.write_bytes(b"MZ")
+        return exe
+
+    monkeypatch.setattr(rehearsal, "build_double", build)
+    monkeypatch.setattr(rehearsal, "_alive", lambda pid: False)
+    fixture_path = rehearsal.zed_fixture(schedule_path, tmp_path / "zed check")
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    exe, workspace = Path(fixture["double"]["exe"]), Path(fixture["workspace"])
+    passing = [{**r, "argv0": str(exe), "args": [r["args"][0], str(workspace), *r["args"][2:]]} if r["event"] == "start" else
+               ({**r, "cwd": str(workspace)} if r.get("method") == "session/new" else r) for r in _zed_passing()]  # fmt: skip
+    Path(fixture["record"]).write_text("".join(json.dumps(r) + "\n" for r in passing), encoding="utf-8")
+    (exe if changed == "double" else schedule_path).write_bytes(b"changed")
+
+    out = tmp_path / "receipt.json"
+    assert rehearsal.zed_check(fixture_path, out) == 1
+    assert json.loads(out.read_text(encoding="utf-8"))["problems"] == [f"the {'double' + chr(39) + 's executable' if changed == 'double' else 'schedule'} changed since the fixture was built"]

@@ -3,7 +3,7 @@
 
 The ledger is initialized once, by the later release ceremony; every Gateway start only reopens it. Before
 each physical upstream attempt the guard checks the window, the attempt count and `known charges +
-outstanding reserves + the next full reserve <= $8` (release r5), and persists the reservation before dispatch.
+outstanding reserves + the next full reserve <= $8` (release r6), and persists the reservation before dispatch.
 Each attempt is settled once: a known charge, a proven unbilled outcome (its attempt still counts) or an
 unknown one, which stops every later dispatch. A restart replays the same totals and deadline; anything
 unresolved or unreadable stays in doubt and stops dispatch. One writer, one attempt in flight.
@@ -83,7 +83,7 @@ def test_the_ledger_is_initialized_once_and_never_reset(tmp_path: Path) -> None:
     path, envelope = _initialized(tmp_path)
     [init] = _records(path)
     assert (init["kind"], init["envelope"], init["release_id"], init["limit_usd"], init["max_attempts"], init["window_seconds"]) == (
-        "init", envelope.literal, "plan12-2-stage-c-r5", "8", 138, 3600
+        "init", envelope.literal, "plan12-2-stage-c-r6", "8", 138, 3600
     )  # fmt: skip
 
     with pytest.raises(StageCLedgerError) as caught:

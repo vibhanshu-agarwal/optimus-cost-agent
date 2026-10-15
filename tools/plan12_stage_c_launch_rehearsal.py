@@ -22,8 +22,19 @@ commands, every outcome and problem. `--verify R --schedule S` is the release ga
 it passes only for a passing receipt of exactly this schedule, made in the last 24 hours with today's acpx,
 Node, shell and double.
 
+The Zed launch check (r6 v2, step 3) puts the same double behind the schedule's own L1 and L2 Zed entries, with
+only the executable and the workspace substituted and checked against the generator, and the double's record file
+added to each entry's env. `--zed-fixture DIR --schedule S` builds the double and a workspace under paths with
+spaces and writes zed-fixture.json (the two entries and their selection shortcuts); Codex drives Zed 1.24.2 by
+hand. `--zed-check FIXTURE --out R` then judges the double's record - each launch's executable and argv,
+initialize first at protocol 1, a thread opened in the workspace, the qualification thread switched to Chat, both
+profiles launched, no session/load, every double exited and none left running - and writes a new receipt. Human
+trust and permission steps are never part of it.
+
 Usage: python tools/plan12_stage_c_launch_rehearsal.py --schedule <stage-c-schedule.json> --out <receipt.json>
        python tools/plan12_stage_c_launch_rehearsal.py --verify <receipt.json> --schedule <stage-c-schedule.json>
+       python tools/plan12_stage_c_launch_rehearsal.py --zed-fixture <new folder> --schedule <stage-c-schedule.json>
+       python tools/plan12_stage_c_launch_rehearsal.py --zed-check <zed-fixture.json> --out <receipt.json>
 """
 
 from __future__ import annotations
@@ -66,6 +77,14 @@ DOUBLE_SOURCE = Path(double.__file__)
 # r5's form, replicated for the negative control only: a backslash path to a .cmd wrapper, as schedule v6 wrote it.
 V6_WRAPPER = '@echo off\r\n"{exe}" --workspace-root "{workspace}" --plan12-test-profile qualification --plan12-stage-c --debug-trace\r\n'
 V6_A6 = 'acpx --format json --deny-all --cwd "{workspace}" --agent "{wrapper}" exec "{prompt}"'
+
+
+ZED_PREFIX = "Zed settings agent_servers Optimus: "  # how the schedule writes each Zed launch
+ZED_LAUNCHES = {"qualification": "L1 Zed launch (qualification)", "attached": "L2 Zed launch (attached)"}
+ZED_ENTRY_NAMES = {"qualification": "stage-c-rehearsal-double-qualification", "attached": "stage-c-rehearsal-double-attached"}
+ZED_FIXTURE_SCHEMA = "stage-c-zed-fixture-v1"
+ZED_RECEIPT_SCHEMA = "stage-c-zed-launch-check-v1"
+ZED_EXE = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Zed" / "Zed.exe"
 
 
 class RehearsalError(RuntimeError):
@@ -403,20 +422,191 @@ def run(schedule_path: Path, out: Path) -> int:
     return 0 if not problems else 1
 
 
+# --- The Zed launch check -----------------------------------------------------------------------------------------
+
+
+def _zed_generated(agent_exe: Path, workspace: Path) -> dict[str, dict[str, Any]]:
+    """The generator's L1 and L2 Zed launches (command and args) for these paths, by profile."""
+    steps = schedule_tool._runbook(schedule_tool.RunbookPaths(agent_exe=agent_exe, workspace=workspace, evidence=workspace))["steps"]
+    launches = {step["title"]: step["commands"][0] for step in steps if step["kind"] == "zed-launch"}
+    return {profile: json.loads(launches[title].removeprefix(ZED_PREFIX)) for profile, title in ZED_LAUNCHES.items()}
+
+
+def zed_entries(schedule: dict[str, Any], *, agent_exe: Path, workspace: Path, record: Path) -> dict[str, dict[str, Any]]:
+    """The schedule's own L1 and L2 Zed launches as Zed custom-agent entries, with only the executable and the workspace
+    substituted; each must equal the generator's launch for those paths. The double's record file, in env, is the
+    only addition."""
+    runbook = schedule["runbook"]
+    real_exe, real_workspace = runbook["paths"]["agent_exe"], runbook["paths"]["workspace"]
+    launches = {step["title"]: step["commands"][0] for step in runbook["steps"] if step["kind"] == "zed-launch"}
+    if sorted(launches) != sorted(ZED_LAUNCHES.values()):
+        raise RehearsalError(f"the schedule's Zed launches are {sorted(launches)}, not L1 and L2")
+    generated, entries = _zed_generated(agent_exe, workspace), {}
+    for profile, title in ZED_LAUNCHES.items():
+        launch = json.loads(launches[title].removeprefix(ZED_PREFIX)) if launches[title].startswith(ZED_PREFIX) else {}
+        substituted = {
+            "command": str(agent_exe) if launch.get("command") == real_exe else launch.get("command"),
+            "args": [str(workspace) if arg == real_workspace else arg for arg in launch.get("args", [])],
+        }
+        if substituted != generated[profile]:
+            raise RehearsalError(f"{title}: the schedule's launch is not the generator's (only the executable and workspace may differ)")
+        entries[ZED_ENTRY_NAMES[profile]] = {"type": "custom", **substituted, "env": {double.RECORD_ENV: str(record)}}
+    return entries
+
+
+def _chat_change(request: dict[str, Any]) -> str | None:
+    """The setter that switched a thread to Chat, if this request did."""
+    if request.get("method") == "session/set_config_option" and request.get("configId") == "mode" and request.get("value") == "chat":
+        return "session/set_config_option"
+    if request.get("method") == "session/set_mode" and request.get("modeId") == "chat":
+        return "session/set_mode"
+    return None
+
+
+def check_zed(records: list[dict[str, Any]], *, agent_exe: Path, workspace: Path, alive: Callable[[int], bool]) -> list[str]:
+    """Every problem with a Zed launch check: each double Zed started must be a generated launch (its executable and
+    argv; Zed chooses the working folder, which is only recorded), answer initialize at protocol 1 first, open its
+    thread with session/new in the workspace and exit when Zed quits; both profiles must launch, a qualification thread
+    must switch to Chat, nothing may ask session/load and no double may be left running."""
+    events: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for record in records:
+        events[record["pid"]].append(record)
+    if not events:
+        return ["the double never started: Zed launched neither entry"]
+    generated = _zed_generated(agent_exe, workspace)
+    launched: dict[str, list[int]] = defaultdict(list)
+    problems = []
+    for pid, seen in events.items():
+        start = seen[0]
+        if start["event"] != "start":
+            problems.append(f"double {pid}: no start record")
+            continue
+        if not _same_path(start["argv0"], agent_exe):
+            problems.append(f"double {pid}: executable {start['argv0']!r} is not {str(agent_exe)!r}")
+        profile = double._profile(start["args"])
+        if profile in generated and start["args"] == generated[profile]["args"]:
+            launched[profile].append(pid)
+        else:
+            problems.append(f"double {pid}: argv {start['args']!r} is not a generated Zed launch")
+        requests = [event for event in seen if event["event"] == "request"]
+        methods = [event["method"] for event in requests]
+        if not requests or methods[0] != "initialize" or requests[0].get("protocolVersion") != 1:
+            problems.append(f"double {pid}: initialize at protocol 1 did not come first ({methods})")
+        news = [event for event in requests if event["method"] == "session/new"]
+        if not news:
+            problems.append(f"double {pid}: no session/new (Zed opened no thread on it)")
+        problems += [f"double {pid}: session/new in {new.get('cwd')!r}, not the workspace {str(workspace)!r}" for new in news
+                     if not isinstance(new.get("cwd"), str) or not _same_path(new["cwd"], workspace)]  # fmt: skip
+        if not any(event["event"] == "exit" for event in seen):
+            problems.append(f"double {pid} did not exit when Zed quit")
+    problems += [f"no {profile} launch: Zed never started that entry" for profile in ZED_LAUNCHES if not launched[profile]]
+    if launched["qualification"] and not any(_chat_change(event) for pid in launched["qualification"] for event in events[pid]):
+        problems.append("the qualification thread never switched to Chat")
+    if any(record.get("method") == "session/load" for record in records):
+        problems.append("a launch asked session/load, which Optimus does not offer")
+    problems += [f"double {pid} is still running after Zed quit" for pid in events if alive(pid)]
+    return problems
+
+
+def zed_fixture(schedule_path: Path, root: Path) -> Path:
+    """Build the Zed check's double and workspace in the new folder `root` (both under paths with spaces) and write
+    zed-fixture.json: the two Zed entries, their selection shortcuts, the double's identity and the record file the
+    doubles append to. Nothing is launched."""
+    if sys.platform != "win32":
+        raise RehearsalError("the Zed launch check runs on the operator's Windows host only")
+    schedule = json.loads(Path(schedule_path).read_text(encoding="utf-8"))
+    root.mkdir(parents=True)  # every fixture gets a new folder
+    base = root / "zed rehearsal root with spaces"
+    exe = build_double(base)
+    workspace = base / "work space"
+    for folder in schedule_tool.WORKSPACE_DIRS:
+        (workspace / folder).mkdir(parents=True)
+    record = root / "double-record.jsonl"
+    keys = [f"ctrl-alt-shift-{number}" for number in (1, 2)]
+    fixture = {
+        "schema": ZED_FIXTURE_SCHEMA,
+        "created_at": datetime.now(UTC).isoformat(),
+        "schedule": {"path": str(schedule_path), "sha256": sha256_file(schedule_path), "version": schedule["schedule"]},
+        "double": {"exe": str(exe), "sha256": sha256_file(exe), "source_sha256": sha256_file(DOUBLE_SOURCE)},
+        "workspace": str(workspace),
+        "record": str(record),
+        "entries": zed_entries(schedule, agent_exe=exe, workspace=workspace, record=record),
+        "keymap": [{"bindings": {key: ["agent::SelectAgent", {"agent": name}] for key, name in zip(keys, ZED_ENTRY_NAMES.values(), strict=True)}}],
+    }
+    path = root / "zed-fixture.json"
+    with path.open("x", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(fixture, indent=2) + "\n")
+    return path
+
+
+def zed_check(fixture_path: Path, out: Path) -> int:
+    """Judge the double's record after Codex has driven Zed, and write a new receipt."""
+    if sys.platform != "win32":
+        raise RehearsalError("the Zed launch check runs on the operator's Windows host only")
+    fixture = json.loads(Path(fixture_path).read_text(encoding="utf-8"))
+    exe, workspace, record = Path(fixture["double"]["exe"]), Path(fixture["workspace"]), Path(fixture["record"])
+    records = _records(record)
+    problems = check_zed(records, agent_exe=exe, workspace=workspace, alive=_alive)
+    if sha256_file(exe) != fixture["double"]["sha256"]:
+        problems.append("the double's executable changed since the fixture was built")
+    if not Path(fixture["schedule"]["path"]).is_file() or sha256_file(Path(fixture["schedule"]["path"])) != fixture["schedule"]["sha256"]:
+        problems.append("the schedule changed since the fixture was built")
+    launches = []
+    for record_entry in records:
+        if record_entry["event"] == "start":
+            seen = [event for event in records if event["pid"] == record_entry["pid"]]
+            launches.append({
+                "pid": record_entry["pid"],
+                "profile": double._profile(record_entry["args"]),
+                "cwd": record_entry["cwd"],
+                "methods": [event["method"] for event in seen if event["event"] == "request"],
+                "chat_via": next((via for event in seen if (via := _chat_change(event))), None),
+                "exited": any(event["event"] == "exit" for event in seen),
+            })  # fmt: skip
+    receipt = {
+        "schema": ZED_RECEIPT_SCHEMA,
+        "created_at": datetime.now(UTC).isoformat(),
+        "passed": not problems,
+        "problems": problems,
+        "fixture": {"path": str(fixture_path), "sha256": sha256_file(Path(fixture_path))},
+        "schedule": fixture["schedule"],
+        "zed": {"exe": str(ZED_EXE), "sha256": sha256_file(ZED_EXE) if ZED_EXE.is_file() else None},
+        "record": {"path": str(record), "sha256": sha256_file(record) if record.is_file() else None},
+        "launches": launches,
+        "double_records": records,
+    }
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("x", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(receipt, indent=2) + "\n")
+    print("zed launch check passed" if not problems else "zed launch check FAILED:\n" + "\n".join(problems))
+    return 0 if not problems else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--schedule", type=Path, required=True, help="the release's stage-c-schedule.json")
-    action = parser.add_mutually_exclusive_group(required=True)
-    action.add_argument("--out", type=Path, help="run the rehearsal and write a new receipt here")
+    parser.add_argument("--schedule", type=Path, help="the release's stage-c-schedule.json")
+    parser.add_argument("--out", type=Path, help="write a new receipt here (the rehearsal, or with --zed-check the Zed check)")
+    action = parser.add_mutually_exclusive_group()
     action.add_argument("--verify", type=Path, help="check a receipt is fresh, matching and passing; exit 0 only then")
+    action.add_argument("--zed-fixture", type=Path, help="build the Zed check's double, workspace and entries in this new folder")
+    action.add_argument("--zed-check", type=Path, help="judge the double's record for this zed-fixture.json")
     args = parser.parse_args(argv)
+    if args.zed_check is None and args.schedule is None:
+        parser.error("--schedule is required")
     if args.verify is not None:
         problems = verify(args.verify, args.schedule, now=datetime.now(UTC), identity=current_identity)
         print("rehearsal receipt fresh" if not problems else "\n".join(problems))
         return 0 if not problems else 1
+    if args.zed_fixture is not None:
+        if args.zed_fixture.exists():
+            parser.error(f"{args.zed_fixture} exists; every Zed fixture gets a new folder")
+        print(zed_fixture(args.schedule, args.zed_fixture))
+        return 0
+    if args.out is None:
+        parser.error("--out is required")
     if args.out.exists():
         parser.error(f"{args.out} exists; every rehearsal writes a new receipt")
-    return run(args.schedule, args.out)
+    return zed_check(args.zed_check, args.out) if args.zed_check is not None else run(args.schedule, args.out)
 
 
 if __name__ == "__main__":
