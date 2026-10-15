@@ -69,7 +69,6 @@ in this table. A `Moved` row keeps its plan listed here; its state and next gate
 
 | Plan | State | Backlog owner | Next gate |
 |---|---|---|---|
-| [Plan 11.31 — Closed state ID lifecycle port](2026-10-15-closed-state-ids-port_v4.md) | — | — | [#357](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/357) |
 | [Plan 11.29 — GitHub Issues migration and live status view](2026-10-04-plan-11-29-github-issues-migration.md) | Moved | — | [#236](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/236) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L58-L58) |
 | [Plan 12.2 — Context Engine](2026-10-01-plan-12-2-context-engine-implementation_v4.md) | Moved | — | [#237](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/237) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L59-L59) |
 | [Plan 12.1 — Plan/Chat advisory answer](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | Moved | — | [#238](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/238) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L60-L60) |
