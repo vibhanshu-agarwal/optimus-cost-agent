@@ -1852,6 +1852,177 @@ async def test_session_load_still_method_not_found(tmp_path):
     assert response["error"]["code"] == METHOD_NOT_FOUND
 
 
+def _record_session_state_closes(monkeypatch, *, error=None):
+    closed_states = []
+    original_close = ClientMcpSessionState.close
+
+    def close(state):
+        closed_states.append(state)
+        if error is not None:
+            raise error
+        original_close(state)
+
+    monkeypatch.setattr(ClientMcpSessionState, "close", close)
+    return closed_states
+
+
+@pytest.mark.parametrize(
+    "close_error",
+    [
+        pytest.param(None, id="normal"),
+        pytest.param(RuntimeError("controlled close failure"), id="ordinary-error"),
+        pytest.param(asyncio.CancelledError("controlled cancellation"), id="cancelled"),
+        pytest.param(KeyboardInterrupt("controlled interrupt"), id="keyboard-interrupt"),
+        pytest.param(SystemExit(17), id="system-exit"),
+    ],
+)
+def test_session_store_remove_releases_closed_state_id(tmp_path, monkeypatch, close_error):
+    """A missing finally-discard retains a removed ID, including when close raises."""
+    sessions = InMemoryAcpSpecSessionStore()
+    session = sessions.create(cwd=tmp_path)
+    state = ClientMcpSessionState(session_id=session.session_id)
+    session.client_mcp_state = state
+    closed_states = _record_session_state_closes(monkeypatch, error=close_error)
+
+    if close_error is None:
+        assert sessions.remove(session.session_id) is None
+    else:
+        with pytest.raises(type(close_error)) as caught:
+            sessions.remove(session.session_id)
+        assert caught.value is close_error
+
+    assert sessions.get(session.session_id) is None
+    assert len(closed_states) == 1 and closed_states[0] is state
+    assert session.session_id not in sessions._closed_state_ids
+    assert sessions.remove(session.session_id) is None
+    sessions.close_all()
+    assert len(closed_states) == 1
+    assert sessions._closed_state_ids == set()
+
+
+@pytest.mark.parametrize("missing_session", [False, True], ids=["no-state", "missing-session"])
+@pytest.mark.parametrize("stale_marker", [False, True], ids=["no-marker", "synthetic-stale-marker"])
+def test_session_store_remove_without_state_or_session(tmp_path, monkeypatch, missing_session, stale_marker):
+    """Defensive cleanup must remove only its ID, even without a closable state."""
+    sessions = InMemoryAcpSpecSessionStore()
+    closed_states = _record_session_state_closes(monkeypatch)
+    other = sessions.create(cwd=tmp_path)
+    other_state = ClientMcpSessionState(session_id=other.session_id)
+    other.client_mcp_state = other_state
+    sessions.close_all()
+    removed_id = "missing-session" if missing_session else sessions.create(cwd=tmp_path).session_id
+    if stale_marker:
+        # Synthetic stale metadata exercises both unconditional-discard branches.
+        sessions._closed_state_ids.add(removed_id)
+
+    assert sessions.remove(removed_id) is None
+
+    assert sessions.get(removed_id) is None
+    assert sessions.get(other.session_id) is other
+    assert len(closed_states) == 1 and closed_states[0] is other_state
+    assert sessions._closed_state_ids == {other.session_id}
+    sessions.close_all()
+    assert len(closed_states) == 1
+
+
+@pytest.mark.parametrize("remove_first", [False, True], ids=["close-all-first", "remove-first"])
+def test_session_store_close_ordering_preserves_live_markers(tmp_path, monkeypatch, remove_first):
+    """Clearing every marker or discarding a live marker must cause a duplicate close."""
+    sessions = InMemoryAcpSpecSessionStore()
+    closed_states = _record_session_state_closes(monkeypatch)
+    first = sessions.create(cwd=tmp_path)
+    second = sessions.create(cwd=tmp_path)
+    first_state = ClientMcpSessionState(session_id=first.session_id)
+    second_state = ClientMcpSessionState(session_id=second.session_id)
+    first.client_mcp_state = first_state
+    second.client_mcp_state = second_state
+    if remove_first:
+        sessions.remove(first.session_id)
+        assert sessions.get(first.session_id) is None
+        assert sessions._closed_state_ids == set()
+
+    for _ in range(2):
+        sessions.close_all()
+        expected_markers = {second.session_id} if remove_first else {first.session_id, second.session_id}
+        assert sessions._closed_state_ids == expected_markers
+        assert sum(state is first_state for state in closed_states) == 1
+        assert sum(state is second_state for state in closed_states) == 1
+
+    for _ in range(2):
+        sessions.remove(first.session_id)
+        assert sessions.get(first.session_id) is None
+        assert sessions.get(second.session_id) is second
+        assert sessions._closed_state_ids == {second.session_id}
+    sessions.close_all()
+    assert sum(state is first_state for state in closed_states) == 1
+    assert sum(state is second_state for state in closed_states) == 1
+    sessions.remove(second.session_id)
+    sessions.close_all()
+    assert sessions._sessions == {}
+    assert sessions._closed_state_ids == set()
+    assert len(closed_states) == 2
+
+
+@pytest.mark.parametrize("failure", ["runtime-missing", "configuration", "disposition", "resolver"])
+async def test_session_new_failure_releases_closed_state_id(tmp_path, monkeypatch, failure):
+    """Every current session/new removal must release the attached empty state's marker."""
+    sessions = InMemoryAcpSpecSessionStore()
+    outbound = RecordingOutboundChannel()
+    operations = []
+    closed_states = _record_session_state_closes(monkeypatch)
+    runtime = None if failure == "runtime-missing" else _client_mcp_runtime_for_tests(tmp_path, operations=operations)
+    returned_states = []
+
+    async def disposition_error(self, session_id, cwd, entries, request_permission):
+        raise RuntimeError("controlled disposition failure")
+
+    async def return_provisional(self, session_id, cwd, entries, request_permission):
+        state = ClientMcpSessionState(session_id=session_id)
+        returned_states.append(state)
+        return state
+
+    def resolver_error(self, state, *, sdk_adapter, service_factory_builder=None):
+        raise RuntimeError("controlled resolver attachment failure")
+
+    if failure == "disposition":
+        monkeypatch.setattr(ClientMcpDisposition, "disposition_for_new_session", disposition_error)
+    elif failure == "resolver":
+        monkeypatch.setattr(ClientMcpDisposition, "disposition_for_new_session", return_provisional)
+        monkeypatch.setattr(ClientMcpDisposition, "attach_runtime_resolver", resolver_error)
+
+    adapter = AcpDuplexAdapter(
+        runner=FakeRunner(), workspace_root=tmp_path, sessions=sessions,
+        outbound=outbound, client_mcp_runtime=runtime,
+    )
+    servers = [{"type": "http", "name": "tools", "url": "https://mcp.example.com/v1", "headers": []}]
+    if failure == "configuration":
+        servers.append({**servers[0], "url": "https://mcp.example.com/v2"})
+    try:
+        response = await _rpc(adapter, {
+            "jsonrpc": "2.0", "id": 1, "method": "session/new",
+            "params": {"cwd": str(tmp_path), "mcpServers": servers},
+        })
+        assert response["error"]["code"] == -32600
+        expected_message = "client MCP runtime not configured" if failure == "runtime-missing" else "invalid request"
+        assert response["error"]["message"] == expected_message
+        assert outbound.requests == []
+        assert operations == []
+        assert sessions._sessions == {}
+        if failure == "resolver":
+            assert len(returned_states) == 1
+            assert len(closed_states) == 2
+            assert closed_states[0] is returned_states[0]
+            assert closed_states[1] is not returned_states[0]
+            assert closed_states[0].session_id == closed_states[1].session_id
+        else:
+            # The configuration normalizer's never-returned state is outside this slice.
+            assert len(closed_states) == 1
+        assert sessions._closed_state_ids == set()
+    finally:
+        if runtime is not None:
+            runtime.close()
+
+
 async def test_close_all_closes_session_states_exactly_once(tmp_path):
     sessions = InMemoryAcpSpecSessionStore()
     outbound = RecordingOutboundChannel()
