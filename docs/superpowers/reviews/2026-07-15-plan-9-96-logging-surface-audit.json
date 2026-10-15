@@ -4299,7 +4299,7 @@
     {
       "key": "tools.plan12_stage_c_launch_rehearsal:run:text_file_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: writes the negative control's replica of r5's .cmd wrapper in the rehearsal's temporary folder: the inert double's path, the rehearsal workspace path and fixed launch flags. No credential or runtime data.",
+      "rationale": "Inspection: writes, in the rehearsal's temporary folder, the negative control's replica of r5's .cmd wrapper (the inert double's path, the rehearsal workspace path and fixed launch flags) and one script file per acpx command, holding exactly that command (the rehearsal's synthetic paths and the schedule's fixed synthetic prompts) so the declared shell reads it unaltered. No credential or runtime data.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_run_writes_one_new_receipt_with_every_outcome",
       "evidence_tier": "unit"

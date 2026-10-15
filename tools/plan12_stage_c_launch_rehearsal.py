@@ -9,6 +9,12 @@ command is checked to be exactly the generator's for those paths. It first repro
 backslash path to a .cmd wrapper, in a folder without spaces as r5's was, must fail before the double starts.
 No Optimus host, Gateway, model, provider, credential or network is involved.
 
+The client is the one the declared bash actually runs in the launch's environment (Codex's review of c1134e1, M1):
+`acpx` must resolve on PATH to a file (never a function or alias), and its shim, the CLI and launch bundle beside it
+and the Node runtime that shim would choose are bound and checked against the schedule's pins before anything runs; an
+unverified client is never executed. The gate resolves it the same way, so a PATH shadow or changed client keeps it
+shut. Each command reaches bash from a script file, exactly as written (no Windows command-line parsing).
+
 It proves acpx's launch mechanics only - the argv, the working folder, initialize, A6's denied permission, A7's
 Chat mode replayed before the prompt without session/load, and the close with no double left running - never
 Optimus behaviour. `--schedule S --out R` writes the receipt: the acpx, Node, shell and double identities, the
@@ -203,8 +209,63 @@ def verify(receipt_path: Path, schedule_path: Path, *, now: datetime, identity: 
         problems.append(f"stale: made {age} before the gate (limit {MAX_AGE})")
     if receipt["schedule"]["sha256"] != sha256_file(schedule_path):
         problems.append("the receipt rehearsed another schedule")
-    current = identity(json.loads(Path(schedule_path).read_text(encoding="utf-8")))
+    schedule = json.loads(Path(schedule_path).read_text(encoding="utf-8"))
+    current = identity(schedule)
+    problems += client_problems(current, schedule["runbook"]["acpx"]["inspection_sha256"])
     problems += [f"{part} changed since the rehearsal" for part in ("acpx", "node", "shell", "double_source_sha256") if receipt["identity"].get(part) != current.get(part)]
+    return problems
+
+
+# --- The client the declared shell actually runs ---------------------------------------------------------------------
+
+# Asks the declared bash, in the launch's own environment, what `acpx` is and which Node its npm shim would run: a
+# file found on PATH (never a function or alias), its basedir as the shim computes it, then the shim's own branch -
+# an adjacent `node` if executable there, else `node` from PATH - and that runtime's own version and path.
+_RESOLVE = r"""
+kind=$(type -t acpx)
+printf 'type=%s\n' "$kind"
+[ "$kind" = file ] || exit 0
+shim=$(command -v acpx)
+printf 'shim=%s\n' "$(cygpath -w "$shim")"
+basedir=$(dirname "$(echo "$shim" | sed -e 's,\\,/,g')")
+case `uname` in *CYGWIN*|*MINGW*|*MSYS*) basedir=`cygpath -w "$basedir"` ;; esac
+if [ -x "$basedir/node" ]; then printf 'node_branch=adjacent\n'; runtime="$basedir/node"; else printf 'node_branch=path\n'; runtime=$(command -v node); fi
+[ -n "$runtime" ] || exit 0
+"$runtime" -e "console.log('node_version=' + process.version); console.log('node_exec=' + process.execPath)"
+"""
+
+
+def resolve_client(shell: str, env: dict[str, str]) -> dict[str, Any]:
+    """The acpx client exactly as `shell` would run it under `env`: what `acpx` is, the shim's path, the CLI and launch
+    bundle beside that shim, and the Node runtime the shim would use. Nothing of acpx is executed."""
+    # On stdin, not `-c`: a script passed on the Windows command line loses `\\` and `\"` to MSYS argument parsing.
+    proc = subprocess.run([shell, "-s"], input=_RESOLVE, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=60)
+    fields = dict(line.split("=", 1) for line in proc.stdout.splitlines() if "=" in line)
+    shim = fields.get("shim") or None
+    folder = Path(shim).parent if shim else None
+    files = {name: sha256_file(folder / relative) if folder is not None and (folder / relative).is_file() else None for name, relative in ACPX_FILES.items()}
+    node_path = fields.get("node_exec") or None
+    node_sha = sha256_file(Path(node_path)) if node_path and Path(node_path).is_file() else None
+    return {
+        "type": fields.get("type", ""),
+        "shim": shim,
+        "files": files,
+        "node": {"branch": fields.get("node_branch"), "path": node_path, "version": fields.get("node_version"), "sha256": node_sha},
+    }
+
+
+def client_problems(identity: dict[str, Any], pins: dict[str, str]) -> list[str]:
+    """Why the client the declared shell would run is not the pinned one: unresolvable, a function or alias, a
+    missing or different shim, CLI or launch bundle, or no Node runtime for the shim."""
+    acpx, node = identity.get("acpx"), identity.get("node")
+    if not isinstance(acpx, dict) or not acpx.get("type"):
+        return ["acpx is not on the declared shell's PATH"]
+    if acpx["type"] != "file":
+        return [f"acpx resolves to a shell {acpx['type']}, not the installed shim file"]
+    problems = [f"acpx {name} is missing beside the resolved shim {acpx.get('shim')}" for name in pins if (acpx.get("files") or {}).get(name) is None]
+    problems += [f"acpx {name} is {acpx['files'][name]}, not the pinned {digest}" for name, digest in pins.items() if (acpx.get("files") or {}).get(name) not in (None, digest)]
+    if not isinstance(node, dict) or not node.get("path") or not node.get("sha256"):
+        problems.append("the Node runtime the acpx shim would use cannot be resolved")
     return problems
 
 
@@ -215,15 +276,15 @@ def _shell(schedule: dict[str, Any]) -> str:
     return schedule["runbook"]["acpx_shell"]["executable"]
 
 
-def current_identity(schedule: dict[str, Any]) -> dict[str, Any]:
-    """Today's acpx files, the Node the shim runs under the declared shell, that shell, and the double's source."""
+def current_identity(schedule: dict[str, Any], env: dict[str, str] | None = None) -> dict[str, Any]:
+    """The client the declared shell would run under `env` (default: this process's environment), with its Node; the
+    shell itself; and the double's source."""
     shell = _shell(schedule)
-    node = subprocess.run([shell, "-c", 'node -e "console.log(process.execPath); console.log(process.version)"'], capture_output=True, text=True, timeout=60)
-    node_path, node_version = (node.stdout.strip().splitlines() + ["", ""])[:2]
+    client = resolve_client(shell, dict(os.environ if env is None else env))
     shell_version = subprocess.run([shell, "--version"], capture_output=True, text=True, timeout=60).stdout.splitlines()[:1]
     return {
-        "acpx": {name: sha256_file(NPM / relative) if (NPM / relative).is_file() else None for name, relative in ACPX_FILES.items()},
-        "node": {"path": node_path, "version": node_version, "sha256": sha256_file(Path(node_path)) if node_path and Path(node_path).is_file() else None},
+        "acpx": {"type": client["type"], "shim": client["shim"], "files": client["files"]},
+        "node": client["node"],
         "shell": {"executable": shell, "version": shell_version[0] if shell_version else None, "sha256": sha256_file(Path(shell))},
         "double_source_sha256": sha256_file(DOUBLE_SOURCE),
     }
@@ -245,8 +306,11 @@ def build_double(root: Path) -> Path:
     return exe
 
 
-def _execute(shell: str, command: str, env: dict[str, str]) -> dict[str, Any]:
-    proc = subprocess.run([shell, "-c", command], capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=180)
+def _execute(shell: str, script: Path, env: dict[str, str]) -> dict[str, Any]:
+    r"""Run one command exactly as written: the declared shell reads it from a script file, so no Windows command-line
+    parsing touches it (passed with `-c`, MSYS would turn `\\` into `\` and `\"` into `"`). acpx gets no stdin."""
+    proc = subprocess.run([shell, str(script)], capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=180,
+                          stdin=subprocess.DEVNULL)  # fmt: skip
     return {"exit_code": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
 
 
@@ -278,41 +342,50 @@ def run(schedule_path: Path, out: Path) -> int:
     if sys.platform != "win32":
         raise RehearsalError("the launch rehearsal runs on the operator's Windows host only")
     schedule = json.loads(schedule_path.read_text(encoding="utf-8"))
-    identity = current_identity(schedule)
+    environment = dict(os.environ)  # the client is resolved in exactly the environment the commands run in
+    identity = current_identity(schedule, environment)
     pins = schedule["runbook"]["acpx"]["inspection_sha256"]
-    problems = [f"acpx {name} is {identity['acpx'].get(name)}, not the pinned {digest}" for name, digest in pins.items() if identity["acpx"].get(name) != digest]
+    problems = client_problems(identity, pins)  # an unverified client is never executed
     shell = _shell(schedule)
-    with tempfile.TemporaryDirectory(prefix="plan12-rehearsal-", ignore_cleanup_errors=True) as temporary:
-        base = Path(temporary)
-        root = base / "rehearsal root with spaces"
-        exe = build_double(root)
-        workspace = root / "work space"
-        for folder in schedule_tool.WORKSPACE_DIRS:
-            (workspace / folder).mkdir(parents=True)
-        record = base / "double-record.jsonl"
-        env = {**os.environ, double.RECORD_ENV: str(record)}
-        wrapper = base / "negative-control" / "run-optimus-agent.cmd"
-        wrapper.parent.mkdir()
-        wrapper.write_text(V6_WRAPPER.format(exe=exe, workspace=workspace), encoding="ascii", newline="")
-        old = V6_A6.format(workspace=workspace, wrapper=wrapper, prompt=schedule_tool.A6_PROMPT)
-        negative = {"command": old, **_execute(shell, old, env), "started": len(_started(record))}
-        negative["problems"] = check_negative_control(negative, started=negative["started"], wrapper=wrapper)
-        problems += negative["problems"]
-        record.unlink(missing_ok=True)
-        runs = []
-        for title, command in rehearsal_commands(schedule, agent_exe=exe, workspace=workspace):
-            before = set(_started(record))
-            result = _execute(shell, command, env)
-            runs.append({"title": title, "command": command, **result, "started_pids": [pid for pid in _started(record) if pid not in before]})
-        records = _records(record)
-        problems += check(runs, records, agent_exe=exe, workspace=workspace, alive=_alive)
-        double_exe = {"path_shape": str(exe.relative_to(base)), "sha256": sha256_file(exe)}
-        substitution = {"agent_exe": [schedule["runbook"]["paths"]["agent_exe"], str(exe)], "workspace": [schedule["runbook"]["paths"]["workspace"], str(workspace)]}
+    negative, runs, records, double_exe, substitution, executions = None, [], [], None, None, 0
+    if not problems:
+        with tempfile.TemporaryDirectory(prefix="plan12-rehearsal-", ignore_cleanup_errors=True) as temporary:
+            base = Path(temporary)
+            root = base / "rehearsal root with spaces"
+            exe = build_double(root)
+            workspace = root / "work space"
+            for folder in schedule_tool.WORKSPACE_DIRS:
+                (workspace / folder).mkdir(parents=True)
+            record = base / "double-record.jsonl"
+            env = {**environment, double.RECORD_ENV: str(record)}  # PATH and every other variable unchanged
+            wrapper = base / "negative-control" / "run-optimus-agent.cmd"
+            wrapper.parent.mkdir()
+            wrapper.write_text(V6_WRAPPER.format(exe=exe, workspace=workspace), encoding="ascii", newline="")
+            old = V6_A6.format(workspace=workspace, wrapper=wrapper, prompt=schedule_tool.A6_PROMPT)
+            scripts = base / "commands"
+            scripts.mkdir()
+            (scripts / "00-negative-control.sh").write_text(old + "\n", encoding="utf-8", newline="\n")
+            negative = {"command": old, **_execute(shell, scripts / "00-negative-control.sh", env), "started": len(_started(record))}
+            executions += 1
+            negative["problems"] = check_negative_control(negative, started=negative["started"], wrapper=wrapper)
+            problems += negative["problems"]
+            record.unlink(missing_ok=True)
+            for number, (title, command) in enumerate(rehearsal_commands(schedule, agent_exe=exe, workspace=workspace), start=1):
+                before = set(_started(record))
+                (scripts / f"{number:02d}.sh").write_text(command + "\n", encoding="utf-8", newline="\n")
+                result = _execute(shell, scripts / f"{number:02d}.sh", env)
+                executions += 1
+                runs.append({"title": title, "command": command, **result, "started_pids": [pid for pid in _started(record) if pid not in before]})
+            records = _records(record)
+            problems += check(runs, records, agent_exe=exe, workspace=workspace, alive=_alive)
+            double_exe = {"path_shape": str(exe.relative_to(base)), "sha256": sha256_file(exe)}
+            substitution = {"agent_exe": [schedule["runbook"]["paths"]["agent_exe"], str(exe)], "workspace": [schedule["runbook"]["paths"]["workspace"], str(workspace)]}
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "created_at": datetime.now(UTC).isoformat(),
         "passed": not problems,
         "problems": problems,
+        "executions": executions,
         "schedule": {"path": str(schedule_path), "sha256": sha256_file(schedule_path), "version": schedule["schedule"]},
         "identity": identity,
         "pins": pins,

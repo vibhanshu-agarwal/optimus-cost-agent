@@ -268,9 +268,10 @@ _PIDS = {A6: 1, NEW: 2, MODE: 3, PROMPT: 4}
 _STDOUTS = {A6: "", NEW: '{"action":"session_ensured","created":true}', MODE: '{"action":"mode_set"}', PROMPT: "", CLOSE: '{"action":"session_closed"}'}
 
 
-def _fake_execute(shell: str, command: str, env: dict) -> dict:
-    """acpx and the double as the spike observed them, keyed off each command: the records carry the command's own
-    executable and workspace, so a passing outcome needs the tool to have passed exactly those."""
+def _fake_execute(shell: str, script: Path, env: dict) -> dict:
+    """acpx and the double as the spike observed them, keyed off each command (read from the script the tool wrote):
+    the records carry the command's own executable and workspace, so a passing outcome needs exactly those."""
+    command = Path(script).read_text(encoding="utf-8").rstrip("\n")
     record = Path(env[double.RECORD_ENV])
     agent = command.split('--agent "')[1].split('"')[0]
     if agent.endswith("run-optimus-agent.cmd"):  # the negative control
@@ -295,7 +296,7 @@ def test_run_writes_one_new_receipt_with_every_outcome(tmp_path, monkeypatch) ->
     schedule = {"schedule": "stage-c-schedule-v7", **_schedule(Path(r"C:\venv\Scripts\optimus-agent.exe"), Path(r"C:\run\workspace"))}
     schedule_path.write_text(json.dumps(schedule), encoding="utf-8")
     pins = schedule["runbook"]["acpx"]["inspection_sha256"]
-    monkeypatch.setattr(rehearsal, "current_identity", lambda _s: {**IDENTITY, "acpx": dict(pins)})
+    monkeypatch.setattr(rehearsal, "current_identity", lambda _s, _env=None: {**IDENTITY, "acpx": {**IDENTITY["acpx"], "files": dict(pins)}})
 
     def build(root: Path) -> Path:
         exe = root / "venv with spaces" / "Scripts" / "optimus-agent.exe"
@@ -313,20 +314,76 @@ def test_run_writes_one_new_receipt_with_every_outcome(tmp_path, monkeypatch) ->
     assert (receipt["schema"], receipt["passed"], receipt["problems"]) == (rehearsal.RECEIPT_SCHEMA, True, [])
     assert receipt["schedule"]["sha256"] == rehearsal.sha256_file(schedule_path) and receipt["pins"] == pins
     assert [r["title"] for r in receipt["runs"]] == [A6, NEW, MODE, PROMPT, CLOSE] and receipt["negative_control"]["started"] == 0
-    assert receipt["substitution"]["agent_exe"][0] == r"C:\venv\Scripts\optimus-agent.exe"
+    assert receipt["substitution"]["agent_exe"][0] == r"C:\venv\Scripts\optimus-agent.exe" and receipt["executions"] == 6
     with pytest.raises(FileExistsError):
         rehearsal.run(schedule_path, out)  # a receipt is never overwritten
+
+
+@WINDOWS_ONLY
+def test_a_command_reaches_the_declared_shell_exactly_as_written(tmp_path) -> None:
+    r"""Passed with -c on the Windows command line, MSYS would turn `\\` into `\` and `\"` into `"` before bash saw the
+    command; the rehearsal runs each command from a script file, so the shell sees it byte for byte."""
+    script = tmp_path / "command.sh"
+    script.write_text(r"""printf '%s|' 'single\\double' "quote\"inside" 'C:\plain\path'""" + "\n", encoding="utf-8", newline="\n")
+    result = rehearsal._execute(schedule_tool.ACPX_SHELL["executable"], script, dict(os.environ))
+    assert (result["exit_code"], result["stdout"]) == (0, r'single\\double|quote"inside|C:\plain\path|')
+
+
+def _client_off_pins(change: str) -> dict:
+    """IDENTITY's client with one required binding broken."""
+    acpx, node = copy.deepcopy(IDENTITY["acpx"]), copy.deepcopy(IDENTITY["node"])
+    kind, _, name = change.partition(":")
+    if kind == "mismatched":
+        acpx["files"][name] = "9" * 64
+    elif kind == "missing":
+        acpx["files"][name] = None
+    elif kind == "type":
+        acpx["type"] = name
+    else:
+        node["path"] = node["sha256"] = None
+    return {**IDENTITY, "acpx": acpx, "node": node}
+
+
+@WINDOWS_ONLY
+@pytest.mark.parametrize(
+    "change",
+    [*(f"{kind}:{name}" for kind in ("mismatched", "missing") for name in rehearsal.ACPX_FILES), "type:function", "type:alias", "type:", "node:"],
+)
+def test_a_client_off_its_pins_stops_the_rehearsal_before_any_execution(tmp_path, monkeypatch, change: str) -> None:
+    """Codex's review of c1134e1, M1.2: an unverified client is never executed. A missing, mismatched, unresolvable or
+    unsupported client (a shell function or alias, no acpx on PATH, no Node runtime) fails with zero executions."""
+    schedule_path = tmp_path / "stage-c-schedule.json"
+    schedule = {"schedule": "stage-c-schedule-v7", **_schedule(Path(r"C:\venv\Scripts\optimus-agent.exe"), Path(r"C:\run\workspace"))}
+    schedule["runbook"]["acpx"]["inspection_sha256"] = dict(PINS)
+    schedule_path.write_text(json.dumps(schedule), encoding="utf-8")
+    monkeypatch.setattr(rehearsal, "current_identity", lambda _s, _env=None: _client_off_pins(change))
+    executed: list[str] = []
+    monkeypatch.setattr(rehearsal, "_execute", lambda shell, command, env: executed.append(command) or pytest.fail("an unverified client was executed"))
+    monkeypatch.setattr(rehearsal, "build_double", lambda root: pytest.fail("the rehearsal started after a client problem"))
+    out = tmp_path / "receipt.json"
+
+    assert rehearsal.run(schedule_path, out) == 1
+    receipt = json.loads(out.read_text(encoding="utf-8"))
+    assert (receipt["passed"], receipt["executions"], receipt["runs"], receipt["negative_control"]) == (False, 0, [], None)
+    assert receipt["problems"] and executed == []
 
 
 # --- The gate before the operator's hour ---------------------------------------------------------------------------
 
 
-IDENTITY = {"acpx": {"acpx": "a" * 64}, "node": {"version": "v26.5.0"}, "shell": {"version": "5.3.15"}, "double_source_sha256": "d" * 64}
+PINS = {name: digit * 64 for name, digit in zip(rehearsal.ACPX_FILES, "abce", strict=True)}
+IDENTITY = {
+    "acpx": {"type": "file", "shim": r"C:\npm\acpx", "files": dict(PINS)},
+    "node": {"branch": "path", "path": r"C:\nodejs\node.exe", "version": "v26.5.0", "sha256": "f" * 64},
+    "shell": {"version": "5.3.15"},
+    "double_source_sha256": "d" * 64,
+}
 
 
-def _receipt(tmp_path: Path, **changes) -> tuple[Path, Path]:
+def _receipt(tmp_path: Path, *, pins: dict | None = None, **changes) -> tuple[Path, Path]:
     schedule = tmp_path / "stage-c-schedule.json"
-    schedule.write_text('{"schedule": "stage-c-schedule-v7"}\n', encoding="utf-8")
+    body = {"schedule": "stage-c-schedule-v7", "runbook": {"acpx_shell": schedule_tool.ACPX_SHELL, "acpx": {"inspection_sha256": dict(pins or PINS)}}}
+    schedule.write_text(json.dumps(body) + "\n", encoding="utf-8")
     receipt = tmp_path / "rehearsal" / "receipt.json"
     receipt.parent.mkdir(exist_ok=True)
     body = {
@@ -368,6 +425,72 @@ def test_a_failed_stale_or_mismatched_receipt_keeps_the_gate_shut(tmp_path, chan
 def test_a_changed_client_shell_runtime_or_double_keeps_the_gate_shut(tmp_path, part: str) -> None:
     changed = {**IDENTITY, part: "changed"}
     assert any(part in p for p in _verify(*_receipt(tmp_path), identity=changed))
+
+
+@pytest.mark.parametrize("change", ["mismatched:dist/cli.js", "missing:dist/live-checkpoint-ClPCSdrW.js", "type:function", "node:"])
+def test_the_gate_refuses_a_client_off_its_pins_even_when_the_receipt_saw_the_same(tmp_path, change: str) -> None:
+    current = _client_off_pins(change)
+    assert _verify(*_receipt(tmp_path, identity=current), identity=current)
+
+
+def _fake_client(folder: Path, *, adjacent_node: bool) -> None:
+    """An inert stand-in for an npm-installed acpx: the bash shim, the cmd shim, the CLI and the launch bundle, and
+    optionally an adjacent `node` the shim would prefer. Nothing here is ever executed but the fake `node`, which
+    only prints a version and its own path."""
+    dist = folder / "node_modules" / "acpx" / "dist"
+    dist.mkdir(parents=True)
+    (folder / "acpx").write_text("#!/bin/sh\necho inert acpx stand-in\n", encoding="utf-8", newline="\n")
+    (folder / "acpx.cmd").write_text("@echo off\r\n", encoding="ascii", newline="")
+    (dist / "cli.js").write_text(f"// cli {folder.name}\n", encoding="utf-8")
+    (dist / "live-checkpoint-ClPCSdrW.js").write_text(f"// bundle {folder.name}\n", encoding="utf-8")
+    if adjacent_node:
+        (folder / "node").write_text(f"#!/bin/sh\nprintf '%s\\n' 'node_version=v0.0.0-adjacent' 'node_exec={folder / 'node'}'\n", encoding="utf-8", newline="\n")
+
+
+def _env_with(*folders: Path) -> dict[str, str]:
+    return {**os.environ, "PATH": ";".join([*(str(folder) for folder in folders), os.environ["PATH"]])}
+
+
+@WINDOWS_ONLY
+def test_the_client_is_resolved_as_the_declared_bash_runs_it_and_a_path_shadow_shuts_the_gate(tmp_path) -> None:
+    """Codex's review of c1134e1, M1.1, reproduced: an `acpx` earlier on PATH is what bash runs, so it is the client.
+    Its shim, the CLI and bundle beside it and the Node it would use (its adjacent-runtime branch here) are bound; a
+    receipt for the installed client opens the gate, and the same receipt under the shadow keeps it shut."""
+    shell = schedule_tool.ACPX_SHELL["executable"]
+    installed, shadow = tmp_path / "installed client", tmp_path / "shadow"
+    _fake_client(installed, adjacent_node=True)
+    shadow.mkdir()
+    (shadow / "acpx").write_text("#!/bin/sh\necho shadow\n", encoding="utf-8", newline="\n")
+
+    client = rehearsal.resolve_client(shell, _env_with(installed))
+    assert (client["type"], Path(client["shim"])) == ("file", installed / "acpx")
+    assert (client["node"]["branch"], client["node"]["version"], Path(client["node"]["path"])) == ("adjacent", "v0.0.0-adjacent", installed / "node")
+    assert client["files"]["dist/cli.js"] == rehearsal.sha256_file(installed / "node_modules" / "acpx" / "dist" / "cli.js")
+    shadowed = rehearsal.resolve_client(shell, _env_with(shadow, installed))
+    assert Path(shadowed["shim"]) == shadow / "acpx" and shadowed["files"]["dist/cli.js"] is None
+
+    pins = dict(client["files"])
+    schedule = {"runbook": {"acpx_shell": schedule_tool.ACPX_SHELL, "acpx": {"inspection_sha256": pins}}}
+    receipt, schedule_path = _receipt(tmp_path, pins=pins, identity=rehearsal.current_identity(schedule, _env_with(installed)))
+    assert rehearsal.verify(receipt, schedule_path, now=NOW, identity=lambda s: rehearsal.current_identity(s, _env_with(installed))) == []
+    refused = rehearsal.verify(receipt, schedule_path, now=NOW, identity=lambda s: rehearsal.current_identity(s, _env_with(shadow, installed)))
+    assert any("acpx" in p for p in refused)
+
+
+@WINDOWS_ONLY
+def test_a_shell_function_or_no_acpx_on_path_is_not_a_bound_client(tmp_path) -> None:
+    shell = schedule_tool.ACPX_SHELL["executable"]
+    installed = tmp_path / "installed client"
+    _fake_client(installed, adjacent_node=True)
+    function = rehearsal.resolve_client(shell, {**_env_with(installed), "BASH_FUNC_acpx%%": "() {  echo function\n}"})
+    assert function["type"] == "function" and any("function" in p for p in rehearsal.client_problems(_identity_of(function), {}))
+    git_only = {**os.environ, "PATH": str(Path(shell).parents[1] / "usr" / "bin")}
+    absent = rehearsal.resolve_client(shell, git_only)
+    assert absent["type"] == "" and any("not on the declared shell's PATH" in p for p in rehearsal.client_problems(_identity_of(absent), {}))
+
+
+def _identity_of(client: dict) -> dict:
+    return {**IDENTITY, "acpx": {k: client[k] for k in ("type", "shim", "files")}, "node": client["node"]}
 
 
 def test_a_missing_receipt_or_schedule_keeps_the_gate_shut(tmp_path) -> None:
