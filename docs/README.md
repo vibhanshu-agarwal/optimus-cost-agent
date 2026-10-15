@@ -75,6 +75,7 @@ Status, priority and ownership live in the record's GitHub issue; the transition
 | Document | What it is |
 |---|---|
 | [Plans folder guide](superpowers/plans/README.md) | How plans are added, revised and archived |
+| [Closed state ID port source/evidence receipt](superpowers/reports/2026-10-15-closed-state-ids-port-checkpoint.md) | Dated source identity, command results, qualifications and hashes for #357 |
 | [Consolidated backlog](superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md) | Transitional register: work, status and next gates only for records not yet moved to GitHub issues (`Moved` rows link theirs); it takes no new work entries (a new plan's issue-only registry pointer row excepted) |
 | [Work status table][work-status-hosted] | Live table of the repository's GitHub issues, the work register, hosted on GitHub Pages (no checkout needed); the issues are authoritative. Source: [`work-status.html`](work-status.html). Fallback: the repository's open issues on GitHub, linked from the page and from the backlog |
 | [Phase 1 roadmap](superpowers/plans/2026-07-01-phase-1-roadmap.md) | Historical sequencing of Phase 1 |
@@ -86,6 +87,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
+| [Plan 11.31: closed state ID port (v4)](superpowers/plans/2026-10-15-closed-state-ids-port_v4.md) | Bounded failed-session close-marker correction; work record #357 |
 | [Plan 12.2: Context Engine (v4)](superpowers/plans/2026-10-01-plan-12-2-context-engine-implementation_v4.md) | Complete v4 with the CP4 offline closure; offline batch accepted at cf9bb9d, full CP4 open; earlier editions are in `archive/` |
 | [Plan 12.1: Plan/Chat advisory answers](superpowers/plans/2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | Selectable read-only Chat with conversation carriage |
 | [Plan 11.29: GitHub Issues migration](superpowers/plans/2026-10-04-plan-11-29-github-issues-migration.md) | Open work moves to GitHub Issues, shown in a live status page |
