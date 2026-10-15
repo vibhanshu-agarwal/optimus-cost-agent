@@ -8,12 +8,15 @@ request can reserve (the Gateway refuses more input before any attempt). Measure
 adapter, engine and attached composition on fixed fake replies of several sizes: they show how replies move
 later packing and maintenance, and are never a bound. Expected spend is informational only.
 
-The runbook is executable with the installed acpx 0.12.0: a pinned agent wrapper, a one-shot `exec` for the
-denied Agent case, an explicit fresh named session whose mode acpx replays on the prompt's own fresh
-runtime session, an explicit close, and a custody check after every launch, all on one ledger and window.
-Schedule v6 (release r5, Codex's r5 proposal of 2026-10-15): every launch path enables the existing debug
-trace into the workspace's `.optimus/debug-acp.ndjson`, and each completed launch's runtime logs and ledger are
-copied before its custody check, so launches never mix.
+The runbook is executable with the installed acpx 0.12.0: the reviewed agent executable launched directly, a
+one-shot `exec` for the denied Agent case, an explicit fresh named session whose mode acpx replays on the
+prompt's own fresh runtime session, an explicit close, and a custody check after every launch, all on one
+ledger and window. Schedule v6 (release r5, Codex's r5 proposal of 2026-10-15): every launch path enables the
+existing debug trace into the workspace's `.optimus/debug-acp.ndjson`, and each completed launch's runtime logs
+and ledger are copied before its custody check, so launches never mix. Schedule v7 (after r5 stopped at A6;
+Codex's review f381e730): acpx's --agent value is the reviewed executable with every part single-quoted, the
+runbook declares the shell its acpx commands run from, and a fresh launch-rehearsal receipt gates the operator's
+hour.
 """
 
 from __future__ import annotations
@@ -124,7 +127,7 @@ def test_the_r5_envelope_holds_the_accepted_complete_case_bound(schedule) -> Non
     exactly its maximum (one safe resend per call). The bound itself is unchanged by the envelope."""
     totals = schedule["bound"]["totals"]
     assert (totals["calls"], totals["billed_attempt_bound_usd"], totals["physical_attempts_planned_max"]) == (69, "7.518097", [69, 138])
-    assert schedule["schedule"] == "stage-c-schedule-v6"
+    assert schedule["schedule"] == "stage-c-schedule-v7"
     assert schedule["envelope"] == {"release": "plan12-2-stage-c-r5", "usd": "8", "physical_attempts": 138, "window_minutes": 60}
     assert (totals["fits_usd"], totals["fits_attempts_planned"], totals["fits_attempts_max"], totals["usd_shortfall"]) == (True, True, True, "0")
 
@@ -180,24 +183,68 @@ def _commands(schedule) -> list[str]:
     return [command for step in schedule["runbook"]["steps"] for command in step["commands"]]
 
 
-def test_the_agent_wrapper_is_pinned(schedule) -> None:
-    wrapper = schedule["runbook"]["agent_wrapper"]
-    paths = schedule["runbook"]["paths"]
-    assert wrapper["content"] == (
-        "@echo off\r\n"
-        f'"{paths["agent_exe"]}" --workspace-root "{paths["workspace"]}" --plan12-test-profile qualification --plan12-stage-c --debug-trace\r\n'
-    )
-    assert wrapper["sha256"] == hashlib.sha256(wrapper["content"].encode("ascii")).hexdigest()
+def test_acpx_launches_the_reviewed_executable_directly_with_single_quoted_arguments(schedule) -> None:
+    """r5's A6 never started: acpx splits its --agent value itself, treating a backslash as an escape except inside
+    single quotes, and runs a .cmd agent through cmd. The value is now the reviewed optimus-agent.exe itself (no
+    wrapper), every part single-quoted, carrying exactly the qualification launch arguments; the real-client
+    rehearsal proves acpx turns it into exactly that argv."""
+    runbook = schedule["runbook"]
+    paths, agent = runbook["paths"], runbook["acpx_agent"]
+    argv = [paths["agent_exe"], "--workspace-root", paths["workspace"], "--plan12-test-profile", "qualification", "--plan12-stage-c", "--debug-trace"]
+    assert agent["argv"] == argv
+    assert agent["value"] == " ".join(f"'{part}'" for part in argv)
+    assert agent["sha256"] == hashlib.sha256(agent["value"].encode("utf-8")).hexdigest()
+    assert "agent_wrapper" not in runbook and all(".cmd" not in command for command in _commands(schedule))
+
+
+@pytest.mark.parametrize("bad", ["it's", 'a"b', "a$b", "a`b"], ids=["single-quote", "double-quote", "dollar", "backtick"])
+def test_a_launch_path_the_quoting_cannot_carry_is_refused(tmp_path: Path, bad: str) -> None:
+    for paths in (
+        tool.RunbookPaths(agent_exe=tmp_path / bad / "optimus-agent.exe", workspace=tmp_path / "ws", evidence=tmp_path / "ev"),
+        tool.RunbookPaths(agent_exe=tmp_path / "optimus-agent.exe", workspace=tmp_path / bad, evidence=tmp_path / "ev"),
+    ):
+        with pytest.raises(ValueError, match="cannot be quoted"):
+            tool._runbook(paths)
+
+
+def test_the_runbook_pins_the_acpx_shim_cli_and_launch_bundle_the_rehearsal_checks(schedule) -> None:
+    """Codex's review, item 3: the pins cover the shim the declared bash runs, the cmd shim, the CLI and the bundle
+    that parses and spawns the --agent command, not cli.js alone."""
+    pins = schedule["runbook"]["acpx"]["inspection_sha256"]
+    assert pins == {
+        "acpx": "805200badb253f80c442dad64453fbaf761848d32de691d8048fcba7607c321d",  # pragma: allowlist secret - public file digest
+        "acpx.cmd": "212da5e557d5d621af89e5bf7f86dbe59e674ba69595c14038bbcdde39c37f79",  # pragma: allowlist secret - public file digest
+        "dist/cli.js": "7da1d8b2fe0fc19696febddb3486729ce82b04b2a64a367e16df0691776483a4",  # pragma: allowlist secret - public file digest
+        "dist/live-checkpoint-ClPCSdrW.js": "d92153086f058880623af7297a6867166068e27f9b2cc97a7b94c6a80e2b20da",  # pragma: allowlist secret - public file digest
+    }
+
+
+def test_the_runbook_declares_the_shell_its_acpx_commands_run_from(schedule) -> None:
+    runbook = schedule["runbook"]
+    assert runbook["acpx_shell"] == {"name": "bash (Git for Windows)", "executable": r"C:\Program Files\Git\bin\bash.exe"}
+    assert any("bash (Git for Windows)" in text and "exactly as written" in text for text in runbook["preconditions"])
+
+
+def test_a_fresh_launch_rehearsal_receipt_gates_the_operators_hour(schedule) -> None:
+    """Codex's review, item 3: release preparation must hold a fresh, matching, passing rehearsal receipt before the
+    operator's hour is requested; the gate is the runbook's first step, before any approval or launch."""
+    steps = schedule["runbook"]["steps"]
+    evidence, workspace = schedule["runbook"]["paths"]["evidence"], schedule["runbook"]["paths"]["workspace"]
+    receipt, schedule_file = Path(evidence) / "rehearsal" / "receipt.json", Path(workspace).parent / "stage-c-schedule.json"
+    assert steps[0]["kind"] == "rehearsal-gate" and [s["kind"] for s in steps].count("rehearsal-gate") == 1
+    assert steps[0]["commands"] == [f'python tools/plan12_stage_c_launch_rehearsal.py --verify "{receipt}" --schedule "{schedule_file}"']
+    assert steps[0]["evidence"] == [str(receipt)] and "stop" in steps[0]["note"]
 
 
 ZED_PREFIX = "Zed settings agent_servers Optimus: "
 
 
 def _launch_argvs(runbook: dict) -> dict[str, list[str]]:
-    """Every actual host launch's arguments: the acpx wrapper's and both Zed entries'."""
+    """Every actual host launch's arguments: acpx's (the generator's intended argv; the rehearsal proves acpx's own
+    parsing yields it) and both Zed entries'."""
     exe = runbook["paths"]["agent_exe"]
-    [line] = [line for line in runbook["agent_wrapper"]["content"].split("\r\n") if line.startswith(f'"{exe}"')]
-    argvs = {"acpx-wrapper": [part.strip('"') for part in line[len(exe) + 2 :].split()]}
+    assert runbook["acpx_agent"]["argv"][0] == exe
+    argvs = {"acpx": runbook["acpx_agent"]["argv"][1:]}
     for step in runbook["steps"]:
         if step["kind"] == "zed-launch":
             entry = json.loads(step["commands"][0].removeprefix(ZED_PREFIX))
@@ -222,7 +269,7 @@ def test_every_launch_path_writes_the_debug_trace_into_the_workspace(tmp_path: P
     workspace.mkdir()
     runbook = tool._runbook(tool.RunbookPaths(agent_exe=tmp_path / "venv" / "optimus-agent.exe", workspace=workspace, evidence=tmp_path / "evidence"))
     argvs = _launch_argvs(runbook)
-    assert set(argvs) == {"acpx-wrapper", "L1 Zed launch (qualification)", "L2 Zed launch (attached)"}
+    assert set(argvs) == {"acpx", "L1 Zed launch (qualification)", "L2 Zed launch (attached)"}
     expected_log = workspace.resolve() / ".optimus" / "debug-acp.ndjson"
     canary = "Authorization: Bearer " + "r5-launch-canary"
 
@@ -279,8 +326,8 @@ def test_each_completed_launchs_runtime_logs_are_captured_before_its_custody_che
 
 def test_the_acpx_cases_never_rely_on_a_saved_or_recovered_session(schedule) -> None:
     commands = [c for c in _commands(schedule) if c.startswith("acpx ")]
-    wrapper = schedule["runbook"]["agent_wrapper"]["path"]
-    assert all(f'--agent "{wrapper}"' in c for c in commands)
+    agent = schedule["runbook"]["acpx_agent"]["value"]
+    assert all(f'--agent "{agent}"' in c for c in commands)
     exec_steps = [c for c in commands if " exec " in c]
     assert len(exec_steps) == 1 and "--deny-all" in exec_steps[0]  # A6: one-shot, its own fresh session
     named = [c for c in commands if "stage-c-a7" in c]
@@ -320,7 +367,7 @@ def test_the_tool_writes_a_new_folder_and_never_reuses_one(tmp_path: Path, monke
     written = json.loads((out / "stage-c-schedule.json").read_text(encoding="utf-8"))
     assert written["bound"]["totals"] == json.loads(json.dumps(schedule["bound"]["totals"], default=str))
     assert (out / "capacity-prompt.txt").stat().st_size == schedule["prompt_files"]["capacity-prompt.txt"]["bytes"]
-    assert (out / "run-optimus-agent.cmd").read_bytes() == schedule["runbook"]["agent_wrapper"]["content"].encode("ascii")
+    assert not (out / "run-optimus-agent.cmd").exists()  # no wrapper: acpx launches the reviewed executable directly
     assert (out / "workspace" / "README.md").is_file() and (out / "stage-c-schedule.md").read_text(encoding="utf-8").startswith("# Stage C executable schedule")
     with pytest.raises(SystemExit):
         tool.main(["--out", str(out)])

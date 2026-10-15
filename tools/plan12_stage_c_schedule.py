@@ -18,8 +18,8 @@ Nothing here calls a model, starts a service or touches the operator's ledger. T
   is one fixed-fake path's allocation: never a bound, never a prediction;
 - expected spend: informational only. No Agent or Chat expectation is derived from summary observations.
 
-The runbook is executable with the installed acpx 0.12.0 (no install or upgrade) and Zed. A pinned wrapper
-starts the qualification Stage C host. The denied Agent case is a one-shot `exec`. The Chat case creates a
+The runbook is executable with the installed acpx 0.12.0 (no install or upgrade) and Zed. acpx starts the
+qualification Stage C host from the reviewed executable directly. The denied Agent case is a one-shot `exec`. The Chat case creates a
 fresh named session, saves Chat as its mode and prompts: Optimus advertises no session/load, so the
 prompt's own host starts a fresh runtime session and acpx replays the saved mode on it before the prompt (a
 failed replay fails the command). An explicit close ends it. A custody check (no Gateway listening, ledger
@@ -31,9 +31,15 @@ The generated workspace prepares every case target's folder (the writer creates 
 `--verify-workspace` checks exactly that before the first launch.
 
 Schedule v6 (release r5; Codex's r5 proposal of 2026-10-15) keeps every v5 case and its bound. Every launch
-path (the acpx wrapper and both Zed entries) enables the host's existing `--debug-trace`, so a dispatched
+path (acpx's agent and both Zed entries) enables the host's existing `--debug-trace`, so a dispatched
 request's typed attempt statuses reach the workspace's `.optimus/debug-acp.ndjson`. Each completed launch's
 runtime logs and ledger are copied before its custody check, so no later launch mixes into its evidence.
+
+Schedule v7 (after r5 stopped at A6; Codex's review f381e730) keeps every case and its bound. r5's A6 never
+started: acpx splits its --agent value itself, treating a backslash as an escape except inside single quotes,
+and runs a .cmd agent through cmd. So acpx now launches the reviewed optimus-agent.exe directly, every part
+single-quoted; the runbook declares the shell its acpx commands run from; and its first step requires a fresh,
+passing real-client launch rehearsal (tools/plan12_stage_c_launch_rehearsal.py) before the operator's hour.
 
 Usage: python tools/plan12_stage_c_schedule.py --out <dir> [--summary-bytes N] [--reply-bytes N ...]
            [--agent-exe <optimus-agent.exe>] [--evidence <dir>]
@@ -79,7 +85,7 @@ HAIKU = "anthropic/claude-haiku-5.5"
 T0 = datetime(2026, 10, 12, 9, 0, tzinfo=UTC)
 CAPACITY_PROMPT_BYTES = 430_000  # over the request capacity (229,376 input tokens) and the 80% storage warning, under storage
 STORAGE_PROMPT_BYTES = 530_000  # over the 524,288-byte absent-engine storage limit
-SCHEDULE_VERSION = "stage-c-schedule-v6"
+SCHEDULE_VERSION = "stage-c-schedule-v7"
 RUNTIME_FILES = ("debug-acp.ndjson", "telemetry.jsonl", "local-gateway.log", "launch-audit.ndjson")  # under <workspace>/.optimus
 REPLY_SIZES = (3, 8_192, 32_768, 131_072)  # fake reply bytes per measured path; 131,072 = the 32,768-token cap at 4 bytes a token
 DEFAULT_UNRUN = "the guard refuses a call, the window ends or an earlier required case failed"
@@ -398,26 +404,36 @@ def _sum(calls: list[Call], prices: tuple[Decimal, Decimal]) -> Decimal:
 @dataclass(frozen=True)
 class RunbookPaths:
     """The operator's actual paths: the installed `optimus-agent` executable, the synthetic workspace (the Zed
-    project and acpx `--cwd`), the folder live evidence is saved under, and the pinned agent wrapper."""
+    project and acpx `--cwd`) and the folder live evidence is saved under."""
 
     agent_exe: Path
     workspace: Path
     evidence: Path
-    wrapper: Path | None = None
-
-    @property
-    def wrapper_path(self) -> Path:
-        return self.wrapper or self.workspace.parent / "run-optimus-agent.cmd"
 
 
-def _wrapper(paths: RunbookPaths) -> dict[str, str]:
-    content = f'@echo off\r\n"{paths.agent_exe}" --workspace-root "{paths.workspace}" --plan12-test-profile qualification --plan12-stage-c --debug-trace\r\n'
-    return {"path": str(paths.wrapper_path), "content": content, "sha256": hashlib.sha256(content.encode("ascii")).hexdigest()}
+# The shell every acpx command is run from, exactly as written: its quoting is part of the command's contract, and the
+# launch rehearsal runs the commands through this shell and the pinned acpx (r5's A6 failed at that boundary).
+ACPX_SHELL = {"name": "bash (Git for Windows)", "executable": r"C:\Program Files\Git\bin\bash.exe"}
+_UNQUOTABLE = re.compile(r"""['"$`]""")
+
+
+def _acpx_agent(paths: RunbookPaths) -> dict[str, Any]:
+    """acpx's --agent value: the reviewed optimus-agent.exe and its qualification launch arguments, launched directly.
+
+    acpx splits this value itself, treating a backslash as an escape except inside single quotes, and runs a .cmd
+    agent through cmd; so there is no wrapper and every part is single-quoted. The value sits inside the declared
+    shell's double quotes, so a path holding a quote, `$` or a backtick cannot be carried and is refused."""
+    argv = [str(paths.agent_exe), "--workspace-root", str(paths.workspace), "--plan12-test-profile", "qualification", "--plan12-stage-c", "--debug-trace"]
+    for part in argv:
+        if _UNQUOTABLE.search(part):
+            raise ValueError(f"a launch path that cannot be quoted for acpx: {part!r}")
+    value = " ".join(f"'{part}'" for part in argv)
+    return {"argv": argv, "value": value, "sha256": hashlib.sha256(value.encode("utf-8")).hexdigest()}
 
 
 def _runbook(paths: RunbookPaths) -> dict[str, Any]:
-    ws, ev, wrapper = paths.workspace, paths.evidence, _wrapper(paths)
-    acpx = f'acpx --format json --cwd "{ws}" --agent "{wrapper["path"]}"'
+    ws, ev, agent = paths.workspace, paths.evidence, _acpx_agent(paths)
+    acpx = f'acpx --format json --cwd "{ws}" --agent "{agent["value"]}"'
     steps: list[dict[str, Any]] = []
     checks: list[str] = []
 
@@ -450,6 +466,11 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
             {"command": str(paths.agent_exe), "args": ["--workspace-root", str(ws), "--plan12-test-profile", profile, "--plan12-stage-c", "--debug-trace"]}
         )
 
+    receipt = ev / "rehearsal" / "receipt.json"
+    step("rehearsal-gate", "launch rehearsal receipt (before asking for the operator's hour)",
+         [f'python tools/plan12_stage_c_launch_rehearsal.py --verify "{receipt}" --schedule "{ws.parent / "stage-c-schedule.json"}"'], [str(receipt)],
+         "Must print 'rehearsal receipt fresh' (exit 0): a passing real-client rehearsal of this schedule's acpx commands, made in release "
+         "preparation with today's acpx, Node and shell; otherwise stop before the operator's hour is requested.")  # fmt: skip
     step("operator", "stop the prior host", ["Stop any earlier Optimus host still running (its owner presses Ctrl+C in its terminal); quit Zed."], [],
          "No acpx session or other client state from earlier runs is relied on.")  # fmt: skip
     step("approval", "L1 release approval (qualification)", [f'optimus-trust --workspace-root "{ws}" approve --mode durable --plan12-test-profile qualification --plan12-stage-c'],
@@ -464,7 +485,7 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
     step("operator", "cases A1-A5 in Zed", ["Run cases A1, A2, A3, A4 and A5 as listed."], [str(ev / case) for case in ("A1", "A2", "A3", "A4", "A5")])
     step("operator", "end the L1 Zed launch", ["Quit Zed (File > Quit): it stops the agent server; the host closes its Gateway."], [])
     check("after-L1-zed", after_launch=True)
-    step("acpx-launch", "A6: one-shot denied Agent turn", [f'acpx --format json --deny-all --cwd "{ws}" --agent "{wrapper["path"]}" exec "{A6_PROMPT}"'], [str(ev / "A6" / "exec.ndjson")],
+    step("acpx-launch", "A6: one-shot denied Agent turn", [f'acpx --format json --deny-all --cwd "{ws}" --agent "{agent["value"]}" exec "{A6_PROMPT}"'], [str(ev / "A6" / "exec.ndjson")],
          "exec is one-shot: its own host and fresh session, closed when the command ends. Save stdout as the evidence.")  # fmt: skip
     check("after-A6", after_launch=True)
     step("acpx-launch", "A7: fresh named session", [f"{acpx} sessions new --name {A7_SESSION}"], [str(ev / "A7" / "sessions-new.json")],
@@ -489,12 +510,15 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
     check("final", after_launch=True)
     return {
         "paths": {"agent_exe": str(paths.agent_exe), "workspace": str(ws), "evidence": str(ev)},
-        "agent_wrapper": wrapper,
+        "acpx_agent": agent,
+        "acpx_shell": ACPX_SHELL,
         "acpx": {
             "version": "0.12.0",
-            "inspection_sha256": {  # Codex's inspection record of the installed client; recheck before live use
+            "inspection_sha256": {  # the installed client the launch rehearsal checks; recheck before live use
+                "acpx": "805200badb253f80c442dad64453fbaf761848d32de691d8048fcba7607c321d",  # pragma: allowlist secret - public file digest
                 "acpx.cmd": "212da5e557d5d621af89e5bf7f86dbe59e674ba69595c14038bbcdde39c37f79",  # pragma: allowlist secret - public file digest
                 "dist/cli.js": "7da1d8b2fe0fc19696febddb3486729ce82b04b2a64a367e16df0691776483a4",  # pragma: allowlist secret - public file digest
+                "dist/live-checkpoint-ClPCSdrW.js": "d92153086f058880623af7297a6867166068e27f9b2cc97a7b94c6a80e2b20da",  # pragma: allowlist secret - public file digest
             },
         },
         "steps": steps,
@@ -502,7 +526,8 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
             "Every launch (Zed, acpx, optimus-trust) runs with the same OPTIMUS_* environment the approvals captured; a difference refuses "
             "with SNAPSHOT_MISMATCH before any service starts.",
             "Recheck the installed acpx identity before live use; no install or upgrade.",
-            f"Every launch path (the wrapper and both Zed entries) passes the existing --debug-trace option: the host traces into {runtime / 'debug-acp.ndjson'}.",
+            f"Run every acpx command from the declared shell, {ACPX_SHELL['name']} ({ACPX_SHELL['executable']}), exactly as written.",
+            f"Every launch path (acpx's --agent and both Zed entries) passes the existing --debug-trace option: the host traces into {runtime / 'debug-acp.ndjson'}.",
             "On any stop, capture the current launch's runtime logs and ledger at once (the capture step's list), before any other step.",
         ],
     }
@@ -717,7 +742,7 @@ def verify_workspace(workspace: Path) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--out", type=Path, help="a new folder for the schedule, its prompt files, the wrapper and the workspace")
+    parser.add_argument("--out", type=Path, help="a new folder for the schedule, its prompt files and the workspace")
     parser.add_argument("--verify-workspace", type=Path, help="check a generated workspace before the first launch and exit (0 only when it is the fixture)")
     parser.add_argument("--summary-bytes", type=int, default=8_192, help="the summary size each fake summary call returns (8192 is the bound)")
     parser.add_argument("--reply-bytes", type=int, nargs="+", default=list(REPLY_SIZES), help="fake reply sizes, one measured path each")
@@ -733,7 +758,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.out.exists():
         parser.error(f"{args.out} exists; every schedule gets a new folder")
     out = args.out.resolve()
-    paths = RunbookPaths(agent_exe=args.agent_exe.resolve(), workspace=out / "workspace", evidence=(args.evidence or out / "live-evidence").resolve(), wrapper=out / "run-optimus-agent.cmd")
+    paths = RunbookPaths(agent_exe=args.agent_exe.resolve(), workspace=out / "workspace", evidence=(args.evidence or out / "live-evidence").resolve())
     schedule = build_schedule(summary_bytes=args.summary_bytes, reply_sizes=tuple(args.reply_bytes), paths=paths)
     args.out.mkdir(parents=True)
     for name in WORKSPACE_DIRS:
@@ -742,7 +767,6 @@ def main(argv: list[str] | None = None) -> int:
         target = args.out / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8", newline="\n")
-    (args.out / "run-optimus-agent.cmd").write_bytes(schedule["runbook"]["agent_wrapper"]["content"].encode("ascii"))
     (args.out / "stage-c-schedule.json").write_text(json.dumps(schedule, indent=2, default=str) + "\n", encoding="utf-8", newline="\n")
     (args.out / "stage-c-schedule.md").write_text(_markdown(schedule), encoding="utf-8", newline="\n")
     print(json.dumps({"bound": schedule["bound"]["totals"], "measured": [p["totals"] | {"reply_bytes": p["reply_bytes"]} for p in schedule["measured"]["paths"]]}, indent=2))

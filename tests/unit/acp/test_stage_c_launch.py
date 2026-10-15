@@ -20,11 +20,15 @@ from typing import Any
 import pytest
 
 from optimus.acp import __main__ as acp_main
+from optimus.acp import bootstrap
 from optimus.acp import launch_approval_cli as trust_cli
+from optimus.acp import server as acp_server
+from optimus.acp import stage_c as host_stage_c
 from optimus.acp.launch_approvals import KeyringApprovalStore
 from optimus.acp.launch_gate import LaunchGateError, authorize_launch, resolve_launch_candidate
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
 from optimus.acp.operator_paths import resolve_authorized_operator_paths
+from optimus.acp.outbound_writer import DedicatedOutboundWriter as _REAL_DEDICATED_WRITER  # before the launch fixture stubs it
 from optimus.acp.trusted_paths import resolve_workspace_security_state
 from optimus_model_policy import stage_c
 from optimus_model_policy.binding import APPROVAL_LITERAL_NAME
@@ -238,6 +242,134 @@ def test_without_stage_c_the_profile_launch_is_unchanged(launch, monkeypatch: py
     assert acp_main.main(["--workspace-root", str(tmp_path), "--plan12-test-profile", "attached"]) == 0
     [gateway] = calls
     assert (gateway["stage_c_envelope"], gateway["stage_c_ledger"]) == (None, None)
+
+
+# --- The L2 wiring proof (Codex's review f381e730, item 4) -------------------------------------------------------
+
+
+class _FakeRedisRuntime:
+    def ping(self):
+        return None
+
+    def sync_state_store(self):
+        return self
+
+    def telemetry_adapter(self):
+        return object()
+
+    def run_sync(self, operation, *, timeout=None):
+        import asyncio
+
+        return asyncio.run(operation())
+
+    def close(self, *, timeout=None):
+        return None
+
+
+def test_the_generated_l2_host_arguments_wire_the_attached_stage_c_launch_and_answer_initialize(launch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The schedule's generated attached (L2) host arguments run the real entrypoint in process, with a synthetic
+    test-only approval and keyring, fake Redis and Gateway, in-memory stdio and an isolated ledger whose window is
+    already open. The real attached Stage C composition is built, the debug trace lands in the workspace, ACP
+    initialize is answered and the ledger and window are left as they were. Any real process, Gateway child,
+    provider request or real keyring use fails it. Wiring only: not the human L2 ceremony, Zed attachment, the
+    Redis lifecycle or real summary behaviour."""
+    import io
+    import subprocess
+    import time
+
+    import keyring as real_keyring
+
+    from optimus.acp.debug_trace import reset_debug_trace_context
+    from tools import plan12_stage_c_schedule as schedule_tool
+
+    keyring, _started = launch
+    # The launch gate reads provider credentials through the real keyring module unless given a backend; route that
+    # module to the synthetic keyring before the approval is made, so neither the approval nor the launch can read
+    # or write the operator's real credential store.
+    store_calls: list[tuple[str, ...]] = []
+
+    def synthetic(name: str):
+        def call(service, key, *rest):
+            store_calls.append((name, service, key))  # names only, never a value
+            return getattr(keyring, name)(service, key, *rest)
+
+        return call
+
+    for name in ("get_password", "set_password", "delete_password"):
+        monkeypatch.setattr(real_keyring, name, synthetic(name))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    runbook = schedule_tool._runbook(schedule_tool.RunbookPaths(agent_exe=tmp_path / "optimus-agent.exe", workspace=workspace, evidence=tmp_path / "ev"))
+    [l2] = [step for step in runbook["steps"] if step["title"] == "L2 Zed launch (attached)"]
+    argv = json.loads(l2["commands"][0].removeprefix("Zed settings agent_servers Optimus: "))["args"]
+    candidate = authorize_workspace_for_test(env=_ENV, workspace_root=workspace, fake_keyring=keyring, test_profile="attached", stage_c=True)
+    ledger = _ledger(workspace)
+    envelope = stage_c.compose_stage_c_envelope(ledger=ledger)
+    stage_c.initialize_stage_c_ledger(ledger, envelope)
+    stage_c.StageCGuard.open(ledger, envelope).close()  # the window opened at an earlier launch of this release
+    before = ledger.read_bytes()
+    assert ledger.is_relative_to(tmp_path) and b'"kind": "window"' in before.replace(b'"kind":"window"', b'"kind": "window"')
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("the L2 wiring proof reached a real process or provider")
+
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+    monkeypatch.setattr("optimus.gateway.client.urlopen", forbidden)
+    monkeypatch.setattr("optimus.acp.preflight.run_preflight", lambda environ, **_kwargs: "redis://127.0.0.1:6379/0")
+    monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: _FakeRedisRuntime())
+    gateways = _gateway_kwargs(monkeypatch, [])
+    attachments: list[tuple[dict, tuple]] = []
+    real_attachment = host_stage_c.stage_c_attachment
+
+    def attachment(**kwargs):
+        result = real_attachment(**kwargs)
+        attachments.append((kwargs, result))
+        return result
+
+    monkeypatch.setattr(host_stage_c, "stage_c_attachment", attachment)
+    servers: list[tuple[dict, Any]] = []
+    monkeypatch.setattr(acp_main, "build_configured_server", lambda **k: servers.append((k, bootstrap.build_configured_server(**k))) or servers[-1][1])
+    request = {"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {"protocolVersion": 1, "clientCapabilities": {}}}
+    stdout = io.BytesIO()
+
+    class _Stdin:
+        """The initialize line, then end of input only once a reply was written (or after 10 s), so the server
+        never sees end of input before it answers."""
+
+        def __init__(self) -> None:
+            self.lines = [(json.dumps(request) + "\n").encode("utf-8")]
+
+        def readline(self) -> bytes:
+            if self.lines:
+                return self.lines.pop(0)
+            deadline = time.monotonic() + 10
+            while not stdout.getvalue() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            return b""
+
+    stdin = _Stdin()
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineReader", lambda _stream: acp_server.StdioNdjsonLineReader(stdin))
+    monkeypatch.setattr(acp_main, "StdioNdjsonLineWriter", lambda _stream: acp_server.StdioNdjsonLineWriter(stdout))
+    monkeypatch.setattr("optimus.acp.outbound_writer.DedicatedOutboundWriter", _REAL_DEDICATED_WRITER)
+
+    try:
+        assert acp_main.main(argv) == 0
+    finally:
+        reset_debug_trace_context()
+
+    [gateway] = gateways
+    assert (gateway["test_profile"], gateway["stage_c_ledger"], gateway["stage_c_envelope"]) == ("attached", ledger, candidate.security_literals[STAGE_C_LITERAL_NAME])
+    [(kwargs, server)] = servers
+    assert kwargs["test_composition"].profile.name == "attached" and kwargs["stage_c"].ledger == ledger
+    [(built, (context_attachment, seeder))] = attachments
+    assert built["composition"] is kwargs["test_composition"] and context_attachment is not None and seeder is not None
+    assert server._context_attachment is context_attachment
+    [reply] = [json.loads(line) for line in stdout.getvalue().decode("utf-8").splitlines()]
+    assert reply["id"] == 0 and reply["result"]["protocolVersion"] == 1 and "loadSession" not in reply["result"]["agentCapabilities"]
+    trace = workspace.resolve() / ".optimus" / "debug-acp.ndjson"
+    assert trace.is_file() and all(json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines())
+    assert ledger.read_bytes() == before  # the ledger and its open window are untouched
+    assert store_calls and all(call[0] == "get_password" for call in store_calls)  # served by the synthetic keyring, read-only
 
 
 # --- The Gateway child ------------------------------------------------------------------------------------------
