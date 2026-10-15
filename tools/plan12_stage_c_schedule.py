@@ -30,6 +30,11 @@ that every case finishes: a guard stop, an expired window or a failed case leave
 The generated workspace prepares every case target's folder (the writer creates none) and holds no target;
 `--verify-workspace` checks exactly that before the first launch.
 
+Schedule v6 (release r5; Codex's r5 proposal of 2026-10-15) keeps every v5 case and its bound. Every launch
+path (the acpx wrapper and both Zed entries) enables the host's existing `--debug-trace`, so a dispatched
+request's typed attempt statuses reach the workspace's `.optimus/debug-acp.ndjson`. Each completed launch's
+runtime logs and ledger are copied before its custody check, so no later launch mixes into its evidence.
+
 Usage: python tools/plan12_stage_c_schedule.py --out <dir> [--summary-bytes N] [--reply-bytes N ...]
            [--agent-exe <optimus-agent.exe>] [--evidence <dir>]
        python tools/plan12_stage_c_schedule.py --verify-workspace <workspace>
@@ -74,7 +79,8 @@ HAIKU = "anthropic/claude-haiku-5.5"
 T0 = datetime(2026, 10, 12, 9, 0, tzinfo=UTC)
 CAPACITY_PROMPT_BYTES = 430_000  # over the request capacity (229,376 input tokens) and the 80% storage warning, under storage
 STORAGE_PROMPT_BYTES = 530_000  # over the 524,288-byte absent-engine storage limit
-SCHEDULE_VERSION = "stage-c-schedule-v5"
+SCHEDULE_VERSION = "stage-c-schedule-v6"
+RUNTIME_FILES = ("debug-acp.ndjson", "telemetry.jsonl", "local-gateway.log", "launch-audit.ndjson")  # under <workspace>/.optimus
 REPLY_SIZES = (3, 8_192, 32_768, 131_072)  # fake reply bytes per measured path; 131,072 = the 32,768-token cap at 4 bytes a token
 DEFAULT_UNRUN = "the guard refuses a call, the window ends or an earlier required case failed"
 CENT = Decimal("0.000001")
@@ -405,7 +411,7 @@ class RunbookPaths:
 
 
 def _wrapper(paths: RunbookPaths) -> dict[str, str]:
-    content = f'@echo off\r\n"{paths.agent_exe}" --workspace-root "{paths.workspace}" --plan12-test-profile qualification --plan12-stage-c\r\n'
+    content = f'@echo off\r\n"{paths.agent_exe}" --workspace-root "{paths.workspace}" --plan12-test-profile qualification --plan12-stage-c --debug-trace\r\n'
     return {"path": str(paths.wrapper_path), "content": content, "sha256": hashlib.sha256(content.encode("ascii")).hexdigest()}
 
 
@@ -418,7 +424,21 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
     def step(kind: str, title: str, commands: list[str], evidence: list[str], note: str = "") -> None:
         steps.append({"kind": kind, "title": title, "commands": commands, "evidence": evidence, "note": note})
 
-    def check(label: str) -> None:
+    runtime = ws / ".optimus"
+    copied = ", ".join(str(runtime / name) for name in RUNTIME_FILES) + f" and {runtime / 'plan12-stage-c' / f'{stage_c.STAGE_C_RELEASE_ID}.jsonl'}"
+
+    def capture(label: str) -> None:
+        out = str(ev / "runtime" / f"{len(checks):02d}-{label}")
+        step("capture", f"capture runtime logs {len(checks):02d}: {label}",
+             [f"Copy {copied} into the new folder {out} (never overwrite an existing copy); record each file's SHA-256."], [out],
+             "Taken after the launch ends and before its custody check, so no later launch mixes into it; the source logs are append-only. "
+             "Each model request the launch dispatched must have its debug_trace.py:log_provider_attempts record in debug-acp.ndjson (a "
+             "zero-dispatch refusal has none); a missing required record is an evidence failure, never a reason to rerun. Secret-scan the "
+             "copies before sealing.")  # fmt: skip
+
+    def check(label: str, *, after_launch: bool = False) -> None:
+        if after_launch:
+            capture(label)
         out = str(ev / "checks" / f"{len(checks):02d}-{label}.json")
         command = f'python tools/plan12_stage_c_transition_check.py --workspace-root "{ws}" --out {out}' + (f" --previous {checks[-1]}" if checks else "")
         step("custody-check", f"custody check {len(checks):02d}: {label}", [command], [out],
@@ -426,7 +446,9 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
         checks.append(out)
 
     def zed_args(profile: str) -> str:
-        return json.dumps({"command": str(paths.agent_exe), "args": ["--workspace-root", str(ws), "--plan12-test-profile", profile, "--plan12-stage-c"]})
+        return json.dumps(
+            {"command": str(paths.agent_exe), "args": ["--workspace-root", str(ws), "--plan12-test-profile", profile, "--plan12-stage-c", "--debug-trace"]}
+        )
 
     step("operator", "stop the prior host", ["Stop any earlier Optimus host still running (its owner presses Ctrl+C in its terminal); quit Zed."], [],
          "No acpx session or other client state from earlier runs is relied on.")  # fmt: skip
@@ -441,22 +463,22 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
          "Open the workspace in Zed and start a new Optimus thread: the host starts its own Gateway; the 60-minute window starts.")  # fmt: skip
     step("operator", "cases A1-A5 in Zed", ["Run cases A1, A2, A3, A4 and A5 as listed."], [str(ev / case) for case in ("A1", "A2", "A3", "A4", "A5")])
     step("operator", "end the L1 Zed launch", ["Quit Zed (File > Quit): it stops the agent server; the host closes its Gateway."], [])
-    check("after-L1-zed")
+    check("after-L1-zed", after_launch=True)
     step("acpx-launch", "A6: one-shot denied Agent turn", [f'acpx --format json --deny-all --cwd "{ws}" --agent "{wrapper["path"]}" exec "{A6_PROMPT}"'], [str(ev / "A6" / "exec.ndjson")],
          "exec is one-shot: its own host and fresh session, closed when the command ends. Save stdout as the evidence.")  # fmt: skip
-    check("after-A6")
+    check("after-A6", after_launch=True)
     step("acpx-launch", "A7: fresh named session", [f"{acpx} sessions new --name {A7_SESSION}"], [str(ev / "A7" / "sessions-new.json")],
          "Creates a fresh record (any earlier record of that name is soft-closed); acpx closes its host when the command ends.")  # fmt: skip
-    check("after-A7-sessions-new")
+    check("after-A7-sessions-new", after_launch=True)
     step("acpx-launch", "A7: save Chat as the session's mode", [f"{acpx} set-mode chat -s {A7_SESSION}"], [str(ev / "A7" / "set-mode.json")],
          "Optimus advertises no session/load: acpx starts a host, a fresh runtime session, applies session/set_mode chat and saves it as the desired mode.")  # fmt: skip
-    check("after-A7-set-mode")
+    check("after-A7-set-mode", after_launch=True)
     step("acpx-launch", "A7: the Chat prompt", [f'{acpx} --ttl 0 prompt -s {A7_SESSION} "{A7_PROMPT}"'], [str(ev / "A7" / "prompt.ndjson")],
          "The prompt's own host starts a fresh runtime session; acpx replays the saved Chat mode on it before the prompt (a failed replay fails the "
          "command: A7 is UNRUN). --ttl 0 keeps its queue owner until the explicit close.")  # fmt: skip
     step("acpx-close", "A7: close the session", [f"{acpx} sessions close {A7_SESSION}"], [str(ev / "A7" / "sessions-close.json")],
          "Terminates the queue owner and its host; the host closes its Gateway.")  # fmt: skip
-    check("after-A7-close")
+    check("after-A7-close", after_launch=True)
     step("approval", "L2 release approval (attached)", [f'optimus-trust --workspace-root "{ws}" approve --mode durable --plan12-test-profile attached --plan12-stage-c'],
          [str(ev / "L2" / "approve-console.txt")], "TTY 'y'. The ledger is kept as it is (never reset); the window does not restart.")  # fmt: skip
     check("before-L2")
@@ -464,7 +486,7 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
          "Start Zed; the first new Optimus thread is the seeded session.")  # fmt: skip
     step("operator", "cases B3-B8 then B2 in Zed", ["Run cases B3.1 to B8.7 in order in the seeded thread, then B2 in a second new thread."], [str(ev / "L2" / "cases")])
     step("operator", "end the L2 Zed launch", ["Quit Zed."], [])
-    check("final")
+    check("final", after_launch=True)
     return {
         "paths": {"agent_exe": str(paths.agent_exe), "workspace": str(ws), "evidence": str(ev)},
         "agent_wrapper": wrapper,
@@ -480,6 +502,8 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
             "Every launch (Zed, acpx, optimus-trust) runs with the same OPTIMUS_* environment the approvals captured; a difference refuses "
             "with SNAPSHOT_MISMATCH before any service starts.",
             "Recheck the installed acpx identity before live use; no install or upgrade.",
+            f"Every launch path (the wrapper and both Zed entries) passes the existing --debug-trace option: the host traces into {runtime / 'debug-acp.ndjson'}.",
+            "On any stop, capture the current launch's runtime logs and ledger at once (the capture step's list), before any other step.",
         ],
     }
 

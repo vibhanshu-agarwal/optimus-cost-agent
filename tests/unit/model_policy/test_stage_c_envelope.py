@@ -1,8 +1,8 @@
 """Plan 12.2 Task 13 (Stage C): the source-owned test envelope (scope agreement, 2026-10-11).
 
-One reviewed release shares one envelope across both test-profile launches. Release r4 (the operator's new
-grant of 2026-10-13, after r3 stopped at A3 on a schedule defect): $8 of known charges plus outstanding
-reservations, 138 physical upstream attempts and one 60-minute window. It supersedes r3 and r2 ($8, 138
+One reviewed release shares one envelope across both test-profile launches. Release r5 (the operator's new
+grant of 2026-10-15, after r4 stopped at A1 on a Gateway rejection): $8 of known charges plus outstanding
+reservations, 138 physical upstream attempts and one 60-minute window. It supersedes r4, r3 and r2 ($8, 138
 attempts each) and the reviewed r1 ($0.50, 24 attempts), whose ledgers it never opens or resets. Its literal binds the
 release, the limits, both profiles' pinned hashes, the fixed scenario catalogue and the resolved ledger,
 so changing any of them changes what a launch approves.
@@ -25,7 +25,7 @@ ATTACHED_HASH = "06e637845f5f7cea2b4a22d23407c59efc9741d7848b06ee5f4c3d2284f3f07
 
 def test_the_release_is_the_agreed_test_envelope() -> None:
     assert (stage_c.STAGE_C_RELEASE_ID, stage_c.STAGE_C_LIMIT_USD, stage_c.STAGE_C_MAX_ATTEMPTS, stage_c.STAGE_C_WINDOW_SECONDS) == (
-        "plan12-2-stage-c-r4", Decimal("8"), 138, 3600
+        "plan12-2-stage-c-r5", Decimal("8"), 138, 3600
     )
     assert stage_c.STAGE_C_PROFILES == ("qualification", "attached")
 
@@ -51,7 +51,7 @@ def test_the_envelope_binds_the_release_limits_profiles_scenarios_and_ledger(tmp
 @pytest.mark.parametrize(
     "change",
     [
-        {"release_id": "plan12-2-stage-c-r3"},
+        {"release_id": "plan12-2-stage-c-r4"},
         {"limit_usd": Decimal("8.000001")},
         {"max_attempts": 139},
         {"window_seconds": 3601},
@@ -93,31 +93,32 @@ EARLIER_RELEASES = {
     "r1": ("plan12-2-stage-c-r1", Decimal("0.50"), 24),
     "r2": ("plan12-2-stage-c-r2", Decimal("8"), 138),
     "r3": ("plan12-2-stage-c-r3", Decimal("8"), 138),
+    "r4": ("plan12-2-stage-c-r4", Decimal("8"), 138),
 }
 
 
 @pytest.mark.parametrize("earlier", sorted(EARLIER_RELEASES))
-def test_the_r4_release_never_opens_or_resets_an_earlier_ledger(tmp_path: Path, earlier: str) -> None:
-    """r4 has its own ledger file and literal. An earlier release's ledger (r2 and r3 stopped with their windows
-    open and settled charges) stays history: never reopened, reset or overwritten by r4, whose window and totals
-    start afresh."""
+def test_the_r5_release_never_opens_or_resets_an_earlier_ledger(tmp_path: Path, earlier: str) -> None:
+    """r5 has its own ledger file and literal. An earlier release's ledger (r2, r3 and r4 stopped with their
+    windows open; r2 and r3 with settled charges) stays history: never reopened, reset or overwritten by r5,
+    whose window and totals start afresh."""
     release_id, limit_usd, max_attempts = EARLIER_RELEASES[earlier]
-    r4_path = stage_c.stage_c_ledger_path(tmp_path)
-    r4 = stage_c.compose_stage_c_envelope(ledger=r4_path)
+    r5_path = stage_c.stage_c_ledger_path(tmp_path)
+    r5 = stage_c.compose_stage_c_envelope(ledger=r5_path)
     old_path = tmp_path / "plan12-stage-c" / f"{release_id}.jsonl"
-    old = stage_c.StageCEnvelope(**{**r4.__dict__, "release_id": release_id, "limit_usd": limit_usd, "max_attempts": max_attempts, "ledger": str(old_path)})
+    old = stage_c.StageCEnvelope(**{**r5.__dict__, "release_id": release_id, "limit_usd": limit_usd, "max_attempts": max_attempts, "ledger": str(old_path)})
     stage_c.initialize_stage_c_ledger(old_path, old)
     used = stage_c.StageCGuard.open(old_path, old)
     used.settle_charged(used.admit(attempt_id="gw-" + "1" * 32, request_id="earlier-1", reserve_usd=Decimal("0.0837")), Decimal("0.0002471"))
     used.close()
     before = old_path.read_bytes()
 
-    assert r4_path == tmp_path / "plan12-stage-c" / "plan12-2-stage-c-r4.jsonl" and r4.literal != old.literal
-    stage_c.initialize_stage_c_ledger(r4_path, r4)
-    guard = stage_c.StageCGuard.open(r4_path, r4)
+    assert r5_path == tmp_path / "plan12-stage-c" / "plan12-2-stage-c-r5.jsonl" and r5.literal != old.literal
+    stage_c.initialize_stage_c_ledger(r5_path, r5)
+    guard = stage_c.StageCGuard.open(r5_path, r5)
     assert (guard.state.attempts, guard.state.charged_usd) == (0, Decimal(0))
     guard.close()
     with pytest.raises(stage_c.StageCLedgerError) as caught:
-        stage_c.StageCGuard.open(old_path, r4)
+        stage_c.StageCGuard.open(old_path, r5)
     assert caught.value.code == "STAGE_C_LEDGER_NOT_BOUND"
     assert old_path.read_bytes() == before

@@ -11,17 +11,23 @@ later packing and maintenance, and are never a bound. Expected spend is informat
 The runbook is executable with the installed acpx 0.12.0: a pinned agent wrapper, a one-shot `exec` for the
 denied Agent case, an explicit fresh named session whose mode acpx replays on the prompt's own fresh
 runtime session, an explicit close, and a custody check after every launch, all on one ledger and window.
+Schedule v6 (release r5, Codex's r5 proposal of 2026-10-15): every launch path enables the existing debug
+trace into the workspace's `.optimus/debug-acp.ndjson`, and each completed launch's runtime logs and ledger are
+copied before its custody check, so launches never mix.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
 from context_engine.summary import build_summary_prompt
+from optimus.acp import __main__ as acp_main
 from optimus.acp import stage_c as host
 from optimus.acp.conversation import CONVERSATION_MAX_BYTES
 from optimus.acp.launch_policy import DEFAULT_MAX_PLANNING_TURNS
@@ -113,12 +119,13 @@ def test_the_bound_totals_count_one_billed_attempt_and_two_physical_attempts_per
     assert bound["assumptions"] and all(isinstance(text, str) and text for text in bound["assumptions"])
 
 
-def test_the_r4_envelope_holds_the_accepted_complete_case_bound(schedule) -> None:
-    """The operator's r4 grant of 2026-10-13: $8 rounds the accepted $7.518097 bound up, and 138 attempts is
+def test_the_r5_envelope_holds_the_accepted_complete_case_bound(schedule) -> None:
+    """The operator's r5 grant of 2026-10-15: $8 rounds the accepted $7.518097 bound up, and 138 attempts is
     exactly its maximum (one safe resend per call). The bound itself is unchanged by the envelope."""
     totals = schedule["bound"]["totals"]
     assert (totals["calls"], totals["billed_attempt_bound_usd"], totals["physical_attempts_planned_max"]) == (69, "7.518097", [69, 138])
-    assert schedule["envelope"] == {"release": "plan12-2-stage-c-r4", "usd": "8", "physical_attempts": 138, "window_minutes": 60}
+    assert schedule["schedule"] == "stage-c-schedule-v6"
+    assert schedule["envelope"] == {"release": "plan12-2-stage-c-r5", "usd": "8", "physical_attempts": 138, "window_minutes": 60}
     assert (totals["fits_usd"], totals["fits_attempts_planned"], totals["fits_attempts_max"], totals["usd_shortfall"]) == (True, True, True, "0")
 
 
@@ -178,11 +185,96 @@ def test_the_agent_wrapper_is_pinned(schedule) -> None:
     paths = schedule["runbook"]["paths"]
     assert wrapper["content"] == (
         "@echo off\r\n"
-        f'"{paths["agent_exe"]}" --workspace-root "{paths["workspace"]}" --plan12-test-profile qualification --plan12-stage-c\r\n'
+        f'"{paths["agent_exe"]}" --workspace-root "{paths["workspace"]}" --plan12-test-profile qualification --plan12-stage-c --debug-trace\r\n'
     )
-    import hashlib
-
     assert wrapper["sha256"] == hashlib.sha256(wrapper["content"].encode("ascii")).hexdigest()
+
+
+ZED_PREFIX = "Zed settings agent_servers Optimus: "
+
+
+def _launch_argvs(runbook: dict) -> dict[str, list[str]]:
+    """Every actual host launch's arguments: the acpx wrapper's and both Zed entries'."""
+    exe = runbook["paths"]["agent_exe"]
+    [line] = [line for line in runbook["agent_wrapper"]["content"].split("\r\n") if line.startswith(f'"{exe}"')]
+    argvs = {"acpx-wrapper": [part.strip('"') for part in line[len(exe) + 2 :].split()]}
+    for step in runbook["steps"]:
+        if step["kind"] == "zed-launch":
+            entry = json.loads(step["commands"][0].removeprefix(ZED_PREFIX))
+            assert entry["command"] == exe
+            argvs[step["title"]] = entry["args"]
+    return argvs
+
+
+def test_every_launch_path_writes_the_debug_trace_into_the_workspace(tmp_path: Path) -> None:
+    """Codex's r5 proposal, step 4: the flag is in the actual launch arguments, not a README. Parsed by the host's
+    own parser and resolved as the host resolves it, each path traces into the workspace's runtime folder, and a
+    rejected request through the observer the host wires (bootstrap test) writes its content-free status record."""
+    from optimus.acp.debug_trace import log_provider_attempts, reset_debug_trace_context
+    from optimus.acp.operator_paths import resolve_operator_paths
+    from optimus.agent.models import AgentRunRequest
+    from optimus.agent.runner import AgentRunner
+    from optimus.gateway.errors import GatewayHttpError
+    from optimus.gateway.models import GatewayRouteAttempt
+    from optimus.runtime.modes import ExecutionMode
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    runbook = tool._runbook(tool.RunbookPaths(agent_exe=tmp_path / "venv" / "optimus-agent.exe", workspace=workspace, evidence=tmp_path / "evidence"))
+    argvs = _launch_argvs(runbook)
+    assert set(argvs) == {"acpx-wrapper", "L1 Zed launch (qualification)", "L2 Zed launch (attached)"}
+    expected_log = workspace.resolve() / ".optimus" / "debug-acp.ndjson"
+    canary = "Authorization: Bearer " + "r5-launch-canary"
+
+    class Rejecting:
+        def create_response(self, **_kwargs):
+            attempts = (GatewayRouteAttempt(attempt=1, gateway_request_id="gw-1", outcome="rejected", http_status=429),
+                        GatewayRouteAttempt(attempt=2, gateway_request_id="gw-2", outcome="rejected", http_status=403))  # fmt: skip
+            raise GatewayHttpError(502, canary, gateway_code="UPSTREAM_ATTEMPT_REJECTED", retryable=False, route_attempts=attempts)
+
+    for name, argv in argvs.items():
+        args = acp_main.parse_args(argv)
+        assert (args.debug_trace, args.debug_log, args.plan12_stage_c, Path(args.workspace_root)) == (True, None, True, workspace), name
+        assert args.plan12_test_profile == ("attached" if "attached" in name else "qualification"), name
+        expected_log.unlink(missing_ok=True)
+        try:
+            default = resolve_operator_paths(workspace_root=workspace, environ=dict(os.environ)).debug_log_path
+            assert acp_main._apply_debug_trace_args(args, workspace_root=workspace, default_log_path=default) == expected_log, name
+            request = AgentRunRequest(run_id="s:1", session_id="s", task="Hello.", workspace_root=workspace, execution_mode=ExecutionMode.CHAT)
+            AgentRunner(gateway_client=Rejecting(), model="fake/model", provider_attempt_observer=log_provider_attempts).run(request)
+        finally:
+            reset_debug_trace_context()
+        text = expected_log.read_text(encoding="utf-8")
+        [record] = [r for r in map(json.loads, text.splitlines()) if r["location"] == "debug_trace.py:log_provider_attempts"]
+        assert [(a["outcome"], a["upstream_http_status"]) for a in record["data"]["attempts"]] == [("rejected", 429), ("rejected", 403)], name
+        assert canary not in text, name
+
+
+RUNTIME_FILES = ("debug-acp.ndjson", "telemetry.jsonl", "local-gateway.log", "launch-audit.ndjson")
+
+
+def test_each_completed_launchs_runtime_logs_are_captured_before_its_custody_check(schedule) -> None:
+    """A copy per completed launch, made before the next step can launch again, so launches never mix; a stop
+    captures at once. Each capture names the debug log, telemetry, Gateway log, launch audit and the release
+    ledger, into its own evidence folder."""
+    steps = schedule["runbook"]["steps"]
+    workspace, evidence_root = schedule["runbook"]["paths"]["workspace"], schedule["runbook"]["paths"]["evidence"]
+    launches = [n for n, step in enumerate(steps) if step["kind"] in {"zed-launch", "acpx-launch", "acpx-close"}]
+    captures = [n for n, step in enumerate(steps) if step["kind"] == "capture"]
+    for n in launches:
+        next_launch = min((m for m in launches if m > n), default=len(steps))
+        check = next(m for m in range(n + 1, len(steps)) if steps[m]["kind"] == "custody-check")
+        if check < next_launch:  # the launch has ended by this check: its capture comes right before it
+            assert steps[check - 1]["kind"] == "capture", steps[n]["title"]
+    assert len(captures) == 6  # after L1 Zed, A6, A7 sessions new, A7 set-mode, A7 close, L2 Zed
+    destinations = [steps[n]["evidence"][0] for n in captures]
+    assert len(set(destinations)) == len(destinations) and all(d.startswith(evidence_root) for d in destinations)
+    for n in captures:
+        command = steps[n]["commands"][0]
+        assert all(name in command for name in RUNTIME_FILES) and f"{stage_c.STAGE_C_RELEASE_ID}.jsonl" in command
+        assert str(Path(workspace) / ".optimus") in command and "never overwrite" in command
+    preconditions = " ".join(schedule["runbook"]["preconditions"])
+    assert "--debug-trace" in preconditions and "On any stop" in preconditions
 
 
 def test_the_acpx_cases_never_rely_on_a_saved_or_recovered_session(schedule) -> None:
