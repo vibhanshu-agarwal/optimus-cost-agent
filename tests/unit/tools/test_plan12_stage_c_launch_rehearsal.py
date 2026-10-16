@@ -764,3 +764,161 @@ def test_a_double_or_schedule_changed_after_the_fixture_fails_the_zed_check(tmp_
     out = tmp_path / "receipt.json"
     assert rehearsal.zed_check(fixture_path, out) == 1
     assert json.loads(out.read_text(encoding="utf-8"))["problems"] == [f"the {'double' + chr(39) + 's executable' if changed == 'double' else 'schedule'} changed since the fixture was built"]
+
+
+# --- The r7 offline Zed walk: every prompt-free scheduled Zed step against the double --------------------------------
+
+
+def _new(pid: int, sid: str) -> dict:
+    return _request(pid, "session/new", cwd=str(WS), sessionId=sid)
+
+
+def _mode(pid: int, sid: str, mode: str) -> dict:
+    return _request(pid, "session/set_config_option", sessionId=sid, configId="mode", value=mode)
+
+
+def _prompt(pid: int, sid: str, mode: str = "chat") -> dict:
+    return _request(pid, "session/prompt", sessionId=sid, mode=mode)
+
+
+def _strategy(pid: int, sid: str, value: str) -> dict:
+    return _request(pid, "session/set_config_option", sessionId=sid, configId="context_strategy", value=value)
+
+
+def _walk_passing() -> list[dict]:
+    """The walk as Zed 1.24.2 drives it (r6's trace shows Zed applying a persisted non-default mode with
+    set_config_option right after session/new). Qualification: A1 S1 Chat + prompt; A2 Agent, no prompt; A3 S2 Chat +
+    prompt; A4 S3 (Zed applies Chat) + prompt; A5 on S3 Agent then back to Chat, then S4 from S3, where Zed applies Chat
+    first; the negative control from empty S4 adds no session. Attached, in B-case order on T1: Chat; B3.1 and B4.2
+    prompts; B5.3 sliding_window + prompt; B6.4 compaction + prompt; B6.5 and B7.6 prompts; B8.7 hybrid + prompt; then
+    B2's T2 from the content-bearing T1 (Codex's ruling 6216185282)."""
+    return [
+        _start(21), _request(21, "initialize", protocolVersion=1),
+        _new(21, "q1"), _mode(21, "q1", "chat"), _prompt(21, "q1"), _mode(21, "q1", "agent"),
+        _new(21, "q2"), _mode(21, "q2", "chat"), _prompt(21, "q2"),
+        _new(21, "q3"), _mode(21, "q3", "chat"), _prompt(21, "q3"), _mode(21, "q3", "agent"), _mode(21, "q3", "chat"),
+        _new(21, "q4"), _mode(21, "q4", "chat"),
+        _start(22, args=ATTACHED_ARGS), _request(22, "initialize", protocolVersion=1),
+        _new(22, "t1"), _mode(22, "t1", "chat"), _prompt(22, "t1"), _prompt(22, "t1"),
+        _strategy(22, "t1", "sliding_window"), _prompt(22, "t1"), _strategy(22, "t1", "compaction"), _prompt(22, "t1"),
+        _prompt(22, "t1"), _prompt(22, "t1"), _strategy(22, "t1", "hybrid"), _prompt(22, "t1"),
+        _new(22, "t2"), _mode(22, "t2", "chat"), _prompt(22, "t2"),
+    ]  # fmt: skip
+
+
+def _walk(records: list[dict], alive=lambda pid: False) -> list[str]:
+    return rehearsal.check_walk(records, agent_exe=EXE, workspace=WS, alive=alive)
+
+
+def test_a_passing_walk_has_no_problem() -> None:
+    assert _walk(_walk_passing()) == []
+
+
+def _insert_after(records: list[dict], match, extra: dict) -> list[dict]:
+    index = next(i for i, r in enumerate(records) if match(r))
+    return [*records[: index + 1], extra, *records[index + 1 :]]
+
+
+def _drop(records: list[dict], match) -> list[dict]:
+    index = next(i for i, r in enumerate(records) if match(r))
+    return [*records[:index], *records[index + 1 :]]
+
+
+def _is(pid: int, method: str, sid: str | None = None, value: str | None = None):
+    return lambda r: (r["pid"] == pid and r.get("method") == method and (sid is None or r.get("sessionId") == sid)
+                      and (value is None or r.get("value") == value))  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        (lambda rs: [*rs[:16], _new(21, "q5"), *rs[16:]], "qualification: 5 session/new"),
+        (lambda rs: [r for r in rs if r.get("sessionId") != "q4"], "qualification: 3 session/new"),
+        (lambda rs: _drop(rs, _is(21, "session/set_config_option", "q4")), "A5"),
+        (lambda rs: [{**r, "value": "agent"} if r.get("sessionId") == "q4" and r.get("method") == "session/set_config_option" else r for r in rs], "A5"),
+        (lambda rs: _drop(rs, lambda r: r is rs[13]), "A5"),
+        (lambda rs: _drop(rs, lambda r: r is rs[12]), "A5"),
+        (lambda rs: _insert_after(rs, _is(21, "session/set_config_option", "q4"), _prompt(21, "q4")), "A5"),
+        (lambda rs: _insert_after(rs, _is(21, "session/new", "q4"), _mode(21, "q4", "agent")), "A5"),
+        (lambda rs: _drop(rs, _is(21, "session/set_config_option", "q1", "agent")), "A2"),
+        (lambda rs: _insert_after(rs, _is(21, "session/set_config_option", "q1", "agent"), _prompt(21, "q1", "agent")), "Agent"),
+        (lambda rs: _insert_after(rs, _is(21, "session/prompt", "q2"), {"pid": 21, "event": "permission", "outcome": None}), "permission"),
+        (lambda rs: _drop(rs, _is(21, "session/prompt", "q2")), "S2"),
+        (lambda rs: _drop(rs, _is(21, "session/prompt", "q1")), "S1"),
+        (lambda rs: [r for r in rs if r.get("sessionId") != "t2"], "attached: 1 session/new"),
+        (lambda rs: [r for r in rs if not (r["pid"] == 22 and r.get("method") == "session/prompt" and r.get("sessionId") == "t1")], "T1"),
+        (lambda rs: [*rs, _start(23), _request(23, "initialize", protocolVersion=1)], "qualification: 2 launches"),
+        (lambda rs: [{**r, "sessionId": "q3"} if r.get("sessionId") == "q4" and r.get("method") == "session/set_config_option" else r for r in rs], "A5"),
+        (lambda rs: _drop(rs, _is(22, "session/set_config_option", "t1", "compaction")), "strategy"),
+        (lambda rs: [{**r, "value": {"compaction": "hybrid", "hybrid": "compaction"}[r["value"]]}
+                     if r.get("configId") == "context_strategy" and r["value"] in ("compaction", "hybrid") else r for r in rs], "strategy"),
+        (lambda rs: [{**r, "sessionId": "t2"} if r.get("configId") == "context_strategy" and r["value"] == "hybrid" else r for r in rs], "strategy"),
+        (lambda rs: [r for i, r in enumerate(rs) if not (r.get("method") == "session/prompt" and r.get("sessionId") == "t1"
+                     and i < next(j for j, x in enumerate(rs) if x.get("value") == "sliding_window"))], "T1"),
+        (lambda rs: _drop(rs, _is(22, "session/new", "t2")), "attached: 1 session/new"),
+        (lambda rs: [*rs, _strategy(22, "t2", "hybrid")], "T2"),
+    ],
+    ids=["negative-control-made-a-session", "no-a5-session", "a5-no-persisted-setter", "a5-persisted-agent", "a5-ended-on-agent",
+         "a5-never-left-chat", "a5-prompted", "a5-not-first", "no-a2-switch", "agent-prompt", "permission", "s2-empty", "s1-empty",
+         "no-b2-session", "t1-empty", "two-qualification-launches", "a5-stale-s3-setter", "strategy-omitted", "strategy-reordered",
+         "strategy-on-wrong-session", "t1-no-content-before-strategy", "b2-new-session-missing", "strategy-on-t2"],
+)
+def test_each_walk_failure_is_a_problem(change, expected: str) -> None:
+    problems = _walk(change(copy.deepcopy(_walk_passing())))
+    assert problems and any(expected in p for p in problems), problems
+
+
+def test_the_walk_keeps_every_launch_check() -> None:
+    """A walk is judged by the launch check too: argv, executable, initialize first, no session/load, none running."""
+    records = [{**r, "args": ARGS[:-1]} if r["event"] == "start" and r["pid"] == 21 else r for r in _walk_passing()]
+    assert any("not a generated Zed launch" in p for p in _walk(records))
+    assert _walk(_walk_passing(), alive=lambda pid: pid == 22) == ["double 22 is still running after Zed quit"]
+
+
+def test_the_negative_control_label_shows_an_extra_session() -> None:
+    """The empty-thread negative control is labelled apart from the live case; a fifth qualification session shows."""
+    assert rehearsal._negative_control(_walk_passing())["result"] == "no session/new"
+    extra = [*_walk_passing(), _new(21, "q5")]
+    assert rehearsal._negative_control(extra)["result"] == "qualification sessions [5], not 4"
+
+
+def test_the_walk_summary_names_each_sessions_steps() -> None:
+    summary = rehearsal.walk_summary(_walk_passing())
+    assert [(s["profile"], [x["session"] for x in s["sessions"]]) for s in summary] == [("qualification", ["q1", "q2", "q3", "q4"]), ("attached", ["t1", "t2"])]
+    assert summary[0]["sessions"][3] == {"session": "q4", "steps": ["mode=chat"]}
+    assert summary[0]["sessions"][2]["steps"] == ["mode=chat", "prompt(chat)", "mode=agent", "mode=chat"]
+    assert [step for step in summary[1]["sessions"][0]["steps"] if step.startswith("strategy=")] == [
+        "strategy=sliding_window", "strategy=compaction", "strategy=hybrid"
+    ]
+
+
+@WINDOWS_ONLY
+def test_the_walk_check_writes_a_new_receipt(tmp_path, monkeypatch) -> None:
+    schedule_path = tmp_path / "stage-c-schedule.json"
+    schedule = {"schedule": "stage-c-schedule-v8", **_schedule(Path(r"C:\venv\Scripts\optimus-agent.exe"), Path(r"C:\run\workspace"))}
+    schedule_path.write_text(json.dumps(schedule), encoding="utf-8")
+
+    def build(root: Path) -> Path:
+        exe = root / "venv with spaces" / "Scripts" / "optimus-agent.exe"
+        exe.parent.mkdir(parents=True)
+        exe.write_bytes(b"MZ")
+        return exe
+
+    monkeypatch.setattr(rehearsal, "build_double", build)
+    monkeypatch.setattr(rehearsal, "_alive", lambda pid: False)
+    fixture_path = rehearsal.zed_fixture(schedule_path, tmp_path / "zed walk")
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    exe, workspace = Path(fixture["double"]["exe"]), Path(fixture["workspace"])
+    walked = [{**r, "argv0": str(exe), "args": [r["args"][0], str(workspace), *r["args"][2:]]} if r["event"] == "start" else
+              ({**r, "cwd": str(workspace)} if r.get("method") == "session/new" else r) for r in _walk_passing()]  # fmt: skip
+    Path(fixture["record"]).write_text("".join(json.dumps(r) + "\n" for r in walked), encoding="utf-8")
+    out = tmp_path / "walk" / "receipt.json"
+    assert rehearsal.main(["--zed-walk-check", str(fixture_path), "--out", str(out)]) == 0
+    receipt = json.loads(out.read_text(encoding="utf-8"))
+    assert (receipt["schema"], receipt["passed"], receipt["problems"]) == (rehearsal.ZED_WALK_RECEIPT_SCHEMA, True, [])
+    assert [s["profile"] for s in receipt["walk"]] == ["qualification", "attached"] and receipt["double_records"] == walked
+    assert receipt["negative_control"] == {
+        "action": "a new thread from the empty S4 (r6's A5 defect, reproduced on purpose)", "expected": "no session/new", "result": "no session/new",
+    }
+    with pytest.raises(FileExistsError):
+        rehearsal.zed_check(fixture_path, out, walk=True)

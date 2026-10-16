@@ -41,6 +41,12 @@ and runs a .cmd agent through cmd. So acpx now launches the reviewed optimus-age
 single-quoted; the runbook declares the shell its acpx commands run from; and its first step requires a fresh,
 passing real-client launch rehearsal (tools/plan12_stage_c_launch_rehearsal.py) before the operator's hour.
 
+Schedule v8 (after r6 stopped at A5; Codex's ruling 6216185282) keeps every case, claim and bound and changes only
+A5's execution context. Zed 1.24.2 reuses an empty thread when asked for a new one (no session/new), and Optimus opens
+every session in Agent, so a new session showing Agent proves no persistence. A5 now runs in A4's content-bearing
+thread, ends on Chat (the non-default) and opens its new session from that thread; Zed applies a persisted
+non-default mode with session/set_config_option right after session/new (r6's trace), which is the evidence.
+
 Usage: python tools/plan12_stage_c_schedule.py --out <dir> [--summary-bytes N] [--reply-bytes N ...]
            [--agent-exe <optimus-agent.exe>] [--evidence <dir>]
        python tools/plan12_stage_c_schedule.py --verify-workspace <workspace>
@@ -85,7 +91,7 @@ HAIKU = "anthropic/claude-haiku-5.5"
 T0 = datetime(2026, 10, 12, 9, 0, tzinfo=UTC)
 CAPACITY_PROMPT_BYTES = 430_000  # over the request capacity (229,376 input tokens) and the 80% storage warning, under storage
 STORAGE_PROMPT_BYTES = 530_000  # over the 524,288-byte absent-engine storage limit
-SCHEDULE_VERSION = "stage-c-schedule-v7"
+SCHEDULE_VERSION = "stage-c-schedule-v8"
 RUNTIME_FILES = ("debug-acp.ndjson", "telemetry.jsonl", "local-gateway.log", "launch-audit.ndjson")  # under <workspace>/.optimus
 REPLY_SIZES = (3, 8_192, 32_768, 131_072)  # fake reply bytes per measured path; 131,072 = the 32,768-token cap at 4 bytes a token
 DEFAULT_UNRUN = "the guard refuses a call, the window ends or an earlier required case failed"
@@ -224,17 +230,24 @@ def _cases() -> list[Case]:
              (0, 0, "the host refuses the over-storage input before any request")),
         # The engine-absent profile advertises Mode alone (Agent, Chat); no profile enables model selection
         # (session_config.py), so A5 never asks for a model picker (Codex schedule v4 review M1).
-        Case("A5", zed_absent, "zed", "absent session 4",
-             ["Open the Mode selector and capture the advertised Agent and Chat choices. Change to the other mode, then reopen Mode and capture "
-              "both choices and the selected value.",
+        # Schedule v8: Zed reuses an empty thread for a new one, and Optimus opens every session in Agent, so A5 runs in A4's
+        # content-bearing thread and ends on the non-default Chat before opening its new session (Codex's ruling 6216185282).
+        Case("A5", zed_absent, "zed", "A4's session 3 (content-bearing; Chat), then a new session 4 opened from it",
+             ["In A4's thread (session 3, holding A4's refusal), open the Mode selector and capture the advertised Agent and Chat choices with "
+              "Chat selected. Change to Agent, then reopen Mode and capture both choices with Agent selected. Then change back to Chat and "
+              "capture Chat selected.",
               "Confirm the engine-absent profile advertises neither Context strategy nor a model selector; do not require controls that the "
               "profile does not enable.",
-              "Open a new qualification session and capture the persisted default mode, matching the preceding selection. Send no prompt."],
+              "From that content-bearing thread, open a new qualification thread (never from an empty thread: Zed reuses it and opens no "
+              "session). Capture the new session's selected mode. Send no prompt."],
              ["Mode continues to offer Agent and Chat after switching; its selected value is correct.",
               "Context strategy and model selection are absent under this exact qualification profile.",
-              "The new session displays the persisted mode."],
-             ["Screenshots of Mode before and after the change and of the new session's default.",
-              "A content-free observation of the advertised selector set (Mode only)."],
+              "The persisted mode reaches the new session: a distinct session/new, then Zed's session/set_config_option mode=chat on that "
+              "new session, and Chat selected on screen.",
+              "A stale setter on session 3, a client label alone or the Agent default cannot pass."],
+             ["Screenshots of Mode in session 3 (Chat, Agent, Chat) and of the new session's Chat selection.",
+              "A content-free observation of the advertised selector set (Mode only).",
+              "The debug trace's session/new for the new session and the session/set_config_option that follows it."],
              ["absent-picker-and-persisted-default"], (0, 0, "no prompt is sent")),
         Case("A6", acpx_absent, "acpx", "acpx one-shot session (Agent, denied)",
              ["Before the exec, record the names (never the values) of the key-like variables the command's environment holds: none may be a provider key.",

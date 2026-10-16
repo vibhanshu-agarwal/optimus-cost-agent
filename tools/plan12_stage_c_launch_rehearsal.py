@@ -33,10 +33,20 @@ quit ends each agent process without closing its input first (the launcher's job
 graceful exit record is recorded when present but never required. Human trust and permission steps are never part
 of it.
 
+The offline Zed walk (r7) drives every prompt-free scheduled Zed step against the same fixture, in order: the
+qualification launch's A1 (S1, Chat, one prompt for content), A2 (Agent, no prompt: permission is live-only), A3
+(S2), A4 (S3), A5 (on S3: Agent, then back to Chat; then S4 from S3, where Zed applies the persisted Chat with
+session/set_config_option first) and the negative control (a new thread from the empty S4 opens no session); then the
+attached launch's seeded thread T1 in B-case order (Chat; prompts; Context strategy sliding_window, compaction and
+hybrid, each set on T1) and B2's T2 from the content-bearing T1 (Codex's ruling 6216185282). `--zed-walk-check
+FIXTURE --out R` judges it on top of the launch check. Thread content comes only from the double's fixed Chat
+reply; the walk proves wiring and UI mechanics only, never maintenance, refusal, accounting, trust or live behaviour.
+
 Usage: python tools/plan12_stage_c_launch_rehearsal.py --schedule <stage-c-schedule.json> --out <receipt.json>
        python tools/plan12_stage_c_launch_rehearsal.py --verify <receipt.json> --schedule <stage-c-schedule.json>
        python tools/plan12_stage_c_launch_rehearsal.py --zed-fixture <new folder> --schedule <stage-c-schedule.json>
        python tools/plan12_stage_c_launch_rehearsal.py --zed-check <zed-fixture.json> --out <receipt.json>
+       python tools/plan12_stage_c_launch_rehearsal.py --zed-walk-check <zed-fixture.json> --out <receipt.json>
 """
 
 from __future__ import annotations
@@ -86,6 +96,10 @@ ZED_LAUNCHES = {"qualification": "L1 Zed launch (qualification)", "attached": "L
 ZED_ENTRY_NAMES = {"qualification": "stage-c-rehearsal-double-qualification", "attached": "stage-c-rehearsal-double-attached"}
 ZED_FIXTURE_SCHEMA = "stage-c-zed-fixture-v1"
 ZED_RECEIPT_SCHEMA = "stage-c-zed-launch-check-v1"
+ZED_WALK_RECEIPT_SCHEMA = "stage-c-zed-walk-check-v1"
+WALK_SESSIONS = {"qualification": 4, "attached": 2}  # A1, A3, A4 and A5's new session; the seeded thread and B2's
+WALK_STRATEGIES = ["sliding_window", "compaction", "hybrid"]  # B5.3, B6.4 and B8.7 on the seeded thread, after its initial compaction
+NEGATIVE_CONTROL = {"action": "a new thread from the empty S4 (r6's A5 defect, reproduced on purpose)", "expected": "no session/new"}
 ZED_EXE = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Zed" / "Zed.exe"
 
 
@@ -510,6 +524,132 @@ def check_zed(records: list[dict[str, Any]], *, agent_exe: Path, workspace: Path
     return problems
 
 
+# --- The offline Zed walk (r7) ------------------------------------------------------------------------------------
+
+
+def _mode_change(request: dict[str, Any]) -> str | None:
+    """The mode a setter asked for, through either setter."""
+    if request.get("method") == "session/set_config_option" and request.get("configId") == "mode":
+        return request.get("value")
+    if request.get("method") == "session/set_mode":
+        return request.get("modeId")
+    return None
+
+
+def _walk_sessions(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A launch's sessions in creation order, each with the later requests made on it."""
+    sessions: list[dict[str, Any]] = []
+    by_id: dict[Any, dict[str, Any]] = {}
+    for event in events:
+        if event["event"] != "request":
+            continue
+        if event["method"] == "session/new":
+            by_id[event.get("sessionId")] = entry = {"session": event.get("sessionId"), "requests": []}
+            sessions.append(entry)
+        elif event.get("sessionId") in by_id:
+            by_id[event["sessionId"]]["requests"].append(event)
+    return sessions
+
+
+def _strategy_change(request: dict[str, Any]) -> str | None:
+    if request.get("method") == "session/set_config_option" and request.get("configId") == "context_strategy":
+        return request.get("value")
+    return None
+
+
+def _step(request: dict[str, Any]) -> str:
+    mode, strategy = _mode_change(request), _strategy_change(request)
+    if mode is not None:
+        return f"mode={mode}"
+    if strategy is not None:
+        return f"strategy={strategy}"
+    return f"prompt({request.get('mode')})" if request["method"] == "session/prompt" else request["method"]
+
+
+def _by_pid(records: list[dict[str, Any]]) -> dict[int, list[dict[str, Any]]]:
+    events: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for record in records:
+        events[record["pid"]].append(record)
+    return events
+
+
+def walk_summary(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each launch's profile and its sessions' steps, in order (the walk receipt's readable record)."""
+    return [
+        {"pid": pid, "profile": double._profile(seen[0]["args"]),
+         "sessions": [{"session": s["session"], "steps": [_step(r) for r in s["requests"]]} for s in _walk_sessions(seen)]}
+        for pid, seen in _by_pid(records).items() if seen[0]["event"] == "start"
+    ]  # fmt: skip
+
+
+def _prompted_in_chat(session: dict[str, Any]) -> bool:
+    return any(r["method"] == "session/prompt" and r.get("mode") == "chat" for r in session["requests"])
+
+
+def _after_prompt(session: dict[str, Any]) -> list[dict[str, Any]]:
+    requests = session["requests"]
+    first = next((i for i, r in enumerate(requests) if r["method"] == "session/prompt"), len(requests))
+    return requests[first + 1 :]
+
+
+def _qualification_walk(sessions: list[dict[str, Any]]) -> list[str]:
+    s1, s2, s3, s4 = sessions
+    problems = [f"{name} has no Chat prompt (its thread must hold content)" for name, s in (("S1 (A1)", s1), ("S2 (A3)", s2), ("S3 (A4)", s3))
+                if not _prompted_in_chat(s)]  # fmt: skip
+    if "agent" not in [_mode_change(r) for r in _after_prompt(s1)]:
+        problems.append("A2: S1 never switched to Agent after A1's prompt")
+    a5 = [mode for r in _after_prompt(s3) if (mode := _mode_change(r))]
+    if not a5 or "agent" not in a5[:-1] or a5[-1] != "chat":
+        problems.append(f"A5: S3's mode changes after A4 were {a5}; expected a switch to Agent, ending on Chat (the non-default)")
+    first = s4["requests"][0] if s4["requests"] else None
+    if first is None or _mode_change(first) != "chat":
+        problems.append(f"A5: S4's first request is {_step(first) if first else 'none'}, not Zed applying the persisted Chat")
+    if any(r["method"] == "session/prompt" for r in s4["requests"]):
+        problems.append("A5: S4 was prompted; A5 sends no prompt")
+    return problems
+
+
+def _attached_walk(sessions: list[dict[str, Any]]) -> list[str]:
+    t1, t2 = sessions
+    requests = t1["requests"]
+    first_strategy = next((i for i, r in enumerate(requests) if _strategy_change(r)), len(requests))
+    problems = [] if _prompted_in_chat({"requests": requests[:first_strategy]}) else [
+        "T1 (the seeded thread) has no Chat prompt before its first strategy step (B3.1 and B4.2 give it content)"
+    ]
+    strategies = [value for r in requests if (value := _strategy_change(r))]
+    if strategies != WALK_STRATEGIES:
+        problems.append(f"T1's strategy setters were {strategies}; expected {WALK_STRATEGIES} in B-case order, each on T1")
+    if any(_strategy_change(r) for r in t2["requests"]):
+        problems.append("a strategy setter on T2 (B2's thread): every strategy step belongs to T1")
+    return problems
+
+
+def check_walk(records: list[dict[str, Any]], *, agent_exe: Path, workspace: Path, alive: Callable[[int], bool]) -> list[str]:
+    """Every problem with the offline Zed walk: the launch check's, then one launch per profile; exactly 4 qualification
+    sessions (the negative control from the empty S4 must open none) and 2 attached ones; S1-S3 and T1 hold a Chat
+    prompt's content; A2 switches S1 to Agent; A5 switches S3 to Agent and ends on Chat; S4's first request is Zed
+    applying that persisted Chat, and S4 is never prompted; no prompt in Agent mode and no permission request."""
+    problems = check_zed(records, agent_exe=agent_exe, workspace=workspace, alive=alive)
+    events = _by_pid(records)
+    launches: dict[str, list[int]] = defaultdict(list)
+    for pid, seen in events.items():
+        if seen[0]["event"] == "start":
+            launches[double._profile(seen[0]["args"])].append(pid)
+    problems += [f"a prompt in {r.get('mode')!r} mode on {r.get('sessionId')}: the walk sends Chat prompts only (never Agent; permission is live-only)"
+                 for r in records if r.get("method") == "session/prompt" and r.get("mode") != "chat"]  # fmt: skip
+    problems += [f"double {r['pid']} asked a permission: permission steps are live-only" for r in records if r["event"] == "permission"]
+    for profile, expected in WALK_SESSIONS.items():
+        if len(launches[profile]) != 1:
+            problems.append(f"{profile}: {len(launches[profile])} launches, expected one")
+            continue
+        sessions = _walk_sessions(events[launches[profile][0]])
+        if len(sessions) != expected:
+            problems.append(f"{profile}: {len(sessions)} session/new, expected {expected}")
+            continue
+        problems += _qualification_walk(sessions) if profile == "qualification" else _attached_walk(sessions)
+    return problems
+
+
 def zed_fixture(schedule_path: Path, root: Path) -> Path:
     """Build the Zed check's double and workspace in the new folder `root` (both under paths with spaces) and write
     zed-fixture.json: the two Zed entries, their selection shortcuts, the double's identity and the record file the
@@ -541,14 +681,22 @@ def zed_fixture(schedule_path: Path, root: Path) -> Path:
     return path
 
 
-def zed_check(fixture_path: Path, out: Path) -> int:
-    """Judge the double's record after Codex has driven Zed, and write a new receipt."""
+def _negative_control(records: list[dict[str, Any]]) -> dict[str, str]:
+    """The empty-thread negative control, labelled apart from the live case: its intended result is no new session."""
+    counts = [len(s["sessions"]) for s in walk_summary(records) if s["profile"] == "qualification"]
+    result = "no session/new" if counts == [WALK_SESSIONS["qualification"]] else f"qualification sessions {counts}, not {WALK_SESSIONS['qualification']}"
+    return {**NEGATIVE_CONTROL, "result": result}
+
+
+def zed_check(fixture_path: Path, out: Path, *, walk: bool = False) -> int:
+    """Judge the double's record after Codex has driven Zed (the launch check, or with `walk` the whole offline walk),
+    and write a new receipt."""
     if sys.platform != "win32":
         raise RehearsalError("the Zed launch check runs on the operator's Windows host only")
     fixture = json.loads(Path(fixture_path).read_text(encoding="utf-8"))
     exe, workspace, record = Path(fixture["double"]["exe"]), Path(fixture["workspace"]), Path(fixture["record"])
     records = _records(record)
-    problems = check_zed(records, agent_exe=exe, workspace=workspace, alive=_alive)
+    problems = (check_walk if walk else check_zed)(records, agent_exe=exe, workspace=workspace, alive=_alive)
     if sha256_file(exe) != fixture["double"]["sha256"]:
         problems.append("the double's executable changed since the fixture was built")
     if not Path(fixture["schedule"]["path"]).is_file() or sha256_file(Path(fixture["schedule"]["path"])) != fixture["schedule"]["sha256"]:
@@ -566,10 +714,11 @@ def zed_check(fixture_path: Path, out: Path) -> int:
                 "exit_record": any(event["event"] == "exit" for event in seen),  # recorded, never required
             })  # fmt: skip
     receipt = {
-        "schema": ZED_RECEIPT_SCHEMA,
+        "schema": ZED_WALK_RECEIPT_SCHEMA if walk else ZED_RECEIPT_SCHEMA,
         "created_at": datetime.now(UTC).isoformat(),
         "passed": not problems,
         "problems": problems,
+        **({"walk": walk_summary(records), "negative_control": _negative_control(records)} if walk else {}),
         "fixture": {"path": str(fixture_path), "sha256": sha256_file(Path(fixture_path))},
         "schedule": fixture["schedule"],
         "zed": {"exe": str(ZED_EXE), "sha256": sha256_file(ZED_EXE) if ZED_EXE.is_file() else None},
@@ -580,7 +729,8 @@ def zed_check(fixture_path: Path, out: Path) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("x", encoding="utf-8", newline="\n") as handle:
         handle.write(json.dumps(receipt, indent=2) + "\n")
-    print("zed launch check passed" if not problems else "zed launch check FAILED:\n" + "\n".join(problems))
+    name = "zed walk check" if walk else "zed launch check"
+    print(f"{name} passed" if not problems else f"{name} FAILED:\n" + "\n".join(problems))
     return 0 if not problems else 1
 
 
@@ -592,8 +742,9 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--verify", type=Path, help="check a receipt is fresh, matching and passing; exit 0 only then")
     action.add_argument("--zed-fixture", type=Path, help="build the Zed check's double, workspace and entries in this new folder")
     action.add_argument("--zed-check", type=Path, help="judge the double's record for this zed-fixture.json")
+    action.add_argument("--zed-walk-check", type=Path, help="judge the double's record of the whole offline Zed walk for this zed-fixture.json")
     args = parser.parse_args(argv)
-    if args.zed_check is None and args.schedule is None:
+    if args.zed_check is None and args.zed_walk_check is None and args.schedule is None:
         parser.error("--schedule is required")
     if args.verify is not None:
         problems = verify(args.verify, args.schedule, now=datetime.now(UTC), identity=current_identity)
@@ -608,6 +759,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--out is required")
     if args.out.exists():
         parser.error(f"{args.out} exists; every rehearsal writes a new receipt")
+    if args.zed_walk_check is not None:
+        return zed_check(args.zed_walk_check, args.out, walk=True)
     return zed_check(args.zed_check, args.out) if args.zed_check is not None else run(args.schedule, args.out)
 
 

@@ -122,13 +122,13 @@ def test_the_bound_totals_count_one_billed_attempt_and_two_physical_attempts_per
     assert bound["assumptions"] and all(isinstance(text, str) and text for text in bound["assumptions"])
 
 
-def test_the_r6_envelope_holds_the_accepted_complete_case_bound(schedule) -> None:
+def test_the_r7_envelope_holds_the_accepted_complete_case_bound(schedule) -> None:
     """The operator's r5 grant of 2026-10-15: $8 rounds the accepted $7.518097 bound up, and 138 attempts is
     exactly its maximum (one safe resend per call). The bound itself is unchanged by the envelope."""
     totals = schedule["bound"]["totals"]
     assert (totals["calls"], totals["billed_attempt_bound_usd"], totals["physical_attempts_planned_max"]) == (69, "7.518097", [69, 138])
-    assert schedule["schedule"] == "stage-c-schedule-v7"
-    assert schedule["envelope"] == {"release": "plan12-2-stage-c-r6", "usd": "8", "physical_attempts": 138, "window_minutes": 60}
+    assert schedule["schedule"] == "stage-c-schedule-v8"
+    assert schedule["envelope"] == {"release": "plan12-2-stage-c-r7", "usd": "8", "physical_attempts": 138, "window_minutes": 60}
     assert (totals["fits_usd"], totals["fits_attempts_planned"], totals["fits_attempts_max"], totals["usd_shortfall"]) == (True, True, True, "0")
 
 
@@ -496,6 +496,23 @@ def test_the_picker_cases_expect_only_the_selectors_each_profile_advertises(sche
     assert "the attached picker shows Mode and Context strategy" in b3["expected"]
     required = [text for row in schedule["cases"] for text in row["steps"] + row["expected"] + row["artifacts"]]
     assert not any(phrase in text for text in required for phrase in ("both pickers", "model options", "model picker"))
+
+
+def test_a5_proves_persistence_with_the_non_default_mode_from_a_content_bearing_thread(schedule) -> None:
+    """Schedule v8 (r6 stopped at A5; Codex's ruling 6216185282). Zed 1.24.2 reuses an empty thread for a new thread
+    (no session/new), and Optimus opens every session in Agent, so a new session showing Agent proves nothing. A5 runs
+    in A4's content-bearing thread, ends on Chat and opens the new session from that thread: the evidence is a distinct
+    session/new followed by Zed's own Chat setter on that new session, and its Chat selection on screen."""
+    [a4] = [row for row in schedule["cases"] if row["case"] == "A4"]
+    [a5] = [row for row in schedule["cases"] if row["case"] == "A5"]
+    assert a4["session"] == "absent session 3 (Chat)" and a5["session"].startswith("A4's session 3 (content-bearing; Chat)")
+    steps = " ".join(a5["steps"])
+    for phrase in ("Chat selected", "Change to Agent", "change back to Chat", "From that content-bearing thread", "never from an empty thread",
+                   "Send no prompt"):  # fmt: skip
+        assert phrase in steps, phrase
+    assert any("distinct session/new" in item and "session/set_config_option" in item and "Chat" in item and "new session" in item for item in a5["expected"])
+    assert any("stale" in item and "Agent default" in item for item in a5["expected"])  # what cannot pass
+    assert (a5["bound"]["answer_calls"], a5["bound"]["summary_calls"]) == (0, 0)
 
 
 def test_the_paste_files_hit_the_refusal_they_are_named_for(schedule) -> None:
