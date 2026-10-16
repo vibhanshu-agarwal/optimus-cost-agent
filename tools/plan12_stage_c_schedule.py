@@ -45,7 +45,9 @@ Schedule v8 (after r6 stopped at A5; Codex's ruling 6216185282) keeps every case
 A5's execution context. Zed 1.24.2 reuses an empty thread when asked for a new one (no session/new), and Optimus opens
 every session in Agent, so a new session showing Agent proves no persistence. A5 now runs in A4's content-bearing
 thread, ends on Chat (the non-default) and opens its new session from that thread; Zed applies a persisted
-non-default mode with session/set_config_option right after session/new (r6's trace), which is the evidence.
+non-default mode with session/set_config_option right after session/new (r6's trace), which is the evidence. Zed also
+restores the last thread's agent when it starts (r7's offline walk), so before L2 the qualification entry is hidden and
+only the attached entry can start.
 
 Usage: python tools/plan12_stage_c_schedule.py --out <dir> [--summary-bytes N] [--reply-bytes N ...]
            [--agent-exe <optimus-agent.exe>] [--evidence <dir>]
@@ -513,6 +515,12 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
     step("acpx-close", "A7: close the session", [f"{acpx} sessions close {A7_SESSION}"], [str(ev / "A7" / "sessions-close.json")],
          "Terminates the queue owner and its host; the host closes its Gateway.")  # fmt: skip
     check("after-A7-close", after_launch=True)
+    step("zed-settings", "isolate the attached launch",
+         ["With Zed not running, hide the qualification entry from Zed's agent_servers so only the attached entry is visible, and verify "
+          "that entry against the L2 launch below."], [str(ev / "L2" / "zed-isolation.json")],
+         "Zed restores the last thread's agent when it starts, so a visible qualification entry would relaunch the qualification profile "
+         "before the attached one is selected (r7's offline walk). The hidden entry comes back only with the other temporary settings "
+         "after the run.")  # fmt: skip
     step("approval", "L2 release approval (attached)", [f'optimus-trust --workspace-root "{ws}" approve --mode durable --plan12-test-profile attached --plan12-stage-c'],
          [str(ev / "L2" / "approve-console.txt")], "TTY 'y'. The ledger is kept as it is (never reset); the window does not restart.")  # fmt: skip
     check("before-L2")

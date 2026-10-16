@@ -791,7 +791,8 @@ def _walk_passing() -> list[dict]:
     prompt; A4 S3 (Zed applies Chat) + prompt; A5 on S3 Agent then back to Chat, then S4 from S3, where Zed applies Chat
     first; the negative control from empty S4 adds no session. Attached, in B-case order on T1: Chat; B3.1 and B4.2
     prompts; B5.3 sliding_window + prompt; B6.4 compaction + prompt; B6.5 and B7.6 prompts; B8.7 hybrid + prompt; then
-    B2's T2 from the content-bearing T1 (Codex's ruling 6216185282)."""
+    B2's T2 from the content-bearing T1 (Codex's ruling 6216185282), where Zed first applies T1's final Chat and Hybrid
+    (the persisted values r7's walk recorded) before B2's prompt."""
     return [
         _start(21), _request(21, "initialize", protocolVersion=1),
         _new(21, "q1"), _mode(21, "q1", "chat"), _prompt(21, "q1"), _mode(21, "q1", "agent"),
@@ -802,7 +803,7 @@ def _walk_passing() -> list[dict]:
         _new(22, "t1"), _mode(22, "t1", "chat"), _prompt(22, "t1"), _prompt(22, "t1"),
         _strategy(22, "t1", "sliding_window"), _prompt(22, "t1"), _strategy(22, "t1", "compaction"), _prompt(22, "t1"),
         _prompt(22, "t1"), _prompt(22, "t1"), _strategy(22, "t1", "hybrid"), _prompt(22, "t1"),
-        _new(22, "t2"), _mode(22, "t2", "chat"), _prompt(22, "t2"),
+        _new(22, "t2"), _mode(22, "t2", "chat"), _strategy(22, "t2", "hybrid"), _prompt(22, "t2"),
     ]  # fmt: skip
 
 
@@ -857,15 +858,34 @@ def _is(pid: int, method: str, sid: str | None = None, value: str | None = None)
                      and i < next(j for j, x in enumerate(rs) if x.get("value") == "sliding_window"))], "T1"),
         (lambda rs: _drop(rs, _is(22, "session/new", "t2")), "attached: 1 session/new"),
         (lambda rs: [*rs, _strategy(22, "t2", "hybrid")], "T2"),
+        (lambda rs: [{**r, "value": "compaction"} if r.get("sessionId") == "t2" and r.get("configId") == "context_strategy" else r for r in rs], "T2"),
+        (lambda rs: [*_drop(rs, _is(22, "session/set_config_option", "t2", "hybrid")), _strategy(22, "t2", "hybrid")], "T2"),
+        (lambda rs: _drop(rs, _is(22, "session/set_config_option", "t2", "chat")), "T2"),
+        (lambda rs: _drop(rs, _is(22, "session/set_config_option", "t2", "hybrid")), "T2"),
+        (lambda rs: [*rs, _mode(22, "t2", "agent")], "T2"),
+        (lambda rs: _insert_after(rs, _is(22, "session/set_config_option", "t2", "hybrid"), _strategy(22, "t2", "hybrid")), "T2"),
+        (lambda rs: [r for r in rs if not _is(22, "session/set_config_option", "t1", "sliding_window")(r)][:23]
+                    + [_strategy(22, "t1", "sliding_window")] + [r for r in rs if not _is(22, "session/set_config_option", "t1", "sliding_window")(r)][23:],
+         "boundar"),
     ],
     ids=["negative-control-made-a-session", "no-a5-session", "a5-no-persisted-setter", "a5-persisted-agent", "a5-ended-on-agent",
          "a5-never-left-chat", "a5-prompted", "a5-not-first", "no-a2-switch", "agent-prompt", "permission", "s2-empty", "s1-empty",
          "no-b2-session", "t1-empty", "two-qualification-launches", "a5-stale-s3-setter", "strategy-omitted", "strategy-reordered",
-         "strategy-on-wrong-session", "t1-no-content-before-strategy", "b2-new-session-missing", "strategy-on-t2"],
+         "strategy-on-wrong-session", "t1-no-content-before-strategy", "b2-new-session-missing", "strategy-on-t2", "t2-persisted-strategy-mismatch",
+         "t2-strategy-after-its-prompt", "t2-no-persisted-mode", "t2-no-persisted-strategy", "t2-mode-after-its-prompt",
+         "t2-extra-leading-strategy", "t1-strategy-off-its-boundary"],
 )
 def test_each_walk_failure_is_a_problem(change, expected: str) -> None:
     problems = _walk(change(copy.deepcopy(_walk_passing())))
     assert problems and any(expected in p for p in problems), problems
+
+
+def test_t2s_two_persisted_setters_pass_in_either_order() -> None:
+    """Zed applies T1's final Chat and Hybrid to the fresh T2 before B2's prompt; the client's order of the two is free."""
+    records = _walk_passing()
+    chat = next(i for i, r in enumerate(records) if _is(22, "session/set_config_option", "t2", "chat")(r))
+    records[chat], records[chat + 1] = records[chat + 1], records[chat]
+    assert _walk(records) == []
 
 
 def test_the_walk_keeps_every_launch_check() -> None:

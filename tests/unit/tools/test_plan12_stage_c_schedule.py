@@ -515,6 +515,20 @@ def test_a5_proves_persistence_with_the_non_default_mode_from_a_content_bearing_
     assert (a5["bound"]["answer_calls"], a5["bound"]["summary_calls"]) == (0, 0)
 
 
+def test_the_attached_launch_is_isolated_before_zed_restarts(schedule) -> None:
+    """r7's offline walk: Zed restores the last thread's agent when it starts, so a visible qualification entry relaunched
+    the qualification profile before the attached one was selected. Before L2's approval, with Zed not running, the
+    qualification entry is hidden, so only the attached entry can start (Codex's request 6217459912)."""
+    steps = schedule["runbook"]["steps"]
+    titles = [step["title"] for step in steps]
+    isolate = titles.index("isolate the attached launch")
+    closed = next(n for n, step in enumerate(steps) if step["kind"] == "custody-check" and step["title"].endswith("after-A7-close"))
+    assert closed < isolate < titles.index("L2 release approval (attached)") < titles.index("L2 Zed launch (attached)")
+    step = steps[isolate]
+    assert step["kind"] == "zed-settings" and "Zed not running" in step["commands"][0] and "only the attached entry" in step["commands"][0]
+    assert step["evidence"] == [str(Path(schedule["runbook"]["paths"]["evidence"]) / "L2" / "zed-isolation.json")]
+
+
 def test_the_paste_files_hit_the_refusal_they_are_named_for(schedule) -> None:
     files = schedule["prompt_files"]
     usable = 262_144 - 32_768

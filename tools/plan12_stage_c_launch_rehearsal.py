@@ -38,7 +38,9 @@ qualification launch's A1 (S1, Chat, one prompt for content), A2 (Agent, no prom
 (S2), A4 (S3), A5 (on S3: Agent, then back to Chat; then S4 from S3, where Zed applies the persisted Chat with
 session/set_config_option first) and the negative control (a new thread from the empty S4 opens no session); then the
 attached launch's seeded thread T1 in B-case order (Chat; prompts; Context strategy sliding_window, compaction and
-hybrid, each set on T1) and B2's T2 from the content-bearing T1 (Codex's ruling 6216185282). `--zed-walk-check
+hybrid, each set on T1) and B2's T2 from the content-bearing T1 (Codex's ruling 6216185282), where Zed first applies T1's
+final mode and strategy (persistence, not a driver step). Each launch sees only its own entry: Zed restores the last
+thread's agent when it starts, so the other entry is hidden between the launches. `--zed-walk-check
 FIXTURE --out R` judges it on top of the launch check. Thread content comes only from the double's fixed Chat
 reply; the walk proves wiring and UI mechanics only, never maintenance, refusal, accounting, trust or live behaviour.
 
@@ -99,6 +101,7 @@ ZED_RECEIPT_SCHEMA = "stage-c-zed-launch-check-v1"
 ZED_WALK_RECEIPT_SCHEMA = "stage-c-zed-walk-check-v1"
 WALK_SESSIONS = {"qualification": 4, "attached": 2}  # A1, A3, A4 and A5's new session; the seeded thread and B2's
 WALK_STRATEGIES = ["sliding_window", "compaction", "hybrid"]  # B5.3, B6.4 and B8.7 on the seeded thread, after its initial compaction
+WALK_STRATEGY_BOUNDARIES = [2, 3, 6]  # T1's prompts before each: B3.1 and B4.2; then B5.3; then B6.4, B6.5 and B7.6
 NEGATIVE_CONTROL = {"action": "a new thread from the empty S4 (r6's A5 defect, reproduced on purpose)", "expected": "no session/new"}
 ZED_EXE = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Zed" / "Zed.exe"
 
@@ -609,18 +612,32 @@ def _qualification_walk(sessions: list[dict[str, Any]]) -> list[str]:
     return problems
 
 
+def _setting(request: dict[str, Any]) -> tuple[str, Any] | None:
+    mode, strategy = _mode_change(request), _strategy_change(request)
+    return ("mode", mode) if mode is not None else ("strategy", strategy) if strategy is not None else None
+
+
 def _attached_walk(sessions: list[dict[str, Any]]) -> list[str]:
     t1, t2 = sessions
     requests = t1["requests"]
-    first_strategy = next((i for i, r in enumerate(requests) if _strategy_change(r)), len(requests))
-    problems = [] if _prompted_in_chat({"requests": requests[:first_strategy]}) else [
-        "T1 (the seeded thread) has no Chat prompt before its first strategy step (B3.1 and B4.2 give it content)"
-    ]
     strategies = [value for r in requests if (value := _strategy_change(r))]
+    boundaries = [sum(1 for x in requests[:i] if x["method"] == "session/prompt") for i, r in enumerate(requests) if _strategy_change(r)]
+    problems = []
     if strategies != WALK_STRATEGIES:
         problems.append(f"T1's strategy setters were {strategies}; expected {WALK_STRATEGIES} in B-case order, each on T1")
-    if any(_strategy_change(r) for r in t2["requests"]):
-        problems.append("a strategy setter on T2 (B2's thread): every strategy step belongs to T1")
+    elif boundaries != WALK_STRATEGY_BOUNDARIES:
+        problems.append(f"T1's strategy steps came after {boundaries} prompts; expected {WALK_STRATEGY_BOUNDARIES} (their B cases' prompt boundaries)")
+    # Zed applies the persisted mode and strategy to a new thread right after session/new (r7's walk recorded T1's final
+    # Chat and Hybrid on T2). T2's host defaults are Agent and Compaction, so both must be applied, once each and in either
+    # order, before B2's prompt; any other setter on T2 is a driver step and belongs to T1 (Codex's clarification 6217891529).
+    final_mode = next((mode for r in reversed(requests) if (mode := _mode_change(r))), None)
+    expected = sorted([("mode", final_mode), ("strategy", strategies[-1] if strategies else None)])
+    first_prompt = next((i for i, r in enumerate(t2["requests"]) if r["method"] == "session/prompt"), len(t2["requests"]))
+    leading = sorted(_setting(r) or ("request", r["method"]) for r in t2["requests"][:first_prompt])
+    if leading != expected:
+        problems.append(f"T2 must open with Zed applying T1's final mode and strategy {expected} before B2's prompt; it had {leading}")
+    if any(_setting(r) for r in t2["requests"][first_prompt:]):
+        problems.append("a mode or strategy setter on T2 after B2's prompt: every strategy step belongs to T1")
     return problems
 
 
