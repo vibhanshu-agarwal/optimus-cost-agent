@@ -33,6 +33,7 @@ dev = [
   "bandit>=1.7",
   "coverage>=7.6",
   "detect-secrets>=1.5",
+  "hypothesis==6.167.1",
   "pre-commit>=3.7",
   "python-dotenv>=1.0",
   "pytest>=8.3",
