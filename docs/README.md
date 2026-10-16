@@ -14,12 +14,13 @@ it and remove its line below. A test checks that this index lists every current 
 
 | Document | What it is |
 |---|---|
-| [Architecture (HLD) v2.19](Optimus-Cost-Agent-Architecture-v2.19.pdf) | High-level design |
-| [LLD v2.42](Optimus-Cost-Agent-LLD-v2.42.pdf) | Low-level design |
-| [Test Strategy v1.8](Optimus-Cost-Agent-Test-Strategy-v1.8.pdf) | Testing approach |
-| [Agent Execution Guardrails and Workflow Strategy v1.4](Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.4.pdf) | Execution guardrails |
-| [Architecture Roadmap v10](Optimus-Architecture-Roadmap-v10.pdf) | Long-range roadmap |
-| [Publication sources for the current PDFs](sources/plan-12-2-context-engine-closure/) | Sources the HLD v2.19, LLD v2.42, Guardrails v1.4 and Test Strategy v1.8 were built from (Plan 12.2 Context Engine closure; reviewed local filing candidates) |
+| [Architecture (HLD) v2.20](Optimus-Cost-Agent-Architecture-v2.20.pdf) | High-level design; v2.20 is the capability and evidence correction of 2026-10-15 (reviewed local filing candidate) |
+| [LLD v2.43](Optimus-Cost-Agent-LLD-v2.43.pdf) | Low-level design; v2.43 is the capability and evidence correction of 2026-10-15 (reviewed local filing candidate) |
+| [Test Strategy v1.9](Optimus-Cost-Agent-Test-Strategy-v1.9.pdf) | Testing approach; v1.9 is the capability and evidence correction of 2026-10-15 (reviewed local filing candidate) |
+| [Agent Execution Guardrails and Workflow Strategy v1.5](Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf) | Execution guardrails; v1.5 replaces only the v1.4 cover, recording the filed D7 provenance (ADR-018), the merge of the v2.19/v2.42/v1.8 companions (PR #276) and their corrected successors v2.20/v2.43/v1.9 and Roadmap v11, which are local filing candidates like v1.5 itself (2026-10-15); the body is unchanged |
+| [Architecture Roadmap v11](Optimus-Architecture-Roadmap-v11.pdf) | Long-range roadmap; v11 classifies each phase as implemented, approved requirement or proposed (correction of 2026-10-15; reviewed local filing candidate) |
+| [Capability and evidence correction sources](sources/capability-evidence-correction/) | Sources, authoring tools, correction map and validation record for HLD v2.20, LLD v2.43, Roadmap v11 and Test Strategy v1.9, and the Guardrails v1.5 cover |
+| [Plan 12.2 closure publication sources](sources/plan-12-2-context-engine-closure/) | Sources the HLD v2.19, LLD v2.42, Guardrails v1.4 and Test Strategy v1.8 were built from (Plan 12.2 Context Engine closure). Still the source of the Guardrails v1.5 body (unchanged from v1.4), and historical provenance for the archived v2.19, v2.42, v1.4 and v1.8 |
 
 ## Decision records (ADRs)
 
