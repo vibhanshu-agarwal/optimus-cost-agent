@@ -97,7 +97,6 @@ Live plans (each listed in the backlog's live plan registry):
 | [P11-FU-6 v2: bounded early POST rejection](superpowers/plans/2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | Gateway early-rejection correction |
 | [Local-hook UTF-8 repair](superpowers/plans/2026-09-06-local-hook-utf8-repair.md) | Pre-commit hook decoding fix |
 | [Evidence collector](superpowers/plans/evidence-handoff-evidence-collector-implementation.md) | Evidence-handoff collector |
-| [Hypothesis compatibility sanitizer oracle (v2)](superpowers/plans/2026-10-16-hypothesis-sanitizer-oracle-port_v2.md) | Bounded test-only port; work authority is in [#364][hypothesis-port-issue] |
 
 ## Current designs
 
@@ -125,7 +124,6 @@ Live plans (each listed in the backlog's live plan registry):
 | [CI baseline report exceptions](superpowers/reviews/2026-09-06-baseline-report-exceptions.json) | Live exception set for the CI guardrail track |
 | [Plan 9.96 logging-surface audit](superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json) | Historical, but stays here: Plan 11.7's custody tooling binds this exact path |
 | [MCP security best practices](superpowers/reports/2026-08-05-mcp-gateway-security-best-practices-reference.md) | Reference for the open client-MCP items |
-| [Hypothesis sanitizer oracle checkpoint](superpowers/reports/2026-10-16-hypothesis-sanitizer-oracle-port-checkpoint.md) | Source-bound oracle, dependency, platform and timing evidence, with acceptance limits |
 
 ## Archives
 
@@ -140,5 +138,3 @@ Live plans (each listed in the backlog's live plan registry):
 - [Plan 12.2 Package A delivery record](superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md) — local commits, offline acceptance, residual and evidence custody.
 
 [work-status-hosted]: https://vibhanshu-agarwal.github.io/optimus-cost-agent/work-status.html
-
-[hypothesis-port-issue]: https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/364
