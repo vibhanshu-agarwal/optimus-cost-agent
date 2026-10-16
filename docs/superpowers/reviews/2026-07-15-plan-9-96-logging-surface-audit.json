@@ -4315,7 +4315,7 @@
     {
       "key": "tools.plan12_stage_c_launch_rehearsal:zed_check:file_open",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: the Zed launch-check or walk-check receipt, written once to a new file. It holds the problems; for the walk, each launch's sessions with their steps (mode, strategy and prompt mode) and the negative control's fixed label and result; the fixture's path and hash; the schedule's path, hash and version; the installed Zed executable's path and hash; the record file's path and hash; each launch's process id, profile, working folder, ACP method names, Chat setter and whether an exit record was seen; and the double's records (process ids, argv, folders, method names, minted session ids and mode or strategy ids). No credential, prompt or provider content: the double holds none and no real agent, Gateway or provider is started.",
+      "rationale": "Inspection: the Zed launch-check, walk-check or handshake-check receipt, written once to a new file. It holds the problems; for the walk, each launch's sessions with their steps (mode, strategy and prompt mode) and the negative control's fixed label and result; for the handshake, the session steps and the permission outcomes the double received (expected none); the fixture's path and hash; the schedule's path, hash and version; the installed Zed executable's path and hash; the record file's path and hash; each launch's process id, profile, working folder, ACP method names, Chat setter and whether an exit record was seen; and the double's records (process ids, argv, folders, method names, minted session ids and mode or strategy ids). No credential, prompt or provider content: the double holds none and no real agent, Gateway or provider is started.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
       "evidence_tier": "unit"
@@ -4323,7 +4323,7 @@
     {
       "key": "tools.plan12_stage_c_launch_rehearsal:zed_check:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: the Zed launch-check or walk-check receipt, written once to a new file. It holds the problems; for the walk, each launch's sessions with their steps (mode, strategy and prompt mode) and the negative control's fixed label and result; the fixture's path and hash; the schedule's path, hash and version; the installed Zed executable's path and hash; the record file's path and hash; each launch's process id, profile, working folder, ACP method names, Chat setter and whether an exit record was seen; and the double's records (process ids, argv, folders, method names, minted session ids and mode or strategy ids). No credential, prompt or provider content: the double holds none and no real agent, Gateway or provider is started.",
+      "rationale": "Inspection: the Zed launch-check, walk-check or handshake-check receipt, written once to a new file. It holds the problems; for the walk, each launch's sessions with their steps (mode, strategy and prompt mode) and the negative control's fixed label and result; for the handshake, the session steps and the permission outcomes the double received (expected none); the fixture's path and hash; the schedule's path, hash and version; the installed Zed executable's path and hash; the record file's path and hash; each launch's process id, profile, working folder, ACP method names, Chat setter and whether an exit record was seen; and the double's records (process ids, argv, folders, method names, minted session ids and mode or strategy ids). No credential, prompt or provider content: the double holds none and no real agent, Gateway or provider is started.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
       "evidence_tier": "unit"
@@ -4331,7 +4331,7 @@
     {
       "key": "tools.plan12_stage_c_launch_rehearsal:zed_check:stdout_export",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: prints 'zed launch check passed', 'zed walk check passed' or the check's problems: process ids, synthetic paths, argv, ACP method names and profiles. No credential, prompt or provider content.",
+      "rationale": "Inspection: prints 'zed launch check passed', 'zed walk check passed', 'zed handshake check passed' or the check's problems: process ids, synthetic paths, argv, ACP method names and profiles. No credential, prompt or provider content.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
       "evidence_tier": "unit"
@@ -4339,7 +4339,7 @@
     {
       "key": "tools.plan12_stage_c_launch_rehearsal:zed_check:text_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: the Zed launch-check or walk-check receipt, written once to a new file. It holds the problems; for the walk, each launch's sessions with their steps (mode, strategy and prompt mode) and the negative control's fixed label and result; the fixture's path and hash; the schedule's path, hash and version; the installed Zed executable's path and hash; the record file's path and hash; each launch's process id, profile, working folder, ACP method names, Chat setter and whether an exit record was seen; and the double's records (process ids, argv, folders, method names, minted session ids and mode or strategy ids). No credential, prompt or provider content: the double holds none and no real agent, Gateway or provider is started.",
+      "rationale": "Inspection: the Zed launch-check, walk-check or handshake-check receipt, written once to a new file. It holds the problems; for the walk, each launch's sessions with their steps (mode, strategy and prompt mode) and the negative control's fixed label and result; for the handshake, the session steps and the permission outcomes the double received (expected none); the fixture's path and hash; the schedule's path, hash and version; the installed Zed executable's path and hash; the record file's path and hash; each launch's process id, profile, working folder, ACP method names, Chat setter and whether an exit record was seen; and the double's records (process ids, argv, folders, method names, minted session ids and mode or strategy ids). No credential, prompt or provider content: the double holds none and no real agent, Gateway or provider is started.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
       "evidence_tier": "unit"

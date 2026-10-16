@@ -49,6 +49,11 @@ non-default mode with session/set_config_option right after session/new (r6's tr
 restores the last thread's agent when it starts (r7's offline walk), so before L2 the qualification entry is hidden and
 only the attached entry can start.
 
+Schedule v9 (after r7 stopped at A2; Codex's r8 proposal c500fc61) keeps every case, claim and bound and makes A2's
+handshake explicit: r7's permission request was approved within seconds, before its required capture. The driver
+tells the operator to leave the request pending, captures and checks it, then signals "capture taken \u2014 approve
+now" in its own chat; only on that signal does the operator approve the exact artifact.
+
 Usage: python tools/plan12_stage_c_schedule.py --out <dir> [--summary-bytes N] [--reply-bytes N ...]
            [--agent-exe <optimus-agent.exe>] [--evidence <dir>]
        python tools/plan12_stage_c_schedule.py --verify-workspace <workspace>
@@ -93,7 +98,7 @@ HAIKU = "anthropic/claude-haiku-5.5"
 T0 = datetime(2026, 10, 12, 9, 0, tzinfo=UTC)
 CAPACITY_PROMPT_BYTES = 430_000  # over the request capacity (229,376 input tokens) and the 80% storage warning, under storage
 STORAGE_PROMPT_BYTES = 530_000  # over the 524,288-byte absent-engine storage limit
-SCHEDULE_VERSION = "stage-c-schedule-v8"
+SCHEDULE_VERSION = "stage-c-schedule-v9"
 RUNTIME_FILES = ("debug-acp.ndjson", "telemetry.jsonl", "local-gateway.log", "launch-audit.ndjson")  # under <workspace>/.optimus
 REPLY_SIZES = (3, 8_192, 32_768, 131_072)  # fake reply bytes per measured path; 131,072 = the 32,768-token cap at 4 bytes a token
 DEFAULT_UNRUN = "the guard refuses a call, the window ends or an earlier required case failed"
@@ -158,6 +163,9 @@ NO_LEDGER_RECORD = "no Gateway reserve/settle record for the turn: the engine re
 # The host records the approved mutation but not the path a permission request named, so A2's exact artifact is
 # captured from the request itself, before the click (r3's A2 evidence showed only the completed write).
 A2_PERMISSION_CAPTURE = "a screenshot of the permission request taken before approval, naming exactly scratch/stage-c-agent.txt"
+# Schedule v9: the operator approves A2 only on the driver's explicit signal, given after the capture (r7's A2 was approved
+# before its capture; Codex's r8 proposal c500fc61).
+A2_SIGNAL = "capture taken \u2014 approve now"
 # Key isolation (Plan 9.9): the environment passed to acpx holds no provider key; the host takes it from the OS
 # keyring. Recorded as variable names only, never values.
 KEY_ISOLATION_CHECK = (
@@ -218,10 +226,14 @@ def _cases() -> list[Case]:
         Case("A1", zed_absent, "zed", "absent session 1 (Chat)", ["Switch the session to Chat.", f"Prompt: {A1_PROMPT}"],
              ["a Chat answer; no permission request"], ["the workspace has no notes/chat-should-not-write.md"], ["chat-non-mutation"], chat),
         Case("A2", zed_absent, "zed", "absent session 1 (Agent)",
-             ["Switch the session to Agent.", f"Prompt: {A2_PROMPT}", "Capture the permission request before approving it: it must name exactly scratch/stage-c-agent.txt.",
-              "Approve the exact artifact in the permission request."],
+             [f'Before the prompt, tell the operator to leave the coming permission request pending until the driver\'s explicit signal "{A2_SIGNAL}" '
+              "(never on silence or another chat's message).",
+              "Switch the session to Agent.", f"Prompt: {A2_PROMPT}",
+              "Capture the pending permission request at once, before anything else: it must name exactly scratch/stage-c-agent.txt with content ready.",
+              f'Then signal "{A2_SIGNAL}" in the driver\'s chat, linked to the saved capture.',
+              "Only on that signal, the operator approves the exact artifact in the permission request."],
              ["a session/request_permission naming exactly scratch/stage-c-agent.txt", "the turn completes after approval"],
-             [A2_PERMISSION_CAPTURE, "scratch/stage-c-agent.txt contains ready"],
+             [A2_PERMISSION_CAPTURE, f'the driver\'s "{A2_SIGNAL}" signal, given after the capture', "scratch/stage-c-agent.txt contains ready"],
              ["agent-exact-artifact-approval"], planning),
         Case("A3", zed_absent, "zed", "absent session 2 (Chat)", ["Paste the whole of capacity-prompt.txt as one prompt."],
              ["the 80% storage warning notice", "the readable request-capacity refusal (INPUT_EXCEEDS_CAPACITY text)", NO_METER_READING],

@@ -122,13 +122,13 @@ def test_the_bound_totals_count_one_billed_attempt_and_two_physical_attempts_per
     assert bound["assumptions"] and all(isinstance(text, str) and text for text in bound["assumptions"])
 
 
-def test_the_r7_envelope_holds_the_accepted_complete_case_bound(schedule) -> None:
+def test_the_r8_envelope_holds_the_accepted_complete_case_bound(schedule) -> None:
     """The operator's r5 grant of 2026-10-15: $8 rounds the accepted $7.518097 bound up, and 138 attempts is
     exactly its maximum (one safe resend per call). The bound itself is unchanged by the envelope."""
     totals = schedule["bound"]["totals"]
     assert (totals["calls"], totals["billed_attempt_bound_usd"], totals["physical_attempts_planned_max"]) == (69, "7.518097", [69, 138])
-    assert schedule["schedule"] == "stage-c-schedule-v8"
-    assert schedule["envelope"] == {"release": "plan12-2-stage-c-r7", "usd": "8", "physical_attempts": 138, "window_minutes": 60}
+    assert schedule["schedule"] == "stage-c-schedule-v9"
+    assert schedule["envelope"] == {"release": "plan12-2-stage-c-r8", "usd": "8", "physical_attempts": 138, "window_minutes": 60}
     assert (totals["fits_usd"], totals["fits_attempts_planned"], totals["fits_attempts_max"], totals["usd_shortfall"]) == (True, True, True, "0")
 
 
@@ -458,12 +458,25 @@ def test_a_turn_that_makes_no_call_expects_no_ledger_record(schedule) -> None:
 
 def test_a2_captures_the_permission_request_before_it_is_approved(schedule) -> None:
     # r3's A2 evidence showed only the completed write (Codex r3 stop return): the exact artifact the operator
-    # approves is captured from the permission request itself, before the click; the host records no path.
+    # approves is captured from the permission request itself, before the click; the host records no path. r7's A2 was
+    # approved within seconds, before the capture, so schedule v9 makes the handshake explicit (Codex's r8 proposal
+    # c500fc61): the driver tells the operator to wait, captures and checks the pending request, signals, and only on
+    # that signal does the operator approve.
     [a2] = [row for row in schedule["cases"] if row["case"] == "A2"]
     assert tool.A2_PERMISSION_CAPTURE in a2["artifacts"] and "scratch/stage-c-agent.txt" in tool.A2_PERMISSION_CAPTURE
-    capture = next(n for n, step in enumerate(a2["steps"]) if step.startswith("Capture the permission request"))
-    approve = next(n for n, step in enumerate(a2["steps"]) if step.startswith("Approve"))
-    assert capture < approve
+    assert tool.A2_SIGNAL == "capture taken \u2014 approve now"
+    steps = a2["steps"]
+
+    def first(prefix: str) -> int:
+        return next(n for n, step in enumerate(steps) if step.startswith(prefix))
+
+    wait, prompt, capture = first("Before the prompt, tell the operator"), first("Prompt:"), first("Capture the pending permission request")
+    signal, approve = first("Then signal"), first("Only on that signal")
+    assert wait < prompt < capture < signal < approve
+    assert tool.A2_SIGNAL in steps[wait] and tool.A2_SIGNAL in steps[signal] and "driver's chat" in steps[signal]
+    assert "scratch/stage-c-agent.txt" in steps[capture] and "content ready" in steps[capture]
+    assert any(tool.A2_SIGNAL in item and "after the capture" in item for item in a2["artifacts"])
+    assert a2["bound"]["answer_calls"] == 3 and a2["claims"] == ["agent-exact-artifact-approval"]
 
 
 def test_a6_names_a_checkable_key_isolation_observation(schedule) -> None:

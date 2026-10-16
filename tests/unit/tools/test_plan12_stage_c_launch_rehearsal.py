@@ -949,3 +949,80 @@ def test_the_walk_check_writes_a_new_receipt(tmp_path, monkeypatch) -> None:
     }
     with pytest.raises(FileExistsError):
         rehearsal.zed_check(fixture_path, out, walk=True)
+
+
+# --- The r8 offline A2 handshake rehearsal: an Agent prompt's permission left pending -------------------------------
+
+
+def _handshake_passing() -> list[dict]:
+    """The focused rehearsal (Codex's r8 ruling 6220875533): S1 in Chat with A1's prompt, then Agent with A2's prompt.
+    The double asks its write permission; the driver captures it, signals OFFLINE REHEARSAL - DO NOT APPROVE and quits
+    Zed with the request pending, so no permission outcome ever arrives."""
+    return [
+        _start(31), _request(31, "initialize", protocolVersion=1), _new(31, "h1"), _mode(31, "h1", "chat"), _prompt(31, "h1"),
+        _mode(31, "h1", "agent"), _prompt(31, "h1", "agent"),
+    ]  # fmt: skip
+
+
+def _handshake(records: list[dict], alive=lambda pid: False) -> list[str]:
+    return rehearsal.check_handshake(records, agent_exe=EXE, workspace=WS, alive=alive)
+
+
+def test_a_passing_handshake_rehearsal_has_no_problem() -> None:
+    assert _handshake(_handshake_passing()) == []
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        (lambda rs: [*rs, {"pid": 31, "event": "permission", "outcome": {"outcome": "selected", "optionId": "approve"}}], "pending"),
+        (lambda rs: [*rs, {"pid": 31, "event": "permission", "outcome": {"outcome": "selected", "optionId": "cancel"}}], "pending"),
+        (lambda rs: rs[:-1], "steps"),
+        (lambda rs: [r for r in rs if not _is(31, "session/set_config_option", "h1", "agent")(r)], "steps"),
+        (lambda rs: [*rs[:5], *rs[6:], _mode(31, "h1", "agent")], "steps"),
+        (lambda rs: [*rs, _new(31, "h2")], "1 session"),
+        (lambda rs: [*rs, _start(32, args=ATTACHED_ARGS), _request(32, "initialize", protocolVersion=1), _new(32, "t1")], "launch"),
+        (lambda rs: [*rs, _start(33), _request(33, "initialize", protocolVersion=1), _new(33, "h3")], "launch"),
+        (lambda rs: [{**r, "args": ARGS[:-1]} if r["event"] == "start" else r for r in rs], "not a generated Zed launch"),
+        (lambda rs: [*rs, _request(31, "session/load")], "session/load"),
+        (lambda rs: [], "never started"),
+    ],
+    ids=["approved", "cancelled", "no-a2-prompt", "no-agent-switch", "agent-prompt-before-switch", "extra-session", "attached-launch",
+         "second-qualification-launch", "argv", "load", "empty"],
+)
+def test_each_handshake_failure_is_a_problem(change, expected: str) -> None:
+    problems = _handshake(change(copy.deepcopy(_handshake_passing())))
+    assert problems and any(expected in p for p in problems), problems
+
+
+def test_a_double_left_running_after_the_handshake_quit_is_a_problem() -> None:
+    assert _handshake(_handshake_passing(), alive=lambda pid: pid == 31) == ["double 31 is still running after Zed quit"]
+
+
+@WINDOWS_ONLY
+def test_the_handshake_check_writes_a_new_receipt(tmp_path, monkeypatch) -> None:
+    schedule_path = tmp_path / "stage-c-schedule.json"
+    schedule = {"schedule": "stage-c-schedule-v9", **_schedule(Path(r"C:\venv\Scripts\optimus-agent.exe"), Path(r"C:\run\workspace"))}
+    schedule_path.write_text(json.dumps(schedule), encoding="utf-8")
+
+    def build(root: Path) -> Path:
+        exe = root / "venv with spaces" / "Scripts" / "optimus-agent.exe"
+        exe.parent.mkdir(parents=True)
+        exe.write_bytes(b"MZ")
+        return exe
+
+    monkeypatch.setattr(rehearsal, "build_double", build)
+    monkeypatch.setattr(rehearsal, "_alive", lambda pid: False)
+    fixture_path = rehearsal.zed_fixture(schedule_path, tmp_path / "zed handshake")
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    exe, workspace = Path(fixture["double"]["exe"]), Path(fixture["workspace"])
+    rehearsed = [{**r, "argv0": str(exe), "args": [r["args"][0], str(workspace), *r["args"][2:]]} if r["event"] == "start" else
+                 ({**r, "cwd": str(workspace)} if r.get("method") == "session/new" else r) for r in _handshake_passing()]  # fmt: skip
+    Path(fixture["record"]).write_text("".join(json.dumps(r) + "\n" for r in rehearsed), encoding="utf-8")
+    out = tmp_path / "handshake" / "receipt.json"
+    assert rehearsal.main(["--zed-handshake-check", str(fixture_path), "--out", str(out)]) == 0
+    receipt = json.loads(out.read_text(encoding="utf-8"))
+    assert (receipt["schema"], receipt["passed"], receipt["problems"]) == (rehearsal.ZED_HANDSHAKE_RECEIPT_SCHEMA, True, [])
+    assert receipt["handshake"][0]["sessions"] == [{"session": "h1", "steps": rehearsal.HANDSHAKE_STEPS}] and receipt["permission_outcomes"] == []
+    with pytest.raises(FileExistsError):
+        rehearsal.zed_check(fixture_path, out, handshake=True)
