@@ -867,13 +867,20 @@ def _is(pid: int, method: str, sid: str | None = None, value: str | None = None)
         (lambda rs: [r for r in rs if not _is(22, "session/set_config_option", "t1", "sliding_window")(r)][:23]
                     + [_strategy(22, "t1", "sliding_window")] + [r for r in rs if not _is(22, "session/set_config_option", "t1", "sliding_window")(r)][23:],
          "boundar"),
+        (lambda rs: _drop(rs, lambda r: r is [x for x in rs if _is(22, "session/prompt", "t1")(x)][-1]), "prompts"),
+        (lambda rs: _drop(rs, _is(22, "session/prompt", "t2")), "prompts"),
+        (lambda rs: [*rs, _prompt(22, "t2")], "prompts"),
+        (lambda rs: _insert_after(rs, _is(21, "session/prompt", "q2"), _prompt(21, "q2")), "prompts"),
+        (lambda rs: _insert_after(_drop(rs, _is(22, "session/prompt", "t2")), lambda r: r is [x for x in rs if _is(22, "session/prompt", "t1")(x)][-1],
+                                  _prompt(22, "t1")), "prompts"),
     ],
     ids=["negative-control-made-a-session", "no-a5-session", "a5-no-persisted-setter", "a5-persisted-agent", "a5-ended-on-agent",
          "a5-never-left-chat", "a5-prompted", "a5-not-first", "no-a2-switch", "agent-prompt", "permission", "s2-empty", "s1-empty",
          "no-b2-session", "t1-empty", "two-qualification-launches", "a5-stale-s3-setter", "strategy-omitted", "strategy-reordered",
          "strategy-on-wrong-session", "t1-no-content-before-strategy", "b2-new-session-missing", "strategy-on-t2", "t2-persisted-strategy-mismatch",
          "t2-strategy-after-its-prompt", "t2-no-persisted-mode", "t2-no-persisted-strategy", "t2-mode-after-its-prompt",
-         "t2-extra-leading-strategy", "t1-strategy-off-its-boundary"],
+         "t2-extra-leading-strategy", "t1-strategy-off-its-boundary", "t1-final-prompt-missing", "t2-no-prompt", "t2-extra-prompt",
+         "s2-extra-prompt", "prompt-moved-from-t2-to-t1"],
 )
 def test_each_walk_failure_is_a_problem(change, expected: str) -> None:
     problems = _walk(change(copy.deepcopy(_walk_passing())))

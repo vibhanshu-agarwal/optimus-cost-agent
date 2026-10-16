@@ -102,6 +102,8 @@ ZED_WALK_RECEIPT_SCHEMA = "stage-c-zed-walk-check-v1"
 WALK_SESSIONS = {"qualification": 4, "attached": 2}  # A1, A3, A4 and A5's new session; the seeded thread and B2's
 WALK_STRATEGIES = ["sliding_window", "compaction", "hybrid"]  # B5.3, B6.4 and B8.7 on the seeded thread, after its initial compaction
 WALK_STRATEGY_BOUNDARIES = [2, 3, 6]  # T1's prompts before each: B3.1 and B4.2; then B5.3; then B6.4, B6.5 and B7.6
+# The scheduled Chat prompts per session (Codex's review 6218816879): A1, A3 and A4 one each, A5 none; T1 B3.1 to B8.7, T2 B2.
+WALK_PROMPTS = {"qualification": [1, 1, 1, 0], "attached": [7, 1]}
 NEGATIVE_CONTROL = {"action": "a new thread from the empty S4 (r6's A5 defect, reproduced on purpose)", "expected": "no session/new"}
 ZED_EXE = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Zed" / "Zed.exe"
 
@@ -663,6 +665,9 @@ def check_walk(records: list[dict[str, Any]], *, agent_exe: Path, workspace: Pat
         if len(sessions) != expected:
             problems.append(f"{profile}: {len(sessions)} session/new, expected {expected}")
             continue
+        prompts = [sum(1 for r in s["requests"] if r["method"] == "session/prompt") for s in sessions]
+        if prompts != WALK_PROMPTS[profile]:
+            problems.append(f"{profile}: session prompts {prompts}, expected the scheduled {WALK_PROMPTS[profile]}")
         problems += _qualification_walk(sessions) if profile == "qualification" else _attached_walk(sessions)
     return problems
 
