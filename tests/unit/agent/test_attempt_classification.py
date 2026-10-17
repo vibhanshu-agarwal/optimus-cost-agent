@@ -136,6 +136,43 @@ def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attemp
     assert maintenance.PREFLIGHT_REFUSAL_CODES is PREFLIGHT_REFUSAL_CODES  # one classifier, not a copy
 
 
+def test_the_reply_refusal_codes_are_exactly_the_gateways_refusals_after_a_charged_attempt() -> None:
+    """r8 offline correction: the codes the Gateway returns, with the attempt's usage, after a completed and
+    billed attempt (status 422), as its own source raises them."""
+    from optimus.gateway.attempts import REPLY_REFUSAL_CODES
+
+    text = (SRC / "optimus_gateway" / "model_policy.py").read_text(encoding="utf-8")
+    pattern = re.compile(r'ModelPolicyRefusal\(\s*"([A-Z_]+)",(?:(?!ModelPolicyRefusal\().)*?status=422,?\s*\)', re.DOTALL)
+    assert REPLY_REFUSAL_CODES == set(pattern.findall(text))
+    assert REPLY_REFUSAL_CODES.isdisjoint(PREFLIGHT_REFUSAL_CODES)
+
+
+def test_the_gateway_failure_codes_are_every_code_the_gateway_returns() -> None:
+    """The diagnostic allowlist: the preflight refusals, the reply refusals and the attempt contract's failures
+    (`UPSTREAM_ATTEMPT_<outcome>` for every outcome but completed); anything else is logged as UNRECOGNIZED."""
+    from optimus.gateway.attempts import GATEWAY_FAILURE_CODES, REPLY_REFUSAL_CODES, UPSTREAM_ATTEMPT_CODES
+    from optimus_model_policy.binding import ATTEMPT_COMPLETED, ATTEMPT_OUTCOMES
+
+    responses = (SRC / "optimus_gateway" / "responses.py").read_text(encoding="utf-8")
+    assert 'code = f"UPSTREAM_ATTEMPT_{failure.outcome.upper()}"' in responses
+    assert set(re.findall(r'"(UPSTREAM_ATTEMPT_[A-Z_]+)"', responses)) <= UPSTREAM_ATTEMPT_CODES
+    assert UPSTREAM_ATTEMPT_CODES == {f"UPSTREAM_ATTEMPT_{outcome.upper()}" for outcome in ATTEMPT_OUTCOMES - {ATTEMPT_COMPLETED}}
+    assert GATEWAY_FAILURE_CODES == PREFLIGHT_REFUSAL_CODES | REPLY_REFUSAL_CODES | UPSTREAM_ATTEMPT_CODES
+
+
+def test_the_route_stop_codes_are_exactly_where_the_gateway_stops_an_experimental_route() -> None:
+    """The Gateway trips the experimental route stop at three places: an uncertain attempt, unverifiable usage
+    (both UPSTREAM_ATTEMPT_UNCERTAIN) and a refused reply (its own code); then it refuses with
+    EMPIRICAL_ROUTE_STOPPED. A new stop site must be classified before it ships."""
+    from optimus.gateway.attempts import REPLY_REFUSAL_CODES, ROUTE_STOP_CODES
+
+    responses = (SRC / "optimus_gateway" / "responses.py").read_text(encoding="utf-8")
+    calls = re.findall(r"_stop_experimental_route\(policy, admitted, ([^)]+)\)", responses)
+    assert calls == ["code", '"UPSTREAM_ATTEMPT_UNCERTAIN"', "exc.code"]
+    assert re.search(r"if failure\.outcome == ATTEMPT_UNCERTAIN:\s+_stop_experimental_route\(policy, admitted, code\)", responses)
+    assert ROUTE_STOP_CODES == REPLY_REFUSAL_CODES | {"UPSTREAM_ATTEMPT_UNCERTAIN", "EMPIRICAL_ROUTE_STOPPED"}
+
+
 def test_no_host_call_path_keeps_its_own_refusal_classifier() -> None:
     """Every stage imports the one classifier; none re-declares the code set or the predicate."""
     paths = [SRC / "optimus" / "agent" / "runner.py", SRC / "optimus" / "agent" / "planning_loop.py", SRC / "optimus" / "context" / "maintenance.py"]

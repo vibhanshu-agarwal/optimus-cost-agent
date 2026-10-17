@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from optimus.agent.models import AgentRunRequest
 from optimus.agent.planning_loop import PlanningProgressEvent
 from optimus.agent.workspace_context import WorkspaceContextResult
+from optimus.gateway.attempts import gateway_failure_facts
 from optimus.telemetry.redaction import redact_for_telemetry
 from optimus_security.sanitization import session_correlation_tag
 
@@ -305,22 +306,25 @@ def _attempt_fields(attempt: ProviderAttempt) -> dict[str, Any]:
 
 
 def log_provider_attempts(
-    *, stage: str, correlation: Callable[[], dict[str, Any]], attempts: Iterable[ProviderAttempt]
+    *, stage: str, correlation: Callable[[], dict[str, Any]], attempts: Iterable[ProviderAttempt], failure: BaseException | None = None
 ) -> None:
     """Record the content-free status of every provider attempt behind one host model request (Plan 12.2
     r4 stop diagnosis; Codex disposition 2026-10-13): the attempts the host already classified, in order,
     including failures before a safe recovery. Only the call correlation, the stage and each attempt's key,
     outcome, routing and integer-or-null status are written; never a body, header, error text, key,
-    provider error type or identifier. Nothing is read with tracing disabled: `correlation` and `attempts`
-    are touched only inside the sink's supplier, whose failure is contained there."""
+    provider error type or identifier. A request that failed with a Gateway HTTP error adds
+    `gateway_failure`: the Gateway's allowlisted refusal code and its outer status, apart from any routed
+    attempt's upstream status (r8 offline correction). Nothing is read with tracing disabled: `correlation`,
+    `attempts` and `failure` are touched only inside the sink's supplier, whose failure is contained there."""
     if not debug_trace_enabled():
         return
-    acp_debug_log(
-        location="debug_trace.py:log_provider_attempts",
-        message="provider attempts classified",
-        data=lambda: {"stage": stage, **correlation(), "attempts": [_attempt_fields(attempt) for attempt in attempts]},
-        hypothesis_id="P12.2-ATTEMPT-STATUS",
-    )
+
+    def data() -> dict[str, Any]:
+        record = {"stage": stage, **correlation(), "attempts": [_attempt_fields(attempt) for attempt in attempts]}
+        facts = gateway_failure_facts(failure) if failure is not None else None
+        return record if facts is None else {**record, "gateway_failure": facts}
+
+    acp_debug_log(location="debug_trace.py:log_provider_attempts", message="provider attempts classified", data=data, hypothesis_id="P12.2-ATTEMPT-STATUS")
 
 
 def log_planning_replan_event(event: PlanningProgressEvent, *, stop_reason: str | None = None) -> None:

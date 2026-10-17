@@ -30,6 +30,7 @@ from optimus.gateway.attempts import (
     first_error,
     is_input_capacity_refusal,
     is_preflight_refusal,
+    stops_experimental_route,
 )
 from optimus.gateway.client import GatewayClient
 from optimus.gateway.models import GatewayUsage
@@ -93,6 +94,24 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
         "Chat could not answer because this request exceeds the model's input capacity. This request was not "
         "sent to a model. A shorter prompt or a narrower request involving fewer workspace files may help. If "
         "earlier conversation history is the cause, start a new thread. This thread stays open."
+    ),
+}
+
+# r8 offline correction: the same failures when they prove the experimental test route stopped. The Gateway then
+# admits no further request on that route while it runs, so these never suggest a retry. Same stop reasons.
+_NO_RETRY = "No further request on this route will be sent while this agent runs, so retrying will not help."
+CHAT_ROUTE_STOPPED_MESSAGES: dict[str, str] = {
+    "CHAT_GATEWAY_FAILURE": (
+        "Chat could not get an answer: the model gateway refused the model's reply after the call was charged, "
+        f"and this experimental test route is now stopped. {_NO_RETRY}"
+    ),
+    "CHAT_GATEWAY_COST_UNKNOWN": (
+        "Chat stopped because the model gateway failed without reporting the call's cost, and this experimental "
+        f"test route is now stopped. {_NO_RETRY}"
+    ),
+    "CHAT_GATEWAY_REFUSED": (
+        "Chat could not answer: this experimental test route was stopped after an earlier reply failed the model "
+        f"gateway's checks. The request was refused before it reached any model, so nothing was charged. {_NO_RETRY}"
     ),
 }
 
@@ -547,7 +566,9 @@ class AgentRunner:
         except Exception as exc:
             # Every attempt is accounted for, known or not, before the failure propagates as it always
             # has (an accounting-integrity error propagates instead).
-            self._account(request, scope, usage=getattr(exc, "gateway_usage", None), classify=lambda exc=exc: attempts_from_failure(exc), identity=_identity(bound))
+            self._account(
+                request, scope, usage=getattr(exc, "gateway_usage", None), classify=lambda exc=exc: attempts_from_failure(exc), identity=_identity(bound), failure=exc
+            )
             if is_input_capacity_refusal(exc):
                 # Release supplement V1: a complete request over the route's input capacity is a readable
                 # OPEN refusal that cost nothing, never a raw gateway error.
@@ -634,10 +655,14 @@ class AgentRunner:
             self._record_ledger_entry(request, scope, gateway_usage, settled_turn=settled_turn, wire_attempt=wire_attempt)
 
         def attempt_callback(
-            settled_turn: int, wire_attempt: int, attempts: tuple[ProviderAttempt, ...], identity: RouteIdentity | None
+            settled_turn: int,
+            wire_attempt: int,
+            attempts: tuple[ProviderAttempt, ...],
+            identity: RouteIdentity | None,
+            failure: BaseException | None = None,
         ) -> None:
             self._report_attempts(
-                request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity
+                request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity, failure=failure
             )
 
         planner = PlanningLoopRunner(
@@ -911,8 +936,10 @@ class AgentRunner:
         identity: RouteIdentity | None,
         settled_turn: int = 1,
         wire_attempt: int = 1,
+        failure: BaseException | None = None,
     ) -> tuple[ProviderAttempt, ...]:
-        """Account for one host request in both sinks and return its attempts.
+        """Account for one host request in both sinks and return its attempts. `failure`, the request's error if
+        it failed, reaches only the diagnostic observer.
 
         Settled usage goes to the existing ledger first; then every attempt goes to this invocation's
         receipt sink, or, for a report that cannot be attributed, what its integrity error carries: the
@@ -932,7 +959,9 @@ class AgentRunner:
             errors.append(error)
             attempts = error.attempts
         try:
-            self._report_attempts(request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity)
+            self._report_attempts(
+                request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity, failure=failure
+            )
         except Exception as error:  # noqa: BLE001 - held with the others
             errors.append(error)
         if errors:
@@ -940,7 +969,13 @@ class AgentRunner:
         return attempts
 
     def _observe_attempts(
-        self, request: AgentRunRequest, *, settled_turn: int, wire_attempt: int, attempts: tuple[ProviderAttempt, ...]
+        self,
+        request: AgentRunRequest,
+        *,
+        settled_turn: int,
+        wire_attempt: int,
+        attempts: tuple[ProviderAttempt, ...],
+        failure: BaseException | None = None,
     ) -> None:
         """Offer the classified attempts to the diagnostic observer, if any, after their receipts were offered
         (Plan 12.2 r4 stop diagnosis). Diagnostic only: an ordinary failure never changes the run; cancellation
@@ -954,6 +989,7 @@ class AgentRunner:
                 stage=stage,
                 correlation=lambda: {"run_id": request.run_id, "session_id": request.session_id, "settled_turn": settled_turn, "wire_attempt": wire_attempt},
                 attempts=attempts,
+                failure=failure,
             )
 
     def _record_ledger_entry(
@@ -1005,14 +1041,15 @@ class AgentRunner:
         wire_attempt: int,
         attempts: tuple[ProviderAttempt, ...],
         identity: RouteIdentity | None,
+        failure: BaseException | None = None,
     ) -> None:
         """Report one host request's provider attempts to the receipt sink, then, whatever that did, offer them
-        to the diagnostic observer: every Chat and planning report (the classified attempts and a proven unsent
-        one alike) passes here once."""
+        to the diagnostic observer, with the request's error if it failed: every Chat and planning report (the
+        classified attempts and a proven unsent one alike) passes here once."""
         try:
             self._report_receipts(request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity)
         finally:
-            self._observe_attempts(request, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts)
+            self._observe_attempts(request, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, failure=failure)
 
     def _report_receipts(
         self,
@@ -1553,7 +1590,7 @@ class AgentRunner:
             # accounting-integrity error propagates out of the turn once everything was recorded.
             try:
                 attempts = self._account(
-                    request, scope, usage=getattr(exc, "gateway_usage", None), classify=lambda exc=exc: attempts_from_failure(exc), identity=identity
+                    request, scope, usage=getattr(exc, "gateway_usage", None), classify=lambda exc=exc: attempts_from_failure(exc), identity=identity, failure=exc
                 )
             except Exception:
                 complete("cost_unknown")
@@ -1561,15 +1598,26 @@ class AgentRunner:
             unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)
             known = sum((attempt.cost_usd for attempt in attempts if attempt.cost_usd is not None), Decimal("0"))
             complete("cost_unknown" if unknown else "failed")
+            # r8 offline correction: a proven stopped experimental route gets its no-retry text; nothing else changes.
+            stopped = stops_experimental_route(exc, experimental=scope.route is not None and scope.route.experimental)
+
+            def text(stop_reason: str) -> str | None:
+                return CHAT_ROUTE_STOPPED_MESSAGES[stop_reason] if stopped else None
+
             if unknown:
                 return self._chat_failure(
-                    request, stop_reason="CHAT_GATEWAY_COST_UNKNOWN", total_cost_usd=known, cost_complete=False, unknown_cost_attempt_count=unknown
+                    request,
+                    stop_reason="CHAT_GATEWAY_COST_UNKNOWN",
+                    output_text=text("CHAT_GATEWAY_COST_UNKNOWN"),
+                    total_cost_usd=known,
+                    cost_complete=False,
+                    unknown_cost_attempt_count=unknown,
                 )
             if is_input_capacity_refusal(exc):
                 return self._chat_failure(request, stop_reason="CHAT_INPUT_CAPACITY_EXCEEDED")
             if is_preflight_refusal(exc):
-                return self._chat_failure(request, stop_reason="CHAT_GATEWAY_REFUSED")
-            return self._chat_failure(request, stop_reason="CHAT_GATEWAY_FAILURE", total_cost_usd=known)
+                return self._chat_failure(request, stop_reason="CHAT_GATEWAY_REFUSED", output_text=text("CHAT_GATEWAY_REFUSED"))
+            return self._chat_failure(request, stop_reason="CHAT_GATEWAY_FAILURE", output_text=text("CHAT_GATEWAY_FAILURE"), total_cost_usd=known)
 
         complete("succeeded")
         attempts = self._account(request, scope, usage=response.gateway_usage, classify=lambda: attempts_from_response(response), identity=identity)

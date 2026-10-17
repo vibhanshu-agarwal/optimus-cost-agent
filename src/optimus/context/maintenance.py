@@ -290,8 +290,10 @@ class GatewaySummarizerCall:
             try:
                 provider = attempts_from_failure(exc)
             except AttemptIntegrityError as error:
-                return self._observed(request_id, error.attempts, _unattributable(request_id, error))
-            return self._observed(request_id, provider, SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, provider)))
+                return self._observed(request_id, error.attempts, _unattributable(request_id, error), failure=exc)
+            return self._observed(
+                request_id, provider, SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, provider)), failure=exc
+            )
         try:
             provider = attempts_from_response(response)
         except AttemptIntegrityError as error:
@@ -299,16 +301,18 @@ class GatewaySummarizerCall:
         attempts = _attempts(request_id, provider)
         return self._observed(request_id, provider, SummarizerResponse(text=response.output_text, finish_status=response.finish_reason, attempts=attempts))
 
-    def _observed(self, request_id: str, provider: tuple[ProviderAttempt, ...], response: SummarizerResponse) -> SummarizerResponse:
-        """The response, carrying the diagnostic observation of its classified attempts when an observer is set
-        (Plan 12.2 r4 stop diagnosis). Nothing runs here: the host runs it once, after offering every attempt to
-        its receipt sink (Codex M1 ruling)."""
+    def _observed(
+        self, request_id: str, provider: tuple[ProviderAttempt, ...], response: SummarizerResponse, *, failure: BaseException | None = None
+    ) -> SummarizerResponse:
+        """The response, carrying the diagnostic observation of its classified attempts, and of the request's error
+        if it failed, when an observer is set (Plan 12.2 r4 stop diagnosis; r8 offline correction). Nothing runs
+        here: the host runs it once, after offering every attempt to its receipt sink (Codex M1 ruling)."""
         observer = self._attempt_observer
         if observer is None:
             return response
 
         def diagnostic() -> None:
-            observer(stage="summary", correlation=lambda: {"session_id": self._session_id, "request_id": request_id}, attempts=provider)
+            observer(stage="summary", correlation=lambda: {"session_id": self._session_id, "request_id": request_id}, attempts=provider, failure=failure)
 
         return replace(response, diagnostic=diagnostic)
 

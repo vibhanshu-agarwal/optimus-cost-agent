@@ -78,16 +78,23 @@ def _attempt(key: str, outcome: str, routed: bool, upstream: int | None, gateway
     return {"attempt": key, "outcome": outcome, "routed": routed, "upstream_http_status": upstream, "gateway_http_status": gateway}
 
 
-# Each scenario: what the fake Gateway does, and the attempts the log must hold (same for every stage).
+def _failure(code: str | None, status: int) -> dict:
+    return {"gateway_failure": {"code": code, "http_status": status}}
+
+
+REJECTED_502 = _failure("UPSTREAM_ATTEMPT_REJECTED", 502)
+# Each scenario: what the fake Gateway does, the attempts the log must hold (same for every stage), and, for a
+# request that failed with a Gateway HTTP error, its allowlisted refusal code and outer status (r8 correction).
 SCENARIOS = {
-    "429-then-403": (lambda text: _rejected_twice(429, 403), [_attempt("1", "rejected", True, 429, None), _attempt("2", "rejected", True, 403, None)]),
-    "429-then-429": (lambda text: _rejected_twice(429, 429), [_attempt("1", "rejected", True, 429, None), _attempt("2", "rejected", True, 429, None)]),
-    "429-then-success": (_recovered, [_attempt("1", "rejected", True, 429, None), _attempt("2", "completed", True, None, None)]),
-    "transport-loss-no-status": (lambda text: ConnectionResetError(CANARY), [_attempt("1", "uncertain", False, None, None)]),
-    "gateway-502-absent-route-metadata": (lambda text: GatewayHttpError(502, CANARY), [_attempt("1", "uncertain", False, None, 502)]),
+    "429-then-403": (lambda text: _rejected_twice(429, 403), [_attempt("1", "rejected", True, 429, None), _attempt("2", "rejected", True, 403, None)], REJECTED_502),
+    "429-then-429": (lambda text: _rejected_twice(429, 429), [_attempt("1", "rejected", True, 429, None), _attempt("2", "rejected", True, 429, None)], REJECTED_502),
+    "429-then-success": (_recovered, [_attempt("1", "rejected", True, 429, None), _attempt("2", "completed", True, None, None)], {}),
+    "transport-loss-no-status": (lambda text: ConnectionResetError(CANARY), [_attempt("1", "uncertain", False, None, None)], {}),
+    "gateway-502-absent-route-metadata": (lambda text: GatewayHttpError(502, CANARY), [_attempt("1", "uncertain", False, None, 502)], _failure(None, 502)),
     "gateway-502-malformed-route-metadata": (
         lambda text: GatewayHttpError(502, CANARY, gateway_code="UPSTREAM_ATTEMPT_REJECTED", retryable=False, route_attempts=(), route_attempts_malformed=True),
         [_attempt("1", "uncertain", False, None, 502)],
+        REJECTED_502,
     ),
 }  # fmt: skip
 STAGES = {ExecutionMode.CHAT: ("answer", "Hello."), ExecutionMode.AGENT: ("planning", "WRITE a.py\nx")}
@@ -126,7 +133,7 @@ def _records(log: Path) -> list[dict]:
 
 def _run(tmp_path: Path, mode: ExecutionMode, scenario: str, *, observer=log_provider_attempts):
     tmp_path.mkdir(parents=True, exist_ok=True)
-    make, _ = SCENARIOS[scenario]
+    make = SCENARIOS[scenario][0]
     receipts: list[StageReceipt] = []
     gateway = FakeGateway(make(STAGES[mode][1]))
     request = AgentRunRequest(run_id="s:1", session_id="s", task=f"Change the greeting. {CANARY}", workspace_root=tmp_path, execution_mode=mode)
@@ -247,6 +254,7 @@ def test_each_chat_and_planning_attempt_is_logged_content_free(tmp_path, mode, s
     [record] = _records(log)
     assert record["data"] == {
         "stage": STAGES[mode][0], "run_id": "s:1", "session_id": "s", "settled_turn": 1, "wire_attempt": 1, "attempts": SCENARIOS[scenario][1],
+        **SCENARIOS[scenario][2],
     }  # fmt: skip
     assert CANARY not in log.read_text(encoding="utf-8")
     # The log names exactly the attempts the receipts recorded, in order, with the same statuses.
@@ -262,7 +270,7 @@ def test_each_summarization_attempt_is_logged_content_free(tmp_path, scenario) -
     summary.settle()
 
     [record] = _records(log)
-    assert record["data"] == {"stage": "summary", "session_id": "s", "request_id": "req", "attempts": SCENARIOS[scenario][1]}
+    assert record["data"] == {"stage": "summary", "session_id": "s", "request_id": "req", "attempts": SCENARIOS[scenario][1], **SCENARIOS[scenario][2]}
     assert CANARY not in log.read_text(encoding="utf-8")
     # The log names exactly the attempts the host offered as receipts, in order, with the same statuses.
     assert [(a["outcome"], a["upstream_http_status"] if a["routed"] else a["gateway_http_status"]) for a in record["data"]["attempts"]] == [

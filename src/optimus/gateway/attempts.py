@@ -36,14 +36,20 @@ from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
 from optimus.gateway.models import GatewayResponse, GatewayRouteAttempt, GatewayUsage
 
 __all__ = [
+    "GATEWAY_FAILURE_CODES",
     "PREFLIGHT_REFUSAL_CODES",
+    "REPLY_REFUSAL_CODES",
+    "ROUTE_STOP_CODES",
+    "UPSTREAM_ATTEMPT_CODES",
     "AttemptIntegrityError",
     "ProviderAttempt",
     "attempts_from_failure",
     "attempts_from_response",
     "first_error",
+    "gateway_failure_facts",
     "is_input_capacity_refusal",
     "is_preflight_refusal",
+    "stops_experimental_route",
 ]
 
 # Gateway model-policy refusals raised before any upstream attempt (optimus_gateway.model_policy
@@ -84,6 +90,29 @@ PREFLIGHT_REFUSAL_CODES = frozenset(
         "UNKNOWN_MODEL",
     }
 )
+
+# Raised after a completed, billed attempt and always with its usage (optimus_gateway.model_policy's reply
+# checks, status 422). On the experimental route each one also stops the route (r8 offline correction).
+REPLY_REFUSAL_CODES = frozenset(
+    {
+        "EMPIRICAL_ESTIMATE_EXCEEDED",
+        "EMPIRICAL_PROVIDER_MISMATCH",
+        "EMPIRICAL_PROVIDER_MISSING",
+        "EMPIRICAL_ROUTER_FALLBACK",
+        "EMPIRICAL_ROUTER_METADATA_MALFORMED",
+        "EMPIRICAL_ROUTER_METADATA_MISSING",
+        "EMPIRICAL_ROUTER_PIPELINE",
+        "FINISH_STATUS_UNVERIFIED",
+    }
+)
+# The enforced attempt contract's failures (optimus_gateway.responses: `UPSTREAM_ATTEMPT_<outcome>`).
+UPSTREAM_ATTEMPT_CODES = frozenset({"UPSTREAM_ATTEMPT_NOT_SENT", "UPSTREAM_ATTEMPT_REJECTED", "UPSTREAM_ATTEMPT_UNCERTAIN"})
+# Every code the Gateway returns: the only codes a diagnostic writes. Tests keep each set equal to the Gateway's.
+GATEWAY_FAILURE_CODES = PREFLIGHT_REFUSAL_CODES | REPLY_REFUSAL_CODES | UPSTREAM_ATTEMPT_CODES
+# After one of these on an experimental route the Gateway admits no further request on it for the rest of its
+# life (optimus_gateway.responses._stop_experimental_route), and then refuses with EMPIRICAL_ROUTE_STOPPED.
+ROUTE_STOP_CODES = REPLY_REFUSAL_CODES | {"UPSTREAM_ATTEMPT_UNCERTAIN", "EMPIRICAL_ROUTE_STOPPED"}
+UNRECOGNIZED_CODE = "UNRECOGNIZED"
 
 _ZERO_COST = frozenset({"not_sent", "rejected"})
 OUTCOMES = frozenset({"completed", *_ZERO_COST, "uncertain", "unattributed"})
@@ -175,6 +204,29 @@ def is_input_capacity_refusal(exc: BaseException) -> bool:
     `CAPACITY_REFUSED` fallback names none, so it keeps the generic refusal (release supplement V1;
     Codex concurrence disposition, 2026-10-04)."""
     return is_preflight_refusal(exc) and getattr(exc, "gateway_code", None) == "INPUT_EXCEEDS_CAPACITY"
+
+
+def gateway_failure_facts(exc: BaseException) -> dict[str, str | int | None] | None:
+    """A failed request's content-free Gateway facts, for diagnostics only (r8 offline correction): its refusal
+    code when the Gateway's own, `UNRECOGNIZED` for any other code (never its text), and its outer HTTP status as
+    an integer. None when the request did not fail with a Gateway HTTP error. A fact not reported stays null,
+    and the client's 0 (no HTTP reply) is not a status."""
+    if not isinstance(exc, GatewayHttpError):
+        return None
+    code = exc.gateway_code
+    status = exc.status_code
+    return {
+        "code": None if code is None else code if code in GATEWAY_FAILURE_CODES else UNRECOGNIZED_CODE,
+        "http_status": status if type(status) is int and 100 <= status <= 599 else None,
+    }
+
+
+def stops_experimental_route(exc: BaseException, *, experimental: bool) -> bool:
+    """Whether this failure proves the request's experimental route is stopped: the Gateway's refusal of a stopped
+    route, or a stop-tripping code on a route the host's trusted snapshot names experimental."""
+    if not isinstance(exc, GatewayHttpError) or exc.gateway_code not in ROUTE_STOP_CODES:
+        return False
+    return exc.gateway_code == "EMPIRICAL_ROUTE_STOPPED" or experimental
 
 
 def attempts_from_response(response: GatewayResponse) -> tuple[ProviderAttempt, ...]:

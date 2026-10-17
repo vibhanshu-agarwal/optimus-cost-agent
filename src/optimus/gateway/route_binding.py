@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from optimus.gateway.disclosure import ContributorDisclosure
 from optimus_model_policy import Message, PackedModelRequest, RegistrySnapshot, guard_request
 from optimus_model_policy.binding import RouteBinding
+from optimus_model_policy.experimental import experimental_route
 
 __all__ = [
     "BoundRequest",
@@ -133,6 +134,9 @@ class TurnRouteBinder:
         self.output_cap = output_cap
         self._disclosure = disclosure
         self._snapshot = snapshot
+        # Whether the trusted snapshot names this route a reviewed experimental test route, whose Gateway stops it
+        # after a failed reply check (r8 offline correction). Read from the snapshot only; False without one.
+        self.experimental = snapshot is not None and experimental_route(snapshot, identity.model_id) is not None
         self._prefix = f"{session_id}:{turn_seq}"
         self._ordinal = itertools.count(1)
         self._lock = threading.Lock()
