@@ -109,9 +109,10 @@ CHAT_ROUTE_STOPPED_MESSAGES: dict[str, str] = {
         "Chat stopped because the model gateway failed without reporting the call's cost, and this experimental "
         f"test route is now stopped. {_NO_RETRY}"
     ),
+    # A later refusal proves only the stop and this request's free refusal, never the stop's cause (Codex review P2).
     "CHAT_GATEWAY_REFUSED": (
-        "Chat could not answer: this experimental test route was stopped after an earlier reply failed the model "
-        f"gateway's checks. The request was refused before it reached any model, so nothing was charged. {_NO_RETRY}"
+        "Chat could not answer: the model gateway has stopped this experimental test route, so it refused this "
+        f"request before it reached any model and nothing was charged. {_NO_RETRY}"
     ),
 }
 

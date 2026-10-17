@@ -202,6 +202,37 @@ def test_the_next_request_on_a_stopped_route_is_refused_free_and_says_so(tmp_pat
     assert (result.stop_reason, result.total_cost_usd, result.cost_complete) == ("CHAT_GATEWAY_REFUSED", Decimal("0"), True)
     assert [(r.outcome, r.reported_cost_usd) for r in receipts] == [("rejected", Decimal("0"))]
     assert result.output_text == CHAT_ROUTE_STOPPED_MESSAGES["CHAT_GATEWAY_REFUSED"] != CHAT_FAILURE_MESSAGES["CHAT_GATEWAY_REFUSED"]
+    _states_only_the_stop_and_this_free_refusal(result.output_text)
+    [record] = _records(log)
+    assert record["gateway_failure"] == {"code": "EMPIRICAL_ROUTE_STOPPED", "http_status": 503}
+
+
+def _states_only_the_stop_and_this_free_refusal(text: str) -> None:
+    """A later refusal proves only that the route is stopped and that this request reached no model at $0: the stop's
+    cause is not known to it, so its text names none (Codex review P2, 2026-10-17)."""
+    lowered = text.lower()
+    for claim in ("reply", "check", "earlier", "failed", "uncertain", "cost could not"):
+        assert claim not in lowered, claim
+    for fact in ("stopped", "before it reached any model", "nothing was charged", "retrying will not help"):
+        assert fact in lowered, fact
+
+
+def test_a_route_stopped_by_an_uncertain_attempt_refuses_the_next_request_without_naming_a_cause(tmp_path, monkeypatch) -> None:
+    """The Gateway also stops the experimental route after an uncertain attempt (no reply was refused): the later
+    refusal must not claim that an earlier reply failed its checks."""
+    policy, model = _haiku("qualification")
+    gateway = InProcessGateway(policy, Replying(attempts=[UpstreamAttemptFailure(ATTEMPT_UNCERTAIN)]), monkeypatch)
+    first, _ = _chat(tmp_path / "first", policy, model)
+    log = _trace(tmp_path)
+
+    result, receipts = _chat(tmp_path / "second", policy, model, turn=2)
+
+    assert [(status, body["code"]) for status, body in gateway.replies] == [(502, "UPSTREAM_ATTEMPT_UNCERTAIN"), (503, "EMPIRICAL_ROUTE_STOPPED")]
+    assert (first.stop_reason, first.cost_complete) == ("CHAT_GATEWAY_COST_UNKNOWN", False)
+    assert len(gateway.upstream.calls) == 1  # the stopped route reaches no provider
+    assert (result.stop_reason, result.total_cost_usd, result.cost_complete) == ("CHAT_GATEWAY_REFUSED", Decimal("0"), True)
+    assert [(r.outcome, r.reported_cost_usd) for r in receipts] == [("rejected", Decimal("0"))]
+    _states_only_the_stop_and_this_free_refusal(result.output_text)
     [record] = _records(log)
     assert record["gateway_failure"] == {"code": "EMPIRICAL_ROUTE_STOPPED", "http_status": 503}
 
