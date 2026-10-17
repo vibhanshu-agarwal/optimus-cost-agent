@@ -75,6 +75,12 @@ jobs:
           PY
           uv run pre-commit run optimus-secret-scan-ci-production --all-files --hook-stage manual
 
+      - name: "optimus-check: mypy"
+        run: uv run --no-sync python -m mypy --config-file pyproject.toml
+
+      - name: "optimus-check: mypy-win32"
+        run: uv run --no-sync python -m mypy --config-file pyproject.toml --platform win32
+
       # Plan 12.2 closure: one full default run, then separate floors on that dataset (Optimus product
       # group, context_engine and optimus_model_policy at 80% each; Evidence Handoff and the aggregate
       # informational). The commit hook runs the coverage-free commit profile (Plan 11.30); coverage is decided

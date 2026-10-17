@@ -20,6 +20,7 @@ class GuardrailRuleSet:
                     "config-trust-scan",
                     "secret-scan",
                     "pytest-coverage",
+                    "mypy",
                 }
             )
         )

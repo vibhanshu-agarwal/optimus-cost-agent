@@ -41,6 +41,9 @@ dev = [
   "pytest-cov>=5.0",
   "pytest-xdist>=3.6",
   "ruff>=0.5",
+  "mypy>=2.3,<3",
+  "types-pyyaml==6.0.12.20260906",
+  "types-defusedxml==0.7.0.20260504",
 ]
 
 [tool.pytest.ini_options]
@@ -104,3 +107,65 @@ ignore = ["E501"]
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]
 skips = ["B101", "B105", "B310", "B404", "B603"]
+
+[tool.mypy]
+files = ["src"]
+python_version = "3.14"
+show_error_codes = true
+
+# confusable_homoglyphs 3.3.1 has no py.typed marker or identified published stubs.
+# This exact third-party import exception does not exempt any project source module.
+[[tool.mypy.overrides]]
+module = "confusable_homoglyphs"
+ignore_missing_imports = true
+
+# Measured source typing debt, #329: exact modules only; this set may only shrink.
+[[tool.mypy.overrides]]
+module = [
+    "evidence_handoff.redaction.gate",
+    "evidence_handoff.redaction.images",
+    "evidence_handoff.redaction.private_files",
+    "evidence_handoff_runtime.lifecycle",
+    "evidence_handoff_runtime.service",
+    "evidence_handoff_runtime.signing_key_custody",
+    "optimus.acp.__main__",
+    "optimus.acp.dispatcher",
+    "optimus.acp.launch_approval_cli",
+    "optimus.acp.launch_approvals",
+    "optimus.acp.launch_gate",
+    "optimus.acp.lifecycle",
+    "optimus.acp.ndjson_subprocess_session",
+    "optimus.acp.operator_verify",
+    "optimus.acp.preflight",
+    "optimus.acp.server",
+    "optimus.acp.spec",
+    "optimus.acp.trusted_paths",
+    "optimus.agent.models",
+    "optimus.agent.planning_loop",
+    "optimus.agent.prompts",
+    "optimus.agent.runner",
+    "optimus.agent.state_store",
+    "optimus.config.gateway",
+    "optimus.context.assembly",
+    "optimus.evidence.acquisition",
+    "optimus.evidence.gateway_io",
+    "optimus.gateway.tool_models",
+    "optimus.mcp.client_catalog",
+    "optimus.mcp.client_config",
+    "optimus.mcp.client_disposition",
+    "optimus.mcp.client_sdk",
+    "optimus.redis.async_bridge",
+    "optimus.redis.runtime",
+    "optimus.release.defaults",
+    "optimus.retry.gated_run",
+    "optimus.skills.registry",
+    "optimus_gateway.__main__",
+    "optimus_gateway.server",
+    "optimus_gateway.tool_provider_http",
+    "optimus_gateway.tool_providers",
+    "optimus_gateway.tool_state",
+    "optimus_model_policy.capacity",
+    "optimus_model_policy.registry",
+    "optimus_model_policy.validation",
+]
+ignore_errors = true

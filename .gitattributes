@@ -25,3 +25,15 @@ evidence-handoff-a2a-not-shipped-closure.md         -text
 # approval digest through Git storage and any later archival move.
 docs/superpowers/plans/2026-10-04-plan-11-30-test-profiles-implementation_v4.md -text whitespace=cr-at-eol
 docs/superpowers/plans/archive/2026-10-04-plan-11-30-test-profiles-implementation_v4.md -text whitespace=cr-at-eol
+
+# Static typing: preserve the accepted bootstrap and frozen baseline evidence bytes.
+tests/fixtures/typing/mypy-bootstrap.json -text whitespace=cr-at-eol
+reports/static-typing-baseline-2026-10-16_v2.md -text whitespace=cr-at-eol
+reports/static-typing-baseline-2026-10-16-delta_v2.json -text whitespace=cr-at-eol
+reports/static-typing-baseline-2026-10-16-diagnostics_v2.json -text whitespace=cr-at-eol
+reports/static-typing-baseline-2026-10-16-diagnostics.json -text whitespace=cr-at-eol
+reports/static-typing-baseline-2026-10-16-exceptions.candidate_v2.json -text whitespace=cr-at-eol
+reports/static-typing-baseline-2026-10-16-exceptions.candidate.json -text whitespace=cr-at-eol
+reports/static-typing-baseline-2026-10-16-modules.candidate_v2.md -text whitespace=cr-at-eol
+reports/static-typing-baseline-2026-10-16-modules.candidate.md -text whitespace=cr-at-eol
+reports/static-typing-baseline-2026-10-16.md -text whitespace=cr-at-eol

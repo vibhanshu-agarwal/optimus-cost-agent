@@ -1,0 +1,3205 @@
+{
+  "windows-01": [
+    {
+      "path": "src/optimus/guardrails/unicode_confusables.py",
+      "line": 5,
+      "column": null,
+      "message": "Skipping analyzing \"confusable_homoglyphs\": module is installed, but missing library stubs or py.typed marker",
+      "code": "import-untyped"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/private_files.py",
+      "line": 594,
+      "column": null,
+      "message": "Unsupported operand types for + (\"None\" and \"int\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus/mcp/client_config.py",
+      "line": 138,
+      "column": null,
+      "message": "Argument 1 of \"__reduce_ex__\" is incompatible with supertype \"builtins.object\"; supertype defines the argument type as \"SupportsIndex\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/acp/trusted_paths.py",
+      "line": 402,
+      "column": null,
+      "message": "Module has no attribute \"getpwuid\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/trusted_paths.py",
+      "line": 402,
+      "column": null,
+      "message": "Module has no attribute \"getuid\"; maybe \"getpid\" or \"getppid\"?",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/launch_approvals.py",
+      "line": 354,
+      "column": null,
+      "message": "Argument \"mode\" to \"ApprovalRecord\" has incompatible type \"str\"; expected \"Literal['one-shot', 'durable']\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/signing_key_custody.py",
+      "line": 53,
+      "column": null,
+      "message": "\"object\" has no attribute \"get_password\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/signing_key_custody.py",
+      "line": 84,
+      "column": null,
+      "message": "\"object\" has no attribute \"set_password\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/images.py",
+      "line": 140,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"None\", variable has type \"BufferedReader[_BufferedReaderStream]\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/images.py",
+      "line": 179,
+      "column": null,
+      "message": "Argument 2 to \"save\" of \"Image\" has incompatible type \"**dict[str, object]\"; expected \"str | None\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/images.py",
+      "line": 184,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"PrivateFileHandle\", variable has type \"BufferedReader[_BufferedReaderStream]\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/images.py",
+      "line": 185,
+      "column": null,
+      "message": "\"BufferedReader[_BufferedReaderStream]\" has no attribute \"path\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/images.py",
+      "line": 189,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"None\", variable has type \"BufferedReader[_BufferedReaderStream]\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/gate.py",
+      "line": 258,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"StructuredSanitizeResult\", variable has type \"TextSanitizeResult\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/gate.py",
+      "line": 267,
+      "column": null,
+      "message": "Argument 1 to \"_promote_structured\" has incompatible type \"TextSanitizeResult\"; expected \"StructuredSanitizeResult\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/gate.py",
+      "line": 278,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"StructuredSanitizeResult\", variable has type \"TextSanitizeResult\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/gate.py",
+      "line": 288,
+      "column": null,
+      "message": "Argument 1 to \"_promote_structured\" has incompatible type \"TextSanitizeResult\"; expected \"StructuredSanitizeResult\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/gate.py",
+      "line": 299,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"ImageSanitizeResult\", variable has type \"TextSanitizeResult\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus_model_policy/registry.py",
+      "line": 27,
+      "column": null,
+      "message": "Library stubs not installed for \"yaml\"",
+      "code": "import-untyped"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 150,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 219,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 244,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 275,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 305,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 335,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 362,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 386,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 416,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 450,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 483,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 517,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 547,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 583,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 610,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 648,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/config/gateway.py",
+      "line": 53,
+      "column": null,
+      "message": "Argument \"optimus_api_key\" to \"OptimusGatewaySettings\" has incompatible type \"str\"; expected \"SecretStr\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/agent/models.py",
+      "line": 77,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"server_name\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/models.py",
+      "line": 78,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"tool_name\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/models.py",
+      "line": 79,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"text\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/models.py",
+      "line": 80,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"untrusted\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/models.py",
+      "line": 85,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"server_name\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/models.py",
+      "line": 86,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"tool_name\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/models.py",
+      "line": 86,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"untrusted\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 94,
+      "column": null,
+      "message": "Argument \"total\" to \"_refuse\" has incompatible type \"int | None\"; expected \"int\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 95,
+      "column": null,
+      "message": "Unsupported operand types for > (\"int\" and \"None\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 96,
+      "column": null,
+      "message": "Argument \"total\" to \"_refuse\" has incompatible type \"int | None\"; expected \"int\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 97,
+      "column": null,
+      "message": "Unsupported operand types for > (\"int\" and \"None\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 98,
+      "column": null,
+      "message": "Argument \"total\" to \"_refuse\" has incompatible type \"int | None\"; expected \"int\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 99,
+      "column": null,
+      "message": "Unsupported operand types for - (\"None\" and \"int\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 102,
+      "column": null,
+      "message": "Argument \"total\" to \"_refuse\" has incompatible type \"int | None\"; expected \"int\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 109,
+      "column": null,
+      "message": "Argument \"effective_total\" to \"CapacityDecision\" has incompatible type \"int | None\"; expected \"int\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/skills/registry.py",
+      "line": 98,
+      "column": null,
+      "message": "Need type annotation for \"allowed_tools\"",
+      "code": "var-annotated"
+    },
+    {
+      "path": "src/optimus/skills/registry.py",
+      "line": 98,
+      "column": null,
+      "message": "Argument 1 to \"tuple\" has incompatible type \"object\"; expected \"Iterable[Never]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/skills/registry.py",
+      "line": 110,
+      "column": null,
+      "message": "Argument 1 to \"tuple\" has incompatible type \"object\"; expected \"Iterable[str]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/skills/registry.py",
+      "line": 111,
+      "column": null,
+      "message": "Argument 1 to \"tuple\" has incompatible type \"object\"; expected \"Iterable[str]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/skills/registry.py",
+      "line": 142,
+      "column": null,
+      "message": "\"object\" has no attribute \"append\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/prompts.py",
+      "line": 113,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"text\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/prompts.py",
+      "line": 115,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"server_name\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/prompts.py",
+      "line": 115,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"tool_name\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/lifecycle.py",
+      "line": 987,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"WarningSequenceHandle\", variable has type \"ResponseHandle\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/lifecycle.py",
+      "line": 989,
+      "column": null,
+      "message": "Argument 1 to \"_maybe_retire_warning\" of \"NoticeControl\" has incompatible type \"ResponseHandle\"; expected \"WarningSequenceHandle\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/release/defaults.py",
+      "line": 29,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"tuple[CommandGate, CommandGate, CommandGate]\", variable has type \"tuple[ReleaseGate, ...]\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/ndjson_subprocess_session.py",
+      "line": 102,
+      "column": null,
+      "message": "Missing return statement",
+      "code": "return"
+    },
+    {
+      "path": "src/optimus/acp/ndjson_subprocess_session.py",
+      "line": 118,
+      "column": null,
+      "message": "Argument 1 has incompatible type \"dict[str, Any] | None\"; expected \"dict[str, Any]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/ndjson_subprocess_session.py",
+      "line": 119,
+      "column": null,
+      "message": "Incompatible return value type (got \"dict[str, Any] | None\", expected \"dict[str, Any]\")",
+      "code": "return-value"
+    },
+    {
+      "path": "src/optimus/redis/async_bridge.py",
+      "line": 493,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"Thread | None\", variable has type \"Thread\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus_model_policy/validation.py",
+      "line": 101,
+      "column": null,
+      "message": "Unsupported operand types for > (\"int\" and \"None\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus_model_policy/validation.py",
+      "line": 104,
+      "column": null,
+      "message": "Unsupported operand types for > (\"int\" and \"None\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus_model_policy/validation.py",
+      "line": 190,
+      "column": null,
+      "message": "Argument 1 to \"_compare\" has incompatible type \"_T\"; expected \"tuple[str, ModelEntry]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_model_policy/validation.py",
+      "line": 190,
+      "column": null,
+      "message": "Argument 2 to \"_compare\" has incompatible type \"_T\"; expected \"tuple[str, ModelEntry]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_gateway/tool_provider_http.py",
+      "line": 34,
+      "column": null,
+      "message": "\"object\" has no attribute \"__enter__\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_provider_http.py",
+      "line": 34,
+      "column": null,
+      "message": "\"object\" has no attribute \"__exit__\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_provider_http.py",
+      "line": 69,
+      "column": null,
+      "message": "\"object\" has no attribute \"__enter__\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_provider_http.py",
+      "line": 69,
+      "column": null,
+      "message": "\"object\" has no attribute \"__exit__\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/gateway/tool_models.py",
+      "line": 107,
+      "column": null,
+      "message": "Argument 1 to \"parse_gateway_usage\" has incompatible type \"Any | None\"; expected \"Mapping[str, Any]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/gateway/tool_models.py",
+      "line": 110,
+      "column": null,
+      "message": "Variable \"result_type\" is not valid as a type",
+      "code": "valid-type"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/lifecycle.py",
+      "line": 300,
+      "column": null,
+      "message": "\"object\" has no attribute \"instance_row_present\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/lifecycle.py",
+      "line": 513,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"BufferedRandom\", variable has type \"None\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/lifecycle.py",
+      "line": 533,
+      "column": null,
+      "message": "\"object\" has no attribute \"seek\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/lifecycle.py",
+      "line": 534,
+      "column": null,
+      "message": "\"object\" has no attribute \"read\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/lifecycle.py",
+      "line": 535,
+      "column": null,
+      "message": "\"object\" has no attribute \"write\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/lifecycle.py",
+      "line": 536,
+      "column": null,
+      "message": "\"object\" has no attribute \"flush\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/lifecycle.py",
+      "line": 537,
+      "column": null,
+      "message": "\"object\" has no attribute \"seek\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/lifecycle.py",
+      "line": 538,
+      "column": null,
+      "message": "\"object\" has no attribute \"fileno\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/lifecycle.py",
+      "line": 551,
+      "column": null,
+      "message": "\"object\" has no attribute \"seek\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/lifecycle.py",
+      "line": 552,
+      "column": null,
+      "message": "\"object\" has no attribute \"fileno\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/launch_gate.py",
+      "line": 195,
+      "column": null,
+      "message": "Module has no attribute \"getuid\"; maybe \"getpid\" or \"getppid\"?",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/launch_gate.py",
+      "line": 370,
+      "column": null,
+      "message": "Unsupported operand types for + (\"None\" and \"int\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus/acp/launch_gate.py",
+      "line": 828,
+      "column": null,
+      "message": "Unsupported left operand type for <= (\"object\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus/retry/gated_run.py",
+      "line": 98,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/retry/gated_run.py",
+      "line": 102,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/evidence/gateway_io.py",
+      "line": 42,
+      "column": null,
+      "message": "Unexpected keyword argument \"url\" for \"WebExtractRequest\"; did you mean \"urls\"?",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1081,
+      "column": null,
+      "message": "\"object\" has no attribute \"complete_directive\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1092,
+      "column": null,
+      "message": "Item \"None\" of \"Any | None\" has no attribute \"identity\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1114,
+      "column": null,
+      "message": "\"object\" has no attribute \"register_operations\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1115,
+      "column": null,
+      "message": "\"object\" has no attribute \"try_start\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1144,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1171,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1178,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1374,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1576,
+      "column": null,
+      "message": "Argument 1 to \"get\" of \"dict\" has incompatible type \"Literal['GATEWAY_FAILURE', 'READ_MORE', 'MCP_TOOL', 'UNPARSEABLE'] | None\"; expected \"str\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1582,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"str | None\", variable has type \"str\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/launch_approval_cli.py",
+      "line": 275,
+      "column": null,
+      "message": "Incompatible return value type (got \"str | int | None\", expected \"int\")",
+      "code": "return-value"
+    },
+    {
+      "path": "src/optimus/evidence/acquisition.py",
+      "line": 148,
+      "column": null,
+      "message": "Argument \"url\" to \"EvidenceSearchResult\" has incompatible type \"str\"; expected \"HttpUrl\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/evidence/acquisition.py",
+      "line": 251,
+      "column": null,
+      "message": "Argument \"url\" to \"EvidenceExtractResponse\" has incompatible type \"str\"; expected \"HttpUrl\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_gateway/tool_providers.py",
+      "line": 10,
+      "column": null,
+      "message": "Library stubs not installed for \"defusedxml\"",
+      "code": "import-untyped"
+    },
+    {
+      "path": "src/optimus_gateway/tool_providers.py",
+      "line": 11,
+      "column": null,
+      "message": "Library stubs not installed for \"defusedxml.common\"",
+      "code": "import-untyped"
+    },
+    {
+      "path": "src/optimus_gateway/tool_providers.py",
+      "line": 419,
+      "column": null,
+      "message": "Argument \"advisory_id\" to \"AdvisoryRecord\" has incompatible type \"object\"; expected \"str\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_gateway/tool_providers.py",
+      "line": 420,
+      "column": null,
+      "message": "Argument \"summary\" to \"AdvisoryRecord\" has incompatible type \"object\"; expected \"str\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/context/assembly.py",
+      "line": 689,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"BaseException\", variable has type \"Exception | None\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 145,
+      "column": null,
+      "message": "\"object\" has no attribute \"sadd\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 146,
+      "column": null,
+      "message": "\"object\" has no attribute \"expire\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 152,
+      "column": null,
+      "message": "\"object\" has no attribute \"smembers\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 158,
+      "column": null,
+      "message": "\"object\" has no attribute \"incr\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 160,
+      "column": null,
+      "message": "\"object\" has no attribute \"expire\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 162,
+      "column": null,
+      "message": "\"object\" has no attribute \"decr\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 168,
+      "column": null,
+      "message": "\"object\" has no attribute \"ping\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 177,
+      "column": null,
+      "message": "\"bool\" is invalid as return type for \"__exit__\" that always returns False",
+      "code": "exit-return"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 207,
+      "column": null,
+      "message": "\"object\" has no attribute \"close\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 219,
+      "column": null,
+      "message": "\"None\" not callable",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 219,
+      "column": null,
+      "message": "Item \"None\" of \"AsyncRedisAgentStateStore | None\" has no attribute \"save_plan\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 224,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 226,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 227,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"expire\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 230,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 232,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 233,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"expire\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 250,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 252,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 254,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"expire\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 258,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 260,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 262,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"expire\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 277,
+      "column": null,
+      "message": "\"None\" not callable",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 277,
+      "column": null,
+      "message": "Item \"None\" of \"AsyncRedisAgentStateStore | None\" has no attribute \"load_plan\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 279,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hgetall\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 286,
+      "column": null,
+      "message": "\"None\" not callable",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 286,
+      "column": null,
+      "message": "Item \"None\" of \"AsyncRedisAgentStateStore | None\" has no attribute \"latest_plan_for_run\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 287,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hgetall\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 301,
+      "column": null,
+      "message": "\"None\" not callable",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 301,
+      "column": null,
+      "message": "Item \"None\" of \"AsyncRedisAgentStateStore | None\" has no attribute \"ping\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 304,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"ping\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 341,
+      "column": null,
+      "message": "\"object\" has no attribute \"hset\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 343,
+      "column": null,
+      "message": "\"object\" has no attribute \"hset\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 344,
+      "column": null,
+      "message": "\"object\" has no attribute \"expire\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 347,
+      "column": null,
+      "message": "\"object\" has no attribute \"hset\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 349,
+      "column": null,
+      "message": "\"object\" has no attribute \"hset\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 350,
+      "column": null,
+      "message": "\"object\" has no attribute \"expire\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 354,
+      "column": null,
+      "message": "\"object\" has no attribute \"hgetall\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 360,
+      "column": null,
+      "message": "\"object\" has no attribute \"hgetall\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 374,
+      "column": null,
+      "message": "\"object\" has no attribute \"ping\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/redis/runtime.py",
+      "line": 257,
+      "column": null,
+      "message": "Argument \"client\" to \"RedisTelemetryAdapter\" has incompatible type \"object | None\"; expected \"RedisTelemetryClient\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/redis/runtime.py",
+      "line": 270,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"ping\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/redis/runtime.py",
+      "line": 298,
+      "column": null,
+      "message": "\"object\" has no attribute \"aclose\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/redis/runtime.py",
+      "line": 312,
+      "column": null,
+      "message": "\"object\" has no attribute \"aclose\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/runner.py",
+      "line": 385,
+      "column": null,
+      "message": "Argument \"runner\" to \"GoalLoopController\" has incompatible type \"IterationRunner | _AgentLoopIterationRunner\"; expected \"IterationRunner\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/agent/runner.py",
+      "line": 545,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/runner.py",
+      "line": 812,
+      "column": null,
+      "message": "\"AgentStateStore\" has no attribute \"persist_plan\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/runner.py",
+      "line": 819,
+      "column": null,
+      "message": "\"AgentStateStore\" has no attribute \"persist_plan\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/runner.py",
+      "line": 1516,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/acp/preflight.py",
+      "line": 392,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"execute_command\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/acp/preflight.py",
+      "line": 393,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"delete\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 199,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"EvidenceExtractResponse\", variable has type \"EvidenceSearchResponse\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 205,
+      "column": null,
+      "message": "Argument 1 to \"_evidence_extract_payload\" has incompatible type \"EvidenceSearchResponse\"; expected \"EvidenceExtractResponse\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 257,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"EvidenceSecurityAdvisoryRequest\", variable has type \"EvidencePackageLookupRequest\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 271,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"SecurityAdvisoryRequest\", variable has type \"PackageLookupRequest\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 277,
+      "column": null,
+      "message": "\"EvidencePackageLookupRequest\" has no attribute \"identifier\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 281,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"SecurityAdvisoryResult\", variable has type \"PackageLookupResult\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 282,
+      "column": null,
+      "message": "Argument 1 to \"security_advisory\" of \"PackageAdvisoryService\" has incompatible type \"PackageLookupRequest\"; expected \"SecurityAdvisoryRequest\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 287,
+      "column": null,
+      "message": "Argument 1 to \"_evidence_security_advisory_payload\" has incompatible type \"PackageLookupResult\"; expected \"SecurityAdvisoryResult\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 309,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"AgentRunResult\", variable has type \"PackageLookupResult\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 310,
+      "column": null,
+      "message": "Argument 1 to \"_agent_run_result_payload\" has incompatible type \"PackageLookupResult\"; expected \"AgentRunResult\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/operator_verify.py",
+      "line": 718,
+      "column": null,
+      "message": "\"object\" has no attribute \"scan_iter\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/operator_verify.py",
+      "line": 729,
+      "column": null,
+      "message": "\"object\" has no attribute \"scan_iter\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/operator_verify.py",
+      "line": 730,
+      "column": null,
+      "message": "\"object\" has no attribute \"delete\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/server.py",
+      "line": 109,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"def handle_observability_traces_request(*, authorization_header: str | None, request_body: dict[str, Any], config: GatewayServiceConfig, upstream_client: UpstreamClient, trace_exporter: TraceExporter) -> tuple[int, dict[str, Any]]\", variable has type \"def handle_responses_request(*, authorization_header: str | None, request_body: dict[str, Any], config: GatewayServiceConfig, upstream_client: UpstreamClient) -> tuple[int, dict[str, Any]]\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus_gateway/server.py",
+      "line": 134,
+      "column": null,
+      "message": "Argument \"dependencies\" to \"handle_tool_request\" has incompatible type \"GatewayToolDependencies | None\"; expected \"GatewayToolDependencies\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_gateway/server.py",
+      "line": 137,
+      "column": null,
+      "message": "Unexpected keyword argument \"trace_exporter\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus_gateway/__main__.py",
+      "line": 131,
+      "column": null,
+      "message": "Too many values to unpack (2 expected, 4 provided)",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus_gateway/__main__.py",
+      "line": 133,
+      "column": null,
+      "message": "If x = b'abc' then f\"{x}\" or \"{}\".format(x) produces \"b'abc'\", not \"abc\". If this is desired behavior, use f\"{x!r}\" or \"{!r}\".format(x). Otherwise, decode the bytes",
+      "code": "str-bytes-safe"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/service.py",
+      "line": 878,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"Response\", variable has type \"PlainTextResponse\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/service.py",
+      "line": 898,
+      "column": null,
+      "message": "Argument 1 to \"_scope_with_canonical_mcp_protocol_version\" has incompatible type \"MutableMapping[str, Any]\"; expected \"dict[str, Any]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/service.py",
+      "line": 964,
+      "column": null,
+      "message": "Argument 3 has incompatible type \"Callable[[dict[str, Any]], Coroutine[Any, Any, None]]\"; expected \"Callable[[MutableMapping[str, Any]], Awaitable[None]]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/service.py",
+      "line": 967,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"Response\", variable has type \"PlainTextResponse\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/mcp/client_sdk.py",
+      "line": 105,
+      "column": null,
+      "message": "Return type \"None\" of \"__reduce__\" incompatible with return type \"str | tuple[Any, ...]\" in supertype \"builtins.object\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_sdk.py",
+      "line": 108,
+      "column": null,
+      "message": "Return type \"None\" of \"__reduce_ex__\" incompatible with return type \"str | tuple[Any, ...]\" in supertype \"builtins.object\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_sdk.py",
+      "line": 108,
+      "column": null,
+      "message": "Argument 1 of \"__reduce_ex__\" is incompatible with supertype \"builtins.object\"; supertype defines the argument type as \"SupportsIndex\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_sdk.py",
+      "line": 445,
+      "column": null,
+      "message": "Argument \"httpx_client_factory\" to \"sse_client\" has incompatible type \"def <lambda>(**_kwargs: Any) -> Any\"; expected \"McpHttpClientFactory\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/mcp/client_catalog.py",
+      "line": 657,
+      "column": null,
+      "message": "Return type \"None\" of \"__reduce__\" incompatible with return type \"str | tuple[Any, ...]\" in supertype \"builtins.object\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_catalog.py",
+      "line": 660,
+      "column": null,
+      "message": "Return type \"None\" of \"__reduce_ex__\" incompatible with return type \"str | tuple[Any, ...]\" in supertype \"builtins.object\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_catalog.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 of \"__reduce_ex__\" is incompatible with supertype \"builtins.object\"; supertype defines the argument type as \"SupportsIndex\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_catalog.py",
+      "line": 708,
+      "column": null,
+      "message": "Return type \"None\" of \"__reduce__\" incompatible with return type \"str | tuple[Any, ...]\" in supertype \"builtins.object\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_catalog.py",
+      "line": 711,
+      "column": null,
+      "message": "Return type \"None\" of \"__reduce_ex__\" incompatible with return type \"str | tuple[Any, ...]\" in supertype \"builtins.object\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_catalog.py",
+      "line": 711,
+      "column": null,
+      "message": "Argument 1 of \"__reduce_ex__\" is incompatible with supertype \"builtins.object\"; supertype defines the argument type as \"SupportsIndex\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_disposition.py",
+      "line": 415,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 539,
+      "column": null,
+      "message": "Argument 1 to \"FinalDelivery\" has incompatible type \"object\"; expected \"str\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 540,
+      "column": null,
+      "message": "Argument 1 to \"RpcResponseDelivery\" has incompatible type \"object\"; expected \"str\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 542,
+      "column": null,
+      "message": "Argument 1 to \"EffectState\" has incompatible type \"object\"; expected \"str\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"str\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"str | None\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"ExecutionMode\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"Path\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"AgentApproval\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"Decimal | None\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"int\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"tuple[Path, ...]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1250,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1546,
+      "column": null,
+      "message": "Item \"None\" of \"ConversationState | None\" has no attribute \"apply_planning_cost_once\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1555,
+      "column": null,
+      "message": "Item \"None\" of \"ConversationState | None\" has no attribute \"project_turn_cost\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1684,
+      "column": null,
+      "message": "Item \"None\" of \"TurnRouteBinder | None\" has no attribute \"largest_dispatch\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1740,
+      "column": null,
+      "message": "\"AcpOutboundChannel\" has no attribute \"last_outbound_request_id\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1760,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"dict[Never, Never]\", variable has type \"MappingProxyType[str, Parameter]\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1849,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 64,
+      "column": null,
+      "message": "\"object\" has no attribute \"read\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 72,
+      "column": null,
+      "message": "\"object\" has no attribute \"write\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 75,
+      "column": null,
+      "message": "\"object\" has no attribute \"flush\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 83,
+      "column": null,
+      "message": "\"object\" has no attribute \"readline\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 91,
+      "column": null,
+      "message": "\"object\" has no attribute \"write\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 94,
+      "column": null,
+      "message": "\"object\" has no attribute \"flush\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 167,
+      "column": null,
+      "message": "Need type annotation for \"source\"",
+      "code": "var-annotated"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 700,
+      "column": null,
+      "message": "\"object\" has no attribute \"supervisor_state\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 702,
+      "column": null,
+      "message": "\"object\" has no attribute \"sdk_closed\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 703,
+      "column": null,
+      "message": "\"object\" has no attribute \"endpoint_closed\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 704,
+      "column": null,
+      "message": "\"object\" has no attribute \"supervisor_closed\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 782,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 821,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/acp/__main__.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 to \"build_configured_server\" has incompatible type \"**dict[str, object]\"; expected \"Mapping[str, str]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/__main__.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 to \"build_configured_server\" has incompatible type \"**dict[str, object]\"; expected \"Mapping[str, str] | None\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/__main__.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 to \"build_configured_server\" has incompatible type \"**dict[str, object]\"; expected \"bool\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/__main__.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 to \"build_configured_server\" has incompatible type \"**dict[str, object]\"; expected \"Path | None\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/__main__.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 to \"build_configured_server\" has incompatible type \"**dict[str, object]\"; expected \"str | None\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/__main__.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 to \"build_configured_server\" has incompatible type \"**dict[str, object]\"; expected \"float | None\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/__main__.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 to \"build_configured_server\" has incompatible type \"**dict[str, object]\"; expected \"TestComposition | None\"",
+      "code": "arg-type"
+    }
+  ],
+  "wsl-01": [
+    {
+      "path": "src/optimus/guardrails/unicode_confusables.py",
+      "line": 5,
+      "column": null,
+      "message": "Skipping analyzing \"confusable_homoglyphs\": module is installed, but missing library stubs or py.typed marker",
+      "code": "import-untyped"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/private_files.py",
+      "line": 594,
+      "column": null,
+      "message": "Unsupported operand types for + (\"None\" and \"int\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus/mcp/client_config.py",
+      "line": 138,
+      "column": null,
+      "message": "Argument 1 of \"__reduce_ex__\" is incompatible with supertype \"builtins.object\"; supertype defines the argument type as \"SupportsIndex\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/acp/launch_approvals.py",
+      "line": 354,
+      "column": null,
+      "message": "Argument \"mode\" to \"ApprovalRecord\" has incompatible type \"str\"; expected \"Literal['one-shot', 'durable']\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/signing_key_custody.py",
+      "line": 53,
+      "column": null,
+      "message": "\"object\" has no attribute \"get_password\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/signing_key_custody.py",
+      "line": 84,
+      "column": null,
+      "message": "\"object\" has no attribute \"set_password\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/images.py",
+      "line": 140,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"None\", variable has type \"BufferedReader[_BufferedReaderStream]\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/images.py",
+      "line": 179,
+      "column": null,
+      "message": "Argument 2 to \"save\" of \"Image\" has incompatible type \"**dict[str, object]\"; expected \"str | None\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/images.py",
+      "line": 184,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"PrivateFileHandle\", variable has type \"BufferedReader[_BufferedReaderStream]\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/images.py",
+      "line": 185,
+      "column": null,
+      "message": "\"BufferedReader[_BufferedReaderStream]\" has no attribute \"path\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/images.py",
+      "line": 189,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"None\", variable has type \"BufferedReader[_BufferedReaderStream]\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/gate.py",
+      "line": 258,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"StructuredSanitizeResult\", variable has type \"TextSanitizeResult\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/gate.py",
+      "line": 267,
+      "column": null,
+      "message": "Argument 1 to \"_promote_structured\" has incompatible type \"TextSanitizeResult\"; expected \"StructuredSanitizeResult\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/gate.py",
+      "line": 278,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"StructuredSanitizeResult\", variable has type \"TextSanitizeResult\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/gate.py",
+      "line": 288,
+      "column": null,
+      "message": "Argument 1 to \"_promote_structured\" has incompatible type \"TextSanitizeResult\"; expected \"StructuredSanitizeResult\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/evidence_handoff/redaction/gate.py",
+      "line": 299,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"ImageSanitizeResult\", variable has type \"TextSanitizeResult\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus_model_policy/registry.py",
+      "line": 27,
+      "column": null,
+      "message": "Library stubs not installed for \"yaml\"",
+      "code": "import-untyped"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 150,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 219,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 244,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 275,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 305,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 335,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 362,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 386,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 416,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 450,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 483,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 517,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 547,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 583,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 610,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/telemetry/events.py",
+      "line": 648,
+      "column": null,
+      "message": "Missing named argument \"trace_id\" for \"TelemetryEvent\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/config/gateway.py",
+      "line": 53,
+      "column": null,
+      "message": "Argument \"optimus_api_key\" to \"OptimusGatewaySettings\" has incompatible type \"str\"; expected \"SecretStr\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/agent/models.py",
+      "line": 77,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"server_name\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/models.py",
+      "line": 78,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"tool_name\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/models.py",
+      "line": 79,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"text\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/models.py",
+      "line": 80,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"untrusted\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/models.py",
+      "line": 85,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"server_name\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/models.py",
+      "line": 86,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"tool_name\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/models.py",
+      "line": 86,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"untrusted\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 94,
+      "column": null,
+      "message": "Argument \"total\" to \"_refuse\" has incompatible type \"int | None\"; expected \"int\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 95,
+      "column": null,
+      "message": "Unsupported operand types for > (\"int\" and \"None\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 96,
+      "column": null,
+      "message": "Argument \"total\" to \"_refuse\" has incompatible type \"int | None\"; expected \"int\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 97,
+      "column": null,
+      "message": "Unsupported operand types for > (\"int\" and \"None\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 98,
+      "column": null,
+      "message": "Argument \"total\" to \"_refuse\" has incompatible type \"int | None\"; expected \"int\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 99,
+      "column": null,
+      "message": "Unsupported operand types for - (\"None\" and \"int\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 102,
+      "column": null,
+      "message": "Argument \"total\" to \"_refuse\" has incompatible type \"int | None\"; expected \"int\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_model_policy/capacity.py",
+      "line": 109,
+      "column": null,
+      "message": "Argument \"effective_total\" to \"CapacityDecision\" has incompatible type \"int | None\"; expected \"int\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/skills/registry.py",
+      "line": 98,
+      "column": null,
+      "message": "Need type annotation for \"allowed_tools\"",
+      "code": "var-annotated"
+    },
+    {
+      "path": "src/optimus/skills/registry.py",
+      "line": 98,
+      "column": null,
+      "message": "Argument 1 to \"tuple\" has incompatible type \"object\"; expected \"Iterable[Never]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/skills/registry.py",
+      "line": 110,
+      "column": null,
+      "message": "Argument 1 to \"tuple\" has incompatible type \"object\"; expected \"Iterable[str]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/skills/registry.py",
+      "line": 111,
+      "column": null,
+      "message": "Argument 1 to \"tuple\" has incompatible type \"object\"; expected \"Iterable[str]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/skills/registry.py",
+      "line": 142,
+      "column": null,
+      "message": "\"object\" has no attribute \"append\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/prompts.py",
+      "line": 113,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"text\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/prompts.py",
+      "line": 115,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"server_name\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/prompts.py",
+      "line": 115,
+      "column": null,
+      "message": "\"AgentMcpToolOutput\" has no attribute \"tool_name\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/lifecycle.py",
+      "line": 987,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"WarningSequenceHandle\", variable has type \"ResponseHandle\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/lifecycle.py",
+      "line": 989,
+      "column": null,
+      "message": "Argument 1 to \"_maybe_retire_warning\" of \"NoticeControl\" has incompatible type \"ResponseHandle\"; expected \"WarningSequenceHandle\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/release/defaults.py",
+      "line": 29,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"tuple[CommandGate, CommandGate, CommandGate]\", variable has type \"tuple[ReleaseGate, ...]\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/ndjson_subprocess_session.py",
+      "line": 102,
+      "column": null,
+      "message": "Missing return statement",
+      "code": "return"
+    },
+    {
+      "path": "src/optimus/acp/ndjson_subprocess_session.py",
+      "line": 118,
+      "column": null,
+      "message": "Argument 1 has incompatible type \"dict[str, Any] | None\"; expected \"dict[str, Any]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/ndjson_subprocess_session.py",
+      "line": 119,
+      "column": null,
+      "message": "Incompatible return value type (got \"dict[str, Any] | None\", expected \"dict[str, Any]\")",
+      "code": "return-value"
+    },
+    {
+      "path": "src/optimus/redis/async_bridge.py",
+      "line": 493,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"Thread | None\", variable has type \"Thread\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus_model_policy/validation.py",
+      "line": 101,
+      "column": null,
+      "message": "Unsupported operand types for > (\"int\" and \"None\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus_model_policy/validation.py",
+      "line": 104,
+      "column": null,
+      "message": "Unsupported operand types for > (\"int\" and \"None\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus_model_policy/validation.py",
+      "line": 190,
+      "column": null,
+      "message": "Argument 1 to \"_compare\" has incompatible type \"_T\"; expected \"tuple[str, ModelEntry]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_model_policy/validation.py",
+      "line": 190,
+      "column": null,
+      "message": "Argument 2 to \"_compare\" has incompatible type \"_T\"; expected \"tuple[str, ModelEntry]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_gateway/tool_provider_http.py",
+      "line": 34,
+      "column": null,
+      "message": "\"object\" has no attribute \"__enter__\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_provider_http.py",
+      "line": 34,
+      "column": null,
+      "message": "\"object\" has no attribute \"__exit__\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_provider_http.py",
+      "line": 69,
+      "column": null,
+      "message": "\"object\" has no attribute \"__enter__\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_provider_http.py",
+      "line": 69,
+      "column": null,
+      "message": "\"object\" has no attribute \"__exit__\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/gateway/tool_models.py",
+      "line": 107,
+      "column": null,
+      "message": "Argument 1 to \"parse_gateway_usage\" has incompatible type \"Any | None\"; expected \"Mapping[str, Any]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/gateway/tool_models.py",
+      "line": 110,
+      "column": null,
+      "message": "Variable \"result_type\" is not valid as a type",
+      "code": "valid-type"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/lifecycle.py",
+      "line": 300,
+      "column": null,
+      "message": "\"object\" has no attribute \"instance_row_present\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/lifecycle.py",
+      "line": 513,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"BufferedRandom\", variable has type \"None\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/lifecycle.py",
+      "line": 542,
+      "column": null,
+      "message": "\"object\" has no attribute \"fileno\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/lifecycle.py",
+      "line": 556,
+      "column": null,
+      "message": "\"object\" has no attribute \"fileno\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/launch_gate.py",
+      "line": 370,
+      "column": null,
+      "message": "Unsupported operand types for + (\"None\" and \"int\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus/acp/launch_gate.py",
+      "line": 828,
+      "column": null,
+      "message": "Unsupported left operand type for <= (\"object\")",
+      "code": "operator"
+    },
+    {
+      "path": "src/optimus/retry/gated_run.py",
+      "line": 98,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/retry/gated_run.py",
+      "line": 102,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/evidence/gateway_io.py",
+      "line": 42,
+      "column": null,
+      "message": "Unexpected keyword argument \"url\" for \"WebExtractRequest\"; did you mean \"urls\"?",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1081,
+      "column": null,
+      "message": "\"object\" has no attribute \"complete_directive\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1092,
+      "column": null,
+      "message": "Item \"None\" of \"Any | None\" has no attribute \"identity\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1114,
+      "column": null,
+      "message": "\"object\" has no attribute \"register_operations\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1115,
+      "column": null,
+      "message": "\"object\" has no attribute \"try_start\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1144,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1171,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1178,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1374,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1576,
+      "column": null,
+      "message": "Argument 1 to \"get\" of \"dict\" has incompatible type \"Literal['GATEWAY_FAILURE', 'READ_MORE', 'MCP_TOOL', 'UNPARSEABLE'] | None\"; expected \"str\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/agent/planning_loop.py",
+      "line": 1582,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"str | None\", variable has type \"str\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/launch_approval_cli.py",
+      "line": 275,
+      "column": null,
+      "message": "Incompatible return value type (got \"str | int | None\", expected \"int\")",
+      "code": "return-value"
+    },
+    {
+      "path": "src/optimus/evidence/acquisition.py",
+      "line": 148,
+      "column": null,
+      "message": "Argument \"url\" to \"EvidenceSearchResult\" has incompatible type \"str\"; expected \"HttpUrl\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/evidence/acquisition.py",
+      "line": 251,
+      "column": null,
+      "message": "Argument \"url\" to \"EvidenceExtractResponse\" has incompatible type \"str\"; expected \"HttpUrl\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_gateway/tool_providers.py",
+      "line": 10,
+      "column": null,
+      "message": "Library stubs not installed for \"defusedxml\"",
+      "code": "import-untyped"
+    },
+    {
+      "path": "src/optimus_gateway/tool_providers.py",
+      "line": 11,
+      "column": null,
+      "message": "Library stubs not installed for \"defusedxml.common\"",
+      "code": "import-untyped"
+    },
+    {
+      "path": "src/optimus_gateway/tool_providers.py",
+      "line": 419,
+      "column": null,
+      "message": "Argument \"advisory_id\" to \"AdvisoryRecord\" has incompatible type \"object\"; expected \"str\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_gateway/tool_providers.py",
+      "line": 420,
+      "column": null,
+      "message": "Argument \"summary\" to \"AdvisoryRecord\" has incompatible type \"object\"; expected \"str\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/context/assembly.py",
+      "line": 689,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"BaseException\", variable has type \"Exception | None\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 145,
+      "column": null,
+      "message": "\"object\" has no attribute \"sadd\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 146,
+      "column": null,
+      "message": "\"object\" has no attribute \"expire\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 152,
+      "column": null,
+      "message": "\"object\" has no attribute \"smembers\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 158,
+      "column": null,
+      "message": "\"object\" has no attribute \"incr\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 160,
+      "column": null,
+      "message": "\"object\" has no attribute \"expire\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 162,
+      "column": null,
+      "message": "\"object\" has no attribute \"decr\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 168,
+      "column": null,
+      "message": "\"object\" has no attribute \"ping\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/tool_state.py",
+      "line": 177,
+      "column": null,
+      "message": "\"bool\" is invalid as return type for \"__exit__\" that always returns False",
+      "code": "exit-return"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 207,
+      "column": null,
+      "message": "\"object\" has no attribute \"close\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 219,
+      "column": null,
+      "message": "\"None\" not callable",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 219,
+      "column": null,
+      "message": "Item \"None\" of \"AsyncRedisAgentStateStore | None\" has no attribute \"save_plan\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 224,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 226,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 227,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"expire\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 230,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 232,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 233,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"expire\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 250,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 252,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 254,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"expire\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 258,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 260,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hset\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 262,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"expire\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 277,
+      "column": null,
+      "message": "\"None\" not callable",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 277,
+      "column": null,
+      "message": "Item \"None\" of \"AsyncRedisAgentStateStore | None\" has no attribute \"load_plan\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 279,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hgetall\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 286,
+      "column": null,
+      "message": "\"None\" not callable",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 286,
+      "column": null,
+      "message": "Item \"None\" of \"AsyncRedisAgentStateStore | None\" has no attribute \"latest_plan_for_run\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 287,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"hgetall\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 301,
+      "column": null,
+      "message": "\"None\" not callable",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 301,
+      "column": null,
+      "message": "Item \"None\" of \"AsyncRedisAgentStateStore | None\" has no attribute \"ping\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 304,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"ping\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 341,
+      "column": null,
+      "message": "\"object\" has no attribute \"hset\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 343,
+      "column": null,
+      "message": "\"object\" has no attribute \"hset\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 344,
+      "column": null,
+      "message": "\"object\" has no attribute \"expire\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 347,
+      "column": null,
+      "message": "\"object\" has no attribute \"hset\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 349,
+      "column": null,
+      "message": "\"object\" has no attribute \"hset\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 350,
+      "column": null,
+      "message": "\"object\" has no attribute \"expire\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 354,
+      "column": null,
+      "message": "\"object\" has no attribute \"hgetall\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 360,
+      "column": null,
+      "message": "\"object\" has no attribute \"hgetall\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/state_store.py",
+      "line": 374,
+      "column": null,
+      "message": "\"object\" has no attribute \"ping\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/redis/runtime.py",
+      "line": 257,
+      "column": null,
+      "message": "Argument \"client\" to \"RedisTelemetryAdapter\" has incompatible type \"object | None\"; expected \"RedisTelemetryClient\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/redis/runtime.py",
+      "line": 270,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"ping\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/redis/runtime.py",
+      "line": 298,
+      "column": null,
+      "message": "\"object\" has no attribute \"aclose\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/redis/runtime.py",
+      "line": 312,
+      "column": null,
+      "message": "\"object\" has no attribute \"aclose\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/runner.py",
+      "line": 385,
+      "column": null,
+      "message": "Argument \"runner\" to \"GoalLoopController\" has incompatible type \"IterationRunner | _AgentLoopIterationRunner\"; expected \"IterationRunner\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/agent/runner.py",
+      "line": 545,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/agent/runner.py",
+      "line": 812,
+      "column": null,
+      "message": "\"AgentStateStore\" has no attribute \"persist_plan\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/runner.py",
+      "line": 819,
+      "column": null,
+      "message": "\"AgentStateStore\" has no attribute \"persist_plan\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/agent/runner.py",
+      "line": 1516,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/acp/preflight.py",
+      "line": 392,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"execute_command\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/acp/preflight.py",
+      "line": 393,
+      "column": null,
+      "message": "Item \"None\" of \"object | None\" has no attribute \"delete\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 199,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"EvidenceExtractResponse\", variable has type \"EvidenceSearchResponse\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 205,
+      "column": null,
+      "message": "Argument 1 to \"_evidence_extract_payload\" has incompatible type \"EvidenceSearchResponse\"; expected \"EvidenceExtractResponse\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 257,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"EvidenceSecurityAdvisoryRequest\", variable has type \"EvidencePackageLookupRequest\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 271,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"SecurityAdvisoryRequest\", variable has type \"PackageLookupRequest\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 277,
+      "column": null,
+      "message": "\"EvidencePackageLookupRequest\" has no attribute \"identifier\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 281,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"SecurityAdvisoryResult\", variable has type \"PackageLookupResult\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 282,
+      "column": null,
+      "message": "Argument 1 to \"security_advisory\" of \"PackageAdvisoryService\" has incompatible type \"PackageLookupRequest\"; expected \"SecurityAdvisoryRequest\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 287,
+      "column": null,
+      "message": "Argument 1 to \"_evidence_security_advisory_payload\" has incompatible type \"PackageLookupResult\"; expected \"SecurityAdvisoryResult\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 309,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"AgentRunResult\", variable has type \"PackageLookupResult\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/dispatcher.py",
+      "line": 310,
+      "column": null,
+      "message": "Argument 1 to \"_agent_run_result_payload\" has incompatible type \"PackageLookupResult\"; expected \"AgentRunResult\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/operator_verify.py",
+      "line": 718,
+      "column": null,
+      "message": "\"object\" has no attribute \"scan_iter\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/operator_verify.py",
+      "line": 729,
+      "column": null,
+      "message": "\"object\" has no attribute \"scan_iter\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/operator_verify.py",
+      "line": 730,
+      "column": null,
+      "message": "\"object\" has no attribute \"delete\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus_gateway/server.py",
+      "line": 109,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"def handle_observability_traces_request(*, authorization_header: str | None, request_body: dict[str, Any], config: GatewayServiceConfig, upstream_client: UpstreamClient, trace_exporter: TraceExporter) -> tuple[int, dict[str, Any]]\", variable has type \"def handle_responses_request(*, authorization_header: str | None, request_body: dict[str, Any], config: GatewayServiceConfig, upstream_client: UpstreamClient) -> tuple[int, dict[str, Any]]\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus_gateway/server.py",
+      "line": 134,
+      "column": null,
+      "message": "Argument \"dependencies\" to \"handle_tool_request\" has incompatible type \"GatewayToolDependencies | None\"; expected \"GatewayToolDependencies\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus_gateway/server.py",
+      "line": 137,
+      "column": null,
+      "message": "Unexpected keyword argument \"trace_exporter\"",
+      "code": "call-arg"
+    },
+    {
+      "path": "src/optimus_gateway/__main__.py",
+      "line": 131,
+      "column": null,
+      "message": "Too many values to unpack (2 expected, 4 provided)",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus_gateway/__main__.py",
+      "line": 133,
+      "column": null,
+      "message": "If x = b'abc' then f\"{x}\" or \"{}\".format(x) produces \"b'abc'\", not \"abc\". If this is desired behavior, use f\"{x!r}\" or \"{!r}\".format(x). Otherwise, decode the bytes",
+      "code": "str-bytes-safe"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/service.py",
+      "line": 878,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"Response\", variable has type \"PlainTextResponse\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/service.py",
+      "line": 898,
+      "column": null,
+      "message": "Argument 1 to \"_scope_with_canonical_mcp_protocol_version\" has incompatible type \"MutableMapping[str, Any]\"; expected \"dict[str, Any]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/service.py",
+      "line": 964,
+      "column": null,
+      "message": "Argument 3 has incompatible type \"Callable[[dict[str, Any]], Coroutine[Any, Any, None]]\"; expected \"Callable[[MutableMapping[str, Any]], Awaitable[None]]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/evidence_handoff_runtime/service.py",
+      "line": 967,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"Response\", variable has type \"PlainTextResponse\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/mcp/client_sdk.py",
+      "line": 105,
+      "column": null,
+      "message": "Return type \"None\" of \"__reduce__\" incompatible with return type \"str | tuple[Any, ...]\" in supertype \"builtins.object\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_sdk.py",
+      "line": 108,
+      "column": null,
+      "message": "Return type \"None\" of \"__reduce_ex__\" incompatible with return type \"str | tuple[Any, ...]\" in supertype \"builtins.object\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_sdk.py",
+      "line": 108,
+      "column": null,
+      "message": "Argument 1 of \"__reduce_ex__\" is incompatible with supertype \"builtins.object\"; supertype defines the argument type as \"SupportsIndex\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_sdk.py",
+      "line": 445,
+      "column": null,
+      "message": "Argument \"httpx_client_factory\" to \"sse_client\" has incompatible type \"def <lambda>(**_kwargs: Any) -> Any\"; expected \"McpHttpClientFactory\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/mcp/client_catalog.py",
+      "line": 657,
+      "column": null,
+      "message": "Return type \"None\" of \"__reduce__\" incompatible with return type \"str | tuple[Any, ...]\" in supertype \"builtins.object\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_catalog.py",
+      "line": 660,
+      "column": null,
+      "message": "Return type \"None\" of \"__reduce_ex__\" incompatible with return type \"str | tuple[Any, ...]\" in supertype \"builtins.object\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_catalog.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 of \"__reduce_ex__\" is incompatible with supertype \"builtins.object\"; supertype defines the argument type as \"SupportsIndex\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_catalog.py",
+      "line": 708,
+      "column": null,
+      "message": "Return type \"None\" of \"__reduce__\" incompatible with return type \"str | tuple[Any, ...]\" in supertype \"builtins.object\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_catalog.py",
+      "line": 711,
+      "column": null,
+      "message": "Return type \"None\" of \"__reduce_ex__\" incompatible with return type \"str | tuple[Any, ...]\" in supertype \"builtins.object\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_catalog.py",
+      "line": 711,
+      "column": null,
+      "message": "Argument 1 of \"__reduce_ex__\" is incompatible with supertype \"builtins.object\"; supertype defines the argument type as \"SupportsIndex\"",
+      "code": "override"
+    },
+    {
+      "path": "src/optimus/mcp/client_disposition.py",
+      "line": 415,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 539,
+      "column": null,
+      "message": "Argument 1 to \"FinalDelivery\" has incompatible type \"object\"; expected \"str\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 540,
+      "column": null,
+      "message": "Argument 1 to \"RpcResponseDelivery\" has incompatible type \"object\"; expected \"str\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 542,
+      "column": null,
+      "message": "Argument 1 to \"EffectState\" has incompatible type \"object\"; expected \"str\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"str\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"str | None\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"ExecutionMode\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"Path\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"AgentApproval\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"Decimal | None\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"int\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1023,
+      "column": null,
+      "message": "Argument 1 to \"AgentRunRequest\" has incompatible type \"**dict[str, object]\"; expected \"tuple[Path, ...]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1250,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1546,
+      "column": null,
+      "message": "Item \"None\" of \"ConversationState | None\" has no attribute \"apply_planning_cost_once\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1555,
+      "column": null,
+      "message": "Item \"None\" of \"ConversationState | None\" has no attribute \"project_turn_cost\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1684,
+      "column": null,
+      "message": "Item \"None\" of \"TurnRouteBinder | None\" has no attribute \"largest_dispatch\"",
+      "code": "union-attr"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1740,
+      "column": null,
+      "message": "\"AcpOutboundChannel\" has no attribute \"last_outbound_request_id\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1760,
+      "column": null,
+      "message": "Incompatible types in assignment (expression has type \"dict[Never, Never]\", variable has type \"MappingProxyType[str, Parameter]\")",
+      "code": "assignment"
+    },
+    {
+      "path": "src/optimus/acp/spec.py",
+      "line": 1849,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 64,
+      "column": null,
+      "message": "\"object\" has no attribute \"read\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 72,
+      "column": null,
+      "message": "\"object\" has no attribute \"write\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 75,
+      "column": null,
+      "message": "\"object\" has no attribute \"flush\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 83,
+      "column": null,
+      "message": "\"object\" has no attribute \"readline\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 91,
+      "column": null,
+      "message": "\"object\" has no attribute \"write\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 94,
+      "column": null,
+      "message": "\"object\" has no attribute \"flush\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 167,
+      "column": null,
+      "message": "Need type annotation for \"source\"",
+      "code": "var-annotated"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 700,
+      "column": null,
+      "message": "\"object\" has no attribute \"supervisor_state\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 702,
+      "column": null,
+      "message": "\"object\" has no attribute \"sdk_closed\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 703,
+      "column": null,
+      "message": "\"object\" has no attribute \"endpoint_closed\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 704,
+      "column": null,
+      "message": "\"object\" has no attribute \"supervisor_closed\"",
+      "code": "attr-defined"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 782,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/acp/server.py",
+      "line": 821,
+      "column": null,
+      "message": "Cannot infer type of lambda",
+      "code": "misc"
+    },
+    {
+      "path": "src/optimus/acp/__main__.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 to \"build_configured_server\" has incompatible type \"**dict[str, object]\"; expected \"Mapping[str, str]\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/__main__.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 to \"build_configured_server\" has incompatible type \"**dict[str, object]\"; expected \"Mapping[str, str] | None\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/__main__.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 to \"build_configured_server\" has incompatible type \"**dict[str, object]\"; expected \"bool\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/__main__.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 to \"build_configured_server\" has incompatible type \"**dict[str, object]\"; expected \"Path | None\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/__main__.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 to \"build_configured_server\" has incompatible type \"**dict[str, object]\"; expected \"str | None\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/__main__.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 to \"build_configured_server\" has incompatible type \"**dict[str, object]\"; expected \"float | None\"",
+      "code": "arg-type"
+    },
+    {
+      "path": "src/optimus/acp/__main__.py",
+      "line": 660,
+      "column": null,
+      "message": "Argument 1 to \"build_configured_server\" has incompatible type \"**dict[str, object]\"; expected \"TestComposition | None\"",
+      "code": "arg-type"
+    }
+  ]
+}

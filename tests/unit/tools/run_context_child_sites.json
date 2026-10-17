@@ -553,6 +553,12 @@
    "disposition": "census",
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/tools/test_mypy_ratchet.py::test_new_module_is_checked#1": {
+   "mechanism": "python:module",
+   "disposition": "tripwire_at_site",
+   "proof": "tests/unit/tools/test_mypy_ratchet.py::test_new_module_is_checked",
+   "basis": "The real Mypy child loads the existing startup tripwire before its program, asserts the expected assignment diagnostic, and proves zero real known-folder adapter calls."
   }
  }
 }
