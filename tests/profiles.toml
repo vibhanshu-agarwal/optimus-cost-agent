@@ -1021,3 +1021,16 @@ serial = [
   "tests/unit/tools/test_verify_plan99_noneditable_install.py",
 ]
 why = "Core tests are in-process product and tool tests with no child process, gate, audit or timing domain; each xdist worker is its own interpreter with its own temporary folders, so they share no in-process state. Listed nodes stay serial: they share a cross-process resource, or (the xdist serial probe) are the runner's serial-remainder control."
+
+[[rules]]
+tier = "proc"
+paths = ["tests/unit/tools/test_mypy_ratchet.py"]
+why = "Static-typing ratchet controls use synthetic Git histories and Mypy subprocesses; actual repository policy is a gates node."
+
+[[rules]]
+tier = "gates"
+nodes = [
+  "tests/unit/tools/test_mypy_ratchet.py::test_repository_mypy_exception_ratchet",
+  "tests/unit/tools/test_mypy_ratchet.py::test_mypy_gate_wiring",
+]
+why = "Every commit checks the actual source-typing configuration against its accepted Git baseline."

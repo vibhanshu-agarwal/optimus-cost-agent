@@ -81,7 +81,8 @@ Status, priority and ownership live in the record's GitHub issue; the transition
 | [Phase 1 roadmap](superpowers/plans/2026-07-01-phase-1-roadmap.md) | Historical sequencing of Phase 1 |
 | [Plan 11 v1.0 milestone charter](superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md) | What v1.0 must contain |
 | [Hardening masterplan](superpowers/plans/hardening-runtime-quality-masterplan.md) | The 15 hardening tracks and their status |
-| [Hardening: CI guardrail truthfulness](superpowers/plans/hardening-ci-guardrail-truthfulness-implementation.md) | The active hardening track |
+| [Hardening: CI guardrail truthfulness](superpowers/plans/hardening-ci-guardrail-truthfulness-implementation.md) | CI guardrail enforcement contract |
+| [Hardening: source typing](superpowers/plans/hardening-static-type-checking-implementation_v2.md) | All-source Mypy gate, exception ratchet and first telemetry cohort; custody in #329 |
 
 Live plans (each listed in the backlog's live plan registry):
 
