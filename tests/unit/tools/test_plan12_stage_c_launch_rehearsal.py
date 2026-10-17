@@ -1026,3 +1026,149 @@ def test_the_handshake_check_writes_a_new_receipt(tmp_path, monkeypatch) -> None
     assert receipt["handshake"][0]["sessions"] == [{"session": "h1", "steps": rehearsal.HANDSHAKE_STEPS}] and receipt["permission_outcomes"] == []
     with pytest.raises(FileExistsError):
         rehearsal.zed_check(fixture_path, out, handshake=True)
+
+
+# --- The r9 full inert dress rehearsal (Codex's proposal 235d7b7e) ----------------------------------------------------
+#
+# One trace on the double, every launch started through Claude's ordinary shortcut: L1 with A1 and A2's handshake (the
+# write request captured and left pending: no approval is manufactured), then the qualification restart drill (A3, A4
+# and A5 in a new launch, as the one eligible restart would run them), then the attached launch in the selected B2
+# order. The unchanged acpx commands keep their own rehearsal receipt.
+
+
+def _dress_qualification() -> list[dict]:
+    return [
+        _start(41), _request(41, "initialize", protocolVersion=1),
+        _new(41, "d1"), _mode(41, "d1", "chat"), _prompt(41, "d1"), _mode(41, "d1", "agent"), _prompt(41, "d1", "agent"),
+        _start(42), _request(42, "initialize", protocolVersion=1),
+        _new(42, "r1"), _mode(42, "r1", "chat"), _prompt(42, "r1"),
+        _new(42, "r2"), _mode(42, "r2", "chat"), _prompt(42, "r2"), _mode(42, "r2", "agent"), _mode(42, "r2", "chat"),
+        _new(42, "r3"), _mode(42, "r3", "chat"),
+    ]  # fmt: skip
+
+
+def _dress_passing(early: bool = True) -> list[dict]:
+    """The dress trace. Attached, B2 after B3.1: T1 in Chat with B3.1's prompt; T2 opened from the content-bearing T1,
+    where Zed applies T1's persisted Chat (its strategy was never changed), then B2's prompt; back on T1 for B4.2 to
+    B8.7 with the strategy changes at their boundaries. B2 last: the walk's own attached order."""
+    attached = [_start(43, args=ATTACHED_ARGS), _request(43, "initialize", protocolVersion=1), _new(43, "t1"), _mode(43, "t1", "chat"), _prompt(43, "t1")]
+    t2 = [_new(43, "t2"), _mode(43, "t2", "chat"), _prompt(43, "t2")]
+    rest = [_prompt(43, "t1"), _strategy(43, "t1", "sliding_window"), _prompt(43, "t1"), _strategy(43, "t1", "compaction"), _prompt(43, "t1"),
+            _prompt(43, "t1"), _prompt(43, "t1"), _strategy(43, "t1", "hybrid"), _prompt(43, "t1")]  # fmt: skip
+    if early:
+        return [*_dress_qualification(), *attached, *t2, *rest]
+    return [*_dress_qualification(), *attached, *rest, _new(43, "t2"), _mode(43, "t2", "chat"), _strategy(43, "t2", "hybrid"), _prompt(43, "t2")]
+
+
+def _dress(records: list[dict], early: bool = True, alive=lambda pid: False) -> list[str]:
+    return rehearsal.check_dress(records, agent_exe=EXE, workspace=WS, alive=alive, b2_early=early)
+
+
+@pytest.mark.parametrize("early", [True, False], ids=["b2-after-b3.1", "b2-last"])
+def test_a_passing_dress_rehearsal_has_no_problem(early: bool) -> None:
+    assert _dress(_dress_passing(early), early) == []
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        (lambda rs: [*rs, {"pid": 41, "event": "permission", "outcome": {"outcome": "selected", "optionId": "approve"}}], "permission outcome"),
+        (lambda rs: [*rs, {"pid": 41, "event": "permission", "outcome": {"outcome": "selected", "optionId": "cancel"}}], "permission outcome"),
+        (lambda rs: _drop(rs, _is(41, "session/prompt", "d1", None)), "L1"),
+        (lambda rs: [r for r in rs if not (r["pid"] == 41 and r.get("mode") == "agent" and r.get("method") == "session/prompt")], "L1"),
+        (lambda rs: _insert_after(rs, _is(42, "session/prompt", "r1"), _prompt(42, "r1", "agent")), "Agent"),
+        (lambda rs: [r for r in rs if r["pid"] != 42], "2 qualification launches"),
+        (lambda rs: _insert_after(rs, _is(42, "session/prompt", "r1"), _prompt(42, "r1")), "restart drill"),
+        (lambda rs: _drop(rs, _is(42, "session/set_config_option", "r3")), "restart drill"),
+        (lambda rs: _insert_after(rs, _is(42, "session/set_config_option", "r3"), _prompt(42, "r3")), "restart drill"),
+        (lambda rs: [r for r in rs if r.get("sessionId") != "r3"], "restart drill"),
+        (lambda rs: [*rs, _start(44, args=ATTACHED_ARGS), _request(44, "initialize", protocolVersion=1), _new(44, "t9")], "attached: 2 launches"),
+        (lambda rs: _insert_after(rs, _is(43, "session/prompt", "t2"), _new(43, "t3")), "attached: 3 session/new"),
+        (lambda rs: [*rs[: rs.index(next(r for r in rs if _is(43, "session/prompt", "t1")(r)))], _new(43, "t2"), _mode(43, "t2", "chat"), _prompt(43, "t2"),
+                     *[r for r in rs[rs.index(next(r for r in rs if _is(43, "session/prompt", "t1")(r))):] if r.get("sessionId") != "t2"]], "T2"),
+        (lambda rs: [r for r in rs if r.get("sessionId") != "t2"] + [_new(43, "t2"), _mode(43, "t2", "chat"), _prompt(43, "t2")], "T2"),
+        (lambda rs: _insert_after(rs, _is(43, "session/set_config_option", "t2"), _strategy(43, "t2", "hybrid")), "T2"),
+        (lambda rs: _drop(rs, _is(43, "session/set_config_option", "t2")), "T2"),
+        (lambda rs: _drop(rs, _is(43, "session/set_config_option", "t1", "compaction")), "strategy"),
+        (lambda rs: _drop(rs, lambda r: r is [x for x in rs if _is(43, "session/prompt", "t1")(x)][-1]), "prompts"),
+        (lambda rs: [*rs, _request(43, "session/load")], "session/load"),
+        (lambda rs: [{**r, "args": ARGS[:-1]} if r["event"] == "start" and r["pid"] == 42 else r for r in rs], "not a generated Zed launch"),
+    ],
+    ids=["approved", "cancelled", "no-a1-prompt", "no-a2-prompt", "agent-prompt-in-restart", "no-restart-drill", "r1-two-prompts",
+         "r3-no-persisted-chat", "r3-prompted", "no-r3", "second-attached-launch", "t1-replaced-by-a-new-session", "t2-before-b3.1",
+         "t2-last-in-early-branch", "t2-extra-strategy", "t2-no-persisted-chat", "strategy-omitted", "t1-final-prompt-missing", "load", "argv"],
+)
+def test_each_dress_failure_is_a_problem(change, expected: str) -> None:
+    problems = _dress(change(copy.deepcopy(_dress_passing())))
+    assert problems and any(expected in p for p in problems), problems
+
+
+def test_the_dress_order_must_be_the_selected_branch() -> None:
+    """B2 after B3.1 passes only on that branch, and B2 last only on its own."""
+    assert any("T2" in p for p in _dress(_dress_passing(early=True), early=False))
+    assert any("T2" in p for p in _dress(_dress_passing(early=False), early=True))
+
+
+def test_a_double_left_running_after_the_dress_rehearsal_is_a_problem() -> None:
+    assert _dress(_dress_passing(), alive=lambda pid: pid == 43) == ["double 43 is still running after Zed quit"]
+
+
+def test_the_dress_branch_is_read_from_the_schedules_case_order() -> None:
+    early = {"cases": [{"case": c} for c in ("A1", "B3.1", "B2", "B4.2")]}
+    late = {"cases": [{"case": c} for c in ("A1", "B3.1", "B4.2", "B2")]}
+    assert (rehearsal.b2_early(early), rehearsal.b2_early(late)) == (True, False)
+
+
+@WINDOWS_ONLY
+def test_the_dress_check_writes_a_new_receipt(tmp_path, monkeypatch) -> None:
+    schedule_path = tmp_path / "stage-c-schedule.json"
+    schedule = {"schedule": "stage-c-schedule-v10", **_schedule(Path(r"C:\venv\Scripts\optimus-agent.exe"), Path(r"C:\run\workspace")),
+                "cases": [{"case": c} for c in ("A1", "B3.1", "B2", "B4.2")]}  # fmt: skip
+    schedule_path.write_text(json.dumps(schedule), encoding="utf-8")
+
+    def build(root: Path) -> Path:
+        exe = root / "venv with spaces" / "Scripts" / "optimus-agent.exe"
+        exe.parent.mkdir(parents=True)
+        exe.write_bytes(b"MZ")
+        return exe
+
+    monkeypatch.setattr(rehearsal, "build_double", build)
+    monkeypatch.setattr(rehearsal, "_alive", lambda pid: False)
+    fixture_path = rehearsal.zed_fixture(schedule_path, tmp_path / "zed dress")
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    exe, workspace = Path(fixture["double"]["exe"]), Path(fixture["workspace"])
+    dressed = [{**r, "argv0": str(exe), "args": [r["args"][0], str(workspace), *r["args"][2:]]} if r["event"] == "start" else
+               ({**r, "cwd": str(workspace)} if r.get("method") == "session/new" else r) for r in _dress_passing()]  # fmt: skip
+    Path(fixture["record"]).write_text("".join(json.dumps(r) + "\n" for r in dressed), encoding="utf-8")
+    out = tmp_path / "dress" / "receipt.json"
+    assert rehearsal.main(["--zed-dress-check", str(fixture_path), "--out", str(out)]) == 0
+    receipt = json.loads(out.read_text(encoding="utf-8"))
+    assert (receipt["schema"], receipt["passed"], receipt["problems"], receipt["b2_early"]) == (rehearsal.ZED_DRESS_RECEIPT_SCHEMA, True, [], True)
+    assert [s["profile"] for s in receipt["dress"]] == ["qualification", "qualification", "attached"] and receipt["permission_outcomes"] == []
+    with pytest.raises(FileExistsError):
+        rehearsal.zed_check(fixture_path, out, dress=True)
+
+
+def test_a5s_new_session_must_open_with_zed_applying_chat_not_any_mode() -> None:
+    """R3's first request must be Zed applying the persisted Chat: a first setter to any other mode is a problem too."""
+    records = [{**r, "value": "agent"} if _is(42, "session/set_config_option", "r3")(r) else r for r in _dress_passing()]
+    assert any("R3's first request is mode=agent" in p for p in _dress(records))
+
+
+def test_t2_opens_without_a_setter_when_t1_holds_only_optimus_defaults() -> None:
+    """Zed applies only persisted non-default values: had T1 been left in Agent (the default) when T2 opened, T2 gets no
+    mode setter, and expecting one would be wrong (B2's own prompt is then outside this check's concern)."""
+    records = _dress_passing()
+    t2_new = next(i for i, r in enumerate(records) if _is(43, "session/new", "t2")(r))
+    records = [*records[:t2_new], _mode(43, "t1", "agent"), records[t2_new], *[r for r in records[t2_new + 1 :] if not _is(43, "session/set_config_option", "t2")(r)]]
+    assert not any("T2 must open" in p for p in _dress(records))
+
+
+def test_on_the_last_branch_t2_must_open_after_t1s_final_prompt() -> None:
+    """B2 last: T2 opened after the hybrid change but before B8.7's prompt carries the right setters yet is in the wrong place."""
+    records = _dress_passing(early=False)
+    last_t1 = max(i for i, r in enumerate(records) if _is(43, "session/prompt", "t1")(r))
+    t2 = [r for r in records if r.get("sessionId") == "t2"]
+    moved = [*[r for r in records[:last_t1] if r.get("sessionId") != "t2"], *t2, records[last_t1]]
+    problems = _dress(moved, early=False)
+    assert any("B2 runs last" in p for p in problems), problems

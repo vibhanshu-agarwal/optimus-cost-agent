@@ -122,13 +122,13 @@ def test_the_bound_totals_count_one_billed_attempt_and_two_physical_attempts_per
     assert bound["assumptions"] and all(isinstance(text, str) and text for text in bound["assumptions"])
 
 
-def test_the_r8_envelope_holds_the_accepted_complete_case_bound(schedule) -> None:
+def test_the_r9_envelope_holds_the_accepted_complete_case_bound(schedule) -> None:
     """The operator's r5 grant of 2026-10-15: $8 rounds the accepted $7.518097 bound up, and 138 attempts is
     exactly its maximum (one safe resend per call). The bound itself is unchanged by the envelope."""
     totals = schedule["bound"]["totals"]
     assert (totals["calls"], totals["billed_attempt_bound_usd"], totals["physical_attempts_planned_max"]) == (69, "7.518097", [69, 138])
-    assert schedule["schedule"] == "stage-c-schedule-v9"
-    assert schedule["envelope"] == {"release": "plan12-2-stage-c-r8", "usd": "8", "physical_attempts": 138, "window_minutes": 60}
+    assert schedule["schedule"] == "stage-c-schedule-v10"
+    assert schedule["envelope"] == {"release": "plan12-2-stage-c-r9", "usd": "8", "physical_attempts": 138, "window_minutes": 60}
     assert (totals["fits_usd"], totals["fits_attempts_planned"], totals["fits_attempts_max"], totals["usd_shortfall"]) == (True, True, True, "0")
 
 
@@ -548,3 +548,125 @@ def test_the_paste_files_hit_the_refusal_they_are_named_for(schedule) -> None:
     assert usable < files["capacity-prompt.txt"]["bytes"] < CONVERSATION_MAX_BYTES  # over request capacity, inside storage
     assert files["capacity-prompt.txt"]["bytes"] * 5 >= CONVERSATION_MAX_BYTES * 4  # also crosses the 80% storage warning
     assert files["storage-prompt.txt"]["bytes"] > CONVERSATION_MAX_BYTES
+
+
+# --- Schedule v10 (r9; Codex's proposal 235d7b7e, operator-approved 2026-10-17) -------------------------------------
+#
+# r6, r7 and r8 each stopped at their first failed case. v10 keeps every case, prompt, criterion and the bound, and
+# continues only cases whose predecessors ran and whose state preconditions are proved; anything missing is BLOCKED,
+# never sent. Absolute stops are unchanged and widened; one qualification Zed restart is allowed only after a charged,
+# fully settled reply refusal; the attached launch is never relaunched; Claude starts Zed itself.
+
+EDGES = {
+    "A1": (), "A2": ("A1",), "A3": ("A1",), "A4": ("A3",), "A5": ("A4",), "A6": (), "A7": (),
+    "B3.1": (), "B2": ("B3.1",), "B4.2": ("B3.1",), "B5.3": ("B4.2",), "B6.4": ("B5.3",), "B6.5": ("B6.4",), "B7.6": ("B6.5",), "B8.7": ("B7.6",),
+}  # fmt: skip
+NO_ROUTE = {"A4", "A5", "B6.4", "B6.5"}  # refused by the host or the engine before any request, or no prompt at all
+
+
+def test_every_case_names_its_predecessors_and_state_preconditions(schedule) -> None:
+    rows = {row["case"]: row for row in schedule["cases"]}
+    order = [row["case"] for row in schedule["cases"]]
+    assert {case: tuple(row["after"]) for case, row in rows.items()} == EDGES
+    for case, row in rows.items():
+        assert all(order.index(before) < order.index(case) for before in row["after"]), case  # acyclic, in run order
+        assert row["requires"] and all(isinstance(text, str) and text for text in row["requires"]), case
+    assert {case for case, row in rows.items() if not row["needs_route"]} == NO_ROUTE
+    # A3's criterion is the Gateway's own preflight capacity refusal: a stopped route would answer it differently.
+    assert rows["A3"]["needs_route"] is True and rows["A3"]["bound"]["answer_calls"] == 0
+
+
+def test_state_preconditions_are_proved_state_never_a_submitted_prompt(schedule) -> None:
+    rows = {row["case"]: row for row in schedule["cases"]}
+    text = {case: " ".join(row["requires"]) for case, row in rows.items()}
+    assert "committed" in text["B4.2"] and "checkpoint" in text["B4.2"]  # B3.1's published checkpoint, not its prompt
+    for case, turns in (("B5.3", "1-2"), ("B6.4", "1-3"), ("B6.5", "1-4"), ("B7.6", "1-5"), ("B8.7", "1-6")):
+        assert "admitted" in text[case] and f"turns {turns}" in text[case], case
+    for case in ("A3", "A4", "B2"):
+        assert "content-bearing" in text[case], case
+    assert "fresh" in text["A1"] and "qualification" in text["A1"]
+
+
+def test_absolute_stops_end_the_run_and_other_failures_continue_only_proved_independent_cases(schedule) -> None:
+    rules = schedule["stop_rules"]
+    absolute = next(rule for rule in rules if rule.startswith("Absolute stops"))
+    for item in ("guard refusal", "ledger halt", "unknown, outstanding or unresolved charge", "accounting-integrity", "custody check that is not clear",
+                 "security, approval, source or fixture mismatch", "uncertain permission provenance or isolation"):  # fmt: skip
+        assert item in absolute, item
+    assert "UNRUN" in absolute and "no restart clears it" in absolute
+    failure = next(rule for rule in rules if rule.startswith("Any other case failure"))
+    assert "FAILED" in failure and "never retried" in failure and "substitute prompt" in failure
+    proved = next(rule for rule in rules if rule.startswith("Continue only"))
+    assert "BLOCKED" in proved and "never sent" in proved and "submitted prompt proves nothing" in proved
+    assert any("not full Stage C acceptance" in rule for rule in rules)
+    assert not any("fresh bound approval" in rule for rule in rules)  # r8's unreviewed relaunch text is gone
+
+
+def test_a_route_stop_blocks_that_launchs_route_cases_and_the_attached_launch_is_never_relaunched(schedule) -> None:
+    rule = next(rule for rule in schedule["stop_rules"] if rule.startswith("On the experimental route"))
+    assert "BLOCKED (route stopped)" in rule and "never relaunched" in rule and "reseeds" in rule
+    restart = next(rule for rule in schedule["stop_rules"] if rule.startswith("At most one qualification Zed restart"))
+    for item in ("charged, fully settled reply-policy refusal", "422", "custody", "not yet run", "r9 L1 durable approval", "same"):
+        assert item in restart, item
+
+
+def test_the_qualification_restart_is_one_conditional_runbook_step_inside_the_l1_zed_launch(schedule) -> None:
+    steps = schedule["runbook"]["steps"]
+    titles = [step["title"] for step in steps]
+    [restart] = [n for n, step in enumerate(steps) if step["kind"] == "zed-restart"]
+    assert titles.index("cases A1-A5 in Zed") < restart < titles.index("end the L1 Zed launch")
+    text = " ".join(steps[restart]["commands"]) + " " + steps[restart]["note"]
+    for item in ("Only if", "at most once", "charged, fully settled", "UPSTREAM_ATTEMPT_UNCERTAIN", "FAILED", "01a-L1-route-stop", "Claude starts Zed",
+                 "never A1 or A2 again", "--previous", "never for the attached launch"):  # fmt: skip
+        assert item in text, item
+    assert not any(step["kind"] == "zed-restart" and "attached" in step["title"] for step in steps)
+
+
+def test_claude_starts_each_zed_launch_through_explorer_with_the_pinned_client(schedule) -> None:
+    """The operator never opens Zed (operator decision, 2026-10-17): Claude starts it through explorer.exe on a
+    shortcut to the pinned Zed.exe with the workspace, so Zed gets the user's ordinary environment; Codex drives."""
+    runbook = schedule["runbook"]
+    assert runbook["zed_client"]["version"] == "1.24.2" and runbook["zed_client"]["sha256"].startswith("87a6f2c6")
+    shortcut = runbook["zed_client"]["shortcut"]
+    assert shortcut.endswith(".lnk") and Path(shortcut).parent == Path(runbook["paths"]["workspace"]).parent / "launch"
+    launches = [step for step in runbook["steps"] if step["kind"] == "zed-launch"]
+    assert len(launches) == 2
+    for step in launches:
+        start = step["commands"][1]
+        for item in ("Claude starts Zed", "explorer.exe", shortcut, "Zed.exe", runbook["zed_client"]["sha256"], "PID", "8765"):
+            assert item in start, (step["title"], item)
+    prior = next(step for step in runbook["steps"] if step["title"] == "stop the prior host")
+    assert prior["kind"] == "pre-launch-check" and "Claude" in prior["commands"][0] and "operator" not in prior["commands"][0].lower()
+
+
+@pytest.mark.parametrize("early", [True, False], ids=["b2-after-b3.1", "b2-last"])
+def test_b2s_position_follows_the_selected_branch_and_changes_no_criterion(early: bool) -> None:
+    cases = tool._cases(b2_early=early)
+    order = [case.case for case in cases]
+    attached = [c for c in order if c.startswith("B")]
+    expected = ["B3.1", "B2", "B4.2", "B5.3", "B6.4", "B6.5", "B7.6", "B8.7"] if early else ["B3.1", "B4.2", "B5.3", "B6.4", "B6.5", "B7.6", "B8.7", "B2"]
+    assert attached == expected
+    b2 = next(case for case in cases if case.case == "B2")
+    assert b2.bound[:2] == (1, 0) and b2.after == ("B3.1",)
+    if early:
+        assert any("return to T1" in step and "no new thread" in step for step in b2.steps)
+    same = {c.case: (c.steps, c.expected, c.bound) for c in tool._cases(b2_early=not early) if c.case != "B2"}
+    assert {c.case: (c.steps, c.expected, c.bound) for c in cases if c.case != "B2"} == same  # only B2's place changes
+
+
+def test_the_selected_b2_branch_is_the_generated_order_and_the_l2_case_step(schedule) -> None:
+    order = [row["case"] for row in schedule["cases"]]
+    step = next(s for s in schedule["runbook"]["steps"] if s["title"].startswith("cases B"))
+    if tool.B2_AFTER_FIRST_TURN:
+        assert order.index("B2") == order.index("B3.1") + 1 and "return to T1" in step["commands"][0]
+    else:
+        assert order[-1] == "B2" and "then B2 in a second new thread" in step["commands"][0]
+    path = schedule["measured"]["paths"][0]
+    assert path["small_session_after_turn"] == (1 if tool.B2_AFTER_FIRST_TURN else len(tool.ATTACHED_TURNS))
+
+
+def test_the_bound_states_that_continuation_restart_and_b2s_place_add_no_allocation(schedule) -> None:
+    text = " ".join(schedule["bound"]["assumptions"])
+    assert "restart adds no case and no request" in text and "BLOCKED case sends no prompt" in text and "B2" in text
+    totals = schedule["bound"]["totals"]
+    assert (totals["calls"], totals["billed_attempt_bound_usd"], totals["physical_attempts_planned_max"]) == (69, "7.518097", [69, 138])

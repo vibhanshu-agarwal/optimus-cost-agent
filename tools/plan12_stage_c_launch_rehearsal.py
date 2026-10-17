@@ -104,6 +104,7 @@ ZED_FIXTURE_SCHEMA = "stage-c-zed-fixture-v1"
 ZED_RECEIPT_SCHEMA = "stage-c-zed-launch-check-v1"
 ZED_WALK_RECEIPT_SCHEMA = "stage-c-zed-walk-check-v1"
 ZED_HANDSHAKE_RECEIPT_SCHEMA = "stage-c-zed-handshake-check-v1"
+ZED_DRESS_RECEIPT_SCHEMA = "stage-c-zed-dress-check-v1"
 WALK_SESSIONS = {"qualification": 4, "attached": 2}  # A1, A3, A4 and A5's new session; the seeded thread and B2's
 WALK_STRATEGIES = ["sliding_window", "compaction", "hybrid"]  # B5.3, B6.4 and B8.7 on the seeded thread, after its initial compaction
 WALK_STRATEGY_BOUNDARIES = [2, 3, 6]  # T1's prompts before each: B3.1 and B4.2; then B5.3; then B6.4, B6.5 and B7.6
@@ -663,9 +664,8 @@ def _setting(request: dict[str, Any]) -> tuple[str, Any] | None:
     return ("mode", mode) if mode is not None else ("strategy", strategy) if strategy is not None else None
 
 
-def _attached_walk(sessions: list[dict[str, Any]]) -> list[str]:
-    t1, t2 = sessions
-    requests = t1["requests"]
+def _t1_strategy_problems(requests: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
+    """T1's strategy setters, each on T1 in B-case order at its case's prompt boundary, and the problems with them."""
     strategies = [value for r in requests if (value := _strategy_change(r))]
     boundaries = [sum(1 for x in requests[:i] if x["method"] == "session/prompt") for i, r in enumerate(requests) if _strategy_change(r)]
     problems = []
@@ -673,6 +673,13 @@ def _attached_walk(sessions: list[dict[str, Any]]) -> list[str]:
         problems.append(f"T1's strategy setters were {strategies}; expected {WALK_STRATEGIES} in B-case order, each on T1")
     elif boundaries != WALK_STRATEGY_BOUNDARIES:
         problems.append(f"T1's strategy steps came after {boundaries} prompts; expected {WALK_STRATEGY_BOUNDARIES} (their B cases' prompt boundaries)")
+    return problems, strategies
+
+
+def _attached_walk(sessions: list[dict[str, Any]]) -> list[str]:
+    t1, t2 = sessions
+    requests = t1["requests"]
+    problems, strategies = _t1_strategy_problems(requests)
     # Zed applies the persisted mode and strategy to a new thread right after session/new (r7's walk recorded T1's final
     # Chat and Hybrid on T2). T2's host defaults are Agent and Compaction, so both must be applied, once each and in either
     # order, before B2's prompt; any other setter on T2 is a driver step and belongs to T1 (Codex's clarification 6217891529).
@@ -716,6 +723,115 @@ def check_walk(records: list[dict[str, Any]], *, agent_exe: Path, workspace: Pat
     return problems
 
 
+# --- The r9 full inert dress rehearsal (Codex's proposal 235d7b7e) ----------------------------------------------------
+
+
+def b2_early(schedule: dict[str, Any]) -> bool:
+    """The schedule's selected B2 branch: B2 right after B3.1 (before B4.2), or last."""
+    order = [row["case"] for row in schedule["cases"]]
+    return order.index("B2") < order.index("B4.2")
+
+
+def _restart_drill(sessions: list[dict[str, Any]]) -> list[str]:
+    """The qualification restart drill: A3 in the new launch's first thread, A4 in a thread opened from it with A5's switches
+    after its prompt, then A5's new session, where Zed first applies the persisted Chat and nothing is prompted."""
+    if len(sessions) != 3:
+        return [f"restart drill: {len(sessions)} sessions, expected 3 (A3, A4 with A5's switches, A5's new session)"]
+    r1, r2, r3 = sessions
+    problems = []
+    for name, session in (("R1 (A3)", r1), ("R2 (A4)", r2)):
+        modes = [r.get("mode") for r in session["requests"] if r["method"] == "session/prompt"]
+        if modes != ["chat"]:
+            problems.append(f"restart drill: {name} must hold exactly one Chat prompt; its prompts were in {modes}")
+    a5 = [mode for r in _after_prompt(r2) if (mode := _mode_change(r))]
+    if not a5 or "agent" not in a5[:-1] or a5[-1] != "chat":
+        problems.append(f"restart drill: A5's mode changes on R2 after A4 were {a5}; expected a switch to Agent, ending on Chat")
+    first = r3["requests"][0] if r3["requests"] else None
+    if first is None or _mode_change(first) != "chat":
+        problems.append(f"restart drill: R3's first request is {_step(first) if first else 'none'}, not Zed applying the persisted Chat")
+    if any(r["method"] == "session/prompt" for r in r3["requests"]):
+        problems.append("restart drill: R3 was prompted; A5 sends no prompt")
+    return problems
+
+
+def _attached_dress(events: list[dict[str, Any]], sessions: list[dict[str, Any]], early: bool) -> list[str]:
+    """The attached launch in the selected B2 order. B2 last: the walk's own checks, with T2 opened after T1's final
+    prompt. B2 after B3.1: T2 opened after exactly T1's first prompt, opening with Zed applying T1's persisted non-default
+    settings at that moment (Optimus's defaults are Agent and Compaction), one prompt and no later setter; T1 keeps every
+    later prompt and its strategy steps at their boundaries."""
+    t1, t2 = sessions
+    requests = [e for e in events if e["event"] == "request"]
+    created = next(i for i, r in enumerate(requests) if r["method"] == "session/new" and r.get("sessionId") == t2["session"])
+    t1_before = [r for r in requests[:created] if r.get("sessionId") == t1["session"]]
+    t1_prompts_before = sum(1 for r in t1_before if r["method"] == "session/prompt")
+    t1_prompts = sum(1 for r in t1["requests"] if r["method"] == "session/prompt")
+    if not early:
+        problems = _attached_walk(sessions)
+        if t1_prompts_before != t1_prompts:
+            problems.append(f"T2 opened after {t1_prompts_before} of T1's {t1_prompts} prompts; on this branch B2 runs last")
+        return problems
+    problems, _ = _t1_strategy_problems(t1["requests"])
+    if t1_prompts_before != 1:
+        problems.append(f"T2 opened after {t1_prompts_before} of T1's prompts; on this branch B2 runs right after B3.1 (exactly 1)")
+    mode = next((m for r in reversed(t1_before) if (m := _mode_change(r))), None)
+    strategy = next((s for r in reversed(t1_before) if (s := _strategy_change(r))), None)
+    expected = sorted([*([("mode", mode)] if mode not in (None, "agent") else []), *([("strategy", strategy)] if strategy not in (None, "compaction") else [])])
+    first_prompt = next((i for i, r in enumerate(t2["requests"]) if r["method"] == "session/prompt"), len(t2["requests"]))
+    leading = sorted(_setting(r) or ("request", r["method"]) for r in t2["requests"][:first_prompt])
+    if leading != expected:
+        problems.append(f"T2 must open with Zed applying T1's persisted {expected} before B2's prompt; it had {leading}")
+    if any(_setting(r) for r in t2["requests"][first_prompt:]):
+        problems.append("a mode or strategy setter on T2 after B2's prompt: every strategy step belongs to T1")
+    return problems
+
+
+def check_dress(records: list[dict[str, Any]], *, agent_exe: Path, workspace: Path, alive: Callable[[int], bool], b2_early: bool) -> list[str]:
+    """Every problem with the full inert dress rehearsal (Codex's proposal 235d7b7e): three launches in order, each a
+    generated launch (L1, the qualification restart drill, the attached launch); L1 is exactly S1 with A1's Chat prompt
+    then A2's Agent prompt, whose permission stays pending (no approval or cancellation is ever manufactured); the drill
+    runs A3, A4 and A5 as the one eligible restart would; the attached launch has T1 and T2 with the scheduled prompt
+    counts in the selected B2 order; no other Agent prompt, no permission outcome, no session/load and nothing left running."""
+    events = _by_pid(records)
+    if not events:
+        return ["the double never started: Zed launched no entry"]
+    problems, launched = _launch_problems(events, agent_exe=agent_exe, workspace=workspace)
+    order = [double._profile(seen[0]["args"]) for seen in events.values() if seen[0]["event"] == "start"]
+    if len(launched["qualification"]) != 2:
+        problems.append(f"{len(launched['qualification'])} qualification launches: the dress rehearsal is L1, then the restart drill (2 qualification launches)")
+    if len(launched["attached"]) != 1:
+        problems.append(f"attached: {len(launched['attached'])} launches, expected one")
+    if order != ["qualification", "qualification", "attached"]:
+        problems.append(f"launch order {order}: expected L1, the restart drill, then the attached launch")
+    l1_s1 = None
+    if len(launched["qualification"]) == 2:
+        first, drill = launched["qualification"]
+        sessions = _walk_sessions(events[first])
+        steps = [[_step(r) for r in s["requests"]] for s in sessions]
+        if steps != [HANDSHAKE_STEPS]:
+            problems.append(f"L1's sessions held {steps}; expected one, S1, with {HANDSHAKE_STEPS} (A1 in Chat, then A2's Agent prompt left pending)")
+        else:
+            l1_s1 = (first, sessions[0]["session"])
+        problems += _restart_drill(_walk_sessions(events[drill]))
+    if len(launched["attached"]) == 1:
+        seen = events[launched["attached"][0]]
+        sessions = _walk_sessions(seen)
+        if len(sessions) != WALK_SESSIONS["attached"]:
+            problems.append(f"attached: {len(sessions)} session/new, expected {WALK_SESSIONS['attached']} (T1 and B2's T2)")
+        else:
+            prompts = [sum(1 for r in s["requests"] if r["method"] == "session/prompt") for s in sessions]
+            if prompts != WALK_PROMPTS["attached"]:
+                problems.append(f"attached: session prompts {prompts}, expected the scheduled {WALK_PROMPTS['attached']}")
+            problems += _attached_dress(seen, sessions, b2_early)
+    problems += [f"a prompt in {r.get('mode')!r} mode on {r.get('sessionId')}: only A2's Agent prompt on L1's S1 is rehearsed"
+                 for r in records if r.get("method") == "session/prompt" and r.get("mode") != "chat" and (r["pid"], r.get("sessionId")) != l1_s1]  # fmt: skip
+    problems += [f"double {r['pid']} received the permission outcome {r.get('outcome')!r}: A2's request must stay pending (no approve or cancel)"
+                 for r in records if r["event"] == "permission"]  # fmt: skip
+    if any(record.get("method") == "session/load" for record in records):
+        problems.append("a launch asked session/load, which Optimus does not offer")
+    problems += [f"double {pid} is still running after Zed quit" for pid in events if alive(pid)]
+    return problems
+
+
 def zed_fixture(schedule_path: Path, root: Path) -> Path:
     """Build the Zed check's double and workspace in the new folder `root` (both under paths with spaces) and write
     zed-fixture.json: the two Zed entries, their selection shortcuts, the double's identity and the record file the
@@ -754,7 +870,7 @@ def _negative_control(records: list[dict[str, Any]]) -> dict[str, str]:
     return {**NEGATIVE_CONTROL, "result": result}
 
 
-def zed_check(fixture_path: Path, out: Path, *, walk: bool = False, handshake: bool = False) -> int:
+def zed_check(fixture_path: Path, out: Path, *, walk: bool = False, handshake: bool = False, dress: bool = False) -> int:
     """Judge the double's record after Codex has driven Zed (the launch check, or with `walk` the whole offline walk),
     and write a new receipt."""
     if sys.platform != "win32":
@@ -762,8 +878,12 @@ def zed_check(fixture_path: Path, out: Path, *, walk: bool = False, handshake: b
     fixture = json.loads(Path(fixture_path).read_text(encoding="utf-8"))
     exe, workspace, record = Path(fixture["double"]["exe"]), Path(fixture["workspace"]), Path(fixture["record"])
     records = _records(record)
-    judge = check_handshake if handshake else check_walk if walk else check_zed
-    problems = judge(records, agent_exe=exe, workspace=workspace, alive=_alive)
+    early = b2_early(json.loads(Path(fixture["schedule"]["path"]).read_text(encoding="utf-8"))) if dress else None
+    if dress:
+        problems = check_dress(records, agent_exe=exe, workspace=workspace, alive=_alive, b2_early=bool(early))
+    else:
+        judge = check_handshake if handshake else check_walk if walk else check_zed
+        problems = judge(records, agent_exe=exe, workspace=workspace, alive=_alive)
     if sha256_file(exe) != fixture["double"]["sha256"]:
         problems.append("the double's executable changed since the fixture was built")
     if not Path(fixture["schedule"]["path"]).is_file() or sha256_file(Path(fixture["schedule"]["path"])) != fixture["schedule"]["sha256"]:
@@ -781,13 +901,15 @@ def zed_check(fixture_path: Path, out: Path, *, walk: bool = False, handshake: b
                 "exit_record": any(event["event"] == "exit" for event in seen),  # recorded, never required
             })  # fmt: skip
     receipt = {
-        "schema": ZED_HANDSHAKE_RECEIPT_SCHEMA if handshake else ZED_WALK_RECEIPT_SCHEMA if walk else ZED_RECEIPT_SCHEMA,
+        "schema": ZED_DRESS_RECEIPT_SCHEMA if dress else ZED_HANDSHAKE_RECEIPT_SCHEMA if handshake else ZED_WALK_RECEIPT_SCHEMA if walk else ZED_RECEIPT_SCHEMA,
         "created_at": datetime.now(UTC).isoformat(),
         "passed": not problems,
         "problems": problems,
         **({"walk": walk_summary(records), "negative_control": _negative_control(records)} if walk else {}),
         **({"handshake": walk_summary(records), "permission_outcomes": [r.get("outcome") for r in records if r["event"] == "permission"]}
            if handshake else {}),  # fmt: skip
+        **({"dress": walk_summary(records), "b2_early": early, "permission_outcomes": [r.get("outcome") for r in records if r["event"] == "permission"]}
+           if dress else {}),  # fmt: skip
         "fixture": {"path": str(fixture_path), "sha256": sha256_file(Path(fixture_path))},
         "schedule": fixture["schedule"],
         "zed": {"exe": str(ZED_EXE), "sha256": sha256_file(ZED_EXE) if ZED_EXE.is_file() else None},
@@ -798,7 +920,7 @@ def zed_check(fixture_path: Path, out: Path, *, walk: bool = False, handshake: b
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("x", encoding="utf-8", newline="\n") as handle:
         handle.write(json.dumps(receipt, indent=2) + "\n")
-    name = "zed handshake check" if handshake else "zed walk check" if walk else "zed launch check"
+    name = "zed dress check" if dress else "zed handshake check" if handshake else "zed walk check" if walk else "zed launch check"
     print(f"{name} passed" if not problems else f"{name} FAILED:\n" + "\n".join(problems))
     return 0 if not problems else 1
 
@@ -813,8 +935,9 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--zed-check", type=Path, help="judge the double's record for this zed-fixture.json")
     action.add_argument("--zed-walk-check", type=Path, help="judge the double's record of the whole offline Zed walk for this zed-fixture.json")
     action.add_argument("--zed-handshake-check", type=Path, help="judge the double's record of the focused A2 handshake rehearsal for this zed-fixture.json")
+    action.add_argument("--zed-dress-check", type=Path, help="judge the double's record of the full inert dress rehearsal for this zed-fixture.json")
     args = parser.parse_args(argv)
-    if args.zed_check is None and args.zed_walk_check is None and args.zed_handshake_check is None and args.schedule is None:
+    if args.zed_check is None and args.zed_walk_check is None and args.zed_handshake_check is None and args.zed_dress_check is None and args.schedule is None:
         parser.error("--schedule is required")
     if args.verify is not None:
         problems = verify(args.verify, args.schedule, now=datetime.now(UTC), identity=current_identity)
@@ -829,6 +952,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--out is required")
     if args.out.exists():
         parser.error(f"{args.out} exists; every rehearsal writes a new receipt")
+    if args.zed_dress_check is not None:
+        return zed_check(args.zed_dress_check, args.out, dress=True)
     if args.zed_handshake_check is not None:
         return zed_check(args.zed_handshake_check, args.out, handshake=True)
     if args.zed_walk_check is not None:

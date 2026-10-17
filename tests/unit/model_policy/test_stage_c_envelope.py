@@ -1,8 +1,8 @@
 """Plan 12.2 Task 13 (Stage C): the source-owned test envelope (scope agreement, 2026-10-11).
 
-One reviewed release shares one envelope across both test-profile launches. Release r8 (the operator's new
-grant of 2026-10-16, after r7 stopped at A2 on a missing pre-approval capture): $8 of known charges plus
-outstanding reservations, 138 physical upstream attempts and one 60-minute window. It supersedes r7, r6, r5, r4,
+One reviewed release shares one envelope across both test-profile launches. Release r9 (the operator's approval
+of proposal 235d7b7e on 2026-10-17, after r8 stopped at B7.6 on a charged reply refusal): $8 of known charges plus
+outstanding reservations, 138 physical upstream attempts and one 60-minute window. It supersedes r8, r7, r6, r5, r4,
 r3 and r2 ($8, 138 attempts each) and the reviewed r1 ($0.50, 24 attempts), whose ledgers it never opens or resets. Its literal binds the
 release, the limits, both profiles' pinned hashes, the fixed scenario catalogue and the resolved ledger,
 so changing any of them changes what a launch approves.
@@ -25,7 +25,7 @@ ATTACHED_HASH = "06e637845f5f7cea2b4a22d23407c59efc9741d7848b06ee5f4c3d2284f3f07
 
 def test_the_release_is_the_agreed_test_envelope() -> None:
     assert (stage_c.STAGE_C_RELEASE_ID, stage_c.STAGE_C_LIMIT_USD, stage_c.STAGE_C_MAX_ATTEMPTS, stage_c.STAGE_C_WINDOW_SECONDS) == (
-        "plan12-2-stage-c-r8", Decimal("8"), 138, 3600
+        "plan12-2-stage-c-r9", Decimal("8"), 138, 3600
     )
     assert stage_c.STAGE_C_PROFILES == ("qualification", "attached")
 
@@ -97,13 +97,14 @@ EARLIER_RELEASES = {
     "r5": ("plan12-2-stage-c-r5", Decimal("8"), 138),
     "r6": ("plan12-2-stage-c-r6", Decimal("8"), 138),
     "r7": ("plan12-2-stage-c-r7", Decimal("8"), 138),
+    "r8": ("plan12-2-stage-c-r8", Decimal("8"), 138),
 }
 
 
 @pytest.mark.parametrize("earlier", sorted(EARLIER_RELEASES))
-def test_the_r8_release_never_opens_or_resets_an_earlier_ledger(tmp_path: Path, earlier: str) -> None:
-    """r8 has its own ledger file and literal. An earlier release's ledger (r2 to r7 stopped with their windows open;
-    r2, r3, r5, r6 and r7 with settled charges) stays history: never reopened, reset or overwritten by r8, whose
+def test_the_r9_release_never_opens_or_resets_an_earlier_ledger(tmp_path: Path, earlier: str) -> None:
+    """r9 has its own ledger file and literal. An earlier release's ledger (r2 to r8 stopped with their windows open;
+    r2, r3, r5, r6, r7 and r8 with settled charges) stays history: never reopened, reset or overwritten by r9, whose
     window and totals start afresh."""
     release_id, limit_usd, max_attempts = EARLIER_RELEASES[earlier]
     r8_path = stage_c.stage_c_ledger_path(tmp_path)
@@ -116,7 +117,7 @@ def test_the_r8_release_never_opens_or_resets_an_earlier_ledger(tmp_path: Path, 
     used.close()
     before = old_path.read_bytes()
 
-    assert r8_path == tmp_path / "plan12-stage-c" / "plan12-2-stage-c-r8.jsonl" and r8.literal != old.literal
+    assert r8_path == tmp_path / "plan12-stage-c" / "plan12-2-stage-c-r9.jsonl" and r8.literal != old.literal
     stage_c.initialize_stage_c_ledger(r8_path, r8)
     guard = stage_c.StageCGuard.open(r8_path, r8)
     assert (guard.state.attempts, guard.state.charged_usd) == (0, Decimal(0))

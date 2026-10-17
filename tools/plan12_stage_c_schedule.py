@@ -54,6 +54,16 @@ handshake explicit: r7's permission request was approved within seconds, before 
 tells the operator to leave the request pending, captures and checks it, then signals "capture taken \u2014 approve
 now" in its own chat; only on that signal does the operator approve the exact artifact.
 
+Schedule v10 (after r8 stopped at B7.6 on a charged reply refusal; Codex's proposal 235d7b7e, operator-approved
+2026-10-17) keeps every case, prompt, criterion and the bound. r6, r7 and r8 each stopped at their first failed case,
+so one paid hour found one defect. Absolute stops stay absolute and now name every condition that ends the run. Any
+other failure is recorded FAILED and never retried, and the run continues only with cases whose predecessors ran and
+whose state preconditions are proved: each case names them, and one whose precondition is missing is BLOCKED and never
+sent. After a charged, fully settled reply refusal, one qualification Zed restart may run the L1 cases not yet run; the
+attached launch is never relaunched (a new attached host reseeds its first session and restarts its live-turn count).
+Claude starts each Zed launch itself through an ordinary shortcut; B2 may run right after B3.1 when inert evidence
+proves Zed returns to T1 without a new or loaded session.
+
 Usage: python tools/plan12_stage_c_schedule.py --out <dir> [--summary-bytes N] [--reply-bytes N ...]
            [--agent-exe <optimus-agent.exe>] [--evidence <dir>]
        python tools/plan12_stage_c_schedule.py --verify-workspace <workspace>
@@ -72,7 +82,7 @@ import sys
 import tempfile
 import threading
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import ROUND_CEILING, Decimal
 from pathlib import Path
@@ -98,12 +108,23 @@ HAIKU = "anthropic/claude-haiku-5.5"
 T0 = datetime(2026, 10, 12, 9, 0, tzinfo=UTC)
 CAPACITY_PROMPT_BYTES = 430_000  # over the request capacity (229,376 input tokens) and the 80% storage warning, under storage
 STORAGE_PROMPT_BYTES = 530_000  # over the 524,288-byte absent-engine storage limit
-SCHEDULE_VERSION = "stage-c-schedule-v9"
+SCHEDULE_VERSION = "stage-c-schedule-v10"
 RUNTIME_FILES = ("debug-acp.ndjson", "telemetry.jsonl", "local-gateway.log", "launch-audit.ndjson")  # under <workspace>/.optimus
 REPLY_SIZES = (3, 8_192, 32_768, 131_072)  # fake reply bytes per measured path; 131,072 = the 32,768-token cap at 4 bytes a token
 DEFAULT_UNRUN = "the guard refuses a call, the window ends or an earlier required case failed"
 CENT = Decimal("0.000001")
 A7_SESSION = "stage-c-a7"
+# Schedule v10: B2 (an unseeded second session) runs right after B3.1, then the driver returns to T1, so a later failure on
+# T1 cannot block it. Its session is not the seeded one, so the live-turn count and every other case are unchanged. The
+# branch is chosen before technical acceptance, from sealed inert evidence that returning to T1 makes no session/load and
+# no new session; without that proof it is False (B2 last), never changed during a run.
+B2_AFTER_FIRST_TURN = True
+# The pinned Zed client Claude starts through an ordinary shortcut (explorer.exe), so Zed gets the user's environment.
+ZED_CLIENT = {
+    "version": "1.24.2",
+    "exe": r"%LOCALAPPDATA%\Programs\Zed\Zed.exe",
+    "sha256": "87a6f2c652ef9d66902c870942cee1d9a6186acfdf2ca9f94e6f9149eaeb1195",  # pragma: allowlist secret - public file digest
+}
 
 # --- Prompts, files and cases ---------------------------------------------------------------------------------
 
@@ -213,12 +234,40 @@ class Case:
     claims: list[str]
     bound: tuple[int, int, str]  # (answer or planning calls, summary calls, basis)
     unrun_if: str = ""
+    after: tuple[str, ...] = ()  # the cases whose run supplies this case's state (any verdict), in run order
+    requires: list[str] = field(default_factory=list)  # the state and evidence proved before it runs, never inferred
+    needs_route: bool = True  # whether its criterion needs its launch's Gateway route unstopped
 
     def __post_init__(self) -> None:
         self.unrun_if = self.unrun_if or DEFAULT_UNRUN
 
 
-def _cases() -> list[Case]:
+# Schedule v10: each case's predecessors, its state preconditions (proved from evidence; a submitted prompt proves
+# nothing) and whether it needs its launch's route (Codex's proposal 235d7b7e).
+_DEPENDENCIES: dict[str, tuple[tuple[str, ...], list[str], bool]] = {
+    "A1": ((), ["the exact L1 qualification launch, started by Claude, with a fresh S1 (Zed's first new thread); entry custody CLEAR"], True),
+    "A2": (("A1",), ["S1 active in this launch, or a fresh S1 after the one eligible qualification restart", "an available qualification route",
+                     "scratch/stage-c-agent.txt absent", "the operator present for the genuine exact-artifact approval"], True),
+    "A3": (("A1",), ["an available qualification route: A3's criterion is the Gateway's own preflight capacity refusal",
+                     "a fresh Chat session opened from a proved content-bearing thread (S1, or the restart's first thread)", "the exact capacity-prompt.txt"], True),
+    "A4": (("A3",), ["a fresh Chat session opened from A3's proved content-bearing thread", "the exact storage-prompt.txt; no state repair"], False),
+    "A5": (("A4",), ["A4's actual content-bearing thread", "the original Agent, Chat, Chat switches and a distinct new session; no extra prompt"], False),
+    "A6": ((), ["the L1 Zed launch closed with custody CLEAR", "a fresh qualification acpx host for the denied-artifact exec"], True),
+    "A7": ((), ["custody CLEAR after A6", "its own sessions new, set-mode, prompt and close in order: set-mode needs sessions new and the prompt needs "
+                "set-mode; close and cleanup run even after a failure"], True),
+    "B3.1": ((), ["the exact attached launch, started by Claude", "T1 designated with its seed accepted", "live turn 1 of T1"], True),
+    "B2": (("B3.1",), ["an available attached route", "a distinct unseeded T2 opened from content-bearing T1 (B3.1's prompt admitted)",
+                       "Zed's own persisted setters on T2; no maintenance"], True),
+    "B4.2": (("B3.1",), ["the same T1 at live turn 2", "B3.1 committed with its published checkpoint (proved from the trace and receipts, not from its prompt)"], True),
+    "B5.3": (("B4.2",), ["the same T1 with live turns 1-2 actually admitted", "the original sliding_window change"], True),
+    "B6.4": (("B5.3",), ["the same T1 with live turns 1-3 actually admitted, so this is turn 4", "the original unavailability criterion and fixture state"], False),
+    "B6.5": (("B6.4",), ["the same T1 with live turns 1-4 actually admitted, so this is turn 5"], False),
+    "B7.6": (("B6.5",), ["the same T1 with live turns 1-5 actually admitted (the scheduled turn-4/5 unavailability exercised), so this is turn 6"], True),
+    "B8.7": (("B7.6",), ["the same T1 with live turns 1-6 actually admitted, so this is turn 7", "the original hybrid change and the pause/cancel criterion"], True),
+}  # fmt: skip
+
+
+def _cases(b2_early: bool = B2_AFTER_FIRST_TURN) -> list[Case]:
     zed_absent, zed_attached, acpx_absent = "L1 qualification launch (Zed)", "L2 attached launch (Zed)", "L1 qualification launch (acpx)"
     planning = (DEFAULT_MAX_PLANNING_TURNS, 0, f"at most {DEFAULT_MAX_PLANNING_TURNS} planning requests (the approved planning-turn limit)")
     chat = (1, 0, "one Chat answer request")
@@ -298,11 +347,20 @@ def _cases() -> list[Case]:
                  [ledger, "the session's cost settlement"], _B_CLAIMS[case_id], bound,
                  f"cancellation not exercised within 30 s, or {DEFAULT_UNRUN}" if case_id == "B8" else DEFAULT_UNRUN)  # fmt: skip
         )
-    cases.append(
-        Case("B2", zed_attached, "zed", "attached session 2 (Chat; unseeded)", [f"Open a second session; Prompt: {SMALL_SESSION_PROMPT}"], ["an attached answer with no maintenance"],
-             ["no summary calls for the turn"], ["attached-small-session"],
-             (1, 0, "the unseeded session's first turn: its history is its prompt alone, inside every allowance, so no maintenance runs"))  # fmt: skip
-    )
+    b2_steps = (
+        [f"After B3.1, open a second thread T2 from the content-bearing T1 (Zed applies its persisted settings); Prompt: {SMALL_SESSION_PROMPT}",
+         "Then return to T1 through Zed's thread history (no new thread) for B4.2."]
+        if b2_early else [f"Open a second session; Prompt: {SMALL_SESSION_PROMPT}"]
+    )  # fmt: skip
+    b2 = Case("B2", zed_attached, "zed", "attached session 2 (Chat; unseeded)", b2_steps, ["an attached answer with no maintenance"],
+              ["no summary calls for the turn"], ["attached-small-session"],
+              (1, 0, "the unseeded session's first turn: its history is its prompt alone, inside every allowance, so no maintenance runs"))  # fmt: skip
+    if b2_early:
+        cases.insert(next(n for n, case in enumerate(cases) if case.case == "B3.1") + 1, b2)
+    else:
+        cases.append(b2)
+    for case in cases:
+        case.after, case.requires, case.needs_route = _DEPENDENCIES[case.case]
     return cases
 
 
@@ -343,7 +401,7 @@ class _Planner:
         )  # fmt: skip
 
 
-async def _attached_run(summary_bytes: int, reply_bytes: int) -> dict[str, Any]:
+async def _attached_run(summary_bytes: int, reply_bytes: int, b2_early: bool = B2_AFTER_FIRST_TURN) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="stage-c-schedule-") as tmp:
         root = Path(tmp)
         ledger = stage_c.stage_c_ledger_path(root / ".optimus")
@@ -376,7 +434,16 @@ async def _attached_run(summary_bytes: int, reply_bytes: int) -> dict[str, Any]:
 
         seeded = await chat_session()
         cancel_turn = stage_c.STAGE_C_SCENARIOS[stage_c.STAGE_C_ATTACHED_SCENARIO]["schedule"]["cancel_pause_turn"]
-        turns = []
+        turns: list[dict[str, Any]] = []
+        small_envelopes: list[int] = []
+        small_after = 1 if b2_early else len(ATTACHED_TURNS)
+
+        async def small_session() -> None:
+            small = await chat_session()
+            before = len(planner.requests)
+            await rpc("session/prompt", {"sessionId": small, "prompt": [{"type": "text", "text": SMALL_SESSION_PROMPT}]}, "small")
+            small_envelopes.extend(len((r.conversation_envelope or "").encode("utf-8")) for r in planner.requests[before:])
+
         for live, case_id, strategy, text in ATTACHED_TURNS:
             if strategy is not None:
                 await rpc("session/set_config_option", {"sessionId": seeded, "configId": STRATEGY_CONFIG_ID, "value": strategy}, f"s{live}")
@@ -403,11 +470,10 @@ async def _attached_run(summary_bytes: int, reply_bytes: int) -> dict[str, Any]:
                     "answer_envelopes": [len((r.conversation_envelope or "").encode("utf-8")) for r in planner.requests[before_answers:]],
                 }
             )
-        small = await chat_session()
-        before_answers = len(planner.requests)
-        await rpc("session/prompt", {"sessionId": small, "prompt": [{"type": "text", "text": SMALL_SESSION_PROMPT}]}, "small")
-        small_envelopes = [len((r.conversation_envelope or "").encode("utf-8")) for r in planner.requests[before_answers:]]
-        return {"reply_bytes": reply_bytes, "summary_bytes": summary_bytes, "turns": turns, "small_session_envelopes": small_envelopes, "events": list(scenario.events)}
+            if live == small_after:
+                await small_session()  # B2's unseeded session: never a live attached turn of the seeded one
+        return {"reply_bytes": reply_bytes, "summary_bytes": summary_bytes, "turns": turns, "small_session_envelopes": small_envelopes,
+                "small_session_after_turn": small_after, "events": list(scenario.events)}  # fmt: skip
 
 
 # --- The schedule ---------------------------------------------------------------------------------------------
@@ -458,8 +524,15 @@ def _acpx_agent(paths: RunbookPaths) -> dict[str, Any]:
     return {"argv": argv, "value": value, "sha256": hashlib.sha256(value.encode("utf-8")).hexdigest()}
 
 
-def _runbook(paths: RunbookPaths) -> dict[str, Any]:
+def _runbook(paths: RunbookPaths, b2_early: bool = B2_AFTER_FIRST_TURN) -> dict[str, Any]:
     ws, ev, agent = paths.workspace, paths.evidence, _acpx_agent(paths)
+    shortcut = ws.parent / "launch" / "zed-workspace.lnk"
+    zed_start = (
+        f"Claude starts Zed: recheck {ZED_CLIENT['exe']} (Zed {ZED_CLIENT['version']}, SHA-256 {ZED_CLIENT['sha256']}), the Zed settings and the "
+        f'keymap; then run explorer.exe "{shortcut}" (a shortcut whose target is that Zed.exe and whose argument is the workspace), so Zed gets the '
+        "user's ordinary environment; verify one Zed PID and its window, and no Optimus or acpx process or 8765 listener before the first thread. "
+        "Codex drives Zed's UI; the operator never opens it."
+    )
     acpx = f'acpx --format json --cwd "{ws}" --agent "{agent["value"]}"'
     steps: list[dict[str, Any]] = []
     checks: list[str] = []
@@ -498,7 +571,8 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
          [f'python tools/plan12_stage_c_launch_rehearsal.py --verify "{receipt}" --schedule "{ws.parent / "stage-c-schedule.json"}"'], [str(receipt)],
          "Must print 'rehearsal receipt fresh' (exit 0): a passing real-client rehearsal of this schedule's acpx commands, made in release "
          "preparation with today's acpx, Node and shell; otherwise stop before the operator's hour is requested.")  # fmt: skip
-    step("operator", "stop the prior host", ["Stop any earlier Optimus host still running (its owner presses Ctrl+C in its terminal); quit Zed."], [],
+    step("pre-launch-check", "stop the prior host",
+         ["Claude checks that no earlier Optimus host, Zed, acpx process or 8765 listener is running (process names and PIDs only)."], [],
          "No acpx session or other client state from earlier runs is relied on.")  # fmt: skip
     step("approval", "L1 release approval (qualification)", [f'optimus-trust --workspace-root "{ws}" approve --mode durable --plan12-test-profile qualification --plan12-stage-c'],
          [str(ev / "L1" / "approve-console.txt")], "TTY 'y'. Creates the release ledger once; the window starts at the first Gateway open.")  # fmt: skip
@@ -507,9 +581,22 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
          "Must print 'workspace fixture clear' (exit 0): the fixture files unchanged, notes/ and scratch/ present, no case target written "
          "yet and nothing else but the ceremony's .optimus; otherwise stop before any launch.")  # fmt: skip
     check("before-L1")
-    step("zed-launch", "L1 Zed launch (qualification)", [f"Zed settings agent_servers Optimus: {zed_args('qualification')}"], [str(ev / "L1" / "zed-agent-server.json")],
+    step("zed-launch", "L1 Zed launch (qualification)", [f"Zed settings agent_servers Optimus: {zed_args('qualification')}", zed_start],
+         [str(ev / "L1" / "zed-agent-server.json"), str(ev / "L1" / "zed-start.json")],
          "Open the workspace in Zed and start a new Optimus thread: the host starts its own Gateway; the 60-minute window starts.")  # fmt: skip
     step("operator", "cases A1-A5 in Zed", ["Run cases A1, A2, A3, A4 and A5 as listed."], [str(ev / case) for case in ("A1", "A2", "A3", "A4", "A5")])
+    stopped_capture, stopped_check = ev / "runtime" / "01a-L1-route-stop", ev / "checks" / "01a-L1-route-stop.json"
+    step("zed-restart", "qualification Zed restart (conditional, at most once)",
+         [f"Only if A1 or A2 ends in a charged, fully settled reply-policy refusal (Gateway 422 with its usage kept; every charge known and settled; "
+          "no halt; custody clear; window, budget and attempts still open), at most once: record that case FAILED with its evidence; quit Zed; copy "
+          f"{copied} into the new folder {stopped_capture}; run python tools/plan12_stage_c_transition_check.py --workspace-root \"{ws}\" --out "
+          f"{stopped_check} --previous {checks[-1]}; then Claude starts Zed again exactly as for L1, and Codex runs only the L1 cases not yet run (A2 "
+          "if the stop came in A1, then A3, A4 and A5), never A1 or A2 again. Continue with 'end the L1 Zed launch'; its custody check then uses "
+          f"--previous {stopped_check}."],
+         [str(stopped_capture), str(stopped_check)],
+         "Under the same r9 L1 durable approval (its digest must still validate; any mismatch is an absolute stop), the same ledger, totals, deadline "
+         "and limits. Never after UPSTREAM_ATTEMPT_UNCERTAIN, a halt, an unknown charge or any absolute stop, and never for the attached launch: a new "
+         "attached host reseeds its first session and restarts its live-turn count.")  # fmt: skip
     step("operator", "end the L1 Zed launch", ["Quit Zed (File > Quit): it stops the agent server; the host closes its Gateway."], [])
     check("after-L1-zed", after_launch=True)
     step("acpx-launch", "A6: one-shot denied Agent turn", [f'acpx --format json --deny-all --cwd "{ws}" --agent "{agent["value"]}" exec "{A6_PROMPT}"'], [str(ev / "A6" / "exec.ndjson")],
@@ -536,15 +623,21 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
     step("approval", "L2 release approval (attached)", [f'optimus-trust --workspace-root "{ws}" approve --mode durable --plan12-test-profile attached --plan12-stage-c'],
          [str(ev / "L2" / "approve-console.txt")], "TTY 'y'. The ledger is kept as it is (never reset); the window does not restart.")  # fmt: skip
     check("before-L2")
-    step("zed-launch", "L2 Zed launch (attached)", [f"Zed settings agent_servers Optimus: {zed_args('attached')}"], [str(ev / "L2" / "zed-agent-server.json")],
-         "Start Zed; the first new Optimus thread is the seeded session.")  # fmt: skip
-    step("operator", "cases B3-B8 then B2 in Zed", ["Run cases B3.1 to B8.7 in order in the seeded thread, then B2 in a second new thread."], [str(ev / "L2" / "cases")])
+    step("zed-launch", "L2 Zed launch (attached)", [f"Zed settings agent_servers Optimus: {zed_args('attached')}", zed_start],
+         [str(ev / "L2" / "zed-agent-server.json"), str(ev / "L2" / "zed-start.json")], "Start Zed; the first new Optimus thread is the seeded session.")  # fmt: skip
+    if b2_early:
+        step("operator", "cases B3.1, B2, then B4.2-B8.7 in Zed",
+             ["Run B3.1 in the seeded thread T1; then open T2 from T1 and run B2; return to T1 through Zed's thread history (no new thread) and run "
+              "B4.2 to B8.7 in order."], [str(ev / "L2" / "cases")])  # fmt: skip
+    else:
+        step("operator", "cases B3-B8 then B2 in Zed", ["Run cases B3.1 to B8.7 in order in the seeded thread, then B2 in a second new thread."], [str(ev / "L2" / "cases")])
     step("operator", "end the L2 Zed launch", ["Quit Zed."], [])
     check("final", after_launch=True)
     return {
         "paths": {"agent_exe": str(paths.agent_exe), "workspace": str(ws), "evidence": str(ev)},
         "acpx_agent": agent,
         "acpx_shell": ACPX_SHELL,
+        "zed_client": {**ZED_CLIENT, "shortcut": str(shortcut)},
         "acpx": {
             "version": "0.12.0",
             "inspection_sha256": {  # the installed client the launch rehearsal checks; recheck before live use
@@ -566,7 +659,9 @@ def _runbook(paths: RunbookPaths) -> dict[str, Any]:
     }
 
 
-def build_schedule(*, summary_bytes: int = 8_192, reply_sizes: tuple[int, ...] = REPLY_SIZES, paths: RunbookPaths) -> dict[str, Any]:
+def build_schedule(
+    *, summary_bytes: int = 8_192, reply_sizes: tuple[int, ...] = REPLY_SIZES, paths: RunbookPaths, b2_early: bool = B2_AFTER_FIRST_TURN
+) -> dict[str, Any]:
     snapshot = profiles.compose_test_profile_snapshot("attached")
     entry = snapshot.policy.models[HAIKU]
     profile = snapshot.policy.estimators[entry.route.estimator]
@@ -581,7 +676,7 @@ def build_schedule(*, summary_bytes: int = 8_192, reply_sizes: tuple[int, ...] =
     max_summary = Call("summary", limits.estimate_request(widest_summary), summary_cap, "the maintenance input limit inside the summary prompt")
     answer_usd = max_answer.reserve_usd(prices).quantize(CENT, ROUND_CEILING)  # rounded up: still a bound
     summary_usd = max_summary.reserve_usd(prices).quantize(CENT, ROUND_CEILING)
-    cases = _cases()
+    cases = _cases(b2_early)
     rows, bound_total, bound_calls = [], Decimal(0), 0
     for case in cases:
         answers, summaries, basis = case.bound
@@ -592,6 +687,7 @@ def build_schedule(*, summary_bytes: int = 8_192, reply_sizes: tuple[int, ...] =
             {
                 "case": case.case, "launch": case.launch, "client": case.client, "session": case.session, "steps": case.steps, "expected": case.expected,
                 "artifacts": case.artifacts, "claims": case.claims, "unrun_if": case.unrun_if,
+                "after": list(case.after), "requires": case.requires, "needs_route": case.needs_route,
                 "bound": {"answer_calls": answers, "summary_calls": summaries, "basis": basis, "billed_attempt_bound_usd": str(total.quantize(CENT, ROUND_CEILING)),
                           "physical_attempts_max": (answers + summaries) * MAX_ROUTE_ATTEMPTS, "cumulative_usd": str(bound_total.quantize(CENT, ROUND_CEILING))},
             }
@@ -613,6 +709,10 @@ def build_schedule(*, summary_bytes: int = 8_192, reply_sizes: tuple[int, ...] =
             f"Prices are the registry's conservative ${prices[0]}/${prices[1]} per million tokens; the estimator is "
             f"{profile.tokens_per_byte} token per UTF-8 byte plus framing.",
             "Each prompt is the one listed: a different or longer prompt is outside this bound.",
+            "The one eligible qualification restart adds no case and no request: it runs only cases not yet run, and no case runs twice.",
+            "A BLOCKED case sends no prompt, and an UNRUN case sends none.",
+            f"B2 runs {'right after B3.1' if b2_early else 'last'}: its unseeded session is never a live attached turn of the seeded session, so its "
+            "place changes no allocation.",
         ],
         "per_call": {"answer": max_answer.row(prices), "summary": max_summary.row(prices)},
         "totals": {
@@ -632,7 +732,7 @@ def build_schedule(*, summary_bytes: int = 8_192, reply_sizes: tuple[int, ...] =
 
     paths_measured = []
     for reply_bytes in reply_sizes:
-        run = asyncio.run(_attached_run(summary_bytes, reply_bytes))
+        run = asyncio.run(_attached_run(summary_bytes, reply_bytes, b2_early))
         a1 = ConversationTurn(A1_PROMPT, "", "r" * reply_bytes, ConversationOutcome.COMPLETED, EffectState.NONE)
         a1_history = len(render_conversation_envelope({1: a1}).encode("utf-8"))
         planning_note = "planning turn {n} of at most %d (later planning turns' own outputs are not simulated)" % DEFAULT_MAX_PLANNING_TURNS
@@ -657,6 +757,7 @@ def build_schedule(*, summary_bytes: int = 8_192, reply_sizes: tuple[int, ...] =
                 "summary_bytes": summary_bytes,
                 "turns": run["turns"],
                 "small_session_envelopes": run["small_session_envelopes"],
+                "small_session_after_turn": run["small_session_after_turn"],
                 "events": run["events"],
                 "calls_by_case": {case: [call.row(prices) for call in calls] for case, calls in calls_by_case.items()},
                 "totals": {
@@ -703,13 +804,25 @@ def build_schedule(*, summary_bytes: int = 8_192, reply_sizes: tuple[int, ...] =
                 "Chat expectation is derived from summary observations."
             )
         },
-        "runbook": _runbook(paths),
+        "runbook": _runbook(paths, b2_early),
         "stop_rules": [
-            "The Gateway guard refuses any attempt once known charges plus its full reservation would exceed the envelope, at the attempt limit, or when it could not time out inside the window; the refused case and every later one are UNRUN.",
-            "An unknown charge, an overrun, a write failure or a restart with an unresolved attempt stops every later dispatch: the remaining cases are UNRUN.",
-            "On the experimental route a failed or unverifiable reply stops every later call until the Gateway restarts; a relaunch needs a fresh bound approval and keeps the same ledger, totals and deadline.",
-            "A custody check that is not clear stops the run before the next launch: the remaining cases are UNRUN.",
-            "No failed case is retried, no case is removed and no limit is lowered to fit; budget or window exhaustion is never Task 13 acceptance.",
+            "Absolute stops: a Gateway guard refusal (budget, attempts or window); a ledger halt, write divergence or overrun; an unknown, outstanding or "
+            "unresolved charge (an uncertain attempt included); an accounting-integrity failure; a custody check that is not clear; a security, approval, "
+            "source or fixture mismatch; unauthorized or uncertain effects; uncertain permission provenance or isolation. Each stops all dispatch at once: "
+            "every later case is UNRUN and no restart clears it. Capture, check custody, restore and seal.",
+            "Any other case failure (a behaviour or evidence failure): capture at once and record the case FAILED with its evidence. It is never retried, "
+            "given a substitute prompt or repaired, and its criterion is never removed.",
+            "Continue only with cases whose predecessors (after) ran and whose state preconditions (requires) are proved from evidence: a submitted prompt "
+            "proves nothing by itself. A case whose precondition is missing is BLOCKED with the named cause and its prompt is never sent, not even to "
+            "advance a count.",
+            "On the experimental route a refused or unverifiable reply stops every later call on that launch's Gateway: every later case on that launch "
+            "that needs the route is BLOCKED (route stopped). The attached launch is never relaunched: a new attached host reseeds its first session and "
+            "restarts its live-turn count, so earlier state cannot resume.",
+            "At most one qualification Zed restart, only after a charged, fully settled reply-policy refusal (422 with its usage kept, every charge known "
+            "and settled, no halt), with custody clear and the window, budget and attempts still open. It runs only the qualification Zed cases not yet "
+            "run, under the same r9 L1 durable approval, ledger, totals, deadline and limits (runbook step 'qualification Zed restart').",
+            "Any required case FAILED, BLOCKED or UNRUN means the run is not full Stage C acceptance; budget or window exhaustion is never acceptance. No "
+            "case is removed and no limit is lowered to fit.",
         ],
     }
 
@@ -754,6 +867,9 @@ def _markdown(schedule: Mapping[str, Any]) -> str:
             lines.append(f"   {step['note']}")
         if step["evidence"]:
             lines.append("   Evidence: " + ", ".join(step["evidence"]))
+    lines += ["", "## Dependencies (schedule v10)", "", "| Case | After | Needs route | Requires |", "|---|---|---|---|"]
+    for row in schedule["cases"]:
+        lines.append(f"| {row['case']} | {', '.join(row['after']) or '-'} | {'yes' if row['needs_route'] else 'no'} | {'; '.join(row['requires'])} |")
     lines += ["", "## Stop rules", ""] + [f"- {rule}" for rule in schedule["stop_rules"]]
     return "\n".join(lines) + "\n"
 
