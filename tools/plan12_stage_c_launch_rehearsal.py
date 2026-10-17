@@ -757,8 +757,9 @@ def _restart_drill(sessions: list[dict[str, Any]]) -> list[str]:
 def _attached_dress(events: list[dict[str, Any]], sessions: list[dict[str, Any]], early: bool) -> list[str]:
     """The attached launch in the selected B2 order. B2 last: the walk's own checks, with T2 opened after T1's final
     prompt. B2 after B3.1: T2 opened after exactly T1's first prompt, opening with Zed applying T1's persisted non-default
-    settings at that moment (Optimus's defaults are Agent and Compaction), one prompt and no later setter; T1 keeps every
-    later prompt and its strategy steps at their boundaries."""
+    mode at that moment (Optimus's defaults are Agent and Compaction) and the driver's Hybrid setter (B2's original
+    Chat/Hybrid state), then one prompt and no later setter; T1 keeps every later prompt and its strategy steps at their
+    boundaries."""
     t1, t2 = sessions
     requests = [e for e in events if e["event"] == "request"]
     created = next(i for i, r in enumerate(requests) if r["method"] == "session/new" and r.get("sessionId") == t2["session"])
@@ -774,12 +775,11 @@ def _attached_dress(events: list[dict[str, Any]], sessions: list[dict[str, Any]]
     if t1_prompts_before != 1:
         problems.append(f"T2 opened after {t1_prompts_before} of T1's prompts; on this branch B2 runs right after B3.1 (exactly 1)")
     mode = next((m for r in reversed(t1_before) if (m := _mode_change(r))), None)
-    strategy = next((s for r in reversed(t1_before) if (s := _strategy_change(r))), None)
-    expected = sorted([*([("mode", mode)] if mode not in (None, "agent") else []), *([("strategy", strategy)] if strategy not in (None, "compaction") else [])])
+    expected = sorted([*([("mode", mode)] if mode not in (None, "agent") else []), ("strategy", schedule_tool.B2_STRATEGY)])
     first_prompt = next((i for i, r in enumerate(t2["requests"]) if r["method"] == "session/prompt"), len(t2["requests"]))
     leading = sorted(_setting(r) or ("request", r["method"]) for r in t2["requests"][:first_prompt])
     if leading != expected:
-        problems.append(f"T2 must open with Zed applying T1's persisted {expected} before B2's prompt; it had {leading}")
+        problems.append(f"T2 must open with Zed applying T1's persisted mode and the driver's Hybrid {expected} before B2's prompt; it had {leading}")
     if any(_setting(r) for r in t2["requests"][first_prompt:]):
         problems.append("a mode or strategy setter on T2 after B2's prompt: every strategy step belongs to T1")
     return problems

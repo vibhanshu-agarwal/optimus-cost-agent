@@ -119,6 +119,9 @@ A7_SESSION = "stage-c-a7"
 # branch is chosen before technical acceptance, from sealed inert evidence that returning to T1 makes no session/load and
 # no new session; without that proof it is False (B2 last), never changed during a run.
 B2_AFTER_FIRST_TURN = True
+# B2 ran in Chat with Hybrid while it ran last (Zed persisted both from T1). After B3.1, T1's strategy is still the initial
+# Compaction, so the driver sets Hybrid on T2 before B2's prompt: its criterion and conditions are unchanged.
+B2_STRATEGY = "hybrid"
 # The pinned Zed client Claude starts through an ordinary shortcut (explorer.exe), so Zed gets the user's environment.
 ZED_CLIENT = {
     "version": "1.24.2",
@@ -257,7 +260,7 @@ _DEPENDENCIES: dict[str, tuple[tuple[str, ...], list[str], bool]] = {
                 "set-mode; close and cleanup run even after a failure"], True),
     "B3.1": ((), ["the exact attached launch, started by Claude", "T1 designated with its seed accepted", "live turn 1 of T1"], True),
     "B2": (("B3.1",), ["an available attached route", "a distinct unseeded T2 opened from content-bearing T1 (B3.1's prompt admitted)",
-                       "Zed's own persisted setters on T2; no maintenance"], True),
+                       "T2 in Chat with Hybrid (Zed's persisted Chat and, when B2 runs right after B3.1, the explicit Hybrid setter); no maintenance"], True),
     "B4.2": (("B3.1",), ["the same T1 at live turn 2", "B3.1 committed with its published checkpoint (proved from the trace and receipts, not from its prompt)"], True),
     "B5.3": (("B4.2",), ["the same T1 with live turns 1-2 actually admitted", "the original sliding_window change"], True),
     "B6.4": (("B5.3",), ["the same T1 with live turns 1-3 actually admitted, so this is turn 4", "the original unavailability criterion and fixture state"], False),
@@ -348,7 +351,8 @@ def _cases(b2_early: bool = B2_AFTER_FIRST_TURN) -> list[Case]:
                  f"cancellation not exercised within 30 s, or {DEFAULT_UNRUN}" if case_id == "B8" else DEFAULT_UNRUN)  # fmt: skip
         )
     b2_steps = (
-        [f"After B3.1, open a second thread T2 from the content-bearing T1 (Zed applies its persisted settings); Prompt: {SMALL_SESSION_PROMPT}",
+        [f"After B3.1, open a second thread T2 from the content-bearing T1 (Zed applies its persisted Chat); set Context strategy to {B2_STRATEGY} on T2 "
+         f"(B2's original Chat/Hybrid state); Prompt: {SMALL_SESSION_PROMPT}",
          "Then return to T1 through Zed's thread history (no new thread) for B4.2."]
         if b2_early else [f"Open a second session; Prompt: {SMALL_SESSION_PROMPT}"]
     )  # fmt: skip
@@ -440,6 +444,8 @@ async def _attached_run(summary_bytes: int, reply_bytes: int, b2_early: bool = B
 
         async def small_session() -> None:
             small = await chat_session()
+            if b2_early:  # B2's original Chat/Hybrid state (Zed persisted Hybrid from T1 when B2 ran last)
+                await rpc("session/set_config_option", {"sessionId": small, "configId": STRATEGY_CONFIG_ID, "value": B2_STRATEGY}, "small-strategy")
             before = len(planner.requests)
             await rpc("session/prompt", {"sessionId": small, "prompt": [{"type": "text", "text": SMALL_SESSION_PROMPT}]}, "small")
             small_envelopes.extend(len((r.conversation_envelope or "").encode("utf-8")) for r in planner.requests[before:])
@@ -627,8 +633,8 @@ def _runbook(paths: RunbookPaths, b2_early: bool = B2_AFTER_FIRST_TURN) -> dict[
          [str(ev / "L2" / "zed-agent-server.json"), str(ev / "L2" / "zed-start.json")], "Start Zed; the first new Optimus thread is the seeded session.")  # fmt: skip
     if b2_early:
         step("operator", "cases B3.1, B2, then B4.2-B8.7 in Zed",
-             ["Run B3.1 in the seeded thread T1; then open T2 from T1 and run B2; return to T1 through Zed's thread history (no new thread) and run "
-              "B4.2 to B8.7 in order."], [str(ev / "L2" / "cases")])  # fmt: skip
+             ["Run B3.1 in the seeded thread T1; then open T2 from T1, set Hybrid on T2 and run B2; return to T1 through Zed's thread history (no new "
+              "thread) and run B4.2 to B8.7 in order."], [str(ev / "L2" / "cases")])  # fmt: skip
     else:
         step("operator", "cases B3-B8 then B2 in Zed", ["Run cases B3.1 to B8.7 in order in the seeded thread, then B2 in a second new thread."], [str(ev / "L2" / "cases")])
     step("operator", "end the L2 Zed launch", ["Quit Zed."], [])

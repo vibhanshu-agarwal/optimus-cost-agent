@@ -650,6 +650,7 @@ def test_b2s_position_follows_the_selected_branch_and_changes_no_criterion(early
     assert b2.bound[:2] == (1, 0) and b2.after == ("B3.1",)
     if early:
         assert any("return to T1" in step and "no new thread" in step for step in b2.steps)
+        assert any(f"set Context strategy to {tool.B2_STRATEGY}" in step for step in b2.steps) and tool.B2_STRATEGY == "hybrid"
     same = {c.case: (c.steps, c.expected, c.bound) for c in tool._cases(b2_early=not early) if c.case != "B2"}
     assert {c.case: (c.steps, c.expected, c.bound) for c in cases if c.case != "B2"} == same  # only B2's place changes
 
@@ -658,7 +659,7 @@ def test_the_selected_b2_branch_is_the_generated_order_and_the_l2_case_step(sche
     order = [row["case"] for row in schedule["cases"]]
     step = next(s for s in schedule["runbook"]["steps"] if s["title"].startswith("cases B"))
     if tool.B2_AFTER_FIRST_TURN:
-        assert order.index("B2") == order.index("B3.1") + 1 and "return to T1" in step["commands"][0]
+        assert order.index("B2") == order.index("B3.1") + 1 and "return to T1" in step["commands"][0] and "set Hybrid on T2" in step["commands"][0]
     else:
         assert order[-1] == "B2" and "then B2 in a second new thread" in step["commands"][0]
     path = schedule["measured"]["paths"][0]

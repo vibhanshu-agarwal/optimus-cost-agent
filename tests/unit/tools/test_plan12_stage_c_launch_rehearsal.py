@@ -1049,10 +1049,11 @@ def _dress_qualification() -> list[dict]:
 
 def _dress_passing(early: bool = True) -> list[dict]:
     """The dress trace. Attached, B2 after B3.1: T1 in Chat with B3.1's prompt; T2 opened from the content-bearing T1,
-    where Zed applies T1's persisted Chat (its strategy was never changed), then B2's prompt; back on T1 for B4.2 to
-    B8.7 with the strategy changes at their boundaries. B2 last: the walk's own attached order."""
+    where Zed applies T1's persisted Chat and the driver sets Hybrid (B2's original Chat/Hybrid state, which Zed persisted
+    from T1 when B2 ran last), then B2's prompt; back on T1 for B4.2 to B8.7 with the strategy changes at their
+    boundaries. B2 last: the walk's own attached order."""
     attached = [_start(43, args=ATTACHED_ARGS), _request(43, "initialize", protocolVersion=1), _new(43, "t1"), _mode(43, "t1", "chat"), _prompt(43, "t1")]
-    t2 = [_new(43, "t2"), _mode(43, "t2", "chat"), _prompt(43, "t2")]
+    t2 = [_new(43, "t2"), _mode(43, "t2", "chat"), _strategy(43, "t2", "hybrid"), _prompt(43, "t2")]
     rest = [_prompt(43, "t1"), _strategy(43, "t1", "sliding_window"), _prompt(43, "t1"), _strategy(43, "t1", "compaction"), _prompt(43, "t1"),
             _prompt(43, "t1"), _prompt(43, "t1"), _strategy(43, "t1", "hybrid"), _prompt(43, "t1")]  # fmt: skip
     if early:
@@ -1087,8 +1088,10 @@ def test_a_passing_dress_rehearsal_has_no_problem(early: bool) -> None:
         (lambda rs: [*rs[: rs.index(next(r for r in rs if _is(43, "session/prompt", "t1")(r)))], _new(43, "t2"), _mode(43, "t2", "chat"), _prompt(43, "t2"),
                      *[r for r in rs[rs.index(next(r for r in rs if _is(43, "session/prompt", "t1")(r))):] if r.get("sessionId") != "t2"]], "T2"),
         (lambda rs: [r for r in rs if r.get("sessionId") != "t2"] + [_new(43, "t2"), _mode(43, "t2", "chat"), _prompt(43, "t2")], "T2"),
-        (lambda rs: _insert_after(rs, _is(43, "session/set_config_option", "t2"), _strategy(43, "t2", "hybrid")), "T2"),
-        (lambda rs: _drop(rs, _is(43, "session/set_config_option", "t2")), "T2"),
+        (lambda rs: _insert_after(rs, _is(43, "session/set_config_option", "t2", "hybrid"), _strategy(43, "t2", "hybrid")), "T2"),
+        (lambda rs: _drop(rs, _is(43, "session/set_config_option", "t2", "chat")), "T2"),
+        (lambda rs: _drop(rs, _is(43, "session/set_config_option", "t2", "hybrid")), "T2"),
+        (lambda rs: [{**r, "value": "compaction"} if _is(43, "session/set_config_option", "t2", "hybrid")(r) else r for r in rs], "T2"),
         (lambda rs: _drop(rs, _is(43, "session/set_config_option", "t1", "compaction")), "strategy"),
         (lambda rs: _drop(rs, lambda r: r is [x for x in rs if _is(43, "session/prompt", "t1")(x)][-1]), "prompts"),
         (lambda rs: [*rs, _request(43, "session/load")], "session/load"),
@@ -1096,7 +1099,7 @@ def test_a_passing_dress_rehearsal_has_no_problem(early: bool) -> None:
     ],
     ids=["approved", "cancelled", "no-a1-prompt", "no-a2-prompt", "agent-prompt-in-restart", "no-restart-drill", "r1-two-prompts",
          "r3-no-persisted-chat", "r3-prompted", "no-r3", "second-attached-launch", "t1-replaced-by-a-new-session", "t2-before-b3.1",
-         "t2-last-in-early-branch", "t2-extra-strategy", "t2-no-persisted-chat", "strategy-omitted", "t1-final-prompt-missing", "load", "argv"],
+         "t2-last-in-early-branch", "t2-extra-strategy", "t2-no-persisted-chat", "t2-no-hybrid", "t2-compaction-not-hybrid", "strategy-omitted", "t1-final-prompt-missing", "load", "argv"],
 )
 def test_each_dress_failure_is_a_problem(change, expected: str) -> None:
     problems = _dress(change(copy.deepcopy(_dress_passing())))
@@ -1160,8 +1163,9 @@ def test_t2_opens_without_a_setter_when_t1_holds_only_optimus_defaults() -> None
     mode setter, and expecting one would be wrong (B2's own prompt is then outside this check's concern)."""
     records = _dress_passing()
     t2_new = next(i for i, r in enumerate(records) if _is(43, "session/new", "t2")(r))
-    records = [*records[:t2_new], _mode(43, "t1", "agent"), records[t2_new], *[r for r in records[t2_new + 1 :] if not _is(43, "session/set_config_option", "t2")(r)]]
-    assert not any("T2 must open" in p for p in _dress(records))
+    records = [*records[:t2_new], _mode(43, "t1", "agent"), records[t2_new],
+               *[r for r in records[t2_new + 1 :] if not _is(43, "session/set_config_option", "t2", "chat")(r)]]  # fmt: skip
+    assert not any("T2 must open" in p for p in _dress(records))  # only B2's own Hybrid setter remains
 
 
 def test_on_the_last_branch_t2_must_open_after_t1s_final_prompt() -> None:
