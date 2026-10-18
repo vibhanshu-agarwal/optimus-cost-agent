@@ -156,6 +156,26 @@ def test_runner_sends_versioned_directive_prompt_to_gateway(tmp_path):
     assert "--- end of workspace files ---" in input_text
 
 
+def test_plan_model_request_carries_workspace_source_but_never_the_runtime_tree(tmp_path):
+    """Plan 12.2 runtime-context exclusion: the launch's own .optimus files never reach the model."""
+    gateway = FakeGatewayClient("READ src/example.py\nExplain the function.")
+    target = tmp_path / "src" / "example.py"
+    target.parent.mkdir()
+    target.write_text("def f():\n    return 1\n", encoding="utf-8")
+    runtime = tmp_path / ".optimus"
+    runtime.mkdir()
+    for name in ("debug-acp.ndjson", "launch-audit.ndjson", "local-gateway.log", "telemetry.jsonl"):
+        (runtime / name).write_text('{"event": "RUNTIME_SENTINEL_7F3A"}\n', encoding="utf-8")
+
+    AgentRunner(gateway_client=gateway, model="glm-5.2").run(
+        AgentRunRequest(run_id="run-1", task="Explain", execution_mode=ExecutionMode.PLAN, workspace_root=tmp_path)
+    )
+
+    input_text = gateway.calls[0]["input_text"]
+    assert "--- src/example.py ---" in input_text and "def f():" in input_text
+    assert "RUNTIME_SENTINEL_7F3A" not in input_text and ".optimus" not in input_text
+
+
 def test_unparseable_agent_plan_fails_typed_without_silent_success(tmp_path):
     gateway = ScriptingGateway(
         [
