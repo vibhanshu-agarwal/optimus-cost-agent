@@ -8,6 +8,7 @@ from pathlib import Path
 from optimus.acp.bootstrap import StartupConfigurationError, build_agent_harness_runtime
 from optimus.acp.failure_notes import attach_failure_note
 from optimus.acp.preflight import PreflightFailure, run_preflight
+from optimus.agent.defaults import AgentModelError, resolve_agent_model
 from optimus.agent.golden import AgentGoldenTaskHarness
 from optimus.golden.json_harness import JsonGoldenTaskHarness
 from optimus.release.agent_smoke_transcript import PLAN_9_5_SMOKE_TRANSCRIPT_PATH, RecordingAgentRunner, SmokeTranscriptRecorder
@@ -38,8 +39,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--agent-model",
-        default="glm-5.2",
-        help="Gateway model used by the real agent harness.",
+        default=None,
+        help="Gateway model used by the real agent harness (default: the trusted registry's default model).",
     )
     parser.add_argument("--python-executable", default=sys.executable, help="Python executable used for command gates.")
     parser.add_argument("--credential-scan-root", type=Path, default=Path("."), help="Root used for default release credential artifact scans.")
@@ -83,13 +84,17 @@ def main() -> int:
         except StartupConfigurationError as exc:
             print(exc.user_message, file=sys.stderr)
             return exc.exit_code
+        except AgentModelError as exc:
+            print(f"run_phase1_release_gate: AGENT_MODEL_INVALID: {exc}", file=sys.stderr)
+            return 2
     # Round 2, R1: everything after the runtime exists -- wrapper construction, gate
     # construction, the run -- sits inside this try, so a failure at any of those points
     # still closes the lifetime. Custody used to begin only once the gates were built.
     try:
         if harness_runtime is not None:
             base_runner = harness_runtime.agent_runner
-            transcript_recorder = SmokeTranscriptRecorder(model=args.agent_model)
+            transcript_model = args.agent_model if args.agent_model is not None else resolve_agent_model(os.environ, cli_model=None)
+            transcript_recorder = SmokeTranscriptRecorder(model=transcript_model)
             recording_runner = RecordingAgentRunner(base_runner, recorder=transcript_recorder)
             harness = AgentGoldenTaskHarness(runner=recording_runner, workspace_root=workspace_root)
             golden_harness = _TranscriptGoldenHarness(harness=harness, recording_runner=recording_runner)

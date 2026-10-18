@@ -14,8 +14,8 @@ The admitted request goes upstream with the route's exact endpoint slugs, its ro
 output cap and the approved reasoning level, under the bounded attempt contract (see
 ``responses``). Its reply counts as complete only on a verified ``stop``; ``length`` passes through
 so the host can mark it incomplete, and any other or missing finish status fails with its usage
-kept, as a permanent (non-retryable) failure. Without a policy the Gateway keeps today's routing
-and rejects any ``route_binding``.
+kept, as a permanent (non-retryable) failure. Without a policy (an unenforced Gateway) it keeps the
+pre-registry routing and rejects any ``route_binding`` with ``BINDING_UNSUPPORTED``.
 """
 
 from __future__ import annotations

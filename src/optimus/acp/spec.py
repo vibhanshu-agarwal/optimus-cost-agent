@@ -467,8 +467,8 @@ class AcpDuplexAdapter:
         if any(policy.scope == "day" for policy in alert_policies):
             raise ValueError("daily cost alerts need a reconciled durable ledger (P9.85-FU-3); this host has none")
         self._alert_policies = tuple(alert_policies)
-        # Codex CP3 ruling R4: the injected trusted planning/answer route policy. None keeps today's
-        # unbound requests; nothing attaches one at startup (activation hold).
+        # Codex CP3 ruling R4: the injected trusted planning/answer route policy (an ordinary launch's from the
+        # shipped registry, Plan 12.2 closure). None sends unbound requests (registry enforcement inactive).
         self._route_policy = route_policy
         # Plan 12.2 Task 13 (Stage C): the approved scenario's one-time seeding of the launch's first new
         # attached session; a returned reason refuses the session instead. None (every other composition)

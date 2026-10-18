@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Legacy, unenforced Gateways only: an enforced Gateway admits exact registry model IDs and never consults
+# these aliases (Plan 12.2 closure; responses.run_model_completion takes this path only without a policy).
 PROVIDER_MODEL_ALIASES: dict[str, dict[str, str]] = {
     "openrouter": {
         "claude-haiku": "anthropic/claude-haiku-4.5",

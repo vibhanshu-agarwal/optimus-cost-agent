@@ -50,6 +50,8 @@ def test_mocked_full_gateway_run_uses_only_optimus_credentials(monkeypatch):
     ]:
         monkeypatch.delenv(key, raising=False)
 
+    # The framed passthrough exists only while registry enforcement is inactive (Fable review 1, F3).
+    monkeypatch.setattr("optimus_model_policy.binding.ENFORCEMENT_ACTIVE", False)
     settings = OptimusGatewaySettings.from_env()
     assert settings.validate_no_local_provider_keys() == ()
 

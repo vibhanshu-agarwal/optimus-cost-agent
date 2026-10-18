@@ -632,6 +632,7 @@ def main(argv: list[str] | None = None) -> int:
                     workspace_root=workspace_root,
                     strict=args.strict,
                     require_timeseries=True,
+                    cli_model=args.model,
                 )
             except PreflightFailure as exc:
                 print(f"optimus-agent: {exc.user_message}", file=sys.stderr)

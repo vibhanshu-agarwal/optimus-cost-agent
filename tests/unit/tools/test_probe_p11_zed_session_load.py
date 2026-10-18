@@ -4020,6 +4020,12 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     stage_c_committed = b"from optimus.acp.stage_c import" in head_main
     if not stage_c_committed:
         expected -= {stage_c_path}
+    # The Plan 12.2 closure (closure plan v3) adds the ordinary attachment and the one shared numeric policy
+    # (two paths) that bootstrap imports, keyed on HEAD's bootstrap.
+    ordinary_paths = frozenset({"src/optimus/acp/context_attachment.py", "src/optimus/context/shipped_policy.py"})
+    ordinary_committed = b"from optimus.acp.context_attachment import" in head_bootstrap
+    if not ordinary_committed:
+        expected -= ordinary_paths
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
@@ -4030,10 +4036,11 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     assert (tree_path in closure) is tree_committed
     assert (composition_path in closure) is composition_committed
     assert (stage_c_path in closure) is stage_c_committed
+    assert (ordinary_paths <= closure) is ordinary_committed
     base = 136 if seam2_committed else 134 if seam3_committed else 133
     assert len(closure) == base + (4 if task9_committed else 0) + (2 if task10_committed else 0) + (2 if task11_committed else 0) + (
         2 if correction_committed else 0
-    ) + tree_committed + composition_committed + stage_c_committed
+    ) + tree_committed + composition_committed + stage_c_committed + (2 if ordinary_committed else 0)
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

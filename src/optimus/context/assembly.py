@@ -304,8 +304,8 @@ class ContextAttachment:
     Every bound is explicit: the attached source class and per-turn record reservation (D2, measured
     before activation), the policy history allocation and maintenance bounds in `limits`, the
     planning/answer route's usable input and its verified estimator, and a finite repack allowance.
-    No production path constructs one yet; activation waits for the measured policy, a qualified
-    summarizer receipt and Task 2's production-base proof.
+    Every ordinary launch constructs one from the shipped registry and the shared numeric policy
+    (``optimus.acp.context_attachment.ordinary_attachment``, Plan 12.2 closure); Stage C builds its own.
     """
 
     engine: ViewEngine

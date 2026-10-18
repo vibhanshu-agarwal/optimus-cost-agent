@@ -40,7 +40,7 @@ from optimus.acp.preflight import (
     format_preflight_table,
 )
 from optimus.acp.subprocess_env import SubprocessEnvConfigurationError, build_acp_subprocess_env
-from optimus.agent.defaults import resolve_agent_model
+from optimus.agent.defaults import AgentModelError, resolve_agent_model
 from optimus.agent.directives import AgentDirectiveParseError, parse_agent_plan
 from optimus.agent.prompts import AGENT_PLANNER_PROMPT_VERSION
 from optimus.agent.state_store import RedisAgentStateStore
@@ -141,7 +141,11 @@ def main(argv: list[str] | None = None, *, repository_root: Path) -> int:
     args = parse_args(argv)
     repository_root = repository_root.resolve()
     workspace = (args.workspace_root or default_verify_workspace_root(repository_root)).resolve()
-    model = resolve_agent_model(os.environ, cli_model=args.model)
+    try:
+        model = resolve_agent_model(os.environ, cli_model=args.model)
+    except AgentModelError as exc:
+        print(f"AGENT_MODEL_INVALID: {exc}", file=sys.stderr)
+        return 2
     task = (args.task or DEFAULT_VERIFY_TASK).strip()
 
     ensure_verify_workspace(workspace)

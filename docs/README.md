@@ -106,6 +106,7 @@ Live plans (each listed in the backlog's live plan registry):
 | Document | What it is |
 |---|---|
 | [Plan 12.2 Context Engine design (v3)](superpowers/specs/2026-10-01-plan-12-2-context-engine-design_v3.md) | Three history strategies, exact host facts, floor, registry and cost integration; v3 adds the CP4 measured adoption and D7 disposition |
+| [Plan 12.2 ordinary compaction shipping contract](superpowers/specs/2026-10-18-plan-12-2-ordinary-compaction-shipping-contract.md) | Scoped successor for the shipping candidate: the ordinary composition, the shipped empirical exception, the shared numeric policy, approval migration and the closure gates; filed, not yet accepted |
 | [Plan 12.2 Task 1 contracts (v3)](superpowers/specs/2026-10-02-plan-12-2-task1-contracts_v3.md) | Engine data, summary format, registry/trust/capacity, host integration, D6; v3 adds the CP4 numeric adoption and the trusted test composition. The 2026-10-02 acceptance belongs to the archived first edition |
 | [Plan 12.1 advisory-answer design](superpowers/specs/2026-09-29-plan-12-1-plan-chat-advisory-answer-design.md) | ACP Agent/Chat mode, prose-answer and history contract |
 | [ACP runtime hardening audit design](superpowers/specs/2026-08-29-plan-11-26-acp-runtime-hardening-audit-design.md) | Governing audit for ACP runtime hardening |

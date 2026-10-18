@@ -21,9 +21,9 @@ import pytest
 import optimus_gateway.responses as gateway_responses
 from optimus.acp.context_attachment import ordinary_attachment, ordinary_route_policy
 from optimus.acp.spec import _PLANNING_TERMINAL_STOP_REASONS
-from optimus.agent.planning_loop import planning_corrective_text
-from optimus.agent.runner import CHAT_FAILURE_MESSAGES, AgentRunner
+from optimus.agent.runner import AgentRunner
 from optimus.context.maintenance import MaintenanceIdentity
+from optimus.gateway.attempts import gateway_registry_mismatch_text
 from optimus.runtime.modes import ExecutionMode
 from optimus.usage.turn_settlement import StageReceipt
 from optimus_model_policy.binding import trusted_snapshot
@@ -32,7 +32,7 @@ from tests.unit.agent.test_route_binding import InProcessGateway, ScriptedUpstre
 from tests.unit.optimus_gateway.model_policy_support import SHARED_SECRET, gateway_config, model_policy
 
 HAIKU = "anthropic/claude-haiku-5.5"
-GUIDANCE = ("optimus-trust approve --mode durable", "optimus-trust run-gateway")
+GUIDANCE = ("approve --mode durable", "run-gateway", "This refused request incurred no provider charge.")
 EXPECTED_STOP = {ExecutionMode.CHAT: "CHAT_GATEWAY_REGISTRY_MISMATCH", ExecutionMode.AGENT: "PLANNING_GATEWAY_REGISTRY_MISMATCH"}
 
 
@@ -66,20 +66,28 @@ def test_an_adopted_mismatched_gateway_refuses_before_any_attempt_with_guidance(
     )
     receipts: list[StageReceipt] = []
 
-    result = AgentRunner(gateway_client=_client(gateway), model=HAIKU).run(
-        _request(tmp_path, mode, task="A question?"), stage_receipts=receipts.append, route_binder=binder
-    )
+    request = _request(tmp_path, mode, task="A question?")
+    result = AgentRunner(gateway_client=_client(gateway), model=HAIKU).run(request, stage_receipts=receipts.append, route_binder=binder)
 
     assert gateway.upstream.calls == [], "refused before any upstream attempt"
     assert [(status, body["code"]) for status, body in gateway.replies] == [(400, code)]
     assert all(payload["route_binding"]["registry_hash"] == _shipped().effective_hash for payload in gateway.payloads), "never unbound"
     assert [(r.outcome, r.reported_cost_usd) for r in receipts] == [("rejected", Decimal("0"))]
     assert (result.stop_reason, result.total_cost_usd, result.cost_complete) == (EXPECTED_STOP[mode], Decimal("0"), True)
-    expected_text = CHAT_FAILURE_MESSAGES[EXPECTED_STOP[mode]] if mode is ExecutionMode.CHAT else planning_corrective_text(EXPECTED_STOP[mode])
-    assert result.output_text == expected_text
+    assert result.output_text == gateway_registry_mismatch_text(EXPECTED_STOP[mode], request.workspace_root)
+    assert f"--workspace-root {request.workspace_root}" in result.output_text.replace('"', '')
     for phrase in GUIDANCE:
         assert phrase in result.output_text
-    assert "charged" in result.output_text
+    assert "whole turn" not in result.output_text and "Nothing was charged" not in result.output_text
+
+
+def test_the_guidance_quotes_a_workspace_with_spaces_and_keeps_the_placeholder_when_unknown() -> None:
+    spaced = Path("C:/work space/project")
+    text = gateway_registry_mismatch_text("CHAT_GATEWAY_REGISTRY_MISMATCH", spaced)
+    assert f'optimus-trust --workspace-root "{spaced}" approve --mode durable' in text
+    assert f'optimus-trust --workspace-root "{spaced}" run-gateway' in text
+    unknown = gateway_registry_mismatch_text("PLANNING_GATEWAY_REGISTRY_MISMATCH", None)
+    assert unknown.startswith("Planning stopped because") and "--workspace-root <workspace> approve" in unknown
 
 
 def test_the_agent_mode_guidance_reaches_the_client() -> None:

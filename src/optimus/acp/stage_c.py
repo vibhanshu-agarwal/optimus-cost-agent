@@ -4,9 +4,10 @@ scenario (Codex scope agreement, 2026-10-11, sections 1-3).
 Only an approved Stage C launch of the reviewed ``attached`` test composition gets an attached Context
 Engine: the existing :class:`ContextAttachment`, the existing engine and Gateway-backed maintenance
 (``gateway_summarizer_factory``, ``HostMaintenance``), the accepted numeric limits below, the profile's
-estimator, receipt and route identity, and the existing cancellation and per-session accounting. The
-qualification composition and every unprofiled launch stay absent-engine; production composition,
-enforcement, defaults and the product cost policy are unchanged.
+estimator, receipt and route identity, and the existing cancellation and per-session accounting. Of the
+test compositions, the qualification one and a profile without Stage C stay absent-engine. The ordinary
+launch's attachment is separate (``optimus.acp.context_attachment``, Plan 12.2 closure); both import the
+one shipped numeric policy (``optimus.context.shipped_policy``), and the product cost policy is unchanged.
 
 The fixed scenario (``optimus_model_policy.stage_c``, bound into the launch approval and the Gateway
 manifest through the envelope) adds three controls, none of them a client control surface:
@@ -389,9 +390,9 @@ _no_attachment_ledger = no_attachment_ledger  # the shared no-op sink; the Gatew
 def stage_c_attachment(
     *, composition: Any | None, launch: StageCLaunch | None, gateway_client: Any, shared_secret: str
 ) -> tuple[ContextAttachment | None, Callable[[Any], str | None] | None]:
-    """The launch's engine and session seeder: only an approved Stage C launch of the attached test
-    composition gets them; the qualification composition, a profile without Stage C and every unprofiled
-    launch stay absent-engine."""
+    """The launch's Stage C engine and session seeder: only an approved Stage C launch of the attached test
+    composition gets them; the qualification composition and a profile without Stage C stay absent-engine.
+    An ordinary launch gets the shipped attachment instead (``ordinary_attachment``)."""
     if launch is None or composition is None or composition.profile.name != "attached":
         return None, None
     attachment, scenario = compose_stage_c_attachment(composition=composition, gateway_client=gateway_client, shared_secret=shared_secret, launch=launch)

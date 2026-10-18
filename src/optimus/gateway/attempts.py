@@ -31,6 +31,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from pathlib import Path
 
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
 from optimus.gateway.models import GatewayResponse, GatewayRouteAttempt, GatewayUsage
@@ -47,6 +48,7 @@ __all__ = [
     "attempts_from_failure",
     "attempts_from_response",
     "first_error",
+    "gateway_registry_mismatch_text",
     "gateway_failure_facts",
     "is_gateway_registry_mismatch",
     "is_input_capacity_refusal",
@@ -209,6 +211,29 @@ GATEWAY_REGISTRY_MISMATCH_CODES = frozenset({"BINDING_UNSUPPORTED", "REGISTRY_HA
 def is_gateway_registry_mismatch(exc: BaseException) -> bool:
     """A proven preflight refusal because the running Gateway enforces no registry or another one."""
     return is_preflight_refusal(exc) and getattr(exc, "gateway_code", None) in GATEWAY_REGISTRY_MISMATCH_CODES
+
+
+_REGISTRY_MISMATCH_OPENINGS = {
+    "CHAT_GATEWAY_REGISTRY_MISMATCH": "Chat could not answer because the running model gateway does not match this launch's model registry.",
+    "PLANNING_GATEWAY_REGISTRY_MISMATCH": "Planning stopped because the running model gateway does not match this launch's model registry.",
+}
+
+
+def gateway_registry_mismatch_text(stop_reason: str, workspace_root: Path | None) -> str:
+    """The product text for a registry-mismatch refusal (Codex's reviewed wording, #237 6250318148): it describes
+    this refused dispatch only, never the whole turn, and names the launch's own workspace (double-quoted when it
+    contains spaces; the ``<workspace>`` placeholder when unknown)."""
+    workspace = "<workspace>" if workspace_root is None else str(workspace_root)
+    if " " in workspace and workspace_root is not None:
+        workspace = f'"{workspace}"'
+    return (
+        f"{_REGISTRY_MISMATCH_OPENINGS[stop_reason]} It refused this request before sending it to a model. This refused "
+        "request incurred no provider charge. Stop and restart the gateway owned by this launch using its reviewed "
+        "workspace configuration. If you manage the gateway yourself, re-approve that configuration with "
+        f"`optimus-trust --workspace-root {workspace} approve --mode durable`, then use "
+        f"`optimus-trust --workspace-root {workspace} run-gateway` with the same reviewed launch options. Coordinate "
+        "with its owner if the gateway is shared."
+    )
 
 
 def is_input_capacity_refusal(exc: BaseException) -> bool:

@@ -355,12 +355,12 @@ class AcpStreamServer:
         session_seeder: Any | None = None,
     ) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
-        # Plan 12.2 closure (release supplement V2): the trusted planning/answer route policy of a
-        # reviewed test composition, passed into every ndjson session adapter. None keeps today's
-        # unbound requests; no production path supplies one (activation hold).
+        # Plan 12.2 closure: the trusted planning/answer route policy (the shipped registry's for an
+        # ordinary launch, a reviewed test composition's otherwise), passed into every ndjson session
+        # adapter. None sends unbound requests (registry enforcement inactive).
         self._route_policy = route_policy
-        # Plan 12.2 Task 13 (Stage C): the attached test profile's engine and its scenario's one-time
-        # seeder, passed into every ndjson session adapter. None everywhere else (absent engine).
+        # Plan 12.2: the attached Context Engine (the shipped ordinary attachment, or Stage C's) and Stage C's
+        # one-time scenario seeder, passed into every ndjson session adapter. None: absent engine.
         self._context_attachment = context_attachment
         self._session_seeder = session_seeder
         # Plan 9.96, Task 5 Step 2: resolved once by build_configured_server()

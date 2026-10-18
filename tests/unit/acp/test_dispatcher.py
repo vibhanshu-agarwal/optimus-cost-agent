@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+import pytest
+
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.errors import DUPLICATE_REQUEST_ID, METHOD_NOT_FOUND, MUTATION_FORBIDDEN
 from optimus.gateway.models import GatewayResponse, GatewayUsage
@@ -206,7 +208,24 @@ class FakeGatewayClient:
         )
 
 
-def test_dispatcher_routes_gateway_responses_method_to_gateway_client():
+@pytest.fixture
+def inactive_registry(monkeypatch):
+    """The passthrough exists only while registry enforcement is inactive (Fable review 1, F3)."""
+    from optimus_model_policy import binding
+
+    monkeypatch.setattr(binding, "ENFORCEMENT_ACTIVE", False)
+
+
+def test_the_gateway_passthrough_refuses_while_the_registry_is_enforced():
+    gateway_client = FakeGatewayClient()
+    response = JsonRpcDispatcher(gateway_client=gateway_client).dispatch(
+        {"jsonrpc": "2.0", "id": "gw-enforced", "method": "optimus.gateway.responses", "params": {"model": "glm-5.2", "input": "x"}}
+    )
+    assert response["error"]["code"] == -32601 and "enforced" in response["error"]["message"]
+    assert gateway_client.calls == [], "refused before any Gateway call"
+
+
+def test_dispatcher_routes_gateway_responses_method_to_gateway_client(inactive_registry):
     gateway_client = FakeGatewayClient()
     dispatcher = JsonRpcDispatcher(gateway_client=gateway_client)
 
@@ -241,7 +260,7 @@ def test_dispatcher_routes_gateway_responses_method_to_gateway_client():
     ]
 
 
-def test_gateway_responses_are_allowed_in_plan_chat_mode_by_design():
+def test_gateway_responses_are_allowed_in_plan_chat_mode_by_design(inactive_registry):
     gateway_client = FakeGatewayClient()
     dispatcher = JsonRpcDispatcher(
         gateway_client=gateway_client,
@@ -267,7 +286,7 @@ def test_gateway_responses_are_allowed_in_plan_chat_mode_by_design():
     ]
 
 
-def test_dispatcher_rejects_gateway_responses_messages_shape():
+def test_dispatcher_rejects_gateway_responses_messages_shape(inactive_registry):
     dispatcher = JsonRpcDispatcher(gateway_client=FakeGatewayClient())
 
     response = dispatcher.dispatch(

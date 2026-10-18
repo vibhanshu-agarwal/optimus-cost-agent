@@ -6,7 +6,8 @@
 # Authority: operator approval (2026-10-11, "Approved as per comments above") of Codex's four-part
 # offline preparation batch, after Codex accepted the Stage 2 assessment and its exact receipt candidate
 # (2026-10-11-plan12-assessment-v1.1-stage2-acceptance.md). Test use only: no production default,
-# activation or route enabling follows from this file.
+# activation or route enabling follows from this file. (Plan 12.2 closure: the shipped defaults.yaml now
+# composes to this profile's hash by its own reviewed change; this file stays the test profile's override.)
 #
 # Policy: identical to test_profile_qualification.yaml (same Haiku 5.5 model, provider-family Anthropic
 # route, low reasoning, empirical estimator and output reserves; a test keeps them equal) plus the one

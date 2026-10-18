@@ -6,9 +6,10 @@ endpoints, reasoning setting and quantizations, and the trusted snapshot they co
 from the snapshot, never from a caller's claim, and every receipt of the request carries it.
 
 `RoutePolicy` is the injected trusted policy for the planning/answer route: the launch snapshot, the
-per-launch disclosure key, the exact model and role and an explicit output cap. Nothing ships one:
-attaching it at startup, choosing the numeric cap and qualifying the route stay held (activation
-hold). Without a policy no binding is sent, as today (registry enforcement inactive).
+per-launch disclosure key, the exact model and role and an explicit output cap. An ordinary launch gets
+one from the enforced shipped registry (``optimus.acp.context_attachment.ordinary_route_policy``, Plan 12.2
+closure) and a test profile from its own composition. Without a policy no binding is sent (registry
+enforcement inactive).
 
 A turn captures its `TurnRouteBinder` before any await, so a later setter cannot change what its
 requests are bound to. Each new payload is a new request: it gets its own request identity and, on a

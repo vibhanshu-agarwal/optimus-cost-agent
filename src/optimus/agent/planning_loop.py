@@ -28,6 +28,7 @@ from optimus.gateway.attempts import (
     attempts_from_failure,
     attempts_from_response,
     first_error,
+    gateway_registry_mismatch_text,
     is_gateway_registry_mismatch,
     is_input_capacity_refusal,
     is_preflight_refusal,
@@ -742,13 +743,7 @@ def planning_corrective_text(
             "model. Nothing was charged, stored or changed."
         ),
         # Plan 12.2 closure: the adopted Gateway enforces no registry or another one (Codex 6249427656).
-        "PLANNING_GATEWAY_REGISTRY_MISMATCH": (
-            "Planning stopped because the running model gateway does not enforce this install's model registry, "
-            "so it refused the request before sending it to any model. Nothing was charged, stored or changed. "
-            "That gateway was started before an upgrade or for another registry. Stop it and start Optimus again "
-            "so it starts its own gateway. If you run the gateway yourself, re-approve this launch with "
-            "`optimus-trust approve --mode durable`, then restart it with `optimus-trust run-gateway`."
-        ),
+        "PLANNING_GATEWAY_REGISTRY_MISMATCH": gateway_registry_mismatch_text("PLANNING_GATEWAY_REGISTRY_MISMATCH", workspace_root),
         "PLANNING_NOTICE_UNDELIVERED": (
             "Planning stopped because the required notice for this model could not be shown, so the "
             "request was not sent. Nothing was stored or changed."
