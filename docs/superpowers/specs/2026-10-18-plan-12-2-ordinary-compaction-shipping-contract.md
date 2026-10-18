@@ -5,6 +5,7 @@
 - Wording: Codex's architecture text (#237 comment 6250318148; draft SHA-256 `15e96a3e35c6662ad119b899736653852f46829bb4ab814d051bfff18f0631ed`).
 - Filing: Claude, on the Plan 12.2 shipping branch, after checking the text against the implementation.
 - Scope: a scoped successor to the [Task 1 contracts](2026-10-02-plan-12-2-task1-contracts_v3.md) and the [Context Engine design](2026-10-01-plan-12-2-context-engine-design_v3.md). Their unaffected requirements and the frozen ADRs remain in force.
+- Controlling records: the decision record [ADR-023](../../decisions/ADR-023-plan12-shipped-empirical-admission-and-default-planner.md) and the governed [shipping amendment](../../sources/plan-12-2-ordinary-shipping/architecture-amendment.md) for the HLD, LLD, Guardrails, evidence and roadmap views.
 
 ## Authority and evidence boundary
 
