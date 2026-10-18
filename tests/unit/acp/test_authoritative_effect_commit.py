@@ -1,5 +1,9 @@
 """Plan 12.2 Task 2: a committed turn records the effect its lifecycle actually settled.
 
+The approved-turn cases run on both compositions: absent-engine, and the shipped ordinary one (closure plan v3:
+the ordinary attachment attached and every planning request bound to the shipped registry), so the effect and
+cancellation repair is proven on what an ordinary launch runs.
+
 Suppressing an operation can change the settled effect: a completed WRITE followed by a TEST that
 cancellation stopped is PARTIAL, not COMPLETE. Cancellation and a denied start do not recompute the
 effect themselves, so ``_commit_turn`` reads it through ``refresh_effect_state()`` instead of a
@@ -94,9 +98,13 @@ def test_refresh_keeps_the_frozen_teardown_effect_after_a_late_denied_start() ->
 class _PlanGateway:
     def __init__(self, plan_text: str) -> None:
         self._plan_text = plan_text
+        self.calls: list[tuple[str, Any]] = []
 
-    def create_response(self, *, model: str, input_text: str, metadata: dict[str, Any] | None = None) -> GatewayResponse:
-        del model, input_text, metadata
+    def create_response(
+        self, *, model: str, input_text: str, metadata: dict[str, Any] | None = None, route_binding: Any = None
+    ) -> GatewayResponse:
+        del input_text, metadata
+        self.calls.append((model, route_binding))
         return GatewayResponse(
             response_id="resp-1",
             output_text=self._plan_text,
@@ -108,6 +116,35 @@ class _PlanGateway:
             ),
             raw={"id": "resp-1"},
         )
+
+
+_HAIKU = "anthropic/claude-haiku-5.5"
+_SECRET = "synthetic-shared-secret"  # pragma: allowlist secret - synthetic test value
+
+
+def _ordinary_composition() -> dict[str, Any]:
+    """What an ordinary launch hands the adapter: the shipped attachment and the bound route policy."""
+    from optimus.acp.context_attachment import ordinary_attachment, ordinary_route_policy
+    from optimus_model_policy.binding import trusted_snapshot
+
+    snapshot = trusted_snapshot()
+    assert snapshot is not None
+    unused = object()  # a single turn never needs maintenance
+    return {
+        "context_attachment": ordinary_attachment(snapshot=snapshot, model_id=_HAIKU, gateway_client=unused, shared_secret=_SECRET),
+        "route_policy": ordinary_route_policy(snapshot=snapshot, model_id=_HAIKU, shared_secret=_SECRET),
+    }
+
+
+def _assert_bound_when_ordinary(turn: "_ApprovedTurn", ordinary: bool) -> None:
+    from optimus_model_policy.experimental import SHIPPED_DEFAULTS_HASH
+
+    assert turn.gateway.calls, "planning reached the gateway"
+    for model, binding in turn.gateway.calls:
+        if ordinary:
+            assert model == _HAIKU and binding is not None and binding.registry_hash == SHIPPED_DEFAULTS_HASH
+        else:
+            assert binding is None
 
 
 async def _rpc(adapter: AcpDuplexAdapter, request: dict[str, Any]) -> dict[str, Any]:
@@ -132,12 +169,16 @@ class _FailingToolCallChannel(RecordingOutboundChannel):
 class _ApprovedTurn:
     """A real AgentRunner behind the ACP adapter, with an approved single prompt."""
 
-    def __init__(self, tmp_path: Path, plan_text: str, *, outbound: RecordingOutboundChannel | None = None) -> None:
+    def __init__(
+        self, tmp_path: Path, plan_text: str, *, outbound: RecordingOutboundChannel | None = None, ordinary: bool = False
+    ) -> None:
         self.shell_calls: list[list[str]] = []
         self.settlements: list[Any] = []
+        self.gateway = _PlanGateway(plan_text)
+        composition = _ordinary_composition() if ordinary else {}
         runner = AgentRunner(
-            gateway_client=_PlanGateway(plan_text),
-            model="test-model",
+            gateway_client=self.gateway,
+            model=_HAIKU if ordinary else "test-model",
             state_store=InMemoryAgentStateStore(),
             shell_runner=lambda command: self.shell_calls.append(command) or CompletedProcess(command, 0, "ok", ""),
         )
@@ -148,6 +189,7 @@ class _ApprovedTurn:
             sessions=InMemoryAcpSpecSessionStore(),
             outbound=self.outbound,
             settlement_sink=self.settlements.append,
+            **composition,
         )
         self._tmp_path = tmp_path
         self.session_id = ""
@@ -198,9 +240,10 @@ class _ApprovedTurn:
         return [event.payload["effect_state"] for event in self.settlements]
 
 
-async def test_approved_write_and_test_turn_commits_complete_effect(tmp_path: Path) -> None:
+@pytest.mark.parametrize("ordinary", [False, True], ids=["absent-engine", "ordinary"])
+async def test_approved_write_and_test_turn_commits_complete_effect(tmp_path: Path, ordinary: bool) -> None:
     (tmp_path / "example.py").write_text("old\n", encoding="utf-8")
-    turn = _ApprovedTurn(tmp_path, "WRITE example.py\nnew\nTEST pytest -q")
+    turn = _ApprovedTurn(tmp_path, "WRITE example.py\nnew\nTEST pytest -q", ordinary=ordinary)
     await turn.open()
 
     response = await turn.prompt_and_approve()
@@ -212,11 +255,13 @@ async def test_approved_write_and_test_turn_commits_complete_effect(tmp_path: Pa
     assert [record.outcome.value for record in records] == ["completed"]
     assert records[0].effect_state is EffectState.COMPLETE
     assert turn.settled_effects() == ["complete"]
+    _assert_bound_when_ordinary(turn, ordinary)
 
 
-async def test_approved_read_only_turn_commits_no_effect(tmp_path: Path) -> None:
+@pytest.mark.parametrize("ordinary", [False, True], ids=["absent-engine", "ordinary"])
+async def test_approved_read_only_turn_commits_no_effect(tmp_path: Path, ordinary: bool) -> None:
     (tmp_path / "example.py").write_text("old\n", encoding="utf-8")
-    turn = _ApprovedTurn(tmp_path, "READ example.py")
+    turn = _ApprovedTurn(tmp_path, "READ example.py", ordinary=ordinary)
     await turn.open()
 
     response = await turn.prompt_and_approve()
@@ -225,13 +270,15 @@ async def test_approved_read_only_turn_commits_no_effect(tmp_path: Path) -> None
     records = turn.records()
     assert [record.outcome.value for record in records] == ["completed"]
     assert records[0].effect_state is EffectState.NONE
+    _assert_bound_when_ordinary(turn, ordinary)
 
 
+@pytest.mark.parametrize("ordinary", [False, True], ids=["absent-engine", "ordinary"])
 async def test_session_cancel_between_approved_write_and_test_commits_partial_effect(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ordinary: bool
 ) -> None:
     (tmp_path / "example.py").write_text("old\n", encoding="utf-8")
-    turn = _ApprovedTurn(tmp_path, "WRITE example.py\nnew\nTEST pytest -q")
+    turn = _ApprovedTurn(tmp_path, "WRITE example.py\nnew\nTEST pytest -q", ordinary=ordinary)
     await turn.open()
     turn.cancel_after_the_write_terminal(monkeypatch)
 
@@ -244,6 +291,7 @@ async def test_session_cancel_between_approved_write_and_test_commits_partial_ef
     assert [record.outcome.value for record in records] == ["cancelled"]
     assert records[0].effect_state is EffectState.PARTIAL
     assert turn.settled_effects() == ["partial"]
+    _assert_bound_when_ordinary(turn, ordinary)
 
 
 async def test_a_cancelled_turn_that_ends_without_a_commit_still_settles_partial(
