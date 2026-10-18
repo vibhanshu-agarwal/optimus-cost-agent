@@ -589,6 +589,8 @@ def _enumerate_windows_allow_sids(path: Path) -> tuple[str, ...]:
         ace_ptr = ctypes.c_void_p()
         if not advapi32.GetAce(dacl_ptr, index, ctypes.byref(ace_ptr)):
             _raise("windows_dacl_unreadable")
+        if ace_ptr.value is None:
+            _raise("windows_dacl_unreadable")
         ace_type = ctypes.cast(ace_ptr, ctypes.POINTER(ctypes.c_ubyte))[0]
         if ace_type != _ACCESS_ALLOWED_ACE_TYPE:
             continue

@@ -347,6 +347,40 @@ def test_a_store_that_owns_no_runtime_cannot_be_closed():
         store.close()
 
 
+@pytest.mark.parametrize("operation", ["save", "load", "latest", "ping"])
+def test_typing_missing_client_has_explicit_refusal(operation):
+    store = RedisAgentStateStore()
+    with pytest.raises(RuntimeError, match="^redis client is not configured$"):
+        if operation == "save":
+            store.save_plan(plan_record())
+        elif operation == "load":
+            store.load_plan(run_id="run-1", plan_hash="hash-1")
+        elif operation == "latest":
+            store.latest_plan_for_run(run_id="run-1")
+        else:
+            store.ping()
+
+
+def test_typing_missing_client_persistence_stays_failed_result():
+    result = RedisAgentStateStore().persist_plan(plan_record())
+    assert result.outcome.value == "persistence_failed"
+    assert result.completed_substeps == ()
+
+
+def test_typing_async_client_requires_async_store_without_submission():
+    from optimus.agent.state_store import AsyncRedisAgentStateStore
+
+    with pytest.raises(RuntimeError, match="^this store has no owner submission seam; it wraps a synchronous client$"):
+        _ = RedisAgentStateStore(client=FakeRedis()).async_redis_client
+    client = object()
+
+    def never_submit(_operation):
+        pytest.fail("client lookup must not submit work")
+
+    store = RedisAgentStateStore(async_store=AsyncRedisAgentStateStore(client=client), submit=never_submit)
+    assert store.async_redis_client is client
+
+
 @pytest.mark.parametrize("asynchronous", [False, True], ids=["sync", "async"])
 @pytest.mark.parametrize("legacy", [False, True], ids=["keyword", "legacy-positional"])
 def test_hset_compatibility_preserves_call_order(asynchronous, legacy):

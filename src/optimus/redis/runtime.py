@@ -253,6 +253,12 @@ class RedisRuntime:
     def teardown_record(self) -> TeardownRecord | None:
         return self.lifecycle.record
 
+    @property
+    def required_client(self) -> RuntimeClient:
+        if self.client is None:
+            raise RuntimeError("redis client is not configured")
+        return self.client
+
     # -- consumers -----------------------------------------------------------------
 
     def sync_state_store(self) -> RedisAgentStateStore:
@@ -261,11 +267,11 @@ class RedisRuntime:
         Seam 2, checkpoint B: the submission seam is injected, so the store never reaches
         the process-wide shared tool owner. One runtime, one loop, one client.
         """
-        async_store = AsyncRedisAgentStateStore(client=self.client, ttl_seconds=self.ttl_seconds)
+        async_store = AsyncRedisAgentStateStore(client=self.required_client, ttl_seconds=self.ttl_seconds)
         return RedisAgentStateStore(async_store=async_store, submit=self.run_sync)
 
     def telemetry_adapter(self) -> RedisTelemetryAdapter:
-        return RedisTelemetryAdapter(client=self.client)
+        return RedisTelemetryAdapter(client=self.required_client)
 
     def telemetry_sink(self):
         """A synchronous telemetry sink bound to THIS owner's submission seam."""
@@ -278,6 +284,8 @@ class RedisRuntime:
 
     async def _ping_async(self) -> None:
         try:
+            if self.client is None:
+                raise RuntimeError("redis client is not configured")
             await self.client.ping()
         except ConnectionError:
             raise

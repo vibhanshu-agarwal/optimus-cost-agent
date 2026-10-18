@@ -710,11 +710,11 @@ def _approval_id_from_transcript(transcript: E2eAcpTranscriptWriter) -> str | No
     return None
 
 
-def _plan_keys_for_run(store: RedisAgentStateStore, run_id: str) -> set[str]:
-    client = store.redis_client
+def _plan_keys_for_run(store: RedisAgentStateStore, run_id: str) -> set[bytes | str]:
+    client = store.async_redis_client
 
-    async def _collect() -> set[str]:
-        keys: set[str] = set()
+    async def _collect() -> set[bytes | str]:
+        keys: set[bytes | str] = set()
         async for key in client.scan_iter(match=f"agent:plan:{run_id}*"):
             keys.add(key)
         return keys
@@ -723,7 +723,7 @@ def _plan_keys_for_run(store: RedisAgentStateStore, run_id: str) -> set[str]:
 
 
 def _delete_plan_keys(store: RedisAgentStateStore, run_id: str) -> None:
-    client = store.redis_client
+    client = store.async_redis_client
 
     async def _delete() -> None:
         async for key in client.scan_iter(match=f"agent:plan:{run_id}*"):

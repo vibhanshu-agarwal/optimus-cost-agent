@@ -31,12 +31,99 @@ def test_fixed_offline_approval_json_and_hmac_vector(monkeypatch, mode, expected
     assert record.expires_at == (None if mode == "durable" else datetime(2026, 10, 18, 0, 5, tzinfo=timezone.utc))
 
 
+def _typing_dacl_api(monkeypatch, module, *, null):
+    """Allocated ACE positive control; NULL is intercepted before any unsafe dereference."""
+    import ctypes
+    from types import SimpleNamespace
+
+    calls = []
+    ace = (ctypes.c_ubyte * 12)()  # ACCESS_ALLOWED_ACE, with allocated SID storage.
+    real_cast = ctypes.cast
+
+    def checked_cast(pointer, target):
+        if isinstance(pointer, ctypes.c_void_p) and pointer.value is None:
+            raise AssertionError("NULL ACE reached dereference")
+        return real_cast(pointer, target)
+
+    def security(_path, _flags, _buffer, _size, needed):
+        needed._obj.value = 64
+        return True
+
+    def dacl(_buffer, present, pointer, _defaulted):
+        present._obj.value = True
+        pointer._obj.value = ctypes.addressof(ace)
+        return True
+
+    def information(_pointer, size, _length, _kind):
+        size._obj.AceCount = 1
+        return True
+
+    def get_ace(_pointer, _index, pointer):
+        calls.append("GetAce")
+        pointer._obj.value = None if null else ctypes.addressof(ace)
+        return True
+
+    def convert(_pointer, text):
+        calls.append("ConvertSid")
+        text._obj.value = "S-1-5-18"
+        return True
+
+    def free(_pointer):
+        calls.append("LocalFree")
+
+    native = SimpleNamespace(GetFileSecurityW=security, GetSecurityDescriptorDacl=dacl,
+                             GetAclInformation=information, GetAce=get_ace, ConvertSidToStringSidW=convert)
+    monkeypatch.setattr(ctypes, "windll", SimpleNamespace(advapi32=native, kernel32=SimpleNamespace(LocalFree=free)), raising=False)
+    monkeypatch.setattr(ctypes, "cast", checked_cast)
+    monkeypatch.setattr(module, "_current_user_sid_string", lambda: "S-1-5-18")
+    return calls
 
 
+@pytest.mark.parametrize("null", [False, True], ids=["allocated-ace", "null-ace"])
+def test_typing_dacl_pointer_refusal_precedes_sid_conversion(monkeypatch, tmp_path, null):
+    from optimus.acp import launch_gate as gate
+
+    calls = _typing_dacl_api(monkeypatch, gate, null=null)
+    if null:
+        with pytest.raises(LaunchGateError) as error:
+            gate._check_windows_dacl_real(tmp_path / "offline-config")
+        assert (error.value.code, error.value.detail) == ("CONFIG_FILE_DACL_UNREADABLE", "cannot read ACE")
+        assert calls == ["GetAce"]
+    else:
+        gate._check_windows_dacl_real(tmp_path / "offline-config")
+        assert calls == ["GetAce", "ConvertSid", "LocalFree"]
 
 
+def test_typing_posix_check_on_windows_has_explicit_refusal(monkeypatch, tmp_path):
+    from optimus.acp import launch_gate as gate
+
+    path = tmp_path / "offline-config"
+    path.write_text("offline")
+    monkeypatch.setattr(gate.sys, "platform", "win32")
+
+    def forbidden_uid():
+        pytest.fail("unsupported platform reached UID query")
+
+    monkeypatch.setattr(gate.os, "getuid", forbidden_uid, raising=False)
+    with pytest.raises(LaunchGateError) as error:
+        gate._validate_posix_permissions(path)
+    assert (error.value.code, error.value.detail) == ("CONFIG_FILE_PLATFORM_CHECK_FAILED", "platform cannot verify file permissions")
 
 
+@pytest.mark.parametrize("parsed", [None, "3", object()], ids=["none", "string", "foreign"])
+def test_typing_nonnumeric_monotonic_parser_refuses(monkeypatch, parsed):
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from optimus.acp import launch_gate as gate
+
+    name = "OPTIMUS_MAX_PLANNING_TURNS"
+    policies = dict(gate.LAUNCH_VARIABLE_POLICIES)
+    policies[name] = replace(policies[name], parser=lambda _raw: parsed)
+    monkeypatch.setattr(gate, "LAUNCH_VARIABLE_POLICIES", policies)
+    with pytest.raises(LaunchGateError) as error:
+        gate._authorize_monotonic_grants(candidate=SimpleNamespace(monotonic_grants={name: "3"}), record_monotonic_grants={})
+    assert (error.value.code, error.value.detail) == ("MONOTONIC_VALUE_INVALID", name)
 
 
 @pytest.mark.parametrize("name, raw, grant, allowed", [

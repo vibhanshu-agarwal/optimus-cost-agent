@@ -184,3 +184,65 @@ def test_posix_modes_after_create(tmp_path: Path) -> None:
     file_mode = stat.S_IMODE(handle.path.stat().st_mode)
     assert file_mode == 0o600
     handle.close()
+
+
+def _typing_dacl_api(monkeypatch, module, *, null):
+    """Allocated ACE positive control; NULL is intercepted before any unsafe dereference."""
+    import ctypes
+    from types import SimpleNamespace
+
+    calls = []
+    ace = (ctypes.c_ubyte * 12)()  # ACCESS_ALLOWED_ACE, with allocated SID storage.
+    real_cast = ctypes.cast
+
+    def checked_cast(pointer, target):
+        if isinstance(pointer, ctypes.c_void_p) and pointer.value is None:
+            raise AssertionError("NULL ACE reached dereference")
+        return real_cast(pointer, target)
+
+    def security(_path, _flags, _buffer, _size, needed):
+        needed._obj.value = 64
+        return True
+
+    def dacl(_buffer, present, pointer, _defaulted):
+        present._obj.value = True
+        pointer._obj.value = ctypes.addressof(ace)
+        return True
+
+    def information(_pointer, size, _length, _kind):
+        size._obj.AceCount = 1
+        return True
+
+    def get_ace(_pointer, _index, pointer):
+        calls.append("GetAce")
+        pointer._obj.value = None if null else ctypes.addressof(ace)
+        return True
+
+    def convert(_pointer, text):
+        calls.append("ConvertSid")
+        text._obj.value = "S-1-5-18"
+        return True
+
+    def free(_pointer):
+        calls.append("LocalFree")
+
+    native = SimpleNamespace(GetFileSecurityW=security, GetSecurityDescriptorDacl=dacl,
+                             GetAclInformation=information, GetAce=get_ace, ConvertSidToStringSidW=convert)
+    monkeypatch.setattr(ctypes, "windll", SimpleNamespace(advapi32=native, kernel32=SimpleNamespace(LocalFree=free)), raising=False)
+    monkeypatch.setattr(ctypes, "cast", checked_cast)
+    monkeypatch.setattr(module, "_current_user_sid_string", lambda: "S-1-5-18")
+    return calls
+
+
+@pytest.mark.parametrize("null", [False, True], ids=["allocated-ace", "null-ace"])
+def test_typing_private_dacl_pointer_refusal_precedes_sid_conversion(monkeypatch, tmp_path, null):
+    pf = _pf()
+    calls = _typing_dacl_api(monkeypatch, pf, null=null)
+    if null:
+        with pytest.raises(pf.PrivateFileError) as error:
+            pf._enumerate_windows_allow_sids(tmp_path / "offline-file")
+        assert error.value.code == "windows_dacl_unreadable"
+        assert calls == ["GetAce"]
+    else:
+        assert pf._enumerate_windows_allow_sids(tmp_path / "offline-file") == ("S-1-5-18",)
+        assert calls == ["GetAce", "ConvertSid", "LocalFree"]

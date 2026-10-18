@@ -36,6 +36,10 @@ class FakeRedisRuntime:
         self.submissions = 0
         self.close_error = close_error
 
+    @property
+    def required_client(self):
+        return self.client
+
     def ping(self) -> None:
         if self.client.ping_error is not None:
             raise ConnectionError(str(self.client.ping_error))

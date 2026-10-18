@@ -239,7 +239,7 @@ class RedisAgentStateStore:
         from optimus.redis.runtime import RedisRuntime
 
         runtime = RedisRuntime.from_url(url, ttl_seconds=ttl_seconds)
-        async_store = AsyncRedisAgentStateStore(client=runtime.client, ttl_seconds=ttl_seconds)
+        async_store = AsyncRedisAgentStateStore(client=runtime.required_client, ttl_seconds=ttl_seconds)
         return cls(async_store=async_store, ttl_seconds=ttl_seconds, submit=runtime.run_sync, owned_runtime=runtime)
 
     @property
@@ -266,22 +266,33 @@ class RedisAgentStateStore:
     def redis_client(self) -> SyncStateClient | AsyncStateClient:
         if self._async_store is not None:
             return self._async_store._client
+        return self._required_sync_client
+
+    @property
+    def _required_sync_client(self) -> SyncStateClient:
         if self._client is None:
             raise RuntimeError("redis client is not configured")
         return self._client
 
+    @property
+    def async_redis_client(self) -> AsyncStateClient:
+        if self._async_store is None:
+            raise RuntimeError("this store has no owner submission seam; it wraps a synchronous client")
+        return self._async_store._client
+
     def save_plan(self, record: AgentPlanRecord) -> None:
         async_store = self._async_store
         if async_store is not None:
-            self._submit(lambda: async_store.save_plan(record))
+            self.submit(lambda: async_store.save_plan(record))
             return
         key = _plan_key(run_id=record.run_id, plan_hash=record.plan_hash)
         mapping = _record_to_mapping(record)
-        _sync_hset(self._client, key, mapping, lambda native, name, values: native.hset(name, mapping=values))
-        self._client.expire(key, self._ttl_seconds)
+        client = self._required_sync_client
+        _sync_hset(client, key, mapping, lambda native, name, values: native.hset(name, mapping=values))
+        client.expire(key, self._ttl_seconds)
         latest_key = _latest_plan_key(run_id=record.run_id)
-        _sync_hset(self._client, latest_key, {"plan_hash": record.plan_hash}, lambda native, name, values: native.hset(name, mapping=values))
-        self._client.expire(latest_key, self._ttl_seconds)
+        _sync_hset(client, latest_key, {"plan_hash": record.plan_hash}, lambda native, name, values: native.hset(name, mapping=values))
+        client.expire(latest_key, self._ttl_seconds)
 
     def persist_plan(self, record: AgentPlanRecord) -> PlanPersistenceResult:
         if self._async_store is not None:
@@ -297,14 +308,15 @@ class RedisAgentStateStore:
         key = _plan_key(run_id=record.run_id, plan_hash=record.plan_hash)
         mapping = _record_to_mapping(record)
         try:
-            _sync_hset(self._client, key, mapping, lambda native, name, values: native.hset(name, mapping=values))
+            client = self._required_sync_client
+            _sync_hset(client, key, mapping, lambda native, name, values: native.hset(name, mapping=values))
             completed.append("primary")
-            self._client.expire(key, self._ttl_seconds)
+            client.expire(key, self._ttl_seconds)
             completed.append("expiry")
             latest_key = _latest_plan_key(run_id=record.run_id)
-            _sync_hset(self._client, latest_key, {"plan_hash": record.plan_hash}, lambda native, name, values: native.hset(name, mapping=values))
+            _sync_hset(client, latest_key, {"plan_hash": record.plan_hash}, lambda native, name, values: native.hset(name, mapping=values))
             completed.append("pointer")
-            self._client.expire(latest_key, self._ttl_seconds)
+            client.expire(latest_key, self._ttl_seconds)
         except Exception:
             if completed:
                 return PlanPersistenceResult(
@@ -320,9 +332,9 @@ class RedisAgentStateStore:
     def load_plan(self, *, run_id: str, plan_hash: str) -> AgentPlanRecord:
         async_store = self._async_store
         if async_store is not None:
-            return self._submit(lambda: async_store.load_plan(run_id=run_id, plan_hash=plan_hash))
+            return self.submit(lambda: async_store.load_plan(run_id=run_id, plan_hash=plan_hash))
         key = _plan_key(run_id=run_id, plan_hash=plan_hash)
-        raw = self._client.hgetall(key)
+        raw = self._required_sync_client.hgetall(key)
         if not raw:
             raise KeyError("stored plan not found")
         return _record_from_mapping(_decode_mapping(raw))
@@ -330,8 +342,8 @@ class RedisAgentStateStore:
     def latest_plan_for_run(self, *, run_id: str) -> AgentPlanRecord | None:
         async_store = self._async_store
         if async_store is not None:
-            return self._submit(lambda: async_store.latest_plan_for_run(run_id=run_id))
-        raw = self._client.hgetall(_latest_plan_key(run_id=run_id))
+            return self.submit(lambda: async_store.latest_plan_for_run(run_id=run_id))
+        raw = self._required_sync_client.hgetall(_latest_plan_key(run_id=run_id))
         if not raw:
             return None
         latest = _decode_mapping(raw)
@@ -346,10 +358,10 @@ class RedisAgentStateStore:
     def ping(self) -> None:
         async_store = self._async_store
         if async_store is not None:
-            self._submit(lambda: async_store.ping())
+            self.submit(lambda: async_store.ping())
             return
         try:
-            self._client.ping()
+            self._required_sync_client.ping()
         except ConnectionError:
             raise
         except OSError as exc:

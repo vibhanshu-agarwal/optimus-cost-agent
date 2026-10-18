@@ -1553,16 +1553,21 @@ class AcpDuplexAdapter:
         """A runner's own reported total, kept only for a runner that reports no planning or answer
         receipt for the turn (one that does not report its attempts). Receipts, when present, are the
         turn's cost and its projection never adds this claim: no second debit (Codex CP3 ruling R2)."""
+        conversation = session.conversation
+        if conversation is None:
+            raise RuntimeError("conversation is not initialized")
         self._apply_settled_cost(session, turn)
         if any(r.stage in {"planning", "answer"} for r in session.cost_settlement.receipts(turn.run_id)):
             return
-        session.conversation.apply_planning_cost_once(turn.turn_seq, cost_usd=planning_cost, cost_complete=planning_complete)
+        conversation.apply_planning_cost_once(turn.turn_seq, cost_usd=planning_cost, cost_complete=planning_complete)
 
     @staticmethod
     def _apply_settled_cost(session: AcpSpecSession, turn: AcpPromptTurn) -> None:
         """Project the turn's settled receipts (every stage) into the conversation, ordered with every
         other projection of this session. Idempotent: the turn's entry is replaced, never added to."""
         conversation = session.conversation
+        if conversation is None:
+            raise RuntimeError("conversation is not initialized")
         session.cost_settlement.project(
             turn.run_id,
             lambda turn_id, summary: conversation.project_turn_cost(

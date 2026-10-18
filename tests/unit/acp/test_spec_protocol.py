@@ -2510,6 +2510,31 @@ def test_agent_run_denied_after_transport_teardown(tmp_path):
     assert events[0].kind is TelemetryEventKind.AGENT_RUN
 
 
+@pytest.mark.parametrize("method", ["_apply_turn_cost", "_apply_settled_cost"])
+def test_typing_missing_conversation_refuses_before_projection(tmp_path, method):
+    from optimus.acp.lifecycle import TurnControl
+    from optimus.acp.spec import AcpPromptTurn, AcpSpecSession
+
+    session = AcpSpecSession(session_id="s", cwd=tmp_path)
+    turn = AcpPromptTurn(session_id="s", turn_seq=1, turn_control=TurnControl(session_id="s", turn_seq=1))
+    adapter = object.__new__(AcpDuplexAdapter)
+    calls = []
+
+    def forbidden_projection(*_args):
+        calls.append("projection")
+        pytest.fail("missing conversation reached projection")
+
+    session.cost_settlement.project = forbidden_projection
+    if method == "_apply_turn_cost":
+        adapter._apply_settled_cost = forbidden_projection
+    with pytest.raises(RuntimeError, match="^conversation is not initialized$"):
+        if method == "_apply_turn_cost":
+            adapter._apply_turn_cost(session, turn, planning_cost=Decimal("0"), planning_complete=True)
+        else:
+            adapter._apply_settled_cost(session, turn)
+    assert calls == []
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("value", [None, "outbound-id", 7, object()], ids=["none", "string", "integer", "foreign-non-none"])
 @pytest.mark.parametrize("recorded", [False, True], ids=["property", "recording-precedence"])

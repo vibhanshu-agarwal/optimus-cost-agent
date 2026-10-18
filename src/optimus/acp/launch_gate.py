@@ -193,6 +193,10 @@ def _validate_posix_permissions(file_path: Path) -> None:
         ) from exc
 
     # Require current UID ownership.
+    if sys.platform == "win32":
+        raise LaunchGateError(
+            code="CONFIG_FILE_PLATFORM_CHECK_FAILED", detail="platform cannot verify file permissions"
+        )
     current_uid = os.getuid()
     if stat.st_uid != current_uid:
         raise LaunchGateError(
@@ -360,6 +364,9 @@ def _check_windows_dacl_real(file_path: Path) -> None:
     for index in range(size_info.AceCount):
         ace_ptr = ctypes.c_void_p()
         if not advapi32.GetAce(dacl_ptr, index, ctypes.byref(ace_ptr)):
+            raise LaunchGateError(code="CONFIG_FILE_DACL_UNREADABLE", detail="cannot read ACE")
+
+        if ace_ptr.value is None:
             raise LaunchGateError(code="CONFIG_FILE_DACL_UNREADABLE", detail="cannot read ACE")
 
         # ACE_HEADER: AceType (BYTE) at offset 0.
@@ -825,6 +832,8 @@ def _authorize_monotonic_grants(
     for name, raw_value in candidate.monotonic_grants.items():
         policy = LAUNCH_VARIABLE_POLICIES[name]
         parsed_value = policy.parser(raw_value)
+        if not isinstance(parsed_value, (int, Decimal)):
+            raise LaunchGateError(code="MONOTONIC_VALUE_INVALID", detail=name)
         default_value = _MONOTONIC_DEFAULTS[name]
         if parsed_value <= default_value:
             continue  # Tightening or equal-to-default: free, no approval needed.
