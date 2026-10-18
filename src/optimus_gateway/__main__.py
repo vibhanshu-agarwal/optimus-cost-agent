@@ -128,7 +128,8 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     server = serve_gateway(config=config)
-    host, port = server.server_address
+    host = str(server.server_address[0])
+    port = server.server_address[1]
     print(
         f"optimus local gateway listening on http://{host}:{port} "
         f"(provider={config.provider})",

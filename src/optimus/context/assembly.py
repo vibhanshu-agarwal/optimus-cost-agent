@@ -413,7 +413,7 @@ class AttachedTurn:
         self._record_receipt = record_receipt
         # Told of a receipt the attachment's ledger refused, so the turn's settlement never reads complete.
         self._record_integrity_failure = record_integrity_failure
-        self._sink_error: Exception | None = None
+        self._sink_error: BaseException | None = None
         self._snapshot: HistorySnapshot | None = None
         self._maintenance: _TurnMaintenance | None = None
         self._view: PreparedView | None = None

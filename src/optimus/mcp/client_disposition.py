@@ -411,9 +411,13 @@ class ClientMcpDisposition:
             )
             if service is None:
                 raise ClientMcpCatalogError("SERVICE_UNAVAILABLE")
-            close_registered = state.register_close_hook(
-                lambda adapter=sdk_adapter, opened=connection: adapter.close(opened)
-            )
+            def close_opened(
+                adapter: ClientMcpSdkAdapter = sdk_adapter,
+                opened: ClientMcpConnection = connection,
+            ) -> None:
+                adapter.close(opened)
+
+            close_registered = state.register_close_hook(close_opened)
             if not close_registered:
                 state.tool_service.unregister(service)
                 return None

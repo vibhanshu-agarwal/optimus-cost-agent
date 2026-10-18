@@ -345,3 +345,124 @@ def test_a_store_that_owns_no_runtime_cannot_be_closed():
     assert store.owned_runtime is None
     with pytest.raises(RuntimeError, match="owns no runtime"):
         store.close()
+
+
+@pytest.mark.parametrize("asynchronous", [False, True], ids=["sync", "async"])
+@pytest.mark.parametrize("legacy", [False, True], ids=["keyword", "legacy-positional"])
+def test_hset_compatibility_preserves_call_order(asynchronous, legacy):
+    import asyncio
+
+    from optimus.agent.state_store import _async_hset, _sync_hset
+
+    calls = []
+    mapping = {"plan_hash": "bound-hash"}
+
+    def invoke(*args, **kwargs):
+        calls.append((args, kwargs))
+        if kwargs and legacy:
+            raise TypeError("legacy fake accepts positional mapping only")
+        return 7
+
+    async def async_invoke(*args, **kwargs):
+        return invoke(*args, **kwargs)
+
+    from types import SimpleNamespace
+    client = SimpleNamespace(hset=async_invoke if asynchronous else invoke)
+    result = asyncio.run(_async_hset(client, "plan-key", mapping, lambda native, name, values: native.hset(name, mapping=values))) if asynchronous else _sync_hset(client, "plan-key", mapping, lambda native, name, values: native.hset(name, mapping=values))
+    assert result is None
+    expected = [(("plan-key",), {"mapping": mapping})]
+    if legacy:
+        expected.append((("plan-key", mapping), {}))
+    assert calls == expected
+
+
+@pytest.mark.parametrize("asynchronous", [False, True], ids=["sync", "async"])
+def test_hset_native_failure_preserves_second_exception_identity(asynchronous):
+    import asyncio
+    from types import SimpleNamespace
+
+    from optimus.agent.state_store import _async_hset, _sync_hset
+
+    calls = []
+    failure = ValueError("native SDK positional mapping is not supported")
+
+    def invoke(*args, **kwargs):
+        calls.append((args, kwargs))
+        if kwargs:
+            raise TypeError("original keyword failure")
+        raise failure
+
+    async def async_invoke(*args, **kwargs):
+        return invoke(*args, **kwargs)
+
+    client = SimpleNamespace(hset=async_invoke if asynchronous else invoke)
+    with pytest.raises(ValueError) as error:
+        if asynchronous:
+            asyncio.run(_async_hset(client, "key", {}, lambda native, name, values: native.hset(name, mapping=values)))
+        else:
+            _sync_hset(client, "key", {}, lambda native, name, values: native.hset(name, mapping=values))
+    assert error.value is failure
+    assert calls == [(("key",), {"mapping": {}}), (("key", {}), {})]
+
+
+@pytest.mark.parametrize("asynchronous", [False, True], ids=["sync", "async"])
+@pytest.mark.parametrize("operation", ["save", "persist"])
+def test_store_legacy_hset_preserves_primary_expiry_pointer_order(asynchronous, operation):
+    import asyncio
+
+    from optimus.agent.state_store import AsyncRedisAgentStateStore, PlanPersistenceOutcome
+
+    trace = []
+    mappings = []
+    submissions = []
+
+    def hset(*args, **kwargs):
+        key = args[0]
+        trace.append(("hset", "keyword" if kwargs else "positional", key))
+        if kwargs:
+            raise TypeError("legacy client requires positional mapping")
+        mappings.append(args[1])
+        return len(args[1])
+
+    def expire(key, ttl):
+        trace.append(("expire", key, ttl))
+        return True
+
+    class LegacySync:
+        def hset(self, *args, **kwargs):
+            return hset(*args, **kwargs)
+
+        def expire(self, key, ttl):
+            return expire(key, ttl)
+
+    class LegacyAsync:
+        async def hset(self, *args, **kwargs):
+            return hset(*args, **kwargs)
+
+        async def expire(self, key, ttl):
+            return expire(key, ttl)
+
+    def submit(factory):
+        submissions.append("owner")
+        return asyncio.run(factory())
+
+    store = (RedisAgentStateStore(async_store=AsyncRedisAgentStateStore(client=LegacyAsync(), ttl_seconds=60), submit=submit)
+             if asynchronous else RedisAgentStateStore(client=LegacySync(), ttl_seconds=60))
+    if operation == "save":
+        store.save_plan(plan_record())
+    else:
+        result = store.persist_plan(plan_record())
+        assert result.outcome is PlanPersistenceOutcome.PERSISTED
+        assert result.completed_substeps == ("primary", "expiry", "pointer")
+    assert trace == [
+        ("hset", "keyword", "agent:plan:run-1:hash-1"),
+        ("hset", "positional", "agent:plan:run-1:hash-1"),
+        ("expire", "agent:plan:run-1:hash-1", 60),
+        ("hset", "keyword", "agent:plan:run-1:latest"),
+        ("hset", "positional", "agent:plan:run-1:latest"),
+        ("expire", "agent:plan:run-1:latest", 60),
+    ]
+    assert mappings[0]["plan_text"] == "WRITE example.py\ncontent"
+    assert mappings[0]["cost_usd"] == "0.002"
+    assert mappings[1] == {"plan_hash": "hash-1"}
+    assert submissions == (["owner"] if asynchronous else [])

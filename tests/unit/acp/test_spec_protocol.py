@@ -2508,3 +2508,38 @@ def test_agent_run_denied_after_transport_teardown(tmp_path):
     runner._emit_agent_run(request, result, matched_skills=(), operation_control=open_control)
     assert len(events) == 1
     assert events[0].kind is TelemetryEventKind.AGENT_RUN
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [None, "outbound-id", 7, object()], ids=["none", "string", "integer", "foreign-non-none"])
+@pytest.mark.parametrize("recorded", [False, True], ids=["property", "recording-precedence"])
+async def test_outbound_id_is_captured_once_with_original_non_none_rule(value, recorded):
+    from optimus.acp.lifecycle import TurnControl
+    from optimus.acp.spec import AcpPromptTurn
+
+    class Channel:
+        def __init__(self):
+            self.reads = 0
+            self.requests = [{"id": "recorded-id"}] if recorded else []
+
+        @property
+        def last_outbound_request_id(self):
+            self.reads += 1
+            assert self.reads == 1, "getter evaluated twice"
+            return value
+
+        async def request(self, method, params):
+            assert method == "session/request_permission"
+            assert params["_meta"] == {"runId": "s:1", "planHash": "hash"}
+            return {"outcome": "cancel"}
+
+    channel = Channel()
+    adapter = object.__new__(AcpDuplexAdapter)
+    adapter._outbound = channel
+    turn = AcpPromptTurn(session_id="s", turn_seq=1, turn_control=TurnControl(session_id="s", turn_seq=1))
+    adapter._active_turns = {"s": turn}
+    result = SimpleNamespace(output_text="plan", plan_hash="hash", run_id="s:1")
+    assert await adapter._request_permission(turn=turn, result=result) == {"outcome": "cancel"}
+    expected = "recorded-id" if recorded else value
+    assert turn.pending_permission_request_id is expected
+    assert channel.reads == (0 if recorded else 1)

@@ -516,3 +516,23 @@ def test_parse_gateway_tool_envelope_preserves_decimal_cost_on_success():
 
     assert envelope.gateway_usage.cost_usd == Decimal("0.0007")
     assert isinstance(envelope.gateway_usage.cost_usd, Decimal)
+
+
+@pytest.mark.parametrize("result_type, result", [
+    (WebSearchResultSet, {"results": []}),
+    (WebExtractResultSet, {"items": []}),
+    (PackageLookupResult, {"package": "offline", "ecosystem": "pypi", "requested_version": None,
+                           "latest_version": "1.0", "versions": [], "citations": ["https://offline.invalid/package"]}),
+    (SecurityAdvisoryResult, {"identifier": "CVE-2026-12345", "ecosystem": "npm", "version": "1.0", "advisories": []}),
+])
+def test_runtime_envelope_specialization_validates_nested_result(result_type, result):
+    body = {"tool_class": "package_and_advisory_metadata", "policy_signal": "SECURITY_OR_CVE_CHECK",
+            "run_id": "offline-run", "result": result, "provenance": {"search_id": None, "source_urls": []},
+            "gateway_usage": _usage().model_dump(mode="json")}
+    envelope = parse_gateway_tool_envelope(body, result_type)
+    assert type(envelope.result) is result_type
+    assert envelope.gateway_usage.cost_usd == Decimal("0.001")
+    malformed = {**body, "result": {"items" if result_type is WebExtractResultSet else "results": [{"url": "not-a-url"}]}}
+    with pytest.raises(GatewayResponseError) as error:
+        parse_gateway_tool_envelope(malformed, result_type)
+    assert error.value.gateway_usage.cost_usd == Decimal("0.001")

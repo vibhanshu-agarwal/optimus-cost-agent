@@ -10,7 +10,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, NoReturn, Sequence
+from typing import Mapping, NoReturn, Sequence, SupportsIndex
 from urllib.parse import parse_qsl, quote, urlsplit, urlunsplit
 
 from optimus.guardrails.prompt_injection import ConfigTrustScanner, TrustScanSubject, TrustScanVerdict
@@ -135,7 +135,7 @@ class ClientMcpRuntimeCapability:
     def __reduce__(self) -> NoReturn:
         raise TypeError("client mcp runtime capability is not serializable")
 
-    def __reduce_ex__(self, protocol: int) -> NoReturn:
+    def __reduce_ex__(self, protocol: SupportsIndex) -> NoReturn:
         raise TypeError("client mcp runtime capability is not serializable")
 
     def __copy__(self) -> NoReturn:

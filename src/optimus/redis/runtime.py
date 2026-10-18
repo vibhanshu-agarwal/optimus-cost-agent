@@ -4,14 +4,17 @@ import asyncio
 import contextlib
 import threading
 import time
+from collections.abc import Awaitable, Callable
 from concurrent.futures import Future, InvalidStateError
 from concurrent.futures import wait as futures_wait
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Protocol
 
 from optimus.agent.state_store import (
     DEFAULT_PLAN_TTL_SECONDS,
     AsyncRedisAgentStateStore,
+    AsyncStateClient,
     RedisAgentStateStore,
     validate_redis_url,
 )
@@ -20,7 +23,15 @@ from optimus.redis.async_bridge import (
     RedisLoopOwner,
     RedisLoopOwnerClosed,
 )
-from optimus.telemetry.redis_adapter import RedisTelemetryAdapter
+from optimus.telemetry.redis_adapter import RedisTelemetryAdapter, RedisTelemetryClient
+
+
+class CloseablePool(Protocol):
+    def aclose(self) -> Awaitable[None]: ...
+
+
+class RuntimeClient(AsyncStateClient, RedisTelemetryClient, Protocol):
+    def aclose(self) -> Awaitable[None]: ...
 
 
 class RedisRuntimeState(str, Enum):
@@ -173,8 +184,8 @@ class RedisRuntime:
     means one pool, one client and one loop owner.
     """
 
-    pool: object
-    client: object | None
+    pool: CloseablePool
+    client: RuntimeClient | None
     owner: RedisLoopOwner
     ttl_seconds: int = DEFAULT_PLAN_TTL_SECONDS
     lifecycle: _RuntimeLifecycle = field(default_factory=_RuntimeLifecycle, repr=False, compare=False)
@@ -192,9 +203,9 @@ class RedisRuntime:
         import redis.asyncio as aioredis
 
         owner = RedisLoopOwner()
-        built: list[object] = []
+        built: list[CloseablePool] = []
 
-        async def _build() -> tuple[object, object]:
+        async def _build() -> tuple[CloseablePool, RuntimeClient]:
             pool = aioredis.ConnectionPool.from_url(validated, decode_responses=True, socket_connect_timeout=2)
             built.append(pool)
             return pool, aioredis.Redis(connection_pool=pool)
@@ -216,7 +227,7 @@ class RedisRuntime:
 
     # -- owner submission seams ----------------------------------------------------
 
-    def run_sync(self, operation, *, timeout: float | None = None):
+    def run_sync[T](self, operation: Callable[[], Awaitable[T]], *, timeout: float | None = None) -> T:
         """Submit an operation factory to this runtime's owner.
 
         The runtime admission check runs INSIDE the owner's registration lock, so it and
@@ -229,7 +240,7 @@ class RedisRuntime:
         handle = self.owner.submit(operation, guard=self.lifecycle.check_admission)
         return handle.future.result(timeout)
 
-    async def run_async(self, operation):
+    async def run_async[T](self, operation: Callable[[], Awaitable[T]]) -> T:
         """Submit an operation factory to this runtime's owner from a running loop."""
         handle = self.owner.submit(operation, guard=self.lifecycle.check_admission)
         return await self.owner.observe(handle)

@@ -18,6 +18,7 @@ import os
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Literal
 
@@ -67,7 +68,7 @@ from optimus_security.sanitization import canonicalize_credential_uri, validate_
 # name is compared against in _authorize_monotonic_grants(). Values <= this
 # default are a tightening (or exact match) and require no approval; values
 # above it require an exact matching grant in the approval record.
-_MONOTONIC_DEFAULTS: Mapping[str, object] = {
+_MONOTONIC_DEFAULTS: Mapping[str, Decimal | int] = {
     "OPTIMUS_LIVE_MAX_COST_USD": DEFAULT_LIVE_MAX_COST_USD,
     "OPTIMUS_MAX_PLANNING_TURNS": DEFAULT_MAX_PLANNING_TURNS,
 }

@@ -119,7 +119,7 @@ def parse_skill_markdown(text: str, *, source_path: Path) -> SkillManifest:
     )
 
 
-def _frontmatter(text: str) -> dict[str, object]:
+def _frontmatter(text: str) -> dict[str, str | list[str]]:
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
         raise SkillManifestError("skill markdown must start with YAML frontmatter")
@@ -127,7 +127,7 @@ def _frontmatter(text: str) -> dict[str, object]:
         end = lines.index("---", 1)
     except ValueError as exc:
         raise SkillManifestError("skill markdown frontmatter must end with ---") from exc
-    data: dict[str, object] = {}
+    data: dict[str, str | list[str]] = {}
     current_list_key: str | None = None
     for raw in lines[1:end]:
         line = raw.rstrip()
@@ -136,10 +136,10 @@ def _frontmatter(text: str) -> dict[str, object]:
         if line.startswith("  - "):
             if current_list_key is None:
                 raise SkillManifestError("list item without key")
-            data.setdefault(current_list_key, [])
-            if not isinstance(data[current_list_key], list):
+            items = data.setdefault(current_list_key, [])
+            if not isinstance(items, list):
                 raise SkillManifestError(f"frontmatter key is not a list: {current_list_key}")
-            data[current_list_key].append(line[4:].strip())
+            items.append(line[4:].strip())
             continue
         current_list_key = None
         if ":" not in line:

@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from typing import Any
+from contextlib import AbstractContextManager
+from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -14,6 +15,14 @@ from optimus_gateway.upstream_client import (
 )
 
 
+class BinaryResponse(Protocol):
+    def read(self) -> bytes: ...
+
+
+class ToolUrlOpen(Protocol):
+    def __call__(self, request: Request, /, *, timeout: float) -> AbstractContextManager[BinaryResponse]: ...
+
+
 class ToolProviderError(RuntimeError):
     """Sanitized provider failure safe to expose at the Gateway boundary."""
 
@@ -22,7 +31,7 @@ def request_json(
     request: Request,
     *,
     label: str,
-    urlopen_fn: Callable[..., object] = urlopen,
+    urlopen_fn: ToolUrlOpen = urlopen,
     timeout_seconds: float = 60.0,
     sleep: Callable[[float], None] | None = None,
     on_retry: Callable[[int], None] | None = None,
@@ -57,7 +66,7 @@ def request_bytes(
     request: Request,
     *,
     label: str,
-    urlopen_fn: Callable[..., object] = urlopen,
+    urlopen_fn: ToolUrlOpen = urlopen,
     timeout_seconds: float = 60.0,
     sleep: Callable[[float], None] | None = None,
     on_retry: Callable[[int], None] | None = None,

@@ -28,7 +28,8 @@ class ReleaseGateResult:
 
 
 class ReleaseGate(Protocol):
-    name: str
+    @property
+    def name(self) -> str: ...
 
     def run(self) -> ReleaseGateResult:
         raise NotImplementedError

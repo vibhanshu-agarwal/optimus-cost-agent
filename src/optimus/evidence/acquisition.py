@@ -145,7 +145,7 @@ class EvidenceAcquisitionService:
         self.registry.record_search_results(run_id=request.run_id, urls=urls)
         response = EvidenceSearchResponse(
             results=tuple(
-                EvidenceSearchResult(title=item.title, url=str(item.url), snippet=item.snippet)
+                EvidenceSearchResult(title=item.title, url=item.url, snippet=item.snippet)
                 for item in envelope.result.results
             ),
             gateway_usage=envelope.gateway_usage,
@@ -248,7 +248,7 @@ class EvidenceAcquisitionService:
             raise failure
         item = envelope.result.items[0]
         response = EvidenceExtractResponse(
-            url=str(item.url),
+            url=item.url,
             title=item.title,
             content=item.content,
             trust="untrusted",

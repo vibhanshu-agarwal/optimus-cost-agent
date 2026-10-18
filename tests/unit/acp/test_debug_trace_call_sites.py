@@ -29,9 +29,11 @@ import pytest
 
 from optimus.acp import debug_trace
 from optimus.acp import server as server_module
+from optimus.acp import spec as spec_module
 from optimus.acp.debug_trace import configure_debug_trace
 from optimus.acp.errors import INTERNAL_ERROR
 from optimus.acp.server import NdjsonOutboundChannel, StdioNdjsonLineReader
+from optimus.agent import planning_loop as planning_module
 from optimus.mcp.client_supervisor import MCPSupervisorState
 from tests.integration.acp.test_server_stream import (
     InteractiveLineReader,
@@ -187,12 +189,24 @@ INPUT_NAMES = (
 )
 
 
+# Use the real production capture factories; capture itself must not inspect inputs.
+PAYLOAD_FACTORIES = {
+    "_request_failure_payload": server_module._request_failure_payload,
+    "_inbound_response_payload": server_module._inbound_response_payload,
+    "_outbound_error_payload": spec_module._outbound_error_payload,
+    "_tool_call_payload": spec_module._tool_call_payload,
+    "_unknown_cost_payload": planning_module._unknown_cost_payload,
+    "_read_rejection_payload": planning_module._read_rejection_payload,
+}
+
+
 def _opaque_namespace(sink):
     namespace = _NoPayloadReads(
         acp_debug_log=sink,
         debug_trace_enabled=debug_trace.debug_trace_enabled,
         __builtins__=__builtins__,
     )
+    namespace.update(PAYLOAD_FACTORIES)
     for name in INPUT_NAMES:
         namespace[name] = _Opaque()
     return namespace
@@ -200,6 +214,7 @@ def _opaque_namespace(sink):
 
 def _real_namespace(sink):
     return dict(
+        **PAYLOAD_FACTORIES,
         acp_debug_log=sink,
         debug_trace_enabled=debug_trace.debug_trace_enabled,
         method="session/prompt", request_id=7, pending_permission_id=None, operation_id="op-1",

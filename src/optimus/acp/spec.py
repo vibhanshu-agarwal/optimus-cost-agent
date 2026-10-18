@@ -6,11 +6,11 @@ import inspect
 import itertools
 import sys
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, NotRequired, Protocol, TypedDict
 
 from context_engine import SummaryCheckpoint
 from optimus.acp.conversation import (
@@ -73,7 +73,7 @@ from optimus.acp.shapes import (
     new_tool_call_id,
     tool_kind_for_name,
 )
-from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus
+from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
 from optimus.agent.planning_loop import PlanningProgressEvent
 from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
 from optimus.context.assembly import AttachedTurn, ContextAttachment
@@ -85,7 +85,20 @@ from optimus.usage.cost_alerts import AlertPolicy, AlertTracker, CostScopeSummar
 from optimus.usage.turn_settlement import TurnCostSummary, TurnSettlement, receipt_from_maintenance
 
 if TYPE_CHECKING:
-    from optimus.gateway.route_binding import RoutePolicy, TurnRouteBinder
+    from optimus.context.assembly import DispatchReading
+    from optimus.gateway.route_binding import RequestReading, RoutePolicy, TurnRouteBinder
+
+class _PlanningRequestFields(TypedDict):
+    run_id: str
+    session_id: str
+    task: str
+    execution_mode: ExecutionMode
+    workspace_root: Path
+    conversation_envelope: str
+    selection_text: NotRequired[str]
+    context_digest: NotRequired[str]
+    max_planning_turns: NotRequired[int]
+
 
 ACP_PROTOCOL_VERSION = 1
 
@@ -986,7 +999,7 @@ class AcpDuplexAdapter:
                 planner_task, conversation_envelope = self._planner_inputs(
                     conversation, admission.sanitized_user_prompt, turn.execution_mode
                 )
-                planning_fields: dict[str, object] = {
+                planning_fields: _PlanningRequestFields = {
                     "run_id": run_id,
                     "session_id": session_id,
                     "task": planner_task,
@@ -1247,7 +1260,7 @@ class AcpDuplexAdapter:
             acp_debug_log(
                 location="spec.py:_handle_session_prompt:outbound_error",
                 message="client rejected outbound ACP request",
-                data=lambda exc=exc: {"run_id": run_id, "code": exc.code, "message": exc.message},
+                data=_outbound_error_payload(run_id, exc),
                 hypothesis_id="H1",
             )
             # endregion
@@ -1681,7 +1694,11 @@ class AcpDuplexAdapter:
         gauge = conversation.usage_gauge()
         used, size = gauge.used, gauge.size
         if turn is not None and (turn.attached is not None or turn.route_binder is not None):
-            reading = turn.attached.largest_dispatch() if turn.attached is not None else turn.route_binder.largest_dispatch()
+            reading: DispatchReading | RequestReading | None
+            if turn.attached is not None:
+                reading = turn.attached.largest_dispatch()
+            elif turn.route_binder is not None:
+                reading = turn.route_binder.largest_dispatch()
             if reading is None:
                 return
             used, size = reading.tokens, reading.capacity
@@ -1736,8 +1753,10 @@ class AcpDuplexAdapter:
         if self._active_turns.get(turn.session_id) is turn:
             if hasattr(self._outbound, "requests") and self._outbound.requests:
                 turn.pending_permission_request_id = self._outbound.requests[-1]["id"]
-            elif getattr(self._outbound, "last_outbound_request_id", None) is not None:
-                turn.pending_permission_request_id = self._outbound.last_outbound_request_id
+            else:
+                last_outbound_request_id = getattr(self._outbound, "last_outbound_request_id", None)
+                if last_outbound_request_id is not None:
+                    turn.pending_permission_request_id = last_outbound_request_id
         return await request_task
 
     def _runner_runtime_kwargs(
@@ -1755,7 +1774,7 @@ class AcpDuplexAdapter:
         """Pass client-MCP runtime kwargs only when the runner accepts them."""
         kwargs: dict[str, Any] = {}
         try:
-            parameters = inspect.signature(self._runner.run).parameters
+            parameters: Mapping[str, inspect.Parameter] = inspect.signature(self._runner.run).parameters
         except (TypeError, ValueError):
             parameters = {}
         accepts_var_kw = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values())
@@ -1846,13 +1865,7 @@ class AcpDuplexAdapter:
                 acp_debug_log(
                     location="spec.py:_emit_result_updates:tool_call",
                     message="emitting tool_call session/update",
-                    data=lambda tool_call=tool_call, tool_call_id=tool_call_id, payload=payload: {
-                        "session_id": session_id,
-                        "tool_call_id": tool_call_id,
-                        "session_update": payload["update"]["sessionUpdate"],
-                        "tool_name": tool_call.tool_name,
-                        "status": payload["update"]["status"],
-                    },
+                    data=_tool_call_payload(session_id, tool_call, tool_call_id, payload),
                     hypothesis_id="H5",
                     run_id="post-fix",
                 )
@@ -2041,3 +2054,23 @@ def _stop_reason(result: AgentRunResult) -> str:
     if result.stop_reason == "PLAN_NOT_FOUND_OR_EXPIRED":
         return "end_turn"
     return "refusal"
+
+
+def _outbound_error_payload(run_id: str, exc: AcpOutboundError) -> Callable[[], dict[str, object]]:
+    def payload() -> dict[str, object]:
+        return {"run_id": run_id, "code": exc.code, "message": exc.message}
+
+    return payload
+
+
+def _tool_call_payload(session_id: str, tool_call: AgentToolCall, tool_call_id: str, payload: Mapping[str, Mapping[str, object]]) -> Callable[[], dict[str, object]]:
+    def supply() -> dict[str, object]:
+        return {
+        "session_id": session_id,
+        "tool_call_id": tool_call_id,
+        "session_update": payload["update"]["sessionUpdate"],
+        "tool_name": tool_call.tool_name,
+        "status": payload["update"]["status"],
+        }
+
+    return supply

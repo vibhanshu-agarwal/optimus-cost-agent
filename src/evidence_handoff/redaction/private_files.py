@@ -14,6 +14,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Never
 
 _ROLE_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 
@@ -77,7 +78,7 @@ def _filesystem_device_id(path: Path) -> int:
     return path.stat().st_dev
 
 
-def _raise(code: str) -> None:
+def _raise(code: str) -> Never:
     raise PrivateFileError(code)
 
 

@@ -9,7 +9,7 @@ estimates tokens, billing units, or dollars.
 """
 from __future__ import annotations
 
-from typing import Annotated, Any, Generic, Literal, Mapping, TypeVar
+from typing import Annotated, Any, Generic, Literal, Mapping, TypeVar, cast
 
 from pydantic import (
     AfterValidator,
@@ -104,10 +104,14 @@ def parse_gateway_tool_envelope(
     if not isinstance(body, Mapping):
         raise GatewayResponseError("tool envelope body missing", audit_code="GATEWAY_USAGE_MISSING")
 
-    usage = parse_gateway_usage(body.get("gateway_usage"))
+    usage_body = body.get("gateway_usage")
+    if not isinstance(usage_body, Mapping):
+        raise GatewayResponseError("gateway_usage missing", audit_code="GATEWAY_USAGE_MISSING")
+    usage = parse_gateway_usage(usage_body)
 
     try:
-        return GatewayToolEnvelope[result_type].model_validate({**body, "gateway_usage": usage})
+        envelope_type = cast(type[GatewayToolEnvelope[T]], GatewayToolEnvelope.__class_getitem__(result_type))
+        return envelope_type.model_validate({**body, "gateway_usage": usage})
     except ValidationError as exc:
         raise GatewayResponseError(str(exc), gateway_usage=usage) from exc
 

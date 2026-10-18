@@ -471,13 +471,33 @@ class _TransitionAuthority:
         )
 
 
+def _pinned_settlement_annotation_variant(path: str, symbol: str, before: bytes, local: bytes) -> bool:
+    """Allow only the reviewed typing variant; historical citations remain historical."""
+    if path != "src/optimus/acp/lifecycle.py" or symbol != "TurnControl.current_settlement_fields":
+        return False
+    if hashlib.sha256(before).hexdigest() != "17e2528e78be770458e6c8ef40204aff4766fb8219886ca0de0e5d7e9fdbee59":  # pragma: allowlist secret - nonsecret frozen historical source-segment digest
+        return False
+    if hashlib.sha256(local).hexdigest() != "7ec7a37602569310b5913b130f44bf436c84d5052015f086e824a2525106bba8":  # pragma: allowlist secret - nonsecret reviewed annotation-only source-segment digest
+        return False
+    old = b"def current_settlement_fields(self) -> dict[str, object]:"
+    new = b"def current_settlement_fields(self) -> _SettlementFields:"
+    if before.count(old) != 1 or local != before.replace(old, new, 1):
+        return False
+    # get_source_segment starts at def, leaving subsequent lines class-indented.
+    historical_ast = ast.parse("class Authority:\n    " + before.decode("utf-8"))
+    candidate_ast = ast.parse("class Authority:\n    " + local.decode("utf-8"))
+    historical_ast.body[0].body[0].returns = None
+    candidate_ast.body[0].body[0].returns = None
+    return ast.dump(historical_ast, include_attributes=False) == ast.dump(candidate_ast, include_attributes=False)
+
+
 def derive_transition_authority(
     merged: SourceTree,
     overlay: SourceTree,
     *,
     repository: Path | None = None,
 ) -> _TransitionAuthority:
-    """Use production transitions only after byte equality with both immutable trees."""
+    """Require immutable equality plus one exact reviewed return-annotation variant."""
 
     root = repository or Path(__file__).resolve().parents[2]
     selected_methods = {
@@ -536,8 +556,13 @@ def derive_transition_authority(
         before_bytes = {name: segment for name, (segment, _) in before.items()}
         after_bytes = {name: segment for name, (segment, _) in after.items()}
         local_bytes = {name: segment for name, (segment, _) in local.items()}
-        if not before or before_bytes != after_bytes or local_bytes != before_bytes:
+        if not before or before_bytes != after_bytes or local_bytes.keys() != before_bytes.keys():
             raise ValueError(f"production transition authority bytes drifted for {path}")
+        for symbol, segment in before_bytes.items():
+            if local_bytes[symbol] != segment and not _pinned_settlement_annotation_variant(
+                path, symbol, segment, local_bytes[symbol],
+            ):
+                raise ValueError(f"production transition authority bytes drifted for {path}")
         definition_citations.update({
             name: f"{path}:{line}:{name}#sha256:{hashlib.sha256(segment).hexdigest()}"
             for name, (segment, line) in before.items()

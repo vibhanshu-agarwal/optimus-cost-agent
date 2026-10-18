@@ -275,6 +275,7 @@ class _ShutdownVisitor(ast.NodeVisitor):
         self.lines = text.splitlines()
         self.scope: list[str] = []
         self.class_scope: list[str] = []
+        self.protocol_scope: list[bool] = []
         self.sites: list[CloseSite] = []
 
     def _symbol(self) -> str:
@@ -303,7 +304,11 @@ class _ShutdownVisitor(ast.NodeVisitor):
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         self.scope.append(node.name)
         self.class_scope.append(node.name)
+        # Syntactic base matching is conservative for this pinned source: an unrelated
+        # class named Protocol could also suppress a stub, never an executable body.
+        self.protocol_scope.append(any(ast.unparse(base) in {"Protocol", "typing.Protocol"} for base in node.bases))
         self.generic_visit(node)
+        self.protocol_scope.pop()
         self.class_scope.pop()
         self.scope.pop()
 
@@ -315,6 +320,16 @@ class _ShutdownVisitor(ast.NodeVisitor):
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         if node.name in _CLOSE_DEFINITION_NAMES:
+            body = node.body
+            if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str):
+                body = body[1:]
+            stub = bool(body) and all(
+                isinstance(statement, ast.Pass)
+                or (isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant) and statement.value.value is Ellipsis)
+                for statement in body
+            )
+            if self.protocol_scope and self.protocol_scope[-1] and stub:
+                return
             self.scope.append(node.name)
             self._add(node, reference=node.name, site_kind="CLOSE_DEFINITION")
             self.generic_visit(node)
