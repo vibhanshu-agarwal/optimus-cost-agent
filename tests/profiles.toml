@@ -618,6 +618,7 @@ paths = [
   "tests/unit/acp/test_stage_c_launch.py",
   "tests/unit/acp/test_test_composition.py",
   "tests/unit/acp/test_trusted_paths.py",
+  "tests/unit/agent/test_workspace_context.py",
   "tests/unit/evidence/test_private_files.py",
   "tests/unit/guardrails/test_ci_parity.py",
   "tests/unit/guardrails/test_local_secret_scan_encoding.py",

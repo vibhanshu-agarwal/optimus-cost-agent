@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from optimus.acp import launch_audit
 from optimus.acp.debug_trace import DEFAULT_DEBUG_LOG_RELATIVE_PATH
 from optimus.acp.operator_paths import resolve_operator_paths
 from optimus.agent import workspace_context
@@ -521,6 +522,25 @@ def test_a_candidate_whose_target_cannot_be_resolved_is_not_read(tmp_path, monke
     assert "unresolvable.py" not in result.text
 
 
+@pytest.mark.skipif(not WINDOWS, reason="final-path resolution (GetFinalPathNameByHandle) is the Windows mechanism")
+def test_a_filesystem_without_final_path_support_keeps_ordinary_files_and_the_lexical_rule(tmp_path, monkeypatch):
+    """Fable review finding 2: a strict resolve would reject every file where the filesystem cannot report a
+    final path (ERROR_INVALID_FUNCTION), emptying workspace context. Ordinary files must stay; .optimus stays out."""
+    import ntpath
+
+    _runtime_tree(tmp_path)
+    _source(tmp_path)
+
+    def unsupported(path):
+        raise OSError(22, "Incorrect function", str(path), 1)  # winerror 1: ERROR_INVALID_FUNCTION
+
+    monkeypatch.setattr(ntpath, "_getfinalpathname", unsupported)
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Explain src/app.py")
+
+    assert SOURCE_SENTINEL in result.text and result.prioritized_paths == ("src/app.py",)
+    _assert_runtime_absent(result)
+
+
 @pytest.mark.skipif(not WINDOWS, reason="NTFS directory junctions are a Windows mechanism")
 def test_a_junction_into_the_runtime_tree_is_excluded_and_an_ordinary_junction_is_kept(tmp_path):
     import _winapi  # CreateJunction needs no privilege, unlike a symlink
@@ -568,6 +588,8 @@ def test_a_file_symlink_to_a_runtime_tree_outside_the_workspace_is_excluded(tmp_
 
 
 def test_a_symlink_loop_and_a_directory_symlink_into_the_runtime_tree_are_never_read(tmp_path):
+    # Pins traversal semantics the stdlib provides (a loop fails is_file(); rglob does not descend a directory
+    # symlink) alongside the alias rule, which would catch runtime-dir/* if directory symlinks were ever traversed.
     runtime = _runtime_tree(tmp_path)
     _source(tmp_path)
     _symlink_or_skip(tmp_path / "loop.txt", tmp_path / "loop.txt")
@@ -587,3 +609,4 @@ def test_the_reserved_name_matches_every_runtime_writer(tmp_path):
 
     assert reserved == paths.runtime_root.name == DEFAULT_TELEMETRY_DIRNAME == DEFAULT_DEBUG_LOG_RELATIVE_PATH.parts[0]
     assert paths.debug_log_path.parent == paths.gateway_log_path.parent == paths.runtime_root
+    assert launch_audit._audit_path(paths.runtime_root).parent == paths.runtime_root

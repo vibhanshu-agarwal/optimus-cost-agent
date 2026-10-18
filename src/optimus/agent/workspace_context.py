@@ -552,9 +552,11 @@ def _target_excluded(path: Path, root: Path) -> bool:
     """Whether a candidate's real target lies in a runtime tree, judged from path metadata alone (its content is
     never opened). A target inside the workspace is judged by its workspace-relative parts, so a workspace under
     an ancestor that happens to share the reserved name keeps its files; a target outside it by its absolute parts.
-    A target that cannot be resolved is treated as runtime, so it is never read."""
+    A resolution error excludes the candidate, so it is never read. Resolution is not strict: the candidate has
+    already passed ``is_file()``, and a strict resolve would reject every file on a Windows filesystem without
+    final-path support (there, a best-effort path is used and the lexical rule still applies)."""
     try:
-        target = path.resolve(strict=True)
+        target = path.resolve()
     except (OSError, RuntimeError):
         return True
     try:

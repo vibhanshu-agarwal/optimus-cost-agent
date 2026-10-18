@@ -311,14 +311,16 @@ silently truncating or guessing. Implemented and live-verified 2026-07-11 —
 see `reports/plan-9-8-task-aware-context-evidence.md`. Plan 9.8 does not add
 multi-turn replanning (Plan 9.85) or Plan 12 intelligent selection.
 
-Workspace context never includes the Optimus runtime tree, `.optimus/` (the
-debug trace, launch audit, Gateway log and telemetry each launch writes), at
-any depth, nor a file alias or junction whose target lies in one. On Windows
-the name matches case-insensitively. An explicit reference into it is refused
-as not readable, and a source that only shares a runtime file's name still
-resolves. A custom `--debug-log PATH` outside `.optimus/` is ordinary workspace
-content: keep it under `.optimus/` or outside the workspace if it must not
-reach the model.
+Automatic workspace context never includes the Optimus runtime tree,
+`.optimus/` (the debug trace, launch audit, Gateway log and telemetry each
+launch writes), at any depth, nor a file alias or junction whose target lies
+in one. On Windows the name matches case-insensitively. An explicit reference
+into it in the task is refused as not readable, and a source that only shares
+a runtime file's name still resolves. This governs automatic workspace context
+only; it does not restrict a file the model itself asks to READ. A custom
+`--debug-log PATH` outside `.optimus/` is ordinary workspace content: keep it
+under `.optimus/` or outside the workspace if it must not be included as
+workspace context.
 
 **Plan 9.85** (multi-turn read-observe-replan) extends Plan 9.8: when a
 required file's complete content exceeds the single-pass context budget, the
