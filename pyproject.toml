@@ -165,7 +165,6 @@ module = [
     "optimus_gateway.tool_providers",
     "optimus_gateway.tool_state",
     "optimus_model_policy.capacity",
-    "optimus_model_policy.registry",
     "optimus_model_policy.validation",
 ]
 ignore_errors = true
