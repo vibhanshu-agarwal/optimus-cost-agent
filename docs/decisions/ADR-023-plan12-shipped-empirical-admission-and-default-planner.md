@@ -6,7 +6,7 @@
 
 ## Direct authority
 
-In Codex chat `01a102cf-53c7-7cb1-b470-0f0f4efcbb0e`, the operator instructed:
+In Codex chat `01a102cf-53c7-7cb1-b470-0f0f4efcbb0e` (source S9 in the [decisions index](README.md)), the operator instructed:
 
 > Keep coordinating with Claude until you agree on one concise plan to ship usable compaction and declare Plan 12.2 DONE. Bring that plan back for my approval; no implementation or live run yet.
 
@@ -18,7 +18,7 @@ The operator's direct answer was:
 
 > Approved
 
-The controlling authority is that direct question/answer in this Codex chat. Comment 6249169293 relays it to Claude and binds the plan; it is coordination evidence, not a new human approval. This record preserves the scope of the answer and does not invent a precise human-message timestamp or an exported transcript hash. If the index assigns a source identifier, label the direct-chat provenance and relay separately. No raw private transcript is a build/runtime dependency.
+The controlling authority is that direct question/answer in this Codex chat. Comment 6249169293 relays it to Claude and binds the plan; it is coordination evidence, not a new human approval. This record preserves the scope of the answer and does not invent a precise human-message timestamp or an exported transcript hash. The decisions index registers that direct-chat provenance as source S9 and lists the relay separately, as coordination evidence. No raw private transcript is a build/runtime dependency.
 
 ## Decision and reason
 
