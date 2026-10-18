@@ -1737,6 +1737,142 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.github_work_tracking:GhClient.send:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: GhClient.send serializes a write payload (issue title/body/labels, a label spec, or a sub-issue id) for gh's stdin; every value is built from committed planning documents for publication in the public repository, and gh supplies its own credential outside the payload.",
+      "sanitizer": "governance-only inputs; public issue content; no credentials",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_gh_client_classifies_transport_failures",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:Journal.write:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: Journal.write appends one JSON line per step to the publication journal in an operator-named evidence directory; records hold step names, operation kinds, record ids, endpoints, payload SHA-256 digests, issue numbers/ids and outcome reasons, never issue bodies, tokens or production payloads.",
+      "sanitizer": "fixed journal vocabulary; digests instead of payloads",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_unknown_create_outcome_stops_without_retry",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:Journal.write:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: Journal.write serializes the same fixed-shape journal record (step, operation, target record id, endpoint, payload digest, issue identity, reason); it carries no issue body, credential or runtime payload.",
+      "sanitizer": "fixed journal vocabulary; digests instead of payloads",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_unknown_create_outcome_stops_without_retry",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:Journal.write:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: Journal.write writes the serialized journal line and fsyncs it so a write's intent is durable before the write is sent; content is the fixed journal record described for its json_serialization surface.",
+      "sanitizer": "fixed journal vocabulary; digests instead of payloads",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_unknown_create_outcome_stops_without_retry",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:_canonical:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _canonical serializes payloads and issue metadata only as hash input for payload digests and update fingerprints; the text is never logged or persisted.",
+      "sanitizer": "hash input only; never emitted",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_issue_snapshots_validate_parent_urls_and_fingerprint_metadata",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:_github_command:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the plan/publish/reconcile commands print a ReadFailed reason, which names the REST path, page and gh's error text truncated to 300 characters; gh reports HTTP status and message there and never prints its token. They also print an --only selection refusal: record ids from an operator-supplied selection file, or the OS error for that file's path.",
+      "sanitizer": "bounded gh error text; selection refusals name record ids and a local path; no credentials",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_plan_is_read_only_and_publish_runs_only_the_reviewed_batch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:_github_command:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the commands print a JSON summary (ok flag, conflict and problem counts, batch digest, write budget, outcome and reason, write count, record ids with their public issue numbers, the seal flag and a fixed evidence note) built from the inventory and public issue metadata.",
+      "sanitizer": "governance-only inputs; public issue content; no credentials",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_plan_is_read_only_and_publish_runs_only_the_reviewed_batch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:_github_command:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the commands print planning conflicts and reconciliation problems, which name record ids, issue numbers, label names and markers from committed planning documents and the public issue list, plus the JSON summary.",
+      "sanitizer": "governance-only inputs; public issue content; no credentials",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_plan_is_read_only_and_publish_runs_only_the_reviewed_batch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:_result_problem:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _result_problem returns a ReadFailed message (exception type and the missing or mistyped field of a returned issue object) as part of a failed-write reason in the journal; it holds no payload body or credential.",
+      "sanitizer": "field names and types only",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_write_result_mismatch_blocks_next_write",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:main:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the finalize and cutover-docs commands print a refusal as their STOP reason: a ValueError naming manifest record ids, issue numbers, repository paths, pool anchors and headings from committed files, or a JSON decoding position in an operator-supplied mapping file; or a TrackedFileInventoryError's fixed code with a repository-relative path or git exit status. Never runtime secrets or production payloads.",
+      "sanitizer": "fixed gate vocabulary over committed repository content and public issue numbers",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_cutover_docs_writes_the_stub_and_fills_the_placeholders",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main serializes only the inventory validation summary (an ok flag, the problem count and per-disposition record and unit counts) computed from a reviewed planning manifest and committed planning documents; no runtime secrets, credentials or production payloads are read.",
+      "sanitizer": "fixed summary schema of counts",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_validate_reports_problems_with_a_nonzero_exit",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main prints inventory validation problems (record ids, source unit keys and status text taken from committed planning documents) and the count summary; its inputs are governance documents read at a pinned commit, never runtime secrets or production payloads, and nothing is persisted.",
+      "sanitizer": "governance-only inputs and fixed validation vocabulary",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_validate_reports_problems_with_a_nonzero_exit",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:main:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the draft command writes the derived inventory manifest bytes to stdout; the manifest is built only from committed planning documents read at a named commit and holds record ids, statuses, titles and git blob ids, never runtime secrets, credentials or production payloads.",
+      "sanitizer": "governance-only inputs; fixed manifest schema",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_draft_writes_the_manifest_bytes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:plan_identity_problems:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: plan_identity_problems returns tracking_issue's ValueError text as a gate problem; the text names a repository plan path, a header count or the header's issue URL from committed plan files, never runtime secrets or production payloads.",
+      "sanitizer": "fixed gate vocabulary over committed repository paths and public issue URLs",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_live_plan_files_have_issue_identity",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:record:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: publish_batch's record helper writes every journal record (start, intent, result, validated, outcome) through Journal.write; each holds step names, operation kinds, record ids, endpoints, payload digests, issue numbers/ids and outcome reasons, never issue bodies, tokens or production payloads, and a storage failure stops the run instead of being hidden.",
+      "sanitizer": "fixed journal vocabulary; digests instead of payloads",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_an_unwritable_journal_stops_the_run_and_says_so",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:render_batch:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: render_batch serializes the reviewable publication batch (exact issue titles, bodies and labels built from committed planning documents, public issue numbers/ids, fingerprints and the write budget) to an operator-named file for review; all of it is destined for the public repository.",
+      "sanitizer": "governance-only inputs; public issue content; no credentials",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_cli_plan_is_read_only_and_publish_runs_only_the_reviewed_batch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.github_work_tracking:render_manifest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: render_manifest serializes the inventory manifest (schema, baseline pins, section classifications and records derived from committed planning documents) with a fixed layout; it reads no runtime state or secrets.",
+      "sanitizer": "fixed manifest schema",
+      "test_node": "tests/unit/tools/test_github_work_tracking.py::test_draft_reproduces_the_committed_manifest_byte_for_byte",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan117_custody_contract:_parse_manifest:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: _parse_manifest uses exception text only to choose among fixed reason codes (invalid_manifest_schema / sha256_not_lowercase) and never persists or exports raw exception bodies.",
@@ -3601,6 +3737,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan1126_runtime_audit.measurement:measurement_identity:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 11.30 Task 4 test-session measurement reuse: canonicalizes the reuse key material (the fresh child's request payload, the audit depth, platform and interpreter, and the inherited environment except PYTEST_CURRENT_TEST) solely to compute a SHA-256 key; the encoded bytes are not persisted, logged or exported, and the returned key holds no input value. Only test helpers call it; production measurement never reuses.",
+      "sanitizer": "digest-only functional path; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_measurement_reuse.py::test_the_reuse_key_is_a_digest_that_writes_nothing_and_holds_no_environment_value",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan1126_runtime_audit.measurement:run_fresh_measurement:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Serializes the measurement request sent on stdin to a fresh child interpreter: the specification, the bound repository source text (product and probe modules) the child must execute, the entry name, options and the repository root path. Destination is the child process only; the parent parses the child's stdout and, on failure, surfaces the LAST stderr line inside a typed ExecutingSourceMismatch. This entry describes the request contract; the referenced test proves executing-source freshness of that request, not a general content-safety property of arbitrary request payloads.",
@@ -3737,19 +3881,155 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.testing.run_context_records:write_record:json_serialization",
+      "key": "tools.testing.run_context_records:_persist:json_serialization",
       "policy": "shared-sanitize",
-      "rationale": "write_record serializes a record only after checking it against one typed field table: a field that is not listed (at any depth), a caller-supplied schema, a malformed identifier or text with control characters is refused, and so is a record that the shared sanitizer would change or that exceeds the size limit. The table has no free-text field, so a command line, environment value or exception text has nowhere to be stored. Checkout-derived text that fails these checks is withheld by the producer and named in the record.",
+      "rationale": "_persist (behind write_record and, for xdist worker records, write_worker_record) serializes a record only after checking it against one typed field table: a field that is not listed (at any depth), a caller-supplied schema, a malformed identifier or text with control characters is refused, and so is a record that the shared sanitizer would change or that exceeds the size limit. The table has no free-text field, so a command line, environment value or exception text has nowhere to be stored. Checkout-derived text that fails these checks is withheld by the producer and named in the record.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed after the typed field table in tools.testing.run_context_records",
       "test_node": "tests/unit/tools/test_run_context_boundaries.py::test_the_writer_refuses_a_record_outside_the_field_table",
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.testing.run_context_records:write_record:text_file_write",
+      "key": "tools.testing.run_context_records:_persist:text_file_write",
       "policy": "shared-sanitize",
-      "rationale": "write_record writes that checked record atomically to the worktree's ignored tmp/test-runs folder and to a temporary registry folder, both outside the protected application folders. It is the run context's only persistence sink, and read_record applies the same field table before any stored value is used.",
+      "rationale": "_persist (behind write_record and, for xdist worker records, write_worker_record) writes that checked record atomically to the worktree's ignored tmp/test-runs folder and to a temporary registry folder, both outside the protected application folders. It is the run context's only persistence sink, and read_record applies the same field table before any stored value is used.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed after the typed field table in tools.testing.run_context_records",
       "test_node": "tests/unit/tools/test_run_context_boundaries.py::test_the_writer_refuses_a_record_outside_the_field_table",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_context_xdist:sign:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 11.30 Task 5: canonicalizes an xdist worker record (run ID, worker ID, process identity, ancestry, guard mode and source facts) solely to compute its HMAC-SHA256 signature under the run's per-run secret; the encoded bytes are not persisted, logged or exported, and the signature holds no record value. The signed record itself is persisted only through the run context's single sink and its typed field table.",
+      "sanitizer": "digest-only functional path; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_run_context_xdist.py::test_a_worker_signature_is_a_digest_that_writes_nothing_and_holds_no_record_value",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.registry_maintenance:_append_receipt:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 0. _append_receipt opens the append-only receipt file registry/ended/receipts.jsonl beside archived run-context registry entries, only during an operator-invoked archive under a granted class digest, after the receipt line passed the shared sanitizer unchanged.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed in tools.testing.registry_maintenance",
+      "test_node": "tests/unit/tools/test_registry_maintenance.py::test_the_granted_class_is_archived_with_one_receipt_each_and_the_rest_stays",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.registry_maintenance:_append_receipt:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 0. _append_receipt serializes one receipt per archived entry: entry name, run ID, content SHA-256, source and target paths inside the registry, the end-status predicate result, disposition, class digest and a UTC timestamp. The line is refused if the shared sanitizer would change it.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed in tools.testing.registry_maintenance",
+      "test_node": "tests/unit/tools/test_registry_maintenance.py::test_the_granted_class_is_archived_with_one_receipt_each_and_the_rest_stays",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.registry_maintenance:_append_receipt:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 0. _append_receipt writes that checked receipt line and nothing else.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed in tools.testing.registry_maintenance",
+      "test_node": "tests/unit/tools/test_registry_maintenance.py::test_the_granted_class_is_archived_with_one_receipt_each_and_the_rest_stays",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.registry_maintenance:main:file_open",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 0. The inventory command creates one new manifest file (mode x, never overwritten) only after the whole manifest passed the shared sanitizer unchanged; entry names are filesystem text, so a manifest the sanitizer would change is refused and nothing is written.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed in tools.testing.registry_maintenance",
+      "test_node": "tests/unit/tools/test_registry_maintenance.py::test_the_cli_refuses_a_manifest_the_shared_sanitizer_would_change",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.registry_maintenance:main:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 0. The inventory manifest holds registry entry names, content SHA-256 digests, run IDs, process IDs and creation times, recorded worktree paths from field-table-validated records, end-status results, dispositions and counts. Unreadable or malformed entries contribute only name, digest and reason, never content. Refused if the shared sanitizer would change it.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed in tools.testing.registry_maintenance",
+      "test_node": "tests/unit/tools/test_registry_maintenance.py::test_the_cli_refuses_a_manifest_the_shared_sanitizer_would_change",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.registry_maintenance:main:stdout_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 0. The CLI prints counts, the class digest, outcome tallies and, for refused entries, the manifest entry name and a fixed reason token; manifest text was checked by the shared sanitizer before it was written.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed in tools.testing.registry_maintenance",
+      "test_node": "tests/unit/tools/test_registry_maintenance.py::test_the_cli_refuses_a_manifest_the_shared_sanitizer_would_change",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.registry_maintenance:main:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 0. The inventory command writes the checked manifest JSON and nothing else.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied as refuse-if-changed in tools.testing.registry_maintenance",
+      "test_node": "tests/unit/tools/test_registry_maintenance.py::test_the_cli_refuses_a_manifest_the_shared_sanitizer_would_change",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.coverage_products:_print_verdict:stdout_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 3, reconciled at v5 I2: the validity layer decides no floor; it prints one line per validity problem and a fixed full-run validity verdict line. Problem text names repository paths and run facts, so it passes through the shared sanitizer and is bounded to 300 characters.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.coverage_products (sanitized_text)",
+      "test_node": "tests/unit/tools/test_coverage_products.py::test_printed_problems_pass_the_shared_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.coverage_products:main:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 3. An input failure (OSError or ValueError reading the coverage JSON or run record, whose text can name paths) becomes one printed line through the shared sanitizer, bounded to 300 characters, and exit 2.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.coverage_products (sanitized_text)",
+      "test_node": "tests/unit/tools/test_coverage_products.py::test_an_input_failure_line_passes_the_shared_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.coverage_products:main:stdout_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 3, reconciled at v5 I2. The command line prints the SHA-256 digests of the two compared exports, comparison qualifications (fixed labels, interpreter versions), safety and comparability problems (fixed module paths, counts and run facts), the bound full-session line or a fixed no-binding line, and input failures (OSError/ValueError text naming paths); every variable text passes through the shared sanitizer and is bounded to 300 characters.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.coverage_products (sanitized_text)",
+      "test_node": "tests/unit/tools/test_coverage_products.py::test_an_input_failure_line_passes_the_shared_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_profile:_write_json:json_serialization",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 2. _write_json writes the profile runner's selection record and run evidence manifest under tmp/test-profiles. The selection record holds the profile, label, view, platform, base and HEAD SHAs, diff and manifest/classification digests, changed and provisional repository paths with working-byte digests, counts, node digests with run-context labels (never raw node IDs, some of which carry credential-shaped test parameters), reasons grouped to node digests, fallback, domains, platform triggers and obligations; the run manifest holds subrun names, run IDs, modes, exit codes, node counts, digests, UTC times, each subrun's record problem token and qualification labels, the stability verdict and a detail line (failed subrun names and exit codes, record problems, or a sanitized start failure). Each is refused if the shared sanitizer would change it (the selection record raises before anything runs; a refused run manifest exits invalid).",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.run_profile as refuse-if-changed",
+      "test_node": "tests/unit/tools/test_run_profile.py::test_a_selection_record_the_shared_sanitizer_would_change_is_refused",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_profile:execute:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Checkpoint B (F7). When a subrun never begins its tests, execute stops the runner's own process trees and keeps the SelectionError text (subrun name and start timeout) as the run's detail for the summary line and the run manifest; the text passes through the shared sanitizer and is bounded to 300 characters.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.run_profile (sanitized_text)",
+      "test_node": "tests/unit/tools/test_run_profile.py::test_a_start_failure_detail_passes_the_shared_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_profile:failure_line:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 2. failure_line turns an input failure (the runner's own SelectionError/ManifestError/ClassificationError or an OSError naming repository paths or Git exit codes) into one printed line; the text passes through the shared sanitizer and is bounded to 300 characters.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.run_profile (sanitized_text)",
+      "test_node": "tests/unit/tools/test_run_profile.py::test_an_input_failure_line_passes_the_shared_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_profile:overlap:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Checkpoint B (Fable R2). When a load never begins its tests, the Windows overlap lane stops its own load, keeps every load and repeat that already ran, and keeps the SelectionError text (subrun name and start timeout) as the lane's detail for the run manifest and summary line; the text passes through the shared sanitizer and is bounded to 300 characters.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.run_profile (sanitized_text)",
+      "test_node": "tests/unit/tools/test_run_profile.py::test_a_stalled_load_detail_passes_the_shared_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_profile:main:stdout_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 2. The runner prints one summary line (profile, label, selected/deselected counts, fallback and platform tokens, obligations, verdict, the run's detail line and the evidence path it created under tmp/test-profiles), progress events (subrun names and exit codes), and input-failure lines built by failure_line through the shared sanitizer. Subrun pytest sessions write to the console as any pytest run does; the runner keeps none of their output.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.run_profile (sanitized_text for failure details)",
+      "test_node": "tests/unit/tools/test_run_profile.py::test_an_input_failure_line_passes_the_shared_sanitizer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.testing.run_profile:_main_core:stdout_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 11.30 Task 5. `--profile core` prints one summary line (worker count, core/parallel/serial node counts, verdict, the run's detail line and the evidence path it created under tmp/test-profiles) and input-failure lines built by failure_line through the shared sanitizer. Its subrun pytest sessions write to the console as any pytest run does; the runner keeps none of their output.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence, applied by tools.testing.run_profile (sanitized_text for failure details)",
+      "test_node": "tests/unit/tools/test_run_profile.py::test_an_input_failure_line_passes_the_shared_sanitizer",
       "evidence_tier": "unit"
     },
     {
@@ -4374,6 +4654,14 @@
       "rationale": "Inspection: main writes only the gate report and its run record, the JSON described above, to the operator-chosen report path; nothing else is persisted.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_check_product_coverage.py::test_run_mode_launches_the_one_fixed_selection_and_keeps_its_true_exit",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.telemetry.fanout:_report_local_sink_failure:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the fixed warning format exports only a fixed sink label, TelemetryEventKind value, fixed telemetry_sink_raised reason and exception class name. No exception message, traceback, event payload, prompt, response, credential or workspace location is passed to the logger.",
+      "sanitizer": "Four-field metadata-only construction in TelemetryFanout._attempt_local_sink; no exception text or event payload is exported.",
+      "test_node": "tests/unit/telemetry/test_fanout.py::test_fanout_warning_reaches_stderr_with_debug_disabled",
       "evidence_tier": "unit"
     }
   ]

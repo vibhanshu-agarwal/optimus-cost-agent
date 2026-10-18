@@ -4,6 +4,8 @@ Local-first Python ACP (Agent Client Protocol) server for building **cost-aware 
 
 **Status:** Early initialization (Phase 1). Design docs and project standards are in place; application code is under active development.
 
+**Live work status:** the [hosted table of the repository's GitHub issues](https://vibhanshu-agarwal.github.io/optimus-cost-agent/work-status.html) (no checkout needed). GitHub Issues are the work register and stay authoritative; the page is their live view.
+
 ## Conversation floor and turn effects
 
 - Each ACP session keeps its full conversation up to a 512 KiB floor. The first time a prompt or a
@@ -909,7 +911,7 @@ optimus-cost-agent/
 | [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.4.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.4.pdf) | Execution guardrails |
 | [AGENTS.md](AGENTS.md) | Agent behavior, logging, safety, and testing gates |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Human and agent contribution workflow |
-| [plan backlog](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md) | Sole live registry; the flat `plans/archive/` holds terminal history |
+| [plan backlog](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md) | Transitional register of work not yet moved to a GitHub issue (`Moved` rows link their issues; it takes no new work entries); the flat `plans/archive/` holds terminal history |
 
 If HLD, LLD, and Test Strategy conflict, pause and resolve before implementing.
 

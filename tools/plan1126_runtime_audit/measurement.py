@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import copy
 import csv
 import hashlib
 import importlib
@@ -59,6 +60,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
@@ -815,6 +817,39 @@ def _locate_identity_text(path: str, roots: tuple[Path, ...]) -> str:
     )
 
 
+def _child_payload(
+    *,
+    source: SourceTree,
+    spec: MeasurementSpecification,
+    entry: str,
+    options: Mapping[str, Any] | None,
+    repository_root: "str | Path",
+) -> dict[str, Any]:
+    """Exactly what a fresh measurement child is given: the measured tree, the bound identity text and the request."""
+    from .registry import entry_requirements
+
+    root = Path(repository_root).resolve()
+    requirements = entry_requirements(entry)
+    roots = (*(Path(item).resolve() for item in spec.import_roots), root)
+    source_files = {path: source.read_text(path) for path in source.paths()}
+    identity_files = dict(source_files)
+    for path in sorted(set(spec.paths) | set(requirements.paths)):
+        if path not in identity_files:
+            identity_files[path] = _locate_identity_text(path, roots)
+
+    return {
+        "spec": spec.to_dict(),
+        # The WHOLE measured tree: the child discovers its inventory from exactly the
+        # source this measurement is bound to, not from a subset of it.
+        "source_files": source_files,
+        # Bound text for every module whose execution is claimed, product and probe alike.
+        "identity_files": identity_files,
+        "entry": entry,
+        "options": dict(options or {}),
+        "repository_root": str(root),
+    }
+
+
 def run_fresh_measurement(
     *,
     source: SourceTree,
@@ -832,24 +867,7 @@ def run_fresh_measurement(
 
     root = Path(repository_root).resolve()
     requirements = entry_requirements(entry)
-    roots = (*(Path(item).resolve() for item in spec.import_roots), root)
-    source_files = {path: source.read_text(path) for path in source.paths()}
-    identity_files = dict(source_files)
-    for path in sorted(set(spec.paths) | set(requirements.paths)):
-        if path not in identity_files:
-            identity_files[path] = _locate_identity_text(path, roots)
-
-    payload = {
-        "spec": spec.to_dict(),
-        # The WHOLE measured tree: the child discovers its inventory from exactly the
-        # source this measurement is bound to, not from a subset of it.
-        "source_files": source_files,
-        # Bound text for every module whose execution is claimed, product and probe alike.
-        "identity_files": identity_files,
-        "entry": entry,
-        "options": dict(options or {}),
-        "repository_root": str(root),
-    }
+    payload = _child_payload(source=source, spec=spec, entry=entry, options=options, repository_root=root)
     with tempfile.TemporaryDirectory(prefix="plan1126-pycache-") as cache:
         completed = subprocess.run(
             [sys.executable, "-c", _CHILD],
@@ -882,3 +900,107 @@ def run_fresh_measurement(
             f"the child returned a binding that omits required dependencies: {sorted(absent)}"
         )
     return binding, result["result"]
+
+
+# --- Plan 11.30 Task 4: reuse of an identical current measurement within one test session -----------
+#
+# Production never reuses: only test helpers opt in. A hit hands back a copy of the named earlier data,
+# which is not a new execution, an independent repeat or a minted execution context. The key is everything
+# the child is given and runs under; a failed measurement is never stored; reuse never crosses a thread or
+# a session (the root conftest clears it when a session starts and ends).
+
+# Set by pytest for each test phase; it names the test, not anything measured.
+_PER_TEST_ENVIRONMENT = frozenset({"PYTEST_CURRENT_TEST"})
+
+
+def _execution_platform() -> tuple[str, str, str]:
+    return sys.platform, sys.executable, sys.version
+
+
+def measurement_identity(
+    *,
+    source: SourceTree,
+    spec: MeasurementSpecification,
+    entry: str,
+    options: Mapping[str, Any] | None,
+    repository_root: "str | Path",
+    depth: str,
+    installed: Mapping[str, str] | None = None,
+) -> str:
+    """The exact identity an earlier measurement must share to be reused: the child's whole payload (measured
+    source, bound identity text, specification, entry and options), the audit depth, the platform and
+    interpreter, the environment the child inherits, and the RECORD-validated content of every installed
+    dependency the specification or the entry's own floor binds (a missing or corrupt one refuses here)."""
+    material = {
+        "payload": _child_payload(source=source, spec=spec, entry=entry, options=options, repository_root=repository_root),
+        "depth": depth,
+        "platform": list(_execution_platform()),
+        "environment": {name: value for name, value in os.environ.items() if name not in _PER_TEST_ENVIRONMENT},
+        "dependencies": dict(installed if installed is not None else _installed_dependencies(spec, entry)),
+    }
+    return hashlib.sha256(json.dumps(material, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _installed_dependencies(spec: MeasurementSpecification, entry: str) -> dict[str, str]:
+    """The installed content of every dependency the specification names or the entry requires, validated now."""
+    from .registry import entry_requirements
+
+    names = sorted(set(spec.dependencies) | set(entry_requirements(entry).dependencies))
+    return {name: verify_dependency_integrity(name) for name in names}
+
+
+class MeasurementReuse:
+    """One thread's store of measurements already taken in this session, by exact identity."""
+
+    def __init__(self) -> None:
+        self._taken: dict[str, tuple[dict[str, Any], Any, str]] = {}
+
+    def measure(
+        self,
+        *,
+        source: SourceTree,
+        spec: MeasurementSpecification,
+        entry: str,
+        options: Mapping[str, Any] | None,
+        repository_root: "str | Path",
+        depth: str,
+        requester: str,
+    ) -> tuple[EnvironmentBinding, Any, str | None]:
+        """The binding and result, and who measured them when this is a reuse (None when measured now)."""
+        installed = _installed_dependencies(spec, entry)
+        key = measurement_identity(
+            source=source, spec=spec, entry=entry, options=options, repository_root=repository_root, depth=depth,
+            installed=installed,
+        )
+        earlier = self._taken.get(key)
+        if earlier is not None:
+            binding, result, measured_by = earlier
+            reused = EnvironmentBinding.from_dict(binding)
+            # The earlier binding must describe the dependency files installed NOW, not only the same names.
+            if dict(reused.dependency_files) != {name: installed[name] for name in spec.dependencies}:
+                raise ExecutingSourceMismatch(
+                    "reuse refused: the earlier binding's dependency files differ from the installed ones"
+                )
+            return reused, copy.deepcopy(result), measured_by
+        # A failure raises here and stores nothing: the next request measures again.
+        binding, result = run_fresh_measurement(
+            source=source, spec=spec, entry=entry, options=options, repository_root=repository_root,
+        )
+        self._taken[key] = (binding.to_dict(), copy.deepcopy(result), requester)
+        return binding, result, None
+
+
+_reuse = threading.local()
+
+
+def session_measurement_reuse() -> MeasurementReuse:
+    """This thread's store for the current session."""
+    store = getattr(_reuse, "store", None)
+    if store is None:
+        store = _reuse.store = MeasurementReuse()
+    return store
+
+
+def clear_measurement_reuse() -> None:
+    """End this thread's measurement reuse: called when a test session starts and when it ends."""
+    _reuse.__dict__.clear()

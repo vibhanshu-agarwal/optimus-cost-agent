@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from tools.doc_paths import ARCHIVE_DIRNAME, DOCS_ROOT
+from tools.tracked_repository_files import index_environment
 
 INDEX = DOCS_ROOT / "README.md"
 MARKDOWN_LINK = re.compile(r"\[[^]]*\]\((?P<target>[^)#]+)(?:#[^)]*)?\)")
@@ -66,6 +67,7 @@ def _tracked_document_names() -> list[str]:
     completed = subprocess.run(
         ["git", "ls-files", "-z", "--", "docs"],
         cwd=DOCS_ROOT.parent, check=True, capture_output=True, text=True, encoding="utf-8",
+        env=index_environment(DOCS_ROOT.parent),  # inside a commit hook's test run: the commit's own index
     )
     names = [name for name in completed.stdout.split("\0") if name]
     assert names, "the tracked-document inventory came back empty"
@@ -119,6 +121,7 @@ def test_only_gitignored_reviewer_checkpoint_logs_are_excluded(tmp_path: Path, m
         check=True,
         capture_output=True,
         text=True,
+        env=index_environment(DOCS_ROOT.parent),  # inside a commit hook's test run: the commit's own index
     ).stdout
     assert tracked == "", f"a force-added checkpoint log would be a tracked document the index skips: {tracked}"
     assert _is_reviewer_checkpoint_log(REVIEWS_ROOT / "plan-9-review-checkpoints.md")

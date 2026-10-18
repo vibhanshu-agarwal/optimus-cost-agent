@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from tools.doc_paths import link_resolves, resolves_with_archive
+from tools.tracked_repository_files import index_environment
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PLANS_ROOT = REPO_ROOT / "docs/superpowers/plans"
@@ -26,6 +27,16 @@ ROOT_GOVERNANCE_DOCUMENTS = {
 LIVE_REGISTRY_ROW = re.compile(
     r"^\| \[[^]]+\]\((?P<path>[^)]+\.md)\) "
     r"\| `(?P<state>Active|Blocked)` \| `(?P<owner>[^`]+)` \| (?P<next_gate>.+) \|$"
+)
+# A plan the Plan 11.29 cutover moved keeps its row, so the plan stays registered; its state and next gate are in the linked issue.
+MOVED_REGISTRY_ROW = re.compile(
+    r"^\| \[[^]]+\]\((?P<path>[^)]+\.md)\) \| Moved \| — \| "
+    r"\[#(?P<issue>\d+)\]\(https://github\.com/vibhanshu-agarwal/optimus-cost-agent/issues/(?P=issue)\) · \[pinned detail\]\([^)]+\) \|$"
+)
+# ADR-022 permits new plans to register an issue without copying live work metadata.
+ISSUE_ONLY_REGISTRY_ROW = re.compile(
+    r"^\| \[[^]]+\]\((?P<path>[A-Za-z0-9][A-Za-z0-9_.-]*\.md)\) \| — \| — \| "
+    r"\[#(?P<issue>[1-9]\d*)\]\(https://github\.com/vibhanshu-agarwal/optimus-cost-agent/issues/(?P=issue)\) \|$"
 )
 MARKDOWN_LINK = re.compile(r"\[[^]]*\]\((?P<target>[^)]+)\)")
 PLAN_LEVEL_STATUS = re.compile(r"(?mi)^\*\*Status:\*\*|^Status:")
@@ -101,11 +112,12 @@ def _tracked_repository_files() -> tuple[Path, ...]:
         check=True,
         capture_output=True,
         text=True,
+        env=index_environment(REPO_ROOT),  # inside a commit hook's test run: the commit's own index
     ).stdout.split("\0")
     return tuple(REPO_ROOT / relative_path for relative_path in tracked if relative_path)
 
 
-def _live_registry_rows() -> list[re.Match[str]]:
+def _registry_section() -> str:
     text = BACKLOG.read_text(encoding="utf-8")
     section = re.search(
         r"^## Live implementation plan registry\n(?P<body>.*?)(?=^## )",
@@ -113,13 +125,38 @@ def _live_registry_rows() -> list[re.Match[str]]:
         flags=re.MULTILINE | re.DOTALL,
     )
     assert section is not None, "the consolidated backlog must own the live-plan registry"
+    return section.group("body")
+
+
+def _live_registry_rows() -> list[re.Match[str]]:
     rows = [
         match
-        for line in section.group("body").splitlines()
+        for line in _registry_section().splitlines()
         if (match := LIVE_REGISTRY_ROW.fullmatch(line)) is not None
     ]
     assert rows, "the live-plan registry must contain at least one Active or Blocked plan"
     return rows
+
+
+def _moved_registry_rows() -> list[re.Match[str]]:
+    return [
+        match
+        for line in _registry_section().splitlines()
+        if (match := MOVED_REGISTRY_ROW.fullmatch(line)) is not None
+    ]
+
+
+def _issue_only_registry_rows() -> list[re.Match[str]]:
+    return [
+        match
+        for line in _registry_section().splitlines()
+        if (match := ISSUE_ONLY_REGISTRY_ROW.fullmatch(line)) is not None
+    ]
+
+
+def _registered_paths() -> list[str]:
+    """Registered transitional, migrated and newly issue-owned plans."""
+    return [match.group("path") for match in (*_live_registry_rows(), *_moved_registry_rows(), *_issue_only_registry_rows())]
 
 
 def _hardening_child_plan_rows() -> list[dict[str, str | None]]:
@@ -169,7 +206,7 @@ def _hardening_child_plan_rows() -> list[dict[str, str | None]]:
 
 
 def test_plan_root_contains_only_governance_and_registered_live_plans() -> None:
-    registry_paths = [match.group("path") for match in _live_registry_rows()]
+    registry_paths = _registered_paths()
     assert len(registry_paths) == len(set(registry_paths)), "live plans must be registered exactly once"
     assert all("/" not in path and "\\" not in path for path in registry_paths)
 
@@ -199,10 +236,12 @@ def test_hardening_masterplan_owns_exactly_fifteen_child_plan_statuses() -> None
     assert len({row["track"] for row in rows}) == 15
     assert len({row["filename"] for row in rows}) == 15
     active_rows = [row for row in rows if row["status"] == "Active"]
-    assert {row["track"] for row in active_rows} == {"HARDENING-TRACK-CI-GUARDRAILS"}
+    assert {row["track"] for row in active_rows} == {
+        "HARDENING-TRACK-CI-GUARDRAILS", "HARDENING-TRACK-STATIC-TYPING",
+    }
     assert all(row["link_target"] == row["filename"] for row in active_rows)
     not_drafted_rows = [row for row in rows if row["status"] == "Not drafted"]
-    assert len(not_drafted_rows) == 14
+    assert len(not_drafted_rows) == 13
     assert all(row["link_target"] is None for row in not_drafted_rows)
 
     text = HARDENING_MASTERPLAN.read_text(encoding="utf-8")
@@ -219,7 +258,7 @@ def test_hardening_masterplan_owns_exactly_fifteen_child_plan_statuses() -> None
 
 
 def test_plan_archive_is_flat_and_contains_no_registered_live_plan() -> None:
-    registry_paths = {match.group("path") for match in _live_registry_rows()}
+    registry_paths = set(_registered_paths())
     assert ARCHIVE_ROOT.is_dir()
     assert not [path for path in ARCHIVE_ROOT.iterdir() if path.is_dir()]
 
@@ -314,3 +353,13 @@ def test_repository_document_paths_in_text_resolve() -> None:
 
 def _resolves(path: Path) -> bool:
     return resolves_with_archive(path.resolve())
+
+
+def test_issue_only_plan_is_registered_without_local_work_metadata(monkeypatch) -> None:
+    section = (
+        "| [Legacy](legacy.md) | `Blocked` | `owner` | Existing gate |\n"
+        "| [New plan](new-plan.md) | — | — | "
+        "[#350](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/350) |\n"
+    )
+    monkeypatch.setitem(globals(), "_registry_section", lambda: section)
+    assert _registered_paths() == ["legacy.md", "new-plan.md"]

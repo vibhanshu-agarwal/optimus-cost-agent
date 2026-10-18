@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import re
 import subprocess
 from collections import Counter
 from pathlib import Path
+from typing import NamedTuple
 from urllib.parse import urlsplit
 
 import pytest
@@ -49,6 +51,17 @@ PREREQUISITE_TABLE_COLUMNS = (
     "Owner",
     "If unsatisfied: genuinely hard, or merely unauthorized?",
 )
+# Codex's 2026-10-04 Plan 11.30 ruling: one approved plan's Tooling disposition predates the prefix grammar.
+# Only that cell of those exact raw bytes skips the prefix check; the plan and every other check are unchanged.
+FROZEN_DISPOSITION_EXCEPTIONS = {
+    (
+        "2026-10-04-plan-11-30-test-profiles-implementation_v4.md",
+        "8A40DEF6D627EDC722D9FA925BBB0C193DE433ECCB91D2DCA19F1DA6AFC5C790",  # pragma: allowlist secret
+    ): (
+        "Tooling: usable Git, Python 3.14, uv, frozen dev env, pytest/cov and compatible xdist",
+        "early check distinguishes genuinely absent from merely unauthorized",
+    ),
+}
 PLAN_DIRECTORY_GOVERNANCE_FILES = {
     "README.md",
     "2026-07-01-phase-1-roadmap.md",
@@ -308,6 +321,46 @@ PROMOTED_PLAN_1121_STATUS = (
 )
 ALLOWED_PRIORITIES = frozenset({"HIGH", "MEDIUM", "LOW"})
 
+# Plan 11.29: a record the cutover moved keeps only a pointer in the pool (its identity, its issue and a pinned link to its former
+# detail); its status, priority, owner and next gate are in the issue. The sealed manifest records which issue each record moved to.
+MIGRATION_MANIFEST = REPO_ROOT / "reports/github-work-tracking-migration.json"
+POOL_PATH = repo_relative(OPTIMUS_POOL)
+# The cutover base commit every pointer pins: a commit identity, not a secret.
+CUTOVER_BASE = "d3114bea54d742abffcf104b630cb7104301de15"  # pragma: allowlist secret - cutover base commit pinned by every pointer
+ISSUES_URL = "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/"
+HELD_PILOT_RECORDS = frozenset({"A2A-C1"})  # the A2A pilot has an issue (#225) but is held: its pool record did not move
+MOVED = "Moved"
+NO_VALUE = "—"
+MOVED_COUNTS = {"plan": 7, "feature": 6, "follow-up": 36}
+ROWLESS_MOVED_RECORDS = frozenset({"H4-VERIFIER-FOLLOW-UPS"})  # a section record: no index row, only its pointer
+# Later batches (ADR-022) add pointer mappings in a supplement beside the sealed manifest; each batch pins the main commit whose pool holds
+# the former detail. The sealed manifest and its 49 records stay unchanged and keep their exact checks; the supplement is validated generically.
+POINTER_SUPPLEMENT = REPO_ROOT / "reports/github-work-tracking-pointers.json"
+SUPPLEMENT_SCHEMA = "optimus-work-tracking-pointers-v1"
+SUPPLEMENT_KINDS = frozenset({"plan", "feature", "follow-up"})
+SUPPLEMENT_POINTERS = frozenset({"entry", "row"})
+SUPPLEMENT_RECORD_KEYS = frozenset({"id", "kind", "title", "aliases", "anchors", "target_issue", "priority", "pointers", "entry_heading"})
+# The hardening records keep their rows in frozen historical tables, so they are mapped to issues in the masterplan's issue map instead of being moved.
+ISSUE_MAP_KINDS = frozenset({"track", "item", "candidate", "obligation"})
+ISSUE_MAP_KEYS = frozenset({"id", "kind", "issue", "parent"})
+ISSUE_MAP_OPTIONAL_KEYS = frozenset({"intake_section"})  # a pool section whose text now lives in the record's issue: the section is a history pointer
+HARDENING_ID_PREFIXES = ("HARDENING-TRACK-", "HARDENING-ITEM-", "P11.26-CAND-", "T13-CAND-", "P11.26-UNRUN-")
+DELIVERED_HARDENING_RECORDS = frozenset({"HARDENING-ITEM-LOCKFILE-CI-ENFORCEMENT"})  # delivered before the migration: it has no issue
+ISSUE_MAP_ROW_RE = re.compile(r"^\| `(?P<id>[^`]+)` \| (?P<kind>[a-z]+) \| \[#(?P<issue>\d+)\]\((?P<url>[^)]+)\) \| `(?P<parent>[^`]+)` \|$", re.MULTILINE)
+FROZEN_CUSTODY_TABLES = ("Plan 11.26 reviewed disposition and remediation custody", "Plan 11.26 Task 13 reviewed duplication disposition")
+MOVED_ENTRY_RE = re.compile(
+    r"^\*\*Moved:\*\* tracked in \[#(?P<issue>\d+)\]\((?P<url>[^)]+)\)\. "
+    r"Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the "
+    r"\[pinned detail\]\((?P<pin>[^)]+)\)\.$",
+    re.MULTILINE,
+)
+MOVED_POINTER_CELL_RE = re.compile(r"^\[#(?P<issue>\d+)\]\((?P<url>[^)]+)\) · \[pinned detail\]\((?P<pin>[^)]+)\)$")
+PINNED_DETAIL_RE = re.compile(
+    r"^https://github\.com/vibhanshu-agarwal/optimus-cost-agent/blob/(?P<commit>[0-9a-f]{40})/"
+    + re.escape(POOL_PATH)
+    + r"\?plain=1#L(?P<first>\d+)-L(?P<last>\d+)$"
+)
+
 PRODUCT_FEATURE_IDS = frozenset(
     {
         "EVIDENCE-HANDOFF-FEAT-REDACTION-GATE",
@@ -371,7 +424,7 @@ PROMOTED_STATUS_RE = re.compile(
 )
 FU_INDEX_ROW_RE = re.compile(
     rf"^\|\s*`(?P<identity>{FU_ID_BODY})`\s*\|\s*(?P<item>[^|]+?)\s*\|"
-    r"\s*(?P<status>.*?)\s*\|\s*(?P<priority>HIGH|MEDIUM|LOW)\s*\|"
+    r"\s*(?P<status>.*?)\s*\|\s*(?P<priority>HIGH|MEDIUM|LOW|—)\s*\|"
     r"\s*(?P<owner>.*?)\s*\|\s*(?P<evidence>.*?)\s*\|\s*$",
     re.MULTILINE,
 )
@@ -576,7 +629,14 @@ def _markdown_table_cells(line: str) -> tuple[str, ...]:
     return tuple(cell.strip() for cell in stripped[1:-1].split("|"))
 
 
-def _assert_prerequisites_table(plan: str) -> None:
+def _frozen_disposition_exception(plan_path: Path) -> tuple[str, str] | None:
+    """The pinned (row, disposition) a plan may keep, only for exactly its approved bytes. The digest is of the
+    bytes whose text is checked (approved plans are `-text`, so they equal the committed blob)."""
+    digest = hashlib.sha256(plan_path.read_bytes()).hexdigest().upper()
+    return FROZEN_DISPOSITION_EXCEPTIONS.get((plan_path.name, digest))
+
+
+def _assert_prerequisites_table(plan: str, exception: tuple[str, str] | None = None) -> None:
     prerequisites = _h2_section(plan, "Prerequisites")
     lines = prerequisites.splitlines()
     for index, line in enumerate(lines[:-1]):
@@ -601,8 +661,9 @@ def _assert_prerequisites_table(plan: str) -> None:
             satisfied = row["Satisfied today?"].casefold()
             assert satisfied in {"yes", "no", "unknown"}
             assert row["Owner"].strip()
-            disposition = row["If unsatisfied: genuinely hard, or merely unauthorized?"].casefold()
-            if satisfied != "yes":
+            cell = row["If unsatisfied: genuinely hard, or merely unauthorized?"]
+            disposition = cell.casefold()
+            if satisfied != "yes" and (row[header[0]], cell) != exception:
                 assert disposition.startswith(
                     ("genuinely hard", "genuinely absent", "merely unauthorized")
                 )
@@ -751,6 +812,302 @@ def _plan_11_snapshot_rows(text: str) -> dict[str, tuple[str, str]]:
         assert plan not in rows
         rows[plan] = (match.group("state").strip(), match.group("evidence").strip())
     return rows
+
+
+# ==== Plan 11.29: the records the cutover moved to GitHub issues ====
+#
+# Two kinds of assertion meet here. What is *live* (that a moved record is still reachable through a pointer to its issue, who
+# owns it, what depends on it) is checked against the current pool and the sealed manifest. What was *recorded at the move*
+# (a status, a scope sentence, a priority seed) is checked against the pool at the pinned cutover base. The pinned text proves
+# a historical fact only: it is never read as the record's current state, which is in its issue.
+
+
+class Pointer(NamedTuple):
+    kind: str  # "row", "entry" or "section"
+    label: str  # the identity as the pool writes it
+    issue: int
+    url: str
+    pin: str
+    row: dict[str, str] | None
+
+
+@functools.cache
+def _manifest() -> dict:
+    return json.loads(MIGRATION_MANIFEST.read_text(encoding="utf-8"))
+
+
+@functools.cache
+def _supplement() -> dict:
+    """Pointer mappings added after the sealed cutover: batches of {id, pin_commit, records}. Empty until the first batch."""
+    if not POINTER_SUPPLEMENT.is_file():
+        return {"schema": SUPPLEMENT_SCHEMA, "batches": []}
+    return json.loads(POINTER_SUPPLEMENT.read_text(encoding="utf-8"))
+
+
+@functools.cache
+def _supplement_records() -> dict[str, dict]:
+    """The records later batches moved, each carrying its batch id and that batch's pin commit."""
+    return {
+        record["id"]: {**record, "batch": batch["id"], "pin_commit": batch["pin_commit"]}
+        for batch in _supplement()["batches"]
+        for record in batch["records"]
+    }
+
+
+@functools.cache
+def _moved_records() -> dict[str, dict]:
+    """Every record that moved: the sealed cutover's records (pinned to the cutover base: every migrating record with a reviewed issue,
+    except the held A2A pilot and an external issue) and each later batch's records (pinned to that batch's own commit)."""
+    sealed = {
+        record["id"]: {**record, "batch": "cutover", "pin_commit": CUTOVER_BASE}
+        for record in _manifest()["records"]
+        if record["disposition"] == "migrate"
+        and record["target_issue"] is not None
+        and record["kind"] != "external-issue"
+        and record["id"] not in HELD_PILOT_RECORDS
+    }
+    return {**sealed, **_supplement_records()}  # the supplement test proves no supplement record conflicts with a mapped manifest record
+
+
+@functools.cache
+def _pool_at(commit: str) -> str:
+    """The pool as it was at a pinned commit: the former detail a pointer links to (read like `_read`)."""
+    shown = subprocess.run(["git", "show", f"{commit}:{POOL_PATH}"], cwd=REPO_ROOT, check=True, capture_output=True)
+    return shown.stdout.decode("utf-8").replace("~~", "")
+
+
+def _pool_at_cutover_base() -> str:
+    """The pool as it was at the pinned cutover base: the former detail every sealed pointer links to."""
+    return _pool_at(CUTOVER_BASE)
+
+
+def _slug(title: str) -> str:
+    return re.sub(r"\s", "-", re.sub(r"[^a-z0-9\s-]", "", title.lower()))
+
+
+def _record_of(pointer: Pointer) -> str:
+    """The manifest record a pointer stands for, from its identity (an id or alias, a plan file or a heading anchor)."""
+    records = [*_manifest()["records"], *_supplement_records().values()]
+    names = {name: record["id"] for record in records for name in (record["id"], *record["aliases"])}
+    if pointer.kind == "row" and pointer.label.startswith("["):  # a plan row links its plan file
+        link = MARKDOWN_LINK_RE.match(pointer.label)
+        assert link is not None, pointer.label
+        planned = _manifest()["plan_files"].get(f"docs/superpowers/plans/{link.group('target')}")
+        if planned is not None:
+            return planned["record"]
+        by_plan_file = {rec["plan_file"]: rec["id"] for rec in _supplement_records().values() if "plan_file" in rec}  # a plan a later batch moved
+        if link.group("target") in by_plan_file:
+            return by_plan_file[link.group("target")]
+        number = re.match(r"Plan (\d+(?:\.\d+)*)", pointer.label[1:])  # a plan file the manifest does not list: by its plan number
+        assert number is not None, pointer.label
+        return names[f"Plan {number.group(1)}"]
+    if pointer.kind == "row":
+        return names[pointer.label.strip("`")]
+    identity = pointer.label.split(":", 1)[0]
+    if identity in names:
+        return names[identity]
+    anchors = {anchor: record["id"] for record in records for anchor in record["anchors"]}
+    return anchors[_slug(pointer.label)]
+
+
+def _moved_pointers(text: str) -> tuple[Pointer, ...]:
+    pointers: list[Pointer] = []
+    for _identity, _header, rows in _markdown_tables(text):
+        for row in rows:
+            if MOVED not in row.values():
+                continue
+            cells = tuple(row.values())
+            pointer = MOVED_POINTER_CELL_RE.match(cells[-1])
+            assert pointer is not None, cells
+            pointers.append(Pointer("row", cells[0], int(pointer["issue"]), pointer["url"], pointer["pin"], row))
+    headings = tuple(SECTION_HEADING_RE.finditer(text))
+    for index, heading in enumerate(headings):
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
+        moved = MOVED_ENTRY_RE.search(text[heading.end() : end])
+        if moved is not None:
+            kind = "entry" if heading.group("level") == "###" else "section"
+            pointers.append(Pointer(kind, heading.group("title"), int(moved["issue"]), moved["url"], moved["pin"], None))
+    return tuple(pointers)
+
+
+@functools.cache
+def _moved_names() -> frozenset[str]:
+    """Every id and alias of a moved record: how its rows name it."""
+    return frozenset(name for record in _moved_records().values() for name in (record["id"], *record["aliases"]))
+
+
+def _is_moved_entry(body: str) -> bool:
+    return MOVED_ENTRY_RE.search(body) is not None
+
+
+def _entry_state(body: str) -> str:
+    """An entry's canonical status token, or `Moved` for a pointer entry (its status is in its issue)."""
+    return MOVED if _is_moved_entry(body) else _status_token(body)
+
+
+def _feature_row_at_cutover_base(identity: str) -> str:
+    """A moved feature's row as it was recorded at the cutover base (history, not the feature's current state)."""
+    return _feature_row(_pool_at_cutover_base(), identity)
+
+
+def _entry_at_cutover_base(heading: str) -> str:
+    return _entry_sections(_pool_at_cutover_base())[heading]
+
+
+def test_every_moved_pointer_names_its_manifest_issue_and_pins_its_former_detail() -> None:
+    moved = _moved_records()
+    sealed = {record_id: record for record_id, record in moved.items() if record["batch"] == "cutover"}
+    assert len(sealed) == sum(MOVED_COUNTS.values())  # the sealed switch stays exactly its 49; later batches are validated generically
+    assert Counter(record["kind"] for record in sealed.values()) == MOVED_COUNTS
+
+    pointers = _moved_pointers(_read(OPTIMUS_POOL))
+    per_record: Counter[tuple[str, str]] = Counter()
+    intake_seen: set[str] = set()
+    for pointer in pointers:
+        if pointer.label in _intake_sections():  # a history pointer of an issue-mapped record, pinned at the issue map's commit
+            owner = _intake_sections()[pointer.label]
+            assert pointer.kind == "section" and pointer.issue == owner["issue"] and pointer.url == f"{ISSUES_URL}{pointer.issue}", pointer.label
+            intake_pin = PINNED_DETAIL_RE.match(pointer.pin)
+            assert intake_pin is not None and intake_pin["commit"] == _supplement()["issue_map"]["pin_commit"], pointer.pin
+            intake_lines = _pool_at(intake_pin["commit"]).splitlines()
+            intake_first, intake_last = int(intake_pin["first"]), int(intake_pin["last"])
+            assert 1 <= intake_first <= intake_last <= len(intake_lines) and intake_lines[intake_first - 1] == f"## {pointer.label}", pointer.label
+            intake_seen.add(pointer.label)
+            continue
+        record_id = _record_of(pointer)
+        assert record_id in moved, f"{pointer.label!r} points at {record_id!r}, which the manifest did not move"
+        per_record[(record_id, "row" if pointer.kind == "row" else "entry")] += 1
+        assert pointer.issue == moved[record_id]["target_issue"], f"{record_id}: #{pointer.issue}, not its manifest issue"
+        assert pointer.url == f"{ISSUES_URL}{pointer.issue}"
+        pin = PINNED_DETAIL_RE.match(pointer.pin)
+        assert pin is not None, pointer.pin
+        assert pin["commit"] == moved[record_id]["pin_commit"]  # each record pins its own batch's commit
+        pinned_lines = _pool_at(pin["commit"]).splitlines()
+        first, last = int(pin["first"]), int(pin["last"])
+        assert 1 <= first <= last <= len(pinned_lines)
+        if pointer.kind == "row":  # the pinned line is this record's own former row
+            assert first == last
+            assert _markdown_table_cells(pinned_lines[first - 1])[0] == pointer.label
+            for column in ("Priority", "Backlog owner", "Owning slice / designated plan"):
+                assert pointer.row is not None and pointer.row.get(column, NO_VALUE) == NO_VALUE, (record_id, column)
+        else:  # the pinned range opens with this record's own former heading
+            assert pinned_lines[first - 1] == f"{'###' if pointer.kind == 'entry' else '##'} {pointer.label}"
+
+    assert intake_seen == set(_intake_sections())  # every declared intake section is a history pointer, and only those are
+    assert {record_id for record_id, _kind in per_record} == set(moved)  # every moved record has a pointer, and only those do
+    assert all(count == 1 for count in per_record.values()), "a record has at most one row pointer and one entry pointer"
+    for record_id, record in moved.items():
+        has_row, has_entry = (record_id, "row") in per_record, (record_id, "entry") in per_record
+        assert (has_entry, has_row) == _expected_pointers(record), record_id
+    for body in (_entry_sections(_read(OPTIMUS_POOL))).values():
+        assert not (_is_moved_entry(body) and STATUS_LINE_RE.search(body)), "a Moved entry carries no status here"
+
+
+@functools.cache
+def _intake_sections() -> dict[str, dict]:
+    """Pool sections that are history pointers of an issue-mapped record (heading title -> its issue-map record); their text now lives in that record's issue."""
+    return {r["intake_section"]: r for r in _supplement().get("issue_map", {}).get("records", []) if "intake_section" in r}
+
+
+def _expected_pointers(record: dict) -> tuple[bool, bool]:
+    """(entry, row): a supplement record declares its pointers; a sealed record follows its kind."""
+    if "pointers" in record:
+        return ("entry" in record["pointers"], "row" in record["pointers"])
+    if record["kind"] == "follow-up":
+        return (True, record["id"] not in ROWLESS_MOVED_RECORDS)
+    return (False, True)
+
+
+def _source_obligations(pool_text: str, identity: str) -> tuple[bool, bool]:
+    """(entry, row) as the pool at a pin actually has them: a heading named for the identity, and a table row led by its quoted identity."""
+    lines = pool_text.splitlines()
+    entry = any(re.match(rf"^#{{2,3}} {re.escape(identity)}: ", line) for line in lines)
+    row = any(re.match(rf"^\|\s*`{re.escape(identity)}`\s*\|", line) for line in lines)
+    return entry, row
+
+
+def test_pointer_supplement_is_valid_and_consistent_with_the_manifest_and_the_pinned_pool() -> None:
+    supplement = _supplement()
+    assert supplement["schema"] == SUPPLEMENT_SCHEMA
+    manifest_by_name = {name: record for record in _manifest()["records"] for name in (record["id"], *record["aliases"])}
+    mapped_issues = {record["target_issue"] for record in _manifest()["records"] if record["target_issue"] is not None}
+    batch_ids: set[str] = set()
+    names: set[str] = set()
+    issues: set[int] = set()
+    for batch in supplement["batches"]:
+        assert re.fullmatch(r"[A-Z0-9-]+", batch["id"]) and batch["id"] not in batch_ids, batch["id"]
+        batch_ids.add(batch["id"])
+        assert re.fullmatch(r"[0-9a-f]{40}", batch["pin_commit"]), batch["id"]
+        pinned_pool = _pool_at(batch["pin_commit"])  # fails if the pinned commit or its pool is unreadable
+        assert batch["records"], batch["id"]
+        for record in batch["records"]:
+            assert set(record) == SUPPLEMENT_RECORD_KEYS | ({"plan_file"} if record.get("kind") == "plan" else set()), record.get("id")
+            assert record["kind"] in SUPPLEMENT_KINDS and record["priority"] in ALLOWED_PRIORITIES, record["id"]
+            assert isinstance(record["target_issue"], int) and record["target_issue"] > 0, record["id"]
+            assert record["pointers"] and set(record["pointers"]) <= SUPPLEMENT_POINTERS, record["id"]
+            own = {record["id"], *record["aliases"]}
+            for name in own:
+                known = manifest_by_name.get(name)
+                if known is not None:
+                    # An identity the sealed manifest lists may migrate only while it is still a pending, migrating record there,
+                    # and only under its own id; a manifest record that is already mapped to an issue, or is not migrating, conflicts.
+                    assert known["id"] == record["id"], (name, "is the manifest's", known["id"])
+                    assert known["disposition"] == "migrate" and known["target_issue"] is None, (name, "is already mapped or not migrating")
+            assert own.isdisjoint(names), record["id"]
+            assert record["target_issue"] not in mapped_issues and record["target_issue"] not in issues, record["id"]
+            names |= own
+            issues.add(record["target_issue"])
+            assert (record["entry_heading"] is None) == ("entry" not in record["pointers"]), record["id"]
+            if record["entry_heading"] is not None:  # the former entry is a heading of the pool at the pin
+                assert record["entry_heading"] in pinned_pool.splitlines(), record["id"]
+            if record["kind"] != "plan":  # a plan row is identified by its linked plan file and stays with the pointer test
+                # The declared pointers must be the source's actual obligations at the pin: an entry heading and a quoted-identity row
+                # exist exactly when "entry" and "row" are declared.
+                assert _source_obligations(pinned_pool, record["id"]) == ("entry" in record["pointers"], "row" in record["pointers"]), record["id"]
+
+
+def test_hardening_issue_map_is_complete_canonical_projected_and_the_frozen_custody_tables_are_unchanged() -> None:
+    issue_map = _supplement()["issue_map"]
+    pin = issue_map["pin_commit"]
+    assert re.fullmatch(r"[0-9a-f]{40}", pin)
+    masterplan_at_pin = subprocess.run(
+        ["git", "show", f"{pin}:{repo_relative(HARDENING_MASTERPLAN)}"], cwd=REPO_ROOT, check=True, capture_output=True
+    ).stdout.decode("utf-8")
+    pool_at_pin = _pool_at(pin)
+    taken = {r["target_issue"] for r in _manifest()["records"] if r["target_issue"] is not None}
+    taken |= {r["target_issue"] for r in _supplement_records().values()}
+    records = issue_map["records"]
+    ids = [r["id"] for r in records]
+    assert records and len(set(ids)) == len(ids)
+    # Complete and canonical against the SEALED MANIFEST, not against another generated copy: the map holds exactly the manifest's migrating hardening records
+    # (tracks, items, Plan 11.26 and Task 13 candidates, Plan 11.26 obligations) except the one delivered before the migration, with the manifest's kind and parent.
+    applicable = {
+        r["id"]: r
+        for r in _manifest()["records"]
+        if r["disposition"] == "migrate" and r["id"].startswith(HARDENING_ID_PREFIXES) and r["id"] not in DELIVERED_HARDENING_RECORDS
+    }
+    assert set(ids) == set(applicable), (sorted(set(applicable) - set(ids)), sorted(set(ids) - set(applicable)))
+    known_parents = set(ids) | set(_moved_records())
+    seen: set[int] = set()
+    for record in records:
+        assert ISSUE_MAP_KEYS <= set(record) <= ISSUE_MAP_KEYS | ISSUE_MAP_OPTIONAL_KEYS, record.get("id")
+        assert record["kind"] in ISSUE_MAP_KINDS, record["id"]
+        assert (record["kind"], record["parent"]) == (applicable[record["id"]]["kind"], applicable[record["id"]]["parent"]), record["id"]
+        if "intake_section" in record:  # the pinned pool has that section; the live pool has turned it into a history pointer (checked with the pointers)
+            assert f"## {record['intake_section']}" in pool_at_pin.splitlines(), record["id"]
+        assert isinstance(record["issue"], int) and record["issue"] > 0, record["id"]
+        assert record["issue"] not in taken and record["issue"] not in seen, record["id"]
+        seen.add(record["issue"])
+        assert record["parent"] in known_parents, record["id"]
+        assert f"`{record['id']}`" in masterplan_at_pin or f"`{record['id']}`" in pool_at_pin, record["id"]
+    section = _h2_section(_read(HARDENING_MASTERPLAN), "GitHub issue map")
+    projected = [(m["id"], m["kind"], int(m["issue"]), m["url"], m["parent"]) for m in ISSUE_MAP_ROW_RE.finditer(section)]
+    assert projected == [(r["id"], r["kind"], r["issue"], f"{ISSUES_URL}{r['issue']}", r["parent"]) for r in records]
+    # The G6 and G7 custody tables are frozen historical records: their rows equal the pinned pool's, tuple for tuple.
+    now = {identity: rows for identity, _header, rows in _markdown_tables(_read(OPTIMUS_POOL))}
+    then = {identity: rows for identity, _header, rows in _markdown_tables(pool_at_pin)}
+    for title in FROZEN_CUSTODY_TABLES:
+        assert now[(title, 0)] == then[(title, 0)], title
 
 
 def test_immutable_documents_match_approved_digests_after_archival() -> None:
@@ -960,7 +1317,46 @@ def test_post_amendment_plans_declare_prerequisites_with_required_columns() -> N
     for plan_path in _post_amendment_plan_paths(_git_name_status_since_prerequisites_amendment()):
         if not plan_path.is_file():
             plan_path = PLANS_ROOT / "archive" / plan_path.name
-        _assert_prerequisites_table(_read(plan_path))
+        _assert_prerequisites_table(_read(plan_path), _frozen_disposition_exception(plan_path))
+
+
+def test_one_approved_plan_cell_is_the_only_prerequisite_disposition_exception(tmp_path: Path) -> None:
+    """Only the pinned cell of exactly the approved bytes skips the disposition-prefix check; every other check stays."""
+    (name, _digest), expected = next(iter(FROZEN_DISPOSITION_EXCEPTIONS.items()))
+    approved = PLANS_ROOT / name if (PLANS_ROOT / name).is_file() else PLANS_ROOT / "archive" / name
+    exception = _frozen_disposition_exception(approved)
+    text = _read(approved)
+
+    # The approved snapshot passes, and only because of its exception.
+    assert exception == expected
+    _assert_prerequisites_table(text, exception)
+    with pytest.raises(AssertionError):
+        _assert_prerequisites_table(text)
+
+    # The same bytes under another plan's name, and altered approved bytes, carry no exception.
+    other = tmp_path / "2026-10-05-another-plan.md"
+    other.write_bytes(approved.read_bytes())
+    altered = tmp_path / name
+    altered.write_bytes(approved.read_bytes() + b"\n")
+    assert _frozen_disposition_exception(other) is None
+    assert _frozen_disposition_exception(altered) is None
+    with pytest.raises(AssertionError):
+        _assert_prerequisites_table(_read(other), _frozen_disposition_exception(other))
+
+    # Under the exception, every other row and every other check of the excepted row still applies.
+    row, cell = expected
+    line = next(line for line in text.splitlines() if line.startswith(f"| {row} |"))
+    owner = _markdown_table_cells(line)[2]
+    for broken in (
+        text.replace("| merely unauthorized | Draft review first", "| n/a | Draft review first"),
+        text.replace("| merely unauthorized | Draft review first", f"| {cell} | Draft review first"),
+        text.replace(line, line.replace("| unknown |", "| maybe |", 1)),
+        text.replace(line, line.replace(f"| {owner} |", "| |", 1)),
+        text.replace(line, line.replace(cell, f"{cell} later", 1)),
+    ):
+        assert broken != text
+        with pytest.raises(AssertionError):
+            _assert_prerequisites_table(broken, exception)
 
 
 def test_guardrails_checkout_fetches_prerequisite_amendment_history() -> None:
@@ -1327,7 +1723,12 @@ def test_every_optimus_pool_entry_has_one_canonical_status() -> None:
 
     assert indexed_headings.isdisjoint(settled_headings)
     assert indexed_headings | settled_headings == set(entries)
-    assert all(_status_token(body) for body in entries.values())
+    assert all(_entry_state(body) for body in entries.values())
+    # A moved record is a pointer in both places or in neither: its index row says Moved exactly when its entry is a pointer.
+    moved_rows = {
+        f"{identity}: {item}" for identity, (item, status) in _fu_index_rows(pool_text).items() if status == MOVED
+    }
+    assert moved_rows == {heading for heading, body in entries.items() if _is_moved_entry(body)}
 
 
 def test_p996_aggregate_uses_canonical_closed_status() -> None:
@@ -1349,7 +1750,7 @@ def test_fu_index_is_an_exact_projection_of_stable_id_entries() -> None:
             continue
         identity = match.group("identity")
         assert identity not in expected
-        expected[identity] = (match.group("title"), _status_token(body))
+        expected[identity] = (match.group("title"), _entry_state(body))
 
     assert _fu_index_rows(pool_text) == expected
 
@@ -1371,7 +1772,8 @@ def test_pool_tables_have_collision_safe_identities_and_valid_priority_cells() -
         assert rows
         if "Priority" in header:
             assert header.count("Priority") == 1
-            assert all(row["Priority"] in ALLOWED_PRIORITIES for row in rows)
+            # A moved row has no priority here: it is in the issue.
+            assert all(row["Priority"] == NO_VALUE if MOVED in row.values() else row["Priority"] in ALLOWED_PRIORITIES for row in rows)
 
 
 def test_priority_seed_preserves_only_approved_non_medium_values() -> None:
@@ -1389,21 +1791,35 @@ def test_priority_seed_preserves_only_approved_non_medium_values() -> None:
         "Owning slice / designated plan",
         "Evidence",
     )
-    followup_priorities = {row["ID"].strip("`"): row["Priority"] for row in followup_rows}
+    moved = _moved_records()
+    # The priorities still kept in the pool are the unmoved rows'; a moved row keeps none (the issue has it).
+    followup_priorities = {row["ID"].strip("`"): row["Priority"] for row in followup_rows if row["Status"] != MOVED}
     assert {
         identity: priority
         for identity, priority in followup_priorities.items()
         if priority != "MEDIUM"
-    } == EXPECTED_NON_MEDIUM_PRIORITIES
-    feature_rows = tables[("Feature slices", 0)][1]
+    } == {identity: priority for identity, priority in EXPECTED_NON_MEDIUM_PRIORITIES.items() if identity not in moved}
+    # The approved seed of a moved follow-up is the value the sealed manifest migrated, not the issue's current priority.
     assert {
-        row["Identity"].strip("`"): row["Priority"]
-        for row in feature_rows
-        if row["Priority"] == "HIGH"
-    } == {
+        identity: record["priority"]
+        for identity, record in moved.items()
+        if record["kind"] == "follow-up" and record["priority"] != "MEDIUM"
+    } == {identity: priority for identity, priority in EXPECTED_NON_MEDIUM_PRIORITIES.items() if identity in moved}
+    feature_rows = tables[("Feature slices", 0)][1]
+    expected_high_features = {
         "P11-FEAT-ACP-RUNTIME-HARDENING": "HIGH",
         "HARDENING-FEAT-RUNTIME-QUALITY": "HIGH",
     }
+    assert {
+        row["Identity"].strip("`"): row["Priority"]
+        for row in feature_rows
+        if row["Status"] != MOVED and row["Priority"] == "HIGH"
+    } == {identity: priority for identity, priority in expected_high_features.items() if identity not in moved}
+    assert {
+        identity: record["priority"]
+        for identity, record in moved.items()
+        if record["kind"] == "feature" and record["priority"] == "HIGH"
+    } == {identity: priority for identity, priority in expected_high_features.items() if identity in moved}
     assert all(
         row["Priority"] in {"MEDIUM", "LOW"}
         for identity, (header, rows) in tables.items()
@@ -1415,12 +1831,14 @@ def test_priority_seed_preserves_only_approved_non_medium_values() -> None:
         }
         and "Priority" in header
         for row in rows
+        if MOVED not in row.values()
     )
+    # A moved evidence feature keeps no priority here (its issue has it), as in the assertions above; the placeholder is checked for every table by the priority-cell test.
     evidence_rows = tables[("Evidence and handoff feature registry", 0)][1]
     assert {
         row["Identity"].strip("`"): row["Priority"]
         for row in evidence_rows
-        if row["Priority"] != "MEDIUM"
+        if row["Priority"] != "MEDIUM" and MOVED not in row.values()
     } == {"EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE": "HIGH"}
 
 
@@ -1436,11 +1854,26 @@ def test_feature_status_is_canonical_and_state_prose_lives_in_scope_detail() -> 
     header, rows = tables[("Feature slices", 0)]
 
     assert header == ("Identity", "Status", "Priority", "Scope detail")
-    assert {row["Identity"].strip("`"): row["Status"] for row in rows} == EXPECTED_FEATURE_STATUS
+    moved = _moved_names()
+    # Every feature is still listed; a moved one is a pointer whose status is in its issue.
+    assert {row["Identity"].strip("`"): row["Status"] for row in rows} == {
+        identity: MOVED if identity in moved else status for identity, status in EXPECTED_FEATURE_STATUS.items()
+    }
     scopes = {row["Identity"].strip("`"): row["Scope detail"] for row in rows}
     assert scopes.keys() == EXPECTED_FEATURE_SCOPE_TOKENS.keys()
     for identity, expected_tokens in EXPECTED_FEATURE_SCOPE_TOKENS.items():
-        assert all(token in scopes[identity] for token in expected_tokens)
+        if identity not in moved:
+            assert all(token in scopes[identity] for token in expected_tokens)
+    # What was recorded at the move: a moved feature's status and scope detail at the pinned base (history, not its state now).
+    pinned_header, pinned_rows = {
+        identity: (header, rows) for identity, header, rows in _markdown_tables(_pool_at_cutover_base())
+    }[("Feature slices", 0)]
+    assert pinned_header == header
+    assert {row["Identity"].strip("`"): row["Status"] for row in pinned_rows} == EXPECTED_FEATURE_STATUS
+    pinned_scopes = {row["Identity"].strip("`"): row["Scope detail"] for row in pinned_rows}
+    for identity, expected_tokens in EXPECTED_FEATURE_SCOPE_TOKENS.items():
+        if identity in moved:
+            assert all(token in pinned_scopes[identity] for token in expected_tokens)
 
 
 def test_plan_11_26_runtime_audit_is_archived_while_remediation_custody_stays_open() -> None:
@@ -1455,7 +1888,9 @@ def test_plan_11_26_runtime_audit_is_archived_while_remediation_custody_stays_op
 
     assert plan_rows == []
 
-    feature_row = _feature_row(pool, "P11-FEAT-ACP-RUNTIME-HARDENING")
+    # The feature is a pointer to its issue now; the scope it recorded at the move is read from the pinned base.
+    assert MOVED in _markdown_table_cells(_feature_row(pool, "P11-FEAT-ACP-RUNTIME-HARDENING"))
+    feature_row = _feature_row_at_cutover_base("P11-FEAT-ACP-RUNTIME-HARDENING")
     assert PLAN_1126_IMPLEMENTATION_LINK in feature_row
     assert "Open" in feature_row
     assert "Plan 11.26" in feature_row
@@ -1472,11 +1907,22 @@ def test_hardening_masterplan_status_is_parent_owned_and_candidate_tables_are_hi
         if row["Identity"].strip("`") == "HARDENING-FEAT-RUNTIME-QUALITY"
     ]
 
+    # The feature is a pointer to its issue now: the pool row carries no status or priority, and the issue is the manifest's.
+    feature_issue = _moved_records()["HARDENING-FEAT-RUNTIME-QUALITY"]["target_issue"]
     assert len(feature_rows) == 1
-    assert feature_rows[0]["Status"] == "Open"
-    assert feature_rows[0]["Priority"] == "HIGH"
-    assert "hardening-runtime-quality-masterplan.md" in feature_rows[0]["Scope detail"]
-    assert "backlog row owns this masterplan's status" in feature_rows[0]["Scope detail"]
+    assert feature_rows[0]["Status"] == MOVED
+    assert feature_rows[0]["Priority"] == NO_VALUE
+    assert feature_rows[0]["Scope detail"].startswith(f"[#{feature_issue}]({ISSUES_URL}{feature_issue})")
+    # What the row recorded at the move: the backlog row was the masterplan's status owner until then.
+    pinned_row = next(
+        row
+        for row in dict((identity, rows) for identity, _header, rows in _markdown_tables(_pool_at_cutover_base()))[("Feature slices", 0)]
+        if row["Identity"].strip("`") == "HARDENING-FEAT-RUNTIME-QUALITY"
+    )
+    assert pinned_row["Status"] == "Open"
+    assert pinned_row["Priority"] == "HIGH"
+    assert "hardening-runtime-quality-masterplan.md" in pinned_row["Scope detail"]
+    assert "backlog row owns this masterplan's status" in pinned_row["Scope detail"]
 
     registry_rows = tables[("Live implementation plan registry", 0)]
     assert not [row for row in registry_rows if "hardening-" in row["Plan"]]
@@ -1488,6 +1934,13 @@ def test_hardening_masterplan_status_is_parent_owned_and_candidate_tables_are_hi
     assert "`ACCEPTED_OPEN`" not in masterplan
     assert "Owner-to-be" not in masterplan
     assert re.search(r"(?mi)^\*\*Status:\*\*|^Status:", masterplan) is None
+    # The one-way chain starts at the feature's issue, the same issue the pool row points to, and no longer at the backlog.
+    feature_link = f"[#{feature_issue}]({ISSUES_URL}{feature_issue})"
+    normalized = re.sub(r"\s+", " ", masterplan)
+    assert f"the feature's issue {feature_link} → this masterplan → individual child plan" in normalized
+    assert f"Status ownership follows exactly one chain: issue {feature_link} → masterplan → child plans → tasks" in normalized
+    assert f"| This masterplan's status | issue {feature_link} (`HARDENING-FEAT-RUNTIME-QUALITY`) | never repeat here |" in masterplan
+    assert "consolidated backlog →" not in normalized
 
 
 def test_plan_11_26_hypothesis_scope_authority_and_dispositions_cover_h1_through_h10() -> None:
@@ -1605,7 +2058,9 @@ def test_plan_11_26_candidates_are_ranked_and_unrun_owners_remain_distinct() -> 
     assert by_identity["P11.26-UNRUN-ZED"]["Disposition"] == "`UNRUN`"
     assert by_identity["P11.26-UNRUN-ZED"]["Owner-to-be"] == "operator"
 
-    feature_row = _feature_row(pool, "P11-FEAT-ACP-RUNTIME-HARDENING")
+    # The owning feature is a live pointer to its issue; the scope it recorded at the move is read from the pinned base.
+    assert MOVED in _markdown_table_cells(_feature_row(pool, "P11-FEAT-ACP-RUNTIME-HARDENING"))
+    feature_row = _feature_row_at_cutover_base("P11-FEAT-ACP-RUNTIME-HARDENING")
     assert "Open" in feature_row
     assert "plan-11-26-acp-runtime-audit.json" in feature_row
     assert "plan-11-26-acp-runtime-audit.md" in feature_row
@@ -1632,7 +2087,8 @@ def test_plan_11_26_task13_custody_is_separate_accepted_and_reproducible() -> No
     assert all(row["Owner-to-be"] for row in rows)
     assert all(row["Next gate"] for row in rows)
 
-    feature_row = _feature_row(pool, "P11-FEAT-ACP-RUNTIME-HARDENING")
+    assert MOVED in _markdown_table_cells(_feature_row(pool, "P11-FEAT-ACP-RUNTIME-HARDENING"))
+    feature_row = _feature_row_at_cutover_base("P11-FEAT-ACP-RUNTIME-HARDENING")
     for artifact in (
         PLAN_1126_DUPLICATION_CANDIDATES,
         PLAN_1126_DUPLICATION_AUDIT,
@@ -1651,8 +2107,11 @@ def test_zed_session_load_seal_remains_historical_throughout_the_living_pool() -
     """The current re-probe must not silently restate the 1.13.1 observation as current fact."""
     pool_text = _read(OPTIMUS_POOL)
 
-    assert "historical Zed 1.13.1" in pool_text
+    # The observation was recorded in text that moved to its issue. It stays labelled historical at the pinned base, and
+    # neither the living pool nor the base restates it as the current behavior.
+    assert "historical Zed 1.13.1" in _pool_at_cutover_base()
     assert "current Zed does not issue `session/load`" not in pool_text
+    assert "current Zed does not issue `session/load`" not in _pool_at_cutover_base()
 
 
 def test_promoted_statuses_remain_exact_and_every_entry_status_has_a_resolution() -> None:
@@ -1661,28 +2120,25 @@ def test_promoted_statuses_remain_exact_and_every_entry_status_has_a_resolution(
     indexed = _fu_index_rows(pool_text)
     settled = _settled_index_rows(pool_text)
     followup_intro = pool_text.split("## Follow-up status index", 1)[1].split("| ID |", 1)[0]
-    detail_statuses = {heading: _status_token(body) for heading, body in entries.items()}
+    detail_statuses = {heading: _entry_state(body) for heading, body in entries.items()}
     projected_statuses = {
         **{f"{identity}: {item}": status for identity, (item, status) in indexed.items()},
         **settled,
     }
 
-    assert indexed["P9.8-FU-5"][1] == PROMOTED_PLAN_117_STATUS
-    assert indexed["P11-FU-1"][1] == PROMOTED_PLAN_117_STATUS
+    # Both promoted follow-ups moved: each is a pointer now, and its promotion was recorded at the pinned base.
+    pinned_index = _fu_index_rows(_pool_at_cutover_base())
+    for identity in ("P9.8-FU-5", "P11-FU-1"):
+        assert indexed[identity][1] == MOVED
+        assert pinned_index[identity][1] == PROMOTED_PLAN_117_STATUS
     assert _resolution(PROMOTED_PLAN_117_STATUS) == "unresolved"
     assert "`Open`, `Promoted -> ...`, and `Partially implemented` are unresolved" in followup_intro
     assert "`Closed` and `Reviewed disposition` are resolved" in followup_intro
     assert projected_statuses == detail_statuses
-    assert all(
-        _resolution(status) == "resolved"
-        for status in detail_statuses.values()
-        if status in {"Closed", "Reviewed disposition"}
-    )
-    assert all(
-        _resolution(status) == "unresolved"
-        for status in detail_statuses.values()
-        if status not in {"Closed", "Reviewed disposition"}
-    )
+    # Every entry still here has a resolution; a Moved pointer has none, because its issue holds the status and the closure.
+    live_statuses = [status for status in detail_statuses.values() if status != MOVED]
+    assert all(_resolution(status) == "resolved" for status in live_statuses if status in {"Closed", "Reviewed disposition"})
+    assert all(_resolution(status) == "unresolved" for status in live_statuses if status not in {"Closed", "Reviewed disposition"})
 
 
 def test_every_relative_optimus_pool_link_resolves() -> None:
@@ -1693,15 +2149,20 @@ def test_every_relative_optimus_pool_link_resolves() -> None:
         assert link_resolves(OPTIMUS_POOL, target), target
 
 
-def test_promoted_targets_resolve_inside_plan_directory() -> None:
-    entries = _entry_sections(_read(OPTIMUS_POOL))
-    promoted = tuple(
+def _promoted_tokens(pool_text: str) -> tuple[str, ...]:
+    return tuple(
         token
-        for token in (_status_token(body) for body in entries.values())
+        for token in (_entry_state(body) for body in _entry_sections(pool_text).values())
         if token.startswith("Promoted -> ")
     )
 
-    assert promoted
+
+def test_promoted_targets_resolve_inside_plan_directory() -> None:
+    # Every promoted entry moved, so none is promoted in the pool now; one that appears must still resolve. The promotions
+    # recorded at the pinned base name plan files that must still exist.
+    promoted = (*_promoted_tokens(_read(OPTIMUS_POOL)), *_promoted_tokens(_pool_at_cutover_base()))
+
+    assert _promoted_tokens(_pool_at_cutover_base())
     for token in promoted:
         match = PROMOTED_STATUS_RE.match(f"{token}.")
         assert match is not None
@@ -1720,7 +2181,7 @@ def test_settled_entries_do_not_label_historical_defects_as_current() -> None:
         "`tools/verify_plan996_logging_surfaces.py` raises",
     )
     for body in _entry_sections(_read(OPTIMUS_POOL)).values():
-        token = _status_token(body)
+        token = _entry_state(body)  # a Moved pointer has no status here, so it is never settled in the pool
         if token not in {"Closed", "Partially implemented", "Reviewed disposition"}:
             continue
         assert all(phrase not in body for phrase in forbidden)
@@ -1764,9 +2225,14 @@ def test_gateway_mcp_retirement_custody_is_current() -> None:
     assert "P11-FU-6" in fu26
     assert "WinError 10053" in fu26
 
+    # P11-FU-6 moved to its issue. The pool keeps its live pointer (row and entry); the custody facts recorded at the move are
+    # read from the pinned base, so the follow-up cannot have been dropped by the retirement and cannot be re-read as current.
     fu6_item, fu6_status = indexed["P11-FU-6"]
-    fu6 = entries[f"P11-FU-6: {fu6_item}"]
-    assert fu6_status == "Open"
+    assert fu6_status == MOVED and _is_moved_entry(entries[f"P11-FU-6: {fu6_item}"])
+    pinned_fu6_item, pinned_fu6_status = _fu_index_rows(_pool_at_cutover_base())["P11-FU-6"]
+    assert pinned_fu6_item == fu6_item
+    fu6 = _entry_at_cutover_base(f"P11-FU-6: {pinned_fu6_item}")
+    assert pinned_fu6_status == "Open"
     assert _status_token(fu6) == "Open"
     assert "WinError 10053" in fu6
     assert "Plan 11.12" in fu6
@@ -1809,21 +2275,30 @@ def test_archived_product_pool_retains_its_historical_document_inventory() -> No
     assert all(doc_path(path).is_file() for path in PRODUCT_OWNED_DOCS)
 
 
-def test_optimus_dependencies_resolve_inside_the_canonical_backlog() -> None:
-    optimus_text = _read(OPTIMUS_POOL)
-    canonical_rows = _feature_rows(optimus_text)
-    dependency_clauses = tuple(line.split("Dependency:", 1)[1] for line in optimus_text.splitlines() if "Dependency:" in line)
+def _product_dependency_ids(text: str) -> set[str]:
+    """The product feature ids a pool's `Dependency:` clauses name."""
     dependency_ids: set[str] = set()
-
-    for clause in dependency_clauses:
+    for clause in (line.split("Dependency:", 1)[1] for line in text.splitlines() if "Dependency:" in line):
         referenced_ids = set(FEATURE_ID_RE.findall(clause))
         if not (referenced_ids & PRODUCT_FEATURE_IDS):
             continue
         assert "evidence-handoff-open-work-pool.md" not in clause
         dependency_ids.update(referenced_ids)
+    return dependency_ids
 
-    assert dependency_ids == {"EVIDENCE-HANDOFF-FEAT-REDACTION-GATE"}
-    assert dependency_ids <= canonical_rows.keys()
+
+def test_optimus_dependencies_resolve_inside_the_canonical_backlog() -> None:
+    optimus_text = _read(OPTIMUS_POOL)
+    canonical_rows = _feature_rows(optimus_text)
+
+    # A dependency of an entry still owned here must resolve to a feature row here; a Moved row is a pointer and counts.
+    assert _product_dependency_ids(optimus_text) <= canonical_rows.keys()
+    # The one dependency recorded at the move (P11-FEAT-ZED-RESUME's former row names the redaction gate) stays a live,
+    # pool-owned feature row, so what that record depends on has not been dropped.
+    recorded_at_the_move = _product_dependency_ids(_pool_at_cutover_base())
+    assert recorded_at_the_move == {"EVIDENCE-HANDOFF-FEAT-REDACTION-GATE"}
+    assert recorded_at_the_move <= canonical_rows.keys()
+    assert all(MOVED not in _markdown_table_cells(_feature_row(optimus_text, identity)) for identity in recorded_at_the_move)
 
 
 def test_product_checkpoint_log_location_remains_gitignored() -> None:
@@ -1874,11 +2349,17 @@ def test_plan_1116_terminal_partial_outcome_keeps_distinct_followup_custody() ->
     tables = {identity: rows for identity, _header, rows in _markdown_tables(pool)}
     followup_rows = tables[("Follow-up status index", 0)]
 
-    fu7_item, fu7_status = indexed["P11-FU-7"]
+    # P11-FU-7 moved to its issue: the pool keeps its pointer (row and entry), and its partial-outcome custody as it was recorded
+    # at the move is read from the pinned base. P11-FU-19 stayed here and is checked live.
+    fu7_item, fu7_pointer_state = indexed["P11-FU-7"]
+    assert fu7_pointer_state == MOVED and _is_moved_entry(entries[f"P11-FU-7: {fu7_item}"])
+    pinned_tables = {identity: rows for identity, _header, rows in _markdown_tables(_pool_at_cutover_base())}
+    pinned_index = _fu_index_rows(_pool_at_cutover_base())
+    fu7_item, fu7_status = pinned_index["P11-FU-7"]
     fu19_item, fu19_status = indexed["P11-FU-19"]
-    p11_fu_7 = entries[f"P11-FU-7: {fu7_item}"]
+    p11_fu_7 = _entry_at_cutover_base(f"P11-FU-7: {fu7_item}")
     p11_fu_19 = entries[f"P11-FU-19: {fu19_item}"]
-    fu7_row = next(row for row in followup_rows if row["ID"] == "`P11-FU-7`")
+    fu7_row = next(row for row in pinned_tables[("Follow-up status index", 0)] if row["ID"] == "`P11-FU-7`")
     fu19_row = next(row for row in followup_rows if row["ID"] == "`P11-FU-19`")
 
     def _lane_state(status: str) -> str:
@@ -1911,7 +2392,10 @@ def test_plan_1118_records_forward_only_error_code_custody() -> None:
     assert "Plan 11.18" in pool
     assert "forced Plan 11.7 subset" in pool
     assert "-32002" in pool and "-32910" in pool and "-32911" in pool
-    assert "frozen Plan 11.7" in pool
+    # The sentence naming the frozen Plan 11.7 was part of P11-FEAT-ZED-RESUME's row, which moved to its issue: the pool keeps
+    # that feature's pointer and the row as it was at the move is read from the pinned base.
+    assert MOVED in _markdown_table_cells(_feature_row(pool, "P11-FEAT-ZED-RESUME"))
+    assert "frozen Plan 11.7" in _feature_row_at_cutover_base("P11-FEAT-ZED-RESUME")
     assert "Plan 11.18" in roadmap
     assert "P11-FU-10" in roadmap
     assert "frozen Plan 11.7" in roadmap
@@ -1938,6 +2422,17 @@ def test_plan_1118_current_docs_close_p11_fu_10() -> None:
 def test_p11_fu_20_is_partial_and_owned_by_live_blocked_plan_1123() -> None:
     """Terminal Plan 11.20 cannot hide Plan 11.23's unrun external gate."""
     pool = _read(OPTIMUS_POOL)
+    live_item, live_state = _fu_index_rows(pool)["P11-FU-20"]
+    # Live: the follow-up and the plan that owns it both moved, so the pool keeps their pointers, and the ownership is the
+    # sealed manifest's relation. The owning plan is found by name and must still be a live plan, at the plan root.
+    moved = _moved_records()
+    assert live_state == MOVED and _is_moved_entry(_entry_sections(pool)[f"P11-FU-20: {live_item}"])
+    assert moved["P11-FU-20"]["parent"] == "plan:11.23" and "plan:11.23" in moved
+    plan_1123 = doc_path("2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md")
+    assert plan_1123.is_file()
+    assert plan_1123.parent == PLANS_ROOT
+    # What was recorded at the move (partial status, the unrun external gate, the broker facts) is read from the pinned base.
+    pool = _pool_at_cutover_base()
     indexed = _fu_index_rows(pool)
     entries = _entry_sections(pool)
     tables = {identity: rows for identity, _header, rows in _markdown_tables(pool)}
@@ -1977,7 +2472,6 @@ def test_p11_fu_20_is_partial_and_owned_by_live_blocked_plan_1123() -> None:
     assert "Plan 11.20 is a terminal intermediate slice" in body
     assert _has_semantic_anchor_group(body, "Live", "Plan 11.23", "supersedes")
     assert "Task 6 remains blocked" in body
-    assert (PLANS_ROOT / "2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md").is_file()
 
     assert "_mcp_permission_broker_for" in body
     assert "disposition_for_new_session" in body
@@ -2017,3 +2511,114 @@ def test_a2a_ledger_design_v2_is_the_live_successor_and_owns_the_channel() -> No
     ledger_row = _feature_row(pool, "EVIDENCE-HANDOFF-FEAT-A2A-LEDGER")
     assert "[design v2](../specs/evidence-handoff-a2a-ledger-design_v2.md)" in ledger_row
     assert _feature_rows(pool)["EVIDENCE-HANDOFF-FEAT-A2A-CHANNEL"] == 1
+
+
+def _issue_only_plan_pointers(text: str, plans_root: Path = PLANS_ROOT) -> tuple[tuple[str, int], ...]:
+    """New ADR-022 pointers have no former backlog identity or local work metadata."""
+    tables = [table for table in _markdown_tables(text) if table[0][0] == "Live implementation plan registry"]
+    assert len(tables) == 1
+    _identity, header, rows = tables[0]
+    assert header == ("Plan", "State", "Backlog owner", "Next gate")
+    plan_link = re.compile(r"\[[^]\n]+\]\((?P<path>[A-Za-z0-9][A-Za-z0-9_.-]*\.md)\)")
+    issue_link = re.compile(r"\[#(?P<issue>[1-9]\d*)\]\(https://github\.com/vibhanshu-agarwal/optimus-cost-agent/issues/(?P=issue)\)")
+    plan_counts: Counter[str] = Counter()
+    issue_counts: Counter[int] = Counter()
+    pointers: list[tuple[str, int]] = []
+    for row in rows:
+        plan = plan_link.fullmatch(row["Plan"])
+        assert plan is not None, row
+        filename = plan.group("path")
+        plan_counts[filename] += 1
+        gate = row["Next gate"]
+        issue_prefix = issue_link.match(gate)
+        if issue_prefix is not None:
+            issue_counts[int(issue_prefix.group("issue"))] += 1
+        if row["State"] == "Moved":
+            # The unchanged historical checks validate the manifest and former-detail pin.
+            continue
+        if row["State"] in {"`Active`", "`Blocked`"} and not gate.startswith("[#"):
+            legacy_rows = [
+                prior
+                for identity, _header, prior_rows in _markdown_tables(_pool_at_cutover_base())
+                if identity[0] == "Live implementation plan registry"
+                for prior in prior_rows
+                if prior["State"] in {"`Active`", "`Blocked`"}
+            ]
+            assert any(prior["Plan"] == row["Plan"] for prior in legacy_rows), row
+            continue
+        assert row["State"] == row["Backlog owner"] == "—", row
+        issue = issue_link.fullmatch(gate)
+        assert issue is not None, row
+        assert (plans_root / filename).is_file(), filename
+        pointers.append((filename, int(issue.group("issue"))))
+    for filename, issue in pointers:
+        assert plan_counts[filename] == issue_counts[issue] == 1, (filename, issue)
+    return tuple(pointers)
+
+
+def _issue_only_registry_fixture(*rows: str) -> str:
+    return (
+        "## Live implementation plan registry\n\n"
+        "| Plan | State | Backlog owner | Next gate |\n"
+        "|---|---|---|---|\n" + "\n".join(rows) + "\n"
+    )
+
+
+def test_new_issue_only_plan_pointers_are_canonical_and_do_not_copy_work_metadata() -> None:
+    _issue_only_plan_pointers(_read(OPTIMUS_POOL))
+
+
+def test_issue_only_plan_pointer_accepts_distinct_existing_plans(tmp_path: Path) -> None:
+    for name in ("new-plan.md", "second.md"):
+        (tmp_path / name).write_text("# Scope\n", encoding="utf-8")
+    rows = (
+        f"| [New](new-plan.md) | — | — | [#350]({ISSUES_URL}350) |",
+        f"| [Second](second.md) | — | — | [#351]({ISSUES_URL}351) |",
+    )
+    assert _issue_only_plan_pointers(_issue_only_registry_fixture(*rows), tmp_path) == (
+        ("new-plan.md", 350), ("second.md", 351)
+    )
+
+
+@pytest.mark.parametrize(
+    "bad_row",
+    [
+        "| [New](new-plan.md) | Open | — | [#350]({url}350) |",
+        "| [New](new-plan.md) | `Blocked` | — | [#350]({url}350) |",
+        "| [New](new-plan.md) | `Blocked` | `codex` | pending tests |",
+        "| [New](new-plan.md) | `Active` | `codex` | implement now |",
+        "| [New](new-plan.md) | — | codex | [#350]({url}350) |",
+        "| [New](new-plan.md) | — | priority:high | [#350]({url}350) |",
+        "| [New](new-plan.md) | — | — | [#350]({url}350) pending tests |",
+        "| [New](new-plan.md) | — | — | [#350]({url}350) · [pinned detail](old.md) |",
+        "| [New](new-plan.md) | — | — | [#350]({url}351) |",
+        "| [New](new-plan.md) | — | — | [#0]({url}0) |",
+        "| [New](new-plan.md) | — | — | [#0350]({url}0350) |",
+        "| [New](new-plan.md) | — | — | [#350](https://example.com/issues/350) |",
+        "| [New](new-plan.md) | — | — | [#350]({url}350/) |",
+        "| [New](new-plan.md) | — | — | [#350]({url}350?state=open) |",
+        "| [New](new-plan.md) | — | — | [#350]({url}350) [#351]({url}351) |",
+        "| [New](missing.md) | — | — | [#350]({url}350) |",
+        "| [New](../new-plan.md) | — | — | [#350]({url}350) |",
+        "| [New](new-plan.md) extra | — | — | [#350]({url}350) |",
+        "| [New](new-plan.md) | — | [#350]({url}350) |",
+        "| [New](new-plan.md) | — | — | |",
+        "| [New](new-plan.md) | — | — | [#350]({url}350) | extra |",
+    ],
+)
+def test_issue_only_plan_pointer_rejects_injected_metadata_and_malformed_cells(tmp_path: Path, bad_row: str) -> None:
+    (tmp_path / "new-plan.md").write_text("# Scope\n", encoding="utf-8")
+    with pytest.raises(AssertionError):
+        _issue_only_plan_pointers(_issue_only_registry_fixture(bad_row.format(url=ISSUES_URL)), tmp_path)
+
+
+@pytest.mark.parametrize("second_plan,second_issue", [("new-plan.md", 351), ("second.md", 350)])
+def test_issue_only_plan_pointer_rejects_duplicate_plan_or_issue(tmp_path: Path, second_plan: str, second_issue: int) -> None:
+    for name in ("new-plan.md", "second.md"):
+        (tmp_path / name).write_text("# Scope\n", encoding="utf-8")
+    rows = (
+        f"| [New](new-plan.md) | — | — | [#350]({ISSUES_URL}350) |",
+        f"| [Second]({second_plan}) | — | — | [#{second_issue}]({ISSUES_URL}{second_issue}) |",
+    )
+    with pytest.raises(AssertionError):
+        _issue_only_plan_pointers(_issue_only_registry_fixture(*rows), tmp_path)

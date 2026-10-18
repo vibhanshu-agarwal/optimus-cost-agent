@@ -11,8 +11,8 @@
 program together with the newly measured hardening work, while preserving one
 authoritative custody location for every open item.
 
-**Architecture:** Status authority is a one-way parent projection: consolidated
-backlog → this masterplan → individual child plan → that plan's tasks. Each parent
+**Architecture:** Status authority is a one-way parent projection: the feature's
+issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232) → this masterplan → individual child plan → that plan's tasks. Each parent
 reports the state of its direct children; no document or task declares its own state.
 This masterplan owns cross-program sequencing, the exact 16-item new-work scope, and
 the status of its 15 independently reviewed child plans. The accepted Plan 11.26
@@ -42,10 +42,13 @@ implementation plan.
 
 ## Authority chain
 
-Promotion creates exactly one new backlog feature row:
-`HARDENING-FEAT-RUNTIME-QUALITY`, priority `HIGH`. That row alone reports this
-masterplan's current status. The masterplan does not repeat that status. The row does
-not absorb or replace
+The [source typing child](hardening-static-type-checking-implementation_v3.md) carries the accepted fresh baseline and bounded telemetry contract. [#329](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/329) owns its live state; the older baseline rows below remain historical provenance.
+
+Promotion created exactly one new backlog feature row:
+`HARDENING-FEAT-RUNTIME-QUALITY`, priority `HIGH`. Since the Plan 11.29 authority
+switch, issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232) alone reports this masterplan's current status; the
+backlog row is a pointer to it. The masterplan does not repeat that status. The feature
+does not absorb or replace
 `P11-FEAT-ACP-RUNTIME-HARDENING`, any `P11.26-CAND-*` row, any `T13-CAND-*` row, any
 `P11.26-UNRUN-*` obligation, or `P11-FU-30`.
 
@@ -73,8 +76,8 @@ field.
 
 ## Global constraints
 
-- Status ownership follows exactly one chain: consolidated backlog → masterplan →
-  child plans → tasks. The backlog reports the masterplan's status; this masterplan
+- Status ownership follows exactly one chain: issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232) → masterplan →
+  child plans → tasks. The issue reports the masterplan's status; this masterplan
   reports child-plan status; each child plan reports task status. No level reports its
   own status or duplicates a direct child's status in another register.
 - The G6/G7 custody tables are immutable historical acceptance records. This
@@ -88,7 +91,7 @@ field.
   continue to own pickup conflicts, owner-to-be, disposition, and next gate.
 - The 16 `HARDENING-ITEM-*` identities below are the only new-work custody introduced
   by this program. Adding a seventeenth requires a reviewed forward-only masterplan
-  successor and a corresponding backlog feature-scope update.
+  successor and a corresponding feature-scope update in issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232).
 - `P11-FU-30` remains owned by `P11.26-CAND-2-TELEMETRY-CONTRACT`. The logging child
   plan implements that existing custody; it does not create a second logging item.
 - Bounded admission remains owned by `P11.26-CAND-4-QUEUE-BACKPRESSURE`. Absence of a
@@ -147,8 +150,8 @@ field.
 | Five accepted runtime candidate dispositions | consolidated backlog Task 12 custody table | historical G6 acceptance record; reference candidate identity and sequence only |
 | Twelve accepted duplication candidate dispositions | consolidated backlog Task 13 custody table | historical G7 acceptance record; reference candidate identity and sequence only |
 | Three `UNRUN` obligation states and owners | consolidated backlog Task 12 custody table | reference obligation identity and ordering only |
-| `P11-FU-30` state and acceptance | consolidated backlog follow-up entry | route to the existing telemetry candidate only |
-| This masterplan's status | single `HARDENING-FEAT-RUNTIME-QUALITY` backlog row | never repeat here |
+| `P11-FU-30` state and acceptance | issue [#275](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/275) (formerly the backlog follow-up entry) | route to the existing telemetry candidate only |
+| This masterplan's status | issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232) (`HARDENING-FEAT-RUNTIME-QUALITY`) | never repeat here |
 | Sixteen newly measured hardening items | this masterplan | define stable identity, scope boundary, child plan, and acceptance gate |
 | Fifteen child-plan statuses | this masterplan's child-plan board | one row per child plan; no duplicate backlog registry row and no self-status inside the child |
 | Task status | owning child plan | checkbox/task table owned by the plan; task does not self-attest |
@@ -265,10 +268,10 @@ for those slices without changing ownership or declaring a whole track complete.
 |---|---|---|---|---|
 | `HARDENING-TRACK-RUFF-LINT` | `hardening-ruff-lint-ratchet-implementation.md` | `Not drafted` | `HARDENING-ITEM-RUFF-LINT-RATCHET` | independently reviewed child plan |
 | `HARDENING-TRACK-RUFF-FORMAT` | `hardening-ruff-format-migration.md` | `Not drafted` | `HARDENING-ITEM-RUFF-FORMAT-MIGRATION` | independently reviewed child plan and branch-coordination window |
-| `HARDENING-TRACK-CI-GUARDRAILS` | [hardening-ci-guardrail-truthfulness-implementation.md](hardening-ci-guardrail-truthfulness-implementation.md) | `Active` | `HARDENING-ITEM-COVERAGE-SOURCE-SCOPE`, `HARDENING-ITEM-LOCKFILE-CI-ENFORCEMENT`, `HARDENING-ITEM-SECRET-SCAN-SCOPE`, and `HARDENING-ITEM-BANDIT-B310` | PR #194 merged at `0ec91225`. The independently accepted local-hook UTF-8 repair at `c9745898` merged through PR #196 at `3b3093d3`; its selected-text validation is on main. Preserve production-only CI, commit-time coverage, locked dependency sync and the 34 baseline identities. Archival custody, wider venues and later coverage/B310 tasks remain separate; no additional child task is released. ADR-016 records the operator's Plan 12.2 local-task coverage-hook skip, focused tests and checkpoint full-suite cadence; every other hook and required CI remain. This is an explicit lane authority change, not a global weakened coverage threshold or closure of this track. Linked custody (operator's Plan 12.2 offline release, 2026-10-04): Plan 12.2 CP4 holds the narrow `HARDENING-ITEM-COVERAGE-SOURCE-SCOPE` assignment for the CI `optimus-check: pytest-coverage` step, `tools/check_product_coverage.py` and `tools/product-coverage-groups.json`, which check the Optimus product group, `context_engine` and `optimus_model_policy` at 80% each on one full-suite dataset, with Evidence Handoff and the aggregate informational. The commit hook entry and pyproject's interim floor stay unchanged until the profiles lane lands; coordinate with Plan 12.2 before editing those blocks. This track is not closed by it. Plan 12.2's `optimus-check: pytest-coverage` step and separate 80% floors for the Optimus product group, `context_engine` and `optimus_model_policy` are now on `main` through PR #276 (`c509fc8`, including Package A/#216); this records the merged CI implementation, while this track remains `Active` and the deferred live qualification and activation gates remain unchanged. |
+| `HARDENING-TRACK-CI-GUARDRAILS` | [hardening-ci-guardrail-truthfulness-implementation.md](hardening-ci-guardrail-truthfulness-implementation.md) | `Active` | `HARDENING-ITEM-COVERAGE-SOURCE-SCOPE`, `HARDENING-ITEM-LOCKFILE-CI-ENFORCEMENT`, `HARDENING-ITEM-SECRET-SCAN-SCOPE`, and `HARDENING-ITEM-BANDIT-B310` | PR #194 merged at `0ec91225`. The independently accepted local-hook UTF-8 repair at `c9745898` merged through PR #196 at `3b3093d3`; its selected-text validation is on main. Preserve production-only CI, locked dependency sync and the 34 baseline identities; product coverage is decided once on the full suite by CI's canonical gate, not at commit time. Archival custody, wider venues and later coverage/B310 tasks remain separate; no additional child task is released. ADR-016 records the operator's Plan 12.2 local-task coverage-hook skip, focused tests and checkpoint full-suite cadence; every other hook and required CI remain. This is an explicit lane authority change, not a global weakened coverage threshold or closure of this track. Linked custody (operator's Plan 12.2 offline release, 2026-10-04): Plan 12.2 CP4 holds the narrow `HARDENING-ITEM-COVERAGE-SOURCE-SCOPE` assignment for the CI `optimus-check: pytest-coverage` step, `tools/check_product_coverage.py` and `tools/product-coverage-groups.json`, which check the Optimus product group, `context_engine` and `optimus_model_policy` at 80% each on one full-suite dataset, with Evidence Handoff and the aggregate informational. The Plan 11.30 I1 bootstrap (PR #279, `4ed9b25`) is on main: the gate also exports the same dataset's coverage JSON with additive run receipts, and CI keeps it with the run-context records as an artifact. The Plan 11.30 profiles integration (PRs #280 and #281 merged; main-push CI accepted at `d5b4bec3`; plan completed and archived, operator grant "YES", a direct operator reply in Codex chat on client date 2026-10-12, recorded by Codex at 2026-10-11 19:05:47 UTC, answering the exact question that approved closing Plan 11.30, archiving v5 and the kickoff, Checkpoint A, Checkpoint B dated 2026-10-05 and Task 3 records byte-for-byte, and one normal-hook closing commit; cleanup held) switches the commit hook to the coverage-free commit profile ([ADR-020](../../decisions/ADR-020-test-cadence-product-coverage-and-staged-delivery.md)) and adds `coverage_products validate` on that same dataset in CI; pyproject keeps `fail_under = 80`, which the canonical full command overrides to 0 so the per-product floors decide. This track is not closed by it. Plan 12.2's `optimus-check: pytest-coverage` step and separate 80% floors for the Optimus product group, `context_engine` and `optimus_model_policy` are now on `main` through PR #276 (`c509fc8`, including Package A/#216); this records the merged CI implementation, while this track remains `Active` and the deferred live qualification and activation gates remain unchanged. |
 | `HARDENING-TRACK-DEPENDENCY-WORKFLOW` | `hardening-dependency-workflow-security-implementation.md` | `Not drafted` | `HARDENING-ITEM-DEPENDENCY-CVE-SCAN` and `HARDENING-ITEM-WORKFLOW-LINT-SECURITY` | independently reviewed child plan |
 | `HARDENING-TRACK-TEST-DOUBLES` | `hardening-test-double-contracts-implementation.md` | `Not drafted` | `HARDENING-ITEM-AUTOSPEC-BOUNDARIES` | independently reviewed child plan |
-| `HARDENING-TRACK-STATIC-TYPING` | `hardening-static-type-checking-implementation.md` | `Not drafted` | `HARDENING-ITEM-MYPY-SRC-RATCHET` | independently reviewed child plan after targeted test-double contracts |
+| `HARDENING-TRACK-STATIC-TYPING` | [Source typing plan](hardening-static-type-checking-implementation_v3.md) | `Active` | `HARDENING-ITEM-MYPY-SRC-RATCHET` | [#329](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/329) owns coordination and the bounded implementation/review gate; [#328](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/328) retains targeted real-model review custody. No parent-track closure or publication authority. |
 | `HARDENING-TRACK-AUDIT-TOOLING` | `hardening-audit-tool-integrity-and-typing-implementation.md` | `Not drafted` | `HARDENING-ITEM-AUDIT-INVENTORY-REDERIVATION` and `HARDENING-ITEM-AUDIT-TOOL-TYPING` | independently reviewed child plan whose first task is the re-derivation guard |
 | `HARDENING-TRACK-ANALYSIS-ORACLE` | `hardening-analysis-oracle-evaluation.md` | `Not drafted` | `HARDENING-ITEM-PYSCN-EVALUATION` | independently reviewed time-boxed evaluation plan |
 | `HARDENING-TRACK-LIFECYCLE-SIGNALS` | `hardening-resource-lifetime-and-signals-implementation.md` | `Not drafted` | `P11.26-CAND-1-RESOURCE-LIFETIME` plus `HARDENING-ITEM-SIGNAL-ADAPTER` | Seam 4 A merged through PR #197 at `60d938e8`; seam 4 B merged through PR #198 at `b5d77abd`, with required PR checks and post-merge guardrails passed. Seam 5 merged through PR #199 at `1be9e056`, preserving the accepted port from `sandbox-seam5` commit `0071b424`: the supervisor retains ownership until its thread terminates and its loop closes, and runtime cleanup returns an explicit aggregate outcome. Required PR checks and post-merge guardrails passed. No process-exit bound, track, signal-adapter or broader FU-6 closure is claimed. Seam 2 checkpoints A+B are locally delivered and published for review in PR #202 at `c9838c49` (parent `7059fd2f`, tree `9f40c2be`): owned Redis-loop admission and termination, retained serving-runtime custody, and failure-preserving cleanup. Required PR checks failed on the initial published head; correction and independent review remain pending. This is not merged or live-Redis acceptance and does not close the track, signal-adapter or broader FU-6 obligations. |
@@ -289,11 +292,11 @@ grant execution authority, and a child plan never edits its own row.
 | Capability | Usable now? | Honest boundary |
 |---|---|---|
 | Canonical Plan 11.26 runtime and duplication evidence | yes | accepted audit evidence and historical dispositions only; it authorizes no remediation |
-| Hardening sequencing and custody map | yes | this masterplan is the status authority for its 15 child plans through the promoted backlog row and hygiene tests |
+| Hardening sequencing and custody map | yes | this masterplan is the status authority for its 15 child plans through issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232) and hygiene tests |
 | CI guardrail child implementation plan | yes | Task 0 baseline is reviewer-accepted at `1ff7761`; Task 1 locked synchronization is accepted at `82798bd`; Tasks 2-6 retain separate review, execution, and commit gates |
-| Other hardening child implementation plans | no | the remaining fourteen reserved child filenames are untracked and `Not drafted`; small sandbox ports use the approved work-record exception above |
+| Undrafted hardening child implementation plans | no | Reserved filenames without root links remain future work; the child-plan board above owns their state. Small sandbox ports use the approved work-record exception above |
 | Required CI and production-only secret scanning | yes | `clean-environment-recheck` and `verify` remain required on main; CI scans tracked text under `src/` and rejects an empty inventory. PR #196's accepted local hook strictly validates selected text as UTF-8 before delegating, without a report-directory exclusion or expanded selection. The baseline remains exactly three frozen-v9 identities plus 31 approved report identities. The repair merged through PR #196 at `3b3093d3`; Windows/WSL platform evidence remains accepted, and every successor head must pass its own required checks. Historical UTF-16 transcripts reject if selected, and existing findings are not closed. |
-| New lint, type, dependency, five-package coverage, or B310 gate | no | those child tasks remain open and separately authorized; current CI still reports the existing narrow coverage command until the coverage task lands |
+| New lint, type, dependency, five-package coverage, or B310 gate | no | those child tasks remain open and separately authorized; current main already runs Plan 12.2's canonical per-product coverage gate; that fact does not accept or activate these hardening child tasks |
 | Escaped request-task failure observation (seam 4 A) | yes | accepted at `12cc5638`, ported from `sandbox-seam4` commit `0c718486`, and merged through PR #197 at `60d938e8`; the local-delivery receipt is SHA-256 `2b3d1b70662b5b5f04ba69f26c93264b58f56aec7ccbc49420397a03992bb04c`. Named target faults, five killed mutations, Windows/WSL focused tests, the full local hook, required PR checks and post-merge guardrails support this narrow claim. Publication is not installation or rollout. The observer makes one content-free reporting attempt, and cannot guarantee persistence when its sink fails. |
 | Reader ownership at coroutine teardown (seam 4 B) | yes | locally accepted at `c8913b37`, adapted from the B portion of `sandbox-seam4` commit `0c718486`; the independent local-delivery receipt is SHA-256 `e52f31f4240dba8e4bba329ce725475326a1f9a0f143617ba4a2826bf47e3a11`. Nine focused tests pass on Windows and WSL; corrected ordinary-exception RED cases establish queued work before failing at teardown completion, and ownership mutations cover the reader decision. The actual local hook reports 3,866 passed and 65 skipped with zero failures/errors. Merged through PR #198 at `b5d77abd` with required PR checks and post-merge guardrails passed. Cancellation of the async wrapper does not stop a worker thread already reading stdin; the executor may still hold process exit until input is released. The source does not close shared stdin or bound every cleanup stage. |
 | Truthful client-MCP shutdown outcome (seam 5) | yes | Independently accepted at `c2f99651`, adapted from `sandbox-seam5` commit `0071b424`. Ownership remains STOPPING while the owner is alive, including after its loop closes; stale closers cannot erase a new generation. SDK, optional endpoint and supervisor cleanup stages are attempted in order despite ordinary failures. Stage booleans describe normal-returning calls, not proof of physical resource closure; completion also requires terminal DEAD and no recorded ordinary stage failure. Windows and WSL each pass 71 focused cases, with matching source hashes; the local commit hook reports 3,905 passed and 65 skipped with zero failures/errors. Merged through PR #199 at `1be9e056` with required PR checks and post-merge guardrails passed. The server reports incomplete or invalid results without changing seam 4 A/B ownership decisions. No global cleanup deadline, lifecycle completion event, installation or rollout is claimed. |
@@ -463,6 +466,10 @@ Every pull request that changes a hardening child plan or its implementation mus
 
 ## Promotion mechanics
 
+*Historical: these mechanics describe the promotion changeset. At the Plan 11.29 authority
+switch the feature's status owner moved from the backlog row to issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232);
+see the Authority chain.*
+
 Promotion is one governance/control-plane changeset. It must:
 
 - create `docs/superpowers/plans/hardening-runtime-quality-masterplan.md`;
@@ -548,8 +555,70 @@ full-suite claim is made by the promotion.
   link state.
 
 Closure of this feature does not, by itself, close
-`P11-FEAT-ACP-RUNTIME-HARDENING`, `P11-FEAT-ZED-RESUME`, or any other feature. Their
-own backlog rows remain authoritative.
+`P11-FEAT-ACP-RUNTIME-HARDENING`, `P11-FEAT-ZED-RESUME`, or any other feature. Each
+remains authoritative in its own record: issues [#231](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/231) and [#230](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/230) for these two.
+
+## GitHub issue map
+
+Plan 11.29 and [ADR-022](../../decisions/ADR-022-github-issues-as-the-work-register.md) moved the live state of this program to GitHub issues. Every track, item,
+candidate and obligation below has its own issue, which owns its status, priority and next gate; this masterplan keeps scope, sequencing, design and history.
+Where the status ownership chain above names the masterplan as the reporter of a child plan's status, the track's issue now reports it. The status column of the
+child-plan board is kept only as the plan-file consistency record that the hygiene tests check, and the status words in the custody tables are the record of the program's
+sequencing; neither is live status. The Task 12 and Task 13 custody tables in the consolidated backlog are historical acceptance records whose tuples stay unchanged.
+Where any of them disagrees with its issue, the issue is right. The delivered `HARDENING-ITEM-LOCKFILE-CI-ENFORCEMENT` has no issue.
+
+| Record | Kind | Issue | Parent record |
+|---|---|---|---|
+| `HARDENING-TRACK-RUFF-LINT` | track | [#310](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/310) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-RUFF-FORMAT` | track | [#311](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/311) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-CI-GUARDRAILS` | track | [#298](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/298) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-DEPENDENCY-WORKFLOW` | track | [#312](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/312) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-TEST-DOUBLES` | track | [#313](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/313) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-STATIC-TYPING` | track | [#314](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/314) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-AUDIT-TOOLING` | track | [#315](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/315) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-ANALYSIS-ORACLE` | track | [#316](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/316) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-LIFECYCLE-SIGNALS` | track | [#317](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/317) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-LOGGING-TELEMETRY` | track | [#318](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/318) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-SEMANTIC-ERRORS` | track | [#319](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/319) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-QUEUE-BACKPRESSURE` | track | [#320](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/320) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-REPEATABILITY` | track | [#321](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/321) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-PUBLIC-API-DOCS` | track | [#322](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/322) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-TRACK-DUPLICATION` | track | [#323](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/323) | `HARDENING-FEAT-RUNTIME-QUALITY` |
+| `HARDENING-ITEM-RUFF-LINT-RATCHET` | item | [#324](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/324) | `HARDENING-TRACK-RUFF-LINT` |
+| `HARDENING-ITEM-RUFF-FORMAT-MIGRATION` | item | [#325](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/325) | `HARDENING-TRACK-RUFF-FORMAT` |
+| `HARDENING-ITEM-COVERAGE-SOURCE-SCOPE` | item | [#299](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/299) | `HARDENING-TRACK-CI-GUARDRAILS` |
+| `HARDENING-ITEM-SECRET-SCAN-SCOPE` | item | [#300](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/300) | `HARDENING-TRACK-CI-GUARDRAILS` |
+| `HARDENING-ITEM-BANDIT-B310` | item | [#301](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/301) | `HARDENING-TRACK-CI-GUARDRAILS` |
+| `HARDENING-ITEM-DEPENDENCY-CVE-SCAN` | item | [#326](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/326) | `HARDENING-TRACK-DEPENDENCY-WORKFLOW` |
+| `HARDENING-ITEM-WORKFLOW-LINT-SECURITY` | item | [#327](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/327) | `HARDENING-TRACK-DEPENDENCY-WORKFLOW` |
+| `HARDENING-ITEM-AUTOSPEC-BOUNDARIES` | item | [#328](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/328) | `HARDENING-TRACK-TEST-DOUBLES` |
+| `HARDENING-ITEM-MYPY-SRC-RATCHET` | item | [#329](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/329) | `HARDENING-TRACK-STATIC-TYPING` |
+| `HARDENING-ITEM-AUDIT-INVENTORY-REDERIVATION` | item | [#330](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/330) | `HARDENING-TRACK-AUDIT-TOOLING` |
+| `HARDENING-ITEM-AUDIT-TOOL-TYPING` | item | [#331](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/331) | `HARDENING-TRACK-AUDIT-TOOLING` |
+| `HARDENING-ITEM-PYSCN-EVALUATION` | item | [#332](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/332) | `HARDENING-TRACK-ANALYSIS-ORACLE` |
+| `HARDENING-ITEM-SIGNAL-ADAPTER` | item | [#333](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/333) | `HARDENING-TRACK-LIFECYCLE-SIGNALS` |
+| `HARDENING-ITEM-EXCEPTION-SITE-DISPOSITION` | item | [#334](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/334) | `HARDENING-TRACK-SEMANTIC-ERRORS` |
+| `HARDENING-ITEM-PUBLIC-API-DOCSTRINGS` | item | [#335](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/335) | `HARDENING-TRACK-PUBLIC-API-DOCS` |
+| `P11.26-CAND-1-RESOURCE-LIFETIME` | candidate | [#302](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/302) | `P11-FEAT-ACP-RUNTIME-HARDENING` |
+| `P11.26-CAND-2-TELEMETRY-CONTRACT` | candidate | [#303](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/303) | `P11-FEAT-ACP-RUNTIME-HARDENING` |
+| `P11.26-CAND-3-SEMANTIC-ERROR-SELECTION` | candidate | [#304](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/304) | `P11-FEAT-ACP-RUNTIME-HARDENING` |
+| `P11.26-CAND-4-QUEUE-BACKPRESSURE` | candidate | [#305](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/305) | `P11-FEAT-ACP-RUNTIME-HARDENING` |
+| `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION` | candidate | [#306](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/306) | `P11-FEAT-ACP-RUNTIME-HARDENING` |
+| `T13-CAND-RUNNER-CONTRACTS` | candidate | [#336](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/336) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-AUDIT-PRIMITIVES` | candidate | [#337](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/337) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-CREDENTIAL-CONTRACTS` | candidate | [#338](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/338) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-SECURITY-TEXT` | candidate | [#339](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/339) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-DOMAIN-HTTPS` | candidate | [#340](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/340) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-LEDGER-ACCOUNTING` | candidate | [#341](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/341) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-REDACTION-LIFETIME` | candidate | [#342](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/342) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-DIRECTIVE-GRAMMAR` | candidate | [#343](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/343) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-EVIDENCE-SERVICE` | candidate | [#344](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/344) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-SHARED-DEFAULTS` | candidate | [#345](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/345) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-REDIS-HEALTH` | candidate | [#346](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/346) | `HARDENING-TRACK-DUPLICATION` |
+| `T13-CAND-RETRY-TIMING` | candidate | [#347](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/347) | `HARDENING-TRACK-DUPLICATION` |
+| `P11.26-UNRUN-BINDING` | obligation | [#307](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/307) | `P11-FEAT-ZED-RESUME` |
+| `P11.26-UNRUN-REDIS` | obligation | [#308](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/308) | `P11-FEAT-ACP-RUNTIME-HARDENING` |
+| `P11.26-UNRUN-ZED` | obligation | [#309](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/309) | `P11-FEAT-ACP-RUNTIME-HARDENING` |
 
 ## Reviewer checklist
 
@@ -560,7 +629,7 @@ own backlog rows remain authoritative.
 - [ ] `P11-FU-30` is routed only to the existing telemetry candidate.
 - [ ] The 93 findings remain citations to canonical artifacts rather than copied rows.
 - [ ] The Prerequisites table contains the CI-required columns and nonempty dispositions.
-- [ ] The document contains no declaration of its own status; only the backlog row reports it.
+- [ ] The document contains no declaration of its own status; only issue [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232) reports it.
 - [ ] Exactly 15 child-plan rows exist, every row has one allowed status, and no child declares its own plan status.
 - [ ] The G6/G7 custody tables receive only the historical-record note; their tested tuples remain unchanged.
 - [ ] The masterplan is classified as governance; its child board, not the backlog live registry, owns hardening child-plan status.

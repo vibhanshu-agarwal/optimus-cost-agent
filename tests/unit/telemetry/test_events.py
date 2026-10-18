@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
+import pytest
+from pydantic import ValidationError
+
 from optimus.telemetry.events import TelemetryEvent, TelemetryEventKind
 from optimus.telemetry.redaction import redact_for_telemetry
 
@@ -120,7 +123,7 @@ def test_secret_values_are_redacted_from_event_payload():
         tool_name="web.search",
         parameters={
             "query": "pytest",
-            "api_key": "secret-token",
+            "api_key": "secret-token",  # pragma: allowlist secret - deliberate redaction-test sentinel
             "nested": {"Authorization": "Bearer nested-token"},
         },
         result_summary="Authorization: Bearer result-token",
@@ -165,9 +168,9 @@ def test_structured_provider_env_key_names_are_redacted_from_payload():
         occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
         tool_name="web.search",
         parameters={
-            "OPENAI_API_KEY": "sk-structured",
-            "OPTIMUS_API_KEY": "opt-structured",
-            "api_key": "plain-secret",
+            "OPENAI_API_KEY": "sk-structured",  # pragma: allowlist secret - deliberate redaction-test sentinel
+            "OPTIMUS_API_KEY": "opt-structured",  # pragma: allowlist secret - deliberate redaction-test sentinel
+            "api_key": "plain-secret",  # pragma: allowlist secret - deliberate redaction-test sentinel
             "input_tokens": 12,
         },
         result_summary="ok",
@@ -450,3 +453,58 @@ def test_acp_turn_settlement_rejects_forbidden_payload_keys():
                 "prompt": "secret user text",
             },
         )
+
+
+@pytest.mark.parametrize(("factory", "details"), [
+    (TelemetryEvent.model_call, dict(model="glm-5.2", model_version="v1", provider="glm", cache_hit=False,
+        billing_units=3, cost_usd=Decimal("0.001"), latency_ms=10, prompt="hello", response="done", input_tokens=1, output_tokens=2)),
+    (TelemetryEvent.gateway_usage, dict(gateway_request_id="gw-1", provider="glm", cache_hit=False,
+        billing_units=3, cost_usd=Decimal("0.001"), service="responses", native_unit="tokens", model="glm-5.2", model_version="v1")),
+    (TelemetryEvent.reconciliation, dict(matched_gateway_request_ids=frozenset({"gw-1"}), missing_provider_usage_ids=frozenset(),
+        missing_evidence_ids=frozenset(), evidence_cost_usd=Decimal("0"), provider_cost_usd=Decimal("0"),
+        cost_delta_usd=Decimal("0"), reconciled=True)),
+    (TelemetryEvent.pricing_fallback, dict(provider="glm", service="responses", native_unit="tokens",
+        price_snapshot_id="prices-1", reason="gateway_price_snapshot_unavailable")),
+    (TelemetryEvent.tool_call, dict(tool_name="web.search", parameters={"query": "pytest"}, result_summary="done",
+        latency_ms=10, policy_reason="USER_REQUESTED", authorization_outcome="ALLOW")),
+    (TelemetryEvent.guardrail_audit, dict(tool_surface="shell", verdict="ALLOW", rule_id="tool.allowed",
+        failed_checks=(), requires_human_approval=False)),
+    (TelemetryEvent.error, dict(error_type="GatewayHttpError", message="offline failure", disposition="fail_closed")),
+    (TelemetryEvent.retry_decision, dict(attempt=2, retry_count=1, failure_kind="transient", action="retry",
+        delay_ms=1000, disposition="retrying")),
+    (TelemetryEvent.fitness_gate, dict(passed=True, required_gate_names=("tests",), failed_gate_names=(),
+        duration_ms=10, cost_usd=Decimal("0"))),
+    (TelemetryEvent.golden_task, dict(task_id="docstring-single-function", passed=True, expected_mode="agent", actual_mode="agent",
+        expected_tools=("file_reader",), actual_tools=("file_reader",), max_cost_usd=Decimal("0.012"), actual_cost_usd=Decimal("0.009"),
+        expected_final_state="completed", actual_final_state="completed")),
+    (TelemetryEvent.release_gate, dict(gate_name="one-key", passed=True, duration_ms=10, output_summary="clean")),
+    (TelemetryEvent.goal_loop, dict(iteration=3, stop_reason="COMPLETED", cost_usd_spent=Decimal("0.25"), summary="done")),
+    (TelemetryEvent.agent_run, dict(status="completed", final_state="COMPLETED", tool_names=("file_reader",),
+        total_cost_usd=Decimal("0.012"), mutation_count=0, stop_reason=None)),
+    (TelemetryEvent.skill_invocation, dict(skill_name="pytest-debugging", manifest_hash="a" * 64, verdict="ALLOW",
+        rule_id="skill.declared_tool_allowed", requested_tool="shell")),
+    (TelemetryEvent.skill_selection, dict(skill_name="pytest-debugging", manifest_hash="a" * 64,
+        matched_reasons=("description", "glob:tests/**/*.py"))),
+    (TelemetryEvent.acp_turn_settlement, dict(turn_seq=3, interruption_phase="transport_abandoned", settlement="transport_abandoned",
+        final_delivery="partial", rpc_response_delivery="not_attempted", conversation_commit="not_committed", effect_state="none",
+        provider_attempt_started=True, cost_complete=False, prior_history_flush=True, post_teardown=True)),
+])
+def test_all_factory_trace_ids_match_run_id(factory, details):
+    event = factory(run_id="correlation-run", session_id="session-1", request_id="request-1",
+        occurred_at=datetime(2026, 7, 4, tzinfo=UTC), **details)
+    assert event.trace_id == "correlation-run"
+    assert event.to_json_dict()["trace_id"] == "correlation-run"
+    assert event.run_id == "correlation-run"
+
+
+def test_direct_trace_id_is_preserved_and_missing_trace_defaults():
+    data = dict(kind=TelemetryEventKind.ERROR, run_id="run-1", session_id="session-1", request_id="request-1",
+        occurred_at=datetime(2026, 7, 4, tzinfo=UTC), payload={})
+    for supplied, expected in (({"trace_id": "direct-trace"}, "direct-trace"), ({}, "run-1"), ({"trace_id": ""}, "run-1")):
+        event = TelemetryEvent.model_validate({**data, **supplied})
+        assert event.trace_id == expected
+        assert event.to_json_dict()["trace_id"] == expected
+    with pytest.raises(ValidationError):
+        TelemetryEvent.model_validate({key: value for key, value in data.items() if key != "run_id"})
+    with pytest.raises(ValidationError):
+        TelemetryEvent.model_validate({**data, "run_id": "", "trace_id": "explicit-trace"})

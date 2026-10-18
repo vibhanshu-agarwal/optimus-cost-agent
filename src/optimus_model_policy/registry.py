@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Hashable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
@@ -147,10 +147,10 @@ class _StrictLoader(yaml.SafeLoader):
             raise RegistryError("YAML_REJECTED", f"tag {node.tag!r} is not allowed")
         return super().construct_object(node, deep=deep)
 
-    def construct_mapping(self, node: Any, deep: bool = False) -> dict[str, Any]:
+    def construct_mapping(self, node: Any, deep: bool = False) -> dict[Hashable, Any]:
         if not isinstance(node, yaml.MappingNode):
             raise RegistryError("YAML_REJECTED", "expected a mapping")
-        mapping: dict[str, Any] = {}
+        mapping: dict[Hashable, Any] = {}
         for key_node, value_node in node.value:
             if key_node.tag == _MERGE_TAG:
                 raise RegistryError("YAML_REJECTED", "'<<' merge keys are not allowed")

@@ -68,6 +68,35 @@ def test_ci_dependency_sync_is_locked() -> None:
     ]
 
 
+def test_the_commit_hook_runs_the_commit_profile_coverage_free_on_every_commit() -> None:
+    """The hook keeps its id and the label CI pairs it with, and selects this commit's tests instead of the full
+    suite. It runs even when no staged file matches a filter (a deletion-only commit still selects importers)."""
+    config = yaml.safe_load((ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8"))
+    hooks = {hook["id"]: hook for repo in config["repos"] for hook in repo["hooks"]}
+    hook = hooks["optimus-pytest-coverage"]
+    assert hook["name"] == "optimus-check: pytest-coverage"
+    assert shlex.split(hook["entry"]) == ["python", "-m", "tools.testing.run_profile", "--profile", "commit"]
+    assert (hook["language"], hook["pass_filenames"], hook.get("always_run")) == ("system", False, True)
+    assert "stages" not in hook and "files" not in hook and "--cov" not in hook["entry"]
+
+
+def test_ci_runs_the_full_default_suite_with_every_product_measured_and_gated() -> None:
+    """CI keeps its check label and runs the one full default selection through the canonical product-coverage gate
+    (Plan 12.2, Test Strategy 8A), which applies the floors to that dataset; the validity layer then checks the same
+    export (Plan 11.30 v5 I2). CI never selects a profile."""
+    text = (ROOT / ".github" / "workflows" / "guardrails.yml").read_text(encoding="utf-8")
+    steps = yaml.safe_load(text)["jobs"]["clean-environment-recheck"]["steps"]
+    step = next(step for step in steps if step.get("name") == "optimus-check: pytest-coverage")
+    assert [shlex.split(line) for line in step["run"].strip().splitlines()] == [
+        ["uv", "run", "python", "tools/check_product_coverage.py", "--run-full-suite", "--groups", "tools/product-coverage-groups.json",
+         "--report-json", "${RUNNER_TEMP}/product-coverage/product-coverage-report.json",
+         "--coverage-json", "${RUNNER_TEMP}/product-coverage/coverage.json"],
+    ]
+    validity = steps[steps.index(step) + 1]
+    assert validity["name"] == "Validate the product coverage run" and "coverage_products validate" in validity["run"]
+    assert "run_profile" not in text and "--profile" not in text
+
+
 def test_default_agent_config_paths_include_nested_agents_cursor_rules_and_root_mcp(tmp_path):
     nested = tmp_path / "packages" / "api"
     nested.mkdir(parents=True)
@@ -118,7 +147,18 @@ REPORT_EXCEPTION_RELPATHS = (
     "reports/plan-11-26-duplication-audit.json",
     "reports/plan-11-26-prerequisite-intake.json",
 )
-APPROVED_BASELINE_RELPATHS = (FROZEN_V9_RELPATH, *REPORT_EXCEPTION_RELPATHS)
+# Three exact published source-head identities in the operator-approved frozen typing artifacts.
+TYPING_EXCEPTION_RELPATHS = (
+    "reports/static-typing-baseline-2026-10-16-exceptions.candidate.json",
+    "reports/static-typing-baseline-2026-10-16-exceptions.candidate_v2.json",
+    "tests/fixtures/typing/mypy-bootstrap.json",
+)
+TYPING_EXCEPTION_SHA256 = {
+    "reports/static-typing-baseline-2026-10-16-exceptions.candidate.json": "be01fbe4103eb6813ee11d85554dbb53c9caa97347c13b2a4996591b9c03d884",  # pragma: allowlist secret - frozen typing artifact digest
+    "reports/static-typing-baseline-2026-10-16-exceptions.candidate_v2.json": "b6a756129365762efe42c77593313507fd1be1a039a85ef4ebc22490194c5bab",  # pragma: allowlist secret - frozen typing artifact digest
+    "tests/fixtures/typing/mypy-bootstrap.json": "b6a756129365762efe42c77593313507fd1be1a039a85ef4ebc22490194c5bab",  # pragma: allowlist secret - frozen typing artifact digest
+}
+APPROVED_BASELINE_RELPATHS = (FROZEN_V9_RELPATH, *REPORT_EXCEPTION_RELPATHS, *TYPING_EXCEPTION_RELPATHS)
 
 # The five report files are frozen evidence; their bytes are pinned like the v9 document.
 REPORT_EXCEPTION_SHA256 = {
@@ -164,6 +204,9 @@ EXPECTED_BASELINE_ENTRIES = [
     ("reports/plan-11-26-duplication-audit.json", 1, "Hex High Entropy String", "d5c33f1e6383561156f83cb2828192bc97e385f7"),  # pragma: allowlist secret - one-way value hash
     ("reports/plan-11-26-duplication-audit.json", 1, "Hex High Entropy String", "dc68a3964378ca31f4ed28e5577fb2b951e18fe5"),  # pragma: allowlist secret - one-way value hash
     ("reports/plan-11-26-prerequisite-intake.json", 5, "Hex High Entropy String", "c81be5a39e5d6853ea193821054220346e7ab5e9"),  # pragma: allowlist secret - one-way value hash
+    ("reports/static-typing-baseline-2026-10-16-exceptions.candidate.json", 3, "Hex High Entropy String", "e9f4449b1e166e764668450f68288649d12a9991"),  # pragma: allowlist secret - one-way published commit-ID fingerprint
+    ("reports/static-typing-baseline-2026-10-16-exceptions.candidate_v2.json", 3, "Hex High Entropy String", "e9f4449b1e166e764668450f68288649d12a9991"),  # pragma: allowlist secret - one-way published commit-ID fingerprint
+    ("tests/fixtures/typing/mypy-bootstrap.json", 3, "Hex High Entropy String", "e9f4449b1e166e764668450f68288649d12a9991"),  # pragma: allowlist secret - one-way published commit-ID fingerprint
 ]
 
 # COMPLETE detector settings, not names. A name-only comparison accepts a
@@ -236,7 +279,7 @@ def _assert_baseline_policy(baseline: dict) -> None:
     # Path binding first, so a relocated entry trips the assertion it targets
     # rather than the broader structural comparison.
     assert len(baseline["results"]) == len(APPROVED_BASELINE_RELPATHS), (
-        "exactly the six approved documents may carry baseline entries"
+        "exactly the nine approved documents may carry baseline entries"
     )
     for path, entries in baseline["results"].items():
         assert _canonical(path) in APPROVED_BASELINE_RELPATHS, (
@@ -249,7 +292,7 @@ def _assert_baseline_policy(baseline: dict) -> None:
             assert entry["is_secret"] is False, "each entry must be classified is_secret: false"
             assert entry["is_verified"] is False, "each entry must be classified is_verified: false"
     assert _baseline_entry_structure(baseline) == EXPECTED_BASELINE_ENTRIES, (
-        "baseline results must be exactly the approved 34-entry exception set"
+        "baseline results must be exactly the approved 37-entry exception set"
     )
     # Sorted by identity so serialization order is irrelevant, but each entry is
     # compared whole: a changed threshold or option must not slip through.
@@ -280,6 +323,13 @@ def test_report_exception_document_digest_is_unchanged(relpath: str):
     digest = hashlib.sha256((ROOT / relpath).read_bytes()).hexdigest()
 
     assert digest == REPORT_EXCEPTION_SHA256[relpath], f"{relpath} bytes changed; its exceptions no longer apply"
+
+
+@pytest.mark.parametrize("relpath", sorted(TYPING_EXCEPTION_SHA256))
+def test_typing_exception_document_digest_is_unchanged(relpath: str):
+    """These three exact public-hash exceptions apply only to their frozen artifact bytes."""
+    digest = hashlib.sha256((ROOT / relpath).read_bytes()).hexdigest()
+    assert digest == TYPING_EXCEPTION_SHA256[relpath], f"{relpath} bytes changed; its exception no longer applies"
 
 
 def _approved_baseline() -> dict:
@@ -393,22 +443,22 @@ def _mutate_swapped_line_binding(baseline: dict) -> None:
 
 
 BASELINE_POLICY_MUTANTS = {
-    "extra_entry": (_mutate_extra_entry, "exactly the approved 34-entry exception set"),
-    "missing_entry": (_mutate_missing_entry, "exactly the approved 34-entry exception set"),
-    "changed_hash": (_mutate_changed_hash, "exactly the approved 34-entry exception set"),
+    "extra_entry": (_mutate_extra_entry, "exactly the approved 37-entry exception set"),
+    "missing_entry": (_mutate_missing_entry, "exactly the approved 37-entry exception set"),
+    "changed_hash": (_mutate_changed_hash, "exactly the approved 37-entry exception set"),
     "changed_path": (_mutate_changed_path, "only the approved documents"),
-    "changed_type": (_mutate_changed_type, "exactly the approved 34-entry exception set"),
+    "changed_type": (_mutate_changed_type, "exactly the approved 37-entry exception set"),
     "changed_classification": (_mutate_changed_classification, "is_secret: false"),
     "dropped_detector": (_mutate_dropped_detector, "detector configuration must be unchanged"),
     "dropped_filter": (_mutate_dropped_filter, "filter configuration must be unchanged"),
     "entropy_threshold": (_mutate_entropy_threshold, "including every threshold and option"),
     "filter_threshold": (_mutate_filter_threshold, "including every threshold and option"),
-    "duplicate_entry": (_mutate_duplicate_entry, "exactly the approved 34-entry exception set"),
+    "duplicate_entry": (_mutate_duplicate_entry, "exactly the approved 37-entry exception set"),
     "embedded_filename": (_mutate_embedded_filename, "embedded filename must match the allowlisted path"),
-    "swapped_line_binding": (_mutate_swapped_line_binding, "exactly the approved 34-entry exception set"),
+    "swapped_line_binding": (_mutate_swapped_line_binding, "exactly the approved 37-entry exception set"),
     "unapproved_report_path": (_mutate_unapproved_report_path, "only the approved documents"),
-    "extra_report_document": (_mutate_extra_report_document, "exactly the six approved documents"),
-    "report_changed_hash": (_mutate_report_changed_hash, "exactly the approved 34-entry exception set"),
+    "extra_report_document": (_mutate_extra_report_document, "exactly the nine approved documents"),
+    "report_changed_hash": (_mutate_report_changed_hash, "exactly the approved 37-entry exception set"),
 }
 
 

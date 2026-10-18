@@ -161,7 +161,7 @@ def _run_enforced_completion(
                 reasoning=admitted.reasoning,
             )
         except UpstreamAttemptFailure as failure:
-            if admission is not None:
+            if admission is not None and guard is not None:  # an admission exists only from a guard
                 guard.settle_unbilled(admission, failure.outcome)  # an outcome not proven unbilled is unknown
             attempts.append(_attempt_record(number, attempt_id, failure.outcome, http_status=failure.http_status))
             if failure.recoverable and number < MAX_ROUTE_ATTEMPTS:
@@ -172,7 +172,7 @@ def _run_enforced_completion(
                 _stop_experimental_route(policy, admitted, code)  # possibly billed, usage unknown
             return 502, {"error": sanitize_error_message(f"upstream attempt failed ({code})"), "code": code, **correlation}
         except BaseException:
-            if admission is not None:
+            if admission is not None and guard is not None:
                 guard.settle_unknown(admission, "attempt raised")
             raise
 
@@ -181,12 +181,12 @@ def _run_enforced_completion(
     try:
         assert_gateway_usage_contract(gateway_usage)
     except ValueError:
-        if admission is not None:
+        if admission is not None and guard is not None:
             guard.settle_unknown(admission, "usage unverifiable")
         attempts.append(_attempt_record(number, attempt_id, ATTEMPT_UNCERTAIN))
         _stop_experimental_route(policy, admitted, "UPSTREAM_ATTEMPT_UNCERTAIN")
         return 502, {"error": "upstream usage could not be verified", "code": "UPSTREAM_ATTEMPT_UNCERTAIN", **correlation}
-    if admission is not None:
+    if admission is not None and guard is not None:
         guard.settle_charged(admission, provider_result.cost_usd)  # settled before any reply check can fail
     gateway_usage["cost_usd"] = format_cost_usd(provider_result.cost_usd)
     attempts.append(_attempt_record(number, attempt_id, ATTEMPT_COMPLETED, provider_request_id=provider_result.message_id))

@@ -20,6 +20,8 @@ import subprocess
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
 
+from tools.tracked_repository_files import index_environment
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DOCS_ROOT = REPO_ROOT / "docs"
 ARCHIVE_DIRNAME = "archive"
@@ -35,6 +37,7 @@ def _docs_by_name() -> dict[str, tuple[Path, ...]]:
         check=True,
         capture_output=True,
         text=True,
+        env=index_environment(REPO_ROOT),  # inside a commit hook's test run: the commit's own index
     ).stdout.split("\0")
     index: dict[str, list[Path]] = {}
     for relative in tracked:

@@ -3,8 +3,8 @@
 ## Status and baseline
 
 **Status:** Ratified milestone charter. The revised sub-plan map below records Plan 11 execution
-lanes; the [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md) owns
-live item-level status.
+lanes; the GitHub issues own live item-level status ([ADR-022](../../decisions/ADR-022-github-issues-as-the-work-register.md)); the transitional
+[consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md) owns it only for records not yet moved.
 
 **Baseline:** Ratified Plan 11 feature scope and sequencing. Detailed sub-plan specifications and
 implementations land through separate reviewed PRs; this charter does not replace their evidence or
@@ -58,13 +58,13 @@ parked `P9.85-FU-3` budget-enforcement question is not pulled into this charter'
 | `P11-FEAT-GATEWAY-TOOLS` | Gateway web/evidence tools and real provider adapters | Plan 11.2 / Plan 11.3 | Closed through PR #88. |
 | `P11-FEAT-GATEWAY-COST-OBS` | Gateway normalized cost, observability, and local startup consolidation | Plan 11.5 / Plan 11.6 | Plan 11.5 closed through PR #95; Plan 11.6 merged through PR #97. |
 | `P11-FEAT-GATEWAY-MCP` | Historical Gateway MCP tools-only brokering | Plan 11.8 / Plan 11.11 (historical); Plan 11.12 retirement; Plan 11.13 publication reversal | Retired by Plan 11.12. Plan 11.13 published HLD v2.18, LLD v2.41, Guardrails v1.3, and Test Strategy v1.7; [evidence](../reports/2026-08-15-plan-11-13-authoritative-document-reversal-evidence.md). |
-| `P11-FEAT-ZED-RESUME` | Zed integration fixes, ACP session resume, and the configurable Gateway-timeout follow-up | Plan 11.7 / Plan 11.9 | Live Plan 11.7 status and next gate are owned by the [consolidated backlog](2026-07-23-consolidated-deferred-followups-backlog.md#live-implementation-plan-registry); Plan 11.9 closed `P11.7-FU-1` through PR #123 and PR #124. |
+| `P11-FEAT-ZED-RESUME` | Zed integration fixes, ACP session resume, and the configurable Gateway-timeout follow-up | Plan 11.7 / Plan 11.9 | Live Plan 11.7 status and next gate are in its GitHub issue ([#240](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/240)), which the [consolidated backlog](2026-07-23-consolidated-deferred-followups-backlog.md#live-implementation-plan-registry) points to; Plan 11.9 closed `P11.7-FU-1` through PR #123 and PR #124. |
 | `P11-FEAT-REGISTRY` | ACP registry validation, registration, and v1.0 cut | Last primary Plan 11 slice (holding position) | Required release slice; Plan 11.13 must land first. Reassess 11.x-last versus a split outward-publication lane in 13.x after the consolidated open-work pool closes. |
 | `P11-FEAT-IDE` | IDE-specific testing if registry registration does not surface or satisfy multi-IDE expectations | Conditional | Conditional; not an unconditional v1.0 gate. |
 
 This map records charter scope, sequencing, and terminal lane history; it is not a live-status
 snapshot. The detailed feature sections below retain ratification-time design requirements; where
-they describe pre-pickup authorization or numbering, the consolidated pool owns live work status.
+they describe pre-pickup authorization or numbering, live work status is in the GitHub issue of each record the [consolidated pool](2026-07-23-consolidated-deferred-followups-backlog.md) marks `Moved` ([ADR-021](../../decisions/ADR-021-bounded-github-authority-switch.md)) and, until a record moves, in the transitional pool.
 
 The feature IDs are permanent, greppable slice identities. They use the `P11-FEAT-*` prefix;
 `FEAT` identifies milestone features and is distinct from `FU`, which identifies follow-ups. Slugs
@@ -80,8 +80,8 @@ such as the historical `9.8` -> `9.85` -> `9.975` sequence are forbidden going f
 `N.M.1` plan numbers are also forbidden.
 
 Feature IDs (`P11-FEAT-*`) and source IDs (`P9.8-FU-5`, `P11-FU-1`, and other stable backlog IDs)
-are the durable identifiers; plan numbers are not. Promotion is recorded as `Promoted -> Plan 11.N`
-with the date and plan-file link, matching the consolidated backlog's existing promotion rule.
+are the durable identifiers; plan numbers are not. Promotion is recorded in the record's GitHub issue ([ADR-022](../../decisions/ADR-022-github-issues-as-the-work-register.md)) with the date and plan-file link;
+a record still in the transitional backlog is promoted there as `Promoted -> Plan 11.N` with the date and plan-file link, matching the backlog's promotion rule.
 
 ## P11-FEAT-GATEWAY-CORE - Gateway Core and Observability Route
 
@@ -242,9 +242,11 @@ than inferred from the existence of a second IDE candidate.
 
 ## Backlog and completion gates
 
-The [consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md) is the
-single source of truth for the carried `P9.8-FU-5` and `P9.87-FU-1` items, `P11-FU-4` evidence-
-freshness work, and follow-ups discovered during Plan 11 feature work. `P11-FU-1` is owned by
+Follow-ups discovered during Plan 11 feature work are created as GitHub issues ([ADR-022](../../decisions/ADR-022-github-issues-as-the-work-register.md)); the
+[consolidated open-work pool](2026-07-23-consolidated-deferred-followups-backlog.md) is the transitional source of truth only for
+those that have not yet moved to one.
+The carried `P9.8-FU-5` ([#253](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/253)), `P9.87-FU-1` ([#258](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/258)) and `P11-FU-4`
+([#259](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/259)) evidence-freshness items live in those issues, which the pool points to. `P11-FU-1` is owned by
 `P11-FEAT-ZED-RESUME`, not parked. `P11-FU-2` is owned by
 `P11-FEAT-GATEWAY-TOOLS` as an unimplemented package/advisory capability. `P11-FU-3` is closed
 historical publication evidence for the former route/typed-contract gate for
@@ -290,11 +292,11 @@ The v1.0 Definition of Done is therefore:
   11.13. Neither catalog automation nor client-supplied ACP `mcpServers` is part of that retired
   Gateway feature.
 - The **Windows Subprocess Handle-Duplication Flake, WinError 6/50** remains explicitly excluded
-  from the initial Plan 11 feature scope and v1.0 gate. The `P11-FU-5` entry in the consolidated open-work
-  pool owns its future Windows investigation state; its reproduced, context-known state, historical
+  from the initial Plan 11 feature scope and v1.0 gate. The `P11-FU-5` issue ([#260](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/260)), which the consolidated open-work
+  pool points to, owns its future Windows investigation state; its reproduced, context-known state, historical
   no-reproduction result, lack of a deterministic fix, and lack of a v1.0 capability/ACP-evidence
   dependency are the rationale. The separately identified durable-approval identity concern remains
-  in that entry until a separate reviewed custody decision is made.
+  in that issue until a separate reviewed custody decision is made.
 - JetBrains Air and JetBrains AI Assistant are conditional/post-v1.0 candidates, not unconditional
   v1.0 gates.
 - ACP registry requirements have a public authoritative source, but their exact live enforcement

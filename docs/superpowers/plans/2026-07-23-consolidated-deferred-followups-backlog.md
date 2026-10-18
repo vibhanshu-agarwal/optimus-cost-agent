@@ -2,17 +2,27 @@
 
 ## Purpose
 
-This document is the single source of truth for all currently open Optimus work: charter-ratified
-feature slices, deferred follow-ups, parked items, and tracked defects. It owns each item's existence and
-state; the relevant charter or source document owns scope, sequencing, and detailed acceptance
-criteria. Anything not listed here is not tracked as Optimus work.
+This document is a transitional register ([ADR-022](../../decisions/ADR-022-github-issues-as-the-work-register.md)). GitHub Issues are the work register: every
+feature, plan, defect and follow-up has its status, priority, owner and next gate in its issue. This document owns those facts, and
+each item's existence, only for the records that have not moved to a GitHub issue: charter-ratified feature slices, deferred
+follow-ups, parked items and tracked defects that stay deferred, closed or historical: the A2A work, finished records awaiting archival disposition and the frozen custody tables. It takes no new work entries; the one permitted addition is a new plan's issue-only registry pointer row. The relevant charter or
+source document owns scope, sequencing, and detailed acceptance criteria. Anything that is neither listed here nor an issue is not
+tracked as Optimus work.
+
+**Authority boundary (Plan 11.29).** A row or entry marked `Moved` has its authority in the linked GitHub issue: status, priority,
+owner and next gate. This document keeps only that pointer, the anchor and a pinned link to the former detail. A `Moved` pointer is
+never evidence that the work is closed. Every open non-A2A record has its issue. The frozen G6 and G7 custody tables below keep their historical tuples unchanged, and the hardening masterplan's board and custody tables keep sequencing and plan-file text only;
+the live state of the records they list is in the issues named in the masterplan's "GitHub issue map". The A2A work stays deferred here in its own sections.
+
+**Live view and fallback.** The hosted [work status table](https://vibhanshu-agarwal.github.io/optimus-cost-agent/work-status.html) (source: [`docs/work-status.html`](../../work-status.html), which also opens from a checkout) reads the
+repository's GitHub issues on every open and reload; the fallback is the [open issues on GitHub](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues?q=is%3Aissue%20is%3Aopen).
 
 Before this document existed, each follow-up lived only inside the "Deferred Follow-Ups" section of
 whichever plan originally raised it, cross-referenced (if at all) by a one-line mention in the
 roadmap. Two of them (Plan 9.98-FU-1 and FU-2) were fully implemented and merged without ever
 getting a roadmap entry at all, discovered only by manual audit. This document exists so that stops
-happening: everything still open lives in exactly one place, and nothing gets promoted into a real
-plan without being removed from the open pool first.
+happening: everything still open lives in exactly one place (its GitHub issue; this document only for the deferred A2A work), and
+nothing gets promoted into a real plan without its issue or entry recording the promotion first.
 
 This document does not itself implement anything. Every open entry below either becomes its own
 numbered plan (following [[plan-numbering-convention]]-style sequential allocation) or gets folded
@@ -22,27 +32,31 @@ not duplicate this content.
 
 ## How to use this document
 
-- **Adding a new item:** When a plan's implementation or review surfaces a new deferred follow-up
-  (including ones emerging from Plan 9.96 Task 9 or Plan 11 feature work), record it here first
-  with the same fields every other entry uses (Raised / Origin / Designated future plan /
-  Trigger or acceptance criteria / Status). Other documents may link to the entry, but must not
-  carry its live open-item status or become a second pool.
+- **Adding a new item:** Do not add it here ([ADR-022](../../decisions/ADR-022-github-issues-as-the-work-register.md)); the only line that may be added is an issue-only registry pointer row for a new live plan. When a plan's implementation or review surfaces a new
+  deferred follow-up, defect or independent piece of work, create it directly as a GitHub issue carrying the same facts every entry here
+  carries (origin, designated owner or plan, trigger or acceptance criteria, status), using the migration defaults unless the operator
+  says otherwise. A distinct follow-up gets its own issue, linked to its owner, never a copy of another record's status; an update to a
+  moved record is made in its issue. Other documents may link to the issue but must not carry its live status or become a second
+  register. An entry that is still here is edited only for a pointer conversion or a correction the transition needs.
 - **Using status tokens:** Make the first text after `**Status:**` exactly one of these five
   canonical forms, terminated by a period or colon: `Open`, `Promoted -> <markdown link to a file
   under docs/superpowers/plans/>`, `Partially implemented`, `Closed`, or `Reviewed disposition`.
   Free prose may follow the terminating punctuation. `Partially implemented` means merged work
-  advances this entry's own acceptance criteria, not merely that work exists in the owning lane.
+  advances this entry's own acceptance criteria, not merely that work exists in the owning lane. `Moved` is a pointer, not a status
+  token: a `Moved` row or entry carries no status here, its issue does, and the pointer never means `Closed`.
 - **Promoting an item:** When an item is scheduled into an implementation plan or a complete
   versioned successor (`_v2`, `_v3`, and so on), mark its Status as `Promoted -> <linked plan>` with
   the date, and leave the entry in place
-  (do not delete history) rather than removing the row.
+  (do not delete history) rather than removing the row. A `Moved` record, and any new work (which has no entry here), is promoted in its issue.
 - **Closing an item:** When an item is fully implemented, mark Status as `Closed` with the
   implementation commit/PR and evidence citation, the same way other closed follow-ups are recorded
-  elsewhere in this project's roadmap.
+  elsewhere in this project's roadmap. A `Moved` record, and any new work, is closed or given its reviewed disposition in its issue, against the same criteria.
 - **Applying the v1.0 pool-closure gate:** Only `Closed` and `Reviewed disposition` satisfy the
-  gate. `Open`, `Promoted -> ...`, and `Partially implemented` remain incomplete for that purpose.
+  gate. `Open`, `Promoted -> ...`, and `Partially implemented` remain incomplete for that purpose. A `Moved` record never satisfies
+  the gate from this document; it counts once its issue is closed with the evidence the criteria require.
 - **Reading frozen artifacts:** Approval-time status and checkbox text inside a protected artifact
-  is historical. The protected-artifact list below identifies the live pool row that owns current
+  is historical. The protected-artifact list below identifies the live pool row (or, once that row is `Moved`, its linked issue)
+  that owns current
   state; never reconcile that state by editing the approved bytes.
 
 ## Live implementation plan registry
@@ -51,21 +65,21 @@ This table is the sole list of implementation plans that remain live at
 `docs/superpowers/plans/`. `Active` means execution may proceed under the plan's own authority;
 `Blocked` means the obligation remains live but its next gate is unsatisfied. A blocked plan stays
 at the root. Terminal and superseded plans live in the flat `archive/` directory and never appear
-in this table.
+in this table. A `Moved` row keeps its plan listed here; its state and next gate are in the linked issue.
 
 | Plan | State | Backlog owner | Next gate |
 |---|---|---|---|
-| [Plan 11.29 — GitHub Issues migration and live status view](2026-10-04-plan-11-29-github-issues-migration.md) | `Active` | `operator directive 2026-10-03` | Operator approved the written plan on 2026-10-04. Claude implements from Task 0, with four checkpoints, each reviewed by Fable 5.1 then Codex. Pilot issues #222–#225 are shadow copies; this backlog stays authoritative until the Task 5 cutover. Remaining issue writes need their own operator grant; the cutover merge and trial-wording removal were granted together on 2026-10-04. |
-| [Plan 12.2 — Context Engine](2026-10-01-plan-12-2-context-engine-implementation_v4.md) | `Active` | `Plan 12` | Package A offline technical delivery accepted at 38a465f, with exact NOT MET residual in ADR-017; docs PR #214 merge/base gate was satisfied. [Delivery](../reviews/2026-10-02-plan-12-2-package-a-delivery.md). Operator selected Package A docs/PR then CP1, and replaced per-task reviews with CP1 Tasks 4-5, CP2 6-8, CP3 9-11, CP4 12-13 (ADR-016/S3). The operator accepted the [first Task 1 contracts](../specs/archive/2026-10-02-plan-12-2-task1-contracts.md) and the [complete v2 plan](archive/2026-10-01-plan-12-2-context-engine-implementation_v2.md) on 2026-10-02, releasing CP1–CP3 offline; those archived editions keep that acceptance, and later editions do not inherit it. CP1 to CP3 are cleared offline. The CP4 offline batch is accepted at cf9bb9d on 2026-10-04 ([disposition](../reviews/2026-10-04-plan-12-2-cp4-offline-review-disposition.md)); its HLD v2.19, LLD v2.42, Guardrails v1.4 and Test Strategy v1.8 successors, plan v4, design v3, Task 1 contracts v3 and ADR-018/019 are filed. **Offline delivery merged:** Plan 12.2's accepted offline implementation and documentation through `7029340` merged into `main` on 2026-10-08 via [PR #276](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/276), merge commit `c509fc8`. Package A's commits are included, and [PR #216](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/216) is marked merged. The offline delivery and its merge gate are complete; this is not a full CP4 pass. Luna route/estimator qualification, the genuine summary-quality receipt and real-editor Task 13 remain Deferred/UNRUN under existing Plan 12.2 ownership, per the [2026-10-08 operator disposition](../reviews/2026-10-08-plan-12-2-cp4-offline-delivery-disposition.md). No further model investigation is commissioned. Paid/live execution, activation, production route enabling, Haiku-default removal and sandbox synchronization remain held. Each activation path requires its applicable real evidence and separate authority; offline acceptance and merge do not substitute for that evidence. ADR-018 quotes the operator's D7 acceptance verbatim from ADR-011 source S4 (registered 2026-10-07). D6/governed activation and paid/live/service gates remain separate. Paid/live/service/sandbox gates remain separate. Shared custody recorded before the 2026-10-04 offline closure edits: Plan 12.2 holds the narrow `HARDENING-ITEM-COVERAGE-SOURCE-SCOPE` assignment for the CI coverage step and its product-coverage gate (see the hardening masterplan's CI-guardrails row); Task 11's optional evaluation-budget telemetry fields stay within the existing event schemas owned by `P11.26-CAND-2-TELEMETRY-CONTRACT`, with no new event kind, sink or schema owner. |
-| [Plan 12.1 — Plan/Chat advisory answer](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | `Blocked` | `P12-FU-1` | Dependency `P11.25-FU-1` retains sole ownership of non-AGENT conversation carriage. Tasks 0–5 are complete on draft PR #212: Codex's implementation review passed at `1c797b9`, and the full-suite CI there is green. The evidence is in `reports/plan-12-1-implementation-and-live-evidence.md`. Next gate: the operator's PR-readiness and merge decision. `P12-FU-1` and `P11.25-FU-1` stay promoted until merge and acceptance. |
+| [Plan 11.29 — GitHub Issues migration and live status view](2026-10-04-plan-11-29-github-issues-migration.md) | Moved | — | [#236](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/236) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L58-L58) |
+| [Plan 12.2 — Context Engine](2026-10-01-plan-12-2-context-engine-implementation_v4.md) | Moved | — | [#237](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/237) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L59-L59) |
+| [Plan 12.1 — Plan/Chat advisory answer](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | Moved | — | [#238](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/238) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L60-L60) |
 | [Local-hook UTF-8 decoding repair](2026-09-06-local-hook-utf8-repair.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Local delivery at `c9745898` is independently accepted and published to PR #196 with both first-execution checks passed. The operator authorized documentation review and normal merge conditional on the final head passing required checks; PR #196 records the result. Retained under transitional custody pending separate archival disposition; no further implementation or inherited budget is released. Preserve baseline identities, frozen documents and CI scope. |
 | [Plan 11.27 v12 — integrate accepted correction and deliver locally](2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v12.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Delivery and publication complete: local integration `2bd316bc`, merged via PR #195 at `32f32ef4`, with independent local/CI acceptance and restored protection. Retained at the root under transitional custody; the remaining gate is the separate archival/custody disposition. No further v12 execution or inherited budget is available. Scanner decoding repair remains with the backlog owner. |
-| [Plan 11.28 — Parallel local test context](2026-10-02-plan-11-28-parallel-local-test-context-implementation.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Delivery and publication complete: final PR head `cbbf74c` merged through PR #227 at `f8231e85c6074890382f67b8d99acbb008cb0887` on 2026-10-04, under the operator's conditional delivery approval after the final-head gates passed. Implementation/four-run technical acceptance remains bound to `95505c4`; scanner R1/R2 repair to `2b28c7b`; integrated child-proof correction to `4dfbea7`, with child-proof R1/R2 closed and all 15 independent reviewer-control expectations met, zero false acceptances. Approved exception v2 applies to this delivery only: the final-head all-files receipt remains exit 1 for 697 inherited findings at 671 locations in 154 files, with an identical inherited inventory, zero changed finding blobs, zero adapter errors and unchanged baseline. The full release-diff scan against freshly fetched `39803f8` passes for all 32 changed files; required final-head `verify` and `clean-environment-recheck` checks pass, including normal coverage and production-only CI scanning. Final-head receipt seal: `plan-11-28-pr227-head-receipts-20261004`; merge receipt seal: `plan-11-28-pr227-merge-20261004`. Retained live pending separate activation and custody disposition. Activation in workflows, branch folding and cleanup remain held. Inherited finding debt remains open under P11-FU-31 / P11-FEAT-ACP-RUNTIME-HARDENING; 693 findings remain unadjudicated, and new/changed debt is not covered by exception v2. Original failed attempts, sealed receipts and evidence qualifications remain preserved. No full-suite/four-run acceptance repeat is requested. |
+| [Plan 11.28 — Parallel local test context](2026-10-02-plan-11-28-parallel-local-test-context-implementation.md) | Moved | — | [#239](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/239) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L63-L63) |
 | [P11-FU-6 — bounded early POST rejection corrective plan v2](2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | `Blocked` | `P11-FU-6` | The bounded early-POST correction is delivered and merged through PR #195 at `32f32ef4`. The corrective plan remains frozen under transitional custody pending archival disposition; `P11-FU-6` remains Open for separately defined broader reliability closure. No additional product behavior, installation or rollout is authorized by this status update. |
-| [Plan 11.7 v3 — Zed Resume](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | `Blocked` | `P11-FEAT-ZED-RESUME` | Task 0 evidence authority remains unaccepted; resume only after a reviewed forward-only v4 and explicit operator authorization. |
-| [Plan 11.24 v6 — guided session-load probe](2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md) | `Blocked` | `P11-FEAT-ZED-RESUME` | Offline repair is merged; the separately authorized Task-13 prerequisite drive and later two-Zed gate remain dormant. |
-| [Plan 11.23 — client-MCP runtime composition](2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | `Blocked` | `P11-FU-20` | Tasks 1–4 satisfy production composition; Task 6 still requires independently authored ACP/write-server evidence, live Redis/TimeSeries, Gateway authority, TTY ceremony, and paid-call authorization. |
-| [Evidence collector](evidence-handoff-evidence-collector-implementation.md) | `Blocked` | `EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR` | Determinate rendered outcomes require the unscheduled Zed render-observation producer; no merge is authorized. |
+| [Plan 11.7 v3 — Zed Resume](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | Moved | — | [#240](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/240) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L65-L65) |
+| [Plan 11.24 v6 — guided session-load probe](2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md) | Moved | — | [#241](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/241) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L66-L66) |
+| [Plan 11.23 — client-MCP runtime composition](2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Moved | — | [#222](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/222) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L67-L67) |
+| [Evidence collector](evidence-handoff-evidence-collector-implementation.md) | Moved | — | [#295](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/295) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L81-L81) |
 
 **2026-09-06 current outcome — Plan 11.27 integration delivered and merged; broader FU-6 remains Open.** The accepted Slice A and Slice B production CI scanning work, together with the bounded early-POST correction, were delivered locally at `2bd316bc` and merged through [PR #195](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/195) into main at `32f32ef4`. The resulting tree is the independently accepted integration tree. The first PR CI run and the post-merge main CI run passed. Local Windows actual-commit coverage was 86.16%; each GitHub Linux run reported 85.47% for the existing `optimus` coverage gate. These are separate run results, not whole-repository coverage or a universal reliability claim. The temporary `verify` exception was closed immediately after merge, and the original protection was independently verified as restored.
 
@@ -334,8 +348,8 @@ in `AGENTS.md` and the Plan 11 charter. Preserve each document according to its 
 
 ## Feature slices
 
-The pool owns each Optimus feature's existence and state; the [Plan 11 v1.0 milestone charter](2026-07-25-plan-11-v1-milestone-charter.md)
-owns feature scope and sequencing. Plan 12 is listed so its post-v1.0 custody cannot fall off the
+For each feature not marked `Moved`, the pool owns existence and state (a `Moved` feature's authority is its GitHub issue); the
+[Plan 11 v1.0 milestone charter](2026-07-25-plan-11-v1-milestone-charter.md) owns feature scope and sequencing. Plan 12 is listed so its post-v1.0 custody cannot fall off the
 open-work inventory.
 
 | Identity                        | Status                | Priority   | Scope detail                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -344,13 +358,17 @@ open-work inventory.
 | ~~`P11-FEAT-GATEWAY-TOOLS`~~    | ~~Closed~~            | ~~MEDIUM~~ | ~~Plan 11.2 — closed by PR #88 (merge `4590dbf`); migration follow-ups remain assigned here and receive a new Plan 11.x number only at pickup. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); migration custody: deterministic search/direct extract, route-specific dependency availability, replacement acceptance, and Tavily rollback-reviewed retirement; closure evidence: [Plan 11.2 approval](../reviews/2026-07-27-plan-11-2-implementation-plan-approval-v2.md), [local-process evidence](../../../reports/plan-11-2-gateway-tools-local-process-evidence.md), [staging evidence](../../../reports/plan-11-2-gateway-tools-staging-evidence.md), and [fitness report](../../../reports/plan-11-2-gateway-tools-task7-fitness.md)~~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ~~`P11-FEAT-GATEWAY-COST-OBS`~~ | ~~Closed~~            | ~~MEDIUM~~ | ~~Plan 11.5 — closed by PR #95 (merge `e388258`), 2026-07-29; migration follow-ups remain assigned here (`P11.5-FU-1` Closed via Plan 11.21; `P11.5-FU-2` closed via Plan 11.6) and receive a new Plan 11.x number only at pickup. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-tools-and-p11-feat-gateway-cost-obs); [implementation plan](archive/2026-07-28-plan-11-5-p11-feat-gateway-cost-obs-implementation.md); migration custody: OTel/OTLP-to-Phoenix and the separately reviewed USD field migration~~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ~~`P11-FEAT-GATEWAY-MCP`~~      | ~~Retired~~           | ~~MEDIUM~~ | ~~Retired by Plan 11.12. [Plan 11.8](archive/2026-08-06-plan-11-8-p11-feat-gateway-mcp-implementation.md) and [Plan 11.11](archive/2026-08-13-plan-11-11-p11-feat-gateway-mcp-2026-07-28-http-compatibility.md) are historical precursor work; their frozen design and merged implementation records are not rewritten. Plan 11.13 published HLD v2.18, LLD v2.41, Guardrails v1.3, and Test Strategy v1.7 through the sibling reversal package; immutable amendment inputs remain historical. Client-owned MCP remains live and separate. This completed publication remains a pre-`P11-FEAT-REGISTRY` / v1.0 dependency. [Evidence](../reports/2026-08-15-plan-11-13-authoritative-document-reversal-evidence.md). [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-gateway-mcp---gateway-mcp-tool-call-brokering)~~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `P11-FEAT-ZED-RESUME`           | Partially implemented | MEDIUM     | Partially implemented; blocked. Frozen Task 0 Steps 1-4 sealed (`session/load` unreachable on historical Zed 1.13.1); frozen Plan 11.7 Tasks 0 Steps 5-7 and Tasks 1-11 remain blocked. Standalone feasibility amendment approved (`79F3C92A…C06E6`, 2026-08-02); origin-A fixture v2 amendment approved and merged (`5BB327D8…9A4D` / PR #108, 2026-08-02). Corrected `origin-a-3` executed and sealed as Option B process-invalid (`next_corr=4` / `next_prompt=3` unclaimed; DoD success false). Retry-preflight amendment (`P11-FU-11`, PR #110) implemented through Task 5 **Path A** fail-closed terminal stop (2026-08-05): real CLI fail-closed at acquire; offline `unavailable_proof`; no corr-4 / no settings mutation / no Zed launch; accepted live retry not obtained. Parent Task 5 remains blocked; clean relaunch needs a budget-expansion amendment. Re-probe on 2026-08-15 at `71cb9ed` observed Zed `1.15.0 e17dc4f…`, independent acpx `0.12.0`, and live Redis. Its live `agentCapabilities` omitted `loadSession` and `sessionCapabilities.resume`; the resulting **INDETERMINATE / INTERNAL_CAPABILITY_UNAVAILABLE** establishes the Optimus agent gate only, not Zed support. Acpx made no forced `session/load` call, Zed was not launched, and no origin-A launch occurred. The current repository cannot independently compare the historical 1.13.1 run because its three named Task 0 artifacts are absent from `origin/main`; the [custody note](../../../reports/p11-feat-zed-resume-task0-evidence-custody-note.md) does not classify that absence as loss or invalidate the seal. The real-Zed temporary-advertisement re-probe is separately scoped and must commit its sanitized evidence. See [the re-probe](../../../reports/p11-feat-zed-resume-session-load-reprobe.md). Does not claim server-side custody feasible or an origin-A/amendment disposition. Its unimplemented error-code subset is now completed by `P11-FU-10` / Plan 11.18; frozen Plan 11.7 remains blocked and this transfer does not unblock `session/load`. Carries owned `P11-FU-1`, `P9.8-FU-5`, and `P11-FU-11`; coordinates, but does not own, `P11-FU-4`. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-zed-resume---zed-integration-fixes-and-session-resume); [feasibility amendment](archive/2026-08-02-plan-11-7-zed-server-side-custody-feasibility-amendment.md); [origin-A fixture v2 amendment](archive/2026-08-02-plan-11-7-origin-a-fixture-v2-amendment.md); [retry-preflight amendment](archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md). Dependency: `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` in this backlog supplies its sanitized-evidence gate. |
+| `P11-FEAT-ZED-RESUME` | Moved | — | [#230](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/230) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L347-L347) |
 | ~~`P11-FEAT-MULTI-TURN-CONVERSATION`~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.25 Slice 1 — same-process in-memory multi-turn conversation on ACP `session/prompt` (canonical history, byte-budget admission/commitment, settlement, dedicated NDJSON writer), merged through PR #188 and follow-up PR #189. Does **not** include persistence, `session/resume`/`session/load`, compression/summarization/pruning/eviction (Plan 12), or non-AGENT-mode carriage; `MT-FU-1` and `MT-FU-2` remain separately open below. Evidence: [baseline](../../../reports/plan-11-25-multi-turn-baseline.md), [contract evidence](../../../reports/plan-11-25-multi-turn-contract-evidence.md), [release review](../../../reports/plan-11-25-multi-turn-release-review.md); [archived implementation plan](archive/2026-08-21-plan-11-25-multi-turn-conversation-implementation.md). Current-source discrepancy: [producer-instrumentation correction](../reviews/2026-10-01-plan-11-25-effect-instrumentation-correction.md); narrow effect/cancellation repair is owned by Plan 12.2 Task 2, not established by the historical checked steps.~~ |
-| `P11-FEAT-ACP-RUNTIME-HARDENING` | Open | HIGH | **Plan 11.26 Tasks 0-12 accepted through G6; Task 13 accepted at G7.** The [approved design](../specs/2026-08-29-plan-11-26-acp-runtime-hardening-audit-design.md) and [archived implementation plan](archive/2026-08-29-plan-11-26-acp-runtime-hardening-audit-implementation.md) remain the governing audit documents. Canonical Task 12 outputs: [machine-readable audit](../../../reports/plan-11-26-acp-runtime-audit.json), [deterministic audit report](../../../reports/plan-11-26-acp-runtime-audit.md), and [terminal characterization](../../../reports/plan-11-26-terminal-characterization.md). Separate Task 13 outputs: [candidate inventory](../../../reports/plan-11-26-duplication-candidates.json), [reviewed duplication audit](../../../reports/plan-11-26-duplication-audit.json), and [deterministic duplication report](../../../reports/plan-11-26-duplication-audit.md). The terminal artifact remains honestly `INCOMPLETE`: 16 offline predicates passed and three blocked predicates retain distinct binding/Redis/Zed owners; every live row remains `UNRUN`. The audit covers concurrency, task ownership and cancellation; stdio and Redis connection lifecycle under orderly EOF, cancellation, and abrupt client termination; idempotent close, lease release/recovery, backpressure, connection health and pooling; semantic exception taxonomy and runtime-to-wire mapping; duplicated lifecycle/protocol logic and flaky tests; redacted structured telemetry and logging with stable correlation fields; reviewer-facing comments and docstrings that explain invariants and non-obvious decisions; and comparison using at least one independently authored ACP client or conformance harness. Plan 11.26 is audit-and-contract only and does not authorize production fixes. The ranked custody table below records the accepted Task 12 structural-prevention candidates and keeps this feature `Open` until later remediation plans separately complete. Task 13 is the operator-directed duplication audit; evidence collector and A2A are separate products and are affirmatively excluded from core duplication clustering before classification. Zed, acpx, SDK/harness, Redis mutation, Gateway/model calls, paid calls, evidence promotion, push, PR, and merge remain separately unauthorized. Archiving the audit plan does not close any remediation owner or live obligation. **HIGH justification:** these cross-cutting lifecycle and observability weaknesses increase defect-escape risk and make failures materially harder to reproduce, diagnose, and review. **2026-09-06 current disposition:** PR #195 delivered Git-test immunity, production-only CI scanning and the bounded FU-6 rejected-POST correction. PR #194 subsequently merged at `0ec91225` with the accepted H/M/D history, a documentation correction, both required PR checks and post-merge guardrails passed. The separately approved [local-hook UTF-8 repair](2026-09-06-local-hook-utf8-repair.md) was independently accepted at local commit `c9745898` and merged through PR #196 at `3b3093d3`. Seam 4 A and B subsequently merged through PR #197 and #198; seam 5 merged through PR #199 at `1be9e056`. **2026-09-08 narrow port disposition:** seam 3, independently accepted at `672d842b`, merged through PR #200 at `5ad8ef4f` with required PR checks and first post-merge guardrails passed. Its captured subprocess inputs preserve empty-versus-missing semantics and a separate MCP system view. Seam 1 is independently accepted locally at `185bddc7`, adding lazy, failure-contained debug tracing while preserving redaction, control flow and the merged lifecycle contracts. Publication with governance updates and GitHub CI is authorized; seam-1 merge remains a separate decision. The [masterplan](hardening-runtime-quality-masterplan.md) records the evidence and boundaries; its repeatability, lifecycle and other track obligations remain open. The executor commission is complete. Existing findings and the 50 frozen UTF-16 transcripts retain separate disposition; strict rejection when selected does not alter their custody. Broader FU-6 closure and live/binding obligations remain Open. Installation and rollout of this repair are not established. **2026-09-10 H4 filing:** [Deferred H4 verifier follow-ups](#plan-1126-h4-verifier-follow-ups-from-seam-2-checkpoint-a) remain Open under this feature after seam 2 merged through PR #202; filing does not commission verifier implementation or close historical/live obligations. |
-| `HARDENING-FEAT-RUNTIME-QUALITY` | Open | HIGH | The [hardening runtime-quality masterplan](hardening-runtime-quality-masterplan.md) sequences 16 new items, 17 existing candidates, and 3 existing obligations. The backlog row owns this masterplan's status; the masterplan owns its 15 child-plan statuses. The G6/G7 custody tables are historical acceptance records. This charter grants no implementation authority except through separately reviewed and authorized child tasks; live child status and task gates remain solely in the masterplan and owning child plans. **2026-09-06 reconciliation:** the CI guardrail child retains main's production scan and commit-time coverage, carries locked dependency sync, and adopts only the original three baseline entries plus 31 reviewed report identities. PR #194 merged at `0ec91225`, preserving accepted local delivery `cd4a3805`; both required PR checks and post-merge guardrails passed. The separately accepted decoding repair is published to PR #196 under conditional normal-merge authority. Later child tasks still require their own decisions. The masterplan's CI-GUARDRAILS row owns this reconciliation's next gate. |
-| `P11-FEAT-REGISTRY`             | Open                  | LOW        | Ratified, unscheduled, and held as the last primary Plan 11 slice. The ACP registry has a public authoritative repository, schema, submission guide, and stabilized live process; pickup begins by pinning and executing against the then-current validator/CI behavior, not by searching for an unknown source. Reassess 11.x-last versus a 13.x split for outward publication once this consolidated pool closes. The v1.0 release-version contract and excluded-capability inventory remain in Plan 11. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-registry---acp-registry-registration-and-v10-cut). Verified local finding carried to pickup: package and ACP versions are both `0.1.0`, and ACP currently returns `authMethods: []`. The registry guide's Agent/Terminal Auth admission rule is an external claim to verify by live execution before implementation scope is frozen. Carried to pickup (2026-09-29): the excluded-capability inventory must name `P12-FU-1`, the Plan/Chat advisory-answer capability ruled out of v1.0 and carried into Plan 12.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `P11-FEAT-IDE`                  | Open                  | LOW        | Conditional — opens only through an explicitly approved complete versioned charter successor if REGISTRY surfaces an unmet multi-IDE expectation. [Charter](2026-07-25-plan-11-v1-milestone-charter.md#p11-feat-ide---conditional-ide-specific-testing)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `Plan 12` | Open | LOW | Post-v1.0 context/intelligent selection remains outside v1.0 and proceeds in parallel by operator direction. Plan 12.1 retains its separate advisory-answer scope. Plan 12.2 Package A was accepted offline at 38a465f; [delivery](../reviews/2026-10-02-plan-12-2-package-a-delivery.md) and [custody](#plan-12-context-engine-package-a-custody). ADR-016 replaces per-task reviews with four package checkpoints; the operator accepted the [first Task 1 contracts](../specs/archive/2026-10-02-plan-12-2-task1-contracts.md) on 2026-10-02. CP1 to CP3 are cleared offline. The CP4 offline batch is accepted at cf9bb9d on 2026-10-04 ([disposition](../reviews/2026-10-04-plan-12-2-cp4-offline-review-disposition.md)); its HLD v2.19, LLD v2.42, Guardrails v1.4 and Test Strategy v1.8 successors, plan v4, design v3, Task 1 contracts v3 and ADR-018/019 are filed. **Offline delivery merged:** Plan 12.2's accepted offline implementation and documentation through `7029340` merged into `main` on 2026-10-08 via [PR #276](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/276), merge commit `c509fc8`. Package A's commits are included, and [PR #216](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/216) is marked merged. The offline delivery and its merge gate are complete; this is not a full CP4 pass. Luna route/estimator qualification, the genuine summary-quality receipt and real-editor Task 13 remain Deferred/UNRUN under existing Plan 12.2 ownership, per the [2026-10-08 operator disposition](../reviews/2026-10-08-plan-12-2-cp4-offline-delivery-disposition.md). No further model investigation is commissioned. Paid/live execution, activation, production route enabling, Haiku-default removal and sandbox synchronization remain held. Each activation path requires its applicable real evidence and separate authority; offline acceptance and merge do not substitute for that evidence. ADR-018 quotes the operator's D7 acceptance verbatim from ADR-011 source S4 (registered 2026-10-07). D6/governed activation and paid/live/service gates remain separate. Exact ADR-017 coverage residual and related observations have existing owners below. Wider engine/paid/live work is not delivered; designated Plan 12 follow-ups retain custody. |
+| `P11-FEAT-ACP-RUNTIME-HARDENING` | Moved | — | [#231](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/231) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L349-L349) |
+| `HARDENING-FEAT-RUNTIME-QUALITY` | Moved | — | [#232](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/232) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L350-L350) |
+| `P11-FEAT-REGISTRY` | Moved | — | [#233](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/233) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L351-L351) |
+| `P11-FEAT-IDE` | Moved | — | [#234](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/234) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L352-L352) |
+| `Plan 12` | Moved | — | [#235](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/235) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L353-L353) |
+
+## P11-FEAT-TEST-PROFILES: test cadence, selection and attributable core parallelism
+
+**Moved:** tracked in [#292](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/292). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L368-L434).
 
 ## Plan 12 Context Engine Package A custody
 
@@ -391,42 +409,11 @@ summary as failed while ACP shows the turn as cancelled. Recorded by the CP4 off
 
 ## Package A repeatability observations — P11.26-CAND-5 intake
 
-**Raised / origin:** Package A commit evidence/reviews, 2026-10-01; registered here 2026-10-02.
-**Owner:** `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION`, under `P11-FEAT-ACP-RUNTIME-HARDENING`.
-**Status:** Open. These are related intake observations, not rewrites of the original 14 sealed
-timeouts and not proof the existing candidate remedy is complete.
-
-- Historical audit reads via GitCommitSource hit 10-second archive/rev-parse timeouts during the
-  first Task 3 hook attempt. Later isolated checks passed; load is plausible, cause unconfirmed.
-  Preserve native failures/attempt identities and investigate attribution under owner scope;
-  no timeout increase, rerun-until-green or test deselection is authorized.
-- Coverage execution varied in launch_approvals, lifecycle, server and client_sdk across saved
-  full-2, 780faed terminal and 38a465f terminal datasets with identical production source, but
-  not identical tests. Deterministic lock controls landed locally at 38a465f. Other known paths
-  remain owner work; three observations are not an exhaustive census or causal attribution.
-- Terminal numeric condition at 38a465f remains NOT MET: server 574-575, 90.57377049180327% ->
-  90.1639344262295%; client_sdk 326/338, 78.38709677419355% -> 77.74193548387096%. Operator
-  accepted only those four statements at that head, per ADR-017; no general waiver on later code.
-  Aggregate 87.5846994535519%; launch approvals exactly baseline 86.79245283018868%.
-
-**Next owner gate:** separately scoped deterministic phase/timeout controls with behavior and
-negative assertions, preserving real integration tests, or explicit further attribution work.
-No more full-suite sampling is a prerequisite to this Package A publication; no best-of-N,
-coverage union, favorable baseline or exclusions. Nothing is automatically scheduled by intake.
-Evidence IDs/hashes and saved-run custody are in the Package A delivery record.
+**Moved:** tracked in [#306](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/306). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L473-L497).
 
 ## Package A sanitizer throughput — security-text owner intake
 
-**Raised / origin:** Task 3 test construction, 2026-10-01; intake 2026-10-02.
-**Owner:** `P11-REMEDIATION-SECURITY-TEXT-POLICY` / `T13-CAND-SECURITY-TEXT` rank 4.
-**Status:** Open. `ConversationSanitizer.sanitize` (`sanitize_for_persistence`), which runs on each
-admitted prompt and committed plan/completion text, was observed to be roughly quadratic on a single
-long unbroken token: one unprofiled timing of 16 KB took about 0.57 s, while space-separated text
-was fast. Larger timings are extrapolations, not measurements. Source inspection names the
-unanchored `\w+://` URI-userinfo search as a plausible contributor, not an established cause.
-No profiling or production remedy is commissioned.
-Trigger: owner's next sanitization-primitives work. Acceptance: bounded reproducible measurement
-and a reviewed remedy retaining hostile/split-secret detection, under that owner's scope.
+**Moved:** tracked in [#339](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/339). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L499-L510).
 
 ## Plan 11.26 reviewed disposition and remediation custody
 
@@ -475,27 +462,11 @@ Associations without a dedicated existing ID remain proposed under the named own
 
 ### P11-FU-31: MAIN-5 synthetic-fixture and complete-scan delivery debt
 
-**Status:** Open.
-**Origin:** Synthetic fixtures block touched-file commits; retained all-files scanner failures on frozen UTF-16 reports. Accepted MAIN-5 ruling-H fixture proofs remain historical evidence.
-**Designated future plan / owner:** `P11-FEAT-ACP-RUNTIME-HARDENING`, existing local-hook custody.
-**Trigger or acceptance criteria:** Inventory touched-file synthetic fixtures and the scanner
-fixpoint; verify synthetic provenance before any per-line pragma and prove Python AST
-equality. Preserve baseline/config protection and effective scanning. Keep the 50 frozen
-UTF-16 reports under separate disposition custody with unchanged identities; scanner
-failure is non-passing. This residual does not reopen the accepted local-hook delivery.
+**Moved:** tracked in [#249](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/249). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L544-L554).
 
 ### P11-FU-32: MAIN-5 Windows harness environment dependence
 
-**Status:** Open.
-**Origin:** Windows Bash selection, reserved test-venv semantics, measurement cache dependence, approval/bundle long paths and ast-grep cache dependence.
-**Designated future plan / owner:** `P11-FEAT-ACP-RUNTIME-HARDENING`, test tooling;
-measurement evidence belongs to `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION`.
-**Trigger or acceptance criteria:** Distinguish Git Bash from WSL launchers, inventory
-`OPTIMUS_TEST_VENV` consumers, and prove missing versus empty semantics before any rename.
-Prove ast-grep and measurement cache independence using isolated roots. Characterize
-approval long-path failures under test tooling and bundle failures under the evidence
-handoff owner. Short basetemp is mitigation, not product repair. Preserve Linux parity,
-environment contracts, protected-root checks and historical audit findings.
+**Moved:** tracked in [#250](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/250). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L555-L567).
 
 ### P11-FU-33: MAIN-5 shutdown repeatability evidence
 
@@ -582,13 +553,7 @@ The establishing-report prerequisite stays solely with Plan 11.24's Task-13 gate
 
 ### P11-FU-34: MAIN-5 settlement telemetry truth
 
-**Status:** Open.
-**Origin:** Settlement telemetry emits a `not_committed` placeholder whose authority and timing need confirmation.
-**Designated future plan / owner:** `P11.26-CAND-2-TELEMETRY-CONTRACT`, typed telemetry boundary owner.
-**Trigger or acceptance criteria:** Establish authoritative delivery state and emission
-order; prove delivered, rejected and cancelled outcomes. Check Plan 12 overlap read-only
-before any implementation commission; do not duplicate effect-producer repair or amend
-the Plan 12 plan in this lane.
+**Moved:** tracked in [#271](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/271). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L651-L660).
 
 ### P11-FU-35: MAIN-5 y5 correction port
 
@@ -606,15 +571,7 @@ the fix there; main-side closure requires its separate port review and delivery 
 
 ### P11-FU-36: MAIN-5 remaining guarded-runner mechanics
 
-**Status:** Open.
-**Origin:** Guard startup overhead, environment-claimed `runner_direct_role`
-and plants in `test_stdio_ndjson.py`.
-**Designated future plan / owner:** `P11-FEAT-ACP-RUNTIME-HARDENING`, MAIN-5 test tooling;
-association proposed, without a new dedicated backlog ID.
-**Trigger or acceptance criteria:** Profile startup uncontended without weakening write
-prevention or supervisor signals. Separate origin evidence from child environment claims.
-If plants move, prove collection and lane partitions and retain the whole runner-file gate;
-no WP-27 port is implied.
+**Moved:** tracked in [#251](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/251). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L675-L686).
 
 ## Plan 11.x resource-lifetime and live-evidence residuals from FU33
 
@@ -630,159 +587,27 @@ allocate an implementation-plan number, or grant a live drive.
 
 ### P11-FU-38: Bounded join and wait outcome classification
 
-**Status:** Open.
-**Origin:** FU33 named silent bounded joins in `NdjsonSubprocessSession.terminate()`
-and `PendingClientMcpCandidateEndpoint._stop_listener()`. The same NDJSON class's
-`_fail_subprocess_exited()` also suppresses a timed-out process wait and silently joins
-the stderr reader before constructing its diagnostic; the diagnostic can be partial.
-Reporting implementations already exist in the FU33 Redis completion paths and the
-MCP supervisor. These examples seed the class; they do not define its full scope.
-**Designated future plan / owner:** `P11.26-CAND-1-RESOURCE-LIFETIME`, existing lifecycle owner;
-separately owned product surfaces retain their existing owner and explicit disposition.
-**Trigger or acceptance criteria:** First record a source-derived inventory of every
-bounded join or wait in `src/` for a thread, process, task, loop or future owner
-to finish, including wrappers and failure/diagnostic paths. Polling and receive
-timeouts are excluded.
-For each site record its resource/callers/readers, timeout budget, silent versus
-reporting outcome, owner and disposition. Include the NDJSON failure-path wait/join,
-the local IPC consume worker, all FU33 Redis joins and the MCP supervisor; distinguish
-reporting a timeout from proving that the underlying owner has terminated.
-Use CAND-1's single lifecycle owner and bounded-completion contract: reconcile the
-existing reporting implementations and migrate all affected CAND-1 callers/readers,
-rather than adding a third pattern for the initially named sites. Any independently
-owned site needs a named existing custody entry and reviewed disposition, not omission.
-Exercise completion before the deadline and an owner retained after it; preserve
-self-stop/no-self-join behavior, idempotence and the primary failure/cancellation.
-Diagnostics must expose incomplete capture/cleanup safely, without presenting partial
-stderr as complete or turning a detected failure into a pass after a late join.
-Close only after every silent site has an explicit reviewed disposition and all
-required owned migrations have evidence; no unclassified or unowned silent site may
-disappear from the inventory. This does not close the lifecycle parent or H5 history.
+**Moved:** tracked in [#272](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/272). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L699-L729).
 
 ### P11-FU-39: Process-tree timeout and captured-pipe cleanup class
 
-**Status:** Open.
-**Origin:** FU33's seed sites were `tools/evidence_gather_support/acp.py::spawn_acpx`
-and Plan 9.96's ordinary capture in `tools/run_plan996_acpx_security_evidence.py`.
-The class also includes other explicit child-only termination paths and implicit
-termination in `subprocess.run(timeout=...)` with captured stdout/stderr. On Windows,
-CPython's timeout handler kills the direct child and calls `communicate()` without
-a timeout; a pipe-holding descendant can keep that drainage blocked. A timed captured
-run is a candidate for investigation, not automatically a confirmed defect.
-**Designated future plan / owner:** `P11.26-CAND-1-RESOURCE-LIFETIME` for Optimus runtime
-and its lifecycle tooling. Evidence-handoff sites retain their separate product owner;
-Plan 11.7 relay sites retain Plan 11.7 / `P11-FEAT-ZED-RESUME` live-owner custody.
-**Trigger or acceptance criteria:** First derive a class inventory across `src/`,
-`tools/` and `tests/` (including `tests/support`): explicit direct-child `kill`/`terminate` calls and wrappers, plus timed
-`subprocess.run` calls with captured pipes (including aliases and wrapper call sites).
-Record per site the launch/containment path, child type, whether a descendant can inherit
-and retain a pipe, termination/drain/wait/join budgets, evidence tier, exact owning
-backlog identity and disposition. Classify confirmed hazards, already tree-contained
-paths, safe/non-descendant cases, test-only controls and independently owned surfaces;
-Classify deliberate test-only kills as controls rather than automatically repairing
-them; record an owner for every test site under its existing custody. Justify each
-exclusion. Do not treat a heuristic scan count as a defect count or a
-complete inventory without source re-derivation and wrapper/caller inspection.
-Include the seed sites, ordinary versus drive-session capture, the redaction live-evidence
-tool, Plan 11.7 custody relay, `LocalGatewayProcess.stop`, `operator_verify`, the
-evidence-handoff service/process helpers and timed captured `acpx` launchers. Keep each
-evidence-handoff site with its existing product owner and each relay site with its live
-owner; file or link the necessary owning follow-up before excluding a site from CAND-1
-remediation. No separate product/parent status or active lane changes through this filing.
-For CAND-1-owned hazards, use the shared process-tree owner and migrate all affected
-callers with bounded termination, root reaping, pipe drainage and reader joins.
-Reconcile Plan 9.96's pinned plain-child premise and immutable evidence explicitly;
-ordinary capture and drive-session contracts remain distinct. Prove real descendant
-and inherited-pipe behavior on Windows and POSIX; retain initiating failures and
-explicit surviving-owner outcomes. Helper fakes alone cannot prove tree termination.
-Close only when every candidate has reviewed owner/disposition and each required owned
-repair or separately owned follow-up has evidence/custody; no unclassified site is lost.
+**Moved:** tracked in [#273](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/273). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L730-L768).
 
 ### P11-FU-40: Real Zed process containment and live-only tree-kill path
 
-**Status:** Open.
-**Origin:** Real Zed has not been tested inside the no-breakaway Windows job used by
-the new process-tree owner. `tests/investigation/evidence/test_zed_user_data_live.py`
-still terminates through `taskkill /T`; the reviewed Python stand-in is not real Zed
-compatibility evidence.
-**Designated future plan / owner:** `P11.26-CAND-1-RESOURCE-LIFETIME`, existing lifecycle owner;
-live evidence remains gated by Plan 11.24 and `P11.26-UNRUN-ZED`, without replacing them.
-**Trigger or acceptance criteria:** Before any live run, satisfy
-[Plan 11.24 v6's existing Task-13 establishing-report gate](2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md)
-and the existing binding, trusted-workspace, installed-artifact and operator-grant prerequisites. Review
-the live-only termination path against the shared process owner, then verify real Zed
-startup, supported ACP interaction and bounded timeout/teardown under the intended
-containment. Independently observe descendants, surviving processes and capture pipes;
-retain failures or incompatibility as non-passing evidence. Do not weaken no-breakaway
-policy, infer compatibility from a Python stand-in, or infer live acceptance from CI.
+**Moved:** tracked in [#224](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/224). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L769-L786).
 
 ### P11-FU-41: Windows job-object binding owner consolidation
 
-**Status:** Open.
-**Origin:** Main's `tools/process_tree.py` owns Windows job-object bindings; the separate
-parallel-test-context lane's `tools/testing/run_context_windows.py` contains another set
-and is not on main at this filing baseline.
-**Designated future plan / owner:** `P11.26-CAND-1-RESOURCE-LIFETIME`, existing lifecycle owner;
-coordinate the parallel-test-context owner without importing or changing its active lane.
-**Trigger or acceptance criteria:** When both deliveries are on main, inventory their
-callers and establish one shared native-binding owner, then migrate all callers. Preserve
-suspended-start/assign-before-resume ordering, error classification, handle custody,
-partial-resume cleanup, whole-tree termination and failure-preserving bounded reaping.
-Exercise real descendant trees and cleanup failures; demonstrate that consolidation
-retains the guarded test runner's attribution and protection contracts. Neither lane's
-independent acceptance is a consolidation pass; scheduling and implementation are separate.
+**Moved:** tracked in [#274](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/274). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L787-L802).
 
 ### P11-FU-43: Planning-progress notice ordering race
 
-**Status:** Open.
-**Origin:** 2026-10-08, [PR #277](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/277), guardrails run `37820129633`, attempt 1.
-`tests/unit/acp/test_debug_trace_call_sites.py::test_full_session_wire_output_is_identical_under_diagnostic_failure[redaction-fails]`
-failed on message order alone; the run had 1 failed and 6672 passed.
-- **Mechanism:** in `src/optimus/acp/spec.py`, `_session_progress_observer` submits
-  `_emit_planning_progress` from the planning worker with `asyncio.run_coroutine_threadsafe` and
-  discards the future. `_in_worker` waits for the planner, not for that send, so the
-  "Planning turn N of M" chunk is unordered against the plan notification and the permission request.
-- **Not new:** both functions are AST-identical at `a929aab`, before PR #276. The test is unchanged since `c9838c4`.
-- **Already owned:** this is an observed ordering consequence of the escaped `run_coroutine_threadsafe` child that
-  the Plan 11.26 audit already records as unregistered and unjoined
-  (`test_task_supervision_inventory_is_independent_complete_and_receiver_safe`).
-- **Rerun:** one rerun of the failed job was authorized; a pass clears that CI attempt, not this defect.
-
-**Designated future plan / owner:** `P11.26-CAND-1-RESOURCE-LIFETIME`, existing lifecycle owner,
-under `P11-FEAT-ACP-RUNTIME-HARDENING`. `P11.26-CAND-5-REPEATABILITY-ATTRIBUTION` keeps custody of the
-CI timing observation only. Plan 12 takes no product-fix obligation.
-**Trigger or acceptance criteria:** a separately authorized fix with these properties:
-- **Ordering:** on the normal path, the planning-progress send settles before the dependent plan and
-  permission messages are emitted.
-- **Bounded waiting:** the wait never blocks the event-loop thread. A bare unbounded `.result()` is not acceptable.
-- **Cancellation and transport teardown:** prohibited sends are suppressed, pending progress is settled or
-  cancelled, and the worker is unblocked.
-- **Scope:** keep best-effort progress semantics and the single outbound writer. Add no executor, unbounded
-  queue or general lifecycle rewrite.
-- **Regression test:** it holds progress delivery while the planner finishes, then checks the required
-  order. It covers cancellation/EOF and outbound failure without leaks or hangs.
-- **Existing checks stay:** keep the diagnostic-condition matrix and the gateway-call/settlement checks.
-  Do not delete the assertion, sort messages or add sleeps. Frozen historical audit baselines stay unchanged.
-
-**Evidence:** handoff folder `pr277-ci-failure/` (CI log, probe script, findings). The reported 40-of-40
-local Windows ordering is an observation, not a race frequency.
+**Moved:** tracked in [#288](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/288). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L698-L731).
 
 ## Plan 11.26 H4 verifier follow-ups from Seam 2 checkpoint A
 
-**Raised:** 2026-09-09. **Governance filing commissioned:** 2026-09-10.
-
-**Origin and current custody:** Independent Seam 2 checkpoint A review identified three pre-existing H4 verifier asymmetries and accepted their deferral. Seam 2 A+B and its R16 correction subsequently merged through [PR #202](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/202) at `9a6de1f2`, with the first post-merge guardrails run successful. R16 makes the historical source available for replay; it does not repair these H4 comparisons or close this follow-up. Historical G6/G7 disposition and sealed artifact identities remain unchanged.
-
-**Designated future plan / owner:** Plan 11.26 verifier hardening under the existing `P11-FEAT-ACP-RUNTIME-HARDENING` feature. Claude owns this filing and is the proposed implementer on a separate implementation commission; Codex is the independent reviewer; the operator owns scheduling. No new numbered plan or parallel work pool is created.
-
-**Scope and acceptance criteria:**
-
-- **Record field completeness.** Define the complete mechanical H4 record field set and explicit permitted human-review exclusions. The present whitelist is a schema-evolution hazard, not evidence of a currently omitted mechanical field. A newly introduced mechanical field must not silently escape rebuild comparison. Preserve intentional record-level `ruling` and `reviewer_status` semantics under an explicit contract.
-- **Finding population and order.** Decide whether H4 finding order is contractual. Apply the same H4 population filter to both sides; use stable identity ordering only if order is not contractual. Cover original order, permutations, additional non-H4 findings, missing and duplicate H4 IDs, and actual field changes. Sorting makes equality order-insensitive; it is not inherently a stronger verifier.
-- **Generated finding ruling.** The H4 builder supplies a generated finding `ruling`, which the current finding comparison excludes. Define and test its equality: the unchanged original must pass and a mutated generated ruling must fail. Keep this finding field distinct from record-level reviewer prose. The frozen artifact's separate custody digest does not substitute for a complete rebuild comparison of a caller-supplied artifact.
-- **Historical compatibility and replay.** Preserve historical schemas, sealed fixture bytes, commit identities, citations and meaning. Any compatibility change needs explicit versioning/dispatch or a reviewed historical-validation decision. Retain zero fresh-probe execution during verification/rendering, the authenticated historical-source binding introduced by R16, and positive/negative controls in a committed, isolated checkout.
-
-**Status:** Open. Filing is commissioned; verifier implementation is not. These are deferred verifier issues, not reopened blockers for the merged seam 2 delivery. Next gate: a scoped implementation plan and operator scheduling, followed by independent review and compatibility/negative controls. The separate 37-test `P11.26-UNRUN-BINDING` obligation, unexplained H5 incident, live-service acceptance and broader track closure are unaffected. This entry does not commission replay-performance changes.
+**Moved:** tracked in [#252](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/252). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L838-L854).
 
 ## Plan 11.26 Task 13 reviewed duplication disposition
 
@@ -823,6 +648,22 @@ is owned by this living pool and the committed evidence chain: the
 [Task 6 checkpoint](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/task6-checkpoint.json).
 Do not reconcile those historical files by changing their status lines or checkboxes.
 
+## Work tracking maintenance (Plan 11.29 residuals)
+
+The two entries below are mechanisms that [Plan 11.29](2026-10-04-plan-11-29-github-issues-migration.md) specified and that the bounded
+49-record cutover ([ADR-021](../../decisions/ADR-021-bounded-github-authority-switch.md)) did not deliver. Plan 11.29 is their origin.
+Their continuing owner is the roadmap entry "Work tracking maintenance (Tracked, Not Yet Scheduled)" in the
+[Phase 1 roadmap](2026-07-01-phase-1-roadmap.md); no implementation plan exists for either, and each is tracked in its issue ([#290](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/290) and
+[#291](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/291)), which keeps its priority, difficulty and estimate.
+
+### P11.29-FU-1: Work tracking impact declaration replacing the masterplan-impact gate
+
+**Moved:** tracked in [#290](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/290). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L784-L802).
+
+### P11.29-FU-2: Plan-header tracking-issue convention and offline check
+
+**Moved:** tracked in [#291](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/291). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L804-L820).
+
 ## Follow-up status index
 
 The detailed entries own explanatory prose; tests enforce this index as the exact ID/title/status
@@ -846,80 +687,82 @@ priority or scheduling claim; their designated owner remains Plan 12.
 
 | ID | Item | Status | Priority   | Owning slice / designated plan | Evidence |
 |---|---|---|------------|---|---|
-| `P9.8-FU-2` | Intelligent ambiguous-reference ranking | Open | MEDIUM     | Plan 12 | Acceptance criteria in entry |
-| `P9.8-FU-3` | Dynamic context budgets and required-file summarization | Open | MEDIUM     | Plan 12 | Acceptance criteria in entry |
-| `P9.8-FU-5` | Zed Refusal-Rendering Stability | Promoted -> [Plan 11.7 v3](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | MEDIUM     | `P11-FEAT-ZED-RESUME` | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
-| `P9.85-FU-1` | Intelligent observation compression | Open | MEDIUM     | Plan 12 | Acceptance criteria in entry |
-| `P9.85-FU-2` | Dynamic planning-evidence partition | Open | MEDIUM     | Plan 12 | Acceptance criteria in entry |
-| `P9.85-FU-3` | Cross-Run/Session Spend Policy | Open | MEDIUM     | Future budget-governance plan | Acceptance criteria in entry |
-| `P9.87-FU-1` | Mechanical Current-Raw-Evidence Grounding Guard | Open | MEDIUM     | Future Plan 11 feature work | Acceptance criteria in entry |
-| `P9.96-FU-8` | Launch approval record capacity | Open | MEDIUM | Launch-approval/security follow-up lane | Maximum-configuration and bounded-successor proof in entry |
-| `P11-FU-1` | ACP Session Resume Capability | Promoted -> [Plan 11.7 v3](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | HIGH       | `P11-FEAT-ZED-RESUME` | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
+| `P9.8-FU-2` | Intelligent ambiguous-reference ranking | Moved | — | — | [#242](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/242) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L917-L917) |
+| `P9.8-FU-3` | Dynamic context budgets and required-file summarization | Moved | — | — | [#243](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/243) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L918-L918) |
+| `P9.8-FU-5` | Zed Refusal-Rendering Stability | Moved | — | — | [#253](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/253) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L919-L919) |
+| `P9.85-FU-1` | Intelligent observation compression | Moved | — | — | [#244](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/244) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L920-L920) |
+| `P9.85-FU-2` | Dynamic planning-evidence partition | Moved | — | — | [#245](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/245) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L921-L921) |
+| `P9.85-FU-3` | Cross-Run/Session Spend Policy | Moved | — | — | [#257](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/257) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L922-L922) |
+| `P9.87-FU-1` | Mechanical Current-Raw-Evidence Grounding Guard | Moved | — | — | [#258](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/258) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L923-L923) |
+| `P9.96-FU-8` | Launch approval record capacity | Moved | — | — | [#289](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/289) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L852-L852) |
+| `P11-FU-1` | ACP Session Resume Capability | Moved | — | — | [#254](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/254) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L925-L925) |
 | ~~`P11-FU-2`~~ | ~~Package Lookup and Security Advisory Gateway Capability~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-GATEWAY-TOOLS` / Plan 11.2~~ | ~~PR #88 / `4590dbf`~~ |
 | ~~`P11-FU-3`~~ | ~~MCP Route/Typed-Contract Publication Gate~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-GATEWAY-MCP`~~ | ~~PR #112; PR #113 / `edd1f04`~~ |
-| `P11-FU-4` | Re-pin FU-4A/FU-5 Live Evidence | Open | MEDIUM     | Coordinated with `P11-FEAT-ZED-RESUME` | Acceptance criteria in entry |
-| `P11-FU-5` | Windows Subprocess Handle-Duplication Flake (WinError 6/50) | Open | LOW        | Future Windows subprocess-lifecycle evidence lane | [Plan 11.17 disposition](../../../reports/plan-11-17-p11-fu-5-windows-disposition.md); retains distinct FU-29 custody |
-| `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Open | LOW | Bounded rejected-POST correction merged through PR #195; broader Windows lifecycle reliability closure remains separately owned | [Plan 11.17 root-cause record](../../../reports/plan-11-17-p11-fu-6-root-cause.md); main `32f32ef4` carries the accepted correction; historical recurrence remains recorded, the 59-clean bound remains inapplicable, and no universal or packet-level mechanism is claimed |
-| `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Partially implemented | MEDIUM     | Future Windows coverage-flake closure lane; Plan 11.16 is a terminal partial outcome | [Windows residual](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md); Plan 11.17 recorded FU-6 open disposition |
+| `P11-FU-4` | Re-pin FU-4A/FU-5 Live Evidence | Moved | — | — | [#259](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/259) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L928-L928) |
+| `P11-FU-5` | Windows Subprocess Handle-Duplication Flake (WinError 6/50) | Moved | — | — | [#260](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/260) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L929-L929) |
+| `P11-FU-6` | Gateway `test_server` Full-Suite Port/Teardown Flake | Moved | — | — | [#261](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/261) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L930-L930) |
+| `P11-FU-7` | Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | Moved | — | — | [#262](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/262) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L931-L931) |
 | ~~`P11.5-FU-1`~~ | ~~Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics~~ | ~~Closed~~ | ~~MEDIUM~~     | ~~`P11-FEAT-GATEWAY-COST-OBS`~~ | ~~[phoenix evidence](../../../reports/plan-11-21-p11-5-fu-1-phoenix-evidence.md); [release](../../../reports/plan-11-21-p11-5-fu-1-release.md); Task 8 watch remains Plan 11.5 Task 8~~ |
-| `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Open | LOW        | Future Gateway migration design | Acceptance criteria in entry |
+| `P11-FU-8` | Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | Moved | — | — | [#263](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/263) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L933-L933) |
 | ~~`P11-FU-9`~~ | ~~Client-Supplied ACP `mcpServers` Disposition~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Dedicated P11-FU-9 lane~~ | ~~PR #119 / `9a93137`; [closure evidence](../../../reports/p11-fu-9-client-mcp-closure-evidence.md)~~ |
 | ~~`P11-FU-10`~~ | ~~Complete ACP Error-Code Registry Audit~~ | ~~Closed~~ | ~~HIGH~~       | ~~[Plan 11.18](archive/2026-08-15-plan-11-18-acp-error-code-registry-audit-implementation.md)~~ | ~~PR #158 (merge 7d4e466); [acpx evidence](../../../reports/plan-11-18-p11-fu-10-acpx-error-code-evidence.md)~~ |
 | ~~`P11.7-FU-1`~~ | ~~Configurable Gateway request timeout for debug/investigation workflows~~ | ~~Closed~~ | ~~HIGH~~   | ~~Plan 11.9~~ | ~~PR #123 / `d0253be`~~ |
 | ~~`P11.7-FU-2`~~ | ~~Gateway threaded-test flake under full-suite load~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FU-6` Gateway harness custody~~ | ~~Batch B 2026-08-14; misfiled duplicate~~ |
-| `P11.7-FU-3` | Committed `plan117_custody_relay.py` docstring `\ufffd` / em-dash corruption | Open | MEDIUM     | Plan 11.7 deferred follow-up | Acceptance criteria in entry |
-| `P11-FU-11` | Plan 11.7 Retry Preflight and Live Session Proof | Partially implemented | HIGH       | [Plan 11.7 retry-preflight amendment](archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md) | [Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json) |
+| `P11.7-FU-3` | Committed `plan117_custody_relay.py` docstring `\ufffd` / em-dash corruption | Moved | — | — | [#255](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/255) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L938-L938) |
+| `P11-FU-11` | Plan 11.7 Retry Preflight and Live Session Proof | Moved | — | — | [#256](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/256) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L939-L939) |
 | ~~`P11-FU-12`~~ | ~~MCP OAuth 2.1 Lifecycle~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Retired `P11-FEAT-GATEWAY-MCP`~~ | ~~Plan 11.12; won't-do~~ |
 | ~~`P11-FU-13`~~ | ~~Deferred MCP Capabilities and Long-Lived Interaction~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Retired `P11-FEAT-GATEWAY-MCP`~~ | ~~Plan 11.12; won't-do~~ |
 | ~~`P11-FU-14`~~ | ~~MCP Registry Discover-and-Connect~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Retired `P11-FEAT-GATEWAY-MCP`~~ | ~~Plan 11.12; won't-do~~ |
 | ~~`P11-FU-15`~~ | ~~MCP Tool Search and Context Minimization~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Retired `P11-FEAT-GATEWAY-MCP`~~ | ~~Plan 11.12; won't-do~~ |
-| `P11-FU-16` | Reverse Research-to-Documentation Freshness Gate | Open | MEDIUM     | Future cross-cutting documentation gate | Acceptance criteria in entry |
+| `P11-FU-16` | Reverse Research-to-Documentation Freshness Gate | Moved | — | — | [#264](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/264) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L944-L944) |
 | ~~`P11-FU-22`~~ | ~~Durable effect-aware MCP indeterminate-call custody~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Retired `P11-FEAT-GATEWAY-MCP`~~ | ~~Plan 11.12; won't-do~~ |
-| `P11-FU-23` | Durable client-MCP descriptor-surface pinning and named tool allowlists | Open | MEDIUM     | Future client-MCP trust follow-up | Acceptance criteria in entry |
-| `P11-FU-24` | Client-MCP durable HTTP/SSE trust relaxation | Open | MEDIUM     | Future client-MCP trust follow-up | Acceptance criteria in entry |
-| `P11-FU-25` | Authenticated client-owned MCP upstream evidence | Open | MEDIUM     | Future client-MCP evidence follow-up | Acceptance criteria in entry |
+| `P11-FU-23` | Durable client-MCP descriptor-surface pinning and named tool allowlists | Moved | — | — | [#265](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/265) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L946-L946) |
+| `P11-FU-24` | Client-MCP durable HTTP/SSE trust relaxation | Moved | — | — | [#266](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/266) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L947-L947) |
+| `P11-FU-25` | Authenticated client-owned MCP upstream evidence | Moved | — | — | [#267](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/267) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L948-L948) |
 | ~~`P11-FU-26`~~ | ~~Plan 11.8 Windows `WinError 10053` MCP test flake~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Retired `P11-FEAT-GATEWAY-MCP`; signal under `P11-FU-6`~~ | ~~Plan 11.12; obsolete-by-retirement~~ |
 | ~~`P11-FU-27`~~ | ~~Publication-Plan Historical-State Reconciliation~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.22~~ | ~~[Plan 11.22 reconciliation evidence](../../../reports/plan-11-22-p11-fu-27-publication-reconciliation.md); merged PR #113 / `verification.md`~~ |
 | ~~`P11-FU-28`~~ | ~~WSL2 `uv sync` shared-Windows-`.venv` destruction hazard~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Native WSL clone operating decision~~ | ~~Obsolete for supported Linux-parity gates; `P11-FU-17` proof 2026-08-14~~ |
 | ~~`P11-FU-29`~~ | ~~Durable-approval identity instability on transient Git probe failure~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.15~~ | ~~[release report](../../../reports/plan-11-15-durable-approval-identity-release.md); preserve-approval / Git-retry / migration evidence only~~ |
-| `P11-FU-30` | No log-level categorization; stdlib `logging` is absent project-wide | Open | HIGH | `P11.26-CAND-2-TELEMETRY-CONTRACT` | Acceptance criteria in entry |
+| `P11-FU-30` | No log-level categorization; stdlib `logging` is absent project-wide | Moved | — | — | [#275](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/275) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L953-L953) |
 | ~~`P11-FU-17`~~ | ~~WSL2 native git cannot parse a Windows-git-created linked worktree's `.git` pointer~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Native WSL clone operating decision~~ | ~~Resolved by verified ext4 native-clone gate; proof report 2026-08-14~~ |
 | ~~`P11-FU-18`~~ | ~~Workspace-identity `ctime` coalescing fail-open~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.15~~ | ~~[release report](../../../reports/plan-11-15-durable-approval-identity-release.md); equal-ctime topology evidence only~~ |
 | ~~`P11-FU-19`~~ | ~~WSL client-SDK operation-deadline supervisor race~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.16~~ | ~~[Windows](../../../reports/plan-11-16-p11-fu-19-windows-evidence.md); [WSL](../../../reports/plan-11-16-p11-fu-19-wsl-evidence.md)~~ |
-| `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Partially implemented | MEDIUM     | Live blocked Plan 11.23 Task 6 | [interim release](../../../reports/plan-11-23-p11-fu-20-runtime-release.md); production composition is wired; independently authored live one-call tier unrun |
+| `P11-FU-20` | Attach per-server catalog/authorizer to session tool service for real one-call issuance | Moved | — | — | [#223](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/223) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L957-L957) |
 | ~~`P11-FU-21`~~ | ~~Custody Relay Broken-Pipe Exit-Code Propagation Defect~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Plan 11.14~~ | ~~Plan 11.14; `reports/plan-11-14-p11-fu-21-custody-relay-exit-code-evidence.md`~~ |
 | ~~`P11.5-FU-2`~~ | ~~Consistent local env / Redis / Phoenix / Gateway startup for live runs~~ | ~~Closed~~ | ~~HIGH~~   | ~~Plan 11.6~~ | ~~PR #97 / `dc9a080`; [operator runbook](../../runbooks/local-live-dependencies.md)~~ |
-| `P11.25-FU-1` | Non-AGENT-mode conversation carriage (contract term: MT-FU-1) | Promoted -> [Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | MEDIUM     | Plan 12.1 (operator ruling 2026-09-29) | Acceptance criteria in entry; remains sole owner of carriage |
-| `P11.25-FU-2` | Structured ACP stop-reason metadata (contract term: MT-FU-2) | Open | MEDIUM     | Future post-11.x follow-up | Acceptance criteria in entry |
-| `P12-FU-1` | Plan/Chat advisory-answer capability (residual of HLD §7) | Promoted -> [Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | MEDIUM     | Plan 12.1 (operator ruling 2026-09-29) | Acceptance criteria in entry; depends on `P11.25-FU-1`; reuses Plan 2 enforcement |
-| `P12-FU-2` | User-facing net cost-savings report | Open | MEDIUM | Plan 12; slice unscheduled | Requirement accepted in ADR-012; design and delivery surface pending; depends on P11.26-CAND-2-TELEMETRY-CONTRACT; paid evaluation requires separate authority |
-| `P12.1-FU-1` | Local Gateway missed the agent's startup readiness deadline | Open | MEDIUM     | Future local-startup follow-up | Acceptance criteria in entry; cause not yet diagnosed |
-| `P12.1-FU-2` | Goal-loop iterations bypass turn cancellation and directive tracking | Open | MEDIUM     | Future goal-loop follow-up | Acceptance criteria in entry; pre-existing, not introduced by Plan 12.1 |
-| `P11-FU-31` | MAIN-5 synthetic-fixture and complete-scan delivery debt | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
-| `P11-FU-32` | MAIN-5 Windows harness environment dependence | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
+| `P11.25-FU-1` | Non-AGENT-mode conversation carriage (contract term: MT-FU-1) | Moved | — | — | [#246](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/246) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L960-L960) |
+| `P11.25-FU-2` | Structured ACP stop-reason metadata (contract term: MT-FU-2) | Moved | — | — | [#268](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/268) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L961-L961) |
+| `P12-FU-1` | Plan/Chat advisory-answer capability (residual of HLD §7) | Moved | — | — | [#247](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/247) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L962-L962) |
+| `P12-FU-2` | User-facing net cost-savings report | Moved | — | — | [#248](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/248) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L963-L963) |
+| `P12.1-FU-1` | Local Gateway missed the agent's startup readiness deadline | Moved | — | — | [#269](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/269) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L964-L964) |
+| `P12.1-FU-2` | Goal-loop iterations bypass turn cancellation and directive tracking | Moved | — | — | [#270](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/270) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L965-L965) |
+| `P11-FU-31` | MAIN-5 synthetic-fixture and complete-scan delivery debt | Moved | — | — | [#249](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/249) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L966-L966) |
+| `P11-FU-32` | MAIN-5 Windows harness environment dependence | Moved | — | — | [#250](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/250) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L967-L967) |
 | ~~`P11-FU-33`~~ | ~~MAIN-5 shutdown repeatability evidence~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11.26-CAND-5-REPEATABILITY-ATTRIBUTION`~~ | ~~Through [PR #219](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/219), merge `4797112`; deferred items retain CAND-1 custody~~ |
-| `P11-FU-34` | MAIN-5 settlement telemetry truth | Open | MEDIUM | `P11.26-CAND-2-TELEMETRY-CONTRACT` | Acceptance criteria in entry |
+| `P11-FU-34` | MAIN-5 settlement telemetry truth | Moved | — | — | [#271](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/271) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L969-L969) |
 | ~~`P11-FU-35`~~ | ~~MAIN-5 y5 correction port~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~`P11-FEAT-ACP-RUNTIME-HARDENING`~~ | ~~Through [PR #217](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/217), merge `df70385`; merged tree equals tested `a219831`~~ |
-| `P11-FU-36` | MAIN-5 remaining guarded-runner mechanics | Open | MEDIUM | `P11-FEAT-ACP-RUNTIME-HARDENING` | Acceptance criteria in entry |
-| `P11-FU-37` | MAIN-5 Windows evidence-bundle promotion residual | Open | MEDIUM | `EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` | Acceptance criteria in entry |
-| `P11-FU-38` | Bounded join and wait outcome classification | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria in entry; deferred from Closed FU33 |
-| `P11-FU-39` | Process-tree timeout and captured-pipe cleanup class | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria in entry; deferred from Closed FU33 |
-| `P11-FU-40` | Real Zed process containment and live-only tree-kill path | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria in entry; deferred from Closed FU33 |
-| `P11-FU-41` | Windows job-object binding owner consolidation | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria in entry; deferred from Closed FU33 |
-| `P11-FU-43` | Planning-progress notice ordering race | Open | MEDIUM | `P11.26-CAND-1-RESOURCE-LIFETIME` | Acceptance criteria and evidence in entry; observed in PR #277 CI |
+| `P11-FU-36` | MAIN-5 remaining guarded-runner mechanics | Moved | — | — | [#251](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/251) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L971-L971) |
+| `P11-FU-37` | MAIN-5 Windows evidence-bundle promotion residual | Moved | — | — | [#293](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/293) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L900-L900) |
+| `P11-FU-38` | Bounded join and wait outcome classification | Moved | — | — | [#272](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/272) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L973-L973) |
+| `P11-FU-39` | Process-tree timeout and captured-pipe cleanup class | Moved | — | — | [#273](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/273) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L974-L974) |
+| `P11-FU-40` | Real Zed process containment and live-only tree-kill path | Moved | — | — | [#224](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/224) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L975-L975) |
+| `P11-FU-41` | Windows job-object binding owner consolidation | Moved | — | — | [#274](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/274) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L976-L976) |
+| `P11-FU-43` | Planning-progress notice ordering race | Moved | — | — | [#288](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/288) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L905-L905) |
+| `P11.29-FU-1` | Work tracking impact declaration replacing the masterplan-impact gate | Moved | — | — | [#290](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/290) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L906-L906) |
+| `P11.29-FU-2` | Plan-header tracking-issue convention and offline check | Moved | — | — | [#291](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/291) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L907-L907) |
 
 ## Evidence and handoff feature registry
 
 This section replaces the former second status pool, now preserved only as
 [`archive/evidence-handoff-open-work-pool.md`](archive/evidence-handoff-open-work-pool.md).
-Designs and archived plans continue to own detailed scope; this consolidated backlog alone owns
-current state, priority, and the next schedulable gate.
+Designs and archived plans continue to own detailed scope. A row marked `Moved` has its current state, priority and next gate in its GitHub issue ([ADR-022](../../decisions/ADR-022-github-issues-as-the-work-register.md)). This backlog owns them
+only for the other rows: the deferred A2A work (ADR-022 item 9) and closed or reviewed history.
 
 | Identity | Status | Priority | Scope / next gate |
 |---|---|---|---|
-| `EVIDENCE-HANDOFF-FEAT-ZED-RENDER-OBSERVATION` | Open | MEDIUM | Design ratified but unscheduled; blocked on same-session Zed custody under `P11-FEAT-ZED-RESUME` and a production-equivalent cooperative-receipt feasibility result. [Design](../specs/evidence-handoff-zed-render-observation-design.md). |
+| `EVIDENCE-HANDOFF-FEAT-ZED-RENDER-OBSERVATION` | Moved | — | [#296](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/296) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L918-L918) |
 | ~~`EVIDENCE-HANDOFF-FEAT-REDACTION-GATE`~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Closed 2026-07-31 through commits `2f5e4b8`…`eb5f5d8`. [Archived plan](archive/evidence-handoff-redaction-gate-implementation.md).~~ |
-| `EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR` | Partially implemented | MEDIUM | Tasks 0–12 were independently reviewed at `c6c9b46`; determinate render outcomes remain blocked on the render-observation producer and the branch is unmerged. [Live plan](evidence-handoff-evidence-collector-implementation.md). |
+| `EVIDENCE-HANDOFF-FEAT-EVIDENCE-COLLECTOR` | Moved | — | [#294](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/294) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L920-L920) |
 | `EVIDENCE-HANDOFF-FEAT-A2A-LEDGER` | Reviewed disposition | MEDIUM | Not shipped, not supported, and not trusted after the independent audit returned `NOT SOUND`; merged opt-in code must not be used for trusted workflows. [Archived closure plan](archive/evidence-handoff-a2a-not-shipped-closure_v3.md). Current design authority: [design v2](../specs/evidence-handoff-a2a-ledger-design_v2.md); the frozen [v1 design](../specs/evidence-handoff-a2a-ledger-design.md) is immutable history. |
 | ~~`EVIDENCE-HANDOFF-FEAT-A2A-LEDGER-DESIGN-REFRESH`~~ | ~~Closed~~ | ~~MEDIUM~~ | ~~Closed 2026-09-28 by the complete successor [design v2](../specs/evidence-handoff-a2a-ledger-design_v2.md): Docker Desktop store ladder with wslc removed, Option A session protocol admission, and the audit's normative corrections; the operation-entry integrity guard stays owned by `EVIDENCE-HANDOFF-FEAT-LEDGER-INTEGRITY-BOUNDARY`.~~ |
 | `EVIDENCE-HANDOFF-FEAT-A2A-CHANNEL` | Open | MEDIUM | Deferred 2026-09-28 by operator decision (estimated two to two-and-a-half weeks including remediation, over the one-week threshold). Owns the [design v2](../specs/evidence-handoff-a2a-ledger-design_v2.md) channel slice: two-seat conversations paired by a ledger-minted code with per-seat cursors; channel activation of `question`, `answer`, `handoff`, and `acknowledgement`; the unattended-exchange budget; and client-owned same-thread scheduled polling for Claude Code and Codex, with Cursor on the operator nudge path. Next gate: an implementation plan whose first task settles the design's `unknown` prerequisites (Codex Windows thread-automation reliability, static-Bearer MCP connectivity), sequenced after the six remediation slices. |
@@ -929,24 +772,14 @@ current state, priority, and the next schedulable gate.
 | `EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY` | Open | MEDIUM | Owns audit findings H8, M14, and M16b. |
 | `EVIDENCE-HANDOFF-FEAT-LEDGER-AUDIT-WIRING` | Open | MEDIUM | Owns audit finding M16a. |
 | `EVIDENCE-HANDOFF-FEAT-LEDGER-EVIDENCE-DOD` | Open | MEDIUM | Owns audit findings H10, H11, and H12b. |
-| `EVIDENCE-HANDOFF-FEAT-APPROVAL-RECORD` | Open | MEDIUM | Design-needed, unscheduled convenience audit record; explicitly not a security or authorization mechanism. |
+| `EVIDENCE-HANDOFF-FEAT-APPROVAL-RECORD` | Moved | — | [#297](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/297) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L930-L930) |
 | `EVIDENCE-HANDOFF-FEAT-PEER-LIVENESS-SIGNAL` | Open | MEDIUM | Design-needed, unscheduled; requires an explicit heartbeat/session-health mechanism rather than inference from cursor activity. |
 | `EVIDENCE-HANDOFF-FEAT-CREDENTIAL-LIFECYCLE` | Open | HIGH | Design-needed OAuth/rotation/`kid`/JWKS/dynamic-registration work, including discovery and Bearer-challenge interoperability. |
 | `EVIDENCE-HANDOFF-FEAT-AT-REST-INTEGRITY` | Open | MEDIUM | Design-needed full-chain detector covering historical sequences behind confirmed cursors. |
 
 ### P11-FU-37: MAIN-5 Windows evidence-bundle promotion residual
 
-**Raised:** 2026-10-02.
-**Status:** Open.
-**Origin:** Windows evidence-bundle directory-rename sharing violations, accepted ruling A/F
-and registered F1 unguarded reproduction; bundle/private-file long-path observations.
-**Designated future plan / owner:** Evidence-handoff redaction product owner, existing
-`EVIDENCE-HANDOFF-FEAT-REDACTION-GATE` custody. This is a new residual under that owner;
-the existing feature remains Closed and is not reopened or declared unsound.
-**Trigger or acceptance criteria:** Characterize Windows sharing violations without the
-MAIN-5 guard; prove bounded promotion, integrity and failure custody, including applicable
-private-file promotion paths. The registered one-test flake exception is not general
-retry permission or a product fix. Short-path mitigation does not establish repair.
+**Moved:** tracked in [#293](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/293). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L935-L947).
 
 ## A2A ledger audit obligations
 
@@ -992,201 +825,35 @@ bijection.
 
 ### P9.8-FU-2: Intelligent ambiguous-reference ranking
 
-**Raised:** 2026-07-10, in Plan 9.8's own Deferred Follow-Ups
-(`docs/superpowers/plans/archive/2026-07-10-plan-9-8-task-aware-workspace-context.md`).
-
-**Designated future plan:** Plan 12 (Context Window Optimization and Intelligent Selection).
-
-**Acceptance criteria:** Candidate ranking uses the accepted relevance/trust/freshness/dependency
-policy, measures wrong-target regret, and retains a fail-closed threshold. Until this lands,
-ambiguity stays visible and deterministic (Plan 9.8's current behavior).
-
-**Status:** Open. The bounded Plan 11.7 current-Zed evidence/correction cycle reached its reviewed
-Task 5 Path A fail-closed terminal stop on 2026-08-05: no accepted same-session live retry, no
-correlation ordinal 4, no settings mutation, and no Zed relaunch. No approved correction remains
-pending in that cycle. This did not implement intelligent ambiguous-reference ranking;
-`P9.8-FU-2` remains open under Plan 12 with its original acceptance criteria.
+**Moved:** tracked in [#242](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/242). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1061-L1077).
 
 ### P9.8-FU-3: Dynamic context budgets and required-file summarization
 
-**Raised:** 2026-07-10, in Plan 9.8's own Deferred Follow-Ups
-(`docs/superpowers/plans/archive/2026-07-10-plan-9-8-task-aware-workspace-context.md`).
-
-**Designated future plan:** Plan 12 (Context Window Optimization and Intelligent Selection).
-
-**Acceptance criteria:** Budget changes are model-aware, cost-attributed, injection-safe, measured
-against the null baseline, and never silently omit required evidence.
-
-**Status:** Open. Not yet scheduled.
+**Moved:** tracked in [#243](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/243). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1078-L1089).
 
 ### P9.8-FU-5: Zed Refusal-Rendering Stability
 
-**Raised:** 2026-07-11 during Plan 9.8 live evidence. Zed 1.10.2 correctly received and briefly
-rendered the ambiguous-refusal corrective text, then panicked in native client code with
-`range end index 3 out of range for slice of length 2`. The agent wire contract and independent
-`acpx` durable refusal UI remain proven.
-
-**Designated slice:** `P11-FEAT-ZED-RESUME` (plan number assigned at pickup). Plan 9.75 was already complete
-when the client-stability issue was discovered, and its evidence report classifies the panic as
-separate from the ACP conformance fix. Do not reopen Plan 9.75 and do not fold this work into Plan 12.
-
-**Acceptance criteria:** Reproduce against a supported current Zed build, separate agent payload
-correctness from client rendering behavior, preserve the existing fail-closed refusal contract, and
-produce durable operator-visible refusal evidence or an explicit externally owned Zed defect
-disposition. Any agent-side workaround requires its own reviewed plan and must not weaken ACP
-conformance.
-
-**Evidence anchors:** `reports/plan-9-8-task-aware-context-evidence.md`,
-`reports/plan-9-75-zed-hitl-runtime-evidence.md`, and the Plan 9.8 `P9.8-FU-5` acceptance criteria.
-
-**Status:** Promoted -> [Plan 11.7 v3](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md).
-Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`). Frozen Task 0 Steps 1-4 sealed the
-current-Zed Case 1/2 refusal-rendering evidence (Case 1 wire `end_turn` / stable; Case 2 wire
-`refusal` / Zed panic). The bounded origin-A/retry-preflight correction cycle reached Task 5
-**Path A** fail-closed terminal stop on 2026-08-05; no approved correction remains pending. An
-accepted same-session live retry was not obtained, frozen Plan 11.7 remains blocked, and this item
-stays open pending an explicit reviewed Zed-defect disposition or a separately authorized future
-budget-expansion/live-evidence path. Evidence:
-[Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json).
-
-**Triage justification for HIGH (2026-08-15):** This is an unimplemented ACP protocol capability
-that makes a client start a new session instead of restoring an existing one after a connection or
-process boundary. The impact is directly user-visible session continuity and cross-client
-interoperability, with durable identity, history, and storage-failure semantics still undefined;
-that functional impact warrants work ahead of ordinary capability and documentation gaps.
+**Moved:** tracked in [#253](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/253). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1090-L1125).
 
 ### P9.85-FU-1: Intelligent observation compression
 
-**Raised:** 2026-07-11, in Plan 9.85's own Deferred Follow-Ups
-(`docs/superpowers/plans/archive/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`).
-
-**Designated future plan:** Plan 12 (Context Window Optimization and Intelligent Selection).
-
-**Acceptance criteria:** An approved design may replace fixed fail-closed carryover with
-provenance-preserving compression, regret measurement, and calibration gates. Until then, overflow
-remains terminal (Plan 9.85's current behavior).
-
-**Status:** Open. Not yet scheduled.
+**Moved:** tracked in [#244](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/244). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1126-L1138).
 
 ### P9.85-FU-2: Dynamic planning-evidence partition
 
-**Raised:** 2026-07-11, in Plan 9.85's own Deferred Follow-Ups
-(`docs/superpowers/plans/archive/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`).
-
-**Designated future plan:** Plan 12 (Context Window Optimization and Intelligent Selection).
-
-**Acceptance criteria:** Calibrated evidence justifies changing the fixed 4 KiB/12 KiB
-observation/current-read split without weakening Plan 9.8's completeness and ambiguity guarantees.
-
-**Status:** Open. Not yet scheduled.
+**Moved:** tracked in [#245](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/245). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1139-L1150).
 
 ### P9.85-FU-3: Cross-Run/Session Spend Policy
 
-**Raised:** 2026-07-11, in Plan 9.85's own Deferred Follow-Ups
-(`docs/superpowers/plans/archive/2026-07-11-plan-9-85-multi-turn-read-observe-replan.md`), disclosed as
-owned by an unnamed future budget-governance plan rather than silently dropped.
-
-**Designated future plan:** None yet named — a future budget-governance plan.
-
-**Acceptance criteria:** Define an operator-configurable cumulative session/project spend ceiling
-above the existing per-run `max_cost_usd` monotonic limit and the Plan 7 usage ledger. Any new
-cross-run/session ceiling must not weaken or duplicate the existing per-run
-monotonic-tighten-or-exact approval contract (Plan 9.96), must be enforced from the same reconciled
-Plan 7 usage ledger rather than a new parallel accounting path, and must fail closed rather than
-silently permit overspend when ledger data is unavailable. Plan 9.85 records all usage completely
-and accurately but does not itself invent any cross-run denial policy.
-
-**Architecture resolution (2026-07-28):** The repaired HLD v2.16 §§5A and 11, LLD v2.39 §§0A,
-9D, and 10A, Guardrails v1.1 §§7.2 and 9, and the refreshed requirement inventory settle the
-local Gateway as the authority for current-run budget caps, provider-reported usage/cost, and the
-reconciled cost ledger. The prior architecture conflict about a hosted budget service is resolved.
-This entry does not define a cumulative session/project ceiling: that policy remains open,
-undesigned, and unscheduled under a future budget-governance plan.
-
-**Plan 11 disposition:** Architecture-unblocked; no implementation or cumulative cross-run policy
-design is included in Plan 11. Revisit only under the future budget-governance plan.
-
-**Status:** Open. Not yet scheduled.
+**Moved:** tracked in [#257](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/257). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1151-L1178).
 
 ### P9.87-FU-1: Mechanical Current-Raw-Evidence Grounding Guard
 
-**Raised:** 2026-07-12, in Plan 9.87's own Deferred Follow-Ups
-(`docs/superpowers/plans/archive/2026-07-12-plan-9-87-model-initiated-replanning-live-refusal.md`). Carried
-forward, unresolved, through Plan 9.88's closure ceremony and Plan 9.95's custody-transfer record.
-
-**Designated future plan:** Plan 11 feature work; no feature slice or plan number is assigned yet.
-This item was formerly the sole follow-up in the retired Plan 9.97 lane and is now carried by this
-pool without a Plan 10.x slot.
-
-**Trigger:** A content-correct FU-5 final plan or later evidence shows exact policy bytes can pass
-through observations despite the prompt prohibition.
-
-**Acceptance criteria:** Define mechanical provenance between final WRITE content and current-turn
-raw ranges without logging source bodies or silently absorbing Plan 12's intelligent-selection
-scope. This lane must not absorb or be absorbed by Plan 12.
-
-**Status:** Open. Not yet scheduled. This pool records promotion and disposition when this item is
-picked up; no Plan 10.x slot is reserved.
+**Moved:** tracked in [#258](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/258). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1179-L1198).
 
 ### P11-FU-1: ACP Session Resume Capability
 
-**Raised:** 2026-07-25 during Plan 11 scoping. The current ACP adapter dispatches `initialize`,
-`session/new`, and `session/prompt`, but has no `session/load` handler. Its initialization response
-advertises an empty `sessionCapabilities` object, so the client correctly concludes that resume is
-unsupported and starts a new session on every connection.
-
-**Origin:** `src/optimus/acp/spec.py` (`AcpDuplexAdapter.handle_client_request` and
-`_handle_initialize`), with the live server wiring `InMemoryAcpSpecSessionStore` in
-`src/optimus/acp/server.py`.
-
-**Designated slice:** `P11-FEAT-ZED-RESUME` (plan number assigned at pickup). This item is
-owned by `P11-FEAT-ZED-RESUME`, not parked or deferred to a later milestone.
-
-**Acceptance criteria:** The reviewed `P11-FEAT-ZED-RESUME` design and implementation must:
-
-- implement ACP `session/load` and advertise `loadSession` only when its semantics are supported;
-- define the session identity, workspace binding, conversation/history, and relevant run metadata
-  that persist across client/process boundaries;
-- select and document a durable storage mechanism, TTL/expiry, deletion, migration/versioning,
-  retention, and storage-failure behavior as a first-class design decision;
-- restore the session in the protocol-required shape, including conversation replay or the exact
-  supported load semantics, without silently substituting `session/new`; and
-- cover successful load, unknown/expired sessions, workspace mismatch, malformed or unavailable
-  storage, capability negotiation, and history replay with unit/integration/live ACP evidence.
-
-`InMemoryAcpSpecSessionStore` is process-local. `RedisAgentStateStore` stores expiring agent plans
-(`AgentPlanRecord`), not ACP session or conversation state, and cannot be treated as an existing
-resume store without an explicit design and migration decision.
-
-**Status:** Promoted -> [Plan 11.7 v3](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md).
-Scheduled in Plan 11.7 (`P11-FEAT-ZED-RESUME`). Frozen Task 0 Steps 1-4 are sealed with
-disposition `stop_amend_plan_session_load_unreachable` (historical Zed 1.13.1 did not issue `session/load`
-after full restart). The bounded origin-A/retry-preflight correction cycle reached Task 5
-**Path A** fail-closed terminal stop on 2026-08-05; no approved correction remains pending. The
-accepted same-session live retry was not obtained, parent Task 5 and frozen Plan 11.7 remain blocked,
-and a clean relaunch requires a separately authorized complete versioned successor. This is still an
-unimplemented protocol capability, not a flaky regression or parked architecture blocker. Evidence:
-[Path A terminal seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json).
-
-**Current-version evidence (2026-08-22) — the technical premise above is obsolete; the entry is NOT
-unblocked.** A matched A/B control against **Zed 1.16.1** (`eb8e1c8b5502b7007465fbbc465f4a736fa39210`)
-in a hermetic profile established that Zed **does** issue `session/load` when Optimus advertises
-top-level `loadSession`: arm A (unadvertised) recorded `initialize` only; arm B (advertised) recorded
-exactly one `session/load` for the seeded session, with no `session/new` fallback. Zed's capability
-gate is byte-identical between 1.13.1 and 1.16.1, so this is a change in what Optimus advertised, not
-in Zed. The historical `stop_amend_plan_session_load_unreachable` disposition remains **immutable
-evidence for Zed 1.13.1** and is neither retracted nor re-executed.
-
-**This does not unblock Tasks 1-11.** The approved server-side custody feasibility amendment blocks
-frozen Task 0 Steps 5-7 and Tasks 1-11 *regardless of the correlation outcome*; that authority must be
-**superseded by an approved forward-only Plan 11.7 v2**, not treated as lapsed. Status therefore stays
-blocked pending v2 approval. Independent review (Codex, 2026-08-22) records: **GO for drafting v2,
-NO-GO for starting Tasks 1-11 directly.**
-
-**Evidence-custody gap, open:** the 2026-08-22 artifacts (A/B metadata + traces under
-`reports/plan-11-7-task0-artifacts/2026-08-22-current-zed-reprobe/`) are **untracked and not yet
-promoted through the redaction gate**, which the roadmap's own re-probe requirement calls for. They
-are not yet citable as sealed evidence.
+**Moved:** tracked in [#254](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/254). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1199-L1258).
 
 ### P11-FU-2: Package Lookup and Security Advisory Gateway Capability
 
@@ -1266,81 +933,11 @@ Steps 2-4 and Task 9 incomplete), with implementation in PR #116 and CI custody 
 
 ### P11-FU-4: Re-pin FU-4A/FU-5 Live Evidence
 
-**Raised:** 2026-07-15 by the Plan 9.95 Task 5 implementation amendment.
-
-**Origin:** `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`, historical backlog section §776.
-The Plan 9.87 `fu4a` and `fu5` evidence gates fail with implementation drift against the current
-codebase, so fresh live evidence must be captured and re-pinned.
-
-**Designated slice:** Coordinate with `P11-FEAT-ZED-RESUME` where the Zed live-evidence
-capture path overlaps; no Plan 11.x plan number is allocated by this entry.
-
-**Acceptance criteria:** Re-capture fresh real-`acpx` FU-4A and FU-5 evidence against the current
-codebase, select the reviewed sanitized capture path, record the exact evidence and implementation
-SHAs, and close or explicitly disposition the freshness gap before the v1.0 cut. FU-4A may be
-partially closed on its own once its fresh evidence is accepted; that partial closure must not claim
-the separate FU-5 evidence half is complete.
-
-**Status:** Open. Tracked, not yet scheduled; no implementation plan exists. Evidence-freshness class.
-
-**Prioritization disposition (2026-08-15):** Option 2 — allow partial closure on FU-4A alone. This
-keeps the actionable fresh-evidence work at the default `MEDIUM` level without parking it behind
-the separate FU-5 evidence residual. The overall entry remains `Open` until the FU-5 half is also
-accepted or explicitly dispositioned; no status is changed by this pass.
+**Moved:** tracked in [#259](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/259). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1335-L1358).
 
 ### P11-FU-5: Windows Subprocess Handle-Duplication Flake (WinError 6/50)
 
-**Raised:** 2026-07-22 during Plan 9.99 Task 7 repository-wide verification.
-
-**Classification:** MISFILED as one combined item. The unreproduced Windows flake and the
-deterministically demonstrable durable-approval identity concern have separate mechanisms and
-must have separate custody.
-
-**Origin:** `docs/superpowers/plans/2026-07-01-phase-1-roadmap.md`, historical backlog section §861.
-The feasibility findings include both the no-reproduction result and the separately identified
-durable-approval identity concern. Batch B splits the latter into `P11-FU-29`; this entry retains
-only the rare Windows `DuplicateHandle` flake custody.
-
-**Designated slice:** Future Windows subprocess-lifecycle evidence lane. [Plan 11.17's disposition](../../../reports/plan-11-17-p11-fu-5-windows-disposition.md) established reproduced, context-known custody but no deterministic causal edge. This remains distinct from the durable-approval `P11-FU-29` mechanism.
-
-**Acceptance criteria:** A future pickup must establish an applicable reproduction or durable
-non-reproduction disposition for the original Windows flake, and receive a reviewed custody
-decision before any fix or exclusion is claimed. It must not fold the independent `P11-FU-29`
-identity concern back into this test-infrastructure entry.
-
-**Reproduction disposition (2026-08-14/15):** Reproduced, context known. The operator-recorded
-disposition is three Windows `WinError 6` / `DuplicateHandle` occurrences in
-`test_immutable_documents_match_approved_head_blobs` and
-`test_product_checkpoint_log_location_remains_gitignored`, both of which spawn Git subprocesses.
-The [Plan 11.14 evidence](../../../reports/plan-11-14-p11-fu-21-custody-relay-exit-code-evidence.md#ruff-diff-and-sealed-artifact)
-names those two selectors and the `DuplicateHandle` incident. The
-[Plan 11.15 baseline](../../../reports/plan-11-15-durable-approval-identity-baseline.md#baseline-failures--recorded-as-p11-fu-5-not-plan-1115)
-records the same `subprocess.Popen` / `_make_inheritable` mechanism in four other Windows Git/DACL
-subprocess tests; those four failures are corroborating mechanism evidence, not part of the three
-occurrences above. The [Plan 11.15 Windows evidence](../../../reports/plan-11-15-windows-durable-approval-identity-evidence.md#residuals-not-this-plan)
-and [release report](../../../reports/plan-11-15-durable-approval-identity-release.md#unrun--unclaimed-tiers)
-retain FU-5 as open and expressly prevent cross-crediting FU-29's injected Git fault.
-
-The historical ten-run no-reproduction result remains historical context, not contrary evidence;
-FU-5's recurrence rate is unknown, so later clean runs cannot prove absence. No fix or exclusion is
-claimed here.
-
-**Status:** Open. Reproduced, context known; root cause remains unestablished after Plan 11.17.
-Its own evidence and reviewed custody decision determine any closure; it cannot borrow FU-6 socket
-evidence or its no-reproduction bound.
-
-**Triage justification for LOW (2026-08-15):** Plan 11.17 reproduced the `DuplicateHandle` signal
-in the known Git-spawning test context, but the rate remains unknown and no product behavior has
-been shown to fail. This is test-infrastructure-only custody with no functional product effect;
-the sparse reproduced signal and the decided Plan 11.17 disposition place it at the end-of-Plan
-queue while preserving its separate evidence and closure requirements.
-
-**Batch B split (2026-08-14):** The historical ten-run no-reproduction result remains evidence for
-the rare Windows flake, not a product fix. The roadmap's fault-injectable behavior in
-`_git_repository_root` / `_git_common_dir` is now owned by `P11-FU-29`. It is related to
-`P11-FU-18` because both feed the durable workspace-identity/approval contract, but is distinct:
-this path can spuriously invalidate approval when a Git probe fails (fail closed), whereas
-`P11-FU-18` can miss a real in-place change when `ctime` coalesces (fail open).
+**Moved:** tracked in [#260](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/260). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1359-L1412).
 
 ### P11-FU-29: Durable-approval identity instability on transient Git probe failure
 
@@ -1374,202 +971,11 @@ Not closed by `P11-FU-18` topology evidence and not closed by a `P11-FU-5` handl
 
 ### P11-FU-6: Gateway `test_server` Full-Suite Port/Teardown Flake
 
-**2026-09-06 delivery update — scoped correction merged; FU-6 remains Open.** Plan 11.27's current-outcome note records the accepted local integration and PR #195 merge. The scoped fix bounds rejected POST-body consumption and response writing; recognized routes retain their prior behavior. Handler-level causal involvement was established on the tested Windows host, while packet-level mechanism and universality remain unestablished. The next FU-6 gate is an independently reviewed definition of broader closure criteria, not repetition of the completed integration work.
-
-**2026-09-05 integration plan commissioned — delivery remains pending.**
-Plan 11.27 v12 combines the preserved Slice B package with the accepted correction on the
-bound Slice A parent in a new independent clone. It proposes a new 120-minute box and requires
-an exact-tree, exact-hit P1 before integrated Gateway execution, staging and the full Windows
-rehearsal/actual-commit gates. At this package snapshot no integration commit or delivery
-acceptance exists. Outcomes belong to the later external run/commit receipt; publication and
-broader FU-6 closure remain withheld. This paragraph supersedes no historical evidence.
-
-Authoring exposed a separate local-hook limitation: the same frozen documents pass the
-unchanged Windows local scanner in the host's default CP1252 mode only because eight plan
-documents (v2-v8 and FU-6 v2) are skipped entirely on decoding errors. UTF-8 scanning finds
-25 non-credential integrity/example values in v2-v8; FU-6 v2 is clean under UTF-8. The production CI hook already uses UTF-8 and remains required. Existing
-local-hook decoding/completeness belongs to `P11-FEAT-ACP-RUNTIME-HARDENING`; v12 execution
-needs an explicit disposition, with no baseline expansion, frozen-document edit or encoding
-workaround inferred. A default local pass is not a repository-wide cleanliness guarantee.
-
-**2026-09-05 superseding disposition — Correction accepted; FU-6 remains Open.**
-Codex closed the four Task 4 review findings on the pinned uncommitted correction.
-Final Windows and WSL focused runs each show 79 passed; the five mutant oracles hold.
-The sealed static checks report seven passes and two no-applicable-file skips, all exit 0.
-The external stalled-client watchdog and its forced-hang control, shutdown/close error
-controls, and server-side Expect/no-100 oracle are accepted for the scoped correction.
-An evidence overwrite deviation remains recorded. Codex reconstructed the prior test,
-patch and end marker to their exact old hashes; 29 of 31 prior artifacts have matching
-bytes located. Two derived JSON summaries remain lost; their original raw log survives.
-Only approved prose/custody closeout remains in this correction phase. No delivery or
-broad reliability claim follows. Integration needs a separate final-tree plan, exact-hit
-P1 and complete Windows rehearsal/commit gates. The earlier review hold below is historical.
-
-**2026-09-05 correction review — Open; uncommitted and acceptance pending.**
-The independent investigation established causal involvement of unread-body-before-close
-behavior on the tested Windows host. The exact packet/reset/discard chain and universality
-across hosts remain unproven. The older suspected-cause discussion below is historical.
-Under the approved v2 correction-only box, Fable implemented bounded rejected-POST handling
-in an independent checkout. The old-source ordering RED is accepted; focused final-byte
-Windows and WSL logs each show 75 passed, and five mutants exercise named failure oracles.
-Codex verified all 31 executor manifest entries. This is not full-suite or delivery evidence.
-
-Codex's Task 4 review requires the external stalled-client watchdog and guaranteed failure
-cleanup, shutdown-worker exception propagation, server-side Expect/no-100 oracles, narrowed
-source/README claims, and a sealed final static-check pass before correction acceptance.
-The approved limits remain 64 KiB, one two-second total body deadline and a separate
-two-second shared response-write budget, applying only to already-rejected POST routes.
-Recognized-route unbounded body reads and malformed Content-Length handling, request-header
-deadlines, and global connection/thread admission remain deferred to the existing owner
-`P11-FEAT-ACP-RUNTIME-HARDENING`; this correction does not schedule or claim those fixes.
-Fable owns corrections and evidence; Codex owns independent review. The v2 registry remains
-Active. Slice B remains stopped; integration and delivery revalidation require their own
-exact-hit approval and final-tree gates. No staging, commit, publication or FU-6 closure.
-
-**Raised:** 2026-07-26 during Plan 11.1 Task 7 final sign-off (PR #85 / `P11-FEAT-GATEWAY-CORE`).
-
-**Origin:** Intermittent failure of the predecessor of current
-`tests/unit/optimus_gateway/test_server.py::test_tools_routes_return_not_found_when_dependencies_are_not_configured`
-(`test_tools_routes_remain_not_found` at raising) observed once in
-five consecutive full-suite runs (`uv run --frozen pytest -q` and the same suite under `--cov`).
-The same test passed every isolation run (single node and the full 24-test `test_server.py` file).
-Not connected to Plan 11.1 CORE-route feature correctness — focused and live CORE evidence stayed
-green throughout review.
-
-**Suspected cause:** Shared `_start_server()` / `_stop_server()` helpers spin a real
-`ThreadingHTTPServer` on an OS-assigned loopback port (`socket.bind(("127.0.0.1", 0))`) per test
-(~20 siblings in the file). Likely a Windows-specific port-reuse or thread-teardown race
-(`server.shutdown()` / `thread.join(timeout=5)` racing the next test's bind), not an assertion
-defect in the failing test.
-
-**Related prior art:** Same Windows test-infra flake class as `P11-FU-5` (WinError 6/50) and the
-`agent/cursor/windows-subprocess-handle-flake-backlog` branch. Before scoping a numbered plan,
-check whether this shares that root cause; do a feasibility pass before any scoped plan, not
-before.
-
-**Designated slice:** Future Windows Gateway lifecycle-evidence lane. [Plan 11.17's root-cause
-record](../../../reports/plan-11-17-p11-fu-6-root-cause.md) retained the full-suite recurrence and
-classified its cause as insufficiently evidenced; no deterministic correction is authorized.
-
-**Acceptance criteria:** Reproduce or disposition under full-suite load on Windows; determine
-whether this is the same root cause as `P11-FU-5` or a distinct bind/teardown race; harden
-`_start_server`/`_stop_server` (or equivalent) only after a reviewed feasibility pass; preserve
-the CORE-route unit coverage that already passes in isolation.
-
-**Status:** Open. Reproduced, root cause unestablished after Plan 11.17 process 5 failed at the
-current successor. The 59-clean bound is inapplicable after that recurrence. Its historical 95.2%
-conditional detection-power calculation applies only to 59 clean independent processes at the
-observed 5% rate and never proves absence. Any harness or production correction remains conditional
-on deterministic-red and reviewed-scope gates.
-
-**Additional observation (2026-08-10, evidence-handoff Task 6 interop review):** During a full
-suite run on this host, `tests/unit/optimus_gateway/test_server.py::test_unknown_route_remains_not_found`
-failed once, then passed in isolation, in its own file, and on a clean full re-run
-(3126 passed / 0 failed). Same `test_server.py` ThreadingHTTPServer harness class as the original
-`test_tools_routes_remain_not_found` observation; still unreproduced for root-cause. Do not dismiss
-as "just flaky" without a disposition — this entry remains the named owner. Unrelated to the
-evidence-handoff MCP-Protocol-Version transport fix under review the same day.
-
-**Additional observation (2026-08-10 evening, Option B integrity-latch review):** A second distinct
-sibling in the same `test_server` harness failed once during a full-suite run for the
-`evidence_handoff_runtime` latch-mirror fix, then passed isolated, in-file, and on a clean full
-re-run (3132 passed / 0 failed). `optimus_gateway` was untouched by that change. Two different
-harness siblings failing the same evening is stronger race evidence than either alone — keep both
-on this entry; do not open a second FU.
-
-**Recurrence:** 2026-08-11 — DoD coverage run: the P11-FU-6 pair recurred (both `test_server`
-harness tests) under `--cov`; passed isolated, in-file, and on coverage re-run at 81.34%. Same
-port/teardown harness class; do not merge with `P11-FU-7`.
-
-**Additional observation (Plan 11.12):** The Windows `WinError 10053` socket-teardown signal
-previously tracked under `P11-FU-26` is transferred here because Plan 11.12 retired the Gateway MCP
-transport surface. This entry remains open and continues to own Gateway `test_server` port/teardown
-flake custody. No production retry or safety weakening was added.
-
-**Batch B recurrence (2026-08-14):** On current `origin/main` base `da2fc78`, 20 Windows
-`pytest tests/unit -q` processes produced 18 clean suites and two unrelated suite failures. The
-obsolete predecessor node did not exist and therefore had 0/20 hits; its current successor above
-failed once (1/20, 5%) with `ConnectionAbortedError: [WinError 10053]` in
-`HTTPConnection.getresponse()` while requesting one of its tool routes. The same
-`_start_server()` / `_stop_server()` real `ThreadingHTTPServer` harness is implicated, but this
-sample does not establish whether readiness, shutdown, or server-thread exception propagation is
-the root cause.
-
-**Classification (Batch B):** REPRODUCED test-infrastructure flake; needs a written Gateway
-harness plan. Preserve the route assertions. Do not add retries, widen request timing, or weaken
-production safety behavior. `P11.7-FU-2` is duplicate custody and is merged here.
-
-**Triage justification for LOW (2026-08-15):** Every current reproduction is confined to the
-test harness's `_start_server()` / `_stop_server()` lifecycle, never an independently driven
-`serve_gateway()` path. The observed rate is approximately 5% per full Windows unit run and the
-failure has no product effect, so it is a low-priority test-infrastructure investigation rather
-than a functional Gateway defect.
+**Moved:** tracked in [#261](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/261). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1443-L1575).
 
 ### P11-FU-7: Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test
 
-**Raised:** 2026-07-27 during the Plan 11.3 Task 1 independent review (operator Vibhanshu).
-The failure was observed once in a full-suite run for
-`tests/unit/acp/test_stdio_ndjson.py::test_serve_ndjson_sanitizes_request_processing_response_and_stderr`;
-the same test passed 2/2 when run in isolation. The same failure pattern has previously
-recurred during Plan 10.1 and Plan 11.1 verification.
-
-**Origin:** Repeated diagnosis identifies coverage instrumentation / `sys.settrace` timing
-sensitivity racing with the test's `asyncio.wait_for(..., timeout=1)`. This is a test-harness
-timing flake, not an identified defect in ACP stdio or NDJSON production behavior. The
-failure concerns the test's scheduling deadline under instrumentation and must not be
-re-diagnosed as an ACP protocol or sanitization regression at each plan pickup.
-
-**Designated slice:** [Plan 11.16](archive/2026-08-15-plan-11-16-p11-fu-7-19-deadline-seams.md). Test-only
-ACP NDJSON wall-clock removal; do not re-diagnose as ACP production behavior.
-
-**Acceptance criteria:** A future pickup must:
-
-- reproduce or disposition the failure under the relevant Windows full-suite and coverage
-  configurations, including a clean isolation comparison;
-- verify the diagnosis against the test's `asyncio.wait_for(..., timeout=1)` deadline and
-  coverage / `sys.settrace` instrumentation timing, distinguishing it from a production
-  stdio/NDJSON failure;
-- apply a reviewed, narrowly scoped test-infrastructure remedy (or document a durable
-  non-reproduction/disposition) without weakening the assertions that request-processing,
-  response, and stderr sanitization remain correct;
-- demonstrate that the remedy does not hide genuine ACP stdio/NDJSON regressions and record
-  the exact Windows, pytest, coverage, and test-suite conditions used; and
-- preserve the existing independent test evidence, with no production-code change claimed
-  unless new evidence establishes a separate production defect.
-
-**Related prior art:** Follow the Windows/test-infrastructure flake custody pattern used by
-`P11-FU-5` (WinError 6/50 subprocess handle-duplication) and `P11-FU-6` (gateway `test_server`
-port/teardown race). This item is distinct: its established mechanism is coverage
-instrumentation / `sys.settrace` scheduling pressure around an `asyncio.wait_for` deadline
-in a unit test, with no current evidence of a subprocess-handle or port-teardown defect.
-
-**Status:** Partially implemented. Plan 11.16 is a terminal partial outcome: test-only
-`wait_for(..., timeout=1)` wrappers were removed in `72f3cc8` without widening the clock, and its
-independent P11-FU-19 lane closed. The 25 full Windows `--cov` gate stopped at 4/25 after unrelated
-`P11-FU-6` WinError 10053, so this entry remains unresolved and is reassigned to a future Windows
-coverage-flake closure lane rather than keeping the completed Plan 11.16 execution record live.
-Residual: [Windows evidence](../../../reports/plan-11-16-p11-fu-7-windows-evidence.md).
-
-**P11-FU-6 gate (2026-08-15):** The 25-process Windows `pytest --cov -q` closure gate is unrun
-after 4/25 because P11-FU-6 recurred. Plan 11.17 recorded FU-6 as reproduced, root cause
-unestablished; that is not a pass or partial completion.
-
-**Triage note (2026-08-15):** Keep this entry at `MEDIUM` because the Plan 11.16 test-only fix
-landed and its remaining closure gate is a bounded evidence task, not unfinished production work.
-The 25-run closure gate is explicitly deferred with `P11-FU-6` and is not actionable during the
-HIGH/MEDIUM phase; do not read the `MEDIUM` row as permission to claim closure before that gate runs.
-
-**Next pickup:** P11-FU-6 now has its separate recorded open disposition. Resume, count, or claim
-this gate only in Plan 11.16's separate evidence lane; Plan 11.17 did not restart or spend it.
-
-**Recurrence:** 2026-08-10 — ACP NDJSON sanitization flake reproduced in the full suite only (passed isolated and in-file); same coverage/`sys.settrace` timing diagnosis; do not widen `P11-FU-6` or merge these entries.
-
-**Batch B recurrence (2026-08-14):** Five Windows full-suite runs under `pytest --cov -q`
-produced four clean passes and one failure of
-`test_serve_ndjson_sanitizes_request_processing_response_and_stderr` (1/5, 20%). This confirms
-the coverage-specific flake at the bounded sample; it does not establish general suite-load as a
-necessary condition. **Classification (Batch B):** REPRODUCED test-infrastructure flake; retain the
-controlled timing/readiness-seam plan and do not widen either existing one-second deadline.
+**Moved:** tracked in [#262](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/262). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1576-L1641).
 
 ### P11.5-FU-1: Map live OTLPSpanExporter FAILURE into Gateway QUEUED/retry semantics
 
@@ -1634,70 +1040,7 @@ change is made.
 
 ### P11-FU-8: Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming
 
-**Raised:** 2026-07-29 by operator ([Vibhanshu]) during backlog triage.
-Status for pickup: **Needs deeper investigation before scoping — not ready to implement.**
-
-**Origin / substance:** The name is functionally correct but inconsistent with sibling Gateway
-env naming (`OPTIMUS_GATEWAY_TAVILY_BASE_URL`, `OPTIMUS_GATEWAY_OSV_BASE_URL`, and similar all use
-`OPTIMUS_GATEWAY_<THING>_BASE_URL`). This identifier breaks the pattern as
-`OPTIMUS_LOCAL_GATEWAY_BASE_URL`. Candidate rename: `OPTIMUS_GATEWAY_PROVIDER_BASE_URL`.
-
-**Why this is not a quick rename (confirmed by direct investigation):**
-
-- Blast radius: ~20 files / ~65 occurrences across three source packages (`optimus.acp`,
-  `optimus_gateway`, `optimus_security`) and at least six test files
-  (`tests/unit/acp/test_launch_gate.py` alone has ~15 occurrences; a dedicated
-  `tests/unit/security/test_gateway_base_url_resolution.py` exists for this surface).
-- The variable **name** feeds the HMAC security-snapshot fingerprint via
-  `compute_secret_fingerprint(value, field_name=name, ...)` in `launch_gate.py`. Renaming
-  invalidates existing operators' durable launch approvals and requires an explicit migration
-  story — not a silent swap.
-- `resolve_launch_candidate` fails closed on any unrecognized `OPTIMUS_*` name. An operator's
-  existing `.env.gateway` that still carries the old name would hard-break post-rename unless a
-  compatibility alias (or dual-accept window) is designed first.
-- At least one referencing design
-  (`docs/superpowers/specs/2026-07-15-plan-9-96-operator-controlled-debug-and-launch-trust-security-design.md`)
-  is frozen/digest-pinned; its header requires a matching frozen digest for approval, so any
-  edit needs a full reviewed versioned successor rather than an in-place tweak.
-- Historical doc surface: nine plan/spec references across six plan/spec identities (the original pre-9.x local-Gateway-service plan, 9.7, 9.96, 9.99, 10.2, 11.4). Frozen/historical docs must be allowlisted by exact path if touched only for census, or
-  amended under their own review rules.
-
-**Designated slice / plan shape:** Future small dedicated naming/canonicalization plan
-(precedent: Plan 9.99 existed for this class of security-snapshot naming concern). Do **not**
-fold a silent rename into an unfinished Plan 11.5 checkpoint or any unrelated feature slice.
-Plan number assigned at pickup after the compat-alias + migration design is reviewed.
-
-**Next step before implementation:** Scope a compatibility-alias + durable-approval migration
-design (old name accept window, fingerprint transition, fail-closed behavior for mixed/unknown
-names, operator docs, and frozen-spec amendment path). Only then commit to the rename target
-(`OPTIMUS_GATEWAY_PROVIDER_BASE_URL` or a reviewed alternative).
-
-**Acceptance criteria (draft — refine at pickup):**
-
-- Reviewed design covers alias window, HMAC fingerprint migration, and fail-closed launch-gate
-  behavior for stale vs dual names.
-- Implementation (when scheduled) updates all live `src` / `tests` / runtime examples /
-  `.env*.example` surfaces; does not silently break existing durable approvals.
-- Frozen digest-pinned specs are amended under their own approval path or left untouched with
-  exact-path historical custody — no broad `docs/**` rewrite.
-- Focused regression coverage extends
-  `tests/unit/security/test_gateway_base_url_resolution.py` and launch-gate fingerprint tests for
-  the chosen migration semantics.
-
-**Evidence anchors:** operator investigation notes (2026-07-29); `src/optimus_security` launch-gate
-fingerprint path; sibling env names `OPTIMUS_GATEWAY_TAVILY_BASE_URL` /
-`OPTIMUS_GATEWAY_OSV_BASE_URL`; Plan 9.99
-(`docs/superpowers/plans/archive/2026-07-22-plan-9-99-credential-uri-security-snapshot-canonicalization.md`)
-as process precedent.
-
-**Status:** Open. Tracked, not yet scheduled; **needs deeper investigation / migration design before
-scoping**. No implementation plan exists. Filed 2026-07-29 for pool custody.
-
-**Triage justification for LOW (2026-08-15):** The existing environment-variable name is
-functionally correct, so there is no current runtime failure or user-facing behavior loss. This is
-a naming/canonicalization design gap whose implementation carries migration risk but no present
-functional impact; it belongs at the end of the Plan until a compatibility and durable-approval
-migration design exists.
+**Moved:** tracked in [#263](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/263). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1703-L1769).
 
 ### P11-FU-9: Client-Supplied ACP `mcpServers` Disposition
 
@@ -1842,83 +1185,11 @@ identified node or mechanism.
 
 ### P11.7-FU-3: Committed `plan117_custody_relay.py` docstring `\ufffd` / em-dash corruption
 
-**Raised:** 2026-08-02 during Plan 11.7 origin-A fixture v2 Task 3 review prep.
-**Classification:** Docstring hygiene; not a Task 3 blocker.
-
-**Origin:** Pre-existing replacement-character / em-dash corruption in a committed
-`tools/plan117_custody_relay.py` docstring (distinct from the Task 3 ASCII fix already applied
-to `tools/run_plan117_custody_feasibility.py`).
-
-**Designated custody:** Plan 11.7 deferred follow-ups. Do not silently fold into Task 3
-classification seal.
-
-**Acceptance criteria (draft):** Replace corrupted codepoints with ASCII-safe wording; prove
-zero `\ufffd` and zero U+2014 remain in that docstring; keep relay behavior unchanged.
-
-**Status:** Open. Tracked, not yet scheduled. Does not block Task 3 classifications.
+**Moved:** tracked in [#255](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/255). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1911-L1927).
 
 ### P11-FU-11: Plan 11.7 Retry Preflight and Live Session Proof
 
-**Raised:** 2026-08-04 during review of the Plan 11.7 origin-A fixture-v2 execution amendment. This
-is a newly discovered custody-gate gap, not a correlation-budget expansion.
-
-**Pre-implementation finding (2026-08-04):** At raising, the bounded runner contained a complete
-`assert_prompt_retry_preflight` function, but never called it. The `origin-a-prompt-retry` CLI
-branch then validated the fixture hash and printed a hardcoded JSON result; it did not load the
-stage ledger, invoke the preflight gate, or verify `live_session_proof`. No runner or relay path
-then constructed that proof from the real Zed process, relay connection, and ACP session state. The
-source-level line references are recorded in the linked amendment and must be revalidated against
-the exact execution commit at pickup.
-
-**Designated slice / plan shape:** `P11-FEAT-ZED-RESUME`, through the standalone
-[retry-preflight gate amendment](archive/2026-08-04-plan-11-7-retry-preflight-gate-amendment.md) and its
-paired [design spec](../specs/2026-08-04-plan-11-7-retry-preflight-gate-design.md). The amendment
-must preserve the frozen Plan 11.7 plan and the two existing origin-A amendments; it does not create
-a new Plan 11.x number or authorize a fourth correlation launch.
-
-**Acceptance criteria:**
-
-- `origin-a-prompt-retry` loads and recomputes the immutable stage ledger before any retry action,
-  calls `assert_prompt_retry_preflight`, and fails closed on every ineligible ledger state.
-- The preflight gate receives a live proof obtained by querying the active relay control path, not
-  by trusting a stale file or hardcoded JSON. The proof binds the exact `run_attempt_id`, Zed PID
-  and process identity, relay `connection_id`, ACP `acp_session_id`, and current liveness state.
-- The retry reuses the existing Zed/relay/ACP session, allocates only the next prompt ordinal, and
-  performs no Zed launch, settings mutation, or correlation-ordinal allocation.
-- A missing, stale, mismatched, substituted, or unverifiable process/connection/session proof stops
-  before reservation or prompt transmission; a second prompt failure or any Zed/relay failure
-  remains terminal under the existing custody precedence.
-- Unit tests cover ledger/preflight wiring and tamper cases; relay-control tests cover proof identity,
-  liveness, PID reuse protection, and channel failure; real-Zed/relay evidence proves the accepted
-  same-session retry path and the no-relaunch/no-settings-mutation invariants.
-
-**Status:** Partially implemented. Work on `agent/cursor/p11-feat-zed-resume` reached Task 5 Path A
-fail-closed terminal stop (2026-08-05). Real `origin-a-prompt-retry` CLI fail-closed at
-`acquire_live_session_proof` with `invalid_probe_retry_control_channel_failure`; offline
-verifier classified `unavailable_proof`; `settings_mutated=false`, `zed_launched=false`; no
-correlation ordinal 4. Accepted same-session live retry was **not** obtained (dead origin-a-3
-session + exhausted correlation budget). Evidence:
-[path-a-terminal-seal](../../../reports/plan-11-7-server-custody-artifacts/amendments/retry-preflight-gate/path-a-run/path-a-terminal-seal.json).
-Public gate signature supersession vs digest-pinned amendment Required interfaces is recorded as a
-non-digest current-state note (Task 6). Remains open only for independent reviewer/operator
-disposition of Path A and any future budget-expansion / live-retry path (separately authorized).
-
-**Current-state note (2026-08-22): this entry's governing premise is superseded; disposition pending.**
-This entry exists to prove a same-session prompt retry safe *as a correlation fallback for the case
-where Zed will not issue `session/load`*. Current-version evidence (see `P11-FU-1`) shows Zed 1.16.1
-does issue `session/load` when Optimus advertises the capability, so the fallback this entry gates is
-no longer on the critical path. Independent review (Codex, 2026-08-22) recommends dispositioning this
-as **"Retired — superseded premise", explicitly NOT "Closed"** — its acceptance criteria were never
-met and no accepted live same-session retry was ever obtained. **That retirement is deliberately not
-applied here:** it is an authority change that belongs to the approval of Plan 11.7 v2, not to a
-status edit. No budget-expansion / live-retry path should be pursued in the meantime.
-
-**Triage justification for HIGH (2026-08-15):** This entry governs whether a same-session retry can
-be proven safe before reservation or prompt transmission. Its acceptance criteria bind the exact
-run, process, relay, and ACP session and require fail-closed behavior for stale or substituted proof;
-without the completed gate, the live Zed-resume evidence cannot establish no relaunch, no settings
-mutation, and no duplicate correlation allocation. That safety-critical custody impact warrants
-HIGH even though the current implementation stops safely on the failed Path A attempt.
+**Moved:** tracked in [#256](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/256). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1928-L1990).
 
 ### P11-FU-12: MCP OAuth 2.1 Lifecycle
 
@@ -1984,21 +1255,7 @@ preserved.
 
 ### P11-FU-16: Reverse Research-to-Documentation Freshness Gate
 
-**Raised:** 2026-08-05 by the approved MCP Gateway architecture redline.
-
-**Designated custody:** This entry owns a future reverse research-to-authoritative-documentation
-freshness gate; a Plan 11.x number is assigned only when it is picked up.
-
-**Rationale and acceptance boundary:** Current traceability catches normative document requirements
-missing from specifications, but not research or implementation learning that is absent from the
-authoritative documents. The generalized OWASP material lands in the current architecture amendment
-as `REFERENCE — Cross-cutting`; it is not deferred under this entry, and reference voice must not
-become a phantom requirement.
-
-**Status:** Open. Tracked, not yet scheduled.
-
-The rejected signed per-call capability design is a decision record, not deferred work. It creates no
-sixth MCP follow-up without a real multi-user or off-box threat model.
+**Moved:** tracked in [#264](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/264). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L2053-L2070).
 
 ### P11-FU-22: Durable effect-aware MCP indeterminate-call custody
 
@@ -2020,45 +1277,15 @@ that no longer exists. Identifier preserved.
 
 ### P11-FU-23: Durable client-MCP descriptor-surface pinning and named tool allowlists
 
-**Raised:** 2026-08-06 by the P11-FU-9 client-supplied ACP MCP design.
-
-**Designated custody:** This entry owns an optional second-stage durable approval that pins a
-discovered client-MCP descriptor surface and supports named tool allowlist selection. The follow-up
-identifier and Plan 11.x number are assigned only when this item is picked up.
-
-**Acceptance criteria:** A design must resolve discovery-before-approval ordering without treating a
-transport approval as descriptor/content trust; bind a reviewed catalog revision to safe identity;
-define drift/review/revocation; and preserve `PreToolGuard` as the per-call authority.
-
-**Status:** Open. Tracked, not yet scheduled.
+**Moved:** tracked in [#265](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/265). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L2089-L2102).
 
 ### P11-FU-24: Client-MCP durable HTTP/SSE trust relaxation
 
-**Raised:** 2026-08-06 by the P11-FU-9 client-supplied ACP MCP design.
-
-**Designated custody:** This entry owns any proposal to relax the equal CLI-ceremony baseline for
-durable stdio, HTTP, and SSE transport trust. The follow-up identifier and Plan 11.x number are
-assigned only when this item is picked up.
-
-**Acceptance criteria:** Establish a materially safer, reviewable HTTP/SSE-specific trust case;
-address URL identity, redirects, DNS rebinding, private-address policy, and record migration; and
-show why the new path does not mint durable trust from an in-flow IDE decision.
-
-**Status:** Open. Tracked, not yet scheduled.
+**Moved:** tracked in [#266](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/266). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L2103-L2116).
 
 ### P11-FU-25: Authenticated client-owned MCP upstream evidence
 
-**Raised:** 2026-08-06 by the P11-FU-9 client-supplied ACP MCP design.
-
-**Designated custody:** This entry owns real-dependency evidence for a client-owned authenticated MCP
-upstream after the base client path is implemented. The follow-up identifier and Plan 11.x number are
-assigned only when this item is picked up.
-
-**Acceptance criteria:** Use an operator-approved non-secret test credential with an independent MCP
-server and prove that env/header/query values reach only the intended connection, never model context,
-argv, telemetry, evidence, durable records, or another server connection.
-
-**Status:** Open. Tracked, not yet scheduled.
+**Moved:** tracked in [#267](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/267). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L2117-L2130).
 
 ### P11-FU-26: Plan 11.8 Windows `WinError 10053` MCP test flake
 
@@ -2322,55 +1549,7 @@ and 30s production default were not widened. No retry/replay.
 
 ### P11-FU-20: Attach per-server catalog/authorizer to session tool service for real one-call issuance
 
-**Raised:** 2026-08-07 during P11-FU-9 Task 6 independent review (operator Vibhanshu).
-
-**Classification:** Real functional gap on the write-approval path; fail-closed seam is in place
-for Task 6.
-
-**Origin:** `AcpDuplexAdapter._mcp_permission_broker_for` originally fabricated a
-`ClientMcpOneCallApproval` (`token=one-call-…`, empty `identity_fingerprint`) instead of calling
-`ClientMcpCallAuthorizer.issue_one_call_approval`. Root cause: `ClientMcpSessionState._tool_service`
-never receives `.register(...)` of a per-server `ClientMcpToolService` during
-`disposition_for_new_session` (disposition intentionally never opens transport / builds catalogs).
-A fabricated token would fail downstream as `mcp.client.one_call_unknown` after an IDE allow —
-misleading ceremony. Task 6 now fails closed (`issue` → `None`) until this attachment exists.
-Neither Task 7 nor Task 8 in the frozen P11-FU-9 plan covers attaching a real per-server
-catalog/authorizer to the session tool service.
-
-**Designated slice:** P11-FU-9 follow-up (complete versioned successor or Task 8 scope expansion — assign at
-pickup; do not silently fold into Task 6 close). Plan ownership decision (Codex/operator) required
-before implementation.
-
-**Acceptance criteria (draft — refine at pickup):**
-
-- On allow_once transport lease (and later discovery), register identity-bound
-  `ClientMcpToolService` instances on `ClientMcpSessionState.tool_service`.
-- `_mcp_permission_broker_for` / `_issue` must call the real
-  `ClientMcpCallAuthorizer.issue_one_call_approval` for the matched server/tool/args digest — never
-  fabricate unbound tokens.
-- Evidence must exercise the **real** adapter closure (not only `AcpMcpPermissionBroker` with a
-  hand-fed `issue_approval` lambda), covering allow → usable one-call token → PreToolGuard ALLOW
-  for a write-classified tool under `side_effect_eligible`.
-- Preserve fail-closed behavior when no authorizer is registered (return `None`, no fake token).
-- Do not open MCP transport merely to attach the authorizer during `session/new` disposition.
-
-**Evidence anchors:** P11-FU-9 Task 6 review (2026-08-07);
-`src/optimus/acp/spec.py` (`_mcp_permission_broker_for`);
-`src/optimus/mcp/client_disposition.py` (`disposition_for_new_session`);
-`tests/unit/acp/test_spec_protocol.py::test_spec_mcp_broker_issue_fails_closed_until_catalog_authorizer_attached`.
-
-**Related prior art:** Same "mock manufactures agreement" shape as Task 5's FakeClientMcpService
-gap; disposition-never-opens-transport constraint from P11-FU-9 design §3.
-
-**Status:** Partially implemented. Plan 11.20 is a terminal intermediate slice: unit adapter wiring
-landed at `d718384` (real registry, authorizer, `PreToolGuard`, fail-closed broker closure). Live
-Plan 11.23 supersedes its production-composition residual; Tasks 1–4 now provide the real lazy
-composition path, while Task 6 remains blocked on independently authored ACP/write-server evidence,
-live Redis/TimeSeries, Gateway authority, TTY ceremony, and paid-call authorization. Evidence:
-[Plan 11.20 release](../../../reports/plan-11-20-p11-fu-20-release.md),
-[Task 4 disposition](../../../reports/plan-11-20-p11-fu-20-evidence.md), and
-[Plan 11.23 interim release](../../../reports/plan-11-23-p11-fu-20-runtime-release.md). Not Closed. Frozen P11-FU-9 Task 6
-fail-closed evidence is not this item's closure.
+**Moved:** tracked in [#223](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/223). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L2391-L2442).
 
 ### P11-FU-21: Custody Relay Broken-Pipe Exit-Code Propagation Defect
 
@@ -2526,293 +1705,35 @@ Retain this entry for history; do not reopen without a new deferred-follow-up ID
 
 ### P11.25-FU-1: Non-AGENT-mode conversation carriage (contract term: MT-FU-1)
 
-**Raised:** 2026-08-21, in Plan 11.25's settled contract (`BRAINSTORM-multi-turn-conversation-SETTLED.md`
-§3, "Out of scope, with owners") as `MT-FU-1`, an explicit, ruled exclusion from Slice 1, not a slice-1
-defect. Slice 1 merged to `main` 2026-08-22
-([implementation plan](archive/2026-08-21-plan-11-25-multi-turn-conversation-implementation.md), PR #188).
-
-**Designated future plan:** Plan 12, by operator ruling on 2026-09-29. Before that ruling: none yet
-named (post-11.x follow-up, plan number assigned at pickup).
-
-**Root cause:** Slice 1 carries conversation only on the `ExecutionMode.AGENT` path — the ACP session
-default (`spec.py:107`) and the only path Zed exercises. The non-AGENT path uses a separate prompt
-builder, `build_agent_planner_input` (`runner.py:326`), which Slice 1 leaves untouched: the two paths
-never shared a planner-input builder, so extending one does not extend the other.
-
-**Acceptance criteria:** `build_agent_planner_input` accepts and renders the same conversation envelope
-Slice 1's `ConversationState` already produces, with its call site updated to supply it. Sized as one
-parameter/section addition plus the call-site change plus tests, provided Slice 1's conversation record
-continues to exist (it does). Not blocked on anything external.
-
-**Status:** Promoted -> [Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md).
-This entry remains the sole owner of non-AGENT conversation carriage.
-`P12-FU-1` depends on it and does not absorb it. Promotion schedules work; it does not claim delivery.
+**Moved:** tracked in [#246](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/246). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L2595-L2618).
 
 ### P11.25-FU-2: Structured ACP stop-reason metadata (contract term: MT-FU-2)
 
-**Raised:** 2026-08-21, in Plan 11.25's settled contract (`BRAINSTORM-multi-turn-conversation-SETTLED.md`
-§3, "Out of scope, with owners") as `MT-FU-2`, an explicit, ruled exclusion from Slice 1, not a slice-1
-defect. Slice 1 merged to `main` 2026-08-22
-([implementation plan](archive/2026-08-21-plan-11-25-multi-turn-conversation-implementation.md), PR #188).
-
-**Designated future plan:** None yet named — post-11.x follow-up, plan number assigned at pickup.
-
-**Root cause:** The ACP wire carries no field distinguishing "no model work happened" from "work
-completed": `_stop_reason` (`spec.py:1125-1134`) maps every member of `_PLANNING_TERMINAL_STOP_REASONS`
-(`spec.py:1053-1073`) — including `PLANNING_GATEWAY_COST_UNKNOWN` — to the literal `"end_turn"`, and the
-completion message remains free-text `agent_message_chunk` (`spec.py:1004-1005`, via
-`_emit_completion_message`).
-
-**Acceptance criteria:** Add a structured `_meta` stop reason to the prompt response, populated from
-`planning_result.stop_reason`, so a future safety or observability check can distinguish a no-work turn
-from a completed one without parsing prose. This is a production change to `spec.py` inside Plan 11.25's
-own applicability surface, which is why Slice 1 routes around it rather than absorbing it.
-
-**Status:** Open. Not yet scheduled.
+**Moved:** tracked in [#268](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/268). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L2619-L2640).
 
 ### P12-FU-1: Plan/Chat advisory-answer capability (residual of HLD §7)
 
-**Raised:** 2026-09-29, from the operator's live Zed check of Plan 12 sandbox work. In an ACP thread,
-Optimus could not answer read-only questions such as "What files are in this folder?" or "Hi". It
-replied only that no actionable workspace change was specified.
-
-**Classification:** Capability gap, not a defect in delivered scope. This is the unscheduled
-residual of HLD §7 (Architecture v2.18, "Agent Operating Modes & Trust Framework"), which describes
-Plan/Chat as an advisory mode that may inspect context and discuss requirements.
-
-**Scope boundary with Plan 2 (one owner per half).** HLD §7 Plan/Chat mode has two halves.
-- **Enforcement half: owned by Plan 2 and delivered.** Plan 2 is not reopened by this entry.
-  Phase 1 roadmap, Plan 2 user story: "As a user, I can trust Plan/Chat mode to be advisory-only and
-  Agent mode to mutate only after approval." Its expected deliverables, quoted in full:
-  "`ExecutionMode`, generation scope classification, lifecycle states, transition validator,
-  `AwaitingApproval`, `MutationGuard`, and `assert_mutation_allowed()`" and "Tests proving Plan/Chat
-  cannot mutate, Agent mode must pass through approval, invalid transitions fail closed, and mutation
-  tools check the primitive before I/O."
-- **Advisory-answer half: owned by this entry.** It was never in Plan 2's scope and was never
-  scheduled by any plan.
-- **Historical shorthand.** The archived
-  [authoritative-document section map](../reports/archive/2026-07-25-plan-11-authoritative-doc-section-map.md)
-  records "HLD v2.16 §7 … Implemented by Plan 2". Read that row as shorthand for the enforcement half
-  only, not as evidence that answering was delivered. The row stays unedited.
-
-**Current state (at `58759fb`):** Plan 2 delivered Plan/Chat mode enforcement. The direct non-AGENT
-runner can return prose, but ACP mode selection, an advisory-answer prompt contract, and non-AGENT
-conversation carriage are not delivered.
-- **Prose path, but a directive-only prompt.** The non-AGENT path (`agent/runner.py:326`, result
-  `CHAT_ONLY` at `:517-522`) is the "direct prose-capable" path that the Plan 9.87 design names.
-  However, its prompt ends with `_DIRECTIVE_GRAMMAR` (`agent/prompts.py:34-35`, "Respond using only
-  the directive grammar below. Do not emit prose before the directives.").
-- **No mode selection from an ACP client.** ACP sessions default to `ExecutionMode.AGENT`
-  (`acp/spec.py:107`), and no ACP session modes are advertised or switchable.
-- **No non-AGENT conversation carriage.** That is `P11.25-FU-1`.
-
-**Designated future plan:** Plan 12, by operator ruling on 2026-09-29, as a residual carried out of
-v1.0. It is not a v1.0 requirement.
-
-**v1.0 exclusion:** This capability is not Plan 12 context/intelligence work. The
-[Plan 11 charter](2026-07-25-plan-11-v1-milestone-charter.md) requires every excluded capability to be
-named rather than implied. `P11-FEAT-REGISTRY`'s excluded-capability inventory must therefore list it
-with:
-- rationale: operator ruling 2026-09-29, a residual carried into Plan 12;
-- custody: this entry;
-- destination: Plan 12.
-
-**Acceptance criteria:**
-- An ACP client can select Plan/Chat or Agent mode for a session. Session creation advertises the
-  selected mode, and mode changes are reflected during the session. If `session/load` becomes
-  available under `P11-FU-1`, loading restores and advertises the selected mode. The default mode is
-  an explicit recorded decision. This entry does not implement or advertise `session/load`.
-- In Plan/Chat mode, a prompt gets a reliable read-only prose answer. No directive grammar is
-  required, and the answer is grounded in workspace context.
-- Plan 2's enforcement (`ExecutionMode`, `assert_mutation_allowed()`, and the permission layer's
-  Plan/Chat denials) is **reused unchanged**, with no second enforcement path. Tests prove that
-  Plan/Chat still cannot mutate.
-- Live evidence from an independent ACP client shows a read-only question answered in Plan/Chat mode.
-- Whether answers may request further guarded reads is a scope decision for the Plan 12
-  implementation-plan file.
-
-**Dependencies:**
-- `P11.25-FU-1`, the sole owner of non-AGENT conversation carriage. It is not absorbed here.
-- `P11.25-FU-2` (structured stop-reason metadata) and `P9.8-FU-5` (Zed refusal rendering) remain
-  separate and are not closed by this entry.
-
-**Status:** Promoted -> [Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md).
-Plan 12.1 reuses, and does not re-implement, Plan 2's enforcement.
-This is Plan 12's first substantive slice on a separate main-based branch; promotion does not claim
-delivery or change the v1.0 exclusion.
+**Moved:** tracked in [#247](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/247). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L2641-L2711).
 
 ### P12-FU-2: User-facing net cost-savings report
 
-**Raised:** 2026-09-30, operator requirement recorded in
-[ADR-012](../../decisions/ADR-012-cost-savings-report.md).
-
-**Designated lane:** Plan 12, unscheduled.
-
-**Scope:** show users the basis and net effect of Optimus's optimization costs against explicitly
-selected reference baselines. Keep this report distinct from internal context-selection promotion gates
-and the placeholder 15% target.
-
-**Acceptance criteria:**
-- Display actual fully loaded provider-reported cost, with complete/incomplete coverage and
-  model/provider/strategy/stage/request/run/session provenance. Reuse the reconciled ledger; no parallel
-  accounting authority.
-- Clearly distinguish B1 premium token-price substitution and B2 no-optimization counterfactual
-  estimates from matched B3 measured comparisons; use external B4 results only as labelled context.
-- Compute comparable baseline cost minus fully loaded actual cost once. Include summarization,
-  classification, review, retries, fallback and escalation costs without double subtraction. Preserve
-  negative savings and abstain from definitive totals/percentages when the accounting or baseline is
-  incomplete.
-- Record baseline model/route/pricing date, task/harness/strategy revisions, caching assumptions and
-  measurement coverage. Matched measured comparisons meet stated outcome/quality criteria; no
-  uncalibrated saving percentage is a delivery gate.
-- Operator approves surface, aggregation boundaries/reference baseline and any paid comparison authority
-  before those actions. Deterministic accounting fixtures verify arithmetic and incomplete/negative cases.
-
-**Dependencies/ownership:** P11.26-CAND-2-TELEMETRY-CONTRACT owns attribution completion; ADR-004 owns
-registry design direction, not a competing work pool; Plan 8 golden tasks and the July context strategy
-document provide inputs. P9.85-FU-3 retains spend-policy custody. No session/load or persistence work is
-implicitly absorbed. Filing this entry does not promote or close those owners.
-
-**Status:** Open.
+**Moved:** tracked in [#248](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/248). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L2712-L2745).
 
 ### P12.1-FU-1: Local Gateway missed the agent's startup readiness deadline
 
-**Raised:** 2026-09-30, during the Plan 12.1 Task 4 live Zed proof.
-
-**Classification:** Observed local-startup reliability defect with an undiagnosed cause. It is not
-a Plan 12.1 defect; the deadline predates Plan 12.1.
-
-**Observation:**
-- **Timeline.** Zed launched `optimus-agent` for a new thread at 12:44:06 IST. The agent started
-  the local Gateway child at 12:44:08. At 12:44:18 it logged "local gateway did not become ready in
-  time": its TCP readiness probe (`_tcp_reachable`) had not succeeded within the 10-second deadline
-  (`_GATEWAY_READY_TIMEOUT_SECONDS` in `src/optimus/acp/local_infra.py`).
-- **At the deadline.** `ensure_local_gateway` calls `LocalGatewayProcess.stop()` on the child when
-  the deadline expires. The agent then kept serving without a Gateway. Both Chat prompts in that
-  thread failed with `CHAT_GATEWAY_COST_UNKNOWN`, and the reported cost was $0.
-- **The Gateway process.** The child's log recorded a "listening" line for that launch. Afterwards,
-  no Gateway process remained and nothing listened on `127.0.0.1:8765`.
-- **Earlier launches.** Launches of the same installed build earlier that day became ready in time.
-
-**Not established:** why the agent's TCP readiness probe did not succeed within 10 seconds, despite
-the child log's "listening" line. Slow startup is therefore not presumed. It is also not established
-whether the child had already exited when `stop()` ran. The listening line carries no timestamp or
-PID, so it cannot yet be correlated with the probe.
-
-**Evidence:** operator handoff kit, folder `plan12-1-task4-20260930/zed/attempt1-0eeabc4`: Zed log
-excerpt, Gateway log, telemetry and screenshot. Kept outside the repository because it contains
-private paths.
-
-**Acceptance criteria:**
-- Investigate on Windows why the agent's TCP readiness probe failed within the deadline despite the
-  child's "listening" line. Correlate the listening line with the probe by time, PID, host and port,
-  and do not presume slow startup.
-- Decide the deadline and the behaviour after a miss (fail the launch visibly, retry, or keep
-  serving). If the agent keeps serving, each prompt must say that the local Gateway is not running,
-  rather than reporting a Gateway failure with unknown cost.
-- Prove the chosen behaviour with a live launch under the condition that caused the miss, or under a
-  reproducible substitute.
-
-**Related:** `P11.5-FU-2` (closed, Plan 11.6) made local startup consistent. It did not address this
-deadline and is not reopened.
-
-**Status:** Open.
+**Moved:** tracked in [#269](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/269). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L2746-L2788).
 
 ### P12.1-FU-2: Goal-loop iterations bypass turn cancellation and directive tracking
 
-**Raised:** 2026-09-30, by Codex's final implementation review of Plan 12.1 (PR #212).
-
-**Classification:** Pre-existing defect, not introduced by Plan 12.1.
-
-**Observation:**
-- **Entry.** `AgentRunner.run` sends any request with `completion_condition` into
-  `_run_bounded_loop` (`src/optimus/agent/runner.py`).
-- **The gap.** Its iteration runner, `_AgentLoopIterationRunner.run_iteration`, calls
-  `_run_once(request)` without the caller's `halt_requested` or `operation_control`. Each iteration
-  of an Agent or internal `PLAN` request therefore runs outside the turn's halt check and GATEWAY
-  directive lifecycle.
-- **Consequences.** A cancelled turn can still start Gateway calls, and the turn settlement does not
-  record those calls' cost completeness. The loop allows up to five iterations
-  (`LoopBudgetPolicy(max_iterations=5)`). The returned result carries the loop's stop reason, which
-  replaces the iteration's own stop reason.
-
-**Reachability:** standard ACP `session/prompt` never supplies `completion_condition`. The legacy
-`optimus.agent.run` method (`src/optimus/acp/dispatcher.py`) validates an `AgentRunRequest` from its
-params and can reach the goal loop. Chat requests with a completion condition have been refused
-before any call since `1cc1cbd`.
-
-**Acceptance criteria:**
-- Goal-loop iterations honour the caller's halt check and turn directive control. No Gateway call
-  starts after cancellation, and each call's terminal state (succeeded, failed or cost_unknown)
-  reaches the turn settlement.
-- Decide and test how an unknown-cost iteration ends the loop, consistent with the planning loop's
-  rule that unknown cost is terminal. The returned result keeps the iteration's own stop reason.
-- Regression tests use the real `TurnControl` for Agent and internal `PLAN` requests through the
-  goal loop.
-
-**Related:** Plan 12.1 closed the Chat route only (`1cc1cbd`). This entry owns the Agent and `PLAN`
-routes.
-
-**Status:** Open.
+**Moved:** tracked in [#270](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/270). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L2789-L2825).
 
 ### P11-FU-30: No log-level categorization; stdlib `logging` is absent project-wide
 
-**Raised:** 2026-08-31 by the operator, from the Plan 11.26 telemetry review.
-
-**Classification:** Cross-cutting observability capability gap, not a defect. No current behaviour is
-wrong; the diagnostic affordance is missing entirely.
-
-**Origin:** `src/` contains no `import logging`, no `getLogger`, and no
-`.debug`/`.info`/`.warning`/`.error`/`.exception`/`.critical` call site across its 200 Python files.
-Process output is split between two non-logging uses: CLI stdout in entry points
-(`acp/launch_approval_cli.py`, `acp/operator_verify.py`, the `__main__` modules) and a small number of
-sanitized `sys.stderr` fault messages on the ACP path (`acp/server.py:443`, `:447`, `:509`, each routed
-through `sanitize_protocol_error_message`). Structured observability is `src/optimus/telemetry/`:
-`TelemetryEvent` records keyed by a closed 16-value `TelemetryEventKind` StrEnum, fanned out to five
-sinks with redaction. `TelemetryEventKind.ERROR` is an **event kind, not a severity level**, and
-`TelemetryEvent` carries no severity or level field. Categorization is therefore by event kind and
-sink only, with no axis for verbosity, level filtering, or switchable debug output.
-
-**Operator rationale (2026-08-31):** without levelled logging, diagnosing issues costs materially more
-time; error-path output alone is not a sufficient diagnostic surface.
-
-**Priority justification (HIGH):** functional impact on diagnosability rather than occurrence rate.
-This is the same justification the parent `P11-FEAT-ACP-RUNTIME-HARDENING` row carries — failures are
-materially harder to reproduce, diagnose, and review — and it compounds every other open runtime
-finding, since each one must be diagnosed without leveled output.
-
-**Binding design constraint:** Optimus serves ACP over stdio NDJSON, so anything written to stdout on
-the serving path corrupts the wire protocol. Any solution must default to stderr or a telemetry sink;
-the current server path is already clean (`spec.py`, `dispatcher.py`, `outbound_writer.py`, and
-`ndjson_subprocess_session.py` contain zero `print` calls) and must stay that way.
-
-**Designated slice:** `P11.26-CAND-2-TELEMETRY-CONTRACT`. Plan 11.26 is audit-and-contract only and
-cannot make this production change; this entry belongs to the remediation plan that picks up the
-telemetry-boundary candidate, so that levels, sink classes, and the C15 `CLEAN_REDACTED` /
-`CLEAN_NOT_STORED` distinction are designed under one owner rather than three separate passes.
-
-**Acceptance criteria:** A single owned diagnostic boundary that (a) provides level categorization for
-operator-facing diagnostics, (b) never writes to stdout on the ACP serving path, (c) is filterable
-without a code change, (d) reuses the existing redaction path so no new leak surface is created, and
-(e) states its relationship to `TelemetryEvent` — whether levels are a field on telemetry events, a
-separate diagnostic channel, or both. Recording the decision is part of the criteria; the failure mode
-to avoid is a second uncoordinated observability mechanism.
-
-**Status:** Open. Not yet scheduled.
+**Moved:** tracked in [#275](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/275). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L2826-L2870).
 
 ### P9.96-FU-8: Launch approval record capacity
 
-**Raised:** Plan 12.2 CP1 review, 2026-10-02.
-
-**Status:** Open.
-
-**Owner:** Launch-approval/security follow-up lane; Codex architects/reviews, assigned implementer executes only separately accepted scope. Not scheduled; no new plan number allocated.
-
-The CP1 evidence at `280a0a1` reports serialized approval records of 1592 bytes inactive and 1703 registry-bound for a typical nine-variable launch, versus 2682 and 2793 bytes for all 23 classified variables. The production bound is 1800 bytes, so the latter launch fails with `RECORD_TOO_LARGE`. The source is `approval-record-size.txt` in the CP1 evidence manifest, artifact SHA-256 prefix `79db3688c1395c41`; the manifest SHA-256 is `dfe1be68ac961bef9c4dc4bf23fbd2b6fed50edcc0f46de5b27546eb718ae6e7`. Codex verified the 37 artifact hashes and inspected the bound in the earlier review; this review reverified their hashes without rerunning the measurement. External raw evidence is archival provenance, not a project dependency.
-
-Supported classified configurations already exceed the bound, and registry activation adds bytes. Production activation requires a reviewed capacity disposition; an offline package pass is not that disposition.
-
-**Next gate:** Reproduce the maximum supported encoded configuration and design a complete bounded approval successor with reviewed migration/re-approval treatment. Preserve frozen predecessor bytes, integrity binding and fail-closed behavior. Do not raise the limit ad hoc, omit security-bound fields or truncate records. Require exact-bound/over-bound tests, tamper checks and supported-configuration evidence before activation. Real keyring/service work retains separate authority. This entry grants no product repair, push, merge or activation authority.
+**Moved:** tracked in [#289](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/289). Status, priority, owner and next gate are kept there; this entry's former detail is preserved in the [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/c99af82365b83eccc6fdb24525cafd2a064c9f09/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L1899-L1911).
 
 ## Accepted risks and warnings
 

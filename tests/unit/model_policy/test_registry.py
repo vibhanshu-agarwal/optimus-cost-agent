@@ -116,6 +116,9 @@ _SYNTAX_REJECTIONS = {
     "timestamp scalar": "x: 2026-10-02\n",
     "non-string key": "1: one\n",
     "null key": "~: one\n",
+    "boolean key": "true: one\n",
+    "nested non-string key": "models:\n  1: one\n",
+    "sequence key": "? [a, b]\n: one\n",
 }
 
 

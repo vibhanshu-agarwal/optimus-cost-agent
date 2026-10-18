@@ -145,7 +145,12 @@ def stage_c_limits(snapshot: RegistrySnapshot, model_id: str) -> StageCLimits:
     policy = snapshot.policy
     entry = policy.models[model_id]
     estimator = policy.estimators[entry.route.estimator]
-    window = min(endpoint.context_window_tokens for endpoint in entry.route.endpoints)
+    windows: list[int] = []
+    for endpoint in entry.route.endpoints:
+        if endpoint.context_window_tokens is None:  # a guarded route always states its window
+            raise KeyError(f"{model_id}: route window not stated")
+        windows.append(endpoint.context_window_tokens)
+    window = min(windows)
     output_reserve = policy.output_reserve_tokens["implementer"]
     usable = min(policy.context_ceiling_tokens, window) - output_reserve
     summary_tokens = min(SUMMARY_OUTPUT_TOKENS, policy.output_reserve_tokens["summarizer"])
@@ -207,7 +212,7 @@ def seed_history(sanitizer: ConversationSanitizer) -> tuple[dict[int, Conversati
             outcome=ConversationOutcome.COMPLETED,
             effect_state=EffectState.NONE,
         )
-    approvals = {
+    approvals: dict[int, tuple[ApprovalFact, ...]] = {
         seq: (
             ApprovalFact(
                 turn_seq=seq,
@@ -347,7 +352,7 @@ class StageCScenario:
                     scenario._notify(turn, "unavailable", UNAVAILABLE_NOTICE)
                     scenario.events.append(f"turn {turn}: simulated engine unavailability")
                     raise ScenarioEngineUnavailable(f"simulated engine unavailability on live turn {turn}")
-                if turn == scenario._cancel_turn:
+                if turn is not None and turn == scenario._cancel_turn:
                     kwargs["maintenance"] = scenario._pausing(turn, kwargs["maintenance"], kwargs["cancelled"])
                 return engine.prepare_view(snapshot, **kwargs)
 
@@ -439,7 +444,7 @@ def _no_attachment_ledger(_receipt: MaintenanceReceipt) -> None:
 
 def stage_c_attachment(
     *, composition: Any | None, launch: StageCLaunch | None, gateway_client: Any, shared_secret: str
-) -> tuple[ContextAttachment | None, Callable[[Any], None] | None]:
+) -> tuple[ContextAttachment | None, Callable[[Any], str | None] | None]:
     """The launch's engine and session seeder: only an approved Stage C launch of the attached test
     composition gets them; the qualification composition, a profile without Stage C and every unprofiled
     launch stay absent-engine."""

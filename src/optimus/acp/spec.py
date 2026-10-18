@@ -334,8 +334,11 @@ class InMemoryAcpSpecSessionStore:
 
     def remove(self, session_id: str) -> None:
         session = self._sessions.pop(session_id, None)
-        if session is not None and session.client_mcp_state is not None:
-            self._close_state_once(session)
+        try:
+            if session is not None and session.client_mcp_state is not None:
+                self._close_state_once(session)
+        finally:
+            self._closed_state_ids.discard(session_id)
 
     def close_all(self) -> None:
         for session in list(self._sessions.values()):

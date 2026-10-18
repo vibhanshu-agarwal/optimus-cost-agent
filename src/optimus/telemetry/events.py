@@ -150,6 +150,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.MODEL_CALL,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
@@ -219,6 +220,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.GATEWAY_USAGE,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
@@ -244,6 +246,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.RECONCILIATION,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
@@ -275,6 +278,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.PRICING_FALLBACK,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
@@ -305,6 +309,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.TOOL_CALL,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
@@ -335,6 +340,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.GUARDRAIL_AUDIT,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
@@ -362,6 +368,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.ERROR,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
@@ -386,6 +393,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.RETRY_DECISION,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
@@ -416,6 +424,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.FITNESS_GATE,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
@@ -450,6 +459,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.GOLDEN_TASK,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
@@ -483,6 +493,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.RELEASE_GATE,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
@@ -517,6 +528,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.GOAL_LOOP,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
@@ -547,6 +559,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.AGENT_RUN,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
@@ -583,6 +596,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.SKILL_INVOCATION,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
@@ -610,6 +624,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.SKILL_SELECTION,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,
@@ -648,6 +663,7 @@ class TelemetryEvent(BaseModel):
         return cls(
             kind=TelemetryEventKind.ACP_TURN_SETTLEMENT,
             run_id=run_id,
+            trace_id=run_id,
             session_id=session_id,
             request_id=request_id,
             occurred_at=occurred_at,

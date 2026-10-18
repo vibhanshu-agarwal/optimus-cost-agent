@@ -398,3 +398,111 @@ def test_emit_acp_turn_settlement_does_not_swallow_baseexception_subclass():
     )
     with pytest.raises(asyncio.CancelledError):
         emit_acp_turn_settlement_contained(CancelSink(), event)
+
+
+@pytest.mark.parametrize("failed_sinks", [("jsonl",), ("redis",), ("jsonl", "redis")])
+def test_fanout_contains_local_errors_independently_and_warns_without_private_text(failed_sinks, monkeypatch, caplog, capsys):
+    import logging
+    from dataclasses import asdict
+
+    from optimus.acp import debug_trace
+
+    monkeypatch.setattr(debug_trace, "_ACTIVE_CONTEXT", None)
+    assert not debug_trace.debug_trace_enabled()
+    attempts = []
+
+    def deliver(sink, event):
+        attempts.append((sink, event))
+        if sink in failed_sinks:
+            raise OSError("synthetic-private-sink-message redis://credential@host/private prompt-response")
+
+    class Writer:
+        def append(self, event):
+            deliver("jsonl", event)
+
+    exporter = RecordingExporter()
+    fanout = TelemetryFanout(jsonl_writer=Writer(), redis_sink=lambda event: deliver("redis", event),
+                             gateway_exporter=exporter, batch_size=1)
+    event = _agent_run_event()
+    with caplog.at_level(logging.WARNING, logger="optimus.telemetry.fanout"):
+        fanout(event)
+    fanout.flush()
+    assert attempts == [("jsonl", event), ("redis", event)]
+    assert exporter.batches == [(event,)]
+    assert fanout.delivery_results[0].delivery_state is TraceDeliveryState.DELIVERED
+    assert [asdict(failure) for failure in fanout.local_sink_failures] == [
+        {"sink": sink, "event_kind": "agent_run", "reason_code": "telemetry_sink_raised", "exception_type": "OSError"}
+        for sink in failed_sinks
+    ]
+    warnings = [record for record in caplog.records if record.name == "optimus.telemetry.fanout"]
+    assert len(warnings) == len(failed_sinks)
+    for record, sink in zip(warnings, failed_sinks, strict=True):
+        assert record.levelno == logging.WARNING
+        assert record.exc_info is None
+        assert record.args == (sink, "agent_run", "telemetry_sink_raised", "OSError")
+    for sentinel in ("synthetic-private-sink-message", "credential", "/private", "prompt-response", "Traceback"):
+        assert sentinel not in caplog.text + repr(fanout.local_sink_failures)
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize("failed_sink", ["jsonl", "redis", "gateway"])
+@pytest.mark.parametrize("exception_type", ["CancelledError", "KeyboardInterrupt", "SystemExit"])
+def test_fanout_preserves_control_flow_exceptions(failed_sink, exception_type, caplog):
+    import asyncio
+
+    exception = {"CancelledError": asyncio.CancelledError, "KeyboardInterrupt": KeyboardInterrupt, "SystemExit": SystemExit}[exception_type]
+    attempts = []
+
+    def deliver(sink):
+        attempts.append(sink)
+        if sink == failed_sink:
+            raise exception()
+
+    class Writer:
+        def append(self, event):
+            deliver("jsonl")
+
+    class Exporter:
+        def export(self, events):
+            deliver("gateway")
+            return {"trace_batch_id": "batch-1", "trace_ids": [], "delivery_state": "delivered",
+                    "retry_count": 0, "final_disposition": "delivered"}
+
+    fanout = TelemetryFanout(jsonl_writer=Writer(), redis_sink=lambda event: deliver("redis"), gateway_exporter=Exporter(), batch_size=1)
+    with pytest.raises(exception):
+        fanout(_agent_run_event())
+    assert attempts == {"jsonl": ["jsonl"], "redis": ["jsonl", "redis"], "gateway": ["jsonl", "redis", "gateway"]}[failed_sink]
+    assert fanout.delivery_results == []
+    assert not [record for record in caplog.records if record.name == "optimus.telemetry.fanout"]
+
+
+def test_fanout_warning_reaches_stderr_with_debug_disabled(monkeypatch, capsys, caplog):
+    import logging
+    import sys
+
+    from optimus.acp import debug_trace
+
+    monkeypatch.setattr(debug_trace, "_ACTIVE_CONTEXT", None)
+    assert not debug_trace.debug_trace_enabled()
+
+    class Writer:
+        def append(self, event):
+            raise OSError("synthetic-private-sink-message")
+
+    logger = logging.getLogger("optimus.telemetry.fanout")
+    handler = logging.StreamHandler(sys.stderr)
+    monkeypatch.setattr(logger, "disabled", False)
+    monkeypatch.setattr(logger, "handlers", [handler])
+    monkeypatch.setattr(logger, "propagate", False)
+    with caplog.at_level(logging.WARNING, logger=logger.name):
+        assert logger.isEnabledFor(logging.WARNING), (
+            f"fanout logger disabled={logger.disabled} level={logger.level} "
+            f"effective={logger.getEffectiveLevel()} manager.disable={logger.manager.disable}"
+        )
+        fanout = TelemetryFanout(jsonl_writer=Writer(), redis_sink=lambda event: None, gateway_exporter=RecordingExporter(), batch_size=1)
+        fanout(_agent_run_event())
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.count("telemetry_sink_raised") == 1
+    assert "synthetic-private-sink-message" not in captured.err
+    assert "Traceback" not in captured.err

@@ -144,7 +144,7 @@ def test_event_body_is_read_as_data_without_shell_interpolation(tmp_path: Path) 
         ),
         (
             "Master-plan impact: none: child status did not change\n",
-            ("docs/superpowers/plans/hardening-static-type-checking-implementation.md",),
+            ("docs/superpowers/plans/hardening-static-type-checking-implementation_v3.md",),
             "child plan changed",
         ),
         (

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import uuid
 from collections.abc import Iterator
 from decimal import Decimal
@@ -23,13 +24,20 @@ from tools.plan1126_unrun_binding import (
     scopeout_nodeids,
     scopeout_reason,
 )
-from tools.testing import run_context, run_context_guard
+from tools.testing import run_context, run_context_guard, run_context_xdist
+
+pytest_plugins = ("tests.support.profiles_plugin",)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _PLAN1126_UNRUN_COUNT: pytest.StashKey[int] = pytest.StashKey()
+_PLAN1126_UNRUN_MARKED: pytest.StashKey[frozenset[str]] = pytest.StashKey()
 _RUN_CONTEXT: pytest.StashKey[run_context.RunContext] = pytest.StashKey()
 _RUN_CONTEXT_FINAL: pytest.StashKey[dict[str, object]] = pytest.StashKey()
 _RUN_CONTEXT_DESELECTED: list[str] = []
+# Plan 11.30 Task 5: an xdist worker's attachment to its controller's run, and what it deselected.
+_XDIST_WORKER: pytest.StashKey[run_context_xdist.Worker] = pytest.StashKey()
+_XDIST_DESELECTED: pytest.StashKey[list[str]] = pytest.StashKey()
+_XDIST_OUTPUT_RECORDED: pytest.StashKey[bool] = pytest.StashKey()
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -44,9 +52,48 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def pytest_configure(config: pytest.Config) -> None:
     config.stash[_PLAN1126_UNRUN_COUNT] = 0
+    if run_context_xdist.is_worker(config):
+        # An xdist worker attaches to its controller's run, guarded before collection; it never starts its own.
+        config.stash[_XDIST_WORKER] = run_context_xdist.start_worker(config)
+        return
     # Before collection: an active default-selection session owns its processes and is guarded
     # against the real application folders from here on. Any other selection is only recorded.
     config.stash[_RUN_CONTEXT] = run_context.start_run(config)
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_configure_node(node) -> None:  # noqa: ANN001 - xdist's WorkerController
+    """The controller hands each worker its run's metadata through xdist's own channel."""
+    context = run_context.current()
+    if context is not None:
+        controller = run_context_xdist.controller_for(context)
+        node.workerinput[run_context_xdist.WORKER_INPUT] = controller.node_input(node.gateway.id)
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_xdist_node_collection_finished(node, ids: list[str]) -> None:  # noqa: ANN001
+    context, controller = run_context.current(), run_context_xdist.current_controller()
+    if context is None or controller is None:
+        return
+    if controller.collection(node.gateway.id, ids):
+        run_context.record_collection(context, list(ids), [])
+    controller.confirm_member(node.gateway.id)  # while the worker runs: its identity, confirmed in the run's job
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node, error: object) -> None:  # noqa: ANN001
+    context, controller = run_context.current(), run_context_xdist.current_controller()
+    if context is None or controller is None:
+        return
+    output = getattr(node, "workeroutput", None)
+    controller.down(node.gateway.id, output, error)
+    sent = (output or {}).get(run_context_xdist.WORKER_OUTPUT)
+    config = node.config
+    if isinstance(sent, dict) and not config.stash.get(_XDIST_OUTPUT_RECORDED, False):
+        # Every worker collected and deselected the same tests (the verdict checks it): record the first account.
+        config.stash[_XDIST_OUTPUT_RECORDED] = True
+        run_context.record_collection(context, [], [str(nodeid) for nodeid in sent.get("deselected", [])])
+        config.stash[_PLAN1126_UNRUN_COUNT] = int(sent.get("unrun", 0))
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -61,7 +108,8 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         if item.nodeid in selected_set:
             item.add_marker(marker)
-    config.stash[_PLAN1126_UNRUN_COUNT] = len(selected)
+    # Deselection (`-m`, `-k`, `--profile`) can still follow; the count is taken from the final items.
+    config.stash[_PLAN1126_UNRUN_MARKED] = frozenset(selected_set)
 
 
 def pytest_deselected(items: list[pytest.Item]) -> None:
@@ -69,9 +117,13 @@ def pytest_deselected(items: list[pytest.Item]) -> None:
 
 
 def pytest_collection_finish(session: pytest.Session) -> None:
+    marked = session.config.stash.get(_PLAN1126_UNRUN_MARKED, frozenset())
+    session.config.stash[_PLAN1126_UNRUN_COUNT] = sum(1 for item in session.items if item.nodeid in marked)
     context = session.config.stash.get(_RUN_CONTEXT, None)
     if context is not None:
         run_context.record_collection(context, [item.nodeid for item in session.items], list(_RUN_CONTEXT_DESELECTED))
+    if run_context_xdist.is_worker(session.config):
+        session.config.stash[_XDIST_DESELECTED] = list(_RUN_CONTEXT_DESELECTED)
     _RUN_CONTEXT_DESELECTED.clear()
 
 
@@ -85,6 +137,11 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     context = run_context.current()
     if context is not None:
         run_context.record_phase(context, report)
+        controller = run_context_xdist.current_controller()
+        if controller is not None and controller.run_id == context.run_id:
+            controller.phase(report)  # a phase a worker ran and sent: attributed, duplicates detected
+    elif run_context_xdist.current_worker() is not None:
+        run_context_xdist.count_phase()  # what this worker sent, for the controller's comparison
 
 
 def pytest_terminal_summary(
@@ -119,22 +176,53 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     """
     for key in [name for name in os.environ if name.startswith("GIT_")]:
         _INHERITED_GIT_ENV[key] = os.environ.pop(key)
+    _end_audit_export_reuse()
+
+
+def _end_audit_export_reuse() -> None:
+    """Plan 11.30 Task 4: the audit's export cache and measurement reuse never outlive a session. Only an
+    imported audit has them, so nothing is imported here."""
+    source = sys.modules.get("tools.plan1126_runtime_audit.source")
+    if source is not None:
+        source.clear_export_cache()
+    measurement = sys.modules.get("tools.plan1126_runtime_audit.measurement")
+    if measurement is not None:
+        measurement.clear_measurement_reuse()
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """Restore whatever `pytest_sessionstart` removed; leave no trace in the parent."""
     os.environ.update(_INHERITED_GIT_ENV)
     _INHERITED_GIT_ENV.clear()
+    _end_audit_export_reuse()
+    if session.config.stash.get(_XDIST_WORKER, None) is not None:
+        run_context_xdist.worker_output(
+            session.config, deselected=session.config.stash.get(_XDIST_DESELECTED, []),
+            unrun=session.config.stash[_PLAN1126_UNRUN_COUNT], summary=None,
+        )
+        return
     context = session.config.stash.get(_RUN_CONTEXT, None)
     if context is not None:
-        session.config.stash[_RUN_CONTEXT_FINAL] = run_context.finish_run(context, int(exitstatus))
+        # The effective --audit-depth and the budgets used go into the terminal record (Plan 11.30 Task 4).
+        plugin = session.config.pluginmanager.get_plugin(pytest_plugins[0])
+        audit = None if plugin is None else plugin.audit_record(session.config)
+        controller = run_context_xdist.current_controller()
+        # A run with xdist workers: the controller's verdict on them goes into the terminal record (Task 5). An
+        # INVALID verdict never leaves a passing session, even when every test that ran passed.
+        xdist = run_context_xdist.finish_controller(controller) if controller is not None and controller.run_id == context.run_id else None
+        if xdist is not None and xdist.get("verdict") != "valid" and int(exitstatus) == pytest.ExitCode.OK:
+            session.exitstatus = exitstatus = pytest.ExitCode.INTERNAL_ERROR
+        session.config.stash[_RUN_CONTEXT_FINAL] = run_context.finish_run(context, int(exitstatus), audit=audit, xdist=xdist)
 
 
 @pytest.fixture(autouse=True)
 def _default_trusted_root_isolation(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
-    """In an active run, a test that passes no folders gets its own synthetic ones, never real roots."""
+    """In an active run, a test that passes no folders gets its own synthetic ones, never real roots. In an xdist
+    worker the worker's own guard decides (Plan 11.30 Task 5)."""
     context = request.config.stash.get(_RUN_CONTEXT, None)
-    if context is None or context.guard_mode != "pytest_process_guard":
+    worker = request.config.stash.get(_XDIST_WORKER, None)
+    guard_mode = context.guard_mode if context is not None else worker.guard_mode if worker is not None else None
+    if guard_mode != "pytest_process_guard":
         return
     session_root = request.getfixturevalue("tmp_path_factory").getbasetemp() / "known-folders"
     run_context_guard.redirect_for_test(monkeypatch, session_root, request.node.nodeid)

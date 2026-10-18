@@ -1,0 +1,108 @@
+{
+  "windows-c1-01": {
+    "cleared": [
+      {
+        "code": "import-untyped",
+        "column": null,
+        "line": 5,
+        "message": "Skipping analyzing \"confusable_homoglyphs\": module is installed, but missing library stubs or py.typed marker",
+        "path": "src/optimus/guardrails/unicode_confusables.py"
+      },
+      {
+        "code": "import-untyped",
+        "column": null,
+        "line": 27,
+        "message": "Library stubs not installed for \"yaml\"",
+        "path": "src/optimus_model_policy/registry.py"
+      },
+      {
+        "code": "import-untyped",
+        "column": null,
+        "line": 10,
+        "message": "Library stubs not installed for \"defusedxml\"",
+        "path": "src/optimus_gateway/tool_providers.py"
+      },
+      {
+        "code": "import-untyped",
+        "column": null,
+        "line": 11,
+        "message": "Library stubs not installed for \"defusedxml.common\"",
+        "path": "src/optimus_gateway/tool_providers.py"
+      }
+    ],
+    "added": [
+      {
+        "code": "override",
+        "column": null,
+        "line": 148,
+        "message": "Return type \"dict[str, Any]\" of \"construct_mapping\" incompatible with return type \"dict[Hashable, Any]\" in supertype \"yaml.constructor.SafeConstructor\"",
+        "path": "src/optimus_model_policy/registry.py"
+      },
+      {
+        "code": "override",
+        "column": null,
+        "line": 148,
+        "message": "Return type \"dict[str, Any]\" of \"construct_mapping\" incompatible with return type \"dict[Hashable, Any]\" in supertype \"yaml.constructor.BaseConstructor\"",
+        "path": "src/optimus_model_policy/registry.py"
+      }
+    ],
+    "retained": 229,
+    "import_untyped_remaining": 0,
+    "telemetry_diagnostic_count": 16
+  },
+  "wsl-c1-01": {
+    "cleared": [
+      {
+        "code": "import-untyped",
+        "column": null,
+        "line": 5,
+        "message": "Skipping analyzing \"confusable_homoglyphs\": module is installed, but missing library stubs or py.typed marker",
+        "path": "src/optimus/guardrails/unicode_confusables.py"
+      },
+      {
+        "code": "import-untyped",
+        "column": null,
+        "line": 27,
+        "message": "Library stubs not installed for \"yaml\"",
+        "path": "src/optimus_model_policy/registry.py"
+      },
+      {
+        "code": "import-untyped",
+        "column": null,
+        "line": 10,
+        "message": "Library stubs not installed for \"defusedxml\"",
+        "path": "src/optimus_gateway/tool_providers.py"
+      },
+      {
+        "code": "import-untyped",
+        "column": null,
+        "line": 11,
+        "message": "Library stubs not installed for \"defusedxml.common\"",
+        "path": "src/optimus_gateway/tool_providers.py"
+      }
+    ],
+    "added": [
+      {
+        "code": "override",
+        "column": null,
+        "line": 148,
+        "message": "Return type \"dict[str, Any]\" of \"construct_mapping\" incompatible with return type \"dict[Hashable, Any]\" in supertype \"yaml.constructor.SafeConstructor\"",
+        "path": "src/optimus_model_policy/registry.py"
+      },
+      {
+        "code": "override",
+        "column": null,
+        "line": 148,
+        "message": "Return type \"dict[str, Any]\" of \"construct_mapping\" incompatible with return type \"dict[Hashable, Any]\" in supertype \"yaml.constructor.BaseConstructor\"",
+        "path": "src/optimus_model_policy/registry.py"
+      }
+    ],
+    "retained": 220,
+    "import_untyped_remaining": 0,
+    "telemetry_diagnostic_count": 16
+  },
+  "modules_removed": [
+    "optimus.guardrails.unicode_confusables"
+  ],
+  "modules_added": []
+}
