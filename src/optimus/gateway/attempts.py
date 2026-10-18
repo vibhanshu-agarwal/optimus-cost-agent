@@ -37,6 +37,7 @@ from optimus.gateway.models import GatewayResponse, GatewayRouteAttempt, Gateway
 
 __all__ = [
     "GATEWAY_FAILURE_CODES",
+    "GATEWAY_REGISTRY_MISMATCH_CODES",
     "PREFLIGHT_REFUSAL_CODES",
     "REPLY_REFUSAL_CODES",
     "ROUTE_STOP_CODES",
@@ -47,6 +48,7 @@ __all__ = [
     "attempts_from_response",
     "first_error",
     "gateway_failure_facts",
+    "is_gateway_registry_mismatch",
     "is_input_capacity_refusal",
     "is_preflight_refusal",
     "stops_experimental_route",
@@ -196,6 +198,17 @@ def is_preflight_refusal(exc: BaseException) -> bool:
         and not exc.route_attempts_malformed
         and exc.gateway_usage is None
     )
+
+
+# Preflight refusals that mean the running Gateway does not enforce this install's trusted registry: it
+# enforces none (started before the upgrade) or another one. Typically a Gateway adopted with --no-auto-start or
+# started by `optimus-trust run-gateway` (Plan 12.2 closure; Codex 6249427656).
+GATEWAY_REGISTRY_MISMATCH_CODES = frozenset({"BINDING_UNSUPPORTED", "REGISTRY_HASH_MISMATCH"})
+
+
+def is_gateway_registry_mismatch(exc: BaseException) -> bool:
+    """A proven preflight refusal because the running Gateway enforces no registry or another one."""
+    return is_preflight_refusal(exc) and getattr(exc, "gateway_code", None) in GATEWAY_REGISTRY_MISMATCH_CODES
 
 
 def is_input_capacity_refusal(exc: BaseException) -> bool:

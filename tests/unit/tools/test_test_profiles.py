@@ -518,6 +518,7 @@ _REVIEWED_CHEAP_LAUNCHERS = {
     "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py": _MIXED,
     "tests/unit/tools/test_debug_trace_message_rule.py": _MIXED,
     "tests/unit/tools/test_plan1126_unrun_binding.py": _MIXED,
+    "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py": "one inert ACP double child answering one request; the rehearsal's other nodes drive a fake executor in-process",
     "tests/unit/tools/test_registry_maintenance.py": "one literal child whose identity the PID-reuse controls end; tool unit tests",
     "tests/unit/tools/test_run_context_xdist_probes.py": "the xdist targets: one literal sleep grandchild, started only inside the nested grandchild control; otherwise empty",
     "tests/unit/tools/test_run_plan996_acpx_security_evidence.py": _MIXED,

@@ -1,11 +1,11 @@
 """Trusted registry composition and the per-request route binding (Plan 12.2 Task 5).
 
 Shared by the host, the launch gate and the Gateway, so each side computes the same digests from the
-same code. Enforcement is built but inactive (operator decision 2026-10-02): ``ENFORCEMENT_ACTIVE``
-stays False until a verified snapshot is approved after Task 12's measurements. While it is False,
-:func:`trusted_snapshot` returns None, launch approvals and Gateway manifests carry no registry
-binding and the Gateway keeps today's routing. Activation is a reviewed code change, never an
-environment variable, file or caller field.
+same code. Enforcement is active (Plan 12.2 closure plan v3; the operator's approval of the offline scope
+and policy, #237 6249169293): :func:`trusted_snapshot` composes the packaged defaults, whose reviewed hash is
+``experimental.SHIPPED_DEFAULTS_HASH``; launch approvals and Gateway manifests bind it and the Gateway
+enforces it. It was built inactive (operator decision 2026-10-02). Activation stays a reviewed code change,
+never an environment variable, file or caller field.
 
 Trust flows one way. The launch gate composes the snapshot, folds :func:`approval_literal` into the
 HMAC-protected approval (so the operator approves that exact effective hash) and signs it into the
@@ -61,8 +61,8 @@ __all__ = [
     "verify_disclosure",
 ]
 
-ENFORCEMENT_ACTIVE: Final = False
-"""Registry enforcement and the fixed medium default. Off until a verified snapshot is approved."""
+ENFORCEMENT_ACTIVE: Final = True
+"""Registry enforcement and its default model (closure plan v3): on, over the reviewed packaged defaults."""
 
 APPROVAL_LITERAL_NAME: Final = "_model_registry"
 """The security-literal name under which a launch approval binds the effective registry hash."""

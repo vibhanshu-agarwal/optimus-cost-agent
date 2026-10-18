@@ -479,8 +479,9 @@ def test_the_shipped_defaults_keep_the_frozen_role_order() -> None:
     )
     assert ordered_assignments(snapshot, Role.COMPLEX) == ("google/gemini-3.8-flash", "z-ai/glm-5.3")
     assert ordered_assignments(snapshot, Role.ESCALATION) == ("google/gemini-3.8-flash", "z-ai/glm-5.3")
-    assert ordered_assignments(snapshot, Role.EASY) == ("openai/gpt-6-luna",)
-    assert ordered_assignments(snapshot, Role.SUMMARIZER) == ("qwen/qwen3.7-flash", "openai/gpt-6-luna")
+    # Closure plan v3: Haiku 5.5 is the shipped easy and summarizer model (the attached profile's roles).
+    assert ordered_assignments(snapshot, Role.EASY) == ("anthropic/claude-haiku-5.5",)
+    assert ordered_assignments(snapshot, Role.SUMMARIZER) == ("anthropic/claude-haiku-5.5",)
     assert ordered_assignments(snapshot, Role.REVIEWER) == ("anthropic/claude-sonnet-5.5", "moonshotai/kimi-k3")
 
 
@@ -491,18 +492,23 @@ def test_the_shipped_defaults_list_without_granting_roles() -> None:
     assert "z-ai/glm-5.3-flash" not in assigned, "GLM 5.3 Flash has no role"
     coding = {Role.EASY, Role.MEDIUM, Role.COMPLEX, Role.ESCALATION}
     assert all("qwen/qwen3.7-flash" not in snapshot.policy.roles.get(role, ()) for role in coding)
-    assert not [m for m in snapshot.policy.models if "haiku" in m], "Haiku is removed (ADR-003)"
+    # ADR-003 removed Haiku 4.5 (the old `claude-haiku` default); Haiku 5.5 is the only Haiku, and it is not medium.
+    assert [m for m in snapshot.policy.models if "haiku" in m] == ["anthropic/claude-haiku-5.5"]
+    assert "anthropic/claude-haiku-5.5" not in snapshot.policy.roles.get(Role.MEDIUM, ())
     assert _issues(snapshot, "ORIGIN_INVENTORY") == []
 
 
-def test_the_shipped_defaults_admit_nothing_until_facts_are_verified() -> None:
-    """Catalog facts from 2026-09-30 are recorded but unverified, and no route estimator or output
-    reserve has been measured (D1-D3, CP4). Every role is therefore empty, by design."""
+def test_the_shipped_defaults_admit_only_haiku_for_easy_and_summarizer() -> None:
+    """Closure plan v3: Haiku 5.5 is admitted for easy and summarizer under the one shipped empirical exception.
+    Every other catalog route stays recorded but unverified, so every other role is empty (no medium model yet:
+    the default planner falls back to the first eligible easy model)."""
     snapshot = _shipped()
+    haiku = ("anthropic/claude-haiku-5.5",)
     for role in Role:
-        assert select_eligible_models(snapshot, role) == (), role
-    codes = {issue.code for issue in validate_registry(snapshot)}
-    assert {"ROUTE_UNVERIFIED", "ESTIMATOR_UNKNOWN", "RESERVE_UNSET"} <= codes
+        assert select_eligible_models(snapshot, role) == (haiku if role in {Role.EASY, Role.SUMMARIZER} else ()), role
+    codes = {issue.code for issue in validate_registry(snapshot) if issue.model_id != haiku[0]}
+    assert {"ROUTE_UNVERIFIED", "ESTIMATOR_UNKNOWN"} <= codes
+    assert [issue for issue in validate_registry(snapshot) if issue.model_id == haiku[0]] == []
 
 
 def test_contributor_cannot_run_at_standard_only_max_reasoning() -> None:

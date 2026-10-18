@@ -102,7 +102,7 @@ class TestResolveLaunchCandidateEnforcesSecretLengthCap:
     def test_ordinary_length_secret_is_unaffected(self, tmp_path: Path) -> None:
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key-normal-length",
+            "OPTIMUS_API_KEY": "test-key-normal-length",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -129,7 +129,7 @@ class TestResolveLaunchCandidateValidatesEnvGatewayPermissions:
     def test_missing_env_gateway_skips_check_and_resolves_normally(self, tmp_path: Path) -> None:
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -153,15 +153,15 @@ class TestResolveLaunchCandidateValidatesEnvGatewayPermissions:
         paths.config_root.mkdir(parents=True)
         env_gateway = paths.config_root / ".env.gateway"
         env_gateway.write_text(
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-should-never-be-read\n",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-should-never-be-read\n",  # pragma: allowlist secret - synthetic test fixture
             encoding="utf-8",
         )
         env_gateway.chmod(0o640)  # group-readable — must be rejected
 
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -184,15 +184,15 @@ class TestResolveLaunchCandidateValidatesEnvGatewayPermissions:
         paths.config_root.mkdir(parents=True)
         env_gateway = paths.config_root / ".env.gateway"
         env_gateway.write_text(
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-test-value\n",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-test-value\n",  # pragma: allowlist secret - synthetic test fixture
             encoding="utf-8",
         )
         env_gateway.chmod(0o600)  # owner-only — must pass
 
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -205,7 +205,7 @@ class TestResolveLaunchCandidateValidatesEnvGatewayPermissions:
         )
         assert candidate.provider_credentials is not None
         assert candidate.provider_credentials.secrets is not None
-        assert candidate.provider_credentials.secrets.model_provider_api_key == "sk-or-test-value"
+        assert candidate.provider_credentials.secrets.model_provider_api_key == "sk-or-test-value"  # pragma: allowlist secret - synthetic test fixture
 
 
 class TestCandidateResolution:
@@ -214,7 +214,7 @@ class TestCandidateResolution:
     def test_basic_resolution_with_required_vars(self, tmp_path: Path) -> None:
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -232,7 +232,7 @@ class TestCandidateResolution:
         """Provider/base URL must be displayed literally (not masked)."""
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
             "OPTIMUS_LOCAL_GATEWAY_BASE_URL": "https://api.openrouter.ai/v1",
         }
@@ -252,8 +252,8 @@ class TestCandidateResolution:
         """Redis URI user information is masked in display."""
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
-            "OPTIMUS_REDIS_URL": "redis://user:secret@127.0.0.1:6379/0",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_REDIS_URL": "redis://user:secret@127.0.0.1:6379/0",  # pragma: allowlist secret - synthetic test fixture
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
         candidate = resolve_launch_candidate(
@@ -271,7 +271,7 @@ class TestCandidateResolution:
         """Secret-tier variables show redacted display, never the value."""
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "super-secret-key-value",
+            "OPTIMUS_API_KEY": "super-secret-key-value",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -290,7 +290,7 @@ class TestCandidateResolution:
         """Unknown OPTIMUS_* in inherited env raises LaunchGateError."""
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "key",
+            "OPTIMUS_API_KEY": "key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
             "OPTIMUS_UNKNOWN_SETTING": "value",
         }
@@ -309,7 +309,7 @@ class TestCandidateResolution:
         """Internal-only names in inherited env are rejected."""
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "key",
+            "OPTIMUS_API_KEY": "key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
             "OPTIMUS_ACP_DEBUG_TRACE": "1",
         }
@@ -327,10 +327,10 @@ class TestCandidateResolution:
         """Changing a credential value changes the snapshot digest."""
         base_env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "key-a",
+            "OPTIMUS_API_KEY": "key-a",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
-        env2 = {**base_env, "OPTIMUS_API_KEY": "key-b"}
+        env2 = {**base_env, "OPTIMUS_API_KEY": "key-b"}  # pragma: allowlist secret - synthetic test fixture
 
         snap1 = LaunchEnvironmentSnapshot.capture(base_env)
         snap2 = LaunchEnvironmentSnapshot.capture(env2)
@@ -354,7 +354,7 @@ class TestCandidateResolution:
 
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -474,7 +474,7 @@ class TestEndToEndAuthorization:
 
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -518,7 +518,7 @@ class TestEndToEndAuthorization:
 
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -586,7 +586,7 @@ class TestEndToEndAuthorization:
 
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -757,10 +757,10 @@ class TestSingleReadCredentialResolution:
         """Provider credentials present in the snapshot are resolved onto the candidate."""
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "openrouter",
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-or-test",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-or-test",  # pragma: allowlist secret - synthetic test fixture
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
         candidate = resolve_launch_candidate(
@@ -772,15 +772,15 @@ class TestSingleReadCredentialResolution:
         assert candidate.provider_credentials is not None
         assert candidate.provider_credentials.secrets is not None
         assert candidate.provider_credentials.secrets.provider == "openrouter"
-        assert candidate.provider_credentials.secrets.model_provider_api_key == "sk-or-test"
+        assert candidate.provider_credentials.secrets.model_provider_api_key == "sk-or-test"  # pragma: allowlist secret - synthetic test fixture
 
     def test_shared_secret_resolved_from_snapshot(self, tmp_path: Path) -> None:
         """Shared secret present in the snapshot is resolved onto the candidate."""
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
-            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "shared-secret-value",
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "shared-secret-value",  # pragma: allowlist secret - synthetic test fixture
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
         candidate = resolve_launch_candidate(
@@ -789,7 +789,7 @@ class TestSingleReadCredentialResolution:
             operator_paths=_sample_operator_paths(tmp_path),
             hmac_key=_HMAC_KEY,
         )
-        assert candidate.shared_secret == "shared-secret-value"
+        assert candidate.shared_secret == "shared-secret-value"  # pragma: allowlist secret - synthetic test fixture
 
     def test_no_credentials_present_resolves_to_none_gracefully(self, tmp_path: Path) -> None:
         """When no provider/.env.gateway/keyring credentials exist, resolution
@@ -801,7 +801,7 @@ class TestSingleReadCredentialResolution:
 
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -823,9 +823,9 @@ class TestSingleReadCredentialResolution:
         """Credentials come from the immutable snapshot, not a later os.environ read."""
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
-            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "captured-secret",
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "captured-secret",  # pragma: allowlist secret - synthetic test fixture
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
 
@@ -838,7 +838,7 @@ class TestSingleReadCredentialResolution:
             operator_paths=_sample_operator_paths(tmp_path),
             hmac_key=_HMAC_KEY,
         )
-        assert candidate.shared_secret == "captured-secret"
+        assert candidate.shared_secret == "captured-secret"  # pragma: allowlist secret - synthetic test fixture
 
 
     def test_candidate_ignores_env_gateway_bytes_changed_after_resolution(self, tmp_path: Path) -> None:
@@ -860,15 +860,15 @@ class TestSingleReadCredentialResolution:
         paths.config_root.mkdir(parents=True)
         env_gateway = paths.config_root / ".env.gateway"
         env_gateway.write_text(
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-original\n",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-original\n",  # pragma: allowlist secret - synthetic test fixture
             encoding="utf-8",
         )
         if sys.platform != "win32":
             env_gateway.chmod(0o600)
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -882,14 +882,14 @@ class TestSingleReadCredentialResolution:
 
         # Rewrite the file AFTER resolve_launch_candidate() already returned.
         env_gateway.write_text(
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-ATTACKER-INJECTED\n",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-ATTACKER-INJECTED\n",  # pragma: allowlist secret - synthetic test fixture
             encoding="utf-8",
         )
 
         # The candidate object already held is unaffected -- it never
         # rereads the file.
-        assert candidate.provider_credentials.secrets.model_provider_api_key == "sk-or-original"
+        assert candidate.provider_credentials.secrets.model_provider_api_key == "sk-or-original"  # pragma: allowlist secret - synthetic test fixture
 
     def test_authorized_launch_ignores_durable_record_altered_after_authorize(self, tmp_path: Path) -> None:
         """Plan 9.96, Task 5 Step 7 (TOCTOU matrix), 'approval record
@@ -940,7 +940,7 @@ class TestSingleReadCredentialResolution:
 
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -997,7 +997,7 @@ class TestSingleReadCredentialResolution:
 
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -1007,7 +1007,7 @@ class TestSingleReadCredentialResolution:
         config_root_alpha.mkdir()
         env_gateway_alpha = config_root_alpha / ".env.gateway"
         env_gateway_alpha.write_text(
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-SECRET-ALPHA-111\n",
             encoding="utf-8",
         )
@@ -1025,7 +1025,7 @@ class TestSingleReadCredentialResolution:
         config_root_beta.mkdir()
         env_gateway_beta = config_root_beta / ".env.gateway"
         env_gateway_beta.write_text(
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-SECRET-BETA-222\n",
             encoding="utf-8",
         )
@@ -1054,8 +1054,8 @@ class TestSingleReadCredentialResolution:
             credential_keyring_backend=FixedKeyring(),
         )
 
-        assert candidate_alpha.provider_credentials.secrets.model_provider_api_key == "sk-SECRET-ALPHA-111"
-        assert candidate_beta.provider_credentials.secrets.model_provider_api_key == "sk-SECRET-BETA-222"
+        assert candidate_alpha.provider_credentials.secrets.model_provider_api_key == "sk-SECRET-ALPHA-111"  # pragma: allowlist secret - synthetic test fixture
+        assert candidate_beta.provider_credentials.secrets.model_provider_api_key == "sk-SECRET-BETA-222"  # pragma: allowlist secret - synthetic test fixture
         assert candidate_alpha.security_snapshot_digest != candidate_beta.security_snapshot_digest, (
             "Digest must change when the resolved .env.gateway credential changes — "
             "otherwise a stale durable approval remains valid after a credential swap."
@@ -1101,7 +1101,7 @@ class TestMonotonicTightenIsFreeAfterApproval:
         # Approve WITHOUT setting OPTIMUS_MAX_PLANNING_TURNS at all (implicit default).
         approved_env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         ws_identity = _sample_workspace_identity()
@@ -1177,7 +1177,7 @@ class TestMonotonicLoosenRequiresExactApproval:
         # Approve WITHOUT setting OPTIMUS_MAX_PLANNING_TURNS (implicit default of 3).
         approved_env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         ws_identity = _sample_workspace_identity()
@@ -1245,7 +1245,7 @@ class TestMonotonicLoosenRequiresExactApproval:
         # approved value.
         approved_env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
             "OPTIMUS_MAX_PLANNING_TURNS": "9",
         }
@@ -1307,7 +1307,7 @@ class TestMonotonicLoosenRequiresExactApproval:
 
         approved_env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
             "OPTIMUS_MAX_PLANNING_TURNS": "9",
         }
@@ -1354,7 +1354,7 @@ class TestMonotonicLoosenRequiresExactApproval:
         """An unparseable monotonic value must fail, not silently pass."""
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
             "OPTIMUS_MAX_PLANNING_TURNS": "not-a-number",
         }
@@ -1402,7 +1402,7 @@ def _base_env_for_registry_uri(name: str, uri: str) -> dict[str, str]:
     """Build a minimal valid env with one registry URI variable substituted."""
     env = {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-        "OPTIMUS_API_KEY": "test-key",
+        "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
     }
     env[name] = uri
@@ -1477,7 +1477,7 @@ class TestResolvedBaseUrlSecurityRecorder:
 
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -1492,8 +1492,8 @@ class TestResolvedBaseUrlSecurityRecorder:
         config_root_old.mkdir()
         env_gateway_old = config_root_old / ".env.gateway"
         env_gateway_old.write_text(
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-fixed-test-key\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-fixed-test-key\n"  # pragma: allowlist secret - synthetic test fixture
             f"OPTIMUS_LOCAL_GATEWAY_BASE_URL={raw_old}\n",
             encoding="utf-8",
         )
@@ -1511,8 +1511,8 @@ class TestResolvedBaseUrlSecurityRecorder:
         config_root_new.mkdir()
         env_gateway_new = config_root_new / ".env.gateway"
         env_gateway_new.write_text(
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-fixed-test-key\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY=sk-or-fixed-test-key\n"  # pragma: allowlist secret - synthetic test fixture
             f"OPTIMUS_LOCAL_GATEWAY_BASE_URL={raw_new}\n",
             encoding="utf-8",
         )
@@ -1568,10 +1568,10 @@ class TestResolvedBaseUrlSecurityRecorder:
         raw_base = f"https://user:{_URI_CANARY_OLD}@api.openrouter.ai/v1"
         env = {
             "OPTIMUS_GATEWAY_URL": raw_gateway,
-            "OPTIMUS_API_KEY": "test-key",
+            "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "openrouter",
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-or-test",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-or-test",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_LOCAL_GATEWAY_BASE_URL": raw_base,
         }
         candidate = _resolve_from_env(tmp_path, env)
@@ -1623,7 +1623,7 @@ class _FakeCredentialKeyring:
 
 _REQUIRED_LAUNCH_ENV = {
     "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-    "OPTIMUS_API_KEY": "test-key",
+    "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
     "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
 }
 
@@ -1644,7 +1644,7 @@ class TestEffectiveCredentialDisplayRows:
         paths = _sample_operator_paths(tmp_path)
         _write_owner_only_env_gateway(
             paths.config_root,
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n"  # pragma: allowlist secret - synthetic test fixture
             f"OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY={provider_canary}\n"
             "OPTIMUS_LOCAL_GATEWAY_BASE_URL=https://custom.example.com/v1\n"
             f"OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET={shared_canary}\n",
@@ -1721,7 +1721,7 @@ class TestEffectiveCredentialDisplayRows:
     def test_effective_default_source_rows(self, tmp_path: Path) -> None:
         env = {
             **_REQUIRED_LAUNCH_ENV,
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-default-canary-provider",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-default-canary-provider",  # pragma: allowlist secret - synthetic test fixture
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
 
@@ -1748,9 +1748,9 @@ class TestEffectiveCredentialDisplayRows:
         env = {
             **_REQUIRED_LAUNCH_ENV,
             "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "openrouter",
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-env-canary-provider",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-env-canary-provider",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_LOCAL_GATEWAY_BASE_URL": "https://openrouter.ai/api/v1",
-            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "env-canary-shared",
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "env-canary-shared",  # pragma: allowlist secret - synthetic test fixture
         }
         snapshot = LaunchEnvironmentSnapshot.capture(env)
 
@@ -1775,15 +1775,16 @@ class TestEffectiveCredentialDisplayRows:
             assert "env-canary-shared" not in row.display_value
 
 
-_GOLDEN_DISPLAY_DIGEST = "f7af89af0acce664b27825e5af9823c25b11579490bccc73e8f82d4ec316f248"
+_GOLDEN_DISPLAY_DIGEST = "f7af89af0acce664b27825e5af9823c25b11579490bccc73e8f82d4ec316f248"  # pragma: allowlist secret - synthetic test fixture
+_GOLDEN_SHIPPED_DISPLAY_DIGEST = "73f5615b62668f63afdfccfbd613f61c248a9a8cc8440ecc711082977357810c"  # Plan 12.2 closure: shipped registry literal added  # pragma: allowlist secret - synthetic test fixture
 _GOLDEN_ENV = {
     "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-    "OPTIMUS_API_KEY": "agent-key",
+    "OPTIMUS_API_KEY": "agent-key",  # pragma: allowlist secret - synthetic test fixture
     "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
     "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "openrouter",
-    "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "provider-key",
+    "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "provider-key",  # pragma: allowlist secret - synthetic test fixture
     "OPTIMUS_LOCAL_GATEWAY_BASE_URL": "https://api.openrouter.ai/v1",
-    "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "shared-secret",
+    "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "shared-secret",  # pragma: allowlist secret - synthetic test fixture
 }
 
 
@@ -1797,11 +1798,11 @@ class TestMissingKeyNonDisclosureAndGoldenDigest:
         openrouter_root = tmp_path / "openrouter"
         _write_owner_only_env_gateway(
             anthropic_root / "config",
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n",  # pragma: allowlist secret - synthetic test fixture
         )
         _write_owner_only_env_gateway(
             openrouter_root / "config",
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n",
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter\n",  # pragma: allowlist secret - synthetic test fixture
         )
         snapshot = LaunchEnvironmentSnapshot.capture(_REQUIRED_LAUNCH_ENV)
         fake_keyring = _FakeCredentialKeyring()
@@ -1844,7 +1845,11 @@ class TestMissingKeyNonDisclosureAndGoldenDigest:
     ) -> None:
         from optimus.acp import launch_approvals, launch_gate
         from optimus.acp.launch_approvals import compute_security_snapshot_digest
+        from optimus_model_policy import binding
 
+        # The frozen predecessor bytes: no model-registry literal (enforcement inactive). The shipped,
+        # enforced digest is pinned separately below.
+        monkeypatch.setattr(binding, "ENFORCEMENT_ACTIVE", False)
         captured_args: dict[str, object] = {}
         real_digest = launch_approvals.compute_security_snapshot_digest
 
@@ -1898,13 +1903,41 @@ class TestMissingKeyNonDisclosureAndGoldenDigest:
             for row in _rows(candidate, "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET")
         )
 
+    def test_shipped_golden_digest_adds_only_the_registry_literal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Plan 12.2 closure: the shipped (enforced) digest is pinned by value. It differs from the
+        frozen predecessor only by the one model-registry literal, which forces a re-approval."""
+        from optimus_model_policy import binding
+        from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, trusted_approval_literal
+
+        def _resolve():
+            return resolve_launch_candidate(
+                snapshot=LaunchEnvironmentSnapshot.capture(_GOLDEN_ENV),
+                workspace_identity=_sample_workspace_identity(),
+                operator_paths=_sample_operator_paths(tmp_path),
+                hmac_key=_HMAC_KEY,
+                credential_keyring_backend=_FakeCredentialKeyring(),
+            )
+
+        shipped = _resolve()  # unpatched: the shipped, enforced launch
+        literal = trusted_approval_literal()
+        monkeypatch.setattr(binding, "ENFORCEMENT_ACTIVE", False)
+        predecessor = _resolve()
+
+        assert shipped.security_snapshot_digest == _GOLDEN_SHIPPED_DISPLAY_DIGEST
+        assert predecessor.security_snapshot_digest == _GOLDEN_DISPLAY_DIGEST
+        assert literal is not None and shipped.security_literals[APPROVAL_LITERAL_NAME] == literal
+        assert dict(shipped.security_literals) == {**predecessor.security_literals, APPROVAL_LITERAL_NAME: literal}
+        assert dict(shipped.secret_fingerprints) == dict(predecessor.secret_fingerprints)
+
 
 def test_launch_candidate_carries_workspace_security_state(tmp_path: Path) -> None:
     from optimus.acp.trusted_paths import resolve_workspace_security_state
 
     env = {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-        "OPTIMUS_API_KEY": "test-key",
+        "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
     }
     snapshot = LaunchEnvironmentSnapshot.capture(env)
@@ -1937,7 +1970,7 @@ def test_authorize_launch_promotes_legacy_v1_and_reports_migrated(tmp_path: Path
 
     env = {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-        "OPTIMUS_API_KEY": "test-key",
+        "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
     }
     snapshot = LaunchEnvironmentSnapshot.capture(env)

@@ -12,7 +12,18 @@ the same policy plus the accepted summary-quality receipt; offline preparation b
   response's router metadata for the expected provider, which identifies the provider, not a variant.
 
 It is never a YAML flag: an override with any changed policy value composes a different hash and gets the ordinary
-refusals. No production snapshot is ever listed.
+refusals.
+
+Shipped exception (Plan 12.2 closure plan v3; operator approval of the offline scope and policy, #237 6249169293).
+The packaged defaults now compose to exactly the attached profile's hash (they are "old defaults + the attached
+override"), so the attached entry is also the one shipped empirical exception: ``SHIPPED_DEFAULTS_HASH``. It is
+bound to that exact reviewed snapshot and model, keeps ``verified: false``, and carries the same two residuals: the
+size estimate is empirical (passing calls show tested requests fitted, not a universal token bound), and the
+provider-family slug identifies Anthropic, not an exact variant or region. Full admission, disabled provider
+fallback, the response, usage and provider checks, the permanent route stop and receipt-first accounting all stay.
+Because Haiku 5.5 is both the default planner and the summarizer on this route, one refused or unverifiable reply
+stops every later Haiku call (answers and summaries) for that Gateway process until it restarts. No other
+production snapshot is listed.
 """
 
 from __future__ import annotations
@@ -29,6 +40,7 @@ __all__ = [
     "EXPERIMENTAL_ROUTES",
     "HAIKU_ATTACHED_HASH",
     "HAIKU_QUALIFICATION_HASH",
+    "SHIPPED_DEFAULTS_HASH",
     "ExperimentalRoute",
     "experimental_route",
 ]
@@ -37,6 +49,8 @@ EMPIRICAL_ESTIMATOR_METHOD: Final = "utf8-bytes-ratio-empirical"
 
 HAIKU_QUALIFICATION_HASH: Final = "048c1a2b3e7d3436d371e8964200064bb30f0a1a865c945f92a2fc09d3ba5cba"  # pragma: allowlist secret - registry identity, not a credential
 HAIKU_ATTACHED_HASH: Final = "06e637845f5f7cea2b4a22d23407c59efc9741d7848b06ee5f4c3d2284f3f07d"  # pragma: allowlist secret - registry identity, not a credential
+SHIPPED_DEFAULTS_HASH: Final = HAIKU_ATTACHED_HASH
+"""The packaged defaults' reviewed effective hash: the attached profile's (closure plan v3). The shipped exception."""
 
 
 @dataclass(frozen=True, slots=True)

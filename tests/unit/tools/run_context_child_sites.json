@@ -559,6 +559,12 @@
    "disposition": "tripwire_at_site",
    "proof": "tests/unit/tools/test_mypy_ratchet.py::test_new_module_is_checked",
    "basis": "The real Mypy child loads the existing startup tripwire before its program, asserts the expected assignment diagnostic, and proves zero real known-folder adapter calls."
+  },
+  "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_double_is_packed_as_a_real_executable_under_a_path_with_spaces#1": {
+   "mechanism": "indirect",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Runs the Stage C rehearsal's inert ACP double, packed by distlib as optimus-agent.exe on this venv's Python; it answers one JSON-RPC request from stdin and records to the test's temporary file. Ordinary child of an inherited environment; proven by the census at the acceptance candidate."
   }
  }
 }

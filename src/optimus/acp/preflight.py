@@ -8,6 +8,7 @@ from pathlib import Path
 from optimus.acp.local_infra import DEFAULT_REDIS_URL
 from optimus.agent.state_store import validate_redis_url
 from optimus.redis.runtime import RedisRuntime, RedisRuntimeShutdownIncomplete
+from optimus_model_policy.binding import RouteBinding
 
 DEFAULT_REDIS_URL_HINT = DEFAULT_REDIS_URL
 _LOCAL_STARTUP_RUNBOOK = (
@@ -154,6 +155,24 @@ def _require_redis_timeseries(runtime: RedisRuntime) -> None:
         ) from exc
 
 
+def _probe_route_binding(model_id: str, shared_secret: str) -> RouteBinding | None:
+    """The strict auth probe's route binding under the enforced shipped registry (closure plan v3), so the enforced
+    Gateway does not refuse it as unbound (BINDING_REQUIRED). It remains a real, possibly billed request."""
+    from optimus.acp.context_attachment import ordinary_route_policy
+    from optimus_model_policy.binding import trusted_snapshot
+
+    snapshot = trusted_snapshot()
+    if snapshot is None:
+        return None
+    policy = ordinary_route_policy(snapshot=snapshot, model_id=model_id, shared_secret=shared_secret)
+    bound = policy.capture(session_id="preflight", turn_seq=0, deliver_notice=lambda _text: False).bind(stage="auth-probe", input_text="preflight")
+    if bound is None:
+        raise PreflightFailure(
+            exit_code=2, user_message=f"the strict auth probe cannot use {model_id}: it needs a disclosure notice the probe cannot show"
+        )
+    return bound.binding
+
+
 def _require_gateway_auth(environ: Mapping[str, str]) -> None:
     """
     Validates the authentication credentials for the Optimus gateway using preflight checks. This function attempts to
@@ -180,11 +199,13 @@ def _require_gateway_auth(environ: Mapping[str, str]) -> None:
     client = GatewayClient(settings=settings)
     probe_model = resolve_agent_model(environ)
     gateway_url = environ.get("OPTIMUS_GATEWAY_URL", "").strip()
+    route_binding = _probe_route_binding(probe_model, settings.optimus_api_key.get_secret_value())
     try:
         client.create_response(
             model=probe_model,
             input_text="preflight",
             metadata={"purpose": "preflight_auth_probe"},
+            route_binding=route_binding,
         )
     except GatewayHttpError as exc:
         if exc.status_code in {401, 403}:

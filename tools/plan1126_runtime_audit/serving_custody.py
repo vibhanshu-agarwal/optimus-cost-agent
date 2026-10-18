@@ -571,7 +571,7 @@ def _probe_configured_handoff(workspace: Path) -> CustodyObservation:
     facts: dict[str, Any] = {}
     try:
         with _composition_patches(runtime, mcp):
-            server = bootstrap.build_configured_server(environ=dict(_PROBE_ENVIRON), workspace_root=workspace, model="glm-5.2")
+            server = bootstrap.build_configured_server(environ=dict(_PROBE_ENVIRON), workspace_root=workspace, model="anthropic/claude-haiku-5.5")
         runner = server._dispatcher.agent_runner  # noqa: SLF001 - the composed runner, read only
         store = getattr(runner, "_state_store", None)
         sink = getattr(getattr(runner, "event_sink", None), "redis_sink", None)
@@ -742,7 +742,7 @@ def _probe_startup_rollback(workspace: Path) -> CustodyObservation:
         with _composition_patches(runtime, mcp):
             try:
                 bootstrap.build_agent_harness_runtime(
-                    environ=dict(_PROBE_ENVIRON), workspace_root=workspace, model="glm-5.2"
+                    environ=dict(_PROBE_ENVIRON), workspace_root=workspace, model="anthropic/claude-haiku-5.5"
                 )
             except RuntimeError as exc:
                 facts["original_error_preserved"] = str(exc) == "plan1126-s1-rollback-probe"

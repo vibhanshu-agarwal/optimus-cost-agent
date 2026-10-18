@@ -30,35 +30,35 @@ def _resolution(secrets: ProviderSecrets | None) -> ProviderCredentialResolution
 def test_strip_local_provider_keys_removes_vendor_keys_but_keeps_optimus_vars() -> None:
     environ = {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-        "OPTIMUS_API_KEY": "shared-secret",
+        "OPTIMUS_API_KEY": "shared-secret",  # pragma: allowlist secret - synthetic test fixture
         "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
-        "ANTHROPIC_API_KEY": "sk-ant-leaked",
-        "OPENAI_API_KEY": "sk-oai-leaked",
+        "ANTHROPIC_API_KEY": "sk-ant-leaked",  # pragma: allowlist secret - synthetic test fixture
+        "OPENAI_API_KEY": "sk-oai-leaked",  # pragma: allowlist secret - synthetic test fixture
     }
 
     sanitized = local_infra.strip_local_provider_keys(environ)
 
     assert sanitized == {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-        "OPTIMUS_API_KEY": "shared-secret",
+        "OPTIMUS_API_KEY": "shared-secret",  # pragma: allowlist secret - synthetic test fixture
         "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
     }
-    assert environ["ANTHROPIC_API_KEY"] == "sk-ant-leaked"
+    assert environ["ANTHROPIC_API_KEY"] == "sk-ant-leaked"  # pragma: allowlist secret - synthetic test fixture
 
 
 def test_strip_local_provider_keys_also_removes_openrouter_key_and_shared_secret() -> None:
     environ = {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-        "OPTIMUS_API_KEY": "shared-secret",
-        "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-or-leaked",
-        "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "shared-secret",
+        "OPTIMUS_API_KEY": "shared-secret",  # pragma: allowlist secret - synthetic test fixture
+        "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-or-leaked",  # pragma: allowlist secret - synthetic test fixture
+        "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "shared-secret",  # pragma: allowlist secret - synthetic test fixture
     }
 
     sanitized = local_infra.strip_local_provider_keys(environ)
 
     assert sanitized == {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-        "OPTIMUS_API_KEY": "shared-secret",
+        "OPTIMUS_API_KEY": "shared-secret",  # pragma: allowlist secret - synthetic test fixture
     }
 
 
@@ -66,10 +66,10 @@ def test_agent_projection_excludes_every_provider_and_gateway_child_secret() -> 
     projected = local_infra.strip_local_provider_keys(
         {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-            "OPTIMUS_API_KEY": "agent-secret",
-            "OPENROUTER_API_KEY": "or-secret",
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "or-secret",
-            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "child-secret",
+            "OPTIMUS_API_KEY": "agent-secret",  # pragma: allowlist secret - synthetic test fixture
+            "OPENROUTER_API_KEY": "or-secret",  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "or-secret",  # pragma: allowlist secret - synthetic test fixture
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "child-secret",  # pragma: allowlist secret - synthetic test fixture
             "OPTIMUS_PRODUCTION_MODE": "false",
             "OPTIMUS_EXTRA_GATEWAY_ORIGINS": "https://example.com",
         }
@@ -77,7 +77,7 @@ def test_agent_projection_excludes_every_provider_and_gateway_child_secret() -> 
 
     assert projected == {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
-        "OPTIMUS_API_KEY": "agent-secret",
+        "OPTIMUS_API_KEY": "agent-secret",  # pragma: allowlist secret - synthetic test fixture
     }
 
 
@@ -91,7 +91,7 @@ def test_apply_local_defaults_fills_loopback_urls_when_unset(tmp_path) -> None:
     assert result["OPTIMUS_REDIS_URL"] == "redis://127.0.0.1:6379/0"
     assert result["OPTIMUS_GATEWAY_URL"] == "http://127.0.0.1:8765"
     assert "OPTIMUS_PRODUCTION_MODE" not in result
-    assert result["OPTIMUS_AGENT_MODEL"] == "claude-haiku"
+    assert result["OPTIMUS_AGENT_MODEL"] == "anthropic/claude-haiku-5.5"  # the shipped default (closure plan v3)
 
 
 def test_apply_local_defaults_leaves_explicit_values_untouched(tmp_path) -> None:
@@ -100,7 +100,7 @@ def test_apply_local_defaults_leaves_explicit_values_untouched(tmp_path) -> None
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:9999",
         "OPTIMUS_PRODUCTION_MODE": "true",
         "OPTIMUS_AGENT_MODEL": "gpt-4",
-        "OPTIMUS_API_KEY": "explicit-key",
+        "OPTIMUS_API_KEY": "explicit-key",  # pragma: allowlist secret - synthetic test fixture
     }
 
     result = local_infra.apply_local_defaults(input_environ, config_root=tmp_path)
@@ -112,7 +112,7 @@ def test_apply_local_defaults_leaves_explicit_values_untouched(tmp_path) -> None
 def test_apply_local_defaults_uses_passed_in_resolved_shared_secret(tmp_path) -> None:
     result = local_infra.apply_local_defaults({}, config_root=tmp_path, resolved_shared_secret="resolved-secret")
 
-    assert result["OPTIMUS_API_KEY"] == "resolved-secret"
+    assert result["OPTIMUS_API_KEY"] == "resolved-secret"  # pragma: allowlist secret - synthetic test fixture
 
 
 def test_apply_local_defaults_no_resolved_secret_means_no_api_key(tmp_path) -> None:
@@ -364,9 +364,9 @@ def _ensure_gateway_kwargs(**overrides: object) -> dict[str, object]:
     defaults: dict[str, object] = {
         "gateway_url": "http://127.0.0.1:8765",
         "provider_credentials": _resolution(
-            ProviderSecrets(provider="openrouter", model_provider_api_key="sk-or-test")
+            ProviderSecrets(provider="openrouter", model_provider_api_key="sk-or-test")  # pragma: allowlist secret - synthetic test fixture
         ),
-        "shared_secret": "shared-secret-value",
+        "shared_secret": "shared-secret-value",  # pragma: allowlist secret - synthetic test fixture
         "workspace_digest": "a" * 64,
         "security_snapshot_digest": "b" * 64,
         "manifest_hmac_key": _HMAC_KEY,
@@ -494,8 +494,8 @@ def test_ensure_local_gateway_spawns_with_exact_cli_args_and_manifest(tmp_path, 
     assert "OPTIMUS_LOCAL_GATEWAY_BIND_HOST" not in gateway_env
     assert "OPTIMUS_LOCAL_GATEWAY_PORT" not in gateway_env
     assert gateway_env["OPTIMUS_LOCAL_GATEWAY_PROVIDER"] == "openrouter"
-    assert gateway_env["OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"] == "shared-secret-value"
-    assert gateway_env["OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"] == "sk-or-test"
+    assert gateway_env["OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"] == "shared-secret-value"  # pragma: allowlist secret - synthetic test fixture
+    assert gateway_env["OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"] == "sk-or-test"  # pragma: allowlist secret - synthetic test fixture
     assert gateway_env["PATH"] == "C:/some/path"
     assert "ANTHROPIC_API_KEY" not in gateway_env
     assert captured["stdout"] != subprocess.PIPE
@@ -539,7 +539,7 @@ def test_ensure_local_gateway_passes_through_custom_base_url(tmp_path, monkeypat
             provider_credentials=_resolution(
                 ProviderSecrets(
                     provider="openrouter",
-                    model_provider_api_key="sk-test",
+                    model_provider_api_key="sk-test",  # pragma: allowlist secret - synthetic test fixture
                     base_url="https://custom.example.com/v1",
                 )
             )
@@ -689,7 +689,7 @@ def test_openrouter_gateway_child_env_exactly_matches_applicable_registry_projec
             provider_credentials=_resolution(
                 ProviderSecrets(
                     provider="openrouter",
-                    model_provider_api_key="sk-or-test",
+                    model_provider_api_key="sk-or-test",  # pragma: allowlist secret - synthetic test fixture
                     base_url="https://openrouter.ai/api/v1",
                 )
             )
@@ -725,7 +725,7 @@ def test_ensure_local_gateway_forwards_tool_env_from_config_root_env_gateway(tmp
     config_root = tmp_path / "config"
     config_root.mkdir()
     (config_root / ".env.gateway").write_text(
-        "TAVILY_API_KEY=tvly-from-config\n"
+        "TAVILY_API_KEY=tvly-from-config\n"  # pragma: allowlist secret - synthetic test fixture
         "OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS=python.org\n"
         "OPTIMUS_GATEWAY_TOOL_REDIS_URL=redis://127.0.0.1:6379/0\n",
         encoding="utf-8",
@@ -753,7 +753,7 @@ def test_ensure_local_gateway_forwards_tool_env_from_config_root_env_gateway(tmp
     )
 
     child_env = captured["env"]
-    assert child_env["TAVILY_API_KEY"] == "tvly-from-config"
+    assert child_env["TAVILY_API_KEY"] == "tvly-from-config"  # pragma: allowlist secret - synthetic test fixture
     assert child_env["OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS"] == "python.org"
     assert child_env["OPTIMUS_GATEWAY_TOOL_REDIS_URL"] == "redis://127.0.0.1:6379/0"
 

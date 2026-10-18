@@ -10,16 +10,17 @@ changed override or a fixture policy refuses. Selecting a profile grants nothing
   names the same hash;
 - workspace, credential, permission and scope checks are unchanged.
 
-Production is untouched: ``ENFORCEMENT_ACTIVE`` stays False, :func:`trusted_snapshot` keeps returning
-None and the shipped defaults do not change. Activation remains a separate reviewed code release; this
-module is the reviewed test-process composition the binding rule's "reviewed code change" names.
+A profile never changes production: the shipped defaults, ``ENFORCEMENT_ACTIVE`` and
+:func:`trusted_snapshot` are their own reviewed release (the Plan 12.2 closure), and a profile replaces
+the shipped snapshot only for the test process that names it. This module is the reviewed test-process
+composition the binding rule's "reviewed code change" names.
 
 Verified facts enter a profile only through a reviewed change to its override and pinned hash. The
 ``attached`` profile (profile B) is the qualification policy plus the one genuine summary-quality
 receipt Codex accepted (Stage 2, 2026-10-11), filed under the operator's approval of the offline
 preparation batch: its own reviewed hash, which a launch approval binds like any other. It qualifies the
-summarizer role for that test snapshot only. Composing it constructs no attached Context Engine: the
-host builds none for any profile, so engine attachment remains a separate reviewed change.
+summarizer role for that test snapshot only. Composing it constructs no attached Context Engine: for a
+profile the host attaches one only on the Stage C path; an ordinary launch attaches the shipped one.
 """
 
 from __future__ import annotations
@@ -32,7 +33,11 @@ from optimus_model_policy.binding import BindingError, packaged_defaults, truste
 from optimus_model_policy.experimental import HAIKU_ATTACHED_HASH, HAIKU_QUALIFICATION_HASH
 from optimus_model_policy.registry import RegistryError, RegistrySnapshot, load_registry
 
-__all__ = ["TEST_PROFILE_NAMES", "TEST_PROFILES", "TestProfile", "compose_test_profile_snapshot", "registry_for_launch"]
+__all__ = ["TEST_PROFILE_LITERAL_NAME", "TEST_PROFILE_NAMES", "TEST_PROFILES", "TestProfile", "compose_test_profile_snapshot", "registry_for_launch"]
+
+TEST_PROFILE_LITERAL_NAME: Final = "_test_profile"
+"""The launch security literal that names a selected profile. Its registry literal alone cannot tell the launches
+apart: the shipped defaults compose to the attached profile's hash, and equal hashes never mean shared authority."""
 
 
 @dataclass(frozen=True)

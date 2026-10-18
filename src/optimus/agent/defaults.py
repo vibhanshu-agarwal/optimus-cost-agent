@@ -6,8 +6,8 @@ from optimus_model_policy import IMPLEMENTER_ROLES, RegistrySnapshot, Role, sele
 from optimus_model_policy.binding import trusted_snapshot
 
 DEFAULT_AGENT_MODEL = "claude-haiku"
-"""Today's default, used only while registry enforcement is inactive (Plan 12.2 Task 5). Once a
-verified registry is enforced the default is the registry's cheapest eligible medium model."""
+"""The inactive-enforcement alias, used only when no registry is passed (Plan 12.2 Task 5). With the enforced
+registry (closure plan v3) the default is its cheapest eligible medium model, else its first eligible easy model."""
 
 AUTO_MODEL = "auto"
 
@@ -17,13 +17,20 @@ class AgentModelError(ValueError):
 
 
 def default_agent_model(registry: RegistrySnapshot | None) -> str:
-    """The fixed default: today's alias while inactive, else the first eligible medium model."""
+    """The fixed default: the alias without a registry, else the first eligible medium model, else (the explicit
+    default-planner exception of closure plan v3, until a medium model qualifies) the first eligible easy model.
+    The model keeps its own tier; nothing is reassigned."""
     if registry is None:
         return DEFAULT_AGENT_MODEL
-    medium = select_eligible_models(registry, Role.MEDIUM)
-    if not medium:
-        raise AgentModelError("the trusted model registry has no eligible medium model")
-    return medium[0]
+    for role in (Role.MEDIUM, Role.EASY):
+        eligible = select_eligible_models(registry, role)
+        if eligible:
+            return eligible[0]
+    raise AgentModelError("the trusted model registry has no eligible medium or easy model")
+
+
+def _eligible_implementers(registry: RegistrySnapshot) -> set[str]:
+    return {model_id for role in IMPLEMENTER_ROLES for model_id in select_eligible_models(registry, role)}
 
 
 def resolve_model_for_registry(
@@ -42,9 +49,12 @@ def resolve_model_for_registry(
         return default_agent_model(registry)
     if chosen == AUTO_MODEL:
         raise AgentModelError("'auto' model selection needs an accepted resolver, and none is installed")
-    eligible = {model_id for role in IMPLEMENTER_ROLES for model_id in select_eligible_models(registry, role)}
+    eligible = _eligible_implementers(registry)
     if chosen not in eligible:
-        raise AgentModelError(f"model {chosen!r} is not eligible in the trusted model registry")
+        raise AgentModelError(
+            f"model {chosen!r} is not eligible in the trusted model registry (eligible: {', '.join(sorted(eligible)) or 'none'}). "
+            "Unset OPTIMUS_AGENT_MODEL (and --model) to use the default, or set it to an eligible model ID"
+        )
     return chosen
 
 

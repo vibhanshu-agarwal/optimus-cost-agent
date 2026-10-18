@@ -1,8 +1,8 @@
 """Plan 12.2 Task 5: the agent model default and the host's route-binding wire.
 
-Haiku stays today's default while registry enforcement is inactive (operator decision 2026-10-02).
-Under an enforced registry the default is its cheapest eligible medium model, configured models must
-be exact eligible IDs, and ``auto`` is refused because no accepted resolver is installed.
+Enforcement is active (closure plan v3). Under an enforced registry the default is its cheapest eligible medium
+model, else its first eligible easy model; configured models must be exact eligible IDs, and ``auto`` is refused
+because no accepted resolver is installed. ``registry=None`` keeps the inactive rules for callers that pass it.
 """
 
 from __future__ import annotations
@@ -26,11 +26,16 @@ from optimus_model_policy.binding import RouteBinding
 from tests.unit.optimus_gateway.model_policy_support import VERIFIED_POLICY, verified_snapshot
 
 
-def test_inactive_defaults_are_unchanged(tmp_path: Path) -> None:
-    assert resolve_agent_model({}) == DEFAULT_AGENT_MODEL == "claude-haiku"
-    assert resolve_agent_model({"OPTIMUS_AGENT_MODEL": "vendor/any"}) == "vendor/any"
-    assert resolve_agent_model({}, cli_model=" auto ") == "auto", "inactive: today's rules, Gateway decides"
-    assert apply_local_defaults({}, config_root=tmp_path)["OPTIMUS_AGENT_MODEL"] == "claude-haiku"
+def test_without_a_registry_the_inactive_rules_are_unchanged() -> None:
+    assert resolve_model_for_registry({}, registry=None) == DEFAULT_AGENT_MODEL == "claude-haiku"
+    assert resolve_model_for_registry({"OPTIMUS_AGENT_MODEL": "vendor/any"}, registry=None) == "vendor/any"
+    assert resolve_model_for_registry({}, cli_model=" auto ", registry=None) == "auto", "inactive: today's rules"
+
+
+def test_the_shipped_default_is_haiku_5_5(tmp_path: Path) -> None:
+    """No medium model is eligible in the shipped defaults, so the default is the first eligible easy model."""
+    assert resolve_agent_model({}) == "anthropic/claude-haiku-5.5"
+    assert apply_local_defaults({}, config_root=tmp_path)["OPTIMUS_AGENT_MODEL"] == "anthropic/claude-haiku-5.5"
 
 
 def test_enforced_default_is_the_cheapest_eligible_medium_model(tmp_path: Path) -> None:
@@ -56,9 +61,15 @@ def test_auto_is_refused_without_an_accepted_resolver(tmp_path: Path) -> None:
         resolve_model_for_registry({}, cli_model="auto", registry=verified_snapshot(tmp_path))
 
 
-def test_no_eligible_medium_model_is_an_error_not_a_silent_fallback(tmp_path: Path) -> None:
+def test_without_an_eligible_medium_model_the_default_is_the_first_eligible_easy_model(tmp_path: Path) -> None:
+    """The explicit default-planner exception (closure plan v3): medium first, else easy; never a tier change."""
     registry = verified_snapshot(tmp_path, VERIFIED_POLICY.replace("medium: [cn/alpha, us/contrib, cn/nullquant]", "easy: [cn/alpha]"))
-    with pytest.raises(AgentModelError, match="medium"):
+    assert default_agent_model(registry) == "cn/alpha"
+
+
+def test_no_eligible_medium_or_easy_model_is_an_error_not_a_silent_fallback(tmp_path: Path) -> None:
+    registry = verified_snapshot(tmp_path, VERIFIED_POLICY.replace("medium: [cn/alpha, us/contrib, cn/nullquant]", "complex: [cn/alpha]"))
+    with pytest.raises(AgentModelError, match="no eligible medium or easy model"):
         default_agent_model(registry)
 
 

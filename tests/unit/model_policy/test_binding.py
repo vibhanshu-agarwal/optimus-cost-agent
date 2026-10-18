@@ -31,6 +31,7 @@ from optimus_model_policy.binding import (
     trusted_snapshot,
     verify_disclosure,
 )
+from optimus_model_policy.experimental import HAIKU_ATTACHED_HASH, SHIPPED_DEFAULTS_HASH
 
 _FIXTURE = """\
 schema_version: 1
@@ -46,10 +47,13 @@ roles: {}
 """
 
 
-def test_enforcement_ships_inactive() -> None:
-    assert ENFORCEMENT_ACTIVE is False
-    assert trusted_snapshot() is None
-    assert trusted_approval_literal() is None
+def test_enforcement_ships_active_on_the_reviewed_attached_snapshot() -> None:
+    """Plan 12.2 closure plan v3 (operator approval, #237 6249169293): the shipped defaults are enforced, and they
+    compose to exactly the snapshot Stage C's attached cases ran on."""
+    assert ENFORCEMENT_ACTIVE is True
+    snapshot = trusted_snapshot()
+    assert snapshot is not None and snapshot.effective_hash == SHIPPED_DEFAULTS_HASH == HAIKU_ATTACHED_HASH
+    assert trusted_approval_literal() == f"optimus-model-registry-v1:{HAIKU_ATTACHED_HASH}"
 
 
 def test_activation_composes_the_packaged_defaults(monkeypatch: pytest.MonkeyPatch) -> None:

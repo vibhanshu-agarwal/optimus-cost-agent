@@ -4,13 +4,14 @@ Offline acceptance before any paid/live use. A named, source-owned profile is bo
 launch approval through the security-snapshot digest (`authorize_launch` refuses an approval that does
 not bind it); the host refuses a composition other than the one the authorized candidate digested; the
 Gateway composes the same profile itself and refuses a manifest naming another hash; the server hands
-the trusted route policy to every session adapter. Production composition is unchanged.
+the trusted route policy to every session adapter. Without a profile the launch composes the shipped
+registry (the Plan 12.2 closure), which binds the attached profile's reviewed hash.
 
 The real ``qualification`` profile is Claude Haiku 5.5 on its provider-family route with an empirical
 estimate (operator release and Codex disposition, 2026-10-09); both exceptions hold only for its pinned
 hash (``optimus_model_policy.experimental``). The real ``attached`` profile (profile B, offline preparation
 batch, 2026-10-11) is the same policy plus the accepted summary-quality receipt, under its own pinned hash:
-each profile's approval binds only its own hash. The ordinary verified-route mechanism is also shown with a
+each profile's approval binds only its own hash, and the shipped defaults compose to the attached one. The ordinary verified-route mechanism is also shown with a
 SYNTHETIC, test-only profile whose facts are marked verified here and nowhere else. It is not a real
 profile, approval or admissible live route.
 """
@@ -36,8 +37,9 @@ from optimus.acp.trusted_paths import resolve_workspace_security_state
 from optimus.agent.defaults import AgentModelError
 from optimus.gateway.route_binding import RouteIdentityError
 from optimus_model_policy import test_profiles as profiles
-from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError, approval_literal, packaged_defaults
+from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError, approval_literal, packaged_defaults, trusted_approval_literal
 from optimus_model_policy.registry import load_registry
+from optimus_model_policy.test_profiles import TEST_PROFILE_LITERAL_NAME
 from tests.unit.acp.conftest import FakeKeyring, authorize_workspace_for_test
 
 _ENV = {
@@ -64,6 +66,8 @@ SYNTHETIC_OVERRIDE = textwrap.dedent(
           estimator: synthetic-r1
           endpoints:
             - {provider: openai/fast, quantization: unknown, context_window_tokens: 1050000, max_output_tokens: 128000, verified: true, observed_on: "2026-10-04"}
+    roles:
+      easy: [openai/gpt-6-luna]
     """
 )
 
@@ -115,11 +119,47 @@ def test_a_profile_launch_binds_the_profiles_exact_hash_for_approval(tmp_path: P
 
     literal = approval_literal(profiles.compose_test_profile_snapshot(name))
     assert literal == "optimus-model-registry-v1:" + profiles.TEST_PROFILES[name].effective_hash
-    assert APPROVAL_LITERAL_NAME not in plain.security_literals
+    assert plain.security_literals[APPROVAL_LITERAL_NAME] == trusted_approval_literal()
     assert profiled.security_literals[APPROVAL_LITERAL_NAME] == literal
     [row] = [row for row in profiled.display_rows if row.name == APPROVAL_LITERAL_NAME]
     assert (row.display_value, row.source_class, row.decision) == (literal, f"test-profile:{name}", "requires exact approval")
+    [plain_row] = [row for row in plain.display_rows if row.name == APPROVAL_LITERAL_NAME]
+    assert plain_row.source_class == "trusted-composition"
+
+
+def test_the_qualification_profile_launch_needs_its_own_approval(tmp_path: Path) -> None:
+    keyring = FakeKeyring()
+    plain, _ = _candidate(tmp_path, keyring, test_profile=None)
+    profiled, _ = _candidate(tmp_path, keyring, test_profile="qualification")
     assert profiled.security_snapshot_digest != plain.security_snapshot_digest
+
+
+def test_the_attached_profile_shares_the_shipped_hash_but_never_its_approval(tmp_path: Path) -> None:
+    """The shipped defaults compose to the attached profile's reviewed hash, so both launches bind the same
+    registry literal. Equal hashes never mean shared authority (Codex 6249427656): a profile launch also binds
+    its own name, so neither launch's approval authorizes the other."""
+    keyring = FakeKeyring()
+    plain, _ = _candidate(tmp_path, keyring, test_profile=None)
+    profiled, _ = _candidate(tmp_path, keyring, test_profile="attached")
+    assert plain.security_literals[APPROVAL_LITERAL_NAME] == profiled.security_literals[APPROVAL_LITERAL_NAME]
+    assert plain.security_literals[APPROVAL_LITERAL_NAME] == "optimus-model-registry-v1:" + profiles.TEST_PROFILES["attached"].effective_hash
+    assert profiled.security_literals[TEST_PROFILE_LITERAL_NAME] == "attached"
+    assert TEST_PROFILE_LITERAL_NAME not in plain.security_literals
+    assert profiled.security_snapshot_digest != plain.security_snapshot_digest
+
+    authorize_workspace_for_test(env=_ENV, workspace_root=tmp_path, fake_keyring=keyring)  # the shipped launch only
+    profiled, store = _candidate(tmp_path, keyring, test_profile="attached")
+    with pytest.raises(LaunchGateError) as caught:
+        authorize_launch(candidate=profiled, store=store, launch_session_id="s1")
+    assert caught.value.code == "SNAPSHOT_MISMATCH"
+
+    other = tmp_path / "other"
+    other.mkdir()
+    authorize_workspace_for_test(env=_ENV, workspace_root=other, fake_keyring=keyring, test_profile="attached")  # the profile only
+    plain, store = _candidate(other, keyring, test_profile=None)
+    with pytest.raises(LaunchGateError) as caught:
+        authorize_launch(candidate=plain, store=store, launch_session_id="s2")
+    assert caught.value.code == "SNAPSHOT_MISMATCH"
 
 
 @pytest.mark.parametrize(("approved", "launched"), [("qualification", "attached"), ("attached", "qualification")])
@@ -134,16 +174,17 @@ def test_one_profiles_approval_never_authorizes_the_other(tmp_path: Path, approv
     assert authorize_launch(candidate=own, store=store, launch_session_id="s2").approval_mode == "durable"
 
 
-def test_an_approval_without_the_profile_never_authorizes_a_profile_launch(tmp_path: Path) -> None:
+@pytest.mark.parametrize("name", ["qualification", "attached"])
+def test_an_approval_without_the_profile_never_authorizes_a_profile_launch(tmp_path: Path, name: str) -> None:
     keyring = FakeKeyring()
     authorize_workspace_for_test(env=_ENV, workspace_root=tmp_path, fake_keyring=keyring)
-    profiled, store = _candidate(tmp_path, keyring, test_profile="qualification")
+    profiled, store = _candidate(tmp_path, keyring, test_profile=name)
     with pytest.raises(LaunchGateError) as caught:
         authorize_launch(candidate=profiled, store=store, launch_session_id="s1")
     assert caught.value.code == "SNAPSHOT_MISMATCH"
 
-    authorize_workspace_for_test(env=_ENV, workspace_root=tmp_path, fake_keyring=keyring, test_profile="qualification")
-    profiled, store = _candidate(tmp_path, keyring, test_profile="qualification")
+    authorize_workspace_for_test(env=_ENV, workspace_root=tmp_path, fake_keyring=keyring, test_profile=name)
+    profiled, store = _candidate(tmp_path, keyring, test_profile=name)
     assert authorize_launch(candidate=profiled, store=store, launch_session_id="s2").approval_mode == "durable"
     plain, store = _candidate(tmp_path, keyring, test_profile=None)
     with pytest.raises(LaunchGateError) as caught:  # and the profile approval never authorizes a plain launch
@@ -336,11 +377,12 @@ def test_an_unavailable_profile_stops_startup_before_any_side_effect(launch, una
     assert started == []
 
 
-def test_a_profile_launch_without_its_approval_stops_before_any_side_effect(launch, tmp_path: Path, capsys) -> None:
+@pytest.mark.parametrize("name", ["qualification", "attached"])
+def test_a_profile_launch_without_its_approval_stops_before_any_side_effect(launch, tmp_path: Path, capsys, name: str) -> None:
     keyring, started = launch
     authorize_workspace_for_test(env=_ENV, workspace_root=tmp_path, fake_keyring=keyring)  # a plain approval only
 
-    assert acp_main.main(["--workspace-root", str(tmp_path), "--plan12-test-profile", "qualification"]) == 2
+    assert acp_main.main(["--workspace-root", str(tmp_path), "--plan12-test-profile", name]) == 2
     assert started == []
 
 
@@ -392,12 +434,13 @@ def test_a_profile_launch_with_another_model_stops_before_any_side_effect(launch
     assert started == []
 
 
-def test_without_a_profile_the_launch_composition_is_unchanged(launch, tmp_path: Path) -> None:
+def test_without_a_profile_the_launch_composes_the_shipped_registry(launch, tmp_path: Path) -> None:
     keyring, started = launch
     authorize_workspace_for_test(env=_ENV, workspace_root=tmp_path, fake_keyring=keyring)
 
     assert acp_main.main(["--workspace-root", str(tmp_path)]) == 0
-    assert ("gateway", None, None) in started and ("server", None) in started
+    literal = trusted_approval_literal()
+    assert literal is not None and ("gateway", None, literal) in started and ("server", None) in started
 
 
 # The Gateway child's argv is checked in test_local_infra_model_registry.py.

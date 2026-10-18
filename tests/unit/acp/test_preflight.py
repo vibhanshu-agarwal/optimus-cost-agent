@@ -117,7 +117,7 @@ def test_preflight_strict_gateway_probe_uses_configured_agent_model(monkeypatch)
         def __init__(self, *, settings):
             self.settings = settings
 
-        def create_response(self, *, model: str, input_text: str, metadata=None):
+        def create_response(self, *, model: str, input_text: str, metadata=None, route_binding=None):
             captured["model"] = model
             return object()
 
@@ -129,12 +129,12 @@ def test_preflight_strict_gateway_probe_uses_configured_agent_model(monkeypatch)
             "OPTIMUS_API_KEY": "opt-test",  # pragma: allowlist secret - synthetic test fixture, not a real credential
             "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
             "OPTIMUS_PRODUCTION_MODE": "false",
-            "OPTIMUS_AGENT_MODEL": "claude-haiku",
+            "OPTIMUS_AGENT_MODEL": "anthropic/claude-haiku-5.5",
         },
         strict=True,
     )
 
-    assert captured["model"] == "claude-haiku"
+    assert captured["model"] == "anthropic/claude-haiku-5.5"
 
 
 def test_preflight_strict_gateway_probe_reports_rejected_request_for_http_4xx(monkeypatch):
@@ -145,7 +145,7 @@ def test_preflight_strict_gateway_probe_reports_rejected_request_for_http_4xx(mo
         def __init__(self, *, settings):
             self.settings = settings
 
-        def create_response(self, *, model: str, input_text: str, metadata=None):
+        def create_response(self, *, model: str, input_text: str, metadata=None, route_binding=None):
             raise GatewayHttpError(400, "unsupported gateway model: glm-5.2")
 
     monkeypatch.setattr("optimus.gateway.client.GatewayClient", FakeGatewayClient)
@@ -157,7 +157,7 @@ def test_preflight_strict_gateway_probe_reports_rejected_request_for_http_4xx(mo
                 "OPTIMUS_API_KEY": "opt-test",  # pragma: allowlist secret - synthetic test fixture, not a real credential
                 "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
                 "OPTIMUS_PRODUCTION_MODE": "false",
-                "OPTIMUS_AGENT_MODEL": "glm-5.2",
+                "OPTIMUS_AGENT_MODEL": "anthropic/claude-haiku-5.5",
             },
             strict=True,
         )
@@ -173,7 +173,7 @@ def test_preflight_strict_gateway_probe_reports_unreachable_for_network_failure(
         def __init__(self, *, settings):
             self.settings = settings
 
-        def create_response(self, *, model: str, input_text: str, metadata=None):
+        def create_response(self, *, model: str, input_text: str, metadata=None, route_binding=None):
             raise GatewayHttpError(0, "Connection refused")
 
     monkeypatch.setattr("optimus.gateway.client.GatewayClient", FakeGatewayClient)

@@ -23,8 +23,14 @@ import pytest
 
 from optimus_model_policy import Message, PackedModelRequest, Role, guard_request, select_eligible_models, validate_registry
 from optimus_model_policy import test_profiles as profiles
-from optimus_model_policy.binding import packaged_defaults
-from optimus_model_policy.experimental import EXPERIMENTAL_ROUTES, experimental_route
+from optimus_model_policy.binding import packaged_defaults, trusted_snapshot
+from optimus_model_policy.experimental import (
+    EXPERIMENTAL_ROUTES,
+    HAIKU_ATTACHED_HASH,
+    HAIKU_QUALIFICATION_HASH,
+    SHIPPED_DEFAULTS_HASH,
+    experimental_route,
+)
 from optimus_model_policy.registry import RegistrySnapshot, load_registry
 
 HAIKU = "anthropic/claude-haiku-5.5"
@@ -133,6 +139,17 @@ def test_outside_the_pinned_profile_the_empirical_estimate_is_unverified(tmp_pat
 @pytest.mark.parametrize("pin", list(EXPERIMENTAL_ROUTES))
 def test_every_experimental_pin_is_a_reviewed_test_profile_hash(pin: str) -> None:
     assert pin in {profile.effective_hash for profile in profiles.TEST_PROFILES.values()}
+
+
+def test_the_shipped_exception_is_the_attached_pin_and_nothing_else() -> None:
+    """Closure plan v3: the one shipped empirical exception is bound to the exact reviewed snapshot, which is the
+    attached profile's. No other production snapshot is listed, and verified stays false."""
+    shipped = trusted_snapshot()
+    assert shipped is not None and shipped.effective_hash == SHIPPED_DEFAULTS_HASH == HAIKU_ATTACHED_HASH
+    route = experimental_route(shipped, HAIKU)
+    assert route is not None and route == EXPERIMENTAL_ROUTES[HAIKU_ATTACHED_HASH]
+    assert shipped.policy.estimators[shipped.policy.models[HAIKU].route.estimator].verified is False
+    assert set(EXPERIMENTAL_ROUTES) == {HAIKU_QUALIFICATION_HASH, HAIKU_ATTACHED_HASH}
 
 
 def test_the_attached_profile_has_the_same_experimental_route_under_its_own_hash() -> None:

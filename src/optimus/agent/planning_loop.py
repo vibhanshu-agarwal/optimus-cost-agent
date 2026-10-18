@@ -28,6 +28,7 @@ from optimus.gateway.attempts import (
     attempts_from_failure,
     attempts_from_response,
     first_error,
+    is_gateway_registry_mismatch,
     is_input_capacity_refusal,
     is_preflight_refusal,
 )
@@ -740,6 +741,14 @@ def planning_corrective_text(
             "Planning stopped because the model gateway refused the request before sending it to any "
             "model. Nothing was charged, stored or changed."
         ),
+        # Plan 12.2 closure: the adopted Gateway enforces no registry or another one (Codex 6249427656).
+        "PLANNING_GATEWAY_REGISTRY_MISMATCH": (
+            "Planning stopped because the running model gateway does not enforce this install's model registry, "
+            "so it refused the request before sending it to any model. Nothing was charged, stored or changed. "
+            "That gateway was started before an upgrade or for another registry. Stop it and start Optimus again "
+            "so it starts its own gateway. If you run the gateway yourself, re-approve this launch with "
+            "`optimus-trust approve --mode durable`, then restart it with `optimus-trust run-gateway`."
+        ),
         "PLANNING_NOTICE_UNDELIVERED": (
             "Planning stopped because the required notice for this model could not be shown, so the "
             "request was not sent. Nothing was stored or changed."
@@ -1057,7 +1066,7 @@ class _PlanningIterationRunner:
         wire_attempt = 0
         bound: Any | None = None
         # How this request's sequence ended, for its stop reason (sequence-local, not loop-wide).
-        ended = {"unsent": False, "unknown": False, "refused": False, "over_capacity": False}
+        ended = {"unsent": False, "unknown": False, "refused": False, "over_capacity": False, "registry_mismatch": False}
         # An attempt that cannot be attributed or recorded truthfully (a Gateway report that names no
         # attempt, a conflicting receipt, a divergent ledger record) is an integrity error. Everything
         # that can still be recorded is recorded first; then it fails the turn loudly after the retry
@@ -1162,6 +1171,7 @@ class _PlanningIterationRunner:
                 if is_preflight_refusal(exc):
                     ended["refused"] = True
                     ended["over_capacity"] = is_input_capacity_refusal(exc)
+                    ended["registry_mismatch"] = is_gateway_registry_mismatch(exc)
                     raise _PermanentStop("refused before any upstream attempt") from exc
                 # An evaluation caller's explicit cap: at/above it, stop immediately (Plan 12.2 Task 11).
                 if usage is not None and self._cap_reached(self._total_cost_usd):
@@ -1226,6 +1236,8 @@ class _PlanningIterationRunner:
             )
         if ended["over_capacity"]:
             raise _PlanningGatewayInvocationError("PLANNING_INPUT_CAPACITY_EXCEEDED", reported_cost_usd=sequence_cost)
+        if ended["registry_mismatch"]:
+            raise _PlanningGatewayInvocationError("PLANNING_GATEWAY_REGISTRY_MISMATCH", reported_cost_usd=sequence_cost)
         if ended["refused"]:
             raise _PlanningGatewayInvocationError("PLANNING_GATEWAY_REFUSED", reported_cost_usd=sequence_cost)
         if self._cap_reached(self._total_cost_usd):

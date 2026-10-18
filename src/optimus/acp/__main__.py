@@ -45,7 +45,7 @@ from optimus.acp.trusted_paths import (
 )
 from optimus.agent.defaults import AgentModelError, resolve_agent_model
 from optimus.gateway.client import DEFAULT_GATEWAY_TIMEOUT_SECONDS, validate_gateway_timeout_seconds
-from optimus_model_policy import RegistryError
+from optimus_model_policy import RegistryError, binding
 from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES
 
@@ -161,6 +161,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         for flag, chosen in (("--no-auto-start", args.no_auto_start), ("--framed", args.framed), ("--strict", args.strict)):
             if chosen:
                 parser.error(f"--plan12-test-profile cannot be combined with {flag}")
+    if args.framed and binding.ENFORCEMENT_ACTIVE:
+        # Closure plan v3: the framed transport has no route binding, so under the enforced shipped registry every
+        # request it sent would be refused as unbound. Refuse at startup instead, before any service starts.
+        parser.error(
+            "--framed is not supported while the trusted model registry is enforced: the framed transport has no route "
+            "binding. Use the default newline-delimited JSON transport (omit --framed)."
+        )
     return args
 
 

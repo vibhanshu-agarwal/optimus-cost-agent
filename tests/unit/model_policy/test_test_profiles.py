@@ -33,16 +33,23 @@ ASSESSMENT_SHA256 = "29631c0c9c69394649b713a14f7f9e42265a177580b20d6f46222c6c737
 CANDIDATE_NOTE = "a candidate for review: it qualifies nothing and enables no attached engine by itself"
 
 
-def test_production_composition_is_untouched() -> None:
-    assert binding_module.ENFORCEMENT_ACTIVE is False
-    assert trusted_snapshot() is None
-    assert profiles.registry_for_launch(None) is None
+def test_production_composition_is_the_attached_profile_snapshot() -> None:
+    """Closure plan v3: the shipped defaults are 'old defaults + the attached override', so production enforces the
+    exact snapshot the attached profile composes, and both profiles keep their reviewed pins."""
+    assert binding_module.ENFORCEMENT_ACTIVE is True
+    shipped = trusted_snapshot()
+    assert shipped is not None and shipped.effective_hash == ATTACHED_HASH
+    assert profiles.registry_for_launch(None).effective_hash == ATTACHED_HASH
+    assert profiles.compose_test_profile_snapshot("attached").policy == shipped.policy
 
 
-def test_no_shipped_default_carries_a_receipt() -> None:
-    """The receipt is test data only: no packaged default carries a summary receipt."""
+def test_the_shipped_default_carries_exactly_the_attached_receipt() -> None:
+    """Only Haiku 5.5 carries a receipt in the packaged defaults, and it is the attached profile's accepted
+    assessment-v1.1 receipt, unchanged (no broader quality claim)."""
     defaults = load_registry(packaged_defaults(), None)
-    assert all(entry.summary_receipts == () for entry in defaults.policy.models.values())
+    carriers = {model_id: entry.summary_receipts for model_id, entry in defaults.policy.models.items() if entry.summary_receipts}
+    attached = profiles.compose_test_profile_snapshot("attached").policy.models[HAIKU].summary_receipts
+    assert carriers == {HAIKU: attached} and len(attached) == 1
 
 
 @pytest.mark.parametrize(("name", "code"), [("bogus", "TEST_PROFILE_UNKNOWN"), ("", "TEST_PROFILE_UNKNOWN")])

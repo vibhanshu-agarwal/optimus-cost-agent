@@ -29,7 +29,7 @@ def test_live_bootstrap_builds_server_with_real_redis_ping(tmp_path, live_redis_
     server = build_configured_server(
         environ=_bootstrap_env(os.environ["OPTIMUS_REDIS_URL"]),
         workspace_root=tmp_path,
-        model="glm-5.2",
+        model="anthropic/claude-haiku-5.5",
     )
 
     assert server is not None

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from optimus.acp.context_attachment import ordinary_attachment, ordinary_route_policy
 from optimus.acp.debug_trace import log_planning_replan_event, log_provider_attempts, log_workspace_context_result
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.failure_notes import attach_failure_note
@@ -22,6 +23,7 @@ from optimus.telemetry.fanout import TelemetryFanout
 from optimus.telemetry.jsonl import JsonlTelemetryWriter
 from optimus.telemetry.observability import GatewayObservabilityExporter
 from optimus.telemetry.redis_sink import RedisTelemetryEventSink
+from optimus_model_policy.binding import trusted_snapshot
 
 if TYPE_CHECKING:
     from optimus.acp.stage_c import StageCLaunch
@@ -240,13 +242,23 @@ def build_configured_server(
             workspace_root=resolved_workspace,
         )
         # Release supplement V2: a reviewed test composition supplies the trusted route policy every
-        # session binds its requests with, for the same exact model the runner uses.
+        # session binds its requests with, for the same exact model the runner uses. Closure plan v3: an
+        # ordinary launch binds through the enforced shipped registry the same way, for the resolved model.
         route_policy = None
+        ordinary_snapshot = None
         if test_composition is not None:
             route_policy = test_composition.route_policy(
                 model_id=test_composition.agent_model(environ, cli_model=model),
                 shared_secret=settings.optimus_api_key.get_secret_value(),
             )
+        else:
+            ordinary_snapshot = trusted_snapshot()
+            if ordinary_snapshot is not None:
+                route_policy = ordinary_route_policy(
+                    snapshot=ordinary_snapshot,
+                    model_id=resolve_agent_model(environ, cli_model=model),
+                    shared_secret=settings.optimus_api_key.get_secret_value(),
+                )
         # Plan 12.2 Task 13 (Stage C): only the approved attached test composition attaches the engine;
         # the qualification composition and every unprofiled launch stay absent-engine. A launch without
         # Stage C never builds or consults the Stage C attachment, so the serving composition executes what it
@@ -258,6 +270,15 @@ def build_configured_server(
 
             context_attachment, session_seeder = stage_c_attachment(
                 composition=test_composition, launch=stage_c, gateway_client=gateway_client, shared_secret=settings.optimus_api_key.get_secret_value()
+            )
+        elif ordinary_snapshot is not None:
+            # Closure plan v3: the ordinary launch attaches the plain engine (no Stage C control) on the shipped
+            # registry; without an eligible summarizer it stays absent-engine.
+            context_attachment = ordinary_attachment(
+                snapshot=ordinary_snapshot,
+                model_id=resolve_agent_model(environ, cli_model=model),
+                gateway_client=gateway_client,
+                shared_secret=settings.optimus_api_key.get_secret_value(),
             )
         # Seam 2, checkpoint B: the server takes custody of the Redis runtime and closes
         # it as the last stage of its own teardown.

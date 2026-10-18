@@ -824,15 +824,31 @@ def _packaged_registry():
 
 def test_the_envelope_states_every_bound_before_any_call() -> None:
     envelope = paid_envelope(_packaged_registry(), FIXTURE)
-    assert [row["model_id"] for row in envelope] == ["qwen/qwen3.7-flash", "openai/gpt-6-luna"]
+    # Plan 12.2 closure: the shipped summarizer role is Claude Haiku 5.5 alone.
+    assert [row["model_id"] for row in envelope] == ["anthropic/claude-haiku-5.5"]
     for row in envelope:
         assert (row["requests"], row["max_provider_attempts_per_request"], row["max_output_tokens"]) == (2, 2, 8192)
         assert Decimal(row["reserved_cost_usd"]) > 0
         assert row["prompt_digest"] == PROMPT_DIGEST and row["fixture_digest"] == FIXTURE.digest
         assert row["receipt_fields"] == list(SummaryReceipt.model_fields)
         assert len(row["quantizations"]) == len(row["providers"])
-        # Unverified routes are not structurally eligible yet; CP4 verifies them before any call.
-        assert row["structurally_eligible"] is False and row["blockers"]
+        # The shipped exception admits its route, bound to the shipped hash, with its accepted receipt.
+        assert row["structurally_eligible"] is True and row["blockers"] == []
+
+
+def test_any_changed_policy_value_loses_the_shipped_exception(tmp_path: Path) -> None:
+    """The exception is bound to the exact shipped hash: one changed value (here the ceiling, by one token) composes
+    another snapshot, and the route gets the two ordinary refusals back."""
+    from importlib import resources
+
+    override = tmp_path / "changed.yaml"
+    override.write_text("context_ceiling_tokens: 262143\n", encoding="utf-8")
+    with resources.as_file(resources.files("optimus_model_policy").joinpath("defaults.yaml")) as packaged:
+        changed = load_registry(packaged, override)
+
+    [row] = paid_envelope(changed, FIXTURE)
+    assert row["model_id"] == "anthropic/claude-haiku-5.5"
+    assert (row["structurally_eligible"], sorted(row["blockers"])) == (False, ["ESTIMATOR_UNVERIFIED", "ROUTE_TARGET_NOT_EXACT"])
 
 
 def test_the_command_line_checks_a_saved_summary(tmp_path: Path, capsys) -> None:

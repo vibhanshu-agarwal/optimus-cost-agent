@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -41,9 +40,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from context_engine import StrategyParameters, ViewLimits
 from context_engine.engine import ContextEngine
-from context_engine.summary import PROMPT_VERSION, SUMMARY_FORMAT
 from optimus.acp.conversation import (
     ConversationOutcome,
     ConversationSanitizer,
@@ -55,11 +52,18 @@ from optimus.acp.debug_trace import log_provider_attempts
 from optimus.acp.settlement import EffectState
 from optimus.context.adapter import ApprovalDecision, ApprovalFact
 from optimus.context.assembly import ContextAttachment, SummarizerRoute
-from optimus.context.maintenance import MaintenanceReceipt, gateway_summarizer_factory
+from optimus.context.maintenance import gateway_summarizer_factory
+from optimus.context.shipped_policy import (
+    MAX_MAINTENANCE_CALLS,
+    MAX_REPACKS,
+    RECORD_RESERVATION_BYTES,
+    SOURCE_MAX_BYTES,
+    AttachmentLimits,
+    attachment_limits,
+    no_attachment_ledger,
+)
 from optimus.gateway.route_binding import registry_route_identity
-from optimus_model_policy import Message, PackedModelRequest, RegistrySnapshot
 from optimus_model_policy.binding import BindingError, disclosure_key
-from optimus_model_policy.capacity import estimate_complete_input
 from optimus_model_policy.stage_c import (
     STAGE_C_ATTACHED_SCENARIO,
     STAGE_C_LITERAL_NAME,
@@ -72,6 +76,9 @@ from optimus_model_policy.stage_c import (
 )
 
 __all__ = [
+    "MAX_MAINTENANCE_CALLS",
+    "RECORD_RESERVATION_BYTES",
+    "SOURCE_MAX_BYTES",
     "StageCLaunch",
     "StageCLaunchError",
     "StageCScenario",
@@ -82,19 +89,8 @@ __all__ = [
     "stage_c_limits",
 ]
 
-# The accepted numeric limits (closure proposal section 1; Codex scope agreement section 1): test
-# composition for the attached Stage C profile only, never a shipped default.
-SOURCE_MAX_BYTES = 1_048_576
-RECORD_RESERVATION_BYTES = 131_072
-TRANSIENT_MAX_BYTES = 524_288
-MAINTENANCE_INPUT_TOKENS = 131_072
-SUMMARY_OUTPUT_TOKENS = 8_192
-ANCHOR_INPUT_TOKENS = 16_384
-COMPACTION_TAIL_INPUT_TOKENS = 32_768
-HYBRID_TAIL_INPUT_TOKENS = 65_536
-MAX_MAINTENANCE_CALLS = 18
-MAX_REPACKS = 1
-HISTORY_ALLOWANCE_CAP_TOKENS = 131_072
+# The accepted numeric limits now live in the shared shipped policy (optimus.context.shipped_policy, closure plan
+# v3) and are re-exported here unchanged; only the scenario's own cancellation wait is Stage C's.
 CANCEL_WAIT_SECONDS = 30.0
 
 UNAVAILABLE_NOTICE = (
@@ -130,59 +126,10 @@ class ScenarioCancellationNotExercised(Exception):
 # --- Limits ------------------------------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class StageCLimits:
-    parameters: StrategyParameters
-    limits: ViewLimits
-    usable_input_tokens: int
-    estimate_request: Callable[[str], int]
-
-
-def stage_c_limits(snapshot: RegistrySnapshot, model_id: str) -> StageCLimits:
-    """The accepted limits on the profile's own route and estimator: usable input is the request ceiling
-    (the smaller of the policy ceiling and the route window) less the implementer reserve; history gets
-    ``min(131072, floor(0.8 * usable))``; the summary byte bound is ``floor(S / r)``."""
-    policy = snapshot.policy
-    entry = policy.models[model_id]
-    estimator = policy.estimators[entry.route.estimator]
-    windows: list[int] = []
-    for endpoint in entry.route.endpoints:
-        if endpoint.context_window_tokens is None:  # a guarded route always states its window
-            raise KeyError(f"{model_id}: route window not stated")
-        windows.append(endpoint.context_window_tokens)
-    window = min(windows)
-    output_reserve = policy.output_reserve_tokens["implementer"]
-    usable = min(policy.context_ceiling_tokens, window) - output_reserve
-    summary_tokens = min(SUMMARY_OUTPUT_TOKENS, policy.output_reserve_tokens["summarizer"])
-    ratio = estimator.tokens_per_byte
-
-    def estimate_history(text: str) -> int:
-        return math.ceil(ratio * len(text.encode("utf-8")))
-
-    def estimate_request(text: str) -> int:
-        request = PackedModelRequest(model_id=model_id, messages=(Message(role="user", content=text),), tools_json="", output_cap=output_reserve)
-        return estimate_complete_input(request, estimator).tokens
-
-    parameters = StrategyParameters(
-        anchor_input_tokens=ANCHOR_INPUT_TOKENS,
-        compaction_tail_input_tokens=COMPACTION_TAIL_INPUT_TOKENS,
-        hybrid_tail_input_tokens=HYBRID_TAIL_INPUT_TOKENS,
-        summary_output_tokens=summary_tokens,
-        max_maintenance_calls=MAX_MAINTENANCE_CALLS,
-        prompt_version=PROMPT_VERSION,
-        format_version=SUMMARY_FORMAT,
-    )
-    limits = ViewLimits(
-        history_input_tokens=min(HISTORY_ALLOWANCE_CAP_TOKENS, math.floor(usable * 0.8)),
-        source_max_bytes=SOURCE_MAX_BYTES,
-        transient_max_bytes=TRANSIENT_MAX_BYTES,
-        maintenance_input_tokens=MAINTENANCE_INPUT_TOKENS,
-        maintenance_output_tokens=summary_tokens,
-        summary_max_bytes=math.floor(summary_tokens / ratio),
-        estimate_history=estimate_history,
-        estimator_id=entry.route.estimator,
-    )
-    return StageCLimits(parameters=parameters, limits=limits, usable_input_tokens=usable, estimate_request=estimate_request)
+# The Stage C names for the shared shipped numeric policy (closure plan v3): the attached cases and the ordinary
+# attachment use one object.
+StageCLimits = AttachmentLimits
+stage_c_limits = attachment_limits
 
 
 # --- The fixed synthetic seed ----------------------------------------------------------------------------------
@@ -436,10 +383,7 @@ def resolve_stage_c_launch(candidate: Any, composition: Any) -> StageCLaunch:
 _PLAIN_SANITIZER = ConversationSanitizer(ConversationSanitizerInputs(known_secrets=(), path_aliases=(), known_pii=()))
 
 
-def _no_attachment_ledger(_receipt: MaintenanceReceipt) -> None:
-    """The attachment-level usage ledger sink. The host runner has no usage ledger to receive it; every
-    receipt still reaches the turn's session settlement, and the Gateway's envelope ledger records every
-    physical attempt."""
+_no_attachment_ledger = no_attachment_ledger  # the shared no-op sink; the Gateway's envelope ledger records every attempt
 
 
 def stage_c_attachment(

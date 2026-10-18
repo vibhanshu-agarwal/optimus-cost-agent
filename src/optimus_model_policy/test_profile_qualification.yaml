@@ -39,6 +39,9 @@ models:
       estimator: haiku-5-5-empirical
       endpoints:
         - {provider: anthropic, quantization: unknown, context_window_tokens: 1000000, max_output_tokens: 128000, verified: true, observed_on: "2026-10-09"}
+    # The shipped defaults carry the attached receipt (closure plan v3). Profile A states its empty receipt list so
+    # it keeps composing to its reviewed pin and its summarizer stays unqualified; [] and absent dump identically.
+    summary_receipts: []
     evidence:
       - "2026-10-09 free inspection: OpenRouter endpoints/models listing, Anthropic model page; provider-family route"
       - "text_planning_grammar is a test assumption checked by Task 13's Agent cases, not a publisher fact"

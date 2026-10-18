@@ -61,7 +61,7 @@ from optimus.acp.trusted_paths import (
 from optimus_model_policy import RegistryError
 from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError, approval_literal, trusted_approval_literal
 from optimus_model_policy.stage_c import STAGE_C_LITERAL_NAME, STAGE_C_PROFILES, compose_stage_c_envelope, stage_c_ledger_path
-from optimus_model_policy.test_profiles import compose_test_profile_snapshot
+from optimus_model_policy.test_profiles import TEST_PROFILE_LITERAL_NAME, compose_test_profile_snapshot
 from optimus_security.sanitization import canonicalize_credential_uri, validate_secret_length
 
 # Plan 9.96, Task 5 Batch 3 Step 5: the reviewed default each monotonic-tier
@@ -672,8 +672,11 @@ def resolve_launch_candidate(
         if test_profile is None:
             registry_literal = trusted_approval_literal()
         else:
-            # A named test profile binds its own reviewed snapshot (release supplement V2).
+            # A named test profile binds its own reviewed snapshot (release supplement V2) and its own name: the
+            # shipped defaults compose to the attached profile's hash (Plan 12.2 closure), and equal hashes never
+            # mean shared authority, so neither launch's approval authorizes the other.
             registry_literal = approval_literal(compose_test_profile_snapshot(test_profile))
+            security_literals[TEST_PROFILE_LITERAL_NAME] = test_profile
     except (BindingError, RegistryError) as exc:
         raise LaunchGateError(code="MODEL_REGISTRY_INVALID", detail=exc.code) from exc
     if registry_literal is not None:

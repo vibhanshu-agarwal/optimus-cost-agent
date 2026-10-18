@@ -28,6 +28,7 @@ from optimus.gateway.attempts import (
     attempts_from_failure,
     attempts_from_response,
     first_error,
+    is_gateway_registry_mismatch,
     is_input_capacity_refusal,
     is_preflight_refusal,
     stops_experimental_route,
@@ -67,6 +68,14 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
     "CHAT_GATEWAY_REFUSED": (
         "Chat could not answer: the model gateway refused the request before sending it to any model, "
         "so nothing was charged."
+    ),
+    # Plan 12.2 closure: the adopted Gateway enforces no registry or another one (Codex 6249427656).
+    "CHAT_GATEWAY_REGISTRY_MISMATCH": (
+        "Chat could not answer: the running model gateway does not enforce this install's model registry, so it "
+        "refused the request before sending it to any model and nothing was charged. That gateway was started "
+        "before an upgrade or for another registry. Stop it and start Optimus again so it starts its own gateway. "
+        "If you run the gateway yourself, re-approve this launch with `optimus-trust approve --mode durable`, then "
+        "restart it with `optimus-trust run-gateway`."
     ),
     "CHAT_NOTICE_UNDELIVERED": (
         "Chat could not answer: the required notice for this model could not be shown, so the request "
@@ -1616,6 +1625,8 @@ class AgentRunner:
                 )
             if is_input_capacity_refusal(exc):
                 return self._chat_failure(request, stop_reason="CHAT_INPUT_CAPACITY_EXCEEDED")
+            if is_gateway_registry_mismatch(exc):
+                return self._chat_failure(request, stop_reason="CHAT_GATEWAY_REGISTRY_MISMATCH")
             if is_preflight_refusal(exc):
                 return self._chat_failure(request, stop_reason="CHAT_GATEWAY_REFUSED", output_text=text("CHAT_GATEWAY_REFUSED"))
             return self._chat_failure(request, stop_reason="CHAT_GATEWAY_FAILURE", output_text=text("CHAT_GATEWAY_FAILURE"), total_cost_usd=known)
