@@ -20,7 +20,7 @@ from optimus.guardrails.mcp_trust import (
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolResult, PreToolVerdict
 from optimus.guardrails.prompt_injection import ConfigTrustScanner, TrustScanSubject, TrustScanVerdict
 from optimus.mcp.client_config import ClientMcpSafeIdentity
-from optimus.mcp.client_sdk import ClientMcpConnection, ClientMcpSdkAdapter
+from optimus.mcp.client_sdk import ClientMcpConnection, ClientMcpSdkAdapter, ClientMcpSdkError
 from optimus.mcp.client_trust import ClientMcpDurableRecord, ClientMcpSessionLease, EffectCeiling
 from optimus.runtime.modes import ExecutionMode, GenerationScope
 
@@ -29,6 +29,12 @@ MAX_CATALOG_TOOLS = 1000
 MAX_DESCRIPTOR_BYTES = 16 * 1024
 MAX_AGGREGATE_DESCRIPTOR_BYTES = 1 * 1024 * 1024
 MAX_CATALOG_ELAPSED_SECONDS = 30.0
+
+_VISIBLE_RESOLUTION_CODES = frozenset({
+    "CATALOG_MALFORMED_PAGE", "CATALOG_CURSOR_LOOP", "CATALOG_BUDGET_EXCEEDED",
+    "CATALOG_DUPLICATE_TOOL", "SERVICE_CATALOG_MISMATCH", "SERVICE_UNAVAILABLE",
+    "OPERATION_TIMEOUT", "DISCOVERY_FAILED",
+})
 
 _TOKEN_SPLIT = re.compile(r"[^A-Za-z0-9]+")
 _WRITE_NAME_TOKENS = frozenset(
@@ -177,6 +183,8 @@ class ClientMcpDescriptorExposureAdapter:
         identity_fingerprint: str = "",
         elapsed_seconds: float = 0.0,
     ) -> ClientMcpCatalog:
+        if not isinstance(raw_tools, list):
+            raise ClientMcpCatalogError("CATALOG_MALFORMED_PAGE")
         if elapsed_seconds > MAX_CATALOG_ELAPSED_SECONDS:
             raise ClientMcpCatalogError("CATALOG_BUDGET_EXCEEDED")
         if len(raw_tools) > MAX_CATALOG_PAGES:
@@ -679,7 +687,7 @@ class ClientMcpSessionService:
     without collapsing multi-server sessions into one catalog.
     """
 
-    __slots__ = ("_services", "_resolver", "_resolution_attempts")
+    __slots__ = ("_services", "_resolver", "_resolution_attempts", "_resolution_failures")
 
     def __init__(
         self,
@@ -690,6 +698,7 @@ class ClientMcpSessionService:
         object.__setattr__(self, "_services", dict(services or {}))
         object.__setattr__(self, "_resolver", resolver)
         object.__setattr__(self, "_resolution_attempts", set())
+        object.__setattr__(self, "_resolution_failures", {})
 
     def __setattr__(self, name: str, value: object) -> None:
         raise TypeError("client mcp session service is immutable except via lifecycle methods")
@@ -728,6 +737,18 @@ class ClientMcpSessionService:
         catalog: ClientMcpCatalog = object.__getattribute__(service, "_catalog")
         services: dict[str, ClientMcpToolService] = object.__getattribute__(self, "_services")
         services[catalog.identity.server_name] = service
+        failures: dict[str, str] = object.__getattribute__(self, "_resolution_failures")
+        failures.pop(catalog.identity.server_name, None)
+
+    def _record_resolution_failure(self, server: str, error: Exception) -> None:
+        """Disposition supplies validated leased identities; retain only constant codes."""
+        code = "DISCOVERY_FAILED"
+        if isinstance(error, (ClientMcpCatalogError, ClientMcpSdkError)):
+            if error.code in _VISIBLE_RESOLUTION_CODES:
+                code = error.code
+        failures: dict[str, str] = object.__getattribute__(self, "_resolution_failures")
+        # Preserve the catalog cause when the resolver later sees SERVICE_UNAVAILABLE.
+        failures.setdefault(server, code)
 
     def unregister(self, service: ClientMcpToolService) -> None:
         catalog: ClientMcpCatalog = object.__getattribute__(service, "_catalog")
@@ -774,8 +795,10 @@ class ClientMcpSessionService:
     def list_tools(self, server: str) -> tuple[AgentMcpToolOutput, AgentToolCall]:
         service = self.ensure_server(server)
         if service is None:
+            failures: dict[str, str] = object.__getattribute__(self, "_resolution_failures")
+            code = failures.get(server, "unknown_server")
             return (
-                AgentMcpToolOutput(server_name=server, tool_name="mcp_list_tools", text="unavailable:unknown_server"),
+                AgentMcpToolOutput(server_name=server, tool_name="mcp_list_tools", text=f"unavailable:{code}"),
                 AgentToolCall(
                     tool_name="mcp_list_tools",
                     summary=f"list unavailable for {server}",

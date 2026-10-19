@@ -942,3 +942,11 @@ def test_adapter_backed_service_rejects_unknown_cross_server_and_cross_session_t
         tools_supervisor.close()
         docs_supervisor.close()
         other_supervisor.close()
+
+
+@pytest.mark.parametrize("raw", [None, {}, object(), ({"tools": []},)])
+def test_non_list_catalog_input_is_a_typed_malformed_page(raw: Any) -> None:
+    """Unexpected top-level input must never leak len/iteration exceptions."""
+    with pytest.raises(ClientMcpCatalogError) as error:
+        _adapter().build(_identity(), raw)
+    assert error.value.code == "CATALOG_MALFORMED_PAGE"
