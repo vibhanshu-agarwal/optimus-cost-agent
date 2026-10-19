@@ -1445,7 +1445,14 @@ def test_label_specs_match_the_pilot_and_the_page_vocabulary() -> None:
     expected |= {f"kind:{kind}" for kind in vocabulary["kinds"]}
     for dimension in vocabulary["dimensions"].values():
         expected |= {f"{dimension['label']}:{value}" for value in dimension["values"]}
+    estimate_days = (1, 2, 3, 5, 8, 13)
+    expected |= {f"estimate:{days}d" for days in estimate_days}
     assert set(gwt.LABEL_SPECS) == expected
+    for days in estimate_days:
+        name = f"estimate:{days}d"
+        assert gwt.LABEL_SPECS[name] == gwt.LabelSpec(
+            name, f"Working days remaining to DONE: {days}; excludes approval waits", "c5def5"
+        )
     assert all(re.fullmatch(r"[0-9a-f]{6}", spec.color) and spec.description for spec in gwt.LABEL_SPECS.values())
 
 
