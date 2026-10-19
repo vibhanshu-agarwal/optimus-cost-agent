@@ -41,6 +41,8 @@ Follow the generated runbook. In outline:
 
 **Custody check:** `tools/plan12_stage_c_transition_check.py --workspace-root <ws> --out <new receipt> --previous <previous receipt>`. It exits 0 only when nothing listens on the Gateway URL, no Gateway holds the ledger, no Optimus host or Gateway process is left, and the window and the never-decreasing totals match the previous check. Clear means custody is free, not that budget or time remains.
 
+**Approval ceremony refusals:** the ceremony prepares the ledger before it persists any approval. If preparation refuses, nothing is persisted. It refuses with `STAGE_C_LEDGER_WRITE_FAILED` (creation failed, and any partial file is kept), `MISSING` (not a regular file), `UNREADABLE`, `CORRUPT`, `ENVELOPE_MISMATCH`, `LOCKED` (a Gateway still holds it) or `HALTED` (halted or in doubt). After `WRITE_FAILED`, or a `CORRUPT` that follows one, inspect the ledger file and remove a partial file by hand before retrying. Never reset an initialized ledger. A kept ledger prints its replayed attempts, charge and window.
+
 ## Stop and continuation rules
 
 - **Absolute stops** end the run: every later case is UNRUN, and no restart clears it. They are:

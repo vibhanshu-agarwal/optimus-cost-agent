@@ -15,9 +15,11 @@ import json
 import sys
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from keyring.errors import PasswordSetError
 
 from optimus.acp import __main__ as acp_main
 from optimus.acp import bootstrap
@@ -389,3 +391,262 @@ def test_the_gateway_child_gets_the_ledger_path_and_a_version_three_manifest(mon
     assert argv[argv.index("--plan12-stage-c-ledger") + 1] == str(ledger)
     manifest = json.loads(argv[argv.index("--manifest") + 1])
     assert (manifest["schema_version"], manifest["stage_c_envelope"]) == (3, envelope)
+
+
+# --- Plan 12.2 F1: the ceremony prepares the ledger before any approval is persisted ------------------------------
+
+
+class _PersistFailingKeyring(FakeKeyring):
+    """Fails approval persistence (`durable:`/`oneshot:` keys) only, before storing or after storing the record."""
+
+    def __init__(self, *, store_first: bool) -> None:
+        super().__init__()
+        self.store_first = store_first
+
+    def set_password(self, service: str, key: str, value: str) -> None:
+        if key.startswith(("durable:", "oneshot:")):
+            if self.store_first:
+                super().set_password(service, key, value)
+            raise PasswordSetError("simulated keyring backend failure")
+        super().set_password(service, key, value)
+
+
+def _ceremony(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    keyring: FakeKeyring,
+    *,
+    stage_c_flag: bool = True,
+    mode: str = "durable",
+    target_argv: tuple[str, ...] = (),
+    answer: str = "y",
+) -> tuple[object, Path, list[list[str]]]:
+    """The release ceremony through the CLI's own `main` (so a typed refusal is its exit code and `optimus-trust:`
+    message), set up as `_approve` does, with an injectable keyring, mode and target. A raw exception escaping `main`
+    is returned as the outcome, so a test can assert on it like an exit code; spawns are recorded, never run."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(exist_ok=True)
+    (tmp_path / "config").mkdir(exist_ok=True)
+    for name, value in {**_ENV, "OPTIMUS_CONFIG_ROOT": str(tmp_path / "config")}.items():
+        monkeypatch.setenv(name, value)
+    store = KeyringApprovalStore(keyring_backend=keyring, runtime_root=tmp_path / "approval-runtime")
+    spawned: list[list[str]] = []
+    monkeypatch.setattr(trust_cli, "_require_tty", lambda: None)
+    monkeypatch.setattr(trust_cli, "_resolve_store", lambda _workspace: (store, tmp_path / "approval-runtime"))
+    monkeypatch.setattr(trust_cli, "subprocess", SimpleNamespace(run=lambda argv, **_: spawned.append(argv) or SimpleNamespace(returncode=0)))
+    monkeypatch.setattr("builtins.input", lambda _prompt: answer)
+    try:
+        argv = ["--workspace-root", str(workspace), "approve", "--mode", mode, "--plan12-test-profile", "attached"]
+        argv += ["--plan12-stage-c"] if stage_c_flag else []
+        outcome: object = trust_cli.main([*argv, *(["--", *target_argv] if target_argv else [])])
+    except Exception as exc:  # noqa: BLE001 - the baseline's raw failure is the observed outcome
+        outcome = exc
+    return outcome, workspace, spawned
+
+
+def _approval_keys(keyring: FakeKeyring) -> dict[str, str]:
+    return {key: value for (_service, key), value in keyring._store.items() if key.startswith(("durable:", "oneshot:"))}
+
+
+def _write_ledger(workspace: Path, *records: dict[str, Any], envelope_literal: str | None = None) -> Path:
+    ledger = _ledger(workspace)
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    envelope = stage_c.compose_stage_c_envelope(ledger=ledger)
+    init = {"kind": "init", "envelope": envelope_literal or envelope.literal, "release_id": envelope.release_id, "limit_usd": str(envelope.limit_usd),
+            "max_attempts": envelope.max_attempts, "window_seconds": envelope.window_seconds, "at": "2026-10-12T08:00:00+00:00"}  # fmt: skip
+    ledger.write_bytes(b"".join(json.dumps(record).encode("utf-8") + b"\n" for record in (init, *records)))
+    return ledger
+
+
+@pytest.mark.parametrize("mode, target", [("durable", ()), ("one-shot", ()), ("one-shot", (sys.executable, "-c", "pass"))])
+def test_a_ledger_that_cannot_be_created_refuses_before_any_approval_is_persisted(monkeypatch, tmp_path, capsys, mode, target) -> None:
+    keyring = FakeKeyring()
+    _ceremony(monkeypatch, tmp_path, keyring, stage_c_flag=False)  # an earlier, ordinary durable approval
+    before = _approval_keys(keyring)
+    capsys.readouterr()
+
+    def unwritable(_path: Path, _envelope: object) -> None:
+        raise PermissionError(13, "Access is denied")
+
+    monkeypatch.setattr(trust_cli, "initialize_stage_c_ledger", unwritable)
+    outcome, _, spawned = _ceremony(monkeypatch, tmp_path, keyring, mode=mode, target_argv=target)
+
+    assert outcome == 2
+    assert "STAGE_C_LEDGER_WRITE_FAILED" in capsys.readouterr().err
+    assert _approval_keys(keyring) == before  # the earlier durable approval is untouched, and nothing new exists
+    assert spawned == []
+
+
+def test_a_partly_written_ledger_is_refused_then_and_on_every_retry_and_never_reported_as_kept(monkeypatch, tmp_path, capsys) -> None:
+    keyring = FakeKeyring()
+
+    def failing_write(_handle: object, _record: object, _fsync: object) -> None:
+        raise OSError(28, "No space left on device")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(stage_c, "_write_record", failing_write)
+        outcome, workspace, _ = _ceremony(monkeypatch, tmp_path, keyring)
+    first = capsys.readouterr()
+    ledger = _ledger(workspace)
+    left = ledger.read_bytes()
+
+    assert outcome == 2 and "STAGE_C_LEDGER_WRITE_FAILED" in first.err
+    assert _approval_keys(keyring) == {}
+
+    outcome, _, _ = _ceremony(monkeypatch, tmp_path, keyring)
+    retry = capsys.readouterr()
+
+    assert outcome == 2 and "STAGE_C_LEDGER_CORRUPT" in retry.err
+    assert "kept as it is" not in retry.out
+    assert ledger.read_bytes() == left and _approval_keys(keyring) == {}
+
+
+@pytest.mark.parametrize(
+    "records, code",
+    [
+        ([], "STAGE_C_LEDGER_ENVELOPE_MISMATCH"),
+        ([{"kind": "halt", "reason": "operator halt"}], "STAGE_C_HALTED"),
+        ([{"kind": "reserve", "n": 1, "attempt_id": "a-1", "reserve_usd": "0.10"}], "STAGE_C_HALTED"),
+    ],
+    ids=["another-envelope", "halted", "in-doubt"],
+)
+def test_an_existing_ledger_that_cannot_be_bound_is_refused_without_persisting_an_approval(monkeypatch, tmp_path, capsys, records, code) -> None:
+    keyring = FakeKeyring()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    foreign = "plan12-stage-c-foreign-envelope" if code.endswith("MISMATCH") else None
+    ledger = _write_ledger(workspace, *records, envelope_literal=foreign)
+    before = ledger.read_bytes()
+
+    outcome, _, _ = _ceremony(monkeypatch, tmp_path, keyring)
+
+    assert outcome == 2 and code in capsys.readouterr().err
+    assert ledger.read_bytes() == before and _approval_keys(keyring) == {}
+
+
+def test_a_ledger_held_by_a_running_gateway_is_refused(monkeypatch, tmp_path, capsys) -> None:
+    keyring = FakeKeyring()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    ledger = _write_ledger(workspace)
+    held = stage_c._Lock(ledger.with_name(ledger.name + ".lock"))  # the lock a Gateway holds for its life
+    try:
+        outcome, _, _ = _ceremony(monkeypatch, tmp_path, keyring)
+    finally:
+        held.release()
+
+    assert outcome == 2 and "STAGE_C_LEDGER_LOCKED" in capsys.readouterr().err
+    assert _approval_keys(keyring) == {}
+
+
+def test_an_unreadable_ledger_is_refused(monkeypatch, tmp_path, capsys) -> None:
+    keyring = FakeKeyring()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    ledger = _write_ledger(workspace)
+    ledger.with_name(ledger.name + ".lock").mkdir()  # the lock probe cannot open a directory: a real filesystem error
+
+    outcome, _, _ = _ceremony(monkeypatch, tmp_path, keyring)
+
+    assert outcome == 2 and "STAGE_C_LEDGER_UNREADABLE" in capsys.readouterr().err
+    assert _approval_keys(keyring) == {}
+
+
+def test_a_symlink_at_the_ledger_path_is_refused(monkeypatch, tmp_path, capsys) -> None:
+    keyring = FakeKeyring()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    ledger = _ledger(workspace)
+    ledger.parent.mkdir(parents=True)
+    real = tmp_path / "elsewhere.jsonl"
+    real.write_bytes(b"")
+    try:
+        ledger.symlink_to(real)
+    except OSError as exc:
+        pytest.skip(f"symlink unavailable: {exc}")
+
+    outcome, _, _ = _ceremony(monkeypatch, tmp_path, keyring)
+
+    assert outcome == 2 and "STAGE_C_LEDGER_MISSING" in capsys.readouterr().err
+    assert _approval_keys(keyring) == {}
+
+
+def test_the_ledger_is_prepared_before_a_failing_approval_write(monkeypatch, tmp_path, capsys) -> None:
+    keyring = _PersistFailingKeyring(store_first=False)
+
+    outcome, workspace, _ = _ceremony(monkeypatch, tmp_path, keyring)
+
+    assert isinstance(outcome, PasswordSetError)
+    ledger = _ledger(workspace)
+    assert ledger.is_file(), "the ledger is prepared before any approval persistence call"
+    assert stage_c.stage_c_ledger_status(ledger, stage_c.compose_stage_c_envelope(ledger=ledger)).state.attempts == 0
+    assert "approval written" not in capsys.readouterr().out
+
+
+def test_a_kept_ledger_reports_its_replayed_state(monkeypatch, tmp_path, capsys) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _write_ledger(workspace, {"kind": "window", "start": "2026-10-12T09:00:00+00:00", "deadline": "2026-10-12T10:00:00+00:00"})
+
+    outcome, _, _ = _ceremony(monkeypatch, tmp_path, FakeKeyring())
+    out = capsys.readouterr().out
+
+    [kept] = [line for line in out.splitlines() if "kept as it is (never reset)" in line]
+    assert outcome == 0
+    envelope = stage_c.compose_stage_c_envelope(ledger=_ledger(tmp_path / "workspace"))
+    assert f"0/{envelope.max_attempts} attempts" in kept and "charged" in kept and "2026-10-12T10:00:00" in kept
+
+
+def test_a_one_shot_ceremony_creates_the_ledger_and_writes_its_approval(monkeypatch, tmp_path) -> None:
+    keyring = FakeKeyring()
+
+    outcome, workspace, spawned = _ceremony(monkeypatch, tmp_path, keyring, mode="one-shot")
+
+    assert outcome == 0 and _ledger(workspace).is_file() and spawned == []
+    assert [key.split(":")[0] for key in _approval_keys(keyring)] == ["oneshot"]
+
+
+def test_a_declined_stage_c_ceremony_creates_nothing(monkeypatch, tmp_path) -> None:
+    keyring = FakeKeyring()
+
+    outcome, workspace, _ = _ceremony(monkeypatch, tmp_path, keyring, answer="n")
+
+    assert outcome == 1 and not _ledger(workspace).exists() and _approval_keys(keyring) == {}
+
+
+def test_a_keyring_that_stores_then_fails_leaves_a_valid_ledger_unchanged_and_claims_no_success(monkeypatch, tmp_path, capsys) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    ledger = _write_ledger(workspace)
+    before = ledger.read_bytes()
+
+    outcome, _, _ = _ceremony(monkeypatch, tmp_path, _PersistFailingKeyring(store_first=True))
+
+    assert isinstance(outcome, PasswordSetError)
+    assert ledger.read_bytes() == before
+    assert "approval written" not in capsys.readouterr().out  # the stored entry is an unknown outcome, not asserted
+
+
+def test_a_failed_one_shot_approval_write_never_spawns(monkeypatch, tmp_path) -> None:
+    outcome, _, spawned = _ceremony(monkeypatch, tmp_path, _PersistFailingKeyring(store_first=False), mode="one-shot", target_argv=(sys.executable, "-c", "pass"))
+
+    assert isinstance(outcome, PasswordSetError) and spawned == []
+
+
+def test_an_expired_or_exhausted_but_bound_ledger_is_kept_and_the_approval_written(monkeypatch, tmp_path, capsys) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    ledger = _write_ledger(
+        workspace,
+        {"kind": "window", "start": "2026-10-12T09:00:00+00:00", "deadline": "2026-10-12T10:00:00+00:00"},
+        {"kind": "reserve", "n": 1, "attempt_id": "a-1", "reserve_usd": "8"},
+        {"kind": "settle", "n": 1, "result": "charged", "cost_usd": "8"},
+    )
+    before = ledger.read_bytes()
+    keyring = FakeKeyring()
+
+    outcome, _, _ = _ceremony(monkeypatch, tmp_path, keyring)
+
+    assert outcome == 0 and ledger.read_bytes() == before
+    assert "kept as it is (never reset)" in capsys.readouterr().out
+    assert [key.split(":")[0] for key in _approval_keys(keyring)] == ["durable"]
