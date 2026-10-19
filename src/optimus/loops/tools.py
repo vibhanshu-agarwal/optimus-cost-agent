@@ -7,6 +7,7 @@ from pathlib import Path
 from optimus.agent.planning_loop import PlanningReadError, PlanningReadEvidence, PlanningReadRequest
 from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolResult
+from optimus.guardrails.runtime_tree import resolve_target
 from optimus.runtime.modes import ExecutionMode, GenerationScope
 
 
@@ -33,6 +34,8 @@ class GuardedLoopToolExecutor:
         generation_scope: GenerationScope = GenerationScope.INLINE_SNIPPET,
         approval_granted: bool = False,
         environment: Mapping[str, str] | None = None,
+        requested_relative_path: str | None = None,
+        target_unresolved: bool = False,
     ) -> PreToolResult:
         result = self._guard.check(
             PreToolRequest(
@@ -46,6 +49,8 @@ class GuardedLoopToolExecutor:
                 generation_scope=generation_scope,
                 approval_granted=approval_granted,
                 environment=environment or {},
+                requested_relative_path=requested_relative_path,
+                target_unresolved=target_unresolved,
             )
         )
         if not result.allowed:
@@ -70,7 +75,10 @@ class GuardedLoopToolExecutor:
         if relative.is_absolute():
             raise PlanningReadError("PLANNING_READ_INVALID_PATH", "READ path must be workspace-relative")
 
-        target = (root / relative).resolve()
+        # The guard judges the requested path beside its resolved target; an unresolvable target is denied through the
+        # guard (Plan 12.2 READ), so only an allowed, resolved target is ever read below.
+        resolved = resolve_target(root / relative)
+        target = root / relative if resolved is None else resolved
         outside_workspace = False
         try:
             target.relative_to(root)
@@ -85,6 +93,8 @@ class GuardedLoopToolExecutor:
             action="read_file_range",
             target_path=str(target),
             approval_granted=approval_granted,
+            requested_relative_path=request.path,
+            target_unresolved=resolved is None,
         )
         if outside_workspace:
             raise PlanningReadError("PLANNING_READ_INVALID_PATH", "READ path must stay inside workspace")

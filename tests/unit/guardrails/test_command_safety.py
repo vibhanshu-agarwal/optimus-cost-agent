@@ -291,3 +291,40 @@ def test_greek_confusable_command_is_blocked(tmp_path):
 
     assert result.verdict is ValidationVerdict.BLOCK
     assert result.rule_id == "shell.unicode_confusable"
+
+
+# --- Plan 12.2 READ: command tokens naming the reserved runtime tree -------------------------------------------
+
+
+def test_a_command_token_naming_the_runtime_tree_is_blocked_as_a_runtime_read(tmp_path):
+    for command in (("pytest", ".optimus/state.json"), ("pytest", "a/.optimus/x"), ("git", "show", str(tmp_path / ".optimus" / "x"))):
+        result = validator(tmp_path).validate(command)
+
+        assert result.verdict is ValidationVerdict.BLOCK, command
+        assert result.rule_id == "shell.runtime_read", command
+
+
+def test_a_relative_runtime_token_is_anchored_at_the_workspace_not_the_process_cwd(tmp_path, monkeypatch):
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    result = validator(workspace).validate(("pytest", ".optimus/state.json"))
+
+    assert (result.verdict, result.rule_id) == (ValidationVerdict.BLOCK, "shell.runtime_read")
+
+
+def test_a_token_matching_both_policies_keeps_the_secret_verdict(tmp_path):
+    result = validator(tmp_path).validate(("pytest", ".optimus/.env"))
+
+    assert (result.verdict, result.rule_id) == (ValidationVerdict.BLOCK, "shell.credential_read")
+
+
+def test_ordinary_and_lookalike_tokens_are_unaffected(tmp_path):
+    for command in (("pytest", "tests/"), ("pytest", "tests/unit/test_optimus.py"), ("git", "diff", ".optimus-notes")):
+        result = validator(tmp_path).validate(command)
+
+        assert result.verdict is ValidationVerdict.ALLOW, command
+        assert result.rule_id == "shell.allowed", command

@@ -1345,7 +1345,9 @@ class AgentRunner:
             operation_id = gate.operation_id(phase, ordinal)
             gate.register([(kind, operation_id)])
             try:
-                started, read = _run_gated(gate, kind, operation_id, partial(toolbox.read_file, target), effectful=False)
+                started, read = _run_gated(
+                    gate, kind, operation_id, partial(toolbox.read_file, target, requested=relative_path), effectful=False
+                )
             except OSError:
                 continue
             if not started:
@@ -1378,13 +1380,15 @@ class AgentRunner:
         if target.exists():
             read_id = gate.operation_id("read-before-write", 0)
             gate.register([(DirectiveKind.READ, read_id)])
-            started, read = _run_gated(gate, DirectiveKind.READ, read_id, partial(toolbox.read_file, target), effectful=False)
+            started, read = _run_gated(
+                gate, DirectiveKind.READ, read_id, partial(toolbox.read_file, target, requested=relative_path), effectful=False
+            )
             if not started:
                 return calls
             calls.append(read[1])
         write_id = gate.operation_id("write", 0)
         started, write_call = _run_gated(
-            gate, DirectiveKind.WRITE, write_id, partial(toolbox.write_file, target, content), effectful=True
+            gate, DirectiveKind.WRITE, write_id, partial(toolbox.write_file, target, content, requested=relative_path), effectful=True
         )
         if started:
             calls.append(write_call)

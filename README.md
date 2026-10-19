@@ -321,11 +321,17 @@ report a file's final path, so an alias there may go unrecognised (the
 roots are outside this guarantee. On Windows the name matches
 case-insensitively. An explicit reference
 into it in the task is refused as not readable, and a source that only shares
-a runtime file's name still resolves. This governs automatic workspace context
-only; it does not restrict a file the model itself asks to READ. A custom
-`--debug-log PATH` outside `.optimus/` is ordinary workspace content: keep it
-under `.optimus/` or outside the workspace if it must not be included as
-workspace context.
+a runtime file's name still resolves. The same rule guards every file the
+model itself asks for: a plan or planner READ, the read before a WRITE, and a
+WRITE are refused, audited, before any byte is read or written, when the
+requested path or its resolved target has a `.optimus` component, or when the
+target cannot be resolved. A TEST command naming the tree is refused too, but
+programs a TEST command runs are not confined; hard links, copies, pasted
+content, check-then-read races and the editor's own MCP servers are outside
+the guard, which is not a general sandbox. A custom `--debug-log PATH` outside
+`.optimus/` is ordinary workspace content: keep it under `.optimus/` or
+outside the workspace if it must not be included as workspace context or read
+by the model.
 
 **Plan 9.85** (multi-turn read-observe-replan) extends Plan 9.8: when a
 required file's complete content exceeds the single-pass context budget, the

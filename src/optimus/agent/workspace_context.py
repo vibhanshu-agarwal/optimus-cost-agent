@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import re
-import sys
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+# The runtime tree every launch writes under its workspace (debug trace, launch audit, Gateway log, telemetry) is
+# never workspace context, at any depth, nor through a file alias or junction whose target lies in one. The rule is
+# shared with the guard on model-issued file access (Plan 12.2 READ + W); RUNTIME_DIR_NAME stays importable here.
+from optimus.guardrails.runtime_tree import RUNTIME_DIR_NAME as RUNTIME_DIR_NAME
+from optimus.guardrails.runtime_tree import has_runtime_component, resolve_target, target_reserved
+
 DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES = 16 * 1024
 _SKIP_DIR_NAMES = frozenset({".git", "__pycache__", ".venv", "node_modules", ".idea"})
-# The runtime tree every launch writes under its workspace (debug trace, launch audit, Gateway log, telemetry).
-# It is never workspace context, at any depth, nor through a file alias or junction whose target lies in one.
-RUNTIME_DIR_NAME = ".optimus"
-_WINDOWS = sys.platform == "win32"  # NTFS is case-insensitive, so the reserved name is compared casefolded there
 _TRUNCATION_PREFIX = "--- omitted (size cap): "
 
 _FILE_REFERENCE_RE = re.compile(
@@ -539,28 +540,12 @@ def _truncate_utf8(data: bytes, max_bytes: int) -> str:
 
 
 def _should_skip_relative_path(relative: Path) -> bool:
-    return any(part in _SKIP_DIR_NAMES for part in relative.parts) or _has_runtime_component(relative.parts)
-
-
-def _has_runtime_component(parts: tuple[str, ...]) -> bool:
-    if _WINDOWS:
-        return any(part.casefold() == RUNTIME_DIR_NAME for part in parts)
-    return RUNTIME_DIR_NAME in parts
+    return any(part in _SKIP_DIR_NAMES for part in relative.parts) or has_runtime_component(relative.parts)
 
 
 def _target_excluded(path: Path, root: Path) -> bool:
-    """Whether a candidate's real target lies in a runtime tree, judged from path metadata alone (its content is
-    never opened). A target inside the workspace is judged by its workspace-relative parts, so a workspace under
-    an ancestor that happens to share the reserved name keeps its files; a target outside it by its absolute parts.
-    A resolution error excludes the candidate, so it is never read. Resolution is not strict: the candidate has
-    already passed ``is_file()``, and a strict resolve would reject every file on a Windows filesystem without
-    final-path support (there, a best-effort path is used and the lexical rule still applies)."""
-    try:
-        target = path.resolve()
-    except (OSError, RuntimeError):
-        return True
-    try:
-        parts = target.relative_to(root).parts
-    except ValueError:
-        parts = target.parts
-    return _has_runtime_component(parts)
+    """Whether a candidate's real target lies in a runtime tree (`runtime_tree.target_reserved`), judged from path
+    metadata alone. A resolution error excludes the candidate, so it is never read; it has already passed
+    ``is_file()``, and resolution stays non-strict (`runtime_tree.resolve_target`)."""
+    target = resolve_target(path)
+    return target is None or target_reserved(target, root)

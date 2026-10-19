@@ -110,7 +110,11 @@ class CommandSafetyValidator:
         for token in command:
             if _is_proc_environ_path(token):
                 return ValidationResult(ValidationVerdict.BLOCK, "shell.credential_read", "process environment reads are denied")
+            # A direct call: the secret rule comes first, so a token naming both keeps today's verdict; a runtime-tree
+            # token, anchored at the workspace root, carries its own id (Plan 12.2 READ).
             result = self._paths.validate_read(token)
+            if result.verdict is ValidationVerdict.BLOCK and result.rule_id == "path.runtime.read":
+                return ValidationResult(ValidationVerdict.BLOCK, "shell.runtime_read", result.reason)
             if result.verdict is ValidationVerdict.BLOCK:
                 return ValidationResult(ValidationVerdict.BLOCK, "shell.credential_read", result.reason)
         return None

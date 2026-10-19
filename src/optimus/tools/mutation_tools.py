@@ -51,7 +51,11 @@ def write_file(
     *,
     context: RuntimeContext,
     guard: PreToolGuardLike | None = None,
+    requested_relative_path: str | None = None,
+    target_unresolved: bool = False,
 ) -> None:
+    """Write after the mutation gate and the guard allow it. The two optional fields carry a model's requested path
+    and an unresolvable target to the guard (Plan 12.2 W); without them the check is exactly as before."""
     assert_mutation_allowed(context, MutationKind.WRITE_FILE)
     active_guard = guard or PreToolGuard.for_workspace(workspace_root=Path.cwd(), allowed_network_hosts=())
     _assert_pre_tool_allowed(
@@ -66,6 +70,8 @@ def write_file(
                 generation_scope=GenerationScope.FILE_MUTATION,
                 approval_granted=context.approval_granted,
                 approver=context.user_approval_id,
+                requested_relative_path=requested_relative_path,
+                target_unresolved=target_unresolved,
             )
         )
     )

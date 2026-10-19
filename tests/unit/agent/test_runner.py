@@ -1,5 +1,8 @@
 import hashlib
+import os
+import sys
 from decimal import Decimal
+from pathlib import Path
 from subprocess import CompletedProcess
 
 import pytest
@@ -11,6 +14,7 @@ from optimus.agent.state_store import InMemoryAgentStateStore
 from optimus.agent.workspace_context import WorkspaceContextResult
 from optimus.gateway.errors import GatewayHttpError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
+from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.loops.models import IterationOutcome, IterationState
 from optimus.runtime.modes import ExecutionMode
 from optimus.telemetry.events import TelemetryEventKind
@@ -1288,3 +1292,277 @@ def test_run_with_telemetry_fanout_preserves_completed_result_when_jsonl_fails(t
     assert warnings[0].exc_info is None
     assert "synthetic-private-sink-message" not in caplog.text + repr(failure)
     assert capsys.readouterr().out == ""
+
+
+# --- Plan 12.2 READ + W: model-issued access to the reserved runtime tree `.optimus/` --------------------------
+
+RUNTIME_SENTINEL = "RUNTIME-SENTINEL-7f3a"
+SOURCE_TEXT = "print('ordinary source')\n"
+
+
+def _runtime_workspace(root: Path) -> Path:
+    """An ordinary source file beside a runtime tree holding a sentinel that must never be read."""
+    (root / "src").mkdir(parents=True, exist_ok=True)
+    (root / "src" / "a.py").write_text(SOURCE_TEXT, encoding="utf-8")
+    (root / ".optimus").mkdir(exist_ok=True)
+    (root / ".optimus" / "telemetry.ndjson").write_text(RUNTIME_SENTINEL, encoding="utf-8")
+    return root
+
+
+@pytest.fixture
+def directory_alias():
+    """Directory aliases: a Windows junction where `_winapi` exists, else a directory symlink. Each alias itself is
+    removed at teardown, never anything through it."""
+    made: list[tuple[Path, bool]] = []
+
+    def make(link: Path, target: Path) -> None:
+        link.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            import _winapi
+        except ImportError:
+            try:
+                link.symlink_to(target, target_is_directory=True)
+            except OSError as exc:
+                pytest.skip(f"directory alias unavailable: {exc}")
+            made.append((link, False))
+            return
+        _winapi.CreateJunction(str(target), str(link))
+        made.append((link, True))
+
+    yield make
+    for link, junction in reversed(made):
+        os.rmdir(link) if junction else link.unlink()
+
+
+def _guarded_runner(workspace: Path, gateway, **kwargs) -> tuple[AgentRunner, PreToolGuard]:
+    guard = PreToolGuard.for_workspace(workspace_root=workspace, allowed_network_hosts=())
+    return AgentRunner(gateway_client=gateway, model="glm-5.2", guard=guard, **kwargs), guard
+
+
+def _reads(result) -> tuple[str, ...]:
+    return tuple(call.summary for call in result.tool_calls if call.tool_name == "file_reader")
+
+
+def _blocked(guard: PreToolGuard) -> list[str]:
+    return [event.failed_checks[0] for event in guard.audit_events() if event.verdict == "BLOCK"]
+
+
+def _plan_and_approve(runner: AgentRunner, workspace: Path, task: str = "Update src/a.py"):
+    plan = runner.run(AgentRunRequest(run_id="run-1", task=task, execution_mode=ExecutionMode.AGENT, workspace_root=workspace))
+    approved = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task=task,
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=workspace,
+            approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan.plan_hash),
+        )
+    )
+    return plan, approved
+
+
+def _agent(task: str, workspace: Path, **kwargs) -> AgentRunRequest:
+    return AgentRunRequest(run_id="run-1", task=task, execution_mode=ExecutionMode.AGENT, workspace_root=workspace, **kwargs)
+
+
+def test_plan_read_directives_never_read_the_runtime_tree_while_planning_or_after_approval(tmp_path):
+    workspace = _runtime_workspace(tmp_path)
+    (workspace / "a" / ".optimus").mkdir(parents=True)
+    (workspace / "a" / ".optimus" / "state.json").write_text(RUNTIME_SENTINEL, encoding="utf-8")
+    plan_text = "READ .optimus/telemetry.ndjson\nREAD a/.optimus/state.json\nREAD src/a.py\nWRITE src/a.py\nprint('updated')\n"
+    runner, guard = _guarded_runner(workspace, FakeGatewayClient(plan_text), state_store=InMemoryAgentStateStore())
+
+    plan, approved = _plan_and_approve(runner, workspace)
+
+    assert _reads(plan) == ("read src/a.py",)
+    assert _reads(approved) == ("read src/a.py", "read src/a.py")  # the READ, then the read-before-write
+    assert _blocked(guard).count("path.runtime.read") == 4  # two reserved READs, while planning and after approval
+
+
+def test_a_reserved_alias_into_ordinary_source_is_denied_by_its_requested_name(tmp_path, directory_alias):
+    workspace = _runtime_workspace(tmp_path)
+    directory_alias(workspace / "a" / ".optimus", workspace / "src")
+    runner, guard = _guarded_runner(workspace, FakeGatewayClient("READ a/.optimus/a.py\nREAD src/a.py\nWRITE src/a.py\nx = 1\n"))
+
+    result = runner.run(_agent("Read", workspace))
+
+    assert _reads(result) == ("read src/a.py",)
+    assert "path.runtime.read" in _blocked(guard)
+
+
+def test_an_ordinary_alias_into_the_runtime_tree_is_denied_by_its_resolved_target(tmp_path, directory_alias):
+    workspace = _runtime_workspace(tmp_path)
+    directory_alias(workspace / "src" / "rt", workspace / ".optimus")
+    runner, guard = _guarded_runner(workspace, FakeGatewayClient("READ src/rt/telemetry.ndjson\nREAD src/a.py\nWRITE src/a.py\nx = 1\n"))
+
+    result = runner.run(_agent("Read", workspace))
+
+    assert _reads(result) == ("read src/a.py",)
+    assert "path.runtime.read" in _blocked(guard)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="NTFS names are case-insensitive; a POSIX `.OPTIMUS` is another directory")
+def test_a_case_variant_of_the_runtime_tree_is_denied_on_windows(tmp_path):
+    workspace = _runtime_workspace(tmp_path)
+    runner, guard = _guarded_runner(workspace, FakeGatewayClient("READ .OPTIMUS/telemetry.ndjson\nREAD src/a.py\nWRITE src/a.py\nx = 1\n"))
+
+    result = runner.run(_agent("Read", workspace))
+
+    assert _reads(result) == ("read src/a.py",)
+    assert "path.runtime.read" in _blocked(guard)
+
+
+def _without_final_path_support(monkeypatch) -> None:
+    import ntpath
+
+    def unsupported(path):
+        raise OSError(22, "Incorrect function", str(path), 1)  # winerror 1: ERROR_INVALID_FUNCTION
+
+    monkeypatch.setattr(ntpath, "_getfinalpathname", unsupported)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="final-path resolution (GetFinalPathNameByHandle) is the Windows mechanism")
+def test_without_final_path_support_ordinary_source_is_still_read(tmp_path, monkeypatch):
+    workspace = _runtime_workspace(tmp_path)
+    _without_final_path_support(monkeypatch)
+    runner, guard = _guarded_runner(workspace, FakeGatewayClient("READ src/a.py\nWRITE src/a.py\nx = 1\n"))
+
+    result = runner.run(_agent("Read", workspace))
+
+    assert _reads(result) == ("read src/a.py",)
+    assert _blocked(guard) == []
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="final-path resolution (GetFinalPathNameByHandle) is the Windows mechanism")
+def test_without_final_path_support_the_runtime_name_is_still_denied(tmp_path, monkeypatch):
+    workspace = _runtime_workspace(tmp_path)
+    _without_final_path_support(monkeypatch)
+    runner, guard = _guarded_runner(workspace, FakeGatewayClient("READ .optimus/telemetry.ndjson\nWRITE src/a.py\nx = 1\n"))
+
+    result = runner.run(_agent("Read", workspace))
+
+    assert _reads(result) == ()
+    assert "path.runtime.read" in _blocked(guard)
+
+
+def _failing_resolve(monkeypatch, error: BaseException) -> None:
+    """Fault the resolution both versions perform, for the named target only."""
+    original_resolve = Path.resolve
+
+    def resolve(self, strict=False):
+        if self.name == "unresolvable.py":
+            raise error
+        return original_resolve(self, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+
+
+@pytest.mark.parametrize("error", [OSError("simulated resolution failure"), RuntimeError("simulated symlink loop")], ids=["oserror", "runtimeerror"])
+def test_an_unresolvable_plan_read_target_is_denied_through_the_audited_guard(tmp_path, monkeypatch, error):
+    workspace = _runtime_workspace(tmp_path)
+    (workspace / "src" / "unresolvable.py").write_text(RUNTIME_SENTINEL, encoding="utf-8")
+    _failing_resolve(monkeypatch, error)
+    runner, guard = _guarded_runner(workspace, FakeGatewayClient("READ src/unresolvable.py\nREAD src/a.py\nWRITE src/a.py\nx = 1\n"))
+
+    result = runner.run(_agent("Read", workspace))
+
+    assert _reads(result) == ("read src/a.py",)
+    assert "path.unresolved.read" in _blocked(guard)
+
+
+def test_a_write_to_an_existing_runtime_file_fails_before_any_write(tmp_path):
+    workspace = _runtime_workspace(tmp_path)
+    runtime_file = workspace / ".optimus" / "telemetry.ndjson"
+    runner, guard = _guarded_runner(workspace, FakeGatewayClient('WRITE .optimus/telemetry.ndjson\n{"forged": true}\n'), state_store=InMemoryAgentStateStore())
+
+    try:
+        _, approved = _plan_and_approve(runner, workspace)
+    except PermissionError:
+        approved = None
+
+    assert runtime_file.read_text(encoding="utf-8") == RUNTIME_SENTINEL
+    assert approved is None or approved.status is not AgentRunStatus.COMPLETED
+    assert "path.runtime.read" in _blocked(guard)  # the read-before-write is denied first
+
+
+def test_a_write_never_creates_a_file_in_the_runtime_tree(tmp_path):
+    workspace = _runtime_workspace(tmp_path)
+    forged = workspace / ".optimus" / "plan12-stage-c" / "forged.jsonl"
+    forged.parent.mkdir()
+    plan_text = 'WRITE .optimus/plan12-stage-c/forged.jsonl\n{"kind": "init"}\n'
+    runner, guard = _guarded_runner(workspace, FakeGatewayClient(plan_text), state_store=InMemoryAgentStateStore())
+
+    try:
+        _, approved = _plan_and_approve(runner, workspace)
+    except PermissionError:
+        approved = None
+
+    assert not forged.exists()
+    assert approved is None or approved.status is not AgentRunStatus.COMPLETED
+    assert "path.runtime.write" in _blocked(guard)
+
+
+def test_a_planner_ranged_read_of_the_runtime_tree_stops_and_never_reaches_the_model(tmp_path):
+    workspace = _runtime_workspace(tmp_path)
+    gateway = ScriptingGateway(
+        [
+            ("OBSERVE: need runtime state\nREAD: .optimus/telemetry.ndjson#bytes=0:21\n", Decimal("0.002"), "gw-1"),
+            ("READ src/a.py\nWRITE src/a.py\nx = 1\n", Decimal("0.003"), "gw-2"),
+        ]
+    )
+    runner, guard = _guarded_runner(workspace, gateway)
+
+    result = runner.run(_agent("Edit src/a.py", workspace, max_planning_turns=2))
+
+    assert result.stop_reason == "PLANNING_READ_GUARD_BLOCKED"
+    assert all(RUNTIME_SENTINEL not in str(call["input_text"]) for call in gateway.calls)
+    assert "path.runtime.read" in _blocked(guard)
+
+
+@pytest.mark.parametrize("error", [OSError("simulated resolution failure"), RuntimeError("simulated symlink loop")], ids=["oserror", "runtimeerror"])
+def test_an_unresolvable_planner_ranged_read_stops_through_the_audited_guard(tmp_path, monkeypatch, error):
+    workspace = _runtime_workspace(tmp_path)
+    (workspace / "src" / "unresolvable.py").write_text(RUNTIME_SENTINEL, encoding="utf-8")
+    _failing_resolve(monkeypatch, error)
+    gateway = ScriptingGateway(
+        [
+            ("OBSERVE: need it\nREAD: src/unresolvable.py#bytes=0:21\n", Decimal("0.002"), "gw-1"),
+            ("READ src/a.py\nWRITE src/a.py\nx = 1\n", Decimal("0.003"), "gw-2"),
+        ]
+    )
+    runner, guard = _guarded_runner(workspace, gateway)
+
+    result = runner.run(_agent("Edit src/a.py", workspace, max_planning_turns=2))
+
+    assert result.stop_reason == "PLANNING_READ_GUARD_BLOCKED"
+    assert "path.unresolved.read" in _blocked(guard)
+
+
+def test_ordinary_source_is_still_read_by_plan_and_planner_reads_and_through_a_normal_alias(tmp_path, directory_alias):
+    workspace = _runtime_workspace(tmp_path)
+    directory_alias(workspace / "lib", workspace / "src")
+    gateway = ScriptingGateway(
+        [
+            ("OBSERVE: need the header\nREAD: src/a.py#bytes=0:5\n", Decimal("0.002"), "gw-1"),
+            ("READ lib/a.py\nREAD src/a.py\nWRITE src/a.py\nx = 1\n", Decimal("0.003"), "gw-2"),
+        ]
+    )
+    runner, guard = _guarded_runner(workspace, gateway)
+
+    result = runner.run(_agent("Edit src/a.py", workspace, max_planning_turns=2))
+
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL
+    assert _reads(result) == ("read src/a.py", "read src/a.py")  # the alias read is summarised by its resolved target
+    assert "print" in str(gateway.calls[1]["input_text"])  # the ranged read's bytes reached the next turn
+    assert all(RUNTIME_SENTINEL not in str(call["input_text"]) for call in gateway.calls)
+    assert _blocked(guard) == []
+
+
+def test_a_workspace_under_an_ancestor_named_optimus_still_reads_its_source(tmp_path):
+    workspace = _runtime_workspace(tmp_path / ".optimus" / "ws")
+    runner, guard = _guarded_runner(workspace, FakeGatewayClient("READ src/a.py\nWRITE src/a.py\nx = 1\n"))
+
+    result = runner.run(_agent("Read", workspace))
+
+    assert _reads(result) == ("read src/a.py",)
+    assert _blocked(guard) == []
