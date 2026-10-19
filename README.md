@@ -313,8 +313,13 @@ multi-turn replanning (Plan 9.85) or Plan 12 intelligent selection.
 
 Automatic workspace context never includes the Optimus runtime tree,
 `.optimus/` (the debug trace, launch audit, Gateway log and telemetry each
-launch writes), at any depth, nor a file alias or junction whose target lies
-in one. On Windows the name matches case-insensitively. An explicit reference
+launch writes), at any depth. It also leaves out a file symlink or Windows
+junction whose resolved target lies in one, and a file whose target cannot be
+resolved. Alias resolution is best-effort on a Windows filesystem that cannot
+report a file's final path, so an alias there may go unrecognised (the
+`.optimus/` name rule still applies), and extended-length `\\?\` workspace
+roots are outside this guarantee. On Windows the name matches
+case-insensitively. An explicit reference
 into it in the task is refused as not readable, and a source that only shares
 a runtime file's name still resolves. This governs automatic workspace context
 only; it does not restrict a file the model itself asks to READ. A custom
