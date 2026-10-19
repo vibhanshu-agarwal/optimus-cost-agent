@@ -1470,6 +1470,42 @@ def test_an_unresolvable_plan_read_target_is_denied_through_the_audited_guard(tm
     assert "path.unresolved.read" in _blocked(guard)
 
 
+@pytest.mark.parametrize("error", [OSError("simulated resolution failure"), RuntimeError("simulated symlink loop")], ids=["oserror", "runtimeerror"])
+def test_an_unresolvable_plan_read_target_is_denied_after_approval_too(tmp_path, monkeypatch, error):
+    workspace = _runtime_workspace(tmp_path)
+    (workspace / "src" / "unresolvable.py").write_text(RUNTIME_SENTINEL, encoding="utf-8")
+    _failing_resolve(monkeypatch, error)
+    runner, guard = _guarded_runner(
+        workspace, FakeGatewayClient("READ src/unresolvable.py\nWRITE src/a.py\nx = 1\n"), state_store=InMemoryAgentStateStore()
+    )
+
+    _, approved = _plan_and_approve(runner, workspace)
+
+    assert _reads(approved) == ("read src/a.py",)  # only the read-before-write of the WRITE target
+    assert _blocked(guard).count("path.unresolved.read") == 2  # while planning and after approval
+
+
+def test_a_denied_plan_read_publishes_a_no_effect_terminal_and_never_succeeds(tmp_path):
+    from optimus.acp.lifecycle import TurnControl
+
+    class RecordingControl(TurnControl):
+        def __init__(self) -> None:
+            super().__init__(session_id="sess-1", turn_seq=1)
+            self.terminals: list[tuple[str, str]] = []
+
+        def complete_directive(self, kind, operation_id, terminal):
+            self.terminals.append((kind.value, terminal))
+            super().complete_directive(kind, operation_id, terminal)
+
+    workspace = _runtime_workspace(tmp_path)
+    control = RecordingControl()
+    runner, _ = _guarded_runner(workspace, FakeGatewayClient("READ .optimus/telemetry.ndjson\nWRITE src/a.py\nx = 1\n"))
+
+    runner.run(_agent("Read", workspace), operation_control=control)
+
+    assert [entry for entry in control.terminals if entry[0] == "planning_read"] == [("planning_read", "failed_no_effect")]
+
+
 def test_a_write_to_an_existing_runtime_file_fails_before_any_write(tmp_path):
     workspace = _runtime_workspace(tmp_path)
     runtime_file = workspace / ".optimus" / "telemetry.ndjson"

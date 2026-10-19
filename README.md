@@ -325,10 +325,12 @@ a runtime file's name still resolves. The same rule guards every file the
 model itself asks for: a plan or planner READ, the read before a WRITE, and a
 WRITE are refused, audited, before any byte is read or written, when the
 requested path or its resolved target has a `.optimus` component, or when the
-target cannot be resolved. A TEST command naming the tree is refused too, but
-programs a TEST command runs are not confined; hard links, copies, pasted
-content, check-then-read races and the editor's own MCP servers are outside
-the guard, which is not a general sandbox. A custom `--debug-log PATH` outside
+target cannot be resolved. A TEST command with an argument naming the tree is
+refused too (arguments are checked whole, so a `--opt=path` form is not), but
+programs a TEST command runs are not confined. Hard links, copies, pasted
+content, client-attached resources, check-then-read races, the editor's own
+MCP servers and case-insensitive POSIX volumes (where the name compare is
+exact) are outside the guard, which is not a general sandbox. A custom `--debug-log PATH` outside
 `.optimus/` is ordinary workspace content: keep it under `.optimus/` or
 outside the workspace if it must not be included as workspace context or read
 by the model.
