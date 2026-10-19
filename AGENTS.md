@@ -137,3 +137,17 @@
   paid/live call, service change or merge authority. See
   [ADR-016](docs/decisions/ADR-016-checkpoint-review-cadence.md); the record's GitHub issue (or, until it moves, the backlog) owns current
   scope and gates.
+
+## Cross-agent review (operator directive, 2026-10-20)
+- The owner of the work (the agent the operator assigned, shown by the issue's `handler:` label; normally the implementer) runs the operator chat. The other agent is the reviewer and is reached only through its CLI. If the owner is unassigned or unclear, or is neither Claude nor Codex, ask the operator who owns and who reviews.
+
+| Owner | Reviewer CLI invocation prefix | Owner's stronger second opinion | Never call through the CLI |
+|---|---|---|---|
+| Claude | Codex: `codex exec -m gpt-6.1-sol -c 'model_reasoning_effort="high"' -s read-only` | latest Fable 5.x | GPT-6.x Astra |
+| Codex | Claude: `claude -p --model claude-opus-5-5 --effort high --permission-mode plan` | latest GPT-6.x Astra | Fable 5.x |
+
+- Pass the model and effort explicitly on every reviewer CLI call, including resumed sessions; never rely on a CLI's default model. If the named model fails, report it, and do not substitute another model without operator direction.
+- For a stronger second opinion, the owner uses its own vendor's model from the table. Never reach the other vendor's premium model through its CLI: it is expensive, and its usage is not visible to the operator.
+- The reviewer runs read-only, so the owner records its output: the owner posts each review verbatim to the work's GitHub issue (or its PR when there is no issue), headed `**[<Reviewer> (CLI review, <model> <effort>, session <id>) → <Owner>]**`, and keeps the review checkpoint log that the Review Checkpoint Log section otherwise assigns to the reviewer.
+- A review is not an approval. Approvals come only from the operator, in the owner's chat.
+- This section does not change the review cadence above or ADR-016, including the Fable-first checkpoint review for Claude-owned work.
