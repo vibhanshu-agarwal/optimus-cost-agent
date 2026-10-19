@@ -1347,6 +1347,23 @@ def _blocked(guard: PreToolGuard) -> list[str]:
     return [event.failed_checks[0] for event in guard.audit_events() if event.verdict == "BLOCK"]
 
 
+def _captures(gateway, guard: PreToolGuard, *results) -> list[str]:
+    """Everything a run exposed: each Gateway request, each run result (its output, plan text, tool calls and their
+    summaries) and each guard audit event."""
+    captures = [repr(call) for call in gateway.calls]
+    captures += [repr(result) for result in results if result is not None]
+    captures += [repr(event) for event in guard.audit_events()]
+    return captures
+
+
+def _assert_runtime_bytes_never_surface(gateway, guard: PreToolGuard, *results) -> None:
+    """READ v3 §6: the sentinel's bytes appear in no request, tool call, summary or audit capture. The runner keeps
+    only a plan READ's summary, so on R1-R3 and R5 this pins absence at both versions; where a route forwards read
+    bytes (R4, the next planning turn), it is what fails at baseline."""
+    assert gateway.calls  # the capture is not vacuous
+    assert [text for text in _captures(gateway, guard, *results) if RUNTIME_SENTINEL in text] == []
+
+
 def _plan_and_approve(runner: AgentRunner, workspace: Path, task: str = "Update src/a.py"):
     plan = runner.run(AgentRunRequest(run_id="run-1", task=task, execution_mode=ExecutionMode.AGENT, workspace_root=workspace))
     approved = runner.run(
@@ -1370,10 +1387,12 @@ def test_plan_read_directives_never_read_the_runtime_tree_while_planning_or_afte
     (workspace / "a" / ".optimus").mkdir(parents=True)
     (workspace / "a" / ".optimus" / "state.json").write_text(RUNTIME_SENTINEL, encoding="utf-8")
     plan_text = "READ .optimus/telemetry.ndjson\nREAD a/.optimus/state.json\nREAD src/a.py\nWRITE src/a.py\nprint('updated')\n"
-    runner, guard = _guarded_runner(workspace, FakeGatewayClient(plan_text), state_store=InMemoryAgentStateStore())
+    gateway = FakeGatewayClient(plan_text)
+    runner, guard = _guarded_runner(workspace, gateway, state_store=InMemoryAgentStateStore())
 
     plan, approved = _plan_and_approve(runner, workspace)
 
+    _assert_runtime_bytes_never_surface(gateway, guard, plan, approved)
     assert _reads(plan) == ("read src/a.py",)
     assert _reads(approved) == ("read src/a.py", "read src/a.py")  # the READ, then the read-before-write
     assert _blocked(guard).count("path.runtime.read") == 4  # two reserved READs, while planning and after approval
@@ -1382,10 +1401,12 @@ def test_plan_read_directives_never_read_the_runtime_tree_while_planning_or_afte
 def test_a_reserved_alias_into_ordinary_source_is_denied_by_its_requested_name(tmp_path, directory_alias):
     workspace = _runtime_workspace(tmp_path)
     directory_alias(workspace / "a" / ".optimus", workspace / "src")
-    runner, guard = _guarded_runner(workspace, FakeGatewayClient("READ a/.optimus/a.py\nREAD src/a.py\nWRITE src/a.py\nx = 1\n"))
+    gateway = FakeGatewayClient("READ a/.optimus/a.py\nREAD src/a.py\nWRITE src/a.py\nx = 1\n")
+    runner, guard = _guarded_runner(workspace, gateway)
 
     result = runner.run(_agent("Read", workspace))
 
+    _assert_runtime_bytes_never_surface(gateway, guard, result)
     assert _reads(result) == ("read src/a.py",)
     assert "path.runtime.read" in _blocked(guard)
 
@@ -1393,10 +1414,12 @@ def test_a_reserved_alias_into_ordinary_source_is_denied_by_its_requested_name(t
 def test_an_ordinary_alias_into_the_runtime_tree_is_denied_by_its_resolved_target(tmp_path, directory_alias):
     workspace = _runtime_workspace(tmp_path)
     directory_alias(workspace / "src" / "rt", workspace / ".optimus")
-    runner, guard = _guarded_runner(workspace, FakeGatewayClient("READ src/rt/telemetry.ndjson\nREAD src/a.py\nWRITE src/a.py\nx = 1\n"))
+    gateway = FakeGatewayClient("READ src/rt/telemetry.ndjson\nREAD src/a.py\nWRITE src/a.py\nx = 1\n")
+    runner, guard = _guarded_runner(workspace, gateway)
 
     result = runner.run(_agent("Read", workspace))
 
+    _assert_runtime_bytes_never_surface(gateway, guard, result)
     assert _reads(result) == ("read src/a.py",)
     assert "path.runtime.read" in _blocked(guard)
 
@@ -1404,10 +1427,12 @@ def test_an_ordinary_alias_into_the_runtime_tree_is_denied_by_its_resolved_targe
 @pytest.mark.skipif(sys.platform != "win32", reason="NTFS names are case-insensitive; a POSIX `.OPTIMUS` is another directory")
 def test_a_case_variant_of_the_runtime_tree_is_denied_on_windows(tmp_path):
     workspace = _runtime_workspace(tmp_path)
-    runner, guard = _guarded_runner(workspace, FakeGatewayClient("READ .OPTIMUS/telemetry.ndjson\nREAD src/a.py\nWRITE src/a.py\nx = 1\n"))
+    gateway = FakeGatewayClient("READ .OPTIMUS/telemetry.ndjson\nREAD src/a.py\nWRITE src/a.py\nx = 1\n")
+    runner, guard = _guarded_runner(workspace, gateway)
 
     result = runner.run(_agent("Read", workspace))
 
+    _assert_runtime_bytes_never_surface(gateway, guard, result)
     assert _reads(result) == ("read src/a.py",)
     assert "path.runtime.read" in _blocked(guard)
 
@@ -1437,10 +1462,12 @@ def test_without_final_path_support_ordinary_source_is_still_read(tmp_path, monk
 def test_without_final_path_support_the_runtime_name_is_still_denied(tmp_path, monkeypatch):
     workspace = _runtime_workspace(tmp_path)
     _without_final_path_support(monkeypatch)
-    runner, guard = _guarded_runner(workspace, FakeGatewayClient("READ .optimus/telemetry.ndjson\nWRITE src/a.py\nx = 1\n"))
+    gateway = FakeGatewayClient("READ .optimus/telemetry.ndjson\nWRITE src/a.py\nx = 1\n")
+    runner, guard = _guarded_runner(workspace, gateway)
 
     result = runner.run(_agent("Read", workspace))
 
+    _assert_runtime_bytes_never_surface(gateway, guard, result)
     assert _reads(result) == ()
     assert "path.runtime.read" in _blocked(guard)
 
@@ -1462,10 +1489,12 @@ def test_an_unresolvable_plan_read_target_is_denied_through_the_audited_guard(tm
     workspace = _runtime_workspace(tmp_path)
     (workspace / "src" / "unresolvable.py").write_text(RUNTIME_SENTINEL, encoding="utf-8")
     _failing_resolve(monkeypatch, error)
-    runner, guard = _guarded_runner(workspace, FakeGatewayClient("READ src/unresolvable.py\nREAD src/a.py\nWRITE src/a.py\nx = 1\n"))
+    gateway = FakeGatewayClient("READ src/unresolvable.py\nREAD src/a.py\nWRITE src/a.py\nx = 1\n")
+    runner, guard = _guarded_runner(workspace, gateway)
 
     result = runner.run(_agent("Read", workspace))
 
+    _assert_runtime_bytes_never_surface(gateway, guard, result)
     assert _reads(result) == ("read src/a.py",)
     assert "path.unresolved.read" in _blocked(guard)
 
@@ -1475,12 +1504,12 @@ def test_an_unresolvable_plan_read_target_is_denied_after_approval_too(tmp_path,
     workspace = _runtime_workspace(tmp_path)
     (workspace / "src" / "unresolvable.py").write_text(RUNTIME_SENTINEL, encoding="utf-8")
     _failing_resolve(monkeypatch, error)
-    runner, guard = _guarded_runner(
-        workspace, FakeGatewayClient("READ src/unresolvable.py\nWRITE src/a.py\nx = 1\n"), state_store=InMemoryAgentStateStore()
-    )
+    gateway = FakeGatewayClient("READ src/unresolvable.py\nWRITE src/a.py\nx = 1\n")
+    runner, guard = _guarded_runner(workspace, gateway, state_store=InMemoryAgentStateStore())
 
-    _, approved = _plan_and_approve(runner, workspace)
+    plan, approved = _plan_and_approve(runner, workspace)
 
+    _assert_runtime_bytes_never_surface(gateway, guard, plan, approved)
     assert _reads(approved) == ("read src/a.py",)  # only the read-before-write of the WRITE target
     assert _blocked(guard).count("path.unresolved.read") == 2  # while planning and after approval
 
@@ -1499,23 +1528,30 @@ def test_a_denied_plan_read_publishes_a_no_effect_terminal_and_never_succeeds(tm
 
     workspace = _runtime_workspace(tmp_path)
     control = RecordingControl()
-    runner, _ = _guarded_runner(workspace, FakeGatewayClient("READ .optimus/telemetry.ndjson\nWRITE src/a.py\nx = 1\n"))
+    gateway = FakeGatewayClient("READ .optimus/telemetry.ndjson\nWRITE src/a.py\nx = 1\n")
+    runner, guard = _guarded_runner(workspace, gateway)
 
-    runner.run(_agent("Read", workspace), operation_control=control)
+    result = runner.run(_agent("Read", workspace), operation_control=control)
 
+    _assert_runtime_bytes_never_surface(gateway, guard, result)
     assert [entry for entry in control.terminals if entry[0] == "planning_read"] == [("planning_read", "failed_no_effect")]
 
 
 def test_a_write_to_an_existing_runtime_file_fails_before_any_write(tmp_path):
     workspace = _runtime_workspace(tmp_path)
     runtime_file = workspace / ".optimus" / "telemetry.ndjson"
-    runner, guard = _guarded_runner(workspace, FakeGatewayClient('WRITE .optimus/telemetry.ndjson\n{"forged": true}\n'), state_store=InMemoryAgentStateStore())
+    gateway = FakeGatewayClient('WRITE .optimus/telemetry.ndjson\n{"forged": true}\n')
+    runner, guard = _guarded_runner(workspace, gateway, state_store=InMemoryAgentStateStore())
 
+    plan = runner.run(_agent("Update src/a.py", workspace))
     try:
-        _, approved = _plan_and_approve(runner, workspace)
+        approved = runner.run(
+            _agent("Update src/a.py", workspace, approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan.plan_hash))
+        )
     except PermissionError:
         approved = None
 
+    _assert_runtime_bytes_never_surface(gateway, guard, plan, approved)
     assert runtime_file.read_text(encoding="utf-8") == RUNTIME_SENTINEL
     assert approved is None or approved.status is not AgentRunStatus.COMPLETED
     assert "path.runtime.read" in _blocked(guard)  # the read-before-write is denied first
@@ -1526,13 +1562,18 @@ def test_a_write_never_creates_a_file_in_the_runtime_tree(tmp_path):
     forged = workspace / ".optimus" / "plan12-stage-c" / "forged.jsonl"
     forged.parent.mkdir()
     plan_text = 'WRITE .optimus/plan12-stage-c/forged.jsonl\n{"kind": "init"}\n'
-    runner, guard = _guarded_runner(workspace, FakeGatewayClient(plan_text), state_store=InMemoryAgentStateStore())
+    gateway = FakeGatewayClient(plan_text)
+    runner, guard = _guarded_runner(workspace, gateway, state_store=InMemoryAgentStateStore())
 
+    plan = runner.run(_agent("Update src/a.py", workspace))
     try:
-        _, approved = _plan_and_approve(runner, workspace)
+        approved = runner.run(
+            _agent("Update src/a.py", workspace, approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan.plan_hash))
+        )
     except PermissionError:
         approved = None
 
+    _assert_runtime_bytes_never_surface(gateway, guard, plan, approved)
     assert not forged.exists()
     assert approved is None or approved.status is not AgentRunStatus.COMPLETED
     assert "path.runtime.write" in _blocked(guard)
@@ -1550,6 +1591,7 @@ def test_a_planner_ranged_read_of_the_runtime_tree_stops_and_never_reaches_the_m
 
     result = runner.run(_agent("Edit src/a.py", workspace, max_planning_turns=2))
 
+    _assert_runtime_bytes_never_surface(gateway, guard, result)  # at baseline the sentinel reaches the next turn
     assert result.stop_reason == "PLANNING_READ_GUARD_BLOCKED"
     assert all(RUNTIME_SENTINEL not in str(call["input_text"]) for call in gateway.calls)
     assert "path.runtime.read" in _blocked(guard)
@@ -1571,6 +1613,7 @@ def test_an_unresolvable_planner_ranged_read_stops_through_the_audited_guard(tmp
     result = runner.run(_agent("Edit src/a.py", workspace, max_planning_turns=2))
 
     assert result.stop_reason == "PLANNING_READ_GUARD_BLOCKED"
+    _assert_runtime_bytes_never_surface(gateway, guard, result)
     assert "path.unresolved.read" in _blocked(guard)
 
 
@@ -1591,6 +1634,9 @@ def test_ordinary_source_is_still_read_by_plan_and_planner_reads_and_through_a_n
     assert _reads(result) == ("read src/a.py", "read src/a.py")  # the alias read is summarised by its resolved target
     assert "print" in str(gateway.calls[1]["input_text"])  # the ranged read's bytes reached the next turn
     assert all(RUNTIME_SENTINEL not in str(call["input_text"]) for call in gateway.calls)
+    captures = _captures(gateway, guard, result)
+    assert any("print" in text for text in captures)  # the capture sees the bytes a run does read
+    assert [text for text in captures if RUNTIME_SENTINEL in text] == []
     assert _blocked(guard) == []
 
 

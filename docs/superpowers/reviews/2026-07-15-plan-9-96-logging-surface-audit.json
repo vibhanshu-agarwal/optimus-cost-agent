@@ -611,9 +611,17 @@
     {
       "key": "optimus.acp.launch_approval_cli:_initialize_stage_c_ledger:stdout_export",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: the Stage C release ceremony prints one fixed status line to stdout: the ledger was initialized for the release ID with its dollar, attempt and window limits, or an existing ledger was kept (never reset). No secret, path content or record is printed.",
+      "rationale": "Inspection: the Stage C release ceremony prints one fixed status line to stdout: the ledger was initialized for the release ID with its dollar, attempt and window limits. No secret, path content or record is printed.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/acp/test_stage_c_launch.py::test_the_approval_ceremony_creates_the_ledger_once_and_never_resets_it",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_keep_existing_stage_c_ledger:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: when a read-only replay binds an existing Stage C ledger to the release envelope, the ceremony prints one fixed status line to stdout: the ledger is kept (never reset), with its replayed attempt count against the envelope maximum, the charged dollars against the envelope limit, and the window start and deadline or 'not started'. No secret, path, file content or raw record is printed.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_stage_c_launch.py::test_a_kept_ledger_reports_its_replayed_state",
       "evidence_tier": "unit"
     },
     {
