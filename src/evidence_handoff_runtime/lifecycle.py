@@ -11,6 +11,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, BinaryIO, Protocol
 
 from evidence_handoff_runtime.backends import (
     StoreBackend,
@@ -27,8 +28,16 @@ from evidence_handoff_runtime.config import (
 from evidence_handoff_runtime.inputs import RuntimeInputSupplier
 from evidence_handoff_runtime.process import ProcessRunner, SubprocessRunner
 
+if TYPE_CHECKING:
+    from evidence_handoff_runtime.signing_key_custody import SigningKeyBackend
+
+
 _READY_TIMEOUT_SECONDS = 90.0
 _POLL_INTERVAL_SECONDS = 0.25
+
+
+class InstanceRowProbe(Protocol):
+    def instance_row_present(self) -> object: ...
 
 
 class LifecycleError(Exception):
@@ -285,8 +294,8 @@ class LifecycleManager:
     def resolve_installation_signing_key(
         self,
         *,
-        keyring_backend: object,
-        store: object,
+        keyring_backend: SigningKeyBackend,
+        store: InstanceRowProbe | None,
     ) -> bytes:
         """Lifecycle-owned mint/load of the installation signing key (design line 265)."""
         from evidence_handoff_runtime.signing_key_custody import (
@@ -504,7 +513,7 @@ class _LifecycleLock:
     def __init__(self, thread_lock: threading.RLock, lock_path: Path | None) -> None:
         self._thread_lock = thread_lock
         self._lock_path = lock_path
-        self._fh = None
+        self._fh: BinaryIO | None = None
 
     def __enter__(self) -> _LifecycleLock:
         self._thread_lock.acquire()
@@ -524,7 +533,7 @@ class _LifecycleLock:
         self._thread_lock.release()
 
     @staticmethod
-    def _lock_file(handle: object) -> None:
+    def _lock_file(handle: BinaryIO) -> None:
         import sys
 
         if sys.platform == "win32":
@@ -542,7 +551,7 @@ class _LifecycleLock:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
 
     @staticmethod
-    def _unlock_file(handle: object) -> None:
+    def _unlock_file(handle: BinaryIO) -> None:
         import sys
 
         if sys.platform == "win32":

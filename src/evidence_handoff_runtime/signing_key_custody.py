@@ -11,9 +11,15 @@ import base64
 import hashlib
 import secrets
 from pathlib import Path
+from typing import Protocol
 
 _ENTRY_NAME = "signing_key"
 _KEY_BYTES = 32
+
+
+class SigningKeyBackend(Protocol):
+    def get_password(self, service: str, username: str, /) -> object: ...
+    def set_password(self, service: str, username: str, password: str, /) -> None: ...
 
 
 class SigningKeyCustodyError(Exception):
@@ -46,7 +52,7 @@ def _decode_stored(raw: str) -> bytes:
     return decoded
 
 
-def load_signing_key(*, control_root: Path, keyring_backend: object) -> bytes:
+def load_signing_key(*, control_root: Path, keyring_backend: SigningKeyBackend) -> bytes:
     """Load the installation signing key. Never mints."""
     service = keyring_service_for_control_root(control_root)
     try:
@@ -63,7 +69,7 @@ def load_signing_key(*, control_root: Path, keyring_backend: object) -> bytes:
 def resolve_signing_key(
     *,
     control_root: Path,
-    keyring_backend: object,
+    keyring_backend: SigningKeyBackend,
     instance_record_present: bool,
     store_instance_present: bool,
 ) -> bytes:

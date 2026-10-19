@@ -1303,3 +1303,55 @@ def test_h4_verifier_filters_unrelated_findings_symmetrically(tmp_path: Path) ->
     verified = cli._verify_artifact(str(artifact_path))
 
     assert_some_row(verified.findings, lambda finding: finding.finding_id == "NON-H4-UNRELATED-CONTROL", 'must hold for some: finding.finding_id == "NON-H4-UNRELATED-CONTROL"')
+
+
+@pytest.mark.parametrize("mutation", ["body", "annotation", "other-symbol", "historical-pin"])
+def test_h4_typing_allowance_rejects_every_unapproved_variant(tmp_path: Path, mutation: str) -> None:
+    module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
+    merged, overlay = _baseline(_MERGED), _overlay_baseline()
+    root = Path(__file__).resolve().parents[3]
+    paths = (
+        "src/optimus/acp/settlement.py", "src/optimus/acp/lifecycle.py",
+        "src/optimus/acp/outbound_writer.py", "src/optimus/acp/spec.py",
+        "src/optimus/acp/conversation.py",
+    )
+    for path in paths:
+        target = tmp_path / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((root / path).read_bytes())
+    path = "src/optimus/acp/lifecycle.py"
+    text = (tmp_path / path).read_text(encoding="utf-8")
+    old = "def current_settlement_fields(self) -> dict[str, object]:"
+    new = "def current_settlement_fields(self) -> _SettlementFields:"
+    if old in text:
+        text = text.replace(old, new, 1)
+    assert new in text
+    if mutation == "body":
+        changed = text.replace('"final_delivery": self._final_delivery.value,', '"final_delivery": "not_attempted",', 1)
+    elif mutation == "annotation":
+        changed = text.replace(new, "def current_settlement_fields(self) -> object:", 1)
+    elif mutation == "other-symbol":
+        changed = text.replace("def register_operations(self, directives: Sequence[tuple[DirectiveKind, str]]) -> None:",
+                               "def register_operations(self, directives: Sequence[tuple[DirectiveKind, str]]) -> object:", 1)
+    else:
+        historical = merged.read_text(path)
+        altered = historical.replace(old, "def current_settlement_fields(self) -> object:", 1)
+        assert altered != historical
+        merged = SourceTree({p: altered if p == path else merged.read_text(p) for p in merged.paths()})
+        changed = text
+    assert changed != text or mutation == "historical-pin"
+    (tmp_path / path).write_text(changed, encoding="utf-8")
+    with pytest.raises(ValueError, match="transition authority bytes drifted"):
+        module.derive_transition_authority(merged, overlay, repository=tmp_path)
+
+
+def test_h4_typing_allowance_preserves_historical_citations() -> None:
+    module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
+    historical = _baseline(_MERGED)
+    authority = module.derive_transition_authority(historical, _overlay_baseline())
+    text = historical.read_text("src/optimus/acp/lifecycle.py")
+    turn = next(node for node in ast.parse(text).body if isinstance(node, ast.ClassDef) and node.name == "TurnControl")
+    method = next(node for node in turn.body if isinstance(node, ast.FunctionDef) and node.name == "current_settlement_fields")
+    segment = ast.get_source_segment(text, method).encode("utf-8")
+    expected = f"src/optimus/acp/lifecycle.py:{method.lineno}:TurnControl.current_settlement_fields#sha256:{hashlib.sha256(segment).hexdigest()}"
+    assert authority.definition_citations["TurnControl.current_settlement_fields"] == expected

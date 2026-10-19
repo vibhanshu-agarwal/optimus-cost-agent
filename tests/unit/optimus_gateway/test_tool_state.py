@@ -170,3 +170,4 @@ def test_redis_store_from_url_builds_a_direct_client_without_agent_side_wrapper(
 
     assert isinstance(store, RedisGatewayToolStateStore)
     assert isinstance(store.redis_client, redis.Redis)
+    assert store.redis_client.connection_pool.connection_kwargs["decode_responses"] is True

@@ -470,15 +470,15 @@ class RedisLoopOwner:
                 claimed = True
         if claimed:
             try:
-                finalizer = threading.Thread(
+                new_finalizer = threading.Thread(
                     target=self._run_finalization,
                     args=(finalization,),
                     name=f"{self._thread.name}-finalizer",
                     daemon=True,
                 )
                 with self._state_lock:
-                    self._finalizer_thread = finalizer
-                finalizer.start()
+                    self._finalizer_thread = new_finalizer
+                new_finalizer.start()
             except BaseException as exc:  # noqa: BLE001 - published as the retained outcome, then propagated
                 with contextlib.suppress(InvalidStateError):
                     finalization.set_exception(exc)

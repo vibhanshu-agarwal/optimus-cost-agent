@@ -50,7 +50,7 @@ class OptimusGatewaySettings(BaseModel):
         env = os.environ if environ is None else environ
         settings = cls(
             gateway_url=env.get("OPTIMUS_GATEWAY_URL", _DEFAULT_GATEWAY_URL),
-            optimus_api_key=_required_env(env, "OPTIMUS_API_KEY"),
+            optimus_api_key=SecretStr(_required_env(env, "OPTIMUS_API_KEY")),
         )
         settings.validate_no_local_provider_keys(env)
         return settings

@@ -2,16 +2,70 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from optimus.runtime.modes import ExecutionMode
+
+if TYPE_CHECKING:
+    from redis.typing import EncodableT, FieldT
+
+    from optimus.redis.runtime import TeardownRecord
+
+
+class SyncStateClient(Protocol):
+    def hset(self, name: str, /, *, mapping: Mapping[FieldT, EncodableT]) -> int: ...
+    def hgetall(self, name: str, /) -> Mapping[bytes | str, bytes | str]: ...
+    def expire(self, name: str, seconds: int, /) -> bool: ...
+    def ping(self) -> object: ...
+
+
+class AsyncStateClient(Protocol):
+    def hset(self, name: str, /, *, mapping: Mapping[FieldT, EncodableT]) -> Awaitable[int]: ...
+    def hgetall(self, name: str, /) -> Awaitable[Mapping[bytes | str, bytes | str]]: ...
+    def expire(self, name: str, seconds: int, /) -> Awaitable[bool]: ...
+    def ping(self) -> Awaitable[object]: ...
+    def scan_iter(self, *, match: str) -> AsyncIterator[bytes | str]: ...
+    def delete(self, *keys: bytes | str) -> Awaitable[int]: ...
+
+
+class OwnerSubmit(Protocol):
+    def __call__[T](self, operation: Callable[[], Awaitable[T]], /) -> T: ...
+
+
+class OwnedRuntime(Protocol):
+    def close(self, *, timeout: float | None = None) -> TeardownRecord: ...
+
+
+def _sync_hset(
+    client: SyncStateClient, name: str, mapping: Mapping[FieldT, EncodableT],
+    operation: Callable[[SyncStateClient, str, Mapping[FieldT, EncodableT]], int],
+) -> None:
+    try:
+        operation(client, name, mapping)
+    except TypeError:
+        # Preserve the existing exceptional legacy retry; native SDK positional
+        # argument two is a field, so this shape is deliberately not its contract.
+        legacy = cast("Callable[[str, Mapping[FieldT, EncodableT]], int]", client.hset)
+        legacy(name, mapping)
+
+
+async def _async_hset(
+    client: AsyncStateClient, name: str, mapping: Mapping[FieldT, EncodableT],
+    operation: Callable[[AsyncStateClient, str, Mapping[FieldT, EncodableT]], Awaitable[int]],
+) -> None:
+    try:
+        await operation(client, name, mapping)
+    except TypeError:
+        legacy = cast("Callable[[str, Mapping[FieldT, EncodableT]], Awaitable[int]]", client.hset)
+        await legacy(name, mapping)
+
 
 DEFAULT_PLAN_TTL_SECONDS = 3600
 
@@ -74,6 +128,8 @@ class AgentRunRecord(BaseModel):
 
 
 class AgentStateStore(Protocol):
+    def persist_plan(self, record: AgentPlanRecord) -> PlanPersistenceResult: ...
+
     def save_plan(self, record: AgentPlanRecord) -> None:
         ...
 
@@ -140,11 +196,11 @@ class RedisAgentStateStore:
     def __init__(
         self,
         *,
-        client: object | None = None,
+        client: SyncStateClient | None = None,
         async_store: "AsyncRedisAgentStateStore | None" = None,
         ttl_seconds: int = DEFAULT_PLAN_TTL_SECONDS,
-        submit: "Callable[[Callable[[], Awaitable[Any]]], Any] | None" = None,
-        owned_runtime: object | None = None,
+        submit: OwnerSubmit | None = None,
+        owned_runtime: OwnedRuntime | None = None,
     ) -> None:
         """
         ``submit`` is the owner submission seam an async-backed store runs on (Seam 2,
@@ -183,14 +239,14 @@ class RedisAgentStateStore:
         from optimus.redis.runtime import RedisRuntime
 
         runtime = RedisRuntime.from_url(url, ttl_seconds=ttl_seconds)
-        async_store = AsyncRedisAgentStateStore(client=runtime.client, ttl_seconds=ttl_seconds)
+        async_store = AsyncRedisAgentStateStore(client=runtime.required_client, ttl_seconds=ttl_seconds)
         return cls(async_store=async_store, ttl_seconds=ttl_seconds, submit=runtime.run_sync, owned_runtime=runtime)
 
     @property
-    def owned_runtime(self) -> object | None:
+    def owned_runtime(self) -> OwnedRuntime | None:
         return self._owned_runtime
 
-    def submit(self, operation: "Callable[[], Awaitable[Any]]") -> Any:
+    def submit[T](self, operation: Callable[[], Awaitable[T]]) -> T:
         """Run an operation factory on the owner that drives this store's client.
 
         Tools that need raw client access (key scans, cleanup) use this instead of a
@@ -200,37 +256,43 @@ class RedisAgentStateStore:
             raise RuntimeError("this store has no owner submission seam; it wraps a synchronous client")
         return self._submit(operation)
 
-    def close(self, *, timeout: float | None = None):
+    def close(self, *, timeout: float | None = None) -> TeardownRecord:
         """Close the runtime this store owns. Only a :meth:`from_url` store owns one."""
         if self._owned_runtime is None:
             raise RuntimeError("this store owns no runtime; close the runtime that built it instead")
         return self._owned_runtime.close(timeout=timeout)
 
     @property
-    def redis_client(self) -> object:
+    def redis_client(self) -> SyncStateClient | AsyncStateClient:
         if self._async_store is not None:
             return self._async_store._client
+        return self._required_sync_client
+
+    @property
+    def _required_sync_client(self) -> SyncStateClient:
         if self._client is None:
             raise RuntimeError("redis client is not configured")
         return self._client
 
+    @property
+    def async_redis_client(self) -> AsyncStateClient:
+        if self._async_store is None:
+            raise RuntimeError("this store has no owner submission seam; it wraps a synchronous client")
+        return self._async_store._client
+
     def save_plan(self, record: AgentPlanRecord) -> None:
-        if self._async_store is not None:
-            self._submit(lambda: self._async_store.save_plan(record))
+        async_store = self._async_store
+        if async_store is not None:
+            self.submit(lambda: async_store.save_plan(record))
             return
         key = _plan_key(run_id=record.run_id, plan_hash=record.plan_hash)
         mapping = _record_to_mapping(record)
-        try:
-            self._client.hset(key, mapping=mapping)
-        except TypeError:
-            self._client.hset(key, mapping)
-        self._client.expire(key, self._ttl_seconds)
+        client = self._required_sync_client
+        _sync_hset(client, key, mapping, lambda native, name, values: native.hset(name, mapping=values))
+        client.expire(key, self._ttl_seconds)
         latest_key = _latest_plan_key(run_id=record.run_id)
-        try:
-            self._client.hset(latest_key, mapping={"plan_hash": record.plan_hash})
-        except TypeError:
-            self._client.hset(latest_key, {"plan_hash": record.plan_hash})
-        self._client.expire(latest_key, self._ttl_seconds)
+        _sync_hset(client, latest_key, {"plan_hash": record.plan_hash}, lambda native, name, values: native.hset(name, mapping=values))
+        client.expire(latest_key, self._ttl_seconds)
 
     def persist_plan(self, record: AgentPlanRecord) -> PlanPersistenceResult:
         if self._async_store is not None:
@@ -246,20 +308,15 @@ class RedisAgentStateStore:
         key = _plan_key(run_id=record.run_id, plan_hash=record.plan_hash)
         mapping = _record_to_mapping(record)
         try:
-            try:
-                self._client.hset(key, mapping=mapping)
-            except TypeError:
-                self._client.hset(key, mapping)
+            client = self._required_sync_client
+            _sync_hset(client, key, mapping, lambda native, name, values: native.hset(name, mapping=values))
             completed.append("primary")
-            self._client.expire(key, self._ttl_seconds)
+            client.expire(key, self._ttl_seconds)
             completed.append("expiry")
             latest_key = _latest_plan_key(run_id=record.run_id)
-            try:
-                self._client.hset(latest_key, mapping={"plan_hash": record.plan_hash})
-            except TypeError:
-                self._client.hset(latest_key, {"plan_hash": record.plan_hash})
+            _sync_hset(client, latest_key, {"plan_hash": record.plan_hash}, lambda native, name, values: native.hset(name, mapping=values))
             completed.append("pointer")
-            self._client.expire(latest_key, self._ttl_seconds)
+            client.expire(latest_key, self._ttl_seconds)
         except Exception:
             if completed:
                 return PlanPersistenceResult(
@@ -273,18 +330,20 @@ class RedisAgentStateStore:
         )
 
     def load_plan(self, *, run_id: str, plan_hash: str) -> AgentPlanRecord:
-        if self._async_store is not None:
-            return self._submit(lambda: self._async_store.load_plan(run_id=run_id, plan_hash=plan_hash))
+        async_store = self._async_store
+        if async_store is not None:
+            return self.submit(lambda: async_store.load_plan(run_id=run_id, plan_hash=plan_hash))
         key = _plan_key(run_id=run_id, plan_hash=plan_hash)
-        raw = self._client.hgetall(key)
+        raw = self._required_sync_client.hgetall(key)
         if not raw:
             raise KeyError("stored plan not found")
         return _record_from_mapping(_decode_mapping(raw))
 
     def latest_plan_for_run(self, *, run_id: str) -> AgentPlanRecord | None:
-        if self._async_store is not None:
-            return self._submit(lambda: self._async_store.latest_plan_for_run(run_id=run_id))
-        raw = self._client.hgetall(_latest_plan_key(run_id=run_id))
+        async_store = self._async_store
+        if async_store is not None:
+            return self.submit(lambda: async_store.latest_plan_for_run(run_id=run_id))
+        raw = self._required_sync_client.hgetall(_latest_plan_key(run_id=run_id))
         if not raw:
             return None
         latest = _decode_mapping(raw)
@@ -297,11 +356,12 @@ class RedisAgentStateStore:
             return None
 
     def ping(self) -> None:
-        if self._async_store is not None:
-            self._submit(lambda: self._async_store.ping())
+        async_store = self._async_store
+        if async_store is not None:
+            self.submit(lambda: async_store.ping())
             return
         try:
-            self._client.ping()
+            self._required_sync_client.ping()
         except ConnectionError:
             raise
         except OSError as exc:
@@ -330,23 +390,17 @@ class AsyncRedisAgentStateStore:
     :ivar ttl_seconds: Time-to-Live (TTL) duration in seconds for stored plans.
     :type ttl_seconds: int
     """
-    def __init__(self, *, client: object, ttl_seconds: int = DEFAULT_PLAN_TTL_SECONDS) -> None:
+    def __init__(self, *, client: AsyncStateClient, ttl_seconds: int = DEFAULT_PLAN_TTL_SECONDS) -> None:
         self._client = client
         self._ttl_seconds = ttl_seconds
 
     async def save_plan(self, record: AgentPlanRecord) -> None:
         key = _plan_key(run_id=record.run_id, plan_hash=record.plan_hash)
         mapping = _record_to_mapping(record)
-        try:
-            await self._client.hset(key, mapping=mapping)
-        except TypeError:
-            await self._client.hset(key, mapping)
+        await _async_hset(self._client, key, mapping, lambda native, name, values: native.hset(name, mapping=values))
         await self._client.expire(key, self._ttl_seconds)
         latest_key = _latest_plan_key(run_id=record.run_id)
-        try:
-            await self._client.hset(latest_key, mapping={"plan_hash": record.plan_hash})
-        except TypeError:
-            await self._client.hset(latest_key, {"plan_hash": record.plan_hash})
+        await _async_hset(self._client, latest_key, {"plan_hash": record.plan_hash}, lambda native, name, values: native.hset(name, mapping=values))
         await self._client.expire(latest_key, self._ttl_seconds)
 
     async def load_plan(self, *, run_id: str, plan_hash: str) -> AgentPlanRecord:
@@ -406,8 +460,8 @@ def _latest_plan_key(*, run_id: str) -> str:
     return f"agent:plan:{run_id}:latest"
 
 
-def _record_to_mapping(record: AgentPlanRecord) -> dict[str, str]:
-    mapping: dict[str, str] = {}
+def _record_to_mapping(record: AgentPlanRecord) -> dict[FieldT, EncodableT]:
+    mapping: dict[FieldT, EncodableT] = {}
     for key, value in record.model_dump(mode="json").items():
         if value is None:
             continue
@@ -418,7 +472,7 @@ def _record_to_mapping(record: AgentPlanRecord) -> dict[str, str]:
     return mapping
 
 
-def _decode_mapping(raw: dict[object, object]) -> dict[str, str]:
+def _decode_mapping(raw: Mapping[bytes | str, bytes | str]) -> dict[str, str]:
     decoded: dict[str, str] = {}
     for key, value in raw.items():
         key_text = key.decode("utf-8") if isinstance(key, bytes) else str(key)

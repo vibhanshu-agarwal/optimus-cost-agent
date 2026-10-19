@@ -188,13 +188,13 @@ class JsonRpcDispatcher:
                         request_id=request_id,
                         error=JsonRpcError(code=INVALID_REQUEST, message="invalid request"),
                     )
-                response, ledger = self._evidence_service.search(
+                search_response, ledger = self._evidence_service.search(
                     evidence_request,
                     execution_mode=self._runtime_context.execution_mode,
                 )
                 return success_response(
                     request_id=request_id,
-                    result=_evidence_search_payload(response, ledger, evidence_request.run_id),
+                    result=_evidence_search_payload(search_response, ledger, evidence_request.run_id),
                 )
             if method == "optimus.evidence.extract":
                 if self._evidence_service is None:
@@ -209,13 +209,13 @@ class JsonRpcDispatcher:
                         request_id=request_id,
                         error=JsonRpcError(code=INVALID_REQUEST, message="invalid request"),
                     )
-                response, ledger = self._evidence_service.extract(
+                extract_response, ledger = self._evidence_service.extract(
                     extract_request,
                     execution_mode=self._runtime_context.execution_mode,
                 )
                 return success_response(
                     request_id=request_id,
-                    result=_evidence_extract_payload(response, ledger, extract_request.run_id),
+                    result=_evidence_extract_payload(extract_response, ledger, extract_request.run_id),
                 )
             if method == "optimus.evidence.package_lookup":
                 if self._package_advisory_service is None:
@@ -226,37 +226,37 @@ class JsonRpcDispatcher:
                         ),
                     )
                 try:
-                    acp_request = EvidencePackageLookupRequest.model_validate(request.get("params"))
+                    package_request = EvidencePackageLookupRequest.model_validate(request.get("params"))
                 except ValidationError:
                     return error_response(
                         request_id=request_id,
                         error=JsonRpcError(code=INVALID_REQUEST, message="invalid request"),
                     )
                 if (
-                    acp_request.policy_signal is not ToolPolicySignal.DEPENDENCY_VERSION_CHECK
-                    or acp_request.reason is not EvidenceReasonCode.PACKAGE_VERSION
+                    package_request.policy_signal is not ToolPolicySignal.DEPENDENCY_VERSION_CHECK
+                    or package_request.reason is not EvidenceReasonCode.PACKAGE_VERSION
                 ):
                     return error_response(
                         request_id=request_id,
                         error=JsonRpcError(code=INVALID_REQUEST, message="invalid request"),
                     )
-                tool_request = PackageLookupRequest(
+                package_tool_request = PackageLookupRequest(
                     context=GatewayToolContext(
-                        run_id=acp_request.run_id,
-                        session_id=acp_request.session_id,
+                        run_id=package_request.run_id,
+                        session_id=package_request.session_id,
                         execution_mode=self._runtime_context.execution_mode.value,
                     ),
-                    package=acp_request.package,
-                    ecosystem=acp_request.ecosystem,
-                    version=acp_request.version,
+                    package=package_request.package,
+                    ecosystem=package_request.ecosystem,
+                    version=package_request.version,
                 )
-                result, ledger = self._package_advisory_service.package_lookup(
-                    tool_request,
+                package_result, ledger = self._package_advisory_service.package_lookup(
+                    package_tool_request,
                     execution_mode=self._runtime_context.execution_mode,
                 )
                 return success_response(
                     request_id=request_id,
-                    result=_evidence_package_lookup_payload(result, ledger, acp_request.run_id),
+                    result=_evidence_package_lookup_payload(package_result, ledger, package_request.run_id),
                 )
             if method == "optimus.evidence.security_advisory":
                 if self._package_advisory_service is None:
@@ -267,37 +267,37 @@ class JsonRpcDispatcher:
                         ),
                     )
                 try:
-                    acp_request = EvidenceSecurityAdvisoryRequest.model_validate(request.get("params"))
+                    advisory_request = EvidenceSecurityAdvisoryRequest.model_validate(request.get("params"))
                 except ValidationError:
                     return error_response(
                         request_id=request_id,
                         error=JsonRpcError(code=INVALID_REQUEST, message="invalid request"),
                     )
                 if (
-                    acp_request.policy_signal is not ToolPolicySignal.SECURITY_OR_CVE_CHECK
-                    or acp_request.reason is not EvidenceReasonCode.SECURITY_ADVISORY
+                    advisory_request.policy_signal is not ToolPolicySignal.SECURITY_OR_CVE_CHECK
+                    or advisory_request.reason is not EvidenceReasonCode.SECURITY_ADVISORY
                 ):
                     return error_response(
                         request_id=request_id,
                         error=JsonRpcError(code=INVALID_REQUEST, message="invalid request"),
                     )
-                tool_request = SecurityAdvisoryRequest(
+                advisory_tool_request = SecurityAdvisoryRequest(
                     context=GatewayToolContext(
-                        run_id=acp_request.run_id,
-                        session_id=acp_request.session_id,
+                        run_id=advisory_request.run_id,
+                        session_id=advisory_request.session_id,
                         execution_mode=self._runtime_context.execution_mode.value,
                     ),
-                    identifier=acp_request.identifier,
-                    ecosystem=acp_request.ecosystem,
-                    version=acp_request.version,
+                    identifier=advisory_request.identifier,
+                    ecosystem=advisory_request.ecosystem,
+                    version=advisory_request.version,
                 )
-                result, ledger = self._package_advisory_service.security_advisory(
-                    tool_request,
+                advisory_result, ledger = self._package_advisory_service.security_advisory(
+                    advisory_tool_request,
                     execution_mode=self._runtime_context.execution_mode,
                 )
                 return success_response(
                     request_id=request_id,
-                    result=_evidence_security_advisory_payload(result, ledger, acp_request.run_id),
+                    result=_evidence_security_advisory_payload(advisory_result, ledger, advisory_request.run_id),
                 )
             if method == "optimus.agent.run":
                 if self._agent_runner is None:
@@ -319,8 +319,8 @@ class JsonRpcDispatcher:
                         request_id=request_id,
                         error=JsonRpcError(code=INVALID_REQUEST, message="workspace_root outside configured workspace"),
                     )
-                result = self._agent_runner.run(agent_request)
-                return success_response(request_id=request_id, result=_agent_run_result_payload(result))
+                agent_result = self._agent_runner.run(agent_request)
+                return success_response(request_id=request_id, result=_agent_run_result_payload(agent_result))
             if method == "optimus.mutation.writeFile":
                 params = request.get("params")
                 if not isinstance(params, dict) or not isinstance(params.get("path"), str):

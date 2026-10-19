@@ -6,7 +6,7 @@ import subprocess
 import threading
 import time
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, Never
 
 from optimus.acp.e2e_transcript import E2eAcpTranscriptWriter
 from optimus_security.sanitization import sanitize_for_persistence
@@ -172,7 +172,7 @@ class NdjsonSubprocessSession:
                 raise LiveSessionError("stderr sanitizer returned non-text output")
             self._stderr_lines.append(sanitized)
 
-    def _fail_subprocess_exited(self, error_message: str) -> None:
+    def _fail_subprocess_exited(self, error_message: str) -> Never:
         # wait_for()'s and read_next()'s poll() checks (and send()'s
         # broken-pipe handler) can reach this the instant the child exits,
         # before the background _read_stderr thread has drained the child's
@@ -209,5 +209,5 @@ class NdjsonSubprocessSession:
             stderr=stderr_text,
         )
 
-    def _fail_timeout(self, error_message: str) -> None:
+    def _fail_timeout(self, error_message: str) -> Never:
         raise LiveSessionError(f"{error_message}\nstderr:\n{self.stderr_text()}")

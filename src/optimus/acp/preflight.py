@@ -418,7 +418,8 @@ def _probe_redis_timeseries(runtime: RedisRuntime) -> None:
     """
 
     async def _probe() -> None:
-        await runtime.client.execute_command("TS.ADD", _REDIS_TS_PROBE_KEY, "*", 1)
-        await runtime.client.delete(_REDIS_TS_PROBE_KEY)
+        client = runtime.required_client
+        await client.execute_command("TS.ADD", _REDIS_TS_PROBE_KEY, "*", 1)
+        await client.delete(_REDIS_TS_PROBE_KEY)
 
     runtime.run_sync(_probe)

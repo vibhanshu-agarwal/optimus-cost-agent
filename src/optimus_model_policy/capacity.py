@@ -89,15 +89,29 @@ def guard_request(request: PackedModelRequest, snapshot: RegistrySnapshot, appro
     if not profile.verified and not empirical:
         return _refuse("ESTIMATOR_UNVERIFIED")
     endpoints = entry.route.endpoints
-    windows = [endpoint.context_window_tokens for endpoint in endpoints]
-    outputs = [endpoint.max_output_tokens for endpoint in endpoints]
-    if any(not endpoint.verified for endpoint in endpoints) or any(v is None for v in windows + outputs):
+    windows: list[int] = []
+    unknown_window = False
+    for endpoint in endpoints:
+        window = endpoint.context_window_tokens
+        if window is None:
+            unknown_window = True
+        else:
+            windows.append(window)
+    outputs: list[int] = []
+    unknown_output = False
+    for endpoint in endpoints:
+        output = endpoint.max_output_tokens
+        if output is None:
+            unknown_output = True
+        else:
+            outputs.append(output)
+    if any(not endpoint.verified for endpoint in endpoints) or unknown_window or unknown_output:
         return _refuse("ROUTE_UNVERIFIED")
-    effective_total = min(policy.context_ceiling_tokens, min(windows))  # type: ignore[type-var]
+    effective_total = min(policy.context_ceiling_tokens, min(windows))
     reserve = request.output_cap
     if reserve <= 0:
         return _refuse("OUTPUT_RESERVE_INVALID", reserve=reserve, total=effective_total)
-    if reserve > min(outputs):  # type: ignore[type-var]
+    if reserve > min(outputs):
         return _refuse("OUTPUT_RESERVE_EXCEEDS_ROUTE", reserve=reserve, total=effective_total)
     if reserve > effective_total:
         return _refuse("OUTPUT_RESERVE_EXCEEDS_TOTAL", reserve=reserve, total=effective_total)

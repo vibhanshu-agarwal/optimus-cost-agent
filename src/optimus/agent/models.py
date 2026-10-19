@@ -51,6 +51,11 @@ class AgentMcpToolOutput:
 
     __slots__ = ("server_name", "tool_name", "text", "untrusted")
 
+    server_name: str
+    tool_name: str
+    text: str
+    untrusted: bool
+
     def __init__(
         self,
         *,

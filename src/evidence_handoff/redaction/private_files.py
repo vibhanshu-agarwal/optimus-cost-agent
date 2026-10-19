@@ -14,6 +14,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Never
 
 _ROLE_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 
@@ -77,7 +78,7 @@ def _filesystem_device_id(path: Path) -> int:
     return path.stat().st_dev
 
 
-def _raise(code: str) -> None:
+def _raise(code: str) -> Never:
     raise PrivateFileError(code)
 
 
@@ -587,6 +588,8 @@ def _enumerate_windows_allow_sids(path: Path) -> tuple[str, ...]:
     for index in range(size_info.AceCount):
         ace_ptr = ctypes.c_void_p()
         if not advapi32.GetAce(dacl_ptr, index, ctypes.byref(ace_ptr)):
+            _raise("windows_dacl_unreadable")
+        if ace_ptr.value is None:
             _raise("windows_dacl_unreadable")
         ace_type = ctypes.cast(ace_ptr, ctypes.POINTER(ctypes.c_ubyte))[0]
         if ace_type != _ACCESS_ALLOWED_ACE_TYPE:

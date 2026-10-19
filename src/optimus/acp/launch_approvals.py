@@ -26,6 +26,8 @@ from typing import Any, Literal
 
 from optimus.acp.trusted_paths import WorkspaceIdentity
 
+ApprovalMode = Literal["one-shot", "durable"]
+
 # --- Constants ---
 
 APPROVAL_SCHEMA_VERSION = 2
@@ -84,7 +86,7 @@ class ApprovalRecord:
     schema_version: int
     policy_compatibility: str
     approval_id: str
-    mode: Literal["one-shot", "durable"]
+    mode: ApprovalMode
     identity_format_version: int
     workspace_digest: str
     created_at: datetime
@@ -325,7 +327,7 @@ def compute_grant_hmac(grant: DiagnosticGrant, *, hmac_key: bytes) -> str:
 
 def build_approval_record(
     *,
-    mode: str,
+    mode: ApprovalMode,
     workspace_identity: WorkspaceIdentity,
     security_literals: Mapping[str, str],
     secret_fingerprints: Mapping[str, str],

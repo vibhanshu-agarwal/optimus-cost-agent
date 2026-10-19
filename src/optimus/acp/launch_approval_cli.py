@@ -21,6 +21,7 @@ from urllib.parse import parse_qsl, urlsplit
 from optimus.acp.launch_approvals import (
     LAUNCH_POLICY_COMPATIBILITY,
     ApprovalError,
+    ApprovalMode,
     ClientMcpReviewDisplay,
     KeyringApprovalStore,
     build_approval_record,
@@ -82,6 +83,8 @@ from optimus_security.sanitization import mask_uri_userinfo
 
 class CliError(SystemExit):
     """CLI error with user-facing message."""
+
+    code: int
 
     def __init__(self, message: str, *, exit_code: int = 2) -> None:
         self.message = message
@@ -464,7 +467,7 @@ def _initialize_stage_c_ledger(candidate: LaunchCandidate) -> None:
 
 
 def _cmd_approve(
-    workspace_root: Path, *, mode: str, target_argv: list[str], test_profile: str | None = None, stage_c: bool = False
+    workspace_root: Path, *, mode: ApprovalMode, target_argv: list[str], test_profile: str | None = None, stage_c: bool = False
 ) -> int:
     """Author a durable or one-shot approval."""
     _require_tty()

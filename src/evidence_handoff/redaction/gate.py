@@ -211,7 +211,7 @@ def run_redaction_gate(
 
     try:
         if artifact_kind is ArtifactKind.TEXT:
-            outcome = text.sanitize_text_artifact(
+            text_outcome = text.sanitize_text_artifact(
                 source_path=source_path,
                 staging_root=runtime.staging_root,
                 artifact_role=artifact_role,
@@ -219,21 +219,21 @@ def run_redaction_gate(
                 known_pii=pii,
                 path_aliases=aliases,
             )
-            if outcome.disposition is not Disposition.PROMOTED or outcome.staging_path is None:
+            if text_outcome.disposition is not Disposition.PROMOTED or text_outcome.staging_path is None:
                 return _result(
                     Disposition.QUARANTINED,
-                    reason_code=outcome.reason_code or "text_sanitize_failed",
+                    reason_code=text_outcome.reason_code or "text_sanitize_failed",
                 )
-            digest = _sha256_file(outcome.staging_path)
+            digest = _sha256_file(text_outcome.staging_path)
             fields = {
                 "schema_version": MANIFEST_SCHEMA_VERSION,
                 "sanitizer_policy_version": EVIDENCE_REDACTION_POLICY.version,
                 "artifact_kind": artifact_kind.value,
                 "disposition": Disposition.PROMOTED.value,
                 "artifact_sha256": digest,
-                "artifact_byte_size": outcome.byte_size,
+                "artifact_byte_size": text_outcome.byte_size,
                 "artifact_locator": "<destination>/" + artifact_role + "/artifact",
-                "rule_counts": dict(outcome.rule_counts),
+                "rule_counts": dict(text_outcome.rule_counts),
                 "final_scan_passed": True,
                 "reason_code": None,
                 "created_at": created_at,
@@ -242,7 +242,7 @@ def run_redaction_gate(
                 staging_root=runtime.staging_root,
                 destination_root=destination_root,
                 artifact_role=artifact_role,
-                artifact_path=outcome.staging_path,
+                artifact_path=text_outcome.staging_path,
                 manifest_fields=fields,
                 known_secrets=secrets,
                 known_pii=pii,
@@ -255,7 +255,7 @@ def run_redaction_gate(
             )
 
         if artifact_kind is ArtifactKind.JSON:
-            outcome = structured.sanitize_json_artifact(
+            json_outcome = structured.sanitize_json_artifact(
                 source_path=source_path,
                 staging_root=runtime.staging_root,
                 artifact_role=artifact_role,
@@ -264,7 +264,7 @@ def run_redaction_gate(
                 path_aliases=aliases,
             )
             return _promote_structured(
-                outcome,
+                json_outcome,
                 artifact_kind=artifact_kind,
                 artifact_role=artifact_role,
                 runtime=runtime,
@@ -275,7 +275,7 @@ def run_redaction_gate(
             )
 
         if artifact_kind in {ArtifactKind.NDJSON, ArtifactKind.ACP_DEBUG_TRACE}:
-            outcome = structured.sanitize_ndjson_artifact(
+            ndjson_outcome = structured.sanitize_ndjson_artifact(
                 source_path=source_path,
                 staging_root=runtime.staging_root,
                 artifact_role=artifact_role,
@@ -285,7 +285,7 @@ def run_redaction_gate(
                 allow_acp_truncated_tail=artifact_kind is ArtifactKind.ACP_DEBUG_TRACE,
             )
             return _promote_structured(
-                outcome,
+                ndjson_outcome,
                 artifact_kind=artifact_kind,
                 artifact_role=artifact_role,
                 runtime=runtime,
@@ -296,7 +296,7 @@ def run_redaction_gate(
             )
 
         if artifact_kind is ArtifactKind.SCREENSHOT:
-            outcome = images.sanitize_screenshot_artifact(
+            image_outcome = images.sanitize_screenshot_artifact(
                 source_path=source_path,
                 staging_root=runtime.staging_root,
                 quarantine_root=runtime.quarantine_root,
@@ -305,22 +305,22 @@ def run_redaction_gate(
                 known_pii=pii,
                 path_aliases=aliases,
             )
-            if outcome.disposition is Disposition.QUARANTINED:
+            if image_outcome.disposition is Disposition.QUARANTINED:
                 return _result(
                     Disposition.QUARANTINED,
-                    reason_code=outcome.reason_code or "image_sanitize_failed",
+                    reason_code=image_outcome.reason_code or "image_sanitize_failed",
                 )
-            if screenshot_approval is not None and outcome.staging_path is not None:
+            if screenshot_approval is not None and image_outcome.staging_path is not None:
                 return promote_approved_screenshot(
-                    staging_path=outcome.staging_path,
+                    staging_path=image_outcome.staging_path,
                     destination_root=destination_root,
                     artifact_role=artifact_role,
                     runtime=runtime,
                     approval=screenshot_approval,
                 )
             locator = (
-                _alias_locator(outcome.staging_path, aliases)
-                if outcome.staging_path is not None
+                _alias_locator(image_outcome.staging_path, aliases)
+                if image_outcome.staging_path is not None
                 else None
             )
             return _result(

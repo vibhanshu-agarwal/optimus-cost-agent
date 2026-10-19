@@ -5,9 +5,11 @@ import asyncio
 import os
 import secrets
 import sys
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 import keyring
 
@@ -48,6 +50,22 @@ from optimus.gateway.client import DEFAULT_GATEWAY_TIMEOUT_SECONDS, validate_gat
 from optimus_model_policy import RegistryError, binding
 from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES
+
+if TYPE_CHECKING:
+    from optimus.acp.stage_c import StageCLaunch
+    from optimus.acp.test_composition import TestComposition
+
+
+class _BuildServerKwargs(TypedDict):
+    environ: Mapping[str, str]
+    system_environ: Mapping[str, str]
+    ephemeral_hmac: bool
+    workspace_root: Path
+    model: str | None
+    gateway_timeout_seconds: NotRequired[float]
+    test_composition: NotRequired[TestComposition]
+    stage_c: NotRequired[StageCLaunch]
+
 
 
 def _print_log(message: str) -> None:
@@ -675,7 +693,7 @@ def main(argv: list[str] | None = None) -> int:
             # projection -- it has already lost the system keys and legitimately
             # carries the Gateway credential, which must not cross the narrower MCP
             # subprocess boundary. Both views are derived from the one capture.
-            build_server_kwargs: dict[str, object] = {
+            build_server_kwargs: _BuildServerKwargs = {
                 "environ": agent_environ,
                 "system_environ": system_environ_view(snapshot.values),
                 "ephemeral_hmac": resolve_ephemeral_hmac_flag(snapshot.values),

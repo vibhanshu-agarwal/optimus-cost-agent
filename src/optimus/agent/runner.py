@@ -40,7 +40,14 @@ from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.loops.completion import DeterministicCompletionEvaluator
 from optimus.loops.controller import GoalLoopController, IterationRunner
 from optimus.loops.ledger import InMemoryProgressLedger
-from optimus.loops.models import CompletionEvaluatorProtocol, IterationOutcome, IterationState, LoopBudgetPolicy, LoopStopReason
+from optimus.loops.models import (
+    CompletionEvaluatorProtocol,
+    IterationOutcome,
+    IterationState,
+    LoopBudgetPolicy,
+    LoopStopReason,
+    LoopToolExecutorProtocol,
+)
 from optimus.loops.tools import GuardedLoopToolExecutor
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.mutation import MutationForbidden
@@ -152,7 +159,7 @@ class _AgentLoopIterationRunner:
         self._scope = scope
         self.last_result: AgentRunResult | None = None
 
-    def run_iteration(self, state: IterationState, tools: GuardedLoopToolExecutor) -> IterationOutcome:
+    def run_iteration(self, state: IterationState, tools: LoopToolExecutorProtocol) -> IterationOutcome:
         result = self._agent_runner._run_once(self._request, scope=self._scope)
         self.last_result = result
         return IterationOutcome(
@@ -573,7 +580,7 @@ class AgentRunner:
             # Every attempt is accounted for, known or not, before the failure propagates as it always
             # has (an accounting-integrity error propagates instead).
             self._account(
-                request, scope, usage=getattr(exc, "gateway_usage", None), classify=lambda exc=exc: attempts_from_failure(exc), identity=_identity(bound), failure=exc
+                request, scope, usage=getattr(exc, "gateway_usage", None), classify=_failure_classifier(exc), identity=_identity(bound), failure=exc
             )
             if is_input_capacity_refusal(exc):
                 # Release supplement V1: a complete request over the route's input capacity is a readable
@@ -1596,7 +1603,7 @@ class AgentRunner:
             # accounting-integrity error propagates out of the turn once everything was recorded.
             try:
                 attempts = self._account(
-                    request, scope, usage=getattr(exc, "gateway_usage", None), classify=lambda exc=exc: attempts_from_failure(exc), identity=identity, failure=exc
+                    request, scope, usage=getattr(exc, "gateway_usage", None), classify=_failure_classifier(exc), identity=identity, failure=exc
                 )
             except Exception:
                 complete("cost_unknown")
@@ -1622,8 +1629,8 @@ class AgentRunner:
             if is_input_capacity_refusal(exc):
                 return self._chat_failure(request, stop_reason="CHAT_INPUT_CAPACITY_EXCEEDED")
             if is_gateway_registry_mismatch(exc):
-                text = gateway_registry_mismatch_text("CHAT_GATEWAY_REGISTRY_MISMATCH", request.workspace_root)
-                return self._chat_failure(request, stop_reason="CHAT_GATEWAY_REGISTRY_MISMATCH", output_text=text)
+                mismatch = gateway_registry_mismatch_text("CHAT_GATEWAY_REGISTRY_MISMATCH", request.workspace_root)
+                return self._chat_failure(request, stop_reason="CHAT_GATEWAY_REGISTRY_MISMATCH", output_text=mismatch)
             if is_preflight_refusal(exc):
                 return self._chat_failure(request, stop_reason="CHAT_GATEWAY_REFUSED", output_text=text("CHAT_GATEWAY_REFUSED"))
             return self._chat_failure(request, stop_reason="CHAT_GATEWAY_FAILURE", output_text=text("CHAT_GATEWAY_FAILURE"), total_cost_usd=known)
@@ -1769,3 +1776,10 @@ def _record_matches_request(record: AgentPlanRecord, request: AgentRunRequest) -
         and record.execution_mode is request.execution_mode
         and Path(record.workspace_root).resolve() == request.workspace_root
     )
+
+
+def _failure_classifier(exc: BaseException) -> Callable[[], tuple[ProviderAttempt, ...]]:
+    def classify() -> tuple[ProviderAttempt, ...]:
+        return attempts_from_failure(exc)
+
+    return classify
