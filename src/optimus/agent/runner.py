@@ -36,7 +36,14 @@ from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.loops.completion import DeterministicCompletionEvaluator
 from optimus.loops.controller import GoalLoopController, IterationRunner
 from optimus.loops.ledger import InMemoryProgressLedger
-from optimus.loops.models import CompletionEvaluatorProtocol, IterationOutcome, IterationState, LoopBudgetPolicy, LoopStopReason
+from optimus.loops.models import (
+    CompletionEvaluatorProtocol,
+    IterationOutcome,
+    IterationState,
+    LoopBudgetPolicy,
+    LoopStopReason,
+    LoopToolExecutorProtocol,
+)
 from optimus.loops.tools import GuardedLoopToolExecutor
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.mutation import MutationForbidden
@@ -124,7 +131,7 @@ class _AgentLoopIterationRunner:
         self._scope = scope
         self.last_result: AgentRunResult | None = None
 
-    def run_iteration(self, state: IterationState, tools: GuardedLoopToolExecutor) -> IterationOutcome:
+    def run_iteration(self, state: IterationState, tools: LoopToolExecutorProtocol) -> IterationOutcome:
         result = self._agent_runner._run_once(self._request, scope=self._scope)
         self.last_result = result
         return IterationOutcome(
@@ -542,7 +549,7 @@ class AgentRunner:
         except Exception as exc:
             # Every attempt is accounted for, known or not, before the failure propagates as it always
             # has (an accounting-integrity error propagates instead).
-            self._account(request, scope, usage=getattr(exc, "gateway_usage", None), classify=lambda exc=exc: attempts_from_failure(exc), identity=_identity(bound))
+            self._account(request, scope, usage=getattr(exc, "gateway_usage", None), classify=_failure_classifier(exc), identity=_identity(bound))
             if is_input_capacity_refusal(exc):
                 # Release supplement V1: a complete request over the route's input capacity is a readable
                 # OPEN refusal that cost nothing, never a raw gateway error.
@@ -1513,7 +1520,7 @@ class AgentRunner:
             # accounting-integrity error propagates out of the turn once everything was recorded.
             try:
                 attempts = self._account(
-                    request, scope, usage=getattr(exc, "gateway_usage", None), classify=lambda exc=exc: attempts_from_failure(exc), identity=identity
+                    request, scope, usage=getattr(exc, "gateway_usage", None), classify=_failure_classifier(exc), identity=identity
                 )
             except Exception:
                 complete("cost_unknown")
@@ -1672,3 +1679,10 @@ def _record_matches_request(record: AgentPlanRecord, request: AgentRunRequest) -
         and record.execution_mode is request.execution_mode
         and Path(record.workspace_root).resolve() == request.workspace_root
     )
+
+
+def _failure_classifier(exc: BaseException) -> Callable[[], tuple[ProviderAttempt, ...]]:
+    def classify() -> tuple[ProviderAttempt, ...]:
+        return attempts_from_failure(exc)
+
+    return classify

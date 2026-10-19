@@ -18,6 +18,7 @@ import os
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Literal
 
@@ -67,7 +68,7 @@ from optimus_security.sanitization import canonicalize_credential_uri, validate_
 # name is compared against in _authorize_monotonic_grants(). Values <= this
 # default are a tightening (or exact match) and require no approval; values
 # above it require an exact matching grant in the approval record.
-_MONOTONIC_DEFAULTS: Mapping[str, object] = {
+_MONOTONIC_DEFAULTS: Mapping[str, Decimal | int] = {
     "OPTIMUS_LIVE_MAX_COST_USD": DEFAULT_LIVE_MAX_COST_USD,
     "OPTIMUS_MAX_PLANNING_TURNS": DEFAULT_MAX_PLANNING_TURNS,
 }
@@ -192,6 +193,10 @@ def _validate_posix_permissions(file_path: Path) -> None:
         ) from exc
 
     # Require current UID ownership.
+    if sys.platform == "win32":
+        raise LaunchGateError(
+            code="CONFIG_FILE_PLATFORM_CHECK_FAILED", detail="platform cannot verify file permissions"
+        )
     current_uid = os.getuid()
     if stat.st_uid != current_uid:
         raise LaunchGateError(
@@ -359,6 +364,9 @@ def _check_windows_dacl_real(file_path: Path) -> None:
     for index in range(size_info.AceCount):
         ace_ptr = ctypes.c_void_p()
         if not advapi32.GetAce(dacl_ptr, index, ctypes.byref(ace_ptr)):
+            raise LaunchGateError(code="CONFIG_FILE_DACL_UNREADABLE", detail="cannot read ACE")
+
+        if ace_ptr.value is None:
             raise LaunchGateError(code="CONFIG_FILE_DACL_UNREADABLE", detail="cannot read ACE")
 
         # ACE_HEADER: AceType (BYTE) at offset 0.
@@ -824,6 +832,8 @@ def _authorize_monotonic_grants(
     for name, raw_value in candidate.monotonic_grants.items():
         policy = LAUNCH_VARIABLE_POLICIES[name]
         parsed_value = policy.parser(raw_value)
+        if not isinstance(parsed_value, (int, Decimal)):
+            raise LaunchGateError(code="MONOTONIC_VALUE_INVALID", detail=name)
         default_value = _MONOTONIC_DEFAULTS[name]
         if parsed_value <= default_value:
             continue  # Tightening or equal-to-default: free, no approval needed.

@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -19,6 +19,7 @@ from optimus.agent.directives import (
     parse_mcp_list_line,
 )
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
+from optimus.agent.operation_control import TurnOperationControl
 from optimus.agent.prompts import build_multi_turn_planner_input, format_mcp_evidence_envelope
 from optimus.agent.tools import AgentToolbox
 from optimus.agent.workspace_context import DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
@@ -42,6 +43,10 @@ from optimus.retry.policy import RetryController, RetryPolicy
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import RuntimeContext
 from optimus.telemetry.subjects import sanitize_workspace_text
+
+if TYPE_CHECKING:
+    from optimus.gateway.route_binding import BoundRequest, TurnRouteBinder
+
 
 PlanningGatewayUsageCallback = Callable[[GatewayUsage, int, int], None]
 # (planning turn, wire attempt, every provider attempt of that request, the route identity it was
@@ -812,10 +817,10 @@ class PlanningLoopRunner:
         progress_observer: PlanningProgressObserver | None = None,
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
-        operation_control: object | None = None,
+        operation_control: TurnOperationControl | None = None,
         context_packer: ContextPacker | None = None,
         attempt_callback: PlanningAttemptCallback | None = None,
-        route_binder: Any | None = None,
+        route_binder: TurnRouteBinder | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -940,11 +945,11 @@ class _PlanningIterationRunner:
         guard: PreToolGuard | None = None,
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
-        operation_control: object | None = None,
+        operation_control: TurnOperationControl | None = None,
         conversation_envelope: str = "",
         context_packer: ContextPacker | None = None,
         attempt_callback: PlanningAttemptCallback | None = None,
-        route_binder: Any | None = None,
+        route_binder: TurnRouteBinder | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -1052,7 +1057,7 @@ class _PlanningIterationRunner:
 
         cost_before = self._total_cost_usd
         wire_attempt = 0
-        bound: Any | None = None
+        bound: BoundRequest | None = None
         # How this request's sequence ended, for its stop reason (sequence-local, not loop-wide).
         ended = {"unsent": False, "unknown": False, "refused": False, "over_capacity": False}
         # An attempt that cannot be attributed or recorded truthfully (a Gateway report that names no
@@ -1089,7 +1094,8 @@ class _PlanningIterationRunner:
                 bound = self._route_binder.bind(stage="planning", input_text=prompt)
                 if bound is None:
                     ended["unsent"] = True
-                    capture(lambda: self._report_attempts(planning_turn, wire_attempt, (_NOT_SENT,), self._route_binder.identity))
+                    binder = self._route_binder
+                    capture(lambda: self._report_attempts(planning_turn, wire_attempt, (_NOT_SENT,), binder.identity))
                     raise _PermanentStop("required notice not delivered; nothing was sent")
             identity = bound.identity if bound is not None else None
 
@@ -1141,7 +1147,7 @@ class _PlanningIterationRunner:
                 # usage stays unknown. Settled usage is recorded first, so a paid attempt reaches the
                 # totals and the ledger even if its report then fails.
                 usage = getattr(exc, "gateway_usage", None)
-                attempts = account(usage, lambda exc=exc: attempts_from_failure(exc))
+                attempts = account(usage, _failure_classifier(exc))
                 if attempts is None:
                     complete("cost_unknown")
                     raise _PermanentStop("attempt accounting integrity error") from exc
@@ -1168,20 +1174,14 @@ class _PlanningIterationRunner:
                 self._cost_complete = False
                 self._unknown_cost_attempt_count += 1
                 ended["unknown"] = True
-                account(None, lambda exc=exc: attempts_from_failure(exc))
+                account(None, _failure_classifier(exc))
                 from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
 
                 if debug_trace_enabled():
                     acp_debug_log(
                         location="planning_loop.py:_invoke_planning_gateway",
                         message="planning attempt cost unknown",
-                        data=lambda exc=exc: {
-                            "run_id": self._run_id,
-                            "session_id": self._session_id,
-                            "planning_turn": planning_turn,
-                            "wire_attempt": wire_attempt,
-                            "error_type": type(exc).__name__,
-                        },
+                        data=_unknown_cost_payload(self, exc, planning_turn, wire_attempt),
                         hypothesis_id="P9.95-USAGE-UNKNOWN",
                         run_id=self._run_id,
                     )
@@ -1371,14 +1371,7 @@ class _PlanningIterationRunner:
                     acp_debug_log(
                         location="planning_loop.py:execute_iteration",
                         message="planning read rejected",
-                        data=lambda exc=exc: {
-                            "run_id": self._run_id,
-                            "session_id": self._session_id,
-                            "stop_reason": exc.code,
-                            "rejected_path": request.path,
-                            "start_byte": request.start_byte,
-                            "end_byte": request.end_byte,
-                        },
+                        data=_read_rejection_payload(self, exc, request),
                         hypothesis_id="P9.87-READ-REJECT",
                         run_id=self._run_id,
                     )
@@ -1570,12 +1563,13 @@ class _PlanningIterationRunner:
             raise AssertionError("planning loop completed without a settled decision")
 
         if loop_result.stop_reason is LoopStopReason.REPEATED_FAILURE:
-            mapped_stop = {
+            repeated_stops: dict[str | None, str] = {
                 "GATEWAY_FAILURE": "PLANNING_GATEWAY_FAILURE",
                 "UNPARSEABLE": "PLANNING_UNPARSEABLE_RESPONSE",
-            }.get(self._last_non_progress_kind, "PLANNING_REPEATED_READ_REQUEST")
+            }
+            repeated_stop = repeated_stops.get(self._last_non_progress_kind, "PLANNING_REPEATED_READ_REQUEST")
             return self._planning_failure_result(
-                stop_reason=mapped_stop,
+                stop_reason=repeated_stop,
                 settled_turns=settled_turns,
             )
 
@@ -1617,3 +1611,37 @@ class _PlanningIterationRunner:
                 stop_reason=result.stop_reason,
             )
         )
+
+
+def _failure_classifier(exc: BaseException) -> Callable[[], tuple[ProviderAttempt, ...]]:
+    def classify() -> tuple[ProviderAttempt, ...]:
+        return attempts_from_failure(exc)
+
+    return classify
+
+
+def _unknown_cost_payload(self: _PlanningIterationRunner, exc: Exception, planning_turn: int, wire_attempt: int) -> Callable[[], dict[str, object]]:
+    def payload() -> dict[str, object]:
+        return {
+        "run_id": self._run_id,
+        "session_id": self._session_id,
+        "planning_turn": planning_turn,
+        "wire_attempt": wire_attempt,
+        "error_type": type(exc).__name__,
+        }
+
+    return payload
+
+
+def _read_rejection_payload(self: _PlanningIterationRunner, exc: PlanningReadError, request: PlanningReadRequest) -> Callable[[], dict[str, object]]:
+    def payload() -> dict[str, object]:
+        return {
+        "run_id": self._run_id,
+        "session_id": self._session_id,
+        "stop_reason": exc.code,
+        "rejected_path": request.path,
+        "start_byte": request.start_byte,
+        "end_byte": request.end_byte,
+        }
+
+    return payload

@@ -395,6 +395,8 @@ class _RealPosixHome:
     home_dir: Path | None = None
 
     def __post_init__(self) -> None:
+        if sys.platform == "win32":
+            return
         try:
             import os
             import pwd

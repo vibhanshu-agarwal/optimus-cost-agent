@@ -195,3 +195,25 @@ def test_a_store_that_owns_no_runtime_is_refused_before_anything_is_launched(mon
         assert launched == []
     finally:
         runtime.close(timeout=5.0)
+
+
+@pytest.mark.parametrize("operation", ["_plan_keys_for_run", "_delete_plan_keys"])
+def test_sync_store_verification_refuses_without_scan_or_delete(operation):
+    from optimus.acp import operator_verify
+    from optimus.agent.state_store import RedisAgentStateStore
+
+    effects = []
+
+    class SyncClient:
+        def scan_iter(self, **_kwargs):
+            effects.append("scan")
+            pytest.fail("sync verification must refuse before scanning")
+
+        def delete(self, _key):
+            effects.append("delete")
+            pytest.fail("sync verification must refuse before deleting")
+
+    store = RedisAgentStateStore(client=SyncClient())
+    with pytest.raises(RuntimeError, match="^this store has no owner submission seam; it wraps a synchronous client$"):
+        getattr(operator_verify, operation)(store, "offline-run")
+    assert effects == []

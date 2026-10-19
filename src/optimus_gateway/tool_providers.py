@@ -25,7 +25,7 @@ from optimus_gateway.tool_models import (
     WebSearchProviderResult,
     WebSearchResult,
 )
-from optimus_gateway.tool_provider_http import ToolProviderError, request_bytes, request_json
+from optimus_gateway.tool_provider_http import ToolProviderError, ToolUrlOpen, request_bytes, request_json
 
 
 class WebToolProvider(Protocol):
@@ -50,7 +50,7 @@ class TavilyWebToolProvider:
         *,
         api_key: str,
         base_url: str,
-        urlopen: Callable[..., object] = urlopen,
+        urlopen: ToolUrlOpen = urlopen,
         timeout_seconds: float = 60.0,
         sleep: Callable[[float], None] | None = None,
         on_retry: Callable[[int], None] | None = None,
@@ -157,7 +157,7 @@ class PackageRegistryToolProvider:
         pypi_base_url: str,
         npm_base_url: str,
         maven_base_url: str,
-        urlopen: Callable[..., object] = urlopen,
+        urlopen: ToolUrlOpen = urlopen,
         timeout_seconds: float = 60.0,
         sleep: Callable[[float], None] | None = None,
         on_retry: Callable[[int], None] | None = None,
@@ -303,7 +303,7 @@ class OsvAdvisoryToolProvider:
         *,
         base_url: str,
         api_key: str | None = None,
-        urlopen: Callable[..., object] = urlopen,
+        urlopen: ToolUrlOpen = urlopen,
         timeout_seconds: float = 60.0,
         sleep: Callable[[float], None] | None = None,
         on_retry: Callable[[int], None] | None = None,
@@ -415,9 +415,11 @@ def _advisory_record(raw: dict[str, object]) -> AdvisoryRecord:
     severity = raw.get("severity")
     if isinstance(severity, list) and severity and isinstance(severity[0], dict):
         severity = severity[0].get("score")
+    raw_id = raw.get("id")
+    raw_summary = raw.get("summary")
     return AdvisoryRecord(
-        advisory_id=raw.get("id") if isinstance(raw.get("id"), str) else "unknown",
-        summary=raw.get("summary") if isinstance(raw.get("summary"), str) else "",
+        advisory_id=raw_id if isinstance(raw_id, str) else "unknown",
+        summary=raw_summary if isinstance(raw_summary, str) else "",
         severity=severity if isinstance(severity, str) else None,
         affected_ranges=tuple(affected_ranges),
         fixed_versions=tuple(fixed_versions),

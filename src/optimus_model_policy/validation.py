@@ -89,20 +89,34 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
     slugs = [endpoint.provider for endpoint in endpoints]
     if len(set(slugs)) != len(slugs):
         issue("ROUTE_ENDPOINT_DUPLICATE", "an endpoint slug is listed more than once in the route")
-    windows = [endpoint.context_window_tokens for endpoint in endpoints]
-    outputs = [endpoint.max_output_tokens for endpoint in endpoints]
+    windows: list[int] = []
+    unknown_window = False
+    for endpoint in endpoints:
+        window = endpoint.context_window_tokens
+        if window is None:
+            unknown_window = True
+        else:
+            windows.append(window)
+    outputs: list[int] = []
+    unknown_output = False
+    for endpoint in endpoints:
+        output = endpoint.max_output_tokens
+        if output is None:
+            unknown_output = True
+        else:
+            outputs.append(output)
     if any(endpoint.quantization is None for endpoint in endpoints):
         # The Gateway constrains each request to the route's approved quantizations; an unrecorded
         # one cannot be constrained, so the route is not usable for any role.
         issue("ROUTE_QUANTIZATION_UNKNOWN", "every endpoint needs a recorded quantization")
-    if any(value is None for value in windows + outputs):
+    if unknown_window or unknown_output:
         issue("ROUTE_FACT_UNKNOWN", "an endpoint has no recorded window or max output")
     else:
-        if min(windows) < policy.context_ceiling_tokens:  # type: ignore[type-var]
-            issue("ROUTE_WINDOW_BELOW_CEILING", f"smallest window {min(windows)} < ceiling {policy.context_ceiling_tokens}")  # type: ignore[type-var]
+        if min(windows) < policy.context_ceiling_tokens:
+            issue("ROUTE_WINDOW_BELOW_CEILING", f"smallest window {min(windows)} < ceiling {policy.context_ceiling_tokens}")
         reserve = policy.output_reserve_tokens.get(reserve_class(role))
-        if reserve is not None and min(outputs) < reserve:  # type: ignore[type-var]
-            issue("ROUTE_OUTPUT_BELOW_RESERVE", f"smallest max output {min(outputs)} < reserve {reserve}")  # type: ignore[type-var]
+        if reserve is not None and min(outputs) < reserve:
+            issue("ROUTE_OUTPUT_BELOW_RESERVE", f"smallest max output {min(outputs)} < reserve {reserve}")
 
     estimator = policy.estimators.get(entry.route.estimator)
     if estimator is None:
@@ -187,7 +201,10 @@ def ordered_assignments(snapshot: RegistrySnapshot, role: Role) -> tuple[str, ..
         return assigned
     weight = snapshot.policy.role_price_blends.get(role)
     pairs = [(model_id, snapshot.policy.models[model_id]) for model_id in assigned]
-    return tuple(model_id for model_id, _ in sorted(pairs, key=cmp_to_key(lambda a, b: _compare(a, b, weight))))
+    def compare(a: tuple[str, ModelEntry], b: tuple[str, ModelEntry]) -> int:
+        return _compare(a, b, weight)
+
+    return tuple(model_id for model_id, _ in sorted(pairs, key=cmp_to_key(compare)))
 
 
 def validate_registry(snapshot: RegistrySnapshot) -> tuple[ValidationIssue, ...]:

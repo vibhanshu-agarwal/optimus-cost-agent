@@ -6,7 +6,7 @@ import functools
 import json
 import sys
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -56,8 +56,48 @@ class AsyncByteWriter(Protocol):
         ...
 
 
+class SyncByteReader(Protocol):
+    def read(self, size: int, /) -> bytes: ...
+
+
+class SyncLineReader(Protocol):
+    def readline(self) -> bytes: ...
+
+
+class SyncByteWriter(Protocol):
+    def write(self, data: bytes, /) -> object: ...
+    def flush(self) -> object: ...
+
+
+def _request_failure_payload(
+    exc: Exception, request_id: object, method: object, pending_permission_id: object,
+    format_exception: Callable[[Exception], str],
+) -> Callable[[], dict[str, object]]:
+    def payload() -> dict[str, object]:
+        return {
+            "request_id": request_id,
+            "method": method,
+            "pending_permission_id": pending_permission_id,
+            "exception_type": type(exc).__name__,
+            "exception_message": format_exception(exc),
+        }
+    return payload
+
+
+def _inbound_response_payload(message: Mapping[str, object]) -> Callable[[], dict[str, object]]:
+    def payload() -> dict[str, object]:
+        return {
+            "id": message.get("id"),
+            "has_result": "result" in message,
+            "has_error": "error" in message,
+            "error": message.get("error") if "error" in message else None,
+            "result": message.get("result") if "result" in message else None,
+        }
+    return payload
+
+
 class StdioByteReader:
-    def __init__(self, stream: object) -> None:
+    def __init__(self, stream: SyncByteReader) -> None:
         self._stream = stream
 
     async def read(self, size: int) -> bytes:
@@ -65,7 +105,7 @@ class StdioByteReader:
 
 
 class StdioByteWriter:
-    def __init__(self, stream: object) -> None:
+    def __init__(self, stream: SyncByteWriter) -> None:
         self._stream = stream
 
     def write(self, data: bytes) -> None:
@@ -76,7 +116,7 @@ class StdioByteWriter:
 
 
 class StdioNdjsonLineReader:
-    def __init__(self, stream: object) -> None:
+    def __init__(self, stream: SyncLineReader) -> None:
         self._stream = stream
 
     async def readline(self) -> bytes:
@@ -84,7 +124,7 @@ class StdioNdjsonLineReader:
 
 
 class StdioNdjsonLineWriter:
-    def __init__(self, stream: object) -> None:
+    def __init__(self, stream: SyncByteWriter) -> None:
         self._stream = stream
 
     def write_bytes(self, data: bytes) -> None:
@@ -164,7 +204,7 @@ class NdjsonOutboundChannel:
         owner = EphemeralSendOwner()
         send_key = next_ephemeral_send_key(kind)
         owner.create_queued(send_key)
-        source = concurrent.futures.Future()
+        source: concurrent.futures.Future[SendCompletion] = concurrent.futures.Future()
         item = OutboundQueueItem(
             payload=message,
             send_key=send_key,
@@ -684,7 +724,7 @@ class AcpStreamServer:
             except Exception:
                 return "invalid"
 
-        def report_mcp_cleanup_incomplete(outcome: object, status: str) -> None:
+        def report_mcp_cleanup_incomplete(outcome: "ClientMcpShutdownOutcome | None", status: str) -> None:
             # One content-free attempt to record that client-MCP cleanup did not complete.
             # Contained like the reporters above -- this runs inside `finally`, where a raise
             # would replace the cancellation or exception that initiated teardown. The stage
@@ -696,7 +736,7 @@ class AcpStreamServer:
             # arbitrary content can reach the diagnostic. The outcome is never changed by
             # logging.
             def payload() -> dict[str, Any]:
-                if status == "incomplete":
+                if status == "incomplete" and outcome is not None:
                     state = outcome.supervisor_state
                     return {
                         "sdk_closed": outcome.sdk_closed is True,
@@ -779,13 +819,7 @@ class AcpStreamServer:
                 acp_debug_log(
                     location="server.py:process_request:exception",
                     message="client request failed",
-                    data=lambda exc=exc: {
-                        "request_id": request_id,
-                        "method": method,
-                        "pending_permission_id": pending_permission_id,
-                        "exception_type": type(exc).__name__,
-                        "exception_message": str(exc),
-                    },
+                    data=_request_failure_payload(exc, request_id, method, pending_permission_id, lambda exc: str(exc)),
                     hypothesis_id="H4",
                 )
                 # endregion
@@ -818,13 +852,7 @@ class AcpStreamServer:
                         acp_debug_log(
                             location="server.py:serve_ndjson:inbound_client_response_raw",
                             message="raw inbound id-bearing client response before deliver_client_response",
-                            data=lambda message=message: {
-                                "id": message.get("id"),
-                                "has_result": "result" in message,
-                                "has_error": "error" in message,
-                                "error": message.get("error") if "error" in message else None,
-                                "result": message.get("result") if "result" in message else None,
-                            },
+                            data=_inbound_response_payload(message),
                             hypothesis_id="H2-REPLY",
                         )
                     # endregion
@@ -863,7 +891,10 @@ class AcpStreamServer:
                 mcp_outcome = self._client_mcp_runtime.close()
                 mcp_status = classify_mcp_cleanup(mcp_outcome)
                 if mcp_status != "clean":
-                    report_mcp_cleanup_incomplete(mcp_outcome, mcp_status)
+                    report_mcp_cleanup_incomplete(
+                        mcp_outcome if mcp_status == "incomplete" and isinstance(mcp_outcome, ClientMcpShutdownOutcome) else None,
+                        mcp_status,
+                    )
             if dedicated is not None and owned_dedicated and join_dedicated_writer:
                 dedicated.close_and_join()
             # Reader ownership at teardown. The cooperative path is EOF: `read_lines` put its

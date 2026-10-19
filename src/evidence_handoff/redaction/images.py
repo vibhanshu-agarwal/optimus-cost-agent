@@ -27,6 +27,7 @@ from .bounds import (
 from .models import Disposition, ScreenshotApproval
 from .private_files import (
     PrivateFileError,
+    PrivateFileHandle,
     cleanup_private_path,
     create_private_staging_file,
     quarantine_partial_staging,
@@ -129,15 +130,15 @@ def sanitize_screenshot_artifact(
     if size > MAX_IMAGE_BYTES:
         return _quarantine_result("image_too_large")
     try:
-        with source_path.open("rb") as handle:
-            header = handle.read(16)
+        with source_path.open("rb") as source_handle:
+            header = source_handle.read(16)
     except OSError:
         return _quarantine_result("image_source_unreadable")
     kind = _detect_image_magic(header)
     if kind is None:
         return _quarantine_result("unsupported_image_format")
 
-    handle = None
+    handle: PrivateFileHandle | None = None
     staging_path: Path | None = None
     try:
         with warnings.catch_warnings():
@@ -171,12 +172,7 @@ def sanitize_screenshot_artifact(
                 return _quarantine_result("image_decompression_failed")
 
         buf = io.BytesIO()
-        save_kwargs: dict[str, object] = {
-            "format": "PNG",
-            "optimize": False,
-            "compress_level": 9,
-        }
-        clean.save(buf, **save_kwargs)
+        clean.save(buf, format="PNG", optimize=False, compress_level=9)
         payload = buf.getvalue()
         if not payload.startswith(_PNG_MAGIC):
             return _quarantine_result("image_encode_failed")

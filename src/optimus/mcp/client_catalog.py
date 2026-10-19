@@ -9,7 +9,7 @@ import secrets
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Never, SupportsIndex
 
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall
 from optimus.guardrails.mcp_trust import (
@@ -654,10 +654,10 @@ class AdapterBackedClientMcpToolService(ClientMcpToolService):
     def __getstate__(self) -> None:
         raise TypeError("client mcp tool service is not serializable")
 
-    def __reduce__(self) -> None:
+    def __reduce__(self) -> Never:
         raise TypeError("client mcp tool service is not serializable")
 
-    def __reduce_ex__(self, protocol: int) -> None:
+    def __reduce_ex__(self, protocol: SupportsIndex) -> Never:
         del protocol
         raise TypeError("client mcp tool service is not serializable")
 
@@ -705,10 +705,10 @@ class ClientMcpSessionService:
     def __getstate__(self) -> None:
         raise TypeError("client mcp session service is not serializable")
 
-    def __reduce__(self) -> None:
+    def __reduce__(self) -> Never:
         raise TypeError("client mcp session service is not serializable")
 
-    def __reduce_ex__(self, protocol: int) -> None:
+    def __reduce_ex__(self, protocol: SupportsIndex) -> Never:
         del protocol
         raise TypeError("client mcp session service is not serializable")
 

@@ -7,7 +7,7 @@ import ipaddress
 from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, Never, SupportsIndex, TypeVar
 from urllib.parse import urlparse
 
 from optimus.guardrails.prompt_injection import ConfigTrustScanner, TrustScanSubject, TrustScanVerdict
@@ -17,6 +17,10 @@ from optimus.mcp.client_supervisor import (
     MCPSupervisorError,
     select_process_tree_teardown_seam,
 )
+
+if TYPE_CHECKING:
+    import httpx2
+
 
 _SUPPORTED_PROTOCOL_VERSIONS = frozenset({"2024-11-05", "2025-03-26", "2025-11-25", "2026-07-28"})
 T = TypeVar("T")
@@ -102,10 +106,10 @@ class ClientMcpSdkAdapter:
     def __getstate__(self) -> None:
         raise TypeError("client mcp sdk adapter is not serializable")
 
-    def __reduce__(self) -> None:
+    def __reduce__(self) -> Never:
         raise TypeError("client mcp sdk adapter is not serializable")
 
-    def __reduce_ex__(self, protocol: int) -> None:
+    def __reduce_ex__(self, protocol: SupportsIndex) -> Never:
         del protocol
         raise TypeError("client mcp sdk adapter is not serializable")
 
@@ -436,13 +440,20 @@ async def _streamable_http_transport_context(
 async def _sse_transport_context(
     url: str,
     *,
-    http_client_factory: Callable[[], Any],
+    http_client_factory: Callable[[], httpx2.AsyncClient],
 ) -> AsyncIterator[Any]:
     from mcp.client.sse import sse_client
 
     client = http_client_factory()
     try:
-        async with sse_client(url, httpx_client_factory=lambda **_kwargs: client) as streams:
+        def pinned_client(
+            headers: dict[str, str] | None = None,
+            timeout: httpx2.Timeout | None = None,
+            auth: httpx2.Auth | None = None,
+        ) -> httpx2.AsyncClient:
+            return client
+
+        async with sse_client(url, httpx_client_factory=pinned_client) as streams:
             yield streams
     finally:
         await client.aclose()

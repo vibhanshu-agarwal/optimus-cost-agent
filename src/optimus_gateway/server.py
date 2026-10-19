@@ -99,18 +99,11 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
         return
 
     def do_POST(self) -> None:
-        tool_mode = False
-        trace_mode = False
-        if self.path == "/v1/responses":
-            handler = handle_responses_request
-        elif self.path == "/v1/chat/completions":
-            handler = handle_chat_completions_request
-        elif self.path == "/v1/observability/traces":
-            handler = handle_observability_traces_request
-            trace_mode = True
-        elif self.path in TOOL_ROUTE_PATHS and self.tool_dependencies is not None:
-            tool_mode = True
-        else:
+        path = self.path
+        tool_dependencies = self.tool_dependencies
+        if path not in {"/v1/responses", "/v1/chat/completions", "/v1/observability/traces"} and not (
+            path in TOOL_ROUTE_PATHS and tool_dependencies is not None
+        ):
             self._reject_unhandled_post()
             return
 
@@ -125,24 +118,31 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": "request body must be a JSON object"})
             return
 
-        if tool_mode:
+        if path in TOOL_ROUTE_PATHS and tool_dependencies is not None:
             status, body = handle_tool_request(
                 authorization_header=self.headers.get("Authorization"),
-                path=self.path,
+                path=path,
                 request_body=request_body,
                 config=self.config,
-                dependencies=self.tool_dependencies,
+                dependencies=tool_dependencies,
             )
-        elif trace_mode:
-            status, body = handler(
+        elif path == "/v1/observability/traces":
+            status, body = handle_observability_traces_request(
                 authorization_header=self.headers.get("Authorization"),
                 request_body=request_body,
                 config=self.config,
                 upstream_client=self.upstream_client,
                 trace_exporter=self.trace_exporter,
             )
+        elif path == "/v1/responses":
+            status, body = handle_responses_request(
+                authorization_header=self.headers.get("Authorization"),
+                request_body=request_body,
+                config=self.config,
+                upstream_client=self.upstream_client,
+            )
         else:
-            status, body = handler(
+            status, body = handle_chat_completions_request(
                 authorization_header=self.headers.get("Authorization"),
                 request_body=request_body,
                 config=self.config,

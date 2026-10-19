@@ -691,3 +691,40 @@ def test_close_selects_process_tree_teardown_seam(supervisor: MCPAsyncSupervisor
     connection = adapter.open(_capability(), session_id="s1")
     adapter.close(connection)
     assert control.selected_seam in {"windows_job_object", "posix_process_group"}
+
+
+@pytest.mark.asyncio
+async def test_sse_sdk_factory_accepts_optional_arguments_and_returns_same_client(monkeypatch):
+    from contextlib import asynccontextmanager
+
+    import mcp.client.sse
+
+    from optimus.mcp.client_sdk import _sse_transport_context
+
+    class HardenedClient:
+        closed = 0
+
+        async def aclose(self):
+            self.closed += 1
+
+    client = HardenedClient()
+    allocated = []
+
+    def allocate():
+        allocated.append(client)
+        return client
+
+    @asynccontextmanager
+    async def transport(url, *, httpx_client_factory):
+        assert url == "https://offline.invalid/sse"
+        assert httpx_client_factory() is client
+        assert httpx_client_factory({"X-Test": "fixture"}, None, None) is client
+        assert httpx_client_factory(headers=None, timeout=None, auth=None) is client
+        yield ("read", "write")
+
+    monkeypatch.setattr(mcp.client.sse, "sse_client", transport)
+    async with _sse_transport_context("https://offline.invalid/sse", http_client_factory=allocate) as streams:
+        assert streams == ("read", "write")
+        assert client.closed == 0
+    assert allocated == [client]
+    assert client.closed == 1

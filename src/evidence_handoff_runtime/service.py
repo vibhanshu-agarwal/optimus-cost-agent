@@ -19,7 +19,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from evidence_handoff_runtime.integrity import IntegrityLatchError
 from evidence_handoff_runtime.transport import (
@@ -41,10 +41,14 @@ ALLOWED_TOOL_NAMES = frozenset(
 )
 
 
+if TYPE_CHECKING:
+    from starlette.types import Message, Scope
+
+
 def _scope_with_canonical_mcp_protocol_version(
-    scope: dict[str, Any],
+    scope: Scope,
     protocol_version: str,
-) -> dict[str, Any]:
+) -> Scope:
     """Collapse repeated/joined MCP-Protocol-Version to one token; leave absent headers absent."""
     raw_headers = list(scope.get("headers") or [])
     if not any(key.lower() == b"mcp-protocol-version" for key, _ in raw_headers):
@@ -381,7 +385,7 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
     from mcp.server.mcpserver import MCPServer
     from mcp.server.transport_security import TransportSecuritySettings
     from starlette.responses import PlainTextResponse, Response
-    from starlette.types import ASGIApp, Receive, Scope, Send
+    from starlette.types import ASGIApp, Receive, Send
 
     from evidence_handoff.redaction.ingress import RequestRedactionInputs, StructuredIngress
     from evidence_handoff.redaction.models import RedactionRuntimeInputs
@@ -853,7 +857,7 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
             return
         path = scope.get("path", "")
         if is_legacy_sse_path(path):
-            response = PlainTextResponse("legacy_sse_disabled", status_code=404)
+            response: Response = PlainTextResponse("legacy_sse_disabled", status_code=404)
             await response(scope, receive, send)
             return
 
@@ -928,7 +932,7 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
                 }
                 _BOUND_REQUEST.set(auth_ctx["_bound_request"])
 
-                async def send_with_session(message: dict[str, Any]) -> None:
+                async def send_with_session(message: Message) -> None:
                     if message["type"] == "http.response.start":
                         raw_headers = list(message.get("headers") or [])
                         mcp_sid = None

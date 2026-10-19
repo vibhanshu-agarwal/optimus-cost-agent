@@ -549,3 +549,55 @@ def test_measurement_binding_digest_is_deterministic_and_content_only() -> None:
         assert Path(origin).is_absolute() and len(digest) == 64
     for name, digest in payload["dependency_files"]:
         assert name and len(digest) == 64
+
+
+@pytest.mark.parametrize("base", ["Protocol", "typing.Protocol"])
+def test_shutdown_inventory_excludes_only_protocol_close_stubs(base: str) -> None:
+    module = _shutdown_module()
+    source = SourceTree({"fixture.py": f"""
+import typing
+from typing import Protocol
+class Contract({base}):
+    def close(self): ...
+    async def aclose(self): ...
+    def stop(self):
+        pass
+class RealOwner(Contract):
+    def close(self):
+        return None
+    async def aclose(self):
+        return None
+class ExecutableContract({base}):
+    def close(self):
+        return None
+class Plain:
+    def close(self):
+        pass
+plain_owner = Plain()
+plain_owner.close()
+"""})
+    inventory = module.discover_shutdown_inventory(source)
+    definitions = {(site.symbol, site.reference) for site in inventory.close_definitions}
+    assert definitions == {
+        ("fixture.RealOwner.close", "close"), ("fixture.RealOwner.aclose", "aclose"),
+        ("fixture.ExecutableContract.close", "close"), ("fixture.Plain.close", "close"),
+    }
+    assert any(site.site_kind == "CLOSE_INVOCATION" and site.reference == "plain_owner.close" for site in inventory.close_sites)
+    assert {record.resource_type for record in inventory.resources} == {"RealOwner", "ExecutableContract", "Plain"}
+
+
+def test_shutdown_protocol_filter_preserves_real_current_owner_probes() -> None:
+    inventory, observations = _measure_entry("h5.shutdown_schedule", repeats=1)
+    resources = {record["close_path_id"]: record for record in inventory["resources"] if record["schedule_applicable"]}
+    required = {("RedisRuntime", "close"), ("RedisRuntime", "close_async"), ("RedisAgentStateStore", "close")}
+    assert required <= {(record["resource_type"], record["close_method"]) for record in resources.values()}
+    seen = set()
+    for observation in observations:
+        record = resources[observation["close_path_id"]]
+        key = (record["resource_type"], record["close_method"])
+        if key in required:
+            seen.add(key)
+            assert "probe_error" not in observation["cause_effect"]
+            assert observation["close_invocation_count"] == 3
+            assert observation["underlying_close_count"] == 1
+    assert seen == required

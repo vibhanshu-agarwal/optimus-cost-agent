@@ -17,7 +17,7 @@ from __future__ import annotations
 import itertools
 import threading
 import uuid
-from typing import Protocol
+from typing import Literal, Protocol, cast
 
 import redis
 
@@ -91,6 +91,15 @@ class InMemoryGatewayToolStateStore:
             return count
 
 
+class GatewayRedisClient(Protocol):
+    def sadd(self, name: str, /, *values: str) -> int: ...
+    def expire(self, name: str, seconds: int, /) -> bool: ...
+    def smembers(self, name: str, /) -> set[str]: ...
+    def incr(self, name: str, amount: int = 1, /) -> int: ...
+    def decr(self, name: str, amount: int = 1, /) -> int: ...
+    def ping(self) -> object: ...
+
+
 class RedisGatewayToolStateStore:
     """Direct ``redis>=5`` client boundary for Gateway-owned tool state.
 
@@ -103,7 +112,7 @@ class RedisGatewayToolStateStore:
     def __init__(
         self,
         *,
-        client: object,
+        client: GatewayRedisClient,
         provenance_ttl_seconds: int = _DEFAULT_PROVENANCE_TTL_SECONDS,
         call_cap_ttl_seconds: int = _DEFAULT_CALL_CAP_TTL_SECONDS,
     ) -> None:
@@ -128,13 +137,13 @@ class RedisGatewayToolStateStore:
             socket_timeout=socket_timeout,
         )
         return cls(
-            client=client,
+            client=cast(GatewayRedisClient, client),
             provenance_ttl_seconds=provenance_ttl_seconds,
             call_cap_ttl_seconds=call_cap_ttl_seconds,
         )
 
     @property
-    def redis_client(self) -> object:
+    def redis_client(self) -> GatewayRedisClient:
         return self._client
 
     def record_search(self, *, run_id: str, source_urls: tuple[str, ...]) -> str:
@@ -174,7 +183,7 @@ class _fail_closed:
     def __enter__(self) -> "_fail_closed":
         return self
 
-    def __exit__(self, exc_type, exc, _tb) -> bool:
+    def __exit__(self, exc_type, exc, _tb) -> Literal[False]:
         if exc_type is not None and issubclass(exc_type, _REDIS_UNAVAILABLE_ERRORS):
             raise GatewayToolStateUnavailable(str(exc)) from exc
         return False

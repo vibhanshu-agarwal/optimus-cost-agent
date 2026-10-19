@@ -850,3 +850,15 @@ def test_owners_of_a_runtime_return_only_after_its_teardown_thread_has_exited(ow
         close_owner(runtime)
         assert_threads_stopped([_teardown_thread(runtime)], f"{close_owner.__name__} returned before the teardown thread exited")
     assert paused, "the injected pause never fired, so this test proved nothing"
+
+
+def test_typing_runtime_required_client_refuses_missing_and_preserves_identity():
+    from optimus.redis.runtime import RedisRuntime
+
+    # No loop, pool, service or network is created for an accessor check.
+    absent = RedisRuntime(pool=object(), client=None, owner=object())
+    with pytest.raises(RuntimeError, match="^redis client is not configured$"):
+        _ = absent.required_client
+    client = object()
+    present = RedisRuntime(pool=object(), client=client, owner=object())
+    assert present.required_client is client

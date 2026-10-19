@@ -11,7 +11,7 @@ import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, TypedDict
 
 from optimus.acp.settlement import (
     ConversationCommit,
@@ -25,6 +25,16 @@ from optimus.acp.settlement import (
     TurnSettlementSnapshot,
     compute_effect_state,
 )
+
+
+class _SettlementFields(TypedDict):
+    final_delivery: str
+    rpc_response_delivery: str
+    effect_state: str
+    cost_complete: bool
+    prior_history_flush: bool
+    post_teardown: bool
+    provider_attempt_started: bool
 
 
 class TerminalLane(StrEnum):
@@ -206,7 +216,7 @@ class TurnControl:
                     return True
             return False
 
-    def current_settlement_fields(self) -> dict[str, object]:
+    def current_settlement_fields(self) -> _SettlementFields:
         with self._lock:
             return {
                 "final_delivery": self._final_delivery.value,
@@ -981,12 +991,12 @@ class NoticeControl:
             self._transport_abandoned = True
             responses = list(self._responses.values())
             warnings = list(self._warnings.values())
-        for handle in responses:
-            handle.freeze_abandoned()
-            self._maybe_retire_response(handle)
-        for handle in warnings:
-            handle.freeze_abandoned()
-            self._maybe_retire_warning(handle)
+        for response_handle in responses:
+            response_handle.freeze_abandoned()
+            self._maybe_retire_response(response_handle)
+        for warning_handle in warnings:
+            warning_handle.freeze_abandoned()
+            self._maybe_retire_warning(warning_handle)
 
     def lookup_response(self, response_id: int) -> ResponseHandle | str:
         with self._registry_lock:

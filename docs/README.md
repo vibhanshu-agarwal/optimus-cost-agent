@@ -82,7 +82,7 @@ Status, priority and ownership live in the record's GitHub issue; the transition
 | [Plan 11 v1.0 milestone charter](superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md) | What v1.0 must contain |
 | [Hardening masterplan](superpowers/plans/hardening-runtime-quality-masterplan.md) | The 15 hardening tracks and their status |
 | [Hardening: CI guardrail truthfulness](superpowers/plans/hardening-ci-guardrail-truthfulness-implementation.md) | CI guardrail enforcement contract |
-| [Hardening: source typing](superpowers/plans/hardening-static-type-checking-implementation_v3.md) | All-source Mypy gate, exception ratchet and strict YAML registry cohort; custody in #329 |
+| [Hardening: source typing](superpowers/plans/hardening-static-type-checking-implementation_v4.md) | All-source Mypy gate, exception ratchet and complete44-module cohort; custody in #329 |
 
 Live plans (each listed in the backlog's live plan registry):
 

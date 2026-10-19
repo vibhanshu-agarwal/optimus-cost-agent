@@ -432,3 +432,14 @@ def test_mypy_gate_wiring():
     for name, expected in (("optimus-check: mypy", command), ("optimus-check: mypy-win32", [*command, "--platform", "win32"])):
         matched = [step for step in steps if step.get("name") == name]
         assert len(matched) == 1 and shlex.split(matched[0]["run"]) == expected
+
+
+def test_zero_exception_history_refuses_first_reintroduction(history):
+    repo, _, data, digest = history
+    _commit(repo, _config(("optimus.a", "optimus.b")))
+    _commit(repo, _config())
+    _git(repo, "checkout", "-b", "child-after-zero")
+    (repo / "pyproject.toml").write_bytes(_config(("optimus.a",)))
+    _git(repo, "add", "pyproject.toml")
+    with pytest.raises(AssertionError, match="grew"):
+        _validate_repository(repo, {}, data, digest)

@@ -39,11 +39,11 @@ def build_web_extract_payload(request: EvidenceExtractRequest, context: GatewayT
     :class:`~optimus.gateway.tool_models.WebExtractRequest`, which also
     enforces the HTTPS/duplicate/bounds validation shared with the Gateway.
     """
-    shared_request = WebExtractRequest(
-        context=context,
-        url=request.url_text,
-        max_chars_per_source=request.max_chars_per_source,
-    )
+    shared_request = WebExtractRequest.model_validate({
+        "context": context,
+        "url": request.url_text,
+        "max_chars_per_source": request.max_chars_per_source,
+    })
     payload = shared_request.model_dump(mode="json")
     payload["reason"] = request.reason.value
     return payload
