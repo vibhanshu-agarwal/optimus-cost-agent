@@ -37,6 +37,7 @@ from optimus.gateway.attempts import (
 from optimus.gateway.client import GatewayClient
 from optimus.gateway.models import GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
+from optimus.guardrails.runtime_tree import has_runtime_component, resolve_target, target_reserved
 from optimus.loops.completion import DeterministicCompletionEvaluator
 from optimus.loops.controller import GoalLoopController, IterationRunner
 from optimus.loops.ledger import InMemoryProgressLedger
@@ -1340,7 +1341,7 @@ class AgentRunner:
             if not self._is_safe_relative_path(relative_path):
                 continue
             target = workspace_root / relative_path
-            if not target.is_file():
+            if not target.is_file() and not self._reaches_guard_when_missing(workspace_root, relative_path, target):
                 continue
             operation_id = gate.operation_id(phase, ordinal)
             gate.register([(kind, operation_id)])
@@ -1499,6 +1500,18 @@ class AgentRunner:
         if path.is_absolute():
             return False
         return ".." not in path.parts
+
+    @staticmethod
+    def _reaches_guard_when_missing(workspace_root: Path, relative_path: str, target: Path) -> bool:
+        """Plan 12.2 READ: a READ of a reserved or unresolvable target reaches the audited guard even when it names no
+        file, so its refusal is audited and its directive ends failed_no_effect. Only an ordinary missing target is
+        skipped, as before. The judgement uses path metadata alone."""
+        if has_runtime_component(Path(relative_path).parts):
+            return True
+        resolved = resolve_target(target)
+        if resolved is None:
+            return True
+        return target_reserved(resolved, resolve_target(workspace_root) or workspace_root)
 
     def _run_chat_answer(
         self,

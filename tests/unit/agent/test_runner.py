@@ -1648,3 +1648,85 @@ def test_a_workspace_under_an_ancestor_named_optimus_still_reads_its_source(tmp_
 
     assert _reads(result) == ("read src/a.py",)
     assert _blocked(guard) == []
+
+
+def test_a_missing_reserved_plan_read_is_denied_through_the_audited_guard_while_planning_and_after_approval(tmp_path):
+    workspace = _runtime_workspace(tmp_path)
+    plan_text = "READ .optimus/missing.json\nREAD a/.optimus/missing.json\nREAD src/a.py\nWRITE src/a.py\nprint('updated')\n"
+    gateway = FakeGatewayClient(plan_text)
+    runner, guard = _guarded_runner(workspace, gateway, state_store=InMemoryAgentStateStore())
+
+    plan, approved = _plan_and_approve(runner, workspace)
+
+    _assert_runtime_bytes_never_surface(gateway, guard, plan, approved)
+    assert _blocked(guard).count("path.runtime.read") == 4  # two missing reserved READs, while planning and after approval
+    assert _reads(plan) == ("read src/a.py",)
+    assert not (workspace / ".optimus" / "missing.json").exists()
+
+
+def test_a_missing_target_through_an_alias_into_the_runtime_tree_is_denied_by_its_resolved_target(tmp_path, directory_alias):
+    workspace = _runtime_workspace(tmp_path)
+    directory_alias(workspace / "src" / "rt", workspace / ".optimus")
+    gateway = FakeGatewayClient("READ src/rt/missing.json\nREAD src/a.py\nWRITE src/a.py\nx = 1\n")
+    runner, guard = _guarded_runner(workspace, gateway)
+
+    result = runner.run(_agent("Read", workspace))
+
+    _assert_runtime_bytes_never_surface(gateway, guard, result)
+    assert "path.runtime.read" in _blocked(guard)
+    assert _reads(result) == ("read src/a.py",)
+
+
+def test_a_missing_reserved_plan_read_publishes_a_no_effect_terminal(tmp_path):
+    from optimus.acp.lifecycle import TurnControl
+
+    class RecordingControl(TurnControl):
+        def __init__(self) -> None:
+            super().__init__(session_id="sess-1", turn_seq=1)
+            self.terminals: list[tuple[str, str]] = []
+
+        def complete_directive(self, kind, operation_id, terminal):
+            self.terminals.append((kind.value, terminal))
+            super().complete_directive(kind, operation_id, terminal)
+
+    workspace = _runtime_workspace(tmp_path)
+    control = RecordingControl()
+    runner, _ = _guarded_runner(workspace, FakeGatewayClient("READ .optimus/missing.json\nWRITE src/a.py\nx = 1\n"))
+
+    runner.run(_agent("Read", workspace), operation_control=control)
+
+    assert [entry for entry in control.terminals if entry[0] == "planning_read"] == [("planning_read", "failed_no_effect")]
+
+
+def test_an_ordinary_missing_plan_read_is_still_skipped_without_a_denial(tmp_path):
+    workspace = _runtime_workspace(tmp_path)
+    gateway = FakeGatewayClient("READ src/missing.py\nREAD src/a.py\nWRITE src/a.py\nx = 1\n")
+    runner, guard = _guarded_runner(workspace, gateway)
+
+    result = runner.run(_agent("Read", workspace))
+
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL
+    assert _reads(result) == ("read src/a.py",)
+    assert _blocked(guard) == []
+
+
+def _file_symlink_or_skip(link: Path, target: Path) -> None:
+    """A file symlink: POSIX, or Windows with the symlink privilege; skipped otherwise (READ v3 §6 A5)."""
+    link.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        link.symlink_to(target)
+    except OSError as exc:
+        pytest.skip(f"file symlink unavailable: {exc}")
+
+
+def test_an_ordinary_file_symlink_into_the_runtime_tree_is_denied_by_its_resolved_target(tmp_path):
+    workspace = _runtime_workspace(tmp_path)
+    _file_symlink_or_skip(workspace / "src" / "link.ndjson", workspace / ".optimus" / "telemetry.ndjson")
+    gateway = FakeGatewayClient("READ src/link.ndjson\nREAD src/a.py\nWRITE src/a.py\nx = 1\n")
+    runner, guard = _guarded_runner(workspace, gateway)
+
+    result = runner.run(_agent("Read", workspace))
+
+    _assert_runtime_bytes_never_surface(gateway, guard, result)
+    assert _reads(result) == ("read src/a.py",)
+    assert "path.runtime.read" in _blocked(guard)

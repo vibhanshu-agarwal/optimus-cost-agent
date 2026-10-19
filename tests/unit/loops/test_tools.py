@@ -263,6 +263,26 @@ def test_read_file_range_blocks_an_ordinary_alias_into_the_runtime_tree(tmp_path
     assert exc.value.result.rule_id == "path.runtime.read"
 
 
+def test_read_file_range_blocks_an_ordinary_file_symlink_into_the_runtime_tree(tmp_path, monkeypatch):
+    sentinel = _runtime_sentinel(tmp_path)
+    link = tmp_path / "src" / "link.ndjson"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        link.symlink_to(sentinel)  # READ v3 §6 A5: a file symlink, on POSIX or Windows with the privilege
+    except OSError as exc:
+        pytest.skip(f"file symlink unavailable: {exc}")
+    tools = executor(tmp_path)
+    opened: list[Path] = []
+    original_read_bytes = Path.read_bytes
+    monkeypatch.setattr(Path, "read_bytes", lambda self: opened.append(self) or original_read_bytes(self))
+
+    with pytest.raises(LoopToolBlocked) as exc:
+        _read_range(tools, tmp_path, path="src/link.ndjson", start_byte=0, end_byte=7)
+
+    assert exc.value.result.rule_id == "path.runtime.read"
+    assert opened == []
+
+
 def test_read_file_range_denies_an_unresolvable_target_through_the_guard(tmp_path, monkeypatch):
     target = tmp_path / "src" / "unresolvable.py"
     target.parent.mkdir(parents=True)
