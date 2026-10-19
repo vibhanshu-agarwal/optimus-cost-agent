@@ -9,6 +9,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from time import monotonic
 from typing import Any, Literal, Protocol
 
 from optimus.acp.shapes import build_client_mcp_permission_params
@@ -342,7 +343,8 @@ class ClientMcpDisposition:
                 identity_fingerprint=lease.identity_fingerprint,
                 elapsed_seconds=elapsed_seconds,
             )
-        except ClientMcpCatalogError:
+        except ClientMcpCatalogError as exc:
+            state.tool_service._record_resolution_failure(server_name, exc)
             return None
         authorizer = ClientMcpCallAuthorizer(
             catalog=catalog,
@@ -400,7 +402,9 @@ class ClientMcpDisposition:
         service: ClientMcpToolService | None = None
         try:
             connection = sdk_adapter.open(capability, session_id=state.session_id)
+            started = monotonic()
             raw_tools = sdk_adapter.discover(connection)
+            elapsed_seconds = monotonic() - started
             service_factory = service_factory_builder(sdk_adapter, connection)
             service = self.materialize_tool_service(
                 state,
@@ -408,6 +412,7 @@ class ClientMcpDisposition:
                 raw_tools=raw_tools,
                 workspace_root=workspace_root,
                 service_factory=service_factory,
+                elapsed_seconds=elapsed_seconds,
             )
             if service is None:
                 raise ClientMcpCatalogError("SERVICE_UNAVAILABLE")
@@ -422,7 +427,8 @@ class ClientMcpDisposition:
                 state.tool_service.unregister(service)
                 return None
             return service
-        except Exception:
+        except Exception as exc:
+            state.tool_service._record_resolution_failure(server, exc)
             if service is not None:
                 state.tool_service.unregister(service)
             if connection is not None:

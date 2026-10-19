@@ -1314,6 +1314,8 @@ def _client_mcp_runtime_for_tests(
 
 
 def _test_sdk_adapter(supervisor, *, operations=None, process_control=None, catalog_pages=None):
+    from mcp.types import CallToolResult, ListToolsResult, TextContent
+
     from optimus.mcp.client_sdk import ClientMcpSdkAdapter
 
     class _NoopProcessControl:
@@ -1330,10 +1332,10 @@ def _test_sdk_adapter(supervisor, *, operations=None, process_control=None, cata
                 server_info=SimpleNamespace(name="tools", description=""),
             )
 
-        async def list_tools(self):
+        async def list_tools(self, *, params=None):
             if operations is not None:
                 operations.append("discover")
-            return catalog_pages or [
+            pages = catalog_pages or [
                 {
                     "tools": [
                         {
@@ -1344,11 +1346,16 @@ def _test_sdk_adapter(supervisor, *, operations=None, process_control=None, cata
                     ]
                 }
             ]
+            index = int(params.cursor) if params and params.cursor else 0
+            page = dict(pages[index])
+            if index + 1 < len(pages):
+                page["nextCursor"] = str(index + 1)
+            return ListToolsResult.model_validate(page)
 
         async def call_tool(self, name, arguments):
             if operations is not None:
                 operations.append(("call", name, arguments))
-            return {"content": [{"type": "text", "text": "controlled remote result"}]}
+            return CallToolResult(content=[TextContent(type="text", text="controlled remote result")])
 
     return ClientMcpSdkAdapter(
         supervisor=supervisor,

@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from mcp.types import CallToolResult, ListToolsResult, TextContent
 
 from optimus.acp.launch_approvals import KeyringApprovalStore
 from optimus.acp.shapes import build_client_mcp_permission_params
@@ -184,16 +185,22 @@ class _ControlledRemoteSession:
             server_info=SimpleNamespace(name=self.server_name, description=""),
         )
 
-    async def list_tools(self) -> list[dict[str, object]]:
+    async def list_tools(self, *, params: Any = None) -> Any:
         self.operations.append(f"discover:{self.server_name}")
         if self.discover_error:
             raise RuntimeError("controlled remote discovery failure")
-        return self.pages
+        index = int(params.cursor) if params and params.cursor else 0
+        page = dict(self.pages[index])
+        if "tools" not in page:
+            return page  # Deliberately malformed remote result.
+        if index + 1 < len(self.pages):
+            page["nextCursor"] = str(index + 1)
+        return ListToolsResult.model_validate(page)
 
-    async def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, object]:
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> CallToolResult:
         del arguments
         self.operations.append(f"call:{self.server_name}:{name}")
-        return {"content": [{"type": "text", "text": "remote result must stay hidden"}]}
+        return CallToolResult(content=[TextContent(type="text", text="remote result must stay hidden")])
 
 
 @dataclass
@@ -774,17 +781,20 @@ async def test_lazy_failure_closes_opened_connection_and_registers_nothing(
     disp.attach_runtime_resolver(state, sdk_adapter=adapter)
 
     listed, call = state.tool_service.list_tools("tools")
-    assert listed.text == "unavailable:unknown_server"
+    code = "DISCOVERY_FAILED" if discover_error else (
+        "CATALOG_BUDGET_EXCEEDED" if len(pages) > MAX_CATALOG_PAGES else "CATALOG_MALFORMED_PAGE"
+    )
+    assert listed.text == f"unavailable:{code}"
     assert call.authorization_outcome == "BLOCK"
-    assert operations == ["open:tools", "discover:tools"]
+    assert operations == ["open:tools"] + ["discover:tools"] * min(len(pages), MAX_CATALOG_PAGES)
     assert process_control.closes == 1
     assert adapter._connections == {}
     assert state.tool_service._lookup("tools") is None
 
     repeated, repeated_call = state.tool_service.list_tools("tools")
-    assert repeated.text == "unavailable:unknown_server"
+    assert repeated.text == listed.text
     assert repeated_call.authorization_outcome == "BLOCK"
-    assert operations == ["open:tools", "discover:tools"]
+    assert operations == ["open:tools"] + ["discover:tools"] * min(len(pages), MAX_CATALOG_PAGES)
     assert process_control.closes == 1
 
 
@@ -813,7 +823,7 @@ async def test_identity_mismatch_closes_opened_connection_and_registers_nothing(
     disp.attach_runtime_resolver(state, sdk_adapter=adapter)
 
     listed, call = state.tool_service.list_tools("tools")
-    assert listed.text == "unavailable:unknown_server"
+    assert listed.text == "unavailable:SERVICE_UNAVAILABLE"
     assert call.authorization_outcome == "BLOCK"
     assert operations == ["open:tools", "discover:tools"]
     assert process_control.closes == 1
@@ -853,7 +863,7 @@ async def test_factory_exception_closes_opened_connection_and_registers_nothing(
     )
 
     listed, call = state.tool_service.list_tools("tools")
-    assert listed.text == "unavailable:unknown_server"
+    assert listed.text == "unavailable:DISCOVERY_FAILED"
     assert call.authorization_outcome == "BLOCK"
     assert operations == ["open:tools", "discover:tools"]
     assert process_control.closes == 1
@@ -993,7 +1003,7 @@ async def test_unavailable_and_budget_failure_register_nothing(tmp_path: Path) -
         service_factory=_recording_service_factory,
     )
     listed, call = leased.tool_service.list_tools("tools")
-    assert listed.text == "unavailable:unknown_server"
+    assert listed.text == "unavailable:CATALOG_BUDGET_EXCEEDED"
     assert call.authorization_outcome == "BLOCK"
     assert leased_probe.open_calls == 0
 
@@ -1274,3 +1284,114 @@ def test_pending_supervisor_then_dead_completes() -> None:
     second = runtime.close()
     assert second.supervisor_state is MCPSupervisorState.DEAD
     assert second.complete is True
+
+
+@pytest.mark.parametrize("page_count", [1, 2])
+def test_real_client_session_resolves_all_pages(
+    tmp_path: Path, sdk_supervisor: MCPAsyncSupervisor, page_count: int,
+) -> None:
+    """A real ListToolsResult must reach a usable, complete identity-bound catalog."""
+    from mcp import Client, ClientSession
+    from mcp.server import Server
+    from mcp.types import ListToolsResult, Tool
+
+    cursors: list[str | None] = []
+
+    async def list_tools(_ctx: Any, params: Any) -> ListToolsResult:
+        cursor = params.cursor if params else None
+        cursors.append(cursor)
+        assert cursor in (None, "next-page")
+        index = 1 if cursor is None else 2
+        return ListToolsResult(
+            tools=[Tool(name=f"lookup_{index}", description="Safe lookup.", inputSchema={"type": "object"})],
+            nextCursor="next-page" if page_count == 2 and index == 1 else None,
+        )
+
+    async def scenario() -> None:
+        server = Server("real-test", on_list_tools=list_tools)
+        async with Client(server, mode="legacy") as client:
+            assert isinstance(client.session, ClientSession)
+            adapter = ClientMcpSdkAdapter(
+                supervisor=sdk_supervisor,
+                session_factory=lambda _cap: client.session,
+                http_client_factory=lambda: SimpleNamespace(follow_redirects=False, trust_env=False),
+                stdio_transport_factory=lambda _cap: None,
+                process_control=_ControlledProcessControl(),
+            )
+            disp = _disposition(tmp_path)
+            state = await disp.disposition_for_new_session("real-session", tmp_path, [_http_entry()], _allow)
+            disp.attach_runtime_resolver(state, sdk_adapter=adapter)
+            try:
+                listed, audit = await asyncio.to_thread(state.tool_service.list_tools, "tools")
+                assert audit.authorization_outcome == "ALLOW", listed.text
+                assert {t["name"] for t in json.loads(listed.text)["tools"]} == (
+                    {"lookup_1"} if page_count == 1 else {"lookup_1", "lookup_2"}
+                )
+                service = state.tool_service._lookup("tools")
+                catalog = object.__getattribute__(service, "_catalog")
+                assert catalog.tools[0].input_schema == {"type": "object"}
+                assert cursors == ([None] if page_count == 1 else [None, "next-page"])
+                repeated, _ = await asyncio.to_thread(state.tool_service.list_tools, "tools")
+                assert repeated.text == listed.text
+                assert len(cursors) == page_count
+            finally:
+                await asyncio.to_thread(state.close)
+
+    sdk_supervisor.submit(scenario(), timeout_seconds=20)
+
+
+@pytest.mark.asyncio
+async def test_discovery_elapsed_reaches_catalog_and_is_visible(
+    tmp_path: Path, sdk_supervisor: MCPAsyncSupervisor, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dropping measured elapsed would admit a completed over-budget discovery."""
+    import optimus.mcp.client_disposition as module
+
+    ticks = iter([100.0, 131.0])
+    monkeypatch.setattr(module, "monotonic", lambda: next(ticks), raising=False)
+    adapter = _actual_sdk_adapter(sdk_supervisor, operations=[])
+    adapter._operation_timeout_seconds = 60.0
+    disp = _disposition(tmp_path)
+    state = await disp.disposition_for_new_session("elapsed", tmp_path, [_http_entry()], _allow)
+    disp.attach_runtime_resolver(state, sdk_adapter=adapter)
+    listed, audit = state.tool_service.list_tools("tools")
+    assert listed.text == "unavailable:CATALOG_BUDGET_EXCEEDED"
+    assert audit.authorization_outcome == "BLOCK"
+    assert adapter._connections == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_kind", ["sdk-code", "catalog-code", "unknown-code", "untyped-code"])
+async def test_discovery_failure_exposes_only_allowlisted_typed_codes(
+    tmp_path: Path, sdk_supervisor: MCPAsyncSupervisor, monkeypatch: pytest.MonkeyPatch, error_kind: str,
+) -> None:
+    """Raw remote messages and forged error codes must not reach list output."""
+    from optimus.mcp.client_catalog import ClientMcpCatalogError
+    from optimus.mcp.client_sdk import ClientMcpSdkError
+
+    remote_marker = "remote-sensitive-marker"
+    errors = {
+        "sdk-code": ClientMcpSdkError("OPERATION_TIMEOUT"),
+        "catalog-code": ClientMcpCatalogError("CATALOG_CURSOR_LOOP"),
+        "unknown-code": ClientMcpSdkError(remote_marker),
+        "untyped-code": RuntimeError(remote_marker),
+    }
+    errors["untyped-code"].code = "OPERATION_TIMEOUT"
+    adapter = _actual_sdk_adapter(sdk_supervisor, operations=[])
+    def fail(_connection: object) -> Any:
+        raise errors[error_kind]
+    monkeypatch.setattr(adapter, "discover", fail)
+    disp = _disposition(tmp_path)
+    state = await disp.disposition_for_new_session("failure", tmp_path, [_http_entry()], _allow)
+    disp.attach_runtime_resolver(state, sdk_adapter=adapter)
+    listed, audit = state.tool_service.list_tools("tools")
+    expected = {"sdk-code": "OPERATION_TIMEOUT", "catalog-code": "CATALOG_CURSOR_LOOP"}.get(error_kind, "DISCOVERY_FAILED")
+    assert listed.text == f"unavailable:{expected}"
+    assert remote_marker not in repr((listed, audit))
+    assert audit.authorization_outcome == "BLOCK"
+    assert adapter._connections == {}
+    unknown, _ = state.tool_service.list_tools("unknown")
+    assert unknown.text == "unavailable:unknown_server"
+    # v2 intentionally changes list discovery diagnostics only; call delivery is out of scope.
+    called, _ = state.tool_service.call_tool("tools", "lookup", {})
+    assert called.text == "unavailable:unknown_server"

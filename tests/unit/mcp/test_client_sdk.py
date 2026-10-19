@@ -13,11 +13,15 @@ from typing import Any
 
 import pytest
 from mcp.types import (
+    CallToolResult,
     Implementation,
     InitializeResult,
+    ListToolsResult,
     PromptsCapability,
     ResourcesCapability,
     ServerCapabilities,
+    TextContent,
+    Tool,
 )
 
 from optimus.guardrails.prompt_injection import ConfigTrustScanner, TrustScanSubject
@@ -104,12 +108,12 @@ class FakeSession:
         await asyncio.sleep(0)
         return self.initialize_result
 
-    async def list_tools(self) -> list[dict[str, Any]]:
-        self.calls.append(("list_tools", None))
+    async def list_tools(self, *, params: Any = None) -> ListToolsResult:
+        self.calls.append(("list_tools", params))
         await asyncio.sleep(0)
-        return [{"name": "search", "description": "Search", "inputSchema": {"type": "object"}}]
+        return ListToolsResult(tools=[Tool(name="search", description="Search", inputSchema={"type": "object"})])
 
-    async def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> CallToolResult:
         with self._lock:
             self.active_calls += 1
             self.max_observed_concurrency = max(self.max_observed_concurrency, self.active_calls)
@@ -117,7 +121,7 @@ class FakeSession:
         try:
             self.call_gate.wait(timeout=1.0)
             await asyncio.sleep(0.05)
-            return {"content": [{"type": "text", "text": "ok"}]}
+            return CallToolResult(content=[TextContent(type="text", text="ok")])
         finally:
             with self._lock:
                 self.active_calls -= 1
@@ -638,9 +642,9 @@ def _timeout_adapter(supervisor: MCPAsyncSupervisor, *, session: FakeSession | N
 def test_discover_over_budget_is_operation_timeout(supervisor: MCPAsyncSupervisor) -> None:
     session = FakeSession()
 
-    async def _slow_list_tools() -> list[dict[str, Any]]:
+    async def _slow_list_tools(*, params: Any = None) -> ListToolsResult:
         await asyncio.sleep(2.0)
-        return []
+        return ListToolsResult(tools=[])
 
     session.list_tools = _slow_list_tools  # type: ignore[method-assign]
     adapter = _timeout_adapter(supervisor, session=session)
@@ -653,9 +657,9 @@ def test_discover_over_budget_is_operation_timeout(supervisor: MCPAsyncSuperviso
 def test_call_over_budget_is_operation_timeout(supervisor: MCPAsyncSupervisor) -> None:
     session = FakeSession()
 
-    async def _slow_call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def _slow_call(name: str, arguments: dict[str, Any]) -> CallToolResult:
         await asyncio.sleep(2.0)
-        return {"content": []}
+        return CallToolResult(content=[])
 
     session.call_tool = _slow_call  # type: ignore[method-assign]
     adapter = _timeout_adapter(supervisor, session=session)
@@ -728,3 +732,107 @@ async def test_sse_sdk_factory_accepts_optional_arguments_and_returns_same_clien
         assert client.closed == 0
     assert allocated == [client]
     assert client.closed == 1
+
+
+@pytest.mark.parametrize("case", ["two-pages", "loop", "overflow", "unexpected", "input-required", "slow-next", "cancel"])
+def test_discovery_real_models_and_bounds(supervisor: MCPAsyncSupervisor, case: str) -> None:
+    """Dropping normalization, pagination or a bound must break a caller-visible contract."""
+    from mcp.types import InputRequiredResult, ListToolsResult, Tool
+
+    from optimus.mcp.client_catalog import MAX_CATALOG_PAGES, ClientMcpCatalogError
+
+    class Session(FakeSession):
+        cursors: list[str | None] = []
+        cancelled = threading.Event()
+
+        async def list_tools(self, *, params: Any = None) -> Any:
+            cursor = params.cursor if params else None
+            self.cursors.append(cursor)
+            if case == "unexpected":
+                return {"tools": []}
+            if case == "input-required":
+                return InputRequiredResult(requestState="pending")
+            if case == "cancel":
+                raise asyncio.CancelledError
+            if case == "slow-next" and cursor is not None:
+                try:
+                    await asyncio.sleep(10)
+                finally:
+                    self.cancelled.set()
+            next_cursor = None
+            if case == "overflow":
+                next_cursor = str(len(self.cursors))
+            elif case == "loop" or cursor is None:
+                next_cursor = "next"
+            return ListToolsResult(
+                tools=[Tool(name=f"lookup_{len(self.cursors)}", inputSchema={"type": "object"})],
+                nextCursor=next_cursor,
+            )
+
+    session = Session()
+    adapter = _adapter(supervisor, session=session)
+    connection = adapter.open(_capability(), session_id="bounds")
+    if case == "slow-next":
+        adapter._operation_timeout_seconds = 0.5
+    try:
+        if case == "two-pages":
+            pages = adapter.discover(connection)
+            assert len(pages) == 2
+            assert pages[0]["tools"][0]["inputSchema"] == {"type": "object"}
+            assert pages[0]["nextCursor"] == "next"
+            assert "nextCursor" not in pages[1]
+            assert session.cursors == [None, "next"]
+        elif case == "cancel":
+            from optimus.mcp.client_supervisor import MCPSupervisorError
+            with pytest.raises(MCPSupervisorError) as error:
+                adapter.discover(connection)
+            assert error.value.code == "SUPERVISOR_SHUTDOWN"
+        elif case == "slow-next":
+            with pytest.raises(ClientMcpSdkError) as error:
+                adapter.discover(connection)
+            assert error.value.code == "OPERATION_TIMEOUT"
+            assert session.cancelled.wait(2)
+            assert session.cursors == [None, "next"]
+        else:
+            with pytest.raises(ClientMcpCatalogError) as error:
+                adapter.discover(connection)
+            assert error.value.code == {
+                "loop": "CATALOG_CURSOR_LOOP", "overflow": "CATALOG_BUDGET_EXCEEDED",
+                "unexpected": "CATALOG_MALFORMED_PAGE", "input-required": "CATALOG_MALFORMED_PAGE",
+            }[case]
+            if case == "overflow":
+                assert len(session.cursors) == MAX_CATALOG_PAGES
+    finally:
+        adapter.close(connection)
+
+
+def test_catalog_sdk_imports_are_clean_in_either_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A module-level reverse import must fail on freshly executed SDK/catalog modules."""
+    import importlib
+    import sys
+
+    import optimus.mcp as package
+
+    names = ("client_sdk", "client_catalog")
+    originals = {name: importlib.import_module(f"optimus.mcp.{name}") for name in names}
+    targets = {f"optimus.mcp.{name}" for name in names}
+    for order in (names, names[::-1]):
+        before = set(sys.modules)
+        # Only these two modules are re-executed. Preserve all original module and
+        # package bindings even if import fails; no child interpreter is launched.
+        with monkeypatch.context() as cache:
+            for name in names:
+                cache.delitem(sys.modules, f"optimus.mcp.{name}", raising=False)
+                cache.delattr(package, name, raising=False)
+            try:
+                for name in order:
+                    importlib.import_module(f"optimus.mcp.{name}")
+            finally:
+                for key in (set(sys.modules) - before) | targets:
+                    sys.modules.pop(key, None)
+                for name in names:
+                    if name in vars(package):
+                        delattr(package, name)
+        for name in names:
+            assert sys.modules[f"optimus.mcp.{name}"] is originals[name]
+            assert getattr(package, name) is originals[name]
