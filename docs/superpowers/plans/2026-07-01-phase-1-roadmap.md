@@ -1185,9 +1185,10 @@ expectation.
 **2026-09-29 operator direction:** Plan 12 work started in parallel ahead of the v1.0 gate described
 above. This does not make any Plan 12 item a v1.0 requirement. The Plan/Chat advisory-answer
 residual (`P12-FU-1`) was ruled out of v1.0 and carried into Plan 12. It and its separately owned
-non-AGENT conversation dependency (`P11.25-FU-1`) are scheduled first in
-[Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md), on a separate branch
-from `main`, not in the Optimus sandbox. Plan 12.2 was subsequently filed and Package A locally
+non-AGENT conversation dependency (`P11.25-FU-1`) were delivered by
+[Plan 12.1](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md), on a separate
+branch from `main`, not in the Optimus sandbox (PR #212). Plan 12.1 and both records were closed as
+completed on 2026-10-20 (#238, #246, #247). Plan 12.2 was subsequently filed and Package A locally
 accepted; the sandbox retains its reported effect-producer gap until separately synchronized.
 Plan 12's live status is in [#235](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/235) (the pool's `Plan 12` row is a `Moved` pointer to it); ADR-016 records the four-checkpoint cadence.
 
