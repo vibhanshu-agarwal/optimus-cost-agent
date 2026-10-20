@@ -20,6 +20,7 @@ from optimus.mcp.client_supervisor import (
 
 if TYPE_CHECKING:
     import httpx2
+    from mcp.types import CallToolResult, InputRequiredResult, Result
 
 
 _SUPPORTED_PROTOCOL_VERSIONS = frozenset({"2024-11-05", "2025-03-26", "2025-11-25", "2026-07-28"})
@@ -137,7 +138,9 @@ class ClientMcpSdkAdapter:
     def discover(self, connection: ClientMcpConnection) -> list[dict[str, Any]]:
         return self._submit_operation(self._discover_async(connection))
 
-    def call(self, connection: ClientMcpConnection, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    def call(
+        self, connection: ClientMcpConnection, tool: str, arguments: dict[str, Any]
+    ) -> CallToolResult | InputRequiredResult | Result:
         return self._submit_operation(self._call_async(connection, tool, arguments))
 
     def close(self, connection: ClientMcpConnection) -> None:
@@ -320,18 +323,45 @@ class ClientMcpSdkAdapter:
             self._process_control.terminate_tree(seam=seam)
 
     async def _discover_async(self, connection: ClientMcpConnection) -> list[dict[str, Any]]:
+        from mcp.types import ListToolsResult, PaginatedRequestParams
+
+        # Catalog imports this adapter; defer the reverse import until discovery.
+        from optimus.mcp.client_catalog import MAX_CATALOG_PAGES, ClientMcpCatalogError
+
         async with connection.call_lock:
-            try:
-                return await asyncio.wait_for(
-                    connection.session.list_tools(),
-                    timeout=self._operation_timeout_seconds,
-                )
-            except TimeoutError as exc:
-                raise ClientMcpSdkError("OPERATION_TIMEOUT") from exc
+            pages: list[dict[str, Any]] = []
+            seen_cursors: set[str] = set()
+            cursor: str | None = None
+            while len(pages) < MAX_CATALOG_PAGES:
+                try:
+                    result = await asyncio.wait_for(
+                        connection.session.list_tools(
+                            params=PaginatedRequestParams(cursor=cursor) if cursor else None
+                        ),
+                        timeout=self._operation_timeout_seconds,
+                    )
+                except TimeoutError as exc:
+                    raise ClientMcpSdkError("OPERATION_TIMEOUT") from exc
+                if not isinstance(result, ListToolsResult):
+                    raise ClientMcpCatalogError("CATALOG_MALFORMED_PAGE")
+                try:
+                    page = result.model_dump(mode="json", by_alias=True, exclude_none=True)
+                except Exception as exc:
+                    raise ClientMcpCatalogError("CATALOG_MALFORMED_PAGE") from exc
+                pages.append(page)
+                cursor = page.get("nextCursor")
+                if cursor is None or cursor == "":
+                    return pages
+                if not isinstance(cursor, str):
+                    raise ClientMcpCatalogError("CATALOG_MALFORMED_PAGE")
+                if cursor in seen_cursors:
+                    raise ClientMcpCatalogError("CATALOG_CURSOR_LOOP")
+                seen_cursors.add(cursor)
+            raise ClientMcpCatalogError("CATALOG_BUDGET_EXCEEDED")
 
     async def _call_async(
         self, connection: ClientMcpConnection, tool: str, arguments: dict[str, Any]
-    ) -> dict[str, Any]:
+    ) -> CallToolResult | InputRequiredResult | Result:
         async with connection.call_lock:
             try:
                 return await asyncio.wait_for(
