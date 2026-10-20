@@ -236,10 +236,11 @@ def test_hardening_masterplan_owns_exactly_fifteen_child_plan_statuses() -> None
     assert len({row["track"] for row in rows}) == 15
     assert len({row["filename"] for row in rows}) == 15
     active_rows = [row for row in rows if row["status"] == "Active"]
-    assert {row["track"] for row in active_rows} == {
-        "HARDENING-TRACK-CI-GUARDRAILS", "HARDENING-TRACK-STATIC-TYPING",
-    }
+    assert {row["track"] for row in active_rows} == {"HARDENING-TRACK-CI-GUARDRAILS"}
     assert all(row["link_target"] == row["filename"] for row in active_rows)
+    complete_rows = [row for row in rows if row["status"] == "Complete"]
+    assert {row["track"] for row in complete_rows} == {"HARDENING-TRACK-STATIC-TYPING"}
+    assert all(row["link_target"] == f"archive/{row['filename']}" for row in complete_rows)
     not_drafted_rows = [row for row in rows if row["status"] == "Not drafted"]
     assert len(not_drafted_rows) == 13
     assert all(row["link_target"] is None for row in not_drafted_rows)
