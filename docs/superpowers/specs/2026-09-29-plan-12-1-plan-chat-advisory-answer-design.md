@@ -8,7 +8,7 @@
 
 **Backlog scope:** `P12-FU-1` (advisory answering) and its separately owned dependency `P11.25-FU-1` (non-AGENT conversation carriage).
 
-**Implementation contract:** [Plan 12.1 implementation plan](../plans/2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md).
+**Implementation contract:** [Plan 12.1 implementation plan](../plans/archive/2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md).
 
 ## Decision and boundary
 

@@ -66,12 +66,12 @@ This table is the sole list of implementation plans that remain live at
 `Blocked` means the obligation remains live but its next gate is unsatisfied. A blocked plan stays
 at the root. Terminal and superseded plans live in the flat `archive/` directory and never appear
 in this table. A `Moved` row keeps its plan listed here; its state and next gate are in the linked issue.
+When a `Moved` plan's issue records a terminal state, the plan moves to `archive/` and its row moves,
+unchanged, to [Archived moved plans](#archived-moved-plans).
 
 | Plan | State | Backlog owner | Next gate |
 |---|---|---|---|
-| [Plan 11.29 — GitHub Issues migration and live status view](2026-10-04-plan-11-29-github-issues-migration.md) | Moved | — | [#236](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/236) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L58-L58) |
 | [Plan 12.2 — Context Engine](2026-10-01-plan-12-2-context-engine-implementation_v4.md) | Moved | — | [#237](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/237) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L59-L59) |
-| [Plan 12.1 — Plan/Chat advisory answer](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | Moved | — | [#238](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/238) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L60-L60) |
 | [Local-hook UTF-8 decoding repair](2026-09-06-local-hook-utf8-repair.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Local delivery at `c9745898` is independently accepted and published to PR #196 with both first-execution checks passed. The operator authorized documentation review and normal merge conditional on the final head passing required checks; PR #196 records the result. Retained under transitional custody pending separate archival disposition; no further implementation or inherited budget is released. Preserve baseline identities, frozen documents and CI scope. |
 | [Plan 11.27 v12 — integrate accepted correction and deliver locally](2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v12.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Delivery and publication complete: local integration `2bd316bc`, merged via PR #195 at `32f32ef4`, with independent local/CI acceptance and restored protection. Retained at the root under transitional custody; the remaining gate is the separate archival/custody disposition. No further v12 execution or inherited budget is available. Scanner decoding repair remains with the backlog owner. |
 | [Plan 11.28 — Parallel local test context](2026-10-02-plan-11-28-parallel-local-test-context-implementation.md) | Moved | — | [#239](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/239) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L63-L63) |
@@ -295,6 +295,17 @@ Task 0, formal evidence, release, push, merge, backlog closure, and Plan 11.7 cl
 The docs-only runtime-branch record at `d18fd93` is not imported by this directory-cleanup change.
 Any publication of those facts as the Plan 11.7 execution contract must be one complete reviewed
 `_v4` successor, never another separately named amendment plan.
+
+## Archived moved plans
+
+`Moved` plans whose issues record a terminal state. Each plan is in the flat `archive/` directory.
+Each row is its migration pointer, kept byte for byte, so its plan link still names the file at the
+plans root (the archive-aware link check resolves it there) and its issue owns the record.
+
+| Plan | State | Backlog owner | Next gate |
+|---|---|---|---|
+| [Plan 11.29 — GitHub Issues migration and live status view](2026-10-04-plan-11-29-github-issues-migration.md) | Moved | — | [#236](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/236) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L58-L58) |
+| [Plan 12.1 — Plan/Chat advisory answer](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | Moved | — | [#238](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/238) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L60-L60) |
 
 ## Frozen approval bytes and live-status authority
 
@@ -650,7 +661,7 @@ Do not reconcile those historical files by changing their status lines or checkb
 
 ## Work tracking maintenance (Plan 11.29 residuals)
 
-The two entries below are mechanisms that [Plan 11.29](2026-10-04-plan-11-29-github-issues-migration.md) specified and that the bounded
+The two entries below are mechanisms that [Plan 11.29](archive/2026-10-04-plan-11-29-github-issues-migration.md) specified and that the bounded
 49-record cutover ([ADR-021](../../decisions/ADR-021-bounded-github-authority-switch.md)) did not deliver. Plan 11.29 is their origin.
 Their continuing owner is the roadmap entry "Work tracking maintenance (Tracked, Not Yet Scheduled)" in the
 [Phase 1 roadmap](2026-07-01-phase-1-roadmap.md); no implementation plan exists for either, and each is tracked in its issue ([#290](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/290) and
