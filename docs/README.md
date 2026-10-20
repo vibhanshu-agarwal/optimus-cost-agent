@@ -85,15 +85,12 @@ Status, priority and ownership live in the record's GitHub issue; the transition
 | [Plan 11 v1.0 milestone charter](superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md) | What v1.0 must contain |
 | [Hardening masterplan](superpowers/plans/hardening-runtime-quality-masterplan.md) | The 15 hardening tracks and their status |
 | [Hardening: CI guardrail truthfulness](superpowers/plans/hardening-ci-guardrail-truthfulness-implementation.md) | CI guardrail enforcement contract |
-| [Hardening: source typing](superpowers/plans/hardening-static-type-checking-implementation_v4.md) | All-source Mypy gate, exception ratchet and complete44-module cohort; custody in #329 |
 
 Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
 | [Plan 12.2: Context Engine (v4)](superpowers/plans/2026-10-01-plan-12-2-context-engine-implementation_v4.md) | Complete v4 with the CP4 offline closure; offline batch accepted at cf9bb9d, full CP4 open; earlier editions are in `archive/` |
-| [Plan 12.1: Plan/Chat advisory answers](superpowers/plans/2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | Selectable read-only Chat with conversation carriage |
-| [Plan 11.29: GitHub Issues migration](superpowers/plans/2026-10-04-plan-11-29-github-issues-migration.md) | Open work moves to GitHub Issues, shown in a live status page |
 | [Plan 11.7 v3: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | Resume an ACP session in Zed |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |
 | [Plan 11.24 v6: guided session-load probe](superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md) | Probe of Zed's `session/load` |

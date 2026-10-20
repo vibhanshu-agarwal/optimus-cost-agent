@@ -230,6 +230,7 @@ EXPECTED_SETTLED_STATUSES = {
 }
 EXPECTED_POOL_TABLE_IDENTITIES = (
     ("Live implementation plan registry", 0),
+    ("Archived moved plans", 0),
     ("Feature slices", 0),
     ("Plan 11.26 reviewed disposition and remediation custody", 0),
     ("Plan 11.26 Task 13 reviewed duplication disposition", 0),
@@ -2157,9 +2158,63 @@ def _promoted_tokens(pool_text: str) -> tuple[str, ...]:
     )
 
 
+def _promoted_plan_file(target_path: str, *, pool_dir: Path, plans_root: Path) -> Path | None:
+    """The plan file a promoted target names, at the plans root or, once archived, in its flat archive/.
+
+    The target must name a file directly in the plans root or its archive/, and the match must be a file there:
+    a directory, a missing file or anything outside those two folders resolves to nothing.
+    """
+    root = plans_root.resolve()
+    archive = root / "archive"
+    requested = (pool_dir / target_path).resolve()
+    if requested.parent not in {root, archive}:
+        return None
+    for candidate in (root / requested.name, archive / requested.name):
+        actual = candidate.resolve()  # follow any link: where the content really is must also be in those two folders
+        if actual.parent in {root, archive} and actual.is_file():
+            return actual
+    return None
+
+
+def test_promoted_plan_file_accepts_root_and_archived_files_only(tmp_path: Path) -> None:
+    plans = tmp_path / "plans"
+    (plans / "archive" / "nested").mkdir(parents=True)
+    (plans / "live.md").write_text("live", encoding="utf-8")
+    (plans / "archive" / "done.md").write_text("done", encoding="utf-8")
+    (tmp_path / "specs").mkdir()
+    (tmp_path / "specs" / "outside.md").write_text("outside", encoding="utf-8")
+
+    def resolve(target: str) -> Path | None:
+        return _promoted_plan_file(target, pool_dir=plans, plans_root=plans)
+
+    assert resolve("live.md") == (plans / "live.md").resolve()
+    assert resolve("done.md") == (plans / "archive" / "done.md").resolve()  # archived after the promotion was recorded
+    assert resolve("archive/done.md") == (plans / "archive" / "done.md").resolve()
+    assert resolve("archive") is None  # a directory, not a plan file
+    assert resolve("archive/nested") is None
+    assert resolve("missing.md") is None
+    assert resolve("../specs/outside.md") is None  # a file, but outside the plans folders
+    assert resolve("archive/nested/../../../specs/outside.md") is None
+
+
+def test_promoted_plan_file_rejects_an_archive_link_that_resolves_outside(tmp_path: Path) -> None:
+    plans = tmp_path / "plans"
+    (plans / "archive").mkdir(parents=True)
+    (tmp_path / "specs").mkdir()
+    outside = tmp_path / "specs" / "outside.md"
+    outside.write_text("outside", encoding="utf-8")
+    try:
+        (plans / "archive" / "linked.md").symlink_to(outside)
+    except OSError as error:  # Windows without symlink privilege; CI's Linux runner always creates it
+        pytest.skip(f"cannot create a symlink here: {error}")
+
+    assert _promoted_plan_file("linked.md", pool_dir=plans, plans_root=plans) is None
+    assert _promoted_plan_file("archive/linked.md", pool_dir=plans, plans_root=plans) is None
+
+
 def test_promoted_targets_resolve_inside_plan_directory() -> None:
     # Every promoted entry moved, so none is promoted in the pool now; one that appears must still resolve. The promotions
-    # recorded at the pinned base name plan files that must still exist.
+    # recorded at the pinned base name plan files that must still exist, at the plans root or, once archived, in archive/.
     promoted = (*_promoted_tokens(_read(OPTIMUS_POOL)), *_promoted_tokens(_pool_at_cutover_base()))
 
     assert _promoted_tokens(_pool_at_cutover_base())
@@ -2168,9 +2223,7 @@ def test_promoted_targets_resolve_inside_plan_directory() -> None:
         assert match is not None
         target = urlsplit(match.group("target"))
         assert not target.scheme and target.path
-        resolved = (OPTIMUS_POOL.parent / target.path).resolve()
-        assert resolved.is_relative_to(PLANS_ROOT.resolve())
-        assert resolved.is_file()
+        assert _promoted_plan_file(target.path, pool_dir=OPTIMUS_POOL.parent, plans_root=PLANS_ROOT) is not None, token
 
 
 def test_settled_entries_do_not_label_historical_defects_as_current() -> None:
