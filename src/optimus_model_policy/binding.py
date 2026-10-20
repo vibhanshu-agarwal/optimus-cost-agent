@@ -291,7 +291,7 @@ def _exact_keys(raw: Mapping[Any, Any], *, required: set[str], optional: set[str
         raise BindingError("BINDING_MALFORMED", f"missing {sorted(missing)}")
     unknown = keys - required - optional
     if unknown:
-        raise BindingError("BINDING_MALFORMED", f"unknown fields {sorted(map(str, unknown))}")
+        raise BindingError("BINDING_MALFORMED", f"unknown fields ({len(unknown)})")  # never the caller's names
 
 
 def _hex_digest(value: object, field: str) -> str:

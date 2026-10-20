@@ -21,7 +21,7 @@ from optimus.acp.conversation import (
     ConversationSanitizerInputs,
     ConversationState,
 )
-from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
+from optimus.acp.debug_trace import PROMPT_REFUSAL_REASONS, acp_debug_log, debug_trace_enabled, log_context_fault, log_prompt_refusal
 from optimus.acp.errors import (
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
@@ -1308,6 +1308,11 @@ class AcpDuplexAdapter:
         ownership_slot: ResponseOwnershipSlot | None,
     ) -> NonTurnResponseEnvelope:
         del conversation
+        # The fixed refusal reason persists (Codex round 13 finding 2): the operator line and the trace, never the prompt.
+        known = reason if reason in PROMPT_REFUSAL_REASONS else "unrecognized"
+        with contextlib.suppress(Exception):
+            print(f"optimus.acp: prompt refused session_id={session_id} reason={known}", file=sys.stderr)
+            log_prompt_refusal(session_id=session_id, request_id=request_id, reason=reason)
         full = reason in {"cap", "cap_closed", "reservation"}
         message = (
             CONTEXT_RESERVATION_TEXT
@@ -1620,11 +1625,13 @@ class AcpDuplexAdapter:
             return
         try:
             for fault in attached.take_faults():
+                ended = outcome or "repack_refused"
                 print(
                     f"optimus.acp: context fault run_id={turn.run_id} phase={fault.phase} "
-                    f"category={fault.category} outcome={outcome or 'repack_refused'}",
+                    f"category={fault.category} detail={fault.detail or 'none'} outcome={ended}",
                     file=sys.stderr,
                 )
+                log_context_fault(run_id=turn.run_id, phase=fault.phase, category=fault.category, detail=fault.detail, outcome=ended)
         except Exception:  # noqa: BLE001 - a diagnostic never fails the turn
             return
 

@@ -30,6 +30,7 @@ from optimus_model_policy.binding import (
     RouteBinding,
 )
 from optimus_model_policy.stage_c import Admission, StageCRefusal, reservation_usd
+from optimus_security.failure_facts import final_sanitize, slug
 from optimus_security.sanitization import sanitize_for_persistence
 
 
@@ -164,7 +165,7 @@ def _run_enforced_completion(
         except UpstreamAttemptFailure as failure:
             if admission is not None and guard is not None:  # an admission exists only from a guard
                 guard.settle_unbilled(admission, failure.outcome)  # an outcome not proven unbilled is unknown
-            attempts.append(_attempt_record(number, attempt_id, failure.outcome, http_status=failure.http_status))
+            attempts.append(_attempt_record(number, attempt_id, failure.outcome, http_status=failure.http_status, failure=failure.failure))
             if failure.recoverable and number < MAX_ROUTE_ATTEMPTS:
                 _sleep(_RECOVERY_DELAY_SECONDS)
                 continue
@@ -181,10 +182,19 @@ def _run_enforced_completion(
     gateway_usage.update(route_request_id=admitted.request_id, attempt=number)
     try:
         assert_gateway_usage_contract(gateway_usage)
-    except ValueError:
+    except ValueError as exc:
         if admission is not None and guard is not None:
             guard.settle_unknown(admission, "usage unverifiable")
-        attempts.append(_attempt_record(number, attempt_id, ATTEMPT_UNCERTAIN))
+        attempts.append(
+            _attempt_record(
+                number,
+                attempt_id,
+                ATTEMPT_UNCERTAIN,
+                provider_request_id=provider_result.message_id,
+                router_pipeline=provider_result.router_pipeline,
+                failure={"kind": "usage_contract", "reason": slug(str(exc))},
+            )
+        )
         _stop_experimental_route(policy, admitted, "UPSTREAM_ATTEMPT_UNCERTAIN")
         return 502, {"error": "upstream usage could not be verified", "code": "UPSTREAM_ATTEMPT_UNCERTAIN", **correlation}
     if admission is not None and guard is not None:
@@ -237,9 +247,11 @@ def _attempt_record(
     http_status: int | None = None,
     provider_request_id: str | None = None,
     router_pipeline: tuple[str, ...] | None = None,
+    failure: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """``router_pipeline``: the stage types the router reported for a completed attempt (empty when none ran,
-    None without router metadata), so a refusal on them stays diagnosable."""
+    None without router metadata). ``failure``: a failed attempt's bounded, content-free cause. Both keep a
+    failure diagnosable."""
     return {
         "attempt": number,
         "gateway_request_id": attempt_id,
@@ -247,17 +259,18 @@ def _attempt_record(
         "http_status": http_status,
         "provider_request_id": provider_request_id,
         "router_pipeline": None if router_pipeline is None else list(router_pipeline),
+        "failure": failure,
     }
 
 
-_LOGGED_ATTEMPT_FIELDS = ("attempt", "gateway_request_id", "outcome", "http_status", "provider_request_id", "router_pipeline")
+_LOGGED_ATTEMPT_FIELDS = ("attempt", "gateway_request_id", "outcome", "http_status", "provider_request_id", "router_pipeline", "failure")
 _LOGGED_USAGE_FIELDS = ("gateway_request_id", "provider_request_id", "resolved_provider", "resolved_model", "input_tokens", "output_tokens", "cost_usd")
 
 
 def model_request_log_line(path: str, status: int, body: dict[str, Any]) -> str:
     """One JSON line per model request for the Gateway's log (its stderr, persisted as ``local-gateway.log``):
     the outcome, the Gateway's own sanitized refusal text, every attempt's ids and router stages, and the
-    settled usage. Selected fields only: never the prompt, the reply or a credential."""
+    settled usage. Selected fields only, then a final redaction pass: never the prompt, the reply or a credential."""
     usage = body.get("gateway_usage")
     attempts = body.get("route_attempts")
     record = {
@@ -270,7 +283,7 @@ def model_request_log_line(path: str, status: int, body: dict[str, Any]) -> str:
         "route_attempts": [{key: item.get(key) for key in _LOGGED_ATTEMPT_FIELDS} for item in attempts or () if isinstance(item, dict)],
         "usage": {key: usage.get(key) for key in _LOGGED_USAGE_FIELDS} if isinstance(usage, dict) else None,
     }
-    return json.dumps(record, separators=(",", ":"), sort_keys=True, default=str)
+    return json.dumps(final_sanitize(record), separators=(",", ":"), sort_keys=True, default=str)
 
 
 def _gateway_usage(

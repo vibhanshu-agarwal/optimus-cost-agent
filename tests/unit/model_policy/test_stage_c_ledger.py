@@ -12,6 +12,7 @@ Fake clocks and temporary files only: no Gateway, provider or service.
 
 from __future__ import annotations
 
+import errno
 import json
 import threading
 from datetime import UTC, datetime, timedelta
@@ -321,6 +322,24 @@ def test_a_reservation_that_cannot_be_made_durable_is_not_dispatched(opened) -> 
     guard = reopen(fsync=failing_fsync)
     _refused(guard, "STAGE_C_LEDGER_WRITE_FAILED")
     assert guard.state.halted is not None and guard.state.outstanding_usd == Decimal("0")
+
+
+def test_a_ledger_write_failure_keeps_its_class_and_errno_in_the_refusal_and_the_halt(opened) -> None:
+    """Codex round 13 finding 6: the write failure's class and errno, never its text, reach the refusal detail the
+    Gateway logs and the halt reason every later refusal reports."""
+    reopen, *_ = opened
+
+    def failing_fsync(_fd: int) -> None:
+        raise OSError(errno.ENOSPC, "Bearer " + "stage-c-canary")
+
+    reopen()  # the window is already recorded
+    guard = reopen(fsync=failing_fsync)
+    with pytest.raises(StageCRefusal) as caught:
+        _admit(guard, 99)
+    fact = f"OSError errno {errno.ENOSPC}"
+    assert caught.value.code == "STAGE_C_LEDGER_WRITE_FAILED"
+    assert fact in caught.value.detail and "canary" not in caught.value.detail
+    assert fact in (guard.state.halted or "") and "canary" not in (guard.state.halted or "")
 
 
 def test_a_settlement_that_cannot_be_made_durable_stops_dispatch_and_is_never_free(opened) -> None:

@@ -280,7 +280,9 @@ class GatewaySummarizerCall:
             binding = self._bind(request_id, prompt, max_output_tokens)
             if binding is None:
                 unsent = SummarizerAttempt(attempt_id=f"{request_id}:1", gateway_request_id=None, outcome="not_sent", cost_usd=Decimal("0"))
-                return SummarizerResponse(text=None, finish_status=None, attempts=(unsent,))
+                # The disclosure notice was not delivered, so nothing was sent: diagnosable, never silent.
+                response = SummarizerResponse(text=None, finish_status=None, attempts=(unsent,))
+                return self._observed(request_id, (), response, reason="summary_disclosure_undelivered")
         metadata = {"session_id": self._session_id, "purpose": "context_summary", "request_id": request_id}
         try:
             response = self._client.create_response(
@@ -302,7 +304,13 @@ class GatewaySummarizerCall:
         return self._observed(request_id, provider, SummarizerResponse(text=response.output_text, finish_status=response.finish_reason, attempts=attempts))
 
     def _observed(
-        self, request_id: str, provider: tuple[ProviderAttempt, ...], response: SummarizerResponse, *, failure: BaseException | None = None
+        self,
+        request_id: str,
+        provider: tuple[ProviderAttempt, ...],
+        response: SummarizerResponse,
+        *,
+        failure: BaseException | None = None,
+        reason: str | None = None,
     ) -> SummarizerResponse:
         """The response, carrying the diagnostic observation of its classified attempts, and of the request's error
         if it failed, when an observer is set (Plan 12.2 r4 stop diagnosis; r8 offline correction). Nothing runs
@@ -312,7 +320,11 @@ class GatewaySummarizerCall:
             return response
 
         def diagnostic() -> None:
-            observer(stage="summary", correlation=lambda: {"session_id": self._session_id, "request_id": request_id}, attempts=provider, failure=failure)
+            correlation = lambda: {"session_id": self._session_id, "request_id": request_id}  # noqa: E731
+            if reason is None:
+                observer(stage="summary", correlation=correlation, attempts=provider, failure=failure)
+            else:
+                observer(stage="summary", correlation=correlation, attempts=provider, failure=failure, reason=reason)
 
         return replace(response, diagnostic=diagnostic)
 

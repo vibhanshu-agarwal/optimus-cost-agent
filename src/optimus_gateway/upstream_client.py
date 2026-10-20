@@ -23,6 +23,11 @@ from urllib.request import (
 )
 
 from optimus_model_policy.binding import ATTEMPT_NOT_SENT, ATTEMPT_REJECTED, ATTEMPT_UNCERTAIN
+from optimus_security.failure_facts import bounded, exception_fact, slug
+
+# OpenRouter's documented router pipeline stage types (router-metadata guide, 2026-10-20). Any other type is
+# recorded as ``unrecognized``: it still counts as a stage, but its text is never persisted.
+KNOWN_ROUTER_STAGES = frozenset({"guardrail", "plugin", "server_tools", "response_healing", "context_compression"})
 
 T = TypeVar("T")
 
@@ -253,14 +258,19 @@ class UrllibOpenAICompatibleClient:
             # A 4xx (other than a request timeout) is the provider refusing the request before any
             # model ran; a 408, a 5xx or an unfollowed redirect may follow a model run that was billed.
             refused = 400 <= exc.code < 500 and exc.code != 408
-            raise UpstreamAttemptFailure(ATTEMPT_REJECTED if refused else ATTEMPT_UNCERTAIN, http_status=exc.code) from exc
+            # The upstream error body is never read: a moderation error can echo the prompt.
+            raise UpstreamAttemptFailure(
+                ATTEMPT_REJECTED if refused else ATTEMPT_UNCERTAIN, http_status=exc.code, failure={"kind": "http"}
+            ) from exc
         except (OSError, HTTPException) as exc:
             # urllib wraps an OSError raised while connecting *or* while sending in the same URLError,
             # so the exception's type cannot say whether the request left (an SSLError, a refusal or an
             # unreachable host can each arise in either phase; Codex CP1 corrections review). The phase
             # can: a failure before the connection was established delivered nothing, and any later
             # failure may have reached a model that ran and was billed.
-            raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN if request.connected else ATTEMPT_NOT_SENT) from exc
+            raise UpstreamAttemptFailure(
+                ATTEMPT_UNCERTAIN if request.connected else ATTEMPT_NOT_SENT, failure={"kind": "transport", **exception_fact(exc)}
+            ) from exc
         try:
             decoded = json.loads(raw.decode("utf-8"))
             if not isinstance(decoded, dict):
@@ -268,7 +278,7 @@ class UrllibOpenAICompatibleClient:
             return parse_openai_chat_completion(decoded, headers, requested_model=model)
         except (UnicodeError, ValueError, RuntimeError) as exc:
             # A reply arrived but its usage cannot be verified: it may have been billed.
-            raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN) from exc
+            raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN, failure=_unreadable_reply(exc)) from exc
 
 
 class _AttemptRequest(Request):
@@ -338,12 +348,25 @@ def _build_attempt_opener() -> OpenerDirector:
     return opener
 
 
-class UpstreamAttemptFailure(Exception):
-    """One enforced provider attempt that did not complete, and what is known about it."""
+def _unreadable_reply(exc: BaseException) -> dict[str, Any]:
+    """Why an arrived reply could not be read: invalid UTF-8, invalid JSON, or this module's own schema reason as a
+    slug. Never the reply's text."""
+    if isinstance(exc, UnicodeError):
+        return {"kind": "invalid_utf8"}
+    if isinstance(exc, json.JSONDecodeError):
+        return {"kind": "invalid_json"}
+    return {"kind": "schema", "reason": slug(str(exc))}
 
-    def __init__(self, outcome: str, *, http_status: int | None = None) -> None:
+
+class UpstreamAttemptFailure(Exception):
+    """One enforced provider attempt that did not complete, and what is known about it. ``failure`` is its bounded,
+    content-free cause (Plan 12.2 diagnosability): ``http``, ``transport`` with the exception class and errno,
+    ``invalid_utf8``, ``invalid_json`` or ``schema`` with a module-authored reason."""
+
+    def __init__(self, outcome: str, *, http_status: int | None = None, failure: dict[str, Any] | None = None) -> None:
         self.outcome = outcome
         self.http_status = http_status
+        self.failure = failure
         super().__init__(f"upstream attempt {outcome}" + (f" ({http_status})" if http_status is not None else ""))
 
     @property
@@ -371,7 +394,8 @@ def _urlopen_json(
             raise RetryableUpstreamError(message) from exc
         raise RuntimeError(message) from exc
     except URLError as exc:
-        raise RetryableUpstreamError(f"{label} request failed") from exc
+        fact = exception_fact(exc)
+        raise RetryableUpstreamError(f"{label} request failed ({fact.get('cause', fact['class'])})") from exc
     except TimeoutError as exc:
         raise RetryableUpstreamError(f"{label} request timed out") from exc
     except (UnicodeError, json.JSONDecodeError) as exc:
@@ -516,7 +540,7 @@ def _router_pipeline(metadata: dict[str, Any] | None) -> tuple[str, ...] | None:
     stages = metadata.get("pipeline", [])
     if not isinstance(stages, list) or not all(isinstance(stage, dict) and isinstance(stage.get("type"), str) for stage in stages):
         raise RuntimeError("upstream response has malformed router metadata pipeline")
-    return tuple(stage["type"] for stage in stages)
+    return tuple(bounded(stage["type"], KNOWN_ROUTER_STAGES) or "unrecognized" for stage in stages)
 
 
 def _required_nonnegative_int(value: object, field: str) -> int:

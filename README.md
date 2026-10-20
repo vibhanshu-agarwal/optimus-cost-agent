@@ -42,8 +42,10 @@ The shared Haiku route can stop after an unverifiable or refused experimental re
 answers and summaries for the Gateway launch. Inspect the failure before deliberately restarting; there is no
 automatic retry-to-green. Existing incurred costs and unknown-cost warnings remain visible. The workspace's
 `.optimus/local-gateway.log` has one `model_request` line per model call. Each line records the refusal code
-and detail, every attempt's Gateway and provider request IDs, and any router pipeline stages, but never the
-prompt or reply text.
+and detail, and for every attempt its Gateway and provider request IDs, any router pipeline stages, and its
+failure cause (for example the transport error's class and errno, or why a reply could not be read). It never
+records the prompt, the reply or the upstream error text. With `--debug-trace`, the host trace also records each
+attempt's IDs, stages and cause, context-fault subtypes and admission refusal reasons.
 
 The shipped Haiku admission policy uses an explicitly accepted empirical estimate with `verified: false`; it
 is not a universal token-bound proof. Provider metadata identifies the family, not an exact variant/region.

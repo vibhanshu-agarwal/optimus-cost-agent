@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import re
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -185,9 +186,12 @@ def test_a_refused_charged_reply_is_diagnosable_and_says_the_route_stopped(tmp_p
     # and the router stage types the reply carried (a pipeline refusal names its stages).
     [record] = _records(log)
     stages = list(REPLY_REFUSALS[code].get("router_pipeline", ()))
-    assert record["attempts"] == [
-        {"attempt": "1", "outcome": "completed", "routed": True, "upstream_http_status": None, "gateway_http_status": None, "router_pipeline": stages}
-    ]
+    [attempt] = record["attempts"]
+    assert re.fullmatch(r"gw-[0-9a-f]{32}", attempt.pop("gateway_request_id"))  # the Gateway's own attempt id
+    assert attempt == {
+        "attempt": "1", "outcome": "completed", "routed": True, "upstream_http_status": None, "gateway_http_status": None,
+        "router_pipeline": stages, "provider_request_id": "gen-1", "failure": None,
+    }  # fmt: skip
     assert record["gateway_failure"] == {"code": code, "http_status": 422}
     assert CANARY not in log.read_text(encoding="utf-8")
 
@@ -253,9 +257,12 @@ def test_an_uncertain_attempt_on_the_experimental_route_keeps_its_unknown_cost_a
     assert result.output_text == CHAT_ROUTE_STOPPED_MESSAGES["CHAT_GATEWAY_COST_UNKNOWN"] != CHAT_FAILURE_MESSAGES["CHAT_GATEWAY_COST_UNKNOWN"]
     [record] = _records(log)
     assert record["gateway_failure"] == {"code": "UPSTREAM_ATTEMPT_UNCERTAIN", "http_status": 502}
-    assert record["attempts"] == [
-        {"attempt": "1", "outcome": "uncertain", "routed": True, "upstream_http_status": None, "gateway_http_status": None, "router_pipeline": None}
-    ]
+    [attempt] = record["attempts"]
+    assert re.fullmatch(r"gw-[0-9a-f]{32}", attempt.pop("gateway_request_id"))
+    assert attempt == {
+        "attempt": "1", "outcome": "uncertain", "routed": True, "upstream_http_status": None, "gateway_http_status": None,
+        "router_pipeline": None, "provider_request_id": None, "failure": None,
+    }  # fmt: skip
 
 
 def test_rejected_attempts_do_not_stop_the_experimental_route_or_change_its_wording(tmp_path, monkeypatch) -> None:

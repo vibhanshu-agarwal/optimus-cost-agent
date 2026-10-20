@@ -16,8 +16,9 @@ from typing import TYPE_CHECKING, Any
 from optimus.agent.models import AgentRunRequest
 from optimus.agent.planning_loop import PlanningProgressEvent
 from optimus.agent.workspace_context import WorkspaceContextResult
-from optimus.gateway.attempts import gateway_failure_facts
+from optimus.gateway.attempts import gateway_failure_facts, host_failure_facts
 from optimus.telemetry.redaction import redact_for_telemetry
+from optimus_security.failure_facts import bounded, bounded_failure, bounded_id
 from optimus_security.sanitization import session_correlation_tag
 
 if TYPE_CHECKING:
@@ -294,8 +295,9 @@ def _status(value: Any) -> int | None:
 def _attempt_fields(attempt: ProviderAttempt) -> dict[str, Any]:
     """One attempt's content-free facts. A routed attempt's status is the upstream provider's; any other
     record's is the outer host-to-Gateway status, kept apart so a Gateway 502 never reads as an upstream one.
-    ``router_pipeline`` is the router stage types the Gateway reported (content-free router facts, so an
-    EMPIRICAL_ROUTER_PIPELINE refusal names its stages); None when not reported."""
+    ``router_pipeline`` is the router stage categories the Gateway reported; ``gateway_request_id`` and
+    ``provider_request_id`` are the bounded correlation ids (the Gateway's attempt id, the provider's generation id);
+    ``failure`` is the attempt's re-bounded cause. Each is None when not reported."""
     routed = attempt.routed is True
     status = _status(attempt.http_status)
     stages = attempt.router_pipeline
@@ -306,29 +308,87 @@ def _attempt_fields(attempt: ProviderAttempt) -> dict[str, Any]:
         "upstream_http_status": status if routed else None,
         "gateway_http_status": None if routed else status,
         "router_pipeline": None if stages is None else [str(stage) for stage in stages],
+        "gateway_request_id": bounded_id(attempt.gateway_request_id),
+        "provider_request_id": bounded_id(attempt.provider_request_id),
+        "failure": bounded_failure(attempt.failure),
     }
 
 
+# Causes a diagnostic can record without an exception (Codex round 13 finding 2).
+TRACE_REASONS = frozenset({"summary_disclosure_undelivered"})
+
+
 def log_provider_attempts(
-    *, stage: str, correlation: Callable[[], dict[str, Any]], attempts: Iterable[ProviderAttempt], failure: BaseException | None = None
+    *,
+    stage: str,
+    correlation: Callable[[], dict[str, Any]],
+    attempts: Iterable[ProviderAttempt],
+    failure: BaseException | None = None,
+    reason: str | None = None,
 ) -> None:
-    """Record the content-free status of every provider attempt behind one host model request (Plan 12.2
-    r4 stop diagnosis; Codex disposition 2026-10-13): the attempts the host already classified, in order,
-    including failures before a safe recovery. Only the call correlation, the stage and each attempt's key,
-    outcome, routing and integer-or-null status are written; never a body, header, error text, key,
-    provider error type or identifier. A request that failed with a Gateway HTTP error adds
-    `gateway_failure`: the Gateway's allowlisted refusal code and its outer status, apart from any routed
-    attempt's upstream status (r8 offline correction). Nothing is read with tracing disabled: `correlation`,
-    `attempts` and `failure` are touched only inside the sink's supplier, whose failure is contained there."""
+    """Record the content-free status and cause of every provider attempt behind one host model request (Plan 12.2
+    r4 stop diagnosis; Codex disposition 2026-10-13, revised 2026-10-21 under the operator's diagnosability
+    directive and Codex round 13): the attempts the host already classified, in order, including failures before a
+    safe recovery. Written: the call correlation, the stage, and each attempt's key, outcome, routing,
+    integer-or-null status, router stage categories, bounded Gateway and provider request ids, and re-bounded cause.
+    A request that failed with a Gateway HTTP error adds `gateway_failure`: the Gateway's allowlisted refusal code,
+    its outer status (apart from any routed attempt's upstream status, r8 offline correction), the host's own cause
+    and a dropped-attempts flag. Any other failure adds `host_failure`: a response-contract audit code, or the
+    exception's class, first cause and errno. A `reason` without an exception is recorded only when allowlisted.
+    Never a body, header, error text, key, provider error type, prompt or reply. Nothing is read with tracing
+    disabled: `correlation`, `attempts` and `failure` are touched only inside the sink's supplier, whose failure is
+    contained there."""
     if not debug_trace_enabled():
         return
 
     def data() -> dict[str, Any]:
-        record = {"stage": stage, **correlation(), "attempts": [_attempt_fields(attempt) for attempt in attempts]}
-        facts = gateway_failure_facts(failure) if failure is not None else None
-        return record if facts is None else {**record, "gateway_failure": facts}
+        record: dict[str, Any] = {"stage": stage, **correlation(), "attempts": [_attempt_fields(attempt) for attempt in attempts]}
+        if failure is not None:
+            facts = gateway_failure_facts(failure)
+            if facts is not None:
+                record["gateway_failure"] = facts
+            host = host_failure_facts(failure)
+            if host is not None:
+                record["host_failure"] = host
+        if reason is not None:
+            record["reason"] = bounded(reason, TRACE_REASONS)
+        return record
 
     acp_debug_log(location="debug_trace.py:log_provider_attempts", message="provider attempts classified", data=data, hypothesis_id="P12.2-ATTEMPT-STATUS")
+
+
+# Fixed admission refusal reasons (optimus.acp.conversation and spec's fallback).
+PROMPT_REFUSAL_REASONS = frozenset({"cap", "cap_closed", "reservation", "delivery_indeterminate", "refused"})
+
+
+def log_prompt_refusal(*, session_id: object, request_id: object, reason: str) -> None:
+    """A prompt refused before any run (Codex round 13 finding 2): the bounded session and request ids and the
+    allowlisted fixed reason. Never the prompt."""
+    if not debug_trace_enabled():
+        return
+    acp_debug_log(
+        location="debug_trace.py:log_prompt_refusal",
+        message="prompt refused before any run",
+        data=lambda: {
+            "session_id": bounded_id(session_id),
+            "request_id": bounded_id(str(request_id) if isinstance(request_id, int) else request_id),
+            "reason": bounded(reason, PROMPT_REFUSAL_REASONS),
+        },
+        hypothesis_id="P12.2-DIAGNOSABILITY",
+    )
+
+
+def log_context_fault(*, run_id: str, phase: str, category: str, detail: str | None, outcome: str) -> None:
+    """One attached-view fault with its bounded subtype (Codex round 13 finding 2): the same content-free facts as
+    the operator line, kept in the trace."""
+    if not debug_trace_enabled():
+        return
+    acp_debug_log(
+        location="debug_trace.py:log_context_fault",
+        message="context fault",
+        data=lambda: {"run_id": run_id, "phase": phase, "category": category, "detail": detail, "outcome": outcome},
+        hypothesis_id="P12.2-DIAGNOSABILITY",
+    )
 
 
 def log_planning_replan_event(event: PlanningProgressEvent, *, stop_reason: str | None = None) -> None:

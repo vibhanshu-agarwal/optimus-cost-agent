@@ -224,6 +224,15 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def _write_failure_fact(exc: BaseException) -> str:
+    """A failed ledger write's class and errno, never its text (Codex round 13 finding 6). Local, not
+    ``optimus_security.failure_facts``: this package may not import the security package."""
+    name = type(exc).__name__
+    name = name if name.isidentifier() and name.isascii() and len(name) <= 80 else "unrecognized"
+    number = getattr(exc, "errno", None)
+    return f"{name} errno {number}" if isinstance(number, int) else name
+
+
 def _write_record(handle: IO[bytes], record: Mapping[str, Any], fsync: Callable[[int], None]) -> None:
     handle.write((json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8"))
     handle.flush()
@@ -340,6 +349,7 @@ class StageCGuard:
         self._replay = replay
         self._clock = clock
         self._fsync = fsync
+        self._write_failure = "unknown"
         self._mutex = threading.Lock()
         self.closed = False
 
@@ -443,8 +453,9 @@ class StageCGuard:
         try:
             _write_record(self._handle, record, self._fsync)
             return True
-        except (OSError, ValueError):
-            self._replay.halted = self._replay.halted or "ledger write failed"
+        except (OSError, ValueError) as exc:
+            self._write_failure = _write_failure_fact(exc)
+            self._replay.halted = self._replay.halted or f"ledger write failed ({self._write_failure})"
             return False
 
     def _start_window(self) -> None:
@@ -492,7 +503,9 @@ class StageCGuard:
             admission = Admission(r.attempts + 1, attempt_id, reserve_usd)
             record = {"kind": "reserve", "n": admission.number, "attempt_id": attempt_id, "request_id": request_id, "reserve_usd": str(reserve_usd), "at": now.isoformat()}
             if not self._append(record):
-                raise StageCRefusal("STAGE_C_LEDGER_WRITE_FAILED", "the reservation is not durable, so nothing is dispatched")
+                raise StageCRefusal(
+                    "STAGE_C_LEDGER_WRITE_FAILED", f"the reservation is not durable, so nothing is dispatched ({self._write_failure})"
+                )
             r.outstanding, r.attempts = admission, admission.number
             return admission
 

@@ -32,9 +32,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
 from optimus.gateway.models import GatewayResponse, GatewayRouteAttempt, GatewayUsage
+from optimus_security.failure_facts import bounded, bounded_failure, exception_fact
 
 __all__ = [
     "GATEWAY_FAILURE_CODES",
@@ -50,6 +52,7 @@ __all__ = [
     "first_error",
     "gateway_registry_mismatch_text",
     "gateway_failure_facts",
+    "host_failure_facts",
     "is_gateway_registry_mismatch",
     "is_input_capacity_refusal",
     "is_preflight_refusal",
@@ -165,6 +168,7 @@ class ProviderAttempt:
     gateway_usage: GatewayUsage | None = None
     routed: bool = False
     router_pipeline: tuple[str, ...] | None = None
+    failure: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if self.number < 1 or self.outcome not in OUTCOMES:
@@ -245,7 +249,7 @@ def is_input_capacity_refusal(exc: BaseException) -> bool:
     return is_preflight_refusal(exc) and getattr(exc, "gateway_code", None) == "INPUT_EXCEEDS_CAPACITY"
 
 
-def gateway_failure_facts(exc: BaseException) -> dict[str, str | int | None] | None:
+def gateway_failure_facts(exc: BaseException) -> dict[str, Any] | None:
     """A failed request's content-free Gateway facts, for diagnostics only (r8 offline correction): its refusal
     code when the Gateway's own, `UNRECOGNIZED` for any other code (never its text), and its outer HTTP status as
     an integer. None when the request did not fail with a Gateway HTTP error. A fact not reported stays null,
@@ -254,10 +258,41 @@ def gateway_failure_facts(exc: BaseException) -> dict[str, str | int | None] | N
         return None
     code = exc.gateway_code
     status = exc.status_code
-    return {
+    facts: dict[str, Any] = {
         "code": None if code is None else code if code in GATEWAY_FAILURE_CODES else UNRECOGNIZED_CODE,
         "http_status": status if type(status) is int and 100 <= status <= 599 else None,
     }
+    failure = bounded_failure(exc.failure)
+    if failure is not None:
+        facts["failure"] = failure  # the host's own cause: transport class and errno, or an unreadable reply
+    if exc.route_attempts_malformed:
+        facts["route_attempts_malformed"] = True
+    return facts
+
+
+# Every audit code a host response-contract failure carries (optimus.gateway.models, tool_models).
+AUDIT_CODES = frozenset(
+    {
+        "GATEWAY_USAGE_MISSING",
+        "GATEWAY_USAGE_INVALID",
+        "OUTPUT_TEXT_MISSING",
+        "RESPONSE_ID_INVALID",
+        "FINISH_REASON_INVALID",
+        "GATEWAY_COST_MISSING",
+        "ROUTE_ATTEMPTS_MALFORMED",
+    }
+)
+
+
+def host_failure_facts(exc: BaseException) -> dict[str, Any] | None:
+    """A failed request's content-free host cause when the Gateway facts cannot carry it (Plan 12.2 diagnosability;
+    Codex round 13 finding 2): a response-contract failure's allowlisted audit code, or any other exception's class,
+    first cause and errno. Never its text. None for a Gateway HTTP error, whose facts already carry its cause."""
+    if isinstance(exc, GatewayHttpError):
+        return None
+    if isinstance(exc, GatewayResponseError):
+        return {"audit_code": bounded(exc.audit_code, AUDIT_CODES)}
+    return {"exception": exception_fact(exc)}
 
 
 def stops_experimental_route(exc: BaseException, *, experimental: bool) -> bool:
@@ -348,4 +383,5 @@ def _routed(item: GatewayRouteAttempt, usage: GatewayUsage | None) -> ProviderAt
         gateway_usage=usage,
         routed=True,
         router_pipeline=item.router_pipeline,
+        failure=item.failure,
     )

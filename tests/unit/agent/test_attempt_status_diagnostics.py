@@ -5,7 +5,10 @@ r4's A1 failed after two Gateway attempts whose statuses the host had parsed and
 attempt is now logged with its call correlation, stage, ordered key, fixed-vocabulary outcome, whether the
 Gateway routed it, and an integer-or-null status: the upstream status only for a routed attempt, the outer
 host-to-Gateway status otherwise (a Gateway 502 is never evidence of an upstream 502); an unknown status stays
-null. Nothing else: no bodies, headers, error text, keys, provider error types or identifiers. With tracing
+null. Revised 2026-10-21 (operator diagnosability directive; Codex round 13): each attempt also carries its
+router stage categories, its bounded Gateway and provider request ids and its re-bounded cause, and a failure
+outside the Gateway adds a bounded host cause (tests/unit/agent/test_failure_cause_diagnostics.py). Nothing
+else: no bodies, headers, error text, keys or provider error types. With tracing
 disabled no diagnostic work happens, and a diagnostic failure never changes a result, a receipt or a
 cancellation. Fake Gateway responses only: no service, no provider.
 
@@ -75,7 +78,11 @@ def _recovered(text: str) -> GatewayResponse:
 
 
 def _attempt(key: str, outcome: str, routed: bool, upstream: int | None, gateway: int | None, pipeline: list[str] | None = None) -> dict:
-    return {"attempt": key, "outcome": outcome, "routed": routed, "upstream_http_status": upstream, "gateway_http_status": gateway, "router_pipeline": pipeline}
+    """A routed attempt's Gateway request id is the fakes' ``gw-<key>``; an unrouted one has none."""
+    return {
+        "attempt": key, "outcome": outcome, "routed": routed, "upstream_http_status": upstream, "gateway_http_status": gateway,
+        "router_pipeline": pipeline, "gateway_request_id": f"gw-{key}" if routed else None, "provider_request_id": None, "failure": None,
+    }  # fmt: skip
 
 
 def _failure(code: str | None, status: int) -> dict:
@@ -89,12 +96,16 @@ SCENARIOS = {
     "429-then-403": (lambda text: _rejected_twice(429, 403), [_attempt("1", "rejected", True, 429, None), _attempt("2", "rejected", True, 403, None)], REJECTED_502),
     "429-then-429": (lambda text: _rejected_twice(429, 429), [_attempt("1", "rejected", True, 429, None), _attempt("2", "rejected", True, 429, None)], REJECTED_502),
     "429-then-success": (_recovered, [_attempt("1", "rejected", True, 429, None), _attempt("2", "completed", True, None, None)], {}),
-    "transport-loss-no-status": (lambda text: ConnectionResetError(CANARY), [_attempt("1", "uncertain", False, None, None)], {}),
+    "transport-loss-no-status": (
+        lambda text: ConnectionResetError(CANARY),
+        [_attempt("1", "uncertain", False, None, None)],
+        {"host_failure": {"exception": {"class": "ConnectionResetError", "errno": None}}},
+    ),
     "gateway-502-absent-route-metadata": (lambda text: GatewayHttpError(502, CANARY), [_attempt("1", "uncertain", False, None, 502)], _failure(None, 502)),
     "gateway-502-malformed-route-metadata": (
         lambda text: GatewayHttpError(502, CANARY, gateway_code="UPSTREAM_ATTEMPT_REJECTED", retryable=False, route_attempts=(), route_attempts_malformed=True),
         [_attempt("1", "uncertain", False, None, 502)],
-        REJECTED_502,
+        {"gateway_failure": {"code": "UPSTREAM_ATTEMPT_REJECTED", "http_status": 502, "route_attempts_malformed": True}},
     ),
 }  # fmt: skip
 STAGES = {ExecutionMode.CHAT: ("answer", "Hello."), ExecutionMode.AGENT: ("planning", "WRITE a.py\nx")}
@@ -286,7 +297,7 @@ def test_a_status_that_is_not_an_integer_is_logged_as_null_never_parsed(tmp_path
     attempt = ProviderAttempt(number=1, outcome="rejected", cost_usd=Decimal("0"), http_status=status, routed=True)
     log_provider_attempts(stage="answer", correlation=lambda: {}, attempts=(attempt,))
     [record] = _records(log)
-    assert record["data"]["attempts"] == [_attempt("1", "rejected", True, None, None)]
+    assert record["data"]["attempts"] == [{**_attempt("1", "rejected", True, None, None), "gateway_request_id": None}]  # built without an id
 
 
 def test_a_refused_attempt_keeps_the_router_pipeline_stage_types_the_gateway_reported(tmp_path) -> None:

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import sys
+import threading
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -90,6 +92,10 @@ def _discard_rejected_post_body(stream: Any, connection: Any, length: int, deadl
             raise _RejectedPostError(HTTPStatus.REQUEST_TIMEOUT, "request body timeout")
 
 
+_MODEL_ROUTES = frozenset({"/v1/responses", "/v1/chat/completions"})
+_LOG_LOCK = threading.Lock()
+
+
 class OptimusGatewayHandler(BaseHTTPRequestHandler):
     config: GatewayServiceConfig
     upstream_client: UpstreamClient
@@ -113,10 +119,10 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
         try:
             request_body = json.loads(raw_body.decode("utf-8"))
         except json.JSONDecodeError:
-            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid JSON"})
+            self._finish(path, HTTPStatus.BAD_REQUEST, {"error": "invalid JSON"})
             return
         if not isinstance(request_body, dict):
-            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "request body must be a JSON object"})
+            self._finish(path, HTTPStatus.BAD_REQUEST, {"error": "request body must be a JSON object"})
             return
 
         if path in TOOL_ROUTE_PATHS and tool_dependencies is not None:
@@ -149,10 +155,17 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
                 config=self.config,
                 upstream_client=self.upstream_client,
             )
-        if path in {"/v1/responses", "/v1/chat/completions"}:
-            # The Gateway's stderr is its persisted log (local-gateway.log): every model outcome stays diagnosable.
-            print(model_request_log_line(path, int(status), body), file=sys.stderr, flush=True)
-        self._send_json(HTTPStatus(status), body)
+        self._finish(path, HTTPStatus(status), body)
+
+    def _finish(self, path: str, status: HTTPStatus, body: dict[str, Any]) -> None:
+        """Log a model route's outcome, then reply. The Gateway's stderr is its persisted log (local-gateway.log),
+        so every model outcome stays diagnosable; a failed log write never stops the reply."""
+        if path in _MODEL_ROUTES:
+            line = model_request_log_line(path, int(status), body) + "\n"
+            with _LOG_LOCK, contextlib.suppress(OSError):  # one locked write: concurrent lines never interleave
+                sys.stderr.write(line)
+                sys.stderr.flush()
+        self._send_json(status, body)
 
     def _reject_unhandled_post(self) -> None:
         """Terminal handling for the early-404 branch: consume a bounded, well-framed body first."""

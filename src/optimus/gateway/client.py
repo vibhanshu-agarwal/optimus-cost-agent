@@ -19,6 +19,7 @@ from optimus.gateway.models import (
     parse_gateway_usage,
     parse_route_attempts,
 )
+from optimus_security.failure_facts import exception_fact
 
 if TYPE_CHECKING:
     from optimus_model_policy.binding import RouteBinding
@@ -91,7 +92,7 @@ class UrllibGatewayTransport:
                 route_attempts_malformed=_route_attempts_dropped(detail, route_attempts),
             ) from exc
         except URLError as exc:
-            raise GatewayHttpError(0, str(exc.reason)) from exc
+            raise GatewayHttpError(0, str(exc.reason), failure={"kind": "transport", **exception_fact(exc)}) from exc
 
         return _decode_gateway_json(body)
 
@@ -247,7 +248,7 @@ def _decode_gateway_json(body: str) -> dict[str, Any]:
     try:
         decoded = json.loads(body, parse_float=Decimal)
     except json.JSONDecodeError as exc:
-        raise GatewayHttpError(0, "gateway returned invalid JSON") from exc
+        raise GatewayHttpError(0, "gateway returned invalid JSON", failure={"kind": "gateway_invalid_json"}) from exc
     if not isinstance(decoded, dict):
-        raise GatewayHttpError(0, "gateway returned non-object JSON")
+        raise GatewayHttpError(0, "gateway returned non-object JSON", failure={"kind": "gateway_non_object_json"})
     return decoded

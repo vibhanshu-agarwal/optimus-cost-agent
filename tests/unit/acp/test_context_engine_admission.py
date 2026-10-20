@@ -814,3 +814,15 @@ async def test_an_unknown_engine_reason_reaches_the_user_only_as_the_generic_mes
     assert texts(outbound) == [f"{_UNKNOWN} {_ENDING}"]
     assert "a reason nobody wrote yet" not in texts(outbound)[0]
     assert runner.requests == []
+
+
+async def test_an_admission_refusal_leaves_a_content_free_operator_line_with_its_reason(tmp_path, capsys):
+    """Codex round 13 finding 2: a prompt refused before any run keeps its fixed reason, with the session, in the
+    host's operator line (and the debug trace when enabled); never the prompt."""
+    adapter, outbound, _ = make_adapter(tmp_path, make_attachment(source_max=4096, reservation=1000))
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+
+    await prompt(adapter, outbound, session_id, "PRIVATE-PROMPT " + "x" * 3500, "big")
+
+    lines = [line for line in capsys.readouterr().err.splitlines() if line.startswith("optimus.acp: prompt refused")]
+    assert lines == [f"optimus.acp: prompt refused session_id={session_id} reason=reservation"]

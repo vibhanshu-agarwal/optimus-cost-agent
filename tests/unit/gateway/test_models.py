@@ -181,7 +181,7 @@ def test_parse_gateway_response_missing_gateway_request_id_fails_closed():
             }
         )
     assert exc_info.value.gateway_usage is None
-    assert exc_info.value.audit_code is None
+    assert exc_info.value.audit_code == "GATEWAY_USAGE_INVALID"  # a diagnosable, distinct cause
 
 
 def test_parse_gateway_response_null_cost_usd_emits_gateway_cost_missing_audit():

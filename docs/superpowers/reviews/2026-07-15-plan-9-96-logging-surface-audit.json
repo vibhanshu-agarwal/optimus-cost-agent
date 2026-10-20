@@ -4193,11 +4193,35 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus_gateway.server:OptimusGatewayHandler.do_POST:stderr_export",
+      "key": "optimus_gateway.server:OptimusGatewayHandler._finish:text_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: for the two model routes the handler prints the allowlisted model_request_log_line record to stderr, which the auto-started local Gateway persists as the workspace's .optimus/local-gateway.log, so every refusal keeps its code, detail, request ids and router stages. The trace-ingress and tool routes print nothing; no request body, prompt, reply or secret is printed.",
+      "rationale": "Inspection: for the two model routes the handler writes the allowlisted, finally sanitized model_request_log_line record and a newline to stderr in one locked write, contained against OSError, which the auto-started local Gateway persists as the workspace's .optimus/local-gateway.log; malformed requests on those routes are logged too. The trace-ingress and tool routes write nothing; no request body, prompt, reply or secret is written.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_server.py::test_every_model_request_outcome_is_logged_to_the_gateway_log",
+      "test_node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_a_log_write_failure_never_breaks_the_reply",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:AcpDuplexAdapter._refuse_prompt:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a prompt refused before any run prints one fixed operator line with the host-generated session id and the allowlisted refusal reason (cap, cap_closed, reservation, delivery_indeterminate, refused or unrecognized), contained against any failure. Never the prompt.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_context_engine_admission.py::test_an_admission_refusal_leaves_a_content_free_operator_line_with_its_reason",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.responses:_run_enforced_completion:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the usage-contract ValueError's text is reduced by optimus_security.failure_facts.slug to a snake_case slug only when it matches the plain lower-case module-authored shape, else 'unrecognized', and is kept as the attempt's bounded cause; no other exception text is retained.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_an_unverifiable_usage_keeps_its_reason_and_the_reply_ids",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:_unreadable_reply:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: an unreadable reply's cause is invalid_utf8, invalid_json, or this module's own schema RuntimeError text reduced by failure_facts.slug to a strict-shape slug ('unrecognized' otherwise); the reply body and upstream error text are never retained.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_a_schema_failure_names_the_module_reason_and_never_the_reply",
       "evidence_tier": "unit"
     },
     {
