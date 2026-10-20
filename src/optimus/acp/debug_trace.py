@@ -293,15 +293,19 @@ def _status(value: Any) -> int | None:
 
 def _attempt_fields(attempt: ProviderAttempt) -> dict[str, Any]:
     """One attempt's content-free facts. A routed attempt's status is the upstream provider's; any other
-    record's is the outer host-to-Gateway status, kept apart so a Gateway 502 never reads as an upstream one."""
+    record's is the outer host-to-Gateway status, kept apart so a Gateway 502 never reads as an upstream one.
+    ``router_pipeline`` is the router stage types the Gateway reported (content-free router facts, so an
+    EMPIRICAL_ROUTER_PIPELINE refusal names its stages); None when not reported."""
     routed = attempt.routed is True
     status = _status(attempt.http_status)
+    stages = attempt.router_pipeline
     return {
         "attempt": attempt.key,
         "outcome": attempt.outcome,
         "routed": routed,
         "upstream_http_status": status if routed else None,
         "gateway_http_status": None if routed else status,
+        "router_pipeline": None if stages is None else [str(stage) for stage in stages],
     }
 
 

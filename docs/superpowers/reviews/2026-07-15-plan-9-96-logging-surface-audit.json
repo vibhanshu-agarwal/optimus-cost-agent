@@ -4185,6 +4185,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.responses:model_request_log_line:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes one Gateway log record per model request from a fixed allowlist only: the outcome status, the refusal code, the Gateway's own already-sanitized error text, the route request id, each attempt's number, Gateway and provider request ids, outcome, HTTP status and router pipeline stage types, and the usage's ids, resolved provider and model, token counts and cost. The request body, prompt, reply text and credentials are never read into it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_experimental_route_checks.py::test_the_gateway_log_line_never_carries_the_reply_text",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.server:OptimusGatewayHandler.do_POST:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: for the two model routes the handler prints the allowlisted model_request_log_line record to stderr, which the auto-started local Gateway persists as the workspace's .optimus/local-gateway.log, so every refusal keeps its code, detail, request ids and router stages. The trace-ingress and tool routes print nothing; no request body, prompt, reply or secret is printed.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_server.py::test_every_model_request_outcome_is_logged_to_the_gateway_log",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "context_engine.contracts:StrategyParameters.digest:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: StrategyParameters.digest canonicalizes the strategy's integer allocations and its prompt/format version strings as a SHA-256 input and returns only the digest; no conversation text, credential or diagnostic content is serialized, persisted or logged.",

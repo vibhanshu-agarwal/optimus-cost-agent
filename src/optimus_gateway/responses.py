@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from decimal import Decimal
@@ -189,7 +190,11 @@ def _run_enforced_completion(
     if admission is not None and guard is not None:
         guard.settle_charged(admission, provider_result.cost_usd)  # settled before any reply check can fail
     gateway_usage["cost_usd"] = format_cost_usd(provider_result.cost_usd)
-    attempts.append(_attempt_record(number, attempt_id, ATTEMPT_COMPLETED, provider_request_id=provider_result.message_id))
+    attempts.append(
+        _attempt_record(
+            number, attempt_id, ATTEMPT_COMPLETED, provider_request_id=provider_result.message_id, router_pipeline=provider_result.router_pipeline
+        )
+    )
     try:
         check_finish_status(getattr(provider_result, "finish_reason", None))
         check_experimental_reply(admitted, provider_result)
@@ -225,15 +230,47 @@ _sleep = time.sleep
 
 
 def _attempt_record(
-    number: int, attempt_id: str, outcome: str, *, http_status: int | None = None, provider_request_id: str | None = None
+    number: int,
+    attempt_id: str,
+    outcome: str,
+    *,
+    http_status: int | None = None,
+    provider_request_id: str | None = None,
+    router_pipeline: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
+    """``router_pipeline``: the stage types the router reported for a completed attempt (empty when none ran,
+    None without router metadata), so a refusal on them stays diagnosable."""
     return {
         "attempt": number,
         "gateway_request_id": attempt_id,
         "outcome": outcome,
         "http_status": http_status,
         "provider_request_id": provider_request_id,
+        "router_pipeline": None if router_pipeline is None else list(router_pipeline),
     }
+
+
+_LOGGED_ATTEMPT_FIELDS = ("attempt", "gateway_request_id", "outcome", "http_status", "provider_request_id", "router_pipeline")
+_LOGGED_USAGE_FIELDS = ("gateway_request_id", "provider_request_id", "resolved_provider", "resolved_model", "input_tokens", "output_tokens", "cost_usd")
+
+
+def model_request_log_line(path: str, status: int, body: dict[str, Any]) -> str:
+    """One JSON line per model request for the Gateway's log (its stderr, persisted as ``local-gateway.log``):
+    the outcome, the Gateway's own sanitized refusal text, every attempt's ids and router stages, and the
+    settled usage. Selected fields only: never the prompt, the reply or a credential."""
+    usage = body.get("gateway_usage")
+    attempts = body.get("route_attempts")
+    record = {
+        "event": "model_request",
+        "path": path,
+        "status": status,
+        "code": body.get("code"),
+        "error": body.get("error"),
+        "route_request_id": body.get("route_request_id") or (usage.get("route_request_id") if isinstance(usage, dict) else None),
+        "route_attempts": [{key: item.get(key) for key in _LOGGED_ATTEMPT_FIELDS} for item in attempts or () if isinstance(item, dict)],
+        "usage": {key: usage.get(key) for key in _LOGGED_USAGE_FIELDS} if isinstance(usage, dict) else None,
+    }
+    return json.dumps(record, separators=(",", ":"), sort_keys=True, default=str)
 
 
 def _gateway_usage(

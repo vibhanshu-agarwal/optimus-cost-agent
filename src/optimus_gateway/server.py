@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -14,7 +15,7 @@ from optimus_gateway.observability import (
     handle_observability_traces_request,
 )
 from optimus_gateway.providers import build_tool_dependencies, build_upstream_client
-from optimus_gateway.responses import handle_responses_request
+from optimus_gateway.responses import handle_responses_request, model_request_log_line
 from optimus_gateway.tool_handlers import TOOL_ROUTE_PATHS, GatewayToolDependencies, handle_tool_request
 from optimus_gateway.upstream_client import UpstreamClient
 
@@ -148,6 +149,9 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
                 config=self.config,
                 upstream_client=self.upstream_client,
             )
+        if path in {"/v1/responses", "/v1/chat/completions"}:
+            # The Gateway's stderr is its persisted log (local-gateway.log): every model outcome stays diagnosable.
+            print(model_request_log_line(path, int(status), body), file=sys.stderr, flush=True)
         self._send_json(HTTPStatus(status), body)
 
     def _reject_unhandled_post(self) -> None:

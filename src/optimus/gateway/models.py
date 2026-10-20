@@ -83,6 +83,8 @@ class GatewayRouteAttempt(BaseModel):
     outcome: Literal["completed", "not_sent", "rejected", "uncertain"]
     http_status: int | None = Field(default=None, strict=True)
     provider_request_id: str | None = None
+    router_pipeline: tuple[str, ...] | None = None
+    """The router pipeline stage types the Gateway reported for a completed attempt (None when not reported)."""
 
 
 def parse_route_attempts(raw: object) -> tuple[GatewayRouteAttempt, ...]:

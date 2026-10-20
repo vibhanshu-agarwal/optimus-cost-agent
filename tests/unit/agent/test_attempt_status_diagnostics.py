@@ -74,8 +74,8 @@ def _recovered(text: str) -> GatewayResponse:
     )  # fmt: skip
 
 
-def _attempt(key: str, outcome: str, routed: bool, upstream: int | None, gateway: int | None) -> dict:
-    return {"attempt": key, "outcome": outcome, "routed": routed, "upstream_http_status": upstream, "gateway_http_status": gateway}
+def _attempt(key: str, outcome: str, routed: bool, upstream: int | None, gateway: int | None, pipeline: list[str] | None = None) -> dict:
+    return {"attempt": key, "outcome": outcome, "routed": routed, "upstream_http_status": upstream, "gateway_http_status": gateway, "router_pipeline": pipeline}
 
 
 def _failure(code: str | None, status: int) -> dict:
@@ -287,6 +287,23 @@ def test_a_status_that_is_not_an_integer_is_logged_as_null_never_parsed(tmp_path
     log_provider_attempts(stage="answer", correlation=lambda: {}, attempts=(attempt,))
     [record] = _records(log)
     assert record["data"]["attempts"] == [_attempt("1", "rejected", True, None, None)]
+
+
+def test_a_refused_attempt_keeps_the_router_pipeline_stage_types_the_gateway_reported(tmp_path) -> None:
+    """The 2026-10-20 D1(b) refusal (EMPIRICAL_ROUTER_PIPELINE) left no record of which stage ran: the routed
+    attempt's stage types (content-free router facts, never identifiers) reach the trace."""
+    from optimus.gateway.attempts import attempts_from_failure
+
+    log = _trace(tmp_path)
+    refused = GatewayHttpError(
+        422, CANARY, gateway_code="EMPIRICAL_ROUTER_PIPELINE", retryable=False, gateway_usage=_usage("gw-1"),
+        route_attempts=(GatewayRouteAttempt(attempt=1, gateway_request_id="gw-1", outcome="completed", router_pipeline=("guardrail",)),),
+    )  # fmt: skip
+    log_provider_attempts(stage="answer", correlation=lambda: {}, attempts=attempts_from_failure(refused), failure=refused)
+    [record] = _records(log)
+    assert record["data"]["attempts"] == [_attempt("1", "completed", True, None, None, ["guardrail"])]
+    assert record["data"]["gateway_failure"] == {"code": "EMPIRICAL_ROUTER_PIPELINE", "http_status": 422}
+    assert CANARY not in json.dumps(record)
 
 
 def test_a_gateway_status_is_never_reported_as_an_upstream_status(tmp_path) -> None:

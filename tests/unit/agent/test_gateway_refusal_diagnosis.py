@@ -181,9 +181,13 @@ def test_a_refused_charged_reply_is_diagnosable_and_says_the_route_stopped(tmp_p
     # The route is proven stopped, so Chat no longer suggests a retry.
     assert result.output_text == CHAT_ROUTE_STOPPED_MESSAGES["CHAT_GATEWAY_FAILURE"]
     assert result.output_text != CHAT_FAILURE_MESSAGES["CHAT_GATEWAY_FAILURE"] and "try again" not in result.output_text.lower()
-    # The diagnostic names the Gateway's refusal and its outer status, apart from the routed attempt's own status.
+    # The diagnostic names the Gateway's refusal and its outer status, apart from the routed attempt's own status,
+    # and the router stage types the reply carried (a pipeline refusal names its stages).
     [record] = _records(log)
-    assert record["attempts"] == [{"attempt": "1", "outcome": "completed", "routed": True, "upstream_http_status": None, "gateway_http_status": None}]
+    stages = list(REPLY_REFUSALS[code].get("router_pipeline", ()))
+    assert record["attempts"] == [
+        {"attempt": "1", "outcome": "completed", "routed": True, "upstream_http_status": None, "gateway_http_status": None, "router_pipeline": stages}
+    ]
     assert record["gateway_failure"] == {"code": code, "http_status": 422}
     assert CANARY not in log.read_text(encoding="utf-8")
 
@@ -249,7 +253,9 @@ def test_an_uncertain_attempt_on_the_experimental_route_keeps_its_unknown_cost_a
     assert result.output_text == CHAT_ROUTE_STOPPED_MESSAGES["CHAT_GATEWAY_COST_UNKNOWN"] != CHAT_FAILURE_MESSAGES["CHAT_GATEWAY_COST_UNKNOWN"]
     [record] = _records(log)
     assert record["gateway_failure"] == {"code": "UPSTREAM_ATTEMPT_UNCERTAIN", "http_status": 502}
-    assert record["attempts"] == [{"attempt": "1", "outcome": "uncertain", "routed": True, "upstream_http_status": None, "gateway_http_status": None}]
+    assert record["attempts"] == [
+        {"attempt": "1", "outcome": "uncertain", "routed": True, "upstream_http_status": None, "gateway_http_status": None, "router_pipeline": None}
+    ]
 
 
 def test_rejected_attempts_do_not_stop_the_experimental_route_or_change_its_wording(tmp_path, monkeypatch) -> None:

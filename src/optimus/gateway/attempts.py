@@ -164,6 +164,7 @@ class ProviderAttempt:
     http_status: int | None = None
     gateway_usage: GatewayUsage | None = None
     routed: bool = False
+    router_pipeline: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         if self.number < 1 or self.outcome not in OUTCOMES:
@@ -346,4 +347,5 @@ def _routed(item: GatewayRouteAttempt, usage: GatewayUsage | None) -> ProviderAt
         http_status=item.http_status,
         gateway_usage=usage,
         routed=True,
+        router_pipeline=item.router_pipeline,
     )
