@@ -1,8 +1,8 @@
 # Plan 12.2 shipped empirical admission and default-planner successor
 
-**Status:** Accepted-with-open-items. The policy is accepted for the approved offline implementation; the ordinary-launch proof and the separately authorized shipment remain open. **Date:** 2026-10-18 (Asia/Calcutta). **Deciders:** the operator (the policy, by the direct answer quoted below); drafted by Codex; filed by Claude. Identifier allocated from the decisions index at filing: 023 (the index ended at ADR-022 at candidate `3f38d097612e0d2562c9283e31d1bdeeca1dd5e2`). No frozen predecessor is edited.
+**Status:** Accepted-with-open-items. The policy is accepted for the approved offline implementation, which ships with the Plan 12.2 delivery merge; the ordinary-launch proof for the shipped candidate is tracked in #237. **Date:** 2026-10-18 (Asia/Calcutta). **Deciders:** the operator (the policy, by the direct answer quoted below); drafted by Codex; filed by Claude. Identifier allocated from the decisions index at filing: 023 (the index ended at ADR-022 at candidate `3f38d097612e0d2562c9283e31d1bdeeca1dd5e2`). No frozen predecessor is edited.
 
-**Disposition:** policy accepted for the approved offline implementation; live execution, publication and merge remain separately gated. Implementation and proof status belong to the dated review and #237, not a retrospective expansion of this decision.
+**Disposition:** policy accepted for the approved offline implementation; publication and merge are by the separately authorized Plan 12.2 delivery PR, and live execution remains separately gated. Implementation and proof status belong to the dated review and #237, not a retrospective expansion of this decision.
 
 ## Direct authority
 

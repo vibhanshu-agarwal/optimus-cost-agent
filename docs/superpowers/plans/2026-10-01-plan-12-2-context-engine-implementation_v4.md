@@ -1,6 +1,6 @@
 # Plan 12.2 Context Engine implementation plan — complete v4 draft
 
-> **For agentic workers:** Claude implements the accepted scope; Codex architects and reviews only. The operator replaced per-task reviews with at most four remaining package checkpoints, Fable 5.1 then one consolidated Codex review. Between checkpoints, focused tests and local task commits run every applicable hook except the expressly approved optimus-pytest-coverage skip. Package A is locally accepted at 38a465f with its exact NOT MET residual, and its docs commit/push/PR are authorized after Claude review. The operator accepted the first Task 1 contract and complete v2 implementation plan on 2026-10-02, releasing CP1–CP3 as offline work; paid/live/service/sandbox/merge authority stays separate. No Codex implementation or unrequested agent dispatch.
+> **For agentic workers:** Claude implements the accepted scope; Codex architects and reviews only. The operator replaced per-task reviews with at most four remaining package checkpoints, Fable 5.1 then one consolidated Codex review. Between checkpoints, focused tests and local task commits run every applicable hook except the expressly approved optimus-pytest-coverage skip. Package A was accepted offline at 38a465f with its exact NOT MET residual and reached `main` through PR #276 (`c509fc8`, 2026-10-08). The operator accepted the first Task 1 contract and complete v2 implementation plan on 2026-10-02, releasing CP1–CP3 as offline work; paid/live/service/sandbox/merge authority stays separate. No Codex implementation or unrequested agent dispatch.
 
 **Goal:** Deliver the optional three-strategy Context Engine while preserving the source floor, exact host authority, curated routing and truthful cost accounting.
 
@@ -67,7 +67,7 @@ This remains one Plan 12.2 umbrella with independently rejectable package checkp
 
 | Package | Tasks | Independent outcome | Activation dependency |
 |---|---|---|---|
-| A: intake, first-step hardening and core floor | 0, 2, 3 | Intake, runner effect/cancellation proof and narrow floor/order baseline | Offline accepted locally at 38a465f; docs-first merge/base gates satisfied; docs/push/PR now authorized after Claude review; merge/live separate |
+| A: intake, first-step hardening and core floor | 0, 2, 3 | Intake, runner effect/cancellation proof and narrow floor/order baseline | Offline accepted at 38a465f; on `main` through PR #276 (`c509fc8`, 2026-10-08); live separate |
 | B: registry and request transport | 4–5 | Approved registry/capacity/output plumbing, free drift tooling | D3/D5/D7; live launch/schema approval separate |
 | C: engine contracts and views | 6–8 | Extractable deterministic views, summary gate tooling/receipts | D1/D2/D4; no paid calls before their authority |
 | D: host, picker, accounting | 9–11 | Captured attached views, full-set ACP UX, cost-policy migration | Prior packages; accounting/D6 before cost-stop removal under accepted Q3; Task 2 proof before attached activation |

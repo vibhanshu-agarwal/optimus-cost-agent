@@ -1,6 +1,6 @@
 # Plan 12.2 ordinary compaction shipping contract
 
-**Filed candidate, 2026-10-18: not accepted, not shipped.**
+**Filed candidate, 2026-10-18. The implementation it governs ships to `main` with the Plan 12.2 delivery PR. Its acceptance and the closure gate below are tracked in [#237](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/237).**
 
 - Wording: Codex's architecture text (#237 comment 6250318148; draft SHA-256 `15e96a3e35c6662ad119b899736653852f46829bb4ab814d051bfff18f0631ed`).
 - Filing: Claude, on the Plan 12.2 shipping branch, after checking the text against the implementation.
