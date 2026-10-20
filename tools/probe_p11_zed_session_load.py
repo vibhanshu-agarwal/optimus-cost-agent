@@ -356,6 +356,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/usage/models.py",
     "src/optimus/usage/turn_settlement.py",
     "src/optimus_security/__init__.py",
+    "src/optimus_security/failure_facts.py",
     "src/optimus_security/launch_manifest.py",
     "src/optimus_security/sanitization.py",
     "tools/plan117_custody_contract.py",

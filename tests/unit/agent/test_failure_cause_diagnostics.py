@@ -161,10 +161,11 @@ def test_the_audit_code_allowlist_is_every_code_the_source_raises() -> None:
     import re
 
     from optimus.gateway.attempts import AUDIT_CODES
+    from tools.tracked_repository_files import tracked_repository_files
 
-    source = Path(__file__).resolve().parents[3] / "src"
-    raised = {code for path in source.rglob("*.py") for code in re.findall(r'audit_code="([A-Z_]+)"', path.read_text(encoding="utf-8"))}
-    assert raised == set(AUDIT_CODES)
+    sources = tracked_repository_files(Path(__file__).resolve().parents[3], pathspecs=("src",))
+    found = (re.findall(r'audit_code="([A-Z_]+)"', path.read_text(encoding="utf-8")) for path in sources if path.suffix == ".py")
+    assert {code for codes in found for code in codes} == set(AUDIT_CODES)
 
 
 def test_a_prompt_refusal_is_traced_with_an_allowlisted_reason(tmp_path) -> None:

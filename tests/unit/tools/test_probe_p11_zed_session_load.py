@@ -4033,6 +4033,13 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     runtime_tree_committed = b"from optimus.guardrails.runtime_tree import" in head_path_safety
     if not runtime_tree_committed:
         expected -= {runtime_tree_path}
+    # Plan 12.2 diagnosability adds the one shared failure-facts helper the Gateway client and attempt diagnostics
+    # import (one path), keyed on HEAD's attempts module.
+    failure_facts_path = "src/optimus_security/failure_facts.py"
+    head_attempts = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/gateway/attempts.py")
+    failure_facts_committed = b"from optimus_security.failure_facts import" in head_attempts
+    if not failure_facts_committed:
+        expected -= {failure_facts_path}
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
@@ -4045,10 +4052,11 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     assert (stage_c_path in closure) is stage_c_committed
     assert (ordinary_paths <= closure) is ordinary_committed
     assert (runtime_tree_path in closure) is runtime_tree_committed
+    assert (failure_facts_path in closure) is failure_facts_committed
     base = 136 if seam2_committed else 134 if seam3_committed else 133
     assert len(closure) == base + (4 if task9_committed else 0) + (2 if task10_committed else 0) + (2 if task11_committed else 0) + (
         2 if correction_committed else 0
-    ) + tree_committed + composition_committed + stage_c_committed + (2 if ordinary_committed else 0) + runtime_tree_committed
+    ) + tree_committed + composition_committed + stage_c_committed + (2 if ordinary_committed else 0) + runtime_tree_committed + failure_facts_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base
