@@ -26,6 +26,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import re
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -65,6 +66,7 @@ from optimus.context.maintenance import (
     first_error,
 )
 from optimus.runtime.modes import ExecutionMode
+from optimus_security.failure_facts import exception_fact, slug
 
 __all__ = [
     "AdmittedContext",
@@ -269,6 +271,11 @@ _REASON_CATEGORIES = {
     "summary malformed": "summary_rejected",
 }
 FAULT_CATEGORIES = frozenset({*_REASON_CATEGORIES.values(), "config_error", "engine_error", "maintenance_error", "other"})
+# A fault's bounded subtype beside its broad category (Codex round 13 finding 2): the engine reason's slug, the
+# summarizer's maintenance status or finish status, or an exception's class. Never text.
+_FAULT_DETAIL = re.compile(r"[A-Za-z0-9_]{1,80}")
+_MAINTENANCE_STATUSES = frozenset({"completed", "failed", "cancelled", "unsupported", "unavailable", "allowance_exhausted"})
+_FINISH_STATUSES = frozenset({"stop", "length", "content_filter", "tool_calls", "error"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -279,10 +286,13 @@ class ContextFault:
 
     phase: Literal["prepare", "repack"]
     category: str
+    detail: str | None = None
 
     def __post_init__(self) -> None:
         if self.phase not in {"prepare", "repack"} or self.category not in FAULT_CATEGORIES:
             raise ValueError("a context fault needs a known phase and category")
+        if self.detail is not None and not _FAULT_DETAIL.fullmatch(self.detail):
+            raise ValueError("a context fault's detail is a bounded subtype, never text")
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,8 +314,8 @@ class ContextAttachment:
     Every bound is explicit: the attached source class and per-turn record reservation (D2, measured
     before activation), the policy history allocation and maintenance bounds in `limits`, the
     planning/answer route's usable input and its verified estimator, and a finite repack allowance.
-    No production path constructs one yet; activation waits for the measured policy, a qualified
-    summarizer receipt and Task 2's production-base proof.
+    Every ordinary launch constructs one from the shipped registry and the shared numeric policy
+    (``optimus.acp.context_attachment.ordinary_attachment``, Plan 12.2 closure); Stage C builds its own.
     """
 
     engine: ViewEngine
@@ -350,6 +360,8 @@ class _TurnMaintenance:
         self._allowance = allowance
         self.calls = 0
         self.raised = False
+        self.last_status: str | None = None
+        self.last_finish: str | None = None
 
     @property
     def remaining(self) -> int:
@@ -363,11 +375,26 @@ class _TurnMaintenance:
             return MaintenanceResult(summary_text=None, attempt_ids=(), status="allowance_exhausted", finish_status=None)
         self.calls += 1
         try:
-            return self._host(request)
+            result = self._host(request)
         except BaseException:
             # Lets the engine boundary tell a host maintenance failure from an engine fault.
             self.raised = True
             raise
+        self.last_status, self.last_finish = result.status, result.finish_status
+        return result
+
+    def failure_detail(self) -> str:
+        """Why the engine's last maintenance call failed, bounded: its status, or for a completed call its finish
+        status (a length-capped summary is ``finish_length``), or ``empty_summary``."""
+        status = self.last_status
+        if status is None:
+            return "no_call"
+        if status != "completed":
+            return "status_" + (status if status in _MAINTENANCE_STATUSES else "other")
+        finish = self.last_finish
+        if finish == "stop":
+            return "empty_summary"
+        return "finish_" + ("none" if finish is None else finish if finish in _FINISH_STATUSES else "other")
 
 
 class AttachedTurn:
@@ -485,9 +512,9 @@ class AttachedTurn:
             faults, self._faults = tuple(self._faults), []
         return faults
 
-    def _fault(self, phase: Literal["prepare", "repack"], category: str) -> None:
+    def _fault(self, phase: Literal["prepare", "repack"], category: str, detail: str | None = None) -> None:
         with self._faults_lock:
-            self._faults.append(ContextFault(phase, category))
+            self._faults.append(ContextFault(phase, category, detail))
 
     def prepare(self) -> ContextOutcome:
         """Build the snapshot and the turn's view. Synchronous: call it off the event loop."""
@@ -517,10 +544,10 @@ class AttachedTurn:
             )
             try:
                 call = attachment.summarizer(identity, self._deliver_notice)
-            except Exception:  # noqa: BLE001 - a summarizer that cannot bind this identity makes no call
+            except Exception as exc:  # noqa: BLE001 - a summarizer that cannot bind this identity makes no call
                 # Nothing was sent, so nothing is owed; the turn proceeds without summaries and the
                 # operator sees a content-free config fault (Codex CP3 ruling R5 and M2).
-                self._fault("prepare", "config_error")
+                self._fault("prepare", "config_error", exception_fact(exc)["class"])
             else:
                 host = HostMaintenance(
                     call=call,
@@ -576,13 +603,20 @@ class AttachedTurn:
                 # surfaced like a receipt conflict, never hidden as a fallback (Fable CP3 correction
                 # review MINOR-1).
                 raise
-            self._fault(phase, "maintenance_error" if self._maintenance.raised else "engine_error")
+            self._fault(phase, "maintenance_error" if self._maintenance.raised else "engine_error", exception_fact(exc)["class"])
             return PreparedView((), (), None, self._snapshot.protected, (), (), False, "engine fault")
         if self._sink_error is not None:
             raise self._sink_error  # an engine that swallowed the failure still cannot hide it
         if not view.available and view.reason != "cancelled":  # a cancelled turn is not a fault
-            self._fault(phase, _REASON_CATEGORIES.get(view.reason or "", "other"))
+            self._fault(phase, _REASON_CATEGORIES.get(view.reason or "", "other"), self._reason_detail(view.reason))
         return view
+
+    def _reason_detail(self, reason: str | None) -> str:
+        """The engine reason's own bounded subtype: for a failed maintenance call, why it failed; otherwise the
+        listed reason's slug, so a malformed and an oversized summary, or each capacity cause, stay apart."""
+        if reason == "maintenance failed" and self._maintenance is not None:
+            return self._maintenance.failure_detail()
+        return slug(reason) if reason in _REASON_CATEGORIES else "other"
 
     def _admit(self, applied: str, view: PreparedView) -> None:
         assert self._snapshot is not None

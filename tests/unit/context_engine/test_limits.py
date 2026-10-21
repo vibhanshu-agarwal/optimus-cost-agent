@@ -4,8 +4,8 @@ The measurement tool (`tools/measure_context_engine_limits.py`) produces the D1-
 tests hold its boundary claims to the real host and engine code: each admitted or refused boundary is
 off by nothing, the protected-authority arithmetic matches the engine turn for turn, the output reserve
 is counted once, and a truncated or unfinished reply is never used. They also pin the accepted
-engine-absent floor (524288 bytes, inclusive). Proposed attached values get their own boundary
-assertions only once the operator accepts them. No timing or memory figure is asserted here.
+engine-absent floor (524288 bytes, inclusive). The accepted attached values are the shipped numeric
+policy (Plan 12.2 closure), pinned to the checked proposal below. No timing or memory figure is asserted here.
 """
 
 from __future__ import annotations
@@ -253,7 +253,36 @@ def test_a_consistent_proposal_has_no_violations_and_reports_its_coverage() -> N
     # D7: the floor already includes the current prompt, so only the path's other material is added.
     assert coverage["absent_floor_max_ratio"] == round((262_144 - 32_768) / (524_288 + FIXED["planning"]), 4)
     assert coverage["trigger_binding_term_by_tier"] == {"ultra-cheap": "tier target", "cheap": "tier target"}
-    assert set(coverage["cold_rebuild_list_price_usd"]) == {"qwen/qwen3.7-flash", "openai/gpt-6-luna"}
+    assert set(coverage["cold_rebuild_list_price_usd"]) == {"anthropic/claude-haiku-5.5"}
+
+
+def test_the_shipped_numeric_policy_is_the_checked_proposal() -> None:
+    """Plan 12.2 closure: the ordinary attachment ships exactly the values checked consistent above, against
+    the shipped registry's reserves and the shipped Haiku 5.5 route."""
+    from optimus.context import shipped_policy as shipped
+    from optimus_model_policy.binding import trusted_snapshot
+
+    snapshot = trusted_snapshot()
+    assert snapshot is not None
+    attached = shipped.attachment_limits(snapshot, "anthropic/claude-haiku-5.5")
+    reserves = snapshot.policy.output_reserve_tokens
+    assert {
+        "source_max_bytes": shipped.SOURCE_MAX_BYTES,
+        "record_reservation_bytes": shipped.RECORD_RESERVATION_BYTES,
+        "view_source_max_bytes": attached.limits.source_max_bytes,
+        "transient_max_bytes": shipped.TRANSIENT_MAX_BYTES,
+        "maintenance_input_tokens": shipped.MAINTENANCE_INPUT_TOKENS,
+        "summary_output_tokens": attached.parameters.summary_output_tokens,
+        "max_maintenance_calls": shipped.MAX_MAINTENANCE_CALLS,
+        "max_repacks": shipped.MAX_REPACKS,
+        "anchor_input_tokens": shipped.ANCHOR_INPUT_TOKENS,
+        "compaction_tail_input_tokens": shipped.COMPACTION_TAIL_INPUT_TOKENS,
+        "hybrid_tail_input_tokens": shipped.HYBRID_TAIL_INPUT_TOKENS,
+        "implementer_output_reserve": reserves["implementer"],
+        "summarizer_output_reserve": reserves["summarizer"],
+    } == {key: value for key, value in PROPOSAL.items() if key not in ("history_input_tokens_by_tier", "prompt_allowance_bytes")}
+    assert attached.limits.history_input_tokens == PROPOSAL["history_input_tokens_by_tier"]["ultra-cheap"]
+    assert check()["violations"] == []
 
 
 @pytest.mark.parametrize("ratio", ["1", "0.5", "0.3", "0.25", "0.2", "0.1", "0.3333333333333333333333333333"])
@@ -337,9 +366,9 @@ def test_a_steady_state_turn_reuses_its_checkpoint_with_at_most_one_call() -> No
         ({"history_input_tokens_by_tier": {"ultra-cheap": 131_072, "cheap": 80_000}}, "hybrid's anchor, tail and summary must fit the smallest history target"),
         ({"history_input_tokens_by_tier": {"cheap": 40_000}}, "compaction's tail and summary must fit the smallest history target"),
         ({"history_input_tokens_by_tier": {"cheap": 131_072, "review": 131_072}}, "history target for review has no active implementer route"),
-        ({"implementer_output_reserve": 128_001}, "implementer reserve exceeds openai/gpt-6-luna's max output"),
-        ({"summarizer_output_reserve": 65_537, "summary_output_tokens": 65_537}, "summarizer reserve exceeds qwen/qwen3.7-flash's max output"),
-        ({"maintenance_input_tokens": 260_000, "transient_max_bytes": 1_040_000}, "a maintenance call does not fit qwen/qwen3.7-flash"),
+        ({"implementer_output_reserve": 128_001}, "implementer reserve exceeds anthropic/claude-haiku-5.5's max output"),
+        ({"summarizer_output_reserve": 128_001, "summary_output_tokens": 128_001}, "summarizer reserve exceeds anthropic/claude-haiku-5.5's max output"),
+        ({"maintenance_input_tokens": 260_000, "transient_max_bytes": 1_040_000}, "a maintenance call does not fit anthropic/claude-haiku-5.5"),
         ({"history_input_tokens_by_tier": {"cheap": 200_000}}, "cheap history target leaves no room for planning material"),
     ],
 )

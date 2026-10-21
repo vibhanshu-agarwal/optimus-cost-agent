@@ -9,7 +9,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from optimus.config.gateway import OptimusGatewaySettings
-from optimus.gateway.errors import GatewayHttpError
+from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
 from optimus.gateway.models import (
     GatewayResponse,
     GatewayRouteAttempt,
@@ -19,6 +19,7 @@ from optimus.gateway.models import (
     parse_gateway_usage,
     parse_route_attempts,
 )
+from optimus_security.failure_facts import exception_fact
 
 if TYPE_CHECKING:
     from optimus_model_policy.binding import RouteBinding
@@ -78,7 +79,8 @@ class UrllibGatewayTransport:
             with urlopen(urllib_request, timeout=request.timeout_seconds) as response:
                 body = response.read().decode("utf-8")
         except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
+            raw = exc.read()
+            detail = raw.decode("utf-8", errors="replace")
             gateway_usage = _try_parse_error_usage(detail)
             gateway_code, retryable, route_attempts = _try_parse_error_correlation(detail)
             raise GatewayHttpError(
@@ -89,9 +91,10 @@ class UrllibGatewayTransport:
                 retryable=retryable,
                 route_attempts=route_attempts,
                 route_attempts_malformed=_route_attempts_dropped(detail, route_attempts),
+                error_envelope=_error_envelope(raw, detail),
             ) from exc
         except URLError as exc:
-            raise GatewayHttpError(0, str(exc.reason)) from exc
+            raise GatewayHttpError(0, str(exc.reason), failure={"kind": "transport", **exception_fact(exc)}) from exc
 
         return _decode_gateway_json(body)
 
@@ -230,6 +233,33 @@ def _try_parse_error_correlation(detail: str) -> tuple[str | None, bool | None, 
     return code, retryable, attempts
 
 
+def _error_envelope(raw: bytes, detail: str) -> dict[str, str | None]:
+    """Why an HTTP error body could not be used, in fixed values (correction plan v4, C3): whether its bytes were valid
+    UTF-8 (checked before the replacement decode loses it), whether the decoded text was a JSON object, and the audit
+    code of a ``gateway_usage`` it carried that failed validation (absent usage is no fault). The parsing and
+    accounting are unchanged; the body itself is never kept."""
+    try:
+        raw.decode("utf-8")
+        encoding = "ok"
+    except UnicodeDecodeError:
+        encoding = "invalid_utf8"
+    try:
+        decoded = json.loads(detail, parse_float=Decimal)
+    except ValueError:
+        return {"error_body_encoding": encoding, "error_body": "invalid_json", "usage_audit_code": None}
+    if not isinstance(decoded, dict):
+        return {"error_body_encoding": encoding, "error_body": "non_object", "usage_audit_code": None}
+    audit_code = None
+    if "gateway_usage" in decoded:
+        try:
+            parse_gateway_usage(decoded["gateway_usage"])
+        except GatewayResponseError as exc:
+            audit_code = exc.audit_code or "GATEWAY_USAGE_INVALID"
+        except Exception:  # noqa: BLE001 - any other validation failure is still invalid usage
+            audit_code = "GATEWAY_USAGE_INVALID"
+    return {"error_body_encoding": encoding, "error_body": "ok", "usage_audit_code": audit_code}
+
+
 def _route_attempts_dropped(detail: str, parsed: tuple[GatewayRouteAttempt, ...]) -> bool:
     """Whether an error body carried a non-empty ``route_attempts`` value that parsing had to drop."""
     if parsed:
@@ -247,7 +277,7 @@ def _decode_gateway_json(body: str) -> dict[str, Any]:
     try:
         decoded = json.loads(body, parse_float=Decimal)
     except json.JSONDecodeError as exc:
-        raise GatewayHttpError(0, "gateway returned invalid JSON") from exc
+        raise GatewayHttpError(0, "gateway returned invalid JSON", failure={"kind": "gateway_invalid_json"}) from exc
     if not isinstance(decoded, dict):
-        raise GatewayHttpError(0, "gateway returned non-object JSON")
+        raise GatewayHttpError(0, "gateway returned non-object JSON", failure={"kind": "gateway_non_object_json"})
     return decoded

@@ -4,6 +4,7 @@ import pytest
 
 pytestmark = pytest.mark.usefixtures("isolated_windows_known_folders")
 
+from context_engine.engine import ContextEngine
 from optimus.acp import bootstrap as bootstrap_module
 from optimus.acp.bootstrap import (
     StartupConfigurationError,
@@ -15,6 +16,9 @@ from optimus.acp.preflight import PreflightFailure
 from optimus.agent.runner import AgentRunner
 from optimus.mcp.client_disposition import ClientMcpRuntime
 from optimus.mcp.client_sdk import ClientMcpSdkAdapter
+from optimus_model_policy.experimental import SHIPPED_DEFAULTS_HASH
+
+HAIKU = "anthropic/claude-haiku-5.5"  # the shipped default agent model (closure plan v3)
 
 
 def _test_sdk_adapter(supervisor) -> ClientMcpSdkAdapter:
@@ -123,7 +127,7 @@ def test_bootstrap_builds_agent_configured_server(tmp_path, monkeypatch):
             "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
         },
         workspace_root=tmp_path,
-        model="glm-5.2",
+        model=HAIKU,
         gateway_timeout_seconds=90.0,
     )
 
@@ -183,7 +187,7 @@ def test_bootstrap_gateway_timeout_defaults_to_thirty_seconds(tmp_path, monkeypa
             "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
         },
         workspace_root=tmp_path,
-        model="glm-5.2",
+        model=HAIKU,
     )
 
     assert server._dispatcher._gateway_client._timeout_seconds == 30.0
@@ -211,7 +215,7 @@ def test_bootstrap_reports_unreachable_redis(tmp_path, monkeypatch):
 
 
 def test_bootstrap_wires_workspace_context_observer(monkeypatch, tmp_path):
-    from optimus.acp.debug_trace import log_planning_replan_event, log_workspace_context_result
+    from optimus.acp.debug_trace import log_planning_replan_event, log_provider_attempts, log_workspace_context_result
 
     captured_kwargs: dict = {}
 
@@ -256,11 +260,15 @@ def test_bootstrap_wires_workspace_context_observer(monkeypatch, tmp_path):
             "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
         },
         workspace_root=tmp_path,
-        model="glm-5.2",
+        model=HAIKU,
     )
 
     assert captured_kwargs["workspace_context_observer"] is log_workspace_context_result
     assert captured_kwargs["planning_progress_observer"] is log_planning_replan_event
+    # Plan 12.2 r4 stop diagnosis; correction plan v4 C4: bound to this harness's workspace telemetry writer.
+    observer = captured_kwargs["provider_attempt_observer"]
+    assert observer.func is log_provider_attempts
+    assert observer.keywords["telemetry"] is captured_kwargs["event_sink"].jsonl_writer
 
 
 def test_bootstrap_wires_one_telemetry_fanout_with_jsonl_redis_and_gateway_exporter(monkeypatch, tmp_path):
@@ -312,7 +320,7 @@ def test_bootstrap_wires_one_telemetry_fanout_with_jsonl_redis_and_gateway_expor
             "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
         },
         workspace_root=tmp_path,
-        model="glm-5.2",
+        model=HAIKU,
     )
 
     fanout = captured_kwargs["event_sink"]
@@ -397,7 +405,7 @@ def test_bootstrap_builds_process_lifetime_client_mcp_runtime(tmp_path, monkeypa
             "OPTIMUS_REDIS_URL": "redis://localhost:6379/0",
         },
         workspace_root=tmp_path,
-        model="glm-5.2",
+        model=HAIKU,
     )
     assert server.client_mcp_runtime is runtime
     assert runtime.disposition is not None
@@ -591,13 +599,13 @@ def test_build_configured_server_defaults_to_an_empty_system_view_never_ambient(
     monkeypatch.setenv("PATH", "/ambient/bin")
     monkeypatch.setenv("OPTIMUS_CLIENT_MCP_EPHEMERAL_HMAC", "1")
 
-    build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+    build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model=HAIKU)
     assert set(captured) == {"workspace_root", "system_environ", "ephemeral_hmac"}
     assert captured["system_environ"] == {}
     assert captured["ephemeral_hmac"] is False
 
     captured.clear()
-    build_configured_server(environ=_server_environ(), system_environ={}, workspace_root=tmp_path, model="glm-5.2")
+    build_configured_server(environ=_server_environ(), system_environ={}, workspace_root=tmp_path, model=HAIKU)
     assert captured["system_environ"] == {}
     assert captured["ephemeral_hmac"] is False
 
@@ -658,7 +666,7 @@ def test_real_startup_wiring_hands_captured_system_values_to_mcp(monkeypatch, tm
         system_environ=system_view,
         ephemeral_hmac=True,
         workspace_root=tmp_path,
-        model="glm-5.2",
+        model=HAIKU,
     )
     system_view["PATH"] = "/mutated/after/call"
 
@@ -686,7 +694,7 @@ def test_real_startup_wiring_strips_a_misrouted_agent_environ_down_to_system_nam
     monkeypatch.setattr("optimus.acp.bootstrap.build_client_mcp_runtime", _capture)
     misrouted = {**_server_environ(), "PATH": "/captured/bin"}
 
-    build_configured_server(environ=_server_environ(), system_environ=misrouted, workspace_root=tmp_path, model="glm-5.2")
+    build_configured_server(environ=_server_environ(), system_environ=misrouted, workspace_root=tmp_path, model=HAIKU)
 
     assert captured["system_environ"] == {"PATH": "/captured/bin"}
 
@@ -711,7 +719,7 @@ def test_build_configured_server_preserves_explicitly_empty_pathext_and_keeps_ab
         environ=_server_environ(),
         system_environ={"PATH": "/captured/bin", "PATHEXT": ""},
         workspace_root=tmp_path,
-        model="glm-5.2",
+        model=HAIKU,
     )
     assert captured["system_environ"] == {"PATH": "/captured/bin", "PATHEXT": ""}
 
@@ -720,7 +728,7 @@ def test_build_configured_server_preserves_explicitly_empty_pathext_and_keeps_ab
         environ=_server_environ(),
         system_environ={"PATH": "/captured/bin"},
         workspace_root=tmp_path,
-        model="glm-5.2",
+        model=HAIKU,
     )
     assert captured["system_environ"] == {"PATH": "/captured/bin"}
 
@@ -791,7 +799,7 @@ def test_the_harness_runtime_retains_the_redis_runtime_and_closes_it_once(monkey
     """MUTATION: the retained close handle is dropped (S1 serving custody)."""
     runtime = _lifetime_runtime(monkeypatch)
 
-    harness = build_agent_harness_runtime(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+    harness = build_agent_harness_runtime(environ=_server_environ(), workspace_root=tmp_path, model=HAIKU)
 
     assert isinstance(harness.agent_runner, AgentRunner)
     assert harness.redis_runtime is runtime
@@ -804,10 +812,51 @@ def test_the_configured_server_holds_the_same_redis_runtime_the_harness_built(mo
     runtime = _lifetime_runtime(monkeypatch)
     monkeypatch.setattr("optimus.acp.bootstrap.build_client_mcp_runtime", lambda **kwargs: _fake_client_runtime())
 
-    server = build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+    server = build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model=HAIKU)
 
     assert server.redis_runtime is runtime
     assert runtime.closed == 0
+
+
+def test_the_ordinary_launch_binds_and_attaches_on_the_shipped_registry(monkeypatch, tmp_path):
+    """Closure plan v3. MUTATION: the ordinary build sends unbound requests (the enforced Gateway refuses them with
+    BINDING_REQUIRED) or stays absent-engine on the shipped registry."""
+    _lifetime_runtime(monkeypatch)
+    monkeypatch.setattr("optimus.acp.bootstrap.build_client_mcp_runtime", lambda **kwargs: _fake_client_runtime())
+
+    server = build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model=HAIKU)
+
+    policy = server._route_policy  # noqa: SLF001
+    assert policy is not None and policy.identity.registry_hash == SHIPPED_DEFAULTS_HASH
+    assert (policy.identity.model_id, policy.identity.role, policy.output_cap) == (HAIKU, "easy", 32_768)
+    attachment = server.context_attachment
+    assert attachment is not None and attachment.registry_hash == SHIPPED_DEFAULTS_HASH and attachment.model_id == HAIKU
+    assert attachment.summarizer_route is not None and attachment.summarizer_route.model_id == HAIKU
+
+
+def test_only_a_stage_c_launch_consults_the_stage_c_attachment(monkeypatch, tmp_path):
+    """Plan 12.2 Task 13 (Stage C). MUTATION: the Stage C composition is consulted for every launch (the
+    ordinary host would load test-only code), or its attachment and seeder never reach the server."""
+    _lifetime_runtime(monkeypatch)
+    monkeypatch.setattr("optimus.acp.bootstrap.build_client_mcp_runtime", lambda **kwargs: _fake_client_runtime())
+    calls, attachment, seeder = [], object(), object()
+
+    def stage_c_attachment(**kwargs):
+        calls.append(kwargs)
+        return attachment, seeder
+
+    monkeypatch.setattr("optimus.acp.stage_c.stage_c_attachment", stage_c_attachment)
+
+    ordinary = build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model=HAIKU)
+    # Closure plan v3: the ordinary launch attaches the plain engine on the shipped registry, never Stage C's.
+    assert ordinary.context_attachment is not None and type(ordinary.context_attachment.engine) is ContextEngine
+    assert ordinary._session_seeder is None and calls == []  # noqa: SLF001
+
+    launch = object()
+    staged = build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model=HAIKU, stage_c=launch)
+    assert staged.context_attachment is attachment and staged._session_seeder is seeder  # noqa: SLF001
+    [call] = calls
+    assert call["launch"] is launch and call["composition"] is None
 
 
 def test_the_telemetry_sink_submits_through_the_retained_runtime(monkeypatch, tmp_path):
@@ -823,7 +872,7 @@ def test_the_telemetry_sink_submits_through_the_retained_runtime(monkeypatch, tm
             super().__init__(**kwargs)
 
     monkeypatch.setattr("optimus.acp.bootstrap.AgentRunner", CapturingAgentRunner)
-    build_agent_harness_runtime(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+    build_agent_harness_runtime(environ=_server_environ(), workspace_root=tmp_path, model=HAIKU)
     sink = captured["event_sink"].redis_sink
     assert isinstance(sink, RedisTelemetryEventSink)
     assert sink.submit == runtime.run_sync
@@ -839,7 +888,7 @@ def test_a_failure_after_the_runtime_exists_rolls_it_back_and_preserves_the_erro
     monkeypatch.setattr("optimus.acp.bootstrap.PreToolGuard.for_workspace", _boom)
 
     with pytest.raises(RuntimeError, match="guard construction failed"):
-        build_agent_harness_runtime(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+        build_agent_harness_runtime(environ=_server_environ(), workspace_root=tmp_path, model=HAIKU)
     assert runtime.closed == 1
 
 
@@ -857,7 +906,7 @@ def test_a_rollback_failure_is_attached_to_the_original_error_not_substituted(mo
     )
 
     with pytest.raises(RuntimeError, match="guard construction failed") as exc_info:
-        build_agent_harness_runtime(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+        build_agent_harness_runtime(environ=_server_environ(), workspace_root=tmp_path, model=HAIKU)
     assert runtime.closed == 1
     assert any("rollback" in note and "teardown incomplete" in note for note in getattr(exc_info.value, "__notes__", []))
 
@@ -884,7 +933,7 @@ def test_a_server_composition_failure_closes_the_harness_and_the_mcp_runtime(mon
     monkeypatch.setattr("optimus.acp.conversation.build_conversation_sanitizer_inputs", _boom)
 
     with pytest.raises(RuntimeError, match="sanitizer inputs failed"):
-        build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+        build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model=HAIKU)
     assert runtime.closed == 1
     assert mcp_closes == [1]
 
@@ -909,7 +958,7 @@ def test_a_rollback_failure_behind_a_frozen_startup_error_keeps_that_error(monke
         lambda **kwargs: (_ for _ in ()).throw(original),
     )
     with pytest.raises(SubprocessEnvConfigurationError) as exc_info:
-        build_agent_harness_runtime(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+        build_agent_harness_runtime(environ=_server_environ(), workspace_root=tmp_path, model=HAIKU)
     assert exc_info.value is original
     assert runtime.closed == 1
     assert any("offline cleanup fault" in note for note in getattr(exc_info.value, "__notes__", []))
@@ -944,7 +993,7 @@ def test_a_frozen_composition_error_with_failing_mcp_and_redis_cleanup_keeps_its
         lambda *args, **kwargs: (_ for _ in ()).throw(original),
     )
     with pytest.raises(SubprocessEnvConfigurationError) as exc_info:
-        build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model="glm-5.2")
+        build_configured_server(environ=_server_environ(), workspace_root=tmp_path, model=HAIKU)
     assert exc_info.value is original
     assert mcp_closes == [1] and runtime.closed == 1, "a failing note must not skip the remaining cleanup"
     notes = getattr(exc_info.value, "__notes__", [])

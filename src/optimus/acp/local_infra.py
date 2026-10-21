@@ -429,6 +429,8 @@ def ensure_local_gateway(
     log: Callable[[str], None] = _noop_log,
     model_registry: str | None = None,
     test_profile: str | None = None,
+    stage_c_envelope: str | None = None,
+    stage_c_ledger: Path | None = None,
 ) -> LocalGatewayProcess | None:
     """Start the local Gateway child using ALREADY-RESOLVED credentials.
 
@@ -502,6 +504,7 @@ def ensure_local_gateway(
         hmac_key=manifest_hmac_key,
         policy_version=policy_version,
         model_registry=model_registry,
+        stage_c_envelope=stage_c_envelope,
     )
     serialized_manifest = serialize_gateway_child_manifest(manifest)
 
@@ -517,6 +520,10 @@ def ensure_local_gateway(
         # A named Plan 12.2 test profile is passed by name only: the Gateway composes it from its own
         # reviewed source and refuses unless the signed manifest binds that hash (release supplement V2).
         profile_argv = [] if test_profile is None else ["--plan12-test-profile", test_profile]
+        # Plan 12.2 Task 13 (Stage C): the resolved ledger is passed by path; the Gateway composes the
+        # envelope itself and refuses unless the signed manifest binds exactly that envelope.
+        if stage_c_ledger is not None:
+            profile_argv += ["--plan12-stage-c-ledger", str(stage_c_ledger)]
         process = subprocess.Popen(
             [
                 sys.executable,

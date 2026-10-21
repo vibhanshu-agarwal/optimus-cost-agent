@@ -4,9 +4,18 @@
 # Endpoint windows and max outputs come from the OpenRouter catalog snapshot of 2026-09-30
 # (docs/decisions/2026-09-30-industry-context-cost-and-model-evidence.md, section C). They are
 # recorded but NOT verified: the free drift check (tools/check_model_registry_drift.py) must confirm
-# each endpoint before a route can be used. No route estimator or output reserve has been measured yet
-# (D1-D3, Plan 12.2 Task 12), so this policy admits no model for any role until those are reviewed in.
-# Unknown facts stay null; nothing here is guessed. Change this file only through a reviewed PR.
+# each endpoint before a route can be used. Unknown facts stay null; nothing here is guessed.
+#
+# Claude Haiku 5.5 (Plan 12.2 closure plan v3, operator approval of the offline scope and policy, #237
+# 6249169293) is the shipped summarizer and easy model. Its entry, estimator, output reserves and roles are
+# exactly the reviewed attached test profile's (test_profile_attached.yaml), so this file composes to the
+# attached profile's effective hash: the snapshot Stage C's attached cases ran on. Its admission rests on
+# the one shipped empirical exception in experimental.py (an empirical size estimate, verified: false, and
+# provider-family routing), bound to that exact hash; any changed policy value composes another hash and
+# gets the ordinary refusals. Its receipt is the accepted assessment-v1.1 receipt for its fixture, prompt
+# and validator only, not a general quality claim. No medium model is eligible yet, so the default planner
+# falls back to the first eligible easy model (agent/defaults.py). Change this file only through a
+# reviewed PR that also re-pins the hashes in experimental.py.
 #
 # This file must stay strict YAML: no anchors, aliases, merge keys or custom tags; quote dates.
 
@@ -14,13 +23,41 @@ schema_version: 1
 policy_version: "2026-10-02.1"
 fixture: false
 context_ceiling_tokens: 262144
-output_reserve_tokens: {}
-estimators: {}
+output_reserve_tokens: {implementer: 32768, summarizer: 8192}
+estimators:
+  haiku-5-5-empirical: {method: utf8-bytes-ratio-empirical, tokens_per_byte: "1", per_message_tokens: 16, fixed_tokens: 256, verified: false}
 role_price_blends: {}
 alerts:
   thresholds_usd: []
 
 models:
+  anthropic/claude-haiku-5.5:
+    origin: non-china
+    tier: ultra-cheap
+    prices: {input_usd_per_million: "0.50", output_usd_per_million: "2.50"}
+    data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
+    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: [low, medium, high, xhigh, max]}
+    default_reasoning: low
+    route:
+      estimator: haiku-5-5-empirical
+      endpoints:
+        - {provider: anthropic, quantization: unknown, context_window_tokens: 1000000, max_output_tokens: 128000, verified: true, observed_on: "2026-10-09"}
+    summary_receipts:
+      - model_id: anthropic/claude-haiku-5.5
+        format: context-summary-v1
+        providers: [anthropic]
+        quantizations: [unknown]
+        reasoning: low
+        fixture_digest: f32fd04d25461f435daff8c39049b2468afe3e407e1c4a3a41c9992f3b5e8f19  # pragma: allowlist secret - public fixture digest
+        prompt_digest: 6d1b4e77d77f1a7331932633dbc39ae4f1c3bf5c4a79acf8aed9873b410902db  # pragma: allowlist secret - public prompt digest
+        validator: context-summary-assessment-v1.1
+        request_ids: [gw-142d038d8be1423bba3a4c286f813726, gw-52fac698887f4b69b98f33ad60e0650b]  # pragma: allowlist secret - public Gateway request IDs
+        recorded_on: "2026-10-10"
+        result: pass
+    evidence:
+      - "2026-10-09 free inspection: OpenRouter endpoints/models listing, Anthropic model page; provider-family route"
+      - "text_planning_grammar is a test assumption checked by Task 13's Agent cases, not a publisher fact"
+
   qwen/qwen3.7-flash:
     origin: china
     tier: ultra-cheap
@@ -155,6 +192,6 @@ roles:
   medium: [meta/muse-spark-1.3-contributor, deepseek/deepseek-v4.1-flash, google/gemini-3.8-flash, meta/muse-spark-1.3]
   complex: [google/gemini-3.8-flash, z-ai/glm-5.3]
   escalation: [google/gemini-3.8-flash, z-ai/glm-5.3]
-  easy: [openai/gpt-6-luna]
-  summarizer: [qwen/qwen3.7-flash, openai/gpt-6-luna]
+  easy: [anthropic/claude-haiku-5.5]
+  summarizer: [anthropic/claude-haiku-5.5]
   reviewer: [anthropic/claude-sonnet-5.5, moonshotai/kimi-k3]

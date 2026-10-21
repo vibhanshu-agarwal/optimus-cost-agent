@@ -207,7 +207,9 @@ def _s1_serving_custody(
 #: executed lies outside the binding. The list is therefore a floor that cannot be
 #: lowered silently: a new executing module fails the closure check until it is added.
 _S1_PROBE_EXECUTES = (
+    "src/context_engine/contracts.py",
     "src/optimus/acp/bootstrap.py",
+    "src/optimus/acp/context_attachment.py",
     "src/optimus/acp/conversation.py",
     "src/optimus/acp/debug_trace.py",
     "src/optimus/acp/dispatcher.py",
@@ -230,7 +232,11 @@ _S1_PROBE_EXECUTES = (
     "src/optimus/agent/runner.py",
     "src/optimus/agent/state_store.py",
     "src/optimus/config/gateway.py",
+    "src/optimus/context/assembly.py",
+    "src/optimus/context/maintenance.py",
+    "src/optimus/context/shipped_policy.py",
     "src/optimus/gateway/client.py",
+    "src/optimus/gateway/route_binding.py",
     "src/optimus/guardrails/audit.py",
     "src/optimus/guardrails/command_safety.py",
     "src/optimus/guardrails/network_safety.py",
@@ -253,6 +259,9 @@ _S1_PROBE_EXECUTES = (
     "src/optimus/telemetry/redis_adapter.py",
     "src/optimus/telemetry/redis_sink.py",
     "src/optimus_model_policy/binding.py",
+    "src/optimus_model_policy/experimental.py",
+    "src/optimus_model_policy/registry.py",
+    "src/optimus_model_policy/validation.py",
     "src/optimus_security/launch_manifest.py",
 )
 
@@ -286,9 +295,10 @@ _REQUIRED_DISTRIBUTIONS: dict[str, tuple[str, ...]] = {
     # R3: the installed distributions the S1 scenarios execute (recorded on every thread):
     # pydantic for the composed records, keyring -- with its jaraco/more-itertools closure --
     # reached by the configured composition's launch-policy and conversation wiring, and
-    # redis for the runtime pair. The closure recorder refuses the measurement if anything
+    # redis for the runtime pair, and pyyaml for the shipped registry the ordinary composition
+    # loads (Plan 12.2 closure). The closure recorder refuses the measurement if anything
     # outside this closure runs.
-    "s1.serving_custody": ("redis", "keyring", "pydantic"),
+    "s1.serving_custody": ("redis", "keyring", "pydantic", "pyyaml"),
 }
 
 

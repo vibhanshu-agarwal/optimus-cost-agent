@@ -20,7 +20,7 @@ from tests.integration.optimus_gateway.gateway_env import project_root
 pytestmark = pytest.mark.e2e
 
 _DEFAULT_LIVE_MAX_COST_USD = Decimal("0.25")
-_LIVE_MODEL = "claude-haiku"
+_LIVE_MODEL = "anthropic/claude-haiku-5.5"
 _DOCSTRING_TASK = (
     "Add a module docstring to `example.py` describing its function. "
     "Modify only `example.py`; do not create any other files or tests."

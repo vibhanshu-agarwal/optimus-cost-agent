@@ -447,7 +447,7 @@ def test_a_repack_never_exceeds_the_turn_maintenance_allowance():
     assert len(summarizer.prompts) == 1
     # Refused by the engine's whole-plan preflight against the remaining allowance (zero), before any
     # callback, as the allowance reason (release supplement V3).
-    assert attached.take_faults() == (ContextFault("repack", "maintenance_unavailable"),)
+    assert attached.take_faults() == (ContextFault("repack", "maintenance_unavailable", "maintenance_allowance_exceeded"),)
 
 
 def test_a_repack_keeps_the_parameters_digest_and_summarizes_only_new_turns():

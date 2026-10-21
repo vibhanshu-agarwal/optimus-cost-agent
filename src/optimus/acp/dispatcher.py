@@ -131,6 +131,19 @@ class JsonRpcDispatcher:
             if method == "optimus.ping":
                 return success_response(request_id=request_id, result={"message": "pong"})
             if method == "optimus.gateway.responses":
+                from optimus_model_policy import binding
+
+                if binding.ENFORCEMENT_ACTIVE:
+                    # Fable review 1, F3: this framed passthrough sends a client-chosen model unbound, which an
+                    # adopted pre-registry Gateway would route. While the trusted registry is enforced it refuses
+                    # before any Gateway call; the --framed startup refusal stays the outer gate.
+                    return error_response(
+                        request_id=request_id,
+                        error=JsonRpcError(
+                            code=METHOD_NOT_FOUND,
+                            message="optimus.gateway.responses is not available while the trusted model registry is enforced",
+                        ),
+                    )
                 if self._gateway_client is None:
                     return error_response(
                         request_id=request_id,

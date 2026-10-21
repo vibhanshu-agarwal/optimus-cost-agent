@@ -45,6 +45,10 @@ class PreToolRequest:
     mcp_authority: McpAuthority = "legacy_manifest"
     mcp_arguments: Mapping[str, Any] | None = None
     mcp_one_call_approval: str | None = None
+    # Plan 12.2 READ + W, file surfaces only: the model's requested workspace-relative path, exactly as given, beside the
+    # resolved ``target_path``; and whether the caller could not resolve the target (it is then never read or written).
+    requested_relative_path: str | None = None
+    target_unresolved: bool = False
 
 
 @dataclass(frozen=True)
@@ -254,10 +258,14 @@ class PreToolGuard:
             validation = self._command_validator.validate(request.command, env=request.environment)
             return _pre_tool_result(validation.verdict, validation.rule_id, validation.reason)
         if request.tool_surface is ToolSurface.FILE_WRITE and request.target_path:
-            validation = self._path_validator.validate_write(request.target_path)
+            validation = self._path_validator.validate_write(
+                request.target_path, requested_relative_path=request.requested_relative_path, target_unresolved=request.target_unresolved
+            )
             return _pre_tool_result(validation.verdict, validation.rule_id, validation.reason)
         if request.tool_surface is ToolSurface.FILE_READ and request.target_path:
-            validation = self._path_validator.validate_read(request.target_path)
+            validation = self._path_validator.validate_read(
+                request.target_path, requested_relative_path=request.requested_relative_path, target_unresolved=request.target_unresolved
+            )
             return _pre_tool_result(validation.verdict, validation.rule_id, validation.reason)
         if request.tool_surface is ToolSurface.WEB and request.target_path:
             validation = self._network_validator.validate_url(request.target_path)

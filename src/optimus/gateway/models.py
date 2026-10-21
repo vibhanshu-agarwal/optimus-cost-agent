@@ -83,6 +83,10 @@ class GatewayRouteAttempt(BaseModel):
     outcome: Literal["completed", "not_sent", "rejected", "uncertain"]
     http_status: int | None = Field(default=None, strict=True)
     provider_request_id: str | None = None
+    router_pipeline: tuple[str, ...] | None = None
+    """The router pipeline stage types the Gateway reported for a completed attempt (None when not reported)."""
+    failure: dict[str, str | int | None] | None = None
+    """A failed attempt's bounded, content-free cause, as the Gateway reported it (re-bounded before any trace)."""
 
 
 def parse_route_attempts(raw: object) -> tuple[GatewayRouteAttempt, ...]:
@@ -179,7 +183,7 @@ def parse_gateway_usage(body: Mapping[str, Any]) -> GatewayUsage:
     try:
         return GatewayUsage.model_validate(body)
     except ValidationError as exc:
-        raise GatewayResponseError(str(exc)) from exc
+        raise GatewayResponseError(str(exc), audit_code="GATEWAY_USAGE_INVALID") from exc
 
 
 def parse_gateway_response(body: dict[str, Any]) -> GatewayResponse:
@@ -197,22 +201,24 @@ def parse_gateway_response(body: dict[str, Any]) -> GatewayResponse:
     if output_text is None:
         output_text = _extract_text_from_output(body.get("output"))
     if not isinstance(output_text, str):
-        raise GatewayResponseError("output_text missing", gateway_usage=usage)
+        raise GatewayResponseError("output_text missing", gateway_usage=usage, audit_code="OUTPUT_TEXT_MISSING")
 
     response_id = body.get("id")
     if response_id is not None and not isinstance(response_id, str):
-        raise GatewayResponseError("id must be a string when present", gateway_usage=usage)
+        raise GatewayResponseError("id must be a string when present", gateway_usage=usage, audit_code="RESPONSE_ID_INVALID")
 
     finish_reason = body.get("finish_reason")
     if finish_reason is not None and (not isinstance(finish_reason, str) or not finish_reason):
-        raise GatewayResponseError("finish_reason must be a non-empty string when present", gateway_usage=usage)
+        raise GatewayResponseError(
+            "finish_reason must be a non-empty string when present", gateway_usage=usage, audit_code="FINISH_REASON_INVALID"
+        )
 
     route_attempts: tuple[GatewayRouteAttempt, ...] = ()
     if "route_attempts" in body:
         try:
             route_attempts = parse_route_attempts(body["route_attempts"])
         except (ValueError, ValidationError) as exc:
-            raise GatewayResponseError("route_attempts is malformed", gateway_usage=usage) from exc
+            raise GatewayResponseError("route_attempts is malformed", gateway_usage=usage, audit_code="ROUTE_ATTEMPTS_MALFORMED") from exc
 
     return GatewayResponse(
         response_id=response_id,

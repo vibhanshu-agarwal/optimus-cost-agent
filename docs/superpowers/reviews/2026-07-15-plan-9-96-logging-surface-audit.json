@@ -609,6 +609,30 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.launch_approval_cli:_initialize_stage_c_ledger:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Stage C release ceremony prints one fixed status line to stdout: the ledger was initialized for the release ID with its dollar, attempt and window limits. No secret, path content or record is printed.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_stage_c_launch.py::test_the_approval_ceremony_creates_the_ledger_once_and_never_resets_it",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_keep_existing_stage_c_ledger:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: when a read-only replay binds an existing Stage C ledger to the release envelope, the ceremony prints one fixed status line to stdout: the ledger is kept (never reset), with its replayed attempt count against the envelope maximum, the charged dollars against the envelope limit, and the window start and deadline or 'not started'. No secret, path, file content or raw record is printed.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_stage_c_launch.py::test_a_kept_ledger_reports_its_replayed_state",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.stage_c:seed_identity:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonical JSON of the synthetic seed's approval facts, serialized only to compute the seed's SHA-256 beside its rendered records; never persisted or exported. The facts are fixed synthetic test data.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_stage_c_scenario.py::test_the_seed_is_the_pinned_synthetic_history_over_the_floor",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.launch_approval_cli:_cmd_approve:stderr_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.acp.launch_approval_cli:_cmd_approve:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
@@ -1398,6 +1422,22 @@
       "rationale": "Inspection: optimus_gateway.__main__:main:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_main_entrypoint.py::test_valid_manifest_with_matching_inputs_passes_gate",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.__main__:main:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. main opens no file itself: StageCGuard.open reopens the Stage C ledger through optimus_model_policy.stage_c (classified there), only after the signed manifest binds the envelope composed from the ledger argument; a start never creates a ledger.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_main_stage_c.py::test_a_stage_c_gateway_guards_the_envelope_the_manifest_binds",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.__main__:main:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. The call is argparse's parser.error with a fixed usage message (--plan12-stage-c-ledger needs --plan12-test-profile); no runtime data reaches it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_main_stage_c.py::test_a_ledger_needs_a_test_profile",
       "evidence_tier": "unit"
     },
     {
@@ -4017,6 +4057,54 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_model_policy.stage_c:StageCGuard.open:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: reopens the existing, initialized Stage C ledger in binary append mode for the guard's own records. The Stage C ledger (Plan 12.2 Task 13) records fixed fields only: the record kind (init, window, reserve, settle, halt), the release ID, the envelope literal (a digest), the limits, decimal reservations and provider-reported charges, attempt numbers, Gateway attempt IDs (gw- plus a UUID), host request IDs, attempt outcome codes, content-free reasons and timestamps. It never holds a prompt, provider text, usage payload or credential; the file lives under the operator's trusted runtime root.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_stage_c_ledger.py::test_the_ledger_records_no_prompt_credential_or_provider_text",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.stage_c:_Lock.__init__:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens the ledger's .lock file only to hold an exclusive operating-system lock for the Gateway's life; nothing is written to it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_stage_c_ledger.py::test_one_writer_holds_the_ledger",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.stage_c:_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonical JSON of the envelope fields or the fixed scenario catalogue, serialized only to compute its SHA-256; the text is never persisted or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_stage_c_envelope.py::test_the_envelope_binds_the_release_limits_profiles_scenarios_and_ledger",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.stage_c:_write_record:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes one ledger record, one JSON line, flushed and fsynced. The Stage C ledger (Plan 12.2 Task 13) records fixed fields only: the record kind (init, window, reserve, settle, halt), the release ID, the envelope literal (a digest), the limits, decimal reservations and provider-reported charges, attempt numbers, Gateway attempt IDs (gw- plus a UUID), host request IDs, attempt outcome codes, content-free reasons and timestamps. It never holds a prompt, provider text, usage payload or credential; the file lives under the operator's trusted runtime root.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_stage_c_ledger.py::test_the_ledger_records_no_prompt_credential_or_provider_text",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.stage_c:_write_record:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes one serialized ledger record line, then flushes and fsyncs it. The Stage C ledger (Plan 12.2 Task 13) records fixed fields only: the record kind (init, window, reserve, settle, halt), the release ID, the envelope literal (a digest), the limits, decimal reservations and provider-reported charges, attempt numbers, Gateway attempt IDs (gw- plus a UUID), host request IDs, attempt outcome codes, content-free reasons and timestamps. It never holds a prompt, provider text, usage payload or credential; the file lives under the operator's trusted runtime root.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_stage_c_ledger.py::test_the_ledger_records_no_prompt_credential_or_provider_text",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.stage_c:initialize_stage_c_ledger:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: creates the release's ledger once, in exclusive mode (never replacing or resetting one), for the release ceremony; it holds only the initialization record. The Stage C ledger (Plan 12.2 Task 13) records fixed fields only: the record kind (init, window, reserve, settle, halt), the release ID, the envelope literal (a digest), the limits, decimal reservations and provider-reported charges, attempt numbers, Gateway attempt IDs (gw- plus a UUID), host request IDs, attempt outcome codes, content-free reasons and timestamps. It never holds a prompt, provider text, usage payload or credential; the file lives under the operator's trusted runtime root.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/model_policy/test_stage_c_ledger.py::test_the_ledger_is_initialized_once_and_never_reset",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_model_policy.registry:_canonical_hash:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: _canonical_hash serializes the validated, non-secret model registry to canonical JSON only as SHA-256 input for its effective hash; the JSON is never persisted or exported.",
@@ -4089,6 +4177,38 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.upstream_client:_router_evidence:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.2 Haiku correction batch, Codex Stage A review M1): _router_evidence uses str(exc) only for RuntimeErrors raised by this module's own router-metadata validators (_selected_endpoint, _router_pipeline, _optional_string, _required_nonnegative_int), whose messages are fixed literals naming the defect; no provider text is interpolated. The value is kept in memory as ProviderMessageResult.router_metadata_error, never logged or persisted here; it leaves the Gateway only as the detail of the experimental route's EMPIRICAL_ROUTER_METADATA_MALFORMED refusal, which policy_refusal passes through sanitize_error_message before the HTTP response.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_upstream_client.py::test_malformed_router_metadata_keeps_the_billing_and_reports_the_defect",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.responses:model_request_log_line:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes one Gateway log record per model request from a fixed allowlist only (correction plan v4, C1): the outcome status, the refusal code, the Gateway's own error text (a reviewed refusal text, its log-safe projection where the detail would carry a reply's value, or the fixed text for an unsupported legacy model), each id kept only in its generated shape (route, Gateway and provider request ids), each attempt's number, outcome, HTTP status, allowlisted router stage types and re-bounded cause, the usage's ids, recognized provider and model, token counts and cost, and the request's log-only facts (its legacy Gateway id, a Stage C ledger write failure). Then final_sanitize with credential-prefix detection. The request body, prompt, reply text, a caller's free text and credentials are never written; the response body is unchanged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_prose_provider_is_projected_in_the_log_and_unchanged_on_the_wire",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.responses:_run_enforced_completion:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the usage-contract ValueError's text is reduced by optimus_security.failure_facts.slug to a snake_case slug only when it matches the plain lower-case module-authored shape, else 'unrecognized', and is kept as the attempt's bounded cause; no other exception text is retained.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_an_unverifiable_usage_keeps_its_reason_and_the_reply_ids",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:_unreadable_reply:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: an unreadable reply's cause is invalid_utf8, invalid_json, or this module's own schema RuntimeError text reduced by failure_facts.slug to a strict-shape slug ('unrecognized' otherwise); the reply body and upstream error text are never retained.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_a_schema_failure_names_the_module_reason_and_never_the_reply",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "context_engine.contracts:StrategyParameters.digest:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: StrategyParameters.digest canonicalizes the strategy's integer allocations and its prompt/format version strings as a SHA-256 input and returns only the digest; no conversation text, credential or diagnostic content is serialized, persisted or logged.",
@@ -4147,9 +4267,73 @@
     {
       "key": "tools.evaluate_context_summarizer:main:stdout_export",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: main prints only the envelope or the fact report described for its json_serialization surface, for the operator reviewing qualification before any paid call; the tool makes no network call and reads no credential.",
+      "rationale": "Inspection: main prints only the envelope or the fact report described for its json_serialization surface, for the operator reviewing qualification before any paid call. For the paid run command main prints nothing: run_live writes its evidence files through _write_json and _append_json and its refusals to stderr through _refuse.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_evaluate_context_summarizer.py::test_the_command_line_checks_a_saved_summary",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_append_json:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _append_json appends one JSON line, fsynced so billed attempts survive a stopped run: per response to responses.jsonl (text sanitized with the runtime's evidence-redaction policy and the Gateway secret as a known secret; finish status; attempt IDs, outcomes and costs) and per attempt receipt to attempts.jsonl. Every string in an attempt record, nested Gateway usage included, and in the candidate's observed provider and model fields passes through the runtime's evidence-redaction sanitizer (_redacted: ConversationSanitizer, i.e. sanitize_for_persistence with EVIDENCE_REDACTION_POLICY and the Gateway shared secret as a known secret), except identifiers this host or its Gateway minted (attempt and Gateway request IDs), the outcome, cost and timestamp strings, and the run's own requested model and Gateway provider; numbers and record structure are kept.",
+      "sanitizer": "schema-limited result; free-text fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_qualification_run.py::test_secrets_in_provider_metadata_reach_no_output_artifact",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_append_json:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the records described for _append_json:file_open. _append_json appends one JSON line, fsynced so billed attempts survive a stopped run: per response to responses.jsonl (text sanitized with the runtime's evidence-redaction policy and the Gateway secret as a known secret; finish status; attempt IDs, outcomes and costs) and per attempt receipt to attempts.jsonl. Every string in an attempt record, nested Gateway usage included, and in the candidate's observed provider and model fields passes through the runtime's evidence-redaction sanitizer (_redacted: ConversationSanitizer, i.e. sanitize_for_persistence with EVIDENCE_REDACTION_POLICY and the Gateway shared secret as a known secret), except identifiers this host or its Gateway minted (attempt and Gateway request IDs), the outcome, cost and timestamp strings, and the run's own requested model and Gateway provider; numbers and record structure are kept.",
+      "sanitizer": "schema-limited result; free-text fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_qualification_run.py::test_secrets_in_provider_metadata_reach_no_output_artifact",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_append_json:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the records described for _append_json:file_open. _append_json appends one JSON line, fsynced so billed attempts survive a stopped run: per response to responses.jsonl (text sanitized with the runtime's evidence-redaction policy and the Gateway secret as a known secret; finish status; attempt IDs, outcomes and costs) and per attempt receipt to attempts.jsonl. Every string in an attempt record, nested Gateway usage included, and in the candidate's observed provider and model fields passes through the runtime's evidence-redaction sanitizer (_redacted: ConversationSanitizer, i.e. sanitize_for_persistence with EVIDENCE_REDACTION_POLICY and the Gateway shared secret as a known secret), except identifiers this host or its Gateway minted (attempt and Gateway request IDs), the outcome, cost and timestamp strings, and the run's own requested model and Gateway provider; numbers and record structure are kept.",
+      "sanitizer": "schema-limited result; free-text fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_qualification_run.py::test_secrets_in_provider_metadata_reach_no_output_artifact",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_error_text:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Inspection: _error_text renders an exception as its type and message only through the runtime's evidence-redaction sanitizer (ConversationSanitizer, which calls sanitize_for_persistence with EVIDENCE_REDACTION_POLICY; the run passes the Gateway shared secret as a known secret) before run_live persists it in outcome.json or _refuse prints it.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_qualification_run.py::test_persisted_error_text_is_sanitized",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_refuse:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _refuse prints one refusal line to stderr before any request: a fixed reason with the run directory path, registry blocker codes, the reservation and cap, or a credential-resolution error already passed through _error_text; never a credential value.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_qualification_run.py::test_missing_gateway_credentials_are_refused_before_anything_is_sent",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_write_json:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _write_json creates, in exclusive mode (never overwriting), one evidence file in a new operator-named directory. For the paid qualification run: run.json (run identity, profile hash, route, fixture name and file digest, envelope, caps, the cumulative Stage B ceiling and prior spend, Gateway URL and operator-stated PIDs, never the credential) or outcome.json (status, budget and runtime-admissibility findings, fact reports over the sanitized summaries, counts, costs, Gateway request IDs and any error already passed through _error_text); the run writes no receipt candidate. Every string in an attempt record, nested Gateway usage included, passes through the runtime's evidence-redaction sanitizer (_redacted: ConversationSanitizer, i.e. sanitize_for_persistence with EVIDENCE_REDACTION_POLICY and the Gateway shared secret as a known secret), except identifiers this host or its Gateway minted (attempt and Gateway request IDs), the outcome, cost and timestamp strings, and the run's own requested model and Gateway provider; numbers and record structure are kept. For the offline assessment (assess), always in a new folder outside the sealed experiment: assessment.json (assessment version, rubric digest, status, reasons and the release reference passed through the same evidence sanitizer, the verified run identities, digests and Gateway request IDs, the original fact reports through _redacted, and each review kept whole through _retained: every string, keys included, through the evidence sanitizer with no key exemption, except identity fields equal to the run's verified identities, beside the SHA-256 of the review's raw input bytes; a review that cannot be read or decoded, or that nests deeper than MAX_REVIEW_DEPTH (32) levels, is kept only as that hash) and, only after two passing reviews, receipt-candidate.json (the receipt fields from the verified run record and pinned digests, and the assessment.json digest).",
+      "sanitizer": "schema-limited result; free-text fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_qualification_run.py::test_secrets_in_provider_metadata_reach_no_output_artifact",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_write_json:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the records described for _write_json:file_open. _write_json creates, in exclusive mode (never overwriting), one evidence file in a new operator-named directory. For the paid qualification run: run.json (run identity, profile hash, route, fixture name and file digest, envelope, caps, the cumulative Stage B ceiling and prior spend, Gateway URL and operator-stated PIDs, never the credential) or outcome.json (status, budget and runtime-admissibility findings, fact reports over the sanitized summaries, counts, costs, Gateway request IDs and any error already passed through _error_text); the run writes no receipt candidate. Every string in an attempt record, nested Gateway usage included, passes through the runtime's evidence-redaction sanitizer (_redacted: ConversationSanitizer, i.e. sanitize_for_persistence with EVIDENCE_REDACTION_POLICY and the Gateway shared secret as a known secret), except identifiers this host or its Gateway minted (attempt and Gateway request IDs), the outcome, cost and timestamp strings, and the run's own requested model and Gateway provider; numbers and record structure are kept. For the offline assessment (assess), always in a new folder outside the sealed experiment: assessment.json (assessment version, rubric digest, status, reasons and the release reference passed through the same evidence sanitizer, the verified run identities, digests and Gateway request IDs, the original fact reports through _redacted, and each review kept whole through _retained: every string, keys included, through the evidence sanitizer with no key exemption, except identity fields equal to the run's verified identities, beside the SHA-256 of the review's raw input bytes; a review that cannot be read or decoded, or that nests deeper than MAX_REVIEW_DEPTH (32) levels, is kept only as that hash) and, only after two passing reviews, receipt-candidate.json (the receipt fields from the verified run record and pinned digests, and the assessment.json digest).",
+      "sanitizer": "schema-limited result; free-text fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_qualification_run.py::test_secrets_in_provider_metadata_reach_no_output_artifact",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evaluate_context_summarizer:_write_json:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the trailing newline of the records described for _write_json:file_open. _write_json creates, in exclusive mode (never overwriting), one evidence file in a new operator-named directory. For the paid qualification run: run.json (run identity, profile hash, route, fixture name and file digest, envelope, caps, the cumulative Stage B ceiling and prior spend, Gateway URL and operator-stated PIDs, never the credential) or outcome.json (status, budget and runtime-admissibility findings, fact reports over the sanitized summaries, counts, costs, Gateway request IDs and any error already passed through _error_text); the run writes no receipt candidate. Every string in an attempt record, nested Gateway usage included, passes through the runtime's evidence-redaction sanitizer (_redacted: ConversationSanitizer, i.e. sanitize_for_persistence with EVIDENCE_REDACTION_POLICY and the Gateway shared secret as a known secret), except identifiers this host or its Gateway minted (attempt and Gateway request IDs), the outcome, cost and timestamp strings, and the run's own requested model and Gateway provider; numbers and record structure are kept. For the offline assessment (assess), always in a new folder outside the sealed experiment: assessment.json (assessment version, rubric digest, status, reasons and the release reference passed through the same evidence sanitizer, the verified run identities, digests and Gateway request IDs, the original fact reports through _redacted, and each review kept whole through _retained: every string, keys included, through the evidence sanitizer with no key exemption, except identity fields equal to the run's verified identities, beside the SHA-256 of the review's raw input bytes; a review that cannot be read or decoded, or that nests deeper than MAX_REVIEW_DEPTH (32) levels, is kept only as that hash) and, only after two passing reviews, receipt-candidate.json (the receipt fields from the verified run record and pinned digests, and the assessment.json digest).",
+      "sanitizer": "schema-limited result; free-text fields use optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/tools/test_qualification_assess.py::test_two_passing_reviews_of_a_verified_run_yield_the_candidate_and_qualify_nothing",
       "evidence_tier": "unit"
     },
     {
@@ -4158,14 +4342,6 @@
       "rationale": "Inspection: _exact_turn serializes one committed turn's already-sanitized ordinary text (the host adapter sanitizes every record into the snapshot), with its plan wrapped in the inert historical-plan markers, as one line of the model-facing history view an attached turn sends as untrusted conversation data; it is never persisted or logged.",
       "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
       "test_node": "tests/unit/agent/test_context_selection.py::test_the_rendered_view_wraps_the_summary_inert_and_keeps_plans_inert",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus.acp.spec:AcpDuplexAdapter._report_context_faults:stderr_export",
-      "policy": "safe-by-construction",
-      "rationale": "Content-free by construction (Codex CP3 ruling M2): one operator line per attached-view fault naming only the host-minted turn run id, the phase ('prepare' or 'repack'), a category from the bounded ContextFault vocabulary (validated at construction; an unlisted engine reason maps to 'other') and the turn outcome. No exception text, history, summary, credential or engine reason string is formatted or retained; a send failure is contained.",
-      "sanitizer": "content-free by construction: generated run id and allowlisted phase/category/outcome codes",
-      "test_node": "tests/unit/acp/test_late_receipts.py::test_a_view_fault_leaves_one_content_free_operator_line",
       "evidence_tier": "unit"
     },
     {
@@ -4241,6 +4417,262 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_stage_c_schedule:zed_args:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the Zed agent-server command for a runbook step: the optimus-agent executable path, the workspace path and fixed launch flags. No credential, approval id or launch material.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_every_launch_is_followed_by_a_custody_check_on_the_same_ledger",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_transition_check:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the custody receipt written to a new operator-named file. The custody receipt holds the check time, the release id, the ledger path, the Gateway URL and whether something listens on it, the ledger lock state, the remaining Optimus host or Gateway processes by id and image name only (never a command line, which carries signed launch material), the ledger's replayed totals and window, and the problems found; no credential, prompt or provider text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_transition_check.py::test_main_writes_a_new_receipt_and_exits_by_the_result",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_transition_check:main:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. The call is argparse's parser.error with a fixed usage message (the receipt file exists); no runtime data reaches it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_transition_check.py::test_main_writes_a_new_receipt_and_exits_by_the_result",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_transition_check:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints 'custody clear' or the problems found, and one line of the ledger's totals (attempts, charged dollars, the halt reason, the deadline). No credential, process command line or provider text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_transition_check.py::test_main_writes_a_new_receipt_and_exits_by_the_result",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_transition_check:main:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the custody receipt to a new operator-named file that must not exist. The custody receipt holds the check time, the release id, the ledger path, the Gateway URL and whether something listens on it, the ledger lock state, the remaining Optimus host or Gateway processes by id and image name only (never a command line, which carries signed launch material), the ledger's replayed totals and window, and the problems found; no credential, prompt or provider text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_transition_check.py::test_main_writes_a_new_receipt_and_exits_by_the_result",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_schedule:_attached_run:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. StageCGuard.open opens a temporary Stage C ledger created for the offline run, under a TemporaryDirectory, only to record the window the scenario's pause reads; the operator's ledger is never touched.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_measured_paths_are_the_real_packing_of_the_pinned_seed",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_schedule:_attached_run:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. The call is threading.Event.set, signalling that the offline run sent the cancel; no Redis or other store is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_measured_paths_are_the_real_packing_of_the_pinned_seed",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_schedule:sleep:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. The call is threading.Event.set, signalling that the offline cancellation pause began; no Redis or other store is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_measured_paths_are_the_real_packing_of_the_pinned_seed",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_schedule:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the computed schedule written to the operator's new output folder and its printed totals. The schedule holds computed limits, token bounds, reservations and attempt counts, case steps, expected observations, claims and stop rules, the synthetic prompts and file digests, and the offline run's content-free scenario events; it holds no credential, provider text or real conversation (the offline run's summaries are fixed synthetic text).",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_tool_writes_a_new_folder_and_never_reuses_one",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_schedule:main:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. The call is argparse's parser.error with a fixed usage message (the output folder exists); no runtime data reaches it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_tool_writes_a_new_folder_and_never_reuses_one",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_schedule:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints the schedule's computed totals (call and attempt counts, dollar ceiling, fit flags, shortfall) to stdout; no credential or conversation.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_tool_writes_a_new_folder_and_never_reuses_one",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_schedule:main:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes, into a new operator-named folder that must not exist, the schedule JSON and Markdown, the two synthetic paste files, the synthetic workspace files and the agent wrapper (the optimus-agent path, the workspace path and fixed launch flags; no credential). The schedule holds computed limits, token bounds, reservations and attempt counts, case steps, expected observations, claims and stop rules, the synthetic prompts and file digests, and the offline run's content-free scenario events; it holds no credential, provider text or real conversation (the offline run's summaries are fixed synthetic text).",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_schedule.py::test_the_tool_writes_a_new_folder_and_never_reuses_one",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_acp_double:_record:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: appends one JSON line per event to the record file named by PLAN12_REHEARSAL_RECORD, a file the rehearsal or the Zed check owns. A line holds the double's own process id, its argv and working folder (the rehearsal's synthetic paths), the ACP method names it received, the session ids it minted, each mode or context-strategy id a setter asked for and the client's permission outcome. No prompt text, credential, provider data or network content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_double_answers_as_optimus_advertises_and_records_the_denial",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_acp_double:_record:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: appends one JSON line per event to the record file named by PLAN12_REHEARSAL_RECORD, a file the rehearsal or the Zed check owns. A line holds the double's own process id, its argv and working folder (the rehearsal's synthetic paths), the ACP method names it received, the session ids it minted, each mode or context-strategy id a setter asked for and the client's permission outcome. No prompt text, credential, provider data or network content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_double_answers_as_optimus_advertises_and_records_the_denial",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_acp_double:_record:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: appends one JSON line per event to the record file named by PLAN12_REHEARSAL_RECORD, a file the rehearsal or the Zed check owns. A line holds the double's own process id, its argv and working folder (the rehearsal's synthetic paths), the ACP method names it received, the session ids it minted, each mode or context-strategy id a setter asked for and the client's permission outcome. No prompt text, credential, provider data or network content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_double_answers_as_optimus_advertises_and_records_the_denial",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_acp_double:_send:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Inspection: the inert double's own ACP JSON-RPC replies to acpx or Zed on stdout, the protocol channel: a fixed capability, mode and config-option table (Optimus's own shapes), session ids it minted, fixed error messages, a fixed permission request and fixed reply text. Nothing it received is echoed beyond the mode or strategy id it accepted; no credential, provider data or network content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_double_answers_as_optimus_advertises_and_records_the_denial",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_acp_double:_send:text_write",
+      "policy": "protocol-only",
+      "rationale": "Inspection: the inert double's own ACP JSON-RPC replies to acpx or Zed on stdout, the protocol channel: a fixed capability, mode and config-option table (Optimus's own shapes), session ids it minted, fixed error messages, a fixed permission request and fixed reply text. Nothing it received is echoed beyond the mode or strategy id it accepted; no credential, provider data or network content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_double_answers_chat_without_asking_and_refuses_what_it_does_not_offer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:build_double:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the double's own tracked source, prefixed with a #!python line, into the rehearsal's temporary folder for the distlib launcher. No runtime data.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_double_is_packed_as_a_real_executable_under_a_path_with_spaces",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:main:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. The call is argparse's parser.error with a fixed usage message (the receipt file exists); no runtime data reaches it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_gate_command_prints_fresh_only_when_it_opens",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints 'rehearsal receipt fresh' or the gate's problems (receipt and schedule paths, the receipt's age, and which identity part - acpx, node, shell, double - changed), or the new Zed fixture's path. No credential, prompt or provider content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_gate_command_prints_fresh_only_when_it_opens",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:run:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the launch-rehearsal receipt, written once to a new file. It holds the schedule's path, hash and version; the acpx, Node, shell and double identities (file hashes, versions and paths) and the pins; the generator's hash; the explicit executable and workspace substitution; each acpx command run (the rehearsal's synthetic paths and the schedule's fixed synthetic prompts); acpx's exit codes, stdout and stderr from runs against the inert double (ACP JSON-RPC with the double's fixed replies and acpx's own status lines); the double's records; and the problems. No credential exists in the run: the double holds none and no real agent, Gateway or provider is started.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_run_writes_one_new_receipt_with_every_outcome",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:run:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the launch-rehearsal receipt, written once to a new file. It holds the schedule's path, hash and version; the acpx, Node, shell and double identities (file hashes, versions and paths) and the pins; the generator's hash; the explicit executable and workspace substitution; each acpx command run (the rehearsal's synthetic paths and the schedule's fixed synthetic prompts); acpx's exit codes, stdout and stderr from runs against the inert double (ACP JSON-RPC with the double's fixed replies and acpx's own status lines); the double's records; and the problems. No credential exists in the run: the double holds none and no real agent, Gateway or provider is started.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_run_writes_one_new_receipt_with_every_outcome",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:run:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints whether the rehearsal passed and, if not, its problem strings (launch titles, exit codes, argv of the inert double with the rehearsal's synthetic paths, ACP method names). No credential, prompt or provider content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_run_writes_one_new_receipt_with_every_outcome",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:run:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes, in the rehearsal's temporary folder, the negative control's replica of r5's .cmd wrapper (the inert double's path, the rehearsal workspace path and fixed launch flags) and one script file per acpx command, holding exactly that command (the rehearsal's synthetic paths and the schedule's fixed synthetic prompts) so the declared shell reads it unaltered. No credential or runtime data.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_run_writes_one_new_receipt_with_every_outcome",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:run:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the launch-rehearsal receipt, written once to a new file. It holds the schedule's path, hash and version; the acpx, Node, shell and double identities (file hashes, versions and paths) and the pins; the generator's hash; the explicit executable and workspace substitution; each acpx command run (the rehearsal's synthetic paths and the schedule's fixed synthetic prompts); acpx's exit codes, stdout and stderr from runs against the inert double (ACP JSON-RPC with the double's fixed replies and acpx's own status lines); the double's records; and the problems. No credential exists in the run: the double holds none and no real agent, Gateway or provider is started.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_run_writes_one_new_receipt_with_every_outcome",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:zed_check:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Zed launch-check, walk-check, handshake-check or dress-check receipt, written once to a new file. It holds the problems; for the walk, each launch's sessions with their steps (mode, strategy and prompt mode) and the negative control's fixed label and result; for the handshake, the session steps and the permission outcomes the double received (expected none); for the dress rehearsal, each launch's sessions with their steps, the selected B2 branch and the permission outcomes the double received (expected none); the fixture's path and hash; the schedule's path, hash and version; the installed Zed executable's path and hash; the record file's path and hash; each launch's process id, profile, working folder, ACP method names, Chat setter and whether an exit record was seen; and the double's records (process ids, argv, folders, method names, minted session ids and mode or strategy ids). No credential, prompt or provider content: the double holds none and no real agent, Gateway or provider is started.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:zed_check:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Zed launch-check, walk-check, handshake-check or dress-check receipt, written once to a new file. It holds the problems; for the walk, each launch's sessions with their steps (mode, strategy and prompt mode) and the negative control's fixed label and result; for the handshake, the session steps and the permission outcomes the double received (expected none); for the dress rehearsal, each launch's sessions with their steps, the selected B2 branch and the permission outcomes the double received (expected none); the fixture's path and hash; the schedule's path, hash and version; the installed Zed executable's path and hash; the record file's path and hash; each launch's process id, profile, working folder, ACP method names, Chat setter and whether an exit record was seen; and the double's records (process ids, argv, folders, method names, minted session ids and mode or strategy ids). No credential, prompt or provider content: the double holds none and no real agent, Gateway or provider is started.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:zed_check:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints 'zed launch check passed', 'zed walk check passed', 'zed handshake check passed' or the check's problems: process ids, synthetic paths, argv, ACP method names and profiles. No credential, prompt or provider content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:zed_check:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Zed launch-check, walk-check, handshake-check or dress-check receipt, written once to a new file. It holds the problems; for the walk, each launch's sessions with their steps (mode, strategy and prompt mode) and the negative control's fixed label and result; for the handshake, the session steps and the permission outcomes the double received (expected none); for the dress rehearsal, each launch's sessions with their steps, the selected B2 branch and the permission outcomes the double received (expected none); the fixture's path and hash; the schedule's path, hash and version; the installed Zed executable's path and hash; the record file's path and hash; each launch's process id, profile, working folder, ACP method names, Chat setter and whether an exit record was seen; and the double's records (process ids, argv, folders, method names, minted session ids and mode or strategy ids). No credential, prompt or provider content: the double holds none and no real agent, Gateway or provider is started.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:zed_fixture:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: zed-fixture.json, written once to a new file in a new folder. It holds the schedule's path, hash and version; the double's executable path and hash and its source hash; the synthetic workspace and record paths; the two Zed custom-agent entries (the double's path, the schedule's fixed launch arguments with the synthetic workspace, and the record variable's name and path); and two fixed selection shortcuts. No credential, prompt or provider content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:zed_fixture:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: zed-fixture.json, written once to a new file in a new folder. It holds the schedule's path, hash and version; the double's executable path and hash and its source hash; the synthetic workspace and record paths; the two Zed custom-agent entries (the double's path, the schedule's fixed launch arguments with the synthetic workspace, and the record variable's name and path); and two fixed selection shortcuts. No credential, prompt or provider content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_stage_c_launch_rehearsal:zed_fixture:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: zed-fixture.json, written once to a new file in a new folder. It holds the schedule's path, hash and version; the double's executable path and hash and its source hash; the synthetic workspace and record paths; the two Zed custom-agent entries (the double's path, the schedule's fixed launch arguments with the synthetic workspace, and the record variable's name and path); and two fixed selection shortcuts. No credential, prompt or provider content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_zed_fixture_and_check_write_new_files_only",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.check_product_coverage:main:text_file_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: main writes only the gate report and its run record, the JSON described above, to the operator-chosen report path; nothing else is persisted.",
@@ -4254,6 +4686,54 @@
       "rationale": "Inspection: the fixed warning format exports only a fixed sink label, TelemetryEventKind value, fixed telemetry_sink_raised reason and exception class name. No exception message, traceback, event payload, prompt, response, credential or workspace location is passed to the logger.",
       "sanitizer": "Four-field metadata-only construction in TelemetryFanout._attempt_local_sink; no exception text or event payload is exported.",
       "test_node": "tests/unit/telemetry/test_fanout.py::test_fanout_warning_reaches_stderr_with_debug_disabled",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:_operator_line:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the one stderr writer for the adapter's operator lines, contained so a failed write never suppresses the trace or telemetry record beside it (correction plan v4, C7). Its callers pass fixed lines only: an admission refusal or a pre-run refusal (the session id kept only in its generated session-<hex32> shape, else unrecognized or none, and an allowlisted reason), and a context fault (the host-minted turn run id, the phase, a category from the bounded ContextFault vocabulary, its validated detail and the outcome). Never the prompt, history, exception text or an invalid value.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_failure_telemetry.py::test_every_pre_run_refusal_keeps_its_fixed_reason",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.debug_trace:_emit_failure:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes one always-on failure, refusal or context-fault record (correction plan v4, C4) built only from bounded facts: ids each kept in their generated shape, allowlisted codes, reasons, stage types and failure kinds, class names, errno and status integers, then final_sanitize (the compatibility rules plus credential-prefix detection). Never a body, header, error text, prompt, reply or credential.",
+      "sanitizer": "optimus_security.failure_facts.final_sanitize",
+      "test_node": "tests/unit/acp/test_failure_telemetry.py::test_a_host_transport_failure_leaves_one_error_event_with_tracing_off",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.debug_trace:_emit_failure:logger_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects the always-on failure record before the harness's workspace JSONL writer appends it: the bounded record passes final_sanitize, and TelemetryEvent.to_json_dict applies redact_for_telemetry. Only the JSONL writer bound at composition receives it, never the Redis sink or the Gateway exporter; a writer failure is contained.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/acp/test_failure_telemetry.py::test_the_harness_binds_its_attempt_observer_to_its_own_workspace_writer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.request_diagnostics:log_model_attempt:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: one model_attempt line per failed legacy upstream attempt (correction plan v4, C9): the request's Gateway id in its gw-<hex32> shape, the integer attempt number, the allowlisted classification and disposition and the re-bounded origin cause (kind, class names, errno, HTTP status, slug reason), then final_sanitize. Contained, so it never changes a retry. No request, reply or upstream error text is read.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_failed_legacy_attempt_is_logged_with_its_cause_and_the_request_id",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.request_diagnostics:write_log_line:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Gateway log's one writer (moved from OptimusGatewayHandler._finish): writes an already allowlisted, projected and finally sanitized model_request or model_attempt line and a newline to stderr in one locked write, contained against OSError and ValueError (a closed stream), which the auto-started local Gateway persists as the workspace's .optimus/local-gateway.log. No request body, prompt, reply or secret is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_closed_log_stream_never_breaks_the_reply",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:_attempt_failure:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a failed legacy attempt's cause for the retry observer: the bounded cause attached where it arose, else a parser RuntimeError's module-authored reason passed through slug (anything outside the lower-case reason shape becomes unrecognized), else the exception's class and errno. Exception text is never retained otherwise.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_failed_legacy_attempt_is_logged_with_its_cause_and_the_request_id",
       "evidence_tier": "unit"
     }
   ]

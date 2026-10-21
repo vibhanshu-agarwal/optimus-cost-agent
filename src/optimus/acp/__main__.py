@@ -35,6 +35,7 @@ from optimus.acp.local_infra import (
 from optimus.acp.operator_paths import OperatorPathConfigurationError, resolve_authorized_operator_paths
 from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.acp.server import StdioByteReader, StdioByteWriter, StdioNdjsonLineReader, StdioNdjsonLineWriter
+from optimus.acp.stage_c import StageCLaunchError, resolve_stage_c_launch
 from optimus.acp.subprocess_env import system_environ_view
 from optimus.acp.test_composition import compose_test_composition
 from optimus.acp.trusted_paths import (
@@ -46,11 +47,12 @@ from optimus.acp.trusted_paths import (
 )
 from optimus.agent.defaults import AgentModelError, resolve_agent_model
 from optimus.gateway.client import DEFAULT_GATEWAY_TIMEOUT_SECONDS, validate_gateway_timeout_seconds
-from optimus_model_policy import RegistryError
+from optimus_model_policy import RegistryError, binding
 from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES
 
 if TYPE_CHECKING:
+    from optimus.acp.stage_c import StageCLaunch
     from optimus.acp.test_composition import TestComposition
 
 
@@ -62,6 +64,7 @@ class _BuildServerKwargs(TypedDict):
     model: str | None
     gateway_timeout_seconds: NotRequired[float]
     test_composition: NotRequired[TestComposition]
+    stage_c: NotRequired[StageCLaunch]
 
 
 
@@ -143,6 +146,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help="Reviewed Plan 12.2 test profile; its launch approval must bind the profile's exact effective hash.",
     )
+    # Plan 12.2 Task 13 (Stage C): bind the shared test envelope; its approval must bind it too.
+    parser.add_argument(
+        "--plan12-stage-c",
+        action="store_true",
+        default=False,
+        help="Bind the shared Plan 12.2 Stage C test envelope (with --plan12-test-profile; its approval must bind it).",
+    )
     # Internal-only arguments (Plan 9.96, Task 5 Step 2). Never documented as
     # a public operator-facing flag beyond the optimus-trust CLI, which is
     # the only intended caller: it substitutes {approval_id}/
@@ -159,6 +169,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         parser.error("--with-local-phoenix cannot be combined with --no-auto-start")
     if args.with_local_phoenix and args.check_config and not args.strict:
         parser.error("--with-local-phoenix with --check-config requires --strict")
+    if args.plan12_stage_c and args.plan12_test_profile is None:
+        parser.error("--plan12-stage-c needs --plan12-test-profile")
     if args.plan12_test_profile is not None:
         # A profiled launch starts its own profiled Gateway child and binds every request through the
         # ndjson session adapters. A Gateway it did not start is unprofiled, the framed transport has no
@@ -167,6 +179,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         for flag, chosen in (("--no-auto-start", args.no_auto_start), ("--framed", args.framed), ("--strict", args.strict)):
             if chosen:
                 parser.error(f"--plan12-test-profile cannot be combined with {flag}")
+    if args.framed and binding.ENFORCEMENT_ACTIVE:
+        # Closure plan v3: the framed transport has no route binding, so under the enforced shipped registry every
+        # request it sent would be refused as unbound. Refuse at startup instead, before any service starts.
+        parser.error(
+            "--framed is not supported while the trusted model registry is enforced: the framed transport has no route "
+            "binding. Use the default newline-delimited JSON transport (omit --framed)."
+        )
     return args
 
 
@@ -274,6 +293,7 @@ def _authorize_or_exit(
             operator_paths=operator_paths,
             hmac_key=store.hmac_key,
             test_profile=args.plan12_test_profile,
+            stage_c=args.plan12_stage_c,
         )
     except LaunchGateError as exc:
         print(f"optimus-agent: {exc.code}" + (f": {exc.detail}" if exc.detail else ""), file=sys.stderr)
@@ -546,6 +566,7 @@ def main(argv: list[str] | None = None) -> int:
     # (never os.environ) and receives the already-resolved shared secret from
     # the candidate rather than re-resolving it.
     test_composition = None
+    stage_c_launch = None
     try:
         agent_environ = apply_local_defaults(
             candidate.agent_environ,
@@ -561,6 +582,10 @@ def main(argv: list[str] | None = None) -> int:
                 args.plan12_test_profile, approved_literal=candidate.security_literals.get(APPROVAL_LITERAL_NAME)
             )
             test_composition.agent_model(agent_environ, cli_model=args.model)
+            if args.plan12_stage_c:
+                # Plan 12.2 Task 13: the approved envelope, recomposed from source; the ledger the release
+                # ceremony created must exist. Refused here, before any service starts.
+                stage_c_launch = resolve_stage_c_launch(candidate, test_composition)
         else:
             # Plan 12.2 Task 5: under an enforced model registry an unusable model fails here with a
             # typed message rather than inside the runtime composition. Inactive: today's rules.
@@ -570,6 +595,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     except (BindingError, RegistryError) as exc:
         print(f"optimus-agent: MODEL_REGISTRY_INVALID: {exc.code}", file=sys.stderr)
+        return 2
+    except StageCLaunchError as exc:
+        print(f"optimus-agent: {exc.code}", file=sys.stderr)
         return 2
 
     def _start_local_dependencies() -> tuple[str | None, int | None]:
@@ -600,6 +628,8 @@ def main(argv: list[str] | None = None) -> int:
             # Plan 12.2 Task 5: the registry literal the operator approved, or None while inactive.
             model_registry=candidate.security_literals.get(APPROVAL_LITERAL_NAME),
             test_profile=args.plan12_test_profile,
+            stage_c_envelope=None if stage_c_launch is None else stage_c_launch.envelope.literal,
+            stage_c_ledger=None if stage_c_launch is None else stage_c_launch.ledger,
         )
 
     if args.check_config:
@@ -620,6 +650,7 @@ def main(argv: list[str] | None = None) -> int:
                     workspace_root=workspace_root,
                     strict=args.strict,
                     require_timeseries=True,
+                    cli_model=args.model,
                 )
             except PreflightFailure as exc:
                 print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
@@ -673,6 +704,8 @@ def main(argv: list[str] | None = None) -> int:
                 build_server_kwargs["gateway_timeout_seconds"] = args.gateway_timeout_seconds
             if test_composition is not None:
                 build_server_kwargs["test_composition"] = test_composition
+            if stage_c_launch is not None:
+                build_server_kwargs["stage_c"] = stage_c_launch
             server = build_configured_server(**build_server_kwargs)
         except StartupConfigurationError as exc:
             print(f"optimus-agent: {exc.user_message}", file=sys.stderr)

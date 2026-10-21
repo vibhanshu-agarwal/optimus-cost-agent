@@ -29,6 +29,8 @@ from optimus.gateway.attempts import (
     attempts_from_failure,
     attempts_from_response,
     first_error,
+    gateway_registry_mismatch_text,
+    is_gateway_registry_mismatch,
     is_input_capacity_refusal,
     is_preflight_refusal,
 )
@@ -51,7 +53,8 @@ if TYPE_CHECKING:
 PlanningGatewayUsageCallback = Callable[[GatewayUsage, int, int], None]
 # (planning turn, wire attempt, every provider attempt of that request, the route identity it was
 # bound to or None when unbound): one call per host request, known or unknown (Codex CP3 ruling R3/R4).
-PlanningAttemptCallback = Callable[[int, int, tuple[ProviderAttempt, ...], Any], None]
+# (planning turn, wire attempt, attempts, route identity, the request's error if it failed: diagnostic only)
+PlanningAttemptCallback = Callable[[int, int, tuple[ProviderAttempt, ...], Any, BaseException | None], None]
 # A request whose required notice was not delivered: never sent, so it certainly cost nothing.
 _NOT_SENT = ProviderAttempt(number=1, outcome="not_sent", cost_usd=Decimal("0"))
 
@@ -744,6 +747,8 @@ def planning_corrective_text(
             "Planning stopped because the model gateway refused the request before sending it to any "
             "model. Nothing was charged, stored or changed."
         ),
+        # Plan 12.2 closure: the adopted Gateway enforces no registry or another one (Codex 6249427656).
+        "PLANNING_GATEWAY_REGISTRY_MISMATCH": gateway_registry_mismatch_text("PLANNING_GATEWAY_REGISTRY_MISMATCH", workspace_root),
         "PLANNING_NOTICE_UNDELIVERED": (
             "Planning stopped because the required notice for this model could not be shown, so the "
             "request was not sent. Nothing was stored or changed."
@@ -1043,9 +1048,11 @@ class _PlanningIterationRunner:
         if self._usage_callback is not None:
             self._usage_callback(usage, planning_turn, wire_attempt)
 
-    def _report_attempts(self, planning_turn: int, wire_attempt: int, attempts: tuple[ProviderAttempt, ...], identity: Any) -> None:
+    def _report_attempts(
+        self, planning_turn: int, wire_attempt: int, attempts: tuple[ProviderAttempt, ...], identity: Any, failure: BaseException | None = None
+    ) -> None:
         if self._attempt_callback is not None:
-            self._attempt_callback(planning_turn, wire_attempt, attempts, identity)
+            self._attempt_callback(planning_turn, wire_attempt, attempts, identity, failure)
 
     def _invoke_planning_gateway(
         self,
@@ -1059,7 +1066,7 @@ class _PlanningIterationRunner:
         wire_attempt = 0
         bound: BoundRequest | None = None
         # How this request's sequence ended, for its stop reason (sequence-local, not loop-wide).
-        ended = {"unsent": False, "unknown": False, "refused": False, "over_capacity": False}
+        ended = {"unsent": False, "unknown": False, "refused": False, "over_capacity": False, "registry_mismatch": False}
         # An attempt that cannot be attributed or recorded truthfully (a Gateway report that names no
         # attempt, a conflicting receipt, a divergent ledger record) is an integrity error. Everything
         # that can still be recorded is recorded first; then it fails the turn loudly after the retry
@@ -1099,10 +1106,13 @@ class _PlanningIterationRunner:
                     raise _PermanentStop("required notice not delivered; nothing was sent")
             identity = bound.identity if bound is not None else None
 
-            def account(usage: GatewayUsage | None, classify: Callable[[], tuple[ProviderAttempt, ...]]) -> tuple[ProviderAttempt, ...] | None:
+            def account(
+                usage: GatewayUsage | None, classify: Callable[[], tuple[ProviderAttempt, ...]], failure: BaseException | None = None
+            ) -> tuple[ProviderAttempt, ...] | None:
                 """Settled usage to the totals and the ledger, then every attempt to the receipt sink,
-                or, for a report that cannot be attributed, the records its integrity error carries.
-                No failure stops the next step. Returns None when anything failed."""
+                or, for a report that cannot be attributed, the records its integrity error carries,
+                with the request's `failure` for the diagnostic only. No failure stops the next step.
+                Returns None when anything failed."""
                 held = len(integrity)
                 if usage is not None:
                     capture(lambda: self._record_reported_gateway_usage(usage, planning_turn, wire_attempt))
@@ -1111,7 +1121,7 @@ class _PlanningIterationRunner:
                 except AttemptIntegrityError as error:
                     integrity.append(error)
                     attempts = error.attempts
-                capture(lambda: self._report_attempts(planning_turn, wire_attempt, attempts, identity))
+                capture(lambda: self._report_attempts(planning_turn, wire_attempt, attempts, identity, failure))
                 return attempts if len(integrity) == held else None
 
             if control is not None:
@@ -1147,7 +1157,7 @@ class _PlanningIterationRunner:
                 # usage stays unknown. Settled usage is recorded first, so a paid attempt reaches the
                 # totals and the ledger even if its report then fails.
                 usage = getattr(exc, "gateway_usage", None)
-                attempts = account(usage, _failure_classifier(exc))
+                attempts = account(usage, _failure_classifier(exc), exc)
                 if attempts is None:
                     complete("cost_unknown")
                     raise _PermanentStop("attempt accounting integrity error") from exc
@@ -1162,6 +1172,7 @@ class _PlanningIterationRunner:
                 if is_preflight_refusal(exc):
                     ended["refused"] = True
                     ended["over_capacity"] = is_input_capacity_refusal(exc)
+                    ended["registry_mismatch"] = is_gateway_registry_mismatch(exc)
                     raise _PermanentStop("refused before any upstream attempt") from exc
                 # An evaluation caller's explicit cap: at/above it, stop immediately (Plan 12.2 Task 11).
                 if usage is not None and self._cap_reached(self._total_cost_usd):
@@ -1174,7 +1185,7 @@ class _PlanningIterationRunner:
                 self._cost_complete = False
                 self._unknown_cost_attempt_count += 1
                 ended["unknown"] = True
-                account(None, _failure_classifier(exc))
+                account(None, _failure_classifier(exc), exc)
                 from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
 
                 if debug_trace_enabled():
@@ -1220,6 +1231,8 @@ class _PlanningIterationRunner:
             )
         if ended["over_capacity"]:
             raise _PlanningGatewayInvocationError("PLANNING_INPUT_CAPACITY_EXCEEDED", reported_cost_usd=sequence_cost)
+        if ended["registry_mismatch"]:
+            raise _PlanningGatewayInvocationError("PLANNING_GATEWAY_REGISTRY_MISMATCH", reported_cost_usd=sequence_cost)
         if ended["refused"]:
             raise _PlanningGatewayInvocationError("PLANNING_GATEWAY_REFUSED", reported_cost_usd=sequence_cost)
         if self._cap_reached(self._total_cost_usd):

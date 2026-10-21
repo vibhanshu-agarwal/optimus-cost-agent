@@ -23,6 +23,10 @@ class AgentHarnessRuntime:
 
     agent_runner: Any
     redis_runtime: Any
+    telemetry_writer: Any = None
+    """The harness's workspace JSONL writer; its always-on failure records go there (correction plan v4, C4)."""
+    attempt_observer: Any = None
+    """``log_provider_attempts`` bound to ``telemetry_writer``: the runner's observer, and the summary attachments'."""
 
     def close(self, *, timeout: float | None = None):
         """Observe the runtime's single teardown; see ``RedisRuntime.close``."""

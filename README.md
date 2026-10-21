@@ -8,9 +8,10 @@ Local-first Python ACP (Agent Client Protocol) server for building **cost-aware 
 
 ## Conversation floor and turn effects
 
-- Each ACP session keeps its full conversation up to a 512 KiB floor. The first time a prompt or a
-  reply takes it past 80%, the agent says once that the thread should move to a new one. A full
-  conversation is refused with a readable message, and the turn ends normally.
+- Each ACP session keeps its full canonical conversation: up to 1 MiB of storage with the Context
+  Engine attached (every ordinary session, below), or up to the 512 KiB floor without it. The first
+  time a prompt or a reply takes it past 80%, the agent says once that the thread should move to a new
+  one. A full conversation is refused with a readable message, and the turn ends normally.
 - A live `usage_update` meter follows every committed turn. It carries the session cost only while
   that cost is fully known.
 - Each agent message block ends with a paragraph break, and the model sees past turns in turn order.
@@ -18,8 +19,44 @@ Local-first Python ACP (Agent Client Protocol) server for building **cost-aware 
   approved execution stops any operation that has not started; one already running is not
   interrupted.
 
-The optional Context Engine is not part of this. Details and limits are in the
+The floor's details and limits are in the
 [Plan 12.2 Package A delivery record](docs/superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md).
+
+## Context compaction
+
+Ordinary Optimus ACP sessions use compaction by default. Older complete turns become an inert summary while
+recent turns and protected outcome/approval facts remain exact. The canonical conversation remains intact.
+The current default model is `anthropic/claude-haiku-5.5` for both answers and summaries; default selection
+prefers an eligible medium model, then an eligible easy model, without changing model tiers.
+
+The supported transport is the default newline-delimited JSON path. Remove `--framed` from the agent
+configuration; it now refuses before startup because that transport cannot bind the trusted model registry.
+No test profile or Stage C flag is needed for ordinary use. After upgrading, follow
+[After upgrading](#after-upgrading) once.
+
+A Gateway from an older installation or another registry can refuse the request before provider dispatch.
+Reapprove the intended workspace configuration and restart the matching Gateway; do not bypass binding. A
+refused request can cost zero while earlier work in the turn still carries charges.
+
+The shared Haiku route can stop after an unverifiable or refused experimental reply. That stops both later
+answers and summaries for the Gateway launch. Inspect the failure before deliberately restarting; there is no
+automatic retry-to-green. Existing incurred costs and unknown-cost warnings remain visible. The workspace's
+`.optimus/local-gateway.log` has one `model_request` line per model call. Each line records the refusal code
+and detail, and for every attempt its Gateway and provider request IDs, any router pipeline stages, and its
+failure cause (for example the transport error's class and errno, or why a reply could not be read). It also
+records any Stage C ledger write failure, and an unenforced Gateway logs one `model_attempt` line per failed
+retry attempt, all sharing the request's Gateway ID. It never records the prompt, the reply, the upstream
+error text or a caller's free text: IDs and provider metadata that are not of a recognized form are logged as
+`unrecognized`. The workspace's `.optimus/telemetry.jsonl` always gets one `error` event per model call with a
+failed attempt (including one that later recovered), refused prompt and context fault, with the same bounded
+facts. With `--debug-trace`, the host trace also records
+each attempt's IDs, stages and cause, context-fault subtypes and refusal reasons.
+
+The shipped Haiku admission policy uses an explicitly accepted empirical estimate with `verified: false`; it
+is not a universal token-bound proof. Provider metadata identifies the family, not an exact variant/region.
+Full-request/output checks and disabled provider fallback remain. Spending is alerts-only; there is no
+enforced dollar ceiling. Summary quality evidence applies only to its recorded assessment/fixture scope. The
+controlling contract is the [Plan 12.2 ordinary compaction shipping contract](docs/superpowers/specs/2026-10-18-plan-12-2-ordinary-compaction-shipping-contract.md).
 
 ## Features (Phase 1)
 
@@ -283,6 +320,30 @@ required references fail closed with a visible corrective message instead of
 silently truncating or guessing. Implemented and live-verified 2026-07-11 —
 see `reports/plan-9-8-task-aware-context-evidence.md`. Plan 9.8 does not add
 multi-turn replanning (Plan 9.85) or Plan 12 intelligent selection.
+
+Automatic workspace context never includes the Optimus runtime tree,
+`.optimus/` (the debug trace, launch audit, Gateway log and telemetry each
+launch writes), at any depth. It also leaves out a file symlink or Windows
+junction whose resolved target lies in one, and a file whose target cannot be
+resolved. Alias resolution is best-effort on a Windows filesystem that cannot
+report a file's final path, so an alias there may go unrecognised (the
+`.optimus/` name rule still applies), and extended-length `\\?\` workspace
+roots are outside this guarantee. On Windows the name matches
+case-insensitively. An explicit reference
+into it in the task is refused as not readable, and a source that only shares
+a runtime file's name still resolves. The same rule guards every file the
+model itself asks for: a plan or planner READ, the read before a WRITE, and a
+WRITE are refused, audited, before any byte is read or written, when the
+requested path or its resolved target has a `.optimus` component, or when the
+target cannot be resolved. A TEST command with an argument naming the tree is
+refused too (arguments are checked whole, so a `--opt=path` form is not), but
+programs a TEST command runs are not confined. Hard links, copies, pasted
+content, client-attached resources, check-then-read races, the editor's own
+MCP servers and case-insensitive POSIX volumes (where the name compare is
+exact) are outside the guard, which is not a general sandbox. A custom `--debug-log PATH` outside
+`.optimus/` is ordinary workspace content: keep it under `.optimus/` or
+outside the workspace if it must not be included as workspace context or read
+by the model.
 
 **Plan 9.85** (multi-turn read-observe-replan) extends Plan 9.8: when a
 required file's complete content exceeds the single-pass context budget, the
@@ -595,12 +656,12 @@ Agent-side `.env` example:
 OPTIMUS_GATEWAY_URL=http://127.0.0.1:8765
 OPTIMUS_API_KEY=<shared-secret-you-generate>
 OPTIMUS_REDIS_URL=redis://127.0.0.1:6379/0
-OPTIMUS_AGENT_MODEL=claude-haiku
 ```
 
-The current implementation default model is `glm-5.2`. The local Gateway
-maps `claude-haiku` to the configured provider's economy model, so set
-`OPTIMUS_AGENT_MODEL=claude-haiku` for local development unless you pass `--model` explicitly.
+The default model comes from the trusted model registry: today `anthropic/claude-haiku-5.5` (the first
+eligible medium model, else the first eligible easy model). Leave `OPTIMUS_AGENT_MODEL` and `--model` unset to
+use it, or set an eligible exact model ID. An ineligible ID, including the old `claude-haiku` alias and
+`glm-5.2`, refuses at startup with migration guidance.
 
 **OpenRouter is the approved default** (`OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter`).
 Vercel AI Gateway is a future bounded model-endpoint option pending a modest Python transport
@@ -626,8 +687,12 @@ Smoke-test the wire contract before pytest live tiers:
 curl -sS http://127.0.0.1:8765/v1/responses \
   -H "Authorization: Bearer <shared-secret>" \
   -H "Content-Type: application/json" \
-  -d '{"model":"claude-haiku","input":"Reply with one short word."}'
+  -d '{"model":"anthropic/claude-haiku-5.5","input":"Reply with one short word."}'
 ```
+
+A Gateway that enforces the shipped registry refuses this unbound request with `400 BINDING_REQUIRED` before any
+model call. That still confirms it is up and accepted the shared secret (a wrong secret gets `401`); only the
+agent's bound requests reach a model.
 
 ## Contributor development setup
 
@@ -779,7 +844,8 @@ optimus-agent --workspace-root . --check-config --strict
 ```
 
 `--strict` adds a gateway authentication probe in addition to the default Redis and workspace
-checks. **`--check-config` never spawns the local gateway** — use plain `--check-config` before
+checks. `optimus-agent --check-config --strict` sends a real model probe and can incur a charge. It is not
+an offline verification command. **`--check-config` never spawns the local gateway** — use plain `--check-config` before
 first launch with auto-start; use `--strict` only when a gateway is already up.
 
 If you manually stop the gateway or change gateway code (for example add a model pricing
@@ -810,6 +876,22 @@ Set OPTIMUS_GATEWAY_URL and OPTIMUS_API_KEY before launching the Optimus ACP age
 ```
 
 See **Quick start → Install and configure** for the local auto-start Zed example (no `env` block).
+
+### After upgrading
+
+1. Review the new workspace configuration and approve it personally using
+   `optimus-trust --workspace-root <workspace> approve --mode durable`. The approval includes the trusted
+   model registry. Old signatures are not copied or converted. Named test-profile/Stage C launches also need
+   their own fresh approval; an ordinary approval cannot authorize them.
+2. Remove obsolete `OPTIMUS_AGENT_MODEL`/`--model` settings, including `claude-haiku` and `glm-5.2`, to use
+   the default. Alternatively select an eligible exact model ID. An ineligible or unknown configured ID refuses
+   with migration guidance.
+3. Identify the Gateway owned by this launch/workspace before stopping it. Restart that Gateway under the
+   reviewed configuration and appropriate fresh approval. A shared Gateway needs coordination with its owner;
+   do not stop an unrelated process merely because it listens on port 8765. For a manually managed Gateway,
+   use the same workspace and reviewed launch options for approval and
+   `optimus-trust --workspace-root <workspace> run-gateway`. No-auto-start users continue managing their
+   Gateway themselves.
 
 ### Zed plan-approval troubleshooting
 
@@ -843,9 +925,9 @@ checks (`always_allow_external_agent_tools`, workspace-root `"."`, preflight, an
 6. If the user cancels the turn, the IDE sends `session/cancel`; the runtime
    resolves the pending `session/prompt` with `stopReason="cancelled"`.
 
-Framed Content-Length JSON-RPC methods such as `optimus.agent.run` remain available
-for harnesses and integration tests. IDE integrations should use the ndjson Agent
-Client Protocol flow above.
+The framed Content-Length transport (`--framed`) refuses at startup while the trusted
+model registry is enforced, because it cannot bind requests to that registry. IDE
+integrations use the ndjson Agent Client Protocol flow above.
 
 ### Verify with real Redis
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from optimus_gateway.models import GatewayServiceConfig
+from optimus_gateway.request_diagnostics import log_model_attempt
 from optimus_gateway.tool_handlers import GatewayToolDependencies
 from optimus_gateway.tool_policy import GatewayToolPolicy
 from optimus_gateway.tool_providers import (
@@ -15,7 +16,8 @@ from optimus_gateway.upstream_client import UpstreamClient, UrllibOpenAICompatib
 def build_upstream_client(config: GatewayServiceConfig) -> UpstreamClient:
     if config.base_url is None:
         raise ValueError(f"base_url is required for provider {config.provider!r}")
-    return UrllibOpenAICompatibleClient(api_key=config.provider_api_key, base_url=config.base_url)
+    # Correction plan v4, C9: every failed legacy attempt is logged with its cause and the request's Gateway id.
+    return UrllibOpenAICompatibleClient(api_key=config.provider_api_key, base_url=config.base_url, on_retry=log_model_attempt)
 
 
 def build_tool_dependencies(config: GatewayServiceConfig) -> GatewayToolDependencies | None:

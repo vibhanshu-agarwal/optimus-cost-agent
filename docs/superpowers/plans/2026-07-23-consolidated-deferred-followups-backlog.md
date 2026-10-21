@@ -390,7 +390,7 @@ the [exact exception](../../decisions/ADR-017-package-a-coverage-exception.md) a
 **Owning contract:** Plan 12.2 and its filed design; no separate hardening item or work pool.
 The frozen first plan edition, the complete `_v2` (accepted by the operator on 2026-10-02 with the first
 Task 1 contracts) and `_v3` (CP4 corrections) are archived unchanged. The current plan is the complete `_v4`
-(CP4 offline closure), filed locally on 2026-10-05; it does not inherit the 2026-10-02 acceptance.
+(CP4 offline closure), filed on 2026-10-05 and on `main` since PR #276 (`c509fc8`, 2026-10-08); it does not inherit the 2026-10-02 acceptance.
 
 **Status:** Open. Package A's Tasks 0/2/3 and the separately approved lock controls were implemented
 and offline technically accepted at `38a465f`. They reached `main` with the Plan 12.2 offline delivery through

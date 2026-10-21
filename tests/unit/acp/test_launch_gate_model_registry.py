@@ -4,6 +4,9 @@ The binding is one HMAC-covered security literal (schema version plus hash), so 
 schema and frozen predecessor bytes are unchanged. While enforcement is inactive no literal exists and
 existing approvals stay valid; on activation the literal changes the snapshot digest, so an approval
 made before activation no longer authorizes and the operator must re-approve the exact registry.
+
+The Plan 12.2 closure ships enforcement active, so an unpatched launch is the activated one; the
+inactive cases set ``ENFORCEMENT_ACTIVE`` False explicitly to keep the pre-activation path covered.
 """
 
 from __future__ import annotations
@@ -42,7 +45,8 @@ def _candidate(workspace: Path, keyring: FakeKeyring):
     return candidate, store
 
 
-def test_inactive_launch_binds_no_registry(tmp_path: Path) -> None:
+def test_inactive_launch_binds_no_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(binding_module, "ENFORCEMENT_ACTIVE", False)
     candidate, _ = _candidate(tmp_path, FakeKeyring())
     assert APPROVAL_LITERAL_NAME not in candidate.security_literals
     assert all(row.name != APPROVAL_LITERAL_NAME for row in candidate.display_rows)
@@ -50,6 +54,7 @@ def test_inactive_launch_binds_no_registry(tmp_path: Path) -> None:
 
 def test_activation_binds_the_registry_and_shows_it_for_approval(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     keyring = FakeKeyring()
+    monkeypatch.setattr(binding_module, "ENFORCEMENT_ACTIVE", False)
     inactive, _ = _candidate(tmp_path, keyring)
     monkeypatch.setattr(binding_module, "ENFORCEMENT_ACTIVE", True)
     active, _ = _candidate(tmp_path, keyring)
@@ -63,6 +68,7 @@ def test_activation_binds_the_registry_and_shows_it_for_approval(tmp_path: Path,
 
 def test_an_approval_from_before_activation_requires_reapproval(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     keyring = FakeKeyring()
+    monkeypatch.setattr(binding_module, "ENFORCEMENT_ACTIVE", False)
     authorize_workspace_for_test(env=_ENV, workspace_root=tmp_path, fake_keyring=keyring)
     candidate, store = _candidate(tmp_path, keyring)
     assert authorize_launch(candidate=candidate, store=store, launch_session_id="s1").approval_mode == "durable"
@@ -92,16 +98,20 @@ def test_an_untrustworthy_registry_blocks_launch(tmp_path: Path, monkeypatch: py
 
 # Plan 12.2 CP3 carried obligation (Codex CP2 clearance): the approval successor pins the SHIPPED registry
 # by value, not only by recomputation, so any change to the packaged defaults is a deliberate, reviewed
-# approval change rather than a silent one.
-SHIPPED_EFFECTIVE_HASH = "ff83663147980a0950a590e8f0a84d157fbc63dcc277b48adbde450a50945136"  # pragma: allowlist secret - shipped registry identity, not a credential
+# approval change rather than a silent one. The closure release changed it deliberately: the shipped
+# defaults are the previous defaults plus the attached Haiku 5.5 entry and its one summary receipt, so
+# the shipped hash is the attached profile's reviewed hash (previously ff836631...).
+SHIPPED_EFFECTIVE_HASH = "06e637845f5f7cea2b4a22d23407c59efc9741d7848b06ee5f4c3d2284f3f07d"  # pragma: allowlist secret - shipped registry identity, not a credential
 
 
-def test_an_activated_launch_approves_exactly_the_shipped_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_an_activated_launch_approves_exactly_the_shipped_registry(tmp_path: Path) -> None:
+    assert binding_module.ENFORCEMENT_ACTIVE is True, "the closure release ships enforcement active"
     assert compose_trusted_snapshot(packaged_defaults()).effective_hash == SHIPPED_EFFECTIVE_HASH
 
-    monkeypatch.setattr(binding_module, "ENFORCEMENT_ACTIVE", True)
-    active, _ = _candidate(tmp_path, FakeKeyring())
+    active, _ = _candidate(tmp_path, FakeKeyring())  # unpatched: the shipped launch
 
     literal = active.security_literals[APPROVAL_LITERAL_NAME]
     assert literal.endswith(SHIPPED_EFFECTIVE_HASH)
     assert literal == approval_literal(compose_trusted_snapshot(packaged_defaults()))
+    [row] = [row for row in active.display_rows if row.name == APPROVAL_LITERAL_NAME]
+    assert (row.display_value, row.decision) == (literal, "requires exact approval")

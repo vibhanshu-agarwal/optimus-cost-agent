@@ -15,6 +15,7 @@ import base64
 import pytest
 
 from optimus_gateway import __main__ as gateway_main
+from optimus_model_policy.binding import trusted_approval_literal
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 
 _HMAC_KEY = b"test-gateway-main-hmac-key-32by!"
@@ -40,10 +41,11 @@ def _valid_manifest(**overrides: object) -> str:
         "base_url": "https://openrouter.ai/api/v1",
         "bind_host": "127.0.0.1",
         "bind_port": 8765,
-        "provider_api_key": "sk-or-test-key",
-        "shared_secret": "shared-secret-value",
+        "provider_api_key": "sk-or-test-key",  # pragma: allowlist secret - synthetic test fixture
+        "shared_secret": "shared-secret-value",  # pragma: allowlist secret - synthetic test fixture
         "hmac_key": _HMAC_KEY,
         "policy_version": "P9.96-v1",
+        "model_registry": trusted_approval_literal(),  # the shipped registry, as the launcher signs it
     }
     defaults.update(overrides)
     manifest = build_gateway_child_manifest(**defaults)  # type: ignore[arg-type]

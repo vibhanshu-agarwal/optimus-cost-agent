@@ -5,7 +5,7 @@ the server: its reviewed snapshot, the exact model the test process uses, and th
 every session adapter binds requests with. The operator's approval binds the profile through the
 launch's security-snapshot digest (``authorize_launch``); the host re-composes the profile and refuses
 any snapshot other than the one that authorized candidate digested. Nothing here reads the environment, flips ``ENFORCEMENT_ACTIVE``, changes ``trusted_snapshot()``
-or edits shipped defaults; without a composition the host keeps today's unbound composition.
+or edits shipped defaults; without a composition the host binds the shipped trusted snapshot instead.
 
 The Gateway composes the same named profile independently and refuses to start unless the signed
 child manifest binds its hash, so the two sides agree on one approved effective hash.

@@ -1,0 +1,426 @@
+{
+ "c1_bare_key_reply_id": [
+  200,
+  {
+   "finish_reason": "stop",
+   "gateway_usage": {
+    "attempt": 1,
+    "billing_units": 11,
+    "cache_age_seconds": null,
+    "cache_hit": false,
+    "cached_tokens": null,
+    "cost_usd": "0.00001",
+    "gateway_request_id": "gw-00000000000000000000000000000001",
+    "input_tokens": 10,
+    "model": "anthropic/claude-haiku-5.5",
+    "model_version": null,
+    "output_tokens": 1,
+    "provider": "openrouter",
+    "provider_request_id": "<BARE_KEY>",
+    "reasoning_tokens": null,
+    "resolved_model": "anthropic/claude-haiku-5.5",
+    "resolved_provider": "Anthropic",
+    "route_request_id": "session-11111111111111111111111111111111:1:answer:1:22222222222222222222222222222222",
+    "total_tokens": 11
+   },
+   "id": "resp-00000000000000000000000000000002",
+   "output_text": "ok",
+   "route_attempts": [
+    {
+     "attempt": 1,
+     "failure": null,
+     "gateway_request_id": "gw-00000000000000000000000000000001",
+     "http_status": null,
+     "outcome": "completed",
+     "provider_request_id": "<BARE_KEY>",
+     "router_pipeline": []
+    }
+   ]
+  }
+ ],
+ "c1_legacy_unsupported_model": [
+  400,
+  {
+   "error": "unsupported gateway model: private note CANARY"
+  }
+ ],
+ "c1_positive": [
+  200,
+  {
+   "finish_reason": "stop",
+   "gateway_usage": {
+    "attempt": 1,
+    "billing_units": 11,
+    "cache_age_seconds": null,
+    "cache_hit": false,
+    "cached_tokens": null,
+    "cost_usd": "0.00001",
+    "gateway_request_id": "gw-00000000000000000000000000000001",
+    "input_tokens": 10,
+    "model": "anthropic/claude-haiku-5.5",
+    "model_version": null,
+    "output_tokens": 1,
+    "provider": "openrouter",
+    "provider_request_id": "gen-1760001234-AbCd",
+    "reasoning_tokens": null,
+    "resolved_model": "anthropic/claude-haiku-5.5",
+    "resolved_provider": "Anthropic",
+    "route_request_id": "session-11111111111111111111111111111111:1:answer:1:22222222222222222222222222222222",
+    "total_tokens": 11
+   },
+   "id": "resp-00000000000000000000000000000002",
+   "output_text": "ok",
+   "route_attempts": [
+    {
+     "attempt": 1,
+     "failure": null,
+     "gateway_request_id": "gw-00000000000000000000000000000001",
+     "http_status": null,
+     "outcome": "completed",
+     "provider_request_id": "gen-1760001234-AbCd",
+     "router_pipeline": []
+    }
+   ]
+  }
+ ],
+ "c1_prose_binding_request_id": [
+  200,
+  {
+   "finish_reason": "stop",
+   "gateway_usage": {
+    "attempt": 1,
+    "billing_units": 11,
+    "cache_age_seconds": null,
+    "cache_hit": false,
+    "cached_tokens": null,
+    "cost_usd": "0.00001",
+    "gateway_request_id": "gw-00000000000000000000000000000001",
+    "input_tokens": 10,
+    "model": "anthropic/claude-haiku-5.5",
+    "model_version": null,
+    "output_tokens": 1,
+    "provider": "openrouter",
+    "provider_request_id": "gen-1760001234-AbCd",
+    "reasoning_tokens": null,
+    "resolved_model": "anthropic/claude-haiku-5.5",
+    "resolved_provider": "Anthropic",
+    "route_request_id": "private note CANARY",
+    "total_tokens": 11
+   },
+   "id": "resp-00000000000000000000000000000002",
+   "output_text": "ok",
+   "route_attempts": [
+    {
+     "attempt": 1,
+     "failure": null,
+     "gateway_request_id": "gw-00000000000000000000000000000001",
+     "http_status": null,
+     "outcome": "completed",
+     "provider_request_id": "gen-1760001234-AbCd",
+     "router_pipeline": []
+    }
+   ]
+  }
+ ],
+ "c1_prose_finish": [
+  422,
+  {
+   "code": "FINISH_STATUS_UNVERIFIED",
+   "error": "model policy refused the request (FINISH_STATUS_UNVERIFIED): provider finish status 'private note canary'",
+   "gateway_usage": {
+    "attempt": 1,
+    "billing_units": 11,
+    "cache_age_seconds": null,
+    "cache_hit": false,
+    "cached_tokens": null,
+    "cost_usd": "0.00001",
+    "gateway_request_id": "gw-00000000000000000000000000000001",
+    "input_tokens": 10,
+    "model": "anthropic/claude-haiku-5.5",
+    "model_version": null,
+    "output_tokens": 1,
+    "provider": "openrouter",
+    "provider_request_id": "gen-1760001234-AbCd",
+    "reasoning_tokens": null,
+    "resolved_model": "anthropic/claude-haiku-5.5",
+    "resolved_provider": "Anthropic",
+    "route_request_id": "session-11111111111111111111111111111111:1:answer:1:22222222222222222222222222222222",
+    "total_tokens": 11
+   },
+   "retryable": false,
+   "route_attempts": [
+    {
+     "attempt": 1,
+     "failure": null,
+     "gateway_request_id": "gw-00000000000000000000000000000001",
+     "http_status": null,
+     "outcome": "completed",
+     "provider_request_id": "gen-1760001234-AbCd",
+     "router_pipeline": []
+    }
+   ],
+   "route_request_id": "session-11111111111111111111111111111111:1:answer:1:22222222222222222222222222222222"
+  }
+ ],
+ "c1_prose_provider": [
+  422,
+  {
+   "code": "EMPIRICAL_PROVIDER_MISMATCH",
+   "error": "model policy refused the request (EMPIRICAL_PROVIDER_MISMATCH): router provider 'private note CANARY', expected 'Anthropic'",
+   "gateway_usage": {
+    "attempt": 1,
+    "billing_units": 11,
+    "cache_age_seconds": null,
+    "cache_hit": false,
+    "cached_tokens": null,
+    "cost_usd": "0.00001",
+    "gateway_request_id": "gw-00000000000000000000000000000001",
+    "input_tokens": 10,
+    "model": "anthropic/claude-haiku-5.5",
+    "model_version": null,
+    "output_tokens": 1,
+    "provider": "openrouter",
+    "provider_request_id": "gen-1760001234-AbCd",
+    "reasoning_tokens": null,
+    "resolved_model": "anthropic/claude-haiku-5.5",
+    "resolved_provider": "private note CANARY",
+    "route_request_id": "session-11111111111111111111111111111111:1:answer:1:22222222222222222222222222222222",
+    "total_tokens": 11
+   },
+   "retryable": false,
+   "route_attempts": [
+    {
+     "attempt": 1,
+     "failure": null,
+     "gateway_request_id": "gw-00000000000000000000000000000001",
+     "http_status": null,
+     "outcome": "completed",
+     "provider_request_id": "gen-1760001234-AbCd",
+     "router_pipeline": []
+    }
+   ],
+   "route_request_id": "session-11111111111111111111111111111111:1:answer:1:22222222222222222222222222222222"
+  }
+ ],
+ "c1_registry_provider": [
+  422,
+  {
+   "code": "EMPIRICAL_PROVIDER_MISMATCH",
+   "error": "model policy refused the request (EMPIRICAL_PROVIDER_MISMATCH): router provider 'openai', expected 'Anthropic'",
+   "gateway_usage": {
+    "attempt": 1,
+    "billing_units": 11,
+    "cache_age_seconds": null,
+    "cache_hit": false,
+    "cached_tokens": null,
+    "cost_usd": "0.00001",
+    "gateway_request_id": "gw-00000000000000000000000000000001",
+    "input_tokens": 10,
+    "model": "anthropic/claude-haiku-5.5",
+    "model_version": null,
+    "output_tokens": 1,
+    "provider": "openrouter",
+    "provider_request_id": "gen-1760001234-AbCd",
+    "reasoning_tokens": null,
+    "resolved_model": "anthropic/claude-haiku-5.5",
+    "resolved_provider": "openai",
+    "route_request_id": "session-11111111111111111111111111111111:1:answer:1:22222222222222222222222222222222",
+    "total_tokens": 11
+   },
+   "retryable": false,
+   "route_attempts": [
+    {
+     "attempt": 1,
+     "failure": null,
+     "gateway_request_id": "gw-00000000000000000000000000000001",
+     "http_status": null,
+     "outcome": "completed",
+     "provider_request_id": "gen-1760001234-AbCd",
+     "router_pipeline": []
+    }
+   ],
+   "route_request_id": "session-11111111111111111111111111111111:1:answer:1:22222222222222222222222222222222"
+  }
+ ],
+ "c2_failed_halt_after_halt": [
+  [
+   502,
+   {
+    "code": "UPSTREAM_ATTEMPT_UNCERTAIN",
+    "error": "upstream attempt failed (UPSTREAM_ATTEMPT_UNCERTAIN)",
+    "retryable": false,
+    "route_attempts": [
+     {
+      "attempt": 1,
+      "failure": {
+       "kind": "http"
+      },
+      "gateway_request_id": "gw-00000000000000000000000000000001",
+      "http_status": 502,
+      "outcome": "uncertain",
+      "provider_request_id": null,
+      "router_pipeline": null
+     }
+    ],
+    "route_request_id": "session-33333333333333333333333333333333:1:answer:1:44444444444444444444444444444444"
+   }
+  ],
+  [
+   503,
+   {
+    "code": "STAGE_C_HALTED",
+    "error": "model policy refused the request (STAGE_C_HALTED): attempt 1 has an unknown charge",
+    "retryable": false,
+    "route_attempts": [],
+    "route_request_id": "session-33333333333333333333333333333333:2:answer:1:44444444444444444444444444444444"
+   }
+  ]
+ ],
+ "c2_settlement_write_failure": [
+  [
+   200,
+   {
+    "finish_reason": "stop",
+    "gateway_usage": {
+     "attempt": 1,
+     "billing_units": 15,
+     "cache_age_seconds": null,
+     "cache_hit": false,
+     "cached_tokens": null,
+     "cost_usd": "0.0002",
+     "gateway_request_id": "gw-00000000000000000000000000000001",
+     "input_tokens": 10,
+     "model": "cn/alpha",
+     "model_version": null,
+     "output_tokens": 5,
+     "provider": "openrouter",
+     "provider_request_id": "gen-1",
+     "reasoning_tokens": null,
+     "resolved_model": "cn/alpha",
+     "resolved_provider": "Alpha",
+     "route_request_id": "session-33333333333333333333333333333333:1:answer:1:44444444444444444444444444444444",
+     "total_tokens": 15
+    },
+    "id": "resp-00000000000000000000000000000002",
+    "output_text": "WRITE a.py\nx\nTEST pytest -q",
+    "route_attempts": [
+     {
+      "attempt": 1,
+      "failure": null,
+      "gateway_request_id": "gw-00000000000000000000000000000001",
+      "http_status": null,
+      "outcome": "completed",
+      "provider_request_id": "gen-1",
+      "router_pipeline": null
+     }
+    ]
+   }
+  ],
+  [
+   503,
+   {
+    "code": "STAGE_C_HALTED",
+    "error": "model policy refused the request (STAGE_C_HALTED): ledger write failed (OSError errno 28)",
+    "retryable": false,
+    "route_attempts": [],
+    "route_request_id": "session-33333333333333333333333333333333:2:answer:1:44444444444444444444444444444444"
+   }
+  ]
+ ],
+ "c9_503_then_ok": [
+  200,
+  {
+   "finish_reason": "stop",
+   "gateway_usage": {
+    "billing_units": 2,
+    "cache_age_seconds": null,
+    "cache_hit": false,
+    "cached_tokens": null,
+    "cost_usd": "0.00001",
+    "gateway_request_id": "gw-00000000000000000000000000000001",
+    "input_tokens": 1,
+    "model": "anthropic/claude-haiku-4.5",
+    "model_version": null,
+    "output_tokens": 1,
+    "provider": "openrouter",
+    "provider_request_id": "gen-1",
+    "reasoning_tokens": null,
+    "resolved_model": "cn/alpha",
+    "resolved_provider": null,
+    "total_tokens": 2
+   },
+   "id": "resp-00000000000000000000000000000002",
+   "output_text": "ok"
+  }
+ ],
+ "c9_invalid_json": [
+  502,
+  {
+   "error": "upstream response was invalid JSON"
+  }
+ ],
+ "c9_invalid_utf8": [
+  502,
+  {
+   "error": "upstream response was invalid JSON"
+  }
+ ],
+ "c9_schema": [
+  502,
+  {
+   "error": "upstream response missing id"
+  }
+ ],
+ "c9_timeout_then_ok": [
+  200,
+  {
+   "finish_reason": "stop",
+   "gateway_usage": {
+    "billing_units": 2,
+    "cache_age_seconds": null,
+    "cache_hit": false,
+    "cached_tokens": null,
+    "cost_usd": "0.00001",
+    "gateway_request_id": "gw-00000000000000000000000000000001",
+    "input_tokens": 1,
+    "model": "anthropic/claude-haiku-4.5",
+    "model_version": null,
+    "output_tokens": 1,
+    "provider": "openrouter",
+    "provider_request_id": "gen-1",
+    "reasoning_tokens": null,
+    "resolved_model": "cn/alpha",
+    "resolved_provider": null,
+    "total_tokens": 2
+   },
+   "id": "resp-00000000000000000000000000000002",
+   "output_text": "ok"
+  }
+ ],
+ "c9_transport_then_ok": [
+  200,
+  {
+   "finish_reason": "stop",
+   "gateway_usage": {
+    "billing_units": 2,
+    "cache_age_seconds": null,
+    "cache_hit": false,
+    "cached_tokens": null,
+    "cost_usd": "0.00001",
+    "gateway_request_id": "gw-00000000000000000000000000000001",
+    "input_tokens": 1,
+    "model": "anthropic/claude-haiku-4.5",
+    "model_version": null,
+    "output_tokens": 1,
+    "provider": "openrouter",
+    "provider_request_id": "gen-1",
+    "reasoning_tokens": null,
+    "resolved_model": "cn/alpha",
+    "resolved_provider": null,
+    "total_tokens": 2
+   },
+   "id": "resp-00000000000000000000000000000002",
+   "output_text": "ok"
+  }
+ ]
+}

@@ -142,3 +142,15 @@ def test_shadow_apply_checks_pre_tool_guard_before_applier_call():
 
     assert applier.called is False
     assert guard.requests[-1].action == "shadow_apply"
+
+
+def test_write_file_never_creates_a_file_in_the_reserved_runtime_tree(tmp_path):
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=())
+    target = tmp_path / ".optimus" / "plan12-stage-c" / "forged.jsonl"
+    target.parent.mkdir(parents=True)  # so only the guard, never a missing directory, can stop the write
+
+    with pytest.raises(MutationForbidden):
+        write_file(target, "{}", context=approved_agent_context(), guard=guard)
+
+    assert not target.exists()
+    assert guard.audit_events()[-1].verdict == "BLOCK"

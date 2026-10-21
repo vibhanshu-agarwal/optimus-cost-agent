@@ -18,10 +18,11 @@ from dataclasses import dataclass
 from .contracts import SummaryCheckpoint
 
 SUMMARY_FORMAT = "context-summary-v1"
-# Identifies the validator a qualification receipt was judged by: `parse_summary` here and the fact
-# report in tools/evaluate_context_summarizer.py. Once any receipt is recorded, change either only
-# with a new version here and in the registry's SUMMARY_VALIDATOR, so earlier receipts stop counting.
-VALIDATOR_VERSION = "context-summary-validator-v4"
+# Identifies the automatic validator a qualification run executes: `parse_summary` here and the lexical
+# fact report in tools/evaluate_context_summarizer.py. Change either only with a new version here. A
+# receipt binds the offline assessment instead (the registry's SUMMARY_VALIDATOR), so a run's executed
+# validator is recorded as provenance and never qualifies a route by itself.
+VALIDATOR_VERSION = "context-summary-validator-v6"
 PROMPT_VERSION = "context-summary-prompt-v1"
 SECTIONS = (
     "Task context",

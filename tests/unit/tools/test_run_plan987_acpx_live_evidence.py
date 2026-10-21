@@ -441,19 +441,27 @@ def _canned_fu4a_transcript() -> str:
 
 def test_resolve_live_model_prefers_optimus_agent_model(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("OPTIMUS_AGENT_MODEL", raising=False)
-    monkeypatch.setenv("OPTIMUS_AGENT_MODEL", "claude-haiku")
-    assert resolve_live_model() == "claude-haiku"
+    monkeypatch.setenv("OPTIMUS_AGENT_MODEL", "anthropic/claude-haiku-5.5")
+    assert resolve_live_model() == "anthropic/claude-haiku-5.5"
+
+
+def test_resolve_live_model_refuses_a_model_the_shipped_registry_does_not_admit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from optimus.agent.defaults import AgentModelError
+
+    monkeypatch.setenv("OPTIMUS_AGENT_MODEL", "claude-haiku")  # the pre-registry alias
+    with pytest.raises(AgentModelError):
+        resolve_live_model()
 
 
 def test_agent_wrapper_uses_resolved_model_not_hardcoded_literal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("OPTIMUS_AGENT_MODEL", "claude-haiku")
+    monkeypatch.setenv("OPTIMUS_AGENT_MODEL", "anthropic/claude-haiku-5.5")
     workspace = tmp_path / "ws"
     prepare_single_pass(workspace, agent_exe="C:/fake/optimus-agent.exe", model=resolve_live_model())
     wrapper_name = "run-optimus-agent.cmd" if __import__("platform").system() == "Windows" else "run-optimus-agent.sh"
     wrapper_text = (workspace / wrapper_name).read_text(encoding="utf-8")
-    assert "claude-haiku" in wrapper_text
+    assert "anthropic/claude-haiku-5.5" in wrapper_text
     assert "optimus-chat" not in wrapper_text
 
 

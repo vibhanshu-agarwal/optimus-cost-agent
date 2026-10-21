@@ -388,11 +388,24 @@ def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attemp
         src / "optimus_gateway" / "chat_completions.py",
         src / "optimus_model_policy" / "capacity.py",
         src / "optimus_model_policy" / "binding.py",
+        src / "optimus_model_policy" / "stage_c.py",  # the Stage C guard's pre-dispatch refusals (Codex review R1)
     ]
-    pattern = re.compile(r'(?:ModelPolicyRefusal|_refuse|BindingError)\(\s*"([A-Z_]+)"|reason or "([A-Z_]+)"')
+    pattern = re.compile(r'(?:ModelPolicyRefusal|_refuse|BindingError|StageCRefusal)\(\s*"([A-Z_]+)"|reason or "([A-Z_]+)"')
     codes = {match for path in sources for pair in pattern.findall(path.read_text(encoding="utf-8")) for match in pair if match}
     # Raised after a completed, billed attempt (with its usage), or only at launch: never a preflight refusal.
-    assert PREFLIGHT_REFUSAL_CODES == codes - {"FINISH_STATUS_UNVERIFIED", "FIXTURE_POLICY"}
+    assert PREFLIGHT_REFUSAL_CODES == codes - {
+        "FINISH_STATUS_UNVERIFIED",
+        "EMPIRICAL_ESTIMATE_EXCEEDED",
+        "EMPIRICAL_PROVIDER_MISMATCH",
+        "EMPIRICAL_PROVIDER_MISSING",
+        "EMPIRICAL_ROUTER_FALLBACK",
+        "EMPIRICAL_ROUTER_METADATA_MALFORMED",
+        "EMPIRICAL_ROUTER_METADATA_MISSING",
+        "EMPIRICAL_ROUTER_PIPELINE",
+        "FIXTURE_POLICY",
+        "STAGE_C_LEDGER_NOT_ABSOLUTE",
+        "STAGE_C_PROFILE_UNAVAILABLE",
+    }
 
 
 def test_the_settled_attempt_carries_its_provider_and_resolved_model() -> None:

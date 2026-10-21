@@ -3,7 +3,8 @@
 While enforcement is inactive the Gateway composes nothing and starts with today's routing from a
 version-1 manifest. Once a trusted snapshot exists, the signed manifest must bind exactly that
 snapshot's approval literal or the Gateway refuses to start; a registry that cannot be trusted also
-stops startup.
+stops startup. The Plan 12.2 closure ships the trusted snapshot, so the inactive cases set it to None
+explicitly and the shipped case runs unpatched.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from optimus_gateway import __main__ as gateway_main
-from optimus_model_policy.binding import BindingError, approval_literal
+from optimus_model_policy.binding import BindingError, approval_literal, trusted_approval_literal
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 from tests.unit.optimus_gateway.model_policy_support import verified_snapshot
 
@@ -76,12 +77,17 @@ def _run(manifest: str) -> int:
     return gateway_main.main(["--bind-host", "127.0.0.1", "--port", "8765", "--manifest", manifest])
 
 
-def test_inactive_gateway_starts_with_todays_routing(started: list) -> None:
+@pytest.fixture
+def inactive(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(gateway_main, "trusted_snapshot", lambda: None)
+
+
+def test_inactive_gateway_starts_with_todays_routing(started: list, inactive) -> None:
     assert _run(_manifest(None)) == 0
     assert started[0].model_policy is None
 
 
-def test_inactive_gateway_refuses_a_manifest_that_binds_a_registry(started: list, capsys) -> None:
+def test_inactive_gateway_refuses_a_manifest_that_binds_a_registry(started: list, inactive, capsys) -> None:
     assert _run(_manifest("optimus-model-registry-v1:" + "c" * 64)) == 2
     assert "MANIFEST_MODEL_REGISTRY_MISMATCH" in capsys.readouterr().err
     assert started == []
@@ -101,6 +107,21 @@ def test_active_gateway_refuses_a_manifest_for_no_or_another_registry(started: l
     snapshot = verified_snapshot(tmp_path)
     monkeypatch.setattr(gateway_main, "trusted_snapshot", lambda: snapshot)
     assert _run(_manifest(signed)) == 2
+    assert "MANIFEST_MODEL_REGISTRY_MISMATCH" in capsys.readouterr().err
+    assert started == []
+
+
+def test_the_shipped_gateway_enforces_the_shipped_registry(started: list) -> None:
+    literal = trusted_approval_literal()
+    assert literal == "optimus-model-registry-v1:06e637845f5f7cea2b4a22d23407c59efc9741d7848b06ee5f4c3d2284f3f07d"  # pragma: allowlist secret - registry identity
+    assert _run(_manifest(literal)) == 0
+    policy = started[0].model_policy
+    assert policy is not None and policy.approved_hash == policy.snapshot.effective_hash == literal.rsplit(":", 1)[1]
+
+
+def test_the_shipped_gateway_refuses_a_pre_upgrade_unbound_manifest(started: list, capsys) -> None:
+    """A launcher from before the closure signs no registry: the upgraded Gateway refuses it (re-approve and relaunch)."""
+    assert _run(_manifest(None)) == 2
     assert "MANIFEST_MODEL_REGISTRY_MISMATCH" in capsys.readouterr().err
     assert started == []
 

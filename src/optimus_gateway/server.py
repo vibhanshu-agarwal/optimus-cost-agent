@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from optimus_gateway import request_diagnostics
 from optimus_gateway.chat_completions import handle_chat_completions_request
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.observability import (
@@ -14,7 +16,7 @@ from optimus_gateway.observability import (
     handle_observability_traces_request,
 )
 from optimus_gateway.providers import build_tool_dependencies, build_upstream_client
-from optimus_gateway.responses import handle_responses_request
+from optimus_gateway.responses import handle_responses_request, model_request_log_line
 from optimus_gateway.tool_handlers import TOOL_ROUTE_PATHS, GatewayToolDependencies, handle_tool_request
 from optimus_gateway.upstream_client import UpstreamClient
 
@@ -89,6 +91,9 @@ def _discard_rejected_post_body(stream: Any, connection: Any, length: int, deadl
             raise _RejectedPostError(HTTPStatus.REQUEST_TIMEOUT, "request body timeout")
 
 
+_MODEL_ROUTES = frozenset({"/v1/responses", "/v1/chat/completions"})
+
+
 class OptimusGatewayHandler(BaseHTTPRequestHandler):
     config: GatewayServiceConfig
     upstream_client: UpstreamClient
@@ -107,15 +112,29 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
             self._reject_unhandled_post()
             return
 
-        content_length = int(self.headers.get("Content-Length", "0"))
+        # Correction plan v4, C9: one request-scoped diagnostic context per model request, read by `_finish` into the
+        # log line and cleared once the reply is sent. Never part of a response.
+        request_diagnostics.begin()
+        try:
+            self._handle_post(path, tool_dependencies)
+        finally:
+            request_diagnostics.end()
+
+    def _handle_post(self, path: str, tool_dependencies: GatewayToolDependencies | None) -> None:
+        declared = self.headers.get("Content-Length", "0").strip()
+        if not (declared.isascii() and declared.isdigit()):
+            # C7: a negative or non-integer length is a logged 400, never `read(-1)` or an unhandled error.
+            self._finish(path, HTTPStatus.BAD_REQUEST, {"error": "invalid content length"})
+            return
+        content_length = int(declared)
         raw_body = self.rfile.read(content_length) if content_length else b"{}"
         try:
             request_body = json.loads(raw_body.decode("utf-8"))
-        except json.JSONDecodeError:
-            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid JSON"})
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self._finish(path, HTTPStatus.BAD_REQUEST, {"error": "invalid JSON"})
             return
         if not isinstance(request_body, dict):
-            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "request body must be a JSON object"})
+            self._finish(path, HTTPStatus.BAD_REQUEST, {"error": "request body must be a JSON object"})
             return
 
         if path in TOOL_ROUTE_PATHS and tool_dependencies is not None:
@@ -148,7 +167,15 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
                 config=self.config,
                 upstream_client=self.upstream_client,
             )
-        self._send_json(HTTPStatus(status), body)
+        self._finish(path, HTTPStatus(status), body)
+
+    def _finish(self, path: str, status: HTTPStatus, body: dict[str, Any]) -> None:
+        """Log a model route's outcome, then reply. The Gateway's stderr is its persisted log (local-gateway.log),
+        so every model outcome stays diagnosable; a failed or closed log stream never stops the reply."""
+        if path in _MODEL_ROUTES:
+            with contextlib.suppress(Exception):  # noqa: BLE001 - a diagnostic never stops the reply it describes
+                request_diagnostics.write_log_line(model_request_log_line(path, int(status), body, policy=self.config.model_policy))
+        self._send_json(status, body)
 
     def _reject_unhandled_post(self) -> None:
         """Terminal handling for the early-404 branch: consume a bounded, well-framed body first."""

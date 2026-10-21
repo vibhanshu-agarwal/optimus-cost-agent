@@ -1,4 +1,5 @@
 import hashlib
+import os
 from pathlib import Path
 
 import pytest
@@ -187,3 +188,129 @@ def test_read_file_range_checks_guard_before_opening_file(tmp_path, monkeypatch)
     _read_range(tools, tmp_path, path="src/example.py", start_byte=0, end_byte=5)
 
     assert events.index("guard") < events.index("open")
+
+
+# --- Plan 12.2 READ: the reserved runtime tree `.optimus/` on the planner's ranged read ------------------------
+
+
+def _runtime_sentinel(tmp_path) -> Path:
+    sentinel = tmp_path / ".optimus" / "telemetry.ndjson"
+    sentinel.parent.mkdir(parents=True)
+    sentinel.write_text("RUNTIME-SENTINEL-7f3a", encoding="utf-8")
+    return sentinel
+
+
+@pytest.fixture
+def directory_alias():
+    """Make directory aliases: a Windows junction where `_winapi` exists, else a directory symlink. Each alias itself is
+    removed at teardown, never anything through it."""
+    made: list[tuple[Path, bool]] = []
+
+    def make(link: Path, target: Path) -> None:
+        link.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            import _winapi
+        except ImportError:
+            try:
+                link.symlink_to(target, target_is_directory=True)
+            except OSError as exc:
+                pytest.skip(f"directory alias unavailable: {exc}")
+            made.append((link, False))
+            return
+        _winapi.CreateJunction(str(target), str(link))
+        made.append((link, True))
+
+    yield make
+    for link, junction in reversed(made):
+        os.rmdir(link) if junction else link.unlink()
+
+
+def test_read_file_range_blocks_the_runtime_tree_before_reading(tmp_path, monkeypatch):
+    _runtime_sentinel(tmp_path)
+    tools = executor(tmp_path)
+    opened: list[Path] = []
+    original_read_bytes = Path.read_bytes
+    monkeypatch.setattr(Path, "read_bytes", lambda self: opened.append(self) or original_read_bytes(self))
+
+    with pytest.raises(LoopToolBlocked) as exc:
+        _read_range(tools, tmp_path, path=".optimus/telemetry.ndjson", start_byte=0, end_byte=7)
+
+    assert exc.value.result.rule_id == "path.runtime.read"
+    assert opened == []
+
+
+def test_read_file_range_blocks_a_reserved_alias_into_ordinary_source_by_its_requested_name(tmp_path, directory_alias):
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "a.py").write_text("print('ordinary')\n", encoding="utf-8")
+    directory_alias(tmp_path / "a" / ".optimus", source)
+    tools = executor(tmp_path)
+
+    with pytest.raises(LoopToolBlocked) as exc:
+        _read_range(tools, tmp_path, path="a/.optimus/a.py", start_byte=0, end_byte=5)
+
+    assert exc.value.result.rule_id == "path.runtime.read"
+
+
+def test_read_file_range_blocks_an_ordinary_alias_into_the_runtime_tree(tmp_path, directory_alias):
+    _runtime_sentinel(tmp_path)
+    directory_alias(tmp_path / "src" / "rt", tmp_path / ".optimus")
+    tools = executor(tmp_path)
+
+    with pytest.raises(LoopToolBlocked) as exc:
+        _read_range(tools, tmp_path, path="src/rt/telemetry.ndjson", start_byte=0, end_byte=7)
+
+    assert exc.value.result.rule_id == "path.runtime.read"
+
+
+def test_read_file_range_blocks_an_ordinary_file_symlink_into_the_runtime_tree(tmp_path, monkeypatch):
+    sentinel = _runtime_sentinel(tmp_path)
+    link = tmp_path / "src" / "link.ndjson"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        link.symlink_to(sentinel)  # READ v3 §6 A5: a file symlink, on POSIX or Windows with the privilege
+    except OSError as exc:
+        pytest.skip(f"file symlink unavailable: {exc}")
+    tools = executor(tmp_path)
+    opened: list[Path] = []
+    original_read_bytes = Path.read_bytes
+    monkeypatch.setattr(Path, "read_bytes", lambda self: opened.append(self) or original_read_bytes(self))
+
+    with pytest.raises(LoopToolBlocked) as exc:
+        _read_range(tools, tmp_path, path="src/link.ndjson", start_byte=0, end_byte=7)
+
+    assert exc.value.result.rule_id == "path.runtime.read"
+    assert opened == []
+
+
+def test_read_file_range_denies_an_unresolvable_target_through_the_guard(tmp_path, monkeypatch):
+    target = tmp_path / "src" / "unresolvable.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("print('x')\n", encoding="utf-8")
+    original_resolve = Path.resolve
+
+    def failing_resolve(self, strict=False):
+        if self.name == "unresolvable.py":
+            raise OSError("simulated resolution failure")
+        return original_resolve(self, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", failing_resolve)
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
+    tools = GuardedLoopToolExecutor(guard=guard)
+
+    with pytest.raises(LoopToolBlocked) as exc:
+        _read_range(tools, tmp_path, path="src/unresolvable.py", start_byte=0, end_byte=5)
+
+    assert exc.value.result.rule_id == "path.unresolved.read"
+    assert guard.audit_events()[-1].verdict == "BLOCK"
+
+
+def test_read_file_range_still_reads_ordinary_source_through_a_normal_alias(tmp_path, directory_alias):
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "a.py").write_bytes(b"hello")
+    directory_alias(tmp_path / "lib", source)
+
+    evidence = _read_range(executor(tmp_path), tmp_path, path="lib/a.py", start_byte=0, end_byte=5)
+
+    assert evidence.range_text == "hello"

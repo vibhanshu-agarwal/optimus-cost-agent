@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+import itertools
 import re
 import threading
 from datetime import UTC, datetime
@@ -319,7 +320,7 @@ async def test_a_runner_that_reports_no_receipts_keeps_its_reported_total(tmp_pa
 # --- M2: content-free context fault diagnostics ----------------------------------------------------------
 
 FAULT_LINE = re.compile(
-    r"^optimus\.acp: context fault run_id=session-[0-9a-f]{32}:\d+ phase=(prepare|repack) category=[a-z_]+ outcome=[a-z_]+$"
+    r"^optimus\.acp: context fault run_id=session-[0-9a-f]{32}:\d+ phase=(prepare|repack) category=[a-z_]+ detail=[A-Za-z0-9_]+ outcome=[a-z_]+$"
 )
 PRIVATE_TEXT = "PRIVATE-MARKER-0123 and some private history text"
 
@@ -346,16 +347,17 @@ def _raising_summarizer():
 
 
 @pytest.mark.parametrize(
-    ("attachment", "category"),
+    ("attachment", "category", "detail"),
     [
-        (lambda: make_attachment(engine=_RaisingEngine()), "engine_error"),
-        (lambda: make_attachment(engine=_StrangeReasonEngine()), "other"),
-        (lambda: dataclasses.replace(make_attachment(tail=10), summarizer=lambda identity, deliver: _raising_summarizer()), "maintenance_error"),
-        (lambda: dataclasses.replace(make_attachment(tail=10), summarizer=_refusing_factory), "config_error"),
+        (lambda: make_attachment(engine=_RaisingEngine()), "engine_error", "RuntimeError"),
+        (lambda: make_attachment(engine=_StrangeReasonEngine()), "other", "other"),
+        (lambda: dataclasses.replace(make_attachment(tail=10), summarizer=lambda identity, deliver: _raising_summarizer()), "maintenance_error", "RuntimeError"),
+        (lambda: dataclasses.replace(make_attachment(tail=10), summarizer=_refusing_factory), "config_error", "RouteIdentityError"),
+        (lambda: dataclasses.replace(make_attachment(tail=10), summarizer=lambda identity, deliver: _length_summarizer), "maintenance_failed", "finish_length"),
     ],
-    ids=["engine-raises", "unlisted-reason", "maintenance-raises", "summarizer-identity-refused"],
+    ids=["engine-raises", "unlisted-reason", "maintenance-raises", "summarizer-identity-refused", "summary-truncated"],
 )
-async def test_a_view_fault_leaves_one_content_free_operator_line(tmp_path, capsys, attachment, category) -> None:
+async def test_a_view_fault_leaves_one_content_free_operator_line(tmp_path, capsys, attachment, category, detail) -> None:
     adapter, outbound, _ = make_adapter(tmp_path, attachment(), DispatchingRunner())
     session_id = await new_session(adapter, tmp_path, mode="chat")
     for n in range(3):
@@ -367,7 +369,21 @@ async def test_a_view_fault_leaves_one_content_free_operator_line(tmp_path, caps
     assert lines and all(FAULT_LINE.match(line) for line in lines), lines
     categories = {re.search(r"category=(\S+)", line).group(1) for line in lines}
     assert category in categories and categories <= FAULT_CATEGORIES
+    # Codex round 13 finding 2: the bounded subtype beside the broad category (class, reason or finish status).
+    assert (category, detail) in {(re.search(r"category=(\S+)", line).group(1), re.search(r"detail=(\S+)", line).group(1)) for line in lines}
     assert all("PRIVATE-MARKER" not in line and "private history" not in line for line in lines)
+
+
+_LENGTH_CALLS = itertools.count(1)
+
+
+def _length_summarizer(*, prompt, max_output_tokens):
+    """A charged summary the provider cut off at its output cap (finish status ``length``); each call its own attempt."""
+    from optimus.context.maintenance import SummarizerAttempt, SummarizerResponse
+
+    n = next(_LENGTH_CALLS)
+    attempt = SummarizerAttempt(attempt_id=f"len{n}", gateway_request_id=f"gw-len{n}", outcome="completed", cost_usd=Decimal("0.0001"))
+    return SummarizerResponse(text="a summary cut off by the output cap", finish_status="length", attempts=(attempt,))
 
 
 def _refusing_factory(identity, deliver_notice):
@@ -414,7 +430,7 @@ def test_a_repack_fault_is_recorded_with_its_phase_and_category() -> None:
 
     assert turn.fit(lambda envelope: f"Q\n{envelope}") is None
 
-    assert [(fault.phase, fault.category) for fault in turn.take_faults()] == [("repack", "capacity")]
+    assert [(fault.phase, fault.category, fault.detail) for fault in turn.take_faults()] == [("repack", "capacity", "history_capacity_too_small_for_a_summary")]
 
 
 def test_a_fault_only_ever_carries_its_bounded_vocabulary() -> None:
@@ -424,6 +440,8 @@ def test_a_fault_only_ever_carries_its_bounded_vocabulary() -> None:
         ContextFault("prepare", "RuntimeError: " + PRIVATE_TEXT)
     with pytest.raises(ValueError):
         ContextFault("elsewhere", "engine_error")
+    with pytest.raises(ValueError):
+        ContextFault("prepare", "engine_error", "RuntimeError: " + PRIVATE_TEXT)
     assert all(re.fullmatch(r"[a-z_]+", category) for category in FAULT_CATEGORIES)
 
 

@@ -10,13 +10,17 @@ changed override or a fixture policy refuses. Selecting a profile grants nothing
   names the same hash;
 - workspace, credential, permission and scope checks are unchanged.
 
-Production is untouched: ``ENFORCEMENT_ACTIVE`` stays False, :func:`trusted_snapshot` keeps returning
-None and the shipped defaults do not change. Activation remains a separate reviewed code release; this
-module is the reviewed test-process composition the binding rule's "reviewed code change" names.
+A profile never changes production: the shipped defaults, ``ENFORCEMENT_ACTIVE`` and
+:func:`trusted_snapshot` are their own reviewed release (the Plan 12.2 closure), and a profile replaces
+the shipped snapshot only for the test process that names it. This module is the reviewed test-process
+composition the binding rule's "reviewed code change" names.
 
 Verified facts enter a profile only through a reviewed change to its override and pinned hash. The
-``attached`` profile needs a genuine passing summary-quality receipt and its own reviewed hash and
-approval, so it is declared unavailable until then: no hash or receipt is fabricated in advance.
+``attached`` profile (profile B) is the qualification policy plus the one genuine summary-quality
+receipt Codex accepted (Stage 2, 2026-10-11), filed under the operator's approval of the offline
+preparation batch: its own reviewed hash, which a launch approval binds like any other. It qualifies the
+summarizer role for that test snapshot only. Composing it constructs no attached Context Engine: for a
+profile the host attaches one only on the Stage C path; an ordinary launch attaches the shipped one.
 """
 
 from __future__ import annotations
@@ -26,9 +30,14 @@ from pathlib import Path
 from typing import Final
 
 from optimus_model_policy.binding import BindingError, packaged_defaults, trusted_snapshot
+from optimus_model_policy.experimental import HAIKU_ATTACHED_HASH, HAIKU_QUALIFICATION_HASH
 from optimus_model_policy.registry import RegistryError, RegistrySnapshot, load_registry
 
-__all__ = ["TEST_PROFILE_NAMES", "TEST_PROFILES", "TestProfile", "compose_test_profile_snapshot", "registry_for_launch"]
+__all__ = ["TEST_PROFILE_LITERAL_NAME", "TEST_PROFILE_NAMES", "TEST_PROFILES", "TestProfile", "compose_test_profile_snapshot", "registry_for_launch"]
+
+TEST_PROFILE_LITERAL_NAME: Final = "_test_profile"
+"""The launch security literal that names a selected profile. Its registry literal alone cannot tell the launches
+apart: the shipped defaults compose to the attached profile's hash, and equal hashes never mean shared authority."""
 
 
 @dataclass(frozen=True)
@@ -48,27 +57,27 @@ class TestProfile:
 
 
 TEST_PROFILES: Final[dict[str, TestProfile]] = {
-    # Profile A: qualification and absent-engine behaviour. It records the 2026-10-04 free inspection's
-    # observed public facts for the baseline candidate, unverified: its tokenizer is not established by
-    # publisher configuration, every endpoint's quantization is unknown and the registry-priced endpoint
-    # is a base slug. It therefore admits no model, and a launch with it refuses before any call.
+    # Profile A: qualification and absent-engine behaviour, on Claude Haiku 5.5 (operator release,
+    # 2026-10-09). Its route facts come from the 2026-10-09 free inspection; its empirical estimator and
+    # provider-family slug are admitted only through experimental.py, bound to this exact hash. Luna
+    # stays ineligible: its 2026-10-04 facts never established a tokenizer.
     "qualification": TestProfile(
         name="qualification",
         override="test_profile_qualification.yaml",
-        effective_hash="0539d26660457618add2de9266c541975cb30f3927860e9c68da01152f3551a0",  # pragma: allowlist secret - registry identity, not a credential
-        model_id="openai/gpt-6-luna",
+        effective_hash=HAIKU_QUALIFICATION_HASH,
+        model_id="anthropic/claude-haiku-5.5",
         role="easy",
         output_cap=32768,
     ),
-    # Profile B: attached maintenance. Needs profile A's genuine passing receipt first.
+    # Profile B: attached maintenance. Profile A's policy plus its accepted receipt (operator approval of the
+    # offline preparation batch, 2026-10-11): the same model, test-agent role and output cap, its own hash.
     "attached": TestProfile(
         name="attached",
-        override=None,
-        effective_hash=None,
-        model_id=None,
-        role=None,
-        output_cap=None,
-        unavailable_reason="needs a genuine passing summary-quality receipt and its own reviewed hash and approval",
+        override="test_profile_attached.yaml",
+        effective_hash=HAIKU_ATTACHED_HASH,
+        model_id="anthropic/claude-haiku-5.5",
+        role="easy",
+        output_cap=32768,
     ),
 }
 TEST_PROFILE_NAMES: Final = tuple(TEST_PROFILES)

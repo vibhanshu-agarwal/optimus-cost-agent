@@ -1,9 +1,20 @@
+import os
+import sys
+from pathlib import Path
+
+import pytest
+
+from optimus.acp import launch_audit
+from optimus.acp.debug_trace import DEFAULT_DEBUG_LOG_RELATIVE_PATH
+from optimus.acp.operator_paths import resolve_operator_paths
+from optimus.agent import workspace_context
 from optimus.agent.workspace_context import (
     WorkspaceReferenceDiagnostic,
     WorkspaceReferenceStatus,
     assemble_workspace_context_for_prompt,
     gather_workspace_context_for_prompt,
 )
+from optimus.telemetry.jsonl import DEFAULT_TELEMETRY_DIRNAME
 
 
 def test_task_aware_context_includes_explicit_path_ahead_of_alphabetical_filler(tmp_path):
@@ -327,3 +338,275 @@ def test_gather_workspace_context_respects_total_byte_cap_with_truncation_marker
     assert "b.py" in context
     assert "c.py" in context
     assert "--- c.py ---" not in context
+
+
+# --- Plan 12.2: the reserved .optimus runtime tree is never workspace context (runtime-context exclusion plan v2) ---
+
+RUNTIME_SENTINEL = "RUNTIME_SENTINEL_7F3A"
+SOURCE_SENTINEL = "SOURCE_SENTINEL_2C9E"
+RUNTIME_FILES = ("debug-acp.ndjson", "launch-audit.ndjson", "local-gateway.log", "telemetry.jsonl")
+WINDOWS = sys.platform == "win32"
+
+
+def _runtime_tree(parent: Path, name: str = ".optimus") -> Path:
+    """The files a launch writes under its runtime tree, each carrying the runtime sentinel."""
+    runtime = parent / name
+    runtime.mkdir(parents=True)
+    for file_name in RUNTIME_FILES:
+        (runtime / file_name).write_text(f'{{"event": "{RUNTIME_SENTINEL} {file_name}"}}\n', encoding="utf-8")
+    return runtime
+
+
+def _source(root: Path, relative: str = "src/app.py") -> Path:
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"# {SOURCE_SENTINEL}\n", encoding="utf-8")
+    return path
+
+
+def _assert_runtime_absent(result) -> None:
+    assert RUNTIME_SENTINEL not in result.text
+    assert ".optimus" not in result.text.casefold()
+    assert not any(".optimus" in path.casefold() for path in (*result.prioritized_paths, *result.omitted_paths))
+
+
+def _symlink_or_skip(link: Path, target: Path, *, directory: bool = False) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=directory)
+    except OSError as exc:  # Windows without the symlink privilege: WinError 1314
+        pytest.skip(f"symlink creation is unavailable on this platform account: {exc}")
+
+
+def test_runtime_tree_is_excluded_before_any_of_its_content_is_read(tmp_path, monkeypatch):
+    _runtime_tree(tmp_path)
+    _source(tmp_path)
+    read: list[Path] = []
+    original = Path.read_bytes
+
+    def recording_read_bytes(self: Path) -> bytes:
+        read.append(self)
+        return original(self)
+
+    monkeypatch.setattr(Path, "read_bytes", recording_read_bytes)
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Explain src/app.py")
+
+    assert SOURCE_SENTINEL in result.text and result.prioritized_paths == ("src/app.py",)
+    _assert_runtime_absent(result)
+    assert not [path for path in read if ".optimus" in path.parts], "no runtime file is opened to decide eligibility"
+
+
+def test_a_runtime_only_workspace_contributes_no_blocks_candidates_or_omitted_names(tmp_path):
+    _runtime_tree(tmp_path)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="", max_total_bytes=96)
+
+    assert (result.text, result.used_bytes, result.omitted_paths, result.prioritized_paths) == ("", 0, (), ())
+
+
+def test_a_nested_runtime_tree_is_excluded_and_its_sibling_source_is_kept(tmp_path):
+    _runtime_tree(tmp_path / "sub")
+    _source(tmp_path, "sub/app.py")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="")
+
+    assert "--- sub/app.py ---" in result.text and SOURCE_SENTINEL in result.text
+    _assert_runtime_absent(result)
+
+
+@pytest.mark.parametrize("reference", [".optimus/debug-acp.ndjson", ".optimus/new-file.ndjson", "sub/.optimus/telemetry.jsonl"])
+def test_an_explicit_runtime_reference_is_not_readable(tmp_path, reference):
+    _runtime_tree(tmp_path)
+    _runtime_tree(tmp_path / "sub")
+    _source(tmp_path)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Show me {reference}")
+
+    assert result.diagnostics[0].reference == reference
+    assert result.diagnostics[0].status is WorkspaceReferenceStatus.NOT_READABLE
+    assert result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
+    assert result.text == ""
+
+
+def test_a_runtime_only_basename_is_not_found_and_never_packed(tmp_path):
+    _runtime_tree(tmp_path)
+    _source(tmp_path)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="What is in debug-acp.ndjson?")
+
+    assert result.diagnostics[0].status is WorkspaceReferenceStatus.NOT_FOUND
+    assert result.blocking_stop_reason is None and SOURCE_SENTINEL in result.text
+    _assert_runtime_absent(result)
+
+
+def test_a_normal_source_sharing_a_runtime_basename_resolves_instead_of_being_ambiguous(tmp_path):
+    _runtime_tree(tmp_path)
+    _source(tmp_path, "logs/telemetry.jsonl")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Summarise telemetry.jsonl")
+
+    assert result.diagnostics[0].status is WorkspaceReferenceStatus.RESOLVED
+    assert result.diagnostics[0].candidates == ("logs/telemetry.jsonl",)
+    assert result.blocking_stop_reason is None and "--- logs/telemetry.jsonl ---" in result.text
+    _assert_runtime_absent(result)
+
+
+@pytest.mark.parametrize("relative", ["my.optimus/notes.md", ".optimus-notes/notes.md", "optimus/notes.md", "docs/.optimusrc.md"])
+def test_names_that_only_resemble_the_runtime_tree_stay_eligible(tmp_path, relative):
+    _source(tmp_path, relative)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="")
+
+    assert f"--- {relative} ---" in result.text and SOURCE_SENTINEL in result.text
+
+
+def test_ordinary_logs_json_and_other_dot_directories_stay_eligible(tmp_path):
+    for relative in ("logs/app.log", "data/events.ndjson", ".config/settings.json"):
+        _source(tmp_path, relative)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="")
+
+    for relative in ("logs/app.log", "data/events.ndjson", ".config/settings.json"):
+        assert f"--- {relative} ---" in result.text
+
+
+def test_the_reserved_name_follows_the_platform_case_rule(tmp_path):
+    _runtime_tree(tmp_path, ".Optimus")
+    _source(tmp_path)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="")
+    reference = assemble_workspace_context_for_prompt(tmp_path, task="Show .Optimus/debug-acp.ndjson")
+
+    if WINDOWS:  # NTFS is case-insensitive: <workspace>/.optimus is this very directory
+        assert RUNTIME_SENTINEL not in result.text
+        assert reference.diagnostics[0].status is WorkspaceReferenceStatus.NOT_READABLE
+    else:  # a distinct, ordinary directory on a case-sensitive filesystem
+        assert RUNTIME_SENTINEL in result.text
+        assert reference.diagnostics[0].status is WorkspaceReferenceStatus.RESOLVED
+    assert SOURCE_SENTINEL in result.text
+
+
+def test_a_workspace_under_an_ancestor_named_like_the_runtime_tree_keeps_its_files(tmp_path):
+    root = tmp_path / ".optimus" / "project"
+    _source(root)
+
+    result = assemble_workspace_context_for_prompt(root, task="Explain src/app.py")
+
+    assert SOURCE_SENTINEL in result.text and result.prioritized_paths == ("src/app.py",)
+
+
+def test_the_omitted_files_marker_never_names_a_runtime_path(tmp_path):
+    _runtime_tree(tmp_path)
+    for index in range(6):
+        _source(tmp_path, f"src/module_{index}.py")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="", max_total_bytes=200)
+
+    assert result.omitted_paths and "--- omitted (size cap):" in result.text
+    _assert_runtime_absent(result)
+
+
+def test_a_candidate_whose_target_cannot_be_resolved_is_not_read(tmp_path, monkeypatch):
+    _source(tmp_path, "src/app.py")
+    _source(tmp_path, "src/unresolvable.py")
+    original = Path.resolve
+
+    def failing_resolve(self: Path, strict: bool = False) -> Path:
+        if self.name == "unresolvable.py":
+            raise OSError("simulated resolution failure")
+        return original(self, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", failing_resolve)
+    result = assemble_workspace_context_for_prompt(tmp_path, task="")
+
+    assert "--- src/app.py ---" in result.text
+    assert "unresolvable.py" not in result.text
+
+
+@pytest.mark.skipif(not WINDOWS, reason="final-path resolution (GetFinalPathNameByHandle) is the Windows mechanism")
+def test_a_filesystem_without_final_path_support_keeps_ordinary_files_and_the_lexical_rule(tmp_path, monkeypatch):
+    """Fable review finding 2: a strict resolve would reject every file where the filesystem cannot report a
+    final path (ERROR_INVALID_FUNCTION), emptying workspace context. Ordinary files must stay; .optimus stays out."""
+    import ntpath
+
+    _runtime_tree(tmp_path)
+    _source(tmp_path)
+
+    def unsupported(path):
+        raise OSError(22, "Incorrect function", str(path), 1)  # winerror 1: ERROR_INVALID_FUNCTION
+
+    monkeypatch.setattr(ntpath, "_getfinalpathname", unsupported)
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Explain src/app.py")
+
+    assert SOURCE_SENTINEL in result.text and result.prioritized_paths == ("src/app.py",)
+    _assert_runtime_absent(result)
+
+
+@pytest.mark.skipif(not WINDOWS, reason="NTFS directory junctions are a Windows mechanism")
+def test_a_junction_into_the_runtime_tree_is_excluded_and_an_ordinary_junction_is_kept(tmp_path):
+    import _winapi  # CreateJunction needs no privilege, unlike a symlink
+
+    runtime = _runtime_tree(tmp_path)
+    _source(tmp_path)
+    runtime_alias, source_alias = tmp_path / "logs", tmp_path / "src-alias"
+    _winapi.CreateJunction(str(runtime), str(runtime_alias))
+    _winapi.CreateJunction(str(tmp_path / "src"), str(source_alias))
+    try:
+        result = assemble_workspace_context_for_prompt(tmp_path, task="")
+        reference = assemble_workspace_context_for_prompt(tmp_path, task="Show logs/debug-acp.ndjson")
+
+        assert "--- src-alias/app.py ---" in result.text, "an ordinary junction stays eligible"
+        assert RUNTIME_SENTINEL not in result.text and "logs/" not in result.text
+        assert reference.diagnostics[0].status is WorkspaceReferenceStatus.NOT_READABLE
+    finally:
+        os.rmdir(runtime_alias)  # remove the junctions themselves, never through them
+        os.rmdir(source_alias)
+
+
+def test_a_file_symlink_into_the_runtime_tree_is_excluded_and_an_ordinary_one_is_kept(tmp_path):
+    runtime = _runtime_tree(tmp_path)
+    source = _source(tmp_path)
+    _symlink_or_skip(tmp_path / "notes.ndjson", runtime / "debug-acp.ndjson")
+    _symlink_or_skip(tmp_path / "alias.py", source)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="")
+    reference = assemble_workspace_context_for_prompt(tmp_path, task="Show notes.ndjson")
+
+    assert "--- alias.py ---" in result.text, "an ordinary file alias stays eligible"
+    assert RUNTIME_SENTINEL not in result.text and "notes.ndjson" not in result.text
+    assert reference.diagnostics[0].status is WorkspaceReferenceStatus.NOT_READABLE
+
+
+def test_a_file_symlink_to_a_runtime_tree_outside_the_workspace_is_excluded(tmp_path):
+    other = _runtime_tree(tmp_path / "other-workspace")
+    root = tmp_path / "workspace"
+    _source(root)
+    _symlink_or_skip(root / "borrowed.ndjson", other / "telemetry.jsonl")
+
+    result = assemble_workspace_context_for_prompt(root, task="")
+
+    assert SOURCE_SENTINEL in result.text and RUNTIME_SENTINEL not in result.text
+
+
+def test_a_symlink_loop_and_a_directory_symlink_into_the_runtime_tree_are_never_read(tmp_path):
+    # Pins traversal semantics the stdlib provides (a loop fails is_file(); rglob does not descend a directory
+    # symlink) alongside the alias rule, which would catch runtime-dir/* if directory symlinks were ever traversed.
+    runtime = _runtime_tree(tmp_path)
+    _source(tmp_path)
+    _symlink_or_skip(tmp_path / "loop.txt", tmp_path / "loop.txt")
+    _symlink_or_skip(tmp_path / "runtime-dir", runtime, directory=True)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="")
+
+    assert SOURCE_SENTINEL in result.text
+    assert "loop.txt" not in result.text and "runtime-dir/" not in result.text
+    _assert_runtime_absent(result)
+
+
+def test_the_reserved_name_matches_every_runtime_writer(tmp_path):
+    reserved = getattr(workspace_context, "RUNTIME_DIR_NAME", None)
+    config = tmp_path / "config"
+    paths = resolve_operator_paths(workspace_root=tmp_path / "ws", environ={"APPDATA": str(config), "XDG_CONFIG_HOME": str(config)})
+
+    assert reserved == paths.runtime_root.name == DEFAULT_TELEMETRY_DIRNAME == DEFAULT_DEBUG_LOG_RELATIVE_PATH.parts[0]
+    assert paths.debug_log_path.parent == paths.gateway_log_path.parent == paths.runtime_root
+    assert launch_audit._audit_path(paths.runtime_root).parent == paths.runtime_root

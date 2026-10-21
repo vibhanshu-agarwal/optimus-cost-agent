@@ -18,7 +18,7 @@ import pytest
 from optimus.agent.models import AgentRunRequest
 from optimus.agent.runner import AgentRunner
 from optimus.context.maintenance import GatewaySummarizerCall
-from optimus.gateway.attempts import PREFLIGHT_REFUSAL_CODES, attempts_from_failure, is_preflight_refusal
+from optimus.gateway.attempts import GATEWAY_REGISTRY_MISMATCH_CODES, PREFLIGHT_REFUSAL_CODES, attempts_from_failure, is_preflight_refusal
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
 from optimus.gateway.models import GatewayRouteAttempt, GatewayUsage
 from optimus.runtime.modes import ExecutionMode
@@ -113,12 +113,64 @@ def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attemp
         SRC / "optimus_gateway" / "chat_completions.py",
         SRC / "optimus_model_policy" / "capacity.py",
         SRC / "optimus_model_policy" / "binding.py",
+        # Plan 12.2 Task 13 (Stage C): the guard's refusals, which the Gateway returns by their own code
+        # before any attempt is dispatched (Codex completion review R1).
+        SRC / "optimus_model_policy" / "stage_c.py",
     ]
-    pattern = re.compile(r'(?:ModelPolicyRefusal|_refuse|BindingError)\(\s*"([A-Z_]+)"|reason or "([A-Z_]+)"')
+    pattern = re.compile(r'(?:ModelPolicyRefusal|_refuse|BindingError|StageCRefusal)\(\s*"([A-Z_]+)"|reason or "([A-Z_]+)"')
     codes = {match for path in sources for pair in pattern.findall(path.read_text(encoding="utf-8")) for match in pair if match}
     # Raised after a completed, billed attempt (with its usage), or only at launch: never a preflight refusal.
-    assert PREFLIGHT_REFUSAL_CODES == codes - {"FINISH_STATUS_UNVERIFIED", "FIXTURE_POLICY"}
+    assert PREFLIGHT_REFUSAL_CODES == codes - {
+        "FINISH_STATUS_UNVERIFIED",
+        "EMPIRICAL_ESTIMATE_EXCEEDED",
+        "EMPIRICAL_PROVIDER_MISMATCH",
+        "EMPIRICAL_PROVIDER_MISSING",
+        "EMPIRICAL_ROUTER_FALLBACK",
+        "EMPIRICAL_ROUTER_METADATA_MALFORMED",
+        "EMPIRICAL_ROUTER_METADATA_MISSING",
+        "EMPIRICAL_ROUTER_PIPELINE",
+        "FIXTURE_POLICY",
+        "STAGE_C_LEDGER_NOT_ABSOLUTE",
+        "STAGE_C_PROFILE_UNAVAILABLE",
+    }
     assert maintenance.PREFLIGHT_REFUSAL_CODES is PREFLIGHT_REFUSAL_CODES  # one classifier, not a copy
+
+
+def test_the_reply_refusal_codes_are_exactly_the_gateways_refusals_after_a_charged_attempt() -> None:
+    """r8 offline correction: the codes the Gateway returns, with the attempt's usage, after a completed and
+    billed attempt (status 422), as its own source raises them."""
+    from optimus.gateway.attempts import REPLY_REFUSAL_CODES
+
+    text = (SRC / "optimus_gateway" / "model_policy.py").read_text(encoding="utf-8")
+    pattern = re.compile(r'ModelPolicyRefusal\(\s*"([A-Z_]+)",(?:(?!ModelPolicyRefusal\().)*?status=422,?\s*\)', re.DOTALL)
+    assert REPLY_REFUSAL_CODES == set(pattern.findall(text))
+    assert REPLY_REFUSAL_CODES.isdisjoint(PREFLIGHT_REFUSAL_CODES)
+
+
+def test_the_gateway_failure_codes_are_every_code_the_gateway_returns() -> None:
+    """The diagnostic allowlist: the preflight refusals, the reply refusals and the attempt contract's failures
+    (`UPSTREAM_ATTEMPT_<outcome>` for every outcome but completed); anything else is logged as UNRECOGNIZED."""
+    from optimus.gateway.attempts import GATEWAY_FAILURE_CODES, REPLY_REFUSAL_CODES, UPSTREAM_ATTEMPT_CODES
+    from optimus_model_policy.binding import ATTEMPT_COMPLETED, ATTEMPT_OUTCOMES
+
+    responses = (SRC / "optimus_gateway" / "responses.py").read_text(encoding="utf-8")
+    assert 'code = f"UPSTREAM_ATTEMPT_{failure.outcome.upper()}"' in responses
+    assert set(re.findall(r'"(UPSTREAM_ATTEMPT_[A-Z_]+)"', responses)) <= UPSTREAM_ATTEMPT_CODES
+    assert UPSTREAM_ATTEMPT_CODES == {f"UPSTREAM_ATTEMPT_{outcome.upper()}" for outcome in ATTEMPT_OUTCOMES - {ATTEMPT_COMPLETED}}
+    assert GATEWAY_FAILURE_CODES == PREFLIGHT_REFUSAL_CODES | REPLY_REFUSAL_CODES | UPSTREAM_ATTEMPT_CODES
+
+
+def test_the_route_stop_codes_are_exactly_where_the_gateway_stops_an_experimental_route() -> None:
+    """The Gateway trips the experimental route stop at three places: an uncertain attempt, unverifiable usage
+    (both UPSTREAM_ATTEMPT_UNCERTAIN) and a refused reply (its own code); then it refuses with
+    EMPIRICAL_ROUTE_STOPPED. A new stop site must be classified before it ships."""
+    from optimus.gateway.attempts import REPLY_REFUSAL_CODES, ROUTE_STOP_CODES
+
+    responses = (SRC / "optimus_gateway" / "responses.py").read_text(encoding="utf-8")
+    calls = re.findall(r"_stop_experimental_route\(policy, admitted, ([^)]+)\)", responses)
+    assert calls == ["code", '"UPSTREAM_ATTEMPT_UNCERTAIN"', "exc.code"]
+    assert re.search(r"if failure\.outcome == ATTEMPT_UNCERTAIN:\s+_stop_experimental_route\(policy, admitted, code\)", responses)
+    assert ROUTE_STOP_CODES == REPLY_REFUSAL_CODES | {"UPSTREAM_ATTEMPT_UNCERTAIN", "EMPIRICAL_ROUTE_STOPPED"}
 
 
 def test_no_host_call_path_keeps_its_own_refusal_classifier() -> None:
@@ -137,9 +189,12 @@ def test_no_host_call_path_keeps_its_own_refusal_classifier() -> None:
 def test_a_preflight_refusal_through_planning_is_complete_at_zero(tmp_path, code) -> None:
     result, receipts, gateway = _run(tmp_path, ExecutionMode.AGENT, _refusal(code))
 
-    # Only a stated input-capacity refusal is shown as one (release supplement V1); every other
-    # preflight code, the reasonless CAPACITY_REFUSED included, keeps the generic refusal.
-    expected = "PLANNING_INPUT_CAPACITY_EXCEEDED" if code == "INPUT_EXCEEDS_CAPACITY" else "PLANNING_GATEWAY_REFUSED"
+    # Only a stated input-capacity refusal is shown as one (release supplement V1), and a Gateway that enforces
+    # no registry or another one gets restart guidance (Plan 12.2 closure); every other preflight code, the
+    # reasonless CAPACITY_REFUSED included, keeps the generic refusal.
+    expected = {"INPUT_EXCEEDS_CAPACITY": "PLANNING_INPUT_CAPACITY_EXCEEDED", **dict.fromkeys(GATEWAY_REGISTRY_MISMATCH_CODES, "PLANNING_GATEWAY_REGISTRY_MISMATCH")}.get(
+        code, "PLANNING_GATEWAY_REFUSED"
+    )
     assert [(r.stage, r.outcome, r.reported_cost_usd) for r in receipts] == [("planning", "rejected", Decimal("0"))]
     assert (result.stop_reason, result.cost_complete, result.total_cost_usd) == (expected, True, Decimal("0"))
     assert gateway.calls == 1  # not retried
@@ -149,7 +204,9 @@ def test_a_preflight_refusal_through_planning_is_complete_at_zero(tmp_path, code
 def test_a_preflight_refusal_through_chat_is_complete_at_zero(tmp_path, code) -> None:
     result, receipts, gateway = _run(tmp_path, ExecutionMode.CHAT, _refusal(code))
 
-    expected = "CHAT_INPUT_CAPACITY_EXCEEDED" if code == "INPUT_EXCEEDS_CAPACITY" else "CHAT_GATEWAY_REFUSED"
+    expected = {"INPUT_EXCEEDS_CAPACITY": "CHAT_INPUT_CAPACITY_EXCEEDED", **dict.fromkeys(GATEWAY_REGISTRY_MISMATCH_CODES, "CHAT_GATEWAY_REGISTRY_MISMATCH")}.get(
+        code, "CHAT_GATEWAY_REFUSED"
+    )
     assert [(r.stage, r.outcome, r.reported_cost_usd) for r in receipts] == [("answer", "rejected", Decimal("0"))]
     assert (result.stop_reason, result.cost_complete, result.total_cost_usd) == (expected, True, Decimal("0"))
     assert gateway.calls == 1

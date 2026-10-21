@@ -286,3 +286,18 @@ def test_cancelled_chat_with_a_completion_condition_makes_no_gateway_call(tmp_pa
     assert gateway.calls == []
     assert result.status is not AgentRunStatus.COMPLETED
     assert control.current_settlement_fields()["provider_attempt_started"] is False
+
+
+def test_chat_model_request_carries_workspace_source_but_never_the_runtime_tree(tmp_path):
+    """Plan 12.2 runtime-context exclusion: the launch's own .optimus files never reach the model."""
+    runtime = tmp_path / ".optimus"
+    runtime.mkdir()
+    for name in ("debug-acp.ndjson", "launch-audit.ndjson", "local-gateway.log", "telemetry.jsonl"):
+        (runtime / name).write_text('{"event": "RUNTIME_SENTINEL_7F3A"}\n', encoding="utf-8")
+    gateway = _Gateway()
+
+    AgentRunner(gateway_client=gateway, model="m").run(_chat_request(_workspace(tmp_path)))
+
+    prompt = gateway.calls[0]["input_text"]
+    assert "calc.py" in prompt and "def add(a, b):" in prompt
+    assert "RUNTIME_SENTINEL_7F3A" not in prompt and ".optimus" not in prompt

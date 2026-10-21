@@ -61,7 +61,8 @@ from optimus.acp.trusted_paths import (
 )
 from optimus_model_policy import RegistryError
 from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError, approval_literal, trusted_approval_literal
-from optimus_model_policy.test_profiles import compose_test_profile_snapshot
+from optimus_model_policy.stage_c import STAGE_C_LITERAL_NAME, STAGE_C_PROFILES, compose_stage_c_envelope, stage_c_ledger_path
+from optimus_model_policy.test_profiles import TEST_PROFILE_LITERAL_NAME, compose_test_profile_snapshot
 from optimus_security.sanitization import canonicalize_credential_uri, validate_secret_length
 
 # Plan 9.96, Task 5 Batch 3 Step 5: the reviewed default each monotonic-tier
@@ -480,12 +481,17 @@ def resolve_launch_candidate(
     hmac_key: bytes,
     credential_keyring_backend: object | None = None,
     test_profile: str | None = None,
+    stage_c: bool = False,
 ) -> LaunchCandidate:
     """Resolve the complete launch candidate from the captured environment.
 
     ``test_profile`` names a reviewed, source-owned Plan 12.2 test profile (release supplement V2): its
     pinned effective hash is bound into the approval instead of the installed trusted snapshot's, so
     the operator approves that exact snapshot. The name itself grants nothing.
+
+    ``stage_c`` (Plan 12.2 Task 13) also binds the shared Stage C test envelope: its release, limits,
+    both profiles' hashes, the fixed scenarios and the ledger under this workspace's runtime root. It
+    needs one of the Stage C test profiles and grants no spending by itself.
 
     Classifies all OPTIMUS_* variables, rejects unknown/internal-only inherited
     names, computes display rows and security snapshot digest, and projects
@@ -674,12 +680,32 @@ def resolve_launch_candidate(
         if test_profile is None:
             registry_literal = trusted_approval_literal()
         else:
-            # A named test profile binds its own reviewed snapshot (release supplement V2).
+            # A named test profile binds its own reviewed snapshot (release supplement V2) and its own name: the
+            # shipped defaults compose to the attached profile's hash (Plan 12.2 closure), and equal hashes never
+            # mean shared authority, so neither launch's approval authorizes the other.
             registry_literal = approval_literal(compose_test_profile_snapshot(test_profile))
+            security_literals[TEST_PROFILE_LITERAL_NAME] = test_profile
     except (BindingError, RegistryError) as exc:
         raise LaunchGateError(code="MODEL_REGISTRY_INVALID", detail=exc.code) from exc
     if registry_literal is not None:
         security_literals[APPROVAL_LITERAL_NAME] = registry_literal
+
+    # 2e. Plan 12.2 Task 13 (Stage C): bind the shared test envelope, composed from source and the
+    # trusted runtime root, so the operator approves the exact release, limits, scenarios and ledger.
+    stage_c_literal = stage_c_release = None
+    if stage_c:
+        if test_profile not in STAGE_C_PROFILES:
+            raise LaunchGateError(code="STAGE_C_NEEDS_TEST_PROFILE", detail="a Stage C launch names one of its test profiles")
+        try:
+            envelope = compose_stage_c_envelope(ledger=stage_c_ledger_path(operator_paths.runtime_root))
+        except BindingError as exc:
+            raise LaunchGateError(code="STAGE_C_ENVELOPE_INVALID", detail=exc.code) from exc
+        stage_c_literal = envelope.literal
+        # What the operator sees beside the literal: the release and its limits, from the envelope itself.
+        stage_c_release = (
+            f"stage-c-release:{envelope.release_id}:${envelope.limit_usd}/{envelope.max_attempts} attempts/{envelope.window_seconds // 60} min"
+        )
+        security_literals[STAGE_C_LITERAL_NAME] = stage_c_literal
 
     # 3. Compute security snapshot digest using the SINGLE shared function
     # also used by build_approval_record(). This is required — using two
@@ -708,6 +734,16 @@ def resolve_launch_candidate(
                 tier=LaunchVariableTier.SECURITY,
                 source_class="trusted-composition" if test_profile is None else f"test-profile:{test_profile}",
                 display_value=registry_literal,
+                decision="requires exact approval",
+            )
+        )
+    if stage_c_literal is not None and stage_c_release is not None:
+        display_rows.append(
+            LaunchDisplayRow(
+                name=STAGE_C_LITERAL_NAME,
+                tier=LaunchVariableTier.SECURITY,
+                source_class=stage_c_release,
+                display_value=stage_c_literal,
                 decision="requires exact approval",
             )
         )

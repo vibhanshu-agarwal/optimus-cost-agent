@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import functools
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from optimus.acp.debug_trace import log_planning_replan_event, log_workspace_context_result
+from optimus.acp.context_attachment import ordinary_attachment, ordinary_route_policy
+from optimus.acp.debug_trace import log_planning_replan_event, log_provider_attempts, log_workspace_context_result
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.failure_notes import attach_failure_note
 from optimus.acp.harness_runtime import AgentHarnessRuntime
@@ -22,8 +24,10 @@ from optimus.telemetry.fanout import TelemetryFanout
 from optimus.telemetry.jsonl import JsonlTelemetryWriter
 from optimus.telemetry.observability import GatewayObservabilityExporter
 from optimus.telemetry.redis_sink import RedisTelemetryEventSink
+from optimus_model_policy.binding import trusted_snapshot
 
 if TYPE_CHECKING:
+    from optimus.acp.stage_c import StageCLaunch
     from optimus.acp.test_composition import TestComposition
 
 
@@ -130,11 +134,16 @@ def build_agent_harness_runtime(
         # Plan 11.25 Task 9: the same fanout is the non-debug ACP_TURN_SETTLEMENT sink
         # (threaded via AgentRunner.event_sink → AcpDuplexAdapter.settlement_sink).
         # Seam 2, checkpoint B: the Redis sink submits through THIS runtime's owner.
+        telemetry_writer = JsonlTelemetryWriter.for_workspace(resolved_workspace)
         telemetry_sink = TelemetryFanout(
-            jsonl_writer=JsonlTelemetryWriter.for_workspace(resolved_workspace),
+            jsonl_writer=telemetry_writer,
             redis_sink=RedisTelemetryEventSink(redis_runtime.telemetry_adapter(), submit=redis_runtime.run_sync),
             gateway_exporter=GatewayObservabilityExporter(settings=settings),
         )
+        # Correction plan v4, C4: the attempt observer is bound to THIS harness's workspace writer, never configured
+        # globally, so its always-on failure records go to this workspace whatever a later composition does. Only the
+        # JSONL writer: the Redis stream and the Gateway export see no new events.
+        attempt_observer = functools.partial(log_provider_attempts, telemetry=telemetry_writer)
 
         # A reviewed test composition (release supplement V2) fixes the exact eligible model; without
         # one, today's resolution against the installed trusted snapshot.
@@ -147,11 +156,12 @@ def build_agent_harness_runtime(
             event_sink=telemetry_sink,
             workspace_context_observer=log_workspace_context_result,
             planning_progress_observer=log_planning_replan_event,
+            provider_attempt_observer=attempt_observer,
         )
     except BaseException as exc:
         _rollback_redis_runtime(redis_runtime, exc)
         raise
-    return AgentHarnessRuntime(agent_runner=agent_runner, redis_runtime=redis_runtime)
+    return AgentHarnessRuntime(agent_runner=agent_runner, redis_runtime=redis_runtime, telemetry_writer=telemetry_writer, attempt_observer=attempt_observer)
 
 
 def build_configured_server(
@@ -163,6 +173,7 @@ def build_configured_server(
     model: str | None = None,
     gateway_timeout_seconds: float | None = None,
     test_composition: TestComposition | None = None,
+    stage_c: StageCLaunch | None = None,
 ) -> AcpStreamServer:
     """
     Builds and configures an `AcpStreamServer` instance with the specified environment
@@ -237,12 +248,49 @@ def build_configured_server(
             workspace_root=resolved_workspace,
         )
         # Release supplement V2: a reviewed test composition supplies the trusted route policy every
-        # session binds its requests with, for the same exact model the runner uses.
+        # session binds its requests with, for the same exact model the runner uses. Closure plan v3: an
+        # ordinary launch binds through the enforced shipped registry the same way, for the resolved model.
         route_policy = None
+        ordinary_snapshot = None
         if test_composition is not None:
             route_policy = test_composition.route_policy(
                 model_id=test_composition.agent_model(environ, cli_model=model),
                 shared_secret=settings.optimus_api_key.get_secret_value(),
+            )
+        else:
+            ordinary_snapshot = trusted_snapshot()
+            if ordinary_snapshot is not None:
+                route_policy = ordinary_route_policy(
+                    snapshot=ordinary_snapshot,
+                    model_id=resolve_agent_model(environ, cli_model=model),
+                    shared_secret=settings.optimus_api_key.get_secret_value(),
+                )
+        # Plan 12.2 Task 13 (Stage C): of the test compositions, only the approved attached one attaches the
+        # engine, on the Stage C path; the qualification composition and a profile without Stage C stay
+        # absent-engine. An ordinary launch attaches the shipped one below (closure plan v3). A launch without
+        # Stage C never builds or consults the Stage C attachment (the Plan 11.26 S1 executed-closure audit
+        # binds what the serving composition executes). The entrypoint and the launch gate still import the
+        # Stage C modules for their flags; this is not a claim about the whole process's imports.
+        context_attachment = session_seeder = None
+        if stage_c is not None:
+            from optimus.acp.stage_c import stage_c_attachment
+
+            context_attachment, session_seeder = stage_c_attachment(
+                composition=test_composition,
+                launch=stage_c,
+                gateway_client=gateway_client,
+                shared_secret=settings.optimus_api_key.get_secret_value(),
+                attempt_observer=harness.attempt_observer,
+            )
+        elif ordinary_snapshot is not None:
+            # Closure plan v3: the ordinary launch attaches the plain engine (no Stage C control) on the shipped
+            # registry; without an eligible summarizer it stays absent-engine.
+            context_attachment = ordinary_attachment(
+                snapshot=ordinary_snapshot,
+                model_id=resolve_agent_model(environ, cli_model=model),
+                gateway_client=gateway_client,
+                shared_secret=settings.optimus_api_key.get_secret_value(),
+                attempt_observer=harness.attempt_observer,
             )
         # Seam 2, checkpoint B: the server takes custody of the Redis runtime and closes
         # it as the last stage of its own teardown.
@@ -253,6 +301,9 @@ def build_configured_server(
             conversation_sanitizer_inputs=conversation_sanitizer_inputs,
             redis_runtime=harness.redis_runtime,
             route_policy=route_policy,
+            context_attachment=context_attachment,
+            session_seeder=session_seeder,
+            failure_telemetry=harness.telemetry_writer,
         )
     except BaseException as exc:
         # Composition failed after the harness (and possibly the client-MCP runtime)

@@ -6,9 +6,10 @@ endpoints, reasoning setting and quantizations, and the trusted snapshot they co
 from the snapshot, never from a caller's claim, and every receipt of the request carries it.
 
 `RoutePolicy` is the injected trusted policy for the planning/answer route: the launch snapshot, the
-per-launch disclosure key, the exact model and role and an explicit output cap. Nothing ships one:
-attaching it at startup, choosing the numeric cap and qualifying the route stay held (activation
-hold). Without a policy no binding is sent, as today (registry enforcement inactive).
+per-launch disclosure key, the exact model and role and an explicit output cap. An ordinary launch gets
+one from the enforced shipped registry (``optimus.acp.context_attachment.ordinary_route_policy``, Plan 12.2
+closure) and a test profile from its own composition. Without a policy no binding is sent (registry
+enforcement inactive).
 
 A turn captures its `TurnRouteBinder` before any await, so a later setter cannot change what its
 requests are bound to. Each new payload is a new request: it gets its own request identity and, on a
@@ -28,6 +29,7 @@ from dataclasses import dataclass
 from optimus.gateway.disclosure import ContributorDisclosure
 from optimus_model_policy import Message, PackedModelRequest, RegistrySnapshot, guard_request
 from optimus_model_policy.binding import RouteBinding
+from optimus_model_policy.experimental import experimental_route
 
 __all__ = [
     "BoundRequest",
@@ -133,6 +135,9 @@ class TurnRouteBinder:
         self.output_cap = output_cap
         self._disclosure = disclosure
         self._snapshot = snapshot
+        # Whether the trusted snapshot names this route a reviewed experimental test route, whose Gateway stops it
+        # after a failed reply check (r8 offline correction). Read from the snapshot only; False without one.
+        self.experimental = snapshot is not None and experimental_route(snapshot, identity.model_id) is not None
         self._prefix = f"{session_id}:{turn_seq}"
         self._ordinal = itertools.count(1)
         self._lock = threading.Lock()

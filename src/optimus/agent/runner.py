@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import subprocess
 from collections.abc import Callable
@@ -27,12 +28,16 @@ from optimus.gateway.attempts import (
     attempts_from_failure,
     attempts_from_response,
     first_error,
+    gateway_registry_mismatch_text,
+    is_gateway_registry_mismatch,
     is_input_capacity_refusal,
     is_preflight_refusal,
+    stops_experimental_route,
 )
 from optimus.gateway.client import GatewayClient
 from optimus.gateway.models import GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
+from optimus.guardrails.runtime_tree import has_runtime_component, resolve_target, target_reserved
 from optimus.loops.completion import DeterministicCompletionEvaluator
 from optimus.loops.controller import GoalLoopController, IterationRunner
 from optimus.loops.ledger import InMemoryProgressLedger
@@ -58,6 +63,8 @@ if TYPE_CHECKING:
     from optimus.gateway.route_binding import BoundRequest, RouteIdentity, TurnRouteBinder
 
 WorkspaceContextObserver = Callable[[AgentRunRequest, WorkspaceContextResult], None]
+# Diagnostic only: receives `stage`, a lazy `correlation` and the classified `attempts` of one host request.
+ProviderAttemptObserver = Callable[..., None]
 _OVERSIZED_REQUIRED_CONTEXT_TRIGGER = "REQUIRED_WORKSPACE_FILE_TOO_LARGE"
 
 # Plan 12.1: visible corrective text for Chat's single-call terminal failures.
@@ -71,6 +78,9 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
         "Chat could not answer: the model gateway refused the request before sending it to any model, "
         "so nothing was charged."
     ),
+    # Plan 12.2 closure: the adopted Gateway enforces no registry or another one (Codex 6249427656).
+    # With the placeholder workspace; a Chat turn shows its own workspace (gateway_registry_mismatch_text).
+    "CHAT_GATEWAY_REGISTRY_MISMATCH": gateway_registry_mismatch_text("CHAT_GATEWAY_REGISTRY_MISMATCH", None),
     "CHAT_NOTICE_UNDELIVERED": (
         "Chat could not answer: the required notice for this model could not be shown, so the request "
         "was not sent."
@@ -97,6 +107,25 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
         "Chat could not answer because this request exceeds the model's input capacity. This request was not "
         "sent to a model. A shorter prompt or a narrower request involving fewer workspace files may help. If "
         "earlier conversation history is the cause, start a new thread. This thread stays open."
+    ),
+}
+
+# r8 offline correction: the same failures when they prove the experimental test route stopped. The Gateway then
+# admits no further request on that route while it runs, so these never suggest a retry. Same stop reasons.
+_NO_RETRY = "No further request on this route will be sent while this agent runs, so retrying will not help."
+CHAT_ROUTE_STOPPED_MESSAGES: dict[str, str] = {
+    "CHAT_GATEWAY_FAILURE": (
+        "Chat could not get an answer: the model gateway refused the model's reply after the call was charged, "
+        f"and this experimental test route is now stopped. {_NO_RETRY}"
+    ),
+    "CHAT_GATEWAY_COST_UNKNOWN": (
+        "Chat stopped because the model gateway failed without reporting the call's cost, and this experimental "
+        f"test route is now stopped. {_NO_RETRY}"
+    ),
+    # A later refusal proves only the stop and this request's free refusal, never the stop's cause (Codex review P2).
+    "CHAT_GATEWAY_REFUSED": (
+        "Chat could not answer: the model gateway has stopped this experimental test route, so it refused this "
+        f"request before it reached any model and nothing was charged. {_NO_RETRY}"
     ),
 }
 
@@ -273,6 +302,7 @@ class AgentRunner:
         workspace_context_observer: WorkspaceContextObserver | None = None,
         usage_accounting: UsageAccountingService | None = None,
         planning_progress_observer: PlanningProgressObserver | None = None,
+        provider_attempt_observer: ProviderAttemptObserver | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
@@ -286,6 +316,7 @@ class AgentRunner:
         self._workspace_context_observer = workspace_context_observer
         self._usage_accounting = usage_accounting
         self._planning_progress_observer = planning_progress_observer
+        self._provider_attempt_observer = provider_attempt_observer
         self._transition_validator = TransitionValidator()
 
     @property
@@ -549,7 +580,9 @@ class AgentRunner:
         except Exception as exc:
             # Every attempt is accounted for, known or not, before the failure propagates as it always
             # has (an accounting-integrity error propagates instead).
-            self._account(request, scope, usage=getattr(exc, "gateway_usage", None), classify=_failure_classifier(exc), identity=_identity(bound))
+            self._account(
+                request, scope, usage=getattr(exc, "gateway_usage", None), classify=_failure_classifier(exc), identity=_identity(bound), failure=exc
+            )
             if is_input_capacity_refusal(exc):
                 # Release supplement V1: a complete request over the route's input capacity is a readable
                 # OPEN refusal that cost nothing, never a raw gateway error.
@@ -636,10 +669,14 @@ class AgentRunner:
             self._record_ledger_entry(request, scope, gateway_usage, settled_turn=settled_turn, wire_attempt=wire_attempt)
 
         def attempt_callback(
-            settled_turn: int, wire_attempt: int, attempts: tuple[ProviderAttempt, ...], identity: RouteIdentity | None
+            settled_turn: int,
+            wire_attempt: int,
+            attempts: tuple[ProviderAttempt, ...],
+            identity: RouteIdentity | None,
+            failure: BaseException | None = None,
         ) -> None:
             self._report_attempts(
-                request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity
+                request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity, failure=failure
             )
 
         planner = PlanningLoopRunner(
@@ -913,8 +950,10 @@ class AgentRunner:
         identity: RouteIdentity | None,
         settled_turn: int = 1,
         wire_attempt: int = 1,
+        failure: BaseException | None = None,
     ) -> tuple[ProviderAttempt, ...]:
-        """Account for one host request in both sinks and return its attempts.
+        """Account for one host request in both sinks and return its attempts. `failure`, the request's error if
+        it failed, reaches only the diagnostic observer.
 
         Settled usage goes to the existing ledger first; then every attempt goes to this invocation's
         receipt sink, or, for a report that cannot be attributed, what its integrity error carries: the
@@ -934,12 +973,38 @@ class AgentRunner:
             errors.append(error)
             attempts = error.attempts
         try:
-            self._report_attempts(request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity)
+            self._report_attempts(
+                request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity, failure=failure
+            )
         except Exception as error:  # noqa: BLE001 - held with the others
             errors.append(error)
         if errors:
             raise first_error(errors)
         return attempts
+
+    def _observe_attempts(
+        self,
+        request: AgentRunRequest,
+        *,
+        settled_turn: int,
+        wire_attempt: int,
+        attempts: tuple[ProviderAttempt, ...],
+        failure: BaseException | None = None,
+    ) -> None:
+        """Offer the classified attempts to the diagnostic observer, if any, after their receipts were offered
+        (Plan 12.2 r4 stop diagnosis). Diagnostic only: an ordinary failure never changes the run; cancellation
+        and other control flow still propagate."""
+        observer = self._provider_attempt_observer
+        if observer is None:
+            return
+        stage = "answer" if request.execution_mode is ExecutionMode.CHAT else "planning"
+        with contextlib.suppress(Exception):
+            observer(
+                stage=stage,
+                correlation=lambda: {"run_id": request.run_id, "session_id": request.session_id, "settled_turn": settled_turn, "wire_attempt": wire_attempt},
+                attempts=attempts,
+                failure=failure,
+            )
 
     def _record_ledger_entry(
         self,
@@ -982,6 +1047,25 @@ class AgentRunner:
             raise
 
     def _report_attempts(
+        self,
+        request: AgentRunRequest,
+        scope: _RunScope,
+        *,
+        settled_turn: int,
+        wire_attempt: int,
+        attempts: tuple[ProviderAttempt, ...],
+        identity: RouteIdentity | None,
+        failure: BaseException | None = None,
+    ) -> None:
+        """Report one host request's provider attempts to the receipt sink, then, whatever that did, offer them
+        to the diagnostic observer, with the request's error if it failed: every Chat and planning report (the
+        classified attempts and a proven unsent one alike) passes here once."""
+        try:
+            self._report_receipts(request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity)
+        finally:
+            self._observe_attempts(request, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, failure=failure)
+
+    def _report_receipts(
         self,
         request: AgentRunRequest,
         scope: _RunScope,
@@ -1257,12 +1341,14 @@ class AgentRunner:
             if not self._is_safe_relative_path(relative_path):
                 continue
             target = workspace_root / relative_path
-            if not target.is_file():
+            if not target.is_file() and not self._reaches_guard_when_missing(workspace_root, relative_path, target):
                 continue
             operation_id = gate.operation_id(phase, ordinal)
             gate.register([(kind, operation_id)])
             try:
-                started, read = _run_gated(gate, kind, operation_id, partial(toolbox.read_file, target), effectful=False)
+                started, read = _run_gated(
+                    gate, kind, operation_id, partial(toolbox.read_file, target, requested=relative_path), effectful=False
+                )
             except OSError:
                 continue
             if not started:
@@ -1295,13 +1381,15 @@ class AgentRunner:
         if target.exists():
             read_id = gate.operation_id("read-before-write", 0)
             gate.register([(DirectiveKind.READ, read_id)])
-            started, read = _run_gated(gate, DirectiveKind.READ, read_id, partial(toolbox.read_file, target), effectful=False)
+            started, read = _run_gated(
+                gate, DirectiveKind.READ, read_id, partial(toolbox.read_file, target, requested=relative_path), effectful=False
+            )
             if not started:
                 return calls
             calls.append(read[1])
         write_id = gate.operation_id("write", 0)
         started, write_call = _run_gated(
-            gate, DirectiveKind.WRITE, write_id, partial(toolbox.write_file, target, content), effectful=True
+            gate, DirectiveKind.WRITE, write_id, partial(toolbox.write_file, target, content, requested=relative_path), effectful=True
         )
         if started:
             calls.append(write_call)
@@ -1413,6 +1501,18 @@ class AgentRunner:
             return False
         return ".." not in path.parts
 
+    @staticmethod
+    def _reaches_guard_when_missing(workspace_root: Path, relative_path: str, target: Path) -> bool:
+        """Plan 12.2 READ: a READ of a reserved or unresolvable target reaches the audited guard even when it names no
+        file, so its refusal is audited and its directive ends failed_no_effect. Only an ordinary missing target is
+        skipped, as before. The judgement uses path metadata alone."""
+        if has_runtime_component(Path(relative_path).parts):
+            return True
+        resolved = resolve_target(target)
+        if resolved is None:
+            return True
+        return target_reserved(resolved, resolve_target(workspace_root) or workspace_root)
+
     def _run_chat_answer(
         self,
         *,
@@ -1520,7 +1620,7 @@ class AgentRunner:
             # accounting-integrity error propagates out of the turn once everything was recorded.
             try:
                 attempts = self._account(
-                    request, scope, usage=getattr(exc, "gateway_usage", None), classify=_failure_classifier(exc), identity=identity
+                    request, scope, usage=getattr(exc, "gateway_usage", None), classify=_failure_classifier(exc), identity=identity, failure=exc
                 )
             except Exception:
                 complete("cost_unknown")
@@ -1528,15 +1628,29 @@ class AgentRunner:
             unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)
             known = sum((attempt.cost_usd for attempt in attempts if attempt.cost_usd is not None), Decimal("0"))
             complete("cost_unknown" if unknown else "failed")
+            # r8 offline correction: a proven stopped experimental route gets its no-retry text; nothing else changes.
+            stopped = stops_experimental_route(exc, experimental=scope.route is not None and scope.route.experimental)
+
+            def text(stop_reason: str) -> str | None:
+                return CHAT_ROUTE_STOPPED_MESSAGES[stop_reason] if stopped else None
+
             if unknown:
                 return self._chat_failure(
-                    request, stop_reason="CHAT_GATEWAY_COST_UNKNOWN", total_cost_usd=known, cost_complete=False, unknown_cost_attempt_count=unknown
+                    request,
+                    stop_reason="CHAT_GATEWAY_COST_UNKNOWN",
+                    output_text=text("CHAT_GATEWAY_COST_UNKNOWN"),
+                    total_cost_usd=known,
+                    cost_complete=False,
+                    unknown_cost_attempt_count=unknown,
                 )
             if is_input_capacity_refusal(exc):
                 return self._chat_failure(request, stop_reason="CHAT_INPUT_CAPACITY_EXCEEDED")
+            if is_gateway_registry_mismatch(exc):
+                mismatch = gateway_registry_mismatch_text("CHAT_GATEWAY_REGISTRY_MISMATCH", request.workspace_root)
+                return self._chat_failure(request, stop_reason="CHAT_GATEWAY_REGISTRY_MISMATCH", output_text=mismatch)
             if is_preflight_refusal(exc):
-                return self._chat_failure(request, stop_reason="CHAT_GATEWAY_REFUSED")
-            return self._chat_failure(request, stop_reason="CHAT_GATEWAY_FAILURE", total_cost_usd=known)
+                return self._chat_failure(request, stop_reason="CHAT_GATEWAY_REFUSED", output_text=text("CHAT_GATEWAY_REFUSED"))
+            return self._chat_failure(request, stop_reason="CHAT_GATEWAY_FAILURE", output_text=text("CHAT_GATEWAY_FAILURE"), total_cost_usd=known)
 
         complete("succeeded")
         attempts = self._account(request, scope, usage=response.gateway_usage, classify=lambda: attempts_from_response(response), identity=identity)

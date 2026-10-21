@@ -22,10 +22,11 @@ projection over the existing ledger.
 
 from __future__ import annotations
 
+import contextlib
 import itertools
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Protocol
@@ -81,12 +82,17 @@ class SummarizerResponse:
 
     `integrity_error` is set when the Gateway's report could not be attributed truthfully: `attempts`
     then holds what can still be recorded (the reported usage, unattributed, and the route attempts as
-    reported, unsettled) and there is no text. The host records them, then raises it."""
+    reported, unsettled) and there is no text. The host records them, then raises it.
+
+    `diagnostic`, when set, is the call's deferred diagnostic observation of its attempts (Plan 12.2 r4 stop
+    diagnosis; Codex M1 ruling): process-local, never one of the response's facts, never serialized. The host
+    runs it once, after offering every attempt to its receipt sink."""
 
     text: str | None
     finish_status: str | None
     attempts: tuple[SummarizerAttempt, ...]
     integrity_error: AttemptIntegrityError | None = None
+    diagnostic: Callable[[], None] | None = field(default=None, compare=False, repr=False)
 
 
 class SummarizerCall(Protocol):
@@ -173,16 +179,21 @@ class HostMaintenance:
         response = self._call(prompt=build_summary_prompt(request.input_text), max_output_tokens=request.max_output_tokens)
         # Every attempt is offered to the sink even if an earlier one is refused; the first refusal,
         # then any integrity error, is raised only after all were recorded (Codex CP3 correction ruling
-        # C2): a reported charge is never dropped because its report or a sibling receipt failed.
+        # C2): a reported charge is never dropped because its report or a sibling receipt failed. Only
+        # then does the response's diagnostic run, whatever happened (Codex M1 ruling): a cancellation it
+        # raises carries the accounting error it overtakes as its context.
         refused: list[Exception] = []
-        for attempt in response.attempts:
-            try:
-                self._record_attempt(request, response, attempt)
-            except Exception as error:  # noqa: BLE001 - offered every receipt first
-                refused.append(error)
-        held = [*refused, *((response.integrity_error,) if response.integrity_error is not None else ())]
-        if held:
-            raise first_error(held)
+        try:
+            for attempt in response.attempts:
+                try:
+                    self._record_attempt(request, response, attempt)
+                except Exception as error:  # noqa: BLE001 - offered every receipt first
+                    refused.append(error)
+            held = [*refused, *((response.integrity_error,) if response.integrity_error is not None else ())]
+            if held:
+                raise first_error(held)
+        finally:
+            _run_diagnostic(response)
         attempt_ids = tuple(attempt.attempt_id for attempt in response.attempts)
         if self._cancelled():
             return MaintenanceResult(summary_text=None, attempt_ids=attempt_ids, status="cancelled", finish_status=response.finish_status)
@@ -253,12 +264,14 @@ class GatewaySummarizerCall:
         session_id: str,
         request_ids: Callable[[], str],
         bind: Callable[[str, str, int], RouteBinding | None] | None = None,
+        attempt_observer: Callable[..., None] | None = None,
     ) -> None:
         self._client = gateway_client
         self._model_id = model_id
         self._session_id = session_id
         self._request_ids = request_ids
         self._bind = bind
+        self._attempt_observer = attempt_observer
 
     def __call__(self, *, prompt: str, max_output_tokens: int) -> SummarizerResponse:
         request_id = self._request_ids()
@@ -267,7 +280,9 @@ class GatewaySummarizerCall:
             binding = self._bind(request_id, prompt, max_output_tokens)
             if binding is None:
                 unsent = SummarizerAttempt(attempt_id=f"{request_id}:1", gateway_request_id=None, outcome="not_sent", cost_usd=Decimal("0"))
-                return SummarizerResponse(text=None, finish_status=None, attempts=(unsent,))
+                # The disclosure notice was not delivered, so nothing was sent: diagnosable, never silent.
+                response = SummarizerResponse(text=None, finish_status=None, attempts=(unsent,))
+                return self._observed(request_id, (), response, reason="summary_disclosure_undelivered")
         metadata = {"session_id": self._session_id, "purpose": "context_summary", "request_id": request_id}
         try:
             response = self._client.create_response(
@@ -275,14 +290,51 @@ class GatewaySummarizerCall:
             )
         except Exception as exc:  # noqa: BLE001 - every failure is classified; transport loss stays unknown
             try:
-                return SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, attempts_from_failure(exc)))
+                provider = attempts_from_failure(exc)
             except AttemptIntegrityError as error:
-                return _unattributable(request_id, error)
+                return self._observed(request_id, error.attempts, _unattributable(request_id, error), failure=exc)
+            return self._observed(
+                request_id, provider, SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, provider)), failure=exc
+            )
         try:
-            attempts = _attempts(request_id, attempts_from_response(response))
+            provider = attempts_from_response(response)
         except AttemptIntegrityError as error:
-            return _unattributable(request_id, error)
-        return SummarizerResponse(text=response.output_text, finish_status=response.finish_reason, attempts=attempts)
+            return self._observed(request_id, error.attempts, _unattributable(request_id, error))
+        attempts = _attempts(request_id, provider)
+        return self._observed(request_id, provider, SummarizerResponse(text=response.output_text, finish_status=response.finish_reason, attempts=attempts))
+
+    def _observed(
+        self,
+        request_id: str,
+        provider: tuple[ProviderAttempt, ...],
+        response: SummarizerResponse,
+        *,
+        failure: BaseException | None = None,
+        reason: str | None = None,
+    ) -> SummarizerResponse:
+        """The response, carrying the diagnostic observation of its classified attempts, and of the request's error
+        if it failed, when an observer is set (Plan 12.2 r4 stop diagnosis; r8 offline correction). Nothing runs
+        here: the host runs it once, after offering every attempt to its receipt sink (Codex M1 ruling)."""
+        observer = self._attempt_observer
+        if observer is None:
+            return response
+
+        def diagnostic() -> None:
+            correlation = lambda: {"session_id": self._session_id, "request_id": request_id}  # noqa: E731
+            if reason is None:
+                observer(stage="summary", correlation=correlation, attempts=provider, failure=failure)
+            else:
+                observer(stage="summary", correlation=correlation, attempts=provider, failure=failure, reason=reason)
+
+        return replace(response, diagnostic=diagnostic)
+
+
+def _run_diagnostic(response: SummarizerResponse) -> None:
+    """The response's deferred diagnostic, if any. Diagnostic only: an ordinary failure never changes the result
+    or the accounting error being raised; cancellation and other control flow still propagate."""
+    if response.diagnostic is not None:
+        with contextlib.suppress(Exception):
+            response.diagnostic()
 
 
 def _unattributable(request_id: str, error: AttemptIntegrityError) -> SummarizerResponse:
@@ -314,8 +366,12 @@ def gateway_summarizer_factory(
     route: SummarizerRoute,
     snapshot: Any | None,
     disclosure_key: bytes | None,
+    attempt_observer: Callable[..., None] | None = None,
 ) -> SummarizerFactory:
     """The production summarizer for an attachment: one `GatewaySummarizerCall` per turn.
+
+    `attempt_observer`, if given, is each call's diagnostic attempt observer (Plan 12.2 r4 stop diagnosis),
+    attached to its responses for the host to run after their receipts.
 
     With a trusted registry `snapshot` and launch `disclosure_key`, each request is route-bound and,
     for a Contributor route, the turn's notice is delivered before its disclosure is issued; without
@@ -360,6 +416,7 @@ def gateway_summarizer_factory(
             session_id=identity.session_id,
             request_ids=request_ids,
             bind=bind,
+            attempt_observer=attempt_observer,
         )
 
     return bind_turn
