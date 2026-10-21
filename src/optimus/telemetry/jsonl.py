@@ -9,14 +9,14 @@ from optimus.telemetry.events import TelemetryEvent
 DEFAULT_TELEMETRY_DIRNAME = ".optimus"
 DEFAULT_TELEMETRY_FILENAME = "telemetry.jsonl"
 
-# One lock per destination file, shared by every writer instance in the process (correction plan v4, C4): the fan-out's
-# writer and a diagnostic writer for the same workspace never interleave a line.
+# One lock per resolved destination file, shared by every writer instance in the process (correction plan v4, C4): the
+# fan-out's writer and a diagnostic writer for the same workspace never interleave a line, through any alias of it.
 _DESTINATION_LOCKS: dict[str, threading.Lock] = {}
 _DESTINATION_LOCKS_GUARD = threading.Lock()
 
 
 def _destination_lock(path: Path) -> threading.Lock:
-    key = os.path.normcase(os.path.abspath(path))
+    key = os.path.normcase(os.path.realpath(path))  # symlinks and junctions resolved, as far as the path exists
     with _DESTINATION_LOCKS_GUARD:
         return _DESTINATION_LOCKS.setdefault(key, threading.Lock())
 

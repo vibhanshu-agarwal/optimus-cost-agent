@@ -47,8 +47,9 @@ failure cause (for example the transport error's class and errno, or why a reply
 records any Stage C ledger write failure, and an unenforced Gateway logs one `model_attempt` line per failed
 retry attempt, all sharing the request's Gateway ID. It never records the prompt, the reply, the upstream
 error text or a caller's free text: IDs and provider metadata that are not of a recognized form are logged as
-`unrecognized`. The workspace's `.optimus/telemetry.jsonl` always gets one `error` event per failed model call,
-refused prompt and context fault, with the same bounded facts. With `--debug-trace`, the host trace also records
+`unrecognized`. The workspace's `.optimus/telemetry.jsonl` always gets one `error` event per model call with a
+failed attempt (including one that later recovered), refused prompt and context fault, with the same bounded
+facts. With `--debug-trace`, the host trace also records
 each attempt's IDs, stages and cause, context-fault subtypes and refusal reasons.
 
 The shipped Haiku admission policy uses an explicitly accepted empirical estimate with `verified: false`; it

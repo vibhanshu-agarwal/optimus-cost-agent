@@ -10,10 +10,12 @@ and the telemetry record are contained separately.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import errno
 import functools
 import io
 import json
+import sys
 import threading
 import uuid
 from decimal import Decimal
@@ -216,6 +218,63 @@ def test_two_writers_for_one_file_append_whole_lines_concurrently(tmp_path) -> N
     for thread in threads:
         thread.join(timeout=30)
     assert len(_events(tmp_path)) == 200  # every line parsed as one whole event
+
+
+def _alias(target: Path, link: Path) -> None:
+    if sys.platform == "win32":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+def test_writers_through_a_directory_alias_share_one_lock_and_write_whole_lines(tmp_path) -> None:
+    """Codex round 19 finding 3: serialization is per resolved destination, so an alias of the workspace (a junction
+    on Windows, a symlink elsewhere) shares the real path's lock."""
+    real, alias = tmp_path / "workspace", tmp_path / "alias"
+    real.mkdir()
+    _alias(real, alias)
+    writers = [_writer(real), _writer(alias)]
+    assert writers[0]._lock is writers[1]._lock  # noqa: SLF001
+    failure = _transport_failure()
+    attempts = attempts_from_failure(failure)
+
+    def burst(writer: JsonlTelemetryWriter) -> None:
+        for _ in range(50):
+            log_provider_attempts(stage="answer", correlation=lambda: {"run_id": RUN}, attempts=attempts, failure=failure, telemetry=writer)
+
+    threads = [threading.Thread(target=burst, args=(writer,)) for writer in writers for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+    assert len(_events(real)) == 200
+
+
+def test_the_bound_observer_changes_no_agent_run_event_result_or_receipt(tmp_path) -> None:
+    """Codex round 19 finding 4: the real runner, with an event sink, emits the same nonempty agent_run events and
+    returns the same result and receipts with the always-on observer as with the trace-only one."""
+    from optimus.agent.models import AgentRunRequest
+    from optimus.agent.runner import AgentRunner
+    from optimus.runtime.modes import ExecutionMode
+    from tests.unit.agent.test_attempt_status_diagnostics import FakeGateway
+
+    def run(observer: Any) -> tuple[list[dict[str, Any]], tuple, list]:
+        events: list[Any] = []
+        receipts: list[Any] = []
+        request = AgentRunRequest(run_id=RUN, session_id=SESSION, task="Change the greeting.", workspace_root=tmp_path, execution_mode=ExecutionMode.CHAT)
+        runner = AgentRunner(gateway_client=FakeGateway(_transport_failure()), model="fake/model", event_sink=events.append, provider_attempt_observer=observer)
+        result = runner.run(request, stage_receipts=receipts.append)
+        runs = [{k: v for k, v in event.to_json_dict().items() if k not in {"event_id", "occurred_at"}} for event in events if event.kind.value == "agent_run"]
+        outcome = (result.status, result.final_state, result.stop_reason, result.output_text, result.total_cost_usd, result.cost_complete, result.unknown_cost_attempt_count)
+        # Each receipt as recorded, apart from its wall-clock recording time.
+        return runs, outcome, [{k: v for k, v in dataclasses.asdict(receipt).items() if k != "recorded_at"} for receipt in receipts]
+
+    trace_only = run(log_provider_attempts)  # first, so the workspace holds no telemetry file when either run reads it
+    always_on = run(functools.partial(log_provider_attempts, telemetry=_writer(tmp_path)))
+    assert trace_only[0] and always_on == trace_only
+    assert [event["error_type"] for event in _events(tmp_path)] == ["provider_attempt_failure"]
 
 
 # --- C4 and C5: the adapter's records --------------------------------------------------------------------------------

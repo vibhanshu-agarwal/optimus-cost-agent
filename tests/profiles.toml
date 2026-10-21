@@ -609,6 +609,7 @@ paths = [
   "tests/integration/evidence/test_subprocess_truncation.py",
   "tests/unit/acp/test_acp_subprocess_env.py",
   "tests/unit/acp/test_evidence_redaction_adapter.py",
+  "tests/unit/acp/test_failure_telemetry.py",
   "tests/unit/acp/test_launch_approvals_lock_failures.py",
   "tests/unit/acp/test_launch_audit.py",
   "tests/unit/acp/test_launch_gate.py",

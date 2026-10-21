@@ -5,12 +5,16 @@ r4's A1 failed after two Gateway attempts whose statuses the host had parsed and
 attempt is now logged with its call correlation, stage, ordered key, fixed-vocabulary outcome, whether the
 Gateway routed it, and an integer-or-null status: the upstream status only for a routed attempt, the outer
 host-to-Gateway status otherwise (a Gateway 502 is never evidence of an upstream 502); an unknown status stays
-null. Revised 2026-10-21 (operator diagnosability directive; Codex round 13): each attempt also carries its
-router stage categories, its bounded Gateway and provider request ids and its re-bounded cause, and a failure
-outside the Gateway adds a bounded host cause (tests/unit/agent/test_failure_cause_diagnostics.py). Nothing
-else: no bodies, headers, error text, keys or provider error types. With tracing
-disabled no diagnostic work happens, and a diagnostic failure never changes a result, a receipt or a
-cancellation. Fake Gateway responses only: no service, no provider.
+null. Revised 2026-10-21 (operator diagnosability directive; Codex round 13; correction plan v4): each attempt
+also carries its allowlisted router stage types, its Gateway and provider request ids, and its re-bounded cause,
+and a failure outside the Gateway adds a bounded host cause (tests/unit/agent/test_failure_cause_diagnostics.py).
+Every id is kept only in its generated shape (`gw-<hex32>`, `gen-…`, the host's `session-…` run, route and summary
+ids), and anything else is recorded as `unrecognized`; so these tests use ids of those shapes. Nothing else: no
+bodies, headers, error text, keys or provider error types. The default caller, `log_provider_attempts` with no
+writer, as used here, does no diagnostic work with tracing disabled. The bootstrap composition binds it to the
+harness's workspace writer instead, and then a failed request also leaves one always-on telemetry record with
+tracing off (tests/unit/acp/test_failure_telemetry.py). Either way, a diagnostic failure never changes a result,
+a receipt or a cancellation. Fake Gateway responses only: no service, no provider.
 
 Summaries (Codex review M1 and its expansion ruling, 2026-10-14): the Gateway summarizer only attaches its
 diagnostic to the response; the host runs it once, after every attempt was offered to the receipt sinks. Every

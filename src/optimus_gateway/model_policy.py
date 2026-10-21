@@ -213,13 +213,14 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
     )
 
 
-def check_experimental_reply(admitted: AdmittedRequest, result: Any) -> None:
+def check_experimental_reply(admitted: AdmittedRequest, result: Any, policy: GatewayModelPolicy | None = None) -> None:
     """Check one completed reply against what the experimental route assumed (Codex disposition,
     2026-10-09). The router metadata must name the expected provider (identity, not an exact variant),
     report one attempt and no pipeline stage, and the reported prompt tokens must not exceed the
     empirical estimate the request was admitted under. Unreadable router metadata fails too: no
     provider is guessed. A failure is a permanent (422) billed result. A pass shows only that this
-    request fitted."""
+    request fitted. ``policy`` only lets the log's projection of a mismatched provider recognize the trusted
+    registry's slugs (correction plan v4, C1); the check itself compares the original value."""
     route = admitted.experimental
     if route is None:
         return
@@ -235,7 +236,7 @@ def check_experimental_reply(admitted: AdmittedRequest, result: Any) -> None:
         raise ModelPolicyRefusal(
             "EMPIRICAL_PROVIDER_MISMATCH",
             f"router provider {provider!r}, expected {route.provider_name!r}",
-            log_detail=f"router provider {recognized_provider(provider)!r}, expected {route.provider_name!r}",
+            log_detail=f"router provider {recognized_provider(provider, policy)!r}, expected {route.provider_name!r}",
             status=422,
         )
     if attempt is None or pipeline is None:

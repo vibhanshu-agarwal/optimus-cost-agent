@@ -229,7 +229,7 @@ def _run_enforced_completion(
     )
     try:
         check_finish_status(getattr(provider_result, "finish_reason", None))
-        check_experimental_reply(admitted, provider_result)
+        check_experimental_reply(admitted, provider_result, policy)
     except ModelPolicyRefusal as exc:
         # The call happened and was billed: the error keeps its usage so the host records it.
         _stop_experimental_route(policy, admitted, exc.code)
@@ -285,7 +285,6 @@ def _attempt_record(
     }
 
 
-_LOGGED_ATTEMPT_FIELDS = ("attempt", "gateway_request_id", "outcome", "http_status", "provider_request_id", "router_pipeline", "failure")
 _LOGGED_USAGE_FIELDS = ("gateway_request_id", "provider_request_id", "resolved_provider", "resolved_model", "input_tokens", "output_tokens", "cost_usd")
 
 

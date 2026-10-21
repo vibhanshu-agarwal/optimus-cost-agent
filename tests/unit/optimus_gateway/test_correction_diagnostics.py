@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import dataclasses
+import hashlib
 import json
 import re
 import socket
@@ -137,6 +138,13 @@ def test_a_prose_provider_is_projected_in_the_log_and_unchanged_on_the_wire(monk
     assert "'unrecognized'" in line["error"] and "'Anthropic'" in line["error"]
 
 
+def test_a_registry_provider_keeps_its_slug_in_the_mismatch_log(monkeypatch) -> None:
+    """Codex round 19 finding 2: a trusted registry provider slug that is not the route's survives in the log."""
+    status, body, line, _raw, _route = _enforced_over_wire(monkeypatch, _reply(provider="openai"))
+    assert (status, body["code"]) == (422, "EMPIRICAL_PROVIDER_MISMATCH")
+    assert "'openai'" in line["error"] and line["usage"]["resolved_provider"] == "openai"
+
+
 def test_a_prose_finish_status_is_projected_in_the_log_and_unchanged_on_the_wire(monkeypatch) -> None:
     status, body, line, raw, _route = _enforced_over_wire(monkeypatch, _reply(finish=PROSE))
     assert (status, body["code"]) == (422, "FINISH_STATUS_UNVERIFIED")
@@ -190,6 +198,7 @@ _REVIEWED_INTERPOLATIONS = {
     ("src/optimus_gateway/upstream_client.py", "description"),
     ("src/optimus_gateway/upstream_client.py", "name"),
     ("src/optimus_gateway/upstream_client.py", "label"),
+    ("src/optimus_gateway/upstream_client.py", "exc.code"),
     ("src/optimus_gateway/upstream_client.py", "fact.get('cause', fact['class'])"),
     ("src/optimus_model_policy/binding.py", "sorted(missing)"),
     ("src/optimus_model_policy/binding.py", "len(unknown)"),
@@ -205,33 +214,95 @@ _REVIEWED_INTERPOLATIONS = {
     ("src/optimus_model_policy/stage_c.py", "kind"),
 }
 _FIXED_TEXT_IN_THE_LOG = {("src/optimus_gateway/model_mapping.py", "normalized")}
+# A refusal with `log_detail` (C1): its positional text reaches the response only, so its interpolations are pinned
+# here; the log records `log_detail`, whose interpolations must each be a projection or a trusted constant.
+_WIRE_ONLY_UNDER_LOG_DETAIL = {("src/optimus_gateway/model_policy.py", "provider"), ("src/optimus_gateway/model_policy.py", "finish_reason")}
+_LOG_PROJECTIONS = {
+    ("src/optimus_gateway/model_policy.py", "recognized_provider(provider, policy)"),
+    ("src/optimus_gateway/model_policy.py", "bounded(finish_reason, RECOGNIZED_FINISH)"),
+    ("src/optimus_gateway/model_policy.py", "route.provider_name"),
+}
 _REFUSALS = {"ModelPolicyRefusal", "BindingError", "StageCRefusal", "ValueError", "RuntimeError", "RetryableUpstreamError", "ModelRequestValidationError"}
+
+
+def _interpolations(expr: ast.expr, scope: ast.AST, depth: int = 0) -> list[str]:
+    """The interpolated expressions of a message argument: an f-string's values, either branch of a conditional, both
+    sides of a concatenation, and a name's f-string assignments in the same scope, two hops deep (`message = f"…"`,
+    `error = RuntimeError(message)`)."""
+    if isinstance(expr, ast.JoinedStr):
+        return [ast.unparse(value.value) for value in expr.values if isinstance(value, ast.FormattedValue)]
+    if isinstance(expr, ast.IfExp):
+        return _interpolations(expr.body, scope, depth) + _interpolations(expr.orelse, scope, depth)
+    if isinstance(expr, ast.BinOp):
+        return _interpolations(expr.left, scope, depth) + _interpolations(expr.right, scope, depth)
+    if isinstance(expr, ast.Name) and depth < 2:
+        assigned = [
+            node.value
+            for node in ast.walk(scope)
+            if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == expr.id for target in node.targets)
+        ]
+        return [found for value in assigned for found in _interpolations(value, scope, depth + 1)]
+    return []
+
+
+def _refusal_calls(tree: ast.Module) -> list[tuple[ast.Call, ast.AST]]:
+    """Every call of a refusal class anywhere in the module, raised directly or wrapped (`_with_failure(…)`), with its
+    innermost enclosing function as the scope that resolves its names."""
+    found: list[tuple[ast.Call, ast.AST]] = []
+
+    def visit(node: ast.AST, scope: ast.AST) -> None:
+        for child in ast.iter_child_nodes(node):
+            inner = child if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef) else scope
+            if isinstance(child, ast.Call):
+                func = child.func
+                name = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else None
+                if name in _REFUSALS:
+                    found.append((child, scope))
+            visit(child, inner)
+
+    visit(tree, tree)
+    return found
 
 
 def test_every_interpolated_refusal_text_is_reviewed_or_projected_for_the_log() -> None:
     from tools.tracked_repository_files import tracked_repository_files
 
-    unreviewed = []
+    unreviewed, seen = [], set()
     for path in tracked_repository_files(REPO, pathspecs=("src/optimus_gateway", "src/optimus_model_policy")):
         if path.suffix != ".py":
             continue
         relative = path.relative_to(REPO).as_posix()
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Raise) or not isinstance(node.exc, ast.Call):
-                continue
-            func = node.exc.func
-            name = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else None
-            if name not in _REFUSALS:
-                continue
-            projected = any(keyword.arg == "log_detail" for keyword in node.exc.keywords)
-            for argument in node.exc.args:
-                for part in ast.walk(argument):
-                    if isinstance(part, ast.FormattedValue):
-                        site = (relative, ast.unparse(part.value))
-                        if site not in _REVIEWED_INTERPOLATIONS and site not in _FIXED_TEXT_IN_THE_LOG and not projected:
-                            unreviewed.append(f"{relative}:{node.lineno} {site[1]}")
+        for call, scope in _refusal_calls(ast.parse(path.read_text(encoding="utf-8"))):
+            log_detail = [keyword.value for keyword in call.keywords if keyword.arg == "log_detail"]
+            positional = {(relative, found) for argument in call.args for found in _interpolations(argument, scope)}
+            logged = {(relative, found) for value in log_detail for found in _interpolations(value, scope)}
+            seen |= positional | logged
+            allowed = _WIRE_ONLY_UNDER_LOG_DETAIL | _REVIEWED_INTERPOLATIONS if log_detail else _REVIEWED_INTERPOLATIONS | _FIXED_TEXT_IN_THE_LOG
+            unreviewed += [f"{site[0]}:{call.lineno} {site[1]}" for site in sorted(positional - allowed)]
+            unreviewed += [f"{site[0]}:{call.lineno} log_detail {site[1]}" for site in sorted(logged - _LOG_PROJECTIONS)]
     assert unreviewed == []
+    # Not vacuous, and no stale entry: the wrapped and assigned sites (`_with_failure(…)`, `message = f"…"`) are seen,
+    # and every reviewed or projected entry still names a live site.
+    assert {("src/optimus_gateway/upstream_client.py", "exc.code"), ("src/optimus_gateway/model_policy.py", "attempt")} <= seen
+    assert (_REVIEWED_INTERPOLATIONS | _FIXED_TEXT_IN_THE_LOG | _WIRE_ONLY_UNDER_LOG_DETAIL | _LOG_PROJECTIONS) - seen == set()
+
+
+def test_the_wire_bodies_match_the_72947dba_baseline(tmp_path) -> None:
+    """Codex round 19 finding 5: the complete response bodies of the C1, C2 and C9 scenarios equal those checkpoint 4
+    returned. `wire_baseline_72947dba.json` came from a clone of `72947dba` running these same scenarios (the generator
+    and its log are in the checkpoint evidence); the bare-key canary is stored as a placeholder."""
+    from tests.unit.optimus_gateway import wire_baseline_scenarios as scenarios
+
+    source = (REPO / "tests/unit/optimus_gateway/wire_baseline_scenarios.py").read_bytes().replace(b"\r\n", b"\n")
+    assert hashlib.sha256(source).hexdigest() == WIRE_BASELINE_SCENARIOS_SHA256, "regenerate the baseline from 72947dba"
+    baseline = json.loads((REPO / "tests/unit/optimus_gateway/wire_baseline_72947dba.json").read_text(encoding="utf-8"))
+    current = json.loads(json.dumps(scenarios.run_all(tmp_path), sort_keys=True).replace(scenarios.BARE_KEY, "<BARE_KEY>"))
+    assert sorted(current) == sorted(baseline) and len(baseline) == 15
+    assert {name: body for name, body in current.items() if body != baseline[name]} == {}
+
+
+# The scenario module the baseline was generated from (generate_wire_baseline.py at 72947dba), LF-normalized.
+WIRE_BASELINE_SCENARIOS_SHA256 = "d18ebe5a8ca7bcb4c67fb1bfd7cfc482c07aaf6b8c7d0bf936506f9514948daa"  # pragma: allowlist secret - a file digest
 
 
 # --- C2: the ledger write fact is log-only --------------------------------------------------------------------------
