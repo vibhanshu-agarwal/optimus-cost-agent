@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -133,11 +134,16 @@ def build_agent_harness_runtime(
         # Plan 11.25 Task 9: the same fanout is the non-debug ACP_TURN_SETTLEMENT sink
         # (threaded via AgentRunner.event_sink → AcpDuplexAdapter.settlement_sink).
         # Seam 2, checkpoint B: the Redis sink submits through THIS runtime's owner.
+        telemetry_writer = JsonlTelemetryWriter.for_workspace(resolved_workspace)
         telemetry_sink = TelemetryFanout(
-            jsonl_writer=JsonlTelemetryWriter.for_workspace(resolved_workspace),
+            jsonl_writer=telemetry_writer,
             redis_sink=RedisTelemetryEventSink(redis_runtime.telemetry_adapter(), submit=redis_runtime.run_sync),
             gateway_exporter=GatewayObservabilityExporter(settings=settings),
         )
+        # Correction plan v4, C4: the attempt observer is bound to THIS harness's workspace writer, never configured
+        # globally, so its always-on failure records go to this workspace whatever a later composition does. Only the
+        # JSONL writer: the Redis stream and the Gateway export see no new events.
+        attempt_observer = functools.partial(log_provider_attempts, telemetry=telemetry_writer)
 
         # A reviewed test composition (release supplement V2) fixes the exact eligible model; without
         # one, today's resolution against the installed trusted snapshot.
@@ -150,12 +156,12 @@ def build_agent_harness_runtime(
             event_sink=telemetry_sink,
             workspace_context_observer=log_workspace_context_result,
             planning_progress_observer=log_planning_replan_event,
-            provider_attempt_observer=log_provider_attempts,
+            provider_attempt_observer=attempt_observer,
         )
     except BaseException as exc:
         _rollback_redis_runtime(redis_runtime, exc)
         raise
-    return AgentHarnessRuntime(agent_runner=agent_runner, redis_runtime=redis_runtime)
+    return AgentHarnessRuntime(agent_runner=agent_runner, redis_runtime=redis_runtime, telemetry_writer=telemetry_writer, attempt_observer=attempt_observer)
 
 
 def build_configured_server(
@@ -270,7 +276,11 @@ def build_configured_server(
             from optimus.acp.stage_c import stage_c_attachment
 
             context_attachment, session_seeder = stage_c_attachment(
-                composition=test_composition, launch=stage_c, gateway_client=gateway_client, shared_secret=settings.optimus_api_key.get_secret_value()
+                composition=test_composition,
+                launch=stage_c,
+                gateway_client=gateway_client,
+                shared_secret=settings.optimus_api_key.get_secret_value(),
+                attempt_observer=harness.attempt_observer,
             )
         elif ordinary_snapshot is not None:
             # Closure plan v3: the ordinary launch attaches the plain engine (no Stage C control) on the shipped
@@ -280,6 +290,7 @@ def build_configured_server(
                 model_id=resolve_agent_model(environ, cli_model=model),
                 gateway_client=gateway_client,
                 shared_secret=settings.optimus_api_key.get_secret_value(),
+                attempt_observer=harness.attempt_observer,
             )
         # Seam 2, checkpoint B: the server takes custody of the Redis runtime and closes
         # it as the last stage of its own teardown.
@@ -292,6 +303,7 @@ def build_configured_server(
             route_policy=route_policy,
             context_attachment=context_attachment,
             session_seeder=session_seeder,
+            failure_telemetry=harness.telemetry_writer,
         )
     except BaseException as exc:
         # Composition failed after the harness (and possibly the client-MCP runtime)

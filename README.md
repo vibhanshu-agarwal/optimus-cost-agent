@@ -43,9 +43,13 @@ answers and summaries for the Gateway launch. Inspect the failure before deliber
 automatic retry-to-green. Existing incurred costs and unknown-cost warnings remain visible. The workspace's
 `.optimus/local-gateway.log` has one `model_request` line per model call. Each line records the refusal code
 and detail, and for every attempt its Gateway and provider request IDs, any router pipeline stages, and its
-failure cause (for example the transport error's class and errno, or why a reply could not be read). It never
-records the prompt, the reply or the upstream error text. With `--debug-trace`, the host trace also records each
-attempt's IDs, stages and cause, context-fault subtypes and admission refusal reasons.
+failure cause (for example the transport error's class and errno, or why a reply could not be read). It also
+records any Stage C ledger write failure, and an unenforced Gateway logs one `model_attempt` line per failed
+retry attempt, all sharing the request's Gateway ID. It never records the prompt, the reply, the upstream
+error text or a caller's free text: IDs and provider metadata that are not of a recognized form are logged as
+`unrecognized`. The workspace's `.optimus/telemetry.jsonl` always gets one `error` event per failed model call,
+refused prompt and context fault, with the same bounded facts. With `--debug-trace`, the host trace also records
+each attempt's IDs, stages and cause, context-fault subtypes and refusal reasons.
 
 The shipped Haiku admission policy uses an explicitly accepted empirical estimate with `verified: false`; it
 is not a universal token-bound proof. Provider metadata identifies the family, not an exact variant/region.

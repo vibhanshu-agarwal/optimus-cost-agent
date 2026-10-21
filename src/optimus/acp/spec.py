@@ -21,7 +21,15 @@ from optimus.acp.conversation import (
     ConversationSanitizerInputs,
     ConversationState,
 )
-from optimus.acp.debug_trace import PROMPT_REFUSAL_REASONS, acp_debug_log, debug_trace_enabled, log_context_fault, log_prompt_refusal
+from optimus.acp.debug_trace import (
+    PRE_RUN_REFUSAL_REASONS,
+    PROMPT_REFUSAL_REASONS,
+    acp_debug_log,
+    debug_trace_enabled,
+    log_context_fault,
+    log_pre_run_refusal,
+    log_prompt_refusal,
+)
 from optimus.acp.errors import (
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
@@ -83,10 +91,19 @@ from optimus.mcp.client_disposition import AcpMcpPermissionBroker, ClientMcpRunt
 from optimus.runtime.modes import ExecutionMode
 from optimus.usage.cost_alerts import AlertPolicy, AlertTracker, CostScopeSummary
 from optimus.usage.turn_settlement import TurnCostSummary, TurnSettlement, receipt_from_maintenance
+from optimus_security.failure_facts import host_session_id
 
 if TYPE_CHECKING:
     from optimus.context.assembly import DispatchReading
     from optimus.gateway.route_binding import RequestReading, RoutePolicy, TurnRouteBinder
+    from optimus.telemetry.jsonl import JsonlTelemetryWriter
+
+
+def _operator_line(line: str) -> None:
+    """One content-free operator line on stderr. A failed write never suppresses the trace or telemetry record
+    beside it (correction plan v4, C7)."""
+    with contextlib.suppress(Exception):
+        print(line, file=sys.stderr)
 
 class _PlanningRequestFields(TypedDict):
     run_id: str
@@ -454,8 +471,12 @@ class AcpDuplexAdapter:
         alert_policies: tuple[AlertPolicy, ...] = (),
         route_policy: RoutePolicy | None = None,
         session_seeder: Callable[[Any], str | None] | None = None,
+        failure_telemetry: JsonlTelemetryWriter | None = None,
     ) -> None:
         self._runner = runner
+        # Correction plan v4, C4: this harness's workspace writer for the always-on refusal and fault records. Bound
+        # here, never configured globally, so a later composition can neither redirect nor clear it.
+        self._failure_telemetry = failure_telemetry
         self._workspace_root = Path(workspace_root).resolve()
         self._sessions = sessions
         self._outbound = outbound
@@ -886,6 +907,7 @@ class AcpDuplexAdapter:
     ) -> ResponseEnvelope:
         params = request.get("params")
         if not isinstance(params, dict):
+            self._pre_run_refused(request, None, "invalid_params")
             return self._non_turn(
                 error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request")),
                 ownership_slot,
@@ -893,24 +915,28 @@ class AcpDuplexAdapter:
         session_id = params.get("sessionId")
         prompt = params.get("prompt")
         if not isinstance(session_id, str) or not isinstance(prompt, list):
+            self._pre_run_refused(request, session_id, "invalid_prompt_shape")
             return self._non_turn(
                 error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request")),
                 ownership_slot,
             )
         session = self._sessions.get(session_id)
         if session is None:
+            self._pre_run_refused(request, session_id, "unknown_session")
             return self._non_turn(
                 error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="unknown session")),
                 ownership_slot,
             )
         task = _text_from_content_blocks(prompt)
         if not task:
+            self._pre_run_refused(request, session_id, "empty_prompt")
             return self._non_turn(
                 error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="empty prompt")),
                 ownership_slot,
             )
 
         if session_id in self._active_turns:
+            self._pre_run_refused(request, session_id, "turn_in_progress")
             return self._non_turn(
                 error_response(
                     request.get("id"),
@@ -1308,11 +1334,11 @@ class AcpDuplexAdapter:
         ownership_slot: ResponseOwnershipSlot | None,
     ) -> NonTurnResponseEnvelope:
         del conversation
-        # The fixed refusal reason persists (Codex round 13 finding 2): the operator line and the trace, never the prompt.
+        # The fixed refusal reason persists (Codex round 13 finding 2): the operator line, the trace and the always-on
+        # telemetry record, each contained on its own (correction plan v4, C7); never the prompt.
         known = reason if reason in PROMPT_REFUSAL_REASONS else "unrecognized"
-        with contextlib.suppress(Exception):
-            print(f"optimus.acp: prompt refused session_id={session_id} reason={known}", file=sys.stderr)
-            log_prompt_refusal(session_id=session_id, request_id=request_id, reason=reason)
+        _operator_line(f"optimus.acp: prompt refused session_id={host_session_id(session_id) or 'none'} reason={known}")
+        log_prompt_refusal(session_id=session_id, request_id=request_id, reason=reason, telemetry=self._failure_telemetry)
         full = reason in {"cap", "cap_closed", "reservation"}
         message = (
             CONTEXT_RESERVATION_TEXT
@@ -1619,21 +1645,32 @@ class AcpDuplexAdapter:
     def _report_context_faults(self, turn: AcpPromptTurn, *, outcome: str | None = None) -> None:
         """One content-free operator line per attached-view fault (Codex CP3 ruling M2): the turn's
         run id, the phase and a bounded category, never exception text, history, summary, credential or
-        engine reason. Best-effort: it never fails the turn."""
+        engine reason; the same facts in the trace and the always-on telemetry record (correction plan v4, C4).
+        Best-effort: it never fails the turn, and each record is contained on its own (C7)."""
         attached = turn.attached
         if attached is None:
             return
         try:
-            for fault in attached.take_faults():
-                ended = outcome or "repack_refused"
-                print(
-                    f"optimus.acp: context fault run_id={turn.run_id} phase={fault.phase} "
-                    f"category={fault.category} detail={fault.detail or 'none'} outcome={ended}",
-                    file=sys.stderr,
-                )
-                log_context_fault(run_id=turn.run_id, phase=fault.phase, category=fault.category, detail=fault.detail, outcome=ended)
+            faults = attached.take_faults()
         except Exception:  # noqa: BLE001 - a diagnostic never fails the turn
             return
+        for fault in faults:
+            ended = outcome or "repack_refused"
+            _operator_line(
+                f"optimus.acp: context fault run_id={turn.run_id} phase={fault.phase} "
+                f"category={fault.category} detail={fault.detail or 'none'} outcome={ended}"
+            )
+            log_context_fault(
+                run_id=turn.run_id, phase=fault.phase, category=fault.category, detail=fault.detail, outcome=ended, telemetry=self._failure_telemetry
+            )
+
+    def _pre_run_refused(self, request: dict[str, Any], session_id: object, reason: str) -> None:
+        """A prompt request refused before any turn (correction plan v4, C5): its fixed reason, with the session and the
+        client's request id each in its own shape, in the operator line, the trace and the always-on telemetry
+        record. Never the prompt or the invalid values; each record is contained on its own."""
+        known = reason if reason in PRE_RUN_REFUSAL_REASONS else "unrecognized"
+        _operator_line(f"optimus.acp: prompt refused session_id={host_session_id(session_id) or 'none'} reason={known}")
+        log_pre_run_refusal(session_id=session_id, request_id=request.get("id"), reason=reason, telemetry=self._failure_telemetry)
 
     async def _emit_cost_alerts(self, turn: AcpPromptTurn) -> None:
         """Report each configured cost threshold this turn or session has newly reached, once, as a

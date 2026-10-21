@@ -4187,25 +4187,9 @@
     {
       "key": "optimus_gateway.responses:model_request_log_line:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: serializes one Gateway log record per model request from a fixed allowlist only: the outcome status, the refusal code, the Gateway's own already-sanitized error text, the route request id, each attempt's number, Gateway and provider request ids, outcome, HTTP status and router pipeline stage types, and the usage's ids, resolved provider and model, token counts and cost. The request body, prompt, reply text and credentials are never read into it.",
+      "rationale": "Inspection: serializes one Gateway log record per model request from a fixed allowlist only (correction plan v4, C1): the outcome status, the refusal code, the Gateway's own error text (a reviewed refusal text, its log-safe projection where the detail would carry a reply's value, or the fixed text for an unsupported legacy model), each id kept only in its generated shape (route, Gateway and provider request ids), each attempt's number, outcome, HTTP status, allowlisted router stage types and re-bounded cause, the usage's ids, recognized provider and model, token counts and cost, and the request's log-only facts (its legacy Gateway id, a Stage C ledger write failure). Then final_sanitize with credential-prefix detection. The request body, prompt, reply text, a caller's free text and credentials are never written; the response body is unchanged.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_experimental_route_checks.py::test_the_gateway_log_line_never_carries_the_reply_text",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.server:OptimusGatewayHandler._finish:text_write",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: for the two model routes the handler writes the allowlisted, finally sanitized model_request_log_line record and a newline to stderr in one locked write, contained against OSError, which the auto-started local Gateway persists as the workspace's .optimus/local-gateway.log; malformed requests on those routes are logged too. The trace-ingress and tool routes write nothing; no request body, prompt, reply or secret is written.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_a_log_write_failure_never_breaks_the_reply",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus.acp.spec:AcpDuplexAdapter._refuse_prompt:stderr_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: a prompt refused before any run prints one fixed operator line with the host-generated session id and the allowlisted refusal reason (cap, cap_closed, reservation, delivery_indeterminate, refused or unrecognized), contained against any failure. Never the prompt.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/acp/test_context_engine_admission.py::test_an_admission_refusal_leaves_a_content_free_operator_line_with_its_reason",
+      "test_node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_prose_provider_is_projected_in_the_log_and_unchanged_on_the_wire",
       "evidence_tier": "unit"
     },
     {
@@ -4358,14 +4342,6 @@
       "rationale": "Inspection: _exact_turn serializes one committed turn's already-sanitized ordinary text (the host adapter sanitizes every record into the snapshot), with its plan wrapped in the inert historical-plan markers, as one line of the model-facing history view an attached turn sends as untrusted conversation data; it is never persisted or logged.",
       "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
       "test_node": "tests/unit/agent/test_context_selection.py::test_the_rendered_view_wraps_the_summary_inert_and_keeps_plans_inert",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus.acp.spec:AcpDuplexAdapter._report_context_faults:stderr_export",
-      "policy": "safe-by-construction",
-      "rationale": "Content-free by construction (Codex CP3 ruling M2): one operator line per attached-view fault naming only the host-minted turn run id, the phase ('prepare' or 'repack'), a category from the bounded ContextFault vocabulary (validated at construction; an unlisted engine reason maps to 'other') and the turn outcome. No exception text, history, summary, credential or engine reason string is formatted or retained; a send failure is contained.",
-      "sanitizer": "content-free by construction: generated run id and allowlisted phase/category/outcome codes",
-      "test_node": "tests/unit/acp/test_late_receipts.py::test_a_view_fault_leaves_one_content_free_operator_line",
       "evidence_tier": "unit"
     },
     {
@@ -4710,6 +4686,54 @@
       "rationale": "Inspection: the fixed warning format exports only a fixed sink label, TelemetryEventKind value, fixed telemetry_sink_raised reason and exception class name. No exception message, traceback, event payload, prompt, response, credential or workspace location is passed to the logger.",
       "sanitizer": "Four-field metadata-only construction in TelemetryFanout._attempt_local_sink; no exception text or event payload is exported.",
       "test_node": "tests/unit/telemetry/test_fanout.py::test_fanout_warning_reaches_stderr_with_debug_disabled",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:_operator_line:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the one stderr writer for the adapter's operator lines, contained so a failed write never suppresses the trace or telemetry record beside it (correction plan v4, C7). Its callers pass fixed lines only: an admission refusal or a pre-run refusal (the session id kept only in its generated session-<hex32> shape, else unrecognized or none, and an allowlisted reason), and a context fault (the host-minted turn run id, the phase, a category from the bounded ContextFault vocabulary, its validated detail and the outcome). Never the prompt, history, exception text or an invalid value.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_failure_telemetry.py::test_every_pre_run_refusal_keeps_its_fixed_reason",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.debug_trace:_emit_failure:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes one always-on failure, refusal or context-fault record (correction plan v4, C4) built only from bounded facts: ids each kept in their generated shape, allowlisted codes, reasons, stage types and failure kinds, class names, errno and status integers, then final_sanitize (the compatibility rules plus credential-prefix detection). Never a body, header, error text, prompt, reply or credential.",
+      "sanitizer": "optimus_security.failure_facts.final_sanitize",
+      "test_node": "tests/unit/acp/test_failure_telemetry.py::test_a_host_transport_failure_leaves_one_error_event_with_tracing_off",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.debug_trace:_emit_failure:logger_export",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects the always-on failure record before the harness's workspace JSONL writer appends it: the bounded record passes final_sanitize, and TelemetryEvent.to_json_dict applies redact_for_telemetry. Only the JSONL writer bound at composition receives it, never the Redis sink or the Gateway exporter; a writer failure is contained.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/acp/test_failure_telemetry.py::test_the_harness_binds_its_attempt_observer_to_its_own_workspace_writer",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.request_diagnostics:log_model_attempt:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: one model_attempt line per failed legacy upstream attempt (correction plan v4, C9): the request's Gateway id in its gw-<hex32> shape, the integer attempt number, the allowlisted classification and disposition and the re-bounded origin cause (kind, class names, errno, HTTP status, slug reason), then final_sanitize. Contained, so it never changes a retry. No request, reply or upstream error text is read.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_failed_legacy_attempt_is_logged_with_its_cause_and_the_request_id",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.request_diagnostics:write_log_line:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Gateway log's one writer (moved from OptimusGatewayHandler._finish): writes an already allowlisted, projected and finally sanitized model_request or model_attempt line and a newline to stderr in one locked write, contained against OSError and ValueError (a closed stream), which the auto-started local Gateway persists as the workspace's .optimus/local-gateway.log. No request body, prompt, reply or secret is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_closed_log_stream_never_breaks_the_reply",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:_attempt_failure:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a failed legacy attempt's cause for the retry observer: the bounded cause attached where it arose, else a parser RuntimeError's module-authored reason passed through slug (anything outside the lower-case reason shape becomes unrecognized), else the exception's class and errno. Exception text is never retained otherwise.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_failed_legacy_attempt_is_logged_with_its_cause_and_the_request_id",
       "evidence_tier": "unit"
     }
   ]

@@ -6,6 +6,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
+from optimus_gateway import request_diagnostics
 from optimus_gateway.model_mapping import resolve_model_id
 from optimus_gateway.model_policy import (
     AdmittedRequest,
@@ -22,7 +23,8 @@ from optimus_gateway.models import (
     authorize_bearer,
     validate_responses_envelope,
 )
-from optimus_gateway.upstream_client import ProviderMessageResult, UpstreamAttemptFailure, UpstreamClient
+from optimus_gateway.request_diagnostics import recognized_model, recognized_provider
+from optimus_gateway.upstream_client import KNOWN_ROUTER_STAGES, ProviderMessageResult, UpstreamAttemptFailure, UpstreamClient
 from optimus_model_policy.binding import (
     ATTEMPT_COMPLETED,
     ATTEMPT_UNCERTAIN,
@@ -30,7 +32,15 @@ from optimus_model_policy.binding import (
     RouteBinding,
 )
 from optimus_model_policy.stage_c import Admission, StageCRefusal, reservation_usd
-from optimus_security.failure_facts import final_sanitize, slug
+from optimus_security.failure_facts import (
+    bounded,
+    bounded_failure,
+    final_sanitize,
+    gateway_request_id,
+    host_route_id,
+    provider_request_id,
+    slug,
+)
 from optimus_security.sanitization import sanitize_for_persistence
 
 
@@ -79,25 +89,37 @@ def run_model_completion(
     today's alias/pass-through routing and retry loop apply unchanged.
     """
     if config.model_policy is not None:
-        return _run_enforced_completion(
-            model=model,
-            input_text=input_text,
-            config=config,
-            upstream_client=upstream_client,
-            build_success=build_success,
-            route_binding=route_binding,
-        )
+        try:
+            return _run_enforced_completion(
+                model=model,
+                input_text=input_text,
+                config=config,
+                upstream_client=upstream_client,
+                build_success=build_success,
+                route_binding=route_binding,
+            )
+        finally:
+            # Correction plan v4, C2: a Stage C ledger write failure reaches this request's log line (and, since the
+            # guard then halts, every later refusal's), never its response.
+            write_failure = getattr(config.stage_c_guard, "last_write_failure", None)
+            if isinstance(write_failure, dict):
+                request_diagnostics.note(ledger_write_failure=dict(write_failure))
     try:
         provider_model = resolve_model_id(provider=config.provider, model=model)
     except ValueError as exc:
+        # The caller's model name is never logged (C1): the log keeps the fixed text, the response is unchanged.
+        request_diagnostics.note(error="unsupported gateway model")
         return 400, {"error": sanitize_error_message(str(exc))}
 
+    # Minted before the upstream call so every attempt line and the outcome line share it (C9).
+    gateway_request_id = f"gw-{uuid.uuid4().hex}"
+    request_diagnostics.note(gateway_request_id=gateway_request_id)
     try:
         provider_result = upstream_client.create_message(model=provider_model, input_text=input_text)
     except RuntimeError as exc:
         return 502, {"error": sanitize_error_message(str(exc))}
 
-    gateway_usage = _gateway_usage(config=config, model=model, provider_result=provider_result, gateway_request_id=f"gw-{uuid.uuid4().hex}")
+    gateway_usage = _gateway_usage(config=config, model=model, provider_result=provider_result, gateway_request_id=gateway_request_id)
     try:
         assert_gateway_usage_contract(gateway_usage)
     except ValueError as exc:
@@ -267,23 +289,52 @@ _LOGGED_ATTEMPT_FIELDS = ("attempt", "gateway_request_id", "outcome", "http_stat
 _LOGGED_USAGE_FIELDS = ("gateway_request_id", "provider_request_id", "resolved_provider", "resolved_model", "input_tokens", "output_tokens", "cost_usd")
 
 
-def model_request_log_line(path: str, status: int, body: dict[str, Any]) -> str:
+def model_request_log_line(path: str, status: int, body: dict[str, Any], *, policy: GatewayModelPolicy | None = None) -> str:
     """One JSON line per model request for the Gateway's log (its stderr, persisted as ``local-gateway.log``):
-    the outcome, the Gateway's own sanitized refusal text, every attempt's ids and router stages, and the
-    settled usage. Selected fields only, then a final redaction pass: never the prompt, the reply or a credential."""
+    the outcome, the Gateway's own refusal text, every attempt's ids and router stages, the settled usage, and the
+    request's log-only facts (its legacy Gateway id, a Stage C ledger write failure). Selected fields only, each id
+    in its generated shape and each upstream value recognized against trusted data (correction plan v4, C1), then
+    a final redaction pass: never the prompt, the reply, a caller's free text or a credential. The response body
+    itself is unchanged."""
     usage = body.get("gateway_usage")
     attempts = body.get("route_attempts")
+    facts = request_diagnostics.noted()
     record = {
         "event": "model_request",
         "path": path,
         "status": status,
         "code": body.get("code"),
-        "error": body.get("error"),
-        "route_request_id": body.get("route_request_id") or (usage.get("route_request_id") if isinstance(usage, dict) else None),
-        "route_attempts": [{key: item.get(key) for key in _LOGGED_ATTEMPT_FIELDS} for item in attempts or () if isinstance(item, dict)],
-        "usage": {key: usage.get(key) for key in _LOGGED_USAGE_FIELDS} if isinstance(usage, dict) else None,
+        "error": facts.get("error", body.get("error")),
+        "gateway_request_id": gateway_request_id(facts.get("gateway_request_id")),
+        "route_request_id": host_route_id(body.get("route_request_id") or (usage.get("route_request_id") if isinstance(usage, dict) else None)),
+        "route_attempts": [_logged_attempt(item) for item in attempts or () if isinstance(item, dict)],
+        "usage": _logged_usage(usage, policy) if isinstance(usage, dict) else None,
     }
+    if "ledger_write_failure" in facts:
+        record["ledger_write_failure"] = facts["ledger_write_failure"]
     return json.dumps(final_sanitize(record), separators=(",", ":"), sort_keys=True, default=str)
+
+
+def _logged_attempt(item: dict[str, Any]) -> dict[str, Any]:
+    stages = item.get("router_pipeline")
+    return {
+        "attempt": item.get("attempt") if type(item.get("attempt")) is int else None,
+        "gateway_request_id": gateway_request_id(item.get("gateway_request_id")),
+        "outcome": item.get("outcome"),
+        "http_status": item.get("http_status") if type(item.get("http_status")) is int else None,
+        "provider_request_id": provider_request_id(item.get("provider_request_id")),
+        "router_pipeline": [bounded(stage, KNOWN_ROUTER_STAGES) for stage in stages] if isinstance(stages, list) else None,
+        "failure": bounded_failure(item.get("failure")),
+    }
+
+
+def _logged_usage(usage: dict[str, Any], policy: GatewayModelPolicy | None) -> dict[str, Any]:
+    logged = {key: usage.get(key) for key in _LOGGED_USAGE_FIELDS}
+    logged["gateway_request_id"] = gateway_request_id(usage.get("gateway_request_id"))
+    logged["provider_request_id"] = provider_request_id(usage.get("provider_request_id"))
+    logged["resolved_provider"] = recognized_provider(usage.get("resolved_provider"), policy)
+    logged["resolved_model"] = recognized_model(usage.get("resolved_model"), policy)
+    return logged
 
 
 def _gateway_usage(
@@ -312,7 +363,8 @@ def _gateway_usage(
 def policy_refusal(exc: ModelPolicyRefusal) -> tuple[int, dict[str, Any]]:
     """A model-policy refusal: a stable code, never retryable by the host. ``route_attempts`` is empty
     for a refusal before any attempt; the finish-status refusal after a completed attempt replaces it
-    with that attempt's record."""
+    with that attempt's record. The log records the refusal's log-safe text (correction plan v4, C1)."""
+    request_diagnostics.note(error=sanitize_error_message(exc.log_message))
     return exc.status, {"error": sanitize_error_message(str(exc)), "code": exc.code, "retryable": False, "route_attempts": []}
 
 

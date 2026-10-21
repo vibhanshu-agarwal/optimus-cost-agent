@@ -388,14 +388,22 @@ _no_attachment_ledger = no_attachment_ledger  # the shared no-op sink; the Gatew
 
 
 def stage_c_attachment(
-    *, composition: Any | None, launch: StageCLaunch | None, gateway_client: Any, shared_secret: str
+    *,
+    composition: Any | None,
+    launch: StageCLaunch | None,
+    gateway_client: Any,
+    shared_secret: str,
+    attempt_observer: Any = log_provider_attempts,
 ) -> tuple[ContextAttachment | None, Callable[[Any], str | None] | None]:
     """The launch's Stage C engine and session seeder: only an approved Stage C launch of the attached test
     composition gets them; the qualification composition and a profile without Stage C stay absent-engine.
-    An ordinary launch gets the shipped attachment instead (``ordinary_attachment``)."""
+    An ordinary launch gets the shipped attachment instead (``ordinary_attachment``). ``attempt_observer`` is the
+    harness's bound attempt observer (correction plan v4, C4)."""
     if launch is None or composition is None or composition.profile.name != "attached":
         return None, None
-    attachment, scenario = compose_stage_c_attachment(composition=composition, gateway_client=gateway_client, shared_secret=shared_secret, launch=launch)
+    attachment, scenario = compose_stage_c_attachment(
+        composition=composition, gateway_client=gateway_client, shared_secret=shared_secret, launch=launch, attempt_observer=attempt_observer
+    )
     return attachment, scenario.seed
 
 
@@ -408,6 +416,7 @@ def compose_stage_c_attachment(
     clock: Callable[[], datetime] = _utc_now,
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
+    attempt_observer: Any = log_provider_attempts,
 ) -> tuple[ContextAttachment, StageCScenario]:
     """The attached Stage C launch's ``ContextAttachment`` and scenario. Refuses any other composition, a
     seed that is not the pinned one and a route the trusted snapshot does not give the summarizer."""
@@ -424,7 +433,7 @@ def compose_stage_c_attachment(
         model_id=identity.model_id, role=identity.role, route=identity.route, reasoning=identity.reasoning, quantizations=identity.quantizations
     )
     factory = gateway_summarizer_factory(
-        gateway_client=gateway_client, route=route, snapshot=snapshot, disclosure_key=disclosure_key(shared_secret), attempt_observer=log_provider_attempts
+        gateway_client=gateway_client, route=route, snapshot=snapshot, disclosure_key=disclosure_key(shared_secret), attempt_observer=attempt_observer
     )
     scenario = StageCScenario(ledger=launch.ledger, clock=clock, sleep=sleep, monotonic=monotonic)
     attachment = ContextAttachment(

@@ -22,6 +22,7 @@ class GatewayHttpError(GatewayError):
         route_attempts: tuple[GatewayRouteAttempt, ...] = (),
         route_attempts_malformed: bool = False,
         failure: dict[str, Any] | None = None,
+        error_envelope: dict[str, Any] | None = None,
     ) -> None:
         """``gateway_code``, ``retryable`` and ``route_attempts`` come from an enforced-routing error
         body (Plan 12.2 Task 5). ``retryable is False`` means the Gateway already applied the attempt
@@ -29,8 +30,11 @@ class GatewayHttpError(GatewayError):
         ``route_attempts_malformed`` records that the body carried an attempt list the client had to
         drop, so an empty ``route_attempts`` is never mistaken for "no attempt was made". ``failure`` is the host's
         bounded, content-free cause when the request never got a Gateway reply it could read (Plan 12.2
-        diagnosability): the transport's exception class and errno, or why the reply was unreadable."""
+        diagnosability): the transport's exception class and errno, or why the reply was unreadable. ``error_envelope``
+        is an HTTP error body's fixed facts: its UTF-8 validity, whether it was a JSON object and any invalid usage's
+        audit code (correction plan v4, C3)."""
         self.status_code = status_code
+        self.error_envelope = error_envelope
         self.gateway_usage = gateway_usage
         self.gateway_code = gateway_code
         self.retryable = retryable

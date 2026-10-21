@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Final
 
+from optimus_gateway.request_diagnostics import RECOGNIZED_FINISH, recognized_provider
 from optimus_model_policy import (
     DORMANT_ROLES,
     CapacityDecision,
@@ -44,6 +45,7 @@ from optimus_model_policy.binding import (
     verify_disclosure,
 )
 from optimus_model_policy.experimental import ExperimentalRoute, experimental_route
+from optimus_security.failure_facts import bounded
 
 __all__ = [
     "AdmittedRequest",
@@ -62,12 +64,17 @@ _PASSED_FINISH: Final = frozenset({COMPLETE_FINISH, LENGTH_FINISH})
 
 
 class ModelPolicyRefusal(Exception):
-    """A request refused by the model policy. ``status`` is the HTTP status the Gateway returns."""
+    """A request refused by the model policy. ``status`` is the HTTP status the Gateway returns.
 
-    def __init__(self, code: str, detail: str = "", *, status: int = 400) -> None:
+    ``log_detail`` replaces ``detail`` in the Gateway's log only, where the detail would interpolate a reply's own
+    value (correction plan v4, C1); the response keeps ``detail``. ``log_message`` is the text the log records."""
+
+    def __init__(self, code: str, detail: str = "", *, status: int = 400, log_detail: str | None = None) -> None:
         self.code = code
         self.detail = detail
         self.status = status
+        logged = detail if log_detail is None else log_detail
+        self.log_message = f"model policy refused the request ({code}){': ' + logged if logged else ''}"
         super().__init__(f"model policy refused the request ({code}){': ' + detail if detail else ''}")
 
 
@@ -225,7 +232,12 @@ def check_experimental_reply(admitted: AdmittedRequest, result: Any) -> None:
     if provider is None:
         raise ModelPolicyRefusal("EMPIRICAL_PROVIDER_MISSING", "the reply carries no selected router provider", status=422)
     if provider != route.provider_name:
-        raise ModelPolicyRefusal("EMPIRICAL_PROVIDER_MISMATCH", f"router provider {provider!r}, expected {route.provider_name!r}", status=422)
+        raise ModelPolicyRefusal(
+            "EMPIRICAL_PROVIDER_MISMATCH",
+            f"router provider {provider!r}, expected {route.provider_name!r}",
+            log_detail=f"router provider {recognized_provider(provider)!r}, expected {route.provider_name!r}",
+            status=422,
+        )
     if attempt is None or pipeline is None:
         raise ModelPolicyRefusal("EMPIRICAL_ROUTER_METADATA_MISSING", "the reply carries no router attempt or pipeline record", status=422)
     if attempt != 1:
@@ -247,4 +259,9 @@ def check_finish_status(finish_reason: str | None) -> None:
     re-dispatch it as a transient failure (an unknown or unusable result is never retried).
     """
     if finish_reason not in _PASSED_FINISH:
-        raise ModelPolicyRefusal("FINISH_STATUS_UNVERIFIED", f"provider finish status {finish_reason!r}", status=422)
+        raise ModelPolicyRefusal(
+            "FINISH_STATUS_UNVERIFIED",
+            f"provider finish status {finish_reason!r}",
+            log_detail=f"provider finish status {bounded(finish_reason, RECOGNIZED_FINISH)!r}",
+            status=422,
+        )

@@ -43,6 +43,8 @@ class RetryEvent:
     classification: str
     latency_seconds: float
     disposition: Literal["retry", "terminal"]
+    failure: dict[str, Any] | None = None
+    """The failed attempt's bounded cause, taken where it arose (correction plan v4, C9)."""
 
 
 @dataclass(frozen=True)
@@ -116,10 +118,11 @@ def call_with_upstream_retry(
     max_attempts: int = _MAX_UPSTREAM_ATTEMPTS,
     sleep: Callable[[float], None] | None = None,
     on_retry: Callable[[int], None] | None = None,
-    on_attempt_failure: Callable[[int, str, float, Literal["retry", "terminal"]], None] | None = None,
+    on_attempt_failure: Callable[[int, str, float, Literal["retry", "terminal"], dict[str, Any] | None], None] | None = None,
     backoff_seconds: tuple[float, ...] = _DEFAULT_BACKOFF_SECONDS,
 ) -> T:
-    """Retry only transient upstream faults; reraise the final failure as RuntimeError."""
+    """Retry only transient upstream faults; reraise the final failure as RuntimeError. ``on_attempt_failure`` also
+    gets each failed attempt's bounded cause (correction plan v4, C9)."""
     sleeper = sleep or time.sleep
     attempt = 1
     while True:
@@ -137,6 +140,7 @@ def call_with_upstream_retry(
                     "transient" if retryable else "permanent",
                     time.monotonic() - started_at,
                     disposition,
+                    _attempt_failure(exc),
                 )
             if disposition == "terminal":
                 if retryable:
@@ -203,6 +207,7 @@ class UrllibOpenAICompatibleClient:
             classification: str,
             latency_seconds: float,
             disposition: Literal["retry", "terminal"],
+            failure: dict[str, Any] | None = None,
         ) -> None:
             if self._on_retry is not None:
                 self._on_retry(
@@ -211,6 +216,7 @@ class UrllibOpenAICompatibleClient:
                         classification=classification,
                         latency_seconds=latency_seconds,
                         disposition=disposition,
+                        failure=failure,
                     )
                 )
 
@@ -388,18 +394,36 @@ def _urlopen_json(
                 for name, value in getattr(response, "headers", {}).items()
             }
             return decoded, headers
+    # Each raise carries its bounded cause, taken here while the original exception is in hand (correction plan v4, C9).
+    # The exceptions' types, texts and retry classification are unchanged.
     except HTTPError as exc:
         message = f"{label} request failed ({exc.code})"
-        if is_retryable_upstream_fault(exc):
-            raise RetryableUpstreamError(message) from exc
-        raise RuntimeError(message) from exc
+        error = RetryableUpstreamError(message) if is_retryable_upstream_fault(exc) else RuntimeError(message)
+        raise _with_failure(error, {"kind": "http", "status": exc.code}) from exc
     except URLError as exc:
         fact = exception_fact(exc)
-        raise RetryableUpstreamError(f"{label} request failed ({fact.get('cause', fact['class'])})") from exc
+        raise _with_failure(RetryableUpstreamError(f"{label} request failed ({fact.get('cause', fact['class'])})"), {"kind": "transport", **fact}) from exc
     except TimeoutError as exc:
-        raise RetryableUpstreamError(f"{label} request timed out") from exc
+        raise _with_failure(RetryableUpstreamError(f"{label} request timed out"), {"kind": "transport", **exception_fact(exc)}) from exc
     except (UnicodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"{label} response was invalid JSON") from exc
+        kind = "invalid_utf8" if isinstance(exc, UnicodeError) else "invalid_json"
+        raise _with_failure(RuntimeError(f"{label} response was invalid JSON"), {"kind": kind}) from exc
+
+
+def _with_failure(error: Exception, failure: dict[str, Any]) -> Exception:
+    error.failure = failure  # type: ignore[attr-defined]
+    return error
+
+
+def _attempt_failure(exc: BaseException) -> dict[str, Any]:
+    """A failed legacy attempt's bounded cause: the one ``_urlopen_json`` attached, else a parser ``RuntimeError``'s
+    module-authored reason as a slug, else the exception's class and errno."""
+    failure = getattr(exc, "failure", None)
+    if isinstance(failure, dict):
+        return failure
+    if type(exc) is RuntimeError:
+        return {"kind": "schema", "reason": slug(str(exc))}
+    return exception_fact(exc)
 
 
 def parse_openai_chat_completion(

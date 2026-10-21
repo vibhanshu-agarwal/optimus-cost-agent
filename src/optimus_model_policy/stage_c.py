@@ -224,13 +224,19 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def _write_failure_fact(exc: BaseException) -> str:
+def _write_failure_fact(exc: BaseException) -> dict[str, Any]:
     """A failed ledger write's class and errno, never its text (Codex round 13 finding 6). Local, not
     ``optimus_security.failure_facts``: this package may not import the security package."""
     name = type(exc).__name__
-    name = name if name.isidentifier() and name.isascii() and len(name) <= 80 else "unrecognized"
     number = getattr(exc, "errno", None)
-    return f"{name} errno {number}" if isinstance(number, int) else name
+    return {
+        "class": name if name.isidentifier() and name.isascii() and len(name) <= 80 else "unrecognized",
+        "errno": number if isinstance(number, int) and not isinstance(number, bool) else None,
+    }
+
+
+def _write_failure_text(fact: Mapping[str, Any]) -> str:
+    return f"{fact['class']} errno {fact['errno']}" if fact["errno"] is not None else str(fact["class"])
 
 
 def _write_record(handle: IO[bytes], record: Mapping[str, Any], fsync: Callable[[int], None]) -> None:
@@ -350,6 +356,9 @@ class StageCGuard:
         self._clock = clock
         self._fsync = fsync
         self._write_failure = "unknown"
+        # The last failed ledger write's class and errno, kept apart from the halt reason (which a write failure after
+        # an earlier halt does not change) so the Gateway can log it (correction plan v4, C2). None until one fails.
+        self.last_write_failure: dict[str, Any] | None = None
         self._mutex = threading.Lock()
         self.closed = False
 
@@ -454,7 +463,8 @@ class StageCGuard:
             _write_record(self._handle, record, self._fsync)
             return True
         except (OSError, ValueError) as exc:
-            self._write_failure = _write_failure_fact(exc)
+            self.last_write_failure = _write_failure_fact(exc)
+            self._write_failure = _write_failure_text(self.last_write_failure)
             self._replay.halted = self._replay.halted or f"ledger write failed ({self._write_failure})"
             return False
 

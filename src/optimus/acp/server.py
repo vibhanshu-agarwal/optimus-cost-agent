@@ -393,8 +393,12 @@ class AcpStreamServer:
         route_policy: Any | None = None,
         context_attachment: Any | None = None,
         session_seeder: Any | None = None,
+        failure_telemetry: Any | None = None,
     ) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
+        # Correction plan v4, C4: the harness's workspace telemetry writer, passed into every ndjson session adapter
+        # for its always-on refusal and fault records. None writes none.
+        self._failure_telemetry = failure_telemetry
         # Plan 12.2 closure: the trusted planning/answer route policy (the shipped registry's for an
         # ordinary launch, a reviewed test composition's otherwise), passed into every ndjson session
         # adapter. None sends unbound requests (registry enforcement inactive).
@@ -575,6 +579,7 @@ class AcpStreamServer:
             route_policy=self._route_policy,
             context_attachment=self._context_attachment,
             session_seeder=self._session_seeder,
+            failure_telemetry=self._failure_telemetry,
         )
         message_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         request_tasks: set[asyncio.Task[Any]] = set()

@@ -251,9 +251,10 @@ def is_input_capacity_refusal(exc: BaseException) -> bool:
 
 def gateway_failure_facts(exc: BaseException) -> dict[str, Any] | None:
     """A failed request's content-free Gateway facts, for diagnostics only (r8 offline correction): its refusal
-    code when the Gateway's own, `UNRECOGNIZED` for any other code (never its text), and its outer HTTP status as
-    an integer. None when the request did not fail with a Gateway HTTP error. A fact not reported stays null,
-    and the client's 0 (no HTTP reply) is not a status."""
+    code when the Gateway's own, `UNRECOGNIZED` for any other code (never its text), its outer HTTP status as an
+    integer, the host's own cause, a dropped-attempts flag and an error body's fixed envelope facts. None when the
+    request did not fail with a Gateway HTTP error. A fact not reported stays null, and the client's 0 (no HTTP
+    reply) is not a status."""
     if not isinstance(exc, GatewayHttpError):
         return None
     code = exc.gateway_code
@@ -267,7 +268,18 @@ def gateway_failure_facts(exc: BaseException) -> dict[str, Any] | None:
         facts["failure"] = failure  # the host's own cause: transport class and errno, or an unreadable reply
     if exc.route_attempts_malformed:
         facts["route_attempts_malformed"] = True
+    envelope = getattr(exc, "error_envelope", None)
+    if isinstance(envelope, dict):  # an HTTP error body's fixed facts (correction plan v4, C3), re-bounded
+        facts["error_envelope"] = {
+            "error_body_encoding": bounded(envelope.get("error_body_encoding"), _ENVELOPE_ENCODINGS),
+            "error_body": bounded(envelope.get("error_body"), _ENVELOPE_BODIES),
+            "usage_audit_code": bounded(envelope.get("usage_audit_code"), AUDIT_CODES),
+        }
     return facts
+
+
+_ENVELOPE_ENCODINGS = frozenset({"ok", "invalid_utf8"})
+_ENVELOPE_BODIES = frozenset({"ok", "invalid_json", "non_object"})
 
 
 # Every audit code a host response-contract failure carries (optimus.gateway.models, tool_models).

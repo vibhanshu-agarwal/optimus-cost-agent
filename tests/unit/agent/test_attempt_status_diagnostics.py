@@ -52,6 +52,11 @@ from tests.unit.acp.test_context_engine_admission import make_attachment
 
 CANARY = "Authorization: Bearer " + "attempt-status-canary"  # synthetic; must never reach the log
 LOCATION = "debug_trace.py:log_provider_attempts"
+# Ids in their generated shapes: the trace keeps only those (correction plan v4, C1).
+SESSION = "session-" + "5" * 32
+RUN = f"{SESSION}:1"
+REQ = f"{RUN}:summary:1:{'a' * 32}"
+GW1, GW2 = f"gw-{1:032x}", f"gw-{2:032x}"
 
 
 def _usage(gateway_request_id: str) -> GatewayUsage:
@@ -59,7 +64,7 @@ def _usage(gateway_request_id: str) -> GatewayUsage:
 
 
 def _routed(number: int, outcome: str, status: int | None = None) -> GatewayRouteAttempt:
-    return GatewayRouteAttempt(attempt=number, gateway_request_id=f"gw-{number}", outcome=outcome, http_status=status)
+    return GatewayRouteAttempt(attempt=number, gateway_request_id=f"gw-{number:032x}", outcome=outcome, http_status=status)
 
 
 def _rejected_twice(first: int, second: int) -> GatewayHttpError:
@@ -72,7 +77,7 @@ def _rejected_twice(first: int, second: int) -> GatewayHttpError:
 def _recovered(text: str) -> GatewayResponse:
     """Realistic: one recoverable 429, then a charged completion."""
     return GatewayResponse(
-        output_text=text, gateway_usage=_usage("gw-2"), raw={"echo": CANARY}, finish_reason="stop",
+        output_text=text, gateway_usage=_usage(GW2), raw={"echo": CANARY}, finish_reason="stop",
         route_attempts=(_routed(1, "rejected", 429), _routed(2, "completed")),
     )  # fmt: skip
 
@@ -81,7 +86,7 @@ def _attempt(key: str, outcome: str, routed: bool, upstream: int | None, gateway
     """A routed attempt's Gateway request id is the fakes' ``gw-<key>``; an unrouted one has none."""
     return {
         "attempt": key, "outcome": outcome, "routed": routed, "upstream_http_status": upstream, "gateway_http_status": gateway,
-        "router_pipeline": pipeline, "gateway_request_id": f"gw-{key}" if routed else None, "provider_request_id": None, "failure": None,
+        "router_pipeline": pipeline, "gateway_request_id": f"gw-{int(key):032x}" if routed else None, "provider_request_id": None, "failure": None,
     }  # fmt: skip
 
 
@@ -147,7 +152,7 @@ def _run(tmp_path: Path, mode: ExecutionMode, scenario: str, *, observer=log_pro
     make = SCENARIOS[scenario][0]
     receipts: list[StageReceipt] = []
     gateway = FakeGateway(make(STAGES[mode][1]))
-    request = AgentRunRequest(run_id="s:1", session_id="s", task=f"Change the greeting. {CANARY}", workspace_root=tmp_path, execution_mode=mode)
+    request = AgentRunRequest(run_id=RUN, session_id=SESSION, task=f"Change the greeting. {CANARY}", workspace_root=tmp_path, execution_mode=mode)
     result = AgentRunner(gateway_client=gateway, model="fake/model", provider_attempt_observer=observer).run(request, stage_receipts=receipts.append)
     return result, receipts
 
@@ -166,7 +171,7 @@ def _receipt_facts(receipts: list[StageReceipt]) -> list[tuple]:
 # --- The summary consumer -----------------------------------------------------------------------------------------
 
 SUMMARY_IDENTITY = MaintenanceIdentity(
-    session_id="s", turn_seq=1, model_id="fake/summarizer", role="summarizer", route=("p",), reasoning=None,
+    session_id=SESSION, turn_seq=1, model_id="fake/summarizer", role="summarizer", route=("p",), reasoning=None,
     quantizations=(None,), strategy="compaction", revision_digest="d" * 64,
 )  # fmt: skip
 SUMMARY_REQUEST = MaintenanceRequest(
@@ -196,7 +201,7 @@ def _settlement_holding(gateway_request_id: str | None) -> TurnSettlement:
     if gateway_request_id is not None:
         settlement.record_attempt(
             StageReceipt(
-                session_id="s", turn_id="s:1", stage="summarization", attempt_id="earlier:1", gateway_request_id=gateway_request_id,
+                session_id=SESSION, turn_id=RUN, stage="summarization", attempt_id="earlier:1", gateway_request_id=gateway_request_id,
                 outcome="completed", reported_cost_usd=Decimal("0.009"), recorded_at=EARLIER,
             )
         )
@@ -226,7 +231,7 @@ class Summary:
         )  # fmt: skip
         self.offered: list[MaintenanceReceipt] = []
         call = GatewaySummarizerCall(
-            gateway_client=FakeGateway(outcome), model_id="fake/summarizer", session_id="s", request_ids=lambda: "req", attempt_observer=observer
+            gateway_client=FakeGateway(outcome), model_id="fake/summarizer", session_id=SESSION, request_ids=lambda: REQ, attempt_observer=observer
         )
         self.host = HostMaintenance(call=call, sanitizer=SANITIZER, identity=SUMMARY_IDENTITY, record_receipt=self._offer, cancelled=lambda: False)
 
@@ -243,8 +248,8 @@ class Summary:
 
     def accounting(self) -> tuple:
         """The session settlement's receipts and totals, and the usage ledger's entries."""
-        receipts = [(r.attempt_id, r.gateway_request_id, r.outcome, r.reported_cost_usd, r.http_status) for r in self.settlement.receipts("s:1")]
-        turn = self.settlement.settle_turn("s:1")
+        receipts = [(r.attempt_id, r.gateway_request_id, r.outcome, r.reported_cost_usd, r.http_status) for r in self.settlement.receipts(RUN)]
+        turn = self.settlement.settle_turn(RUN)
         totals = (turn.known_subtotal_usd, len(turn.unknown_attempt_ids), turn.integrity_failures, turn.complete)
         return receipts, totals, [(entry.gateway_request_id, entry.cost_usd) for entry in self.service.provider_ledger.entries]
 
@@ -264,7 +269,7 @@ def test_each_chat_and_planning_attempt_is_logged_content_free(tmp_path, mode, s
 
     [record] = _records(log)
     assert record["data"] == {
-        "stage": STAGES[mode][0], "run_id": "s:1", "session_id": "s", "settled_turn": 1, "wire_attempt": 1, "attempts": SCENARIOS[scenario][1],
+        "stage": STAGES[mode][0], "run_id": RUN, "session_id": SESSION, "settled_turn": 1, "wire_attempt": 1, "attempts": SCENARIOS[scenario][1],
         **SCENARIOS[scenario][2],
     }  # fmt: skip
     assert CANARY not in log.read_text(encoding="utf-8")
@@ -281,7 +286,7 @@ def test_each_summarization_attempt_is_logged_content_free(tmp_path, scenario) -
     summary.settle()
 
     [record] = _records(log)
-    assert record["data"] == {"stage": "summary", "session_id": "s", "request_id": "req", "attempts": SCENARIOS[scenario][1], **SCENARIOS[scenario][2]}
+    assert record["data"] == {"stage": "summary", "session_id": SESSION, "request_id": REQ, "attempts": SCENARIOS[scenario][1], **SCENARIOS[scenario][2]}
     assert CANARY not in log.read_text(encoding="utf-8")
     # The log names exactly the attempts the host offered as receipts, in order, with the same statuses.
     assert [(a["outcome"], a["upstream_http_status"] if a["routed"] else a["gateway_http_status"]) for a in record["data"]["attempts"]] == [
@@ -307,8 +312,8 @@ def test_a_refused_attempt_keeps_the_router_pipeline_stage_types_the_gateway_rep
 
     log = _trace(tmp_path)
     refused = GatewayHttpError(
-        422, CANARY, gateway_code="EMPIRICAL_ROUTER_PIPELINE", retryable=False, gateway_usage=_usage("gw-1"),
-        route_attempts=(GatewayRouteAttempt(attempt=1, gateway_request_id="gw-1", outcome="completed", router_pipeline=("guardrail",)),),
+        422, CANARY, gateway_code="EMPIRICAL_ROUTER_PIPELINE", retryable=False, gateway_usage=_usage(GW1),
+        route_attempts=(GatewayRouteAttempt(attempt=1, gateway_request_id=GW1, outcome="completed", router_pipeline=("guardrail",)),),
     )  # fmt: skip
     log_provider_attempts(stage="answer", correlation=lambda: {}, attempts=attempts_from_failure(refused), failure=refused)
     [record] = _records(log)
@@ -332,7 +337,7 @@ def test_the_gateway_summarizer_attaches_its_diagnostic_without_running_it() -> 
 
     def respond(observer) -> SummarizerResponse:
         call = GatewaySummarizerCall(
-            gateway_client=FakeGateway(_recovered(SUMMARY_TEXT)), model_id="fake/summarizer", session_id="s", request_ids=lambda: "req",
+            gateway_client=FakeGateway(_recovered(SUMMARY_TEXT)), model_id="fake/summarizer", session_id=SESSION, request_ids=lambda: REQ,
             attempt_observer=observer,
         )  # fmt: skip
         return call(prompt="P", max_output_tokens=9)
@@ -345,7 +350,7 @@ def test_the_gateway_summarizer_attaches_its_diagnostic_without_running_it() -> 
     assert observed.diagnostic is not None
     observed.diagnostic()
     [kwargs] = calls
-    assert (kwargs["stage"], kwargs["correlation"](), [a.key for a in kwargs["attempts"]]) == ("summary", {"session_id": "s", "request_id": "req"}, ["1", "2"])
+    assert (kwargs["stage"], kwargs["correlation"](), [a.key for a in kwargs["attempts"]]) == ("summary", {"session_id": SESSION, "request_id": REQ}, ["1", "2"])
 
 
 # --- Disabled tracing ---------------------------------------------------------------------------------------------
@@ -418,7 +423,7 @@ def _cancel(**_kwargs):
 def test_a_chat_cancellation_propagates_after_every_receipt_is_kept(tmp_path) -> None:
     _, baseline_receipts = _run(tmp_path / "off", ExecutionMode.CHAT, "429-then-403", observer=None)
     receipts: list[StageReceipt] = []
-    request = AgentRunRequest(run_id="s:1", session_id="s", task="Change the greeting.", workspace_root=tmp_path, execution_mode=ExecutionMode.CHAT)
+    request = AgentRunRequest(run_id=RUN, session_id=SESSION, task="Change the greeting.", workspace_root=tmp_path, execution_mode=ExecutionMode.CHAT)
     runner = AgentRunner(gateway_client=FakeGateway(_rejected_twice(429, 403)), model="fake/model", provider_attempt_observer=_cancel)
     with pytest.raises(asyncio.CancelledError):
         runner.run(request, stage_receipts=receipts.append)
@@ -449,7 +454,7 @@ def _stress_mixture() -> GatewayResponse:
     proof: the enforced Gateway makes at most two attempts and never resends after an uncertain one. It puts a
     not-sent, a rejected, an uncertain and a charged attempt in one report."""
     return GatewayResponse(
-        output_text=SUMMARY_TEXT, gateway_usage=_usage("gw-4"), raw={}, finish_reason="stop",
+        output_text=SUMMARY_TEXT, gateway_usage=_usage(f"gw-{4:032x}"), raw={}, finish_reason="stop",
         route_attempts=(_routed(1, "not_sent"), _routed(2, "rejected", 429), _routed(3, "uncertain"), _routed(4, "completed")),
     )  # fmt: skip
 
@@ -463,7 +468,7 @@ CASES = {
     "429-then-uncertain-failure": (_uncertain_after_a_429, {}, ("returned", "failed", ()), (Decimal("0"), 1, 0, False)),
     "unattributable-integrity-error": (_unattributable_after_a_429, {}, ("raised", AttemptIntegrityError, ()), (CHARGE, 1, 1, False)),
     "settlement-refuses-the-charge": (
-        lambda: _recovered(SUMMARY_TEXT), {"settled": "gw-2"}, ("raised", ReceiptConflictError, ()), (Decimal("0.009"), 0, 1, False),
+        lambda: _recovered(SUMMARY_TEXT), {"settled": GW2}, ("raised", ReceiptConflictError, ()), (Decimal("0.009"), 0, 1, False),
     ),
     "ledger-refusal-beside-integrity-error": (
         _unattributable_after_a_429, {"ledger_holds": "gw-9"},
@@ -534,9 +539,9 @@ def test_an_attached_turn_keeps_its_summary_charge_and_refusal_when_the_diagnost
     is told of the refusal, and a cancelling diagnostic propagates with that refusal attached."""
 
     def prepare(observer):
-        settlement, service = TurnSettlement(), _ledger_holding("gw-2")
+        settlement, service = TurnSettlement(), _ledger_holding(GW2)
         call = GatewaySummarizerCall(
-            gateway_client=FakeGateway(_recovered(SUMMARY_TEXT)), model_id="m", session_id="s", request_ids=lambda: "r", attempt_observer=observer
+            gateway_client=FakeGateway(_recovered(SUMMARY_TEXT)), model_id="m", session_id=SESSION, request_ids=lambda: "r", attempt_observer=observer
         )
         attachment = dataclasses.replace(
             make_attachment(tail=10), summarizer=lambda identity, deliver: call, record_receipt=UsageLedgerAdapter(service).record_maintenance

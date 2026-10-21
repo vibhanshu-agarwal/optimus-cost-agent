@@ -265,7 +265,10 @@ def test_bootstrap_wires_workspace_context_observer(monkeypatch, tmp_path):
 
     assert captured_kwargs["workspace_context_observer"] is log_workspace_context_result
     assert captured_kwargs["planning_progress_observer"] is log_planning_replan_event
-    assert captured_kwargs["provider_attempt_observer"] is log_provider_attempts  # Plan 12.2 r4 stop diagnosis
+    # Plan 12.2 r4 stop diagnosis; correction plan v4 C4: bound to this harness's workspace telemetry writer.
+    observer = captured_kwargs["provider_attempt_observer"]
+    assert observer.func is log_provider_attempts
+    assert observer.keywords["telemetry"] is captured_kwargs["event_sink"].jsonl_writer
 
 
 def test_bootstrap_wires_one_telemetry_fanout_with_jsonl_redis_and_gateway_exporter(monkeypatch, tmp_path):

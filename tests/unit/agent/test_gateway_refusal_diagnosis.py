@@ -58,6 +58,8 @@ ORDINARY = "cn/alpha"
 CANARY = "Authorization: Bearer " + "refusal-diagnosis-canary"  # synthetic; must never reach the log
 LOCATION = "debug_trace.py:log_provider_attempts"
 CHARGE = Decimal("0.0002")  # RecordingUpstream's reported cost
+# A readable Gateway error body: valid UTF-8, a JSON object, no invalid usage (correction plan v4, C3).
+OK_ENVELOPE = {"error_envelope": {"error_body_encoding": "ok", "error_body": "ok", "usage_audit_code": None}}
 
 
 @pytest.fixture(autouse=True)
@@ -192,7 +194,7 @@ def test_a_refused_charged_reply_is_diagnosable_and_says_the_route_stopped(tmp_p
         "attempt": "1", "outcome": "completed", "routed": True, "upstream_http_status": None, "gateway_http_status": None,
         "router_pipeline": stages, "provider_request_id": "gen-1", "failure": None,
     }  # fmt: skip
-    assert record["gateway_failure"] == {"code": code, "http_status": 422}
+    assert record["gateway_failure"] == {"code": code, "http_status": 422, **OK_ENVELOPE}
     assert CANARY not in log.read_text(encoding="utf-8")
 
 
@@ -212,7 +214,7 @@ def test_the_next_request_on_a_stopped_route_is_refused_free_and_says_so(tmp_pat
     assert result.output_text == CHAT_ROUTE_STOPPED_MESSAGES["CHAT_GATEWAY_REFUSED"] != CHAT_FAILURE_MESSAGES["CHAT_GATEWAY_REFUSED"]
     _states_only_the_stop_and_this_free_refusal(result.output_text)
     [record] = _records(log)
-    assert record["gateway_failure"] == {"code": "EMPIRICAL_ROUTE_STOPPED", "http_status": 503}
+    assert record["gateway_failure"] == {"code": "EMPIRICAL_ROUTE_STOPPED", "http_status": 503, **OK_ENVELOPE}
 
 
 def _states_only_the_stop_and_this_free_refusal(text: str) -> None:
@@ -242,7 +244,7 @@ def test_a_route_stopped_by_an_uncertain_attempt_refuses_the_next_request_withou
     assert [(r.outcome, r.reported_cost_usd) for r in receipts] == [("rejected", Decimal("0"))]
     _states_only_the_stop_and_this_free_refusal(result.output_text)
     [record] = _records(log)
-    assert record["gateway_failure"] == {"code": "EMPIRICAL_ROUTE_STOPPED", "http_status": 503}
+    assert record["gateway_failure"] == {"code": "EMPIRICAL_ROUTE_STOPPED", "http_status": 503, **OK_ENVELOPE}
 
 
 def test_an_uncertain_attempt_on_the_experimental_route_keeps_its_unknown_cost_and_says_the_route_stopped(tmp_path, monkeypatch) -> None:
@@ -256,7 +258,7 @@ def test_an_uncertain_attempt_on_the_experimental_route_keeps_its_unknown_cost_a
     assert (result.stop_reason, result.cost_complete, result.unknown_cost_attempt_count) == ("CHAT_GATEWAY_COST_UNKNOWN", False, 1)
     assert result.output_text == CHAT_ROUTE_STOPPED_MESSAGES["CHAT_GATEWAY_COST_UNKNOWN"] != CHAT_FAILURE_MESSAGES["CHAT_GATEWAY_COST_UNKNOWN"]
     [record] = _records(log)
-    assert record["gateway_failure"] == {"code": "UPSTREAM_ATTEMPT_UNCERTAIN", "http_status": 502}
+    assert record["gateway_failure"] == {"code": "UPSTREAM_ATTEMPT_UNCERTAIN", "http_status": 502, **OK_ENVELOPE}
     [attempt] = record["attempts"]
     assert re.fullmatch(r"gw-[0-9a-f]{32}", attempt.pop("gateway_request_id"))
     assert attempt == {
@@ -278,7 +280,7 @@ def test_rejected_attempts_do_not_stop_the_experimental_route_or_change_its_word
     assert [(status, body.get("code")) for status, body in gateway.replies] == [(502, "UPSTREAM_ATTEMPT_REJECTED"), (200, None)]
     assert result.stop_reason == "CHAT_GATEWAY_FAILURE" and result.output_text == CHAT_FAILURE_MESSAGES["CHAT_GATEWAY_FAILURE"]
     assert later.status.value == "completed"
-    assert _records(log)[0]["gateway_failure"] == {"code": "UPSTREAM_ATTEMPT_REJECTED", "http_status": 502}
+    assert _records(log)[0]["gateway_failure"] == {"code": "UPSTREAM_ATTEMPT_REJECTED", "http_status": 502, **OK_ENVELOPE}
 
 
 def test_a_plan_mode_request_records_its_gateway_failure_too(tmp_path) -> None:
@@ -319,7 +321,7 @@ def test_an_ordinary_route_refusal_is_diagnosable_but_keeps_its_retry_wording_an
     assert (result.stop_reason, result.total_cost_usd, result.output_text) == ("CHAT_GATEWAY_FAILURE", CHARGE, CHAT_FAILURE_MESSAGES["CHAT_GATEWAY_FAILURE"])
     assert [(r.outcome, r.reported_cost_usd) for r in receipts] == [("completed", CHARGE)]
     assert later.status.value == "completed"  # the ordinary route was never stopped
-    assert _records(log)[0]["gateway_failure"] == {"code": "FINISH_STATUS_UNVERIFIED", "http_status": 422}
+    assert _records(log)[0]["gateway_failure"] == {"code": "FINISH_STATUS_UNVERIFIED", "http_status": 422, **OK_ENVELOPE}
 
 
 def test_an_ordinary_route_uncertain_attempt_keeps_its_retry_wording(tmp_path, monkeypatch) -> None:

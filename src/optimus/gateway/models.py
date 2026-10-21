@@ -84,9 +84,9 @@ class GatewayRouteAttempt(BaseModel):
     http_status: int | None = Field(default=None, strict=True)
     provider_request_id: str | None = None
     router_pipeline: tuple[str, ...] | None = None
+    """The router pipeline stage types the Gateway reported for a completed attempt (None when not reported)."""
     failure: dict[str, str | int | None] | None = None
     """A failed attempt's bounded, content-free cause, as the Gateway reported it (re-bounded before any trace)."""
-    """The router pipeline stage types the Gateway reported for a completed attempt (None when not reported)."""
 
 
 def parse_route_attempts(raw: object) -> tuple[GatewayRouteAttempt, ...]:

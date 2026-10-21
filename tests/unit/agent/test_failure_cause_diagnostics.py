@@ -22,6 +22,9 @@ from optimus.gateway.models import GatewayRouteAttempt, GatewayUsage, parse_gate
 
 CANARY = "Bearer " + "host-diagnostics-canary"  # synthetic; must never reach the trace
 LOCATION = "debug_trace.py:log_provider_attempts"
+# Ids in their generated shapes: the trace keeps only those (correction plan v4, C1).
+GW1, GW2 = f"gw-{1:032x}", f"gw-{2:032x}"
+SESSION = "session-" + "5" * 32
 
 
 @pytest.fixture(autouse=True)
@@ -73,15 +76,15 @@ def test_an_unreadable_gateway_reply_names_why(body: str, kind: str) -> None:
     [
         ({}, "GATEWAY_USAGE_MISSING"),
         ({"gateway_usage": {"gateway_request_id": "", "provider": "p", "billing_units": 1, "cost_usd": "0.1"}}, "GATEWAY_USAGE_INVALID"),
-        ({"gateway_usage": {"gateway_request_id": "gw-1", "provider": "p", "billing_units": 1}}, "GATEWAY_COST_MISSING"),
-        ({"gateway_usage": {"gateway_request_id": "gw-1", "provider": "p", "billing_units": 1, "cost_usd": "0.1"}}, "OUTPUT_TEXT_MISSING"),
-        ({"gateway_usage": {"gateway_request_id": "gw-1", "provider": "p", "billing_units": 1, "cost_usd": "0.1"}, "output_text": "x", "id": 5}, "RESPONSE_ID_INVALID"),
+        ({"gateway_usage": {"gateway_request_id": GW1, "provider": "p", "billing_units": 1}}, "GATEWAY_COST_MISSING"),
+        ({"gateway_usage": {"gateway_request_id": GW1, "provider": "p", "billing_units": 1, "cost_usd": "0.1"}}, "OUTPUT_TEXT_MISSING"),
+        ({"gateway_usage": {"gateway_request_id": GW1, "provider": "p", "billing_units": 1, "cost_usd": "0.1"}, "output_text": "x", "id": 5}, "RESPONSE_ID_INVALID"),
         (
-            {"gateway_usage": {"gateway_request_id": "gw-1", "provider": "p", "billing_units": 1, "cost_usd": "0.1"}, "output_text": "x", "finish_reason": 3},
+            {"gateway_usage": {"gateway_request_id": GW1, "provider": "p", "billing_units": 1, "cost_usd": "0.1"}, "output_text": "x", "finish_reason": 3},
             "FINISH_REASON_INVALID",
         ),
         (
-            {"gateway_usage": {"gateway_request_id": "gw-1", "provider": "p", "billing_units": 1, "cost_usd": "0.1"}, "output_text": "x", "route_attempts": [{"x": 1}]},
+            {"gateway_usage": {"gateway_request_id": GW1, "provider": "p", "billing_units": 1, "cost_usd": "0.1"}, "output_text": "x", "route_attempts": [{"x": 1}]},
             "ROUTE_ATTEMPTS_MALFORMED",
         ),
     ],
@@ -118,15 +121,15 @@ def test_the_trace_records_the_request_ids_the_router_stages_and_the_attempt_cau
     refused = GatewayHttpError(
         502, CANARY, gateway_code="UPSTREAM_ATTEMPT_UNCERTAIN", retryable=False,
         route_attempts=(
-            GatewayRouteAttempt(attempt=1, gateway_request_id="gw-1", outcome="uncertain", failure=cause),
-            GatewayRouteAttempt(attempt=2, gateway_request_id="gw-2", outcome="rejected", http_status=429, provider_request_id=CANARY),
+            GatewayRouteAttempt(attempt=1, gateway_request_id=GW1, outcome="uncertain", failure=cause),
+            GatewayRouteAttempt(attempt=2, gateway_request_id=GW2, outcome="rejected", http_status=429, provider_request_id=CANARY),
         ),
     )  # fmt: skip
     log_provider_attempts(stage="answer", correlation=lambda: {}, attempts=attempts_from_failure(refused), failure=refused)
     data = _record(log)
     first, second = data["attempts"]
-    assert (first["gateway_request_id"], first["provider_request_id"], first["failure"]) == ("gw-1", None, cause)
-    assert (second["gateway_request_id"], second["provider_request_id"], second["failure"]) == ("gw-2", "unrecognized", None)
+    assert (first["gateway_request_id"], first["provider_request_id"], first["failure"]) == (GW1, None, cause)
+    assert (second["gateway_request_id"], second["provider_request_id"], second["failure"]) == (GW2, "unrecognized", None)
 
 
 def test_a_failure_outside_the_gateway_reaches_the_trace(tmp_path) -> None:
@@ -148,12 +151,12 @@ def test_a_reason_without_an_exception_is_recorded_when_allowlisted(tmp_path) ->
 def test_a_gateway_usage_attempt_keeps_its_provider_request_id(tmp_path) -> None:
     log = _trace(tmp_path)
     refused = GatewayHttpError(
-        422, CANARY, gateway_code="EMPIRICAL_ROUTER_PIPELINE", retryable=False, gateway_usage=_usage("gw-1"),
-        route_attempts=(GatewayRouteAttempt(attempt=1, gateway_request_id="gw-1", outcome="completed", provider_request_id="gen-7", router_pipeline=("guardrail",)),),
+        422, CANARY, gateway_code="EMPIRICAL_ROUTER_PIPELINE", retryable=False, gateway_usage=_usage(GW1),
+        route_attempts=(GatewayRouteAttempt(attempt=1, gateway_request_id=GW1, outcome="completed", provider_request_id="gen-7", router_pipeline=("guardrail",)),),
     )  # fmt: skip
     log_provider_attempts(stage="answer", correlation=lambda: {}, attempts=attempts_from_failure(refused), failure=refused)
     [attempt] = _record(log)["attempts"]
-    assert (attempt["gateway_request_id"], attempt["provider_request_id"], attempt["router_pipeline"]) == ("gw-1", "gen-7", ["guardrail"])
+    assert (attempt["gateway_request_id"], attempt["provider_request_id"], attempt["router_pipeline"]) == (GW1, "gen-7", ["guardrail"])
 
 
 def test_the_audit_code_allowlist_is_every_code_the_source_raises() -> None:
@@ -172,11 +175,11 @@ def test_a_prompt_refusal_is_traced_with_an_allowlisted_reason(tmp_path) -> None
     from optimus.acp.debug_trace import log_prompt_refusal
 
     log = _trace(tmp_path)
-    log_prompt_refusal(session_id="session-1", request_id="p1", reason="reservation")
-    log_prompt_refusal(session_id="session-1", request_id=CANARY, reason=CANARY)
+    log_prompt_refusal(session_id=SESSION, request_id="p1", reason="reservation")
+    log_prompt_refusal(session_id=SESSION, request_id=CANARY, reason=CANARY)
     records = [r["data"] for r in map(json.loads, log.read_text(encoding="utf-8").splitlines()) if r["location"] == "debug_trace.py:log_prompt_refusal"]
     assert records == [
-        {"session_id": "session-1", "request_id": "p1", "reason": "reservation"},
-        {"session_id": "session-1", "request_id": "unrecognized", "reason": "unrecognized"},
+        {"session_id": SESSION, "request_id": "p1", "reason": "reservation"},
+        {"session_id": SESSION, "request_id": "unrecognized", "reason": "unrecognized"},
     ]
     assert CANARY not in log.read_text(encoding="utf-8")
