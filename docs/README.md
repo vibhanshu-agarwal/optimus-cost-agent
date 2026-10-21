@@ -90,7 +90,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
-| [Plan 12.2: Context Engine (v4)](superpowers/plans/2026-10-01-plan-12-2-context-engine-implementation_v4.md) | Complete v4 with the CP4 offline closure; offline batch accepted at cf9bb9d, full CP4 open; earlier editions are in `archive/` |
+| [Plan 12.2: Context Engine (v4)](superpowers/plans/2026-10-01-plan-12-2-context-engine-implementation_v4.md) | Complete v4; shipped to main by PR #382 (`4c7a006a`), with the ordinary live proof passed; closure on #237; earlier editions are in `archive/` |
 | [Plan 11.7 v3: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | Resume an ACP session in Zed |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |
 | [Plan 11.24 v6: guided session-load probe](superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md) | Probe of Zed's `session/load` |

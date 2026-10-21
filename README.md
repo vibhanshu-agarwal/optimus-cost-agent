@@ -678,6 +678,10 @@ configured:
 pytest tests/integration/optimus_gateway/test_gateway_live_smoke.py -m requires_live_gateway -v
 ```
 
+**Not run, and unsupported under the enforced model registry:** this live smoke and
+`tests/integration/gateway/test_gateway_live.py` predate route binding, so an enforced Gateway refuses their
+unbound requests. They are not evidence of ordinary use until the Plan 12.2 R-4 migration (see #237).
+
 Security: bind stays on loopback (`127.0.0.1` by default). Do not expose this service beyond
 localhost without adding real TLS first.
 
