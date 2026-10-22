@@ -671,10 +671,11 @@ acceptance and rollback review.
 
 **Retired legacy live harnesses (Plan 12.2 R-4, see #237):** the live Gateway smoke
 (`test_gateway_live_smoke.py`), `tests/integration/gateway/test_gateway_live.py` and the release gate's
-`--agent-harness` path predate route binding, and an enforced Gateway refuses their unbound requests. The live
-tiers below remain: `pytest -m e2e` and `python tools/verify_live_agent.py` drive the agent through this project's
-own ACP client (process tier), and the `acpx` evidence tools in `tools/` drive it through an independent client.
-Live AGENT-mode evidence through `acpx` on the enforced registry is not yet established; see #237.
+`--agent-harness` path predate route binding, and an enforced Gateway refuses their unbound requests. The ordinary
+chat path is live-verified through `acpx` by Plan 12.2's D1(b) run (#237). The live tiers below remain:
+`pytest -m e2e` and `python tools/verify_live_agent.py` drive the agent through this project's own ACP client
+(process tier), and the `acpx` evidence tools in `tools/` drive it through an independent client. Live AGENT-mode
+evidence through `acpx` on the enforced registry is not yet established; see #237.
 
 Security: bind stays on loopback (`127.0.0.1` by default). Do not expose this service beyond
 localhost without adding real TLS first.

@@ -383,8 +383,8 @@ def test_tool_routes_reject_invalid_json_when_dependencies_are_injected():
 @pytest.mark.parametrize("path", ("/v1/tools/web/search", "/v1/tools/web/extract"))
 def test_config_built_tool_routes_reject_an_incomplete_request(path: str):
     """R-4 (#237 6323911791): what the retired live smoke proved needs no provider. A Gateway that builds its tool
-    bundle from its own config refuses an incomplete request with 400. Every endpoint it could call is a closed local
-    port, so a request that reached a provider or Redis would fail differently."""
+    bundle from its own config refuses an incomplete request with 400. The web provider and Redis behind the two routes it
+    posts to are a closed local port, so a request that reached either would fail differently."""
     config = dataclasses.replace(
         _config(),
         tavily_api_key="tvly-test",  # pragma: allowlist secret

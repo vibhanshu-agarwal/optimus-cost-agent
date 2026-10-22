@@ -43,6 +43,9 @@ def main(argv: list[str]) -> int:
     sys.path[:0] = [str(clone / "src"), str(clone)]
     from tests.unit.optimus_gateway import wire_baseline_scenarios as module
 
+    with tempfile.TemporaryDirectory(dir=temp_root) as root:
+        bodies = module.run_all(Path(root))
+    # Checked after the run, so a module the scenarios import lazily is covered too.
     foreign = sorted(
         name
         for name, loaded in sys.modules.items()
@@ -52,9 +55,6 @@ def main(argv: list[str]) -> int:
     )
     if foreign:
         raise SystemExit(f"modules loaded from outside the clone: {foreign}")
-
-    with tempfile.TemporaryDirectory(dir=temp_root) as root:
-        bodies = module.run_all(Path(root))
     # The fixture form: bodies only, and the canary as a placeholder, so the committed file holds no key-shaped value.
     text = json.dumps(bodies, indent=1, sort_keys=True, ensure_ascii=True).replace(module.BARE_KEY, "<BARE_KEY>") + "\n"
     output.write_bytes(text.encode("utf-8"))

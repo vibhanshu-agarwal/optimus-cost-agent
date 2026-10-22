@@ -296,7 +296,8 @@ def _interpolations(expr: ast.expr, scope: ast.AST, depth: int = 0) -> list[str]
 def _unresolved(expr: ast.expr, scope: ast.AST, depth: int = 0) -> list[str]:
     """The parts of a message argument whose text the control cannot read: anything but a literal, an f-string (its
     values are `_interpolations`), either branch of a conditional, both sides of a concatenation, and a name whose every
-    assignment in the same scope is one of those, two hops deep. Each is reported as written."""
+    assignment in the same scope is one of those, two hops deep. A parameter, or a name extended in place (`+=`), is
+    never resolved: some path reaches the call with text no assignment shows. Each is reported as written."""
     if isinstance(expr, ast.Constant | ast.JoinedStr):
         return []
     if isinstance(expr, ast.IfExp):
@@ -304,12 +305,17 @@ def _unresolved(expr: ast.expr, scope: ast.AST, depth: int = 0) -> list[str]:
     if isinstance(expr, ast.BinOp):
         return _unresolved(expr.left, scope, depth) + _unresolved(expr.right, scope, depth)
     if isinstance(expr, ast.Name) and depth < 2:
+        is_function = isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef)
+        parameters = {node.arg for node in ast.walk(scope.args) if isinstance(node, ast.arg)} if is_function else set()
+        extended = any(
+            isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name) and node.target.id == expr.id for node in ast.walk(scope)
+        )
         assigned = [
             node.value
             for node in ast.walk(scope)
             if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == expr.id for target in node.targets)
         ]
-        if assigned and not any(_unresolved(value, scope, depth + 1) for value in assigned):
+        if expr.id not in parameters and not extended and assigned and not any(_unresolved(value, scope, depth + 1) for value in assigned):
             return []
     return [ast.unparse(expr)]
 
@@ -353,10 +359,12 @@ def _control_findings(sources: dict[str, str]) -> tuple[list[str], set[tuple[str
     for relative, text in sources.items():
         for call, scope, function, ordinal in _refusal_calls(ast.parse(text)):
             log_detail = [keyword.value for keyword in call.keywords if keyword.arg == "log_detail"]
-            positional = {(relative, function, ordinal, found) for argument in call.args for found in _interpolations(argument, scope)}
+            # The message: every argument but the `status` and `log_detail` keywords, so `detail=…` and `**kwargs` count.
+            texts = (*call.args, *(keyword.value for keyword in call.keywords if keyword.arg not in {"status", "log_detail"}))
+            positional = {(relative, function, ordinal, found) for argument in texts for found in _interpolations(argument, scope)}
             logged = {(relative, function, ordinal, found) for value in log_detail for found in _interpolations(value, scope)}
             unresolved = {
-                (relative, function, ordinal, found) for argument in (*call.args, *log_detail) for found in _unresolved(argument, scope)
+                (relative, function, ordinal, found) for argument in (*texts, *log_detail) for found in _unresolved(argument, scope)
             }
             seen |= positional | logged | unresolved
             allowed = _WIRE_ONLY_UNDER_LOG_DETAIL | _REVIEWED_INTERPOLATIONS if log_detail else _REVIEWED_INTERPOLATIONS | _FIXED_TEXT_IN_THE_LOG
@@ -394,6 +402,24 @@ def _edited(relative: str, old: str, new: str) -> dict[str, str]:
             'raise RuntimeError(f"{label} response was not an object")\n'
             '        if not body:\n            raise RuntimeError(f"{label} response was empty")\n        return body',
             id="a-second-refusal-call-in-a-reviewed-function",
+        ),
+        pytest.param(  # the message passed by keyword, not by position
+            "src/optimus_gateway/model_policy.py",
+            'ModelPolicyRefusal("BINDING_REQUIRED", "requests must bind the trusted model registry")',
+            'ModelPolicyRefusal("BINDING_REQUIRED", detail=str(raw))',
+            id="a-keyword-message-argument",
+        ),
+        pytest.param(  # a reviewed f-string name, extended in place
+            "src/optimus_gateway/upstream_client.py",
+            'message = f"{label} request failed ({exc.code})"\n',
+            'message = f"{label} request failed ({exc.code})"\n        message += str(exc)\n',
+            id="an-augmented-assignment",
+        ),
+        pytest.param(  # a parameter, assigned a literal on one path only
+            "src/optimus_gateway/models.py",
+            'raise ValueError(f"{name} is required")\n',
+            'if name.startswith("_"):\n            name = "a private variable"\n        raise ValueError(name)\n',
+            id="a-parameter-assigned-on-one-path",
         ),
     ),
 )
