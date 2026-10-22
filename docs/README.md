@@ -98,11 +98,15 @@ Live plans (each listed in the backlog's live plan registry):
 | [P11-FU-6 v2: bounded early POST rejection](superpowers/plans/2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | Gateway early-rejection correction |
 | [Local-hook UTF-8 repair](superpowers/plans/2026-09-06-local-hook-utf8-repair.md) | Pre-commit hook decoding fix |
 | [Evidence collector](superpowers/plans/evidence-handoff-evidence-collector-implementation.md) | Evidence-handoff collector |
+| [Plan 12.3 v3: memory foundations (M0a-1)](superpowers/plans/2026-10-22-plan-12-3-memory-m0a-implementation_v3.md) | #385 gate, shared includable-files policy and ADR-024, registered project identity |
+| [Plan 12.4 v2: memory evaluation contract (M0a-2)](superpowers/plans/2026-10-22-plan-12-4-memory-evaluation-implementation_v2.md) | Case contract, 24 memory trajectories, localization seeds, offline grader, pinned generic harness |
+| [Plan 12.5 v2: memory feasibility probes (M0a-3)](superpowers/plans/2026-10-22-plan-12-5-memory-feasibility-implementation_v2.md) | Independently closable package, Redis, Postgres and Zed probes |
 
 ## Current designs
 
 | Document | What it is |
 |---|---|
+| [Plan 12.x memory design (v3)](superpowers/specs/2026-10-22-plan12-memory-design_v3.md) | Whole-feature design for Plan 12.x memory: file policy, hybrid retrieval and project graph, automatic memory and continuity, recovery and key rotation, and durable cost accounting; scope frozen at discovery v12 |
 | [Plan 12.2 Context Engine design (v3)](superpowers/specs/2026-10-01-plan-12-2-context-engine-design_v3.md) | Three history strategies, exact host facts, floor, registry and cost integration; v3 adds the CP4 measured adoption and D7 disposition |
 | [Plan 12.2 ordinary compaction shipping contract](superpowers/specs/2026-10-18-plan-12-2-ordinary-compaction-shipping-contract.md) | Scoped successor for the shipping candidate: the ordinary composition, the shipped empirical exception, the shared numeric policy, approval migration and the closure gates; filed 2026-10-18; its acceptance and closure gate are tracked in #237 |
 | [Plan 12.2 Task 1 contracts (v3)](superpowers/specs/2026-10-02-plan-12-2-task1-contracts_v3.md) | Engine data, summary format, registry/trust/capacity, host integration, D6; v3 adds the CP4 numeric adoption and the trusted test composition. The 2026-10-02 acceptance belongs to the archived first edition |

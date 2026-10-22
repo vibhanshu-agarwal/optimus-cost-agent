@@ -118,6 +118,16 @@ by this folder.
        source or a new approval. Explicitly scoped excerpt, not a full export. ADR-023 reproduces the operator's words and
        authority boundaries. Raw S9 is archival provenance, never an operating, test or release dependency; S1–S8 retain
        their existing meanings.
+   - **Source S10.** Plan 12.x memory decisions, operator messages dated 2026-10-22 and 2026-10-23 in the Claude session
+     for the Plan 12 next-item thread (session `817f38ae-e1fb-432b-a2e9-d7827bd97aa3`): the discovery answers (OQ-1, OQ-2,
+     OQ-5, FQ-1 to FQ-5, OC-2, GQ-1 to GQ-4), the scope-freeze acceptance at discovery v12, the M0a split and key-rotation
+     decision, the endorsed review relay, the exact-hash approval of spec v3 and Plans 12.3 to 12.5, and the filing approval.
+     - External transcript export: `optimus-handoff\decisions-sources\2026-10-23-claude-session-plan12-memory-export.zip`,
+       produced by the app's session Export, 13,010,612 bytes.
+     - SHA-256: `303DB7528D113AD91ECCB0FF5B75B3569B01232B6C87D70C1801BA7E4BAC0E2C`.
+     - Claude checked, read-only, that each of the 13 quoted decisions appears verbatim in a user turn of the export's main
+       transcript. A full app export, not an excerpt. Raw S10 is archival provenance, never an operating, test or release
+       dependency; S1–S9 retain their existing meanings.
 2. **Label the decider.** Each record says who decided: the operator, an agent (Claude or Codex), or an
    agent proposal still awaiting the operator. A value an agent chose must never read as an operator
    requirement.
