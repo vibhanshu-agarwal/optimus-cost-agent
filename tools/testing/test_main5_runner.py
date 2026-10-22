@@ -1323,6 +1323,7 @@ def _scoped_session(root: Path, site: Path, *, preset: bool = False) -> subproce
     config.write_text("[pytest]\n")
     env = {**os.environ, "PYTHONPATH": str(site), "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
     env.pop("OPTIMUS_TEST_VENV", None)
+    env.pop("PYTEST_ADDOPTS", None)  # isolate synthetic continuation from inherited fail-fast
     if preset:
         env["OPTIMUS_TEST_VENV"] = "pre-set-fixture"
     return subprocess.run(
@@ -1408,10 +1409,7 @@ def test_scoped_plugin_records_only_shutdown_probe_tokens(tmp_path: Path, case: 
         {"cause_effect": "cancel:probe_error:TimeoutError", "private": "DO_NOT_RECORD"},
         {"cause_effect": "cancel:probe_error:TimeoutError"},
         {"cause_effect": "shutdown:probe_error:RuntimeError"},
-        {"cause_effect": "cancel:probe_error:DO_NOT_RECORD-123"},
-        {"cause_effect": "cancel:probe_error:TimeoutError\nDO_NOT_RECORD"},
         {"cause_effect": "cancel:prepared"},
-        {"cause_effect": {"private": "DO_NOT_RECORD"}},
     ]
     path.write_text(f"def {name}():\n    observations = {observations!r}\n    assert {case == 'passed_exact'!r}\n")
     result = _scoped_session(root, site)
@@ -1575,3 +1573,321 @@ if($env:MAIN5_LEDGER_CASE -cne 'no_identity' -and $actual.pytest_pid -ne 100){th
 """
     result = _runner_function_probe(script, powershell=powershell, MAIN5_LEDGER_CASE=case)
     assert result.returncode == 0, result.stderr + result.stdout
+
+
+_EXTENDED_PROBE = (
+    "cancel:probe_error:Error2 | errno=-9223372036854775808 | winerror=9223372036854775807"
+    " | origin=é.py:2 in <lambda> | probe=tools/plan1126_runtime_audit/shutdown.py:1 in _run_schedule"
+    " | chain=none | group=none"
+)
+_DIAGNOSTIC_MARKER = "MAIN5_SHUTDOWN_PROBE_DIAGNOSTIC_INVALID"
+
+
+_OWNED_PUBLICATION_FAULT_FIXTURE = r"""
+import os
+from pathlib import Path
+from types import SimpleNamespace
+import pytest
+import main5_scored_scope as plugin
+
+real_rename, real_replace, real_unlink = os.rename, os.replace, Path.unlink
+
+@pytest.fixture(autouse=True)
+def owned_publication_fault(request, monkeypatch):
+    if request.node.name != "test_shutdown_causes_repeat_100_with_control_allowlist":
+        assert plugin.os is os and plugin.Path is Path
+        assert os.rename is real_rename and os.replace is real_replace and Path.unlink is real_unlink
+        yield
+        return
+    fault = FAULT_LITERAL
+    local_os = SimpleNamespace(**vars(os))
+
+    def publish(operation, source, target):
+        assert os.rename is real_rename and os.replace is real_replace
+        if Path(target) != plugin._DIAGNOSTIC:
+            return operation(source, target)
+        if fault == "race":
+            Path(target).write_bytes(b"RACING_ARTIFACT_MUST_SURVIVE\n")
+            return operation(source, target)
+        raise OSError("PRIVATE_PUBLICATION_FAILURE")
+
+    local_os.rename = lambda source, target: publish(real_rename, source, target)
+    local_os.replace = lambda source, target: publish(real_replace, source, target)
+
+    class OwnedStagingPath(type(plugin._DIAGNOSTIC)):
+        def unlink(self, *args, **kwargs):
+            if self.parent == plugin._DIAGNOSTIC.parent and self.name.startswith(".shutdown-probe-"):
+                raise OSError("PRIVATE_CLEANUP_FAILURE")
+            return super().unlink(*args, **kwargs)
+
+    with monkeypatch.context() as context:
+        context.setattr(plugin, "os", local_os)
+        if fault == "cleanup":
+            context.setattr(plugin, "Path", OwnedStagingPath)
+        yield
+    assert plugin.os is os and plugin.Path is Path
+    assert os.rename is real_rename and os.replace is real_replace and Path.unlink is real_unlink
+
+"""
+
+
+def _shutdown_diagnostic_child(tmp_path, observations, *, preexisting=None, publication_fault=None, no_local=False):
+    site, attempt = _write_scoped_plugin(tmp_path)
+    target = attempt / "shutdown-probe-errors.json"
+    if preexisting is not None:
+        target.write_bytes(preexisting)
+    root = tmp_path / "project"
+    path = root / "tests/unit/acp/test_plan1126_shutdown.py"
+    path.parent.mkdir(parents=True)
+    injected = ""
+    if publication_fault:
+        (attempt / "unrelated.txt").write_bytes(b"PRESERVE_UNRELATED")
+        injected = _OWNED_PUBLICATION_FAULT_FIXTURE.replace("FAULT_LITERAL", repr(publication_fault))
+    path.write_text(
+        injected + "def test_shutdown_causes_repeat_100_with_control_allowlist():\n"
+        + ("" if no_local else f"    observations = {observations!r}\n")
+        + f"    separately_truncated_text = {str(observations)[:300]!r}\n"
+        + "    assert False, 'ORIGINAL_H5_FAILURE'\n"
+        + "def test_later_sentinel():\n    pass\n", encoding="utf-8",
+    )
+    (root / "conftest.py").write_text(
+        "import pytest\n"
+        "reports = {}\n"
+        "@pytest.hookimpl(wrapper=True, trylast=True)\n"
+        "def pytest_runtest_makereport(item, call):\n"
+        "    report = yield\n"
+        "    reports[(report.nodeid, report.when)] = (report, report.outcome, report.longrepr)\n"
+        "    return report\n"
+        "def pytest_runtest_logreport(report):\n"
+        "    before, outcome, longrepr = reports[(report.nodeid, report.when)]\n"
+        "    assert before is report and report.outcome == outcome and report.longrepr is longrepr\n"
+        "    for title, body in report.sections:\n"
+        "        if title == 'MAIN5 shutdown diagnostic':\n"
+        "            assert body == 'MAIN5_SHUTDOWN_PROBE_DIAGNOSTIC_INVALID'\n",
+        encoding="utf-8",
+    )
+    result = _scoped_session(root, site)
+    output = result.stdout + result.stderr
+    assert result.returncode == 1, output
+    assert "ORIGINAL_H5_FAILURE" in output and "test_shutdown_causes_repeat_100_with_control_allowlist" in output
+    assert "1 failed, 1 passed" in output and "INTERNALERROR" not in output
+    return target, output
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Runner-written shutdown diagnostic")
+@pytest.mark.parametrize("token", [_EXTENDED_PROBE, "cancel:probe_error:Error2"])
+def test_scoped_plugin_counts_exact_extended_and_digit_class_tokens(tmp_path, token):
+    target, output = _shutdown_diagnostic_child(tmp_path, [{"cause_effect": token, "close_outcome": "ERROR"}] * 2)
+    assert _DIAGNOSTIC_MARKER not in output
+    assert json.loads(target.read_text()) == {"cancel:probe_error:Error2": 2}
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Runner-written shutdown diagnostic")
+@pytest.mark.parametrize("invalid", [
+    {"cause_effect": _EXTENDED_PROBE.replace("errno=-9223372036854775808", "errno=9223372036854775808")},
+    {"cause_effect": _EXTENDED_PROBE.replace("errno=-9223372036854775808", "errno=01")},
+    {"cause_effect": _EXTENDED_PROBE.replace("chain=none", "chain=private")},
+    {"cause_effect": _EXTENDED_PROBE.replace("group=none", "group=0")},
+    {"cause_effect": _EXTENDED_PROBE.replace("group=none", "group=9223372036854775808")},
+    {"cause_effect": _EXTENDED_PROBE.replace("errno=", "winerror=", 1)},
+    {"cause_effect": _EXTENDED_PROBE + " | chain=none"},
+    {"cause_effect": _EXTENDED_PROBE + "TRAILING"},
+    {"cause_effect": "cancel:probe_error:Érror"},
+    {"cause_effect": "cancel:probe_error:DO_NOT_RECORD-123"},
+    {"cause_effect": "cancel:prepared", "close_outcome": "ERROR"},
+    {"close_outcome": "ERROR"}, {"cause_effect": {"private": "DO_NOT_RECORD"}}, None,
+], ids=["range", "leading-zero", "chain", "group-zero", "group-range", "labels", "duplicate", "trailing", "unicode-class", "bad-class", "error-without-token", "missing", "non-string", "non-dict"])
+def test_scoped_plugin_refuses_malformed_rows_without_masking_failure(tmp_path, invalid):
+    target, output = _shutdown_diagnostic_child(tmp_path, [
+        {"cause_effect": "cancel:probe_error:TimeoutError"}, invalid,
+    ])
+    assert _DIAGNOSTIC_MARKER in output
+    assert not target.exists()
+    assert list(target.parent.iterdir()) == []  # all rows are validated before staging
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Runner-written shutdown diagnostic")
+@pytest.mark.parametrize("control", ["\n", "\r", "\x00", "\x1f", "\x7f", "\x80", "\x85", "\x9f", "\u2028", "\u2029"])
+def test_scoped_plugin_refuses_raw_control_characters(tmp_path, control):
+    target, output = _shutdown_diagnostic_child(tmp_path, [{"cause_effect": _EXTENDED_PROBE.replace("é.py", f"a{control}b.py")}])
+    assert _DIAGNOSTIC_MARKER in output and not target.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Runner-written shutdown diagnostic")
+def test_scoped_plugin_preserves_preexisting_count_artifact(tmp_path):
+    previous = b'{"earlier": 17}\n'
+    target, output = _shutdown_diagnostic_child(tmp_path, [{"cause_effect": _EXTENDED_PROBE}], preexisting=previous)
+    assert _DIAGNOSTIC_MARKER in output
+    assert target.read_bytes() == previous
+    assert list(target.parent.iterdir()) == [target]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Runner-written shutdown diagnostic")
+@pytest.mark.parametrize("fault", ["rename", "cleanup"])
+def test_scoped_plugin_contains_publication_failure_and_removes_only_own_temp(tmp_path, fault):
+    target, output = _shutdown_diagnostic_child(tmp_path, [{"cause_effect": _EXTENDED_PROBE}], publication_fault=fault)
+    assert _DIAGNOSTIC_MARKER in output and not target.exists()
+    assert "PRIVATE_PUBLICATION_FAILURE" not in output and "PRIVATE_CLEANUP_FAILURE" not in output
+    assert (target.parent / "unrelated.txt").read_bytes() == b"PRESERVE_UNRELATED"
+    staging = list(target.parent.glob(".shutdown-probe-*.tmp"))
+    assert len(staging) == (1 if fault == "cleanup" else 0)
+    if staging:
+        # A contained cleanup failure leaves invalid scratch, never a canonical count artifact.
+        assert json.loads(staging[0].read_text()) == {"cancel:probe_error:Error2": 1}
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Runner-written shutdown diagnostic")
+def test_scoped_plugin_missing_observations_is_unavailable_not_zero(tmp_path):
+    target, output = _shutdown_diagnostic_child(tmp_path, [], no_local=True)
+    assert _DIAGNOSTIC_MARKER not in output and not target.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Actual formatter to native collector contract")
+@pytest.mark.parametrize("case", ["module", "lambda", "genexpr", "pseudo", "unicode", "chain", "group", "fallback", "long"])
+def test_scoped_plugin_counts_actual_formatter_output(tmp_path, monkeypatch, case):
+    from tools.plan1126_runtime_audit import shutdown
+
+    error_type = type("E" * 128 if case == "long" else "Error2", (OSError,), {})
+    error = error_type(5, "PRIVATE_MESSAGE", "PRIVATE_FILENAME")
+    filename = "C:/HOST_PATH_MARKER/" + ("a" * 1100 + ".py" if case == "long" else "probe.py")
+    if case == "pseudo":
+        filename = "<frozen fixture>"
+    elif case == "unicode":
+        filename = "C:/HOST_PATH_MARKER/é|x\x85y.py"
+    elif case == "chain":
+        error.__cause__ = ValueError("PRIVATE_CHAIN")
+        error.__context__ = RuntimeError("PRIVATE_CHAIN")
+    elif case == "group":
+        error = ExceptionGroup("PRIVATE_GROUP", [error, ValueError("PRIVATE_MEMBER")])
+    code = "(lambda: 1 / 0)()" if case == "lambda" else "next(1 / 0 for _ in [None])" if case == "genexpr" else "raise error"
+    original = Path.resolve
+
+    def _resolve(path, *args, **kwargs):
+        return Path(filename) if str(path) == str(Path(filename)) else original(path, *args, **kwargs)
+
+    def _broken_locations(*args, **kwargs):
+        raise RuntimeError("PRIVATE_FORMATTER_FAILURE")
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "resolve", _resolve)
+        if case == "fallback":
+            context.setattr(shutdown, "_locations", _broken_locations)
+        try:
+            exec(compile(code, filename, "exec"), {"error": error})
+        except Exception as caught:
+            formatted = shutdown._probe_error_effect("cancel", caught)
+    assert Path.resolve is original  # No patched filesystem method reaches the child.
+    assert "PRIVATE" not in formatted and "HOST_PATH_MARKER" not in formatted
+    if case == "long":
+        assert len(formatted) > 1024
+    if case == "fallback":
+        assert "origin=unknown | probe=unknown" in formatted
+    if case == "chain":
+        assert "chain=both | group=none" in formatted
+    if case == "group":
+        assert formatted.endswith("chain=none | group=2")
+    # Serialize the real producer's complete bytes, never a rebuilt expected suffix.
+    target, output = _shutdown_diagnostic_child(tmp_path, [{"cause_effect": formatted, "close_outcome": "ERROR"}])
+    assert _DIAGNOSTIC_MARKER not in output
+    assert json.loads(target.read_text()) == {formatted.split(" | ", 1)[0]: 1}
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Repeated eligible call preserves earlier publication")
+def test_scoped_plugin_second_eligible_call_refuses_existing_publication(tmp_path):
+    site, attempt = _write_scoped_plugin(tmp_path)
+    root = tmp_path / "project"
+    path = root / "tests/unit/acp/test_plan1126_shutdown.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "def test_shutdown_causes_repeat_100_with_control_allowlist():\n"
+        "    observations = [{'cause_effect': 'cancel:probe_error:RuntimeError'}]\n"
+        "    assert False, 'ORIGINAL_H5_FAILURE'\n", encoding="utf-8",
+    )
+    # Two invocations of this exact node share one exclusively owned attempt directory.
+    first = _scoped_session(root, site)
+    target = attempt / "shutdown-probe-errors.json"
+    assert first.returncode == 1 and _DIAGNOSTIC_MARKER not in first.stdout
+    previous = target.read_bytes()
+    second = _scoped_session(root, site)
+    assert second.returncode == 1 and _DIAGNOSTIC_MARKER in second.stdout
+    assert target.read_bytes() == previous
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows publication must not overwrite a racing target")
+def test_scoped_plugin_review_target_appearing_at_publication_is_preserved(tmp_path):
+    target, output = _shutdown_diagnostic_child(tmp_path, [{"cause_effect": _EXTENDED_PROBE}], publication_fault="race")
+    assert _DIAGNOSTIC_MARKER in output
+    assert target.read_bytes() == b"RACING_ARTIFACT_MUST_SURVIVE\n"
+    assert not list(target.parent.glob(".shutdown-probe-*.tmp"))
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Exact collector control-set boundary")
+@pytest.mark.parametrize("character", ["\xa0", "\u2027"])
+def test_scoped_plugin_review_accepts_noncontrol_boundary_characters(tmp_path, character):
+    value = _EXTENDED_PROBE.replace("é.py", f"a{character}b.py")
+    target, output = _shutdown_diagnostic_child(tmp_path, [{"cause_effect": value}])
+    assert _DIAGNOSTIC_MARKER not in output
+    assert json.loads(target.read_text()) == {"cancel:probe_error:Error2": 1}
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Actual package probe, fallback and unsupported class composition")
+@pytest.mark.parametrize("case", ["package", "final_fallback", "unsupported_class"])
+def test_scoped_plugin_review_composes_schedule_diagnostics(tmp_path, monkeypatch, case):
+    import threading
+    from collections import Counter
+    from types import SimpleNamespace
+
+    from tools.plan1126_runtime_audit import shutdown
+
+    error_type = type("Érror" if case == "unsupported_class" else "Error2", (Exception,), {})
+
+    def _probe(record, cause, *, source):
+        _private_local = "LOCAL_VALUE_CANARY"
+        raise error_type("PRIVATE_MESSAGE")
+
+    def _decimal_failure(value):
+        monkeypatch.delattr(shutdown, "str")
+        assert value == 5
+        raise RuntimeError("PRIVATE_DECIMAL_FORMATTING_FAILURE")
+
+    class _FormattingError(Exception):
+        def __getattribute__(self, name):
+            if name == "errno":
+                monkeypatch.setattr(shutdown, "str", _decimal_failure, raising=False)
+                return 5
+            return super().__getattribute__(name)
+
+    if case == "final_fallback":
+        error_type = type("Error2", (_FormattingError,), {})
+
+    rows = []
+    with monkeypatch.context() as context:
+        context.setattr(shutdown, "_probe_resource", _probe)
+        shutdown._run_schedule(rows, [SimpleNamespace(close_path_id="h5-0000000000000001")],
+            1, None, ("MainThread",), Counter(t.name for t in threading.enumerate()))
+    assert len(rows) == 5
+    if case == "package":
+        assert all(" | probe=tools/plan1126_runtime_audit/shutdown.py:" in row.cause_effect for row in rows)
+    elif case == "final_fallback":
+        assert all(row.cause_effect.endswith(" | errno=unknown | winerror=unknown | origin=unknown | probe=unknown | chain=unknown | group=unknown") for row in rows)
+    assert all("LOCAL_VALUE_CANARY" not in row.cause_effect and "PRIVATE_MESSAGE" not in row.cause_effect for row in rows)
+    target, output = _shutdown_diagnostic_child(tmp_path, [row.to_dict() for row in rows])
+    if case == "unsupported_class":
+        assert _DIAGNOSTIC_MARKER in output and not target.exists()
+    else:
+        assert _DIAGNOSTIC_MARKER not in output
+        assert json.loads(target.read_text()) == {
+            "orderly_eof:probe_error:Error2": 1, "transport_failure:probe_error:Error2": 1,
+            "request_cancellation:probe_error:Error2": 1, "server_cancellation:probe_error:Error2": 1,
+            "partial_startup_failure:probe_error:Error2": 1,
+        }
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Mixed raw legacy and extended canonical aggregation")
+def test_scoped_plugin_review_mixed_legacy_and_extended_aggregate_one_call(tmp_path):
+    target, output = _shutdown_diagnostic_child(tmp_path, [
+        {"cause_effect": "cancel:probe_error:Error2"}, {"cause_effect": _EXTENDED_PROBE},
+        {"cause_effect": "shutdown:probe_error:RuntimeError"},
+    ])
+    assert _DIAGNOSTIC_MARKER not in output
+    assert json.loads(target.read_text()) == {"cancel:probe_error:Error2": 2, "shutdown:probe_error:RuntimeError": 1}
