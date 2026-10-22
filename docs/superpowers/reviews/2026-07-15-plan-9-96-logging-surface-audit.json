@@ -1289,22 +1289,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.release.agent_smoke_transcript:SmokeTranscriptRecorder.write:json_serialization",
-      "policy": "shared-sanitize",
-      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.release.agent_smoke_transcript:SmokeTranscriptRecorder.write:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback.",
-      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
-      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus.release.agent_smoke_transcript:SmokeTranscriptRecorder.write:text_file_write",
-      "policy": "shared-sanitize",
-      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.release.agent_smoke_transcript:SmokeTranscriptRecorder.write:text_file_write before this persistence or export boundary; sanitizer failure has no raw fallback.",
-      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
-      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "optimus.release.runner:CommandGate.run:exception_export",
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.release.runner:CommandGate.run:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
@@ -2241,25 +2225,9 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.run_phase1_release_gate:main:stderr_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: tools.run_phase1_release_gate:main:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_accepts_golden_results_argument",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "tools.run_phase1_release_gate:main:stdout_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: tools.run_phase1_release_gate:main:stdout_export prints only controlled operational, status, or structured functional output and does not retain it.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_accepts_golden_results_argument",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.run_phase1_release_gate:main:text_write",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: tools.run_phase1_release_gate:main:text_write writes only an already constrained functional artifact rather than raw diagnostic content.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/release/test_defaults.py::test_phase1_release_gate_script_accepts_golden_results_argument",
       "evidence_tier": "unit"

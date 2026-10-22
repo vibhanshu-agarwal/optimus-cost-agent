@@ -48,8 +48,8 @@ records any Stage C ledger write failure, and an unenforced Gateway logs one `mo
 retry attempt, all sharing the request's Gateway ID. It never records the prompt, the reply, the upstream
 error text or a caller's free text: IDs and provider metadata that are not of a recognized form are logged as
 `unrecognized`. The workspace's `.optimus/telemetry.jsonl` always gets one `error` event per model call with a
-failed attempt (including one that later recovered), refused prompt and context fault, with the same bounded
-facts. With `--debug-trace`, the host trace also records
+failed attempt (including one that later recovered) or a recorded reason, and per refused prompt and context
+fault, with the same bounded facts. With `--debug-trace`, the host trace also records
 each attempt's IDs, stages and cause, context-fault subtypes and refusal reasons.
 
 The shipped Haiku admission policy uses an explicitly accepted empirical estimate with `verified: false`; it
@@ -669,18 +669,14 @@ check; it is not the Phase 1 search backend. Direct-provider adapters are a sepa
 lane. Tavily is temporary current-implementation migration configuration only, pending replacement
 acceptance and rollback review.
 
-Live gateway smoke tests also read `.env.gateway`, but only into the gateway **subprocess**
-environment via `dotenv_values()` — the pytest process itself never receives provider keys.
-Default `pytest` deselects `requires_live_gateway`; opt in explicitly when `.env.gateway` is
-configured:
-
-```bash
-pytest tests/integration/optimus_gateway/test_gateway_live_smoke.py -m requires_live_gateway -v
-```
-
-**Not run, and unsupported under the enforced model registry:** this live smoke and
-`tests/integration/gateway/test_gateway_live.py` predate route binding, so an enforced Gateway refuses their
-unbound requests. They are not evidence of ordinary use until the Plan 12.2 R-4 migration (see #237).
+**Retired legacy live harnesses (Plan 12.2 R-4, see #237):** the live Gateway smoke
+(`test_gateway_live_smoke.py`), `tests/integration/gateway/test_gateway_live.py` and the release gate's
+`--agent-harness` path predate route binding, and an enforced Gateway refuses their unbound requests. The ordinary
+chat path is live-verified through `acpx` by Plan 12.2's D1(b) run (#237). The live tiers below remain:
+`tests/e2e/acp/test_spawned_agent_live.py` and `python tools/verify_live_agent.py` drive the agent through this
+project's own ACP client (process tier), and the `acpx` evidence tools in `tools/` drive it through an independent
+client. The `e2e` marker selects tests of both kinds. Live AGENT-mode evidence through `acpx` on the enforced
+registry is not yet established; see #237.
 
 Security: bind stays on loopback (`127.0.0.1` by default). Do not expose this service beyond
 localhost without adding real TLS first.

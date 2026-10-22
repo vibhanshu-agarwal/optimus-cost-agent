@@ -260,14 +260,14 @@ def test_the_bound_observer_changes_no_agent_run_event_result_or_receipt(tmp_pat
     from optimus.runtime.modes import ExecutionMode
     from tests.unit.agent.test_attempt_status_diagnostics import FakeGateway
 
-    def run(observer: Any) -> tuple[list[dict[str, Any]], tuple, list]:
+    def run(observer: Any) -> tuple[list[dict[str, Any]], dict[str, Any], list]:
         events: list[Any] = []
         receipts: list[Any] = []
         request = AgentRunRequest(run_id=RUN, session_id=SESSION, task="Change the greeting.", workspace_root=tmp_path, execution_mode=ExecutionMode.CHAT)
         runner = AgentRunner(gateway_client=FakeGateway(_transport_failure()), model="fake/model", event_sink=events.append, provider_attempt_observer=observer)
         result = runner.run(request, stage_receipts=receipts.append)
         runs = [{k: v for k, v in event.to_json_dict().items() if k not in {"event_id", "occurred_at"}} for event in events if event.kind.value == "agent_run"]
-        outcome = (result.status, result.final_state, result.stop_reason, result.output_text, result.total_cost_usd, result.cost_complete, result.unknown_cost_attempt_count)
+        outcome = result.model_dump()  # the whole result (R-13 item 3); it holds no wall-clock field
         # Each receipt as recorded, apart from its wall-clock recording time.
         return runs, outcome, [{k: v for k, v in dataclasses.asdict(receipt).items() if k != "recorded_at"} for receipt in receipts]
 
