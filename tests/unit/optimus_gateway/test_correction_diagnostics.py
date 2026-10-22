@@ -273,31 +273,70 @@ _UNRESOLVED_ARGUMENTS = {
 _REFUSALS = {"ModelPolicyRefusal", "BindingError", "StageCRefusal", "ValueError", "RuntimeError", "RetryableUpstreamError", "ModelRequestValidationError"}
 
 
+_NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+
+
+def _scope_nodes(scope: ast.AST) -> list[ast.AST]:
+    """The nodes of `scope` itself: a nested function, lambda or class is another scope, so only its own node counts."""
+    found, pending = [], list(ast.iter_child_nodes(scope))
+    while pending:
+        node = pending.pop()
+        found.append(node)
+        if not isinstance(node, _NESTED_SCOPES):
+            pending.extend(ast.iter_child_nodes(node))
+    return found
+
+
+def _plain_assignments(name: str, scope: ast.AST) -> list[ast.expr] | None:
+    """The values `name` gets from plain `name = value` statements in `scope`, or None when anything else there binds it:
+    a parameter, `+=`, an annotated, unpacking or walrus assignment, a loop, `with`, `except`, an import, `global` or
+    `nonlocal`, a nested definition or a pattern. Only then can its text be read from its assignments."""
+    if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef) and name in {node.arg for node in ast.walk(scope.args) if isinstance(node, ast.arg)}:
+        return None
+    values: list[ast.expr] = []
+    stores = 0
+    for node in _scope_nodes(scope):
+        if isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Store):
+            stores += 1
+        elif isinstance(node, ast.Assign):
+            values += [node.value for target in node.targets if isinstance(target, ast.Name) and target.id == name]
+        elif isinstance(node, ast.ExceptHandler | ast.MatchAs | ast.MatchStar | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            if node.name == name:
+                return None
+        elif isinstance(node, ast.MatchMapping) and node.rest == name:
+            return None
+        elif isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) == name:
+            return None
+        elif isinstance(node, ast.Global | ast.Nonlocal) and name in node.names:
+            return None
+    return values if stores == len(values) else None
+
+
 def _interpolations(expr: ast.expr, scope: ast.AST, depth: int = 0) -> list[str]:
-    """The interpolated expressions of a message argument: an f-string's values, either branch of a conditional, both
-    sides of a concatenation, and a name's f-string assignments in the same scope, two hops deep (`message = f"…"`,
-    `error = RuntimeError(message)`)."""
+    """The interpolated expressions of a message argument: an f-string's values, including any nested in a format spec
+    (`f"{x:{width}}"`), either branch of a conditional, both sides of a concatenation, and a name's plain f-string
+    assignments in the same scope, two hops deep (`message = f"…"`, `error = RuntimeError(message)`)."""
     if isinstance(expr, ast.JoinedStr):
-        return [ast.unparse(value.value) for value in expr.values if isinstance(value, ast.FormattedValue)]
+        found = []
+        for value in expr.values:
+            if isinstance(value, ast.FormattedValue):
+                found.append(ast.unparse(value.value))
+                if value.format_spec is not None:
+                    found += _interpolations(value.format_spec, scope, depth)
+        return found
     if isinstance(expr, ast.IfExp):
         return _interpolations(expr.body, scope, depth) + _interpolations(expr.orelse, scope, depth)
     if isinstance(expr, ast.BinOp):
         return _interpolations(expr.left, scope, depth) + _interpolations(expr.right, scope, depth)
     if isinstance(expr, ast.Name) and depth < 2:
-        assigned = [
-            node.value
-            for node in ast.walk(scope)
-            if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == expr.id for target in node.targets)
-        ]
-        return [found for value in assigned for found in _interpolations(value, scope, depth + 1)]
+        return [found for value in _plain_assignments(expr.id, scope) or [] for found in _interpolations(value, scope, depth + 1)]
     return []
 
 
 def _unresolved(expr: ast.expr, scope: ast.AST, depth: int = 0) -> list[str]:
     """The parts of a message argument whose text the control cannot read: anything but a literal, an f-string (its
-    values are `_interpolations`), either branch of a conditional, both sides of a concatenation, and a name whose every
-    assignment in the same scope is one of those, two hops deep. A parameter, or a name extended in place (`+=`), is
-    never resolved: some path reaches the call with text no assignment shows. Each is reported as written."""
+    values are `_interpolations`), either branch of a conditional, both sides of a concatenation, and a name bound in its
+    scope only by plain assignments of those (`_plain_assignments`), two hops deep. Each is reported as written."""
     if isinstance(expr, ast.Constant | ast.JoinedStr):
         return []
     if isinstance(expr, ast.IfExp):
@@ -305,17 +344,8 @@ def _unresolved(expr: ast.expr, scope: ast.AST, depth: int = 0) -> list[str]:
     if isinstance(expr, ast.BinOp):
         return _unresolved(expr.left, scope, depth) + _unresolved(expr.right, scope, depth)
     if isinstance(expr, ast.Name) and depth < 2:
-        is_function = isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef)
-        parameters = {node.arg for node in ast.walk(scope.args) if isinstance(node, ast.arg)} if is_function else set()
-        extended = any(
-            isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name) and node.target.id == expr.id for node in ast.walk(scope)
-        )
-        assigned = [
-            node.value
-            for node in ast.walk(scope)
-            if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == expr.id for target in node.targets)
-        ]
-        if expr.id not in parameters and not extended and assigned and not any(_unresolved(value, scope, depth + 1) for value in assigned):
+        assigned = _plain_assignments(expr.id, scope)
+        if assigned and not any(_unresolved(value, scope, depth + 1) for value in assigned):
             return []
     return [ast.unparse(expr)]
 
@@ -420,6 +450,24 @@ def _edited(relative: str, old: str, new: str) -> dict[str, str]:
             'raise ValueError(f"{name} is required")\n',
             'if name.startswith("_"):\n            name = "a private variable"\n        raise ValueError(name)\n',
             id="a-parameter-assigned-on-one-path",
+        ),
+        pytest.param(  # a reviewed f-string name, rebound by an annotated assignment
+            "src/optimus_gateway/upstream_client.py",
+            'message = f"{label} request failed ({exc.code})"\n',
+            'message = f"{label} request failed ({exc.code})"\n        message: str = str(exc)\n',
+            id="an-annotated-rebinding",
+        ),
+        pytest.param(  # an interpolation nested in a reviewed field's format spec
+            "src/optimus_gateway/upstream_client.py",
+            'RetryableUpstreamError(f"{label} request timed out")',
+            'RetryableUpstreamError(f"{label:{exc}} request timed out")',
+            id="a-nested-format-field",
+        ),
+        pytest.param(  # a literal assigned only inside a nested function, which is another scope
+            "src/optimus_gateway/tool_provider_http.py",
+            'raise RuntimeError(f"{label} response was not an object")\n        return body',
+            'def unrelated() -> None:\n                reason = "fixed"\n\n            raise RuntimeError(reason)\n        return body',
+            id="an-assignment-in-a-nested-scope",
         ),
     ),
 )
