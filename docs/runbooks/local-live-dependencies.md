@@ -126,11 +126,9 @@ With Terminal A still alive, from Terminal B (or a third shell) supply only the 
 ```powershell
 uv run --frozen pytest tests/integration/agent/test_redis_live_agent.py -m requires_redis -q
 uv run --frozen pytest tests/integration/telemetry/test_phoenix_live.py -m requires_phoenix -q
-uv run --frozen pytest tests/integration/gateway/test_gateway_live.py -m requires_gateway -q
-uv run --frozen pytest tests/integration/optimus_gateway/test_gateway_live_smoke.py -m requires_live_gateway -q
 ```
 
-**Not run, and unsupported under the enforced model registry:** the last two commands (`test_gateway_live.py` and `test_gateway_live_smoke.py`) predate route binding, so an enforced Gateway refuses their unbound requests. They are not evidence of ordinary use until the Plan 12.2 R-4 migration (see #237).
+The legacy live Gateway harnesses (`test_gateway_live.py` and `test_gateway_live_smoke.py`) were retired by Plan 12.2 R-4 (see #237): they predate route binding, and an enforced Gateway refuses their unbound requests. Live AGENT-mode evidence through `acpx` on the enforced registry is not yet established; see #237.
 
 External `acpx` cost-observability capture (separate consolidated-launcher exercise; opts into Phoenix itself):
 

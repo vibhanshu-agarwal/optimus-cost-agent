@@ -282,9 +282,6 @@ why = "The provider-balance retirement guard and its allowlist check. A glob, no
 tier = "gates"
 nodes = [
   "tests/integration/release/test_phase1_release_gate_cli.py::test_readme_documents_spawnable_acp_agent_contract",
-  "tests/integration/release/test_phase1_release_gate_cli.py::test_release_cli_accepts_agent_harness_task_filter_text",
-  "tests/integration/release/test_phase1_release_gate_cli.py::test_release_cli_runs_preflight_before_agent_harness",
-  "tests/integration/release/test_phase1_release_gate_cli.py::test_release_cli_wires_redis_backed_agent_harness",
   "tests/integration/release/test_verify_live_agent_cli.py::test_verify_live_agent_module_exposes_required_flags",
   "tests/unit/acp/test_bootstrap.py::test_bootstrap_has_no_divergent_dead_redis_default_constant",
   "tests/unit/acp/test_context_engine_admission.py::test_every_reason_the_engine_can_give_has_a_message",
