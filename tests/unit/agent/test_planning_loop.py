@@ -1,11 +1,15 @@
+import ast
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
+from optimus.agent import planning_loop as planning_module
 from optimus.agent.planning_loop import (
     PLANNING_NEW_READ_MAX_BYTES,
     PLANNING_OBSERVATION_MAX_BYTES,
+    PLANNING_TURN_PARSE_CODES,
     PlanningEvidenceBudgetError,
     PlanningLoopPolicy,
     PlanningObservation,
@@ -246,6 +250,25 @@ def test_parse_planning_turn_raises_for_unrecognized_grammar():
 def test_parse_planning_turn_rejects_intermediate_without_read():
     with pytest.raises(PlanningTurnParseError, match="READ"):
         parse_planning_turn("OBSERVE: note only\n")
+
+
+def test_every_parse_error_names_a_code_from_the_closed_set():
+    """#388: trace records carry only the code, so every raise site must name one from the set, and
+    the set holds no code that no raise uses."""
+    tree = ast.parse(Path(planning_module.__file__).read_text(encoding="utf-8"))
+    used = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "PlanningTurnParseError":
+            code = node.args[0] if node.args else None
+            assert isinstance(code, ast.Constant) and code.value in PLANNING_TURN_PARSE_CODES, ast.unparse(node)
+            used.add(code.value)
+    assert used == PLANNING_TURN_PARSE_CODES
+
+
+def test_parse_error_exposes_its_code():
+    with pytest.raises(PlanningTurnParseError) as caught:
+        parse_planning_turn("OBSERVE: note only\n")
+    assert caught.value.code == "INTERMEDIATE_REQUIRES_READ"
 
 
 def test_pack_planning_evidence_serializes_observations_and_current_reads_in_order():
