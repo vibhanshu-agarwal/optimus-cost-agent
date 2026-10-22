@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from unittest.mock import create_autospec
 
 import pytest
 import redis
@@ -14,26 +15,11 @@ from optimus_gateway.tool_state import (
 )
 
 
-class _FailingRedisClient:
-    """Minimal double whose every call raises a connection error, proving fail-closed behavior."""
-
-    def sadd(self, *args, **kwargs):
-        raise redis.exceptions.ConnectionError("redis down")
-
-    def smembers(self, *args, **kwargs):
-        raise redis.exceptions.ConnectionError("redis down")
-
-    def incr(self, *args, **kwargs):
-        raise redis.exceptions.ConnectionError("redis down")
-
-    def expire(self, *args, **kwargs):
-        raise redis.exceptions.ConnectionError("redis down")
-
-    def decr(self, *args, **kwargs):
-        raise redis.exceptions.ConnectionError("redis down")
-
-    def ping(self, *args, **kwargs):
-        raise redis.exceptions.ConnectionError("redis down")
+def _FailingRedisClient():
+    checked = create_autospec(redis.Redis, instance=True, spec_set=True)
+    for name in ("sadd", "smembers", "incr", "expire", "decr", "ping"):
+        getattr(checked, name).side_effect = redis.exceptions.ConnectionError("redis down")
+    return checked
 
 
 # --- InMemoryGatewayToolStateStore (unit-only dependency double) ------------

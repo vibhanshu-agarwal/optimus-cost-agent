@@ -1,9 +1,27 @@
 from decimal import Decimal
+from unittest.mock import create_autospec
 
 import pytest
+import redis
+import redis.asyncio as aioredis
 
 from optimus.agent.state_store import AgentPlanRecord, InMemoryAgentStateStore, RedisAgentStateStore, validate_redis_url
+from optimus.redis.runtime import CloseablePool, RedisRuntime
 from optimus.runtime.modes import ExecutionMode
+
+
+def _checked_redis(script, *, asynchronous=False):
+    checked = create_autospec(aioredis.Redis if asynchronous else redis.Redis, instance=True, spec_set=True)
+    for name in ("hset", "hgetall", "expire", "ping", "aclose"):
+        if hasattr(script, name):
+            getattr(checked, name).side_effect = getattr(script, name)
+    return checked
+
+
+def _checked_submit(script):
+    checked = create_autospec(RedisRuntime, instance=True, spec_set=True).run_sync
+    checked.side_effect = script
+    return checked
 
 
 class FakeRedis:
@@ -12,6 +30,7 @@ class FakeRedis:
         self.hsets: list[tuple[str, dict[str, str]]] = []
         self.hgetalls: dict[str, dict[str, str]] = {}
         self.expires: list[tuple[str, int]] = []
+        self.checked = _checked_redis(self)
 
     def hset(self, key: str, mapping: dict[str, str]):
         self.hsets.append((key, mapping))
@@ -111,14 +130,14 @@ def test_plan_record_schema_and_persisted_mapping_are_functional_only():
     }
 
     fake = FakeRedis()
-    RedisAgentStateStore(client=fake).save_plan(record)
+    RedisAgentStateStore(client=fake.checked).save_plan(record)
     persisted_fields = set(fake.hsets[0][1])
     assert persisted_fields == set(AgentPlanRecord.model_fields)
 
 
 def test_redis_store_writes_hash_and_ttl():
     fake = FakeRedis()
-    store = RedisAgentStateStore(client=fake, ttl_seconds=3600)
+    store = RedisAgentStateStore(client=fake.checked, ttl_seconds=3600)
     record = plan_record().model_copy(
         update={
             "gateway_request_ids": ("gw-1", "gw-2"),
@@ -139,7 +158,7 @@ def test_redis_store_writes_hash_and_ttl():
 
 def test_redis_store_loads_plan_from_hash():
     fake = FakeRedis()
-    store = RedisAgentStateStore(client=fake, ttl_seconds=3600)
+    store = RedisAgentStateStore(client=fake.checked, ttl_seconds=3600)
     record = plan_record()
     store.save_plan(record)
 
@@ -148,7 +167,7 @@ def test_redis_store_loads_plan_from_hash():
 
 def test_redis_store_loads_latest_plan_for_run():
     fake = FakeRedis()
-    store = RedisAgentStateStore(client=fake, ttl_seconds=3600)
+    store = RedisAgentStateStore(client=fake.checked, ttl_seconds=3600)
     record = plan_record()
     store.save_plan(record)
 
@@ -157,7 +176,7 @@ def test_redis_store_loads_latest_plan_for_run():
 
 def test_redis_store_ping_fails_closed_when_redis_is_down():
     fake = FakeRedis(ping_error=ConnectionError("redis unavailable"))
-    store = RedisAgentStateStore(client=fake, ttl_seconds=3600)
+    store = RedisAgentStateStore(client=fake.checked, ttl_seconds=3600)
 
     with pytest.raises(ConnectionError, match="redis unavailable"):
         store.ping()
@@ -189,7 +208,7 @@ def test_persist_plan_partial_when_pointer_write_fails():
                 raise RuntimeError("pointer failed")
             return super().hset(key, mapping)
 
-    store = RedisAgentStateStore(client=FlakyRedis(), ttl_seconds=60)
+    store = RedisAgentStateStore(client=FlakyRedis().checked, ttl_seconds=60)
     result = store.persist_plan(plan_record())
     assert result.outcome is PlanPersistenceOutcome.PERSISTENCE_PARTIAL
     assert "primary" in result.completed_substeps
@@ -209,6 +228,7 @@ class FakeAsyncRedis:
         self.hgetalls: dict[str, dict[str, str]] = {}
         self.threads: list[int] = []
         self._threading = threading
+        self.checked = _checked_redis(self, asynchronous=True)
 
     async def hset(self, key: str, mapping: dict[str, str]):
         self.threads.append(self._threading.get_ident())
@@ -231,6 +251,10 @@ class FakeAsyncRedis:
 
 
 class _Pool:
+    def __init__(self):
+        self.checked = create_autospec(CloseablePool, instance=True, spec_set=True)
+        self.checked.aclose.side_effect = self.aclose
+
     async def aclose(self):
         return None
 
@@ -238,7 +262,7 @@ class _Pool:
 def _async_store(client: FakeAsyncRedis):
     from optimus.agent.state_store import AsyncRedisAgentStateStore
 
-    return AsyncRedisAgentStateStore(client=client, ttl_seconds=60)
+    return AsyncRedisAgentStateStore(client=client.checked, ttl_seconds=60)
 
 
 def test_an_async_backed_store_requires_an_injected_submission_seam():
@@ -257,7 +281,7 @@ def test_an_async_backed_store_submits_every_operation_through_the_injected_seam
         submissions.append(type(operation).__name__)
         return asyncio.run(operation())
 
-    store = RedisAgentStateStore(async_store=_async_store(client), submit=submit)
+    store = RedisAgentStateStore(async_store=_async_store(client), submit=_checked_submit(submit))
     store.save_plan(plan_record())
     loaded = store.load_plan(run_id="run-1", plan_hash="hash-1")
     latest = store.latest_plan_for_run(run_id="run-1")
@@ -277,7 +301,7 @@ def test_a_runtime_built_store_runs_on_the_runtime_owner_loop_not_a_shared_one()
 
     client = FakeAsyncRedis()
     owner = RedisLoopOwner(name="seam2b-store-owner")
-    runtime = RedisRuntime(pool=_Pool(), client=client, owner=owner)
+    runtime = RedisRuntime(pool=_Pool().checked, client=client.checked, owner=owner)
     try:
         store = runtime.sync_state_store()
         store.save_plan(plan_record())
@@ -297,7 +321,7 @@ def test_a_late_submission_after_close_receives_a_stable_closed_error_and_reopen
 
     client = FakeAsyncRedis()
     owner = RedisLoopOwner(name="seam2b-late-owner")
-    runtime = RedisRuntime(pool=_Pool(), client=client, owner=owner)
+    runtime = RedisRuntime(pool=_Pool().checked, client=client.checked, owner=owner)
     store = runtime.sync_state_store()
     runtime.close(timeout=5.0)
 
@@ -320,12 +344,12 @@ def test_the_convenience_factory_retains_the_runtime_it_builds(monkeypatch):
 
     def fake_from_url(url, *, ttl_seconds):
         runtime = RedisRuntime(
-            pool=_Pool(), client=client, owner=RedisLoopOwner(name="seam2b-factory"), ttl_seconds=ttl_seconds
+            pool=_Pool().checked, client=client.checked, owner=RedisLoopOwner(name="seam2b-factory"), ttl_seconds=ttl_seconds
         )
         built.append(runtime)
         return runtime
 
-    monkeypatch.setattr(RedisRuntime, "from_url", staticmethod(fake_from_url))
+    monkeypatch.setattr(RedisRuntime, "from_url", create_autospec(RedisRuntime.from_url, side_effect=fake_from_url))
     store = RedisAgentStateStore.from_url("redis://127.0.0.1:6379/0", ttl_seconds=60)
     assert store.owned_runtime is built[0]
     store.save_plan(plan_record())
@@ -341,7 +365,7 @@ async def _collect_keys(client: FakeAsyncRedis) -> set[str]:
 
 
 def test_a_store_that_owns_no_runtime_cannot_be_closed():
-    store = RedisAgentStateStore(client=FakeRedis())
+    store = RedisAgentStateStore(client=FakeRedis().checked)
     assert store.owned_runtime is None
     with pytest.raises(RuntimeError, match="owns no runtime"):
         store.close()
@@ -371,7 +395,7 @@ def test_typing_async_client_requires_async_store_without_submission():
     from optimus.agent.state_store import AsyncRedisAgentStateStore
 
     with pytest.raises(RuntimeError, match="^this store has no owner submission seam; it wraps a synchronous client$"):
-        _ = RedisAgentStateStore(client=FakeRedis()).async_redis_client
+        _ = RedisAgentStateStore(client=FakeRedis().checked).async_redis_client
     client = object()
 
     def never_submit(_operation):
@@ -400,8 +424,8 @@ def test_hset_compatibility_preserves_call_order(asynchronous, legacy):
     async def async_invoke(*args, **kwargs):
         return invoke(*args, **kwargs)
 
-    from types import SimpleNamespace
-    client = SimpleNamespace(hset=async_invoke if asynchronous else invoke)
+    client = create_autospec(aioredis.Redis if asynchronous else redis.Redis, instance=True, spec_set=True)
+    client.hset.side_effect = async_invoke if asynchronous else invoke
     result = asyncio.run(_async_hset(client, "plan-key", mapping, lambda native, name, values: native.hset(name, mapping=values))) if asynchronous else _sync_hset(client, "plan-key", mapping, lambda native, name, values: native.hset(name, mapping=values))
     assert result is None
     expected = [(("plan-key",), {"mapping": mapping})]
@@ -413,7 +437,6 @@ def test_hset_compatibility_preserves_call_order(asynchronous, legacy):
 @pytest.mark.parametrize("asynchronous", [False, True], ids=["sync", "async"])
 def test_hset_native_failure_preserves_second_exception_identity(asynchronous):
     import asyncio
-    from types import SimpleNamespace
 
     from optimus.agent.state_store import _async_hset, _sync_hset
 
@@ -429,7 +452,8 @@ def test_hset_native_failure_preserves_second_exception_identity(asynchronous):
     async def async_invoke(*args, **kwargs):
         return invoke(*args, **kwargs)
 
-    client = SimpleNamespace(hset=async_invoke if asynchronous else invoke)
+    client = create_autospec(aioredis.Redis if asynchronous else redis.Redis, instance=True, spec_set=True)
+    client.hset.side_effect = async_invoke if asynchronous else invoke
     with pytest.raises(ValueError) as error:
         if asynchronous:
             asyncio.run(_async_hset(client, "key", {}, lambda native, name, values: native.hset(name, mapping=values)))
@@ -480,8 +504,8 @@ def test_store_legacy_hset_preserves_primary_expiry_pointer_order(asynchronous, 
         submissions.append("owner")
         return asyncio.run(factory())
 
-    store = (RedisAgentStateStore(async_store=AsyncRedisAgentStateStore(client=LegacyAsync(), ttl_seconds=60), submit=submit)
-             if asynchronous else RedisAgentStateStore(client=LegacySync(), ttl_seconds=60))
+    store = (RedisAgentStateStore(async_store=AsyncRedisAgentStateStore(client=_checked_redis(LegacyAsync(), asynchronous=True), ttl_seconds=60), submit=_checked_submit(submit))
+             if asynchronous else RedisAgentStateStore(client=_checked_redis(LegacySync()), ttl_seconds=60))
     if operation == "save":
         store.save_plan(plan_record())
     else:
@@ -500,3 +524,12 @@ def test_store_legacy_hset_preserves_primary_expiry_pointer_order(asynchronous, 
     assert mappings[0]["cost_usd"] == "0.002"
     assert mappings[1] == {"plan_hash": "hash-1"}
     assert submissions == (["owner"] if asynchronous else [])
+
+
+def test_contract_redis_store_boundary_rejects_unknown_attributes():
+    script = FakeRedis()
+    boundary = getattr(script, "checked", script)
+    with pytest.raises(AttributeError):
+        boundary.unknown_redis_operation = True
+    with pytest.raises(TypeError):
+        boundary.hset("key", obsolete_mapping={})

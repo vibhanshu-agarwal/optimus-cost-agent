@@ -24,6 +24,7 @@ import json
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import create_autospec
 
 import pytest
 
@@ -31,10 +32,16 @@ from optimus.acp import debug_trace
 from optimus.acp import server as server_module
 from optimus.acp import spec as spec_module
 from optimus.acp.debug_trace import configure_debug_trace
-from optimus.acp.errors import INTERNAL_ERROR
-from optimus.acp.server import NdjsonOutboundChannel, StdioNdjsonLineReader
+from optimus.acp.errors import INTERNAL_ERROR, AcpOutboundError
+from optimus.acp.lifecycle import TurnControl
+from optimus.acp.server import NdjsonOutboundChannel, StdioNdjsonLineReader, StdioNdjsonLineWriter
+from optimus.acp.spec import AcpPromptTurn
 from optimus.agent import planning_loop as planning_module
+from optimus.agent.models import AgentRunResult, AgentRunStatus, AgentToolCall
+from optimus.agent.planning_loop import PlanningReadError, PlanningReadRequest
+from optimus.mcp.client_disposition import ClientMcpShutdownOutcome
 from optimus.mcp.client_supervisor import MCPSupervisorState
+from optimus.runtime.modes import ExecutionMode
 from tests.integration.acp.test_server_stream import (
     InteractiveLineReader,
     MemoryLineWriter,
@@ -212,6 +219,13 @@ def _opaque_namespace(sink):
     return namespace
 
 
+def _run_result(**changes):
+    values = dict(run_id="run-1", session_id="session-1", execution_mode=ExecutionMode.AGENT,
+                  status=AgentRunStatus.COMPLETED, final_state="completed", output_text="done")
+    values.update(changes)
+    return AgentRunResult(**values)
+
+
 def _real_namespace(sink):
     return dict(
         **PAYLOAD_FACTORIES,
@@ -222,18 +236,13 @@ def _real_namespace(sink):
         params={"z": 1, "a": 2}, message={"id": 7, "result": {"approved": True}},
         wire={"result": {"stopReason": "end_turn"}}, notification={"params": {"sessionId": "session-1"}},
         request={"id": 7}, exc=RuntimeError("harmless diagnostic"),
-        planning_result=SimpleNamespace(
-            status=SimpleNamespace(value="completed"), plan_hash="plan-1",
-            tool_calls=[SimpleNamespace(tool_name="file_reader"), SimpleNamespace(tool_name="other")],
-        ),
+        planning_result=_run_result(plan_hash="plan-1", tool_calls=(
+            AgentToolCall(tool_name="file_reader", summary="read"), AgentToolCall(tool_name="other", summary="other"))),
         permission_result={"outcome": "approved", "metadata": {"z": 1, "a": 2}},
-        approved_result=SimpleNamespace(
-            status=SimpleNamespace(value="completed"), mutation_count=1,
-            tool_calls=[SimpleNamespace(tool_name="file_writer")],
-        ),
-        result=SimpleNamespace(run_id="run-1"), turn=SimpleNamespace(session_id="session-1"),
+        approved_result=_run_result(mutation_count=1, tool_calls=(AgentToolCall(tool_name="file_writer", summary="write"),)),
+        result=_run_result(), turn=AcpPromptTurn(session_id="session-1", turn_seq=2, turn_control=TurnControl(session_id="session-1", turn_seq=2)),
         update_payload={"update": {"entries": []}}, payload={"update": {"sessionUpdate": "tool_call", "status": "completed"}},
-        tool_call=SimpleNamespace(tool_name="file_writer"), tool_call_id="tool-1",
+        tool_call=AgentToolCall(tool_name="file_writer", summary="write"), tool_call_id="tool-1",
         completed_plan={"update": {"entries": [{}]}}, message_payload={"update": {"sessionUpdate": "agent_message_chunk"}},
         self=SimpleNamespace(_run_id="run-1", _session_id="session-1"), planning_turn=1, wire_attempt=1,
     )
@@ -274,12 +283,12 @@ MESSAGES = {WARM[0]: "client request failed"}
 def _site_namespace(location, sink):
     namespace = _real_namespace(sink)
     if location == WARM[6]:
-        namespace["exc"] = SimpleNamespace(code=-32001, message="client rejected")
+        namespace["exc"] = AcpOutboundError(code=-32001, message="client rejected")
     elif location == WARM[9]:
         namespace["message"] = "done"
     elif location == WARM[11]:
-        namespace["exc"] = SimpleNamespace(code="PLANNING_READ_FILE_NOT_FOUND")
-        namespace["request"] = SimpleNamespace(path="policy.txt", start_byte=0, end_byte=1024)
+        namespace["exc"] = PlanningReadError("PLANNING_READ_FILE_NOT_FOUND", "offline missing file")
+        namespace["request"] = PlanningReadRequest(path="policy.txt", start_byte=0, end_byte=1024)
     return namespace
 
 
@@ -440,8 +449,8 @@ def test_enabled_mcp_reporter_fields_and_sentinels(tmp_path):
     namespace = {"acp_debug_log": debug_trace.acp_debug_log, "MCPSupervisorState": MCPSupervisorState}
     exec(_mcp_reporter(), namespace)
     reporter = namespace["report_mcp_cleanup_incomplete"]
-    outcome = SimpleNamespace(
-        sdk_closed=True, endpoint_closed=False, supervisor_closed=False, supervisor_state=MCPSupervisorState.STOPPING
+    outcome = ClientMcpShutdownOutcome(
+        sdk_closed=True, endpoint_closed=False, supervisor_closed=False, supervisor_state=MCPSupervisorState.STOPPING, complete=False
     )
     reporter(outcome, "incomplete")
     reporter(_Opaque(), "invalid")
@@ -484,6 +493,9 @@ class _CountingParams(dict):
 class _Writer:
     def __init__(self):
         self.messages = []
+        self.checked = create_autospec(StdioNdjsonLineWriter, instance=True, spec_set=True)
+        self.checked.write_line.side_effect = self.write_line
+        self.write_line = self.checked.write_line
 
     async def write_line(self, message):
         self.messages.append(message)
@@ -536,7 +548,7 @@ async def test_channel_diagnostic_failure_does_not_disturb_settlement(tmp_path, 
     def broken_redaction(value):
         raise RuntimeError("redaction blew up")
 
-    monkeypatch.setattr(debug_trace, "redact_for_telemetry", broken_redaction)
+    monkeypatch.setattr(debug_trace, "redact_for_telemetry", create_autospec(debug_trace.redact_for_telemetry, side_effect=broken_redaction))
     writer = _Writer()
     channel = NdjsonOutboundChannel(writer)
     await channel.notify("session/update", {"k": 1})
@@ -580,15 +592,15 @@ def _apply_condition(condition, monkeypatch, tmp_path):
         configure_debug_trace(enabled=True, log_path=path)
     elif condition == "redaction-fails":
         configure_debug_trace(enabled=True, log_path=path)
-        monkeypatch.setattr(debug_trace, "redact_for_telemetry", _broken_redaction)
+        monkeypatch.setattr(debug_trace, "redact_for_telemetry", create_autospec(debug_trace.redact_for_telemetry, side_effect=_broken_redaction))
     elif condition == "supplier-fails":
         configure_debug_trace(enabled=True, log_path=path)
         breaker = _supplier_breaker()
         # server/spec bind the name at import; planning_loop and the sink module's own
         # helpers resolve it through the module at call time.
-        monkeypatch.setattr(server_module, "acp_debug_log", breaker)
-        monkeypatch.setattr("optimus.acp.spec.acp_debug_log", breaker)
-        monkeypatch.setattr(debug_trace, "acp_debug_log", breaker)
+        monkeypatch.setattr(server_module, "acp_debug_log", create_autospec(server_module.acp_debug_log, side_effect=breaker))
+        monkeypatch.setattr("optimus.acp.spec.acp_debug_log", create_autospec(spec_module.acp_debug_log, side_effect=breaker))
+        monkeypatch.setattr(debug_trace, "acp_debug_log", create_autospec(debug_trace.acp_debug_log, side_effect=breaker))
     elif condition == "write-fails":
         path.mkdir()
         configure_debug_trace(enabled=True, log_path=path)
@@ -675,6 +687,9 @@ async def test_full_session_wire_output_is_identical_under_diagnostic_failure(co
 class _CapturingWriter:
     def __init__(self):
         self.messages = []
+        self.checked = create_autospec(StdioNdjsonLineWriter, instance=True, spec_set=True)
+        self.checked.write_line.side_effect = self.write_line
+        self.write_line = self.checked.write_line
 
     async def write_line(self, message):
         self.messages.append(dict(message))
@@ -689,7 +704,7 @@ async def test_request_exception_path_still_delivers_internal_error(condition, t
     async def exploding(self, request, *, ownership_slot=None):
         raise RuntimeError("Authorization: Bearer " + "fixture-secret")
 
-    monkeypatch.setattr(server_module.AcpDuplexAdapter, "handle_client_request", exploding)
+    monkeypatch.setattr(server_module.AcpDuplexAdapter, "handle_client_request", create_autospec(server_module.AcpDuplexAdapter.handle_client_request, side_effect=exploding))
     reader = StdioNdjsonLineReader(io.BytesIO(b'{"jsonrpc":"2.0","id":9,"method":"session/prompt","params":{}}\n'))
     writer = _CapturingWriter()
     await asyncio.wait_for(configured.server.serve_ndjson(reader, writer), timeout=5)
@@ -771,3 +786,23 @@ def test_no_production_site_formats_its_message_dynamically():
                 assert isinstance(message, ast.Constant) and isinstance(message.value, str), (
                     f"{path.name}:{node.lineno}: message must be a string literal, got {ast.unparse(message)}"
                 )
+
+
+async def test_contract_writer_checks_real_signature_and_records_wire():
+    writer = _Writer()
+    with pytest.raises(AttributeError):
+        writer.checked.unknown_writer_operation = True
+    with pytest.raises(TypeError):
+        writer.checked.write_line(frame={})
+    await NdjsonOutboundChannel(writer.checked).notify("session/update", {"sessionId": "s"})
+    assert writer.messages == [{"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "s"}}]
+
+
+def test_contract_result_factory_rejects_missing_required_model_fields():
+    from pydantic import ValidationError
+
+    result = _run_result(tool_calls=(AgentToolCall(tool_name="file_reader", summary="read"),))
+    assert result.tool_calls[0].summary == "read"
+    with pytest.raises(ValidationError) as failure:
+        _run_result(output_text=None)
+    assert any(error["loc"] == ("output_text",) for error in failure.value.errors())

@@ -241,8 +241,10 @@ def test_hardening_masterplan_owns_exactly_fifteen_child_plan_statuses() -> None
     complete_rows = [row for row in rows if row["status"] == "Complete"]
     assert {row["track"] for row in complete_rows} == {"HARDENING-TRACK-STATIC-TYPING"}
     assert all(row["link_target"] == f"archive/{row['filename']}" for row in complete_rows)
+    ready_rows = [row for row in rows if row["status"] == "Ready"]
+    assert {row["track"] for row in ready_rows} == {"HARDENING-TRACK-TEST-DOUBLES"}
     not_drafted_rows = [row for row in rows if row["status"] == "Not drafted"]
-    assert len(not_drafted_rows) == 13
+    assert len(not_drafted_rows) == 12
     assert all(row["link_target"] is None for row in not_drafted_rows)
 
     text = HARDENING_MASTERPLAN.read_text(encoding="utf-8")
