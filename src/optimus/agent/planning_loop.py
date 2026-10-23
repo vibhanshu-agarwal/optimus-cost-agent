@@ -45,6 +45,7 @@ from optimus.retry.policy import RetryController, RetryPolicy
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import RuntimeContext
 from optimus.telemetry.subjects import sanitize_workspace_text
+from optimus_security.failure_facts import bounded
 
 if TYPE_CHECKING:
     from optimus.gateway.route_binding import BoundRequest, TurnRouteBinder
@@ -81,7 +82,37 @@ class PlanningTurnKind(StrEnum):
 
 
 class PlanningTurnParseError(ValueError):
-    pass
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        super().__init__(message)
+
+
+# Every reason a planning turn fails to parse (#388). Trace records carry only the code, never the
+# message, which may quote the reply.
+PLANNING_TURN_PARSE_CODES = frozenset(
+    {
+        "GRAMMAR_UNRECOGNIZED",
+        "REFUSE_NOT_ONE_LINE",
+        "REFUSE_TOO_LONG",
+        "REFUSE_HAS_DIRECTIVE_PREFIX",
+        "MCP_MIXED_DIRECTIVES",
+        "MCP_NOT_EXACTLY_ONE",
+        "MCP_LIST_INVALID",
+        "MCP_CALL_INVALID",
+        "MCP_DIRECTIVE_MALFORMED",
+        "OBSERVE_MULTIPLE",
+        "READ_RANGE_EMPTY",
+        "INTERMEDIATE_UNSUPPORTED_DIRECTIVE",
+        "INTERMEDIATE_UNRECOGNIZED_CONTENT",
+        "INTERMEDIATE_REQUIRES_OBSERVE",
+        "INTERMEDIATE_REQUIRES_READ",
+        "OBSERVATION_TOO_LARGE",
+        "READ_PATH_NOT_RELATIVE",
+        "READ_RANGES_DUPLICATE",
+        "READ_RANGES_OVERLAP",
+    }
+)
+_MCP_AUTHORIZATION_OUTCOMES = frozenset({"ALLOW", "BLOCK", "HOLD"})
 
 
 class PlanningReadError(ValueError):
@@ -445,13 +476,13 @@ _FINAL_TEST_DIRECTIVE = re.compile(r"^TEST\s+(.+)$")
 def parse_planning_turn(text: str) -> PlanningTurnDecision:
     stripped = text.strip()
     if not stripped:
-        raise PlanningTurnParseError("no recognized planning-turn grammar")
+        raise PlanningTurnParseError("GRAMMAR_UNRECOGNIZED", "no recognized planning-turn grammar")
 
     refuse_decision = _try_parse_refuse(stripped)
     if refuse_decision is not None:
         return refuse_decision
     if stripped.startswith("REFUSE:"):
-        raise PlanningTurnParseError("REFUSE reason must be one non-empty line")
+        raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
 
     mcp_decision = _try_parse_mcp_turn(stripped)
     if mcp_decision is not None:
@@ -468,7 +499,7 @@ def parse_planning_turn(text: str) -> PlanningTurnDecision:
     if _surface_has_ranged_read(surface_lines):
         return _parse_intermediate_turn(stripped)
 
-    raise PlanningTurnParseError("no recognized planning-turn grammar")
+    raise PlanningTurnParseError("GRAMMAR_UNRECOGNIZED", "no recognized planning-turn grammar")
 
 
 def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
@@ -478,15 +509,19 @@ def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
     if not (lines[0].startswith("MCP_LIST") or lines[0].startswith("MCP_CALL")):
         # If MCP appears mixed later with other content, reject below when surface has MCP.
         if any(line.startswith("MCP_LIST") or line.startswith("MCP_CALL") for line in lines):
-            raise PlanningTurnParseError("MCP directives must be a single intermediate tool request")
+            raise PlanningTurnParseError(
+                "MCP_MIXED_DIRECTIVES", "MCP directives must be a single intermediate tool request"
+            )
         return None
     if len(lines) != 1:
-        raise PlanningTurnParseError("MCP turn must contain exactly one MCP_LIST or MCP_CALL directive")
+        raise PlanningTurnParseError(
+            "MCP_NOT_EXACTLY_ONE", "MCP turn must contain exactly one MCP_LIST or MCP_CALL directive"
+        )
 
     try:
         list_directive = parse_mcp_list_line(lines[0])
     except AgentDirectiveParseError as exc:
-        raise PlanningTurnParseError(str(exc)) from exc
+        raise PlanningTurnParseError("MCP_LIST_INVALID", str(exc)) from exc
     if list_directive is not None:
         return PlanningTurnDecision(
             kind=PlanningTurnKind.MCP_TOOL,
@@ -497,7 +532,7 @@ def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
     try:
         call_directive = parse_mcp_call_line(lines[0])
     except AgentDirectiveParseError as exc:
-        raise PlanningTurnParseError(str(exc)) from exc
+        raise PlanningTurnParseError("MCP_CALL_INVALID", str(exc)) from exc
     if call_directive is not None:
         return PlanningTurnDecision(
             kind=PlanningTurnKind.MCP_TOOL,
@@ -508,7 +543,7 @@ def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
         )
 
     if lines[0].startswith("MCP_LIST") or lines[0].startswith("MCP_CALL"):
-        raise PlanningTurnParseError("malformed MCP directive")
+        raise PlanningTurnParseError("MCP_DIRECTIVE_MALFORMED", "malformed MCP directive")
     return None
 
 
@@ -601,7 +636,7 @@ def _parse_intermediate_turn(text: str) -> PlanningTurnDecision:
         observe_match = _OBSERVE_DIRECTIVE.match(line)
         if observe_match is not None:
             if observation_text is not None:
-                raise PlanningTurnParseError("multiple OBSERVE directives are not supported")
+                raise PlanningTurnParseError("OBSERVE_MULTIPLE", "multiple OBSERVE directives are not supported")
             observation_text = observe_match.group(1).strip()
             continue
 
@@ -611,22 +646,28 @@ def _parse_intermediate_turn(text: str) -> PlanningTurnDecision:
             start_byte = int(read_match.group(2))
             end_byte = int(read_match.group(3))
             if end_byte <= start_byte:
-                raise PlanningTurnParseError("READ range end must be greater than start")
+                raise PlanningTurnParseError("READ_RANGE_EMPTY", "READ range end must be greater than start")
             read_requests.append(
                 PlanningReadRequest(path=path, start_byte=start_byte, end_byte=end_byte)
             )
             continue
 
         if line.startswith(_DIRECTIVE_PREFIXES):
-            raise PlanningTurnParseError("intermediate planning turn contains unsupported directive")
+            raise PlanningTurnParseError(
+                "INTERMEDIATE_UNSUPPORTED_DIRECTIVE", "intermediate planning turn contains unsupported directive"
+            )
 
-        raise PlanningTurnParseError("intermediate planning turn contains unrecognized content")
+        raise PlanningTurnParseError(
+            "INTERMEDIATE_UNRECOGNIZED_CONTENT", "intermediate planning turn contains unrecognized content"
+        )
 
     if observation_text is None:
-        raise PlanningTurnParseError("intermediate planning turn requires OBSERVE")
+        raise PlanningTurnParseError("INTERMEDIATE_REQUIRES_OBSERVE", "intermediate planning turn requires OBSERVE")
 
     if not read_requests:
-        raise PlanningTurnParseError("intermediate planning turn requires at least one ranged READ")
+        raise PlanningTurnParseError(
+            "INTERMEDIATE_REQUIRES_READ", "intermediate planning turn requires at least one ranged READ"
+        )
 
     read_request_tuple = tuple(read_requests)
     if (
@@ -636,7 +677,7 @@ def _parse_intermediate_turn(text: str) -> PlanningTurnDecision:
         )
         > PLANNING_OBSERVATION_MAX_BYTES
     ):
-        raise PlanningTurnParseError("observation exceeds planning observation budget")
+        raise PlanningTurnParseError("OBSERVATION_TOO_LARGE", "observation exceeds planning observation budget")
 
     _validate_non_overlapping_reads(read_requests)
 
@@ -654,19 +695,19 @@ def _try_parse_refuse(text: str) -> PlanningTurnDecision | None:
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(lines) != 1:
-        raise PlanningTurnParseError("REFUSE reason must be one non-empty line")
+        raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
 
     refuse_match = _REFUSE_DIRECTIVE.match(lines[0])
     if refuse_match is None:
-        raise PlanningTurnParseError("REFUSE reason must be one non-empty line")
+        raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
 
     reason = refuse_match.group(1).strip()
     if not reason:
-        raise PlanningTurnParseError("REFUSE reason must be one non-empty line")
+        raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
     if len(reason.encode("utf-8")) > 512:
-        raise PlanningTurnParseError("REFUSE reason exceeds 512 UTF-8 bytes")
+        raise PlanningTurnParseError("REFUSE_TOO_LONG", "REFUSE reason exceeds 512 UTF-8 bytes")
     if _REFUSE_REASON_DIRECTIVE_PREFIX.match(reason):
-        raise PlanningTurnParseError("REFUSE reason must not contain directive prefixes")
+        raise PlanningTurnParseError("REFUSE_HAS_DIRECTIVE_PREFIX", "REFUSE reason must not contain directive prefixes")
 
     return PlanningTurnDecision(kind=PlanningTurnKind.REFUSE, reason=reason)
 
@@ -688,12 +729,12 @@ def _normalize_workspace_relative_path(path_text: str) -> str:
     from pathlib import Path
 
     if not path_text:
-        raise PlanningTurnParseError("READ path must be workspace-relative")
+        raise PlanningTurnParseError("READ_PATH_NOT_RELATIVE", "READ path must be workspace-relative")
     path = Path(path_text)
     if path.is_absolute() or ".." in path.parts:
-        raise PlanningTurnParseError("READ path must be workspace-relative")
+        raise PlanningTurnParseError("READ_PATH_NOT_RELATIVE", "READ path must be workspace-relative")
     if re.match(r"^[A-Za-z]:[\\/]|^/", path_text):
-        raise PlanningTurnParseError("READ path must be workspace-relative")
+        raise PlanningTurnParseError("READ_PATH_NOT_RELATIVE", "READ path must be workspace-relative")
     return path.as_posix()
 
 
@@ -707,9 +748,9 @@ def _validate_non_overlapping_reads(read_requests: list[PlanningReadRequest]) ->
         for index, current in enumerate(sorted_ranges):
             for other in sorted_ranges[index + 1 :]:
                 if current.start_byte == other.start_byte and current.end_byte == other.end_byte:
-                    raise PlanningTurnParseError(f"duplicate READ ranges for {path}")
+                    raise PlanningTurnParseError("READ_RANGES_DUPLICATE", f"duplicate READ ranges for {path}")
                 if current.start_byte < other.end_byte and other.start_byte < current.end_byte:
-                    raise PlanningTurnParseError(f"overlapping READ ranges for {path}")
+                    raise PlanningTurnParseError("READ_RANGES_OVERLAP", f"overlapping READ ranges for {path}")
 
 
 def _normalized_read_failure_signature(read_requests: list[PlanningReadRequest]) -> str:
@@ -1280,8 +1321,10 @@ class _PlanningIterationRunner:
                 current_read_evidence_envelope=current_envelope,
                 mcp_evidence_envelope=mcp_evidence_envelope,
                 initial_workspace_context=self._initial_workspace_context if planning_turn == 1 else "",
+                # The sizes stay until the first guarded read: a turn that read nothing still needs
+                # them to size its re-read (#388). The raw context stays turn-1-only (Plan 9.87).
                 initial_workspace_file_sizes=(
-                    self._initial_workspace_file_sizes if planning_turn == 1 else {}
+                    self._initial_workspace_file_sizes if planning_turn == 1 or not self._observations else {}
                 ),
                 evidence_limits=(
                     PLANNING_OBSERVATION_MAX_BYTES,
@@ -1343,8 +1386,18 @@ class _PlanningIterationRunner:
 
         try:
             decision = parse_planning_turn(response.output_text)
-        except PlanningTurnParseError:
+        except PlanningTurnParseError as exc:
             self._last_non_progress_kind = "UNPARSEABLE"
+            from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
+
+            if debug_trace_enabled():
+                acp_debug_log(
+                    location="planning_loop.py:execute_iteration:unparseable",
+                    message="planning turn made no progress",
+                    data=_non_progress_payload(self, "UNPARSEABLE", planning_turn, response, exc=exc),
+                    hypothesis_id="P12.2-NONPROGRESS",
+                    run_id=self._run_id,
+                )
             return IterationOutcome(
                 summary="planning response was unparseable",
                 deterministic_completion=False,
@@ -1456,6 +1509,16 @@ class _PlanningIterationRunner:
             self._mcp_tool_calls.append(call)
             self._mcp_evidence_envelope = format_mcp_evidence_envelope(output)
             self._current_reads = ()
+            from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
+
+            if debug_trace_enabled():
+                acp_debug_log(
+                    location="planning_loop.py:execute_iteration:mcp_tool",
+                    message="planning turn made no progress",
+                    data=_non_progress_payload(self, "MCP_TOOL", planning_turn, response, decision=decision, call=call),
+                    hypothesis_id="P12.2-NONPROGRESS",
+                    run_id=self._run_id,
+                )
             return IterationOutcome(
                 summary="planning requested generic MCP tool evidence",
                 deterministic_completion=False,
@@ -1656,5 +1719,36 @@ def _read_rejection_payload(self: _PlanningIterationRunner, exc: PlanningReadErr
         "start_byte": request.start_byte,
         "end_byte": request.end_byte,
         }
+
+    return payload
+
+
+def _non_progress_payload(
+    self: _PlanningIterationRunner,
+    kind: str,
+    planning_turn: int,
+    response: GatewayResponse,
+    *,
+    exc: PlanningTurnParseError | None = None,
+    decision: PlanningTurnDecision | None = None,
+    call: AgentToolCall | None = None,
+) -> Callable[[], dict[str, object]]:
+    """A turn that made no progress, without its content: never the reply, the parse message (it may
+    quote the reply), an MCP server or tool name, or a path (#388)."""
+
+    def payload() -> dict[str, object]:
+        data: dict[str, object] = {
+            "run_id": self._run_id,
+            "session_id": self._session_id,
+            "planning_turn": planning_turn,
+            "kind": kind,
+            "output_bytes": len(response.output_text.encode("utf-8")),
+        }
+        if exc is not None:
+            data["reason_code"] = exc.code
+        if decision is not None and call is not None:
+            data["mcp_operation"] = decision.mcp_operation
+            data["authorization_outcome"] = bounded(call.authorization_outcome, _MCP_AUTHORIZATION_OUTCOMES)
+        return data
 
     return payload

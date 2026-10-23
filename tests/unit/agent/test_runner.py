@@ -217,6 +217,28 @@ def test_agent_mode_without_approval_returns_awaiting_approval(tmp_path):
     assert result.plan_hash is not None
 
 
+def test_agent_mode_recovers_from_an_unparseable_first_turn_through_a_listed_size_read(tmp_path):
+    """#388 through the real runner: the turn-1 size list comes from the workspace context it builds."""
+    from tests.unit.agent.test_planning_loop_runner import (
+        PROSE,
+        SIZES_HEADER,
+        TARGET_FINAL_PLAN,
+        TARGET_SOURCE,
+        SizeListReadGateway,
+        _scripts,
+    )
+
+    (tmp_path / "target.py").write_text(TARGET_SOURCE, encoding="utf-8")
+    gateway = SizeListReadGateway(_scripts(PROSE, "", TARGET_FINAL_PLAN))
+    result = AgentRunner(gateway_client=gateway, model="glm-5.2").run(
+        AgentRunRequest(run_id="run-388", task="Update target.py", execution_mode=ExecutionMode.AGENT, workspace_root=tmp_path)
+    )
+
+    assert f"{SIZES_HEADER}\n- target.py: " in gateway.calls[0]["input_text"], "precondition: turn 1 lists the size"
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL, result.stop_reason
+    assert len(gateway.calls) == 3
+
+
 def test_read_directive_on_directory_skips_without_aborting_agent_turn(tmp_path):
     (tmp_path / "README.md").write_text("# repo\n", encoding="utf-8")
     (tmp_path / "src" / "optimus").mkdir(parents=True)
