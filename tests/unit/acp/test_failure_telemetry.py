@@ -110,6 +110,28 @@ def test_the_trace_projects_correlation_ids_attempt_ids_and_stage_types(tmp_path
     first, second = real["attempts"]
     assert (first["gateway_request_id"], first["provider_request_id"], first["router_pipeline"]) == (GW, "gen-17-Ab", ["guardrail", "unrecognized"])
     assert (second["gateway_request_id"], second["provider_request_id"]) == ("unrecognized", "unrecognized")
+    assert "router_guardrails" not in first  # added only when the Gateway reported a guardrail stage's facts
+
+
+def test_received_guardrail_facts_are_re_bounded_in_the_trace(tmp_path) -> None:
+    """#400: the host re-bounds the Gateway's guardrail facts, so a hostile value never reaches the trace or telemetry."""
+    configure_debug_trace(enabled=True, log_path=tmp_path / "trace" / "debug-acp.ndjson")
+    hostile = {"flagged": PROSE, "detected": True, "decision": BARE_KEY, "action": "blocked", "verdict_conflict": False,
+               "guardrail_scope": "api-key", "name": PROSE}  # fmt: skip
+    refused = GatewayHttpError(
+        422, CANARY, gateway_code="EMPIRICAL_ROUTER_PIPELINE", retryable=False,
+        route_attempts=(GatewayRouteAttempt(attempt=1, gateway_request_id=GW, outcome="completed", router_pipeline=("guardrail",), router_guardrails=(hostile,)),),
+    )  # fmt: skip
+    log_provider_attempts(stage="answer", correlation=lambda: {"run_id": RUN, "session_id": SESSION, "request_id": ROUTE}, attempts=attempts_from_failure(refused), failure=refused)
+
+    [record] = _trace(tmp_path, "debug_trace.py:log_provider_attempts")
+    [attempt] = record["attempts"]
+    assert attempt["router_guardrails"] == [{
+        "flagged": "invalid", "detected": True, "decision": "unrecognized", "action": "blocked", "verdict_conflict": False,
+        "guardrail_scope": "api-key",
+    }]  # fmt: skip
+    text = (tmp_path / "trace" / "debug-acp.ndjson").read_text(encoding="utf-8")
+    assert PROSE not in text and BARE_KEY not in text
 
 
 def test_a_prompt_refusal_projects_its_ids_and_keeps_a_zero_rpc_id(tmp_path) -> None:

@@ -35,6 +35,7 @@ from optimus_model_policy.stage_c import Admission, StageCRefusal, reservation_u
 from optimus_security.failure_facts import (
     bounded,
     bounded_failure,
+    bounded_guardrail_facts,
     final_sanitize,
     gateway_request_id,
     host_route_id,
@@ -214,6 +215,7 @@ def _run_enforced_completion(
                 ATTEMPT_UNCERTAIN,
                 provider_request_id=provider_result.message_id,
                 router_pipeline=provider_result.router_pipeline,
+                router_guardrails=provider_result.router_guardrails,
                 failure={"kind": "usage_contract", "reason": slug(str(exc))},
             )
         )
@@ -224,7 +226,12 @@ def _run_enforced_completion(
     gateway_usage["cost_usd"] = format_cost_usd(provider_result.cost_usd)
     attempts.append(
         _attempt_record(
-            number, attempt_id, ATTEMPT_COMPLETED, provider_request_id=provider_result.message_id, router_pipeline=provider_result.router_pipeline
+            number,
+            attempt_id,
+            ATTEMPT_COMPLETED,
+            provider_request_id=provider_result.message_id,
+            router_pipeline=provider_result.router_pipeline,
+            router_guardrails=provider_result.router_guardrails,
         )
     )
     try:
@@ -269,12 +276,14 @@ def _attempt_record(
     http_status: int | None = None,
     provider_request_id: str | None = None,
     router_pipeline: tuple[str, ...] | None = None,
+    router_guardrails: tuple[dict[str, Any], ...] | None = None,
     failure: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """``router_pipeline``: the stage types the router reported for a completed attempt (empty when none ran,
-    None without router metadata). ``failure``: a failed attempt's bounded, content-free cause. Both keep a
-    failure diagnosable."""
-    return {
+    None without router metadata). ``router_guardrails``: each guardrail stage's closed facts (#400), added only
+    when one ran, so every other record is unchanged. ``failure``: a failed attempt's bounded, content-free cause.
+    Each keeps a failure diagnosable."""
+    record = {
         "attempt": number,
         "gateway_request_id": attempt_id,
         "outcome": outcome,
@@ -283,6 +292,9 @@ def _attempt_record(
         "router_pipeline": None if router_pipeline is None else list(router_pipeline),
         "failure": failure,
     }
+    if router_guardrails:
+        record["router_guardrails"] = list(router_guardrails)
+    return record
 
 
 _LOGGED_USAGE_FIELDS = ("gateway_request_id", "provider_request_id", "resolved_provider", "resolved_model", "input_tokens", "output_tokens", "cost_usd")
@@ -316,7 +328,7 @@ def model_request_log_line(path: str, status: int, body: dict[str, Any], *, poli
 
 def _logged_attempt(item: dict[str, Any]) -> dict[str, Any]:
     stages = item.get("router_pipeline")
-    return {
+    logged = {
         "attempt": item.get("attempt") if type(item.get("attempt")) is int else None,
         "gateway_request_id": gateway_request_id(item.get("gateway_request_id")),
         "outcome": item.get("outcome"),
@@ -325,6 +337,10 @@ def _logged_attempt(item: dict[str, Any]) -> dict[str, Any]:
         "router_pipeline": [bounded(stage, KNOWN_ROUTER_STAGES) for stage in stages] if isinstance(stages, list) else None,
         "failure": bounded_failure(item.get("failure")),
     }
+    guardrails = item.get("router_guardrails")
+    if isinstance(guardrails, list):
+        logged["router_guardrails"] = [bounded_guardrail_facts(facts) for facts in guardrails]
+    return logged
 
 
 def _logged_usage(usage: dict[str, Any], policy: GatewayModelPolicy | None) -> dict[str, Any]:

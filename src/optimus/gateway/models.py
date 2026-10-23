@@ -85,6 +85,10 @@ class GatewayRouteAttempt(BaseModel):
     provider_request_id: str | None = None
     router_pipeline: tuple[str, ...] | None = None
     """The router pipeline stage types the Gateway reported for a completed attempt (None when not reported)."""
+    router_guardrails: tuple[dict[str, Any], ...] | None = None
+    """Each guardrail stage's closed facts, as the Gateway reported them when one ran (#400). Diagnostic only, so any
+    value is accepted here and re-bounded before any trace: it can never make the attempt list malformed and so
+    disturb its accounting. None when not reported."""
     failure: dict[str, str | int | None] | None = None
     """A failed attempt's bounded, content-free cause, as the Gateway reported it (re-bounded before any trace)."""
 

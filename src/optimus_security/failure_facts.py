@@ -84,6 +84,76 @@ def bounded_failure(failure: object) -> dict[str, Any] | None:
     return kept
 
 
+# --- An OpenRouter `guardrail` router stage's closed facts (#400, agreed handling D, Codex round 39) ---------------
+# Only literals OpenRouter's router-metadata and guardrails guides enumerate are recognized (retained 2026-10-23 in
+# the #400 evidence). The guides name `decision` but list no value. None of these facts proves a stage left the
+# request or reply unchanged, so the empirical route still refuses every guardrail stage.
+
+MISSING, INVALID = "missing", "invalid"
+GUARDRAIL_ACTIONS = frozenset({"blocked"})
+GUARDRAIL_DECISIONS: frozenset[str] = frozenset()
+GUARDRAIL_SCOPES = frozenset({"api-key"})
+_GUARDRAIL_STATES = frozenset({UNRECOGNIZED, MISSING, INVALID})
+_GUARDRAIL_BOOLEANS = ("flagged", "detected")
+_GUARDRAIL_LITERALS = {"decision": GUARDRAIL_DECISIONS, "action": GUARDRAIL_ACTIONS, "guardrail_scope": GUARDRAIL_SCOPES}
+
+
+def _guardrail_boolean(container: object, key: str) -> bool | str:
+    if not isinstance(container, dict):
+        return INVALID
+    if key not in container:
+        return MISSING
+    value = container[key]
+    return value if isinstance(value, bool) else INVALID
+
+
+def _guardrail_literal(container: object, key: str, allowed: frozenset[str]) -> str:
+    if not isinstance(container, dict):
+        return INVALID
+    if key not in container:
+        return MISSING
+    value = container[key]
+    if not isinstance(value, str):
+        return INVALID
+    return value if value in allowed else UNRECOGNIZED
+
+
+def guardrail_stage_facts(stage: dict[str, Any]) -> dict[str, Any]:
+    """One guardrail stage's closed, content-free facts: `flagged` and `detected` as a Boolean or `missing`/`invalid`
+    (never coerced); `decision` and `action` apart, each a documented literal or `unrecognized`/`missing`/`invalid`;
+    whether both are present and differ; and `guardrail_scope`, diagnostic only. Never its name, id, summary,
+    patterns, entity labels or any other data."""
+    data = stage.get("data", {})
+    decision, action = (data.get(key) if isinstance(data, dict) else None for key in ("decision", "action"))
+    return {
+        **{key: _guardrail_boolean(data, key) for key in _GUARDRAIL_BOOLEANS},
+        "decision": _guardrail_literal(data, "decision", GUARDRAIL_DECISIONS),
+        "action": _guardrail_literal(data, "action", GUARDRAIL_ACTIONS),
+        "verdict_conflict": decision is not None and action is not None and decision != action,
+        "guardrail_scope": _guardrail_literal(stage, "guardrail_scope", GUARDRAIL_SCOPES),
+    }
+
+
+def bounded_guardrail_facts(facts: object) -> dict[str, Any] | None:
+    """Guardrail facts received from another component, re-bounded before they are persisted; every other key is
+    dropped."""
+    if not isinstance(facts, dict):
+        return None
+    kept: dict[str, Any] = {}
+    for key in _GUARDRAIL_BOOLEANS:
+        value = facts.get(key, MISSING)
+        kept[key] = value if isinstance(value, bool) or value in (MISSING, INVALID) else INVALID
+    for key, allowed in _GUARDRAIL_LITERALS.items():
+        value = facts.get(key, MISSING)
+        if not isinstance(value, str):
+            kept[key] = INVALID
+        else:
+            kept[key] = value if value in allowed or value in _GUARDRAIL_STATES else UNRECOGNIZED
+    conflict = facts.get("verdict_conflict")
+    kept["verdict_conflict"] = conflict if isinstance(conflict, bool) else INVALID
+    return {key: kept[key] for key in ("flagged", "detected", "decision", "action", "verdict_conflict", "guardrail_scope")}
+
+
 # --- Field-specific id projections (correction plan v4, C1): a value of the field's generated shape, else
 # ``unrecognized``; None for None. A shape check alone would keep a bare credential, so each field has its own.
 

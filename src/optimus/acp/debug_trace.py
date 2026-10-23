@@ -25,6 +25,7 @@ from optimus_security.failure_facts import (
     UNRECOGNIZED,
     bounded,
     bounded_failure,
+    bounded_guardrail_facts,
     final_sanitize,
     gateway_request_id,
     host_route_id,
@@ -317,11 +318,12 @@ def _attempt_fields(attempt: ProviderAttempt) -> dict[str, Any]:
     record's is the outer host-to-Gateway status, kept apart so a Gateway 502 never reads as an upstream one.
     ``router_pipeline`` is the allowlisted router stage types the Gateway reported; ``gateway_request_id`` and
     ``provider_request_id`` are the correlation ids, each kept only in its own generated shape (correction plan v4,
-    C1); ``failure`` is the attempt's re-bounded cause. Each is None when not reported."""
+    C1); ``failure`` is the attempt's re-bounded cause. Each is None when not reported. ``router_guardrails``, each
+    guardrail stage's re-bounded facts (#400), is added only when the Gateway reported them."""
     routed = attempt.routed is True
     status = _status(attempt.http_status)
     stages = attempt.router_pipeline
-    return {
+    fields = {
         "attempt": attempt.key,
         "outcome": attempt.outcome,
         "routed": routed,
@@ -332,6 +334,9 @@ def _attempt_fields(attempt: ProviderAttempt) -> dict[str, Any]:
         "provider_request_id": provider_request_id(attempt.provider_request_id),
         "failure": bounded_failure(attempt.failure),
     }
+    if attempt.router_guardrails is not None:
+        fields["router_guardrails"] = [bounded_guardrail_facts(facts) for facts in attempt.router_guardrails]
+    return fields
 
 
 _CORRELATION_IDS: dict[str, Callable[[object], str | None]] = {"run_id": host_route_id, "session_id": host_session_id, "request_id": host_route_id}

@@ -23,6 +23,7 @@ from optimus.agent.state_store import (
 from optimus.agent.tools import AgentToolbox
 from optimus.agent.workspace_context import WorkspaceContextResult, assemble_workspace_context_for_prompt
 from optimus.gateway.attempts import (
+    ROUTE_STOPPED_NO_RETRY,
     AttemptIntegrityError,
     ProviderAttempt,
     attempts_from_failure,
@@ -112,7 +113,7 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
 
 # r8 offline correction: the same failures when they prove the experimental test route stopped. The Gateway then
 # admits no further request on that route while it runs, so these never suggest a retry. Same stop reasons.
-_NO_RETRY = "No further request on this route will be sent while this agent runs, so retrying will not help."
+_NO_RETRY = ROUTE_STOPPED_NO_RETRY
 CHAT_ROUTE_STOPPED_MESSAGES: dict[str, str] = {
     "CHAT_GATEWAY_FAILURE": (
         "Chat could not get an answer: the model gateway refused the model's reply after the call was charged, "
