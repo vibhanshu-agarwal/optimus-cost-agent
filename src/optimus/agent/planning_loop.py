@@ -24,6 +24,7 @@ from optimus.agent.prompts import build_multi_turn_planner_input, format_mcp_evi
 from optimus.agent.tools import AgentToolbox
 from optimus.agent.workspace_context import DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
 from optimus.gateway.attempts import (
+    ROUTE_STOPPED_NO_RETRY,
     AttemptIntegrityError,
     ProviderAttempt,
     attempts_from_failure,
@@ -33,6 +34,7 @@ from optimus.gateway.attempts import (
     is_gateway_registry_mismatch,
     is_input_capacity_refusal,
     is_preflight_refusal,
+    stops_experimental_route,
 )
 from optimus.gateway.errors import GatewayError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
@@ -829,21 +831,56 @@ _CHECKIN_ENDINGS = {
 }
 
 
+# #400: the same failures when they prove the experimental route stopped, as Chat says them (r8). The Gateway then
+# admits no further request on that route while it runs, so these never suggest a retry. Same stop reasons.
+# Each speaks only for the failed request and the absent plan: an earlier turn of the same run may already have run
+# an approved MCP call (Codex round 40, finding 3).
+PLANNING_ROUTE_STOPPED_MESSAGES: dict[str, str] = {
+    "PLANNING_GATEWAY_FAILURE": (
+        "Planning stopped because the model gateway refused the model's reply after the call was charged, and this "
+        f"experimental route is now stopped. That reply was not used, and no plan was offered for approval. {ROUTE_STOPPED_NO_RETRY}"
+    ),
+    "PLANNING_GATEWAY_COST_UNKNOWN": (
+        "Planning stopped because the model gateway failed without reporting the call's cost, and this experimental "
+        f"route is now stopped. No plan was offered for approval. {ROUTE_STOPPED_NO_RETRY}"
+    ),
+    # A later refusal proves only the stop and this request's free refusal, never the stop's cause (Codex review P2).
+    "PLANNING_GATEWAY_REFUSED": (
+        "Planning stopped because the model gateway has stopped this experimental route, so it refused this request "
+        f"before it reached any model and nothing was charged for it. No plan was offered for approval. {ROUTE_STOPPED_NO_RETRY}"
+    ),
+    # A summary this turn stopped the route, and the request then did not fit (Codex round 41): no capacity
+    # recovery can help while the route is stopped.
+    "CONTEXT_CAPACITY_EXCEEDED": (
+        "Planning stopped because its next request would not fit the model's input capacity, and the model gateway "
+        f"has stopped this experimental route. That request was not sent, and no plan was offered for approval. {ROUTE_STOPPED_NO_RETRY}"
+    ),
+}
+
+
 def planning_corrective_text(
     stop_reason: str | None,
     *,
     refusal_reason: str | None = None,
     workspace_root: Path | None = None,
+    route_stopped: bool = False,
     detail: str | None = None,
 ) -> str:
-    """The user's text for `stop_reason`; `detail` names what repeated (Plan 12.3, Design 7)."""
-    text = _corrective_template(stop_reason, refusal_reason=refusal_reason, workspace_root=workspace_root)
+    """The user's text for `stop_reason`. ``route_stopped``: the request's failure proved its experimental route
+    stopped (#400). `detail` names what repeated (Plan 12.3, Design 7)."""
+    text = _corrective_template(
+        stop_reason, refusal_reason=refusal_reason, workspace_root=workspace_root, route_stopped=route_stopped
+    )
     return text + sanitize_workspace_text(detail, workspace_root=workspace_root) if detail and text else text
 
 
-def _corrective_template(stop_reason: str | None, *, refusal_reason: str | None, workspace_root: Path | None) -> str:
+def _corrective_template(
+    stop_reason: str | None, *, refusal_reason: str | None, workspace_root: Path | None, route_stopped: bool
+) -> str:
     if stop_reason == "PLANNING_MODEL_REFUSED" and refusal_reason is not None:
         return sanitize_workspace_text(refusal_reason, workspace_root=workspace_root)
+    if route_stopped and stop_reason in PLANNING_ROUTE_STOPPED_MESSAGES:
+        return PLANNING_ROUTE_STOPPED_MESSAGES[stop_reason]
     templates = {
         "PLANNING_REPEATED_READ_REQUEST": "Planning stopped after repeated non-progress read requests.",
         "PLANNING_REPEATED_MCP_REQUEST": "Planning stopped after repeated MCP requests that returned the same result.",
@@ -851,7 +888,7 @@ def _corrective_template(stop_reason: str | None, *, refusal_reason: str | None,
             "Planning stopped after the model alternated between the same requests with unchanged results."
         ),
         "PLANNING_NO_PROGRESS": "Planning stopped after several steps that produced no new evidence.",
-        "PLANNING_GATEWAY_FAILURE": "Planning stopped after repeated gateway request failures.",
+        "PLANNING_GATEWAY_FAILURE": "Planning stopped because the model gateway request failed.",
         "PLANNING_GATEWAY_COST_UNKNOWN": (
             "Planning stopped because a gateway attempt cost could not be verified; "
             "no further retry was dispatched."
@@ -1136,6 +1173,8 @@ class _PlanningIterationRunner:
         self._refusal_detail = ""
         self._attempt_callback = attempt_callback
         self._route_binder = route_binder
+        # Sticky: a Gateway failure proved this route stopped, and a stopped route never restarts (#400).
+        self._route_stopped = False
         self._conversation_envelope = conversation_envelope
         self._context_packer = context_packer
         self._initial_workspace_context = initial_workspace_context
@@ -1460,6 +1499,8 @@ class _PlanningIterationRunner:
                 # reported, a proven preflight refusal costs nothing, and anything without settled
                 # usage stays unknown. Settled usage is recorded first, so a paid attempt reaches the
                 # totals and the ledger even if its report then fails.
+                if stops_experimental_route(exc, experimental=self._route_binder is not None and self._route_binder.experimental):
+                    self._route_stopped = True
                 usage = getattr(exc, "gateway_usage", None)
                 attempts = account(usage, _failure_classifier(exc), exc)
                 if attempts is None:
@@ -1614,6 +1655,10 @@ class _PlanningIterationRunner:
                     cost_usd=Decimal("0"),
                 )
             if fitted is None:
+                # A summary this turn may have stopped the shared route (#400; Codex round 41). Packers that
+                # predate the fact (test doubles) have none.
+                if getattr(self._context_packer, "route_stopped", False) is True:
+                    self._route_stopped = True
                 return self._typed_planning_failure(
                     stop_reason="CONTEXT_CAPACITY_EXCEEDED",
                     summary="the planning request does not fit the model's usable input",
@@ -1863,6 +1908,7 @@ class _PlanningIterationRunner:
                 stop_reason,
                 refusal_reason=refusal_reason,
                 workspace_root=self._workspace_root,
+                route_stopped=self._route_stopped,
                 detail=detail,
             ),
             refusal_reason=(

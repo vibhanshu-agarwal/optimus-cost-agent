@@ -168,6 +168,80 @@ def test_an_unknown_router_stage_type_is_recorded_as_unrecognized_and_still_refu
     assert result.router_pipeline == ("unrecognized", "guardrail")  # still non-empty, so the route still refuses it
 
 
+# --- #400: a guardrail stage's closed facts reach the record and the log; the route still refuses -----------------
+
+GUARDRAIL_FACTS = {"flagged": False, "detected": "missing", "decision": "unrecognized", "action": "missing",
+                   "verdict_conflict": False, "guardrail_scope": "missing"}  # fmt: skip
+
+
+def test_only_guardrail_stages_yield_closed_facts_and_never_their_text() -> None:
+    reply = {
+        "id": "gen-1",
+        "model": HAIKU,
+        "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2, "cost": "0.00001"},
+        "openrouter_metadata": {
+            "attempt": 1,
+            "endpoints": {"total": 1, "available": [{"provider": "Anthropic", "model": HAIKU, "selected": True}]},
+            "pipeline": [
+                {"type": "guardrail", "name": CANARY, "summary": CANARY, "data": {"flagged": False, "decision": CANARY}},
+                {"type": "context_compression", "name": "context-compression", "data": {"engine": CANARY}},
+            ],
+        },
+    }
+    result = parse_openai_chat_completion(reply, {}, requested_model=HAIKU)
+    assert result.router_pipeline == ("guardrail", "context_compression")
+    assert result.router_guardrails == (GUARDRAIL_FACTS,)
+    assert CANARY not in repr(result.router_guardrails)
+
+
+def test_a_reply_without_a_guardrail_stage_has_no_guardrail_facts() -> None:
+    reply = {
+        "id": "gen-1",
+        "model": HAIKU,
+        "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2, "cost": "0.00001"},
+        "openrouter_metadata": {"attempt": 1, "endpoints": {"total": 1, "available": [{"provider": "Anthropic", "model": HAIKU, "selected": True}]}},
+    }
+    assert parse_openai_chat_completion(reply, {}, requested_model=HAIKU).router_guardrails == ()
+
+
+class _GuardrailStage(RecordingUpstream):
+    def __init__(self, facts: dict[str, Any]) -> None:
+        super().__init__()
+        self.facts = facts
+
+    def _result(self, model: str) -> ProviderMessageResult:
+        base = super()._result(model)
+        evidence = {"resolved_provider": "Anthropic", "router_attempt": 1, "router_pipeline": ("guardrail",), "router_guardrails": (self.facts,)}
+        return ProviderMessageResult(**{**base.__dict__, "input_tokens": 1, **evidence})
+
+
+def test_guardrail_facts_reach_the_attempt_record_and_the_log_line_and_the_route_still_refuses() -> None:
+    status, body = _haiku_post(_GuardrailStage(GUARDRAIL_FACTS))
+
+    assert (status, body["code"]) == (422, "EMPIRICAL_ROUTER_PIPELINE")  # no policy change: the stage is still refused
+    [attempt] = body["route_attempts"]
+    assert (attempt["router_pipeline"], attempt["router_guardrails"]) == (["guardrail"], [GUARDRAIL_FACTS])
+    line = json.loads(model_request_log_line("/v1/responses", status, body))
+    assert line["route_attempts"][0]["router_guardrails"] == [GUARDRAIL_FACTS]
+
+
+def test_the_log_line_re_bounds_guardrail_facts() -> None:
+    status, body = _haiku_post(_GuardrailStage({**GUARDRAIL_FACTS, "action": CANARY, "name": CANARY}))
+
+    line = model_request_log_line("/v1/responses", status, body)
+    assert json.loads(line)["route_attempts"][0]["router_guardrails"] == [{**GUARDRAIL_FACTS, "action": "unrecognized"}]
+    assert CANARY not in line
+
+
+def test_an_attempt_without_a_guardrail_stage_keeps_its_record_unchanged() -> None:
+    """The record gains its guardrail key only when a guardrail stage ran, so every other body is byte-identical."""
+    status, body = _haiku_post(_UnknownCost())
+    assert "router_guardrails" not in body["route_attempts"][0]
+    assert "router_guardrails" not in json.loads(model_request_log_line("/v1/responses", status, body))["route_attempts"][0]
+
+
 def test_a_binding_with_unknown_fields_counts_them_and_never_echoes_their_names() -> None:
     raw = {"version": 1, "registry_hash": "x" * 64, "request_id": "r", "output_cap": 8, CANARY: 1, "private note": 2}
     with pytest.raises(BindingError) as caught:

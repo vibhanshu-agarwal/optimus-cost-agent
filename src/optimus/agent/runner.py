@@ -24,6 +24,7 @@ from optimus.agent.state_store import (
 from optimus.agent.tools import AgentToolbox
 from optimus.agent.workspace_context import WorkspaceContextResult, assemble_workspace_context_for_prompt
 from optimus.gateway.attempts import (
+    ROUTE_STOPPED_NO_RETRY,
     AttemptIntegrityError,
     ProviderAttempt,
     attempts_from_failure,
@@ -100,20 +101,27 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
 
 # r8 offline correction: the same failures when they prove the experimental test route stopped. The Gateway then
 # admits no further request on that route while it runs, so these never suggest a retry. Same stop reasons.
-_NO_RETRY = "No further request on this route will be sent while this agent runs, so retrying will not help."
+_NO_RETRY = ROUTE_STOPPED_NO_RETRY
 CHAT_ROUTE_STOPPED_MESSAGES: dict[str, str] = {
     "CHAT_GATEWAY_FAILURE": (
         "Chat could not get an answer: the model gateway refused the model's reply after the call was charged, "
-        f"and this experimental test route is now stopped. {_NO_RETRY}"
+        f"and this experimental route is now stopped. {_NO_RETRY}"
     ),
     "CHAT_GATEWAY_COST_UNKNOWN": (
         "Chat stopped because the model gateway failed without reporting the call's cost, and this experimental "
-        f"test route is now stopped. {_NO_RETRY}"
+        f"route is now stopped. {_NO_RETRY}"
     ),
     # A later refusal proves only the stop and this request's free refusal, never the stop's cause (Codex review P2).
+    # "experimental route", not "test route": ADR-023 shipped it for ordinary use (Codex round 40).
     "CHAT_GATEWAY_REFUSED": (
-        "Chat could not answer: the model gateway has stopped this experimental test route, so it refused this "
+        "Chat could not answer: the model gateway has stopped this experimental route, so it refused this "
         f"request before it reached any model and nothing was charged. {_NO_RETRY}"
+    ),
+    # A summary this turn stopped the route, and the request then did not fit (#400, Codex round 41): no capacity
+    # recovery can help while the route is stopped. Same stop reason.
+    "CHAT_CONTEXT_CAPACITY_EXCEEDED": (
+        "Chat could not answer: the request would not fit the model's input capacity, and the model gateway has "
+        f"stopped this experimental route. It was not sent. {_NO_RETRY}"
     ),
 }
 
@@ -1535,7 +1543,10 @@ class AgentRunner:
             if fitted is None:
                 if halt_requested is not None and halt_requested():
                     return self._chat_failure(request, stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
-                return self._chat_failure(request, stop_reason="CHAT_CONTEXT_CAPACITY_EXCEEDED")
+                # A summary this turn may have stopped the shared route (#400; Codex round 41). Packers that
+                # predate the fact (test doubles) have none.
+                stopped_text = CHAT_ROUTE_STOPPED_MESSAGES["CHAT_CONTEXT_CAPACITY_EXCEEDED"] if getattr(context_packer, "route_stopped", False) is True else None
+                return self._chat_failure(request, stop_reason="CHAT_CONTEXT_CAPACITY_EXCEEDED", output_text=stopped_text)
             chat_input = fitted
         if halt_requested is not None and halt_requested():
             return self._chat_failure(request, stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
