@@ -117,15 +117,16 @@ _NO_RETRY = ROUTE_STOPPED_NO_RETRY
 CHAT_ROUTE_STOPPED_MESSAGES: dict[str, str] = {
     "CHAT_GATEWAY_FAILURE": (
         "Chat could not get an answer: the model gateway refused the model's reply after the call was charged, "
-        f"and this experimental test route is now stopped. {_NO_RETRY}"
+        f"and this experimental route is now stopped. {_NO_RETRY}"
     ),
     "CHAT_GATEWAY_COST_UNKNOWN": (
         "Chat stopped because the model gateway failed without reporting the call's cost, and this experimental "
-        f"test route is now stopped. {_NO_RETRY}"
+        f"route is now stopped. {_NO_RETRY}"
     ),
     # A later refusal proves only the stop and this request's free refusal, never the stop's cause (Codex review P2).
+    # "experimental route", not "test route": ADR-023 shipped it for ordinary use (Codex round 40).
     "CHAT_GATEWAY_REFUSED": (
-        "Chat could not answer: the model gateway has stopped this experimental test route, so it refused this "
+        "Chat could not answer: the model gateway has stopped this experimental route, so it refused this "
         f"request before it reached any model and nothing was charged. {_NO_RETRY}"
     ),
 }

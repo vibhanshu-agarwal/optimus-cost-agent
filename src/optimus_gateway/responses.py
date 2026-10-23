@@ -35,7 +35,7 @@ from optimus_model_policy.stage_c import Admission, StageCRefusal, reservation_u
 from optimus_security.failure_facts import (
     bounded,
     bounded_failure,
-    bounded_guardrail_facts,
+    bounded_guardrail_list,
     final_sanitize,
     gateway_request_id,
     host_route_id,
@@ -337,9 +337,8 @@ def _logged_attempt(item: dict[str, Any]) -> dict[str, Any]:
         "router_pipeline": [bounded(stage, KNOWN_ROUTER_STAGES) for stage in stages] if isinstance(stages, list) else None,
         "failure": bounded_failure(item.get("failure")),
     }
-    guardrails = item.get("router_guardrails")
-    if isinstance(guardrails, list):
-        logged["router_guardrails"] = [bounded_guardrail_facts(facts) for facts in guardrails]
+    if "router_guardrails" in item:
+        logged["router_guardrails"] = bounded_guardrail_list(item["router_guardrails"])
     return logged
 
 

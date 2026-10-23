@@ -168,7 +168,7 @@ class ProviderAttempt:
     gateway_usage: GatewayUsage | None = None
     routed: bool = False
     router_pipeline: tuple[str, ...] | None = None
-    router_guardrails: tuple[dict[str, Any], ...] | None = None
+    router_guardrails: Any = None  # as received; diagnostic only, re-bounded wherever it is persisted (#400)
     failure: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:

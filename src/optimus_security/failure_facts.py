@@ -124,14 +124,24 @@ def guardrail_stage_facts(stage: dict[str, Any]) -> dict[str, Any]:
     whether both are present and differ; and `guardrail_scope`, diagnostic only. Never its name, id, summary,
     patterns, entity labels or any other data."""
     data = stage.get("data", {})
-    decision, action = (data.get(key) if isinstance(data, dict) else None for key in ("decision", "action"))
+    # Presence is the key, never its value: an explicit null verdict is present (Codex round 40, finding 4).
+    both = isinstance(data, dict) and "decision" in data and "action" in data
     return {
         **{key: _guardrail_boolean(data, key) for key in _GUARDRAIL_BOOLEANS},
         "decision": _guardrail_literal(data, "decision", GUARDRAIL_DECISIONS),
         "action": _guardrail_literal(data, "action", GUARDRAIL_ACTIONS),
-        "verdict_conflict": decision is not None and action is not None and decision != action,
+        "verdict_conflict": both and data["decision"] != data["action"],
         "guardrail_scope": _guardrail_literal(stage, "guardrail_scope", GUARDRAIL_SCOPES),
     }
+
+
+def bounded_guardrail_list(received: object) -> list[dict[str, Any] | str] | str:
+    """A received ``router_guardrails`` value, re-bounded: each entry's facts, or ``invalid`` for an entry that is no
+    object, or ``invalid`` for a container that is no list (Codex round 40, finding 1). Never raises, so a diagnostic
+    can never invalidate the attempt it describes."""
+    if not isinstance(received, (list, tuple)):
+        return INVALID
+    return [bounded_guardrail_facts(facts) or INVALID for facts in received]
 
 
 def bounded_guardrail_facts(facts: object) -> dict[str, Any] | None:

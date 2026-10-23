@@ -88,6 +88,19 @@ def test_disagreeing_decision_and_action_set_the_conflict_indicator_and_neither_
     assert (facts["decision"], facts["action"]) == ("unrecognized", "blocked")  # recorded apart, no alias wins
 
 
+def test_an_explicit_null_verdict_is_present_and_can_conflict_but_a_missing_one_cannot() -> None:
+    """Codex round 40, finding 4: presence is the key, never its value."""
+
+    def facts(data: dict) -> dict:
+        return guardrail_stage_facts({"type": "guardrail", "data": data})
+
+    assert facts({"decision": None, "action": "blocked"})["verdict_conflict"] is True
+    assert facts({"decision": None, "action": None})["verdict_conflict"] is False  # present and equal
+    assert facts({"action": "blocked"})["verdict_conflict"] is False
+    assert facts({"decision": None})["verdict_conflict"] is False
+    assert facts({"decision": None})["decision"] == "invalid"
+
+
 def test_received_guardrail_facts_are_re_bounded_before_they_are_persisted() -> None:
     received = {"flagged": "yes", "detected": True, "decision": CANARY, "action": "blocked", "verdict_conflict": CANARY,
                 "guardrail_scope": CANARY, "name": CANARY}  # fmt: skip

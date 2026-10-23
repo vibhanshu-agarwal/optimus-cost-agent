@@ -773,19 +773,21 @@ _PLANNING_STOP_REASONS = {
 
 # #400: the same failures when they prove the experimental route stopped, as Chat says them (r8). The Gateway then
 # admits no further request on that route while it runs, so these never suggest a retry. Same stop reasons.
+# Each speaks only for the failed request and the absent plan: an earlier turn of the same run may already have run
+# an approved MCP call (Codex round 40, finding 3).
 PLANNING_ROUTE_STOPPED_MESSAGES: dict[str, str] = {
     "PLANNING_GATEWAY_FAILURE": (
         "Planning stopped because the model gateway refused the model's reply after the call was charged, and this "
-        f"experimental route is now stopped. Nothing was stored, offered for approval or changed. {ROUTE_STOPPED_NO_RETRY}"
+        f"experimental route is now stopped. That reply was not used, and no plan was offered for approval. {ROUTE_STOPPED_NO_RETRY}"
     ),
     "PLANNING_GATEWAY_COST_UNKNOWN": (
         "Planning stopped because the model gateway failed without reporting the call's cost, and this experimental "
-        f"route is now stopped. Nothing was stored, offered for approval or changed. {ROUTE_STOPPED_NO_RETRY}"
+        f"route is now stopped. No plan was offered for approval. {ROUTE_STOPPED_NO_RETRY}"
     ),
     # A later refusal proves only the stop and this request's free refusal, never the stop's cause (Codex review P2).
     "PLANNING_GATEWAY_REFUSED": (
         "Planning stopped because the model gateway has stopped this experimental route, so it refused this request "
-        f"before it reached any model and nothing was charged. Nothing was stored or changed. {ROUTE_STOPPED_NO_RETRY}"
+        f"before it reached any model and nothing was charged for it. No plan was offered for approval. {ROUTE_STOPPED_NO_RETRY}"
     ),
 }
 

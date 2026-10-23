@@ -25,7 +25,7 @@ from optimus_security.failure_facts import (
     UNRECOGNIZED,
     bounded,
     bounded_failure,
-    bounded_guardrail_facts,
+    bounded_guardrail_list,
     final_sanitize,
     gateway_request_id,
     host_route_id,
@@ -335,7 +335,7 @@ def _attempt_fields(attempt: ProviderAttempt) -> dict[str, Any]:
         "failure": bounded_failure(attempt.failure),
     }
     if attempt.router_guardrails is not None:
-        fields["router_guardrails"] = [bounded_guardrail_facts(facts) for facts in attempt.router_guardrails]
+        fields["router_guardrails"] = bounded_guardrail_list(attempt.router_guardrails)
     return fields
 
 

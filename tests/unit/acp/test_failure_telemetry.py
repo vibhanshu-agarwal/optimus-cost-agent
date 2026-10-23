@@ -134,6 +134,37 @@ def test_received_guardrail_facts_are_re_bounded_in_the_trace(tmp_path) -> None:
     assert PROSE not in text and BARE_KEY not in text
 
 
+@pytest.mark.parametrize(
+    ("malformed", "traced"),
+    [([None], ["invalid"]), (5, "invalid"), ("facts", "invalid"), ([5, {"flagged": True}], ["invalid", "VALID"])],
+    ids=["null-entry", "scalar", "string", "mixed"],
+)
+def test_malformed_guardrail_diagnostics_never_drop_an_attempt_or_its_charge(tmp_path, malformed, traced) -> None:
+    """Codex round 40, finding 1: the diagnostic is tolerated apart from the accounting fields, on a success and on an
+    error, and its invalidity is recorded bounded."""
+    from optimus.gateway.client import _try_parse_error_correlation
+    from optimus.gateway.models import parse_gateway_response, parse_route_attempts
+
+    raw = [{"attempt": 1, "gateway_request_id": GW, "outcome": "completed", "router_pipeline": ["guardrail"], "router_guardrails": malformed}]
+    [parsed] = parse_route_attempts(raw)
+    assert (parsed.attempt, parsed.gateway_request_id, parsed.outcome) == (1, GW, "completed")
+
+    usage = {"gateway_request_id": GW, "provider": "openrouter", "billing_units": 2, "cost_usd": "0.0003"}
+    response = parse_gateway_response({"id": "r", "output_text": "ok", "gateway_usage": usage, "route_attempts": raw})
+    [attempt] = attempts_from_response(response)
+    assert (attempt.outcome, attempt.cost_usd) == ("completed", Decimal("0.0003"))
+
+    code, _, kept = _try_parse_error_correlation(json.dumps({"code": "EMPIRICAL_ROUTER_PIPELINE", "retryable": False, "route_attempts": raw}))
+    assert code == "EMPIRICAL_ROUTER_PIPELINE" and [item.gateway_request_id for item in kept] == [GW]
+
+    configure_debug_trace(enabled=True, log_path=tmp_path / "trace" / "debug-acp.ndjson")
+    log_provider_attempts(stage="answer", correlation=lambda: {"run_id": RUN, "session_id": SESSION, "request_id": ROUTE}, attempts=(attempt,))
+    [record] = _trace(tmp_path, "debug_trace.py:log_provider_attempts")
+    valid = {"flagged": True, "detected": "missing", "decision": "missing", "action": "missing", "verdict_conflict": "invalid", "guardrail_scope": "missing"}
+    expected = traced if not isinstance(traced, list) else [valid if item == "VALID" else item for item in traced]
+    assert record["attempts"][0]["router_guardrails"] == expected
+
+
 def test_a_prompt_refusal_projects_its_ids_and_keeps_a_zero_rpc_id(tmp_path) -> None:
     configure_debug_trace(enabled=True, log_path=tmp_path / "trace" / "debug-acp.ndjson")
     log_prompt_refusal(session_id=SESSION, request_id=0, reason="cap")

@@ -302,6 +302,8 @@ class ContextOutcome:
     kind: Literal["view", "fallback", "unavailable", "cancelled"]
     reason: str | None = None
     floor_bytes: int | None = None
+    route_stopped: bool = False
+    """A summary call's failure proved the shared experimental route stopped (#400); selects user text only."""
 
 
 # --- Attachment configuration --------------------------------------------------------------------
@@ -362,6 +364,11 @@ class _TurnMaintenance:
         self.raised = False
         self.last_status: str | None = None
         self.last_finish: str | None = None
+
+    @property
+    def route_stopped(self) -> bool:
+        """Whether a call this turn proved the shared experimental route stopped (#400)."""
+        return self._host is not None and self._host.route_stopped
 
     @property
     def remaining(self) -> int:
@@ -567,11 +574,12 @@ class AttachedTurn:
             self._admit("view", view)
             return ContextOutcome("view")
         floor = probe_floor(self._records, self._current_prompt, turn_seq=self._turn_seq)
+        stopped = self._maintenance.route_stopped
         if floor > CONVERSATION_MAX_BYTES:
-            return ContextOutcome("unavailable", reason=view.reason, floor_bytes=floor)
+            return ContextOutcome("unavailable", reason=view.reason, floor_bytes=floor, route_stopped=stopped)
         self._fallback = True
         self._admit("full_history", full_history_view(snapshot))
-        return ContextOutcome("fallback", reason=view.reason, floor_bytes=floor)
+        return ContextOutcome("fallback", reason=view.reason, floor_bytes=floor, route_stopped=stopped)
 
     def _prepare_view(
         self, history_tokens: int, checkpoint: SummaryCheckpoint | None, *, phase: Literal["prepare", "repack"]

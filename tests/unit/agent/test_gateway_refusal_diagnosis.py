@@ -498,3 +498,96 @@ def test_the_planning_stopped_route_wording_mirrors_chat_and_never_suggests_a_re
     assert "charged" in PLANNING_ROUTE_STOPPED_MESSAGES["PLANNING_GATEWAY_FAILURE"]
     assert "nothing was charged" in PLANNING_ROUTE_STOPPED_MESSAGES["PLANNING_GATEWAY_REFUSED"]
     assert "cost" in PLANNING_ROUTE_STOPPED_MESSAGES["PLANNING_GATEWAY_COST_UNKNOWN"]
+
+
+def test_the_planning_stopped_route_texts_never_deny_an_earlier_turns_effects() -> None:
+    """Codex round 40, finding 3: an earlier planning turn may have run an approved MCP call, so a stop speaks only
+    for the failed request and the absent plan."""
+    for reason, text in PLANNING_ROUTE_STOPPED_MESSAGES.items():
+        lowered = text.lower()
+        for claim in ("nothing was stored", "or changed", "nothing was changed"):
+            assert claim not in lowered, (reason, claim)
+        assert "no plan was offered for approval" in lowered, reason
+
+
+class _ScriptedReplies(Replying):
+    """One scripted output and router evidence per upstream call, in order."""
+
+    def __init__(self, *replies: tuple[str, dict[str, Any]]) -> None:
+        super().__init__()
+        self.replies = list(replies)
+
+    def _result(self, model: str) -> ProviderMessageResult:
+        text, evidence = self.replies.pop(0)
+        return ProviderMessageResult(**{**super()._result(model).__dict__, "output_text": text, **evidence})
+
+
+class _ApprovingMcp:
+    """A write-classified client MCP tool whose one call is approved and dispatched."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    def requires_write_approval(self, server: str, tool: str) -> bool:
+        return True
+
+    def call_tool(self, server: str, tool: str, arguments: dict, *, one_call_approval: str | None = None):
+        from optimus.agent.models import AgentMcpToolOutput, AgentToolCall
+
+        self.calls.append((server, tool))
+        return (
+            AgentMcpToolOutput(server_name=server, tool_name=tool, text='{"ok":true}'),
+            AgentToolCall(tool_name="mcp_call", summary="called", authorization_outcome="ALLOW"),
+        )
+
+
+class _Broker:
+    def __init__(self) -> None:
+        self.requests = 0
+
+    def request_write(self, request):
+        self.requests += 1
+        return type("Approval", (), {"token": "one-call-token"})()
+
+
+def test_an_approved_mcp_call_then_a_refused_reply_is_never_denied_by_the_stop_text(tmp_path, monkeypatch) -> None:
+    policy, model = _haiku("attached")
+    clean = {"router_pipeline": ()}
+    InProcessGateway(policy, _ScriptedReplies(("MCP_CALL tools write {}", clean), ("WRITE a.py\nx\n", {"router_pipeline": ("guardrail",)})), monkeypatch)
+    service, broker = _ApprovingMcp(), _Broker()
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    route = RoutePolicy(snapshot=policy.snapshot, disclosure_key=disclosure_key(SHARED_SECRET), model_id=model, role="easy", output_cap=16384)
+    binder = route.capture(session_id="s", turn_seq=1, deliver_notice=lambda _text: True)
+    client = GatewayClient(settings=OptimusGatewaySettings(optimus_api_key=SHARED_SECRET), transport=UrllibGatewayTransport())
+    request = AgentRunRequest(run_id="s:1", session_id="s", task="Update a.py.", workspace_root=tmp_path, execution_mode=ExecutionMode.AGENT)
+
+    result = AgentRunner(gateway_client=client, model=model).run(request, route_binder=binder, client_mcp_service=service, mcp_permission_broker=broker)
+
+    assert (broker.requests, service.calls) == (1, [("tools", "write")])  # approved and dispatched on turn 1
+    assert result.stop_reason == "PLANNING_GATEWAY_FAILURE"
+    assert result.output_text == PLANNING_ROUTE_STOPPED_MESSAGES["PLANNING_GATEWAY_FAILURE"]
+
+
+def test_chat_stopped_route_wording_names_the_shipped_route_not_a_test_route() -> None:
+    """Codex round 40: ADR-023 shipped the route for ordinary use."""
+    for reason, text in CHAT_ROUTE_STOPPED_MESSAGES.items():
+        assert "test route" not in text and "experimental route" in text, reason
+
+
+def test_the_plan_mode_dispatcher_request_is_unbound_so_it_never_meets_a_stopped_route(tmp_path, monkeypatch) -> None:
+    """Codex round 40, finding 2, the PLAN boundary: `optimus.agent.run` runs without a route binder, so on an
+    enforced Gateway its request is refused as unbound before the stopped-route check. A stopped-route text is
+    therefore unreachable there; this fails if that path is ever bound."""
+    from optimus.acp.dispatcher import JsonRpcDispatcher
+
+    policy, model = _haiku("attached")
+    policy.route_stop.trip("EMPIRICAL_ROUTER_PIPELINE")
+    gateway = InProcessGateway(policy, Replying(), monkeypatch)
+    client = GatewayClient(settings=OptimusGatewaySettings(optimus_api_key=SHARED_SECRET), transport=UrllibGatewayTransport())
+    dispatcher = JsonRpcDispatcher(agent_runner=AgentRunner(gateway_client=client, model=model), workspace_root=tmp_path)
+    params = {"run_id": "s:1", "session_id": "s", "task": "Change the greeting.", "workspace_root": str(tmp_path), "execution_mode": "PLAN"}
+
+    response = dispatcher.dispatch({"jsonrpc": "2.0", "id": 1, "method": "optimus.agent.run", "params": params})
+
+    assert "error" in response
+    assert [body["code"] for _status, body in gateway.replies] == ["BINDING_REQUIRED"]
