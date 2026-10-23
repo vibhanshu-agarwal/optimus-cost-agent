@@ -1020,6 +1020,7 @@ class PlanningLoopRunner:
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
         conversation_envelope: str = "",
+        required_file_sizes: dict[str, int] | None = None,
     ) -> PlanningLoopResult:
         # Only an evaluation caller's explicit cap can stop planning on money (Plan 12.2 Task 11).
         if self._max_cost_usd is not None and self._max_cost_usd <= Decimal("0"):
@@ -1036,6 +1037,7 @@ class PlanningLoopRunner:
             task=task,
             initial_workspace_context=initial_workspace_context,
             initial_workspace_file_sizes=initial_workspace_file_sizes or {},
+            required_file_sizes=required_file_sizes,
             workspace_root=self._workspace_root,
             run_id=run_id,
             session_id=session_id,
@@ -1127,6 +1129,7 @@ class _PlanningIterationRunner:
         task: str,
         initial_workspace_context: str,
         initial_workspace_file_sizes: dict[str, int],
+        required_file_sizes: dict[str, int] | None = None,
         workspace_root: Path,
         run_id: str,
         session_id: str | None,
@@ -1179,6 +1182,7 @@ class _PlanningIterationRunner:
         self._context_packer = context_packer
         self._initial_workspace_context = initial_workspace_context
         self._initial_workspace_file_sizes = initial_workspace_file_sizes
+        self._required_file_sizes = required_file_sizes or {}
         self._workspace_root = workspace_root
         self._run_id = run_id
         self._session_id = session_id
@@ -1633,6 +1637,8 @@ class _PlanningIterationRunner:
                 initial_workspace_file_sizes=(
                     self._initial_workspace_file_sizes if planning_turn == 1 or not self._observations else {}
                 ),
+                # Metadata of files no turn showed in full: every ranged read is sized from it.
+                required_file_sizes=self._required_file_sizes,
                 evidence_limits=(
                     PLANNING_OBSERVATION_MAX_BYTES,
                     PLANNING_NEW_READ_MAX_BYTES,
