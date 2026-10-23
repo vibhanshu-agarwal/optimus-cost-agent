@@ -59,7 +59,7 @@ from optimus.usage.accounting import UsageAccountingService
 from optimus.usage.turn_settlement import StageReceipt
 
 if TYPE_CHECKING:
-    from optimus.agent.planning_loop import PlanningProgressObserver
+    from optimus.agent.planning_loop import PlanningCheckInCallback, PlanningProgressObserver
     from optimus.gateway.route_binding import BoundRequest, RouteIdentity, TurnRouteBinder
 
 WorkspaceContextObserver = Callable[[AgentRunRequest, WorkspaceContextResult], None]
@@ -336,6 +336,7 @@ class AgentRunner:
         stage_receipts: Callable[[StageReceipt], None] | None = None,
         route_binder: TurnRouteBinder | None = None,
         integrity_failure: Callable[[str], None] | None = None,
+        recovery_checkin: PlanningCheckInCallback | None = None,
     ) -> AgentRunResult:
         """`stage_receipts` receives every model attempt of this run, known or unknown, once (Plan 12.2
         Task 11). `route_binder` binds each request to the turn's captured trusted route; without it
@@ -372,6 +373,7 @@ class AgentRunner:
                     halt_requested=halt_requested,
                     operation_control=operation_control,
                     context_packer=context_packer,
+                    recovery_checkin=recovery_checkin,
                 )
             self._emit_agent_run(
                 request,
@@ -464,6 +466,7 @@ class AgentRunner:
         halt_requested: Callable[[], bool] | None = None,
         operation_control: TurnOperationControl | None = None,
         context_packer: ContextPacker | None = None,
+        recovery_checkin: PlanningCheckInCallback | None = None,
     ) -> AgentRunResult:
         context = RuntimeContext(execution_mode=request.execution_mode)
         toolbox = AgentToolbox.for_workspace(
@@ -520,6 +523,7 @@ class AgentRunner:
                     halt_requested=halt_requested,
                     operation_control=operation_control,
                     context_packer=context_packer,
+                    recovery_checkin=recovery_checkin,
                 )
             return self._build_result(
                 request=request,
@@ -547,6 +551,7 @@ class AgentRunner:
                 halt_requested=halt_requested,
                 operation_control=operation_control,
                 context_packer=context_packer,
+                recovery_checkin=recovery_checkin,
             )
         planner_input = build_agent_planner_input(request.task, workspace_context=workspace_context.text)
         bound = None
@@ -653,6 +658,7 @@ class AgentRunner:
         halt_requested: Callable[[], bool] | None = None,
         operation_control: TurnOperationControl | None = None,
         context_packer: ContextPacker | None = None,
+        recovery_checkin: PlanningCheckInCallback | None = None,
     ) -> AgentRunResult:
         from optimus.agent.planning_loop import PlanningLoopPolicy, PlanningLoopRunner
 
@@ -696,6 +702,8 @@ class AgentRunner:
             halt_requested=halt_requested,
             operation_control=operation_control,
             context_packer=context_packer,
+            recovery_checkin=recovery_checkin,
+            loop_event_sink=self._event_sink,
         )
         planning_result = planner.run(
             run_id=request.run_id,

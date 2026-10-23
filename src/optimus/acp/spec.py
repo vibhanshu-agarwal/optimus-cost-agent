@@ -67,10 +67,13 @@ from optimus.acp.settlement import (
 from optimus.acp.shapes import (
     AGENT_MODE_ID,
     CHAT_MODE_ID,
+    LOOP_CONTINUE_OPTION_ID,
+    LOOP_STOP_OPTION_ID,
     MODE_CONFIG_ID,
     build_agent_message_chunk_notification,
     build_config_option_update_notification,
     build_current_mode_update_notification,
+    build_loop_checkin_params,
     build_plan_session_update,
     build_planning_progress_notification,
     build_request_permission_params,
@@ -82,7 +85,7 @@ from optimus.acp.shapes import (
     tool_kind_for_name,
 )
 from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
-from optimus.agent.planning_loop import PlanningProgressEvent
+from optimus.agent.planning_loop import CheckInDecision, PlanningCheckIn, PlanningCheckInCallback, PlanningProgressEvent
 from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
 from optimus.context.assembly import AttachedTurn, ContextAttachment
 from optimus.mcp.client_catalog import ClientMcpOneCallApproval
@@ -275,6 +278,20 @@ def resolve_max_planning_turns(environ: Mapping[str, str]) -> int | None:
     if value < 1:
         raise ValueError("OPTIMUS_MAX_PLANNING_TURNS must be an integer >= 1")
     return value
+
+
+def resolve_interactive_recovery(environ: Mapping[str, str], *, caller_default: bool) -> bool:
+    """Plan 12.3, Design 6: `OPTIMUS_LOOP_RECOVERY` (`interactive` or `headless`), else the caller's default.
+    An ACP prompt defaults to interactive; a test composition, like every non-ACP caller, to headless.
+    A client that answers every permission request on its own (acpx `--approve-all`) sets headless.
+    Resolved once, like resolve_max_planning_turns."""
+    raw = environ.get("OPTIMUS_LOOP_RECOVERY")
+    if raw is None or raw.strip() == "":
+        return caller_default
+    value = raw.strip().lower()
+    if value not in {"interactive", "headless"}:
+        raise ValueError("OPTIMUS_LOOP_RECOVERY must be interactive or headless")
+    return value == "interactive"
 
 
 class AcpOutboundChannel(Protocol):
@@ -472,8 +489,11 @@ class AcpDuplexAdapter:
         route_policy: RoutePolicy | None = None,
         session_seeder: Callable[[Any], str | None] | None = None,
         failure_telemetry: JsonlTelemetryWriter | None = None,
+        interactive_recovery: bool = True,
     ) -> None:
         self._runner = runner
+        # Plan 12.3: resolved once by the caller (resolve_interactive_recovery); headless passes no check-in.
+        self._interactive_recovery = interactive_recovery
         # Correction plan v4, C4: this harness's workspace writer for the always-on refusal and fault records. Bound
         # here, never configured globally, so a later composition can neither redirect nor clear it.
         self._failure_telemetry = failure_telemetry
@@ -1098,6 +1118,7 @@ class AcpDuplexAdapter:
                     stage_receipts=session.cost_settlement.record_attempt,
                     route_binder=turn.route_binder,
                     integrity_failure=session.cost_settlement.record_integrity_failure,
+                    recovery_checkin=self._recovery_checkin_for(turn, loop) if self._interactive_recovery else None,
                 ),
             )
             self._apply_turn_cost(
@@ -1806,6 +1827,10 @@ class AcpDuplexAdapter:
             hypothesis_id="H2",
         )
         # endregion
+        return await self._send_permission_request(turn, params)
+
+    async def _send_permission_request(self, turn: AcpPromptTurn, params: dict[str, Any]) -> dict[str, Any]:
+        """Send one session/request_permission, tracked so that session/cancel can end it."""
         request_task = asyncio.create_task(self._outbound.request("session/request_permission", params))
         await asyncio.sleep(0)
         if self._active_turns.get(turn.session_id) is turn:
@@ -1815,7 +1840,33 @@ class AcpDuplexAdapter:
                 last_outbound_request_id = getattr(self._outbound, "last_outbound_request_id", None)
                 if last_outbound_request_id is not None:
                     turn.pending_permission_request_id = last_outbound_request_id
+            if turn.turn_control.halt_requested() and turn.pending_permission_request_id is not None:
+                # A session/cancel that ran before the id was recorded could not end this request.
+                self._outbound.cancel_request(turn.pending_permission_request_id, {"outcome": {"outcome": "cancelled"}})
         return await request_task
+
+    def _recovery_checkin_for(self, turn: AcpPromptTurn, loop: asyncio.AbstractEventLoop) -> PlanningCheckInCallback:
+        """The planning worker's thread-safe bridge to a recovery check-in (Plan 12.3, Design 5). It blocks
+        that worker, not the event loop; session/cancel and teardown end the pending request."""
+
+        async def ask(checkin: PlanningCheckIn) -> CheckInDecision:
+            params = build_loop_checkin_params(
+                session_id=turn.session_id, tool_call_id=new_tool_call_id(), text=checkin.text, run_id=turn.run_id
+            )
+            try:
+                response = await self._send_permission_request(turn, params)
+            except Exception:  # noqa: BLE001 - a client that cannot answer ends the turn recoverably
+                return CheckInDecision.UNAVAILABLE
+            finally:
+                turn.pending_permission_request_id = None
+            return checkin_decision(response)
+
+        def recovery_checkin(checkin: PlanningCheckIn) -> CheckInDecision:
+            if turn.turn_control.halt_requested():
+                return CheckInDecision.STOP
+            return asyncio.run_coroutine_threadsafe(ask(checkin), loop).result()
+
+        return recovery_checkin
 
     def _runner_runtime_kwargs(
         self,
@@ -1828,6 +1879,7 @@ class AcpDuplexAdapter:
         stage_receipts: Any | None = None,
         route_binder: Any | None = None,
         integrity_failure: Any | None = None,
+        recovery_checkin: Any | None = None,
     ) -> dict[str, Any]:
         """Pass client-MCP runtime kwargs only when the runner accepts them."""
         kwargs: dict[str, Any] = {}
@@ -1855,6 +1907,8 @@ class AcpDuplexAdapter:
             _maybe("route_binder", route_binder)
         if integrity_failure is not None:
             _maybe("integrity_failure", integrity_failure)
+        if recovery_checkin is not None:
+            _maybe("recovery_checkin", recovery_checkin)
         _maybe("client_mcp_service", _client_mcp_service(session))
         _maybe("mcp_permission_broker", self._mcp_permission_broker_for(session))
         return kwargs
@@ -2010,6 +2064,9 @@ _PLANNING_TERMINAL_STOP_REASONS = frozenset(
         "PLANNING_INPUT_CAPACITY_EXCEEDED",
         "PLANNING_NOTICE_UNDELIVERED",
         "PLANNING_REPEATED_READ_REQUEST",
+        "PLANNING_REPEATED_MCP_REQUEST",
+        "PLANNING_ACTION_CYCLE",
+        "PLANNING_NO_PROGRESS",
         "PLANNING_UNPARSEABLE_RESPONSE",
         "PLANNING_OUTPUT_TRUNCATED",
         "PLANNING_OUTPUT_UNFINISHED",
@@ -2057,6 +2114,21 @@ def _client_mcp_service(session: AcpSpecSession) -> object | None:
     if state is None:
         return None
     return state.tool_service
+
+
+def checkin_decision(response: Any) -> CheckInDecision:
+    """A check-in answer: only its own options count. A cancelled request is Stop (the turn's halt then
+    wins); anything else is unrecognised and ends the turn recoverably (Plan 12.3, Design 5)."""
+    outcome = response.get("outcome") if isinstance(response, dict) else None
+    if isinstance(outcome, dict) and outcome.get("outcome") == "cancelled":
+        return CheckInDecision.STOP
+    if isinstance(outcome, dict) and outcome.get("outcome") == "selected":
+        option = outcome.get("optionId")
+        if option == LOOP_CONTINUE_OPTION_ID:
+            return CheckInDecision.CONTINUE
+        if option == LOOP_STOP_OPTION_ID:
+            return CheckInDecision.STOP
+    return CheckInDecision.INVALID
 
 
 def _permission_approved(permission_result: dict[str, Any]) -> bool:

@@ -256,6 +256,24 @@ not a dependency. Plan 9 bounded loops and skill loading, and Plan 12
 context-window optimization gates, are out of scope for the Phase 1 golden
 fixture set described above.
 
+### Planning loop recovery
+
+In an interactive ACP session, Agent-mode planning is never stopped outright for repeating itself or for running
+out of planning steps ([ADR-024](docs/decisions/ADR-024-accepts-adr-009-loop-control-phase-1-scope.md)).
+
+- **Detection.** A result-aware detector watches each planning step: 3 identical requests with unchanged results,
+  an A–B alternation over 3 cycles, 3 steps without new evidence, or 3 identical parse errors. Polling that returns
+  changing results, re-reading a changed file and reading new ranges are progress.
+- **Recovery.** The model first gets one corrective note in its next request. If the episode persists, or the
+  allowance (3 steps or 30 minutes) runs out, the user gets a Continue/Stop check-in.
+  - **Continue** grants 3 more planning steps and a fresh 30 minutes. It never approves a change: a plan still needs
+    its own approval.
+  - **Stop** ends the turn with the actual cause.
+
+`OPTIMUS_LOOP_RECOVERY=headless` keeps the earlier hard caps. Use it for clients that answer every permission
+request on their own, such as acpx `--approve-all`. Reviewed test compositions and every non-ACP caller
+(golden, evaluation) are headless by default.
+
 ### Bounded Goal Loops and Curated Workflow Skills
 
 Plan 9 adds architectural support for bounded goal-driven loops and curated
