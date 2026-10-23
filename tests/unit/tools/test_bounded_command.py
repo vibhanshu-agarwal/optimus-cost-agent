@@ -11,7 +11,7 @@ import pytest
 
 from optimus.runtime import process_tree
 from optimus.runtime.process_tree import CommandStopped, run_bounded
-from tests.support.concurrency import DescendantRecorder, assert_descendants_killed
+from tests.support.concurrency import DescendantRecorder, announce_pid_code, assert_descendants_killed
 from tests.support.fault_injection import descendant_tree
 
 
@@ -136,3 +136,22 @@ def test_a_containment_cleanup_that_fails_is_an_unconfirmed_stop(monkeypatch):
     with pytest.raises(CommandStopped) as stopped:
         run_bounded([sys.executable, "-c", "pass"], deadline=time.monotonic() + 60, cancelled=_never)
     assert stopped.value.outcome == "stop_unconfirmed"
+
+
+def test_a_cancellation_that_arrives_as_the_root_exits_still_stops_its_descendants(tmp_path):
+    """Codex Checkpoint B re-review: the cancel lands during communicate(), the root exits and closes its pipes,
+    and a descendant that redirected them runs on. The tree is still stopped, and the TEST reports a cancellation."""
+    marker = tmp_path / "root-exited"
+    grandchild = announce_pid_code(tmp_path, "grandchild") + "; import time; time.sleep(60)"
+    code = (
+        "import pathlib, subprocess, sys, time; "
+        f"subprocess.Popen([sys.executable, '-c', {grandchild!r}], "
+        "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
+        "time.sleep(1); "
+        f"pathlib.Path({str(marker)!r}).touch()"
+    )
+    with DescendantRecorder(tmp_path, ("grandchild",)) as recorder:
+        with pytest.raises(CommandStopped) as stopped:
+            run_bounded([sys.executable, "-c", code], deadline=time.monotonic() + 60, cancelled=marker.exists)
+        assert stopped.value.outcome == "cancelled"
+        assert_descendants_killed(recorder, ("grandchild",), deadline=time.monotonic() + 5.0, what="a TEST cancelled as its root exited")

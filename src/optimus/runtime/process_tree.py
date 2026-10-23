@@ -89,16 +89,21 @@ def run_bounded(args: Sequence[str], *, deadline: float, cancelled: Callable[[],
         if error.may_have_run:
             raise CommandStopped("containment_failed", "containment failed after the command started; it was stopped") from error
         raise CommandStopped("containment_failed", "containment failed, so the command was not run") from error
+    drained = False
     while (remaining := deadline - time.monotonic()) > 0 and not cancelled():
         try:
             out, err = process.communicate(timeout=min(_POLL_SECONDS, remaining))
         except subprocess.TimeoutExpired:
             continue
-        return subprocess.CompletedProcess(process.args, process.returncode, out, err)
+        if not cancelled():
+            return subprocess.CompletedProcess(process.args, process.returncode, out, err)
+        drained = True  # cancelled while the root exited: a descendant may still run, so stop the tree
+        break
     cleanup_deadline = time.monotonic() + _CLEANUP_SECONDS
     try:
         kill_tree(process)
-        process.communicate(timeout=max(0.0, cleanup_deadline - time.monotonic()))
+        if not drained:
+            process.communicate(timeout=max(0.0, cleanup_deadline - time.monotonic()))
         # Pipes can close while a descendant that redirected them still runs: confirm the whole tree.
         while not _tree_stopped(process):
             if time.monotonic() >= cleanup_deadline:
