@@ -177,10 +177,10 @@ PROPOSAL = {
     "history_input_tokens_by_tier": {"ultra-cheap": 131_072, "cheap": 131_072},
     "prompt_allowance_bytes": 16_384,
 }
-# Measured with `fixed_request_material()` after Task 11 removed the planner's remaining-dollar line and
-# bumped its prompt version (43819 before, in the older measured envelope); pinned below so the D7
-# figures always come from the current measurement.
-FIXED = {"planning": 43_795, "chat": 17_126, "summarizer": 989}
+# Measured with `fixed_request_material()` after #403 bumped the planner's prompt version and counted its
+# longest correction notice and Plan 12.3's full recovery note (43795 after Task 11, 43819 before it);
+# pinned below so the D7 figures always come from the current measurement.
+FIXED = {"planning": 45_148, "chat": 17_126, "summarizer": 989}
 
 
 def test_the_pinned_fixed_material_is_the_current_measurement() -> None:
@@ -220,7 +220,7 @@ def test_the_d7_absent_engine_history_bound_at_ratio_one() -> None:
     input less the planning material, before any further overhead; a share of the 512 KiB floor."""
     usable = 262_144 - PROPOSAL["implementer_output_reserve"]
     bound = usable - FIXED["planning"]
-    assert (usable, bound, round(100 * bound / 524_288, 2)) == (229_376, 185_581, 35.4)
+    assert (usable, bound, round(100 * bound / 524_288, 2)) == (229_376, 184_228, 35.14)
 
 
 def check(**changes: object) -> dict:

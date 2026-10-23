@@ -832,9 +832,15 @@ def completion_status(finishes: Sequence[str | None] = ("stop", "length", "conte
 
 def fixed_request_material() -> dict[str, int]:
     """UTF-8 bytes of each request's non-history material at its existing maximums (no history, no
-    current prompt): instructions, workspace files, carried observations, current read evidence and
-    MCP evidence for planning; instructions and workspace files for Chat; the summarizer's prompt."""
-    from optimus.agent.planning_loop import PLANNING_NEW_READ_MAX_BYTES, PLANNING_OBSERVATION_MAX_BYTES
+    current prompt): instructions, the longest correction notice (#403), a full loop-recovery note (Plan
+    12.3), workspace files, carried observations, current read evidence and MCP evidence for planning;
+    instructions and workspace files for Chat; the summarizer's prompt."""
+    from optimus.agent.planning_loop import (
+        _RECOVERY_NOTE_MAX_BYTES,
+        PLANNING_NEW_READ_MAX_BYTES,
+        PLANNING_OBSERVATION_MAX_BYTES,
+        PLANNING_PARSE_FEEDBACK,
+    )
     from optimus.agent.prompts import _MCP_EVIDENCE_MAX_BYTES, _build_chat_answer_input, build_multi_turn_planner_input
     from optimus.agent.workspace_context import DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
 
@@ -847,6 +853,8 @@ def fixed_request_material() -> dict[str, int]:
         current_read_evidence_envelope=text_of("ascii", PLANNING_NEW_READ_MAX_BYTES),
         mcp_evidence_envelope=text_of("ascii", _MCP_EVIDENCE_MAX_BYTES),
         initial_workspace_context=text_of("ascii", DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES),
+        correction_notice=max(PLANNING_PARSE_FEEDBACK.values(), key=lambda notice: len(notice.encode("utf-8"))),
+        recovery_note=text_of("ascii", _RECOVERY_NOTE_MAX_BYTES),
     )
     chat = _build_chat_answer_input("", workspace_context=text_of("ascii", DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES), conversation_envelope="")
     return {

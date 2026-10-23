@@ -89,7 +89,7 @@ def test_multi_turn_prompt_marks_initial_context_ephemeral_and_requires_complete
         remaining_wall_clock_minutes=30,
         initial_workspace_context="--- target.py ---\noriginal\n",
     )
-    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-10-04-plan-12-2-task-11")
+    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-10-23-p403-corrective-feedback")  # #403's bump
     assert "available on planning turn 1 only" in prompt
     assert "will not be carried to planning turn 2" in prompt
     assert "request every raw byte range" in prompt
@@ -153,3 +153,18 @@ def test_fu5a_multi_turn_prompt_discloses_enforced_evidence_limits():
     assert "carried observations up to 4096" in prompt
     assert "current guarded reads up to 12288" in prompt
     assert "combined planning evidence up to 16384" in prompt
+
+
+def test_a_correction_notice_gets_its_own_section_and_its_absence_changes_nothing():
+    """#403: the previous turn's fixed notice, after the turn line; without one the input is unchanged."""
+    from optimus.agent.prompts import CORRECTION_NOTICE_HEADER, build_multi_turn_planner_input
+
+    kwargs = dict(planning_turn=2, max_planning_turns=3, remaining_wall_clock_minutes=30)
+    plain = build_multi_turn_planner_input("Update target.py", **kwargs)
+    noticed = build_multi_turn_planner_input("Update target.py", correction_notice="FIXED NOTICE.", **kwargs)
+
+    assert CORRECTION_NOTICE_HEADER not in plain
+    assert build_multi_turn_planner_input("Update target.py", correction_notice="", **kwargs) == plain
+    assert f"{CORRECTION_NOTICE_HEADER} FIXED NOTICE." in noticed
+    assert noticed.index("Planning turn: 2 of 3") < noticed.index(CORRECTION_NOTICE_HEADER)
+    assert noticed.replace(f"{CORRECTION_NOTICE_HEADER} FIXED NOTICE.\n\n", "") == plain
