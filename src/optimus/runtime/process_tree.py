@@ -288,6 +288,8 @@ def _close_handle(handle: int) -> None:
 def _win_error() -> OSError:
     import ctypes
 
+    if sys.platform != "win32":  # the Windows job path only; lets the POSIX type check skip it
+        raise AssertionError("kernel32 is Windows-only")
     return ctypes.WinError(ctypes.get_last_error())
 
 
@@ -311,6 +313,8 @@ def _thread_entry() -> Any:
 
 def _kernel32() -> Any:
     global _api
+    if sys.platform != "win32":  # the Windows job path only; lets the POSIX type check skip it
+        raise AssertionError("kernel32 is Windows-only")
     if _api is None:
         import ctypes
         from ctypes import wintypes
