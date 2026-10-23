@@ -1,8 +1,9 @@
 """What a planning step did, what came back and whether it was new (Plan 12.3, Design 1).
 
 A step is an action fingerprint (its kind plus a normalised target) and a result digest (the
-outcome's identity). Novelty is new evidence: a read range not yet seen with that file content, or
-an MCP result not seen before in this turn. A parse failure is never novel.
+outcome's identity). Novelty is new evidence or a changed result: a read range not yet seen with that
+file content, a file whose hash changed since its last read, an MCP result not seen before in this
+turn, or one that changed since the same call's last result. A parse failure is never novel.
 """
 
 from __future__ import annotations
@@ -47,12 +48,15 @@ class ReadCoverage:
 
     def __init__(self) -> None:
         self._spans: dict[tuple[str, str], list[tuple[int, int]]] = {}
+        self._last_sha: dict[str, str] = {}
 
     def add(self, read: ReadResult) -> bool:
-        """Record `read`; True if any of its bytes was not covered by an earlier read of the same
-        content (a changed file has a new hash, so it is never covered)."""
+        """Record `read`; True if the file's hash changed since its last read, or if any of its bytes
+        was not covered by an earlier read of the same content."""
+        changed = self._last_sha.setdefault(read.path, read.source_sha256) != read.source_sha256
+        self._last_sha[read.path] = read.source_sha256
         spans = self._spans.setdefault((read.path, read.source_sha256), [])
-        novel = not _covers(spans, read.start_byte, read.end_byte)
+        novel = changed or not _covers(spans, read.start_byte, read.end_byte)
         spans.append((read.start_byte, read.end_byte))
         spans.sort()
         merged: list[tuple[int, int]] = []
@@ -84,6 +88,22 @@ def read_step(reads: Iterable[ReadResult], coverage: ReadCoverage) -> LoopStep:
     )
 
 
+class McpResults:
+    """The MCP results seen in this turn, and each call's last one."""
+
+    def __init__(self) -> None:
+        self._seen: set[str] = set()
+        self._last: dict[str, str] = {}
+
+    def add(self, fingerprint: str, digest: str) -> bool:
+        """Record a result; True if it is new evidence or changed since the same call's last result."""
+        changed = self._last.setdefault(fingerprint, digest) != digest
+        novel = changed or digest not in self._seen
+        self._seen.add(digest)
+        self._last[fingerprint] = digest
+        return novel
+
+
 def mcp_step(
     *,
     operation: str,
@@ -91,19 +111,18 @@ def mcp_step(
     tool: str,
     arguments: Mapping[str, object],
     evidence_envelope: str,
-    seen_digests: set[str],
+    results: McpResults,
 ) -> LoopStep:
     """`evidence_envelope` is exactly what the planner receives; main returns no separate result digest."""
     canonical = json.dumps(dict(arguments), sort_keys=True, separators=(",", ":"), default=str)
     argument_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     digest = hashlib.sha256(evidence_envelope.encode("utf-8")).hexdigest()
-    novel = digest not in seen_digests
-    seen_digests.add(digest)
+    fingerprint = f"MCP:{operation}:{server}:{tool}:{argument_hash}"
     return LoopStep(
         kind=ActionKind.MCP,
-        fingerprint=f"MCP:{operation}:{server}:{tool}:{argument_hash}",
+        fingerprint=fingerprint,
         result_digest=digest,
-        novel=novel,
+        novel=results.add(fingerprint, digest),
         subject=f"the MCP call {server}.{tool}" if operation == "call" else f"the MCP tool list of {server}",
     )
 

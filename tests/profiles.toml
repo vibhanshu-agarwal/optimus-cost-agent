@@ -475,6 +475,7 @@ paths = [
   "tests/unit/tools/test_run_context_targets.py",
   "tests/unit/tools/test_run_context_xdist.py",
   "tests/unit/tools/test_process_tree.py",
+  "tests/unit/tools/test_bounded_command.py",
 ]
 why = "Run-context and process-tree tests: nested pytest sessions, job objects and process kills; selected by tools/testing/** and tools/process_tree.py changes (v4 design contract 1)."
 
@@ -585,6 +586,7 @@ paths = [
   "tests/unit/optimus_gateway/test_request_body_rejection.py",
   "tests/unit/redis/test_async_bridge.py",
   "tests/unit/redis/test_runtime.py",
+  "tests/unit/tools/test_bounded_command.py",
 ]
 why = "Maintained signal: imports tests.support.concurrency or tests.support.fault_injection to race current product code (audit tiers and reviewed tooling uses excluded in the guard)."
 
@@ -702,6 +704,7 @@ paths = [
   "tests/conftest.py",
   "tests/support/child_*",
   "tests/support/child_*/**",
+  "src/optimus/runtime/process_tree.py",
   "tests/support/profiles_plugin.py",
   "tools/process_tree.py",
   "tools/testing/**",
@@ -714,6 +717,7 @@ files = [
   "tests/unit/tools/test_run_context_reviewed_programs.py",
   "tests/unit/tools/test_run_context_targets.py",
   "tests/unit/tools/test_process_tree.py",
+  "tests/unit/tools/test_bounded_command.py",
 ]
 why = "v4 design contract 1: run-context and process-tree tests are selected by tools/testing/**, tools/process_tree.py and tests/support/child_* changes, and by the session hooks only they control (the root conftest and the profile plugin: collection, deselected identity, phases, UNRUN)."
 

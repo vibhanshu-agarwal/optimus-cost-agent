@@ -69,7 +69,7 @@ class LoopDetector:
         last = self._last(2 * t.cycles)
         if (
             last
-            and _identity(last[0]) != _identity(last[1])
+            and last[0].fingerprint != last[1].fingerprint  # two actions: one action's changing results is polling
             and all(_identity(s) == _identity(last[i % 2]) for i, s in enumerate(last))
         ):
             return LoopDetection(LoopSignalKind.CYCLE, step)

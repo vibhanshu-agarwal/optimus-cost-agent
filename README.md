@@ -270,24 +270,26 @@ out of planning steps ([ADR-024](docs/decisions/ADR-024-accepts-adr-009-loop-con
     its own approval.
   - **Stop** ends the turn with the actual cause.
 
+An approved `TEST` directive runs in a contained process tree with a 15-minute deadline and the turn's
+cancellation. A timeout, a containment failure or a stop that cannot be confirmed ends the plan: the later
+directives are not run, and the outcome is reported.
+
 `OPTIMUS_LOOP_RECOVERY=headless` keeps the earlier hard caps. Use it for clients that answer every permission
 request on their own, such as acpx `--approve-all`. Reviewed test compositions and every non-ACP caller
 (golden, evaluation) are headless by default.
 
 ### Bounded Goal Loops and Curated Workflow Skills
 
-Plan 9 adds architectural support for bounded goal-driven loops and curated
-workflow skills. Loops are not the default execution mode. They are enabled only
-when a task has a machine-checkable completion condition and explicit
-`LoopBudgetPolicy` bounds for iterations, wall-clock time and repeated
-failures. A product loop has no dollar stop; only an independently authorized
-evaluation caller may pass its own explicit dollar cap (Plan 12.2 Task 11).
+Plan 9 added bounded goal-driven loops and curated workflow skills. Plan 12.3 retired the goal-loop path
+(ADR-024, D3): no supported client used it, and an `optimus.agent.run` request that carries a
+`completion_condition` is now rejected with a clear error instead of being run once. `GoalLoopController` stays
+as the planning loop's controller, with explicit `LoopBudgetPolicy` bounds for iterations, wall-clock time and
+repeated failures. A product loop has no dollar stop; only an independently authorized evaluation caller may
+pass its own explicit dollar cap (Plan 12.2 Task 11).
 
-Loop iterations persist progress to an append-only ledger and must use the same
-`PreToolGuard` and permission policy as ordinary Agent-mode tool calls. A loop
-that reaches completion, max iterations, wall-clock timeout, repeated failure,
-human halt, or an evaluation caller's explicit dollar cap records a stable
-`LoopStopReason`.
+Loop iterations must use the same `PreToolGuard` and permission policy as ordinary Agent-mode tool calls. A
+loop that reaches completion, max iterations, wall-clock timeout, repeated failure, human halt, or an
+evaluation caller's explicit dollar cap records a stable `LoopStopReason`.
 
 Skills are reviewed Markdown artifacts with frontmatter metadata. Trusted skills
 may be loaded only when their description or globs match the task. Draft skills

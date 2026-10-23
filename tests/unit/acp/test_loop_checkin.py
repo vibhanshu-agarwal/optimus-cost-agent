@@ -4,6 +4,7 @@ selects interactive or headless recovery."""
 from __future__ import annotations
 
 import asyncio
+import threading
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -120,12 +121,26 @@ class FailingCheckInOutbound(RecordingOutboundChannel):
         return await super().request(method, params)
 
 
-async def _start(tmp_path: Path, replies: list[str], *, outbound=None, interactive_recovery: bool = True):
+class FinishingRunner(AgentRunner):
+    """Says when its run returns, so a test can see the planning worker exit."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.finished = threading.Event()
+
+    def run(self, *args: Any, **kwargs: Any):
+        try:
+            return super().run(*args, **kwargs)
+        finally:
+            self.finished.set()
+
+
+async def _start(tmp_path: Path, replies: list[str], *, outbound=None, interactive_recovery: bool = True, runner_class=AgentRunner):
     (tmp_path / "a.py").write_text(SOURCE, encoding="utf-8")
     gateway = Gateway(replies)
     outbound = outbound or RecordingOutboundChannel()
     adapter = AcpDuplexAdapter(
-        runner=AgentRunner(gateway_client=gateway, model="glm-5.2"),
+        runner=runner_class(gateway_client=gateway, model="glm-5.2"),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -199,6 +214,34 @@ async def test_cancel_while_the_check_in_waits_cancels_the_turn(tmp_path):
     response = (await prompt).response
     assert response["result"]["stopReason"] == "cancelled"
     assert gateway.calls == 4  # nothing ran after the cancel
+
+
+async def test_a_disconnect_while_the_check_in_waits_releases_the_planning_worker(tmp_path):
+    adapter, gateway, outbound, session_id, prompt = await _start(tmp_path, [READ_A] * 4, runner_class=FinishingRunner)
+    await _next_request(outbound, 0)
+    # What serve_ndjson does on transport loss: tear the turn down, then cancel its request task. Nobody
+    # answers the check-in, and the event loop keeps running.
+    adapter._active_turns[session_id].turn_control.request_transport_teardown()
+    prompt.cancel()
+    assert await asyncio.to_thread(adapter._runner.finished.wait, 10), "the planning worker stayed blocked"
+    assert gateway.calls == 4
+
+
+async def test_continue_into_a_new_allowance_keeps_operation_ids_and_receipts_exact(tmp_path):
+    reads = [f"OBSERVE: part {n}\nREAD: a.py#bytes={n}:{n + 1}\n" for n in range(4)]
+    adapter, gateway, outbound, session_id, prompt = await _start(tmp_path, [*reads, FINAL_PLAN])
+    checkin = await _next_request(outbound, 0)
+    outbound.respond(checkin["id"], CONTINUE)
+    approval = await _next_request(outbound, 1)  # steps 4-5 ran: a reused operation id would have stopped them
+    assert [o["optionId"] for o in approval["params"]["options"]] == ["approve", "cancel"]
+    outbound.respond(approval["id"], {"outcome": {"outcome": "selected", "optionId": "cancel"}})
+    await prompt
+
+    session = adapter._sessions.get(session_id)
+    receipts = session.cost_settlement.receipts(f"{session_id}:1")
+    assert gateway.calls == 5
+    assert sorted(r.gateway_request_id for r in receipts) == [f"gw-{n}" for n in range(1, 6)]
+    assert len({r.attempt_id for r in receipts}) == 5
 
 
 async def test_a_check_in_the_client_cannot_answer_ends_the_turn_recoverably(tmp_path):

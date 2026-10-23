@@ -92,6 +92,12 @@ class AgentMcpToolOutput:
         )
 
 
+GOAL_LOOP_RETIRED = (
+    "completion_condition is not supported: goal loops were retired (Plan 12.3); send a one-shot request "
+    "without it"
+)
+
+
 class AgentRunRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -108,7 +114,6 @@ class AgentRunRequest(BaseModel):
     max_planning_turns: int = Field(default=3, ge=1)
     planning_wall_clock_minutes: int = Field(default=30, ge=1)
     skill_paths: tuple[Path, ...] = ()
-    completion_condition: str | None = None
     # Plan 12.1 / P11.25-FU-1: prior conversation for the Chat path, rendered
     # separately from ``task`` (which then holds only the current prompt).
     conversation_envelope: str = ""
@@ -119,6 +124,14 @@ class AgentRunRequest(BaseModel):
     # None for every engine-absent and non-ACP caller, which keep their existing behavior.
     selection_text: str | None = Field(default=None, min_length=1)
     context_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="before")
+    @classmethod
+    def refuse_goal_loop_requests(cls, data: Any) -> Any:
+        # Plan 12.3 (D3): never run a goal-loop request once, silently.
+        if isinstance(data, dict) and "completion_condition" in data:
+            raise ValueError(GOAL_LOOP_RETIRED)
+        return data
 
     @field_validator("execution_mode", mode="before")
     @classmethod
@@ -133,6 +146,14 @@ class AgentRunRequest(BaseModel):
         if not value.is_absolute():
             raise ValueError("workspace_root must be absolute")
         return value.resolve()
+
+
+# Plan 12.3, Design 8: an approved TEST that did not finish ends its plan with one of these stop reasons.
+TEST_STOP_REASONS = {
+    "timed_out": "TEST_TIMED_OUT",
+    "containment_failed": "TEST_CONTAINMENT_FAILED",
+    "stop_unconfirmed": "TEST_STOP_UNCONFIRMED",
+}
 
 
 class AgentRunResult(BaseModel):

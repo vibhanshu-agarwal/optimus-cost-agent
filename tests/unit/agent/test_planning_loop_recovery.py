@@ -156,6 +156,21 @@ def test_polling_an_mcp_tool_with_changing_results_never_fires(tmp_path, source)
     assert (result.stop_reason, checkins.asked, _nudged(gateway)) == (None, [], [])
 
 
+def test_polling_an_mcp_tool_whose_result_flips_back_never_fires(tmp_path, source):
+    mcp = Mcp({"t1": ["running", "idle", "running", "idle", "running"]})
+    gateway = Gateway(['MCP_CALL tools t1 {"q":"x"}\n'] * 5 + [FINAL_PLAN])
+    checkins = CheckIns()
+    result = _run(tmp_path, gateway, checkins, policy=PlanningLoopPolicy(max_planning_turns=6), mcp=mcp)
+    assert (result.stop_reason, checkins.asked, _nudged(gateway)) == (None, [], [])
+
+
+def test_re_reading_a_file_that_flips_back_to_earlier_content_never_fires(tmp_path, source):
+    gateway = Gateway([(READ_A, _rewrite(source, n % 2)) for n in range(5)] + [FINAL_PLAN])
+    checkins = CheckIns()
+    result = _run(tmp_path, gateway, checkins, policy=PlanningLoopPolicy(max_planning_turns=6))
+    assert (result.stop_reason, checkins.asked, _nudged(gateway)) == (None, [], [])
+
+
 def test_distinct_mcp_tools_on_one_server_are_progress(tmp_path, source):
     mcp = Mcp({"t1": ["same"], "t2": ["same"], "t3": ["same"]})
     calls = [f'MCP_CALL tools {tool} {{"q":"x"}}\n' for tool in ("t1", "t2", "t3")]
@@ -226,6 +241,46 @@ def test_a_parse_failure_recovers_through_its_nudge_and_the_plan_waits_for_the_c
     assert "Continue shows it for your approval" in checkin.text
     assert result.stop_reason is None
     assert result.plan_text == FINAL_PLAN  # kept, for the normal plan approval
+
+
+REFUSE = "REFUSE: The evidence is not enough for a safe change.\n"
+
+
+def test_a_refusal_after_the_nudge_waits_for_the_check_in_and_stop_keeps_it(tmp_path, source):
+    gateway = Gateway([PROSE] * 3 + [REFUSE])
+    checkins = CheckIns(CheckInDecision.STOP)
+    result = _run(tmp_path, gateway, checkins)
+    [checkin] = checkins.asked
+    assert (checkin.cause, checkin.refusal_waiting, checkin.plan_waiting) == ("REPEATED_PARSE_ERROR", True, False)
+    assert "The model then refused: The evidence is not enough for a safe change." in checkin.text
+    assert (result.stop_reason, result.refusal_reason) == (
+        "PLANNING_MODEL_REFUSED",
+        "The evidence is not enough for a safe change.",
+    )
+
+
+def test_continue_sets_a_waiting_refusal_aside_and_grants_more_steps(tmp_path, source):
+    gateway = Gateway([PROSE] * 3 + [REFUSE, READ_A, FINAL_PLAN])
+    checkins = CheckIns(CheckInDecision.CONTINUE)
+    result = _run(tmp_path, gateway, checkins)
+    assert len(checkins.asked) == 1
+    assert (result.stop_reason, result.plan_text, result.settled_turns) == (None, FINAL_PLAN, 6)
+
+
+def test_an_evaluation_cap_covers_the_whole_turn_across_continue(tmp_path, source):
+    reads = [f"OBSERVE: part {n}\nREAD: a.py#bytes={n}:{n + 1}\n" for n in range(4)]
+    gateway = Gateway([*reads, FINAL_PLAN])
+    result = PlanningLoopRunner(
+        gateway_client=gateway,
+        model="glm-5.2",
+        policy=PlanningLoopPolicy(),
+        workspace_root=tmp_path,
+        execution_mode=ExecutionMode.AGENT,
+        guard=PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=()),
+        max_cost_usd=Decimal("0.004"),
+        recovery_checkin=CheckIns(CheckInDecision.CONTINUE),
+    ).run(run_id="run-123", session_id=None, task="Update a.py")
+    assert (result.stop_reason, len(gateway.prompts)) == ("PLANNING_BUDGET_EXHAUSTED", 4)
 
 
 def test_stop_at_a_check_in_with_a_waiting_plan_ends_the_turn_without_it(tmp_path, source):

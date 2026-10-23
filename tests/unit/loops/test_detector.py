@@ -53,6 +53,12 @@ def test_an_alternation_with_a_changed_result_is_not_a_cycle():
     assert _run(detector, steps) == [None] * 6
 
 
+def test_one_action_alternating_between_two_results_is_polling_not_a_cycle():
+    detector = LoopDetector(LoopThresholds(no_progress=10))
+    steps = [_step("poll", digest) for digest in ("1", "2") * 3]
+    assert _run(detector, steps) == [None] * 6
+
+
 def test_three_identical_parse_failures_fire_a_repeated_parse_error():
     steps = [parse_failure_step(code="GRAMMAR_UNRECOGNIZED", message="m")] * 3
     assert _run(LoopDetector(), steps)[-1] is LoopSignalKind.REPEATED_PARSE_ERROR

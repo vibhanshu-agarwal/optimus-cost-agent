@@ -42,7 +42,7 @@ from optimus.loops.controller import GoalLoopController, GoalLoopResult
 from optimus.loops.detector import LoopDetection, LoopDetector, LoopSignalKind, LoopThresholds
 from optimus.loops.ledger import InMemoryProgressLedger
 from optimus.loops.models import IterationOutcome, IterationState, LoopBudgetPolicy, LoopStopReason, LoopToolExecutorProtocol
-from optimus.loops.signals import LoopStep, ReadCoverage, ReadResult, mcp_step, parse_failure_step, read_step
+from optimus.loops.signals import LoopStep, McpResults, ReadCoverage, ReadResult, mcp_step, parse_failure_step, read_step
 from optimus.retry.policy import RetryController, RetryPolicy
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import RuntimeContext
@@ -318,6 +318,7 @@ class PlanningCheckIn(BaseModel):
     planning_steps: int = Field(ge=1)
     text: str
     plan_waiting: bool = False
+    refusal_waiting: bool = False
 
 
 # Blocks the planning worker until the user answers; nothing runs meanwhile (ADR-009 requirement 3).
@@ -1023,8 +1024,9 @@ class PlanningLoopRunner:
         )
         tools = GuardedLoopToolExecutor(guard=self._guard)
 
-        def run_allowance(steps: int, *, budgeted: bool = False) -> GoalLoopResult:
+        def run_allowance(steps: int, *, budgeted: bool = False, spent: Decimal = Decimal("0")) -> GoalLoopResult:
             # One allowance: `steps` planning steps and a fresh wall clock. A headless run has exactly one.
+            # It starts from the turn's spend, so an evaluation caller's cap covers the whole turn.
             iteration_runner.start_allowance(steps, budgeted=budgeted)
             controller = GoalLoopController(
                 policy=iteration_runner.loop_budget_policy.model_copy(update={"max_iterations": steps}),
@@ -1045,6 +1047,7 @@ class PlanningLoopRunner:
                     goal=task,
                     completion_condition=task,
                     started_at=self._now(),
+                    cost_usd_spent=spent,
                 )
             )
 
@@ -1057,7 +1060,7 @@ class PlanningLoopRunner:
             if move is _NUDGE_STEP:
                 # A detection on the allowance's last step, or after the clock: its nudge still comes
                 # before the check-in, in exactly one more step (Plan 12.3, Design 4).
-                loop_result = run_allowance(1, budgeted=True)
+                loop_result = run_allowance(1, budgeted=True, spent=loop_result.state.cost_usd_spent)
                 continue
             assert isinstance(move, PlanningCheckIn)
             try:
@@ -1072,7 +1075,7 @@ class PlanningLoopRunner:
             iteration_runner.end_episode()
             if move.plan_waiting:
                 break  # the kept final plan goes on to the normal plan approval
-            loop_result = run_allowance(self._policy.continue_grant_steps)
+            loop_result = run_allowance(self._policy.continue_grant_steps, spent=loop_result.state.cost_usd_spent)
         result = iteration_runner.to_planning_result(loop_result)
         iteration_runner.emit_final_progress(result)
         return result
@@ -1119,7 +1122,7 @@ class _PlanningIterationRunner:
         self._loop_event_sink = loop_event_sink
         self._detector = LoopDetector(policy.loop_thresholds)
         self._coverage = ReadCoverage()
-        self._seen_mcp_digests: set[str] = set()
+        self._mcp_results = McpResults()
         self._steps_run = 0
         self._turn_offset = 0
         self._allowance_end = policy.max_planning_turns
@@ -1229,14 +1232,16 @@ class _PlanningIterationRunner:
         if self._typed_planning_stop_reason is not None:
             return None
         stop = loop_result.stop_reason
-        plan_waiting = self._last_decision is not None and self._last_decision.kind is PlanningTurnKind.FINAL_PLAN
+        kind = None if self._last_decision is None else self._last_decision.kind
+        plan_waiting, refusal_waiting = kind is PlanningTurnKind.FINAL_PLAN, kind is PlanningTurnKind.REFUSE
         if stop is LoopStopReason.COMPLETED:
-            if not (self._checkin_requested or (plan_waiting and self._episode is not None)):
+            # An open episode always ends at a check-in, even when its nudge produced a plan or a refusal.
+            if not (self._checkin_requested or ((plan_waiting or refusal_waiting) and self._episode is not None)):
                 return None
         elif stop in (LoopStopReason.MAX_ITERATIONS, LoopStopReason.WALL_CLOCK):
             if self._nudge is not None:
                 return _NUDGE_STEP
-            plan_waiting = False
+            plan_waiting = refusal_waiting = False
         else:
             return None
         if self._episode is not None:
@@ -1244,13 +1249,17 @@ class _PlanningIterationRunner:
         else:
             cause = _WALL_CLOCK if stop is LoopStopReason.WALL_CLOCK else _TURN_LIMIT
         return PlanningCheckIn(
-            cause=cause, planning_steps=self._steps_run, text=self._checkin_text(cause, plan_waiting), plan_waiting=plan_waiting
+            cause=cause,
+            planning_steps=self._steps_run,
+            text=self._checkin_text(cause, plan_waiting, refusal_waiting),
+            plan_waiting=plan_waiting,
+            refusal_waiting=refusal_waiting,
         )
 
     def record_checkin(self, checkin: PlanningCheckIn, decision: CheckInDecision) -> None:
         self._emit_loop_record("check_in", checkin.cause, self._steps_run, decision=decision)
-        if decision is CheckInDecision.CONTINUE:
-            return
+        if decision is CheckInDecision.CONTINUE or checkin.refusal_waiting:
+            return  # a refusal that is not continued stands, with the model's reason
         detail = "" if self._episode is None else f" Last repeated step: {self._episode.step.subject}."
         detail += _CHECKIN_ENDINGS.get(decision, "")
         self._recovery_stop = (_RECOVERY_STOP_REASONS[checkin.cause], detail)
@@ -1259,6 +1268,8 @@ class _PlanningIterationRunner:
         """Continue ends the episode: a later detection starts a new one, with its own nudge."""
         self._episode, self._nudge, self._nudged, self._checkin_requested = None, None, False, False
         self._detector.reset()
+        if self._last_decision is not None and self._last_decision.kind is PlanningTurnKind.REFUSE:
+            self._last_decision = None  # Continue sets the refusal aside for more planning steps
 
     def _recovery_note(self, detection: LoopDetection) -> str:
         lines = [
@@ -1276,7 +1287,7 @@ class _PlanningIterationRunner:
         note = sanitize_workspace_text("\n".join(lines), workspace_root=self._workspace_root)
         return note.encode("utf-8")[:_RECOVERY_NOTE_MAX_BYTES].decode("utf-8", errors="ignore")
 
-    def _checkin_text(self, cause: str, plan_waiting: bool) -> str:
+    def _checkin_text(self, cause: str, plan_waiting: bool, refusal_waiting: bool) -> str:
         minutes = self._policy.max_wall_clock_minutes
         if self._episode is not None:
             what = (
@@ -1290,6 +1301,12 @@ class _PlanningIterationRunner:
         text = f"Planning paused after step {self._steps_run}: {what}."
         if plan_waiting:
             text += " A final plan is ready: Continue shows it for your approval."
+        elif refusal_waiting:
+            assert self._last_decision is not None
+            text += (
+                f" The model then refused: {self._last_decision.reason} Continue sets the refusal aside and grants "
+                f"{self._policy.continue_grant_steps} more planning steps and {minutes} minutes; Stop keeps the refusal."
+            )
         else:
             text += f" Continue grants {self._policy.continue_grant_steps} more planning steps and {minutes} minutes."
         text += " Continue never approves a change; every change still needs its own approval. Stop ends this turn."
@@ -1789,7 +1806,7 @@ class _PlanningIterationRunner:
                     tool=decision.mcp_tool or "",
                     arguments=decision.mcp_arguments or {},
                     evidence_envelope=self._mcp_evidence_envelope,
-                    seen_digests=self._seen_mcp_digests,
+                    results=self._mcp_results,
                 ),
                 planning_turn,
             )

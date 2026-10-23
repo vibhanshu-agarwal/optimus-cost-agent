@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import contextlib
 import inspect
 import itertools
@@ -84,7 +85,7 @@ from optimus.acp.shapes import (
     new_tool_call_id,
     tool_kind_for_name,
 )
-from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
+from optimus.agent.models import TEST_STOP_REASONS, AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
 from optimus.agent.planning_loop import CheckInDecision, PlanningCheckIn, PlanningCheckInCallback, PlanningProgressEvent
 from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
 from optimus.context.assembly import AttachedTurn, ContextAttachment
@@ -1862,9 +1863,21 @@ class AcpDuplexAdapter:
             return checkin_decision(response)
 
         def recovery_checkin(checkin: PlanningCheckIn) -> CheckInDecision:
-            if turn.turn_control.halt_requested():
+            control = turn.turn_control
+            if control.halt_requested():
                 return CheckInDecision.STOP
-            return asyncio.run_coroutine_threadsafe(ask(checkin), loop).result()
+            pending = asyncio.run_coroutine_threadsafe(ask(checkin), loop)
+            # Transport teardown cancels the turn's permission handle; by session close the turn may have
+            # left the active map, so only this releases a pending check-in (Codex Checkpoint A, 1).
+            control.set_permission_handle(pending)
+            try:
+                if control.halt_requested():
+                    pending.cancel()  # teardown ran before the handle was registered
+                return pending.result()
+            except concurrent.futures.CancelledError:
+                return CheckInDecision.STOP
+            finally:
+                control.set_permission_handle(None)
 
         return recovery_checkin
 
@@ -2088,6 +2101,8 @@ _PLANNING_TERMINAL_STOP_REASONS = frozenset(
 
 
 def _completion_message(result: AgentRunResult) -> str:
+    if result.stop_reason in TEST_STOP_REASONS.values():
+        return result.output_text  # it names the stopped TEST and any change already applied (Plan 12.3)
     if result.mutation_count > 0:
         writes = [call.summary for call in result.tool_calls if call.tool_name == "write_file"]
         if writes:
@@ -2180,7 +2195,7 @@ def _stop_reason(result: AgentRunResult) -> str:
         return "end_turn"
     if result.status is AgentRunStatus.TERMINATED and result.stop_reason == "cancelled":
         return "cancelled"
-    if result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
+    if result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS or result.stop_reason in TEST_STOP_REASONS.values():
         return "end_turn"
     if result.stop_reason == "PLAN_NOT_FOUND_OR_EXPIRED":
         return "end_turn"
