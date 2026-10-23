@@ -1133,6 +1133,7 @@ class _PlanningIterationRunner:
         self._checkin_requested = False
         self._last_error_step: LoopStep | None = None
         self._recovery_stop: tuple[str, str] | None = None  # (stop reason, the user's detail)
+        self._refusal_detail = ""
         self._attempt_callback = attempt_callback
         self._route_binder = route_binder
         self._conversation_envelope = conversation_envelope
@@ -1258,8 +1259,12 @@ class _PlanningIterationRunner:
 
     def record_checkin(self, checkin: PlanningCheckIn, decision: CheckInDecision) -> None:
         self._emit_loop_record("check_in", checkin.cause, self._steps_run, decision=decision)
-        if decision is CheckInDecision.CONTINUE or checkin.refusal_waiting:
-            return  # a refusal that is not continued stands, with the model's reason
+        if decision is CheckInDecision.CONTINUE:
+            return
+        if checkin.refusal_waiting:
+            # A refusal that is not continued stands, with the model's reason and any check-in explanation.
+            self._refusal_detail = _CHECKIN_ENDINGS.get(decision, "")
+            return
         detail = "" if self._episode is None else f" Last repeated step: {self._episode.step.subject}."
         detail += _CHECKIN_ENDINGS.get(decision, "")
         self._recovery_stop = (_RECOVERY_STOP_REASONS[checkin.cause], detail)
@@ -1899,6 +1904,7 @@ class _PlanningIterationRunner:
                     stop_reason="PLANNING_MODEL_REFUSED",
                     settled_turns=settled_turns,
                     refusal_reason=decision.reason,
+                    detail=self._refusal_detail,
                 )
 
             if decision is not None and decision.kind is PlanningTurnKind.FINAL_PLAN:

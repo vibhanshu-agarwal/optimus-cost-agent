@@ -476,6 +476,7 @@ paths = [
   "tests/unit/tools/test_run_context_xdist.py",
   "tests/unit/tools/test_process_tree.py",
   "tests/unit/tools/test_bounded_command.py",
+  "tests/unit/agent/test_test_directive_deadline.py",
 ]
 why = "Run-context and process-tree tests: nested pytest sessions, job objects and process kills; selected by tools/testing/** and tools/process_tree.py changes (v4 design contract 1)."
 
@@ -630,6 +631,7 @@ paths = [
   "tests/unit/mcp/test_local_ipc.py",
   "tests/unit/security/test_sanitization.py",
   "tests/unit/support/test_concurrency_diagnostics.py",
+  "tests/unit/tools/test_bounded_command.py",
   "tests/unit/tools/test_plan117_custody_relay.py",
   "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py",
   "tests/unit/tools/test_probe_p11_zed_session_load.py",

@@ -259,6 +259,18 @@ def test_a_refusal_after_the_nudge_waits_for_the_check_in_and_stop_keeps_it(tmp_
     )
 
 
+@pytest.mark.parametrize(
+    ("decision", "ending"),
+    [(CheckInDecision.UNAVAILABLE, "could not be shown"), (CheckInDecision.INVALID, "was not recognised")],
+)
+def test_a_waiting_refusal_keeps_the_explanation_of_a_check_in_that_could_not_be_answered(tmp_path, source, decision, ending):
+    """Codex Checkpoint B, 4."""
+    result = _run(tmp_path, Gateway([PROSE] * 3 + [REFUSE]), CheckIns(decision))
+    assert (result.stop_reason, result.refusal_reason) == ("PLANNING_MODEL_REFUSED", "The evidence is not enough for a safe change.")
+    assert result.corrective_text.startswith("The evidence is not enough for a safe change.")
+    assert ending in result.corrective_text
+
+
 def test_continue_sets_a_waiting_refusal_aside_and_grants_more_steps(tmp_path, source):
     gateway = Gateway([PROSE] * 3 + [REFUSE, READ_A, FINAL_PLAN])
     checkins = CheckIns(CheckInDecision.CONTINUE)
@@ -347,6 +359,17 @@ def test_the_wall_clock_running_out_becomes_a_check_in(tmp_path, source):
     result = _run(tmp_path, gateway, checkins, now=lambda: clock[0])
     assert checkins.asked[0].cause == "WALL_CLOCK"
     assert result.stop_reason == "PLANNING_WALL_CLOCK_EXHAUSTED"
+
+
+def test_continue_after_the_clock_ran_out_starts_a_fresh_clock(tmp_path, source):
+    clock = [datetime(2026, 10, 23, tzinfo=UTC)]
+    late = ("OBSERVE: a\nREAD: a.py#bytes=0:1\n", lambda: clock.__setitem__(0, clock[0] + timedelta(minutes=31)))
+    gateway = Gateway([late, "OBSERVE: b\nREAD: a.py#bytes=1:2\n", FINAL_PLAN])
+    checkins = CheckIns(CheckInDecision.CONTINUE)
+    result = _run(tmp_path, gateway, checkins, now=lambda: clock[0])
+    assert [c.cause for c in checkins.asked] == ["WALL_CLOCK"]
+    assert "Remaining wall-clock minutes: 30" in gateway.prompts[1]
+    assert (result.stop_reason, result.plan_text, len(gateway.prompts)) == (None, FINAL_PLAN, 3)
 
 
 def test_a_detection_after_the_clock_expired_still_gets_its_nudge_step(tmp_path, source):

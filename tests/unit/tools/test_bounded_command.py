@@ -76,3 +76,63 @@ def test_a_command_that_cannot_be_contained_is_refused(monkeypatch, tmp_path):
         run_bounded([sys.executable, "-c", f"open({str(marker)!r}, 'w').close()"], deadline=time.monotonic() + 60, cancelled=_never)
     assert stopped.value.outcome == "containment_failed"
     assert not marker.exists()
+
+
+def test_a_descendant_that_outlives_its_root_makes_the_stop_unconfirmed(monkeypatch):
+    """Codex Checkpoint B, 2: the root exits and its pipes close while a descendant that redirected them runs on."""
+    monkeypatch.setattr(process_tree, "_CLEANUP_SECONDS", 3.0)
+    real_kill = process_tree.kill_tree
+    survivors: list = []
+    monkeypatch.setattr(process_tree, "kill_tree", survivors.append)  # injected: the kill does nothing
+    code = (
+        "import subprocess, sys, time; "
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], "
+        "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
+        "time.sleep(2)"
+    )
+    started = time.monotonic()
+    with pytest.raises(CommandStopped) as stopped:
+        run_bounded([sys.executable, "-c", code], deadline=started + 1, cancelled=_never)
+    try:
+        assert stopped.value.outcome == "stop_unconfirmed"
+        assert time.monotonic() - started < 1 + 3.0 + 1.0
+    finally:
+        for process in survivors:
+            real_kill(process)
+
+
+def test_a_missing_executable_is_an_ordinary_launch_failure_not_a_containment_failure():
+    with pytest.raises(OSError) as raised:
+        run_bounded(["optimus-no-such-test-runner-12-3"], deadline=time.monotonic() + 60, cancelled=_never)
+    assert not isinstance(raised.value, process_tree.ContainmentError)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="job containment is the Windows path")
+def test_a_containment_failure_after_the_child_started_never_claims_it_did_not_run(monkeypatch):
+    """Codex Checkpoint B, 1: a resume can let the child run before setup fails; it is stopped, not "not run"."""
+    real_resume = process_tree._resume
+
+    def resume_then_fail(pid):
+        real_resume(pid)
+        raise OSError("injected: setup failed after the child ran")
+
+    monkeypatch.setattr(process_tree, "_resume", resume_then_fail)
+    with pytest.raises(CommandStopped) as stopped:
+        run_bounded([sys.executable, "-c", "import time; time.sleep(30)"], deadline=time.monotonic() + 60, cancelled=_never)
+    assert stopped.value.outcome == "containment_failed"
+    assert "after the command started" in str(stopped.value)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="job containment is the Windows path")
+def test_a_containment_cleanup_that_fails_is_an_unconfirmed_stop(monkeypatch):
+    def fail_resume(_pid):
+        raise OSError("injected: resume failed")
+
+    def fail_terminate(_job):
+        raise OSError("injected: terminate failed")
+
+    monkeypatch.setattr(process_tree, "_resume", fail_resume)
+    monkeypatch.setattr(process_tree, "_terminate_job", fail_terminate)
+    with pytest.raises(CommandStopped) as stopped:
+        run_bounded([sys.executable, "-c", "pass"], deadline=time.monotonic() + 60, cancelled=_never)
+    assert stopped.value.outcome == "stop_unconfirmed"

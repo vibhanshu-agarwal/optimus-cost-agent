@@ -43,6 +43,7 @@ _PROCESS_TERMINATE = 0x0001
 _THREAD_SUSPEND_RESUME = 0x0002
 _SNAPSHOT_THREADS = 0x00000004
 _RESUME_FAILED = 0xFFFFFFFF
+_JOB_BASIC_ACCOUNTING = 1  # JobObjectBasicAccountingInformation
 _KILLED_EXIT_CODE = 1  # what `taskkill /F` reported, so callers see no change
 _CLEANUP_SECONDS = 10.0  # the budget for reaping a root whose containment failed
 
@@ -54,7 +55,13 @@ _POLL_SECONDS = 0.2  # how quickly a cancellation is noticed while a command run
 
 
 class ContainmentError(OSError):
-    """The child could not be contained, so it was stopped and reaped before it could run on."""
+    """The child could not be contained. `may_have_run`: a resume had begun, so it may have run;
+    `stopped`: its cleanup confirmed that the job was ended and the root reaped."""
+
+    def __init__(self, message: str, *, may_have_run: bool = False) -> None:
+        super().__init__(message)
+        self.may_have_run = may_have_run
+        self.stopped = True
 
 
 class CommandStopped(RuntimeError):
@@ -77,6 +84,10 @@ def run_bounded(args: Sequence[str], *, deadline: float, cancelled: Callable[[],
     try:
         process = popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     except ContainmentError as error:
+        if not error.stopped:
+            raise CommandStopped("stop_unconfirmed", "containment failed and the command may still be running") from error
+        if error.may_have_run:
+            raise CommandStopped("containment_failed", "containment failed after the command started; it was stopped") from error
         raise CommandStopped("containment_failed", "containment failed, so the command was not run") from error
     while (remaining := deadline - time.monotonic()) > 0 and not cancelled():
         try:
@@ -84,9 +95,15 @@ def run_bounded(args: Sequence[str], *, deadline: float, cancelled: Callable[[],
         except subprocess.TimeoutExpired:
             continue
         return subprocess.CompletedProcess(process.args, process.returncode, out, err)
+    cleanup_deadline = time.monotonic() + _CLEANUP_SECONDS
     try:
         kill_tree(process)
-        process.communicate(timeout=_CLEANUP_SECONDS)
+        process.communicate(timeout=max(0.0, cleanup_deadline - time.monotonic()))
+        # Pipes can close while a descendant that redirected them still runs: confirm the whole tree.
+        while not _tree_stopped(process):
+            if time.monotonic() >= cleanup_deadline:
+                raise subprocess.TimeoutExpired(process.args, _CLEANUP_SECONDS)
+            time.sleep(0.05)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise CommandStopped("stop_unconfirmed", "stop unconfirmed: the command may still be running") from error
     if remaining <= 0:
@@ -107,13 +124,16 @@ def popen(args: Sequence[str], **kwargs: Any) -> subprocess.Popen[Any]:
     kwargs["creationflags"] = kwargs.get("creationflags", 0) | _CREATE_SUSPENDED
     process = subprocess.Popen(list(args), **kwargs)
     job: int | None = None
+    resuming = False
     try:
         job = _new_job()
         _assign(job, process.pid)
+        resuming = True  # a resume can succeed for one thread before it fails
         _resume(process.pid)
     except Exception as error:
-        refused = ContainmentError(f"the child could not be contained: {error}")
+        refused = ContainmentError(f"the child could not be contained: {error}", may_have_run=resuming)
         _abandon(process, job, refused)
+        refused.stopped = not getattr(refused, "__notes__", None)  # _abandon notes every cleanup failure
         raise refused from error
     except BaseException as error:
         _abandon(process, job, error)
@@ -138,6 +158,39 @@ def kill_tree(process: subprocess.Popen[Any]) -> None:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass  # every member of the group has already exited
+
+
+def _tree_stopped(process: subprocess.Popen[Any]) -> bool:
+    """Whether no member of the job (Windows) or the process group (POSIX) that `popen` gave `process` still runs."""
+    with _lock:
+        job = _jobs.get(process)
+    if job is not None:
+        return _active_processes(job) == 0
+    if sys.platform != "win32":
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            return True
+        return False
+    return True
+
+
+def _active_processes(job: int) -> int:
+    import ctypes
+    from ctypes import wintypes
+
+    class BasicAccounting(ctypes.Structure):  # JOBOBJECT_BASIC_ACCOUNTING_INFORMATION
+        _fields_ = [
+            ("TotalUserTime", ctypes.c_int64), ("TotalKernelTime", ctypes.c_int64),
+            ("ThisPeriodTotalUserTime", ctypes.c_int64), ("ThisPeriodTotalKernelTime", ctypes.c_int64),
+            ("TotalPageFaultCount", wintypes.DWORD), ("TotalProcesses", wintypes.DWORD),
+            ("ActiveProcesses", wintypes.DWORD), ("TotalTerminatedProcesses", wintypes.DWORD),
+        ]
+
+    info = BasicAccounting()
+    if not _kernel32().QueryInformationJobObject(job, _JOB_BASIC_ACCOUNTING, ctypes.byref(info), ctypes.sizeof(info), None):
+        raise _win_error()
+    return int(info.ActiveProcesses)
 
 
 def _abandon(process: subprocess.Popen[Any], job: int | None, error: BaseException) -> None:
@@ -264,6 +317,8 @@ def _kernel32() -> Any:
         api.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
         api.AssignProcessToJobObject.restype = wintypes.BOOL
         api.AssignProcessToJobObject.argtypes = [handle, handle]
+        api.QueryInformationJobObject.restype = wintypes.BOOL
+        api.QueryInformationJobObject.argtypes = [handle, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p]
         api.TerminateJobObject.restype = wintypes.BOOL
         api.TerminateJobObject.argtypes = [handle, wintypes.UINT]
         api.OpenProcess.restype = handle
