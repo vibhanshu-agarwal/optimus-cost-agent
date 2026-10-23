@@ -85,6 +85,7 @@ from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunResult,
 from optimus.agent.planning_loop import PlanningProgressEvent
 from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
 from optimus.context.assembly import AttachedTurn, ContextAttachment
+from optimus.gateway.attempts import ROUTE_STOPPED_NO_RETRY
 from optimus.mcp.client_catalog import ClientMcpOneCallApproval
 from optimus.mcp.client_config import ClientMcpConfigError
 from optimus.mcp.client_disposition import AcpMcpPermissionBroker, ClientMcpRuntime, ClientMcpSessionState
@@ -244,9 +245,20 @@ _NOTICE_FLUSH_TIMEOUT_SECONDS = 30.0
 _STRATEGY_LABELS = {"compaction": "compaction", "hybrid": "hybrid", "sliding_window": "sliding window"}
 
 
-def context_unavailable_text(reason: str | None, strategy: str) -> str:
+# #400 (Codex round 40, finding 2): the summarizer shares the planner's experimental route, so after a summary
+# failure that proved it stopped, neither a retry nor Sliding window can help; the engine reason is kept unshown.
+CONTEXT_ROUTE_STOPPED_TEXT = (
+    "The {strategy} summary could not be completed, and the model gateway has stopped this experimental route. "
+    f"{ROUTE_STOPPED_NO_RETRY}"
+)
+
+
+def context_unavailable_text(reason: str | None, strategy: str, *, route_stopped: bool = False) -> str:
     """The refusal for an attached view that could not be built and a full history over the floor:
-    the fixed message for a known engine reason, the generic one otherwise, then the common ending."""
+    the fixed message for a known engine reason, the generic one otherwise, then the common ending.
+    `route_stopped`: a summary call's failure proved the shared experimental route stopped (#400)."""
+    if route_stopped:
+        return f"{CONTEXT_ROUTE_STOPPED_TEXT.format(strategy=strategy)} {CONTEXT_UNAVAILABLE_ENDING}"
     message = CONTEXT_UNAVAILABLE_TEXTS.get(reason or "", CONTEXT_UNAVAILABLE_UNKNOWN_TEXT)
     return f"{message.format(strategy=strategy)} {CONTEXT_UNAVAILABLE_ENDING}"
 
@@ -1403,7 +1415,9 @@ class AcpDuplexAdapter:
             return self._turn(success_response(request_id=request_id, result={"stopReason": "cancelled"}), turn.turn_control, ownership_slot)
         if outcome.kind == "unavailable":
             await self._emit_final_text(
-                session_id=turn.session_id, text=context_unavailable_text(outcome.reason, strategy), turn=turn
+                session_id=turn.session_id,
+                text=context_unavailable_text(outcome.reason, strategy, route_stopped=outcome.route_stopped),
+                turn=turn,
             )
             await self._emit_cost_alerts(turn)
             return self._turn(success_response(request_id=request_id, result={"stopReason": "end_turn"}), turn.turn_control, ownership_slot)

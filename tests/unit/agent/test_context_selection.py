@@ -508,6 +508,42 @@ def test_a_request_whose_fixed_part_cannot_fit_is_refused_without_looping():
     assert len(summarizer.prompts) <= 3
 
 
+# --- #400 (Codex round 41): a summary that stopped the shared route is known at the context-fit exits ----------
+
+
+class _StopsTheRoute(_SummarizerCall):
+    """Summarizes `succeed` times, then every call fails in a way that proved the experimental route stopped."""
+
+    def __init__(self, succeed: int) -> None:
+        super().__init__()
+        self.succeed = succeed
+
+    def __call__(self, *, prompt: str, max_output_tokens: int):
+        from optimus.context.maintenance import SummarizerResponse
+
+        if len(self.prompts) < self.succeed:
+            return super().__call__(prompt=prompt, max_output_tokens=max_output_tokens)
+        self.prompts.append(prompt)
+        return SummarizerResponse(text=None, finish_status=None, attempts=(), route_stopped=True)
+
+
+def test_an_oversized_fallback_after_a_route_stopping_summary_keeps_the_stop():
+    attached, _ = _attached_turn(usable=1100, summarizer=_StopsTheRoute(succeed=0))
+    outcome = attached.prepare()
+    assert (outcome.kind, outcome.route_stopped) == ("fallback", True)
+
+    assert attached.fit(_build(3000)) is None  # the full history does not fit: nothing is sent
+    assert attached.route_stopped is True
+
+
+def test_a_route_stopping_summary_during_a_repack_is_known_when_the_fit_fails():
+    attached, summarizer = _attached_turn(usable=1100, calls=4, summarizer=_StopsTheRoute(succeed=1))
+    assert attached.prepare().kind == "view" and attached.route_stopped is False
+
+    assert attached.fit(_build(3000)) is None
+    assert len(summarizer.prompts) >= 2 and attached.route_stopped is True  # the repack's summary stopped it
+
+
 class _FakePacker:
     def __init__(self, envelope: str, *, refuse: bool = False) -> None:
         self.envelope = envelope
@@ -555,6 +591,31 @@ def test_a_request_the_packer_cannot_fit_is_not_dispatched(tmp_path, mode):
         " A shorter prompt or a narrower request that involves fewer workspace files may help. "
         "If earlier conversation history is the cause, start a new thread."
     )
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.AGENT, ExecutionMode.CHAT])
+def test_a_request_not_fitted_after_a_summary_stopped_the_route_says_so_and_offers_no_recovery(tmp_path, mode):
+    """#400 (Codex round 41): the packer's stop is known at both fit exits; the stop reason is unchanged."""
+    from optimus.agent.planning_loop import PLANNING_ROUTE_STOPPED_MESSAGES
+    from optimus.agent.runner import CHAT_ROUTE_STOPPED_MESSAGES
+
+    class StoppedPacker(_FakePacker):
+        route_stopped = True
+
+    gateway = _Gateway("unused")
+    request = _attached_request(tmp_path, mode, prompt="Go on.", selection="Go on.", envelope="HISTORY-VIEW")
+
+    result = AgentRunner(gateway_client=gateway, model="m").run(request, context_packer=StoppedPacker("HISTORY-VIEW", refuse=True))
+
+    assert gateway.calls == []
+    if mode is ExecutionMode.AGENT:
+        assert result.stop_reason == "CONTEXT_CAPACITY_EXCEEDED"
+        assert result.output_text == PLANNING_ROUTE_STOPPED_MESSAGES["CONTEXT_CAPACITY_EXCEEDED"]
+    else:
+        assert result.stop_reason == "CHAT_CONTEXT_CAPACITY_EXCEEDED"
+        assert result.output_text == CHAT_ROUTE_STOPPED_MESSAGES["CHAT_CONTEXT_CAPACITY_EXCEEDED"]
+    lowered = result.output_text.lower()
+    assert "shorter prompt" not in lowered and "new thread" not in lowered and "retrying will not help" in lowered
 
 
 def test_an_absent_agent_planner_input_is_unchanged(tmp_path):
