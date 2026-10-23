@@ -387,7 +387,10 @@ def test_the_stop_codes_are_the_reply_refusals_the_uncertain_attempt_and_the_sto
 
 
 def test_the_stopped_route_wording_covers_exactly_the_three_stop_outcomes_and_never_suggests_a_retry() -> None:
-    assert set(CHAT_ROUTE_STOPPED_MESSAGES) == {"CHAT_GATEWAY_FAILURE", "CHAT_GATEWAY_COST_UNKNOWN", "CHAT_GATEWAY_REFUSED"}
+    # The three Gateway outcomes, and the context-fit exit after a summary stopped the route (#400, Codex round 41).
+    assert set(CHAT_ROUTE_STOPPED_MESSAGES) == {
+        "CHAT_GATEWAY_FAILURE", "CHAT_GATEWAY_COST_UNKNOWN", "CHAT_GATEWAY_REFUSED", "CHAT_CONTEXT_CAPACITY_EXCEEDED",
+    }  # fmt: skip
     for reason, text in CHAT_ROUTE_STOPPED_MESSAGES.items():
         assert text != CHAT_FAILURE_MESSAGES[reason] and "try again" not in text.lower(), reason
         assert "retrying will not help" in text.lower(), reason
@@ -491,7 +494,9 @@ def test_an_ordinary_planning_failure_keeps_its_wording_and_never_claims_repetit
 
 
 def test_the_planning_stopped_route_wording_mirrors_chat_and_never_suggests_a_retry() -> None:
-    assert set(PLANNING_ROUTE_STOPPED_MESSAGES) == {"PLANNING_GATEWAY_FAILURE", "PLANNING_GATEWAY_COST_UNKNOWN", "PLANNING_GATEWAY_REFUSED"}
+    assert set(PLANNING_ROUTE_STOPPED_MESSAGES) == {
+        "PLANNING_GATEWAY_FAILURE", "PLANNING_GATEWAY_COST_UNKNOWN", "PLANNING_GATEWAY_REFUSED", "CONTEXT_CAPACITY_EXCEEDED",
+    }  # fmt: skip
     for reason, text in PLANNING_ROUTE_STOPPED_MESSAGES.items():
         assert text != planning_corrective_text(reason) and "try again" not in text.lower(), reason
         assert "retrying will not help" in text.lower() and text.startswith("Planning stopped"), reason

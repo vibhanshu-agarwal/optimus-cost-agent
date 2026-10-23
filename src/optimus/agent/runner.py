@@ -129,6 +129,12 @@ CHAT_ROUTE_STOPPED_MESSAGES: dict[str, str] = {
         "Chat could not answer: the model gateway has stopped this experimental route, so it refused this "
         f"request before it reached any model and nothing was charged. {_NO_RETRY}"
     ),
+    # A summary this turn stopped the route, and the request then did not fit (#400, Codex round 41): no capacity
+    # recovery can help while the route is stopped. Same stop reason.
+    "CHAT_CONTEXT_CAPACITY_EXCEEDED": (
+        "Chat could not answer: the request would not fit the model's input capacity, and the model gateway has "
+        f"stopped this experimental route. It was not sent. {_NO_RETRY}"
+    ),
 }
 
 
@@ -1570,7 +1576,10 @@ class AgentRunner:
             if fitted is None:
                 if halt_requested is not None and halt_requested():
                     return self._chat_failure(request, stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
-                return self._chat_failure(request, stop_reason="CHAT_CONTEXT_CAPACITY_EXCEEDED")
+                # A summary this turn may have stopped the shared route (#400; Codex round 41). Packers that
+                # predate the fact (test doubles) have none.
+                stopped_text = CHAT_ROUTE_STOPPED_MESSAGES["CHAT_CONTEXT_CAPACITY_EXCEEDED"] if getattr(context_packer, "route_stopped", False) is True else None
+                return self._chat_failure(request, stop_reason="CHAT_CONTEXT_CAPACITY_EXCEEDED", output_text=stopped_text)
             chat_input = fitted
         if halt_requested is not None and halt_requested():
             return self._chat_failure(request, stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)

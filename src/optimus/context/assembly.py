@@ -510,6 +510,12 @@ class AttachedTurn:
         return self._maintenance.calls if self._maintenance is not None else 0
 
     @property
+    def route_stopped(self) -> bool:
+        """Whether a summary call this turn, in preparation or in any repack, proved the shared experimental route
+        stopped (#400; Codex round 41). The context-fit exits read it to choose their text; nothing else does."""
+        return self._maintenance is not None and self._maintenance.route_stopped
+
+    @property
     def fallback(self) -> bool:
         return self._fallback
 

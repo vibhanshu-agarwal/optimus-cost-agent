@@ -789,6 +789,12 @@ PLANNING_ROUTE_STOPPED_MESSAGES: dict[str, str] = {
         "Planning stopped because the model gateway has stopped this experimental route, so it refused this request "
         f"before it reached any model and nothing was charged for it. No plan was offered for approval. {ROUTE_STOPPED_NO_RETRY}"
     ),
+    # A summary this turn stopped the route, and the request then did not fit (Codex round 41): no capacity
+    # recovery can help while the route is stopped.
+    "CONTEXT_CAPACITY_EXCEEDED": (
+        "Planning stopped because its next request would not fit the model's input capacity, and the model gateway "
+        f"has stopped this experimental route. That request was not sent, and no plan was offered for approval. {ROUTE_STOPPED_NO_RETRY}"
+    ),
 }
 
 
@@ -1379,6 +1385,10 @@ class _PlanningIterationRunner:
                     cost_usd=Decimal("0"),
                 )
             if fitted is None:
+                # A summary this turn may have stopped the shared route (#400; Codex round 41). Packers that
+                # predate the fact (test doubles) have none.
+                if getattr(self._context_packer, "route_stopped", False) is True:
+                    self._route_stopped = True
                 return self._typed_planning_failure(
                     stop_reason="CONTEXT_CAPACITY_EXCEEDED",
                     summary="the planning request does not fit the model's usable input",
