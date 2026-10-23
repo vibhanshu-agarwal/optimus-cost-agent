@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -12,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from optimus.agent.directives import AgentDirectiveParseError, parse_agent_plan
-from optimus.agent.models import AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall, ContextPacker
+from optimus.agent.models import TEST_STOP_REASONS, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall, ContextPacker
 from optimus.agent.operation_control import TurnOperationControl
 from optimus.agent.prompts import build_agent_planner_input
 from optimus.agent.state_store import (
@@ -39,28 +40,18 @@ from optimus.gateway.client import GatewayClient
 from optimus.gateway.models import GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.guardrails.runtime_tree import has_runtime_component, resolve_target, target_reserved
-from optimus.loops.completion import DeterministicCompletionEvaluator
-from optimus.loops.controller import GoalLoopController, IterationRunner
-from optimus.loops.ledger import InMemoryProgressLedger
-from optimus.loops.models import (
-    CompletionEvaluatorProtocol,
-    IterationOutcome,
-    IterationState,
-    LoopBudgetPolicy,
-    LoopStopReason,
-    LoopToolExecutorProtocol,
-)
-from optimus.loops.tools import GuardedLoopToolExecutor
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.mutation import MutationForbidden
+from optimus.runtime.process_tree import CommandStopped
 from optimus.runtime.state import AgentState, AwaitingApproval, RuntimeContext, StateTransition, TransitionValidator
 from optimus.skills.registry import SkillRegistry
 from optimus.telemetry.events import TelemetryEvent
+from optimus.tools.mutation_tools import DEFAULT_TEST_DEADLINE_SECONDS
 from optimus.usage.accounting import UsageAccountingService
 from optimus.usage.turn_settlement import StageReceipt
 
 if TYPE_CHECKING:
-    from optimus.agent.planning_loop import PlanningProgressObserver
+    from optimus.agent.planning_loop import PlanningCheckInCallback, PlanningProgressObserver
     from optimus.gateway.route_binding import BoundRequest, RouteIdentity, TurnRouteBinder
 
 WorkspaceContextObserver = Callable[[AgentRunRequest, WorkspaceContextResult], None]
@@ -93,9 +84,6 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
     "CHAT_OUTPUT_TRUNCATED": "This answer is incomplete: it reached the model's output limit.",
     "CHAT_OUTPUT_UNFINISHED": (
         "A content filter or a provider error ended the model's answer before it finished, so it is not shown."
-    ),
-    "CHAT_COMPLETION_CONDITION_UNSUPPORTED": (
-        "Chat answers a single question and cannot run toward a completion condition. Use Agent mode for goal loops."
     ),
     "CHAT_CONTEXT_CAPACITY_EXCEEDED": (
         "Chat could not answer: the request would not fit the model's input capacity, even with a smaller view "
@@ -161,23 +149,6 @@ def _selection_text(request: AgentRunRequest) -> str:
     return request.selection_text if request.selection_text is not None else request.task
 
 
-class _AgentLoopIterationRunner:
-    def __init__(self, agent_runner: AgentRunner, request: AgentRunRequest, scope: _RunScope) -> None:
-        self._agent_runner = agent_runner
-        self._request = request
-        self._scope = scope
-        self.last_result: AgentRunResult | None = None
-
-    def run_iteration(self, state: IterationState, tools: LoopToolExecutorProtocol) -> IterationOutcome:
-        result = self._agent_runner._run_once(self._request, scope=self._scope)
-        self.last_result = result
-        return IterationOutcome(
-            summary=result.output_text,
-            cost_usd=result.total_cost_usd,
-            deterministic_completion=result.status is AgentRunStatus.COMPLETED,
-        )
-
-
 class _DirectiveGate:
     """One run's lifecycle reporting for its READ, WRITE and TEST producers (Plan 12.2 Task 2).
 
@@ -191,6 +162,10 @@ class _DirectiveGate:
         self._control = control
         self._prefix = f"{run_id}:{phase}"
         self.halted = False
+        self.stopped: CommandStopped | None = None  # a TEST that timed out, was not contained or would not stop
+
+    def halt_requested(self) -> bool:
+        return self._control is not None and self._control.halt_requested()
 
     def operation_id(self, label: str, ordinal: int) -> str:
         return f"{self._prefix}:{label}:{ordinal}"
@@ -271,11 +246,6 @@ class AgentRunner:
     :type guard: PreToolGuard | None
     :ivar event_sink: An optional callable used to collect telemetry events.
     :type event_sink: Callable[[TelemetryEvent], None] | None
-    :ivar loop_iteration_runner: Optional runner for managing iterations in a
-        bounded loop during agent execution.
-    :type loop_iteration_runner: IterationRunner | None
-    :ivar loop_evaluator: Protocol for evaluating the completion of tasks in a loop setting.
-    :type loop_evaluator: CompletionEvaluatorProtocol | None
     :ivar state_store: Storage interface for maintaining the state of the agent during
         execution.
     :type state_store: AgentStateStore
@@ -302,8 +272,6 @@ class AgentRunner:
         model: str,
         guard: PreToolGuard | None = None,
         event_sink: Callable[[TelemetryEvent], None] | None = None,
-        loop_iteration_runner: IterationRunner | None = None,
-        loop_evaluator: CompletionEvaluatorProtocol | None = None,
         state_store: AgentStateStore | None = None,
         clock_ms: Callable[[], int] | None = None,
         shell_runner: Callable[[list[str]], subprocess.CompletedProcess[str]] | None = None,
@@ -311,13 +279,12 @@ class AgentRunner:
         usage_accounting: UsageAccountingService | None = None,
         planning_progress_observer: PlanningProgressObserver | None = None,
         provider_attempt_observer: ProviderAttemptObserver | None = None,
+        test_deadline_seconds: float = DEFAULT_TEST_DEADLINE_SECONDS,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
         self._guard = guard
         self._event_sink = event_sink
-        self._loop_iteration_runner = loop_iteration_runner
-        self._loop_evaluator = loop_evaluator
         self._state_store = state_store or InMemoryAgentStateStore(clock_ms=clock_ms)
         self._clock_ms = clock_ms or _epoch_ms
         self._shell_runner = shell_runner
@@ -325,6 +292,7 @@ class AgentRunner:
         self._usage_accounting = usage_accounting
         self._planning_progress_observer = planning_progress_observer
         self._provider_attempt_observer = provider_attempt_observer
+        self._test_deadline_seconds = test_deadline_seconds
         self._transition_validator = TransitionValidator()
 
     @property
@@ -344,6 +312,7 @@ class AgentRunner:
         stage_receipts: Callable[[StageReceipt], None] | None = None,
         route_binder: TurnRouteBinder | None = None,
         integrity_failure: Callable[[str], None] | None = None,
+        recovery_checkin: PlanningCheckInCallback | None = None,
     ) -> AgentRunResult:
         """`stage_receipts` receives every model attempt of this run, known or unknown, once (Plan 12.2
         Task 11). `route_binder` binds each request to the turn's captured trusted route; without it
@@ -364,23 +333,17 @@ class AgentRunner:
             stage_receipts=stage_receipts, operation_control=operation_control, route=route_binder, integrity_failure=integrity_failure
         )
         try:
-            if request.completion_condition and request.execution_mode is ExecutionMode.CHAT:
-                # Chat is one Gateway call. The goal loop would repeat it outside the
-                # turn's halt and directive gates, so the combination is refused up front.
-                result = self._chat_failure(request, stop_reason="CHAT_COMPLETION_CONDITION_UNSUPPORTED")
-            elif request.completion_condition:
-                result = self._run_bounded_loop(request, matched_skills=matched_skills, scope=scope)
-            else:
-                result = self._run_once(
-                    request,
-                    scope=scope,
-                    planning_progress_observer=observer,
-                    client_mcp_service=client_mcp_service,
-                    mcp_permission_broker=mcp_permission_broker,
-                    halt_requested=halt_requested,
-                    operation_control=operation_control,
-                    context_packer=context_packer,
-                )
+            result = self._run_once(
+                request,
+                scope=scope,
+                planning_progress_observer=observer,
+                client_mcp_service=client_mcp_service,
+                mcp_permission_broker=mcp_permission_broker,
+                halt_requested=halt_requested,
+                operation_control=operation_control,
+                context_packer=context_packer,
+                recovery_checkin=recovery_checkin,
+            )
             self._emit_agent_run(
                 request,
                 result,
@@ -413,54 +376,6 @@ class AgentRunner:
         )
         return tuple(match.manifest.name for match in matches)
 
-    def _run_bounded_loop(self, request: AgentRunRequest, *, matched_skills: tuple[str, ...], scope: _RunScope) -> AgentRunResult:
-        del matched_skills
-        workspace_root = request.workspace_root
-        guard = self._guard or PreToolGuard.for_workspace(workspace_root=workspace_root, allowed_network_hosts=())
-        iteration_runner = self._loop_iteration_runner or _AgentLoopIterationRunner(self, request, scope)
-        evaluator = self._loop_evaluator or DeterministicCompletionEvaluator(completed=False, reason="goal not complete")
-        controller = GoalLoopController(
-            # Plan 12.2 Task 11: an ordinary goal loop has no dollar stop (no positive minimum or
-            # sentinel); only an evaluation caller's own explicit cap travels into the loop. Its count,
-            # time, repeated-failure and halt controls remain.
-            policy=LoopBudgetPolicy(
-                max_iterations=5,
-                max_budget_usd=request.max_cost_usd,
-                max_wall_clock_minutes=30,
-            ),
-            runner=iteration_runner,
-            tools=GuardedLoopToolExecutor(guard=guard),
-            evaluator=evaluator,
-            ledger=InMemoryProgressLedger(),
-            event_sink=self._event_sink,
-        )
-        loop_result = controller.run(
-            IterationState(
-                run_id=request.run_id,
-                session_id=request.session_id,
-                goal=request.task,
-                completion_condition=request.completion_condition or request.task,
-                started_at=datetime.now(tz=UTC),
-            )
-        )
-        if isinstance(iteration_runner, _AgentLoopIterationRunner) and iteration_runner.last_result is not None:
-            return iteration_runner.last_result.model_copy(update={"stop_reason": loop_result.stop_reason.value})
-        return AgentRunResult(
-            run_id=request.run_id,
-            session_id=request.session_id,
-            execution_mode=request.execution_mode,
-            status=AgentRunStatus.COMPLETED
-            if loop_result.stop_reason is LoopStopReason.COMPLETED
-            else AgentRunStatus.TERMINATED,
-            final_state=loop_result.stop_reason.value,
-            output_text=loop_result.summary,
-            tool_calls=(),
-            total_cost_usd=Decimal("0"),
-            mutation_count=0,
-            provider_keys_resolvable=(),
-            stop_reason=loop_result.stop_reason.value,
-        )
-
     def _run_once(
         self,
         request: AgentRunRequest,
@@ -472,6 +387,7 @@ class AgentRunner:
         halt_requested: Callable[[], bool] | None = None,
         operation_control: TurnOperationControl | None = None,
         context_packer: ContextPacker | None = None,
+        recovery_checkin: PlanningCheckInCallback | None = None,
     ) -> AgentRunResult:
         context = RuntimeContext(execution_mode=request.execution_mode)
         toolbox = AgentToolbox.for_workspace(
@@ -528,6 +444,7 @@ class AgentRunner:
                     halt_requested=halt_requested,
                     operation_control=operation_control,
                     context_packer=context_packer,
+                    recovery_checkin=recovery_checkin,
                 )
             return self._build_result(
                 request=request,
@@ -555,6 +472,7 @@ class AgentRunner:
                 halt_requested=halt_requested,
                 operation_control=operation_control,
                 context_packer=context_packer,
+                recovery_checkin=recovery_checkin,
             )
         planner_input = build_agent_planner_input(request.task, workspace_context=workspace_context.text)
         bound = None
@@ -661,6 +579,7 @@ class AgentRunner:
         halt_requested: Callable[[], bool] | None = None,
         operation_control: TurnOperationControl | None = None,
         context_packer: ContextPacker | None = None,
+        recovery_checkin: PlanningCheckInCallback | None = None,
     ) -> AgentRunResult:
         from optimus.agent.planning_loop import PlanningLoopPolicy, PlanningLoopRunner
 
@@ -704,6 +623,8 @@ class AgentRunner:
             halt_requested=halt_requested,
             operation_control=operation_control,
             context_packer=context_packer,
+            recovery_checkin=recovery_checkin,
+            loop_event_sink=self._event_sink,
         )
         planning_result = planner.run(
             run_id=request.run_id,
@@ -912,6 +833,8 @@ class AgentRunner:
                 if "unsafe TEST directive" in str(exc):
                     return self._unsafe_test_directive_result(request)
                 raise
+        if gate.stopped is not None:
+            return self._test_stopped_result(request=request, stop=gate.stopped, tool_calls=tool_calls, mutation_count=mutation_count, total_cost_usd=total_cost_usd, plan_hash=plan_hash)
         if gate.halted:
             return self._cancelled_execution_result(
                 request=request,
@@ -1217,6 +1140,8 @@ class AgentRunner:
                 if "unsafe TEST directive" in str(exc):
                     return self._unsafe_test_directive_result(request)
                 raise
+        if gate.stopped is not None:
+            return self._test_stopped_result(request=request, stop=gate.stopped, tool_calls=tool_calls, mutation_count=mutation_count, total_cost_usd=record.cost_usd, plan_hash=record.plan_hash)
         if gate.halted:
             return self._cancelled_execution_result(
                 request=request,
@@ -1246,6 +1171,30 @@ class AgentRunner:
             mutation_count=mutation_count,
             plan_hash=record.plan_hash,
             candidate_plan_text=record.plan_text,
+        )
+
+    def _test_stopped_result(
+        self,
+        *,
+        request: AgentRunRequest,
+        stop: CommandStopped,
+        tool_calls: list[AgentToolCall],
+        mutation_count: int,
+        total_cost_usd: Decimal,
+        plan_hash: str | None,
+    ) -> AgentRunResult:
+        """A TEST that timed out, could not be contained or would not stop ends the plan (Plan 12.3, Design 8)."""
+        applied = "".join(f"\n- {call.summary}" for call in tool_calls if call.tool_name == "write_file")
+        return self._build_result(
+            request=request,
+            status=AgentRunStatus.FAILED,
+            final_state="FAILED",
+            output_text=f"A TEST directive {stop}; the later directives were not run." + (f" Applied:{applied}" if applied else ""),
+            tool_calls=tuple(tool_calls),
+            total_cost_usd=total_cost_usd,
+            mutation_count=mutation_count,
+            plan_hash=plan_hash,
+            stop_reason=TEST_STOP_REASONS[stop.outcome],
         )
 
     def _missing_plan_result(self, request: AgentRunRequest) -> AgentRunResult:
@@ -1416,10 +1365,28 @@ class AgentRunner:
         calls: list[AgentToolCall] = []
         for ordinal, command in enumerate(directives.tests):
             # A test that runs and exits non-zero still executed: its terminal is "succeeded" and its
-            # failing verdict stays in the tool call's summary.
-            started, call = _run_gated(
-                gate, DirectiveKind.TEST, gate.operation_id("test", ordinal), partial(toolbox.run_tests, command), effectful=True
+            # failing verdict stays in the tool call's summary. Each TEST gets one deadline and the
+            # turn's cancellation (Plan 12.3, Design 8).
+            run = partial(
+                toolbox.run_tests,
+                command,
+                deadline=time.monotonic() + self._test_deadline_seconds,
+                cancelled=gate.halt_requested,
             )
+            try:
+                started, call = _run_gated(gate, DirectiveKind.TEST, gate.operation_id("test", ordinal), run, effectful=True)
+            except CommandStopped as stop:
+                calls.append(
+                    AgentToolCall(tool_name="test_runner", summary=f"ran {' '.join(command)}: {stop}", authorization_outcome="ALLOW")
+                )
+                if stop.outcome == "cancelled":
+                    gate.halted = True
+                    break
+                # Terminal for the plan: the later directives are suppressed.
+                gate.stopped = stop
+                for later in range(ordinal + 1, len(directives.tests)):
+                    gate.complete(DirectiveKind.TEST, gate.operation_id("test", later), "suppressed")
+                break
             if not started:
                 break
             calls.append(call)

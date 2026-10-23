@@ -113,12 +113,16 @@ class AgentToolbox:
             authorization_outcome="ALLOW",
         )
 
-    def run_tests(self, command: tuple[str, ...]) -> AgentToolCall:
+    def run_tests(
+        self, command: tuple[str, ...], *, deadline: float | None = None, cancelled: Callable[[], bool] | None = None
+    ) -> AgentToolCall:
         result = shell_exec(
             command,
             context=self._context,
             runner=self._shell_runner,
             guard=self._guard,
+            deadline=deadline,
+            cancelled=cancelled,
         )
         command_text = " ".join(command)
         return AgentToolCall(

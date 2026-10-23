@@ -9,6 +9,9 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from optimus.acp.lifecycle import TurnControl
 from optimus.agent.models import AgentRunRequest, AgentRunStatus
 from optimus.agent.runner import AgentRunner
@@ -253,39 +256,12 @@ def test_chat_makes_no_gateway_call_once_the_turn_is_cancelled(tmp_path):
     assert control.current_settlement_fields()["provider_attempt_started"] is False
 
 
-# --- Chat never enters the goal loop (a completion condition is rejected before any call) ---
+# --- No request can enter a goal loop: Plan 12.3 retired it, and a completion condition is refused ---
 
 
-def _chat_request_with_condition(tmp_path: Path) -> AgentRunRequest:
-    return _chat_request(_workspace(tmp_path)).model_copy(update={"completion_condition": "calc.py is explained"})
-
-
-def test_chat_with_a_completion_condition_is_rejected_without_a_gateway_call(tmp_path):
-    gateway = _Gateway(error=RuntimeError("socket closed"))
-
-    result = AgentRunner(gateway_client=gateway, model="m").run(_chat_request_with_condition(tmp_path))
-
-    assert gateway.calls == [], "Chat must not enter the goal loop or retry"
-    assert result.status is AgentRunStatus.FAILED
-    assert result.stop_reason == "CHAT_COMPLETION_CONDITION_UNSUPPORTED"
-    assert result.output_text.strip()
-    assert result.total_cost_usd == Decimal("0")
-
-
-def test_cancelled_chat_with_a_completion_condition_makes_no_gateway_call(tmp_path):
-    control = TurnControl(session_id="session-1", turn_seq=2)
-    control.request_session_cancel()
-    gateway = _Gateway()
-
-    result = AgentRunner(gateway_client=gateway, model="m").run(
-        _chat_request_with_condition(tmp_path),
-        halt_requested=control.halt_requested,
-        operation_control=control,
-    )
-
-    assert gateway.calls == []
-    assert result.status is not AgentRunStatus.COMPLETED
-    assert control.current_settlement_fields()["provider_attempt_started"] is False
+def test_a_request_with_a_completion_condition_is_refused_before_any_call(tmp_path):
+    with pytest.raises(ValidationError, match="goal loops were retired"):
+        AgentRunRequest.model_validate({**_chat_request(_workspace(tmp_path)).model_dump(), "completion_condition": "done"})
 
 
 def test_chat_model_request_carries_workspace_source_but_never_the_runtime_tree(tmp_path):

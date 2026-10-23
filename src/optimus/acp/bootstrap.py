@@ -12,7 +12,7 @@ from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.failure_notes import attach_failure_note
 from optimus.acp.harness_runtime import AgentHarnessRuntime
 from optimus.acp.server import AcpStreamServer
-from optimus.acp.spec import resolve_max_planning_turns
+from optimus.acp.spec import resolve_interactive_recovery, resolve_max_planning_turns
 from optimus.acp.subprocess_env import system_environ_view
 from optimus.agent.defaults import resolve_agent_model
 from optimus.agent.runner import AgentRunner
@@ -231,6 +231,9 @@ def build_configured_server(
         # authorized/sanitized) agent environ passed into this function, rather
         # than read from os.environ per-request deep inside AcpDuplexAdapter.
         max_planning_turns = resolve_max_planning_turns(environ)
+        # Plan 12.3, Design 6: an ordinary launch's prompts default to interactive loop recovery; a reviewed
+        # test composition (Stage C, qualification) has no one to ask and defaults to headless.
+        interactive_recovery = resolve_interactive_recovery(environ, caller_default=test_composition is None)
         # Seam 3: the same rule as resolve_max_planning_turns above, and the invariant
         # __main__ documents -- every downstream helper reads captured input, never
         # os.environ. The MCP path was the one that still escaped it. The system view
@@ -297,6 +300,7 @@ def build_configured_server(
         return AcpStreamServer(
             dispatcher=dispatcher,
             max_planning_turns=max_planning_turns,
+            interactive_recovery=interactive_recovery,
             client_mcp_runtime=client_mcp_runtime,
             conversation_sanitizer_inputs=conversation_sanitizer_inputs,
             redis_runtime=harness.redis_runtime,

@@ -40,12 +40,15 @@ from optimus.gateway.errors import GatewayError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.loops.completion import DeterministicCompletionEvaluator
-from optimus.loops.controller import GoalLoopController
+from optimus.loops.controller import GoalLoopController, GoalLoopResult
+from optimus.loops.detector import LoopDetection, LoopDetector, LoopSignalKind, LoopThresholds
 from optimus.loops.ledger import InMemoryProgressLedger
 from optimus.loops.models import IterationOutcome, IterationState, LoopBudgetPolicy, LoopStopReason, LoopToolExecutorProtocol
+from optimus.loops.signals import LoopStep, McpResults, ReadCoverage, ReadResult, mcp_step, parse_failure_step, read_step
 from optimus.retry.policy import RetryController, RetryPolicy
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import RuntimeContext
+from optimus.telemetry.events import TelemetryEvent
 from optimus.telemetry.subjects import sanitize_workspace_text
 from optimus_security.failure_facts import bounded
 
@@ -143,6 +146,10 @@ class PlanningLoopPolicy(BaseModel):
 
     max_planning_turns: int = Field(default=3, ge=1)
     max_wall_clock_minutes: int = Field(default=30, ge=1)
+    # Plan 12.3 (ADR-024, D2): interactive recovery only. Continue grants these steps and a fresh
+    # max_wall_clock_minutes; headless runs keep the hard caps above.
+    loop_thresholds: LoopThresholds = Field(default_factory=LoopThresholds)
+    continue_grant_steps: int = Field(default=3, ge=1)
 
     def to_loop_budget_policy(self, *, max_cost_usd: Decimal | None = None) -> LoopBudgetPolicy:
         """The loop's finite work controls; a dollar bound only for an evaluation caller's explicit cap
@@ -294,6 +301,32 @@ def planning_read_telemetry_fields(
 
 
 PlanningProgressObserver = Callable[[PlanningProgressEvent], None]
+
+
+class CheckInDecision(StrEnum):
+    CONTINUE = "continue"
+    STOP = "stop"
+    UNAVAILABLE = "unavailable"  # the client could not be asked
+    INVALID = "invalid"  # an unrecognised answer: treated as Stop, with a recoverable explanation
+
+
+class PlanningCheckIn(BaseModel):
+    """What the user is asked at a recovery check-in (Plan 12.3, Design 5). Continue grants only a
+    fresh planning allowance: never a WRITE or TEST approval, which keeps its own request."""
+
+    model_config = ConfigDict(frozen=True)
+
+    cause: str
+    planning_steps: int = Field(ge=1)
+    text: str
+    plan_waiting: bool = False
+    refusal_waiting: bool = False
+
+
+# Blocks the planning worker until the user answers; nothing runs meanwhile (ADR-009 requirement 3).
+PlanningCheckInCallback = Callable[[PlanningCheckIn], CheckInDecision]
+_TURN_LIMIT, _WALL_CLOCK = "TURN_LIMIT", "WALL_CLOCK"
+_NUDGE_STEP = object()  # the next recovery move is one budgeted nudge step, not a check-in
 
 
 def pack_planning_evidence(
@@ -769,6 +802,33 @@ _PLANNING_STOP_REASONS = {
     LoopStopReason.MAX_ITERATIONS: "PLANNING_TURN_LIMIT_EXHAUSTED",
     LoopStopReason.HUMAN_HALT: "PLANNING_HALTED",
 }
+# The actual cause of a recovery stop, per detection or allowance (Plan 12.3, Design 7).
+_RECOVERY_STOP_REASONS: dict[str, str] = {
+    LoopSignalKind.REPEATED_READ: "PLANNING_REPEATED_READ_REQUEST",
+    LoopSignalKind.REPEATED_MCP: "PLANNING_REPEATED_MCP_REQUEST",
+    LoopSignalKind.CYCLE: "PLANNING_ACTION_CYCLE",
+    LoopSignalKind.NO_PROGRESS: "PLANNING_NO_PROGRESS",
+    LoopSignalKind.REPEATED_PARSE_ERROR: "PLANNING_UNPARSEABLE_RESPONSE",
+    _TURN_LIMIT: "PLANNING_TURN_LIMIT_EXHAUSTED",
+    _WALL_CLOCK: "PLANNING_WALL_CLOCK_EXHAUSTED",
+}
+_SIGNAL_TEXT = {
+    LoopSignalKind.REPEATED_READ: "repeated {subject} with unchanged results",
+    LoopSignalKind.REPEATED_MCP: "repeated {subject} with unchanged results",
+    LoopSignalKind.CYCLE: "alternated between the same two requests with unchanged results, ending with {subject}",
+    LoopSignalKind.NO_PROGRESS: "made several steps without new evidence, ending with {subject}",
+    LoopSignalKind.REPEATED_PARSE_ERROR: "repeated {subject}",
+}
+_RECOVERY_NOTE_MAX_BYTES = 1024
+_CHECKIN_ENDINGS = {
+    CheckInDecision.UNAVAILABLE: (
+        " The check-in to continue could not be shown, so the turn ended. Nothing was changed; send the request again to retry."
+    ),
+    CheckInDecision.INVALID: (
+        " The answer to the check-in was not recognised, so the turn ended as if you chose Stop. Nothing was changed; "
+        "send the request again to retry."
+    ),
+}
 
 
 # #400: the same failures when they prove the experimental route stopped, as Chat says them (r8). The Gateway then
@@ -804,14 +864,30 @@ def planning_corrective_text(
     refusal_reason: str | None = None,
     workspace_root: Path | None = None,
     route_stopped: bool = False,
+    detail: str | None = None,
 ) -> str:
-    """``route_stopped``: the request's failure proved its experimental route stopped (#400)."""
+    """The user's text for `stop_reason`. ``route_stopped``: the request's failure proved its experimental route
+    stopped (#400). `detail` names what repeated (Plan 12.3, Design 7)."""
+    text = _corrective_template(
+        stop_reason, refusal_reason=refusal_reason, workspace_root=workspace_root, route_stopped=route_stopped
+    )
+    return text + sanitize_workspace_text(detail, workspace_root=workspace_root) if detail and text else text
+
+
+def _corrective_template(
+    stop_reason: str | None, *, refusal_reason: str | None, workspace_root: Path | None, route_stopped: bool
+) -> str:
     if stop_reason == "PLANNING_MODEL_REFUSED" and refusal_reason is not None:
         return sanitize_workspace_text(refusal_reason, workspace_root=workspace_root)
     if route_stopped and stop_reason in PLANNING_ROUTE_STOPPED_MESSAGES:
         return PLANNING_ROUTE_STOPPED_MESSAGES[stop_reason]
     templates = {
         "PLANNING_REPEATED_READ_REQUEST": "Planning stopped after repeated non-progress read requests.",
+        "PLANNING_REPEATED_MCP_REQUEST": "Planning stopped after repeated MCP requests that returned the same result.",
+        "PLANNING_ACTION_CYCLE": (
+            "Planning stopped after the model alternated between the same requests with unchanged results."
+        ),
+        "PLANNING_NO_PROGRESS": "Planning stopped after several steps that produced no new evidence.",
         "PLANNING_GATEWAY_FAILURE": "Planning stopped because the model gateway request failed.",
         "PLANNING_GATEWAY_COST_UNKNOWN": (
             "Planning stopped because a gateway attempt cost could not be verified; "
@@ -900,10 +976,17 @@ class PlanningLoopRunner:
         context_packer: ContextPacker | None = None,
         attempt_callback: PlanningAttemptCallback | None = None,
         route_binder: TurnRouteBinder | None = None,
+        recovery_checkin: PlanningCheckInCallback | None = None,
+        loop_event_sink: Callable[[TelemetryEvent], None] | None = None,
     ) -> None:
+        """`recovery_checkin` makes the run interactive (Plan 12.3, Design 6): repetition and the end of
+        the allowance get a nudge, then a check-in, instead of a stop. Without it the run is headless
+        and keeps today's hard caps."""
         self._gateway_client = gateway_client
         self._model = model
         self._policy = policy
+        self._recovery_checkin = recovery_checkin
+        self._loop_event_sink = loop_event_sink
         self._workspace_root = workspace_root.resolve()
         self._execution_mode = execution_mode
         self._max_cost_usd = max_cost_usd
@@ -973,28 +1056,63 @@ class PlanningLoopRunner:
             context_packer=self._context_packer,
             attempt_callback=self._attempt_callback,
             route_binder=self._route_binder,
+            interactive=self._recovery_checkin is not None,
+            loop_event_sink=self._loop_event_sink,
         )
-        controller = GoalLoopController(
-            policy=iteration_runner.loop_budget_policy,
-            runner=iteration_runner,
-            tools=GuardedLoopToolExecutor(guard=self._guard),
-            evaluator=DeterministicCompletionEvaluator(
-                completed=False,
-                reason="planning loop uses per-turn settlement",
-            ),
-            ledger=InMemoryProgressLedger(),
-            halt_requested=self._halt_requested,
-            now=self._now,
-        )
-        loop_result = controller.run(
-            IterationState(
-                run_id=run_id,
-                session_id=session_id,
-                goal=task,
-                completion_condition=task,
-                started_at=self._now(),
+        tools = GuardedLoopToolExecutor(guard=self._guard)
+
+        def run_allowance(steps: int, *, budgeted: bool = False, spent: Decimal = Decimal("0")) -> GoalLoopResult:
+            # One allowance: `steps` planning steps and a fresh wall clock. A headless run has exactly one.
+            # It starts from the turn's spend, so an evaluation caller's cap covers the whole turn.
+            iteration_runner.start_allowance(steps, budgeted=budgeted)
+            controller = GoalLoopController(
+                policy=iteration_runner.loop_budget_policy.model_copy(update={"max_iterations": steps}),
+                runner=iteration_runner,
+                tools=tools,
+                evaluator=DeterministicCompletionEvaluator(
+                    completed=False,
+                    reason="planning loop uses per-turn settlement",
+                ),
+                ledger=InMemoryProgressLedger(),
+                halt_requested=self._halt_requested,
+                now=self._now,
             )
-        )
+            return controller.run(
+                IterationState(
+                    run_id=run_id,
+                    session_id=session_id,
+                    goal=task,
+                    completion_condition=task,
+                    started_at=self._now(),
+                    cost_usd_spent=spent,
+                )
+            )
+
+        loop_result = run_allowance(self._policy.max_planning_turns)
+        checkin = self._recovery_checkin
+        while checkin is not None and not self._halt_requested():
+            move = iteration_runner.next_recovery_move(loop_result)
+            if move is None:
+                break
+            if move is _NUDGE_STEP:
+                # A detection on the allowance's last step, or after the clock: its nudge still comes
+                # before the check-in, in exactly one more step (Plan 12.3, Design 4).
+                loop_result = run_allowance(1, budgeted=True, spent=loop_result.state.cost_usd_spent)
+                continue
+            assert isinstance(move, PlanningCheckIn)
+            try:
+                decision = checkin(move)
+            except Exception:  # noqa: BLE001 - a check-in that cannot be shown ends the turn recoverably
+                decision = CheckInDecision.UNAVAILABLE
+            if not isinstance(decision, CheckInDecision):
+                decision = CheckInDecision.INVALID
+            iteration_runner.record_checkin(move, decision)
+            if self._halt_requested() or decision is not CheckInDecision.CONTINUE:
+                break
+            iteration_runner.end_episode()
+            if move.plan_waiting:
+                break  # the kept final plan goes on to the normal plan approval
+            loop_result = run_allowance(self._policy.continue_grant_steps, spent=loop_result.state.cost_usd_spent)
         result = iteration_runner.to_planning_result(loop_result)
         iteration_runner.emit_final_progress(result)
         return result
@@ -1029,10 +1147,30 @@ class _PlanningIterationRunner:
         context_packer: ContextPacker | None = None,
         attempt_callback: PlanningAttemptCallback | None = None,
         route_binder: TurnRouteBinder | None = None,
+        interactive: bool = False,
+        loop_event_sink: Callable[[TelemetryEvent], None] | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
         self._task = task
+        # Plan 12.3 interactive recovery. Steps are numbered across allowances, so each request keeps
+        # its own operation id; costs, evidence and receipts simply carry on.
+        self._interactive = interactive
+        self._loop_event_sink = loop_event_sink
+        self._detector = LoopDetector(policy.loop_thresholds)
+        self._coverage = ReadCoverage()
+        self._mcp_results = McpResults()
+        self._steps_run = 0
+        self._turn_offset = 0
+        self._allowance_end = policy.max_planning_turns
+        self._budgeted_step = False
+        self._episode: LoopDetection | None = None  # the first detection of the open episode
+        self._nudge: str | None = None  # the open episode's note, until a request carries it
+        self._nudged = False
+        self._checkin_requested = False
+        self._last_error_step: LoopStep | None = None
+        self._recovery_stop: tuple[str, str] | None = None  # (stop reason, the user's detail)
+        self._refusal_detail = ""
         self._attempt_callback = attempt_callback
         self._route_binder = route_binder
         # Sticky: a Gateway failure proved this route stopped, and a stopped route never restarts (#400).
@@ -1104,6 +1242,135 @@ class _PlanningIterationRunner:
             deterministic_completion=True,
             failure_signature=None,
             cost_usd=cost_usd,
+        )
+
+    # Plan 12.3 interactive recovery (Design 4). The order after each step: the outcome is recorded
+    # (the controller), then the detector runs (here), then the controller applies the allowance.
+    def _observed(self, outcome: IterationOutcome, step: LoopStep, planning_turn: int) -> IterationOutcome:
+        if not self._interactive:
+            return outcome  # headless keeps today's consecutive counter and its hard stop
+        if step.error_class is not None:
+            self._last_error_step = step
+        detection = self._detector.observe(step)
+        if detection is not None:
+            self._emit_loop_record("detection", detection.kind, planning_turn)
+            if self._episode is None:
+                self._episode = detection
+                self._nudge = self._recovery_note(detection)  # help comes before asking
+            elif self._nudged:
+                self._checkin_requested = True
+        return outcome.model_copy(update={"failure_signature": None, "deterministic_completion": self._checkin_requested})
+
+    def start_allowance(self, steps: int, *, budgeted: bool) -> None:
+        self._turn_offset = self._steps_run
+        self._allowance_end = self._steps_run + steps
+        self._budgeted_step = budgeted
+
+    def next_recovery_move(self, loop_result: GoalLoopResult) -> PlanningCheckIn | object | None:
+        """After an allowance: the budgeted nudge step, a check-in, or None when the result stands.
+        First-occurrence typed failures, refusals and halts stay stops."""
+        if self._typed_planning_stop_reason is not None:
+            return None
+        stop = loop_result.stop_reason
+        kind = None if self._last_decision is None else self._last_decision.kind
+        plan_waiting, refusal_waiting = kind is PlanningTurnKind.FINAL_PLAN, kind is PlanningTurnKind.REFUSE
+        if stop is LoopStopReason.COMPLETED:
+            # An open episode always ends at a check-in, even when its nudge produced a plan or a refusal.
+            if not (self._checkin_requested or ((plan_waiting or refusal_waiting) and self._episode is not None)):
+                return None
+        elif stop in (LoopStopReason.MAX_ITERATIONS, LoopStopReason.WALL_CLOCK):
+            if self._nudge is not None:
+                return _NUDGE_STEP
+            plan_waiting = refusal_waiting = False
+        else:
+            return None
+        if self._episode is not None:
+            cause: str = self._episode.kind
+        else:
+            cause = _WALL_CLOCK if stop is LoopStopReason.WALL_CLOCK else _TURN_LIMIT
+        return PlanningCheckIn(
+            cause=cause,
+            planning_steps=self._steps_run,
+            text=self._checkin_text(cause, plan_waiting, refusal_waiting),
+            plan_waiting=plan_waiting,
+            refusal_waiting=refusal_waiting,
+        )
+
+    def record_checkin(self, checkin: PlanningCheckIn, decision: CheckInDecision) -> None:
+        self._emit_loop_record("check_in", checkin.cause, self._steps_run, decision=decision)
+        if decision is CheckInDecision.CONTINUE:
+            return
+        if checkin.refusal_waiting:
+            # A refusal that is not continued stands, with the model's reason and any check-in explanation.
+            self._refusal_detail = _CHECKIN_ENDINGS.get(decision, "")
+            return
+        detail = "" if self._episode is None else f" Last repeated step: {self._episode.step.subject}."
+        detail += _CHECKIN_ENDINGS.get(decision, "")
+        self._recovery_stop = (_RECOVERY_STOP_REASONS[checkin.cause], detail)
+
+    def end_episode(self) -> None:
+        """Continue ends the episode: a later detection starts a new one, with its own nudge."""
+        self._episode, self._nudge, self._nudged, self._checkin_requested = None, None, False, False
+        self._detector.reset()
+        if self._last_decision is not None and self._last_decision.kind is PlanningTurnKind.REFUSE:
+            self._last_decision = None  # Continue sets the refusal aside for more planning steps
+
+    def _recovery_note(self, detection: LoopDetection) -> str:
+        lines = [
+            "Your recent planning steps "
+            + _SIGNAL_TEXT[detection.kind].format(subject=detection.step.subject)
+            + ". Do not repeat that request."
+        ]
+        error = self._last_error_step
+        if error is not None:
+            lines.append(f"Last error: the reply did not parse (parser reason {error.error_class}): {error.error_message}")
+        lines.append(
+            "Try a different approach: request different evidence, or settle a final plan or a REFUSE: line "
+            "with the evidence you already have."
+        )
+        note = sanitize_workspace_text("\n".join(lines), workspace_root=self._workspace_root)
+        return note.encode("utf-8")[:_RECOVERY_NOTE_MAX_BYTES].decode("utf-8", errors="ignore")
+
+    def _checkin_text(self, cause: str, plan_waiting: bool, refusal_waiting: bool) -> str:
+        minutes = self._policy.max_wall_clock_minutes
+        if self._episode is not None:
+            what = (
+                "the model " + _SIGNAL_TEXT[self._episode.kind].format(subject=self._episode.step.subject)
+                + ", and was asked once to try a different approach"
+            )
+        elif cause == _WALL_CLOCK:
+            what = f"the {minutes}-minute planning time ran out without a final plan"
+        else:
+            what = "the planning steps ran out without a final plan"
+        text = f"Planning paused after step {self._steps_run}: {what}."
+        if plan_waiting:
+            text += " A final plan is ready: Continue shows it for your approval."
+        elif refusal_waiting:
+            assert self._last_decision is not None
+            text += (
+                f" The model then refused: {self._last_decision.reason} Continue sets the refusal aside and grants "
+                f"{self._policy.continue_grant_steps} more planning steps and {minutes} minutes; Stop keeps the refusal."
+            )
+        else:
+            text += f" Continue grants {self._policy.continue_grant_steps} more planning steps and {minutes} minutes."
+        text += " Continue never approves a change; every change still needs its own approval. Stop ends this turn."
+        return sanitize_workspace_text(text, workspace_root=self._workspace_root)
+
+    def _emit_loop_record(self, record: str, signal: str, planning_step: int, *, decision: CheckInDecision | None = None) -> None:
+        """Content-free: no path, tool, argument or reply text (Plan 12.3, Design 7)."""
+        if self._loop_event_sink is None:
+            return
+        self._loop_event_sink(
+            TelemetryEvent.loop_recovery(
+                run_id=self._run_id,
+                session_id=self._session_id,
+                request_id=f"{self._run_id}:loop-recovery:{planning_step}:{record}",
+                occurred_at=self._now(),
+                record=record,
+                signal=str(signal),
+                planning_step=planning_step,
+                decision=None if decision is None else decision.value,
+            )
         )
 
     def _record_reported_gateway_usage(
@@ -1322,8 +1589,9 @@ class _PlanningIterationRunner:
         )
 
     def run_iteration(self, state: IterationState, tools: LoopToolExecutorProtocol) -> IterationOutcome:
-        planning_turn = state.iteration + 1
-        remaining_wall_clock = max(
+        self._steps_run += 1
+        planning_turn = self._turn_offset + state.iteration + 1
+        remaining_wall_clock = 0 if self._budgeted_step else max(
             0,
             self._policy.max_wall_clock_minutes - state.elapsed_minutes(now=self._now()),
         )
@@ -1347,13 +1615,15 @@ class _PlanningIterationRunner:
                 cost_usd=Decimal("0"),
             )
         mcp_evidence_envelope = self._mcp_evidence_envelope
+        recovery_note = self._nudge or ""
 
         def build(conversation_envelope: str) -> str:
             return build_multi_turn_planner_input(
                 self._task,
                 planning_turn=planning_turn,
-                max_planning_turns=self._policy.max_planning_turns,
+                max_planning_turns=self._allowance_end,
                 remaining_wall_clock_minutes=remaining_wall_clock,
+                recovery_note=recovery_note,
                 carried_observations_envelope=carried_envelope,
                 current_read_evidence_envelope=current_envelope,
                 mcp_evidence_envelope=mcp_evidence_envelope,
@@ -1397,6 +1667,8 @@ class _PlanningIterationRunner:
             prompt = fitted
         # MCP evidence is one-shot for the turn that just received it.
         self._mcp_evidence_envelope = ""
+        if self._nudge is not None:
+            self._nudge, self._nudged = None, True  # one nudge per episode, carried by this request
         try:
             response, attempt_cost = self._invoke_planning_gateway(planning_turn=planning_turn, prompt=prompt)
         except _PlanningGatewayInvocationError as exc:
@@ -1439,11 +1711,15 @@ class _PlanningIterationRunner:
                     hypothesis_id="P12.2-NONPROGRESS",
                     run_id=self._run_id,
                 )
-            return IterationOutcome(
-                summary="planning response was unparseable",
-                deterministic_completion=False,
-                failure_signature="UNPARSEABLE",
-                cost_usd=attempt_cost,
+            return self._observed(
+                IterationOutcome(
+                    summary="planning response was unparseable",
+                    deterministic_completion=False,
+                    failure_signature="UNPARSEABLE",
+                    cost_usd=attempt_cost,
+                ),
+                parse_failure_step(code=exc.code, message=str(exc)),
+                planning_turn,
             )
 
         self._last_decision = decision
@@ -1509,7 +1785,7 @@ class _PlanningIterationRunner:
                         run_id=self._run_id,
                         session_id=self._session_id,
                         settled_turn=planning_turn,
-                        max_planning_turns=self._policy.max_planning_turns,
+                        max_planning_turns=self._allowance_end,
                         read_request_count=len(read_evidence),
                         read_identities=identities,
                         source_sha256s=sha256s,
@@ -1520,11 +1796,18 @@ class _PlanningIterationRunner:
                         wire_retry_count=self._last_wire_retry_count,
                     )
                 )
-            return IterationOutcome(
-                summary="planning requested guarded read evidence",
-                deterministic_completion=False,
-                failure_signature=decision.failure_signature,
-                cost_usd=attempt_cost,
+            return self._observed(
+                IterationOutcome(
+                    summary="planning requested guarded read evidence",
+                    deterministic_completion=False,
+                    failure_signature=decision.failure_signature,
+                    cost_usd=attempt_cost,
+                ),
+                read_step(
+                    (ReadResult(e.path, e.start_byte, e.end_byte, e.source_sha256) for e in read_evidence),
+                    self._coverage,
+                ),
+                planning_turn,
             )
 
         if decision.kind is PlanningTurnKind.MCP_TOOL:
@@ -1560,11 +1843,22 @@ class _PlanningIterationRunner:
                     hypothesis_id="P12.2-NONPROGRESS",
                     run_id=self._run_id,
                 )
-            return IterationOutcome(
-                summary="planning requested generic MCP tool evidence",
-                deterministic_completion=False,
-                failure_signature=f"MCP:{decision.mcp_operation}:{decision.mcp_server}",
-                cost_usd=attempt_cost,
+            return self._observed(
+                IterationOutcome(
+                    summary="planning requested generic MCP tool evidence",
+                    deterministic_completion=False,
+                    failure_signature=f"MCP:{decision.mcp_operation}:{decision.mcp_server}",
+                    cost_usd=attempt_cost,
+                ),
+                mcp_step(
+                    operation=decision.mcp_operation or "",
+                    server=decision.mcp_server or "",
+                    tool=decision.mcp_tool or "",
+                    arguments=decision.mcp_arguments or {},
+                    evidence_envelope=self._mcp_evidence_envelope,
+                    results=self._mcp_results,
+                ),
+                planning_turn,
             )
 
         if decision.kind is PlanningTurnKind.FINAL_PLAN:
@@ -1590,7 +1884,8 @@ class _PlanningIterationRunner:
         cap = self.loop_budget_policy.max_budget_usd
         if cap is not None and state.cost_usd_spent >= cap:  # an evaluation cap only (Plan 12.2 Task 11)
             return "PLANNING_BUDGET_EXHAUSTED"
-        if state.elapsed_minutes(now=self._now()) >= self.loop_budget_policy.max_wall_clock_minutes:
+        # Interactive: a final plan that arrives in the step where the clock expired is kept (Design 4).
+        if not self._interactive and state.elapsed_minutes(now=self._now()) >= self.loop_budget_policy.max_wall_clock_minutes:
             return "PLANNING_WALL_CLOCK_EXHAUSTED"
         return None
 
@@ -1600,6 +1895,7 @@ class _PlanningIterationRunner:
         stop_reason: str,
         settled_turns: int,
         refusal_reason: str | None = None,
+        detail: str | None = None,
     ) -> PlanningLoopResult:
         return PlanningLoopResult(
             stop_reason=stop_reason,
@@ -1613,6 +1909,7 @@ class _PlanningIterationRunner:
                 refusal_reason=refusal_reason,
                 workspace_root=self._workspace_root,
                 route_stopped=self._route_stopped,
+                detail=detail,
             ),
             refusal_reason=(
                 planning_corrective_text(
@@ -1627,13 +1924,17 @@ class _PlanningIterationRunner:
         )
 
     def to_planning_result(self, loop_result) -> PlanningLoopResult:
-        settled_turns = loop_result.state.iteration
+        settled_turns = self._turn_offset + loop_result.state.iteration
         # Unconditional halt recheck before any stop-reason conversion (Plan 11.25 Task 6).
         if loop_result.state.human_halt_requested or self._halt_requested():
             return self._planning_failure_result(
                 stop_reason="PLANNING_HALTED",
                 settled_turns=settled_turns,
             )
+        if self._recovery_stop is not None:
+            # Stop at a check-in, or one that could not be shown: the actual cause (Design 7).
+            stop_reason, detail = self._recovery_stop
+            return self._planning_failure_result(stop_reason=stop_reason, settled_turns=settled_turns, detail=detail)
 
         if loop_result.stop_reason is LoopStopReason.COMPLETED:
             decision = self._last_decision
@@ -1649,6 +1950,7 @@ class _PlanningIterationRunner:
                     stop_reason="PLANNING_MODEL_REFUSED",
                     settled_turns=settled_turns,
                     refusal_reason=decision.reason,
+                    detail=self._refusal_detail,
                 )
 
             if decision is not None and decision.kind is PlanningTurnKind.FINAL_PLAN:
@@ -1684,6 +1986,7 @@ class _PlanningIterationRunner:
             repeated_stops: dict[str | None, str] = {
                 "GATEWAY_FAILURE": "PLANNING_GATEWAY_FAILURE",
                 "UNPARSEABLE": "PLANNING_UNPARSEABLE_RESPONSE",
+                "MCP_TOOL": "PLANNING_REPEATED_MCP_REQUEST",  # not a read (Plan 12.3, Design 7)
             }
             repeated_stop = repeated_stops.get(self._last_non_progress_kind, "PLANNING_REPEATED_READ_REQUEST")
             return self._planning_failure_result(
@@ -1721,7 +2024,7 @@ class _PlanningIterationRunner:
                 run_id=self._run_id,
                 session_id=self._session_id,
                 settled_turn=result.settled_turns,
-                max_planning_turns=self._policy.max_planning_turns,
+                max_planning_turns=self._allowance_end,
                 total_cost_usd=self._total_cost_usd,
                 remaining_budget_usd=self._remaining_cap(self._total_cost_usd),
                 gateway_request_ids=tuple(self._gateway_request_ids),

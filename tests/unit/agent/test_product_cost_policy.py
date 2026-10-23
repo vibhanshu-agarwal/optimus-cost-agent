@@ -6,10 +6,11 @@ supplement; Codex Task 11 scope note):
 - a product request has no dollar cap (``max_cost_usd`` is None by default and ACP never sets one), so
   a successful answer or plan above the former $0.05 is delivered, the planner is told no remaining-dollar
   budget, and no positive-dollar construction requirement remains;
-- the ordinary non-ACP goal loop has no dollar stop either (no $0.01 minimum or sentinel); only an
-  independently authorized evaluation caller's explicit finite cap can still stop on money;
-- the bounds that stay (3 planning rounds, 30 minutes, repeated-failure limit 2, single-call Chat, the
-  goal loop's iteration/time/failure/halt controls) and evaluation caps are pinned;
+- a non-ACP planning loop has no dollar stop either (no $0.01 minimum or sentinel); only an
+  independently authorized evaluation caller's explicit finite cap can still stop on money (these moved
+  here from the goal loop when Plan 12.3 retired it);
+- the bounds that stay (3 planning rounds, 30 minutes, repeated-failure limit 2, single-call Chat) and
+  evaluation caps are pinned;
 - planning cost through approval is charged once, and a stored plan's cost completeness survives
   storage, with a legacy record missing it treated as unverified, never complete.
 """
@@ -18,8 +19,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 from pathlib import Path
-
-import pytest
 
 from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunStatus
 from optimus.agent.planning_loop import PlanningLoopPolicy
@@ -89,51 +88,32 @@ def test_product_planning_progress_carries_no_dollar_budget(tmp_path):
     assert events and all(event.remaining_budget_usd is None for event in events)
 
 
-class _CostlyUnfinishedIteration:
-    """A goal-loop iteration that never completes and costs far more than the former product cap."""
-
-    def __init__(self, failure_signature: str | None = None) -> None:
-        self.calls = 0
-        self.failure_signature = failure_signature
-
-    def run_iteration(self, state, tools):
-        from optimus.loops.models import IterationOutcome
-
-        del state, tools
-        self.calls += 1
-        return IterationOutcome(summary="still failing", cost_usd=Decimal("1.00"), failure_signature=self.failure_signature)
+READ_CALC = "OBSERVE: need the header\nREAD: calc.py#bytes=0:1\n"
 
 
-def _goal_loop(tmp_path: Path, iteration: _CostlyUnfinishedIteration, **fields):
-    runner = AgentRunner(gateway_client=_Gateway("unused", "0"), model="m", loop_iteration_runner=iteration)
-    return runner.run(_request(tmp_path, ExecutionMode.AGENT, completion_condition="pytest tests pass", **fields))
+def test_the_product_planning_loop_has_no_dollar_stop_and_keeps_its_repeated_failure_bound(tmp_path):
+    """Codex's Task 11 scope note, moved from the retired goal loop (Plan 12.3): a non-ACP caller is not an
+    evaluation caller. Repetition stops it, never money; the removed $0.01 minimum is not replaced."""
+    (tmp_path / "calc.py").write_text("x = 1\n", encoding="utf-8")
+    gateway = _Gateway(READ_CALC, "1.00")
+
+    result = AgentRunner(gateway_client=gateway, model="m").run(_request(tmp_path, ExecutionMode.AGENT))
+
+    assert (result.stop_reason, len(gateway.calls), result.total_cost_usd) == (
+        "PLANNING_REPEATED_READ_REQUEST",
+        2,
+        Decimal("2.00"),
+    )
 
 
-def test_the_ordinary_goal_loop_has_no_dollar_stop_and_keeps_its_finite_controls(tmp_path):
-    """Codex's Task 11 scope note: a non-ACP caller is not an evaluation caller. The goal loop's own
-    iteration bound stops it, never money; the removed $0.01 minimum is not replaced."""
-    iteration = _CostlyUnfinishedIteration()
+def test_an_evaluation_callers_explicit_cap_still_stops_planning(tmp_path):
+    cap = "0.50"
+    (tmp_path / "calc.py").write_text("x = 1\n", encoding="utf-8")
+    gateway = _Gateway(READ_CALC, "1.00")
 
-    result = _goal_loop(tmp_path, iteration)
+    result = AgentRunner(gateway_client=gateway, model="m").run(_request(tmp_path, ExecutionMode.AGENT, max_cost_usd=Decimal(cap)))
 
-    assert (result.stop_reason, iteration.calls) == ("MAX_ITERATIONS", 5)
-
-
-def test_the_goal_loop_repeated_failure_bound_remains(tmp_path):
-    iteration = _CostlyUnfinishedIteration(failure_signature="same failure")
-
-    result = _goal_loop(tmp_path, iteration)
-
-    assert (result.stop_reason, iteration.calls) == ("REPEATED_FAILURE", 3)
-
-
-@pytest.mark.parametrize("cap", ["0.50", "2.50"])
-def test_an_evaluation_callers_explicit_cap_still_stops_the_goal_loop(tmp_path, cap):
-    iteration = _CostlyUnfinishedIteration()
-
-    result = _goal_loop(tmp_path, iteration, max_cost_usd=Decimal(cap))
-
-    assert result.stop_reason == "BUDGET_EXHAUSTED" and iteration.calls == int(Decimal(cap)) + 1
+    assert result.stop_reason == "PLANNING_BUDGET_EXHAUSTED" and len(gateway.calls) == int(Decimal(cap)) + 1
 
 
 # --- Retained now and after removal ----------------------------------------------------------------

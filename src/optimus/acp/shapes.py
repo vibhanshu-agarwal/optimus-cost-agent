@@ -170,6 +170,33 @@ def build_request_permission_params(
     }
 
 
+LOOP_CONTINUE_OPTION_ID = "loop-continue"
+LOOP_STOP_OPTION_ID = "loop-stop"
+
+
+def build_loop_checkin_params(*, session_id: str, tool_call_id: str, text: str, run_id: str) -> dict[str, Any]:
+    """A planning-recovery check-in (Plan 12.3, Design 5), separate from plan approval. Its options use
+    the plan approval's kinds, because clients such as acpx select by kind, and its own ids, so an
+    answer to it can never be read as a plan approval."""
+    options = [
+        {"optionId": LOOP_CONTINUE_OPTION_ID, "name": "Continue planning", "kind": "allow_once"},
+        {"optionId": LOOP_STOP_OPTION_ID, "name": "Stop", "kind": "reject_once"},
+    ]
+    assert not {option["optionId"] for option in options} & {"approve", "cancel"}  # never a plan approval
+    return {
+        "sessionId": session_id,
+        "toolCall": {
+            "toolCallId": tool_call_id,
+            "title": "Planning paused: continue?",
+            "kind": "think",
+            "status": "pending",
+            "content": [tool_call_text_content(text)],
+        },
+        "options": options,
+        "_meta": {"runId": run_id, "loopCheckIn": True},
+    }
+
+
 def build_client_mcp_permission_params(
     *,
     session_id: str,

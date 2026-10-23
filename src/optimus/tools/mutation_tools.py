@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Protocol, TypeVar
@@ -9,9 +10,12 @@ from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolResult, PreToolVerdict
 from optimus.runtime.modes import GenerationScope
 from optimus.runtime.mutation import MutationForbidden, MutationKind, assert_mutation_allowed
+from optimus.runtime.process_tree import run_bounded
 from optimus.runtime.state import RuntimeContext
 
 ShellResult = TypeVar("ShellResult")
+# Plan 12.3, Design 8: one TEST directive's default deadline; the approved replay sets its own.
+DEFAULT_TEST_DEADLINE_SECONDS = 15 * 60
 PatchResult = TypeVar("PatchResult")
 
 
@@ -84,7 +88,11 @@ def shell_exec(
     context: RuntimeContext,
     runner: Callable[[list[str]], ShellResult] | None = None,
     guard: PreToolGuardLike | None = None,
+    deadline: float | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> ShellResult | subprocess.CompletedProcess[str]:
+    """Run `command` after the mutation gate and the guard allow it: contained, until it exits, `deadline`
+    (a `time.monotonic()` value; default 15 minutes from now) or `cancelled()`. A stop raises `CommandStopped`."""
     assert_mutation_allowed(context, MutationKind.SHELL_EXEC)
     command_tuple = tuple(command)
     active_guard = guard or PreToolGuard.for_workspace(workspace_root=Path.cwd(), allowed_network_hosts=())
@@ -105,7 +113,11 @@ def shell_exec(
     )
     if runner is not None:
         return runner(list(command))
-    return subprocess.run(list(command), check=False, text=True, capture_output=True)
+    return run_bounded(
+        list(command),
+        deadline=time.monotonic() + DEFAULT_TEST_DEADLINE_SECONDS if deadline is None else deadline,
+        cancelled=cancelled or (lambda: False),
+    )
 
 
 def shadow_apply(

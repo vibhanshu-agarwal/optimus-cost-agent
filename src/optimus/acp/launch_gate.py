@@ -72,6 +72,7 @@ from optimus_security.sanitization import canonicalize_credential_uri, validate_
 _MONOTONIC_DEFAULTS: Mapping[str, Decimal | int] = {
     "OPTIMUS_LIVE_MAX_COST_USD": DEFAULT_LIVE_MAX_COST_USD,
     "OPTIMUS_MAX_PLANNING_TURNS": DEFAULT_MAX_PLANNING_TURNS,
+    "OPTIMUS_LOOP_RECOVERY": 1,  # interactive; headless (0) is a free tightening
 }
 
 

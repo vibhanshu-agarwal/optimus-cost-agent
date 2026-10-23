@@ -15,7 +15,6 @@ from optimus.agent.workspace_context import WorkspaceContextResult
 from optimus.gateway.errors import GatewayHttpError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
-from optimus.loops.models import IterationOutcome, IterationState
 from optimus.runtime.modes import ExecutionMode
 from optimus.telemetry.events import TelemetryEventKind
 from optimus.usage.accounting import UsageAccountingService
@@ -1021,36 +1020,6 @@ def test_missing_path_can_reach_gateway_for_create_task(tmp_path):
     assert len(gateway.calls) == 1
     assert result.status is AgentRunStatus.AWAITING_APPROVAL
 
-
-class _CompleteAtRunBudget:
-    def run_iteration(self, state: IterationState, tools) -> IterationOutcome:
-        del state, tools
-        return IterationOutcome(
-            summary="pytest tests green",
-            cost_usd=Decimal("0.05"),
-            deterministic_completion=True,
-        )
-
-
-def test_bounded_auto_fix_loop_still_completes_when_finishing_turn_cost_equals_budget(tmp_path):
-    runner = AgentRunner(
-        gateway_client=FakeGatewayClient(),
-        model="glm-5.2",
-        loop_iteration_runner=_CompleteAtRunBudget(),
-    )
-
-    result = runner.run(
-        AgentRunRequest(
-            run_id="run-1",
-            task="Debug the failing pytest test",
-            execution_mode=ExecutionMode.AGENT,
-            workspace_root=tmp_path,
-            completion_condition="pytest tests pass",
-        )
-    )
-
-    assert result.stop_reason == "COMPLETED"
-    assert result.status is AgentRunStatus.COMPLETED
 
 
 class _FlushCountingEventSink:
