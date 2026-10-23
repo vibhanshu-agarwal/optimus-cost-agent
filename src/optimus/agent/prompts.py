@@ -188,6 +188,7 @@ def build_multi_turn_planner_input(
     mcp_evidence_envelope: str = "",
     initial_workspace_context: str = "",
     initial_workspace_file_sizes: Mapping[str, int] | None = None,
+    required_file_sizes: Mapping[str, int] | None = None,
     evidence_limits: tuple[int, int, int] | None = None,
     conversation_envelope: str = "",
     recovery_note: str = "",
@@ -222,6 +223,18 @@ def build_multi_turn_planner_input(
             *(
                 f"- {path}: {byte_size} bytes; re-read as READ: {path}#bytes=0:{byte_size}"
                 for path, byte_size in sorted(initial_workspace_file_sizes.items())
+            ),
+        ]
+        sections.append("\n".join(size_lines) + "\n")
+    # The oversized-context trigger shows no file, so each ranged read is sized from this list. A full-range
+    # hint would exceed the current-read limit. Without one the input is byte-identical to before.
+    if required_file_sizes:
+        size_lines = [
+            "Byte sizes of required files too large to show in the initial workspace context:",
+            *(
+                f"- {path}: size {byte_size} bytes; read it in ranges that fit the current guarded-read limit, "
+                f"the last ending at {byte_size}"
+                for path, byte_size in sorted(required_file_sizes.items())
             ),
         ]
         sections.append("\n".join(size_lines) + "\n")

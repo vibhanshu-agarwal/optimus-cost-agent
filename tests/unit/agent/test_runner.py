@@ -1,5 +1,6 @@
 import hashlib
 import os
+import re
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -848,6 +849,49 @@ def test_oversized_required_file_settles_after_read_more_then_final(tmp_path):
     assert [entry.gateway_request_id for entry in accounting.provider_ledger.entries] == ["gw-1", "gw-2"]
     assert all(entry.service == "agent.model" for entry in accounting.provider_ledger.entries)
     assert all(entry.native_unit == "tokens" for entry in accounting.provider_ledger.entries)
+
+
+class OversizedSizeReadGateway(ScriptingGateway):
+    """Reads the oversized file in two halves, sizing each read only from the size line in the input it
+    actually receives, and refuses without one, as the prompt's rules require (the Plan 12.3 live refusal)."""
+
+    def create_response(self, *, model, input_text, metadata=None):
+        sizes = re.findall(r"^- large\.py: size (\d+) bytes", input_text, re.MULTILINE)
+        if not sizes:
+            reply = "REFUSE: large.py byte count is not shown.\n"
+        elif len(self.calls) == 0:
+            reply = f"OBSERVE: first half\nREAD: large.py#bytes=0:{int(sizes[0]) // 2}\n"
+        elif len(self.calls) == 1:
+            reply = f"OBSERVE: second half\nREAD: large.py#bytes={int(sizes[0]) // 2}:{sizes[0]}\n"
+        else:
+            reply = self._scripts[0][0]
+        self._scripts[0] = (reply, *self._scripts[0][1:])
+        return super().create_response(model=model, input_text=input_text, metadata=metadata)
+
+
+def test_oversized_required_file_lists_its_size_on_every_planning_turn(tmp_path):
+    (tmp_path / "large.py").write_text("x" * (20 * 1024), encoding="utf-8")
+    final_plan = "READ large.py\nWRITE large.py\nupdated header\n"
+    gateway = OversizedSizeReadGateway(
+        [("", Decimal("0.001"), "gw-1"), ("", Decimal("0.001"), "gw-2"), (final_plan, Decimal("0.001"), "gw-3")]
+    )
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2", state_store=InMemoryAgentStateStore())
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="List every function in large.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL, result.output_text
+    assert len(gateway.calls) == 3
+    for call in gateway.calls:
+        assert "- large.py: size 20480 bytes" in str(call["input_text"])
+        # A full-range hint would exceed the current-read limit and end planning.
+        assert "READ: large.py#bytes=0:20480" not in str(call["input_text"])
 
 
 def test_oversized_required_file_honors_max_planning_turns_override(tmp_path):

@@ -22,7 +22,11 @@ from optimus.agent.state_store import (
     InMemoryAgentStateStore,
 )
 from optimus.agent.tools import AgentToolbox
-from optimus.agent.workspace_context import WorkspaceContextResult, assemble_workspace_context_for_prompt
+from optimus.agent.workspace_context import (
+    WorkspaceContextResult,
+    WorkspaceReferenceStatus,
+    assemble_workspace_context_for_prompt,
+)
 from optimus.gateway.attempts import (
     ROUTE_STOPPED_NO_RETRY,
     AttemptIntegrityError,
@@ -438,6 +442,15 @@ class AgentRunner:
                     toolbox=toolbox,
                     initial_workspace_context="",
                     initial_workspace_file_sizes={},
+                    # Nothing is shown, so the model sizes its ranged reads of the task's files from these.
+                    required_file_sizes=self._initial_workspace_file_sizes(
+                        request.workspace_root,
+                        tuple(
+                            diagnostic.candidates[0]
+                            for diagnostic in workspace_context.diagnostics
+                            if diagnostic.status in (WorkspaceReferenceStatus.RESOLVED, WorkspaceReferenceStatus.TOO_LARGE)
+                        ),
+                    ),
                     progress_observer=planning_progress_observer,
                     client_mcp_service=client_mcp_service,
                     mcp_permission_broker=mcp_permission_broker,
@@ -573,6 +586,7 @@ class AgentRunner:
         toolbox: AgentToolbox,
         initial_workspace_context: str = "",
         initial_workspace_file_sizes: dict[str, int] | None = None,
+        required_file_sizes: dict[str, int] | None = None,
         progress_observer: PlanningProgressObserver | None = None,
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
@@ -632,6 +646,7 @@ class AgentRunner:
             task=request.task,
             initial_workspace_context=initial_workspace_context,
             initial_workspace_file_sizes=initial_workspace_file_sizes,
+            required_file_sizes=required_file_sizes,
             # Only an attached turn's planner renders history in its own section; every other
             # caller keeps its existing input (design spec 7; Fable CP3 review MINOR-8).
             conversation_envelope=request.conversation_envelope if request.selection_text is not None else "",
