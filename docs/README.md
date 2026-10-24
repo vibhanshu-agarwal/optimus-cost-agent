@@ -99,7 +99,6 @@ Live plans (each listed in the backlog's live plan registry):
 | [P11-FU-6 v2: bounded early POST rejection](superpowers/plans/2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | Gateway early-rejection correction |
 | [Local-hook UTF-8 repair](superpowers/plans/2026-09-06-local-hook-utf8-repair.md) | Pre-commit hook decoding fix |
 | [Evidence collector](superpowers/plans/evidence-handoff-evidence-collector-implementation.md) | Evidence-handoff collector |
-| [Plan 12.3 v5: loop control Phase 1](superpowers/plans/2026-10-23-plan-12-3-loop-control-phase-1_v5.md) | Result-aware loop detection, one nudge, a Continue/Stop check-in, bounded TEST teardown, goal-loop retirement |
 | [Plan 12.4 v6: Auto mode](superpowers/plans/2026-10-23-plan-12-4-auto-mode_v6.md) | Classifier pilot (rules, Jev, Haiku, DSPy, hybrid), Gemini qualification, opt-in per-turn tier routing |
 
 ## Current designs
