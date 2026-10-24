@@ -217,3 +217,18 @@ def test_an_unrelated_older_split_error_is_not_propagated():
     directives = parse_agent_plan("READ a.py\nnote\u2028MCP_LIST tools\n")
 
     assert (directives.read_paths, directives.write, directives.tests) == (("a.py",), None, ())
+
+
+@pytest.mark.parametrize(
+    "plan",
+    (
+        "READ a.py\nnote\u2028EDIT ../outside.py\n",  # an invalid path: still an EDIT header
+        "READ a.py\nnote\u2028EDIT a.py\u2028<<<<<<< OLD\u2028x\u2028======= NEW\u2028y\u2028>>>>>>> END\u2028EDIT b.py\n",  # a second mutation after a hidden EDIT
+        "WRITE a.py\nx\nREAD b.py\nnote\u2028EDIT c.py\n",  # after a WRITE body has ended
+    ),
+)
+def test_any_edit_header_only_the_older_split_sees_is_rejected(plan):
+    """Codex round 54: whether or not that EDIT would parse or validate, an EDIT header that only str.splitlines()
+    sees outside a WRITE body makes the plan an error, as on main before #410."""
+    with pytest.raises(AgentDirectiveParseError):
+        parse_agent_plan(plan)
