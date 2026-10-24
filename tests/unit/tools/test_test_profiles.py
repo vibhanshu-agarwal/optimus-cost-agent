@@ -20,6 +20,8 @@ import pytest
 
 from tools.testing import test_profiles as profiles
 
+_WINDOWS_H5_ONLY = pytest.mark.skipif(sys.platform != "win32", reason="requires native Windows H5 capture")
+
 _NODES = (
     "tests/unit/a/test_one.py::test_x",
     "tests/unit/a/test_one.py::test_y[1]",
@@ -639,19 +641,21 @@ def test_h5_budget_platform_tags_are_node_scoped(manifest):
     nodes = (
         "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_short_sidecar_temp_path[native]",
         "tests/unit/tools/test_h5_failure_capture.py::test_capture_path_budget",
+        "tests/unit/tools/test_h5_failure_capture.py::test_retains_every_ordered_row_and_long_error_metadata",
+        "tests/unit/tools/test_test_profiles.py::test_capture_controls_never_touch_inherited_outer_base",
         "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_short_sidecar_temp_path[simulated]",
         "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_short_sidecar_fault_cleanup[write]",
-        "tests/unit/tools/test_h5_failure_capture.py::test_retains_every_ordered_row_and_long_error_metadata",
+        "tests/unit/tools/test_h5_failure_capture.py::test_non_windows_branch_is_simulated_and_does_no_io",
     )
     found = profiles.classify_nodes(nodes, manifest)
-    targets = frozenset(nodes[:2])
+    targets = frozenset(nodes[:4])
     assert profiles.profile_members(found, "platform") == targets
     assert {node for node, tags in found.tags.items() if "platform" in tags} == targets
     assert all(found.tiers[node] == "core" for node in targets)
     assert targets <= profiles.profile_members(found, "core-serial")
     parallel = profiles.profile_members(found, "core-parallel")
     assert targets.isdisjoint(parallel) and nodes[-1] in parallel
-    assert not found.tags[nodes[2]] and not found.tags[nodes[3]]
+    assert all(not found.tags[node] for node in nodes[4:])
 
 
 def test_every_file_that_launches_a_child_has_a_reviewed_tier(classification: profiles.Classification) -> None:
@@ -759,6 +763,7 @@ def _h5_synthetic_measurement():
     return binding, {"inventory": inventory, "inventory_identifiers": ["h5-synthetic"], "observations": rows}
 
 
+@_WINDOWS_H5_ONLY
 def test_h5_existing_bridge_retains_complete_bundle_before_assertions(h5_capture_scope, monkeypatch: pytest.MonkeyPatch) -> None:
     from tools.plan1126_runtime_audit import measurement
 
@@ -862,6 +867,7 @@ def test_disabled_raising_target_keeps_original_report_sections(h5_capture_scope
     assert not (directory / context.run_id).exists()
 
 
+@_WINDOWS_H5_ONLY
 @pytest.mark.parametrize("kind", ["source", "source_subclass", "ordinary", "base"])
 def test_measurement_failure_kind_and_original_exception_escape(h5_capture_scope, monkeypatch, kind):
     from tools.plan1126_runtime_audit.source import ExecutingSourceMismatch
@@ -886,6 +892,7 @@ def test_measurement_failure_kind_and_original_exception_escape(h5_capture_scope
     assert not (directory / context.run_id).exists()
 
 
+@_WINDOWS_H5_ONLY
 def test_failure_kind_write_error_preserves_original_exception(h5_capture_scope, monkeypatch):
     plugin, _, _ = h5_capture_scope
     error = OSError("ORIGINAL")
@@ -907,6 +914,7 @@ def test_failure_kind_write_error_preserves_original_exception(h5_capture_scope,
     assert plugin.current_audit_session()["h5_capture"]["failure_kind"] is None
 
 
+@_WINDOWS_H5_ONLY
 def test_h5_reuse_keeps_original_objects_and_existing_bookkeeping(h5_capture_scope, monkeypatch):
     plugin, context, directory = h5_capture_scope
     earlier = "tests/unit/acp/test_fixture.py::test_earlier"
@@ -937,6 +945,7 @@ def test_same_interpreter_nested_capture_is_ineligible_even_with_outer_context(h
     assert not (directory / context.run_id).exists()
 
 
+@_WINDOWS_H5_ONLY
 def test_fixture_and_production_use_the_same_root_predicate(h5_capture_scope, monkeypatch, tmp_path):
     plugin, context, directory = h5_capture_scope
     _h5_stub(monkeypatch)
@@ -1147,6 +1156,7 @@ def _h5_record_parent_retention(tmp_path, request, tmp_path_factory):
         pass  # Missing observational facts are assessed by the separate archive.
 
 
+@_WINDOWS_H5_ONLY
 @pytest.mark.parametrize("failure,passed", [("", False), ("write", False), ("verify", False), ("rename", False), ("write", True)])
 def test_native_h5_capture_preserves_original_failure_and_later_test(tmp_path, monkeypatch, failure, passed, request, tmp_path_factory):
     from tests.support.h5_failure_capture import verify_h5_capture_bundle
@@ -1178,6 +1188,7 @@ def test_native_h5_capture_preserves_original_failure_and_later_test(tmp_path, m
         assert "ISSUE287_H5_CAPTURE_METRICS" in output
 
 
+@_WINDOWS_H5_ONLY
 def test_capture_controls_never_touch_inherited_outer_base(tmp_path, monkeypatch, request, tmp_path_factory):
     _h5_record_parent_retention(tmp_path, request, tmp_path_factory)
     root = _h5_native_fixture(tmp_path)
@@ -1474,6 +1485,7 @@ def test_h5_fixture_keeps_outer_recorder_context(h5_capture_scope):
     assert run_context.current() is not None
 
 
+@_WINDOWS_H5_ONLY
 @pytest.mark.parametrize("site", ["admission_import", "returned_import", "status_constructor"])
 def test_h5_diagnostic_import_and_constructor_errors_are_contained(h5_capture_scope, monkeypatch, site):
     import builtins
@@ -1513,6 +1525,7 @@ def test_h5_diagnostic_import_and_constructor_errors_are_contained(h5_capture_sc
         assert "PRIVATE_" not in str(plugin.current_audit_session().get("h5_lines", []))
 
 
+@_WINDOWS_H5_ONLY
 def test_h5_duplicate_call_preserves_first_status_and_bundle(h5_capture_scope, monkeypatch):
     plugin, context, directory = h5_capture_scope
     binding, result, calls = _h5_stub(monkeypatch, earlier="tests/unit/acp/test_fixture.py::test_earlier")

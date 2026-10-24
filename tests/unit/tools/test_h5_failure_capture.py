@@ -15,6 +15,8 @@ from tools.plan1126_runtime_audit import shutdown
 from tools.plan1126_runtime_audit.measurement import EnvironmentBinding
 from tools.testing.run_context import RunContext
 
+_WINDOWS_CAPTURE_ONLY = pytest.mark.skipif(sys.platform != "win32", reason="requires native Windows H5 capture")
+
 
 @pytest.fixture(autouse=True)
 def isolated_activation(monkeypatch: pytest.MonkeyPatch):
@@ -64,6 +66,7 @@ def _verify(specimen, **overrides):
     return capture.verify_h5_capture_bundle(_final(specimen), **expected)
 
 
+@_WINDOWS_CAPTURE_ONLY
 def test_retains_every_ordered_row_and_long_error_metadata(specimen):
     effect = "orderly_eof:probe_error:OSError | errno=-5 | winerror=unknown | origin=" + "界" * 1200 + ":9 in close | probe=unknown | chain=none | group=none"
     specimen["result"]["observations"][7].update(close_outcome="ERROR", cause_effect=effect)
@@ -76,6 +79,7 @@ def test_retains_every_ordered_row_and_long_error_metadata(specimen):
     assert specimen["result"] == before
 
 
+@_WINDOWS_CAPTURE_ONLY
 @pytest.mark.parametrize("defect", ["repeat", "binding", "identifier", "extra", "bool", "number", "private", "legacy_extra", "schema_field"])
 def test_refuses_malformed_or_private_data_before_publication(specimen, defect):
     rows = specimen["result"]["observations"]
@@ -103,6 +107,7 @@ def test_refuses_malformed_or_private_data_before_publication(specimen, defect):
     assert not (specimen["directory"] / specimen["context"].run_id).exists()
 
 
+@_WINDOWS_CAPTURE_ONLY
 def test_verifier_rejects_missing_repeats_and_wrong_binding(specimen):
     assert capture.capture_h5_measurement(**specimen).state == "CAPTURED"
     receipt_path = _final(specimen) / "capture.json"
@@ -113,6 +118,7 @@ def test_verifier_rejects_missing_repeats_and_wrong_binding(specimen):
         _verify(specimen)
 
 
+@_WINDOWS_CAPTURE_ONLY
 @pytest.mark.parametrize("change", [dict(expected_run_id="20261023T000000-1-abc123"), dict(expected_head="b"*40),
                                   dict(expected_pid=1), dict(expected_creation_time=999), dict(expected_creation_time=True)])
 def test_wrong_run_head_pid_or_scratch_is_never_accepted(specimen, change):
@@ -121,6 +127,7 @@ def test_wrong_run_head_pid_or_scratch_is_never_accepted(specimen, change):
         _verify(specimen, **change)
 
 
+@_WINDOWS_CAPTURE_ONLY
 def test_verifier_rejects_pid_reuse_with_different_creation_time(specimen):
     assert capture.capture_h5_measurement(**specimen).state == "CAPTURED"
     with pytest.raises(ValueError):
@@ -134,6 +141,7 @@ def test_verifier_rejects_pid_reuse_with_different_creation_time(specimen):
     assert _verify(specimen, expected_creation_time=None)["receipt"]["mode"] == "passive"
 
 
+@_WINDOWS_CAPTURE_ONLY
 def test_collision_and_publication_failure_leave_no_valid_bundle(specimen, monkeypatch):
     assert capture.capture_h5_measurement(**specimen).state == "CAPTURED"
     original = (_final(specimen) / "capture.json").read_bytes()
@@ -141,6 +149,7 @@ def test_collision_and_publication_failure_leave_no_valid_bundle(specimen, monke
     assert (_final(specimen) / "capture.json").read_bytes() == original
 
 
+@_WINDOWS_CAPTURE_ONLY
 @pytest.mark.parametrize("failure", ["write", "verify", "rename"])
 def test_failed_write_verify_rename_preserves_invalid_scratch(specimen, monkeypatch, failure):
     def fail(*args, **kwargs):
@@ -157,6 +166,7 @@ def test_failed_write_verify_rename_preserves_invalid_scratch(specimen, monkeypa
     assert "PRIVATE_MESSAGE" not in repr(status)
 
 
+@_WINDOWS_CAPTURE_ONLY
 def test_stage_and_final_share_the_validated_parent(specimen, monkeypatch):
     real = capture.os.rename
     calls = []
@@ -169,6 +179,7 @@ def test_stage_and_final_share_the_validated_parent(specimen, monkeypatch):
     assert len(calls) == 1
 
 
+@_WINDOWS_CAPTURE_ONLY
 @pytest.mark.parametrize("bad_id", [0, None, "unstable"])
 def test_unusable_windows_identity_prevents_rename(specimen, monkeypatch, bad_id):
     real = capture.os.lstat
@@ -184,6 +195,7 @@ def test_unusable_windows_identity_prevents_rename(specimen, monkeypatch, bad_id
     assert capture.capture_h5_measurement(**specimen).state == "INVALID"
 
 
+@_WINDOWS_CAPTURE_ONLY
 def test_large_stable_nonzero_windows_file_identity_has_no_width_bound(specimen, monkeypatch):
     real = capture.os.lstat
     def lstat(path, *args, **kwargs):
@@ -195,6 +207,7 @@ def test_large_stable_nonzero_windows_file_identity_has_no_width_bound(specimen,
     assert len(_verify(specimen)["observations"]) == 500
 
 
+@_WINDOWS_CAPTURE_ONLY
 def test_capture_metrics_are_retained_without_changing_rows(specimen):
     before = copy.deepcopy(specimen["result"])
     status = capture.capture_h5_measurement(**specimen)
@@ -206,6 +219,7 @@ def test_capture_metrics_are_retained_without_changing_rows(specimen):
     assert specimen["result"] == before
 
 
+@_WINDOWS_CAPTURE_ONLY
 def test_metrics_unavailable_does_not_invalidate_verified_bundle(specimen, monkeypatch):
     monkeypatch.setattr(capture, "_published_metrics", lambda *args: (_ for _ in ()).throw(OSError()))
     status = capture.capture_h5_measurement(**specimen)
@@ -213,6 +227,7 @@ def test_metrics_unavailable_does_not_invalidate_verified_bundle(specimen, monke
     assert len(_verify(specimen)["observations"]) == 500
 
 
+@_WINDOWS_CAPTURE_ONLY
 def test_reused_receipt_does_not_claim_fresh_producer_window(specimen):
     specimen["earlier"] = "tests/unit/acp/test_fixture.py::test_earlier"
     assert capture.capture_h5_measurement(**specimen).state == "CAPTURED"
@@ -221,6 +236,7 @@ def test_reused_receipt_does_not_claim_fresh_producer_window(specimen):
     assert receipt["producer_nodeid"] == specimen["earlier"]
 
 
+@_WINDOWS_CAPTURE_ONLY
 @pytest.mark.parametrize("error", [KeyboardInterrupt(), shutdown.ExecutingSourceMismatch("SOURCE_REFUSAL")])
 def test_control_flow_and_source_refusal_escape_capture(specimen, monkeypatch, error):
     def fail(*args, **kwargs):
@@ -238,12 +254,14 @@ def test_non_windows_branch_is_simulated_and_does_no_io(specimen, monkeypatch):
     assert capture.capture_h5_measurement(**specimen).state == "UNSUPPORTED"
 
 
+@_WINDOWS_CAPTURE_ONLY
 def test_schema_with_reference_is_refused_before_writing(specimen, monkeypatch):
     monkeypatch.setattr(capture, "_schema_definitions", lambda: [{"$ref": "#/$defs/other"}])
     assert capture.capture_h5_measurement(**specimen).state == "INVALID"
     assert not _final(specimen).exists()
 
 
+@_WINDOWS_CAPTURE_ONLY
 @pytest.mark.parametrize("length", [301, 1025, 1400])
 @pytest.mark.parametrize("suffix", ["", "|\x01password=metadata"])
 def test_formatter_outputs_fit_both_frozen_content_free_schemas(specimen, length, suffix):
@@ -264,6 +282,7 @@ def test_formatter_outputs_fit_both_frozen_content_free_schemas(specimen, length
     assert _verify(specimen)["observations"][0]["cause_effect"] == effect
 
 
+@_WINDOWS_CAPTURE_ONLY
 def test_formatter_unknown_locations_fit_both_frozen_schemas(specimen):
     effect = shutdown._probe_error_effect("orderly_eof", OSError("PRIVATE_MESSAGE"))
     assert "PRIVATE_MESSAGE" not in effect and "origin=unknown" in effect and "probe=unknown" in effect
@@ -272,6 +291,7 @@ def test_formatter_unknown_locations_fit_both_frozen_schemas(specimen):
     assert _verify(specimen)["observations"][0]["cause_effect"] == effect
 
 
+@_WINDOWS_CAPTURE_ONLY
 def test_root_mismatch_relative_paths_and_escaped_sidecar_are_refused(specimen):
     specimen["context"].worktree = str(specimen["repository_root"].parent)
     assert capture.capture_h5_measurement(**specimen).state == "INVALID"
@@ -286,6 +306,7 @@ def _junction(link: Path, target: Path) -> None:
     _winapi.CreateJunction(str(target), str(link))
 
 
+@_WINDOWS_CAPTURE_ONLY
 def test_parent_replaced_by_owned_junction_aborts_before_rename(specimen, monkeypatch, tmp_path):
     outside = tmp_path / "outside"
     outside.mkdir()
@@ -305,6 +326,7 @@ def test_parent_replaced_by_owned_junction_aborts_before_rename(specimen, monkey
     assert sentinel.read_bytes() == b"unchanged" and not (outside / "h5").exists()
 
 
+@_WINDOWS_CAPTURE_ONLY
 def test_race_created_junction_destination_is_never_replaced(specimen, monkeypatch, tmp_path):
     outside = tmp_path / "outside"
     outside.mkdir()
@@ -320,6 +342,7 @@ def test_race_created_junction_destination_is_never_replaced(specimen, monkeypat
     assert sentinel.read_bytes() == b"unchanged" and not (outside / "capture.json").exists()
 
 
+@_WINDOWS_CAPTURE_ONLY
 def test_capture_os_fault_does_not_patch_process_os(specimen, monkeypatch):
     def fail(*args, **kwargs):
         raise OSError("PRIVATE_LSTAT")
@@ -353,3 +376,12 @@ def test_capture_path_budget(specimen, tmp_path, monkeypatch):
     finally:
         (tmp_path / "path-budget.json").write_text(json.dumps(facts, sort_keys=True), encoding="utf-8")
         print("ISSUE287_V19_PATH_FACTS " + json.dumps({**facts, "proof": str(tmp_path / "path-budget.json")}, sort_keys=True))
+
+
+@_WINDOWS_CAPTURE_ONLY
+def test_non_ascii_error_type_is_refused_before_publication(specimen):
+    error = type("Échec", (OSError,), {})("PRIVATE_MESSAGE")
+    effect = shutdown._probe_error_effect("orderly_eof", error)
+    specimen["result"]["observations"][0].update(close_outcome="ERROR", cause_effect=effect)
+    assert capture.capture_h5_measurement(**specimen).state == "INVALID"
+    assert not (specimen["directory"] / specimen["context"].run_id).exists()

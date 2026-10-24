@@ -670,7 +670,7 @@ def _bash() -> str:
             pytest.fail("native Git Bash prerequisite: git.exe is unavailable")
         git = Path(found).resolve()
         root = git.parent.parent
-        # Git prepends its internal executable directory while running hooks.
+        # Git prepends its internal executable directory for Git-spawned subprocesses.
         internal = tuple(part.casefold() for part in git.parts[-4:-1])
         if internal in {
             ("ucrt64", "libexec", "git-core"),
@@ -1286,13 +1286,13 @@ def test_native_bash_uses_git_installation(tmp_path: Path, monkeypatch, layout: 
 
 @pytest.mark.parametrize(
     "shape",
-    ["missing-git", "missing-bash", "usr", "mingw32", "mingw64", "shim", "wrong-basename"],
-    ids=["missing-git", "missing-bash", "usr", "mingw32", "mingw64", "shim", "wrong-basename"],
+    ["missing-git", "missing-bash", "usr", "ucrt64", "mingw32", "mingw64", "shim", "wrong-basename"],
+    ids=["missing-git", "missing-bash", "usr", "ucrt64", "mingw32", "mingw64", "shim", "wrong-basename"],
 )
 def test_native_bash_rejects_unavailable_installation(tmp_path: Path, monkeypatch, shape: str) -> None:
     module = sys.modules[__name__]
     root = tmp_path / "Git"
-    if shape in {"usr", "mingw32", "mingw64"}:
+    if shape in {"usr", "ucrt64", "mingw32", "mingw64"}:
         git = root / shape / "bin" / "git.exe"
     elif shape == "shim":
         git = root / "shims" / "git.exe"
