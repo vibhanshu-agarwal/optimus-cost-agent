@@ -1342,6 +1342,7 @@ class AgentRunner:
                 total_cost_usd=result.total_cost_usd,
                 mutation_count=result.mutation_count,
                 stop_reason=result.stop_reason,
+                edit_failure_code=result.edit_failure_code,
                 matched_skills=matched_skills,
                 execution_mode=request.execution_mode.value,
                 user_approval_id=request.approval.approval_id or "unauthorized_direct_run",
@@ -1631,6 +1632,7 @@ class AgentRunner:
             tool_calls=tuple(tool_calls),
             total_cost_usd=total_cost_usd,
             stop_reason="EDIT_NOT_APPLICABLE",
+            edit_failure_code=code,
             plan_hash=plan_hash,
             cost_complete=cost_complete,
             unknown_cost_attempt_count=unknown_cost_attempt_count,
@@ -1931,6 +1933,7 @@ class AgentRunner:
         mutation_count: int = 0,
         plan_hash: str | None = None,
         stop_reason: str | None = None,
+        edit_failure_code: str | None = None,
         cost_complete: bool = True,
         unknown_cost_attempt_count: int = 0,
         candidate_plan_text: str | None = None,
@@ -1950,6 +1953,7 @@ class AgentRunner:
             provider_keys_resolvable=(),
             plan_hash=plan_hash,
             stop_reason=stop_reason,
+            edit_failure_code=edit_failure_code,
             candidate_plan_text=candidate_plan_text,
         )
 

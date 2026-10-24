@@ -173,6 +173,7 @@ class AgentRunResult(BaseModel):
     provider_keys_resolvable: tuple[str, ...] = ()
     plan_hash: str | None = None
     stop_reason: str | None = None
+    edit_failure_code: str | None = None  # the closed EDIT_* code of an EDIT_NOT_APPLICABLE run (#407)
     candidate_plan_text: str | None = None
 
 
