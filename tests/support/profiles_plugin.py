@@ -16,6 +16,7 @@ a checkpoint, a final gate or a repeat-100 obligation.
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,9 @@ from tools.testing import test_profiles
 _MANIFEST = Path(__file__).resolve().parents[1] / "profiles.toml"
 _SUMMARY: pytest.StashKey[str] = pytest.StashKey()
 _AUDIT_USED: pytest.StashKey[list[dict[str, object]]] = pytest.StashKey()
+_H5_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+_H5_PLATFORM = sys.platform
+_H5_TARGET = "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist"
 
 AUDIT_DEPTHS = ("full", "quick")
 # The only reduced-depth budget, pinned with the Plan 11.26 owner (Task 4): H5 repeats each applicable
@@ -136,13 +140,152 @@ def measure_current_entry(*, source: Any, spec: Any, entry: str, options: Any, r
     from tools.plan1126_runtime_audit.measurement import session_measurement_reuse  # noqa: PLC0415 - audit tests only
 
     nodeid = os.environ.get("PYTEST_CURRENT_TEST", "").rsplit(" (", 1)[0] or "<outside-a-test>"
-    binding, result, earlier = session_measurement_reuse().measure(
-        source=source, spec=spec, entry=entry, options=options, repository_root=repository_root,
-        depth=current_audit_session()["depth"], requester=nodeid,
-    )
+    admitted = _h5_admission(nodeid, entry, options, repository_root)
+    if admitted is not None and _H5_PLATFORM == "win32":
+        from tools.plan1126_runtime_audit.source import ExecutingSourceMismatch  # noqa: PLC0415
+
+        try:
+            binding, result, earlier = session_measurement_reuse().measure(
+                source=source, spec=spec, entry=entry, options=options, repository_root=repository_root,
+                depth=current_audit_session()["depth"], requester=nodeid,
+            )
+        except ExecutingSourceMismatch:
+            try:
+                _h5_record_failure(admitted, "SOURCE_REFUSAL")
+            except Exception:
+                pass  # A diagnostic write must not replace the original exception.
+            raise
+        except Exception:
+            try:
+                _h5_record_failure(admitted, "ORDINARY")
+            except Exception:
+                pass
+            raise
+        _h5_capture_returned(admitted, binding, result, earlier, options, ExecutingSourceMismatch)
+    else:
+        binding, result, earlier = session_measurement_reuse().measure(
+            source=source, spec=spec, entry=entry, options=options, repository_root=repository_root,
+            depth=current_audit_session()["depth"], requester=nodeid,
+        )
     if earlier is not None:
         current_audit_session()["reused"].append({"entry": entry, "nodeid": nodeid, "from_nodeid": earlier})
     return binding, result
+
+
+def _h5_admission(nodeid: str, entry: str, options: Any, repository_root: Any) -> dict[str, Any] | None:
+    directory = os.environ.get("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY")
+    if not directory:
+        return None
+    try:
+        base = Path(directory)
+        if not base.is_absolute() or ".." in base.parts or "\x00" in directory:
+            return None
+    except (TypeError, ValueError):
+        return None
+    if (nodeid != _H5_TARGET or not os.environ.get("PYTEST_CURRENT_TEST", "").endswith(" (call)")
+            or entry != "h5.shutdown_schedule" or current_audit_session()["depth"] != "full"
+            or type(options) is not dict or options != {"repeats": 100} or type(options.get("repeats")) is not int
+            or len(_SESSIONS) != 2):
+        return None
+    try:
+        from tests.support.h5_failure_capture import CaptureStatus, validate_capture_directory  # noqa: PLC0415
+
+        context = _h5_context()
+        if (context is None or not context.head
+                or context.root.get("pid") != os.getpid() or type(context.root.get("pid")) is not int):
+            return None
+        if _H5_PLATFORM == "win32":
+            if (Path(repository_root).resolve(strict=True) != _H5_REPOSITORY_ROOT
+                    or Path(context.worktree).resolve(strict=True) != _H5_REPOSITORY_ROOT):
+                return None
+            validate_capture_directory(base)
+        elif Path(repository_root) != _H5_REPOSITORY_ROOT or Path(context.worktree) != _H5_REPOSITORY_ROOT:
+            return None
+        token = {"nodeid": nodeid, "phase": "call", "context": context, "directory": base,
+                 "state": "STARTED", "failure_kind": None, "status": None}
+        if _H5_PLATFORM == "win32":
+            token["started"] = _h5_utc_now()
+        else:
+            token["status"] = CaptureStatus("UNSUPPORTED", context.run_id, nodeid, "UNSUPPORTED_PLATFORM")
+        session = current_audit_session()
+        previous = session.get("h5_capture")
+        if isinstance(previous, dict) and previous.get("nodeid") == nodeid and previous.get("phase") == "call":
+            session.setdefault("h5_capture_previous", []).append(previous)
+        session["h5_capture"] = token
+        return token
+    except Exception:
+        return None  # No observer wrapper or output for a failed admission.
+
+
+def _h5_context():
+    """Read the real recorder context; bridge fixtures replace only this local reader."""
+    from tools.testing import run_context  # noqa: PLC0415
+    return run_context.current()
+
+
+def _h5_utc_now() -> str:
+    from datetime import UTC, datetime  # noqa: PLC0415
+    return datetime.now(UTC).isoformat()
+
+
+def _h5_record_failure(token: dict[str, Any], kind: str) -> None:
+    token["failure_kind"] = kind  # One atomic dict write, guarded by the original exception handler.
+
+
+def _h5_capture_returned(token: dict[str, Any], binding: Any, result: Any, earlier: Any, options: Any,
+                         source_refusal: type[Exception]) -> None:
+    try:
+        from tests.support.h5_failure_capture import capture_h5_measurement  # noqa: PLC0415
+
+        finished = _h5_utc_now()
+        token["state"] = "RETURNED"
+        token["status"] = capture_h5_measurement(directory=token["directory"], repository_root=_H5_REPOSITORY_ROOT,
+            context=token["context"], binding=binding, result=result, requester=token["nodeid"], earlier=earlier,
+            depth="full", options=options, request_started_utc=token["started"], request_finished_utc=finished)
+    except source_refusal:
+        raise
+    except Exception:
+        token["capture_invalid"] = True  # No dependency on the failed import/constructor for fallback.
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]):
+    report = yield
+    session = current_audit_session()
+    token = session.get("h5_capture")
+    if (not isinstance(token, dict) or token.get("nodeid") != item.nodeid
+            or token.get("phase") != "call" or call.when != "call"):
+        return report
+    try:
+        lines = []
+        for attempt in [*session.get("h5_capture_previous", []), token]:
+            kind, status = attempt["failure_kind"], attempt["status"]
+            if kind in ("SOURCE_REFUSAL", "ORDINARY"):
+                marker = "ISSUE287_H5_SOURCE_REFUSAL" if kind == "SOURCE_REFUSAL" else "ISSUE287_H5_MEASUREMENT_RAISED"
+                lines.append(marker)
+                report.sections.append(("H5 in-suite capture", marker))
+            elif attempt.get("capture_invalid"):
+                marker = "ISSUE287_H5_CAPTURE_INVALID"
+                lines.append(marker)
+                report.sections.append(("H5 in-suite capture", marker))
+                lines.append(f"ISSUE287_H5_CAPTURE_METRICS run_id={attempt['context'].run_id} requester={attempt['nodeid']} "
+                             "elapsed_ns=unknown published_files=unknown logical_bytes=unknown")
+            elif status is not None:
+                marker = "ISSUE287_H5_CAPTURE_" + status.state
+                lines.append(marker)
+                if status.state in ("INVALID", "UNSUPPORTED"):
+                    report.sections.append(("H5 in-suite capture", marker))
+                if status.state != "UNSUPPORTED":
+                    metrics = " ".join(f"{key}={getattr(status, key) if getattr(status, key) is not None else 'unknown'}"
+                                       for key in ("elapsed_ns", "published_files", "logical_bytes"))
+                    lines.append(f"ISSUE287_H5_CAPTURE_METRICS run_id={status.run_id} requester={status.requester} {metrics}")
+        session.setdefault("h5_lines", []).extend(lines)
+    except Exception:
+        pass  # Report outcome/longrepr/when and stop controls always belong to pytest.
+    finally:
+        session.pop("h5_capture", None)
+        session.pop("h5_capture_previous", None)
+    return report
 
 
 @pytest.fixture
@@ -193,6 +336,8 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter, exitstatus: int, config: pytest.Config) -> None:
     del exitstatus
+    for capture_line in current_audit_session().get("h5_lines", []):
+        terminalreporter.write_line(capture_line)
     line = config.stash.get(_SUMMARY, None)
     if line is not None:
         terminalreporter.write_sep("=", line)

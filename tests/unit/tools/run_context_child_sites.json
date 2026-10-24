@@ -14,6 +14,12 @@
   "posix_only_caller": "The launch sits inside a test that skips on Windows; it is not reachable in the Windows default selection."
  },
  "sites": {
+  "tests/unit/tools/test_test_profiles.py::_h5_native_run#1": {
+   "mechanism": "python:nested_pytest",
+   "disposition": "nested_pytest_passive",
+   "proof": "tests/unit/tools/test_test_profiles.py::test_native_h5_capture_preserves_original_failure_and_later_test",
+   "basis": "Owned temporary pytest project with exactly two generated synthetic fixture nodes and a stubbed measurement service; no H5 probe or repository test node executes. The named proof statically binds every launcher caller and dynamically checks its five-case matrix; companion test_capture_controls_never_touch_inherited_outer_base checks disabled/enabled children. The shared launcher enforces the same fixture and no-repository-run-record/pruning contract for every call. Context/root injection is passive synthetic evidence, never measured/native product acceptance. Inherited capture activation is removed and optionally replaced only with an owned child directory."
+  },
   "tests/integration/evidence/test_subprocess_truncation.py::_spawn_and_kill#1": {
    "mechanism": "python:inline_script",
    "disposition": "literal_program",
