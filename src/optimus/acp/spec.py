@@ -94,6 +94,7 @@ from optimus.mcp.client_catalog import ClientMcpOneCallApproval
 from optimus.mcp.client_config import ClientMcpConfigError
 from optimus.mcp.client_disposition import AcpMcpPermissionBroker, ClientMcpRuntime, ClientMcpSessionState
 from optimus.runtime.modes import ExecutionMode
+from optimus.tools.line_endings import WRITE_LINE_ENDINGS_MIXED
 from optimus.usage.cost_alerts import AlertPolicy, AlertTracker, CostScopeSummary
 from optimus.usage.turn_settlement import TurnCostSummary, TurnSettlement, receipt_from_maintenance
 from optimus_security.failure_facts import host_session_id
@@ -2119,6 +2120,8 @@ def _completion_message(result: AgentRunResult) -> str:
         return result.output_text  # it names the stopped TEST and any change already applied (Plan 12.3)
     if result.stop_reason == "EDIT_NOT_APPLICABLE":
         return result.output_text  # the closed code and that nothing was written (#407)
+    if result.stop_reason == WRITE_LINE_ENDINGS_MIXED:
+        return result.output_text  # the refused WRITE and the TESTs that did not run (#410)
     if result.mutation_count > 0:
         writes = [call.summary for call in result.tool_calls if call.tool_name == "write_file"]
         if writes:
@@ -2213,7 +2216,7 @@ def _stop_reason(result: AgentRunResult) -> str:
         return "cancelled"
     if result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS or result.stop_reason in TEST_STOP_REASONS.values():
         return "end_turn"
-    if result.stop_reason == "PLAN_NOT_FOUND_OR_EXPIRED":
+    if result.stop_reason in ("PLAN_NOT_FOUND_OR_EXPIRED", WRITE_LINE_ENDINGS_MIXED):
         return "end_turn"
     return "refusal"
 

@@ -115,8 +115,8 @@ def test_write_bodies_are_unchanged_and_keep_edit_and_marker_lines_as_content():
 
     directives = parse_agent_plan(plan)
 
-    assert directives.write == AgentWriteDirective(
-        path="notes.md", content="EDIT big.py\n<<<<<<< OLD\n======= NEW\n>>>>>>> END"
+    assert directives.write == AgentWriteDirective(  # #410 R2: the body keeps its own last terminator
+        path="notes.md", content="EDIT big.py\n<<<<<<< OLD\n======= NEW\n>>>>>>> END\n"
     )
     assert directives.read_paths == ("notes.md",)
 
@@ -171,8 +171,9 @@ def test_edit_lines_end_only_at_cr_or_lf_so_other_separators_stay_content(separa
     assert bound == plan.replace("EDIT a.py\n", f"EDIT a.py base_sha256={_BASE}\n", 1)
 
 
-def test_write_plans_keep_their_existing_line_split():
-    assert parse_agent_plan("WRITE a.py\na\u2028b").write.content == "a\nb"
+def test_write_bodies_keep_a_separator_as_content():
+    """#410 R1 supersedes the older split for WRITE: only LF and CRLF end a line, so U+2028 is body content."""
+    assert parse_agent_plan("WRITE a.py\na\u2028b").write.content == "a\u2028b"
 
 
 @pytest.mark.parametrize("marker", (">>>>>>> END", "======= NEW", "<<<<<<< OLD"))
@@ -186,3 +187,48 @@ def test_an_edit_that_exists_only_under_the_older_split_is_rejected():
     # Under CR/LF lines this has no EDIT block; str.splitlines would invent one from the U+2028.
     with pytest.raises(AgentDirectiveParseError):
         parse_agent_plan("READ a.py\nnote\u2028EDIT a.py\u2028<<<<<<< OLD\u2028x\u2028======= NEW\u2028y\u2028>>>>>>> END\n")
+
+
+@pytest.mark.parametrize(
+    "tail",
+    (
+        "EDIT a.py\n",  # the header with no block
+        "EDIT a.py\nTEST pytest t.py\n",  # no block, and a TEST that must not survive alone
+        "EDIT a.py base_sha256=zz\n",  # a malformed base
+        "EDIT\n",  # a header without a path
+    ),
+)
+def test_a_malformed_edit_only_the_older_split_sees_is_rejected(tail):
+    """Codex round 53: an EDIT that only str.splitlines() would see makes the plan an error even when that EDIT is
+    malformed, as on main before #410; it is never read as a READ-only plan instead."""
+    with pytest.raises(AgentDirectiveParseError):
+        parse_agent_plan(f"READ a.py\nnote\u2028{tail}")
+
+
+def test_write_bodies_stay_opaque_to_an_edit_the_older_split_sees():
+    """The same check leaves a WRITE body's EDIT text as content."""
+    directives = parse_agent_plan("WRITE notes.md\nx\u2028EDIT big.py\n")
+
+    assert directives.write == AgentWriteDirective(path="notes.md", content="x\u2028EDIT big.py\n")
+
+
+def test_an_unrelated_older_split_error_is_not_propagated():
+    """#410 R1: a separator-formed MCP line is content, so only an EDIT the older split sees is rejected."""
+    directives = parse_agent_plan("READ a.py\nnote\u2028MCP_LIST tools\n")
+
+    assert (directives.read_paths, directives.write, directives.tests) == (("a.py",), None, ())
+
+
+@pytest.mark.parametrize(
+    "plan",
+    (
+        "READ a.py\nnote\u2028EDIT ../outside.py\n",  # an invalid path: still an EDIT header
+        "READ a.py\nnote\u2028EDIT a.py\u2028<<<<<<< OLD\u2028x\u2028======= NEW\u2028y\u2028>>>>>>> END\u2028EDIT b.py\n",  # a second mutation after a hidden EDIT
+        "WRITE a.py\nx\nREAD b.py\nnote\u2028EDIT c.py\n",  # after a WRITE body has ended
+    ),
+)
+def test_any_edit_header_only_the_older_split_sees_is_rejected(plan):
+    """Codex round 54: whether or not that EDIT would parse or validate, an EDIT header that only str.splitlines()
+    sees outside a WRITE body makes the plan an error, as on main before #410."""
+    with pytest.raises(AgentDirectiveParseError):
+        parse_agent_plan(plan)

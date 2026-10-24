@@ -3,15 +3,15 @@ from __future__ import annotations
 import json
 import re
 import shlex
-from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
-_READ_DIRECTIVE = re.compile(r"^READ\s+(\S+)\s*$")
-_WRITE_DIRECTIVE = re.compile(r"^WRITE\s+(\S+)\s*$")
-_EDIT_PREFIX = re.compile(r"^EDIT(?:\s|$)")
-_EDIT_DIRECTIVE = re.compile(r"^EDIT\s+(\S+)(?:\s+base_sha256=(\S*))?\s*$")
+# #410 R1: directive syntax, EDIT's included, is separated by spaces and tabs only.
+_READ_DIRECTIVE = re.compile(r"^READ[ \t]+(\S+)[ \t]*$")
+_WRITE_DIRECTIVE = re.compile(r"^WRITE[ \t]+(\S+)[ \t]*$")
+_EDIT_PREFIX = re.compile(r"^EDIT(?:[ \t]|$)")
+_EDIT_DIRECTIVE = re.compile(r"^EDIT[ \t]+(\S+)(?:[ \t]+base_sha256=(\S*))?[ \t]*$")
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 _CR_LF = re.compile(r"\r\n|\n|\r")
 _CR_LF_LINE = re.compile(r"[^\r\n]*(?:\r\n|\n|\r)|[^\r\n]+\Z")
@@ -20,9 +20,9 @@ EDIT_OLD_MARKER = "<<<<<<< OLD"
 EDIT_NEW_MARKER = "======= NEW"
 EDIT_END_MARKER = ">>>>>>> END"
 _EDIT_MARKERS = frozenset({EDIT_OLD_MARKER, EDIT_NEW_MARKER, EDIT_END_MARKER})
-_TEST_DIRECTIVE = re.compile(r"^TEST\s+(.+)$")
-_MCP_LIST_DIRECTIVE = re.compile(r"^MCP_LIST\s+(\S+)\s*$")
-_MCP_CALL_DIRECTIVE = re.compile(r"^MCP_CALL\s+(\S+)\s+(\S+)\s+(\{.*\})\s*$")
+_TEST_DIRECTIVE = re.compile(r"^TEST[ \t]+(.+)$")
+_MCP_LIST_DIRECTIVE = re.compile(r"^MCP_LIST[ \t]+(\S+)[ \t]*$")
+_MCP_CALL_DIRECTIVE = re.compile(r"^MCP_CALL[ \t]+(\S+)[ \t]+(\S+)[ \t]+(\{.*\})[ \t]*$")
 _MCP_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _SHELL_METACHARACTERS = re.compile(r"[;|&`$<>]|&&|\|\||\$\(")
 _ABSOLUTE_PATH = re.compile(r"^[A-Za-z]:[\\/]|^/")
@@ -133,23 +133,45 @@ def parse_agent_plan(plan_text: str, *, edit_base: EditBase = "any") -> AgentPla
         formatted directives, such as more than one WRITE or EDIT directive, a malformed
         EDIT block, or a lack of any valid directives.
     """
-    # EDIT lines are exact: only CR, LF and CRLF end them, where str.splitlines also breaks on U+2028, VT, FF
-    # and others. So the exact split decides first; a plan that is not an EDIT under it keeps the split it has
-    # always had, and an EDIT that exists only under that older split is not one.
+    # EDIT lines are exact: only CR, LF and CRLF end them (#407). So the exact split decides first. Every other plan
+    # takes #410's R1 split: LF and CRLF lines that keep their terminators, so a WRITE body keeps its bytes. An EDIT
+    # that exists only under that split is not one.
     exact_error: AgentDirectiveParseError | None = None
     try:
-        exact = _parse_plan_lines(split_cr_lf(_unwrap_markdown_code_fence(plan_text, split=split_cr_lf)), edit_base=edit_base)
+        exact = _parse_plan_lines(split_cr_lf(_unwrap_markdown_code_fence(plan_text, exact=True)), edit_base=edit_base, keepends=False)
     except AgentDirectiveParseError as exc:
         exact, exact_error = None, exc
     if exact is not None and isinstance(exact.write, AgentEditDirective):
         return exact
-    legacy = _parse_plan_lines(_unwrap_markdown_code_fence(plan_text).splitlines(), edit_base=edit_base)
-    if isinstance(legacy.write, AgentEditDirective):
+    plan = _parse_plan_lines(plan_lines(_unwrap_markdown_code_fence(plan_text)), edit_base=edit_base, keepends=True)
+    if isinstance(plan.write, AgentEditDirective) or _invents_an_edit(plan_text):
         raise exact_error or AgentDirectiveParseError("malformed EDIT directive")
-    return legacy
+    return plan
 
 
-def _parse_plan_lines(lines: list[str], *, edit_base: EditBase) -> AgentPlanDirectives:
+def _invents_an_edit(plan_text: str) -> bool:
+    """#407: an EDIT header that only `str.splitlines()` sees (it also breaks on U+2028, VT, FF and others), outside
+    a WRITE body, makes the plan an error rather than one read some other way, whether or not that EDIT would parse
+    or validate (Codex rounds 53-54). WRITE bodies stay opaque, as in the parser: a body ends at the next directive
+    line, and an EDIT line is not one."""
+    lines = _unwrap_markdown_code_fence(plan_text).splitlines()
+    index = 0
+    while index < len(lines):
+        line = _normalize_directive_line(lines[index])
+        if _WRITE_DIRECTIVE.match(line) is not None:
+            index += 1
+            while index < len(lines) and not _is_directive_line(lines[index]):
+                index += 1
+            continue
+        if _EDIT_PREFIX.match(line) is not None:
+            return True
+        index += 1
+    return False
+
+
+def _parse_plan_lines(lines: list[str], *, edit_base: EditBase, keepends: bool) -> AgentPlanDirectives:
+    """`keepends`: the lines carry their own terminators (#410's R1 split), otherwise they are #407's exact EDIT
+    lines without them."""
     read_paths: list[str] = []
     tests: list[tuple[str, ...]] = []
     write: AgentWriteDirective | AgentEditDirective | None = None
@@ -183,7 +205,12 @@ def _parse_plan_lines(lines: list[str], *, edit_base: EditBase) -> AgentPlanDire
             while index < len(lines) and not _is_directive_line(lines[index]):
                 content_lines.append(lines[index])
                 index += 1
-            write = AgentWriteDirective(path=path, content="\n".join(content_lines))
+            if not keepends:  # an exact EDIT parse: a WRITE here is never returned (the plan is re-parsed)
+                write = AgentWriteDirective(path=path, content="\n".join(content_lines))
+                continue
+            if index < len(lines) and content_lines and content_lines[-1] in ("\n", "\r\n"):
+                content_lines.pop()  # #410 R2: one empty line before the next directive separates it from the body
+            write = AgentWriteDirective(path=path, content="".join(content_lines))
             continue
 
         if _EDIT_PREFIX.match(line) is not None:
@@ -289,35 +316,73 @@ def _is_directive_line(line: str) -> bool:
     )
 
 
+_DIRECTIVE_BLANKS = " \t"  # #410 R1: the only padding stripped around directive syntax
+# #410 R1: what `splitlines()` treats as a line break but a plan treats as content. A line holding one is never
+# directive syntax, wherever it sits; a CR is content unless it begins a CRLF terminator.
+_CONTENT_SEPARATORS = frozenset("\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029")
+_REPLY_PADDING = re.compile(r"\A(?:[ \t]|\r?\n)+|(?:[ \t]|\r?\n)+\Z")
+
+
+def plan_lines(text: str) -> list[str]:
+    """#410 R1: lines end at LF only and keep their terminator (a CR before it makes CRLF); every other separator
+    that `splitlines()` knows is content, so a WRITE body keeps its bytes. Every plan-line recognizer uses this."""
+    *lines, tail = text.split("\n")
+    return [line + "\n" for line in lines] + ([tail] if tail else [])
+
+
+def plan_line_text(line: str) -> str:
+    """A plan line without its own LF or CRLF terminator, and without spaces or tabs around it."""
+    text = line[:-2] if line.endswith("\r\n") else line.removesuffix("\n")
+    return text.strip(_DIRECTIVE_BLANKS)
+
+
+def directive_text(line: str) -> str:
+    """The text directive syntax is matched against: empty, so never a directive, when it holds a content separator."""
+    text = plan_line_text(line)
+    return "" if _CONTENT_SEPARATORS.intersection(text) else text
+
+
+def strip_plan_text(text: str) -> str:
+    """A reply without leading or trailing spaces, tabs and LF/CRLF breaks; a content separator there survives."""
+    return _REPLY_PADDING.sub("", text)
+
+
 def split_cr_lf(text: str) -> list[str]:
-    """``str.splitlines()`` without its extra boundaries: only CRLF, LF and CR end a line."""
+    """``str.splitlines()`` without its extra boundaries: only CRLF, LF and CR end a line (#407's EDIT lines)."""
     lines = _CR_LF.split(text)
     if lines[-1] == "":
         lines.pop()
     return lines
 
 
-def _unwrap_markdown_code_fence(plan_text: str, *, split: Callable[[str], list[str]] = str.splitlines) -> str:
-    stripped = plan_text.strip()
+def split_cr_lf_keepends(text: str) -> list[str]:
+    """#407's EDIT lines (CRLF, LF or CR ends one), each with its own terminator."""
+    return _CR_LF_LINE.findall(text)
+
+
+def _unwrap_markdown_code_fence(plan_text: str, *, exact: bool = False) -> str:
+    """The fenced plan's inner text. `exact` uses #407's EDIT split (CRLF, LF and CR; the inner lines rejoined with
+    LF); otherwise #410's R1 split, whose lines keep their own terminators."""
+    stripped = plan_text.strip() if exact else strip_plan_text(plan_text)
     if not stripped.startswith("```"):
         return plan_text
-    lines = split(stripped)
+    lines = split_cr_lf(stripped) if exact else plan_lines(stripped)
     if len(lines) < 2:
         return plan_text
     closing_index = len(lines) - 1
-    while closing_index > 0 and not lines[closing_index].strip().startswith("```"):
+    while closing_index > 0 and not (lines[closing_index].strip() if exact else plan_line_text(lines[closing_index])).startswith("```"):
         closing_index -= 1
     if closing_index == 0:
         return plan_text
-    return "\n".join(lines[1:closing_index])
+    return "\n".join(lines[1:closing_index]) if exact else "".join(lines[1:closing_index])
 
 
 def _normalize_directive_line(line: str) -> str:
-    normalized = line.strip()
+    normalized = directive_text(line)
     while True:
         for prefix in ("- ", "* ", "+ "):
             if normalized.startswith(prefix):
-                normalized = normalized[len(prefix) :].lstrip()
+                normalized = normalized[len(prefix) :].lstrip(_DIRECTIVE_BLANKS)
                 break
         else:
             return normalized

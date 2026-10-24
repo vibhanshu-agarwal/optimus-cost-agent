@@ -295,6 +295,7 @@ def test_pack_planning_evidence_serializes_observations_and_current_reads_in_ord
             end_byte=5,
             source_sha256="hash-c",
             range_text="hello",
+            line_endings="none",
         ),
     )
 
@@ -399,6 +400,7 @@ def test_observations_from_read_evidence_preserves_per_file_hashes():
             end_byte=128,
             source_sha256="b" * 64,
             range_text="beta",
+            line_endings="none",
         ),
         PlanningReadEvidence(
             path="src/a.py",
@@ -406,6 +408,7 @@ def test_observations_from_read_evidence_preserves_per_file_hashes():
             end_byte=256,
             source_sha256="c" * 64,
             range_text="alpha",
+            line_endings="none",
         ),
     )
 
@@ -448,6 +451,7 @@ def test_pack_planning_evidence_rejects_current_read_budget_overflow():
             end_byte=len(oversized.encode("utf-8")),
             source_sha256="hash-a",
             range_text=oversized,
+            line_endings="none",
         ),
     )
 
@@ -505,10 +509,10 @@ def test_planning_read_telemetry_fields_sorts_once_from_evidence():
     """The helper derives all three tuples from one canonical sort, not three independent sorts."""
     evidence = (
         PlanningReadEvidence(
-            path="zeta.py", start_byte=0, end_byte=3, source_sha256="z" * 64, range_text="ZZZ"
+            path="zeta.py", start_byte=0, end_byte=3, source_sha256="z" * 64, range_text="ZZZ", line_endings="none"
         ),
         PlanningReadEvidence(
-            path="alpha.py", start_byte=2, end_byte=9, source_sha256="a" * 64, range_text="AAAAA"
+            path="alpha.py", start_byte=2, end_byte=9, source_sha256="a" * 64, range_text="AAAAA", line_endings="none"
         ),
     )
     identities, sha256s, byte_counts = planning_read_telemetry_fields(evidence)

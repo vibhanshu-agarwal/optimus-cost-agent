@@ -16,10 +16,14 @@ from optimus.agent.directives import (
     EDIT_OLD_MARKER,
     AgentDirectiveParseError,
     AgentPlanDirectives,
+    directive_text,
     parse_agent_plan,
     parse_mcp_call_line,
     parse_mcp_list_line,
-    split_cr_lf,
+    plan_line_text,
+    plan_lines,
+    split_cr_lf_keepends,
+    strip_plan_text,
 )
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
 from optimus.agent.operation_control import TurnOperationControl
@@ -53,6 +57,7 @@ from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import RuntimeContext
 from optimus.telemetry.events import TelemetryEvent
 from optimus.telemetry.subjects import sanitize_workspace_text
+from optimus.tools.line_endings import LineEndingStyle
 from optimus_security.failure_facts import bounded
 
 if TYPE_CHECKING:
@@ -74,7 +79,7 @@ _PLACEHOLDER_SOURCE_SHA256 = "0" * 64
 _OBSERVE_DIRECTIVE = re.compile(r"^OBSERVE:\s*(.*)$", re.DOTALL)
 _READ_RANGE_DIRECTIVE = re.compile(r"^READ:\s+(\S+)#bytes=(\d+):(\d+)\s*$")
 _REFUSE_DIRECTIVE = re.compile(r"^REFUSE:\s*(.+)$")
-_WRITE_DIRECTIVE = re.compile(r"^WRITE\s+(\S+)\s*$")
+_WRITE_DIRECTIVE = re.compile(r"^WRITE[ \t]+(\S+)[ \t]*$")  # #410 R1: spaces and tabs only
 _DIRECTIVE_PREFIXES = ("OBSERVE:", "READ:", "WRITE", "TEST", "REFUSE:", "PLAN:", "MCP_LIST", "MCP_CALL")
 _REFUSE_REASON_DIRECTIVE_PREFIX = re.compile(
     r"^(?:OBSERVE:|READ:|WRITE(?:\s|$)|TEST\s|PLAN:|CONTENT:|END_CONTENT|MCP_LIST\s|MCP_CALL\s)"
@@ -227,6 +232,7 @@ class PlanningReadEvidence(BaseModel):
     end_byte: int = Field(ge=1)
     source_sha256: str = Field(min_length=1)
     range_text: str
+    line_endings: LineEndingStyle  # the whole file's, from the hashed snapshot (#410)
 
 
 class PlanningEvidenceEnvelope(BaseModel):
@@ -528,7 +534,8 @@ def _serialize_planning_read_evidence(evidence: PlanningReadEvidence) -> str:
         "READ_BLOCK "
         f"path={evidence.path} "
         f"bytes={evidence.start_byte}:{evidence.end_byte} "
-        f"sha256={evidence.source_sha256}\n"
+        f"sha256={evidence.source_sha256} "
+        f"eol={evidence.line_endings}\n"
         f"{evidence.range_text}\n"
         "END_READ_BLOCK\n"
     )
@@ -543,12 +550,12 @@ def _resolve_workspace_file(*, workspace_root: Path, relative_path: str) -> Path
 
 
 _RANGED_READ_LINE = re.compile(r"^READ:\s+\S+#bytes=\d+:\d+\s*$")
-_FINAL_READ_DIRECTIVE = re.compile(r"^READ\s+(\S+)\s*$")
-_FINAL_TEST_DIRECTIVE = re.compile(r"^TEST\s+(.+)$")
+_FINAL_READ_DIRECTIVE = re.compile(r"^READ[ \t]+(\S+)[ \t]*$")  # #410 R1: spaces and tabs only
+_FINAL_TEST_DIRECTIVE = re.compile(r"^TEST[ \t]+(.+)$")
 
 
 def parse_planning_turn(text: str) -> PlanningTurnDecision:
-    stripped = text.strip()
+    stripped = strip_plan_text(text)  # #410 R1: a content separator at either end survives classification
     if not stripped:
         raise PlanningTurnParseError("GRAMMAR_UNRECOGNIZED", "no recognized planning-turn grammar")
 
@@ -577,12 +584,14 @@ def parse_planning_turn(text: str) -> PlanningTurnDecision:
 
 
 def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
-    lines = [line.strip() for line in _outside_edit_blocks(text) if line.strip()]
+    lines = [stripped for line in _outside_edit_blocks(text) if (stripped := plan_line_text(line))]  # #407; #410 R1
     if not lines:
         return None
-    if not (lines[0].startswith("MCP_LIST") or lines[0].startswith("MCP_CALL")):
+    # #410 R1: classify by directive text, so a line holding a content separator never counts as MCP.
+    heads = [directive_text(line) for line in lines]
+    if not (heads[0].startswith("MCP_LIST") or heads[0].startswith("MCP_CALL")):
         # If MCP appears mixed later with other content, reject below when surface has MCP.
-        if any(line.startswith("MCP_LIST") or line.startswith("MCP_CALL") for line in lines):
+        if any(head.startswith("MCP_LIST") or head.startswith("MCP_CALL") for head in heads):
             raise PlanningTurnParseError(
                 "MCP_MIXED_DIRECTIVES", "MCP directives must be a single intermediate tool request"
             )
@@ -623,22 +632,25 @@ def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
 
 def _outside_edit_blocks(text: str) -> list[str]:
     """The lines outside EDIT blocks: OLD/NEW bodies are opaque content, never directives (#407). Blocks end
-    at CR/LF lines, as the plan parser's do; the lines outside keep their ``str.splitlines`` granularity."""
+    at CR/LF lines, as the plan parser's do; the text outside them takes #410's R1 split (LF and CRLF lines that
+    keep their terminators), like the final-plan parser's."""
     outside: list[str] = []
+    pending = ""
     inside = False
-    for line in split_cr_lf(text):
+    for line in split_cr_lf_keepends(text):
         marker = line.strip()
         if inside:
             inside = marker != EDIT_END_MARKER
         elif marker == EDIT_OLD_MARKER:
-            inside = True
+            outside += plan_lines(pending)
+            pending, inside = "", True
         else:
-            outside.extend(line.splitlines() or [line])
-    return outside
+            pending += line
+    return outside + plan_lines(pending)
 
 
 def _directive_surface_lines(text: str) -> tuple[str, ...]:
-    lines = _outside_edit_blocks(text)
+    lines = _outside_edit_blocks(text)  # #407: EDIT blocks are opaque; #410 R1: LF and CRLF lines elsewhere
     surface_lines: list[str] = []
     index = 0
     while index < len(lines):
@@ -649,7 +661,7 @@ def _directive_surface_lines(text: str) -> tuple[str, ...]:
             while index < len(lines) and not _is_final_directive_line(lines[index]):
                 index += 1
             continue
-        stripped = line.strip()
+        stripped = plan_line_text(line)
         if stripped:
             surface_lines.append(stripped)
         index += 1
@@ -657,11 +669,11 @@ def _directive_surface_lines(text: str) -> tuple[str, ...]:
 
 
 def _normalize_directive_surface_line(line: str) -> str:
-    normalized = line.strip()
+    normalized = directive_text(line)  # #410 R1: a line holding a content separator is never directive syntax
     while True:
         for prefix in _BULLET_PREFIXES:
             if normalized.startswith(prefix):
-                normalized = normalized[len(prefix) :].lstrip()
+                normalized = normalized[len(prefix) :].lstrip(" \t")
                 break
         else:
             return normalized

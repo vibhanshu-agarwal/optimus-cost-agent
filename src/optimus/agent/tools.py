@@ -14,7 +14,8 @@ from optimus.runtime.modes import GenerationScope
 from optimus.runtime.mutation import MutationForbidden
 from optimus.runtime.state import RuntimeContext
 from optimus.tools.mutation_tools import WriteSourceChanged, shell_exec
-from optimus.tools.mutation_tools import write_file as guarded_write_file
+from optimus.tools.mutation_tools import write_file as exact_write_file
+from optimus.tools.mutation_tools import write_file_keeping_line_endings as guarded_write_file  # #410: a WRITE
 
 
 class AgentToolbox:
@@ -105,19 +106,32 @@ class AgentToolbox:
         expected_sha256: str | None = None,
     ) -> AgentToolCall:
         """Write one file after the guard allows it, judging ``requested`` beside the resolved target (Plan 12.2 W).
-        ``newline`` and ``expected_sha256`` pass through to the guarded write (an EDIT, #407)."""
+
+        A WRITE body (no ``expected_sha256``) takes the file's line endings, final newline and BOM (#410). An EDIT's
+        computed content is written exactly, with ``newline`` and ``expected_sha256`` passed through (#407)."""
         resolved = resolve_target(Path(path))
+        destination = path if resolved is None else resolved
         try:
-            guarded_write_file(
-                path if resolved is None else resolved,
-                content,
-                context=self._context,
-                guard=self._guard,
-                requested_relative_path=requested,
-                target_unresolved=resolved is None,
-                newline=newline,
-                expected_sha256=expected_sha256,
-            )
+            if expected_sha256 is None:
+                guarded_write_file(
+                    destination,
+                    content,
+                    context=self._context,
+                    guard=self._guard,
+                    requested_relative_path=requested,
+                    target_unresolved=resolved is None,
+                )
+            else:
+                exact_write_file(
+                    destination,
+                    content,
+                    context=self._context,
+                    guard=self._guard,
+                    requested_relative_path=requested,
+                    target_unresolved=resolved is None,
+                    newline=newline,
+                    expected_sha256=expected_sha256,
+                )
         except WriteSourceChanged:
             raise
         except MutationForbidden as exc:

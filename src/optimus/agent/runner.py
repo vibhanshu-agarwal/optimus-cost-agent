@@ -51,7 +51,8 @@ from optimus.runtime.process_tree import CommandStopped
 from optimus.runtime.state import AgentState, AwaitingApproval, RuntimeContext, StateTransition, TransitionValidator
 from optimus.skills.registry import SkillRegistry
 from optimus.telemetry.events import TelemetryEvent
-from optimus.tools.mutation_tools import DEFAULT_TEST_DEADLINE_SECONDS, WriteSourceChanged
+from optimus.tools.line_endings import WRITE_LINE_ENDINGS_MIXED
+from optimus.tools.mutation_tools import DEFAULT_TEST_DEADLINE_SECONDS, WriteRefused, WriteSourceChanged
 from optimus.usage.accounting import UsageAccountingService
 from optimus.usage.turn_settlement import StageReceipt
 
@@ -169,6 +170,7 @@ class _DirectiveGate:
         self.run_id = run_id
         self.halted = False
         self.stopped: CommandStopped | None = None  # a TEST that timed out, was not contained or would not stop
+        self.refused: WriteRefused | None = None  # a WRITE refused before any effect (#410)
         self.edit_failure: str | None = None  # an EDIT that could not be applied: nothing written, TESTs suppressed
 
     def halt_requested(self) -> bool:
@@ -202,8 +204,8 @@ def _failure_terminal(exc: BaseException) -> str:
     # Only a typed guard denial proves an effectful producer never ran: MutationForbidden is raised
     # before any write or subprocess (the toolbox re-raises it as PermissionError, keeping it as the
     # cause). Any other failure after the lease may already have had an effect.
-    if isinstance(exc, MutationForbidden) or isinstance(exc.__cause__, MutationForbidden):
-        return "failed_no_effect"
+    if isinstance(exc, (MutationForbidden, WriteRefused)) or isinstance(exc.__cause__, MutationForbidden):
+        return "failed_no_effect"  # WriteRefused is raised before the write (#410)
     return "failed_effect_unknown"
 
 
@@ -867,6 +869,11 @@ class AgentRunner:
         write_calls = self._execute_write_directives(output_text, workspace_root=request.workspace_root, toolbox=toolbox, gate=gate)
         tool_calls.extend(write_calls)
         mutation_count = sum(1 for call in write_calls if call.tool_name == "write_file")
+        if gate.refused is not None:
+            return self._write_refused_result(
+                request=request, refused=gate.refused, tool_calls=tool_calls, total_cost_usd=total_cost_usd, plan_hash=plan_hash,
+                cost_complete=cost_complete, unknown_cost_attempt_count=unknown_cost_attempt_count,
+            )  # fmt: skip
         if not gate.halted:
             try:
                 tool_calls.extend(self._execute_test_directives(output_text, toolbox=toolbox, gate=gate))
@@ -1185,6 +1192,10 @@ class AgentRunner:
         )
         tool_calls.extend(write_calls)
         mutation_count = sum(1 for call in write_calls if call.tool_name == "write_file")
+        if gate.refused is not None:
+            return self._write_refused_result(
+                request=request, refused=gate.refused, tool_calls=tool_calls, total_cost_usd=record.cost_usd, plan_hash=record.plan_hash
+            )
         if not gate.halted:
             try:
                 tool_calls.extend(self._execute_test_directives(record.plan_text, toolbox=approved_toolbox, gate=gate))
@@ -1256,6 +1267,32 @@ class AgentRunner:
             mutation_count=mutation_count,
             plan_hash=plan_hash,
             stop_reason=TEST_STOP_REASONS[stop.outcome],
+        )
+
+    def _write_refused_result(
+        self,
+        *,
+        request: AgentRunRequest,
+        refused: WriteRefused,
+        tool_calls: list[AgentToolCall],
+        total_cost_usd: Decimal,
+        plan_hash: str | None,
+        **cost: Any,
+    ) -> AgentRunResult:
+        """A WRITE refused before any effect ends the plan before its TESTs (#410, design v3 R7). The text speaks only
+        for this WRITE and the TESTs after it: an earlier planning turn's MCP effect stays as it was."""
+        reason = {WRITE_LINE_ENDINGS_MIXED: "has mixed line endings, which Optimus does not rewrite."}[refused.code]
+        return self._build_result(
+            request=request,
+            status=AgentRunStatus.FAILED,
+            final_state="FAILED",
+            output_text=f"{Path(refused.path).as_posix()} {reason} This WRITE did not change the file. "
+            "No subsequent TEST directives from this plan ran.",
+            tool_calls=tuple(tool_calls),
+            total_cost_usd=total_cost_usd,
+            plan_hash=plan_hash,
+            stop_reason=refused.code,
+            **cost,
         )
 
     def _missing_plan_result(self, request: AgentRunRequest) -> AgentRunResult:
@@ -1415,9 +1452,16 @@ class AgentRunner:
                 return calls
             calls.append(read[1])
         write_id = gate.operation_id("write", 0)
-        started, write_call = _run_gated(
-            gate, DirectiveKind.WRITE, write_id, partial(toolbox.write_file, target, content, requested=relative_path), effectful=True
-        )
+        try:
+            started, write_call = _run_gated(
+                gate, DirectiveKind.WRITE, write_id, partial(toolbox.write_file, target, content, requested=relative_path), effectful=True
+            )
+        except WriteRefused as refused:
+            # #410 R7: terminal for the plan, before any TEST; the registered TESTs are suppressed.
+            gate.refused = refused
+            for ordinal in range(len(directives.tests)):
+                gate.complete(DirectiveKind.TEST, gate.operation_id("test", ordinal), "suppressed")
+            return calls
         if started:
             calls.append(write_call)
         return calls
