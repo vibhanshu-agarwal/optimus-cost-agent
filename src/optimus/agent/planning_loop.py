@@ -14,11 +14,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from optimus.agent.directives import (
     AgentDirectiveParseError,
     AgentPlanDirectives,
+    directive_text,
     parse_agent_plan,
     parse_mcp_call_line,
     parse_mcp_list_line,
     plan_line_text,
     plan_lines,
+    strip_plan_text,
 )
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
 from optimus.agent.operation_control import TurnOperationControl
@@ -74,7 +76,7 @@ _PLACEHOLDER_SOURCE_SHA256 = "0" * 64
 _OBSERVE_DIRECTIVE = re.compile(r"^OBSERVE:\s*(.*)$", re.DOTALL)
 _READ_RANGE_DIRECTIVE = re.compile(r"^READ:\s+(\S+)#bytes=(\d+):(\d+)\s*$")
 _REFUSE_DIRECTIVE = re.compile(r"^REFUSE:\s*(.+)$")
-_WRITE_DIRECTIVE = re.compile(r"^WRITE\s+(\S+)\s*$")
+_WRITE_DIRECTIVE = re.compile(r"^WRITE[ \t]+(\S+)[ \t]*$")  # #410 R1: spaces and tabs only
 _DIRECTIVE_PREFIXES = ("OBSERVE:", "READ:", "WRITE", "TEST", "REFUSE:", "PLAN:", "MCP_LIST", "MCP_CALL")
 _REFUSE_REASON_DIRECTIVE_PREFIX = re.compile(
     r"^(?:OBSERVE:|READ:|WRITE(?:\s|$)|TEST\s|PLAN:|CONTENT:|END_CONTENT|MCP_LIST\s|MCP_CALL\s)"
@@ -543,12 +545,12 @@ def _resolve_workspace_file(*, workspace_root: Path, relative_path: str) -> Path
 
 
 _RANGED_READ_LINE = re.compile(r"^READ:\s+\S+#bytes=\d+:\d+\s*$")
-_FINAL_READ_DIRECTIVE = re.compile(r"^READ\s+(\S+)\s*$")
-_FINAL_TEST_DIRECTIVE = re.compile(r"^TEST\s+(.+)$")
+_FINAL_READ_DIRECTIVE = re.compile(r"^READ[ \t]+(\S+)[ \t]*$")  # #410 R1: spaces and tabs only
+_FINAL_TEST_DIRECTIVE = re.compile(r"^TEST[ \t]+(.+)$")
 
 
 def parse_planning_turn(text: str) -> PlanningTurnDecision:
-    stripped = text.strip()
+    stripped = strip_plan_text(text)  # #410 R1: a content separator at either end survives classification
     if not stripped:
         raise PlanningTurnParseError("GRAMMAR_UNRECOGNIZED", "no recognized planning-turn grammar")
 
@@ -580,9 +582,11 @@ def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
     lines = [stripped for line in plan_lines(text) if (stripped := plan_line_text(line))]  # #410 R1
     if not lines:
         return None
-    if not (lines[0].startswith("MCP_LIST") or lines[0].startswith("MCP_CALL")):
+    # #410 R1: classify by directive text, so a line holding a content separator never counts as MCP.
+    heads = [directive_text(line) for line in lines]
+    if not (heads[0].startswith("MCP_LIST") or heads[0].startswith("MCP_CALL")):
         # If MCP appears mixed later with other content, reject below when surface has MCP.
-        if any(line.startswith("MCP_LIST") or line.startswith("MCP_CALL") for line in lines):
+        if any(head.startswith("MCP_LIST") or head.startswith("MCP_CALL") for head in heads):
             raise PlanningTurnParseError(
                 "MCP_MIXED_DIRECTIVES", "MCP directives must be a single intermediate tool request"
             )
@@ -641,7 +645,7 @@ def _directive_surface_lines(text: str) -> tuple[str, ...]:
 
 
 def _normalize_directive_surface_line(line: str) -> str:
-    normalized = plan_line_text(line)  # #410 R1: never strips a content separator into directive syntax
+    normalized = directive_text(line)  # #410 R1: a line holding a content separator is never directive syntax
     while True:
         for prefix in _BULLET_PREFIXES:
             if normalized.startswith(prefix):

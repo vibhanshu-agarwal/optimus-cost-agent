@@ -6,11 +6,12 @@ import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
-_READ_DIRECTIVE = re.compile(r"^READ\s+(\S+)\s*$")
-_WRITE_DIRECTIVE = re.compile(r"^WRITE\s+(\S+)\s*$")
-_TEST_DIRECTIVE = re.compile(r"^TEST\s+(.+)$")
-_MCP_LIST_DIRECTIVE = re.compile(r"^MCP_LIST\s+(\S+)\s*$")
-_MCP_CALL_DIRECTIVE = re.compile(r"^MCP_CALL\s+(\S+)\s+(\S+)\s+(\{.*\})\s*$")
+# #410 R1: directive syntax is separated by spaces and tabs only.
+_READ_DIRECTIVE = re.compile(r"^READ[ \t]+(\S+)[ \t]*$")
+_WRITE_DIRECTIVE = re.compile(r"^WRITE[ \t]+(\S+)[ \t]*$")
+_TEST_DIRECTIVE = re.compile(r"^TEST[ \t]+(.+)$")
+_MCP_LIST_DIRECTIVE = re.compile(r"^MCP_LIST[ \t]+(\S+)[ \t]*$")
+_MCP_CALL_DIRECTIVE = re.compile(r"^MCP_CALL[ \t]+(\S+)[ \t]+(\S+)[ \t]+(\{.*\})[ \t]*$")
 _MCP_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _SHELL_METACHARACTERS = re.compile(r"[;|&`$<>]|&&|\|\||\$\(")
 _ABSOLUTE_PATH = re.compile(r"^[A-Za-z]:[\\/]|^/")
@@ -164,6 +165,10 @@ def _is_directive_line(line: str) -> bool:
 
 
 _DIRECTIVE_BLANKS = " \t"  # #410 R1: the only padding stripped around directive syntax
+# #410 R1: what `splitlines()` treats as a line break but a plan treats as content. A line holding one is never
+# directive syntax, wherever it sits; a CR is content unless it begins a CRLF terminator.
+_CONTENT_SEPARATORS = frozenset("\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029")
+_REPLY_PADDING = re.compile(r"\A(?:[ \t]|\r?\n)+|(?:[ \t]|\r?\n)+\Z")
 
 
 def plan_lines(text: str) -> list[str]:
@@ -174,12 +179,24 @@ def plan_lines(text: str) -> list[str]:
 
 
 def plan_line_text(line: str) -> str:
-    """A plan line without its own terminator, and without spaces or tabs around it."""
-    return line.removesuffix("\n").removesuffix("\r").strip(_DIRECTIVE_BLANKS)
+    """A plan line without its own LF or CRLF terminator, and without spaces or tabs around it."""
+    text = line[:-2] if line.endswith("\r\n") else line.removesuffix("\n")
+    return text.strip(_DIRECTIVE_BLANKS)
+
+
+def directive_text(line: str) -> str:
+    """The text directive syntax is matched against: empty, so never a directive, when it holds a content separator."""
+    text = plan_line_text(line)
+    return "" if _CONTENT_SEPARATORS.intersection(text) else text
+
+
+def strip_plan_text(text: str) -> str:
+    """A reply without leading or trailing spaces, tabs and LF/CRLF breaks; a content separator there survives."""
+    return _REPLY_PADDING.sub("", text)
 
 
 def _unwrap_markdown_code_fence(plan_text: str) -> str:
-    stripped = plan_text.strip()
+    stripped = strip_plan_text(plan_text)
     if not stripped.startswith("```"):
         return plan_text
     lines = plan_lines(stripped)
@@ -194,7 +211,7 @@ def _unwrap_markdown_code_fence(plan_text: str) -> str:
 
 
 def _normalize_directive_line(line: str) -> str:
-    normalized = plan_line_text(line)
+    normalized = directive_text(line)
     while True:
         for prefix in ("- ", "* ", "+ "):
             if normalized.startswith(prefix):
