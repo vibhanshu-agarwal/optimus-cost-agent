@@ -4,7 +4,7 @@ import contextlib
 import hashlib
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -12,7 +12,8 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from optimus.agent.directives import AgentDirectiveParseError, parse_agent_plan
+from optimus.agent.directives import AgentDirectiveParseError, AgentEditDirective, bind_edit_base, parse_agent_plan
+from optimus.agent.edits import EditNotApplicable, apply_edit_blocks, edit_failure_text
 from optimus.agent.models import TEST_STOP_REASONS, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall, ContextPacker
 from optimus.agent.operation_control import TurnOperationControl
 from optimus.agent.prompts import build_agent_planner_input
@@ -50,7 +51,7 @@ from optimus.runtime.process_tree import CommandStopped
 from optimus.runtime.state import AgentState, AwaitingApproval, RuntimeContext, StateTransition, TransitionValidator
 from optimus.skills.registry import SkillRegistry
 from optimus.telemetry.events import TelemetryEvent
-from optimus.tools.mutation_tools import DEFAULT_TEST_DEADLINE_SECONDS
+from optimus.tools.mutation_tools import DEFAULT_TEST_DEADLINE_SECONDS, WriteSourceChanged
 from optimus.usage.accounting import UsageAccountingService
 from optimus.usage.turn_settlement import StageReceipt
 
@@ -165,8 +166,10 @@ class _DirectiveGate:
     def __init__(self, control: TurnOperationControl | None, *, run_id: str, phase: str) -> None:
         self._control = control
         self._prefix = f"{run_id}:{phase}"
+        self.run_id = run_id
         self.halted = False
         self.stopped: CommandStopped | None = None  # a TEST that timed out, was not contained or would not stop
+        self.edit_failure: str | None = None  # an EDIT that could not be applied: nothing written, TESTs suppressed
 
     def halt_requested(self) -> bool:
         return self._control is not None and self._control.halt_requested()
@@ -479,6 +482,7 @@ class AgentRunner:
                     request.workspace_root,
                     workspace_context.prioritized_paths,
                 ),
+                initial_workspace_sha256s=dict(workspace_context.file_sha256s),
                 progress_observer=planning_progress_observer,
                 client_mcp_service=client_mcp_service,
                 mcp_permission_broker=mcp_permission_broker,
@@ -587,6 +591,7 @@ class AgentRunner:
         initial_workspace_context: str = "",
         initial_workspace_file_sizes: dict[str, int] | None = None,
         required_file_sizes: dict[str, int] | None = None,
+        initial_workspace_sha256s: dict[str, str] | None = None,
         progress_observer: PlanningProgressObserver | None = None,
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
@@ -647,6 +652,7 @@ class AgentRunner:
             initial_workspace_context=initial_workspace_context,
             initial_workspace_file_sizes=initial_workspace_file_sizes,
             required_file_sizes=required_file_sizes,
+            initial_workspace_sha256s=initial_workspace_sha256s,
             # Only an attached turn's planner renders history in its own section; every other
             # caller keeps its existing input (design spec 7; Fable CP3 review MINOR-8).
             conversation_envelope=request.conversation_envelope if request.selection_text is not None else "",
@@ -689,6 +695,7 @@ class AgentRunner:
             unknown_cost_attempt_count=planning_result.unknown_cost_attempt_count,
             candidate_plan_text=planning_result.plan_text,
             operation_control=operation_control,
+            edit_evidence_sha256s=planning_result.evidence_sha256s,
         )
 
     def _finish_agent_planning(
@@ -708,10 +715,11 @@ class AgentRunner:
         unknown_cost_attempt_count: int = 0,
         candidate_plan_text: str | None = None,
         operation_control: TurnOperationControl | None = None,
+        edit_evidence_sha256s: Mapping[str, str] | None = None,
     ) -> AgentRunResult:
         if request.execution_mode is ExecutionMode.AGENT:
             try:
-                parse_agent_plan(output_text)
+                directives = parse_agent_plan(output_text, edit_base="forbidden")
             except AgentDirectiveParseError:
                 return self._build_result(
                     request=request,
@@ -725,6 +733,24 @@ class AgentRunner:
                     unknown_cost_attempt_count=unknown_cost_attempt_count,
                     candidate_plan_text=None,
                 )
+            if isinstance(directives.write, AgentEditDirective):
+                # Bound before the plan is hashed, so approval, the stored record and replay all carry the base.
+                try:
+                    output_text = _bind_edit(output_text, directives.write, request.workspace_root, edit_evidence_sha256s or {})
+                except EditNotApplicable as failure:
+                    _log_edit(request.run_id, directives.write.path, failure.code, base_sha256=None)
+                    return self._edit_failure_result(
+                        request=request,
+                        code=failure.code,
+                        path=directives.write.path,
+                        tool_calls=tool_calls,
+                        total_cost_usd=total_cost_usd,
+                        plan_hash=None,
+                        cost_complete=cost_complete,
+                        unknown_cost_attempt_count=unknown_cost_attempt_count,
+                    )
+                if candidate_plan_text is not None:
+                    candidate_plan_text = output_text
         plan_hash = hashlib.sha256(output_text.encode("utf-8")).hexdigest()
         created_at_ms = self._clock_ms()
         if candidate_plan_text is None and request.execution_mode is ExecutionMode.AGENT:
@@ -856,6 +882,17 @@ class AgentRunner:
                 plan_text=output_text,
                 tool_calls=tool_calls,
                 mutation_count=mutation_count,
+                total_cost_usd=total_cost_usd,
+                plan_hash=plan_hash,
+                cost_complete=cost_complete,
+                unknown_cost_attempt_count=unknown_cost_attempt_count,
+            )
+        if gate.edit_failure is not None:
+            return self._edit_failure_result(
+                request=request,
+                code=gate.edit_failure,
+                path=_edit_path(output_text),
+                tool_calls=tool_calls,
                 total_cost_usd=total_cost_usd,
                 plan_hash=plan_hash,
                 cost_complete=cost_complete,
@@ -1166,6 +1203,15 @@ class AgentRunner:
                 total_cost_usd=record.cost_usd,
                 plan_hash=record.plan_hash,
             )
+        if gate.edit_failure is not None:
+            return self._edit_failure_result(
+                request=request,
+                code=gate.edit_failure,
+                path=_edit_path(record.plan_text),
+                tool_calls=tool_calls,
+                total_cost_usd=record.cost_usd,
+                plan_hash=record.plan_hash,
+            )
         write_failure = self._write_execution_failure_if_needed(
             request=request,
             plan_text=record.plan_text,
@@ -1308,6 +1354,9 @@ class AgentRunner:
             directives = parse_agent_plan(plan_text)
         except AgentDirectiveParseError:
             return []
+        # A READ of the EDIT's own target (as a path, so ./a.py is a.py) leaves a decode failure to the EDIT,
+        # which reports it typed (#407).
+        edit_target = workspace_root / directives.write.path if isinstance(directives.write, AgentEditDirective) else None
         calls: list[AgentToolCall] = []
         for ordinal, relative_path in enumerate(directives.read_paths):
             if not self._is_safe_relative_path(relative_path):
@@ -1322,6 +1371,10 @@ class AgentRunner:
                     gate, kind, operation_id, partial(toolbox.read_file, target, requested=relative_path), effectful=False
                 )
             except OSError:
+                continue
+            except UnicodeDecodeError:
+                if edit_target is None or target != edit_target:
+                    raise
                 continue
             if not started:
                 break
@@ -1345,10 +1398,12 @@ class AgentRunner:
         if directives.write is None:
             return []
         relative_path = directives.write.path
-        content = directives.write.content
         if not self._is_safe_relative_path(relative_path):
             return []
         target = workspace_root / relative_path
+        if isinstance(directives.write, AgentEditDirective):
+            return self._execute_edit_directive(directives.write, target=target, toolbox=toolbox, gate=gate)
+        content = directives.write.content
         calls: list[AgentToolCall] = []
         if target.exists():
             read_id = gate.operation_id("read-before-write", 0)
@@ -1367,6 +1422,74 @@ class AgentRunner:
             calls.append(write_call)
         return calls
 
+    def _execute_edit_directive(
+        self,
+        edit: AgentEditDirective,
+        *,
+        target: Path,
+        toolbox: AgentToolbox,
+        gate: _DirectiveGate,
+    ) -> list[AgentToolCall]:
+        """Apply an approved, bound EDIT (#407): a raw gated read, the blocks applied to it, then one raw gated
+        write that re-checks the base after the guard. Any applicability failure writes nothing."""
+        from optimus.acp.lifecycle import DirectiveKind
+
+        write_id = gate.operation_id("write", 0)
+        calls: list[AgentToolCall] = []
+
+        def not_applicable(code: str) -> list[AgentToolCall]:
+            gate.edit_failure = code
+            gate.complete(DirectiveKind.WRITE, write_id, "suppressed")
+            _log_edit(gate.run_id, edit.path, code, base_sha256=edit.base_sha256)
+            return calls
+
+        if edit.base_sha256 is None:  # replay accepts only a bound EDIT and never binds one itself
+            return not_applicable("EDIT_SOURCE_UNSEEN")
+        if not target.is_file():
+            return not_applicable("EDIT_TARGET_MISSING")
+        read_id = gate.operation_id("read-before-write", 0)
+        gate.register([(DirectiveKind.READ, read_id)])
+        try:
+            started, read = _run_gated(
+                gate,
+                DirectiveKind.READ,
+                read_id,
+                partial(toolbox.read_file, target, requested=edit.path, newline=""),
+                effectful=False,
+            )
+        except UnicodeDecodeError:
+            return not_applicable("EDIT_NOT_UTF8")
+        if not started:
+            return calls
+        text, read_call = read
+        calls.append(read_call)
+        if hashlib.sha256(text.encode("utf-8")).hexdigest() != edit.base_sha256:
+            return not_applicable("EDIT_SOURCE_CHANGED")
+        try:
+            content = apply_edit_blocks(text, edit.blocks)
+        except EditNotApplicable as failure:
+            return not_applicable(failure.code)
+        write = partial(
+            toolbox.write_file, target, content, requested=edit.path, newline="", expected_sha256=edit.base_sha256
+        )
+        try:
+            started, write_call = _run_gated(gate, DirectiveKind.WRITE, write_id, write, effectful=True)
+        except WriteSourceChanged:
+            # _run_gated has settled the WRITE as failed_no_effect: the check precedes the write.
+            gate.edit_failure = "EDIT_SOURCE_CHANGED"
+            _log_edit(gate.run_id, edit.path, "EDIT_SOURCE_CHANGED", base_sha256=edit.base_sha256)
+            return calls
+        if started:
+            calls.append(write_call)
+            _log_edit(
+                gate.run_id,
+                edit.path,
+                "EDIT_APPLIED",
+                base_sha256=edit.base_sha256,
+                result_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            )
+        return calls
+
     def _execute_test_directives(
         self,
         plan_text: str,
@@ -1377,6 +1500,11 @@ class AgentRunner:
         from optimus.acp.lifecycle import DirectiveKind
 
         directives = parse_agent_plan(plan_text)
+        if gate.edit_failure is not None:
+            # A plan's TESTs check its change; with the EDIT not applied, none of them runs.
+            for ordinal in range(len(directives.tests)):
+                gate.complete(DirectiveKind.TEST, gate.operation_id("test", ordinal), "suppressed")
+            return []
         calls: list[AgentToolCall] = []
         for ordinal, command in enumerate(directives.tests):
             # A test that runs and exits non-zero still executed: its terminal is "succeeded" and its
@@ -1437,6 +1565,31 @@ class AgentRunner:
             cost_complete=cost_complete,
             unknown_cost_attempt_count=unknown_cost_attempt_count,
             candidate_plan_text=plan_text,
+        )
+
+    def _edit_failure_result(
+        self,
+        *,
+        request: AgentRunRequest,
+        code: str,
+        path: str,
+        tool_calls: list[AgentToolCall],
+        total_cost_usd: Decimal,
+        plan_hash: str | None,
+        cost_complete: bool = True,
+        unknown_cost_attempt_count: int = 0,
+    ) -> AgentRunResult:
+        return self._build_result(
+            request=request,
+            status=AgentRunStatus.FAILED,
+            final_state="FAILED",
+            output_text=edit_failure_text(code, path),
+            tool_calls=tuple(tool_calls),
+            total_cost_usd=total_cost_usd,
+            stop_reason="EDIT_NOT_APPLICABLE",
+            plan_hash=plan_hash,
+            cost_complete=cost_complete,
+            unknown_cost_attempt_count=unknown_cost_attempt_count,
         )
 
     def _write_execution_failure_if_needed(
@@ -1776,6 +1929,39 @@ def _binding_kwargs(bound: BoundRequest | None) -> dict[str, Any]:
 
 def _with_request_id(metadata: dict[str, Any], bound: BoundRequest | None) -> dict[str, Any]:
     return {**metadata, "request_id": bound.request_id} if bound is not None else metadata
+
+
+def _bind_edit(plan_text: str, edit: AgentEditDirective, workspace_root: Path, evidence: Mapping[str, str]) -> str:
+    """Bind the model's EDIT to the digest of the raw evidence it was shown, once that still matches the file."""
+    from optimus.agent.planning_loop import PlanningReadError, verify_planning_source_hash
+
+    evidence_sha256 = evidence.get(Path(edit.path).as_posix())
+    if evidence_sha256 is None:
+        raise EditNotApplicable("EDIT_SOURCE_UNSEEN")
+    try:
+        verify_planning_source_hash(workspace_root=workspace_root, path=edit.path, expected_sha256=evidence_sha256)
+    except PlanningReadError as exc:
+        changed = exc.code == "PLANNING_READ_SOURCE_CHANGED"
+        raise EditNotApplicable("EDIT_SOURCE_CHANGED" if changed else "EDIT_TARGET_MISSING") from exc
+    return bind_edit_base(plan_text, base_sha256=evidence_sha256)
+
+
+def _edit_path(plan_text: str) -> str:
+    write = parse_agent_plan(plan_text).write
+    return write.path if write is not None else ""
+
+
+def _log_edit(run_id: str, path: str, outcome: str, *, base_sha256: str | None, result_sha256: str | None = None) -> None:
+    """Every EDIT outcome keeps its closed code and digests in the debug trace; never file or model content."""
+    from optimus.acp.debug_trace import acp_debug_log
+
+    acp_debug_log(
+        location="runner.py:edit",
+        message="edit outcome",
+        data={"path": path, "outcome": outcome, "base_sha256": base_sha256, "result_sha256": result_sha256},
+        hypothesis_id="P407-EDIT",
+        run_id=run_id,
+    )
 
 
 def _record_matches_request(record: AgentPlanRecord, request: AgentRunRequest) -> bool:

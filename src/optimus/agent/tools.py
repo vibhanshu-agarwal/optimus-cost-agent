@@ -13,7 +13,7 @@ from optimus.guardrails.runtime_tree import resolve_target
 from optimus.runtime.modes import GenerationScope
 from optimus.runtime.mutation import MutationForbidden
 from optimus.runtime.state import RuntimeContext
-from optimus.tools.mutation_tools import shell_exec
+from optimus.tools.mutation_tools import WriteSourceChanged, shell_exec
 from optimus.tools.mutation_tools import write_file as guarded_write_file
 
 
@@ -64,9 +64,12 @@ class AgentToolbox:
             mcp_permission_broker=mcp_permission_broker,
         )
 
-    def read_file(self, path: str | Path, *, requested: str | None = None) -> tuple[str, AgentToolCall]:
+    def read_file(
+        self, path: str | Path, *, requested: str | None = None, newline: str | None = None
+    ) -> tuple[str, AgentToolCall]:
         """Read one file after the guard allows it. ``requested`` is the model's workspace-relative path as given, so the
-        guard judges it beside the resolved target; an unresolvable target is denied through the guard, never read."""
+        guard judges it beside the resolved target; an unresolvable target is denied through the guard, never read.
+        ``newline=""`` returns the text with its line endings untranslated (an EDIT's base, #407)."""
         resolved = resolve_target(Path(path))
         result = self._guard.check(
             PreToolRequest(
@@ -86,14 +89,23 @@ class AgentToolbox:
         if result.verdict is not PreToolVerdict.ALLOW or resolved is None:
             raise PermissionError(result.reason)
         target = resolved
-        return target.read_text(encoding="utf-8"), AgentToolCall(
+        return target.read_text(encoding="utf-8", newline=newline), AgentToolCall(
             tool_name="file_reader",
             summary=f"read {target.relative_to(self._workspace_root).as_posix()}",
             authorization_outcome=result.verdict.value,
         )
 
-    def write_file(self, path: str | Path, content: str, *, requested: str | None = None) -> AgentToolCall:
-        """Write one file after the guard allows it, judging ``requested`` beside the resolved target (Plan 12.2 W)."""
+    def write_file(
+        self,
+        path: str | Path,
+        content: str,
+        *,
+        requested: str | None = None,
+        newline: str | None = None,
+        expected_sha256: str | None = None,
+    ) -> AgentToolCall:
+        """Write one file after the guard allows it, judging ``requested`` beside the resolved target (Plan 12.2 W).
+        ``newline`` and ``expected_sha256`` pass through to the guarded write (an EDIT, #407)."""
         resolved = resolve_target(Path(path))
         try:
             guarded_write_file(
@@ -103,7 +115,11 @@ class AgentToolbox:
                 guard=self._guard,
                 requested_relative_path=requested,
                 target_unresolved=resolved is None,
+                newline=newline,
+                expected_sha256=expected_sha256,
             )
+        except WriteSourceChanged:
+            raise
         except MutationForbidden as exc:
             raise PermissionError(str(exc)) from exc
         target = resolved if resolved is not None else Path(path)

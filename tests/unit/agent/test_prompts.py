@@ -16,7 +16,10 @@ def test_planner_prompt_mandates_directive_grammar():
     assert "MCP_LIST <server>" in prompt
     assert "MCP_CALL <server> <tool> <canonical-json-object>" in prompt
     assert "Do not emit prose before the directives" in prompt
-    assert "Emit at most one WRITE directive per plan" in prompt
+    assert "Emit at most one WRITE or EDIT directive per plan" in prompt
+    assert "EDIT <relative-path>" in prompt
+    assert "<<<<<<< OLD" in prompt and "======= NEW" in prompt and ">>>>>>> END" in prompt
+    assert "Use EDIT to change an existing file" in prompt
     assert "fully replaces any" in prompt
     assert "existing file at that path" in prompt
     assert "Include all existing content that must be preserved" in prompt
@@ -68,6 +71,10 @@ def test_build_multi_turn_planner_input_includes_turn_budget_and_grammar():
     assert "Never request a byte range already present" in prompt
     assert "Carried planning observations" in prompt
     assert "Current guarded read evidence" in prompt
+    # #407: a localized change needs only the ranges that hold its lines.
+    assert "Final turn changing part of an existing file (EDIT instead of WRITE):" in prompt
+    assert "EDIT needs raw evidence only of the lines it changes" in prompt
+    assert "Copy every EDIT OLD line exactly from raw ranges visible in the current turn" in prompt
 
 
 def test_build_agent_planner_input_omits_workspace_section_when_empty():
@@ -89,7 +96,7 @@ def test_multi_turn_prompt_marks_initial_context_ephemeral_and_requires_complete
         remaining_wall_clock_minutes=30,
         initial_workspace_context="--- target.py ---\noriginal\n",
     )
-    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-10-23-p403-corrective-feedback")  # #403's bump
+    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-10-24-p407-localized-edit")  # #407's bump
     assert "available on planning turn 1 only" in prompt
     assert "will not be carried to planning turn 2" in prompt
     assert "request every raw byte range" in prompt
