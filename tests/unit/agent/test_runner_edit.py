@@ -23,6 +23,7 @@ from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolRequest, PreToolResult, PreToolVerdict
 from optimus.runtime.modes import ExecutionMode
+from optimus.telemetry.events import TelemetryEvent, TelemetryEventKind
 
 HEADER = "# edited by Optimus"
 FIRST_LINE = '"""A large module."""'
@@ -206,6 +207,26 @@ def test_an_old_that_no_longer_matches_settles_the_write_suppressed(tmp_path: Pa
     assert control.directive_state(DirectiveKind.WRITE, "run-1:approved:write:0") == "suppressed"
     assert control.directive_state(DirectiveKind.TEST, "run-1:approved:test:0") == "suppressed"
     assert control.refresh_effect_state() is EffectState.NONE
+
+
+def test_a_failed_edit_persists_its_closed_code_in_the_agent_run_event(tmp_path: Path) -> None:
+    (tmp_path / "small.py").write_text("a = 1\n", encoding="utf-8")
+    plan = "EDIT small.py\n<<<<<<< OLD\nb = 2\n======= NEW\nb = 3\n>>>>>>> END\n"
+    events: list[TelemetryEvent] = []
+    runner = AgentRunner(
+        gateway_client=_Plan(plan), model="glm-5.2", state_store=InMemoryAgentStateStore(), event_sink=events.append
+    )
+
+    _, result = _plan_then_approve(runner, tmp_path, "Change small.py")
+
+    assert result.stop_reason == "EDIT_NOT_APPLICABLE"
+    planned, failed = [event for event in events if event.kind is TelemetryEventKind.AGENT_RUN]
+    assert planned.payload["edit_failure_code"] is None
+    assert failed.payload["stop_reason"] == "EDIT_NOT_APPLICABLE"
+    assert failed.payload["edit_failure_code"] == "EDIT_OLD_NOT_FOUND"
+    line = failed.to_json_line()
+    for content in ("small.py", "a = 1", "b = 2", "b = 3"):
+        assert content not in line
 
 
 def test_a_guard_denied_edit_keeps_the_typed_no_effect_classification(tmp_path: Path) -> None:
