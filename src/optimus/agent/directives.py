@@ -32,6 +32,10 @@ class AgentDirectiveParseError(ValueError):
     pass
 
 
+class _EditParseError(AgentDirectiveParseError):
+    """Raised only while an EDIT header or its blocks are parsed (#407; Codex round 53 on #410)."""
+
+
 @dataclass(frozen=True)
 class AgentWriteDirective:
     path: str
@@ -154,8 +158,10 @@ def _invents_an_edit(plan_text: str, *, edit_base: EditBase) -> bool:
     and a plan holding it is rejected rather than read some other way."""
     try:
         legacy = _parse_plan_lines(_unwrap_markdown_code_fence(plan_text).splitlines(), edit_base=edit_base, keepends=False)
+    except _EditParseError:
+        return True  # it met an EDIT and could not parse it: still an EDIT only that split sees (Codex round 53)
     except AgentDirectiveParseError:
-        return False
+        return False  # any other legacy error is that split's own: #410 R1 reads those lines as content
     return isinstance(legacy.write, AgentEditDirective)
 
 
@@ -255,15 +261,15 @@ def bind_edit_base(plan_text: str, *, base_sha256: str) -> str:
 def _parse_edit(lines: list[str], index: int, *, edit_base: EditBase) -> tuple[AgentEditDirective, int]:
     match = _EDIT_DIRECTIVE.match(_normalize_directive_line(lines[index]))
     if match is None:
-        raise AgentDirectiveParseError("malformed EDIT directive")
+        raise _EditParseError("malformed EDIT directive")
     path, base = match.group(1), match.group(2)
     _validate_relative_path(path)
     if base is not None and _SHA256_HEX.match(base) is None:
-        raise AgentDirectiveParseError("malformed EDIT base_sha256")
+        raise _EditParseError("malformed EDIT base_sha256")
     if base is not None and edit_base == "forbidden":
-        raise AgentDirectiveParseError("a model's EDIT must not carry base_sha256")
+        raise _EditParseError("a model's EDIT must not carry base_sha256")
     if base is None and edit_base == "required":
-        raise AgentDirectiveParseError("a stored EDIT must carry base_sha256")
+        raise _EditParseError("a stored EDIT must carry base_sha256")
     index += 1
     blocks: list[AgentEditBlock] = []
     while True:
@@ -273,12 +279,12 @@ def _parse_edit(lines: list[str], index: int, *, edit_base: EditBase) -> tuple[A
             break
         old_lines, index = _edit_block_lines(lines, index + 1, until=EDIT_NEW_MARKER)
         if not old_lines:
-            raise AgentDirectiveParseError("an EDIT block's OLD must not be empty")
+            raise _EditParseError("an EDIT block's OLD must not be empty")
         new_lines, index = _edit_block_lines(lines, index + 1, until=EDIT_END_MARKER)
         blocks.append(AgentEditBlock(old_lines=old_lines, new_lines=new_lines))
         index += 1
     if not blocks:
-        raise AgentDirectiveParseError("EDIT requires at least one OLD/NEW block")
+        raise _EditParseError("EDIT requires at least one OLD/NEW block")
     return AgentEditDirective(path=path, blocks=tuple(blocks), base_sha256=base), index
 
 
@@ -289,10 +295,10 @@ def _edit_block_lines(lines: list[str], index: int, *, until: str) -> tuple[tupl
         if marker == until:
             return tuple(body), index
         if marker in _EDIT_MARKERS:
-            raise AgentDirectiveParseError("EDIT block markers are out of order")
+            raise _EditParseError("EDIT block markers are out of order")
         body.append(lines[index])
         index += 1
-    raise AgentDirectiveParseError("unterminated EDIT block")
+    raise _EditParseError("unterminated EDIT block")
 
 
 def _is_directive_line(line: str) -> bool:
