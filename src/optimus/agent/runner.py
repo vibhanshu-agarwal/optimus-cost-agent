@@ -1354,8 +1354,9 @@ class AgentRunner:
             directives = parse_agent_plan(plan_text)
         except AgentDirectiveParseError:
             return []
-        # A READ of the EDIT's own target leaves a decode failure to the EDIT, which reports it typed (#407).
-        edit_target = directives.write.path if isinstance(directives.write, AgentEditDirective) else None
+        # A READ of the EDIT's own target (as a path, so ./a.py is a.py) leaves a decode failure to the EDIT,
+        # which reports it typed (#407).
+        edit_target = workspace_root / directives.write.path if isinstance(directives.write, AgentEditDirective) else None
         calls: list[AgentToolCall] = []
         for ordinal, relative_path in enumerate(directives.read_paths):
             if not self._is_safe_relative_path(relative_path):
@@ -1372,7 +1373,7 @@ class AgentRunner:
             except OSError:
                 continue
             except UnicodeDecodeError:
-                if relative_path != edit_target:
+                if edit_target is None or target != edit_target:
                     raise
                 continue
             if not started:

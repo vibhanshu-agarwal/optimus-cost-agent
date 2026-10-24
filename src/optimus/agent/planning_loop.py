@@ -19,6 +19,7 @@ from optimus.agent.directives import (
     parse_agent_plan,
     parse_mcp_call_line,
     parse_mcp_list_line,
+    split_cr_lf,
 )
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
 from optimus.agent.operation_control import TurnOperationControl
@@ -576,7 +577,7 @@ def parse_planning_turn(text: str) -> PlanningTurnDecision:
 
 
 def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
-    lines = [line.strip() for line in _outside_edit_blocks(text.splitlines()) if line.strip()]
+    lines = [line.strip() for line in _outside_edit_blocks(text) if line.strip()]
     if not lines:
         return None
     if not (lines[0].startswith("MCP_LIST") or lines[0].startswith("MCP_CALL")):
@@ -620,23 +621,24 @@ def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
     return None
 
 
-def _outside_edit_blocks(lines: list[str]) -> list[str]:
-    """The lines outside EDIT blocks: OLD/NEW bodies are opaque content, never directives (#407)."""
+def _outside_edit_blocks(text: str) -> list[str]:
+    """The lines outside EDIT blocks: OLD/NEW bodies are opaque content, never directives (#407). Blocks end
+    at CR/LF lines, as the plan parser's do; the lines outside keep their ``str.splitlines`` granularity."""
     outside: list[str] = []
     inside = False
-    for line in lines:
+    for line in split_cr_lf(text):
         marker = line.strip()
         if inside:
             inside = marker != EDIT_END_MARKER
         elif marker == EDIT_OLD_MARKER:
             inside = True
         else:
-            outside.append(line)
+            outside.extend(line.splitlines() or [line])
     return outside
 
 
 def _directive_surface_lines(text: str) -> tuple[str, ...]:
-    lines = _outside_edit_blocks(text.splitlines())
+    lines = _outside_edit_blocks(text)
     surface_lines: list[str] = []
     index = 0
     while index < len(lines):

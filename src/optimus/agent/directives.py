@@ -133,13 +133,20 @@ def parse_agent_plan(plan_text: str, *, edit_base: EditBase = "any") -> AgentPla
         formatted directives, such as more than one WRITE or EDIT directive, a malformed
         EDIT block, or a lack of any valid directives.
     """
-    directives = _parse_plan_lines(_unwrap_markdown_code_fence(plan_text).splitlines(), edit_base=edit_base)
-    if isinstance(directives.write, AgentEditDirective):
-        # EDIT lines are exact: only CR, LF and CRLF end them, where str.splitlines also breaks on U+2028, VT,
-        # FF and others. A WRITE plan keeps the split it has always had.
-        unwrapped = _unwrap_markdown_code_fence(plan_text, split=_split_cr_lf)
-        directives = _parse_plan_lines(_split_cr_lf(unwrapped), edit_base=edit_base)
-    return directives
+    # EDIT lines are exact: only CR, LF and CRLF end them, where str.splitlines also breaks on U+2028, VT, FF
+    # and others. So the exact split decides first; a plan that is not an EDIT under it keeps the split it has
+    # always had, and an EDIT that exists only under that older split is not one.
+    exact_error: AgentDirectiveParseError | None = None
+    try:
+        exact = _parse_plan_lines(split_cr_lf(_unwrap_markdown_code_fence(plan_text, split=split_cr_lf)), edit_base=edit_base)
+    except AgentDirectiveParseError as exc:
+        exact, exact_error = None, exc
+    if exact is not None and isinstance(exact.write, AgentEditDirective):
+        return exact
+    legacy = _parse_plan_lines(_unwrap_markdown_code_fence(plan_text).splitlines(), edit_base=edit_base)
+    if isinstance(legacy.write, AgentEditDirective):
+        raise exact_error or AgentDirectiveParseError("malformed EDIT directive")
+    return legacy
 
 
 def _parse_plan_lines(lines: list[str], *, edit_base: EditBase) -> AgentPlanDirectives:
@@ -282,7 +289,7 @@ def _is_directive_line(line: str) -> bool:
     )
 
 
-def _split_cr_lf(text: str) -> list[str]:
+def split_cr_lf(text: str) -> list[str]:
     """``str.splitlines()`` without its extra boundaries: only CRLF, LF and CR end a line."""
     lines = _CR_LF.split(text)
     if lines[-1] == "":

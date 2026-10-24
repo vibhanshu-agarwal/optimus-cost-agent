@@ -173,3 +173,16 @@ def test_edit_lines_end_only_at_cr_or_lf_so_other_separators_stay_content(separa
 
 def test_write_plans_keep_their_existing_line_split():
     assert parse_agent_plan("WRITE a.py\na\u2028b").write.content == "a\nb"
+
+
+@pytest.mark.parametrize("marker", (">>>>>>> END", "======= NEW", "<<<<<<< OLD"))
+def test_a_separator_before_marker_text_does_not_invent_a_marker_line(marker):
+    plan = f"EDIT a.py\n<<<<<<< OLD\nx\u2028{marker}\n======= NEW\ny\n>>>>>>> END\n"
+
+    assert parse_agent_plan(plan).write.blocks == (AgentEditBlock(old_lines=(f"x\u2028{marker}",), new_lines=("y",)),)
+
+
+def test_an_edit_that_exists_only_under_the_older_split_is_rejected():
+    # Under CR/LF lines this has no EDIT block; str.splitlines would invent one from the U+2028.
+    with pytest.raises(AgentDirectiveParseError):
+        parse_agent_plan("READ a.py\nnote\u2028EDIT a.py\u2028<<<<<<< OLD\u2028x\u2028======= NEW\u2028y\u2028>>>>>>> END\n")

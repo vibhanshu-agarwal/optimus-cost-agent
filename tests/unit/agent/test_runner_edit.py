@@ -318,3 +318,24 @@ def test_an_edit_target_no_longer_utf8_after_approval_fails_typed_and_runs_no_te
     assert shell.commands == []
     assert control.directive_state(DirectiveKind.WRITE, "run-1:approved:write:0") == "suppressed"
     assert control.directive_state(DirectiveKind.TEST, "run-1:approved:test:0") == "suppressed"
+
+
+def test_a_read_of_the_edit_target_by_an_equivalent_path_leaves_the_failure_typed(tmp_path: Path) -> None:
+    target = tmp_path / "small.py"
+    target.write_text("a = 1\n", encoding="utf-8")
+    plan = "READ ./small.py\nEDIT small.py\n<<<<<<< OLD\na = 1\n======= NEW\na = 2\n>>>>>>> END\n"
+    runner = AgentRunner(gateway_client=_Plan(plan), model="glm-5.2", state_store=InMemoryAgentStateStore())
+
+    _, result = _plan_then_approve(runner, tmp_path, "Change small.py", between=lambda: target.write_bytes(b"a = \xff\n"))
+
+    assert result.stop_reason == "EDIT_NOT_APPLICABLE"
+    assert "EDIT_NOT_UTF8" in result.output_text
+
+
+def test_planning_turns_end_edit_blocks_at_cr_lf_lines_only() -> None:
+    plan = "EDIT big.py\n<<<<<<< OLD\nx\u2028>>>>>>> END\nOBSERVE: still OLD content\n======= NEW\ny\n>>>>>>> END\n"
+
+    decision = parse_planning_turn(plan)
+
+    assert decision.kind is PlanningTurnKind.FINAL_PLAN
+    assert decision.directives.write.blocks[0].old_lines == ("x\u2028>>>>>>> END", "OBSERVE: still OLD content")
