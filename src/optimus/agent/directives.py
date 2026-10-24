@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import shlex
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
@@ -12,6 +13,8 @@ _WRITE_DIRECTIVE = re.compile(r"^WRITE\s+(\S+)\s*$")
 _EDIT_PREFIX = re.compile(r"^EDIT(?:\s|$)")
 _EDIT_DIRECTIVE = re.compile(r"^EDIT\s+(\S+)(?:\s+base_sha256=(\S*))?\s*$")
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+_CR_LF = re.compile(r"\r\n|\n|\r")
+_CR_LF_LINE = re.compile(r"[^\r\n]*(?:\r\n|\n|\r)|[^\r\n]+\Z")
 # Reserved whole lines that delimit EDIT blocks (#407). A bare "=======" would collide with RST headings.
 EDIT_OLD_MARKER = "<<<<<<< OLD"
 EDIT_NEW_MARKER = "======= NEW"
@@ -130,10 +133,19 @@ def parse_agent_plan(plan_text: str, *, edit_base: EditBase = "any") -> AgentPla
         formatted directives, such as more than one WRITE or EDIT directive, a malformed
         EDIT block, or a lack of any valid directives.
     """
+    directives = _parse_plan_lines(_unwrap_markdown_code_fence(plan_text).splitlines(), edit_base=edit_base)
+    if isinstance(directives.write, AgentEditDirective):
+        # EDIT lines are exact: only CR, LF and CRLF end them, where str.splitlines also breaks on U+2028, VT,
+        # FF and others. A WRITE plan keeps the split it has always had.
+        unwrapped = _unwrap_markdown_code_fence(plan_text, split=_split_cr_lf)
+        directives = _parse_plan_lines(_split_cr_lf(unwrapped), edit_base=edit_base)
+    return directives
+
+
+def _parse_plan_lines(lines: list[str], *, edit_base: EditBase) -> AgentPlanDirectives:
     read_paths: list[str] = []
     tests: list[tuple[str, ...]] = []
     write: AgentWriteDirective | AgentEditDirective | None = None
-    lines = _unwrap_markdown_code_fence(plan_text).splitlines()
     index = 0
 
     while index < len(lines):
@@ -202,7 +214,7 @@ def bind_edit_base(plan_text: str, *, base_sha256: str) -> str:
     edit = parse_agent_plan(plan_text, edit_base="forbidden").write
     if not isinstance(edit, AgentEditDirective):
         raise AgentDirectiveParseError("no EDIT directive to bind")
-    lines = plan_text.splitlines(keepends=True)
+    lines = _CR_LF_LINE.findall(plan_text)
     for index, line in enumerate(lines):
         body = line.rstrip("\r\n")
         match = _EDIT_DIRECTIVE.match(_normalize_directive_line(body))
@@ -270,11 +282,19 @@ def _is_directive_line(line: str) -> bool:
     )
 
 
-def _unwrap_markdown_code_fence(plan_text: str) -> str:
+def _split_cr_lf(text: str) -> list[str]:
+    """``str.splitlines()`` without its extra boundaries: only CRLF, LF and CR end a line."""
+    lines = _CR_LF.split(text)
+    if lines[-1] == "":
+        lines.pop()
+    return lines
+
+
+def _unwrap_markdown_code_fence(plan_text: str, *, split: Callable[[str], list[str]] = str.splitlines) -> str:
     stripped = plan_text.strip()
     if not stripped.startswith("```"):
         return plan_text
-    lines = stripped.splitlines()
+    lines = split(stripped)
     if len(lines) < 2:
         return plan_text
     closing_index = len(lines) - 1

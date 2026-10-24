@@ -97,3 +97,11 @@ def test_lone_cr_terminators_are_line_breaks():
 
 def test_an_empty_file_has_nothing_to_match():
     assert _code("", _block("a", "b")) == "EDIT_OLD_NOT_FOUND"
+
+
+def test_one_empty_unterminated_replacement_line_keeps_the_bom():
+    assert _apply("\ufeffa", _block("a", "")) == "\ufeff"
+
+
+def test_separators_other_than_cr_and_lf_stay_inside_a_line():
+    assert _apply("x\u2028y\nz\n", _block("x\u2028y", "a\x0cb")) == "a\x0cb\nz\n"

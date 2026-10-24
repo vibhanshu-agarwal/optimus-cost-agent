@@ -68,8 +68,9 @@ def apply_edit_blocks(text: str, blocks: Sequence[AgentEditBlock]) -> str:
         result.extend(_replacement(block.new_lines, first=lines[start][1], last=lines[end - 1][1]))
         cursor = end
     result.extend(lines[cursor:])
-    body = "".join(content + terminator for content, terminator in result)
-    return bom + body if body else ""
+    if not result:  # every line deleted: zero bytes, the BOM included
+        return ""
+    return bom + "".join(content + terminator for content, terminator in result)
 
 
 def _split_lines(text: str) -> list[tuple[str, str]]:

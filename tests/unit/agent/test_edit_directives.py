@@ -158,3 +158,18 @@ def test_bind_edit_base_refuses_a_plan_without_an_unbound_edit():
         bind_edit_base(_edit("big.py", ("a", "b"), header_suffix=f" base_sha256={_BASE}"), base_sha256=_BASE)
     with pytest.raises(AgentDirectiveParseError):
         bind_edit_base(_edit("big.py", ("a", "b")), base_sha256="not-a-digest")
+
+
+@pytest.mark.parametrize("separator", ("\u2028", "\u2029", "\x0b", "\x0c", "\x1c", "\x85"))
+def test_edit_lines_end_only_at_cr_or_lf_so_other_separators_stay_content(separator):
+    plan = f"EDIT a.py\n<<<<<<< OLD\nx{separator}y\n======= NEW\na{separator}b\n>>>>>>> END\n"
+
+    edit = parse_agent_plan(plan).write
+
+    assert edit.blocks == (AgentEditBlock(old_lines=(f"x{separator}y",), new_lines=(f"a{separator}b",)),)
+    bound = bind_edit_base(plan, base_sha256=_BASE)
+    assert bound == plan.replace("EDIT a.py\n", f"EDIT a.py base_sha256={_BASE}\n", 1)
+
+
+def test_write_plans_keep_their_existing_line_split():
+    assert parse_agent_plan("WRITE a.py\na\u2028b").write.content == "a\nb"

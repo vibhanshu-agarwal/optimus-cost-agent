@@ -298,3 +298,23 @@ def test_a_model_supplied_base_is_not_a_final_plan() -> None:
 
     with pytest.raises(PlanningTurnParseError):
         parse_planning_turn(plan)
+
+
+def test_an_edit_target_no_longer_utf8_after_approval_fails_typed_and_runs_no_test(tmp_path: Path) -> None:
+    target = tmp_path / "small.py"
+    target.write_text("a = 1\n", encoding="utf-8")
+    plan = "READ small.py\nEDIT small.py\n<<<<<<< OLD\na = 1\n======= NEW\na = 2\n>>>>>>> END\nTEST pytest -q\n"
+    shell = _Shell()
+    control = TurnControl(session_id="sess-1", turn_seq=1)
+    runner = AgentRunner(gateway_client=_Plan(plan), model="glm-5.2", state_store=InMemoryAgentStateStore(), shell_runner=shell)
+
+    _, result = _plan_then_approve(
+        runner, tmp_path, "Change small.py", between=lambda: target.write_bytes(b"a = \xff\n"), control=control
+    )
+
+    assert result.stop_reason == "EDIT_NOT_APPLICABLE"
+    assert "EDIT_NOT_UTF8" in result.output_text
+    assert target.read_bytes() == b"a = \xff\n"
+    assert shell.commands == []
+    assert control.directive_state(DirectiveKind.WRITE, "run-1:approved:write:0") == "suppressed"
+    assert control.directive_state(DirectiveKind.TEST, "run-1:approved:test:0") == "suppressed"

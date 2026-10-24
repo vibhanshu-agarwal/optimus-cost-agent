@@ -1354,6 +1354,8 @@ class AgentRunner:
             directives = parse_agent_plan(plan_text)
         except AgentDirectiveParseError:
             return []
+        # A READ of the EDIT's own target leaves a decode failure to the EDIT, which reports it typed (#407).
+        edit_target = directives.write.path if isinstance(directives.write, AgentEditDirective) else None
         calls: list[AgentToolCall] = []
         for ordinal, relative_path in enumerate(directives.read_paths):
             if not self._is_safe_relative_path(relative_path):
@@ -1368,6 +1370,10 @@ class AgentRunner:
                     gate, kind, operation_id, partial(toolbox.read_file, target, requested=relative_path), effectful=False
                 )
             except OSError:
+                continue
+            except UnicodeDecodeError:
+                if relative_path != edit_target:
+                    raise
                 continue
             if not started:
                 break
