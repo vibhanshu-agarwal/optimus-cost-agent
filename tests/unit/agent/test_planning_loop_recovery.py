@@ -243,6 +243,21 @@ def test_a_parse_failure_recovers_through_its_nudge_and_the_plan_waits_for_the_c
     assert result.plan_text == FINAL_PLAN  # kept, for the normal plan approval
 
 
+def test_each_turn_after_a_parse_failure_carries_its_notice_and_the_nudge_turn_carries_both(tmp_path, source):
+    """#403 with Plan 12.3: the fixed notice follows every unparseable turn, the episode's nudge still comes once."""
+    from optimus.agent.planning_loop import PLANNING_PARSE_FEEDBACK
+    from optimus.agent.prompts import CORRECTION_NOTICE_HEADER
+
+    gateway = Gateway([PROSE] * 3 + [FINAL_PLAN])
+    result = _run(tmp_path, gateway, CheckIns(CheckInDecision.CONTINUE))
+
+    notice = f"{CORRECTION_NOTICE_HEADER} {PLANNING_PARSE_FEEDBACK['GRAMMAR_UNRECOGNIZED']}"
+    assert [notice in prompt for prompt in gateway.prompts] == [False, True, True, True]
+    assert _nudged(gateway) == [4]
+    assert gateway.prompts[3].index(notice) < gateway.prompts[3].index(NOTE)
+    assert result.plan_text == FINAL_PLAN
+
+
 REFUSE = "REFUSE: The evidence is not enough for a safe change.\n"
 
 

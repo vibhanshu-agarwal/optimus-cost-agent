@@ -119,6 +119,40 @@ PLANNING_TURN_PARSE_CODES = frozenset(
 )
 _MCP_AUTHORIZATION_OUTCOMES = frozenset({"ALLOW", "BLOCK", "HOLD"})
 
+# #403 (option B, Codex round 44): the fixed notice the next turn carries after an unparseable one, one per closed
+# code. Fixed text only: never the reply, the parse message, a path or exception text. Strict parsing is unchanged.
+PLANNING_PARSE_FEEDBACK: dict[str, str] = {
+    "GRAMMAR_UNRECOGNIZED": (
+        "it matched no planning-turn form. Reply with exactly one form: an intermediate turn (one OBSERVE: line, "
+        "then ranged READ: lines), one MCP_LIST or MCP_CALL line, a final plan, or a one-line REFUSE:."
+    ),
+    "REFUSE_NOT_ONE_LINE": "a REFUSE: reply must be a single non-empty line.",
+    "REFUSE_TOO_LONG": "a REFUSE: reason must be at most 512 UTF-8 bytes.",
+    "REFUSE_HAS_DIRECTIVE_PREFIX": "a REFUSE: reason must not contain directive prefixes.",
+    "MCP_MIXED_DIRECTIVES": "an MCP_LIST or MCP_CALL line must be the whole reply, never mixed with other directives.",
+    "MCP_NOT_EXACTLY_ONE": "an MCP turn must contain exactly one MCP_LIST or MCP_CALL line.",
+    "MCP_LIST_INVALID": "the MCP_LIST line was malformed; use MCP_LIST <server>.",
+    "MCP_CALL_INVALID": "the MCP_CALL line was malformed; use MCP_CALL <server> <tool> <canonical-json-object>.",
+    "MCP_DIRECTIVE_MALFORMED": "the MCP directive was malformed; use MCP_LIST <server> or MCP_CALL <server> <tool> <json>.",
+    "OBSERVE_MULTIPLE": "an intermediate turn must contain exactly one OBSERVE: line.",
+    "READ_RANGE_EMPTY": "each READ: range must end after it starts.",
+    "INTERMEDIATE_UNSUPPORTED_DIRECTIVE": "an intermediate turn may contain only one OBSERVE: line and ranged READ: lines.",
+    "INTERMEDIATE_UNRECOGNIZED_CONTENT": (
+        "an intermediate turn may contain only one OBSERVE: line and ranged READ: lines, with no other text."
+    ),
+    "INTERMEDIATE_REQUIRES_OBSERVE": "an intermediate turn needs an OBSERVE: line before its READ: lines.",
+    "INTERMEDIATE_REQUIRES_READ": "an intermediate turn needs at least one ranged READ: line after its OBSERVE: line.",
+    "OBSERVATION_TOO_LARGE": "the OBSERVE: note and its READ: requests exceeded the observation budget; keep the note shorter.",
+    "READ_PATH_NOT_RELATIVE": "each READ: path must be workspace-relative.",
+    "READ_RANGES_DUPLICATE": "the READ: ranges must not repeat.",
+    "READ_RANGES_OVERLAP": "the READ: ranges must not overlap.",
+}
+
+
+def _correction_notice(code: str | None) -> str:
+    """The next turn's notice for the previous turn's parse-failure code, or "" when that turn parsed (#403)."""
+    return PLANNING_PARSE_FEEDBACK[code] if code is not None else ""
+
 
 class PlanningReadError(ValueError):
     def __init__(self, code: str, message: str) -> None:
@@ -1178,6 +1212,8 @@ class _PlanningIterationRunner:
         self._route_binder = route_binder
         # Sticky: a Gateway failure proved this route stopped, and a stopped route never restarts (#400).
         self._route_stopped = False
+        # The previous turn's closed parse-failure code, for the next turn's notice; None once a turn parses (#403).
+        self._parse_failure_code: str | None = None
         self._conversation_envelope = conversation_envelope
         self._context_packer = context_packer
         self._initial_workspace_context = initial_workspace_context
@@ -1620,6 +1656,8 @@ class _PlanningIterationRunner:
             )
         mcp_evidence_envelope = self._mcp_evidence_envelope
         recovery_note = self._nudge or ""
+        # Captured once per turn, so every repack and wire retry of this turn carries the same notice (#403).
+        correction_notice = _correction_notice(self._parse_failure_code)
 
         def build(conversation_envelope: str) -> str:
             return build_multi_turn_planner_input(
@@ -1645,6 +1683,7 @@ class _PlanningIterationRunner:
                     DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES,
                 ),
                 conversation_envelope=conversation_envelope,
+                correction_notice=correction_notice,
             )
 
         if self._context_packer is None:
@@ -1707,6 +1746,7 @@ class _PlanningIterationRunner:
             decision = parse_planning_turn(response.output_text)
         except PlanningTurnParseError as exc:
             self._last_non_progress_kind = "UNPARSEABLE"
+            self._parse_failure_code = exc.code  # the next turn's notice; the repeat signature is unchanged (#403)
             from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
 
             if debug_trace_enabled():
@@ -1728,6 +1768,7 @@ class _PlanningIterationRunner:
                 planning_turn,
             )
 
+        self._parse_failure_code = None  # this turn parsed: no notice follows it (#403)
         self._last_decision = decision
         if decision.kind is PlanningTurnKind.READ_MORE:
             self._last_non_progress_kind = "READ_MORE"

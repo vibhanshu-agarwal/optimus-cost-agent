@@ -1303,3 +1303,132 @@ def test_nonprogress_trace_never_carries_reply_content(tmp_path, template, reaso
     [record] = _nonprogress_records(log_path)
     assert record["data"]["reason_code"] == reason_code
     assert canary not in log_path.read_text(encoding="utf-8")
+
+
+# --- #403 (option B, Codex round 44): bounded corrective feedback after an unparseable turn ----------------------
+
+MISSING_OBSERVE = "READ: target.py#bytes=0:10\n"  # run 3's observed omission: a ranged READ without OBSERVE
+
+
+def _notice(code: str) -> str:
+    from optimus.agent.planning_loop import PLANNING_PARSE_FEEDBACK
+
+    return PLANNING_PARSE_FEEDBACK[code]
+
+
+class NoticeFollowingGateway(ScriptingGateway):
+    """Turn 2 recovers only when its input carries the OBSERVE notice; without it, it repeats run 3's omission, so the
+    unfixed loop stops at the repeat limit (Codex round 44: a double that cannot recover without the notice)."""
+
+    def create_response(self, *, model, input_text, metadata=None):
+        if len(self.calls) == 1:
+            size = (self.workspace / "target.py").stat().st_size
+            reply = f"OBSERVE: re-read target.py\nREAD: target.py#bytes=0:{size}\n" if _notice("INTERMEDIATE_REQUIRES_OBSERVE") in input_text else MISSING_OBSERVE
+            self._scripts[0] = (reply, *self._scripts[0][1:])
+        return super().create_response(model=model, input_text=input_text, metadata=metadata)
+
+
+def test_the_feedback_table_covers_exactly_the_closed_codes_with_fixed_text():
+    from optimus.agent.planning_loop import PLANNING_PARSE_FEEDBACK, PLANNING_TURN_PARSE_CODES
+
+    assert set(PLANNING_PARSE_FEEDBACK) == PLANNING_TURN_PARSE_CODES
+    for code, text in PLANNING_PARSE_FEEDBACK.items():
+        assert text and "{" not in text and "}" not in text, code  # fixed text: nothing is ever interpolated
+        assert text == text.strip() and "\n" not in text, code
+
+
+def test_a_malformed_turn_recovers_through_the_notice_to_a_grounded_plan(tmp_path):
+    gateway = NoticeFollowingGateway(_scripts(MISSING_OBSERVE, "", TARGET_FINAL_PLAN))
+    gateway.workspace = tmp_path
+    result = _run_target(tmp_path, gateway)
+
+    assert result.stop_reason is None, result.corrective_text
+    assert (result.settled_turns, len(gateway.calls)) == (3, 3)
+    assert result.plan_hash is not None
+    assert _notice("INTERMEDIATE_REQUIRES_OBSERVE") in gateway.calls[1]["input_text"]
+    assert _notice("INTERMEDIATE_REQUIRES_OBSERVE") not in gateway.calls[0]["input_text"]
+    assert "Current guarded read evidence" in gateway.calls[2]["input_text"]
+
+
+def test_without_the_notice_the_same_double_cannot_recover(tmp_path, monkeypatch):
+    """The control's dependency (Codex round 44): suppress the notice and the same scenario stops at the repeat limit."""
+    from optimus.agent import planning_loop
+
+    monkeypatch.setattr(planning_loop, "_correction_notice", lambda code: "")
+    gateway = NoticeFollowingGateway(_scripts(MISSING_OBSERVE, "", TARGET_FINAL_PLAN))
+    gateway.workspace = tmp_path
+    result = _run_target(tmp_path, gateway)
+
+    assert (result.stop_reason, result.settled_turns, result.plan_hash) == ("PLANNING_UNPARSEABLE_RESPONSE", 2, None)
+
+
+def test_the_notice_is_cleared_after_a_validly_parsed_turn(tmp_path):
+    gateway = ScriptingGateway(_scripts(MISSING_OBSERVE, "OBSERVE: need it\nREAD: target.py#bytes=0:5\n", REFUSE_TEXT))
+    _run_target(tmp_path, gateway)
+
+    notice = _notice("INTERMEDIATE_REQUIRES_OBSERVE")
+    assert [notice in call["input_text"] for call in gateway.calls] == [False, True, False]
+
+
+def test_each_code_has_its_own_notice():
+    from optimus.agent.planning_loop import PLANNING_PARSE_FEEDBACK
+
+    assert len(set(PLANNING_PARSE_FEEDBACK.values())) == len(PLANNING_PARSE_FEEDBACK)
+
+
+def test_a_later_failure_carries_only_its_own_notice(tmp_path):
+    """Four turns, since two consecutive unparseable turns end the run: malformed (A), valid, malformed (B), then the
+    prompt that must name B alone."""
+    replies = (MISSING_OBSERVE, "OBSERVE: need it\nREAD: target.py#bytes=0:5\n", "OBSERVE: only a note\n", REFUSE_TEXT)
+    gateway = ScriptingGateway(_scripts(*replies))
+    _run_target(tmp_path, gateway, policy=PlanningLoopPolicy(max_planning_turns=4))
+
+    first, second = _notice("INTERMEDIATE_REQUIRES_OBSERVE"), _notice("INTERMEDIATE_REQUIRES_READ")
+    assert [(first in call["input_text"], second in call["input_text"]) for call in gateway.calls] == [
+        (False, False), (True, False), (False, False), (False, True),
+    ]  # fmt: skip
+
+
+def test_ignored_feedback_keeps_the_unchanged_repeat_stop(tmp_path):
+    result = _run_target(tmp_path, ScriptingGateway(_scripts(MISSING_OBSERVE, MISSING_OBSERVE)))
+
+    assert result.stop_reason == "PLANNING_UNPARSEABLE_RESPONSE"
+    assert result.settled_turns == 2
+
+
+def test_the_notice_never_carries_reply_content(tmp_path):
+    canary = f"CANARY-{uuid.uuid4().hex}"
+    gateway = ScriptingGateway(_scripts(f"{canary} is all I will say.", REFUSE_TEXT))
+    _run_target(tmp_path, gateway)
+
+    second = gateway.calls[1]["input_text"]
+    assert _notice("GRAMMAR_UNRECOGNIZED") in second and canary not in second
+
+
+class _FailsOnceAfterTurnOne(ScriptingGateway):
+    """Turn 1 is malformed; turn 2's first wire attempt fails transiently and its retry answers."""
+
+    def create_response(self, *, model, input_text, metadata=None):
+        if len(self.calls) == 1 and not getattr(self, "failed", False):
+            self.failed = True
+            self.failed_input = input_text
+            raise GatewayHttpError(503, "temporary overload", gateway_usage=GatewayUsage(gateway_request_id="gw-503", provider="glm", billing_units=1, cost_usd=Decimal("0.001")))
+        return super().create_response(model=model, input_text=input_text, metadata=metadata)
+
+
+def test_the_notice_is_stable_across_a_turns_wire_retry(tmp_path):
+    gateway = _FailsOnceAfterTurnOne(_scripts(MISSING_OBSERVE, REFUSE_TEXT))
+    _run_target(tmp_path, gateway)
+
+    notice = _notice("INTERMEDIATE_REQUIRES_OBSERVE")
+    assert notice in gateway.failed_input and notice in gateway.calls[1]["input_text"]
+    assert gateway.failed_input == gateway.calls[1]["input_text"]  # the retried request is the same request
+
+
+def test_two_runs_never_share_a_notice(tmp_path):
+    first = ScriptingGateway(_scripts(MISSING_OBSERVE, REFUSE_TEXT))
+    _run_target(tmp_path / "a", first)
+    second = ScriptingGateway(_scripts(REFUSE_TEXT))
+    _run_target(tmp_path / "b", second)
+
+    assert _notice("INTERMEDIATE_REQUIRES_OBSERVE") not in second.calls[0]["input_text"]
