@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import re
+import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -1138,3 +1140,295 @@ def test_planning_loop_runner_accepts_keyword_only_client_mcp_service(tmp_path):
     assert "client_mcp_service" not in result.model_dump()
     assert len(gateway.calls) == 2
     assert "untrusted" in str(gateway.calls[1]["input_text"]).lower()
+
+
+# --- #388: recovery and diagnosability after a turn that makes no progress ---
+
+SIZES_HEADER = "Known byte sizes for fully visible turn-1 files:"
+_SIZE_LIST_LINE = re.compile(r"^- (\S+): (\d+) bytes; re-read as READ: ", re.MULTILINE)
+TARGET_SOURCE = "def target():\n    return 1\n"
+TARGET_FINAL_PLAN = "READ target.py\nWRITE target.py\ndef target():\n    return 2\n"
+PROSE = "Here is prose only."
+
+
+class SizeListReadGateway(ScriptingGateway):
+    """Turn 2 re-reads only what the size list in the input it actually receives names, and refuses
+    without one, as the prompt's re-read rule requires. A fixed script would pass on the unfixed loop,
+    because guarded reads never check that their size was shown (Codex round 34)."""
+
+    def create_response(self, *, model, input_text, metadata=None):
+        if len(self.calls) == 1:
+            sizes = _SIZE_LIST_LINE.findall(input_text)
+            reply = (
+                "OBSERVE: re-read the listed files\n" + "".join(f"READ: {path}#bytes=0:{size}\n" for path, size in sizes)
+                if sizes
+                else "REFUSE: no listed byte size to ground the re-read.\n"
+            )
+            self._scripts[0] = (reply, *self._scripts[0][1:])
+        return super().create_response(model=model, input_text=input_text, metadata=metadata)
+
+
+def _scripts(*replies: str) -> list[tuple[str, Decimal, str]]:
+    return [(reply, Decimal("0.001"), f"gw-{index}") for index, reply in enumerate(replies, start=1)]
+
+
+def _run_target(tmp_path: Path, gateway: ScriptingGateway, **kwargs):
+    _write_file(tmp_path, "target.py", TARGET_SOURCE)
+    return _runner(tmp_path, gateway=gateway, **kwargs).run(
+        run_id="run-388",
+        session_id="session-388",
+        task="Update target.py",
+        initial_workspace_context="SEED-CONTEXT-388\n" + TARGET_SOURCE,
+        initial_workspace_file_sizes={"target.py": (tmp_path / "target.py").stat().st_size},
+    )
+
+
+def _size_line(tmp_path: Path) -> str:
+    size = (tmp_path / "target.py").stat().st_size
+    return f"- target.py: {size} bytes; re-read as READ: target.py#bytes=0:{size}"
+
+
+def _nonprogress_records(log_path: Path) -> list[dict]:
+    lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+    return [line for line in lines if line.get("hypothesisId") == "P12.2-NONPROGRESS"]
+
+
+def test_size_list_survives_an_unparseable_first_turn(tmp_path):
+    gateway = ScriptingGateway(_scripts(PROSE, REFUSE_TEXT))
+    _run_target(tmp_path, gateway)
+
+    second = gateway.calls[1]["input_text"]
+    assert _size_line(tmp_path) in second
+    assert "SEED-CONTEXT-388" not in second, "the raw context stays turn-1-only (Plan 9.87)"
+
+
+def test_size_list_survives_an_mcp_first_turn(tmp_path):
+    gateway = ScriptingGateway(_scripts("MCP_LIST tools\n", REFUSE_TEXT))
+    _run_target(tmp_path, gateway)
+
+    second = gateway.calls[1]["input_text"]
+    assert _size_line(tmp_path) in second
+    assert "SEED-CONTEXT-388" not in second
+
+
+def test_size_list_is_not_sent_after_a_read_turn(tmp_path):
+    gateway = ScriptingGateway(_scripts("OBSERVE: need the header\nREAD: target.py#bytes=0:5\n", REFUSE_TEXT))
+    _run_target(tmp_path, gateway)
+
+    assert SIZES_HEADER in gateway.calls[0]["input_text"]
+    assert SIZES_HEADER not in gateway.calls[1]["input_text"]
+
+
+def test_unparseable_first_turn_recovers_through_a_listed_size_read(tmp_path):
+    gateway = SizeListReadGateway(_scripts(PROSE, "", TARGET_FINAL_PLAN))
+    result = _run_target(tmp_path, gateway)
+
+    assert result.stop_reason is None, result.corrective_text
+    assert result.settled_turns == 3
+    assert result.plan_hash is not None
+    assert len(gateway.calls) == 3
+    third = gateway.calls[2]["input_text"]
+    assert "Current guarded read evidence" in third
+    assert SIZES_HEADER not in third
+
+
+def test_unparseable_turn_writes_one_content_free_nonprogress_record(tmp_path):
+    log_path = resolve_debug_log_path(workspace_root=tmp_path)
+    configure_debug_trace(enabled=True, log_path=log_path)
+    reply = "Prose only — no directives."
+    _run_target(tmp_path, ScriptingGateway(_scripts(reply, REFUSE_TEXT)))
+
+    [record] = _nonprogress_records(log_path)
+    assert record["location"] == "planning_loop.py:execute_iteration:unparseable"
+    assert record["data"] == {
+        "run_id": "run-388",
+        "session_id": "session-388",
+        "planning_turn": 1,
+        "kind": "UNPARSEABLE",
+        "reason_code": "GRAMMAR_UNRECOGNIZED",
+        "output_bytes": len(reply.encode("utf-8")),
+    }
+
+
+def test_mcp_turn_writes_one_nonprogress_record_with_bounded_outcome(tmp_path):
+    log_path = resolve_debug_log_path(workspace_root=tmp_path)
+    configure_debug_trace(enabled=True, log_path=log_path)
+    reply = "MCP_LIST canary388server\n"
+    # No client MCP service: the real toolbox answers BLOCK.
+    _run_target(tmp_path, ScriptingGateway(_scripts(reply, REFUSE_TEXT)))
+
+    [record] = _nonprogress_records(log_path)
+    assert record["location"] == "planning_loop.py:execute_iteration:mcp_tool"
+    assert record["data"] == {
+        "run_id": "run-388",
+        "session_id": "session-388",
+        "planning_turn": 1,
+        "kind": "MCP_TOOL",
+        "output_bytes": len(reply.encode("utf-8")),
+        "mcp_operation": "list",
+        "authorization_outcome": "BLOCK",
+    }
+    assert "canary388server" not in json.dumps(record)
+
+
+def test_two_unparseable_turns_write_two_records_and_keep_the_unparseable_stop(tmp_path):
+    log_path = resolve_debug_log_path(workspace_root=tmp_path)
+    configure_debug_trace(enabled=True, log_path=log_path)
+    result = _run_target(tmp_path, ScriptingGateway(_scripts(PROSE, "Still just prose.")))
+
+    assert result.stop_reason == "PLANNING_UNPARSEABLE_RESPONSE"
+    assert result.settled_turns == 2
+    assert [record["data"]["planning_turn"] for record in _nonprogress_records(log_path)] == [1, 2]
+
+
+@pytest.mark.parametrize(
+    ("template", "reason_code"),
+    [
+        ("OBSERVE: need it\nREAD: {canary}#bytes=0:10\nREAD: {canary}#bytes=0:10\n", "READ_RANGES_DUPLICATE"),
+        ("OBSERVE: need it\nREAD: {canary}#bytes=0:10\nREAD: {canary}#bytes=5:15\n", "READ_RANGES_OVERLAP"),
+        ("{canary} is all I will say.", "GRAMMAR_UNRECOGNIZED"),
+    ],
+    ids=["duplicate-ranges", "overlapping-ranges", "free-text"],
+)
+def test_nonprogress_trace_never_carries_reply_content(tmp_path, template, reason_code):
+    log_path = resolve_debug_log_path(workspace_root=tmp_path)
+    configure_debug_trace(enabled=True, log_path=log_path)
+    canary = f"CANARY-PATH-{uuid.uuid4().hex}"
+    _run_target(
+        tmp_path,
+        ScriptingGateway(_scripts(template.format(canary=canary))),
+        policy=PlanningLoopPolicy(max_planning_turns=1),
+    )
+
+    [record] = _nonprogress_records(log_path)
+    assert record["data"]["reason_code"] == reason_code
+    assert canary not in log_path.read_text(encoding="utf-8")
+
+
+# --- #403 (option B, Codex round 44): bounded corrective feedback after an unparseable turn ----------------------
+
+MISSING_OBSERVE = "READ: target.py#bytes=0:10\n"  # run 3's observed omission: a ranged READ without OBSERVE
+
+
+def _notice(code: str) -> str:
+    from optimus.agent.planning_loop import PLANNING_PARSE_FEEDBACK
+
+    return PLANNING_PARSE_FEEDBACK[code]
+
+
+class NoticeFollowingGateway(ScriptingGateway):
+    """Turn 2 recovers only when its input carries the OBSERVE notice; without it, it repeats run 3's omission, so the
+    unfixed loop stops at the repeat limit (Codex round 44: a double that cannot recover without the notice)."""
+
+    def create_response(self, *, model, input_text, metadata=None):
+        if len(self.calls) == 1:
+            size = (self.workspace / "target.py").stat().st_size
+            reply = f"OBSERVE: re-read target.py\nREAD: target.py#bytes=0:{size}\n" if _notice("INTERMEDIATE_REQUIRES_OBSERVE") in input_text else MISSING_OBSERVE
+            self._scripts[0] = (reply, *self._scripts[0][1:])
+        return super().create_response(model=model, input_text=input_text, metadata=metadata)
+
+
+def test_the_feedback_table_covers_exactly_the_closed_codes_with_fixed_text():
+    from optimus.agent.planning_loop import PLANNING_PARSE_FEEDBACK, PLANNING_TURN_PARSE_CODES
+
+    assert set(PLANNING_PARSE_FEEDBACK) == PLANNING_TURN_PARSE_CODES
+    for code, text in PLANNING_PARSE_FEEDBACK.items():
+        assert text and "{" not in text and "}" not in text, code  # fixed text: nothing is ever interpolated
+        assert text == text.strip() and "\n" not in text, code
+
+
+def test_a_malformed_turn_recovers_through_the_notice_to_a_grounded_plan(tmp_path):
+    gateway = NoticeFollowingGateway(_scripts(MISSING_OBSERVE, "", TARGET_FINAL_PLAN))
+    gateway.workspace = tmp_path
+    result = _run_target(tmp_path, gateway)
+
+    assert result.stop_reason is None, result.corrective_text
+    assert (result.settled_turns, len(gateway.calls)) == (3, 3)
+    assert result.plan_hash is not None
+    assert _notice("INTERMEDIATE_REQUIRES_OBSERVE") in gateway.calls[1]["input_text"]
+    assert _notice("INTERMEDIATE_REQUIRES_OBSERVE") not in gateway.calls[0]["input_text"]
+    assert "Current guarded read evidence" in gateway.calls[2]["input_text"]
+
+
+def test_without_the_notice_the_same_double_cannot_recover(tmp_path, monkeypatch):
+    """The control's dependency (Codex round 44): suppress the notice and the same scenario stops at the repeat limit."""
+    from optimus.agent import planning_loop
+
+    monkeypatch.setattr(planning_loop, "_correction_notice", lambda code: "")
+    gateway = NoticeFollowingGateway(_scripts(MISSING_OBSERVE, "", TARGET_FINAL_PLAN))
+    gateway.workspace = tmp_path
+    result = _run_target(tmp_path, gateway)
+
+    assert (result.stop_reason, result.settled_turns, result.plan_hash) == ("PLANNING_UNPARSEABLE_RESPONSE", 2, None)
+
+
+def test_the_notice_is_cleared_after_a_validly_parsed_turn(tmp_path):
+    gateway = ScriptingGateway(_scripts(MISSING_OBSERVE, "OBSERVE: need it\nREAD: target.py#bytes=0:5\n", REFUSE_TEXT))
+    _run_target(tmp_path, gateway)
+
+    notice = _notice("INTERMEDIATE_REQUIRES_OBSERVE")
+    assert [notice in call["input_text"] for call in gateway.calls] == [False, True, False]
+
+
+def test_each_code_has_its_own_notice():
+    from optimus.agent.planning_loop import PLANNING_PARSE_FEEDBACK
+
+    assert len(set(PLANNING_PARSE_FEEDBACK.values())) == len(PLANNING_PARSE_FEEDBACK)
+
+
+def test_a_later_failure_carries_only_its_own_notice(tmp_path):
+    """Four turns, since two consecutive unparseable turns end the run: malformed (A), valid, malformed (B), then the
+    prompt that must name B alone."""
+    replies = (MISSING_OBSERVE, "OBSERVE: need it\nREAD: target.py#bytes=0:5\n", "OBSERVE: only a note\n", REFUSE_TEXT)
+    gateway = ScriptingGateway(_scripts(*replies))
+    _run_target(tmp_path, gateway, policy=PlanningLoopPolicy(max_planning_turns=4))
+
+    first, second = _notice("INTERMEDIATE_REQUIRES_OBSERVE"), _notice("INTERMEDIATE_REQUIRES_READ")
+    assert [(first in call["input_text"], second in call["input_text"]) for call in gateway.calls] == [
+        (False, False), (True, False), (False, False), (False, True),
+    ]  # fmt: skip
+
+
+def test_ignored_feedback_keeps_the_unchanged_repeat_stop(tmp_path):
+    result = _run_target(tmp_path, ScriptingGateway(_scripts(MISSING_OBSERVE, MISSING_OBSERVE)))
+
+    assert result.stop_reason == "PLANNING_UNPARSEABLE_RESPONSE"
+    assert result.settled_turns == 2
+
+
+def test_the_notice_never_carries_reply_content(tmp_path):
+    canary = f"CANARY-{uuid.uuid4().hex}"
+    gateway = ScriptingGateway(_scripts(f"{canary} is all I will say.", REFUSE_TEXT))
+    _run_target(tmp_path, gateway)
+
+    second = gateway.calls[1]["input_text"]
+    assert _notice("GRAMMAR_UNRECOGNIZED") in second and canary not in second
+
+
+class _FailsOnceAfterTurnOne(ScriptingGateway):
+    """Turn 1 is malformed; turn 2's first wire attempt fails transiently and its retry answers."""
+
+    def create_response(self, *, model, input_text, metadata=None):
+        if len(self.calls) == 1 and not getattr(self, "failed", False):
+            self.failed = True
+            self.failed_input = input_text
+            raise GatewayHttpError(503, "temporary overload", gateway_usage=GatewayUsage(gateway_request_id="gw-503", provider="glm", billing_units=1, cost_usd=Decimal("0.001")))
+        return super().create_response(model=model, input_text=input_text, metadata=metadata)
+
+
+def test_the_notice_is_stable_across_a_turns_wire_retry(tmp_path):
+    gateway = _FailsOnceAfterTurnOne(_scripts(MISSING_OBSERVE, REFUSE_TEXT))
+    _run_target(tmp_path, gateway)
+
+    notice = _notice("INTERMEDIATE_REQUIRES_OBSERVE")
+    assert notice in gateway.failed_input and notice in gateway.calls[1]["input_text"]
+    assert gateway.failed_input == gateway.calls[1]["input_text"]  # the retried request is the same request
+
+
+def test_two_runs_never_share_a_notice(tmp_path):
+    first = ScriptingGateway(_scripts(MISSING_OBSERVE, REFUSE_TEXT))
+    _run_target(tmp_path / "a", first)
+    second = ScriptingGateway(_scripts(REFUSE_TEXT))
+    _run_target(tmp_path / "b", second)
+
+    assert _notice("INTERMEDIATE_REQUIRES_OBSERVE") not in second.calls[0]["input_text"]

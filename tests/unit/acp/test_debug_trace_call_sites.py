@@ -72,6 +72,8 @@ WARM = (
     "spec.py:_emit_completion_message",
     "planning_loop.py:_invoke_planning_gateway",
     "planning_loop.py:execute_iteration",
+    "planning_loop.py:execute_iteration:unparseable",
+    "planning_loop.py:execute_iteration:mcp_tool",
 )
 # Cold reporters keep constant or two-string dict payloads (seam 4 A / 4 B contracts).
 COLD = (
@@ -185,7 +187,7 @@ INPUT_NAMES = (
     "method", "params", "request_id", "message", "wire", "pending_permission_id", "operation_id", "exc",
     "notification", "session_id", "request", "run_id", "turn_seq", "planning_result", "permission_result",
     "approved_result", "turn", "result", "update_payload", "tool_call", "tool_call_id", "payload",
-    "completed_plan", "message_payload", "self", "planning_turn", "wire_attempt",
+    "completed_plan", "message_payload", "self", "planning_turn", "wire_attempt", "response", "decision", "call",
 )
 
 
@@ -197,6 +199,7 @@ PAYLOAD_FACTORIES = {
     "_tool_call_payload": spec_module._tool_call_payload,
     "_unknown_cost_payload": planning_module._unknown_cost_payload,
     "_read_rejection_payload": planning_module._read_rejection_payload,
+    "_non_progress_payload": planning_module._non_progress_payload,
 }
 
 
@@ -236,6 +239,8 @@ def _real_namespace(sink):
         tool_call=SimpleNamespace(tool_name="file_writer"), tool_call_id="tool-1",
         completed_plan={"update": {"entries": [{}]}}, message_payload={"update": {"sessionUpdate": "agent_message_chunk"}},
         self=SimpleNamespace(_run_id="run-1", _session_id="session-1"), planning_turn=1, wire_attempt=1,
+        response=SimpleNamespace(output_text="prosé"), decision=SimpleNamespace(mcp_operation="call"),
+        call=SimpleNamespace(authorization_outcome="HOLD"),
     )
 
 
@@ -267,6 +272,11 @@ EXPECTED = {
                "error_type": "RuntimeError"},
     WARM[11]: {"run_id": "run-1", "session_id": "session-1", "stop_reason": "PLANNING_READ_FILE_NOT_FOUND",
                "rejected_path": "policy.txt", "start_byte": 0, "end_byte": 1024},
+    # output_bytes counts UTF-8 bytes: "prosé" is 5 characters, 6 bytes.
+    WARM[12]: {"run_id": "run-1", "session_id": "session-1", "planning_turn": 1, "kind": "UNPARSEABLE",
+               "output_bytes": 6, "reason_code": "GRAMMAR_UNRECOGNIZED"},
+    WARM[13]: {"run_id": "run-1", "session_id": "session-1", "planning_turn": 1, "kind": "MCP_TOOL",
+               "output_bytes": 6, "mcp_operation": "call", "authorization_outcome": "HOLD"},
 }
 MESSAGES = {WARM[0]: "client request failed"}
 
@@ -280,6 +290,8 @@ def _site_namespace(location, sink):
     elif location == WARM[11]:
         namespace["exc"] = SimpleNamespace(code="PLANNING_READ_FILE_NOT_FOUND")
         namespace["request"] = SimpleNamespace(path="policy.txt", start_byte=0, end_byte=1024)
+    elif location == WARM[12]:
+        namespace["exc"] = SimpleNamespace(code="GRAMMAR_UNRECOGNIZED")
     return namespace
 
 
@@ -757,6 +769,28 @@ def test_planning_unknown_cost_outcome_is_unchanged_under_diagnostic_failure(con
         [record] = [record for record in records if record["hypothesisId"] == "P9.95-USAGE-UNKNOWN"]
         assert record["data"]["error_type"] == "TypeError"
         assert "SENTINEL-PAYLOAD-BUG" not in json.dumps(record)
+    elif condition != "write-fails":
+        assert not path.exists()
+
+
+@pytest.mark.parametrize("condition", CONDITIONS)
+def test_planning_nonprogress_outcome_is_unchanged_under_diagnostic_failure(condition, tmp_path, monkeypatch):
+    from tests.unit.agent.test_planning_loop_runner import ScriptingGateway, _runner
+
+    path = _apply_condition(condition, monkeypatch, tmp_path)
+    gateway = ScriptingGateway(
+        [("Here is prose only.", Decimal("0.001"), "gw-1"), ("Still just prose.", Decimal("0.001"), "gw-2")]
+    )
+    result = _runner(tmp_path, gateway=gateway).run(
+        run_id="run-nonprogress", session_id="session-nonprogress", task="Update target.py", initial_workspace_context=""
+    )
+    assert result.stop_reason == "PLANNING_UNPARSEABLE_RESPONSE"
+    assert result.settled_turns == 2
+    if condition == "trace-on":
+        records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+        codes = [record["data"]["reason_code"] for record in records if record["hypothesisId"] == "P12.2-NONPROGRESS"]
+        assert codes == ["GRAMMAR_UNRECOGNIZED", "GRAMMAR_UNRECOGNIZED"]
+        assert "prose" not in path.read_text(encoding="utf-8")
     elif condition != "write-fails":
         assert not path.exists()
 

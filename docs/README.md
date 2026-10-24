@@ -54,6 +54,7 @@ relevant records before proposing a change in their area.
 | [ADR-021: Bounded GitHub authority switch](decisions/ADR-021-bounded-github-authority-switch.md) | Mechanism for moving the status authority of 49 Optimus work records to their GitHub issues, accepted by the operator on 2026-10-12 (sources S6 and S7) and activated by the merge of PR #285 (`f4f0e2f8`, 2026-10-12) |
 | [ADR-022: GitHub Issues as the work register](decisions/ADR-022-github-issues-as-the-work-register.md) | Corrects only ADR-021's pool-first intake: new plans, defects and follow-ups are created as issues, the unfinished remainder of the open work migrates in dependency-bounded groups, the backlog is transitional and documents keep scope, design, history and pointers; operator requirement accepted (source S8), mechanism proposed by Claude and reviewed by Codex |
 | [ADR-023: Plan 12.2 shipped admission and default planner](decisions/ADR-023-plan12-shipped-empirical-admission-and-default-planner.md) | One exact-snapshot empirical admission exception for Haiku 5.5 (`verified: false`) and the medium-then-easy default planner; operator policy approval recorded; ships with the Plan 12.2 delivery merge, and the ordinary proof is tracked in #237 |
+| [ADR-024: Accepts ADR-009 as scoped](decisions/ADR-024-accepts-adr-009-loop-control-phase-1-scope.md) | Loop control Phase 1: a detector, one nudge and a Continue/Stop check-in, escalation after Auto; operator D1–D3 (source S10) |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 
 ## Research (input for Plan 12)
@@ -98,6 +99,8 @@ Live plans (each listed in the backlog's live plan registry):
 | [P11-FU-6 v2: bounded early POST rejection](superpowers/plans/2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | Gateway early-rejection correction |
 | [Local-hook UTF-8 repair](superpowers/plans/2026-09-06-local-hook-utf8-repair.md) | Pre-commit hook decoding fix |
 | [Evidence collector](superpowers/plans/evidence-handoff-evidence-collector-implementation.md) | Evidence-handoff collector |
+| [Plan 12.3 v5: loop control Phase 1](superpowers/plans/2026-10-23-plan-12-3-loop-control-phase-1_v5.md) | Result-aware loop detection, one nudge, a Continue/Stop check-in, bounded TEST teardown, goal-loop retirement |
+| [Plan 12.4 v6: Auto mode](superpowers/plans/2026-10-23-plan-12-4-auto-mode_v6.md) | Classifier pilot (rules, Jev, Haiku, DSPy, hybrid), Gemini qualification, opt-in per-turn tier routing |
 
 ## Current designs
 

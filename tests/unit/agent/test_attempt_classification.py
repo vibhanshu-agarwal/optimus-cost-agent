@@ -398,3 +398,48 @@ def test_a_dropped_malformed_attempt_list_is_never_proof_of_a_refusal() -> None:
     assert _route_attempts_dropped('{"code": "CAPACITY_REFUSED", "route_attempts": []}', ()) is False
     assert _route_attempts_dropped('{"code": "CAPACITY_REFUSED"}', ()) is False
     assert _route_attempts_dropped("not json", ()) is False
+
+
+# --- #400 (Codex round 40, finding 2): a summary failure records whether it proved the shared route stopped ------
+
+
+def _pipeline_refusal() -> GatewayHttpError:
+    return GatewayHttpError(422, "refused", gateway_code="EMPIRICAL_ROUTER_PIPELINE", retryable=False, gateway_usage=_usage())
+
+
+@pytest.mark.parametrize(
+    ("error", "experimental", "stopped"),
+    [
+        (_pipeline_refusal(), True, True),
+        (_pipeline_refusal(), False, False),
+        (_refusal("EMPIRICAL_ROUTE_STOPPED"), False, True),
+        (ConnectionResetError("reset"), True, False),
+    ],
+    ids=["reply-refusal-experimental", "reply-refusal-ordinary", "later-stopped-refusal", "transport-loss"],
+)
+def test_a_summary_failure_records_whether_it_proved_the_route_stopped(error, experimental, stopped) -> None:
+    call = GatewaySummarizerCall(
+        gateway_client=RaisingGateway(error), model_id="fake/summarizer", session_id="s", request_ids=lambda: "req", experimental=experimental
+    )
+    response = call(prompt="P", max_output_tokens=9)
+    assert (response.text, response.route_stopped) == (None, stopped)
+
+
+def test_the_shipped_summarizer_knows_its_route_is_experimental() -> None:
+    from optimus.context.maintenance import MaintenanceIdentity, SummarizerRoute, gateway_summarizer_factory
+    from optimus.gateway.route_binding import registry_route_identity
+    from optimus_model_policy import load_registry
+    from optimus_model_policy.binding import disclosure_key, packaged_defaults
+
+    snapshot = load_registry(packaged_defaults(), None)
+    trusted = registry_route_identity(snapshot, model_id="anthropic/claude-haiku-5.5", role="summarizer")
+    route = SummarizerRoute(model_id=trusted.model_id, role=trusted.role, route=trusted.route, reasoning=trusted.reasoning, quantizations=trusted.quantizations)
+    factory = gateway_summarizer_factory(gateway_client=RaisingGateway(_pipeline_refusal()), route=route, snapshot=snapshot, disclosure_key=disclosure_key("k"))
+    identity = MaintenanceIdentity(
+        session_id="s", turn_seq=1, model_id=route.model_id, role=route.role, route=route.route, reasoning=route.reasoning,
+        quantizations=route.quantizations, strategy="compaction", revision_digest="d" * 64, registry_hash=snapshot.effective_hash,
+    )  # fmt: skip
+
+    response = factory(identity, lambda _text: True)(prompt="P", max_output_tokens=300)
+
+    assert response.route_stopped is True

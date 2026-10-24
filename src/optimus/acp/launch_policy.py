@@ -235,6 +235,15 @@ def _model_value_has_userinfo(value: str) -> bool:
     return bool(parsed.scheme) and (parsed.username is not None or parsed.password is not None)
 
 
+def _parse_loop_recovery(value: str) -> int:
+    """Parse the loop-recovery mode into its monotonic order: headless 0, interactive 1 (Plan 12.3)."""
+    order = {"headless": 0, "interactive": 1}
+    stripped = value.strip().lower()
+    if stripped not in order:
+        raise ValueError(f"Loop recovery must be interactive or headless, got: {stripped!r}")
+    return order[stripped]
+
+
 def _parse_model(value: str) -> str:
     """Parse model name — operational, ceremony-free under bounded conditions.
 
@@ -546,6 +555,17 @@ _register(
     tier=LaunchVariableTier.MONOTONIC_LIMIT,
     propagation=frozenset({PropagationTarget.AGENT_CHILD}),
     parser=_parse_monotonic_turns,
+    display=_display_literal,
+    approval="monotonic_tighten_or_exact",
+    uri_userinfo=False,
+)
+
+# Plan 12.3: headless (0) is tighter than the default interactive (1), so choosing it needs no approval.
+_register(
+    "OPTIMUS_LOOP_RECOVERY",
+    tier=LaunchVariableTier.MONOTONIC_LIMIT,
+    propagation=frozenset({PropagationTarget.AGENT_CHILD}),
+    parser=_parse_loop_recovery,
     display=_display_literal,
     approval="monotonic_tighten_or_exact",
     uri_userinfo=False,

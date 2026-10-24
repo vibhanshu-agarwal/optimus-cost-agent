@@ -128,6 +128,7 @@ def test_built_agent_child_env_exactly_matches_registry_projection_for_full_inpu
     monkeypatch.setenv("OPTIMUS_AGENT_MODEL", "glm-5.2")
     monkeypatch.setenv("OPTIMUS_LIVE_MAX_COST_USD", "0.10")
     monkeypatch.setenv("OPTIMUS_MAX_PLANNING_TURNS", "2")
+    monkeypatch.setenv("OPTIMUS_LOOP_RECOVERY", "headless")
 
     env = build_acp_subprocess_env(operator_environ=os.environ)
 

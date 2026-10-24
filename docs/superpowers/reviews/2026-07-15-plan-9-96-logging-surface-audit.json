@@ -1233,6 +1233,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.loops.signals:mcp_step:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: mcp_step json.dumps only canonicalizes a planning step's MCP call arguments in memory to compute a SHA-256 fingerprint for loop detection (Plan 12.3); the payload is not persisted, logged or exported, and loop telemetry carries only the fixed signal kind.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/loops/test_signals.py::test_an_mcp_fingerprint_separates_tools_and_arguments_on_one_server",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.mcp.client_disposition:ClientMcpDisposition._resolve_server:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: sdk_adapter.open(...) opens an MCP transport through ClientMcpSdkAdapter; the broad AST heuristic falsely name-flags this method call as file_open, but the path performs no file I/O or diagnostic persistence.",
@@ -1382,6 +1390,14 @@
       "rationale": "optimus.tools.mutation_tools:write_file:text_file_write is the authorized write_file mutation payload; sanitization would alter approved content rather than protect a diagnostic artifact.",
       "sanitizer": "MutationGuard and PreToolGuard authorization; no diagnostic sanitization",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.tools.mutation_tools:write_file_keeping_line_endings:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "optimus.tools.mutation_tools:write_file_keeping_line_endings:text_file_write is the authorized Agent WRITE mutation payload (#410), fitted to the target's line endings after the mutation gate and guard allow it; sanitization would alter approved content rather than protect a diagnostic artifact.",
+      "sanitizer": "MutationGuard and PreToolGuard authorization; no diagnostic sanitization",
+      "test_node": "tests/unit/tools/test_line_endings.py::test_the_agent_write_fits_the_crlf_seed_byte_for_byte",
       "evidence_tier": "unit"
     },
     {

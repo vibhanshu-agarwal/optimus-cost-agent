@@ -249,7 +249,7 @@ async def test_approved_write_and_test_turn_commits_complete_effect(tmp_path: Pa
     response = await turn.prompt_and_approve()
 
     assert response["result"]["stopReason"] == "end_turn", response
-    assert (tmp_path / "example.py").read_text(encoding="utf-8") == "new"
+    assert (tmp_path / "example.py").read_text(encoding="utf-8") == "new\n"  # #410: the existing final newline is kept
     assert turn.shell_calls == [["pytest", "-q"]]
     records = turn.records()
     assert [record.outcome.value for record in records] == ["completed"]
@@ -285,7 +285,7 @@ async def test_session_cancel_between_approved_write_and_test_commits_partial_ef
     response = await turn.prompt_and_approve()
 
     assert response["result"]["stopReason"] == "cancelled", response
-    assert (tmp_path / "example.py").read_text(encoding="utf-8") == "new"
+    assert (tmp_path / "example.py").read_text(encoding="utf-8") == "new\n"  # #410: the existing final newline is kept
     assert turn.shell_calls == []
     records = turn.records()
     assert [record.outcome.value for record in records] == ["cancelled"]
