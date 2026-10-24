@@ -50,6 +50,7 @@ from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import RuntimeContext
 from optimus.telemetry.events import TelemetryEvent
 from optimus.telemetry.subjects import sanitize_workspace_text
+from optimus.tools.line_endings import LineEndingStyle
 from optimus_security.failure_facts import bounded
 
 if TYPE_CHECKING:
@@ -224,6 +225,7 @@ class PlanningReadEvidence(BaseModel):
     end_byte: int = Field(ge=1)
     source_sha256: str = Field(min_length=1)
     range_text: str
+    line_endings: LineEndingStyle  # the whole file's, from the hashed snapshot (#410)
 
 
 class PlanningEvidenceEnvelope(BaseModel):
@@ -523,7 +525,8 @@ def _serialize_planning_read_evidence(evidence: PlanningReadEvidence) -> str:
         "READ_BLOCK "
         f"path={evidence.path} "
         f"bytes={evidence.start_byte}:{evidence.end_byte} "
-        f"sha256={evidence.source_sha256}\n"
+        f"sha256={evidence.source_sha256} "
+        f"eol={evidence.line_endings}\n"
         f"{evidence.range_text}\n"
         "END_READ_BLOCK\n"
     )

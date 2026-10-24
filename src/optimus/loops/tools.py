@@ -9,6 +9,7 @@ from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolResult
 from optimus.guardrails.runtime_tree import resolve_target
 from optimus.runtime.modes import ExecutionMode, GenerationScope
+from optimus.tools.line_endings import line_ending_style
 
 if TYPE_CHECKING:
     from optimus.agent.planning_loop import PlanningReadEvidence, PlanningReadRequest
@@ -125,4 +126,5 @@ class GuardedLoopToolExecutor:
             end_byte=request.end_byte,
             source_sha256=source_sha256,
             range_text=range_text,
+            line_endings=line_ending_style(file_bytes),
         )

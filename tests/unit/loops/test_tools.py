@@ -314,3 +314,17 @@ def test_read_file_range_still_reads_ordinary_source_through_a_normal_alias(tmp_
     evidence = _read_range(executor(tmp_path), tmp_path, path="lib/a.py", start_byte=0, end_byte=5)
 
     assert evidence.range_text == "hello"
+
+
+@pytest.mark.parametrize(
+    ("data", "eol"),
+    [(b"a\r\nb\r\n", "crlf"), (b"a\nb\n", "lf"), (b"a\r\nb\n", "mixed"), (b"ab", "none")],
+)
+def test_a_read_carries_the_whole_files_line_endings(tmp_path, data, eol):
+    """#410: the style comes from the same guarded byte snapshot as the hash, whatever range is read."""
+    (tmp_path / "f.py").write_bytes(data)
+
+    evidence = _read_range(executor(tmp_path), tmp_path, path="f.py", start_byte=0, end_byte=1)
+
+    assert evidence.line_endings == eol
+    assert evidence.source_sha256 == hashlib.sha256(data).hexdigest()

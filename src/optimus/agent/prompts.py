@@ -5,11 +5,12 @@ from collections.abc import Mapping
 
 from optimus.agent.models import AgentMcpToolOutput
 
-AGENT_PLANNER_PROMPT_VERSION = "AGENT_PLANNER_PROMPT_VERSION:2026-07-12"
+# #410: both grammars state how a WRITE body maps to the file's bytes.
+AGENT_PLANNER_PROMPT_VERSION = "AGENT_PLANNER_PROMPT_VERSION:2026-10-24-p410-byte-faithful-write"
 # Plan 12.2 Task 11: the remaining-dollar line is gone (the planner never plans around money).
-# #403: a turn after an unparseable one carries a fixed correction notice.
+# #403: a turn after an unparseable one carries a fixed correction notice. #410: the WRITE line-ending rule.
 MULTI_TURN_PLANNER_PROMPT_VERSION = (
-    "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-10-23-p403-corrective-feedback"
+    "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-10-24-p410-byte-faithful-write"
 )
 CORRECTION_NOTICE_HEADER = "Your previous reply was not accepted:"
 
@@ -35,6 +36,18 @@ _MCP_UNSAFE_OUTPUT_RE = re.compile(
 )
 _MCP_EVIDENCE_MAX_BYTES = 8 * 1024
 
+# #410 (design v3, R8): one wording for both grammars, one sentence per line.
+_WRITE_LINE_ENDINGS_RULE = (
+    "Write the WRITE body with plain line breaks.\n"
+    "Optimus writes them in the existing file's line-ending style (LF for a new file) and keeps any UTF-8 BOM.\n"
+    "For an existing file, the body's last line ends the way the existing file's last line did;\n"
+    "earlier empty lines are kept, and an empty body empties the file.\n"
+    "A new file ends with a line break only if the body does.\n"
+    "A file with mixed line endings is refused.\n"
+    "One empty line directly before the next directive separates it from the body;\n"
+    "any other line, including one with only spaces, is content.\n"
+)
+
 _DIRECTIVE_GRAMMAR = """\
 Respond using only the directive grammar below. Do not emit prose before the directives.
 Use plain lines only: no markdown bullets, numbering, or code fences.
@@ -46,14 +59,15 @@ Directives:
   <file content immediately after the WRITE line>
   The WRITE body is the complete final content of the file and fully replaces any
   existing file at that path. Include all existing content that must be preserved.
-  File content must be raw text exactly as it should appear on disk. Never escape quotes or apply JSON-style escaping.
+{write_rule}  File content must be raw text exactly as it should appear on disk, apart from line endings, as described above.
+  Never escape quotes or apply JSON-style escaping.
 - TEST pytest <relative-test-path-or-args>
 - MCP_LIST <server>
 - MCP_CALL <server> <tool> <canonical-json-object>
   MCP_LIST and MCP_CALL are intermediate-only generic tools (mcp_list_tools / mcp_call).
   Never emit them as a final mutation plan. Never register descriptor-derived tool names.
   Never place them inside a WRITE body as directives.
-"""
+""".replace("{write_rule}", "".join(f"  {line}\n" for line in _WRITE_LINE_ENDINGS_RULE.splitlines()))
 
 _MULTI_TURN_DIRECTIVE_GRAMMAR = """\
 Respond using exactly one of the settled-turn grammars below. Do not emit prose outside them.
@@ -75,7 +89,7 @@ READ <relative-path>
 WRITE <relative-path>
 <file content immediately after the WRITE line>
 [TEST pytest <relative-test-path-or-args>]
-
+{write_rule}
 Typed refusal:
 REFUSE: <one-line sanitized reason>
 
@@ -99,7 +113,7 @@ Rules:
 - If safe WRITE content depends on earlier evidence available only as an observation, emit REFUSE instead.
 - On the last available turn, emit a final plan or REFUSE, never another ranged READ request.
 - Do not treat partial ranged evidence as the complete file.
-"""
+""".replace("{write_rule}", _WRITE_LINE_ENDINGS_RULE)
 
 
 def sanitize_mcp_observation_text(text: str) -> str:

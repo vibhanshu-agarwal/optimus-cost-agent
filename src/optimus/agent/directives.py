@@ -101,7 +101,7 @@ def parse_agent_plan(plan_text: str) -> AgentPlanDirectives:
     read_paths: list[str] = []
     tests: list[tuple[str, ...]] = []
     write: AgentWriteDirective | None = None
-    lines = _unwrap_markdown_code_fence(plan_text).splitlines()
+    lines = _plan_lines(_unwrap_markdown_code_fence(plan_text))
     index = 0
 
     while index < len(lines):
@@ -128,7 +128,9 @@ def parse_agent_plan(plan_text: str) -> AgentPlanDirectives:
             while index < len(lines) and not _is_directive_line(lines[index]):
                 content_lines.append(lines[index])
                 index += 1
-            write = AgentWriteDirective(path=path, content="\n".join(content_lines))
+            if index < len(lines) and content_lines and content_lines[-1] in ("\n", "\r\n"):
+                content_lines.pop()  # #410 R2: one empty line before the next directive separates it from the body
+            write = AgentWriteDirective(path=path, content="".join(content_lines))
             continue
 
         test_match = _TEST_DIRECTIVE.match(line)
@@ -161,11 +163,18 @@ def _is_directive_line(line: str) -> bool:
     )
 
 
+def _plan_lines(text: str) -> list[str]:
+    """#410 R1: lines end at LF only and keep their terminator (a CR before it makes CRLF); every other separator
+    that `splitlines()` knows is content, so a WRITE body keeps its bytes."""
+    *lines, tail = text.split("\n")
+    return [line + "\n" for line in lines] + ([tail] if tail else [])
+
+
 def _unwrap_markdown_code_fence(plan_text: str) -> str:
     stripped = plan_text.strip()
     if not stripped.startswith("```"):
         return plan_text
-    lines = stripped.splitlines()
+    lines = _plan_lines(stripped)
     if len(lines) < 2:
         return plan_text
     closing_index = len(lines) - 1
@@ -173,7 +182,7 @@ def _unwrap_markdown_code_fence(plan_text: str) -> str:
         closing_index -= 1
     if closing_index == 0:
         return plan_text
-    return "\n".join(lines[1:closing_index])
+    return "".join(lines[1:closing_index])
 
 
 def _normalize_directive_line(line: str) -> str:

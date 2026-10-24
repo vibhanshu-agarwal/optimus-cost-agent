@@ -14,7 +14,7 @@ from optimus.runtime.modes import GenerationScope
 from optimus.runtime.mutation import MutationForbidden
 from optimus.runtime.state import RuntimeContext
 from optimus.tools.mutation_tools import shell_exec
-from optimus.tools.mutation_tools import write_file as guarded_write_file
+from optimus.tools.mutation_tools import write_file_keeping_line_endings as guarded_write_file  # #410
 
 
 class AgentToolbox:
