@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import re
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
@@ -45,6 +47,8 @@ class WorkspaceContextResult:
     diagnostics: tuple[WorkspaceReferenceDiagnostic, ...]
     blocking_stop_reason: str | None = None
     blocking_message: str | None = None
+    # Path -> sha256 of the bytes each shown file had when it was read, whole or truncated (#407).
+    file_sha256s: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -137,11 +141,13 @@ def assemble_workspace_context_for_prompt(
             blocking_message=blocking_message,
         )
 
+    file_sha256s: dict[str, str] = {}
     text, used_bytes, omitted_paths, pack_blocking = _pack_workspace_context(
         root,
         candidate_paths,
         max_total_bytes=max_total_bytes,
         priority_relative=tuple(prioritized_paths),
+        file_sha256s=file_sha256s,
     )
     if pack_blocking:
         too_large_diagnostics = _mark_first_resolved_too_large(diagnostic_tuple)
@@ -163,6 +169,7 @@ def assemble_workspace_context_for_prompt(
         prioritized_paths=tuple(prioritized_paths),
         omitted_paths=omitted_paths,
         diagnostics=tuple(diagnostics),
+        file_sha256s=file_sha256s,
     )
 
 
@@ -343,11 +350,11 @@ def _mark_first_resolved_too_large(
     return tuple(updated)
 
 
-def _file_block(root: Path, path: Path) -> tuple[str, int]:
+def _file_block(root: Path, path: Path) -> tuple[str, int, str]:
     relative = path.relative_to(root).as_posix()
     data = path.read_bytes()
     block = f"--- {relative} ---\n{data.decode('utf-8')}"
-    return block, len(block.encode("utf-8"))
+    return block, len(block.encode("utf-8")), hashlib.sha256(data).hexdigest()
 
 
 def _truncation_line_fitting_budget(
@@ -376,7 +383,9 @@ def _pack_workspace_context(
     *,
     max_total_bytes: int,
     priority_relative: tuple[str, ...],
+    file_sha256s: dict[str, str],
 ) -> tuple[str, int, tuple[str, ...], bool]:
+    """``file_sha256s`` receives the digest of every file whose bytes the text shows (#407)."""
     if not candidate_paths and not priority_relative:
         return "", 0, (), False
 
@@ -396,11 +405,12 @@ def _pack_workspace_context(
     priority_blocks: list[str] = []
     priority_bytes = 0
     for index, path in enumerate(priority_paths):
-        block, block_bytes = _file_block(root, path)
+        block, block_bytes, digest = _file_block(root, path)
         if index > 0:
             priority_bytes += 1
         priority_bytes += block_bytes
         priority_blocks.append(block)
+        file_sha256s[path.relative_to(root).as_posix()] = digest
 
     if priority_bytes > max_total_bytes:
         return "", 0, (), True
@@ -453,12 +463,14 @@ def _pack_workspace_context(
         if block_bytes <= remaining:
             lines.append(block)
             used_bytes += separator_bytes + block_bytes
+            file_sha256s[relative_posix] = hashlib.sha256(data).hexdigest()
             continue
 
         header_bytes = len(header.encode("utf-8")) + 1
         if remaining > header_bytes:
             truncated_text = _truncate_utf8(data, remaining - header_bytes)
             lines.append(f"{header}\n{truncated_text}")
+            file_sha256s[relative_posix] = hashlib.sha256(data).hexdigest()
             _, omitted = _truncation_line_fitting_budget(
                 used_bytes + separator_bytes + len(f"{header}\n{truncated_text}".encode("utf-8")),
                 max_total_bytes,

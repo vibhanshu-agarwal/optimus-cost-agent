@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import subprocess
 import time
 from collections.abc import Callable, Sequence
@@ -49,6 +50,10 @@ def _assert_pre_tool_allowed(result: PreToolResult) -> None:
         raise MutationForbidden(f"human approval required: {result.reason}")
 
 
+class WriteSourceChanged(MutationForbidden):
+    """The target no longer has the content a write was computed from; nothing was written (#407)."""
+
+
 def write_file(
     path: str | Path,
     content: str,
@@ -57,9 +62,15 @@ def write_file(
     guard: PreToolGuardLike | None = None,
     requested_relative_path: str | None = None,
     target_unresolved: bool = False,
+    newline: str | None = None,
+    expected_sha256: str | None = None,
 ) -> None:
     """Write after the mutation gate and the guard allow it. The two optional fields carry a model's requested path
-    and an unresolvable target to the guard (Plan 12.2 W); without them the check is exactly as before."""
+    and an unresolvable target to the guard (Plan 12.2 W); without them the check is exactly as before.
+
+    ``newline=""`` writes ``content`` without newline translation. ``expected_sha256`` is re-checked against the
+    target's bytes after the guard allows the write and immediately before it: a mismatch raises
+    ``WriteSourceChanged``. Neither excludes a concurrent external writer."""
     assert_mutation_allowed(context, MutationKind.WRITE_FILE)
     active_guard = guard or PreToolGuard.for_workspace(workspace_root=Path.cwd(), allowed_network_hosts=())
     _assert_pre_tool_allowed(
@@ -79,7 +90,14 @@ def write_file(
             )
         )
     )
-    Path(path).write_text(content, encoding="utf-8")
+    if expected_sha256 is not None:
+        try:
+            current = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        except FileNotFoundError:
+            current = None
+        if current != expected_sha256:
+            raise WriteSourceChanged(f"source changed before write: {path}")
+    Path(path).write_text(content, encoding="utf-8", newline=newline)
 
 
 def shell_exec(
