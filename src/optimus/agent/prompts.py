@@ -5,12 +5,13 @@ from collections.abc import Mapping
 
 from optimus.agent.models import AgentMcpToolOutput
 
+# #407: both grammars document EDIT, a localized change of an existing file.
 # #410: both grammars state how a WRITE body maps to the file's bytes.
-AGENT_PLANNER_PROMPT_VERSION = "AGENT_PLANNER_PROMPT_VERSION:2026-10-24-p410-byte-faithful-write"
+AGENT_PLANNER_PROMPT_VERSION = "AGENT_PLANNER_PROMPT_VERSION:2026-10-24-p407-edit-p410-write-line-endings"
 # Plan 12.2 Task 11: the remaining-dollar line is gone (the planner never plans around money).
 # #403: a turn after an unparseable one carries a fixed correction notice. #410: the WRITE line-ending rule.
 MULTI_TURN_PLANNER_PROMPT_VERSION = (
-    "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-10-24-p410-byte-faithful-write"
+    "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-10-24-p407-edit-p410-write-line-endings"
 )
 CORRECTION_NOTICE_HEADER = "Your previous reply was not accepted:"
 
@@ -51,7 +52,7 @@ _WRITE_LINE_ENDINGS_RULE = (
 _DIRECTIVE_GRAMMAR = """\
 Respond using only the directive grammar below. Do not emit prose before the directives.
 Use plain lines only: no markdown bullets, numbering, or code fences.
-Emit at most one WRITE directive per plan.
+Emit at most one WRITE or EDIT directive per plan.
 
 Directives:
 - READ <relative-path>
@@ -61,6 +62,16 @@ Directives:
   existing file at that path. Include all existing content that must be preserved.
 {write_rule}  File content must be raw text exactly as it should appear on disk, apart from line endings, as described above.
   Never escape quotes or apply JSON-style escaping.
+- EDIT <relative-path>
+  <<<<<<< OLD
+  <one or more whole lines copied exactly from the file as shown>
+  ======= NEW
+  <replacement lines; leave empty to delete the OLD lines>
+  >>>>>>> END
+  EDIT changes only the OLD lines of an existing file. Each OLD must match whole lines of the
+  file exactly once, indentation included, and blocks must not overlap. Repeat the OLD/NEW
+  block for further changes to the same file. Use EDIT to change an existing file; use WRITE
+  only for a new file or a complete rewrite. The three marker lines are reserved.
 - TEST pytest <relative-test-path-or-args>
 - MCP_LIST <server>
 - MCP_CALL <server> <tool> <canonical-json-object>
@@ -90,6 +101,19 @@ WRITE <relative-path>
 <file content immediately after the WRITE line>
 [TEST pytest <relative-test-path-or-args>]
 {write_rule}
+Final turn changing part of an existing file (EDIT instead of WRITE):
+READ <relative-path>
+EDIT <relative-path>
+<<<<<<< OLD
+<one or more whole lines copied exactly from raw ranges visible this turn>
+======= NEW
+<replacement lines; leave empty to delete the OLD lines>
+>>>>>>> END
+[further OLD/NEW blocks for the same file]
+[TEST pytest <relative-test-path-or-args>]
+A plan holds at most one WRITE or EDIT. Each OLD must match whole lines of the file exactly
+once, indentation included; blocks must not overlap. The three marker lines are reserved.
+
 Typed refusal:
 REFUSE: <one-line sanitized reason>
 
@@ -101,6 +125,9 @@ Initial workspace context rules:
   `<path>: <N> bytes` requires `READ: <path>#bytes=0:<N>`; never guess a chunk size.
 - Carried observations cannot ground final WRITE content; only current-turn guarded
   raw ranges may ground WRITE.
+- EDIT needs raw evidence only of the lines it changes: to change part of a file too large to
+  see whole, request the ranges that hold those lines and emit EDIT from them. Never refuse a
+  localized change only because the whole file does not fit.
 - If required raw evidence cannot coexist in the current-read partition, emit REFUSE:
   rather than guess.
 
@@ -110,6 +137,7 @@ Rules:
 - Never request a byte range already present in the carried or current evidence.
 - Never emit WRITE or TEST before adequate evidence is visible.
 - Ground WRITE content only in raw ranges visible in the current turn.
+- Copy every EDIT OLD line exactly from raw ranges visible in the current turn.
 - If safe WRITE content depends on earlier evidence available only as an observation, emit REFUSE instead.
 - On the last available turn, emit a final plan or REFUSE, never another ranged READ request.
 - Do not treat partial ranged evidence as the complete file.

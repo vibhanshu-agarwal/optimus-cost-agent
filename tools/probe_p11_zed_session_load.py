@@ -247,6 +247,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/agent/__init__.py",
     "src/optimus/agent/defaults.py",
     "src/optimus/agent/directives.py",
+    "src/optimus/agent/edits.py",
     "src/optimus/agent/golden.py",
     "src/optimus/agent/models.py",
     "src/optimus/agent/operation_control.py",

@@ -2116,8 +2116,12 @@ _PLANNING_TERMINAL_STOP_REASONS = frozenset(
 
 
 def _completion_message(result: AgentRunResult) -> str:
-    if result.stop_reason in TEST_STOP_REASONS.values() or result.stop_reason == WRITE_LINE_ENDINGS_MIXED:
-        return result.output_text  # it names the stopped TEST or refused WRITE and what did not run (Plan 12.3; #410)
+    if result.stop_reason in TEST_STOP_REASONS.values():
+        return result.output_text  # it names the stopped TEST and any change already applied (Plan 12.3)
+    if result.stop_reason == "EDIT_NOT_APPLICABLE":
+        return result.output_text  # the closed code and that nothing was written (#407)
+    if result.stop_reason == WRITE_LINE_ENDINGS_MIXED:
+        return result.output_text  # the refused WRITE and the TESTs that did not run (#410)
     if result.mutation_count > 0:
         writes = [call.summary for call in result.tool_calls if call.tool_name == "write_file"]
         if writes:

@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from optimus.agent.directives import (
+    EDIT_END_MARKER,
+    EDIT_OLD_MARKER,
     AgentDirectiveParseError,
     AgentPlanDirectives,
     directive_text,
@@ -20,6 +22,7 @@ from optimus.agent.directives import (
     parse_mcp_list_line,
     plan_line_text,
     plan_lines,
+    split_cr_lf_keepends,
     strip_plan_text,
 )
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
@@ -271,6 +274,8 @@ class PlanningLoopResult(BaseModel):
     corrective_text: str = ""
     refusal_reason: str | None = None
     evidence_metadata: dict[str, str] = Field(default_factory=dict)
+    # Path -> sha256 of the raw evidence visible on the final plan's turn; an EDIT is bound to it (#407).
+    evidence_sha256s: dict[str, str] = Field(default_factory=dict)
 
 
 class PlanningProgressEvent(BaseModel):
@@ -579,7 +584,7 @@ def parse_planning_turn(text: str) -> PlanningTurnDecision:
 
 
 def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
-    lines = [stripped for line in plan_lines(text) if (stripped := plan_line_text(line))]  # #410 R1
+    lines = [stripped for line in _outside_edit_blocks(text) if (stripped := plan_line_text(line))]  # #407; #410 R1
     if not lines:
         return None
     # #410 R1: classify by directive text, so a line holding a content separator never counts as MCP.
@@ -625,8 +630,27 @@ def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
     return None
 
 
+def _outside_edit_blocks(text: str) -> list[str]:
+    """The lines outside EDIT blocks: OLD/NEW bodies are opaque content, never directives (#407). Blocks end
+    at CR/LF lines, as the plan parser's do; the text outside them takes #410's R1 split (LF and CRLF lines that
+    keep their terminators), like the final-plan parser's."""
+    outside: list[str] = []
+    pending = ""
+    inside = False
+    for line in split_cr_lf_keepends(text):
+        marker = line.strip()
+        if inside:
+            inside = marker != EDIT_END_MARKER
+        elif marker == EDIT_OLD_MARKER:
+            outside += plan_lines(pending)
+            pending, inside = "", True
+        else:
+            pending += line
+    return outside + plan_lines(pending)
+
+
 def _directive_surface_lines(text: str) -> tuple[str, ...]:
-    lines = plan_lines(text)  # #410 R1: LF and CRLF only, like the final-plan parser
+    lines = _outside_edit_blocks(text)  # #407: EDIT blocks are opaque; #410 R1: LF and CRLF lines elsewhere
     surface_lines: list[str] = []
     index = 0
     while index < len(lines):
@@ -792,7 +816,8 @@ def _try_parse_refuse(text: str) -> PlanningTurnDecision | None:
 
 def _try_parse_final_plan(text: str) -> PlanningTurnDecision | None:
     try:
-        directives = parse_agent_plan(text)
+        # A model's EDIT never carries a base: the harness binds it before approval (#407).
+        directives = parse_agent_plan(text, edit_base="forbidden")
     except AgentDirectiveParseError:
         return None
 
@@ -1064,6 +1089,7 @@ class PlanningLoopRunner:
         mcp_permission_broker: object | None = None,
         conversation_envelope: str = "",
         required_file_sizes: dict[str, int] | None = None,
+        initial_workspace_sha256s: dict[str, str] | None = None,
     ) -> PlanningLoopResult:
         # Only an evaluation caller's explicit cap can stop planning on money (Plan 12.2 Task 11).
         if self._max_cost_usd is not None and self._max_cost_usd <= Decimal("0"):
@@ -1081,6 +1107,7 @@ class PlanningLoopRunner:
             initial_workspace_context=initial_workspace_context,
             initial_workspace_file_sizes=initial_workspace_file_sizes or {},
             required_file_sizes=required_file_sizes,
+            initial_workspace_sha256s=initial_workspace_sha256s,
             workspace_root=self._workspace_root,
             run_id=run_id,
             session_id=session_id,
@@ -1173,6 +1200,7 @@ class _PlanningIterationRunner:
         initial_workspace_context: str,
         initial_workspace_file_sizes: dict[str, int],
         required_file_sizes: dict[str, int] | None = None,
+        initial_workspace_sha256s: dict[str, str] | None = None,
         workspace_root: Path,
         run_id: str,
         session_id: str | None,
@@ -1228,6 +1256,9 @@ class _PlanningIterationRunner:
         self._initial_workspace_context = initial_workspace_context
         self._initial_workspace_file_sizes = initial_workspace_file_sizes
         self._required_file_sizes = required_file_sizes or {}
+        self._initial_workspace_sha256s = initial_workspace_sha256s or {}
+        # The raw evidence the final plan's turn showed, by path; set when a final plan settles (#407).
+        self._final_evidence_sha256s: dict[str, str] = {}
         self._workspace_root = workspace_root
         self._run_id = run_id
         self._session_id = session_id
@@ -1918,6 +1949,11 @@ class _PlanningIterationRunner:
             )
 
         if decision.kind is PlanningTurnKind.FINAL_PLAN:
+            # The same turn-1-only rule as the initial context the prompt showed, plus this turn's current reads.
+            self._final_evidence_sha256s = {
+                **(self._initial_workspace_sha256s if planning_turn == 1 else {}),
+                **{read.path: read.source_sha256 for read in self._current_reads},
+            }
             return IterationOutcome(
                 summary="planning settled with a final directive plan",
                 deterministic_completion=True,
@@ -2034,6 +2070,7 @@ class _PlanningIterationRunner:
                     provider=self._last_provider,
                     directives=decision.directives,
                     evidence_metadata={"settled_turns": str(settled_turns)},
+                    evidence_sha256s=dict(self._final_evidence_sha256s),
                 )
 
             raise AssertionError("planning loop completed without a settled decision")

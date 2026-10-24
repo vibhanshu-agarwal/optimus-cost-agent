@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import subprocess
 import time
 from collections.abc import Callable, Sequence
@@ -59,6 +60,10 @@ class WriteRefused(Exception):
         self.path = path
 
 
+class WriteSourceChanged(MutationForbidden):
+    """The target no longer has the content a write was computed from; nothing was written (#407)."""
+
+
 def write_file(
     path: str | Path,
     content: str,
@@ -67,12 +72,24 @@ def write_file(
     guard: PreToolGuardLike | None = None,
     requested_relative_path: str | None = None,
     target_unresolved: bool = False,
+    newline: str | None = "",
+    expected_sha256: str | None = None,
 ) -> None:
-    """Write exactly `content` (no platform newline translation, #410) after the mutation gate and the guard allow it.
-    The two optional fields carry a model's requested path and an unresolvable target to the guard (Plan 12.2 W);
-    without them the check is exactly as before."""
+    """Write exactly `content` after the mutation gate and the guard allow it. The two optional fields carry a model's
+    requested path and an unresolvable target to the guard (Plan 12.2 W); without them the check is exactly as before.
+
+    ``newline`` defaults to ``""``: no platform newline translation, for every caller (#410). ``expected_sha256`` is
+    re-checked against the target's bytes after the guard allows the write and immediately before it: a mismatch
+    raises ``WriteSourceChanged`` (#407). Neither excludes a concurrent external writer."""
     _authorize_file_mutation(path, context=context, guard=guard, requested_relative_path=requested_relative_path, target_unresolved=target_unresolved)
-    Path(path).write_text(content, encoding="utf-8", newline="")
+    if expected_sha256 is not None:
+        try:
+            current = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        except FileNotFoundError:
+            current = None
+        if current != expected_sha256:
+            raise WriteSourceChanged(f"source changed before write: {path}")
+    Path(path).write_text(content, encoding="utf-8", newline=newline)
 
 
 def write_file_keeping_line_endings(
