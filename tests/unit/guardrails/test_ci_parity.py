@@ -20,6 +20,7 @@ from tests.support.concurrency import DescendantRecorder, announce_pid_code, ass
 from tools import process_tree
 
 ROOT = Path(__file__).resolve().parents[3]
+_NATIVE_WINDOWS = os.name == "nt"
 
 
 def test_pre_commit_uses_guardrail_rule_set():
@@ -663,6 +664,28 @@ def _configured_run_string(repo: Path) -> str:
 
 
 def _bash() -> str:
+    if _NATIVE_WINDOWS:
+        found = shutil.which("git.exe")
+        if found is None:
+            pytest.fail("native Git Bash prerequisite: git.exe is unavailable")
+        git = Path(found).resolve()
+        root = git.parent.parent
+        # Git prepends its internal executable directory while running hooks.
+        internal = tuple(part.casefold() for part in git.parts[-4:-1])
+        if internal in {
+            ("ucrt64", "libexec", "git-core"),
+            ("mingw64", "libexec", "git-core"),
+            ("mingw32", "libexec", "git-core"),
+        }:
+            root = git.parents[3]
+        elif git.parent.name.casefold() not in {"cmd", "bin"} or root.name.casefold() in {"usr", "ucrt64", "mingw32", "mingw64"}:
+            pytest.fail(f"native Git Bash prerequisite: unsupported Git layout at {git}")
+        if git.name.casefold() != "git.exe":
+            pytest.fail(f"native Git Bash prerequisite: unsupported Git executable at {git}")
+        bash = root / "bin" / "bash.exe"
+        if not bash.is_file():
+            pytest.fail(f"native Git Bash prerequisite: missing Bash at {bash}, selected Git {git}")
+        return str(bash)
     bash = shutil.which("bash")
     if bash is None:
         pytest.skip("bash unavailable; the configured step is a shell body")
@@ -671,8 +694,9 @@ def _bash() -> str:
 
 def run_configured_step(repo: Path) -> subprocess.CompletedProcess[str]:
     """Execute the real workflow step's ``run`` body in a real shell."""
+    bash = _bash()
     probe_command = "uv run python -c " + repr("import sys; print(sys.executable)")
-    probe = _run([_bash(), "-e", "-o", "pipefail", "-c", probe_command], repo)
+    probe = _run([bash, "-e", "-o", "pipefail", "-c", probe_command], repo)
     assert probe.returncode == 0, f"uv could not resolve an interpreter: {probe.stderr}"
     resolved = Path(probe.stdout.strip()).resolve()
     expected = (_venv_scripts_dir() / resolved.name).resolve()
@@ -680,7 +704,7 @@ def run_configured_step(repo: Path) -> subprocess.CompletedProcess[str]:
         f"uv resolved {resolved} instead of the locked environment {expected}; "
         "scanner output would not be trustworthy"
     )
-    return _run([_bash(), "-e", "-o", "pipefail", "-c", _configured_run_string(repo)], repo)
+    return _run([bash, "-e", "-o", "pipefail", "-c", _configured_run_string(repo)], repo)
 
 
 def _normalize(text: str) -> str:
@@ -877,6 +901,18 @@ def _force_kill_pid(pid: int) -> None:
         pass
 
 
+def _timeout_script(python: str, grandchild: Path) -> str:
+    return f"{shlex.quote(Path(python).as_posix())} {shlex.quote(grandchild.as_posix())} & wait"
+
+
+def _run_expecting_timeout(argv: list[str], repo: Path) -> None:
+    result = _run(argv, repo)
+    pytest.fail(
+        f"fixture-owned process returned before timeout: returncode={result.returncode}\n"
+        f"stdout tail:\n{result.stdout[-2048:]}\nstderr tail:\n{result.stderr[-2048:]}"
+    )
+
+
 def test_run_timeout_terminates_descendant_processes(tmp_path: Path, monkeypatch):
     """The timeout path must reap the whole tree, not just the shell.
 
@@ -888,7 +924,8 @@ def test_run_timeout_terminates_descendant_processes(tmp_path: Path, monkeypatch
     repo.mkdir()
     grandchild = repo / "grandchild.py"
     grandchild.write_text(announce_pid_code(repo, "grandchild") + "\nimport time\ntime.sleep(300)\n", encoding="utf-8")
-    script = f'"{sys.executable}" "{grandchild}" & wait'
+    script = _timeout_script(sys.executable, grandchild)
+    bash = _bash()
     monkeypatch.setattr(sys.modules[__name__], "STEP_TIMEOUT_SECONDS", 5)
 
     # Teardown encloses the invocation itself. If _run returns unexpectedly, or
@@ -899,8 +936,8 @@ def test_run_timeout_terminates_descendant_processes(tmp_path: Path, monkeypatch
     with DescendantRecorder(repo, ["grandchild"]) as recorder:
         try:
             started = time.monotonic()
-            with pytest.raises(AssertionError, match="exceeded"):
-                _run([_bash(), "-c", script], repo)
+            with pytest.raises(AssertionError, match="^" + re.escape("fixture-owned process exceeded")):
+                _run_expecting_timeout([bash, "-c", script], repo)
             assert_descendants_killed(
                 recorder, ["grandchild"], deadline=started + STEP_TIMEOUT_SECONDS + 15, what="timeout cleanup",
             )
@@ -1217,3 +1254,158 @@ def test_production_secret_scan_regression_controls(production_repo: Path):
     assert mutant.returncode != control.returncode, (
         "the directory-only form must be distinguishable from the real gate"
     )
+
+
+@pytest.mark.parametrize(
+    "layout, executable",
+    [("cmd", "git.exe"), ("bin", "git.exe"), ("Cmd", "git.EXE"), ("ucrt64/libexec/git-core", "git.exe"),
+     ("mingw64/libexec/git-core", "git.exe"), ("mingw32/libexec/git-core", "git.exe")],
+    ids=["cmd", "bin", "mixed-case", "ucrt-hook", "mingw64-hook", "mingw32-hook"],
+)
+def test_native_bash_uses_git_installation(tmp_path: Path, monkeypatch, layout: str, executable: str) -> None:
+    module = sys.modules[__name__]
+    root = tmp_path / "Git space-é"
+    git = root / layout / executable
+    git.parent.mkdir(parents=True)
+    git.touch()
+    bash = root / "bin" / "bash.exe"
+    bash.parent.mkdir(exist_ok=True)
+    bash.touch()
+    lookups = []
+
+    def which(name):
+        lookups.append(name)
+        assert name == "git.exe", "native selection must not consult PATH bash or WSL"
+        return str(git)
+
+    monkeypatch.setattr(module, "_NATIVE_WINDOWS", True, raising=False)
+    monkeypatch.setattr(shutil, "which", which)
+    assert _bash() == str(bash.resolve())
+    assert lookups == ["git.exe"]
+
+
+@pytest.mark.parametrize(
+    "shape",
+    ["missing-git", "missing-bash", "usr", "mingw32", "mingw64", "shim", "wrong-basename"],
+    ids=["missing-git", "missing-bash", "usr", "mingw32", "mingw64", "shim", "wrong-basename"],
+)
+def test_native_bash_rejects_unavailable_installation(tmp_path: Path, monkeypatch, shape: str) -> None:
+    module = sys.modules[__name__]
+    root = tmp_path / "Git"
+    if shape in {"usr", "mingw32", "mingw64"}:
+        git = root / shape / "bin" / "git.exe"
+    elif shape == "shim":
+        git = root / "shims" / "git.exe"
+    else:
+        git = root / "cmd" / ("other.exe" if shape == "wrong-basename" else "git.exe")
+    git.parent.mkdir(parents=True)
+    git.touch()
+    # An unrelated available bash must not make an unsupported layout pass.
+    bash = root / "bin" / "bash.exe"
+    bash.parent.mkdir(exist_ok=True)
+    if shape != "missing-bash":
+        bash.touch()
+
+    def which(name):
+        assert name == "git.exe", "native selection must not consult PATH bash or WSL"
+        return None if shape == "missing-git" else str(git)
+
+    monkeypatch.setattr(module, "_NATIVE_WINDOWS", True, raising=False)
+    monkeypatch.setattr(shutil, "which", which)
+    with pytest.raises(pytest.fail.Exception, match="native Git Bash prerequisite"):
+        _bash()
+
+
+@pytest.mark.parametrize("available", [True, False], ids=["found", "missing"])
+def test_posix_bash_retains_native_lookup(monkeypatch, available: bool) -> None:
+    monkeypatch.setattr(sys.modules[__name__], "_NATIVE_WINDOWS", False, raising=False)
+
+    def which(name):
+        assert name == "bash"
+        return "/usr/bin/bash" if available else None
+
+    monkeypatch.setattr(shutil, "which", which)
+    if available:
+        assert _bash() == "/usr/bin/bash"
+    else:
+        with pytest.raises(pytest.skip.Exception, match="bash unavailable"):
+            _bash()
+
+
+@pytest.mark.parametrize("outcome", ["success", "mismatch", "probe-failure"], ids=["success", "mismatch", "probe-failure"])
+def test_configured_step_keeps_one_shell_and_locked_probe(tmp_path: Path, monkeypatch, outcome: str) -> None:
+    module = sys.modules[__name__]
+    scripts = tmp_path / "locked" / "bin"
+    interpreter = scripts / Path(sys.executable).name
+    resolved = interpreter if outcome != "mismatch" else tmp_path / "foreign" / interpreter.name
+    shell = str((tmp_path / "Git space-é" / "bin" / "bash.exe").resolve())
+    shell_calls = []
+    commands = []
+    body = "uv run python -X utf8 - <<'PY'\nprint('exact copied body')\nPY\n"
+
+    def bash():
+        shell_calls.append(shell)
+        return shell
+
+    def run(argv, repo):
+        assert repo == tmp_path
+        commands.append(argv)
+        if len(commands) == 1:
+            return subprocess.CompletedProcess(argv, 127 if outcome == "probe-failure" else 0, str(resolved), "probe-error")
+        return subprocess.CompletedProcess(argv, 0, "body-result", "")
+
+    monkeypatch.setattr(module, "_bash", bash)
+    monkeypatch.setattr(module, "_venv_root", lambda: scripts.parent)
+    monkeypatch.setattr(module, "_venv_scripts_dir", lambda: scripts)
+    monkeypatch.setattr(module, "_configured_run_string", lambda repo: body)
+    monkeypatch.setattr(module, "_run", run)
+    if outcome == "success":
+        assert run_configured_step(tmp_path).stdout == "body-result"
+        assert commands[1] == [shell, "-e", "-o", "pipefail", "-c", body]
+    else:
+        expected = "uv could not resolve an interpreter" if outcome == "probe-failure" else "instead of the locked environment"
+        with pytest.raises(AssertionError, match=expected):
+            run_configured_step(tmp_path)
+        assert len(commands) == 1
+    assert commands[0] == [shell, "-e", "-o", "pipefail", "-c", "uv run python -c " + repr("import sys; print(sys.executable)")]
+    assert shell_calls == [shell]
+
+
+@pytest.mark.parametrize("returncode", [0, 7], ids=["early-success", "early-error"])
+def test_timeout_return_is_failure_with_bounded_evidence(tmp_path: Path, monkeypatch, returncode: int) -> None:
+    argv = ["fixture-bash", "-c", "fixture-command"]
+    stdout = "discarded-out-head" + "O" * 2048
+    stderr = "discarded-err-head" + "E" * 2048
+
+    def run(command, repo):
+        assert command == argv and repo == tmp_path
+        return subprocess.CompletedProcess(command, returncode, stdout, stderr)
+
+    monkeypatch.setattr(sys.modules[__name__], "_run", run)
+    with pytest.raises(pytest.fail.Exception, match="returned before timeout") as caught:
+        _run_expecting_timeout(argv, tmp_path)
+    message = str(caught.value)
+    assert f"returncode={returncode}" in message
+    assert "discarded-out-head" not in message and "discarded-err-head" not in message
+    assert message.split("stdout tail:\n", 1)[1].split("\nstderr tail:\n", 1) == ["O" * 2048, "E" * 2048]
+
+
+@pytest.mark.parametrize("message", ["fixture-owned process exceeded 5s", "unrelated exceeded assertion"], ids=["owned-timeout", "unrelated"])
+def test_timeout_helper_preserves_assertion_identity(tmp_path: Path, monkeypatch, message: str) -> None:
+    error = AssertionError(message)
+
+    def run(argv, repo):
+        raise error
+
+    monkeypatch.setattr(sys.modules[__name__], "_run", run)
+    with pytest.raises(AssertionError) as caught:
+        _run_expecting_timeout(["fixture-bash"], tmp_path)
+    assert caught.value is error
+    assert bool(re.search("^" + re.escape("fixture-owned process exceeded"), str(caught.value))) == message.startswith("fixture-owned")
+
+
+@pytest.mark.parametrize("component", ["ordinary", "space apostrophe's-é"], ids=["ordinary", "quoted-unicode"])
+def test_timeout_script_preserves_two_path_arguments(tmp_path: Path, component: str) -> None:
+    python = tmp_path / component / "python.exe"
+    grandchild = tmp_path / component / "grandchild.py"
+    assert shlex.split(_timeout_script(str(python), grandchild)) == [python.as_posix(), grandchild.as_posix(), "&", "wait"]
