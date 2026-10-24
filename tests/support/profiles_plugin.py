@@ -173,7 +173,7 @@ def measure_current_entry(*, source: Any, spec: Any, entry: str, options: Any, r
 
 
 def _h5_admission(nodeid: str, entry: str, options: Any, repository_root: Any) -> dict[str, Any] | None:
-    directory = os.environ.get("OPTIMUS_H5_CAPTURE_DIRECTORY")
+    directory = os.environ.get("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY")
     if not directory:
         return None
     try:

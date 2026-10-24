@@ -644,6 +644,14 @@ paths = [
 ]
 why = "Maintained signal: the module reads the running platform (sys.platform, os.name, platform.system()...), so its behaviour or selection differs between Windows and POSIX."
 
+[[tags]]
+name = "platform"
+nodes = [
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_short_sidecar_temp_path[native]",
+  "tests/unit/tools/test_h5_failure_capture.py::test_capture_path_budget",
+]
+why = "Native-only retained sidecar/capture path-budget controls; exact nodes keep unrelated audit and simulated tests out of the platform profile."
+
 [[rules]]
 tier = "audit-current"
 nodes = [

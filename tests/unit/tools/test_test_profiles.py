@@ -635,6 +635,25 @@ def test_the_platform_tag_follows_its_maintained_signal(
     assert sorted(tagged - signal) == [], "a platform-tagged file no longer reads the platform"
 
 
+def test_h5_budget_platform_tags_are_node_scoped(manifest):
+    nodes = (
+        "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_short_sidecar_temp_path[native]",
+        "tests/unit/tools/test_h5_failure_capture.py::test_capture_path_budget",
+        "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_short_sidecar_temp_path[simulated]",
+        "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_short_sidecar_fault_cleanup[write]",
+        "tests/unit/tools/test_h5_failure_capture.py::test_retains_every_ordered_row_and_long_error_metadata",
+    )
+    found = profiles.classify_nodes(nodes, manifest)
+    targets = frozenset(nodes[:2])
+    assert profiles.profile_members(found, "platform") == targets
+    assert {node for node, tags in found.tags.items() if "platform" in tags} == targets
+    assert all(found.tiers[node] == "core" for node in targets)
+    assert targets <= profiles.profile_members(found, "core-serial")
+    parallel = profiles.profile_members(found, "core-parallel")
+    assert targets.isdisjoint(parallel) and nodes[-1] in parallel
+    assert not found.tags[nodes[2]] and not found.tags[nodes[3]]
+
+
 def test_every_file_that_launches_a_child_has_a_reviewed_tier(classification: profiles.Classification) -> None:
     sites = json.loads((_ROOT / "tests" / "unit" / "tools" / "run_context_child_sites.json").read_text(encoding="utf-8"))["sites"]
     files = _files(classification)
@@ -689,7 +708,7 @@ def h5_capture_scope(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     from tests.support import profiles_plugin as plugin
     from tools.testing import run_context
 
-    monkeypatch.delenv("OPTIMUS_H5_CAPTURE_DIRECTORY", raising=False)
+    monkeypatch.delenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", raising=False)
     context = run_context.RunContext(
         run_id=f"20261023T000000-{os.getpid()}-abc123", mode="passive", reason="synthetic_fixture",
         record_dir=tmp_path / "records", started_utc="2026-10-23T00:00:00+00:00",
@@ -700,8 +719,25 @@ def h5_capture_scope(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setenv("PYTEST_CURRENT_TEST", "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist (call)")
     directory = tmp_path / "capture"
     directory.mkdir()
-    monkeypatch.setenv("OPTIMUS_H5_CAPTURE_DIRECTORY", str(directory))
+    monkeypatch.setenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", str(directory))
     return plugin, context, directory
+
+
+def test_legacy_h5_activation_does_not_admit(h5_capture_scope, monkeypatch):
+    from tests.support import h5_failure_capture as capture
+
+    plugin, _, directory = h5_capture_scope
+    monkeypatch.delenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY")
+    monkeypatch.setenv("OPTIMUS_H5_CAPTURE_DIRECTORY", str(directory))
+    binding, result, calls = _h5_stub(monkeypatch)
+    monkeypatch.setattr(capture, "validate_capture_directory", lambda *a: pytest.fail("no capture I/O"))
+    monkeypatch.setattr(plugin, "_h5_utc_now", lambda: pytest.fail("no diagnostic timing"))
+    actual = _h5_bridge(plugin)
+    assert actual[0] is binding and actual[1] is result and len(calls) == 1
+    session = plugin.current_audit_session()
+    assert "h5_capture" not in session and "h5_lines" not in session
+    assert _h5_report(plugin).sections == [("existing", "UNCHANGED")]
+    assert os.listdir(directory) == []
 
 
 def _h5_synthetic_measurement():
@@ -786,9 +822,9 @@ def test_h5_disabled_and_ineligible_calls_do_no_observer_work(h5_capture_scope, 
     binding, result, calls = _h5_stub(monkeypatch)
     overrides = {}
     if defect == "absent":
-        monkeypatch.delenv("OPTIMUS_H5_CAPTURE_DIRECTORY")
+        monkeypatch.delenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY")
     elif defect == "empty":
-        monkeypatch.setenv("OPTIMUS_H5_CAPTURE_DIRECTORY", "")
+        monkeypatch.setenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", "")
     elif defect in {"other_node", "setup"}:
         monkeypatch.setenv("PYTEST_CURRENT_TEST", "tests/unit/acp/test_other.py::test_other (call)" if defect == "other_node" else
                            "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist (setup)")
@@ -815,7 +851,7 @@ def test_disabled_raising_target_keeps_original_report_sections(h5_capture_scope
     plugin, context, directory = h5_capture_scope
     error = OSError("ORIGINAL")
     _h5_stub(monkeypatch, error=error)
-    monkeypatch.delenv("OPTIMUS_H5_CAPTURE_DIRECTORY")
+    monkeypatch.delenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY")
     monkeypatch.setattr(plugin, "_h5_utc_now", lambda: pytest.fail("no disabled timestamp"))
     with pytest.raises(OSError) as found:
         _h5_bridge(plugin)
@@ -933,7 +969,7 @@ def test_simulated_non_windows_status_is_visible_for_a_passing_call(h5_capture_s
 
 @pytest.fixture
 def h5_isolated_activation(monkeypatch):
-    monkeypatch.delenv("OPTIMUS_H5_CAPTURE_DIRECTORY", raising=False)
+    monkeypatch.delenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", raising=False)
 
 
 def _h5_native_fixture(tmp_path: Path) -> Path:
@@ -1045,11 +1081,11 @@ def _h5_native_run(root: Path, directory: Path | None, *, failure="", passed=Fal
     assert (root / "pytest.ini").read_text(encoding="utf-8") == "[pytest]\n"
     runs_before = set(os.listdir(_ROOT / "tmp/test-runs"))
     env = dict(os.environ)
-    env.pop("OPTIMUS_H5_CAPTURE_DIRECTORY", None)
+    env.pop("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", None)
     env.update(PYTHONPATH=str(_ROOT), H5_FIXTURE_FAILURE=failure, H5_FIXTURE_PASS="yes" if passed else "no", PYTHONUTF8="1")
     if directory is not None:
         directory.mkdir(exist_ok=True)
-        env["OPTIMUS_H5_CAPTURE_DIRECTORY"] = str(directory)
+        env["PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY"] = str(directory)
     completed = subprocess.run([sys.executable, "-m", "pytest", "--no-cov", "-q", "-c", str(root / "pytest.ini"),
                                 "--rootdir", str(root), "--junitxml", str(root / "junit.xml"), str(root / "tests")],
                                cwd=root, env=env, capture_output=True, text=True, timeout=90, check=False)
@@ -1094,12 +1130,30 @@ def _h5_native_run(root: Path, directory: Path | None, *, failure="", passed=Fal
     return completed, reports
 
 
+def _h5_record_parent_retention(tmp_path, request, tmp_path_factory):
+    """Observe local retention without changing the native contract's outcome."""
+    try:
+        ini_policy = request.config.getini("tmp_path_retention_policy")
+        factory_policy = getattr(tmp_path_factory, "_retention_policy", None)
+        policies = ("all", "failed", "none")
+        facts = {
+            "kind": "test-local-parent-retention-evidence",
+            "ini_policy": ini_policy if ini_policy in policies else None,
+            "factory_policy": factory_policy if factory_policy in policies else None,
+            "parent": str(tmp_path.resolve(strict=True)),
+        }
+        (tmp_path / "retention.json").write_text(json.dumps(facts), encoding="utf-8")
+    except Exception:
+        pass  # Missing observational facts are assessed by the separate archive.
+
+
 @pytest.mark.parametrize("failure,passed", [("", False), ("write", False), ("verify", False), ("rename", False), ("write", True)])
-def test_native_h5_capture_preserves_original_failure_and_later_test(tmp_path, monkeypatch, failure, passed):
+def test_native_h5_capture_preserves_original_failure_and_later_test(tmp_path, monkeypatch, failure, passed, request, tmp_path_factory):
     from tests.support.h5_failure_capture import verify_h5_capture_bundle
 
+    _h5_record_parent_retention(tmp_path, request, tmp_path_factory)
     test_h5_native_launcher_caller_inventory_is_complete()
-    monkeypatch.delenv("OPTIMUS_H5_CAPTURE_DIRECTORY", raising=False)
+    monkeypatch.delenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", raising=False)
     root = _h5_native_fixture(tmp_path)
     directory = tmp_path / "capture"
     done, reports = _h5_native_run(root, directory, failure=failure, passed=passed)
@@ -1124,12 +1178,13 @@ def test_native_h5_capture_preserves_original_failure_and_later_test(tmp_path, m
         assert "ISSUE287_H5_CAPTURE_METRICS" in output
 
 
-def test_capture_controls_never_touch_inherited_outer_base(tmp_path, monkeypatch):
+def test_capture_controls_never_touch_inherited_outer_base(tmp_path, monkeypatch, request, tmp_path_factory):
+    _h5_record_parent_retention(tmp_path, request, tmp_path_factory)
     root = _h5_native_fixture(tmp_path)
     outer = tmp_path / "outer"
     outer.mkdir()
     (outer / "sentinel").write_bytes(b"preserve")
-    monkeypatch.setenv("OPTIMUS_H5_CAPTURE_DIRECTORY", str(outer))
+    monkeypatch.setenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", str(outer))
     disabled, disabled_reports = _h5_native_run(root, None)
     enabled, enabled_reports = _h5_native_run(root, tmp_path / "child-capture")
     assert disabled.returncode == enabled.returncode == 1
@@ -1141,7 +1196,7 @@ def test_capture_controls_never_touch_inherited_outer_base(tmp_path, monkeypatch
     assert (disabled_facts["pid"], disabled_facts["creation_time"]) != (enabled_facts["pid"], enabled_facts["creation_time"])
     assert disabled_facts["forbidden"] == enabled_facts["forbidden"] == {"start_run": 0, "prune_run_folders": 0, "repository_append": 0}
     assert (outer / "sentinel").read_bytes() == b"preserve" and os.listdir(outer) == ["sentinel"]
-    assert os.environ["OPTIMUS_H5_CAPTURE_DIRECTORY"] == str(outer)
+    assert os.environ["PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY"] == str(outer)
 
 
 @pytest.mark.parametrize("node", ["target", "other"])
@@ -1153,7 +1208,7 @@ def test_malformed_capture_path_non_target_has_no_output(h5_capture_scope, monke
     binding, result, calls = _h5_stub(monkeypatch)
     if node == "other":
         monkeypatch.setenv("PYTEST_CURRENT_TEST", "tests/unit/acp/test_other.py::test_other (call)")
-    monkeypatch.setenv("OPTIMUS_H5_CAPTURE_DIRECTORY", declaration)
+    monkeypatch.setenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", declaration)
     events = []
     session = plugin.current_audit_session()
     def path(value):
@@ -1293,6 +1348,10 @@ def _h5_check_untracked_source(relative, source):
         "tools.plan1126_runtime_audit.source.ExecutingSourceMismatch", "tools.testing.run_context.RunContext",
         "tools.testing.run_context_records.COMMIT", "tools.testing.run_context_records.RUN_ID",
     }
+    helper_imports = {
+        "tests.unit.tools.plan1126_runtime_audit.test_current_measurement._budget_tempfile_facade",
+        "tests.unit.tools.plan1126_runtime_audit.test_current_measurement._pad_budget_directory",
+    } if relative == _H5_UNTRACKED[1] else set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -1303,7 +1362,9 @@ def _h5_check_untracked_source(relative, source):
             assert node.module is not None and all(a.name != "*" for a in node.names)
             assert not any(node.module == m or node.module.startswith(m + ".") for m in banned_modules)
             for alias in node.names:
-                assert node.level == 0 and node.module + "." + alias.name in admitted_imports, "unreviewed import/re-export"
+                assert node.level == 0 and node.module + "." + alias.name in (
+                    admitted_imports | helper_imports
+                ), "unreviewed import/re-export"
                 aliases[alias.asname or alias.name] = node.module + "." + alias.name
     def name(node):
         if isinstance(node, ast.Name):
@@ -1359,6 +1420,32 @@ def test_h5_untracked_files_have_no_launch_or_scanner_sites(monkeypatch):
     assert not _h5_recognized_untracked(monkeypatch, sources)
     for relative, source in sources.items():
         _h5_check_untracked_source(relative, source)
+
+
+@pytest.mark.usefixtures("h5_isolated_activation")
+@pytest.mark.parametrize("relative,source,accepted", [
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _budget_tempfile_facade", True, id="facade"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _pad_budget_directory", True, id="padding"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _budget_tempfile_facade, _pad_budget_directory", True, id="both"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _budget_tempfile_facade as facade, _pad_budget_directory as padding", True, id="aliases"),
+    pytest.param(_H5_UNTRACKED[0], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _budget_tempfile_facade", False, id="support-facade"),
+    pytest.param(_H5_UNTRACKED[0], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _pad_budget_directory", False, id="support-padding"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import *", False, id="star"),
+    pytest.param(_H5_UNTRACKED[1], "import tests.unit.tools.plan1126_runtime_audit.test_current_measurement", False, id="module"),
+    pytest.param(_H5_UNTRACKED[1], "import tests.unit.tools.plan1126_runtime_audit.test_current_measurement as hidden", False, id="module-alias"),
+    pytest.param(_H5_UNTRACKED[1], "import tests.unit.tools.plan1126_runtime_audit.test_current_measurement._budget_tempfile_facade", False, id="dotted-facade"),
+    pytest.param(_H5_UNTRACKED[1], "import tests.unit.tools.plan1126_runtime_audit.test_current_measurement._pad_budget_directory", False, id="dotted-padding"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit import test_current_measurement", False, id="parent-reexport"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _tree", False, id="unknown-helper"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import run_fresh_measurement", False, id="measurement"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _budget_tempfile_facade, _tree", False, id="mixed"),
+])
+def test_h5_budget_helper_imports_are_scoped(relative, source, accepted):
+    if accepted:
+        _h5_check_untracked_source(relative, source)
+    else:
+        with pytest.raises(AssertionError):
+            _h5_check_untracked_source(relative, source)
 
 
 @pytest.mark.usefixtures("h5_isolated_activation")

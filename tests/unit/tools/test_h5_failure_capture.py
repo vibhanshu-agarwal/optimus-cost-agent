@@ -18,7 +18,7 @@ from tools.testing.run_context import RunContext
 
 @pytest.fixture(autouse=True)
 def isolated_activation(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("OPTIMUS_H5_CAPTURE_DIRECTORY", raising=False)
+    monkeypatch.delenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", raising=False)
     # Fault injection is local to capture: never patch the recorder/sampler's os module.
     monkeypatch.setattr(capture, "os", SimpleNamespace(path=os.path, getpid=os.getpid, lstat=os.lstat, rename=os.rename))
 
@@ -327,3 +327,29 @@ def test_capture_os_fault_does_not_patch_process_os(specimen, monkeypatch):
     # A sampler/recorder still uses the real process-wide OS module.
     assert os.lstat(specimen["repository_root"]).st_ino > 0
     assert capture.capture_h5_measurement(**specimen).state == "INVALID"
+
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="native Windows IO")
+def test_capture_path_budget(specimen, tmp_path, monkeypatch):
+    from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _budget_tempfile_facade, _pad_budget_directory
+
+    before = copy.deepcopy(specimen["result"])
+    _, _, reference = capture.evidence_store.build_evidence_payload(record_id=capture.RECORD_ID,
+        entry=capture.ENTRY, binding=specimen["binding"].to_dict(), result=specimen["result"])
+    # mkdtemp has '.h5-' + eight random characters; its evidence parent must be 175.
+    tail = len(str(Path(specimen["context"].run_id) / (".h5-" + "0" * 8) / "evidence"))
+    specimen["directory"] = _pad_budget_directory(tmp_path, 175 - tail - 1)
+    facts = {"kind": "ISSUE287_V19_PATH_BUDGET", "mode": "native_capture", "pid": os.getpid()}
+    monkeypatch.setattr(capture.evidence_store, "tempfile", _budget_tempfile_facade(reference.location, facts, simulated=False))
+    try:
+        status = capture.capture_h5_measurement(**specimen)
+        facts["capture_status"] = status.state
+        assert status.state == "CAPTURED", "ISSUE287_CAPTURE_PATH_PUBLICATION"
+        restored = _verify(specimen)
+        assert len(restored["observations"]) == 500 and restored["observations"] == before["observations"]
+        assert restored["receipt"]["binding"] == specimen["binding"].to_dict()
+        assert specimen["result"] == before and facts["created_temp_length"] < 260
+    finally:
+        (tmp_path / "path-budget.json").write_text(json.dumps(facts, sort_keys=True), encoding="utf-8")
+        print("ISSUE287_V19_PATH_FACTS " + json.dumps({**facts, "proof": str(tmp_path / "path-budget.json")}, sort_keys=True))
