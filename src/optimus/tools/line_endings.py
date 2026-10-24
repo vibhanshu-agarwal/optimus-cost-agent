@@ -12,7 +12,7 @@ WRITE_LINE_ENDINGS_MIXED = "WRITE_LINE_ENDINGS_MIXED"
 
 LineEndingStyle = Literal["lf", "crlf", "mixed", "none"]
 
-_BOM = "﻿"
+_BOM = "\ufeff"
 _BOM_BYTES = _BOM.encode("utf-8")
 
 

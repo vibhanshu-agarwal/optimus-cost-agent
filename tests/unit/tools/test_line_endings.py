@@ -16,7 +16,7 @@ from optimus.runtime.state import AgentState, RuntimeContext
 from optimus.tools.line_endings import WRITE_LINE_ENDINGS_MIXED, fit_body_to_file, line_ending_style
 from optimus.tools.mutation_tools import WriteRefused, write_file, write_file_keeping_line_endings
 
-BOM = "﻿"
+BOM = "\ufeff"
 BOM_BYTES = b"\xef\xbb\xbf"
 
 
@@ -87,7 +87,7 @@ def test_the_bom_rules(existing: bytes, body: str, expected: str) -> None:
     assert fit_body_to_file(body, existing) == expected
 
 
-@pytest.mark.parametrize("separator", ["\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", " ", " "])
+@pytest.mark.parametrize("separator", ["\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029"])
 def test_other_separators_are_content(separator: str) -> None:
     assert fit_body_to_file(f"x{separator}y", b"a\r\n") == f"x{separator}y\r\n"
 
@@ -154,3 +154,38 @@ def test_a_denied_write_never_reads_the_target(tmp_path: Path, monkeypatch: pyte
 
     assert reads == []
     assert original(target) == b"a\r\n"
+
+
+class _BlockWrites:
+    """A real pre-tool guard verdict: file writes are blocked."""
+
+    def check(self, request):
+        from optimus.guardrails.pre_tool import PreToolResult, PreToolVerdict
+
+        return PreToolResult(verdict=PreToolVerdict.BLOCK, rule_id="test.block-writes", reason="writes are blocked")
+
+
+def test_a_guard_denial_reads_no_target_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codex round 50, finding 2: an approved, executing write whose pre-tool guard blocks reads nothing of the
+    target: no bytes and no metadata."""
+    target = tmp_path / "secret.py"
+    target.write_bytes(b"a\r\n")
+    touched: list[str] = []
+    originals = {name: getattr(Path, name) for name in ("read_bytes", "is_file", "exists", "stat")}
+
+    def recorder(name: str):
+        def record(self: Path, *args, **kwargs):
+            if self == target:
+                touched.append(name)
+            return originals[name](self, *args, **kwargs)
+
+        return record
+
+    for name in originals:
+        monkeypatch.setattr(Path, name, recorder(name))
+
+    with pytest.raises(MutationForbidden):
+        write_file_keeping_line_endings(target, "z", context=_approved(), guard=_BlockWrites())
+
+    assert touched == []
+    assert originals["read_bytes"](target) == b"a\r\n"

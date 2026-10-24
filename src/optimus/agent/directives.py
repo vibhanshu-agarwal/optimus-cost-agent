@@ -101,7 +101,7 @@ def parse_agent_plan(plan_text: str) -> AgentPlanDirectives:
     read_paths: list[str] = []
     tests: list[tuple[str, ...]] = []
     write: AgentWriteDirective | None = None
-    lines = _plan_lines(_unwrap_markdown_code_fence(plan_text))
+    lines = plan_lines(_unwrap_markdown_code_fence(plan_text))
     index = 0
 
     while index < len(lines):
@@ -163,22 +163,30 @@ def _is_directive_line(line: str) -> bool:
     )
 
 
-def _plan_lines(text: str) -> list[str]:
+_DIRECTIVE_BLANKS = " \t"  # #410 R1: the only padding stripped around directive syntax
+
+
+def plan_lines(text: str) -> list[str]:
     """#410 R1: lines end at LF only and keep their terminator (a CR before it makes CRLF); every other separator
-    that `splitlines()` knows is content, so a WRITE body keeps its bytes."""
+    that `splitlines()` knows is content, so a WRITE body keeps its bytes. Every plan-line recognizer uses this."""
     *lines, tail = text.split("\n")
     return [line + "\n" for line in lines] + ([tail] if tail else [])
+
+
+def plan_line_text(line: str) -> str:
+    """A plan line without its own terminator, and without spaces or tabs around it."""
+    return line.removesuffix("\n").removesuffix("\r").strip(_DIRECTIVE_BLANKS)
 
 
 def _unwrap_markdown_code_fence(plan_text: str) -> str:
     stripped = plan_text.strip()
     if not stripped.startswith("```"):
         return plan_text
-    lines = _plan_lines(stripped)
+    lines = plan_lines(stripped)
     if len(lines) < 2:
         return plan_text
     closing_index = len(lines) - 1
-    while closing_index > 0 and not lines[closing_index].strip().startswith("```"):
+    while closing_index > 0 and not plan_line_text(lines[closing_index]).startswith("```"):
         closing_index -= 1
     if closing_index == 0:
         return plan_text
@@ -186,11 +194,11 @@ def _unwrap_markdown_code_fence(plan_text: str) -> str:
 
 
 def _normalize_directive_line(line: str) -> str:
-    normalized = line.strip()
+    normalized = plan_line_text(line)
     while True:
         for prefix in ("- ", "* ", "+ "):
             if normalized.startswith(prefix):
-                normalized = normalized[len(prefix) :].lstrip()
+                normalized = normalized[len(prefix) :].lstrip(_DIRECTIVE_BLANKS)
                 break
         else:
             return normalized

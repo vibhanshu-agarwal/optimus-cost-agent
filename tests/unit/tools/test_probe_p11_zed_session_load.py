@@ -4054,6 +4054,12 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     tree_moved = b"from optimus.runtime import process_tree" in head_tree
     if not tree_moved:
         expected -= {runtime_tree_module}
+    # #410 adds the pure line-ending rules the mutation tools import (one path), keyed on HEAD's mutation tools.
+    line_endings_path = "src/optimus/tools/line_endings.py"
+    head_mutation_tools = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/tools/mutation_tools.py")
+    line_endings_committed = b"from optimus.tools.line_endings import" in head_mutation_tools
+    if not line_endings_committed:
+        expected -= {line_endings_path}
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
@@ -4069,12 +4075,13 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     assert (failure_facts_path in closure) is failure_facts_committed
     assert (loop_paths <= closure) is loop_committed
     assert (runtime_tree_module in closure) is tree_moved
+    assert (line_endings_path in closure) is line_endings_committed
     base = 136 if seam2_committed else 134 if seam3_committed else 133
     assert len(closure) == base + (4 if task9_committed else 0) + (2 if task10_committed else 0) + (2 if task11_committed else 0) + (
         2 if correction_committed else 0
     ) + tree_committed + composition_committed + stage_c_committed + (2 if ordinary_committed else 0) + runtime_tree_committed + failure_facts_committed + (
         2 if loop_committed else 0
-    ) + tree_moved
+    ) + tree_moved + line_endings_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

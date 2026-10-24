@@ -348,6 +348,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/telemetry/serialization.py",
     "src/optimus/telemetry/subjects.py",
     "src/optimus/tools/__init__.py",
+    "src/optimus/tools/line_endings.py",
     "src/optimus/tools/mutation_tools.py",
     "src/optimus/tools/policy.py",
     "src/optimus/tools/registry.py",

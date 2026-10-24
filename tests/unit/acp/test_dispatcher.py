@@ -970,3 +970,20 @@ def test_dispatcher_keeps_recent_denials_and_forwards_exact_drop_count(tmp_path)
     assert len(dispatcher.audit_events()) == 16
     assert all(event.verdict == "BLOCK" for event in dispatcher.audit_events())
     assert dispatcher.audit_events_dropped == 4
+
+
+def test_dispatcher_write_file_writes_the_clients_bytes_exactly(tmp_path):
+    """#410 (design v3, R6): `optimus.mutation.writeFile` no longer translates line endings on any platform."""
+    dispatcher = JsonRpcDispatcher(runtime_context=approved_agent_context(), workspace_root=tmp_path)
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "write-exact",
+            "method": "optimus.mutation.writeFile",
+            "params": {"path": str(tmp_path / "mixed.txt"), "content": "lf\ncrlf\r\nend"},
+        }
+    )
+
+    assert response["result"] == {"written": str(tmp_path / "mixed.txt")}
+    assert (tmp_path / "mixed.txt").read_bytes() == b"lf\ncrlf\r\nend"

@@ -17,6 +17,8 @@ from optimus.agent.directives import (
     parse_agent_plan,
     parse_mcp_call_line,
     parse_mcp_list_line,
+    plan_line_text,
+    plan_lines,
 )
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
 from optimus.agent.operation_control import TurnOperationControl
@@ -575,7 +577,7 @@ def parse_planning_turn(text: str) -> PlanningTurnDecision:
 
 
 def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    lines = [stripped for line in plan_lines(text) if (stripped := plan_line_text(line))]  # #410 R1
     if not lines:
         return None
     if not (lines[0].startswith("MCP_LIST") or lines[0].startswith("MCP_CALL")):
@@ -620,7 +622,7 @@ def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
 
 
 def _directive_surface_lines(text: str) -> tuple[str, ...]:
-    lines = text.splitlines()
+    lines = plan_lines(text)  # #410 R1: LF and CRLF only, like the final-plan parser
     surface_lines: list[str] = []
     index = 0
     while index < len(lines):
@@ -631,7 +633,7 @@ def _directive_surface_lines(text: str) -> tuple[str, ...]:
             while index < len(lines) and not _is_final_directive_line(lines[index]):
                 index += 1
             continue
-        stripped = line.strip()
+        stripped = plan_line_text(line)
         if stripped:
             surface_lines.append(stripped)
         index += 1
@@ -639,11 +641,11 @@ def _directive_surface_lines(text: str) -> tuple[str, ...]:
 
 
 def _normalize_directive_surface_line(line: str) -> str:
-    normalized = line.strip()
+    normalized = plan_line_text(line)  # #410 R1: never strips a content separator into directive syntax
     while True:
         for prefix in _BULLET_PREFIXES:
             if normalized.startswith(prefix):
-                normalized = normalized[len(prefix) :].lstrip()
+                normalized = normalized[len(prefix) :].lstrip(" \t")
                 break
         else:
             return normalized
