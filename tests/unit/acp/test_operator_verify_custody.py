@@ -7,13 +7,14 @@ or process cleanup -- must still close that runtime, and the original failure mu
 
 from __future__ import annotations
 
-from types import SimpleNamespace
+from unittest.mock import create_autospec
 
 import pytest
 
 from optimus.acp import operator_verify, subprocess_env
+from optimus.acp.ndjson_subprocess_session import NdjsonSubprocessSession
 from optimus.redis.async_bridge import RedisLoopOwner
-from optimus.redis.runtime import RedisRuntime, RedisRuntimeState
+from optimus.redis.runtime import CloseablePool, RedisRuntime, RedisRuntimeState, RuntimeClient
 
 
 class _Resource:
@@ -26,7 +27,11 @@ class _Resource:
 
 def _runtime() -> tuple[RedisRuntime, _Resource, _Resource]:
     client, pool = _Resource(), _Resource()
-    return RedisRuntime(pool=pool, client=client, owner=RedisLoopOwner(name="seam2b-verify-owner")), client, pool
+    checked_client = create_autospec(RuntimeClient, instance=True, spec_set=True)
+    checked_client.aclose.side_effect = client.aclose
+    checked_pool = create_autospec(CloseablePool, instance=True, spec_set=True)
+    checked_pool.aclose.side_effect = pool.aclose
+    return RedisRuntime(pool=checked_pool, client=checked_client, owner=RedisLoopOwner(name="seam2b-verify-owner")), client, pool
 
 
 def _store_for(monkeypatch, runtime: RedisRuntime):
@@ -35,12 +40,28 @@ def _store_for(monkeypatch, runtime: RedisRuntime):
     store = RedisAgentStateStore(
         async_store=AsyncRedisAgentStateStore(client=runtime.client), submit=runtime.run_sync, owned_runtime=runtime
     )
-    monkeypatch.setattr(operator_verify.RedisAgentStateStore, "from_url", staticmethod(lambda url, **kw: store))
+    monkeypatch.setattr(operator_verify.RedisAgentStateStore, "from_url", create_autospec(operator_verify.RedisAgentStateStore.from_url, return_value=store))
     return store
 
 
-def _config(tmp_path) -> SimpleNamespace:
-    return SimpleNamespace(workspace_root=tmp_path, wall_clock_timeout_seconds=1, model="glm-5.2")
+def _config(tmp_path) -> operator_verify.OperatorLiveSessionConfig:
+    return operator_verify.OperatorLiveSessionConfig(
+        workspace_root=tmp_path, repository_root=tmp_path, model="glm-5.2",
+        task="Offline custody control", transcript_path=tmp_path / "transcript.ndjson", wall_clock_timeout_seconds=1,
+    )
+
+
+def _checked_session_factory(script_type):
+    constructor = create_autospec(NdjsonSubprocessSession, spec_set=True)
+    def build(*args, **kwargs):
+        script = script_type(*args, **kwargs)
+        checked = create_autospec(NdjsonSubprocessSession, instance=True, spec_set=True)
+        for name in ("send", "wait_for_response", "close_stdin", "terminate"):
+            if hasattr(script, name):
+                getattr(checked, name).side_effect = getattr(script, name)
+        return checked
+    constructor.side_effect = build
+    return constructor
 
 
 def test_a_projection_failure_before_the_subprocess_closes_the_store_runtime(monkeypatch, tmp_path):
@@ -89,7 +110,7 @@ def test_a_failing_session_cleanup_still_closes_the_store_runtime_and_keeps_the_
             return None
 
     monkeypatch.setattr(operator_verify.subprocess, "Popen", lambda *a, **k: _Process())
-    monkeypatch.setattr(operator_verify, "NdjsonSubprocessSession", _Session)
+    monkeypatch.setattr(operator_verify, "NdjsonSubprocessSession", _checked_session_factory(_Session))
 
     with pytest.raises(RuntimeError, match="child rejected the first message") as exc_info:
         operator_verify.run_operator_live_session(_config(tmp_path), environ=env, transcript=None)
@@ -140,7 +161,7 @@ def _launch_child_whose_status_query_fails(monkeypatch, *, send_error: BaseExcep
             return None
 
     monkeypatch.setattr(operator_verify.subprocess, "Popen", lambda *a, **k: _Process())
-    monkeypatch.setattr(operator_verify, "NdjsonSubprocessSession", _Session)
+    monkeypatch.setattr(operator_verify, "NdjsonSubprocessSession", _checked_session_factory(_Session))
     return env, killed
 
 
@@ -184,7 +205,7 @@ def test_a_store_that_owns_no_runtime_is_refused_before_anything_is_launched(mon
     """Fail closed: the factory contract is an OWNING store; a borrowed seam cannot be closed here."""
     runtime, _client, _pool = _runtime()
     borrowed = runtime.sync_state_store()
-    monkeypatch.setattr(operator_verify.RedisAgentStateStore, "from_url", staticmethod(lambda url, **kw: borrowed))
+    monkeypatch.setattr(operator_verify.RedisAgentStateStore, "from_url", create_autospec(operator_verify.RedisAgentStateStore.from_url, return_value=borrowed))
     launched: list[int] = []
     monkeypatch.setattr(operator_verify.subprocess, "Popen", lambda *a, **k: launched.append(1))
     env = {"OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0"}
@@ -217,3 +238,30 @@ def test_sync_store_verification_refuses_without_scan_or_delete(operation):
     with pytest.raises(RuntimeError, match="^this store has no owner submission seam; it wraps a synchronous client$"):
         getattr(operator_verify, operation)(store, "offline-run")
     assert effects == []
+
+
+def test_contract_operator_configuration_is_real_model(tmp_path):
+    config = _config(tmp_path)
+    assert isinstance(config, operator_verify.OperatorLiveSessionConfig)
+    assert config.repository_root == tmp_path
+    assert config.task
+    assert config.transcript_path.parent == tmp_path
+
+
+def test_contract_ndjson_session_rejects_drift_and_preserves_send():
+    sent = []
+    class Script:
+        def __init__(self, *, process, transcript):
+            pass
+        def send(self, message):
+            sent.append(message)
+    factory = _checked_session_factory(Script)
+    with pytest.raises(TypeError):
+        factory(obsolete_process=object(), transcript=None)
+    session = factory(process=object(), transcript=None)
+    with pytest.raises(AttributeError):
+        session.unknown_session_operation = True
+    with pytest.raises(TypeError):
+        session.send(payload={})
+    session.send({"id": 1})
+    assert sent == [{"id": 1}]

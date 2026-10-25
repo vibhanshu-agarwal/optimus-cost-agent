@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import create_autospec
 
 from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunStatus
 from optimus.agent.planning_loop import (
@@ -19,6 +20,7 @@ from optimus.agent.planning_loop import (
 )
 from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import InMemoryAgentStateStore
+from optimus.gateway.client import GatewayClient
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.runtime.modes import ExecutionMode
@@ -32,14 +34,11 @@ class ScriptingGateway:
     def __init__(self, scripts: list[tuple[str, Decimal, str]]) -> None:
         self._scripts = list(scripts)
         self.calls: list[dict[str, object]] = []
+        self.checked = create_autospec(GatewayClient, instance=True, spec_set=True)
+        self.checked.create_response.side_effect = self.create_response
+        self.create_response = self.checked.create_response
 
-    def create_response(
-        self,
-        *,
-        model: str,
-        input_text: str,
-        metadata: dict[str, object] | None = None,
-    ) -> GatewayResponse:
+    def create_response(self, *, model: str, input_text: str, metadata=None, route_binding=None) -> GatewayResponse:
         if not self._scripts:
             raise RuntimeError("scripted gateway exhausted")
         output_text, cost_usd, gateway_request_id = self._scripts.pop(0)
@@ -77,7 +76,7 @@ def _integration_runner(
 ) -> AgentRunner:
     guard = PreToolGuard.for_workspace(workspace_root=workspace.resolve(), allowed_network_hosts=())
     return AgentRunner(
-        gateway_client=gateway,
+        gateway_client=getattr(gateway, "checked", gateway),
         model="glm-5.2",
         guard=guard,
         state_store=store or InMemoryAgentStateStore(),

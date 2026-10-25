@@ -8,6 +8,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import create_autospec
 
 import pytest
 
@@ -18,6 +19,7 @@ from optimus.agent.planning_loop import (
     PlanningProgressEvent,
     _PlanningIterationRunner,
 )
+from optimus.gateway.client import GatewayClient
 from optimus.gateway.errors import GatewayHttpError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
@@ -31,14 +33,11 @@ class ScriptingGateway:
     def __init__(self, scripts: list[tuple[str, Decimal, str]]) -> None:
         self._scripts = list(scripts)
         self.calls: list[dict[str, object]] = []
+        self.checked = create_autospec(GatewayClient, instance=True, spec_set=True)
+        self.checked.create_response.side_effect = self.create_response
+        self.create_response = self.checked.create_response
 
-    def create_response(
-        self,
-        *,
-        model: str,
-        input_text: str,
-        metadata: dict[str, object] | None = None,
-    ) -> GatewayResponse:
+    def create_response(self, *, model: str, input_text: str, metadata=None, route_binding=None) -> GatewayResponse:
         if not self._scripts:
             raise RuntimeError("scripted gateway exhausted")
         output_text, cost_usd, gateway_request_id = self._scripts.pop(0)
@@ -75,7 +74,7 @@ def _runner(
     usage_callback: callable | None = None,
 ) -> PlanningLoopRunner:
     return PlanningLoopRunner(
-        gateway_client=gateway,
+        gateway_client=getattr(gateway, "checked", gateway),
         model="glm-5.2",
         policy=policy or PlanningLoopPolicy(),
         workspace_root=tmp_path,
@@ -352,7 +351,7 @@ def _iteration_runner_for_conversion(
     policy = PlanningLoopPolicy()
     max_cost_usd = Decimal("0.05")
     return _PlanningIterationRunner(
-        gateway_client=ScriptingGateway([]),
+        gateway_client=ScriptingGateway([]).checked,
         model="glm-5.2",
         task="Update src/a.py",
         initial_workspace_context="",
@@ -907,14 +906,11 @@ class UnexpectedExceptionGateway:
 
     def __init__(self) -> None:
         self.attempts = 0
+        self.checked = create_autospec(GatewayClient, instance=True, spec_set=True)
+        self.checked.create_response.side_effect = self.create_response
+        self.create_response = self.checked.create_response
 
-    def create_response(
-        self,
-        *,
-        model: str,
-        input_text: str,
-        metadata: dict[str, object] | None = None,
-    ) -> GatewayResponse:
+    def create_response(self, *, model: str, input_text: str, metadata=None, route_binding=None) -> GatewayResponse:
         self.attempts += 1
         raise TypeError("SENTINEL-PAYLOAD-BUG")
 
@@ -1127,7 +1123,7 @@ def test_planning_loop_runner_accepts_keyword_only_client_mcp_service(tmp_path):
         ]
     )
     result = PlanningLoopRunner(
-        gateway_client=gateway,
+        gateway_client=getattr(gateway, "checked", gateway),
         model="glm-5.2",
         policy=PlanningLoopPolicy(max_planning_turns=3),
         workspace_root=tmp_path,
@@ -1140,6 +1136,15 @@ def test_planning_loop_runner_accepts_keyword_only_client_mcp_service(tmp_path):
     assert "client_mcp_service" not in result.model_dump()
     assert len(gateway.calls) == 2
     assert "untrusted" in str(gateway.calls[1]["input_text"]).lower()
+
+
+def test_contract_gateway_boundary_rejects_unknown_attributes():
+    script = ScriptingGateway([])
+    boundary = getattr(script, "checked", script)
+    with pytest.raises(AttributeError):
+        boundary.unknown_gateway_operation = True
+    with pytest.raises(TypeError):
+        boundary.create_response(model="model", input_text="input", obsolete_route=True)
 
 
 # --- #388: recovery and diagnosability after a turn that makes no progress ---

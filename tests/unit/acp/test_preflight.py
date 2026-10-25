@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+from decimal import Decimal
+from unittest.mock import create_autospec
+
 import pytest
+import redis.asyncio as aioredis
 
 from optimus.acp.preflight import PreflightFailure, run_preflight
+from optimus.gateway.client import GatewayClient
+from optimus.gateway.models import GatewayResponse, GatewayUsage
+from optimus.redis.runtime import RedisRuntime
 
 
 class FakeAsyncRedisClient:
@@ -10,6 +17,9 @@ class FakeAsyncRedisClient:
         self.ping_error = ping_error
         self.timeseries = timeseries
         self.deleted: list[str] = []
+        self.checked = create_autospec(aioredis.Redis, instance=True, spec_set=True)
+        for name in ("ping", "execute_command", "delete", "aclose"):
+            getattr(self.checked, name).side_effect = getattr(self, name)
 
     async def ping(self):
         if self.ping_error is not None:
@@ -35,6 +45,10 @@ class FakeRedisRuntime:
         self.closed = 0
         self.submissions = 0
         self.close_error = close_error
+        self.checked = create_autospec(RedisRuntime, instance=True, spec_set=True)
+        self.checked.required_client = client.checked
+        for name in ("ping", "run_sync", "close"):
+            getattr(self.checked, name).side_effect = getattr(self, name)
 
     @property
     def required_client(self):
@@ -59,7 +73,7 @@ class FakeRedisRuntime:
 
 def _patch_runtime(monkeypatch, client: FakeAsyncRedisClient, **kwargs) -> FakeRedisRuntime:
     runtime = FakeRedisRuntime(client, **kwargs)
-    monkeypatch.setattr("optimus.acp.preflight.RedisRuntime.from_url", lambda url: runtime)
+    monkeypatch.setattr("optimus.acp.preflight.RedisRuntime.from_url", create_autospec(RedisRuntime.from_url, return_value=runtime.checked))
     return runtime
 
 
@@ -123,9 +137,20 @@ def test_preflight_strict_gateway_probe_uses_configured_agent_model(monkeypatch)
 
         def create_response(self, *, model: str, input_text: str, metadata=None, route_binding=None):
             captured["model"] = model
-            return object()
+            return GatewayResponse(
+                output_text="preflight ok", raw={}, gateway_usage=GatewayUsage(
+                    gateway_request_id="gw-preflight", provider="offline", billing_units=0, cost_usd=Decimal("0"),
+                ),
+            )
 
-    monkeypatch.setattr("optimus.gateway.client.GatewayClient", FakeGatewayClient)
+    checked_factory = create_autospec(GatewayClient, spec_set=True)
+    def build_client(*args, **kwargs):
+        script = FakeGatewayClient(*args, **kwargs)
+        checked = create_autospec(GatewayClient, instance=True, spec_set=True)
+        checked.create_response.side_effect = script.create_response
+        return checked
+    checked_factory.side_effect = build_client
+    monkeypatch.setattr("optimus.gateway.client.GatewayClient", checked_factory)
 
     run_preflight(
         {
@@ -152,7 +177,14 @@ def test_preflight_strict_gateway_probe_reports_rejected_request_for_http_4xx(mo
         def create_response(self, *, model: str, input_text: str, metadata=None, route_binding=None):
             raise GatewayHttpError(400, "unsupported gateway model: glm-5.2")
 
-    monkeypatch.setattr("optimus.gateway.client.GatewayClient", FakeGatewayClient)
+    checked_factory = create_autospec(GatewayClient, spec_set=True)
+    def build_client(*args, **kwargs):
+        script = FakeGatewayClient(*args, **kwargs)
+        checked = create_autospec(GatewayClient, instance=True, spec_set=True)
+        checked.create_response.side_effect = script.create_response
+        return checked
+    checked_factory.side_effect = build_client
+    monkeypatch.setattr("optimus.gateway.client.GatewayClient", checked_factory)
 
     with pytest.raises(PreflightFailure, match="rejected the auth probe request") as exc_info:
         run_preflight(
@@ -180,7 +212,14 @@ def test_preflight_strict_gateway_probe_reports_unreachable_for_network_failure(
         def create_response(self, *, model: str, input_text: str, metadata=None, route_binding=None):
             raise GatewayHttpError(0, "Connection refused")
 
-    monkeypatch.setattr("optimus.gateway.client.GatewayClient", FakeGatewayClient)
+    checked_factory = create_autospec(GatewayClient, spec_set=True)
+    def build_client(*args, **kwargs):
+        script = FakeGatewayClient(*args, **kwargs)
+        checked = create_autospec(GatewayClient, instance=True, spec_set=True)
+        checked.create_response.side_effect = script.create_response
+        return checked
+    checked_factory.side_effect = build_client
+    monkeypatch.setattr("optimus.gateway.client.GatewayClient", checked_factory)
 
     with pytest.raises(PreflightFailure, match="Gateway is not reachable"):
         run_preflight(
@@ -261,3 +300,12 @@ def test_collect_preflight_checks_reports_a_probe_runtime_that_cannot_shut_down(
     assert names["redis connectivity"].passed and names["redis timeseries"].passed
     assert not names["redis probe shutdown"].passed
     assert "did not shut down" in names["redis probe shutdown"].detail
+
+
+def test_contract_preflight_runtime_rejects_unknown_attributes(monkeypatch):
+    script = _patch_runtime(monkeypatch, FakeAsyncRedisClient())
+    boundary = getattr(script, "checked", script)
+    with pytest.raises(AttributeError):
+        boundary.unknown_runtime_operation = True
+    with pytest.raises(TypeError):
+        boundary.run_sync(lambda: None, obsolete_timeout=1)
