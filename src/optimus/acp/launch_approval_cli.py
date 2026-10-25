@@ -44,6 +44,7 @@ from optimus.acp.local_gateway_secrets import (
 )
 from optimus.acp.local_infra import LocalInfrastructureError, ensure_local_phoenix
 from optimus.acp.operator_paths import (
+    OperatorPathConfigurationError,
     OperatorPaths,
     WorkspaceRuntimeRootError,
     bootstrap_workspace_runtime_root,
@@ -68,7 +69,13 @@ from optimus.mcp.client_trust import (
 )
 from optimus.mcp.local_ipc import PendingClientMcpCandidateEndpoint, SafeCandidateSnapshot
 from optimus_model_policy import RegistryError
-from optimus_model_policy.binding import BindingError, trusted_approval_literal
+from optimus_model_policy.binding import (
+    APPROVAL_LITERAL_NAME,
+    BindingError,
+    operator_override,
+    trusted_approval_literal,
+    use_operator_override,
+)
 from optimus_model_policy.stage_c import (
     STAGE_C_LITERAL_NAME,
     StageCEnvelope,
@@ -1038,9 +1045,21 @@ def _cmd_run_gateway(
 
     # Plan 12.2 Task 5: the Gateway refuses to start unless the manifest binds its own registry, so an
     # untrustworthy registry stops here with a typed message (None while enforcement is inactive).
+    # ADR-025: the operator's override from the same trusted config root a launch resolves, composed for this process.
     try:
+        operator_paths = resolve_authorized_operator_paths(
+            workspace_root=workspace_root,
+            snapshot_values=LaunchEnvironmentSnapshot.capture(os.environ).values,
+            platform_name=sys.platform,
+            trusted_roots=trusted_roots,
+        )
+        registry_override = operator_override(operator_paths.config_root)
+        use_operator_override(registry_override)
         model_registry = trusted_approval_literal()
-    except (BindingError, RegistryError) as exc:
+    except OperatorPathConfigurationError as exc:
+        print(f"optimus-trust run-gateway: {exc.user_message}", file=sys.stderr)
+        return 2
+    except (BindingError, RegistryError, LaunchGateError) as exc:
         print(f"optimus-trust run-gateway: model registry is not trustworthy ({exc.code}).", file=sys.stderr)
         return 2
 
@@ -1048,6 +1067,20 @@ def _cmd_run_gateway(
     hmac_key_source = KeyringApprovalStore(
         keyring_backend=credential_keyring_backend, runtime_root=trusted_roots.approval_runtime_root
     )
+    # ADR-025: with the registry now operator data, this command signs only a registry hash that the workspace's durable
+    # launch approval already binds, so composing a changed override never authorizes itself.
+    if model_registry is not None:
+        try:
+            approval = hmac_key_source.read_durable(workspace_identity.digest)
+        except ApprovalError:
+            approval = None
+        if approval is None or approval.security_literals.get(APPROVAL_LITERAL_NAME) != model_registry:
+            print(
+                "optimus-trust run-gateway: MODEL_REGISTRY_NOT_APPROVED: no durable launch approval for this workspace "
+                "binds this model registry. Approve the launch first (optimus-trust approve).",
+                file=sys.stderr,
+            )
+            return 2
     security_snapshot_digest = compute_secret_fingerprint(
         provider_secrets.model_provider_api_key + "\x00" + shared_secret,
         field_name="run_gateway_snapshot",
@@ -1100,6 +1133,7 @@ def _cmd_run_gateway(
             str(bind_port),
             "--manifest",
             serialized_manifest,
+            *([] if registry_override is None else ["--registry-override", str(registry_override)]),
         ],
         env=child_env,
         shell=False,

@@ -833,6 +833,19 @@ class TestRunGatewayCommand:
     elsewhere in this codebase, and keeping the real OS keyring completely
     out of the test path."""
 
+    @pytest.fixture(autouse=True)
+    def _approved_workspace(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ADR-025: run-gateway signs only a registry hash its workspace's durable approval binds. These tests exercise
+        the command's mechanics, so the store reports an approval for the shipped registry; the refusals are covered in
+        test_operator_registry_override.py."""
+        from types import SimpleNamespace
+
+        from optimus.acp import launch_approval_cli
+        from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, trusted_approval_literal
+
+        approved = SimpleNamespace(security_literals={APPROVAL_LITERAL_NAME: trusted_approval_literal()})
+        monkeypatch.setattr(launch_approval_cli.KeyringApprovalStore, "read_durable", lambda self, digest: approved)
+
     def test_run_gateway_accepts_local_phoenix_option(self) -> None:
         """Plan 11.6 Task 4: persistent run-gateway accepts Task 3 Phoenix opt-in."""
         from optimus.acp.launch_approval_cli import _parse_args
@@ -881,7 +894,7 @@ class TestRunGatewayCommand:
                 bind_host="127.0.0.1",
                 bind_port=8765,
                 trusted_roots=TrustedOperatorRoots(
-                    default_config_root=tmp_path / "config", approval_runtime_root=tmp_path / "runtime"
+                    default_config_root=tmp_path.parent / (tmp_path.name + "-config"), approval_runtime_root=tmp_path / "runtime"
                 ),
                 credential_keyring_backend=_FakeKeyring(),
             )
@@ -940,7 +953,7 @@ class TestRunGatewayCommand:
                 bind_host="127.0.0.1",
                 bind_port=8765,
                 trusted_roots=TrustedOperatorRoots(
-                    default_config_root=tmp_path / "config", approval_runtime_root=tmp_path / "runtime"
+                    default_config_root=tmp_path.parent / (tmp_path.name + "-config"), approval_runtime_root=tmp_path / "runtime"
                 ),
                 credential_keyring_backend=_FakeKeyring(),
                 with_local_phoenix=True,
@@ -980,7 +993,7 @@ class TestRunGatewayCommand:
                 bind_host="127.0.0.1",
                 bind_port=8765,
                 trusted_roots=TrustedOperatorRoots(
-                    default_config_root=tmp_path / "config", approval_runtime_root=tmp_path / "runtime"
+                    default_config_root=tmp_path.parent / (tmp_path.name + "-config"), approval_runtime_root=tmp_path / "runtime"
                 ),
                 credential_keyring_backend=_FakeKeyring(),
             )
@@ -1016,7 +1029,7 @@ class TestRunGatewayCommand:
                 bind_host="127.0.0.1",
                 bind_port=8765,
                 trusted_roots=TrustedOperatorRoots(
-                    default_config_root=tmp_path / "config", approval_runtime_root=tmp_path / "runtime"
+                    default_config_root=tmp_path.parent / (tmp_path.name + "-config"), approval_runtime_root=tmp_path / "runtime"
                 ),
                 credential_keyring_backend=_FakeKeyring(),
             )
@@ -1046,7 +1059,7 @@ class TestRunGatewayCommand:
                 bind_host="127.0.0.1",
                 bind_port=8765,
                 trusted_roots=TrustedOperatorRoots(
-                    default_config_root=tmp_path / "config", approval_runtime_root=tmp_path / "runtime"
+                    default_config_root=tmp_path.parent / (tmp_path.name + "-config"), approval_runtime_root=tmp_path / "runtime"
                 ),
                 credential_keyring_backend=_FakeKeyring(),  # empty — no provider key stored
             )
@@ -1099,7 +1112,7 @@ class TestRunGatewayCommand:
                 bind_host="127.0.0.1",
                 bind_port=8765,
                 trusted_roots=TrustedOperatorRoots(
-                    default_config_root=tmp_path / "config", approval_runtime_root=tmp_path / "runtime"
+                    default_config_root=tmp_path.parent / (tmp_path.name + "-config"), approval_runtime_root=tmp_path / "runtime"
                 ),
                 credential_keyring_backend=_FakeKeyring(),
             )
@@ -1165,7 +1178,7 @@ class TestRunGatewayCommand:
                 bind_host="127.0.0.1",
                 bind_port=8765,
                 trusted_roots=TrustedOperatorRoots(
-                    default_config_root=tmp_path / "config", approval_runtime_root=tmp_path / "runtime"
+                    default_config_root=tmp_path.parent / (tmp_path.name + "-config"), approval_runtime_root=tmp_path / "runtime"
                 ),
                 credential_keyring_backend=_FakeKeyring(),
             )
@@ -1230,7 +1243,7 @@ class TestRunGatewayCommand:
                     bind_host="127.0.0.1",
                     bind_port=8765,
                     trusted_roots=TrustedOperatorRoots(
-                        default_config_root=tmp_path / "config",
+                        default_config_root=tmp_path.parent / (tmp_path.name + "-config"),
                         approval_runtime_root=tmp_path / "runtime",
                     ),
                     credential_keyring_backend=_FakeKeyring(),

@@ -16,7 +16,7 @@ from optimus.acp.launch_policy import project_gateway_tool_child_env
 from optimus.acp.local_gateway_secrets import ProviderCredentialResolution, _parse_env_gateway_file
 from optimus.agent.defaults import default_agent_model
 from optimus.config.gateway import _LOOPBACK_HOSTS, LOCAL_PROVIDER_KEY_NAMES
-from optimus_model_policy.binding import trusted_snapshot
+from optimus_model_policy.binding import operator_override, trusted_snapshot
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 
 # _LOOPBACK_HOSTS reused from optimus.config.gateway (agent-side package, already imported
@@ -524,6 +524,11 @@ def ensure_local_gateway(
         # envelope itself and refuses unless the signed manifest binds exactly that envelope.
         if stage_c_ledger is not None:
             profile_argv += ["--plan12-stage-c-ledger", str(stage_c_ledger)]
+        # ADR-025: the operator's registry override is passed by path; the Gateway composes it itself and refuses unless
+        # the signed manifest binds the resulting hash. A test profile never reads it.
+        override = None if test_profile is not None or config_root is None else operator_override(config_root)
+        if override is not None:
+            profile_argv += ["--registry-override", str(override)]
         process = subprocess.Popen(
             [
                 sys.executable,

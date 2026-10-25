@@ -132,6 +132,7 @@ def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attemp
         "FIXTURE_POLICY",
         "STAGE_C_LEDGER_NOT_ABSOLUTE",
         "STAGE_C_PROFILE_MIGRATED",
+        "OPERATOR_OVERRIDE_UNSAFE",
     }
     assert maintenance.PREFLIGHT_REFUSAL_CODES is PREFLIGHT_REFUSAL_CODES  # one classifier, not a copy
 

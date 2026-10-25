@@ -60,7 +60,14 @@ from optimus.acp.trusted_paths import (
     WorkspaceSecurityState,
 )
 from optimus_model_policy import RegistryError
-from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError, approval_literal, trusted_approval_literal
+from optimus_model_policy.binding import (
+    APPROVAL_LITERAL_NAME,
+    BindingError,
+    approval_literal,
+    operator_override,
+    trusted_approval_literal,
+    use_operator_override,
+)
 from optimus_model_policy.stage_c import (
     STAGE_C_LITERAL_NAME,
     STAGE_C_PROFILES,
@@ -685,8 +692,12 @@ def resolve_launch_candidate(
     # approvals stay valid; activation adds it and those approvals then need re-approval.
     try:
         if test_profile is None:
+            # ADR-025 (ADR-004 option C): the operator's override in the trusted config root, composed over the shipped
+            # defaults for this process; the approval binds the resulting effective hash. Test profiles never read it.
+            use_operator_override(operator_override(operator_paths.config_root))
             registry_literal = trusted_approval_literal()
         else:
+            use_operator_override(None)
             # A named test profile binds its own reviewed snapshot (release supplement V2) and its own name: the
             # shipped defaults compose to the attached profile's hash (Plan 12.2 closure), and equal hashes never
             # mean shared authority, so neither launch's approval authorizes the other.
