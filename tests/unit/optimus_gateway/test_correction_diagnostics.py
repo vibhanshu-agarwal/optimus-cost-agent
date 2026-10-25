@@ -177,120 +177,323 @@ def test_a_bare_credential_in_a_refusal_text_is_redacted_from_the_log() -> None:
 
 
 # The reviewed interpolations in refusal texts (Codex rounds 14-15): ints, Gateway codes, constant names and
-# trusted constants. Anything else must be projected for the log (`log_detail=`) or logged as fixed text.
+# trusted constants. Anything else must be projected for the log (`log_detail=`) or logged as fixed text. Each entry is
+# keyed by call site, as file, enclosing qualified name and position among that name's refusal calls, and by the
+# expression (R-13 item 4, #237 6322536508), so an interpolation reviewed at one site never covers another.
 _REVIEWED_INTERPOLATIONS = {
-    ("src/optimus_gateway/model_policy.py", "policy.route_stop.code"),
-    ("src/optimus_gateway/model_policy.py", "route.provider_name"),
-    ("src/optimus_gateway/model_policy.py", "attempt"),
-    ("src/optimus_gateway/model_policy.py", "', '.join(pipeline)"),
-    ("src/optimus_gateway/model_policy.py", "result.input_tokens"),
-    ("src/optimus_gateway/model_policy.py", "admitted.decision.input_tokens"),
-    ("src/optimus_gateway/models.py", "name"),
-    ("src/optimus_gateway/models.py", "self.bind_host"),
-    ("src/optimus_gateway/models.py", "_GATEWAY_PROVIDER"),
-    ("src/optimus_gateway/models.py", "self.provider"),
-    ("src/optimus_gateway/models.py", "provider"),
-    ("src/optimus_gateway/models.py", "max_calls_name"),
-    ("src/optimus_gateway/providers.py", "config.provider"),
-    ("src/optimus_gateway/responses.py", "field"),
-    ("src/optimus_gateway/tool_provider_http.py", "label"),
-    ("src/optimus_gateway/upstream_client.py", "field"),
-    ("src/optimus_gateway/upstream_client.py", "description"),
-    ("src/optimus_gateway/upstream_client.py", "name"),
-    ("src/optimus_gateway/upstream_client.py", "label"),
-    ("src/optimus_gateway/upstream_client.py", "exc.code"),
-    ("src/optimus_gateway/upstream_client.py", "fact.get('cause', fact['class'])"),
-    ("src/optimus_model_policy/binding.py", "sorted(missing)"),
-    ("src/optimus_model_policy/binding.py", "len(unknown)"),
-    ("src/optimus_model_policy/binding.py", "field"),
-    ("src/optimus_model_policy/binding.py", "version"),
-    ("src/optimus_model_policy/registry.py", "model_id"),
-    ("src/optimus_model_policy/registry.py", "seen[folded]"),
-    ("src/optimus_model_policy/stage_c.py", "r.attempts"),
-    ("src/optimus_model_policy/stage_c.py", "self.envelope.max_attempts"),
-    ("src/optimus_model_policy/stage_c.py", "r.charged"),
-    ("src/optimus_model_policy/stage_c.py", "self.envelope.limit_usd"),
-    ("src/optimus_model_policy/stage_c.py", "self._write_failure"),
-    ("src/optimus_model_policy/stage_c.py", "kind"),
+    ("src/optimus_gateway/model_policy.py", "admit_request", 5, "policy.route_stop.code"),
+    ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 3, "route.provider_name"),
+    ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 5, "attempt"),
+    ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 6, "', '.join(pipeline)"),
+    ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 7, "admitted.decision.input_tokens"),
+    ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 7, "result.input_tokens"),
+    ("src/optimus_gateway/models.py", "GatewayServiceConfig.__post_init__", 1, "self.bind_host"),
+    ("src/optimus_gateway/models.py", "GatewayServiceConfig.__post_init__", 3, "_GATEWAY_PROVIDER"),
+    ("src/optimus_gateway/models.py", "GatewayServiceConfig.__post_init__", 3, "self.provider"),
+    ("src/optimus_gateway/models.py", "GatewayServiceConfig.__post_init__", 5, "self.provider"),
+    ("src/optimus_gateway/models.py", "GatewayServiceConfig.from_env", 1, "_GATEWAY_PROVIDER"),
+    ("src/optimus_gateway/models.py", "GatewayServiceConfig.from_env", 1, "provider"),
+    ("src/optimus_gateway/models.py", "GatewayServiceConfig.from_env", 2, "max_calls_name"),
+    ("src/optimus_gateway/models.py", "_required_env", 1, "name"),
+    ("src/optimus_gateway/providers.py", "build_upstream_client", 1, "config.provider"),
+    ("src/optimus_gateway/responses.py", "assert_gateway_usage_contract", 1, "field"),
+    ("src/optimus_gateway/tool_provider_http.py", "request_bytes.call", 1, "label"),
+    ("src/optimus_gateway/tool_provider_http.py", "request_bytes.call", 2, "label"),
+    ("src/optimus_gateway/tool_provider_http.py", "request_bytes.call", 3, "label"),
+    ("src/optimus_gateway/tool_provider_http.py", "request_bytes.call", 4, "label"),
+    ("src/optimus_gateway/tool_provider_http.py", "request_bytes.call", 5, "label"),
+    ("src/optimus_gateway/tool_provider_http.py", "request_json.call", 1, "label"),
+    ("src/optimus_gateway/tool_provider_http.py", "request_json.call", 2, "label"),
+    ("src/optimus_gateway/tool_provider_http.py", "request_json.call", 3, "label"),
+    ("src/optimus_gateway/tool_provider_http.py", "request_json.call", 4, "label"),
+    ("src/optimus_gateway/tool_provider_http.py", "request_json.call", 5, "label"),
+    ("src/optimus_gateway/tool_provider_http.py", "request_json.call", 6, "label"),
+    ("src/optimus_gateway/upstream_client.py", "_optional_header_nonnegative_int", 1, "name"),
+    ("src/optimus_gateway/upstream_client.py", "_optional_header_nonnegative_int", 2, "name"),
+    ("src/optimus_gateway/upstream_client.py", "_optional_string", 1, "description"),
+    ("src/optimus_gateway/upstream_client.py", "_required_nonnegative_int", 1, "field"),
+    ("src/optimus_gateway/upstream_client.py", "_urlopen_json", 1, "label"),
+    ("src/optimus_gateway/upstream_client.py", "_urlopen_json", 2, "exc.code"),
+    ("src/optimus_gateway/upstream_client.py", "_urlopen_json", 2, "label"),
+    ("src/optimus_gateway/upstream_client.py", "_urlopen_json", 3, "exc.code"),
+    ("src/optimus_gateway/upstream_client.py", "_urlopen_json", 3, "label"),
+    ("src/optimus_gateway/upstream_client.py", "_urlopen_json", 4, "fact.get('cause', fact['class'])"),
+    ("src/optimus_gateway/upstream_client.py", "_urlopen_json", 4, "label"),
+    ("src/optimus_gateway/upstream_client.py", "_urlopen_json", 5, "label"),
+    ("src/optimus_gateway/upstream_client.py", "_urlopen_json", 6, "label"),
+    ("src/optimus_model_policy/binding.py", "RouteBinding.from_wire", 3, "version"),
+    ("src/optimus_model_policy/binding.py", "_exact_keys", 1, "sorted(missing)"),
+    ("src/optimus_model_policy/binding.py", "_exact_keys", 2, "len(unknown)"),
+    ("src/optimus_model_policy/binding.py", "_hex_digest", 1, "field"),
+    ("src/optimus_model_policy/registry.py", "Policy.unambiguous_and_frozen", 1, "model_id"),
+    ("src/optimus_model_policy/registry.py", "Policy.unambiguous_and_frozen", 2, "model_id"),
+    ("src/optimus_model_policy/registry.py", "Policy.unambiguous_and_frozen", 2, "seen[folded]"),
+    ("src/optimus_model_policy/stage_c.py", "StageCGuard._apply", 6, "kind"),
+    ("src/optimus_model_policy/stage_c.py", "StageCGuard.admit", 5, "r.attempts"),
+    ("src/optimus_model_policy/stage_c.py", "StageCGuard.admit", 5, "self.envelope.max_attempts"),
+    ("src/optimus_model_policy/stage_c.py", "StageCGuard.admit", 6, "r.charged"),
+    ("src/optimus_model_policy/stage_c.py", "StageCGuard.admit", 6, "self.envelope.limit_usd"),
+    ("src/optimus_model_policy/stage_c.py", "StageCGuard.admit", 7, "self._write_failure"),
 }
-_FIXED_TEXT_IN_THE_LOG = {("src/optimus_gateway/model_mapping.py", "normalized")}
+_FIXED_TEXT_IN_THE_LOG = {("src/optimus_gateway/model_mapping.py", "resolve_model_id", 1, "normalized")}
 # A refusal with `log_detail` (C1): its positional text reaches the response only, so its interpolations are pinned
 # here; the log records `log_detail`, whose interpolations must each be a projection or a trusted constant.
-_WIRE_ONLY_UNDER_LOG_DETAIL = {("src/optimus_gateway/model_policy.py", "provider"), ("src/optimus_gateway/model_policy.py", "finish_reason")}
+_WIRE_ONLY_UNDER_LOG_DETAIL = {
+    ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 3, "provider"),
+    ("src/optimus_gateway/model_policy.py", "check_finish_status", 1, "finish_reason"),
+}
 _LOG_PROJECTIONS = {
-    ("src/optimus_gateway/model_policy.py", "recognized_provider(provider, policy)"),
-    ("src/optimus_gateway/model_policy.py", "bounded(finish_reason, RECOGNIZED_FINISH)"),
-    ("src/optimus_gateway/model_policy.py", "route.provider_name"),
+    ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 3, "recognized_provider(provider, policy)"),
+    ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 3, "route.provider_name"),
+    ("src/optimus_gateway/model_policy.py", "check_finish_status", 1, "bounded(finish_reason, RECOGNIZED_FINISH)"),
+}
+# Message arguments the control cannot read (`_unresolved`), each reviewed (R-13 item 4): a fixed code, a trusted
+# constant, or a re-raised text that this control checks where it was made.
+_UNRESOLVED_ARGUMENTS = {
+    # `guard_request`'s `_refuse` codes, all literals in `optimus_model_policy/capacity.py`.
+    ("src/optimus_gateway/model_policy.py", "admit_request", 6, "decision.reason or 'CAPACITY_REFUSED'"),
+    # `_router_evidence` keeps only the RuntimeErrors its own helpers raise in `upstream_client.py`, checked here.
+    ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 1, "unreadable"),
+    # A BindingError from `RouteBinding.from_wire`, whose code and detail are made in `binding.py`, checked here.
+    ("src/optimus_gateway/model_policy.py", "parse_route_binding", 3, "exc.code"),
+    ("src/optimus_gateway/model_policy.py", "parse_route_binding", 3, "exc.detail"),
+    # A StageCRefusal from `StageCGuard.admit`, made in `stage_c.py`, checked here (Stage C test profiles only).
+    ("src/optimus_gateway/responses.py", "_run_enforced_completion", 2, "exc.code"),
+    ("src/optimus_gateway/responses.py", "_run_enforced_completion", 2, "exc.detail"),
+    # The final transient failure's text: the operation's own refusals (`_urlopen_json`, `tool_provider_http.py`).
+    ("src/optimus_gateway/upstream_client.py", "call_with_upstream_retry", 1, "str(exc)"),
+    # The guard's halt reason: its own `_halt` texts (attempt numbers, charges) or its ledger's (Stage C test only).
+    ("src/optimus_model_policy/stage_c.py", "StageCGuard.admit", 1, "r.halted"),
+    # A name from the constant `STAGE_C_PROFILES`.
+    ("src/optimus_model_policy/stage_c.py", "compose_stage_c_envelope", 2, "name"),
+    # A reviewed profile constant, and an exception class name.
+    ("src/optimus_model_policy/test_profiles.py", "compose_test_profile_snapshot", 2, "profile.unavailable_reason or 'not available'"),
+    ("src/optimus_model_policy/test_profiles.py", "compose_test_profile_snapshot", 3, "type(exc).__name__"),
 }
 _REFUSALS = {"ModelPolicyRefusal", "BindingError", "StageCRefusal", "ValueError", "RuntimeError", "RetryableUpstreamError", "ModelRequestValidationError"}
 
 
+_NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+
+
+def _scope_nodes(scope: ast.AST) -> list[ast.AST]:
+    """The nodes of `scope` itself: a nested function, lambda or class is another scope, so only its own node counts."""
+    found, pending = [], list(ast.iter_child_nodes(scope))
+    while pending:
+        node = pending.pop()
+        found.append(node)
+        if not isinstance(node, _NESTED_SCOPES):
+            pending.extend(ast.iter_child_nodes(node))
+    return found
+
+
+def _plain_assignments(name: str, scope: ast.AST) -> list[ast.expr] | None:
+    """The values `name` gets from plain `name = value` statements in `scope`, or None when anything else there binds it:
+    a parameter, `+=`, an annotated, unpacking or walrus assignment, a loop, `with`, `except`, an import, `global` or
+    `nonlocal`, a nested definition or a pattern. Only then can its text be read from its assignments."""
+    if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef) and name in {node.arg for node in ast.walk(scope.args) if isinstance(node, ast.arg)}:
+        return None
+    values: list[ast.expr] = []
+    stores = 0
+    for node in _scope_nodes(scope):
+        if isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Store):
+            stores += 1
+        elif isinstance(node, ast.Assign):
+            values += [node.value for target in node.targets if isinstance(target, ast.Name) and target.id == name]
+        elif isinstance(node, ast.ExceptHandler | ast.MatchAs | ast.MatchStar | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            if node.name == name:
+                return None
+        elif isinstance(node, ast.MatchMapping) and node.rest == name:
+            return None
+        elif isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) == name:
+            return None
+        elif isinstance(node, ast.Global | ast.Nonlocal) and name in node.names:
+            return None
+    return values if stores == len(values) else None
+
+
 def _interpolations(expr: ast.expr, scope: ast.AST, depth: int = 0) -> list[str]:
-    """The interpolated expressions of a message argument: an f-string's values, either branch of a conditional, both
-    sides of a concatenation, and a name's f-string assignments in the same scope, two hops deep (`message = f"…"`,
-    `error = RuntimeError(message)`)."""
+    """The interpolated expressions of a message argument: an f-string's values, including any nested in a format spec
+    (`f"{x:{width}}"`), either branch of a conditional, both sides of a concatenation, and a name's plain f-string
+    assignments in the same scope, two hops deep (`message = f"…"`, `error = RuntimeError(message)`)."""
     if isinstance(expr, ast.JoinedStr):
-        return [ast.unparse(value.value) for value in expr.values if isinstance(value, ast.FormattedValue)]
+        found = []
+        for value in expr.values:
+            if isinstance(value, ast.FormattedValue):
+                found.append(ast.unparse(value.value))
+                if value.format_spec is not None:
+                    found += _interpolations(value.format_spec, scope, depth)
+        return found
     if isinstance(expr, ast.IfExp):
         return _interpolations(expr.body, scope, depth) + _interpolations(expr.orelse, scope, depth)
     if isinstance(expr, ast.BinOp):
         return _interpolations(expr.left, scope, depth) + _interpolations(expr.right, scope, depth)
     if isinstance(expr, ast.Name) and depth < 2:
-        assigned = [
-            node.value
-            for node in ast.walk(scope)
-            if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == expr.id for target in node.targets)
-        ]
-        return [found for value in assigned for found in _interpolations(value, scope, depth + 1)]
+        return [found for value in _plain_assignments(expr.id, scope) or [] for found in _interpolations(value, scope, depth + 1)]
     return []
 
 
-def _refusal_calls(tree: ast.Module) -> list[tuple[ast.Call, ast.AST]]:
-    """Every call of a refusal class anywhere in the module, raised directly or wrapped (`_with_failure(…)`), with its
-    innermost enclosing function as the scope that resolves its names."""
-    found: list[tuple[ast.Call, ast.AST]] = []
+def _unresolved(expr: ast.expr, scope: ast.AST, depth: int = 0) -> list[str]:
+    """The parts of a message argument whose text the control cannot read: anything but a literal, an f-string (its
+    values are `_interpolations`), either branch of a conditional, both sides of a concatenation, and a name bound in its
+    scope only by plain assignments of those (`_plain_assignments`), two hops deep. Each is reported as written."""
+    if isinstance(expr, ast.Constant | ast.JoinedStr):
+        return []
+    if isinstance(expr, ast.IfExp):
+        return _unresolved(expr.body, scope, depth) + _unresolved(expr.orelse, scope, depth)
+    if isinstance(expr, ast.BinOp):
+        return _unresolved(expr.left, scope, depth) + _unresolved(expr.right, scope, depth)
+    if isinstance(expr, ast.Name) and depth < 2:
+        assigned = _plain_assignments(expr.id, scope)
+        if assigned and not any(_unresolved(value, scope, depth + 1) for value in assigned):
+            return []
+    return [ast.unparse(expr)]
 
-    def visit(node: ast.AST, scope: ast.AST) -> None:
+
+def _refusal_calls(tree: ast.Module) -> list[tuple[ast.Call, ast.AST, str, int]]:
+    """Every call of a refusal class anywhere in the module, raised directly or wrapped (`_with_failure(…)`), with its
+    innermost enclosing function as the scope that resolves its names, and its site: the enclosing qualified name and its
+    position among that name's refusal calls (the launch-inventory key, `tests/support/child_launch_inventory.py`)."""
+    found: list[tuple[ast.Call, ast.AST, str, int]] = []
+    ordinals: dict[str, int] = {}
+
+    def visit(node: ast.AST, scope: ast.AST, qualname: str) -> None:
         for child in ast.iter_child_nodes(node):
-            inner = child if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef) else scope
+            inner, inner_name = scope, qualname
+            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+                inner_name = f"{qualname}.{child.name}" if qualname else child.name
+                if not isinstance(child, ast.ClassDef):
+                    inner = child
             if isinstance(child, ast.Call):
                 func = child.func
                 name = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else None
                 if name in _REFUSALS:
-                    found.append((child, scope))
-            visit(child, inner)
+                    site = qualname or "<module>"
+                    ordinals[site] = ordinals.get(site, 0) + 1
+                    found.append((child, scope, site, ordinals[site]))
+            visit(child, inner, inner_name)
 
-    visit(tree, tree)
+    visit(tree, tree, "")
     return found
 
 
-def test_every_interpolated_refusal_text_is_reviewed_or_projected_for_the_log() -> None:
+def _tracked_sources() -> dict[str, str]:
     from tools.tracked_repository_files import tracked_repository_files
 
+    paths = tracked_repository_files(REPO, pathspecs=("src/optimus_gateway", "src/optimus_model_policy"))
+    return {path.relative_to(REPO).as_posix(): path.read_text(encoding="utf-8") for path in paths if path.suffix == ".py"}
+
+
+def _control_findings(sources: dict[str, str]) -> tuple[list[str], set[tuple[str, str, int, str]]]:
     unreviewed, seen = [], set()
-    for path in tracked_repository_files(REPO, pathspecs=("src/optimus_gateway", "src/optimus_model_policy")):
-        if path.suffix != ".py":
-            continue
-        relative = path.relative_to(REPO).as_posix()
-        for call, scope in _refusal_calls(ast.parse(path.read_text(encoding="utf-8"))):
+    for relative, text in sources.items():
+        for call, scope, function, ordinal in _refusal_calls(ast.parse(text)):
             log_detail = [keyword.value for keyword in call.keywords if keyword.arg == "log_detail"]
-            positional = {(relative, found) for argument in call.args for found in _interpolations(argument, scope)}
-            logged = {(relative, found) for value in log_detail for found in _interpolations(value, scope)}
-            seen |= positional | logged
+            # The message: every argument but the `status` and `log_detail` keywords, so `detail=…` and `**kwargs` count.
+            texts = (*call.args, *(keyword.value for keyword in call.keywords if keyword.arg not in {"status", "log_detail"}))
+            positional = {(relative, function, ordinal, found) for argument in texts for found in _interpolations(argument, scope)}
+            logged = {(relative, function, ordinal, found) for value in log_detail for found in _interpolations(value, scope)}
+            unresolved = {
+                (relative, function, ordinal, found) for argument in (*texts, *log_detail) for found in _unresolved(argument, scope)
+            }
+            seen |= positional | logged | unresolved
             allowed = _WIRE_ONLY_UNDER_LOG_DETAIL | _REVIEWED_INTERPOLATIONS if log_detail else _REVIEWED_INTERPOLATIONS | _FIXED_TEXT_IN_THE_LOG
-            unreviewed += [f"{site[0]}:{call.lineno} {site[1]}" for site in sorted(positional - allowed)]
-            unreviewed += [f"{site[0]}:{call.lineno} log_detail {site[1]}" for site in sorted(logged - _LOG_PROJECTIONS)]
+            unreviewed += [f"{relative}:{call.lineno} {key[3]}" for key in sorted(positional - allowed)]
+            unreviewed += [f"{relative}:{call.lineno} log_detail {key[3]}" for key in sorted(logged - _LOG_PROJECTIONS)]
+            unreviewed += [f"{relative}:{call.lineno} unresolved {key[3]}" for key in sorted(unresolved - _UNRESOLVED_ARGUMENTS)]
+    return unreviewed, seen
+
+
+def _edited(relative: str, old: str, new: str) -> dict[str, str]:
+    sources = _tracked_sources()
+    assert sources[relative].count(old) == 1, old
+    sources[relative] = sources[relative].replace(old, new)
+    return sources
+
+
+@pytest.mark.parametrize(
+    ("relative", "old", "new"),
+    (
+        pytest.param(  # `body` is assigned a call, so the control cannot read what it holds
+            "src/optimus_gateway/tool_provider_http.py",
+            'raise RuntimeError(f"{label} response was not an object")\n        return body',
+            'raise RuntimeError(f"{label} response was not an object", body)\n        return body',
+            id="an-unresolved-argument",
+        ),
+        pytest.param(  # `name` is reviewed elsewhere in this file, never at this site
+            "src/optimus_gateway/upstream_client.py",
+            'RetryableUpstreamError(f"{label} request timed out")',
+            'RetryableUpstreamError(f"{label} request timed out {name}")',
+            id="a-new-interpolation-at-a-reviewed-site",
+        ),
+        pytest.param(  # the same reviewed `label`, in a refusal call the review never saw
+            "src/optimus_gateway/tool_provider_http.py",
+            'raise RuntimeError(f"{label} response was not an object")\n        return body',
+            'raise RuntimeError(f"{label} response was not an object")\n'
+            '        if not body:\n            raise RuntimeError(f"{label} response was empty")\n        return body',
+            id="a-second-refusal-call-in-a-reviewed-function",
+        ),
+        pytest.param(  # the message passed by keyword, not by position
+            "src/optimus_gateway/model_policy.py",
+            'ModelPolicyRefusal("BINDING_REQUIRED", "requests must bind the trusted model registry")',
+            'ModelPolicyRefusal("BINDING_REQUIRED", detail=str(raw))',
+            id="a-keyword-message-argument",
+        ),
+        pytest.param(  # a reviewed f-string name, extended in place
+            "src/optimus_gateway/upstream_client.py",
+            'message = f"{label} request failed ({exc.code})"\n',
+            'message = f"{label} request failed ({exc.code})"\n        message += str(exc)\n',
+            id="an-augmented-assignment",
+        ),
+        pytest.param(  # a parameter, assigned a literal on one path only
+            "src/optimus_gateway/models.py",
+            'raise ValueError(f"{name} is required")\n',
+            'if name.startswith("_"):\n            name = "a private variable"\n        raise ValueError(name)\n',
+            id="a-parameter-assigned-on-one-path",
+        ),
+        pytest.param(  # a reviewed f-string name, rebound by an annotated assignment
+            "src/optimus_gateway/upstream_client.py",
+            'message = f"{label} request failed ({exc.code})"\n',
+            'message = f"{label} request failed ({exc.code})"\n        message: str = str(exc)\n',
+            id="an-annotated-rebinding",
+        ),
+        pytest.param(  # an interpolation nested in a reviewed field's format spec
+            "src/optimus_gateway/upstream_client.py",
+            'RetryableUpstreamError(f"{label} request timed out")',
+            'RetryableUpstreamError(f"{label:{exc}} request timed out")',
+            id="a-nested-format-field",
+        ),
+        pytest.param(  # a literal assigned only inside a nested function, which is another scope
+            "src/optimus_gateway/tool_provider_http.py",
+            'raise RuntimeError(f"{label} response was not an object")\n        return body',
+            'def unrelated() -> None:\n                reason = "fixed"\n\n            raise RuntimeError(reason)\n        return body',
+            id="an-assignment-in-a-nested-scope",
+        ),
+    ),
+)
+def test_the_refusal_text_control_fails_an_unreviewed_change(relative: str, old: str, new: str) -> None:
+    """R-13 item 4 (#237 6322536508): reviewed entries are keyed by call site and expression text, and an argument the
+    control cannot resolve must be pinned, so each of these edits to a reviewed function is reported."""
+    assert _control_findings(_tracked_sources())[0] == []
+    assert _control_findings(_edited(relative, old, new))[0] != []
+
+
+def test_every_interpolated_refusal_text_is_reviewed_or_projected_for_the_log() -> None:
+    unreviewed, seen = _control_findings(_tracked_sources())
     assert unreviewed == []
     # Not vacuous, and no stale entry: the wrapped and assigned sites (`_with_failure(…)`, `message = f"…"`) are seen,
-    # and every reviewed or projected entry still names a live site.
-    assert {("src/optimus_gateway/upstream_client.py", "exc.code"), ("src/optimus_gateway/model_policy.py", "attempt")} <= seen
-    assert (_REVIEWED_INTERPOLATIONS | _FIXED_TEXT_IN_THE_LOG | _WIRE_ONLY_UNDER_LOG_DETAIL | _LOG_PROJECTIONS) - seen == set()
+    # and every reviewed, projected or pinned entry still names a live site.
+    assert {("src/optimus_gateway/upstream_client.py", "exc.code"), ("src/optimus_gateway/model_policy.py", "attempt")} <= {
+        (key[0], key[3]) for key in seen
+    }
+    pinned = _REVIEWED_INTERPOLATIONS | _FIXED_TEXT_IN_THE_LOG | _WIRE_ONLY_UNDER_LOG_DETAIL | _LOG_PROJECTIONS | _UNRESOLVED_ARGUMENTS
+    assert pinned - seen == set()
 
 
 def test_the_wire_bodies_match_the_72947dba_baseline(tmp_path) -> None:
     """Codex round 19 finding 5: the complete response bodies of the C1, C2 and C9 scenarios equal those checkpoint 4
-    returned. `wire_baseline_72947dba.json` came from a clone of `72947dba` running these same scenarios (the generator
-    and its log are in the checkpoint evidence); the bare-key canary is stored as a placeholder."""
+    returned. `wire_baseline_72947dba.json` came from a clone of `72947dba` running these same scenarios, and
+    `generate_wire_baseline.py` beside it regenerates it byte for byte; the bare-key canary is stored as a placeholder."""
     from tests.unit.optimus_gateway import wire_baseline_scenarios as scenarios
 
     source = (REPO / "tests/unit/optimus_gateway/wire_baseline_scenarios.py").read_bytes().replace(b"\r\n", b"\n")

@@ -84,6 +84,7 @@ function Initialize-Main5ScoredPlugin([string]$Site, [string]$Venv, [string]$Att
 import json
 import os
 import re
+import tempfile
 from collections import Counter
 from pathlib import Path
 
@@ -113,7 +114,56 @@ _CONSUMERS = frozenset(_CONFIG["consumer_paths"])
 _VENV = _CONFIG["venv"]
 _DIAGNOSTIC = Path(_CONFIG["attempt_directory"]) / "shutdown-probe-errors.json"
 _SHUTDOWN = "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist"
-_TOKEN = re.compile(r"^[a-z_]+:probe_error:[A-Za-z_]+$")
+_TOKEN = r"[a-z_]+:probe_error:[A-Za-z_][A-Za-z_0-9]*"
+_NUMBER = r"(?:unknown|0|-?[1-9][0-9]{0,18})"
+_LOCATION = r"(?:unknown|[^|\r\n]+:[1-9][0-9]* in [^|\r\n]+)"
+_PROBE_ERROR = re.compile(
+    rf"(?P<token>{_TOKEN})(?: \| errno=(?P<errno>{_NUMBER}) \| winerror=(?P<winerror>{_NUMBER})"
+    rf" \| origin={_LOCATION} \| probe={_LOCATION}"
+    r" \| chain=(?:none|cause|context|both|unknown) \| group=(?P<group>none|unknown|[1-9][0-9]{0,18}))?"
+)
+_CONTROLS = re.compile(r"[\u0000-\u001f\u007f-\u009f\u2028\u2029]")
+
+
+def _shutdown_probe_counts(observations):
+    counts = Counter()
+    for observation in observations:
+        if not isinstance(observation, dict):
+            raise ValueError()
+        value = observation.get("cause_effect")
+        if not isinstance(value, str):
+            raise ValueError()
+        match = None if _CONTROLS.search(value) else _PROBE_ERROR.fullmatch(value)
+        if match is not None:
+            for number in (match["errno"], match["winerror"]):
+                if number not in (None, "unknown") and not -(2**63) <= int(number) < 2**63:
+                    raise ValueError()
+            group = match["group"]
+            if group not in (None, "none", "unknown") and not 0 < int(group) < 2**63:
+                raise ValueError()
+            counts[match["token"]] += 1
+        elif observation.get("close_outcome") == "ERROR" or ":probe_error:" in value:
+            raise ValueError()
+    return counts
+
+
+def _publish_shutdown_counts(counts):
+    temporary = None
+    try:
+        if _DIAGNOSTIC.exists():
+            raise FileExistsError()
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=_DIAGNOSTIC.parent,
+                                         prefix=".shutdown-probe-", suffix=".tmp", delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(json.dumps(dict(sorted(counts.items()))) + "\n")
+        os.rename(temporary, _DIAGNOSTIC)  # Windows: refuse a target that appeared after validation.
+    except Exception:
+        if temporary is not None:
+            try:
+                temporary.unlink()  # Only this call's uniquely created staging file.
+            except FileNotFoundError:
+                pass
+        raise
 
 
 @pytest.hookimpl(wrapper=True)
@@ -133,21 +183,17 @@ def pytest_runtest_protocol(item, nextitem):
 def pytest_runtest_makereport(item, call):
     report = yield
     if item.nodeid == _SHUTDOWN and report.failed and call.when == "call" and call.excinfo is not None:
-        observations = None
-        for entry in reversed(call.excinfo.traceback):
-            candidate = entry.frame.f_locals.get("observations")
-            if isinstance(candidate, list):
-                observations = candidate
-                break
-        if observations is not None:
-            counts = Counter()
-            for observation in observations:
-                if not isinstance(observation, dict):
-                    continue
-                token = observation.get("cause_effect")
-                if isinstance(token, str) and _TOKEN.fullmatch(token):
-                    counts[token] += 1
-            _DIAGNOSTIC.write_text(json.dumps(dict(sorted(counts.items()))) + "\n", encoding="utf-8")
+        try:
+            observations = None
+            for entry in reversed(call.excinfo.traceback):
+                candidate = entry.frame.f_locals.get("observations")
+                if isinstance(candidate, list):
+                    observations = candidate
+                    break
+            if observations is not None:
+                _publish_shutdown_counts(_shutdown_probe_counts(observations))
+        except Exception:
+            report.sections.append(("MAIN5 shutdown diagnostic", "MAIN5_SHUTDOWN_PROBE_DIAGNOSTIC_INVALID"))
     return report
 '@
     [IO.File]::WriteAllText((Join-Path $Site 'main5_scored_scope.py'),$plugin,[Text.UTF8Encoding]::new($false))

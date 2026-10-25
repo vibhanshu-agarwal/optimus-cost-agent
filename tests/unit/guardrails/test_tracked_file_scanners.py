@@ -170,6 +170,8 @@ ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
     "tools/testing/test_main5_runner.py:test_attempt_activation_is_unshadowable_idempotent_and_config_owned:glob:<dynamic>": "Reads only the fixture child PID's spawn ledger in its temporary attempt to verify activation is idempotent.",
     "tools/testing/test_main5_runner.py:test_runner_uses_attempt_venv_not_shared_venv:glob:*.jsonl": "Reads the runner-under-test's temporary control and scored ledgers to verify control/scored separation.",
     "tests/unit/tools/test_run_context_child_sites.py:_census_child:glob:*.jsonl": "Reads the census rows that this test's own child wrote into its tmp_path.",
+    "tools/testing/test_main5_runner.py:test_scoped_plugin_contains_publication_failure_and_removes_only_own_temp:glob:.shutdown-probe-*.tmp": "Inspects generated staging files in this test's tmp_path collector attempt to verify publication failure and cleanup containment.",
+    "tools/testing/test_main5_runner.py:test_scoped_plugin_review_target_appearing_at_publication_is_preserved:glob:.shutdown-probe-*.tmp": "Checks generated staging files in this test's tmp_path collector attempt after a competing target prevents publication.",
 }
 
 

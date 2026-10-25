@@ -17,7 +17,7 @@ from optimus.acp.errors import (
     success_response,
 )
 from optimus.acp.request_ids import DuplicateRequestId, RequestIdTracker
-from optimus.agent.models import AgentRunRequest, AgentRunResult
+from optimus.agent.models import GOAL_LOOP_RETIRED, AgentRunRequest, AgentRunResult
 from optimus.agent.runner import AgentRunner
 from optimus.evidence.acquisition import EvidenceAcquisitionService
 from optimus.evidence.domain_policy import EvidenceDomainRejected
@@ -305,8 +305,14 @@ class JsonRpcDispatcher:
                         request_id=request_id,
                         error=JsonRpcError(code=METHOD_NOT_FOUND, message="agent runner not configured"),
                     )
+                params = request.get("params")
+                if isinstance(params, dict) and "completion_condition" in params:
+                    return error_response(
+                        request_id=request_id,
+                        error=JsonRpcError(code=INVALID_REQUEST, message=GOAL_LOOP_RETIRED),
+                    )
                 try:
-                    agent_request = AgentRunRequest.model_validate(request.get("params"))
+                    agent_request = AgentRunRequest.model_validate(params)
                 except ValidationError:
                     return error_response(
                         request_id=request_id,

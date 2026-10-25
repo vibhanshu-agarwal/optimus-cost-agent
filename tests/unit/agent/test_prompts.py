@@ -16,7 +16,10 @@ def test_planner_prompt_mandates_directive_grammar():
     assert "MCP_LIST <server>" in prompt
     assert "MCP_CALL <server> <tool> <canonical-json-object>" in prompt
     assert "Do not emit prose before the directives" in prompt
-    assert "Emit at most one WRITE directive per plan" in prompt
+    assert "Emit at most one WRITE or EDIT directive per plan" in prompt
+    assert "EDIT <relative-path>" in prompt
+    assert "<<<<<<< OLD" in prompt and "======= NEW" in prompt and ">>>>>>> END" in prompt
+    assert "Use EDIT to change an existing file" in prompt
     assert "fully replaces any" in prompt
     assert "existing file at that path" in prompt
     assert "Include all existing content that must be preserved" in prompt
@@ -68,6 +71,10 @@ def test_build_multi_turn_planner_input_includes_turn_budget_and_grammar():
     assert "Never request a byte range already present" in prompt
     assert "Carried planning observations" in prompt
     assert "Current guarded read evidence" in prompt
+    # #407: a localized change needs only the ranges that hold its lines.
+    assert "Final turn changing part of an existing file (EDIT instead of WRITE):" in prompt
+    assert "EDIT needs raw evidence only of the lines it changes" in prompt
+    assert "Copy every EDIT OLD line exactly from raw ranges visible in the current turn" in prompt
 
 
 def test_build_agent_planner_input_omits_workspace_section_when_empty():
@@ -89,7 +96,7 @@ def test_multi_turn_prompt_marks_initial_context_ephemeral_and_requires_complete
         remaining_wall_clock_minutes=30,
         initial_workspace_context="--- target.py ---\noriginal\n",
     )
-    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-10-04-plan-12-2-task-11")
+    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-10-24-p407-edit-p410-write-line-endings")  # #407's and #410's bump
     assert "available on planning turn 1 only" in prompt
     assert "will not be carried to planning turn 2" in prompt
     assert "request every raw byte range" in prompt
@@ -153,3 +160,42 @@ def test_fu5a_multi_turn_prompt_discloses_enforced_evidence_limits():
     assert "carried observations up to 4096" in prompt
     assert "current guarded reads up to 12288" in prompt
     assert "combined planning evidence up to 16384" in prompt
+
+
+def test_a_correction_notice_gets_its_own_section_and_its_absence_changes_nothing():
+    """#403: the previous turn's fixed notice, after the turn line; without one the input is unchanged."""
+    from optimus.agent.prompts import CORRECTION_NOTICE_HEADER, build_multi_turn_planner_input
+
+    kwargs = dict(planning_turn=2, max_planning_turns=3, remaining_wall_clock_minutes=30)
+    plain = build_multi_turn_planner_input("Update target.py", **kwargs)
+    noticed = build_multi_turn_planner_input("Update target.py", correction_notice="FIXED NOTICE.", **kwargs)
+
+    assert CORRECTION_NOTICE_HEADER not in plain
+    assert build_multi_turn_planner_input("Update target.py", correction_notice="", **kwargs) == plain
+    assert f"{CORRECTION_NOTICE_HEADER} FIXED NOTICE." in noticed
+    assert noticed.index("Planning turn: 2 of 3") < noticed.index(CORRECTION_NOTICE_HEADER)
+    assert noticed.replace(f"{CORRECTION_NOTICE_HEADER} FIXED NOTICE.\n\n", "") == plain
+
+
+def test_both_grammars_state_the_write_line_ending_rule():
+    """#410 (design v3, R8): the model is told how its WRITE body maps to the file's bytes."""
+    from optimus.agent.prompts import AGENT_PLANNER_PROMPT_VERSION, MULTI_TURN_PLANNER_PROMPT_VERSION, build_multi_turn_planner_input
+
+    single = build_agent_planner_input("Update a.py")
+    multi = build_multi_turn_planner_input("Update a.py", planning_turn=1, max_planning_turns=3, remaining_wall_clock_minutes=30)
+    for prompt in (single, multi):
+        assert "Optimus writes them in the existing file's line-ending style (LF for a new file)" in prompt
+        assert "the body's last line ends the way the existing file's last line did" in prompt
+        assert "A file with mixed line endings is refused." in prompt
+        assert "One empty line directly before the next directive separates it from the body" in prompt
+    assert "apart from line endings, as described above" in single
+    assert AGENT_PLANNER_PROMPT_VERSION.endswith("2026-10-24-p407-edit-p410-write-line-endings")
+    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-10-24-p407-edit-p410-write-line-endings")
+
+
+def test_a_read_block_names_the_files_line_endings():
+    from optimus.agent.planning_loop import PlanningReadEvidence, _serialize_planning_read_evidence
+
+    evidence = PlanningReadEvidence(path="a.py", start_byte=0, end_byte=4, source_sha256="abc", range_text="x\r\ny", line_endings="crlf")
+
+    assert _serialize_planning_read_evidence(evidence).startswith("READ_BLOCK path=a.py bytes=0:4 sha256=abc eol=crlf\n")

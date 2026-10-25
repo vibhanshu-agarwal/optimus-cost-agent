@@ -23,7 +23,7 @@ from urllib.request import (
 )
 
 from optimus_model_policy.binding import ATTEMPT_NOT_SENT, ATTEMPT_REJECTED, ATTEMPT_UNCERTAIN
-from optimus_security.failure_facts import bounded, exception_fact, slug
+from optimus_security.failure_facts import bounded, exception_fact, guardrail_stage_facts, slug
 
 # OpenRouter's documented router pipeline stage types (router-metadata guide, 2026-10-20). Any other type is
 # recorded as ``unrecognized``: it still counts as a stage, but its text is never persisted.
@@ -74,6 +74,9 @@ class ProviderMessageResult:
     router_pipeline: tuple[str, ...] | None = None
     """The ``type`` of every router pipeline stage that materially changed the request or response
     (compression, guardrails, ...); empty when none ran, ``None`` without router metadata."""
+    router_guardrails: tuple[dict[str, Any], ...] | None = None
+    """Each ``guardrail`` stage's closed facts, in pipeline order (``failure_facts.guardrail_stage_facts``, #400);
+    empty when none ran, ``None`` without router metadata. Diagnostic only: no reply check reads them."""
     router_metadata_error: str | None = None
     """Why the router metadata could not be read (malformed, or more than one selected endpoint). Its
     routing fields are then all ``None``; the reply's usage and cost do not depend on it."""
@@ -508,6 +511,7 @@ def parse_openai_chat_completion(
         finish_reason=finish_reason,
         router_attempt=router.attempt,
         router_pipeline=router.pipeline,
+        router_guardrails=router.guardrails,
         router_metadata_error=router.error,
     )
 
@@ -517,6 +521,7 @@ class _RouterEvidence(NamedTuple):
     model: str | None = None
     attempt: int | None = None
     pipeline: tuple[str, ...] | None = None
+    guardrails: tuple[dict[str, Any], ...] | None = None
     error: str | None = None
 
 
@@ -530,11 +535,14 @@ def _router_evidence(metadata: object) -> _RouterEvidence:
         if not isinstance(metadata, dict):
             raise RuntimeError("upstream response has malformed router metadata")
         selected = _selected_endpoint(metadata)
+        pipeline = _router_pipeline(metadata)
         return _RouterEvidence(
             provider=_optional_string(selected, "provider", "router metadata"),
             model=_optional_string(selected, "model", "router metadata"),
             attempt=_optional_nonnegative_int(metadata, "attempt", "router metadata attempt"),
-            pipeline=_router_pipeline(metadata),
+            pipeline=pipeline,
+            # _router_pipeline has already checked that every stage is an object with a string type.
+            guardrails=tuple(guardrail_stage_facts(stage) for stage in metadata.get("pipeline", []) if stage["type"] == "guardrail"),
         )
     except RuntimeError as exc:
         return _RouterEvidence(error=str(exc))

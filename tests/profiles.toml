@@ -282,9 +282,6 @@ why = "The provider-balance retirement guard and its allowlist check. A glob, no
 tier = "gates"
 nodes = [
   "tests/integration/release/test_phase1_release_gate_cli.py::test_readme_documents_spawnable_acp_agent_contract",
-  "tests/integration/release/test_phase1_release_gate_cli.py::test_release_cli_accepts_agent_harness_task_filter_text",
-  "tests/integration/release/test_phase1_release_gate_cli.py::test_release_cli_runs_preflight_before_agent_harness",
-  "tests/integration/release/test_phase1_release_gate_cli.py::test_release_cli_wires_redis_backed_agent_harness",
   "tests/integration/release/test_verify_live_agent_cli.py::test_verify_live_agent_module_exposes_required_flags",
   "tests/unit/acp/test_bootstrap.py::test_bootstrap_has_no_divergent_dead_redis_default_constant",
   "tests/unit/acp/test_context_engine_admission.py::test_every_reason_the_engine_can_give_has_a_message",
@@ -478,6 +475,8 @@ paths = [
   "tests/unit/tools/test_run_context_targets.py",
   "tests/unit/tools/test_run_context_xdist.py",
   "tests/unit/tools/test_process_tree.py",
+  "tests/unit/tools/test_bounded_command.py",
+  "tests/unit/agent/test_test_directive_deadline.py",
 ]
 why = "Run-context and process-tree tests: nested pytest sessions, job objects and process kills; selected by tools/testing/** and tools/process_tree.py changes (v4 design contract 1)."
 
@@ -588,6 +587,7 @@ paths = [
   "tests/unit/optimus_gateway/test_request_body_rejection.py",
   "tests/unit/redis/test_async_bridge.py",
   "tests/unit/redis/test_runtime.py",
+  "tests/unit/tools/test_bounded_command.py",
 ]
 why = "Maintained signal: imports tests.support.concurrency or tests.support.fault_injection to race current product code (audit tiers and reviewed tooling uses excluded in the guard)."
 
@@ -631,6 +631,7 @@ paths = [
   "tests/unit/mcp/test_local_ipc.py",
   "tests/unit/security/test_sanitization.py",
   "tests/unit/support/test_concurrency_diagnostics.py",
+  "tests/unit/tools/test_bounded_command.py",
   "tests/unit/tools/test_plan117_custody_relay.py",
   "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py",
   "tests/unit/tools/test_probe_p11_zed_session_load.py",
@@ -646,6 +647,51 @@ paths = [
   "tests/unit/tools/test_run_profile.py",
 ]
 why = "Maintained signal: the module reads the running platform (sys.platform, os.name, platform.system()...), so its behaviour or selection differs between Windows and POSIX."
+
+[[tags]]
+name = "platform"
+nodes = [
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_short_sidecar_temp_path[native]",
+  "tests/unit/tools/test_h5_failure_capture.py::test_capture_path_budget",
+]
+why = "Native-only retained sidecar/capture path-budget controls; exact nodes keep unrelated audit and simulated tests out of the platform profile."
+
+[[tags]]
+name = "platform"
+nodes = [
+  "tests/unit/tools/test_h5_failure_capture.py::test_retains_every_ordered_row_and_long_error_metadata",
+  "tests/unit/tools/test_h5_failure_capture.py::test_refuses_malformed_or_private_data_before_publication",
+  "tests/unit/tools/test_h5_failure_capture.py::test_verifier_rejects_missing_repeats_and_wrong_binding",
+  "tests/unit/tools/test_h5_failure_capture.py::test_wrong_run_head_pid_or_scratch_is_never_accepted",
+  "tests/unit/tools/test_h5_failure_capture.py::test_verifier_rejects_pid_reuse_with_different_creation_time",
+  "tests/unit/tools/test_h5_failure_capture.py::test_collision_and_publication_failure_leave_no_valid_bundle",
+  "tests/unit/tools/test_h5_failure_capture.py::test_failed_write_verify_rename_preserves_invalid_scratch",
+  "tests/unit/tools/test_h5_failure_capture.py::test_stage_and_final_share_the_validated_parent",
+  "tests/unit/tools/test_h5_failure_capture.py::test_unusable_windows_identity_prevents_rename",
+  "tests/unit/tools/test_h5_failure_capture.py::test_large_stable_nonzero_windows_file_identity_has_no_width_bound",
+  "tests/unit/tools/test_h5_failure_capture.py::test_capture_metrics_are_retained_without_changing_rows",
+  "tests/unit/tools/test_h5_failure_capture.py::test_metrics_unavailable_does_not_invalidate_verified_bundle",
+  "tests/unit/tools/test_h5_failure_capture.py::test_reused_receipt_does_not_claim_fresh_producer_window",
+  "tests/unit/tools/test_h5_failure_capture.py::test_control_flow_and_source_refusal_escape_capture",
+  "tests/unit/tools/test_h5_failure_capture.py::test_schema_with_reference_is_refused_before_writing",
+  "tests/unit/tools/test_h5_failure_capture.py::test_formatter_outputs_fit_both_frozen_content_free_schemas",
+  "tests/unit/tools/test_h5_failure_capture.py::test_formatter_unknown_locations_fit_both_frozen_schemas",
+  "tests/unit/tools/test_h5_failure_capture.py::test_root_mismatch_relative_paths_and_escaped_sidecar_are_refused",
+  "tests/unit/tools/test_h5_failure_capture.py::test_parent_replaced_by_owned_junction_aborts_before_rename",
+  "tests/unit/tools/test_h5_failure_capture.py::test_race_created_junction_destination_is_never_replaced",
+  "tests/unit/tools/test_h5_failure_capture.py::test_capture_os_fault_does_not_patch_process_os",
+  "tests/unit/tools/test_h5_failure_capture.py::test_non_ascii_error_type_is_refused_before_publication",
+  "tests/unit/tools/test_test_profiles.py::test_h5_existing_bridge_retains_complete_bundle_before_assertions",
+  "tests/unit/tools/test_test_profiles.py::test_measurement_failure_kind_and_original_exception_escape",
+  "tests/unit/tools/test_test_profiles.py::test_failure_kind_write_error_preserves_original_exception",
+  "tests/unit/tools/test_test_profiles.py::test_h5_reuse_keeps_original_objects_and_existing_bookkeeping",
+  "tests/unit/tools/test_test_profiles.py::test_fixture_and_production_use_the_same_root_predicate",
+  "tests/unit/tools/test_test_profiles.py::test_native_h5_capture_preserves_original_failure_and_later_test",
+  "tests/unit/tools/test_test_profiles.py::test_capture_controls_never_touch_inherited_outer_base",
+  "tests/unit/tools/test_test_profiles.py::test_h5_diagnostic_import_and_constructor_errors_are_contained",
+  "tests/unit/tools/test_test_profiles.py::test_h5_duplicate_call_preserves_first_status_and_bundle",
+]
+why = "Native Windows H5 capture controls; exact nodes retain portable unsupported and simulated controls outside the platform profile."
 
 [[rules]]
 tier = "audit-current"
@@ -705,6 +751,7 @@ paths = [
   "tests/conftest.py",
   "tests/support/child_*",
   "tests/support/child_*/**",
+  "src/optimus/runtime/process_tree.py",
   "tests/support/profiles_plugin.py",
   "tools/process_tree.py",
   "tools/testing/**",
@@ -717,6 +764,7 @@ files = [
   "tests/unit/tools/test_run_context_reviewed_programs.py",
   "tests/unit/tools/test_run_context_targets.py",
   "tests/unit/tools/test_process_tree.py",
+  "tests/unit/tools/test_bounded_command.py",
 ]
 why = "v4 design contract 1: run-context and process-tree tests are selected by tools/testing/**, tools/process_tree.py and tests/support/child_* changes, and by the session hooks only they control (the root conftest and the profile plugin: collection, deselected identity, phases, UNRUN)."
 

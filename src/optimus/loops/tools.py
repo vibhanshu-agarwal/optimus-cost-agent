@@ -3,12 +3,16 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from optimus.agent.planning_loop import PlanningReadError, PlanningReadEvidence, PlanningReadRequest
 from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolResult
 from optimus.guardrails.runtime_tree import resolve_target
 from optimus.runtime.modes import ExecutionMode, GenerationScope
+from optimus.tools.line_endings import line_ending_style
+
+if TYPE_CHECKING:
+    from optimus.agent.planning_loop import PlanningReadEvidence, PlanningReadRequest
 
 
 class LoopToolBlocked(RuntimeError):
@@ -67,6 +71,9 @@ class GuardedLoopToolExecutor:
         request: PlanningReadRequest,
         approval_granted: bool = False,
     ) -> PlanningReadEvidence:
+        # Imported here: the planning loop imports this package, so a module-level import is a cycle.
+        from optimus.agent.planning_loop import PlanningReadError, PlanningReadEvidence
+
         if request.end_byte <= request.start_byte:
             raise PlanningReadError("PLANNING_READ_INVALID_RANGE", "READ range end must be greater than start")
 
@@ -119,4 +126,5 @@ class GuardedLoopToolExecutor:
             end_byte=request.end_byte,
             source_sha256=source_sha256,
             range_text=range_text,
+            line_endings=line_ending_style(file_bytes),
         )

@@ -1,11 +1,15 @@
+import ast
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
+from optimus.agent import planning_loop as planning_module
 from optimus.agent.planning_loop import (
     PLANNING_NEW_READ_MAX_BYTES,
     PLANNING_OBSERVATION_MAX_BYTES,
+    PLANNING_TURN_PARSE_CODES,
     PlanningEvidenceBudgetError,
     PlanningLoopPolicy,
     PlanningObservation,
@@ -248,6 +252,25 @@ def test_parse_planning_turn_rejects_intermediate_without_read():
         parse_planning_turn("OBSERVE: note only\n")
 
 
+def test_every_parse_error_names_a_code_from_the_closed_set():
+    """#388: trace records carry only the code, so every raise site must name one from the set, and
+    the set holds no code that no raise uses."""
+    tree = ast.parse(Path(planning_module.__file__).read_text(encoding="utf-8"))
+    used = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "PlanningTurnParseError":
+            code = node.args[0] if node.args else None
+            assert isinstance(code, ast.Constant) and code.value in PLANNING_TURN_PARSE_CODES, ast.unparse(node)
+            used.add(code.value)
+    assert used == PLANNING_TURN_PARSE_CODES
+
+
+def test_parse_error_exposes_its_code():
+    with pytest.raises(PlanningTurnParseError) as caught:
+        parse_planning_turn("OBSERVE: note only\n")
+    assert caught.value.code == "INTERMEDIATE_REQUIRES_READ"
+
+
 def test_pack_planning_evidence_serializes_observations_and_current_reads_in_order():
     observations = (
         PlanningObservation(
@@ -272,6 +295,7 @@ def test_pack_planning_evidence_serializes_observations_and_current_reads_in_ord
             end_byte=5,
             source_sha256="hash-c",
             range_text="hello",
+            line_endings="none",
         ),
     )
 
@@ -376,6 +400,7 @@ def test_observations_from_read_evidence_preserves_per_file_hashes():
             end_byte=128,
             source_sha256="b" * 64,
             range_text="beta",
+            line_endings="none",
         ),
         PlanningReadEvidence(
             path="src/a.py",
@@ -383,6 +408,7 @@ def test_observations_from_read_evidence_preserves_per_file_hashes():
             end_byte=256,
             source_sha256="c" * 64,
             range_text="alpha",
+            line_endings="none",
         ),
     )
 
@@ -425,6 +451,7 @@ def test_pack_planning_evidence_rejects_current_read_budget_overflow():
             end_byte=len(oversized.encode("utf-8")),
             source_sha256="hash-a",
             range_text=oversized,
+            line_endings="none",
         ),
     )
 
@@ -482,10 +509,10 @@ def test_planning_read_telemetry_fields_sorts_once_from_evidence():
     """The helper derives all three tuples from one canonical sort, not three independent sorts."""
     evidence = (
         PlanningReadEvidence(
-            path="zeta.py", start_byte=0, end_byte=3, source_sha256="z" * 64, range_text="ZZZ"
+            path="zeta.py", start_byte=0, end_byte=3, source_sha256="z" * 64, range_text="ZZZ", line_endings="none"
         ),
         PlanningReadEvidence(
-            path="alpha.py", start_byte=2, end_byte=9, source_sha256="a" * 64, range_text="AAAAA"
+            path="alpha.py", start_byte=2, end_byte=9, source_sha256="a" * 64, range_text="AAAAA", line_endings="none"
         ),
     )
     identities, sha256s, byte_counts = planning_read_telemetry_fields(evidence)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 from decimal import Decimal
@@ -61,9 +62,10 @@ def _start_server(
     upstream_client: Any | None = None,
     tool_dependencies: GatewayToolDependencies | None = None,
     trace_exporter: TraceExporter | None = None,
+    config: GatewayServiceConfig | None = None,
 ):
     server = serve_gateway(
-        config=_config(),
+        config=config if config is not None else _config(),
         upstream_client=upstream_client if upstream_client is not None else _SmokeUpstreamClient(),
         tool_dependencies=tool_dependencies,
         trace_exporter=trace_exporter,
@@ -374,6 +376,27 @@ def test_tool_routes_reject_invalid_json_when_dependencies_are_injected():
         status, body = _post_json(host, port, "/v1/tools/web/search", body="{not-json")
         assert status == 400
         assert body == {"error": "invalid JSON"}
+    finally:
+        _stop_server(server, thread)
+
+
+@pytest.mark.parametrize("path", ("/v1/tools/web/search", "/v1/tools/web/extract"))
+def test_config_built_tool_routes_reject_an_incomplete_request(path: str):
+    """R-4 (#237 6323911791): what the retired live smoke proved needs no provider. A Gateway that builds its tool
+    bundle from its own config refuses an incomplete request with 400. The web provider and Redis behind the two routes it
+    posts to are a closed local port, so a request that reached either would fail differently."""
+    config = dataclasses.replace(
+        _config(),
+        tavily_api_key="tvly-test",  # pragma: allowlist secret
+        tavily_base_url="http://127.0.0.1:9",
+        tool_redis_url="redis://127.0.0.1:9/0",
+        tool_allowed_domains=("python.org",),
+    )
+    server, thread, host, port = _start_server(config=config)
+    try:
+        status, body = _post_json(host, port, path, body=json.dumps({"q": "should-not-be-served"}))
+        assert status == 400
+        assert body["error"]
     finally:
         _stop_server(server, thread)
 

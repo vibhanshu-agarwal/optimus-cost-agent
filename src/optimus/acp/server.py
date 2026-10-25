@@ -387,6 +387,7 @@ class AcpStreamServer:
         dispatcher: JsonRpcDispatcher | None = None,
         *,
         max_planning_turns: int | None = None,
+        interactive_recovery: bool = True,
         client_mcp_runtime: Any | None = None,
         conversation_sanitizer_inputs: Any | None = None,
         redis_runtime: Any | None = None,
@@ -411,6 +412,7 @@ class AcpStreamServer:
         # from the authorized agent environ and threaded down into
         # AcpDuplexAdapter via serve_ndjson — never read from os.environ here.
         self._max_planning_turns = max_planning_turns
+        self._interactive_recovery = interactive_recovery  # Plan 12.3, resolved with it
         self._client_mcp_runtime = client_mcp_runtime
         self._conversation_sanitizer_inputs = conversation_sanitizer_inputs
         # Seam 2, checkpoint B: the serving process retains the Redis runtime the
@@ -572,6 +574,7 @@ class AcpStreamServer:
             sessions=sessions,
             outbound=outbound,
             max_planning_turns=self._max_planning_turns,
+            interactive_recovery=self._interactive_recovery,
             client_mcp_runtime=self._client_mcp_runtime,
             sanitizer_inputs=self._conversation_sanitizer_inputs,
             notice_control=notice,

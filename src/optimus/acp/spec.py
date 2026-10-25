@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import contextlib
 import inspect
 import itertools
@@ -67,10 +68,13 @@ from optimus.acp.settlement import (
 from optimus.acp.shapes import (
     AGENT_MODE_ID,
     CHAT_MODE_ID,
+    LOOP_CONTINUE_OPTION_ID,
+    LOOP_STOP_OPTION_ID,
     MODE_CONFIG_ID,
     build_agent_message_chunk_notification,
     build_config_option_update_notification,
     build_current_mode_update_notification,
+    build_loop_checkin_params,
     build_plan_session_update,
     build_planning_progress_notification,
     build_request_permission_params,
@@ -81,14 +85,16 @@ from optimus.acp.shapes import (
     new_tool_call_id,
     tool_kind_for_name,
 )
-from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
-from optimus.agent.planning_loop import PlanningProgressEvent
+from optimus.agent.models import TEST_STOP_REASONS, AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
+from optimus.agent.planning_loop import CheckInDecision, PlanningCheckIn, PlanningCheckInCallback, PlanningProgressEvent
 from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
 from optimus.context.assembly import AttachedTurn, ContextAttachment
+from optimus.gateway.attempts import ROUTE_STOPPED_NO_RETRY
 from optimus.mcp.client_catalog import ClientMcpOneCallApproval
 from optimus.mcp.client_config import ClientMcpConfigError
 from optimus.mcp.client_disposition import AcpMcpPermissionBroker, ClientMcpRuntime, ClientMcpSessionState
 from optimus.runtime.modes import ExecutionMode
+from optimus.tools.line_endings import WRITE_LINE_ENDINGS_MIXED
 from optimus.usage.cost_alerts import AlertPolicy, AlertTracker, CostScopeSummary
 from optimus.usage.turn_settlement import TurnCostSummary, TurnSettlement, receipt_from_maintenance
 from optimus_security.failure_facts import host_session_id
@@ -244,9 +250,20 @@ _NOTICE_FLUSH_TIMEOUT_SECONDS = 30.0
 _STRATEGY_LABELS = {"compaction": "compaction", "hybrid": "hybrid", "sliding_window": "sliding window"}
 
 
-def context_unavailable_text(reason: str | None, strategy: str) -> str:
+# #400 (Codex round 40, finding 2): the summarizer shares the planner's experimental route, so after a summary
+# failure that proved it stopped, neither a retry nor Sliding window can help; the engine reason is kept unshown.
+CONTEXT_ROUTE_STOPPED_TEXT = (
+    "The {strategy} summary could not be completed, and the model gateway has stopped this experimental route. "
+    f"{ROUTE_STOPPED_NO_RETRY}"
+)
+
+
+def context_unavailable_text(reason: str | None, strategy: str, *, route_stopped: bool = False) -> str:
     """The refusal for an attached view that could not be built and a full history over the floor:
-    the fixed message for a known engine reason, the generic one otherwise, then the common ending."""
+    the fixed message for a known engine reason, the generic one otherwise, then the common ending.
+    `route_stopped`: a summary call's failure proved the shared experimental route stopped (#400)."""
+    if route_stopped:
+        return f"{CONTEXT_ROUTE_STOPPED_TEXT.format(strategy=strategy)} {CONTEXT_UNAVAILABLE_ENDING}"
     message = CONTEXT_UNAVAILABLE_TEXTS.get(reason or "", CONTEXT_UNAVAILABLE_UNKNOWN_TEXT)
     return f"{message.format(strategy=strategy)} {CONTEXT_UNAVAILABLE_ENDING}"
 
@@ -275,6 +292,20 @@ def resolve_max_planning_turns(environ: Mapping[str, str]) -> int | None:
     if value < 1:
         raise ValueError("OPTIMUS_MAX_PLANNING_TURNS must be an integer >= 1")
     return value
+
+
+def resolve_interactive_recovery(environ: Mapping[str, str], *, caller_default: bool) -> bool:
+    """Plan 12.3, Design 6: `OPTIMUS_LOOP_RECOVERY` (`interactive` or `headless`), else the caller's default.
+    An ACP prompt defaults to interactive; a test composition, like every non-ACP caller, to headless.
+    A client that answers every permission request on its own (acpx `--approve-all`) sets headless.
+    Resolved once, like resolve_max_planning_turns."""
+    raw = environ.get("OPTIMUS_LOOP_RECOVERY")
+    if raw is None or raw.strip() == "":
+        return caller_default
+    value = raw.strip().lower()
+    if value not in {"interactive", "headless"}:
+        raise ValueError("OPTIMUS_LOOP_RECOVERY must be interactive or headless")
+    return value == "interactive"
 
 
 class AcpOutboundChannel(Protocol):
@@ -472,8 +503,11 @@ class AcpDuplexAdapter:
         route_policy: RoutePolicy | None = None,
         session_seeder: Callable[[Any], str | None] | None = None,
         failure_telemetry: JsonlTelemetryWriter | None = None,
+        interactive_recovery: bool = True,
     ) -> None:
         self._runner = runner
+        # Plan 12.3: resolved once by the caller (resolve_interactive_recovery); headless passes no check-in.
+        self._interactive_recovery = interactive_recovery
         # Correction plan v4, C4: this harness's workspace writer for the always-on refusal and fault records. Bound
         # here, never configured globally, so a later composition can neither redirect nor clear it.
         self._failure_telemetry = failure_telemetry
@@ -1098,6 +1132,7 @@ class AcpDuplexAdapter:
                     stage_receipts=session.cost_settlement.record_attempt,
                     route_binder=turn.route_binder,
                     integrity_failure=session.cost_settlement.record_integrity_failure,
+                    recovery_checkin=self._recovery_checkin_for(turn, loop) if self._interactive_recovery else None,
                 ),
             )
             self._apply_turn_cost(
@@ -1403,7 +1438,9 @@ class AcpDuplexAdapter:
             return self._turn(success_response(request_id=request_id, result={"stopReason": "cancelled"}), turn.turn_control, ownership_slot)
         if outcome.kind == "unavailable":
             await self._emit_final_text(
-                session_id=turn.session_id, text=context_unavailable_text(outcome.reason, strategy), turn=turn
+                session_id=turn.session_id,
+                text=context_unavailable_text(outcome.reason, strategy, route_stopped=outcome.route_stopped),
+                turn=turn,
             )
             await self._emit_cost_alerts(turn)
             return self._turn(success_response(request_id=request_id, result={"stopReason": "end_turn"}), turn.turn_control, ownership_slot)
@@ -1806,6 +1843,10 @@ class AcpDuplexAdapter:
             hypothesis_id="H2",
         )
         # endregion
+        return await self._send_permission_request(turn, params)
+
+    async def _send_permission_request(self, turn: AcpPromptTurn, params: dict[str, Any]) -> dict[str, Any]:
+        """Send one session/request_permission, tracked so that session/cancel can end it."""
         request_task = asyncio.create_task(self._outbound.request("session/request_permission", params))
         await asyncio.sleep(0)
         if self._active_turns.get(turn.session_id) is turn:
@@ -1815,7 +1856,45 @@ class AcpDuplexAdapter:
                 last_outbound_request_id = getattr(self._outbound, "last_outbound_request_id", None)
                 if last_outbound_request_id is not None:
                     turn.pending_permission_request_id = last_outbound_request_id
+            if turn.turn_control.halt_requested() and turn.pending_permission_request_id is not None:
+                # A session/cancel that ran before the id was recorded could not end this request.
+                self._outbound.cancel_request(turn.pending_permission_request_id, {"outcome": {"outcome": "cancelled"}})
         return await request_task
+
+    def _recovery_checkin_for(self, turn: AcpPromptTurn, loop: asyncio.AbstractEventLoop) -> PlanningCheckInCallback:
+        """The planning worker's thread-safe bridge to a recovery check-in (Plan 12.3, Design 5). It blocks
+        that worker, not the event loop; session/cancel and teardown end the pending request."""
+
+        async def ask(checkin: PlanningCheckIn) -> CheckInDecision:
+            params = build_loop_checkin_params(
+                session_id=turn.session_id, tool_call_id=new_tool_call_id(), text=checkin.text, run_id=turn.run_id
+            )
+            try:
+                response = await self._send_permission_request(turn, params)
+            except Exception:  # noqa: BLE001 - a client that cannot answer ends the turn recoverably
+                return CheckInDecision.UNAVAILABLE
+            finally:
+                turn.pending_permission_request_id = None
+            return checkin_decision(response)
+
+        def recovery_checkin(checkin: PlanningCheckIn) -> CheckInDecision:
+            control = turn.turn_control
+            if control.halt_requested():
+                return CheckInDecision.STOP
+            pending = asyncio.run_coroutine_threadsafe(ask(checkin), loop)
+            # Transport teardown cancels the turn's permission handle; by session close the turn may have
+            # left the active map, so only this releases a pending check-in (Codex Checkpoint A, 1).
+            control.set_permission_handle(pending)
+            try:
+                if control.halt_requested():
+                    pending.cancel()  # teardown ran before the handle was registered
+                return pending.result()
+            except concurrent.futures.CancelledError:
+                return CheckInDecision.STOP
+            finally:
+                control.set_permission_handle(None)
+
+        return recovery_checkin
 
     def _runner_runtime_kwargs(
         self,
@@ -1828,6 +1907,7 @@ class AcpDuplexAdapter:
         stage_receipts: Any | None = None,
         route_binder: Any | None = None,
         integrity_failure: Any | None = None,
+        recovery_checkin: Any | None = None,
     ) -> dict[str, Any]:
         """Pass client-MCP runtime kwargs only when the runner accepts them."""
         kwargs: dict[str, Any] = {}
@@ -1855,6 +1935,8 @@ class AcpDuplexAdapter:
             _maybe("route_binder", route_binder)
         if integrity_failure is not None:
             _maybe("integrity_failure", integrity_failure)
+        if recovery_checkin is not None:
+            _maybe("recovery_checkin", recovery_checkin)
         _maybe("client_mcp_service", _client_mcp_service(session))
         _maybe("mcp_permission_broker", self._mcp_permission_broker_for(session))
         return kwargs
@@ -2010,6 +2092,9 @@ _PLANNING_TERMINAL_STOP_REASONS = frozenset(
         "PLANNING_INPUT_CAPACITY_EXCEEDED",
         "PLANNING_NOTICE_UNDELIVERED",
         "PLANNING_REPEATED_READ_REQUEST",
+        "PLANNING_REPEATED_MCP_REQUEST",
+        "PLANNING_ACTION_CYCLE",
+        "PLANNING_NO_PROGRESS",
         "PLANNING_UNPARSEABLE_RESPONSE",
         "PLANNING_OUTPUT_TRUNCATED",
         "PLANNING_OUTPUT_UNFINISHED",
@@ -2031,6 +2116,12 @@ _PLANNING_TERMINAL_STOP_REASONS = frozenset(
 
 
 def _completion_message(result: AgentRunResult) -> str:
+    if result.stop_reason in TEST_STOP_REASONS.values():
+        return result.output_text  # it names the stopped TEST and any change already applied (Plan 12.3)
+    if result.stop_reason == "EDIT_NOT_APPLICABLE":
+        return result.output_text  # the closed code and that nothing was written (#407)
+    if result.stop_reason == WRITE_LINE_ENDINGS_MIXED:
+        return result.output_text  # the refused WRITE and the TESTs that did not run (#410)
     if result.mutation_count > 0:
         writes = [call.summary for call in result.tool_calls if call.tool_name == "write_file"]
         if writes:
@@ -2057,6 +2148,21 @@ def _client_mcp_service(session: AcpSpecSession) -> object | None:
     if state is None:
         return None
     return state.tool_service
+
+
+def checkin_decision(response: Any) -> CheckInDecision:
+    """A check-in answer: only its own options count. A cancelled request is Stop (the turn's halt then
+    wins); anything else is unrecognised and ends the turn recoverably (Plan 12.3, Design 5)."""
+    outcome = response.get("outcome") if isinstance(response, dict) else None
+    if isinstance(outcome, dict) and outcome.get("outcome") == "cancelled":
+        return CheckInDecision.STOP
+    if isinstance(outcome, dict) and outcome.get("outcome") == "selected":
+        option = outcome.get("optionId")
+        if option == LOOP_CONTINUE_OPTION_ID:
+            return CheckInDecision.CONTINUE
+        if option == LOOP_STOP_OPTION_ID:
+            return CheckInDecision.STOP
+    return CheckInDecision.INVALID
 
 
 def _permission_approved(permission_result: dict[str, Any]) -> bool:
@@ -2108,9 +2214,9 @@ def _stop_reason(result: AgentRunResult) -> str:
         return "end_turn"
     if result.status is AgentRunStatus.TERMINATED and result.stop_reason == "cancelled":
         return "cancelled"
-    if result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
+    if result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS or result.stop_reason in TEST_STOP_REASONS.values():
         return "end_turn"
-    if result.stop_reason == "PLAN_NOT_FOUND_OR_EXPIRED":
+    if result.stop_reason in ("PLAN_NOT_FOUND_OR_EXPIRED", WRITE_LINE_ENDINGS_MIXED):
         return "end_turn"
     return "refusal"
 

@@ -211,6 +211,42 @@ class TestResolveLaunchCandidateValidatesEnvGatewayPermissions:
 class TestCandidateResolution:
     """Resolve launch candidate from immutable snapshot."""
 
+
+    def test_h5_capture_activation_is_launch_neutral(self, tmp_path: Path) -> None:
+        directories = (tmp_path / "capture-a", tmp_path / "capture-b")
+        for created_directory in directories:
+            created_directory.mkdir()
+        candidates = []
+        for directory in (None, *directories):
+            env = dict(_REQUIRED_LAUNCH_ENV)
+            if directory is not None:
+                env["PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY"] = str(directory)
+            candidates.append(resolve_launch_candidate(
+                snapshot=LaunchEnvironmentSnapshot.capture(env),
+                workspace_identity=_sample_workspace_identity(),
+                operator_paths=_sample_operator_paths(tmp_path),
+                hmac_key=_HMAC_KEY,
+                credential_keyring_backend=_FakeCredentialKeyring(),
+            ))
+        for candidate in candidates:
+            assert candidate.security_snapshot_digest == candidates[0].security_snapshot_digest
+            assert candidate.display_rows == candidates[0].display_rows
+            assert "PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY" not in candidate.agent_environ
+            assert "PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY" not in candidate.gateway_environ
+
+    @pytest.mark.parametrize("name", ["OPTIMUS_H5_CAPTURE_DIRECTORY", "OPTIMUS_UNKNOWN_H5_FIXTURE"])
+    def test_retired_h5_capture_name_is_unclassified(self, tmp_path: Path, name: str) -> None:
+        env = {**_REQUIRED_LAUNCH_ENV, name: str(tmp_path)}
+        with pytest.raises(LaunchGateError) as caught:
+            resolve_launch_candidate(
+                snapshot=LaunchEnvironmentSnapshot.capture(env),
+                workspace_identity=_sample_workspace_identity(),
+                operator_paths=_sample_operator_paths(tmp_path),
+                hmac_key=_HMAC_KEY,
+                credential_keyring_backend=_FakeCredentialKeyring(),
+            )
+        assert caught.value.code == "UNCLASSIFIED_VARIABLE"
+
     def test_basic_resolution_with_required_vars(self, tmp_path: Path) -> None:
         env = {
             "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",

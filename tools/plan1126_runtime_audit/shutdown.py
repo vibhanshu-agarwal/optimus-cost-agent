@@ -18,7 +18,7 @@ import time
 import weakref
 from collections import Counter
 from dataclasses import dataclass, replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, Callable, Mapping
 
 from tools.concurrency_capture import (
@@ -1101,6 +1101,105 @@ def _leftover_task_descriptions(baseline: weakref.WeakSet[asyncio.Task[Any]]) ->
     return _describe_tasks(_leftover_tasks(baseline))
 
 
+_PROBE_METADATA_CONTROLS = re.compile(r"[\u0000-\u001f\u007f-\u009f\u2028\u2029]")
+
+
+def _probe_error_effect(cause: str, exc: Exception) -> str:
+    """Retain content-free throw-site metadata, never exception messages or values."""
+    def _metadata(read: Callable[[], Any]) -> Any:
+        try:
+            return read()
+        except ExecutingSourceMismatch:
+            raise
+        except Exception:
+            return "unknown"
+
+    try:
+        name = type(exc).__name__
+    except ExecutingSourceMismatch:
+        raise
+    except Exception:
+        name = "Exception"
+    if type(name) is not str or not name:
+        name = "Exception"  # This bucket cannot distinguish unavailable from genuine Exception.
+    token = f"{cause}:probe_error:{name}"
+
+    def _number(attribute: str) -> str:
+        value = _metadata(lambda: getattr(exc, attribute))
+        return str(value) if type(value) is int and -(2**63) <= value < 2**63 else "unknown"
+
+    def _frames() -> list[FrameLocation]:
+        frames = []
+        tb = exc.__traceback__
+        while tb is not None:
+            code = tb.tb_frame.f_code
+            frames.append(FrameLocation(code.co_filename, tb.tb_lineno, code.co_name))
+            tb = tb.tb_next
+        return frames
+
+    def _location(frame: FrameLocation) -> str:
+        if not frame.filename or not frame.function or type(frame.lineno) is not int or frame.lineno <= 0:
+            return "unknown"
+        pseudo = frame.filename.startswith("<") and frame.filename.endswith(">")
+        if pseudo:
+            if "/" in frame.filename or "\\" in frame.filename:
+                return "unknown"
+            rendered = f"{frame.filename}:{frame.lineno} in {frame.function}"
+        elif Path(frame.filename).is_absolute():
+            if not Path(frame.filename).name:
+                return "unknown"
+            rendered = _locations((frame,), "unknown")
+        else:
+            foreign = PureWindowsPath(frame.filename) if PureWindowsPath(frame.filename).is_absolute() else PurePosixPath(frame.filename)
+            if not foreign.is_absolute() or not foreign.name:
+                return "unknown"  # Relative filenames have no trustworthy base directory.
+            rendered = f"{foreign.name}:{frame.lineno} in {frame.function}"
+        return _content_free(_PROBE_METADATA_CONTROLS.sub(" ", rendered).replace("|", "_"))
+
+    def _probe_location(frames: list[FrameLocation]) -> str:
+        package = _REPOSITORY_ROOT / "tools/plan1126_runtime_audit"
+        for frame in reversed(frames):
+            if not frame.filename or (frame.filename.startswith("<") and frame.filename.endswith(">")):
+                continue
+            if not Path(frame.filename).is_absolute():
+                if PureWindowsPath(frame.filename).is_absolute() or PurePosixPath(frame.filename).is_absolute():
+                    continue  # A foreign absolute path cannot identify this host's package.
+                return "unknown"
+            def _inside_package(frame: FrameLocation = frame) -> bool:
+                return Path(frame.filename).resolve().is_relative_to(package)
+
+            inside = _metadata(_inside_package)
+            if inside == "unknown":
+                return "unknown"  # A deeper unclassified frame prevents a definite deepest location.
+            if inside is True:
+                return _location(frame)
+        return "unknown"
+
+    def _chain() -> str:
+        direct_cause, context = exc.__cause__, exc.__context__
+        if direct_cause is not None:
+            return "both" if context is not None else "cause"
+        return "context" if context is not None else "none"
+
+    def _group() -> str:
+        if not isinstance(exc, BaseExceptionGroup):
+            return "none"
+        members = exc.exceptions  # Read once; do not traverse or render members.
+        return str(len(members)) if type(members) is tuple and 0 < len(members) < 2**63 else "unknown"
+
+    try:
+        errno, winerror = _number("errno"), _number("winerror")
+        frames = _metadata(_frames)
+        origin = _metadata(lambda: _location(frames[-1])) if isinstance(frames, list) and frames else "unknown"
+        probe = _metadata(lambda: _probe_location(frames)) if isinstance(frames, list) else "unknown"
+        chain, group = _metadata(_chain), _metadata(_group)
+        return f"{token} | errno={errno} | winerror={winerror} | origin={origin} | probe={probe} | chain={chain} | group={group}"
+    except ExecutingSourceMismatch:
+        raise
+    except Exception:
+        return token + " | errno=unknown | winerror=unknown | origin=unknown | probe=unknown | chain=unknown | group=unknown"
+
+
 def _run_schedule(observations, applicable, repeats, source, control_thread_names, control_counts) -> None:
     task_baseline = _pending_task_baseline()
     for record in applicable:
@@ -1123,9 +1222,9 @@ def _run_schedule(observations, applicable, repeats, source, control_thread_name
                     # that refusal into a `probe_error` row -- producing a schedule that
                     # looks measured while recording that the measurement was refused.
                     raise
-                except Exception as exc:  # pragma: no cover - preserved as audit evidence
+                except Exception as exc:
                     underlying_count = 0
-                    cause_effect = f"{cause}:probe_error:{type(exc).__name__}"
+                    cause_effect = _probe_error_effect(cause, exc)
                     complete = True
                     outcome = "ERROR"
                 elapsed = time.perf_counter() - started

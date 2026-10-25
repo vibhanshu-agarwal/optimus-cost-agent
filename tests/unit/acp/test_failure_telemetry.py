@@ -110,6 +110,59 @@ def test_the_trace_projects_correlation_ids_attempt_ids_and_stage_types(tmp_path
     first, second = real["attempts"]
     assert (first["gateway_request_id"], first["provider_request_id"], first["router_pipeline"]) == (GW, "gen-17-Ab", ["guardrail", "unrecognized"])
     assert (second["gateway_request_id"], second["provider_request_id"]) == ("unrecognized", "unrecognized")
+    assert "router_guardrails" not in first  # added only when the Gateway reported a guardrail stage's facts
+
+
+def test_received_guardrail_facts_are_re_bounded_in_the_trace(tmp_path) -> None:
+    """#400: the host re-bounds the Gateway's guardrail facts, so a hostile value never reaches the trace or telemetry."""
+    configure_debug_trace(enabled=True, log_path=tmp_path / "trace" / "debug-acp.ndjson")
+    hostile = {"flagged": PROSE, "detected": True, "decision": BARE_KEY, "action": "blocked", "verdict_conflict": False,
+               "guardrail_scope": "api-key", "name": PROSE}  # fmt: skip
+    refused = GatewayHttpError(
+        422, CANARY, gateway_code="EMPIRICAL_ROUTER_PIPELINE", retryable=False,
+        route_attempts=(GatewayRouteAttempt(attempt=1, gateway_request_id=GW, outcome="completed", router_pipeline=("guardrail",), router_guardrails=(hostile,)),),
+    )  # fmt: skip
+    log_provider_attempts(stage="answer", correlation=lambda: {"run_id": RUN, "session_id": SESSION, "request_id": ROUTE}, attempts=attempts_from_failure(refused), failure=refused)
+
+    [record] = _trace(tmp_path, "debug_trace.py:log_provider_attempts")
+    [attempt] = record["attempts"]
+    assert attempt["router_guardrails"] == [{
+        "flagged": "invalid", "detected": True, "decision": "unrecognized", "action": "blocked", "verdict_conflict": False,
+        "guardrail_scope": "api-key",
+    }]  # fmt: skip
+    text = (tmp_path / "trace" / "debug-acp.ndjson").read_text(encoding="utf-8")
+    assert PROSE not in text and BARE_KEY not in text
+
+
+@pytest.mark.parametrize(
+    ("malformed", "traced"),
+    [([None], ["invalid"]), (5, "invalid"), ("facts", "invalid"), ([5, {"flagged": True}], ["invalid", "VALID"])],
+    ids=["null-entry", "scalar", "string", "mixed"],
+)
+def test_malformed_guardrail_diagnostics_never_drop_an_attempt_or_its_charge(tmp_path, malformed, traced) -> None:
+    """Codex round 40, finding 1: the diagnostic is tolerated apart from the accounting fields, on a success and on an
+    error, and its invalidity is recorded bounded."""
+    from optimus.gateway.client import _try_parse_error_correlation
+    from optimus.gateway.models import parse_gateway_response, parse_route_attempts
+
+    raw = [{"attempt": 1, "gateway_request_id": GW, "outcome": "completed", "router_pipeline": ["guardrail"], "router_guardrails": malformed}]
+    [parsed] = parse_route_attempts(raw)
+    assert (parsed.attempt, parsed.gateway_request_id, parsed.outcome) == (1, GW, "completed")
+
+    usage = {"gateway_request_id": GW, "provider": "openrouter", "billing_units": 2, "cost_usd": "0.0003"}
+    response = parse_gateway_response({"id": "r", "output_text": "ok", "gateway_usage": usage, "route_attempts": raw})
+    [attempt] = attempts_from_response(response)
+    assert (attempt.outcome, attempt.cost_usd) == ("completed", Decimal("0.0003"))
+
+    code, _, kept = _try_parse_error_correlation(json.dumps({"code": "EMPIRICAL_ROUTER_PIPELINE", "retryable": False, "route_attempts": raw}))
+    assert code == "EMPIRICAL_ROUTER_PIPELINE" and [item.gateway_request_id for item in kept] == [GW]
+
+    configure_debug_trace(enabled=True, log_path=tmp_path / "trace" / "debug-acp.ndjson")
+    log_provider_attempts(stage="answer", correlation=lambda: {"run_id": RUN, "session_id": SESSION, "request_id": ROUTE}, attempts=(attempt,))
+    [record] = _trace(tmp_path, "debug_trace.py:log_provider_attempts")
+    valid = {"flagged": True, "detected": "missing", "decision": "missing", "action": "missing", "verdict_conflict": "invalid", "guardrail_scope": "missing"}
+    expected = traced if not isinstance(traced, list) else [valid if item == "VALID" else item for item in traced]
+    assert record["attempts"][0]["router_guardrails"] == expected
 
 
 def test_a_prompt_refusal_projects_its_ids_and_keeps_a_zero_rpc_id(tmp_path) -> None:
@@ -260,14 +313,14 @@ def test_the_bound_observer_changes_no_agent_run_event_result_or_receipt(tmp_pat
     from optimus.runtime.modes import ExecutionMode
     from tests.unit.agent.test_attempt_status_diagnostics import FakeGateway
 
-    def run(observer: Any) -> tuple[list[dict[str, Any]], tuple, list]:
+    def run(observer: Any) -> tuple[list[dict[str, Any]], dict[str, Any], list]:
         events: list[Any] = []
         receipts: list[Any] = []
         request = AgentRunRequest(run_id=RUN, session_id=SESSION, task="Change the greeting.", workspace_root=tmp_path, execution_mode=ExecutionMode.CHAT)
         runner = AgentRunner(gateway_client=FakeGateway(_transport_failure()), model="fake/model", event_sink=events.append, provider_attempt_observer=observer)
         result = runner.run(request, stage_receipts=receipts.append)
         runs = [{k: v for k, v in event.to_json_dict().items() if k not in {"event_id", "occurred_at"}} for event in events if event.kind.value == "agent_run"]
-        outcome = (result.status, result.final_state, result.stop_reason, result.output_text, result.total_cost_usd, result.cost_complete, result.unknown_cost_attempt_count)
+        outcome = result.model_dump()  # the whole result (R-13 item 3); it holds no wall-clock field
         # Each receipt as recorded, apart from its wall-clock recording time.
         return runs, outcome, [{k: v for k, v in dataclasses.asdict(receipt).items() if k != "recorded_at"} for receipt in receipts]
 
