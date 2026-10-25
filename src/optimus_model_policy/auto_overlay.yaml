@@ -1,0 +1,62 @@
+# Plan 12.4 Auto overlay (v7 Design 2): the first inputs to Auto's fixed tiers, as data.
+#
+# Composed over defaults.yaml only by the `auto` composition (decision A5(a)), so launches without Auto keep today's
+# default model. The operator's registry override, when present, is composed over this overlay. Its effective hash
+# is approved at Checkpoint A. Replacing either model later is an edit here or in the operator override, then a hash
+# approval; no code changes (ADR-025).
+#
+# Facts from OpenRouter's free catalogue read of 2026-10-25 (models/<id>/endpoints), one exact endpoint each:
+# - Gemini 3.8 Flash on google-vertex/global: $0.75 / $3.75 per M (the standard tier; the flex and priority tiers
+#   are other variants), context 1,048,576, max completion 65,536, quantization "unknown", reasoning controls.
+# - GPT-6 Luna on openai/fast: $0.20 / $1.00 per M below 272,000 prompt tokens (above the 262,144 ceiling it would
+#   be dearer), context 1,050,000, max completion 128,000, quantization "unknown", reasoning controls. openai/fast is
+#   the exact variant Plan 12.2's qualification contract named; the base "openai" slug could reach the flex or fast
+#   variants at other prices.
+# Neither publisher documents a tokenizer the registry can use, so both name the conservative empirical estimator.
+
+models:
+  google/gemini-3.8-flash:
+    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: [low, medium, high]}
+    default_reasoning: low
+    route:
+      estimator: conservative-utf8
+      endpoints:
+        - {provider: google-vertex/global, quantization: unknown, context_window_tokens: 1048576, max_output_tokens: 65536, verified: true, observed_on: "2026-10-25"}
+    admission:
+      empirical_estimate:
+        evidence:
+          - "2026-10-25 free OpenRouter catalogue read: tokenizer listed as Gemini; no tokenizer the registry can use"
+        assumptions:
+          - "text-only input"
+          - "one token per UTF-8 byte of message and tool text, plus 16 per message and 256 fixed, covers tokenization and framing"
+        limitations:
+          - "passing calls show only that the tested requests fitted, not a universal token bound"
+          - "a first call can exceed its estimate, or be charged, before the per-reply check stops later calls"
+    evidence:
+      - "2026-10-25 free OpenRouter catalogue read (models/google/gemini-3.8-flash/endpoints): google-vertex/global, standard tier"
+      - "ADR-004: complex 1st, escalation 1st, medium 3rd; coding benchmarks in evidence section H"
+
+  openai/gpt-6-luna:
+    prices: {input_usd_per_million: "0.20", output_usd_per_million: "1.00"}
+    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: [low, medium, high]}
+    default_reasoning: low
+    route:
+      estimator: conservative-utf8
+      endpoints:
+        - {provider: openai/fast, quantization: unknown, context_window_tokens: 1050000, max_output_tokens: 128000, verified: true, observed_on: "2026-10-25"}
+    admission:
+      empirical_estimate:
+        evidence:
+          - "2026-10-25 free OpenRouter catalogue read: tokenizer listed as GPT; OpenAI publishes no Luna tokenizer mapping (2026-10-08 disposition)"
+        assumptions:
+          - "text-only input"
+          - "one token per UTF-8 byte of message and tool text, plus 16 per message and 256 fixed, covers tokenization and framing"
+        limitations:
+          - "framing and finish behaviour are unverified (2026-10-08 disposition); the per-reply checks cover them"
+          - "a first call can exceed its estimate, or be charged, before the per-reply check stops later calls"
+    evidence:
+      - "2026-10-25 free OpenRouter catalogue read (models/openai/gpt-6-luna/endpoints): openai/fast"
+      - "ADR-004: easy tasks; Plan 12.4 v7 Design 2: the first easy input"
+
+roles:
+  easy: [anthropic/claude-haiku-5.5, openai/gpt-6-luna]
