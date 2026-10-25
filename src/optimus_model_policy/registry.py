@@ -106,8 +106,13 @@ class Role(StrEnum):
 
 
 IMPLEMENTER_ROLES = frozenset({Role.EASY, Role.MEDIUM, Role.COMPLEX, Role.ESCALATION})
-DORMANT_ROLES = frozenset({Role.REVIEWER, Role.CLASSIFIER})
-"""Reviewer awaits its artifact contract (ADR-008); classifier awaits proposed ADR-007."""
+DORMANT_ROLES = frozenset({Role.REVIEWER})
+"""Reviewer awaits its artifact contract (ADR-008). The classifier is active wherever a composition assigns it (Plan
+12.4 v7 Design 1): the shipped defaults assign none; the pilot's ``evaluation`` and the ``auto`` compositions do."""
+
+CLASSIFIER_REQUEST_BOUND_TOKENS = 8_192
+"""The classifier's complete-request bound, frozen with its input contract (Plan 12.4 v7 Design 3): a classifier
+model's window must reach this instead of the global context ceiling."""
 
 ReserveClass = Literal["implementer", "summarizer", "reviewer", "classifier"]
 

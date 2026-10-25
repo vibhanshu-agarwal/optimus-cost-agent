@@ -1,0 +1,54 @@
+# Plan 12.4 test profile "evaluation": the pilot's classifier role (v7 Designs 1 and 3).
+#
+# Reviewed test data applied over defaults.yaml for a named test launch only; never shipped policy and never
+# selected without its pinned effective hash in an HMAC-approved launch (test_profiles.py). It never reads the
+# operator registry override.
+#
+# Authority: Plan 12.4 v7 (operator approval 2026-10-25, source S11). The operator approves this profile's exact
+# hash in the launch approval before any pilot call. The agent model stays Claude Haiku 5.5 (easy); the profile adds
+# the classifier role, which the Gateway serves on /v1/decisions (Jev) and chat completions (Haiku).
+#
+# Jev 1.14's facts come from OpenRouter's free catalogue read of 2026-10-25 (models/typesafe/jev-1.14/endpoints):
+# one endpoint, tag "typesafe" (a base slug), provider name TypeSafe, quantization "unknown", context 262,144, max
+# completion 235,929, $0.042 per M input and free output, output modality "decisions". Its requests are cut to the
+# classifier's complete-request bound (8,192 estimated tokens), far inside the window. Change this file only through
+# a reviewed change that also re-pins its effective hash (EVALUATION_HASH in test_profiles.py).
+
+output_reserve_tokens: {implementer: 32768, summarizer: 8192, classifier: 256}
+
+models:
+  typesafe/jev-1.14:
+    origin: non-china
+    tier: ultra-cheap
+    prices: {input_usd_per_million: "0.042", output_usd_per_million: "0"}
+    data_use: {provider_may_train_on_inputs: "no", disclosure: none}
+    capabilities: {native_tools: false, text_planning_grammar: false, structured_output: true, reasoning_levels: []}
+    default_reasoning: null
+    route:
+      estimator: conservative-utf8
+      endpoints:
+        - {provider: typesafe, quantization: unknown, context_window_tokens: 262144, max_output_tokens: 235929, verified: true, observed_on: "2026-10-25"}
+    admission:
+      empirical_estimate:
+        evidence:
+          - "2026-10-25 free OpenRouter catalogue read: tokenizer listed as Other; no published tokenizer"
+        assumptions:
+          - "text-only input: the classifier input contract carries no images"
+          - "one token per UTF-8 byte of the canonical state and questions, plus 16 per message and 256 fixed"
+        limitations:
+          - "passing calls show only that the tested requests fitted, not a universal token bound"
+          - "a first call can exceed its estimate, or be charged, before the per-reply check stops later calls"
+      provider_family:
+        provider: typesafe
+        provider_name: TypeSafe
+        evidence:
+          - "2026-10-25 free OpenRouter catalogue read: one endpoint, tag typesafe, provider name TypeSafe"
+        limitations:
+          - "the base slug can reach any TypeSafe variant; the reply check identifies the provider, not a variant"
+          - "the System One endpoint reports no router attempt or pipeline, so those reply checks cannot run there"
+    evidence:
+      - "2026-10-25 free OpenRouter catalogue read (models/typesafe/jev-1.14/endpoints) and System One API reference"
+      - "data use: TypeSafe documents that customer requests and responses are not used for training (research report, 2026-10-23)"
+
+roles:
+  classifier: [typesafe/jev-1.14, anthropic/claude-haiku-5.5]

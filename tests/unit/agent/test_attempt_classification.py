@@ -111,6 +111,7 @@ def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attemp
         SRC / "optimus_gateway" / "model_policy.py",
         SRC / "optimus_gateway" / "responses.py",
         SRC / "optimus_gateway" / "chat_completions.py",
+        SRC / "optimus_gateway" / "decisions.py",
         SRC / "optimus_model_policy" / "capacity.py",
         SRC / "optimus_model_policy" / "binding.py",
         # Plan 12.2 Task 13 (Stage C): the guard's refusals, which the Gateway returns by their own code
@@ -121,6 +122,7 @@ def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attemp
     codes = {match for path in sources for pair in pattern.findall(path.read_text(encoding="utf-8")) for match in pair if match}
     # Raised after a completed, billed attempt (with its usage), or only at launch: never a preflight refusal.
     assert PREFLIGHT_REFUSAL_CODES == codes - {
+        "DECISION_MODEL_MISMATCH",
         "FINISH_STATUS_UNVERIFIED",
         "EMPIRICAL_ESTIMATE_EXCEEDED",
         "EMPIRICAL_PROVIDER_MISMATCH",

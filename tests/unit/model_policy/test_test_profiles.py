@@ -174,3 +174,29 @@ def test_a_malformed_override_is_refused_by_code(monkeypatch: pytest.MonkeyPatch
     with pytest.raises(BindingError) as caught:
         profiles.compose_test_profile_snapshot("qualification")
     assert caught.value.code == "TEST_PROFILE_INVALID"
+
+
+EVALUATION_HASH = "44117b26e970d95a56b61cfae69a04383d7cef05516adf622f9dfdb919359553"  # pragma: allowlist secret - registry identity, not a credential
+JEV = "typesafe/jev-1.14"
+
+
+def test_the_evaluation_profile_composes_its_pinned_classifier_snapshot() -> None:
+    """Plan 12.4 v7: the pilot's composition adds the classifier role for Jev and Haiku; the agent stays Haiku."""
+    snapshot = profiles.compose_test_profile_snapshot("evaluation")
+    evaluation = profiles.TEST_PROFILES["evaluation"]
+
+    assert snapshot.effective_hash == EVALUATION_HASH == evaluation.effective_hash
+    assert select_eligible_models(snapshot, Role.CLASSIFIER) == (JEV, HAIKU)
+    assert select_eligible_models(snapshot, Role.EASY) == (HAIKU,)
+    assert (evaluation.model_id, evaluation.role, evaluation.output_cap) == (HAIKU, "easy", 32768)
+    assert [issue for issue in validate_registry(snapshot) if issue.role is Role.CLASSIFIER] == []
+    jev = snapshot.policy.models[JEV]
+    assert jev.admission is not None and jev.admission.provider_family is not None
+    assert (jev.admission.provider_family.provider, jev.admission.provider_family.provider_name) == ("typesafe", "TypeSafe")
+
+
+def test_the_evaluation_profile_never_reads_the_operator_override(tmp_path: Path) -> None:
+    override = tmp_path / "model-registry.yaml"
+    override.write_text("roles:\n  classifier: []\n", encoding="utf-8")
+    binding_module.use_operator_override(override)
+    assert profiles.compose_test_profile_snapshot("evaluation").effective_hash == EVALUATION_HASH

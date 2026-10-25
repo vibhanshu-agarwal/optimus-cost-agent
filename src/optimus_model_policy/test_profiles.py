@@ -35,6 +35,9 @@ from optimus_model_policy.registry import RegistryError, RegistrySnapshot, load_
 
 __all__ = ["TEST_PROFILE_LITERAL_NAME", "TEST_PROFILE_NAMES", "TEST_PROFILES", "TestProfile", "compose_test_profile_snapshot", "registry_for_launch"]
 
+EVALUATION_HASH: Final = "44117b26e970d95a56b61cfae69a04383d7cef05516adf622f9dfdb919359553"  # pragma: allowlist secret - registry identity, not a credential
+"""The Plan 12.4 evaluation profile's reviewed effective hash (test_profile_evaluation.yaml)."""
+
 TEST_PROFILE_LITERAL_NAME: Final = "_test_profile"
 """The launch security literal that names a selected profile. Its registry literal alone cannot tell the launches
 apart: the shipped defaults compose to the attached profile's hash, and equal hashes never mean shared authority."""
@@ -59,8 +62,7 @@ class TestProfile:
 TEST_PROFILES: Final[dict[str, TestProfile]] = {
     # Profile A: qualification and absent-engine behaviour, on Claude Haiku 5.5 (operator release,
     # 2026-10-09). Its route facts come from the 2026-10-09 free inspection; its empirical estimator and
-    # provider-family slug are admitted only through experimental.py, bound to this exact hash. Luna
-    # stays ineligible: its 2026-10-04 facts never established a tokenizer.
+    # provider-family slug are its entry's admission block (ADR-025), and this hash pins the reviewed snapshot.
     "qualification": TestProfile(
         name="qualification",
         override="test_profile_qualification.yaml",
@@ -75,6 +77,16 @@ TEST_PROFILES: Final[dict[str, TestProfile]] = {
         name="attached",
         override="test_profile_attached.yaml",
         effective_hash=HAIKU_ATTACHED_HASH,
+        model_id="anthropic/claude-haiku-5.5",
+        role="easy",
+        output_cap=32768,
+    ),
+    # Plan 12.4 v7: the pilot's evaluation composition. The agent model stays Haiku 5.5 (easy); the profile adds the
+    # classifier role for Jev 1.14 and Haiku, which the pilot's Gateway calls bind. Approved before any pilot call.
+    "evaluation": TestProfile(
+        name="evaluation",
+        override="test_profile_evaluation.yaml",
+        effective_hash=EVALUATION_HASH,
         model_id="anthropic/claude-haiku-5.5",
         role="easy",
         output_cap=32768,

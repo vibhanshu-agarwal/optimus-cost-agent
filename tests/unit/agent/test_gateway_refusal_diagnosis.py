@@ -382,7 +382,8 @@ def test_only_a_proven_stop_selects_the_stopped_route_wording() -> None:
 
 def test_the_stop_codes_are_the_reply_refusals_the_uncertain_attempt_and_the_stopped_refusal() -> None:
     assert ROUTE_STOP_CODES == REPLY_REFUSAL_CODES | {"UPSTREAM_ATTEMPT_UNCERTAIN", "EMPIRICAL_ROUTE_STOPPED"}
-    assert set(REPLY_REFUSALS) == REPLY_REFUSAL_CODES  # every reply refusal is reproduced above
+    # Every chat-path reply refusal is reproduced above; the decision route's own (Plan 12.4) is in test_decisions.py.
+    assert set(REPLY_REFUSALS) == REPLY_REFUSAL_CODES - {"DECISION_MODEL_MISMATCH"}
     assert ROUTE_STOP_CODES <= GATEWAY_FAILURE_CODES
 
 

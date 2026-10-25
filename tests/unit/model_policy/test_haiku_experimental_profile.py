@@ -252,7 +252,7 @@ def test_the_conservative_default_estimator_ships_with_haikus_values() -> None:
 
 
 def test_the_review_pins_are_the_reviewed_profile_hashes() -> None:
-    assert {HAIKU_QUALIFICATION_HASH, HAIKU_ATTACHED_HASH} == {profile.effective_hash for profile in profiles.TEST_PROFILES.values()}
+    assert {HAIKU_QUALIFICATION_HASH, HAIKU_ATTACHED_HASH} == {profiles.TEST_PROFILES[name].effective_hash for name in ("qualification", "attached")}
 
 
 def test_the_shipped_defaults_are_the_attached_pin_with_haikus_own_admission() -> None:

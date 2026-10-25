@@ -74,6 +74,7 @@ PREFLIGHT_REFUSAL_CODES = frozenset(
         "BINDING_UNSUPPORTED",
         "BINDING_VERSION_UNSUPPORTED",
         "CAPACITY_REFUSED",
+        "DECISIONS_NEED_REGISTRY",
         "DISCLOSURE_INVALID",
         "DISCLOSURE_REQUIRED",
         "EMPIRICAL_ROUTE_STOPPED",
@@ -102,6 +103,7 @@ PREFLIGHT_REFUSAL_CODES = frozenset(
 # checks, status 422). On the experimental route each one also stops the route (r8 offline correction).
 REPLY_REFUSAL_CODES = frozenset(
     {
+        "DECISION_MODEL_MISMATCH",
         "EMPIRICAL_ESTIMATE_EXCEEDED",
         "EMPIRICAL_PROVIDER_MISMATCH",
         "EMPIRICAL_PROVIDER_MISSING",

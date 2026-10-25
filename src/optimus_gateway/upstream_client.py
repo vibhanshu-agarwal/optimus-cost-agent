@@ -8,7 +8,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from http.client import HTTPException
-from typing import Any, Literal, NamedTuple, Protocol, TypeVar
+from typing import Any, Final, Literal, NamedTuple, Protocol, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.request import (
     HTTPDefaultErrorHandler,
@@ -97,6 +97,16 @@ class UpstreamClient(Protocol):
     ) -> ProviderMessageResult:
         """One provider attempt under an enforced model policy; raises UpstreamAttemptFailure."""
 
+    def create_decision_once(
+        self,
+        *,
+        model: str,
+        state: Mapping[str, Any],
+        questions: Mapping[str, Any],
+        provider_controls: Mapping[str, Any],
+    ) -> DecisionResult:
+        """One System One decision attempt under an enforced model policy; raises UpstreamAttemptFailure."""
+
 
 class RetryableUpstreamError(Exception):
     """Transient gateway→provider fault eligible for local retry before RuntimeError."""
@@ -177,9 +187,9 @@ class UrllibOpenAICompatibleClient:
         self._on_retry = on_retry
         self._attempt_opener: OpenerDirector | None = None
 
-    def _request(self, payload: Mapping[str, Any], request_class: type[Request] = Request) -> Request:
+    def _request(self, payload: Mapping[str, Any], request_class: type[Request] = Request, *, path: str = "/chat/completions") -> Request:
         return request_class(
-            f"{self._base_url}/chat/completions",
+            f"{self._base_url}{path}",
             data=json.dumps(payload).encode("utf-8"),
             headers={
                 "Authorization": f"Bearer {self._api_key}",
@@ -288,6 +298,109 @@ class UrllibOpenAICompatibleClient:
         except (UnicodeError, ValueError, RuntimeError) as exc:
             # A reply arrived but its usage cannot be verified: it may have been billed.
             raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN, failure=_unreadable_reply(exc)) from exc
+
+    def create_decision_once(
+        self,
+        *,
+        model: str,
+        state: Mapping[str, Any],
+        questions: Mapping[str, Any],
+        provider_controls: Mapping[str, Any],
+    ) -> DecisionResult:
+        """Exactly one System One decision attempt (Plan 12.4 v7: the Jev adapter), with the same attempt contract
+        as :meth:`create_message_once`: a failure says whether the request certainly reached no model or may have
+        been billed, and nothing is retried here. The approved endpoints are the request's ``provider`` object."""
+        payload = {
+            "model": model,
+            "state": json.loads(json.dumps(dict(state))),
+            "questions": json.loads(json.dumps(dict(questions))),
+            "provider": json.loads(json.dumps(dict(provider_controls))),
+        }
+        request = _attempt_of(self._request(payload, request_class=_AttemptRequest, path="/systemone"))
+        if self._attempt_opener is None:
+            self._attempt_opener = _build_attempt_opener()
+        try:
+            with self._attempt_opener.open(request, timeout=self._timeout_seconds) as response:
+                raw = response.read()
+        except HTTPError as exc:
+            refused = 400 <= exc.code < 500 and exc.code != 408
+            # The upstream error body is never read: it can echo the request's state.
+            raise UpstreamAttemptFailure(
+                ATTEMPT_REJECTED if refused else ATTEMPT_UNCERTAIN, http_status=exc.code, failure={"kind": "http"}
+            ) from exc
+        except (OSError, HTTPException) as exc:
+            raise UpstreamAttemptFailure(
+                ATTEMPT_UNCERTAIN if request.connected else ATTEMPT_NOT_SENT, failure={"kind": "transport", **exception_fact(exc)}
+            ) from exc
+        try:
+            decoded = json.loads(raw.decode("utf-8"))
+            if not isinstance(decoded, dict):
+                raise RuntimeError("decision response was not an object")
+            return parse_decision_response(decoded, questions=questions)
+        except (UnicodeError, ValueError, RuntimeError) as exc:
+            raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN, failure=_unreadable_reply(exc)) from exc
+
+
+@dataclass(frozen=True)
+class DecisionResult:
+    """One System One decision reply: its typed answers and the usage it reported (output is free, so ``cost_usd``
+    is the input charge)."""
+
+    decision_id: str
+    resolved_model: str
+    resolved_provider: str | None
+    answers: Mapping[str, Any]
+    input_tokens: int
+    output_tokens: int
+    cost_usd: Decimal
+
+
+_DECISION_TYPES: Final = frozenset({"choice", "noul", "score"})
+
+
+def parse_decision_response(body: Mapping[str, Any], *, questions: Mapping[str, Any]) -> DecisionResult:
+    """Parse a System One reply, failing closed: every asked question has exactly one answer of its own type with a
+    value in range, and the usage is complete. A reply that cannot be verified raises ``RuntimeError``."""
+    decision_id, resolved_model = body.get("id"), body.get("model")
+    if not isinstance(decision_id, str) or not decision_id or not isinstance(resolved_model, str) or not resolved_model:
+        raise RuntimeError("decision response has no id or model")
+    provider = body.get("provider")
+    answers = body.get("answers")
+    if not isinstance(answers, dict) or set(answers) != set(questions):
+        raise RuntimeError("decision answers do not match the questions")
+    for name, answer in answers.items():
+        asked = questions[name]
+        kind = asked.get("type") if isinstance(asked, dict) else None
+        if not isinstance(answer, dict) or answer.get("type") != kind or kind not in _DECISION_TYPES:
+            raise RuntimeError("a decision answer has the wrong type")
+        value = answer.get(kind)
+        if kind == "choice" and value not in asked.get("criteria", {}):
+            raise RuntimeError("a choice answer is not one of the options")
+        if kind == "noul" and not (isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 1):
+            raise RuntimeError("a noul answer is not a probability")
+        if kind == "score" and not (isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= max(len(asked.get("criteria", [])) - 1, 0)):
+            raise RuntimeError("a score answer is outside its scale")
+    usage = body.get("usage")
+    if not isinstance(usage, dict):
+        raise RuntimeError("decision response has no usage")
+    cost = usage.get("cost")
+    if isinstance(cost, bool) or not isinstance(cost, (int, float, str)):
+        raise RuntimeError("decision usage has no cost")
+    try:
+        cost_usd = Decimal(str(cost))
+    except ArithmeticError as exc:
+        raise RuntimeError("decision usage cost is not a number") from exc
+    if not cost_usd.is_finite() or cost_usd < 0:
+        raise RuntimeError("decision usage cost is not a non-negative number")
+    return DecisionResult(
+        decision_id=decision_id,
+        resolved_model=resolved_model,
+        resolved_provider=provider if isinstance(provider, str) and provider else None,
+        answers=answers,
+        input_tokens=_required_nonnegative_int(usage.get("input_tokens"), "input_tokens"),
+        output_tokens=_required_nonnegative_int(usage.get("output_tokens"), "output_tokens"),
+        cost_usd=cost_usd,
+    )
 
 
 class _AttemptRequest(Request):

@@ -181,7 +181,11 @@ def test_a_bare_credential_in_a_refusal_text_is_redacted_from_the_log() -> None:
 # keyed by call site, as file, enclosing qualified name and position among that name's refusal calls, and by the
 # expression (R-13 item 4, #237 6322536508), so an interpolation reviewed at one site never covers another.
 _REVIEWED_INTERPOLATIONS = {
+    ("src/optimus_gateway/model_policy.py", "admit_decision", 5, "stopped"),
     ("src/optimus_gateway/model_policy.py", "admit_request", 5, "stopped"),
+    ("src/optimus_gateway/model_policy.py", "check_decision_reply", 3, "route.provider_name"),
+    ("src/optimus_gateway/model_policy.py", "check_decision_reply", 4, "admitted.decision.input_tokens"),
+    ("src/optimus_gateway/model_policy.py", "check_decision_reply", 4, "result.input_tokens"),
     ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 3, "route.provider_name"),
     ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 5, "attempt"),
     ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 6, "', '.join(pipeline)"),
@@ -239,10 +243,13 @@ _FIXED_TEXT_IN_THE_LOG = {("src/optimus_gateway/model_mapping.py", "resolve_mode
 # A refusal with `log_detail` (C1): its positional text reaches the response only, so its interpolations are pinned
 # here; the log records `log_detail`, whose interpolations must each be a projection or a trusted constant.
 _WIRE_ONLY_UNDER_LOG_DETAIL = {
+    ("src/optimus_gateway/model_policy.py", "check_decision_reply", 3, "provider"),
     ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 3, "provider"),
     ("src/optimus_gateway/model_policy.py", "check_finish_status", 1, "finish_reason"),
 }
 _LOG_PROJECTIONS = {
+    ("src/optimus_gateway/model_policy.py", "check_decision_reply", 3, "recognized_provider(provider, policy)"),
+    ("src/optimus_gateway/model_policy.py", "check_decision_reply", 3, "route.provider_name"),
     ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 3, "recognized_provider(provider, policy)"),
     ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 3, "route.provider_name"),
     ("src/optimus_gateway/model_policy.py", "check_finish_status", 1, "bounded(finish_reason, RECOGNIZED_FINISH)"),

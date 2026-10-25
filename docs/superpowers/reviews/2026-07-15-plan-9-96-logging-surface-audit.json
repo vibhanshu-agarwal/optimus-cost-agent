@@ -4727,6 +4727,22 @@
       "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
       "test_node": "tests/unit/agent/test_auto_contract.py::test_short_prompt_is_kept_whole_and_serialized_in_the_frozen_shape",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_decision_once:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: create_decision_once calls urllib's OpenerDirector.open, the provider HTTP request to the System One endpoint, through the attempt opener that records whether the attempt connected; it opens no file, and the reply is parsed in memory, never persisted or logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_decisions.py::test_the_real_client_posts_to_system_one_with_the_route_controls",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_decision_once:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: create_decision_once round-trips the decision request's state, questions and the approved provider routing controls through JSON to copy them into the outbound System One request; nothing is persisted or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_decisions.py::test_the_real_client_posts_to_system_one_with_the_route_controls",
+      "evidence_tier": "unit"
     }
   ]
 }

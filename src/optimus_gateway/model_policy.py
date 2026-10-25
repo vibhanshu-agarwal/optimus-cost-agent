@@ -45,7 +45,9 @@ from optimus_model_policy.binding import (
     route_digest,
     verify_disclosure,
 )
-from optimus_model_policy.experimental import ExperimentalRoute, experimental_route
+from optimus_model_policy.capacity import estimate_complete_input
+from optimus_model_policy.experimental import EMPIRICAL_ESTIMATOR_METHOD, ExperimentalRoute, experimental_route
+from optimus_model_policy.registry import CLASSIFIER_REQUEST_BOUND_TOKENS
 from optimus_security.failure_facts import bounded
 
 __all__ = [
@@ -53,7 +55,9 @@ __all__ = [
     "GatewayModelPolicy",
     "ModelPolicyRefusal",
     "RouteStops",
+    "admit_decision",
     "admit_request",
+    "check_decision_reply",
     "check_experimental_reply",
     "check_finish_status",
     "parse_route_binding",
@@ -254,6 +258,89 @@ def check_experimental_reply(admitted: AdmittedRequest, result: Any, policy: Gat
         raise ModelPolicyRefusal(
             "EMPIRICAL_ESTIMATE_EXCEEDED",
             f"reported {result.input_tokens} prompt tokens, estimated at most {admitted.decision.input_tokens}",
+            status=422,
+        )
+
+
+def admit_decision(policy: GatewayModelPolicy, *, model: str, payload_text: str, binding: RouteBinding) -> AdmittedRequest:
+    """Admit one decision request (Plan 12.4 v7 Design 1: the Jev adapter) or raise :class:`ModelPolicyRefusal`.
+
+    The model must be eligible for the classifier role in the approved snapshot, its route must not be stopped, and
+    the typed request (its canonical state and questions) must fit the classifier's complete-request bound and the
+    route's window by the route's own estimator. A decision model writes no free text, so no output is reserved."""
+    snapshot = policy.snapshot
+    if snapshot.effective_hash != policy.approved_hash:
+        raise ModelPolicyRefusal("SNAPSHOT_NOT_APPROVED", status=503)
+    if binding.registry_hash != snapshot.effective_hash:
+        raise ModelPolicyRefusal("REGISTRY_HASH_MISMATCH", "the request bound a different registry snapshot")
+    entry = snapshot.policy.models.get(model)
+    if entry is None:
+        raise ModelPolicyRefusal("UNKNOWN_MODEL", "only exact registry model IDs are routed")
+    if model not in select_eligible_models(snapshot, Role.CLASSIFIER):
+        raise ModelPolicyRefusal("MODEL_NOT_ELIGIBLE", "the model holds no eligible classifier role in this snapshot")
+    experimental = experimental_route(snapshot, model)
+    stopped = None if experimental is None else policy.route_stops.code(model)
+    if stopped is not None:
+        raise ModelPolicyRefusal("EMPIRICAL_ROUTE_STOPPED", f"an earlier reply failed {stopped}", status=503)
+    profile = snapshot.policy.estimators[entry.route.estimator]
+    if not profile.verified and not (experimental is not None and experimental.empirical_estimate and profile.method == EMPIRICAL_ESTIMATOR_METHOD):
+        raise ModelPolicyRefusal("ESTIMATOR_UNVERIFIED")
+    # Eligibility already requires a verified window on every endpoint.
+    windows = [endpoint.context_window_tokens for endpoint in entry.route.endpoints if endpoint.context_window_tokens is not None]
+    total = min(CLASSIFIER_REQUEST_BOUND_TOKENS, *windows)
+    packed = PackedModelRequest(model_id=model, messages=(Message(role="user", content=payload_text),), tools_json="", output_cap=1)
+    estimate = estimate_complete_input(packed, profile)
+    decision = CapacityDecision(
+        allowed=estimate.tokens <= total,
+        reason=None if estimate.tokens <= total else "INPUT_EXCEEDS_CAPACITY",
+        input_tokens=estimate.tokens,
+        output_reserve=0,
+        usable_input=total,
+        effective_total=total,
+    )
+    if not decision.allowed:
+        raise ModelPolicyRefusal("INPUT_EXCEEDS_CAPACITY")
+    controls = {"only": list(dict.fromkeys(endpoint.provider for endpoint in entry.route.endpoints)), "allow_fallbacks": entry.route.allow_fallbacks}
+    return AdmittedRequest(
+        model_id=model,
+        input_text=payload_text,
+        output_cap=0,
+        provider_controls=MappingProxyType(controls),
+        decision=decision,
+        request_id=binding.request_id,
+        reasoning=None,
+        experimental=experimental,
+    )
+
+
+def check_decision_reply(admitted: AdmittedRequest, result: Any, policy: GatewayModelPolicy | None = None) -> None:
+    """Check one decision reply (Plan 12.4 v7; the System One endpoint carries no router metadata or finish status).
+
+    Always: the reply names the requested model, or a dated snapshot of it. A ``provider_family`` route's reply must
+    name the recorded provider; an ``empirical_estimate`` route's reported input tokens must not exceed the estimate.
+    The router attempt and pipeline cannot be checked on this endpoint; the request sends ``allow_fallbacks: false``.
+    A failure is a permanent (422) billed result."""
+    resolved = getattr(result, "resolved_model", None)
+    if not isinstance(resolved, str) or not (resolved == admitted.model_id or resolved.startswith(admitted.model_id + "-")):
+        raise ModelPolicyRefusal("DECISION_MODEL_MISMATCH", "the reply names another model", status=422)
+    route = admitted.experimental
+    if route is None:
+        return
+    provider = getattr(result, "resolved_provider", None)
+    if route.provider_name is not None:
+        if provider is None:
+            raise ModelPolicyRefusal("EMPIRICAL_PROVIDER_MISSING", "the reply carries no provider", status=422)
+        if provider != route.provider_name:
+            raise ModelPolicyRefusal(
+                "EMPIRICAL_PROVIDER_MISMATCH",
+                f"reply provider {provider!r}, expected {route.provider_name!r}",
+                log_detail=f"reply provider {recognized_provider(provider, policy)!r}, expected {route.provider_name!r}",
+                status=422,
+            )
+    if route.empirical_estimate and result.input_tokens > admitted.decision.input_tokens:
+        raise ModelPolicyRefusal(
+            "EMPIRICAL_ESTIMATE_EXCEEDED",
+            f"reported {result.input_tokens} input tokens, estimated at most {admitted.decision.input_tokens}",
             status=422,
         )
 
