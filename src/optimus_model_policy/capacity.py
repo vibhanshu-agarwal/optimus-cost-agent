@@ -8,9 +8,9 @@
 The estimate is computed from the final packed request: every message's UTF-8 bytes (after all host
 transformations), its framing, and the final serialized tool material. A caller-declared token count
 is never trusted. Unknown models, aliases, estimators and unverified routes are refused before any
-upstream call; the request is never exempted to make it fit. The one reviewed experimental test route
-(``experimental.py``) may use an empirical estimator: an engineering estimate whose result shows only
-that a tested request fitted, checked against reported usage on every call.
+upstream call; the request is never exempted to make it fit. A model whose entry admits an empirical
+estimate (``experimental.py``) may use one: an engineering estimate whose result shows only that a tested
+request fitted, checked against reported usage on every call.
 """
 
 from __future__ import annotations
@@ -84,8 +84,9 @@ def guard_request(request: PackedModelRequest, snapshot: RegistrySnapshot, appro
     profile = policy.estimators.get(entry.route.estimator)
     if profile is None:
         return _refuse("ESTIMATOR_UNKNOWN")
-    # The reviewed experimental test route alone may use its empirical estimate (experimental.py).
-    empirical = profile.method == EMPIRICAL_ESTIMATOR_METHOD and experimental_route(snapshot, request.model_id) is not None
+    # Only a model whose entry admits an empirical estimate may use one (experimental.py).
+    route = experimental_route(snapshot, request.model_id)
+    empirical = profile.method == EMPIRICAL_ESTIMATOR_METHOD and route is not None and route.empirical_estimate
     if not profile.verified and not empirical:
         return _refuse("ESTIMATOR_UNVERIFIED")
     endpoints = entry.route.endpoints

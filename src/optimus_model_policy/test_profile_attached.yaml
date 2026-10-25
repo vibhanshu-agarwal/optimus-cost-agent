@@ -11,8 +11,8 @@
 #
 # Policy: identical to test_profile_qualification.yaml (same Haiku 5.5 model, provider-family Anthropic
 # route, low reasoning, empirical estimator and output reserves; a test keeps them equal) plus the one
-# filed receipt below. Its own composed hash is pinned in experimental.py, where the same two test-only
-# exceptions are admitted for it; the qualification profile and its hash are unchanged.
+# filed receipt below. Its own composed hash is pinned in experimental.py (HAIKU_ATTACHED_HASH); its entry
+# carries the same `admission` block as the qualification profile's.
 #
 # The receipt is the accepted candidate's receipt, field for field:
 # - receipt-candidate.json SHA-256 3bac81899ae317c547daf94e98c19511ed434131d93578fe650ba10fde58045a  # pragma: allowlist secret - public evidence digest
@@ -21,7 +21,7 @@
 #   sealed v6 run a37f6074135e4392b93b0826391defc0 (manifest b2cbf077...); Stage 2 seal e7d75b21...
 # - the run's original executed validator v6 result stays FAIL (half-up-superseded); this receipt is a
 #   separate context-summary-assessment-v1.1 record, never a relabelled v6 pass.
-# Change this file only through a reviewed change that also re-pins its effective hash in experimental.py.
+# Change this file only through a reviewed change that also re-pins its effective hash (HAIKU_ATTACHED_HASH).
 
 output_reserve_tokens: {implementer: 32768, summarizer: 8192}
 
@@ -40,6 +40,24 @@ models:
       estimator: haiku-5-5-empirical
       endpoints:
         - {provider: anthropic, quantization: unknown, context_window_tokens: 1000000, max_output_tokens: 128000, verified: true, observed_on: "2026-10-09"}
+    admission:
+      empirical_estimate:
+        evidence:
+          - "2026-10-09 free inspection: the Haiku 5.5 tokenizer is unpublished"
+          - "Plan 12.2 Stage C and the qualification runs checked every reply's reported prompt tokens against this estimate"
+        assumptions:
+          - "text-only input"
+          - "one token per UTF-8 byte of message and tool text, plus 16 per message and 256 fixed, covers tokenization and framing"
+        limitations:
+          - "passing calls show only that the tested requests fitted, not a universal token bound"
+          - "a first call can exceed its estimate, or be charged, before the per-reply check stops later calls"
+      provider_family:
+        provider: anthropic
+        provider_name: Anthropic
+        evidence:
+          - "2026-10-09 free inspection: OpenRouter lists one first-party endpoint, tag anthropic (a base slug)"
+        limitations:
+          - "the base slug can reach any variant or region of Anthropic; the reply check identifies the provider, not a variant"
     summary_receipts:
       - model_id: anthropic/claude-haiku-5.5
         format: context-summary-v1

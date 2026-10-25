@@ -61,7 +61,13 @@ from optimus.acp.trusted_paths import (
 )
 from optimus_model_policy import RegistryError
 from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError, approval_literal, trusted_approval_literal
-from optimus_model_policy.stage_c import STAGE_C_LITERAL_NAME, STAGE_C_PROFILES, compose_stage_c_envelope, stage_c_ledger_path
+from optimus_model_policy.stage_c import (
+    STAGE_C_LITERAL_NAME,
+    STAGE_C_PROFILES,
+    compose_stage_c_envelope,
+    require_stage_c_profile,
+    stage_c_ledger_path,
+)
 from optimus_model_policy.test_profiles import TEST_PROFILE_LITERAL_NAME, compose_test_profile_snapshot
 from optimus_security.sanitization import canonicalize_credential_uri, validate_secret_length
 
@@ -699,6 +705,7 @@ def resolve_launch_candidate(
             raise LaunchGateError(code="STAGE_C_NEEDS_TEST_PROFILE", detail="a Stage C launch names one of its test profiles")
         try:
             envelope = compose_stage_c_envelope(ledger=stage_c_ledger_path(operator_paths.runtime_root))
+            require_stage_c_profile(envelope, test_profile, compose_test_profile_snapshot(test_profile).effective_hash)
         except BindingError as exc:
             raise LaunchGateError(code="STAGE_C_ENVELOPE_INVALID", detail=exc.code) from exc
         stage_c_literal = envelope.literal

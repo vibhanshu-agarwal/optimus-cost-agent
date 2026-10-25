@@ -23,8 +23,8 @@ from optimus_model_policy import test_profiles as profiles
 from optimus_model_policy.binding import BindingError, packaged_defaults, trusted_snapshot
 from optimus_model_policy.registry import SUMMARY_FIXTURE_DIGEST, SUMMARY_FORMAT, SUMMARY_PROMPT_DIGEST, SUMMARY_VALIDATOR, load_registry
 
-QUALIFICATION_HASH = "048c1a2b3e7d3436d371e8964200064bb30f0a1a865c945f92a2fc09d3ba5cba"  # pragma: allowlist secret - registry identity, not a credential
-ATTACHED_HASH = "06e637845f5f7cea2b4a22d23407c59efc9741d7848b06ee5f4c3d2284f3f07d"  # pragma: allowlist secret - registry identity, not a credential
+QUALIFICATION_HASH = "256992c3a72ae088808af42bfcf46e13376f6e0de3ae03a3a564906059e7e3a8"  # pragma: allowlist secret - registry identity, not a credential
+ATTACHED_HASH = "7cd99fc99b4835a06c446000c025278dbf19193e758351341524748118f5651a"  # pragma: allowlist secret - registry identity, not a credential
 HAIKU = "anthropic/claude-haiku-5.5"
 # The accepted Stage 2 artifacts (Codex acceptance, 2026-10-11): the receipt candidate's exact bytes and the
 # assessment it names. The candidate is rebuilt below from the filed receipt, so the filed copy is proven equal.

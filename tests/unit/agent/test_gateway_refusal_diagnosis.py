@@ -586,7 +586,7 @@ def test_the_plan_mode_dispatcher_request_is_unbound_so_it_never_meets_a_stopped
     from optimus.acp.dispatcher import JsonRpcDispatcher
 
     policy, model = _haiku("attached")
-    policy.route_stop.trip("EMPIRICAL_ROUTER_PIPELINE")
+    policy.route_stops.trip(model, "EMPIRICAL_ROUTER_PIPELINE")
     gateway = InProcessGateway(policy, Replying(), monkeypatch)
     client = GatewayClient(settings=OptimusGatewaySettings(optimus_api_key=SHARED_SECRET), transport=UrllibGatewayTransport())
     dispatcher = JsonRpcDispatcher(agent_runner=AgentRunner(gateway_client=client, model=model), workspace_root=tmp_path)

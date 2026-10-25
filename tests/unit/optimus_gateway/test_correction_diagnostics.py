@@ -181,7 +181,7 @@ def test_a_bare_credential_in_a_refusal_text_is_redacted_from_the_log() -> None:
 # keyed by call site, as file, enclosing qualified name and position among that name's refusal calls, and by the
 # expression (R-13 item 4, #237 6322536508), so an interpolation reviewed at one site never covers another.
 _REVIEWED_INTERPOLATIONS = {
-    ("src/optimus_gateway/model_policy.py", "admit_request", 5, "policy.route_stop.code"),
+    ("src/optimus_gateway/model_policy.py", "admit_request", 5, "stopped"),
     ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 3, "route.provider_name"),
     ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 5, "attempt"),
     ("src/optimus_gateway/model_policy.py", "check_experimental_reply", 6, "', '.join(pipeline)"),
@@ -264,8 +264,6 @@ _UNRESOLVED_ARGUMENTS = {
     ("src/optimus_gateway/upstream_client.py", "call_with_upstream_retry", 1, "str(exc)"),
     # The guard's halt reason: its own `_halt` texts (attempt numbers, charges) or its ledger's (Stage C test only).
     ("src/optimus_model_policy/stage_c.py", "StageCGuard.admit", 1, "r.halted"),
-    # A name from the constant `STAGE_C_PROFILES`.
-    ("src/optimus_model_policy/stage_c.py", "compose_stage_c_envelope", 2, "name"),
     # A reviewed profile constant, and an exception class name.
     ("src/optimus_model_policy/test_profiles.py", "compose_test_profile_snapshot", 2, "profile.unavailable_reason or 'not available'"),
     ("src/optimus_model_policy/test_profiles.py", "compose_test_profile_snapshot", 3, "type(exc).__name__"),

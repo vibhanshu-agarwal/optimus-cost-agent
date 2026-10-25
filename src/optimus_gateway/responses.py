@@ -258,10 +258,10 @@ def _attempt_reservation(policy: GatewayModelPolicy, admitted: AdmittedRequest) 
 
 
 def _stop_experimental_route(policy: GatewayModelPolicy, admitted: AdmittedRequest, code: str) -> None:
-    """On the experimental test route a failed or unverifiable reply stops every later call (Codex
-    disposition, 2026-10-09); ordinary routes keep their per-request failure handling."""
+    """On an exception route a failed or unverifiable reply stops every later call to that model (Codex
+    disposition, 2026-10-09; Plan 12.4 v7: per model); ordinary routes keep their per-request failure handling."""
     if admitted.experimental is not None:
-        policy.route_stop.trip(code)
+        policy.route_stops.trip(admitted.model_id, code)
 
 
 _RECOVERY_DELAY_SECONDS = 0.5

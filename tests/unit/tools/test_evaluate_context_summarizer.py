@@ -836,18 +836,22 @@ def test_the_envelope_states_every_bound_before_any_call() -> None:
         assert row["structurally_eligible"] is True and row["blockers"] == []
 
 
-def test_any_changed_policy_value_loses_the_shipped_exception(tmp_path: Path) -> None:
-    """The exception is bound to the exact shipped hash: one changed value (here the ceiling, by one token) composes
-    another snapshot, and the route gets the two ordinary refusals back."""
+def test_the_admission_is_entry_data_and_removing_it_restores_the_refusals(tmp_path: Path) -> None:
+    """Plan 12.4 v7 (ADR-025): the exceptions are the entry's own admission block. One changed value (here the
+    ceiling, by one token) composes another snapshot, which the operator approves before it is enforced, and keeps the
+    admission; removing the block gives the route its two ordinary refusals back."""
     from importlib import resources
 
-    override = tmp_path / "changed.yaml"
-    override.write_text("context_ceiling_tokens: 262143\n", encoding="utf-8")
+    changed, bare = tmp_path / "changed.yaml", tmp_path / "bare.yaml"
+    changed.write_text("context_ceiling_tokens: 262143\n", encoding="utf-8")
+    bare.write_text("models:\n  anthropic/claude-haiku-5.5:\n    admission: null\n", encoding="utf-8")
     with resources.as_file(resources.files("optimus_model_policy").joinpath("defaults.yaml")) as packaged:
-        changed = load_registry(packaged, override)
+        kept, removed = load_registry(packaged, changed), load_registry(packaged, bare)
 
-    [row] = paid_envelope(changed, FIXTURE)
+    [row] = paid_envelope(kept, FIXTURE)
     assert row["model_id"] == "anthropic/claude-haiku-5.5"
+    assert (row["structurally_eligible"], sorted(row["blockers"])) == (True, [])
+    [row] = paid_envelope(removed, FIXTURE)
     assert (row["structurally_eligible"], sorted(row["blockers"])) == (False, ["ESTIMATOR_UNVERIFIED", "ROUTE_TARGET_NOT_EXACT"])
 
 

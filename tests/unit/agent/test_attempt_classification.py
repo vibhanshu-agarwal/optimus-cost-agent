@@ -131,7 +131,7 @@ def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attemp
         "EMPIRICAL_ROUTER_PIPELINE",
         "FIXTURE_POLICY",
         "STAGE_C_LEDGER_NOT_ABSOLUTE",
-        "STAGE_C_PROFILE_UNAVAILABLE",
+        "STAGE_C_PROFILE_MIGRATED",
     }
     assert maintenance.PREFLIGHT_REFUSAL_CODES is PREFLIGHT_REFUSAL_CODES  # one classifier, not a copy
 

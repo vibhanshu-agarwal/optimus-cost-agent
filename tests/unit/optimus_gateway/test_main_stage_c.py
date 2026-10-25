@@ -23,6 +23,14 @@ from tests.unit.optimus_gateway.test_main_model_registry import _API_KEY, _KEY, 
 ATTACHED = approval_literal(profiles.compose_test_profile_snapshot("attached"))
 
 
+@pytest.fixture(autouse=True)
+def _release_pinned_to_the_current_profiles(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests exercise the Gateway's Stage C startup, which needs a release whose pins are the current profiles'.
+    The real r9 release pins the pre-migration snapshots and refuses the migrated profiles (test_stage_c_envelope.py)."""
+    current = {name: profiles.compose_test_profile_snapshot(name).effective_hash for name in stage_c.STAGE_C_PROFILES}
+    monkeypatch.setattr(stage_c, "STAGE_C_PROFILE_HASHES", current)
+
+
 @pytest.fixture
 def started(monkeypatch: pytest.MonkeyPatch) -> list:
     """The configs `serve_gateway` was started with (no socket is opened)."""

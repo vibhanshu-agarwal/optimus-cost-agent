@@ -13,7 +13,7 @@ from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.server import serve_gateway
 from optimus_model_policy import RegistryError
 from optimus_model_policy.binding import BindingError, approval_literal, trusted_snapshot
-from optimus_model_policy.stage_c import StageCGuard, StageCLedgerError, compose_stage_c_envelope
+from optimus_model_policy.stage_c import StageCGuard, StageCLedgerError, compose_stage_c_envelope, require_stage_c_profile
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES, compose_test_profile_snapshot
 from optimus_security.launch_manifest import (
     LaunchManifestError,
@@ -120,6 +120,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.plan12_stage_c_ledger is not None:
         try:
             envelope = compose_stage_c_envelope(ledger=Path(args.plan12_stage_c_ledger))
+            # A missing profile or registry pins nothing, so it is refused like a migrated one.
+            require_stage_c_profile(envelope, args.plan12_test_profile or "", "" if registry is None else registry.effective_hash)
         except BindingError as exc:
             print(f"optimus-local-gateway: Stage C envelope is not usable ({exc.code}); refusing to start.", file=sys.stderr)
             return 2

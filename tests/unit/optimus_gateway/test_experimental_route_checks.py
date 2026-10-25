@@ -127,12 +127,14 @@ def test_a_failed_check_fails_the_billed_call_and_stops_the_route(evidence: dict
 def test_a_pipeline_refusal_keeps_the_stage_types_and_ids_in_the_attempt_and_the_gateway_log() -> None:
     """The 2026-10-20 D1(b) refusal named its stages only in an unpersisted message: the attempt record and
     the Gateway's log line must carry the stage types, the refusal detail and both request ids."""
-    status, body = _post(_haiku_policy(), Replying(pipeline=("guardrail", "context_compression")))
+    policy = _haiku_policy()
+    status, body = _post(policy, Replying(pipeline=("guardrail", "context_compression")))
 
     assert (status, body["code"]) == (422, "EMPIRICAL_ROUTER_PIPELINE")
     [attempt] = body["route_attempts"]
     assert attempt["router_pipeline"] == ["guardrail", "context_compression"]
-    line = json.loads(gateway_responses.model_request_log_line("/v1/responses", status, body))
+    # The enforced Gateway logs with its policy (server.py), whose admission names the recognized provider.
+    line = json.loads(gateway_responses.model_request_log_line("/v1/responses", status, body, policy=policy))
     assert (line["event"], line["status"], line["code"]) == ("model_request", 422, "EMPIRICAL_ROUTER_PIPELINE")
     assert "the router ran guardrail, context_compression" in line["error"]
     [logged] = line["route_attempts"]

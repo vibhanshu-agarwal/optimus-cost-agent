@@ -101,7 +101,7 @@ def test_an_untrustworthy_registry_blocks_launch(tmp_path: Path, monkeypatch: py
 # approval change rather than a silent one. The closure release changed it deliberately: the shipped
 # defaults are the previous defaults plus the attached Haiku 5.5 entry and its one summary receipt, so
 # the shipped hash is the attached profile's reviewed hash (previously ff836631...).
-SHIPPED_EFFECTIVE_HASH = "06e637845f5f7cea2b4a22d23407c59efc9741d7848b06ee5f4c3d2284f3f07d"  # pragma: allowlist secret - shipped registry identity, not a credential
+SHIPPED_EFFECTIVE_HASH = "7cd99fc99b4835a06c446000c025278dbf19193e758351341524748118f5651a"  # pragma: allowlist secret - shipped registry identity, not a credential
 
 
 def test_an_activated_launch_approves_exactly_the_shipped_registry(tmp_path: Path) -> None:

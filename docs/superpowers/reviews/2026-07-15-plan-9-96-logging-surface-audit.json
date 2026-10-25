@@ -4719,6 +4719,14 @@
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_failed_legacy_attempt_is_logged_with_its_cause_and_the_request_id",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.auto_contract:ClassifierInput.to_json:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Inspection: to_json serializes the frozen Auto classifier input contract (Plan 12.4 v7 Design 3: a bounded prompt excerpt, the mode, an attachment summary and the previous tier) as the functional request payload a classifier receives; it is never persisted or logged by this helper, and sanitizing it would change what the classifier sees.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/agent/test_auto_contract.py::test_short_prompt_is_kept_whole_and_serialized_in_the_frozen_shape",
+      "evidence_tier": "unit"
     }
   ]
 }

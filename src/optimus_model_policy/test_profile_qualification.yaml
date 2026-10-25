@@ -5,8 +5,8 @@
 #
 # Authority: operator release (2026-10-09) of Plan 12.2 testing on Claude Haiku 5.5 per Codex's Haiku
 # disposition, with an empirical size estimate and generic Anthropic routing as test-only exceptions.
-# Both exceptions are source-owned in experimental.py and bound to this file's exact composed hash; a
-# copy with any changed policy value gets the ordinary refusals. Luna stays ineligible (defaults unchanged).
+# Both exceptions are the entry's `admission` block below (Plan 12.4 v7; ADR-025), and this file's composed
+# hash is pinned in test_profiles.py; a copy with any changed policy value gets the ordinary refusals.
 #
 # Facts from the 2026-10-09 free inspection (stage-a-haiku-inspection, MANIFEST 36080ac0...):
 # - OpenRouter lists one first-party endpoint, tag "anthropic" (a base slug: provider-family routing,
@@ -18,9 +18,9 @@
 #   sets "low" explicitly rather than relying on the default.
 # - The tokenizer is unpublished. The estimator is an EMPIRICAL engineering estimate: one token per
 #   UTF-8 byte plus a framing allowance, checked against reported usage on every call. It stays
-#   verified: false; the exception, not the flag, admits it.
+#   verified: false; the admission block, not the flag, admits it.
 # Output reserves are the accepted closure values. Change this file only through a reviewed change that
-# also re-pins its effective hash in experimental.py.
+# also re-pins its effective hash (HAIKU_QUALIFICATION_HASH in experimental.py).
 
 output_reserve_tokens: {implementer: 32768, summarizer: 8192}
 
@@ -39,6 +39,24 @@ models:
       estimator: haiku-5-5-empirical
       endpoints:
         - {provider: anthropic, quantization: unknown, context_window_tokens: 1000000, max_output_tokens: 128000, verified: true, observed_on: "2026-10-09"}
+    admission:
+      empirical_estimate:
+        evidence:
+          - "2026-10-09 free inspection: the Haiku 5.5 tokenizer is unpublished"
+          - "Plan 12.2 Stage C and the qualification runs checked every reply's reported prompt tokens against this estimate"
+        assumptions:
+          - "text-only input"
+          - "one token per UTF-8 byte of message and tool text, plus 16 per message and 256 fixed, covers tokenization and framing"
+        limitations:
+          - "passing calls show only that the tested requests fitted, not a universal token bound"
+          - "a first call can exceed its estimate, or be charged, before the per-reply check stops later calls"
+      provider_family:
+        provider: anthropic
+        provider_name: Anthropic
+        evidence:
+          - "2026-10-09 free inspection: OpenRouter lists one first-party endpoint, tag anthropic (a base slug)"
+        limitations:
+          - "the base slug can reach any variant or region of Anthropic; the reply check identifies the provider, not a variant"
     # The shipped defaults carry the attached receipt (closure plan v3). Profile A states its empty receipt list so
     # it keeps composing to its reviewed pin and its summarizer stays unqualified; [] and absent dump identically.
     summary_receipts: []

@@ -12,8 +12,8 @@ for a role only when it is explicitly assigned to that role and every hard requi
 * summarizer: a passing ``context-summary-v1`` receipt for this exact route and reasoning setting;
 * reviewer and classifier are dormant, so they are never eligible.
 
-The reviewed test profiles listed in ``experimental.py`` (each by its exact snapshot hash) may use their
-provider-family slug and empirical estimator; every other snapshot keeps both rules above.
+A model whose entry carries an ``admission`` block (``experimental.py``) may use its recorded provider-family
+slug, its empirical estimator, or both, each by its own part; every other model keeps both rules above.
 
 Eligible models are ordered by per-token price dominance (no dearer on both input and output, and
 cheaper on one); an exact tie puts the China-origin model first. Crossed prices need a declared
@@ -97,6 +97,10 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
         # OpenRouter routes a base slug to every variant and region of that provider, so the request
         # could not be held to the approved endpoint; only an exact variant slug is expressible.
         issue("ROUTE_TARGET_NOT_EXACT", f"provider base slugs {base_slugs} also reach other variants; record exact endpoint slugs")
+    if experimental is not None and experimental.provider_family is not None and experimental.provider_family not in {
+        endpoint.provider for endpoint in endpoints
+    }:
+        issue("ADMISSION_SCOPE_UNUSED", f"the provider-family admission names {experimental.provider_family!r}, which no endpoint uses")
     slugs = [endpoint.provider for endpoint in endpoints]
     if len(set(slugs)) != len(slugs):
         issue("ROUTE_ENDPOINT_DUPLICATE", "an endpoint slug is listed more than once in the route")
@@ -132,7 +136,7 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
     estimator = policy.estimators.get(entry.route.estimator)
     if estimator is None:
         issue("ESTIMATOR_UNKNOWN", f"route estimator {entry.route.estimator!r} is not defined")
-    elif not estimator.verified and not (experimental is not None and estimator.method == EMPIRICAL_ESTIMATOR_METHOD):
+    elif not estimator.verified and not (experimental is not None and experimental.empirical_estimate and estimator.method == EMPIRICAL_ESTIMATOR_METHOD):
         issue("ESTIMATOR_UNVERIFIED", f"route estimator {entry.route.estimator!r} is not verified")
 
     if entry.default_reasoning is not None and entry.default_reasoning not in entry.capabilities.reasoning_levels:

@@ -39,6 +39,16 @@ from tests.unit.acp import test_test_composition as composition_tests
 from tests.unit.acp.conftest import FakeKeyring, authorize_workspace_for_test
 from tests.unit.acp.test_test_composition import _ENV
 
+
+@pytest.fixture(autouse=True)
+def _release_pinned_to_the_current_profiles(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests exercise Stage C's launch mechanics, which need a release whose pins are the current profiles'. The
+    real r9 release pins the pre-migration snapshots and refuses the migrated profiles (test_stage_c_envelope.py)."""
+    from optimus_model_policy import test_profiles
+
+    current = {name: test_profiles.compose_test_profile_snapshot(name).effective_hash for name in stage_c.STAGE_C_PROFILES}
+    monkeypatch.setattr(stage_c, "STAGE_C_PROFILE_HASHES", current)
+
 pytestmark = pytest.mark.usefixtures("isolated_windows_known_folders")
 
 launch = composition_tests.launch  # the shared host-launch fixture (Redis, Gateway and server faked)

@@ -72,16 +72,33 @@ def test_the_scenario_catalogue_digest_covers_its_content() -> None:
     assert stage_c.scenario_catalogue_digest({"a": {"turns": 1}}) != stage_c.scenario_catalogue_digest({"b": {"turns": 1}})
 
 
-def test_a_relative_ledger_or_an_unavailable_profile_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_relative_ledger_is_refused() -> None:
     with pytest.raises(BindingError) as caught:
         stage_c.compose_stage_c_envelope(ledger=Path("relative/ledger.jsonl"))
     assert caught.value.code == "STAGE_C_LEDGER_NOT_ABSOLUTE"
 
-    stand_in = profiles.TestProfile(name="attached", override=None, effective_hash=None, model_id=None, role=None, output_cap=None, unavailable_reason="a stand-in")
-    monkeypatch.setitem(profiles.TEST_PROFILES, "attached", stand_in)
-    with pytest.raises(BindingError) as caught:
-        stage_c.compose_stage_c_envelope(ledger=stage_c.stage_c_ledger_path(tmp_path))
-    assert caught.value.code == "STAGE_C_PROFILE_UNAVAILABLE"
+
+def test_the_migration_keeps_the_historical_envelope_identity() -> None:
+    """Plan 12.4 v7 moved admission into the registry entries, which changed both profiles' composed hashes. Release r9
+    keeps its own pins, so its envelope is the one recorded before the migration, byte for byte."""
+    envelope = stage_c.compose_stage_c_envelope(ledger=Path(r"C:\stage-c\ledger.jsonl").resolve())
+
+    assert dict(envelope.profiles) == {"qualification": QUALIFICATION_HASH, "attached": ATTACHED_HASH}
+    assert envelope.literal == "optimus-stage-c-envelope-v1:3675df47fbf159ea488a745d9302aafae5ca9ea90dc77a8481aa0930f399be75"  # pragma: allowlist secret - envelope identity, not a credential
+
+
+def test_the_release_refuses_the_migrated_profiles_and_gains_no_authority(tmp_path: Path) -> None:
+    envelope = stage_c.compose_stage_c_envelope(ledger=stage_c.stage_c_ledger_path(tmp_path))
+
+    for name in stage_c.STAGE_C_PROFILES:
+        current = profiles.compose_test_profile_snapshot(name).effective_hash
+        assert current != dict(envelope.profiles)[name]
+        with pytest.raises(BindingError) as caught:
+            stage_c.require_stage_c_profile(envelope, name, current)
+        assert caught.value.code == "STAGE_C_PROFILE_MIGRATED"
+        stage_c.require_stage_c_profile(envelope, name, dict(envelope.profiles)[name])  # its own pin still matches
+    with pytest.raises(BindingError):
+        stage_c.require_stage_c_profile(envelope, "", "")
 
 
 def test_a_reservation_is_the_input_estimate_and_output_cap_at_registry_prices() -> None:
