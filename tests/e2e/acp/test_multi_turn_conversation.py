@@ -33,6 +33,7 @@ from optimus.acp.shapes import build_usage_update
 from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.guardrails.pre_tool import PreToolGuard
 from tests.integration.acp.test_server_stream import InteractiveLineReader
+from tests.support.contract_doubles import checked_agent_runner
 
 
 class PhysicalCapturingWriter:
@@ -178,7 +179,7 @@ def _server_for_runner(tmp_path: Path, runner: Any) -> AcpStreamServer:
     guard = PreToolGuard.for_workspace(workspace_root=workspace, allowed_network_hosts=())
     dispatcher = JsonRpcDispatcher(
         gateway_client=object(),
-        agent_runner=runner,
+        agent_runner=checked_agent_runner(runner),
         pre_tool_guard=guard,
         workspace_root=workspace,
     )
@@ -305,7 +306,7 @@ async def test_cap_closed_refusal_is_explanatory_success(tmp_path: Path) -> None
     sessions = InMemoryAcpSpecSessionStore()
     outbound = RecordingOutboundChannel()
     adapter = AcpDuplexAdapter(
-        runner=runner,
+        runner=checked_agent_runner(runner),
         workspace_root=tmp_path,
         sessions=sessions,
         outbound=outbound,

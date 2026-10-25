@@ -39,6 +39,7 @@ from optimus.acp.settlement import EffectState
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.runtime.modes import ExecutionMode
+from tests.support.contract_doubles import checked_agent_runner
 
 SEPARATOR = "\n\n"
 WARNING_TEXT = (
@@ -105,7 +106,7 @@ class _FloorRunner:
 def _adapter(tmp_path: Path, runner: _FloorRunner, outbound: Any | None = None) -> tuple[AcpDuplexAdapter, Any]:
     outbound = outbound if outbound is not None else RecordingOutboundChannel()
     adapter = AcpDuplexAdapter(
-        runner=runner,
+        runner=checked_agent_runner(runner),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -319,7 +320,7 @@ async def test_a_reply_past_the_cap_never_gets_the_soon_warning(tmp_path: Path) 
     state = _seed_used_bytes(adapter, session_id, WARNING_FIRST_BYTE - 20_000)
     runner = _LatchingRunner(state)
     runner.plan_text = _words(150_000)
-    adapter._runner = runner  # noqa: SLF001
+    adapter._runner = checked_agent_runner(runner)  # noqa: SLF001
 
     assert "result" in await _prompt(adapter, session_id, "Short prompt", "p1")
 

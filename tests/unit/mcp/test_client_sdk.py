@@ -10,7 +10,7 @@ import asyncio
 import threading
 from dataclasses import dataclass, field
 from typing import Any
-from unittest.mock import create_autospec
+from unittest.mock import create_autospec, seal
 
 import httpx2
 import pytest
@@ -144,12 +144,12 @@ class FakeHttpClient:
     opened_urls: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        contract = httpx2.AsyncClient(follow_redirects=self.follow_redirects, trust_env=self.trust_env)
-        self.checked = create_autospec(contract, spec_set=True)
+        self.checked = create_autospec(httpx2.AsyncClient, instance=True)
         self.checked.follow_redirects = self.follow_redirects
         self.checked.trust_env = self.trust_env
         self.checked.stream.side_effect = self.stream
-        self.checked.aclose.side_effect = contract.aclose
+        self.checked.aclose.return_value = None
+        seal(self.checked)
 
     def stream(self, method: str, url: str, **_kwargs: Any) -> Any:
         self.opened_urls.append(url)
@@ -601,7 +601,7 @@ def test_remote_stream_byte_overflow_closes_connection(supervisor: MCPAsyncSuper
     )
     adapter = _adapter(supervisor, http_client=client)
     with pytest.raises(ClientMcpSdkError) as exc_info:
-        adapter.read_streamed_bytes_for_tests(client, budget_bytes=1 * 1024 * 1024)
+        adapter.read_streamed_bytes_for_tests(client.checked, budget_bytes=1 * 1024 * 1024)
     assert exc_info.value.code == "REMOTE_BYTE_OVERFLOW"
 
 
@@ -700,7 +700,7 @@ def test_stream_over_budget_is_operation_timeout(supervisor: MCPAsyncSupervisor)
     client.aiter_bytes = _slow_bytes  # type: ignore[method-assign]
     adapter = _timeout_adapter(supervisor)
     with pytest.raises(ClientMcpSdkError) as exc_info:
-        adapter.read_streamed_bytes_for_tests(client, budget_bytes=1 * 1024 * 1024)
+        adapter.read_streamed_bytes_for_tests(client.checked, budget_bytes=1 * 1024 * 1024)
     assert exc_info.value.code == "OPERATION_TIMEOUT"
 
 
