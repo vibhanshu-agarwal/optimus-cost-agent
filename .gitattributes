@@ -10,7 +10,9 @@
 * text=auto eol=lf
 
 # Explicitly binary; skip line-ending normalization and text diffing.
-*.pdf binary
+# export-ignore keeps the design-document PDFs (~158 MiB) tracked but out of
+# GitHub's source zip/tarball, which tools such as ghloc download and size-cap.
+*.pdf binary export-ignore
 
 # Preserved A2A audit/custody records: raw bytes must survive staging and
 # commit unchanged (deliberate CRLF, intentional Markdown hard breaks).
