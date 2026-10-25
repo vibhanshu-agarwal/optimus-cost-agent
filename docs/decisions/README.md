@@ -129,6 +129,15 @@ by this folder.
      - Claude checked, read-only, that each quoted decision appears verbatim in a user turn of the export's main
        transcript. A full app export, not an excerpt. Raw S10 is archival provenance, never an operating, test or
        release dependency; S1–S9 retain their existing meanings.
+   - **Source S11.** Plan 12.4 v7 decisions, operator messages dated 2026-10-25 in the Claude session for the Plan 12.4
+     Auto thread (session `bbe75542-b5c9-4de6-92d1-5e865d05eece`): the request that tiers stay fixed and models be
+     configuration, the instruction to draft v7, and the approval of v7 with decisions N1(a) and N2(a).
+     - External transcript export: `optimus-handoff\decisions-sources\2026-10-25-claude-session-plan12-4-v7-export.zip`, produced
+       by the app's session Export, 3,258,517 bytes.
+     - SHA-256: `F72D0A6D3C3BEA81DEA5EEAB57BA714E16D3F2A591B65F8BE3AB763EB0623504`.
+     - Claude checked, read-only, that each quoted decision appears verbatim in a user turn of the export's main
+       transcript. A full app export, not an excerpt. Raw S11 is archival provenance, never an operating, test or
+       release dependency; S1–S10 retain their existing meanings.
 2. **Label the decider.** Each record says who decided: the operator, an agent (Claude or Codex), or an
    agent proposal still awaiting the operator. A value an agent chose must never read as an operator
    requirement.
