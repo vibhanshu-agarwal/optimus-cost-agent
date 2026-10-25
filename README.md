@@ -696,7 +696,8 @@ chat path is live-verified through `acpx` by Plan 12.2's D1(b) run (#237). The l
 `tests/e2e/acp/test_spawned_agent_live.py` and `python tools/verify_live_agent.py` drive the agent through this
 project's own ACP client (process tier), and the `acpx` evidence tools in `tools/` drive it through an independent
 client. The `e2e` marker selects tests of both kinds. Live AGENT-mode evidence through `acpx` on the enforced
-registry is not yet established; see #237.
+registry was established on 2026-10-24 by #387 run 5 (main `f4b804f1`): a plan, its approval and a byte-exact EDIT of
+a CRLF file; see #387.
 
 Security: bind stays on loopback (`127.0.0.1` by default). Do not expose this service beyond
 localhost without adding real TLS first.
