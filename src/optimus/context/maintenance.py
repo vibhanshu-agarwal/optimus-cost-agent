@@ -263,7 +263,8 @@ class GatewaySummarizerCall:
     Contributor disclosure, noticed first, where required) or None when a required notice was not
     delivered: then nothing is sent. Without `bind` no binding is sent (registry enforcement inactive).
     `experimental`: the trusted snapshot names this route experimental, so a stop-tripping failure proves it
-    stopped (#400).
+    stopped (#400). `model_stops`, an Auto launch's stop set (Plan 12.4 Task 4), is told each proven stop and
+    checked before any call: a stopped model is never sent another request.
     """
 
     def __init__(
@@ -276,6 +277,7 @@ class GatewaySummarizerCall:
         bind: Callable[[str, str, int], RouteBinding | None] | None = None,
         attempt_observer: Callable[..., None] | None = None,
         experimental: bool = False,
+        model_stops: Any | None = None,
     ) -> None:
         self._client = gateway_client
         self._model_id = model_id
@@ -284,9 +286,15 @@ class GatewaySummarizerCall:
         self._bind = bind
         self._attempt_observer = attempt_observer
         self._experimental = experimental
+        self._model_stops = model_stops
 
     def __call__(self, *, prompt: str, max_output_tokens: int) -> SummarizerResponse:
         request_id = self._request_ids()
+        if self._model_stops is not None and self._model_id in self._model_stops:
+            # Plan 12.4 Task 4: a model this launch proved stopped is never called again; the turn reads it as a stopped route.
+            unsent = SummarizerAttempt(attempt_id=f"{request_id}:1", gateway_request_id=None, outcome="not_sent", cost_usd=Decimal("0"))
+            skipped = SummarizerResponse(text=None, finish_status=None, attempts=(unsent,), route_stopped=True)
+            return self._observed(request_id, (), skipped, reason="summary_model_stopped")
         binding = None
         if self._bind is not None:
             binding = self._bind(request_id, prompt, max_output_tokens)
@@ -301,11 +309,14 @@ class GatewaySummarizerCall:
                 model=self._model_id, input_text=prompt, metadata=metadata, route_binding=binding
             )
         except Exception as exc:  # noqa: BLE001 - every failure is classified; transport loss stays unknown
+            # Evaluated first, so the integrity branch below records a proven stop too (Plan 12.4 Task 4).
+            stopped = stops_experimental_route(exc, experimental=self._experimental)
+            if stopped and self._model_stops is not None:
+                self._model_stops.add(self._model_id)
             try:
                 provider = attempts_from_failure(exc)
             except AttemptIntegrityError as error:
                 return self._observed(request_id, error.attempts, _unattributable(request_id, error), failure=exc)
-            stopped = stops_experimental_route(exc, experimental=self._experimental)
             failed = SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, provider), route_stopped=stopped)
             return self._observed(request_id, provider, failed, failure=exc)
         try:
@@ -379,6 +390,7 @@ def gateway_summarizer_factory(
     snapshot: Any | None,
     disclosure_key: bytes | None,
     attempt_observer: Callable[..., None] | None = None,
+    model_stops: Any | None = None,
 ) -> SummarizerFactory:
     """The production summarizer for an attachment: one `GatewaySummarizerCall` per turn.
 
@@ -433,6 +445,7 @@ def gateway_summarizer_factory(
             bind=bind,
             attempt_observer=attempt_observer,
             experimental=experimental,
+            model_stops=model_stops,
         )
 
     return bind_turn

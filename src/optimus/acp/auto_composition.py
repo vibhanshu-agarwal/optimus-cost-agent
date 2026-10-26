@@ -226,8 +226,15 @@ def auto_router(
         (model_id, role): RoutePolicy(snapshot=snapshot, disclosure_key=key, model_id=model_id, role=role, output_cap=output_cap)
         for model_id, role in pairs
     }
+    # One stop set for the launch: the resolver, the runner and the summarizer share it (one model, one stop).
+    stops = StopSet()
     base = ordinary_attachment(
-        snapshot=snapshot, model_id=default_model, gateway_client=gateway_client, shared_secret=shared_secret, attempt_observer=attempt_observer
+        snapshot=snapshot,
+        model_id=default_model,
+        gateway_client=gateway_client,
+        shared_secret=shared_secret,
+        attempt_observer=attempt_observer,
+        model_stops=stops,
     )
     attachments: dict[str, ContextAttachment] = {}
     if base is not None:
@@ -247,6 +254,6 @@ def auto_router(
         default_role=default_role,
         route_policies=policies,
         attachments=attachments,
-        stops=StopSet(),
+        stops=stops,
         classifier=classifier,
     )

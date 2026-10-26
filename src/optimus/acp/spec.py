@@ -530,6 +530,8 @@ class AcpDuplexAdapter:
                 raise ValueError("an Auto launch binds each turn's route and attachment itself")
             context_attachment = auto_router.base_attachment
         self._auto_router = auto_router
+        # The launch's stop set, told of each model a planning or answer call proves stopped (Plan 12.4 Task 4).
+        self._model_stops = None if auto_router is None else auto_router.stops.add
         self._runner = runner
         # Plan 12.3: resolved once by the caller (resolve_interactive_recovery); headless passes no check-in.
         self._interactive_recovery = interactive_recovery
@@ -1171,6 +1173,7 @@ class AcpDuplexAdapter:
                     integrity_failure=session.cost_settlement.record_integrity_failure,
                     recovery_checkin=self._recovery_checkin_for(turn, loop) if self._interactive_recovery else None,
                     turn_model=None if turn.auto_decision is None else turn.auto_decision.model_id,
+                    model_stops=self._model_stops,
                 ),
             )
             self._apply_turn_cost(
@@ -1333,6 +1336,7 @@ class AcpDuplexAdapter:
                     route_binder=turn.route_binder,
                     integrity_failure=session.cost_settlement.record_integrity_failure,
                     turn_model=None if turn.auto_decision is None else turn.auto_decision.model_id,
+                    model_stops=self._model_stops,
                 ),
             )
             # region agent log
@@ -2033,6 +2037,7 @@ class AcpDuplexAdapter:
         integrity_failure: Any | None = None,
         recovery_checkin: Any | None = None,
         turn_model: str | None = None,
+        model_stops: Any | None = None,
     ) -> dict[str, Any]:
         """Pass client-MCP runtime kwargs only when the runner accepts them."""
         kwargs: dict[str, Any] = {}
@@ -2065,6 +2070,8 @@ class AcpDuplexAdapter:
         if turn_model is not None:
             # A runner that cannot take it still sends its launch model, which its bound-route check then refuses.
             _maybe("turn_model", turn_model)
+        if model_stops is not None:
+            _maybe("model_stops", model_stops)
         _maybe("client_mcp_service", _client_mcp_service(session))
         _maybe("mcp_permission_broker", self._mcp_permission_broker_for(session))
         return kwargs

@@ -58,10 +58,17 @@ def ordinary_route_policy(*, snapshot: RegistrySnapshot, model_id: str, shared_s
 
 
 def ordinary_attachment(
-    *, snapshot: RegistrySnapshot, model_id: str, gateway_client: Any, shared_secret: str, attempt_observer: Any = log_provider_attempts
+    *,
+    snapshot: RegistrySnapshot,
+    model_id: str,
+    gateway_client: Any,
+    shared_secret: str,
+    attempt_observer: Any = log_provider_attempts,
+    model_stops: Any | None = None,
 ) -> ContextAttachment | None:
     """The ordinary launch's attachment, or None (absent engine) when the registry has no eligible summarizer.
-    ``attempt_observer`` is the harness's bound attempt observer (correction plan v4, C4)."""
+    ``attempt_observer`` is the harness's bound attempt observer (correction plan v4, C4); ``model_stops``, an Auto
+    launch's stop set, which its summarizer writes and checks (Plan 12.4 Task 4)."""
     summarizers = select_eligible_models(snapshot, Role.SUMMARIZER)
     if not summarizers:
         return None
@@ -71,7 +78,12 @@ def ordinary_attachment(
     )
     limits = attachment_limits(snapshot, model_id)
     factory = gateway_summarizer_factory(
-        gateway_client=gateway_client, route=route, snapshot=snapshot, disclosure_key=disclosure_key(shared_secret), attempt_observer=attempt_observer
+        gateway_client=gateway_client,
+        route=route,
+        snapshot=snapshot,
+        disclosure_key=disclosure_key(shared_secret),
+        attempt_observer=attempt_observer,
+        model_stops=model_stops,
     )
     return ContextAttachment(
         engine=ContextEngine(),

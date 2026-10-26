@@ -146,6 +146,7 @@ class _RunScope:
     operation_control: TurnOperationControl | None = None
     route: TurnRouteBinder | None = None
     integrity_failure: Callable[[str], None] | None = None
+    model_stops: Callable[[str], None] | None = None
 
     def transport_abandoned(self) -> bool:
         return self.operation_control is not None and self.operation_control.transport_abandoned()
@@ -325,12 +326,14 @@ class AgentRunner:
         integrity_failure: Callable[[str], None] | None = None,
         recovery_checkin: PlanningCheckInCallback | None = None,
         turn_model: str | None = None,
+        model_stops: Callable[[str], None] | None = None,
     ) -> AgentRunResult:
         """`stage_receipts` receives every model attempt of this run, known or unknown, once (Plan 12.2
         Task 11). `route_binder` binds each request to the turn's captured trusted route; without it
         no binding is sent (registry enforcement inactive). `integrity_failure` receives this run's
         turn id when the existing ledger refuses one of its charges. `turn_model` is an Auto turn's selected
-        model (Plan 12.4 Task 4), sent instead of the launch model. All belong to this invocation alone."""
+        model (Plan 12.4 Task 4), sent instead of the launch model; `model_stops` is told each model a failed
+        request proved stopped, for the launch. All belong to this invocation alone."""
         observer = (
             planning_progress_observer
             if planning_progress_observer is not None
@@ -346,7 +349,12 @@ class AgentRunner:
             raise RouteIdentityError("the turn's route or context limits are bound to a different model than this run sends")
         matched_skills = self._match_skills(request)
         scope = _RunScope(
-            model=model, stage_receipts=stage_receipts, operation_control=operation_control, route=route_binder, integrity_failure=integrity_failure
+            model=model,
+            stage_receipts=stage_receipts,
+            operation_control=operation_control,
+            route=route_binder,
+            integrity_failure=integrity_failure,
+            model_stops=model_stops,
         )
         try:
             result = self._run_once(
@@ -1063,6 +1071,10 @@ class AgentRunner:
         try:
             self._report_receipts(request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity)
         finally:
+            # Plan 12.4 Task 4: a proven stop is recorded for the launch even when the receipts or accounting raise.
+            experimental = scope.route is not None and scope.route.experimental
+            if failure is not None and identity is not None and scope.model_stops is not None and stops_experimental_route(failure, experimental=experimental):
+                scope.model_stops(identity.model_id)
             self._observe_attempts(request, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, failure=failure)
 
     def _report_receipts(

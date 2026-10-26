@@ -372,7 +372,7 @@ def _emit_failure(
 
 
 # Causes a diagnostic can record without an exception (Codex round 13 finding 2).
-TRACE_REASONS = frozenset({"summary_disclosure_undelivered"})
+TRACE_REASONS = frozenset({"summary_disclosure_undelivered", "summary_model_stopped"})
 
 
 def log_provider_attempts(
