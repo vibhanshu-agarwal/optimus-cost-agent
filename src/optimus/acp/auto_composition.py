@@ -34,12 +34,16 @@ __all__ = [
     "AutoDecision",
     "AutoRouter",
     "AutoTurnRefused",
+    "ClassificationAccountingError",
+    "ClassifierCall",
+    "ClassifierHalted",
     "ClassifierOutcome",
     "Escalation",
     "StopSet",
     "auto_router",
-    "classifier_not_installed",
     "compose_auto_composition",
+    "notice_text",
+    "routing_record",
 ]
 
 TIERS: tuple[Tier, ...] = ("easy", "medium", "complex")
@@ -49,6 +53,9 @@ them: past complex comes the default planner (v9 Design 4)."""
 FailureKind = Literal["timeout", "invalid_answer", "abstention", "stopped_classifier", "error"]
 """Why the classifier gave no tier. ``error`` is the host's own label for an exception the backend did not map."""
 
+AnsweredBy = Literal["rules", "classifier"]
+"""Which part of H answered: its rules, or its classifier model (Plan 12.4 Task 5)."""
+
 
 class AutoTurnRefused(Exception):
     """An Auto turn refused recoverably before any answer call: the thread stays open and nothing is dispatched."""
@@ -56,6 +63,17 @@ class AutoTurnRefused(Exception):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+class ClassifierHalted(Exception):
+    """The classifier's dispatch lease was refused: the turn was cancelled or torn down before its classifier call was
+    sent (Plan 12.4 Task 5). The host ends the turn as for any cancel during classification."""
+
+
+class ClassificationAccountingError(Exception):
+    """A classifier attempt could not be accounted for: its report could not be attributed, or the turn's receipt sink
+    refused a receipt (Plan 12.4 Task 5). The turn is refused with ACCOUNTING_INTEGRITY, never routed by the failure
+    rule. The first original error is chained."""
 
 
 class StopSet:
@@ -83,16 +101,25 @@ class ClassifierOutcome:
     confidence_band: str
     routed_up_for_confidence: bool = False
     failure_kind: FailureKind | None = None
+    predicted_tier: Tier | None = None
+    """The answer's tier before the confidence route-up; None on a failure."""
+    answered_by: AnsweredBy | None = None
 
 
-Classifier = Callable[[ClassifierInput, StopSet], ClassifierOutcome]
+@dataclass(frozen=True, slots=True)
+class ClassifierCall:
+    """One turn's context for its classifier call (Plan 12.4 Task 5), captured before the turn's first await: where its
+    receipts go, how an integrity failure is reported, and the turn's control for the dispatch lease."""
+
+    session_id: str
+    turn_seq: int
+    run_id: str
+    record_receipt: Callable[[Any], None]
+    integrity_failure: Callable[[str], None]
+    operation_control: Any
 
 
-def classifier_not_installed(contract: ClassifierInput, stops: StopSet) -> ClassifierOutcome:
-    """The interim classifier, never shipped (Task 4 note r3): until H's backend (Task 5) is installed, every Auto turn
-    is refused recoverably with no dispatch and no paid call. It never enters the classifier-failure fallback."""
-    del contract, stops
-    raise AutoTurnRefused("CLASSIFIER_NOT_INSTALLED")
+Classifier = Callable[[ClassifierInput, StopSet, ClassifierCall], ClassifierOutcome]
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +143,64 @@ class AutoDecision:
     tier: Tier
     role: str
     model_id: str
+    predicted_tier: Tier | None = None
+    answered_by: AnsweredBy | None = None
+
+
+_FAILURE_WORDS: dict[str, str] = {
+    "timeout": "timeout",
+    "invalid_answer": "invalid answer",
+    "abstention": "no confident answer",
+    "stopped_classifier": "it has stopped for this launch",
+    "error": "error",
+}
+_ESCALATION_WORDS: dict[str, str] = {"stopped": "stopped", "empty": "none configured"}
+
+
+def notice_text(decision: AutoDecision) -> str:
+    """The turn's one Auto line (Plan 12.4 Task 5), for example ``Auto: medium → google/gemini-3.8-flash``, with why it
+    is not simply the classifier's tier when it is not."""
+    reasons: list[str] = []
+    if decision.failure_kind is not None:
+        reasons.append(f"the classifier failed: {_FAILURE_WORDS[decision.failure_kind]}")
+    elif decision.routed_up_for_confidence and decision.predicted_tier is not None:
+        reasons.append(f"unsure, so one tier up from {decision.predicted_tier}")
+    reasons += [f"no {e.from_tier} model available: {_ESCALATION_WORDS[e.reason]}" for e in decision.escalations]
+    if decision.default_fallback:
+        reasons.append("the default model: no tier was available")
+    return f"Auto: {decision.tier} → {decision.model_id}" + (f" ({'; '.join(reasons)})" if reasons else "")
+
+
+def routing_record(
+    disposition: Literal["routed", "refused", "cancelled", "abandoned"],
+    *,
+    outcome: ClassifierOutcome | None,
+    decision: AutoDecision | None = None,
+    reason: str | None = None,
+    classifier_attempt: str | None = None,
+    notice_delivered: bool = False,
+) -> dict[str, Any]:
+    """One admitted Auto turn's content-free routing record (Plan 12.4 Task 5): the classifier facts it obtained and,
+    once bound, its route; null where unknown. Never a prompt, contract, answer text or confidence value."""
+    facts: AutoDecision | ClassifierOutcome | None = decision if decision is not None else outcome
+    return {
+        "arm": "H",
+        "disposition": disposition,
+        "reason": reason,
+        "answered_by": None if facts is None else facts.answered_by,
+        "predicted_tier": None if facts is None else facts.predicted_tier,
+        "classifier_tier": decision.classifier_tier if decision is not None else None if outcome is None else outcome.tier,
+        "confidence_band": None if facts is None else facts.confidence_band,
+        "routed_up_for_confidence": None if facts is None else facts.routed_up_for_confidence,
+        "failure_kind": None if facts is None else facts.failure_kind,
+        "classifier_attempt": classifier_attempt,
+        "escalations": None if decision is None else [{"from_tier": e.from_tier, "reason": e.reason} for e in decision.escalations],
+        "default_fallback": None if decision is None else decision.default_fallback,
+        "tier": None if decision is None else decision.tier,
+        "role": None if decision is None else decision.role,
+        "model_id": None if decision is None else decision.model_id,
+        "notice_delivered": notice_delivered,
+    }
 
 
 @dataclass(frozen=True)
@@ -128,6 +213,16 @@ class AutoComposition:
         """ADR-023's default planner computed in the Auto registry: the strict auth probe's model, and the last fallback
         when no tier at or above a turn's is routable. Computed from configuration, never pinned."""
         return default_agent_model(self.snapshot)
+
+    def classifier_model(self) -> str:
+        """The classifier role's first eligible model: configuration, never pinned (Plan 12.4 Task 5). Refused when the role
+        is empty, or when the model needs a Contributor disclosure, which the decision route cannot verify."""
+        eligible = select_eligible_models(self.snapshot, Role.CLASSIFIER)
+        if not eligible:
+            raise BindingError("AUTO_CLASSIFIER_MISSING", "the Auto composition assigns no eligible classifier")
+        if self.snapshot.policy.models[eligible[0]].data_use.disclosure == "contributor":
+            raise BindingError("AUTO_CLASSIFIER_DISCLOSURE_UNSUPPORTED", "the classifier needs a disclosure the decision route cannot verify")
+        return eligible[0]
 
 
 def compose_auto_composition(*, approved_literal: str | None, composition: str | None) -> AutoComposition:
@@ -159,9 +254,9 @@ class AutoRouter:
         """What new sessions take their storage class and initial strategy from: the default planner's attachment."""
         return self.attachments.get(self.default_model)
 
-    def classify(self, contract: ClassifierInput) -> ClassifierOutcome:
+    def classify(self, contract: ClassifierInput, call: ClassifierCall) -> ClassifierOutcome:
         """Synchronous: the host calls it in the turn's worker, never on the event loop."""
-        return self.classifier(contract, self.stops)
+        return self.classifier(contract, self.stops, call)
 
     def resolve(self, outcome: ClassifierOutcome) -> AutoDecision:
         """The turn's model (v9 Design 4). A failure counts as a medium abstention routed up, so it starts at complex.
@@ -182,6 +277,8 @@ class AutoRouter:
                 tier=tier,
                 role=role,
                 model_id=model_id,
+                predicted_tier=outcome.predicted_tier,
+                answered_by=outcome.answered_by,
             )
 
         for tier in TIERS[TIERS.index(start) :]:
@@ -209,11 +306,17 @@ def auto_router(
     gateway_client: Any,
     shared_secret: str,
     attempt_observer: Any,
-    classifier: Classifier = classifier_not_installed,
+    classifier: Classifier | None = None,
 ) -> AutoRouter:
     """Build the launch's Auto state once, from the approved snapshot: every route policy and attachment a turn can
-    select is constructed (and so validated) here, before the server starts."""
+    select is constructed (and so validated) here, before the server starts. ``classifier`` None installs H's backend
+    (``auto_hybrid``) for the composition's classifier model; tests inject their own."""
     snapshot = composition.snapshot
+    classifier_model = composition.classifier_model()
+    if classifier is None:
+        from optimus.acp.auto_hybrid import HybridClassifier  # its seam types are defined here
+
+        classifier = HybridClassifier(snapshot=snapshot, gateway_client=gateway_client, model_id=classifier_model)
     output_cap = snapshot.policy.output_reserve_tokens.get("implementer")
     if output_cap is None:
         raise RouteIdentityError("the trusted registry states no implementer output reserve")

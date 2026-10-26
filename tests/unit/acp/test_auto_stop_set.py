@@ -122,7 +122,7 @@ async def test_an_auto_launch_shares_one_stop_set_between_its_runner_its_summari
 
     runner.kwargs[0]["model_stops"](LUNA)
     assert LUNA in router.stops, "the runner's stops reach the launch's stop set"
-    assert router.resolve(Classifier(["easy"])(None, router.stops)).model_id == HAIKU
+    assert router.resolve(Classifier(["easy"])(None, router.stops, None)).model_id == HAIKU
 
     trusted = registry_route_identity(router.snapshot, model_id=HAIKU, role="summarizer")
     identity = MaintenanceIdentity(

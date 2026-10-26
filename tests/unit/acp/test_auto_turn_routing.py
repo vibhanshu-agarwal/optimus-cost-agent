@@ -21,11 +21,12 @@ from optimus.acp.auto_composition import (
     AutoComposition,
     AutoRouter,
     AutoTurnRefused,
+    ClassificationAccountingError,
     ClassifierOutcome,
     Escalation,
     auto_router,
-    classifier_not_installed,
 )
+from optimus.acp.auto_hybrid import HybridClassifier
 from optimus.acp.conversation import ConversationOutcome
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus
@@ -44,7 +45,7 @@ LUNA, HAIKU, GEMINI = "openai/gpt-6-luna", "anthropic/claude-haiku-5.5", "google
 SECRET = "s" * 32
 
 
-def _router(classifier: Any = classifier_not_installed) -> AutoRouter:
+def _router(classifier: Any = None) -> AutoRouter:
     snapshot = auto_snapshot()
     assert snapshot is not None
     return auto_router(AutoComposition(snapshot), gateway_client=object(), shared_secret=SECRET, attempt_observer=None, classifier=classifier)
@@ -127,7 +128,7 @@ class Classifier:
         self.on_loop_thread: list[bool] = []
         self.entered, self.release = entered, release
 
-    def __call__(self, contract: Any, stops: Any) -> ClassifierOutcome:
+    def __call__(self, contract: Any, stops: Any, call: Any = None) -> ClassifierOutcome:
         self.contracts.append(contract)
         self.on_loop_thread.append(threading.current_thread() is threading.main_thread())
         if self.entered is not None and self.release is not None:
@@ -181,23 +182,20 @@ async def test_planning_and_the_approved_application_use_the_one_selected_model(
     assert runner.kwargs[0]["route_binder"] is runner.kwargs[1]["route_binder"]
 
 
-async def test_the_interim_classifier_refuses_the_turn_recoverably_with_no_dispatch(tmp_path) -> None:
-    adapter, outbound, runner = _adapter(tmp_path, _router())
-    session_id = await new_session(adapter, tmp_path, mode="chat")
-
-    response = await prompt(adapter, outbound, session_id, "Hello?", "q1")
-
-    assert response["result"]["stopReason"] == "end_turn"
-    assert runner.requests == []
-    assert any("classifier is not installed" in text for text in texts(outbound))
-    session = session_of(adapter, session_id)
-    assert session.conversation.records == {} and session.auto_routes == {}, "nothing is committed; the thread stays open"
+def test_an_auto_launch_installs_h_for_the_compositions_classifier_model() -> None:
+    router = _router()
+    assert isinstance(router.classifier, HybridClassifier)
+    assert AutoComposition(router.snapshot).classifier_model() == "typesafe/jev-1.14"
 
 
 @pytest.mark.parametrize(
     ("answer", "text"),
-    [(AttemptIntegrityError("ledger refused"), "could not account"), (_outcome("complex"), "no model left")],
-    ids=["accounting-integrity", "nothing-routable"],
+    [
+        (AttemptIntegrityError("ledger refused"), "could not account"),
+        (ClassificationAccountingError("a receipt was refused"), "could not account"),
+        (_outcome("complex"), "no model left"),
+    ],
+    ids=["attempt-integrity", "classification-accounting", "nothing-routable"],
 )
 async def test_an_integrity_failure_or_no_routable_model_refuses_without_dispatch(tmp_path, answer: Any, text: str) -> None:
     router = _router(Classifier([answer]))
@@ -280,7 +278,7 @@ async def test_a_failed_turn_publishes_no_route_so_the_next_previous_tier_skips_
 
 
 async def test_two_concurrent_sessions_route_independently(tmp_path) -> None:
-    def by_text(contract: Any, stops: Any) -> ClassifierOutcome:
+    def by_text(contract: Any, stops: Any, call: Any) -> ClassifierOutcome:
         return _outcome("easy" if contract.prompt.startswith("easy") else "complex")
 
     adapter, outbound, runner = _adapter(tmp_path, _router(by_text))

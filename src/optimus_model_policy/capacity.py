@@ -15,13 +15,25 @@ request fitted, checked against reported usage on every call.
 
 from __future__ import annotations
 
+import json
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from optimus_model_policy.experimental import EMPIRICAL_ESTIMATOR_METHOD, experimental_route
 from optimus_model_policy.registry import EstimatorProfile, RegistrySnapshot
 
-__all__ = ["CapacityDecision", "InputEstimate", "Message", "PackedModelRequest", "estimate_complete_input", "guard_request"]
+__all__ = [
+    "CapacityDecision",
+    "InputEstimate",
+    "Message",
+    "PackedModelRequest",
+    "decision_payload_text",
+    "estimate_complete_input",
+    "estimate_decision",
+    "guard_request",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +77,18 @@ def estimate_complete_input(request: PackedModelRequest, profile: EstimatorProfi
     content_tokens = math.ceil(profile.tokens_per_byte * utf8_bytes)
     tokens = content_tokens + profile.per_message_tokens * len(request.messages) + profile.fixed_tokens
     return InputEstimate(tokens=tokens, utf8_bytes=utf8_bytes, message_count=len(request.messages), method=profile.method)
+
+
+def decision_payload_text(state: Mapping[str, Any], questions: Mapping[str, Any]) -> str:
+    """The typed decision request a classifier's capacity is measured on (Plan 12.4): its canonical state and
+    questions. The Gateway's decision route and the host's classifier measure this one text."""
+    return json.dumps({"state": state, "questions": questions}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def estimate_decision(model_id: str, payload_text: str, profile: EstimatorProfile) -> InputEstimate:
+    """A decision request's estimate: its payload as one user message. A decision model writes no free text."""
+    packed = PackedModelRequest(model_id=model_id, messages=(Message(role="user", content=payload_text),), tools_json="", output_cap=1)
+    return estimate_complete_input(packed, profile)
 
 
 def _refuse(reason: str, *, reserve: int = 0, usable: int = 0, total: int = 0, tokens: int = 0) -> CapacityDecision:

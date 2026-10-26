@@ -502,7 +502,6 @@ def log_context_fault(*, run_id: str, phase: str, category: str, detail: str | N
 # An Auto turn refused before any answer call, or routed by the classifier-failure rule (Plan 12.4 Task 4).
 AUTO_ROUTE_REASONS = frozenset(
     {
-        "CLASSIFIER_NOT_INSTALLED",
         "AUTO_NO_ROUTABLE_MODEL",
         "ACCOUNTING_INTEGRITY",
         "timeout",

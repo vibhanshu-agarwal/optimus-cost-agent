@@ -11,7 +11,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NotRequired, Protocol, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, Protocol, TypedDict
 
 from context_engine import SummaryCheckpoint
 from optimus.acp.conversation import (
@@ -222,7 +222,6 @@ CONTEXT_PLAN_TOO_LARGE_TEXT = (
 _CONTEXT_CANCELLED_TEXT = "Cancelled before the model was asked."
 # Plan 12.4 Task 4: an Auto turn refused before any answer call; the thread stays open.
 _AUTO_REFUSAL_TEXT = {
-    "CLASSIFIER_NOT_INSTALLED": "Auto's classifier is not installed, so this turn was not routed. Nothing was sent to a model.",
     "AUTO_NO_ROUTABLE_MODEL": (
         "Auto has no model left to route this turn to: every eligible model has stopped for this launch. Nothing was "
         "sent. Restart Optimus, or choose a model with OPTIMUS_AGENT_MODEL."
@@ -1455,33 +1454,59 @@ class AcpDuplexAdapter:
         sanitized_user_prompt: str,
         ownership_slot: ResponseOwnershipSlot | None,
     ) -> TurnResponseEnvelope | None:
-        """Plan 12.4 Task 4: classify this Auto turn in its worker, resolve its model, and bind that model's route and
-        context limits for the whole turn. Returns the turn's response when it stops here, or None to dispatch."""
-        from optimus.acp.auto_composition import AutoTurnRefused, ClassifierOutcome
+        """Plan 12.4 Tasks 4-5: classify this Auto turn with H in its worker, resolve its model, bind that model's route
+        and context limits for the whole turn, then show its notice. Every admitted Auto turn leaves exactly one routing
+        record. Returns the turn's response when it stops here, or None to dispatch."""
+        from optimus.acp.auto_composition import (
+            AutoTurnRefused,
+            ClassificationAccountingError,
+            ClassifierCall,
+            ClassifierHalted,
+            ClassifierOutcome,
+        )
         from optimus.agent.auto_contract import build_classifier_input
         from optimus.gateway.attempts import AttemptIntegrityError
 
         router = self._auto_router
         assert router is not None
-        # Frozen before the first await: the prompt, the turn's captured mode and the last committed routed tier.
+        # Frozen before the first await: the prompt, the turn's captured mode, the last committed routed tier, and the
+        # turn's own receipt sink and control for the classifier's call.
         contract = build_classifier_input(
             sanitized_user_prompt,
             mode=turn.execution_mode.value,
             attachments=_attachments_from_content_blocks(prompt_blocks),
             previous_tier=session.auto_routes[max(session.auto_routes)].tier if session.auto_routes else None,
         )
+        call = ClassifierCall(
+            session_id=turn.session_id,
+            turn_seq=turn.turn_seq,
+            run_id=turn.run_id,
+            record_receipt=session.cost_settlement.record_attempt,
+            integrity_failure=session.cost_settlement.record_integrity_failure,
+            operation_control=turn.turn_control,
+        )
+        outcome: ClassifierOutcome | None
         try:
-            outcome = await self._in_worker(session, turn, router.classify, contract)
+            outcome = await self._in_worker(session, turn, router.classify, contract, call)
+        except ClassifierHalted:
+            outcome = None  # the dispatch lease was refused: a cancel or teardown, handled below
+        except (ClassificationAccountingError, AttemptIntegrityError):
+            # Accounting failures never enter the classifier-failure rule (Codex round 67).
+            return await self._refuse_auto_turn(
+                request_id=request_id, session=session, turn=turn, reason="ACCOUNTING_INTEGRITY", outcome=None, ownership_slot=ownership_slot
+            )
         except AutoTurnRefused as exc:
-            return await self._refuse_auto_turn(request_id=request_id, turn=turn, reason=exc.code, ownership_slot=ownership_slot)
-        except AttemptIntegrityError:
-            return await self._refuse_auto_turn(request_id=request_id, turn=turn, reason="ACCOUNTING_INTEGRITY", ownership_slot=ownership_slot)
+            return await self._refuse_auto_turn(
+                request_id=request_id, session=session, turn=turn, reason=exc.code, outcome=None, ownership_slot=ownership_slot
+            )
         except Exception:  # noqa: BLE001 - a failure the backend did not map takes the failure rule (v9 Design 4)
             outcome = ClassifierOutcome(tier=None, confidence_band="none", failure_kind="error")
         if turn.turn_control.transport_abandoned():
             # Finalization and late-cost handling run as for any turn; no answer call and no new notice start.
+            self._record_auto_turn(session, turn, "abandoned", outcome=outcome)
             return self._turn(success_response(request_id=request_id, result={"stopReason": "cancelled"}), turn.turn_control, ownership_slot)
         if outcome is None or turn.turn_control.halt_requested():
+            self._record_auto_turn(session, turn, "cancelled", outcome=outcome)
             await self._commit_turn(
                 conversation=conversation,
                 turn=turn,
@@ -1494,7 +1519,9 @@ class AcpDuplexAdapter:
         try:
             decision = router.resolve(outcome)
         except AutoTurnRefused as exc:
-            return await self._refuse_auto_turn(request_id=request_id, turn=turn, reason=exc.code, ownership_slot=ownership_slot)
+            return await self._refuse_auto_turn(
+                request_id=request_id, session=session, turn=turn, reason=exc.code, outcome=outcome, ownership_slot=ownership_slot
+            )
         if decision.failure_kind is not None:
             log_auto_route(run_id=turn.run_id, outcome="failure_rule", reason=decision.failure_kind, telemetry=self._failure_telemetry)
         turn.route_binder = router.route_policy(decision).capture(
@@ -1503,14 +1530,24 @@ class AcpDuplexAdapter:
         if turn.attached is not None:
             turn.attached.bind_attachment(router.attachments[decision.model_id])
         turn.auto_decision = decision
+        delivered = await self._emit_auto_notice(turn, decision)
+        self._record_auto_turn(session, turn, "routed", outcome=outcome, decision=decision, notice_delivered=delivered)
         return None
 
     async def _refuse_auto_turn(
-        self, *, request_id: str | int | None, turn: AcpPromptTurn, reason: str, ownership_slot: ResponseOwnershipSlot | None
+        self,
+        *,
+        request_id: str | int | None,
+        session: AcpSpecSession,
+        turn: AcpPromptTurn,
+        reason: str,
+        outcome: Any,
+        ownership_slot: ResponseOwnershipSlot | None,
     ) -> TurnResponseEnvelope:
         """An Auto turn refused recoverably before any answer call. Nothing is committed, so the thread stays open; any
         classifier cost already recorded still counts."""
         log_auto_route(run_id=turn.run_id, outcome="refused", reason=reason, telemetry=self._failure_telemetry)
+        self._record_auto_turn(session, turn, "refused", outcome=outcome, reason=reason)
         _operator_line(
             f"optimus.acp: auto turn refused session_id={host_session_id(turn.session_id) or 'none'} turn_seq={turn.turn_seq} reason={reason}"
         )
@@ -1518,6 +1555,61 @@ class AcpDuplexAdapter:
             await self._emit_final_text(session_id=turn.session_id, text=_AUTO_REFUSAL_TEXT[reason], turn=turn)
             await self._emit_cost_alerts(turn)
         return self._turn(success_response(request_id=request_id, result={"stopReason": "end_turn"}), turn.turn_control, ownership_slot)
+
+    async def _emit_auto_notice(self, turn: AcpPromptTurn, decision: AutoDecision) -> bool:
+        """The turn's one Auto line (Plan 12.4 Task 5): live-only, never stored in the canonical history. True only once
+        its send is confirmed flushed. It is informational, so an unconfirmed notice never stops the turn."""
+        from optimus.acp.auto_composition import notice_text
+
+        if turn.turn_control.transport_abandoned():
+            return False
+        payload = build_agent_message_chunk_notification(session_id=turn.session_id, text=notice_text(decision))
+        try:
+            await self._outbound.notify("session/update", payload, require_flushed=True)
+        except Exception:  # noqa: BLE001 - recorded as undelivered; never fails the turn
+            return False
+        return True
+
+    def _record_auto_turn(
+        self,
+        session: AcpSpecSession,
+        turn: AcpPromptTurn,
+        disposition: Literal["routed", "refused", "cancelled", "abandoned"],
+        *,
+        outcome: Any,
+        decision: AutoDecision | None = None,
+        reason: str | None = None,
+        notice_delivered: bool = False,
+    ) -> None:
+        """The admitted Auto turn's one routing record (Plan 12.4 Task 5), through the harness's event sink. Contained: a
+        telemetry failure never fails the turn. The classifier attempt's outcome is read from the turn's own receipts."""
+        from datetime import UTC, datetime
+
+        from optimus.acp.auto_composition import routing_record
+        from optimus.telemetry.events import TelemetryEvent
+
+        sink = self._settlement_sink
+        if sink is None:
+            return
+        attempts = [r.outcome for r in session.cost_settlement.receipts(turn.run_id) if r.stage == "classification"]
+        record = routing_record(
+            disposition,
+            outcome=outcome,
+            decision=decision,
+            reason=reason,
+            classifier_attempt=attempts[-1] if attempts else None,
+            notice_delivered=notice_delivered,
+        )
+        with contextlib.suppress(Exception):
+            sink(
+                TelemetryEvent.auto_routing(
+                    run_id=turn.run_id,
+                    session_id=turn.session_id,
+                    request_id=f"{turn.run_id}:auto-routing",
+                    occurred_at=datetime.now(tz=UTC),
+                    record=record,
+                )
+            )
 
     async def _prepare_attached_context(
         self,

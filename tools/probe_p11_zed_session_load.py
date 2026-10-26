@@ -215,6 +215,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/acp/__init__.py",
     "src/optimus/acp/__main__.py",
     "src/optimus/acp/auto_composition.py",
+    "src/optimus/acp/auto_hybrid.py",
     "src/optimus/acp/bootstrap.py",
     "src/optimus/acp/context_attachment.py",
     "src/optimus/acp/conversation.py",

@@ -88,3 +88,27 @@ def test_an_approved_auto_launch_hands_its_composition_to_the_gateway_and_the_se
     assert acp_main.main(["--workspace-root", str(tmp_path), "--model", "anthropic/claude-haiku-5.5"]) == 2
     assert "AGENT_MODEL_INVALID: OPTIMUS_AGENT_MODEL=auto conflicts with --model" in capsys.readouterr().err
     assert started == []
+
+
+def test_an_auto_launch_without_a_usable_classifier_refuses_before_any_service_starts(monkeypatch, tmp_path, capsys) -> None:
+    """Plan 12.4 Task 5: the classifier model is checked right after the Auto composition, before Redis, the Gateway or
+    the server start (Codex round 67)."""
+    env = {**_ENV, "OPTIMUS_AGENT_MODEL": "auto"}
+    keyring = FakeKeyring()
+    authorize_workspace_for_test(env=env, workspace_root=tmp_path, fake_keyring=keyring)
+    monkeypatch.setattr(acp_main, "keyring", keyring)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    started: list[object] = []
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: started.append("redis"))
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: started.append("gateway"))
+    monkeypatch.setattr(acp_main, "build_configured_server", lambda **k: started.append("server"))
+
+    def missing(self: AutoComposition) -> str:
+        raise BindingError("AUTO_CLASSIFIER_MISSING", "the Auto composition assigns no eligible classifier")
+
+    monkeypatch.setattr(AutoComposition, "classifier_model", missing)
+
+    assert acp_main.main(["--workspace-root", str(tmp_path)]) == 2
+    assert "optimus-agent: MODEL_REGISTRY_INVALID: AUTO_CLASSIFIER_MISSING" in capsys.readouterr().err
+    assert started == []

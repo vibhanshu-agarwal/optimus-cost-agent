@@ -45,7 +45,7 @@ from optimus_model_policy.binding import (
     route_digest,
     verify_disclosure,
 )
-from optimus_model_policy.capacity import estimate_complete_input
+from optimus_model_policy.capacity import estimate_decision
 from optimus_model_policy.experimental import EMPIRICAL_ESTIMATOR_METHOD, ExperimentalRoute, experimental_route
 from optimus_model_policy.registry import CLASSIFIER_REQUEST_BOUND_TOKENS
 from optimus_security.failure_facts import MISSING, bounded
@@ -308,14 +308,16 @@ def admit_decision(policy: GatewayModelPolicy, *, model: str, payload_text: str,
     stopped = None if experimental is None else policy.route_stops.code(model)
     if stopped is not None:
         raise ModelPolicyRefusal("EMPIRICAL_ROUTE_STOPPED", f"an earlier reply failed {stopped}", status=503)
+    if entry.data_use.disclosure == "contributor":
+        # This route verifies no disclosure, so a model that needs one is never admitted here (Plan 12.4 Task 5).
+        raise ModelPolicyRefusal("DECISION_DISCLOSURE_UNSUPPORTED", "the decision route cannot verify a Contributor disclosure")
     profile = snapshot.policy.estimators[entry.route.estimator]
     if not profile.verified and not (experimental is not None and experimental.empirical_estimate and profile.method == EMPIRICAL_ESTIMATOR_METHOD):
         raise ModelPolicyRefusal("ESTIMATOR_UNVERIFIED")
     # Eligibility already requires a verified window on every endpoint.
     windows = [endpoint.context_window_tokens for endpoint in entry.route.endpoints if endpoint.context_window_tokens is not None]
     total = min(CLASSIFIER_REQUEST_BOUND_TOKENS, *windows)
-    packed = PackedModelRequest(model_id=model, messages=(Message(role="user", content=payload_text),), tools_json="", output_cap=1)
-    estimate = estimate_complete_input(packed, profile)
+    estimate = estimate_decision(model, payload_text, profile)
     decision = CapacityDecision(
         allowed=estimate.tokens <= total,
         reason=None if estimate.tokens <= total else "INPUT_EXCEEDS_CAPACITY",

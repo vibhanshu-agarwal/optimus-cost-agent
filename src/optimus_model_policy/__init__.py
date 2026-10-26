@@ -9,7 +9,9 @@ from optimus_model_policy.capacity import (
     InputEstimate,
     Message,
     PackedModelRequest,
+    decision_payload_text,
     estimate_complete_input,
+    estimate_decision,
     guard_request,
 )
 from optimus_model_policy.registry import (
@@ -52,7 +54,9 @@ __all__ = [
     "Role",
     "Tier",
     "ValidationIssue",
+    "decision_payload_text",
     "estimate_complete_input",
+    "estimate_decision",
     "guard_request",
     "load_registry",
     "ordered_assignments",

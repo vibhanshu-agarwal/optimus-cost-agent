@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
-from optimus.gateway.models import GatewayResponse, GatewayRouteAttempt, GatewayUsage
+from optimus.gateway.models import GatewayDecision, GatewayResponse, GatewayRouteAttempt, GatewayUsage
 from optimus_security.failure_facts import bounded, bounded_failure, exception_fact
 
 __all__ = [
@@ -47,6 +47,7 @@ __all__ = [
     "UPSTREAM_ATTEMPT_CODES",
     "AttemptIntegrityError",
     "ProviderAttempt",
+    "attempts_from_decision",
     "attempts_from_failure",
     "attempts_from_response",
     "first_error",
@@ -75,6 +76,7 @@ PREFLIGHT_REFUSAL_CODES = frozenset(
         "BINDING_VERSION_UNSUPPORTED",
         "CAPACITY_REFUSED",
         "DECISIONS_NEED_REGISTRY",
+        "DECISION_DISCLOSURE_UNSUPPORTED",
         "DISCLOSURE_INVALID",
         "DISCLOSURE_REQUIRED",
         "EMPIRICAL_ROUTE_STOPPED",
@@ -325,6 +327,11 @@ ROUTE_STOPPED_NO_RETRY = "No further request on this route will be sent while th
 def attempts_from_response(response: GatewayResponse) -> tuple[ProviderAttempt, ...]:
     """Every provider attempt behind a successful response."""
     return _attempts(response.route_attempts, response.gateway_usage, http_status=None)
+
+
+def attempts_from_decision(decision: GatewayDecision) -> tuple[ProviderAttempt, ...]:
+    """Every provider attempt behind a 200 decision reply (Plan 12.4 Task 5), attributed as for a model reply."""
+    return _attempts(decision.route_attempts, decision.gateway_usage, http_status=None)
 
 
 def attempts_from_failure(exc: BaseException) -> tuple[ProviderAttempt, ...]:

@@ -11,10 +11,12 @@ from urllib.request import Request, urlopen
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
 from optimus.gateway.models import (
+    GatewayDecision,
     GatewayResponse,
     GatewayRouteAttempt,
     GatewayUsage,
     build_responses_payload,
+    parse_decision_response,
     parse_gateway_response,
     parse_gateway_usage,
     parse_route_attempts,
@@ -151,6 +153,23 @@ class GatewayClient:
             )
         )
         return parse_gateway_response(body)
+
+    def create_decision(
+        self, *, model: str, state: dict[str, Any], questions: dict[str, Any], route_binding: RouteBinding
+    ) -> GatewayDecision:
+        """One classifier decision (Plan 12.4 Task 5): ``POST /v1/decisions`` with the request's binding. Errors arrive
+        as for any Gateway request; a 200 reply is parsed by :func:`parse_decision_response`."""
+        self._settings.validate_trusted_gateway()
+        body = self._transport.post_json(
+            GatewayRequest(
+                method="POST",
+                url=self._url("/v1/decisions"),
+                headers=self._json_headers(),
+                payload={"model": model, "state": state, "questions": questions, "route_binding": route_binding.to_wire()},
+                timeout_seconds=self._timeout_seconds,
+            )
+        )
+        return parse_decision_response(body)
 
     def post_tool_json(self, *, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not path.startswith("/v1/tools/"):

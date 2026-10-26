@@ -29,6 +29,7 @@ class TelemetryEventKind(StrEnum):
     RELEASE_GATE = "release_gate"
     GOAL_LOOP = "goal_loop"
     LOOP_RECOVERY = "loop_recovery"
+    AUTO_ROUTING = "auto_routing"
     SKILL_SELECTION = "skill_selection"
     SKILL_INVOCATION = "skill_invocation"
     AGENT_RUN = "agent_run"
@@ -562,6 +563,28 @@ class TelemetryEvent(BaseModel):
             request_id=request_id,
             occurred_at=occurred_at,
             payload=payload,
+        )
+
+    @classmethod
+    def auto_routing(
+        cls,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        occurred_at: datetime,
+        record: dict[str, Any],
+    ) -> TelemetryEvent:
+        """One Auto turn's routing record (Plan 12.4 Task 5). Content-free: fixed kinds, tiers, a confidence band and the
+        model ID, never the prompt, the classifier's input or answer text, or a confidence value."""
+        return cls(
+            kind=TelemetryEventKind.AUTO_ROUTING,
+            run_id=run_id,
+            trace_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=occurred_at,
+            payload=dict(record),
         )
 
     @classmethod

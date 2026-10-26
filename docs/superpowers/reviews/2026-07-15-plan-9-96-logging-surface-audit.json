@@ -1473,9 +1473,9 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus_gateway.decisions:handle_decision_request:json_serialization",
+      "key": "optimus_model_policy.capacity:decision_payload_text:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection (Plan 12.4 Task 1): handle_decision_request serializes the typed decision state and questions to canonical JSON only as the capacity check's measured input (admit_decision); the JSON is never persisted, logged or exported.",
+      "rationale": "Inspection (Plan 12.4 Tasks 1 and 5): decision_payload_text serializes a decision's typed state and questions to canonical JSON only as the capacity measure the Gateway's decision route (admit_decision) and the host's classifier fit share; the JSON is never persisted, logged or exported.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_decisions.py::test_a_typed_request_over_the_classifier_bound_is_refused_before_any_call",
       "evidence_tier": "unit"

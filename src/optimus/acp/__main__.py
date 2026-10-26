@@ -597,6 +597,8 @@ def main(argv: list[str] | None = None) -> int:
                 composition=candidate.security_literals.get(COMPOSITION_LITERAL_NAME),
             )
             auto_composition.default_model()
+            # Plan 12.4 Task 5: the classifier model is checked here too, before Redis, the Gateway or the server start.
+            auto_composition.classifier_model()
         else:
             # Plan 12.2 Task 5: under an enforced model registry an unusable model fails here with a
             # typed message rather than inside the runtime composition. Inactive: today's rules.

@@ -9,7 +9,6 @@ failed check on an exception route stops that model's route for the rest of the 
 
 from __future__ import annotations
 
-import json
 import uuid
 from typing import Any, Final
 
@@ -25,6 +24,7 @@ from optimus_gateway.responses import (
     sanitize_error_message,
 )
 from optimus_gateway.upstream_client import DecisionResult, UpstreamAttemptFailure, UpstreamClient
+from optimus_model_policy import decision_payload_text
 from optimus_model_policy.binding import ATTEMPT_COMPLETED, ATTEMPT_UNCERTAIN
 
 __all__ = ["DECISIONS_PATH", "handle_decision_request"]
@@ -76,8 +76,8 @@ def handle_decision_request(
         binding = parse_route_binding(request_body, policy)
         if binding is None:
             raise ModelPolicyRefusal("BINDING_REQUIRED")
-        # The typed request the capacity check measures: its canonical state and questions.
-        payload_text = json.dumps({"state": state, "questions": questions}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        # The typed request the capacity check measures: its canonical state and questions (shared with the host).
+        payload_text = decision_payload_text(state, questions)
         admitted = admit_decision(policy, model=model, payload_text=payload_text, binding=binding)
     except ModelPolicyRefusal as exc:
         return policy_refusal(exc)
