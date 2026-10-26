@@ -56,6 +56,7 @@ relevant records before proposing a change in their area.
 | [ADR-022: GitHub Issues as the work register](decisions/ADR-022-github-issues-as-the-work-register.md) | Corrects only ADR-021's pool-first intake: new plans, defects and follow-ups are created as issues, the unfinished remainder of the open work migrates in dependency-bounded groups, the backlog is transitional and documents keep scope, design, history and pointers; operator requirement accepted (source S8), mechanism proposed by Claude and reviewed by Codex |
 | [ADR-023: Plan 12.2 shipped admission and default planner](decisions/ADR-023-plan12-shipped-empirical-admission-and-default-planner.md) | One exact-snapshot empirical admission exception for Haiku 5.5 (`verified: false`) and the medium-then-easy default planner; operator policy approval recorded; ships with the Plan 12.2 delivery merge, and the ordinary proof is tracked in #237 |
 | [ADR-024: Accepts ADR-009 as scoped](decisions/ADR-024-accepts-adr-009-loop-control-phase-1-scope.md) | Loop control Phase 1: a detector, one nudge and a Continue/Stop check-in, escalation after Auto; operator D1–D3 (source S10) |
+| [ADR-026: Exception routes accept one unflagged guardrail stage](decisions/ADR-026-exception-routes-accept-one-unflagged-guardrail-stage.md) | #400 option b1: one `guardrail` stage reporting `flagged` false and no detection, decision, action, conflict or scope passes the exception-route pipeline check; every other stage still refuses; residual risk accepted by the operator |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 
 ## Research (input for Plan 12)
@@ -103,7 +104,7 @@ Live plans (each listed in the backlog's live plan registry):
 | [P11-FU-6 v2: bounded early POST rejection](superpowers/plans/2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | Gateway early-rejection correction |
 | [Local-hook UTF-8 repair](superpowers/plans/2026-09-06-local-hook-utf8-repair.md) | Pre-commit hook decoding fix |
 | [Evidence collector](superpowers/plans/evidence-handoff-evidence-collector-implementation.md) | Evidence-handoff collector |
-| [Plan 12.4 v7: Auto mode](superpowers/plans/2026-10-23-plan-12-4-auto-mode_v7.md) | Fixed tiers with models as configuration; classifier pilot (rules, Jev, Haiku, DSPy, hybrid); opt-in per-turn tier routing. v6 is in `archive/` |
+| [Plan 12.4 v8: Auto mode](superpowers/plans/2026-10-23-plan-12-4-auto-mode_v8.md) | Fixed tiers with models as configuration; classifier pilot (rules, Jev, Haiku, DSPy, hybrid); opt-in per-turn tier routing; N3 accepts one unflagged guardrail stage (#400). v6 and v7 are in `archive/` |
 
 ## Current designs
 
