@@ -13,6 +13,12 @@
 #   the exact variant Plan 12.2's qualification contract named; the base "openai" slug could reach the flex or fast
 #   variants at other prices.
 # Neither publisher documents a tokenizer the registry can use, so both name the conservative empirical estimator.
+#
+# The classifier (Plan 12.4 Checkpoint A, ADR-027, source S13): Jev 1.14, arm H's model, with its entry as reviewed for
+# the evaluation profile (the same catalogue facts and admission evidence). Jev answers on the System One decisions
+# endpoint, whose admission reserves no output tokens; the validator still requires a positive classifier reserve, so
+# 256 (v8 Design 1) is set and unused. Requests stay inside the classifier's 8,192 estimated-token bound.
+output_reserve_tokens: {classifier: 256}
 
 models:
   google/gemini-3.8-flash:
@@ -60,5 +66,41 @@ models:
       - "2026-10-25 free OpenRouter catalogue read (models/openai/gpt-6-luna/endpoints): openai/fast"
       - "ADR-004: easy tasks; Plan 12.4 v7 Design 2: the first easy input"
 
+  typesafe/jev-1.14:
+    origin: non-china
+    tier: ultra-cheap
+    prices: {input_usd_per_million: "0.042", output_usd_per_million: "0"}
+    data_use: {provider_may_train_on_inputs: "no", disclosure: none}
+    capabilities: {native_tools: false, text_planning_grammar: false, structured_output: true, reasoning_levels: []}
+    default_reasoning: null
+    route:
+      estimator: conservative-utf8
+      endpoints:
+        - {provider: typesafe, quantization: unknown, context_window_tokens: 262144, max_output_tokens: 235929, verified: true, observed_on: "2026-10-25"}
+    admission:
+      empirical_estimate:
+        evidence:
+          - "2026-10-25 free OpenRouter catalogue read: tokenizer listed as Other; no published tokenizer"
+        assumptions:
+          - "text-only input: the classifier input contract carries no images"
+          - "one token per UTF-8 byte of the canonical state and questions, plus 16 per message and 256 fixed"
+        limitations:
+          - "passing calls show only that the tested requests fitted, not a universal token bound"
+          - "a first call can exceed its estimate, or be charged, before the per-reply check stops later calls"
+      provider_family:
+        provider: typesafe
+        provider_name: TypeSafe
+        evidence:
+          - "2026-10-25 free OpenRouter catalogue read: one endpoint, tag typesafe, provider name TypeSafe"
+        limitations:
+          - "the base slug can reach any TypeSafe variant; the reply check identifies the provider, not a variant"
+          - "the System One endpoint reports no router attempt or pipeline, so those reply checks cannot run there"
+          - "the System One endpoint reports no finish status; the reply check verifies cost, answer types and values, and the model snapshot instead"
+    evidence:
+      - "2026-10-25 free OpenRouter catalogue read (models/typesafe/jev-1.14/endpoints) and System One API reference"
+      - "data use: TypeSafe documents that customer requests and responses are not used for training (research report, 2026-10-23)"
+      - "ADR-027 (source S13): arm H's model, selected by the Plan 12.4 pilot's pre-registered rule (Codex round 62)"
+
 roles:
   easy: [anthropic/claude-haiku-5.5, openai/gpt-6-luna]
+  classifier: [typesafe/jev-1.14]

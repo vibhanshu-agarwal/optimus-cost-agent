@@ -16,6 +16,7 @@ from optimus_model_policy.experimental import experimental_route
 from optimus_model_policy.registry import RegistrySnapshot, load_registry
 
 GEMINI, LUNA, HAIKU = "google/gemini-3.8-flash", "openai/gpt-6-luna", "anthropic/claude-haiku-5.5"
+JEV = "typesafe/jev-1.14"
 
 
 def _auto() -> RegistrySnapshot:
@@ -57,3 +58,17 @@ def test_replacing_a_model_is_an_edit_to_the_overlay(tmp_path: Path) -> None:
     edited = tmp_path / "auto_overlay.yaml"
     edited.write_text(text.replace("  easy: [anthropic/claude-haiku-5.5, openai/gpt-6-luna]\n", "  easy: [anthropic/claude-haiku-5.5]\n"), encoding="utf-8")
     assert select_eligible_models(load_registry(packaged_defaults(), edited), Role.EASY) == (HAIKU,)
+
+
+def test_the_classifier_is_jev_as_adr_027_accepted() -> None:
+    """Arm H's model: Jev alone in the classifier role, on its exact endpoint, with the validator's reserve set."""
+    snapshot = _auto()
+    assert select_eligible_models(snapshot, Role.CLASSIFIER) == (JEV,)
+    assert [issue for issue in validate_registry(snapshot) if issue.model_id == JEV] == []
+    assert snapshot.policy.output_reserve_tokens["classifier"] == 256
+    assert snapshot.policy.output_reserve_tokens["implementer"] == 32768  # maps combine: the defaults' reserves stay
+    entry = snapshot.policy.models[JEV]
+    assert entry.route.providers == ("typesafe",) and entry.route.estimator == "conservative-utf8"
+    route = experimental_route(snapshot, JEV)
+    assert route is not None and route.empirical_estimate and route.provider_family is not None
+    assert select_eligible_models(trusted_snapshot(), Role.CLASSIFIER) == ()  # ordinary launches assign no classifier
