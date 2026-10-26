@@ -14,7 +14,9 @@
 # classifier's complete-request bound (8,192 estimated tokens), far inside the window. Change this file only through
 # a reviewed change that also re-pins its effective hash (EVALUATION_HASH in test_profiles.py).
 
-output_reserve_tokens: {implementer: 32768, summarizer: 8192, classifier: 256}
+# Pilot deviation N4 (2026-10-26, Codex round 61): 1,024, not v8's 256. Haiku's low reasoning shares the output cap and
+# reached 254 tokens on a 21-token answer; one reply came back with no content. Folded into the Plan 12.4 successor.
+output_reserve_tokens: {implementer: 32768, summarizer: 8192, classifier: 1024}
 
 models:
   typesafe/jev-1.14:

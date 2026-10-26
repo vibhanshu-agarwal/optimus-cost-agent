@@ -176,7 +176,7 @@ def test_a_malformed_override_is_refused_by_code(monkeypatch: pytest.MonkeyPatch
     assert caught.value.code == "TEST_PROFILE_INVALID"
 
 
-EVALUATION_HASH = "59d3e44a169b7493d5c2faaacd67126ecea9b513f8f20d39c3521a6b9e851821"  # pragma: allowlist secret - registry identity, not a credential
+EVALUATION_HASH = "d8d0b90ec7a98df5d5737a550c862d1567ebeb6cf368e00c2248a0e125c634b6"  # pragma: allowlist secret - registry identity, not a credential
 JEV = "typesafe/jev-1.14"
 
 
