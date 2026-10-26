@@ -35,7 +35,7 @@ from optimus_model_policy.registry import RegistryError, RegistrySnapshot, load_
 
 __all__ = ["TEST_PROFILE_LITERAL_NAME", "TEST_PROFILE_NAMES", "TEST_PROFILES", "TestProfile", "compose_test_profile_snapshot", "registry_for_launch"]
 
-EVALUATION_HASH: Final = "44117b26e970d95a56b61cfae69a04383d7cef05516adf622f9dfdb919359553"  # pragma: allowlist secret - registry identity, not a credential
+EVALUATION_HASH: Final = "59d3e44a169b7493d5c2faaacd67126ecea9b513f8f20d39c3521a6b9e851821"  # pragma: allowlist secret - registry identity, not a credential
 """The Plan 12.4 evaluation profile's reviewed effective hash (test_profile_evaluation.yaml)."""
 
 TEST_PROFILE_LITERAL_NAME: Final = "_test_profile"

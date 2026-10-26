@@ -51,6 +51,7 @@ models:
         limitations:
           - "passing calls show only that the tested requests fitted, not a universal token bound"
           - "a first call can exceed its estimate, or be charged, before the per-reply check stops later calls"
+          - "the router pipeline check accepts one unflagged guardrail stage (#400 option b1, ADR-026); that does not prove the request or reply unchanged, or how the guardrail handled the data"
       provider_family:
         provider: anthropic
         provider_name: Anthropic

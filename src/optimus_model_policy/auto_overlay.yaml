@@ -32,6 +32,7 @@ models:
         limitations:
           - "passing calls show only that the tested requests fitted, not a universal token bound"
           - "a first call can exceed its estimate, or be charged, before the per-reply check stops later calls"
+          - "the router pipeline check accepts one unflagged guardrail stage (#400 option b1, ADR-026); that does not prove the request or reply unchanged, or how the guardrail handled the data"
     evidence:
       - "2026-10-25 free OpenRouter catalogue read (models/google/gemini-3.8-flash/endpoints): google-vertex/global, standard tier"
       - "ADR-004: complex 1st, escalation 1st, medium 3rd; coding benchmarks in evidence section H"
@@ -54,6 +55,7 @@ models:
         limitations:
           - "framing and finish behaviour are unverified (2026-10-08 disposition); the per-reply checks cover them"
           - "a first call can exceed its estimate, or be charged, before the per-reply check stops later calls"
+          - "the router pipeline check accepts one unflagged guardrail stage (#400 option b1, ADR-026); that does not prove the request or reply unchanged, or how the guardrail handled the data"
     evidence:
       - "2026-10-25 free OpenRouter catalogue read (models/openai/gpt-6-luna/endpoints): openai/fast"
       - "ADR-004: easy tasks; Plan 12.4 v7 Design 2: the first easy input"
