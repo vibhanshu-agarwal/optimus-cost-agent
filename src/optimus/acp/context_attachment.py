@@ -34,14 +34,14 @@ from optimus.gateway.route_binding import RouteIdentityError, RoutePolicy, regis
 from optimus_model_policy import IMPLEMENTER_ROLES, RegistrySnapshot, Role, select_eligible_models
 from optimus_model_policy.binding import disclosure_key
 
-__all__ = ["ordinary_attachment", "ordinary_route_policy"]
+__all__ = ["implementer_role", "ordinary_attachment", "ordinary_route_policy"]
 
 # The order in which an agent model's own implementer role is looked up: the default planner's (medium, then the
 # easy fallback), then the higher tiers. A model keeps its own tier; nothing is reassigned.
 _ROLE_ORDER = (Role.MEDIUM, Role.EASY, Role.COMPLEX, Role.ESCALATION)
 
 
-def _implementer_role(snapshot: RegistrySnapshot, model_id: str) -> Role:
+def implementer_role(snapshot: RegistrySnapshot, model_id: str) -> Role:
     for role in _ROLE_ORDER:
         if role in IMPLEMENTER_ROLES and model_id in select_eligible_models(snapshot, role):
             return role
@@ -50,7 +50,7 @@ def _implementer_role(snapshot: RegistrySnapshot, model_id: str) -> Role:
 
 def ordinary_route_policy(*, snapshot: RegistrySnapshot, model_id: str, shared_secret: str) -> RoutePolicy:
     """The ordinary launch's trusted planning/answer route policy for the resolved agent model."""
-    role = _implementer_role(snapshot, model_id)
+    role = implementer_role(snapshot, model_id)
     output_cap = snapshot.policy.output_reserve_tokens.get("implementer")
     if output_cap is None:
         raise RouteIdentityError("the trusted registry states no implementer output reserve")

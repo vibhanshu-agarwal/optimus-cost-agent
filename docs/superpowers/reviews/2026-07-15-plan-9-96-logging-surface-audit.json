@@ -1465,6 +1465,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.decisions:handle_decision_request:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 12.4 Task 1: the decision envelope's validation errors are fixed texts that echo no request content, and each still passes the shared sanitizer (sanitize_error_message) before the 400 reply; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_decisions.py::test_a_malformed_envelope_is_refused",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.decisions:handle_decision_request:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.4 Task 1): handle_decision_request serializes the typed decision state and questions to canonical JSON only as the capacity check's measured input (admit_decision); the JSON is never persisted, logged or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_decisions.py::test_a_typed_request_over_the_classifier_bound_is_refused_before_any_call",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.responses:handle_responses_request:exception_export",
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.responses:handle_responses_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",

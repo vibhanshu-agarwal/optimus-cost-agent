@@ -395,6 +395,7 @@ class AcpStreamServer:
         context_attachment: Any | None = None,
         session_seeder: Any | None = None,
         failure_telemetry: Any | None = None,
+        auto_router: Any | None = None,
     ) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
         # Correction plan v4, C4: the harness's workspace telemetry writer, passed into every ndjson session adapter
@@ -408,6 +409,8 @@ class AcpStreamServer:
         # one-time scenario seeder, passed into every ndjson session adapter. None: absent engine.
         self._context_attachment = context_attachment
         self._session_seeder = session_seeder
+        # Plan 12.4 Task 4: an Auto launch's per-turn router, which binds each turn's route and attachment itself.
+        self._auto_router = auto_router
         # Plan 9.96, Task 5 Step 2: resolved once by build_configured_server()
         # from the authorized agent environ and threaded down into
         # AcpDuplexAdapter via serve_ndjson — never read from os.environ here.
@@ -583,6 +586,7 @@ class AcpStreamServer:
             context_attachment=self._context_attachment,
             session_seeder=self._session_seeder,
             failure_telemetry=self._failure_telemetry,
+            auto_router=self._auto_router,
         )
         message_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         request_tasks: set[asyncio.Task[Any]] = set()

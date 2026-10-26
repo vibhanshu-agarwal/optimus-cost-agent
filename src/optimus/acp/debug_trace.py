@@ -499,6 +499,40 @@ def log_context_fault(*, run_id: str, phase: str, category: str, detail: str | N
         return
 
 
+# An Auto turn refused before any answer call, or routed by the classifier-failure rule (Plan 12.4 Task 4).
+AUTO_ROUTE_REASONS = frozenset(
+    {
+        "CLASSIFIER_NOT_INSTALLED",
+        "AUTO_NO_ROUTABLE_MODEL",
+        "ACCOUNTING_INTEGRITY",
+        "timeout",
+        "invalid_answer",
+        "abstention",
+        "stopped_classifier",
+        "error",
+    }
+)
+
+
+def log_auto_route(*, run_id: str, outcome: str, reason: str, telemetry: JsonlTelemetryWriter | None = None) -> None:
+    """An Auto turn's refusal (``outcome`` refused) or classifier failure (``outcome`` failure_rule) with its bounded
+    reason, in the trace and the always-on ``auto_route`` event. Never the prompt or the classifier's input."""
+
+    def data() -> dict[str, Any]:
+        return {"run_id": host_route_id(run_id), "outcome": outcome, "reason": bounded(reason, AUTO_ROUTE_REASONS)}
+
+    acp_debug_log(location="debug_trace.py:log_auto_route", message="auto route", data=data, hypothesis_id="P12.4-AUTO")
+    if telemetry is None:
+        return
+    try:
+        record = data()
+        run = record["run_id"]
+        session = host_session_id(run.split(":")[0]) if run not in (None, UNRECOGNIZED) else None
+        _emit_failure(telemetry, error_type="auto_route", record=record, run_id=run, session_id=session, request_id=None)
+    except Exception:  # noqa: BLE001 - a diagnostic never fails the turn
+        return
+
+
 def log_planning_replan_event(event: PlanningProgressEvent, *, stop_reason: str | None = None) -> None:
     """Record content-free multi-turn planning progress for ACP/debug evidence.
 

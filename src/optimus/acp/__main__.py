@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 import keyring
 
-from optimus.acp.auto_composition import compose_auto_composition
+from optimus.acp.auto_composition import AutoComposition, compose_auto_composition
 from optimus.acp.bootstrap import StartupConfigurationError, build_configured_server, resolve_ephemeral_hmac_flag
 from optimus.acp.debug_trace import (
     configure_debug_trace,
@@ -66,6 +66,7 @@ class _BuildServerKwargs(TypedDict):
     gateway_timeout_seconds: NotRequired[float]
     test_composition: NotRequired[TestComposition]
     stage_c: NotRequired[StageCLaunch]
+    auto_composition: NotRequired[AutoComposition]
 
 
 
@@ -609,11 +610,6 @@ def main(argv: list[str] | None = None) -> int:
     except StageCLaunchError as exc:
         print(f"optimus-agent: {exc.code}", file=sys.stderr)
         return 2
-    if auto_composition is not None:
-        # Plan 12.4 Task 4, in progress on this branch (never shipped): the composition, approval and Gateway parts
-        # exist, but the per-turn router does not yet, so an Auto launch is refused before any service starts.
-        print("optimus-agent: AUTO_NOT_AVAILABLE: Auto's per-turn router is not built yet", file=sys.stderr)
-        return 2
 
     def _start_local_dependencies() -> tuple[str | None, int | None]:
         """Start Redis (+ optional Phoenix). Returns (otlp_endpoint, error_exit)."""
@@ -722,6 +718,8 @@ def main(argv: list[str] | None = None) -> int:
                 build_server_kwargs["test_composition"] = test_composition
             if stage_c_launch is not None:
                 build_server_kwargs["stage_c"] = stage_c_launch
+            if auto_composition is not None:
+                build_server_kwargs["auto_composition"] = auto_composition
             server = build_configured_server(**build_server_kwargs)
         except StartupConfigurationError as exc:
             print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
