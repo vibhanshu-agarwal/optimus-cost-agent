@@ -1,0 +1,14 @@
+== tuning data, where a combination may legitimately be chosen (n = 130, repeats = 1)
+  B     penalty 0.446  under 1.5%  flip 0.0%  accuracy 60.0%  gates pass  classify $0.024/1k  routed $10.93/1k  p95 0.91s
+  D     penalty 0.492  under 12.3%  flip 0.0%  accuracy 75.4%  gates fail  classify $0.303/1k  routed $10.68/1k  p95 4.76s
+  MAX   penalty 0.392  under 8.5%  flip 0.0%  accuracy 77.7%  gates fail  classify $0.328/1k  routed $10.74/1k  p95 5.59s
+  GATE  penalty 0.462  under 11.5%  flip 0.0%  accuracy 76.9%  gates fail  classify $0.313/1k  routed $10.62/1k  p95 5.59s
+  MAX minus B penalty -0.054 [-0.208, +0.123]
+  GATE minus B penalty +0.015 [-0.162, +0.215]
+== test data, EXPLORATORY: already unsealed (n = 150, repeats = 3)
+  B     penalty 0.533  under 4.0%  flip 4.7%  accuracy 56.0%  gates pass  classify $0.024/1k  routed $10.64/1k  p95 0.83s
+  D     penalty 0.427  under 10.0%  flip 8.7%  accuracy 77.3%  gates fail  classify $0.291/1k  routed $10.37/1k  p95 4.68s
+  MAX   penalty 0.373  under 6.0%  flip 8.0%  accuracy 75.3%  gates fail  classify $0.315/1k  routed $10.37/1k  p95 5.46s
+  GATE  penalty 0.440  under 10.7%  flip 8.0%  accuracy 77.3%  gates fail  classify $0.297/1k  routed $10.26/1k  p95 5.43s
+  MAX minus B penalty -0.160 [-0.287, -0.027]
+  GATE minus B penalty -0.093 [-0.247, +0.067]

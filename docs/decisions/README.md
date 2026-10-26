@@ -147,6 +147,15 @@ by this folder.
      - Claude checked, read-only, that the quoted decision appears verbatim in a human user turn of the export's main
        transcript (`2026-10-26T04:17:04.480Z`). A full app export, not an excerpt. Raw S12 is archival provenance, never
        an operating, test or release dependency; S1–S11 retain their existing meanings.
+   - **Source S13.** The ADR-007 acceptance, the operator's message of 2026-10-26 in the Claude session for the Plan
+     12.4 Auto thread (session `bbe75542-b5c9-4de6-92d1-5e865d05eece`): accepting arm H as Auto mode's judge per the
+     pre-registered rule and Codex round 62, with its limitations, and the instruction to draft round 2.
+     - External transcript export: `optimus-handoff\decisions-sources\2026-10-26-claude-session-plan12-4-adr027-export.zip`,
+       produced by the app's session Export, 14,044,749 bytes.
+     - SHA-256: `35187F1129264F5622926FA788747312B65EA11536337307288A9D9DA38FCECB`.
+     - Claude checked, read-only, that the quoted decision appears verbatim in a human user turn of the export's main
+       transcript (`2026-10-26T12:49:38.157Z`). A full app export, not an excerpt. Raw S13 is archival provenance, never
+       an operating, test or release dependency; S1–S12 retain their existing meanings.
 2. **Label the decider.** Each record says who decided: the operator, an agent (Claude or Codex), or an
    agent proposal still awaiting the operator. A value an agent chose must never read as an operator
    requirement.
@@ -209,7 +218,7 @@ by this folder.
 | [004](ADR-004-curated-model-registry.md) | Curated model registry (YAML), tiers, origin rule, per-token selection among eligible models | Accepted-with-open-items; option C (the operator override) completed by [ADR-025](ADR-025-models-are-configuration-per-model-admission.md) | Operator; mechanism proposed by Claude, reviewed by Codex | 2026-09-30 |
 | [005](ADR-005-cost-alerts-not-limits.md) | Cost policy: alerts and warnings, not limits | Accepted; sequencing completed by [ADR-015](ADR-015-cost-stop-removal-sequencing.md); runtime migration still owed | Operator | 2026-09-30 |
 | [006](ADR-006-summarizer-model.md) | The summarizer comes from the ultra-cheap tier | Accepted-with-open-items | Operator | 2026-09-30 |
-| [007](ADR-007-auto-mode-tier-routing.md) | Auto mode: classify each request into a tier | Proposed | Operator direction; design by Claude, awaiting Codex | 2026-09-30 |
+| [007](ADR-007-auto-mode-tier-routing.md) | Auto mode: classify each request into a tier | Accepted by [ADR-027](ADR-027-accepts-adr-007-auto-judge-h.md), with arm H (rules, then Jev) as the judge; ADR-009 escalation is not a present safeguard | Operator direction; design by Claude; pilot reviewed by Codex | 2026-09-30 |
 | [008](ADR-008-final-review-step-and-modes.md) | A final review step, with Standard and Thorough modes | Proposed | Operator idea; design pending | 2026-09-30 |
 | [009](ADR-009-loop-control-without-stopping-the-user.md) | Loop control that is never open-ended and never silently stops the user | Accepted as scoped by [ADR-024](ADR-024-accepts-adr-009-loop-control-phase-1-scope.md) (detector, one nudge, check-in; escalation after Auto); interim cost-removal dependency clarified by [ADR-015](ADR-015-cost-stop-removal-sequencing.md) | Operator requirement; architecture by Claude, awaiting Codex | 2026-09-30 |
 | [010](ADR-010-data-handling-for-chinese-model-routes.md) | Data handling on Chinese-model routes: no restriction now | Deferred | Operator | 2026-09-30 |
@@ -229,6 +238,7 @@ by this folder.
 | [024](ADR-024-accepts-adr-009-loop-control-phase-1-scope.md) | Accepts [ADR-009](ADR-009-loop-control-without-stopping-the-user.md) as scoped for loop control Phase 1 (Plan 12.3): a detector, one nudge and a Continue/Stop check-in; thresholds 3, one nudge, Continue +3; the legacy goal loop retired; escalation after Auto | Accepted | Operator (D1–D3, source S10); mechanism details by Claude, reviewed by Codex | 2026-10-23 |
 | [025](ADR-025-models-are-configuration-per-model-admission.md) | Models are configuration: per-model admission evidence in each registry entry, a conservative default estimator, per-model stops and the operator override; partially supersedes [ADR-023](ADR-023-plan12-shipped-empirical-admission-and-default-planner.md) and completes [ADR-004](ADR-004-curated-model-registry.md) option C | Accepted | Operator (N1(a) and N2(a), source S11); mechanism details by Claude, reviewed by Codex | 2026-10-25 |
 | [026](ADR-026-exception-routes-accept-one-unflagged-guardrail-stage.md) | Exception routes accept exactly one unflagged `guardrail` router stage (`flagged` false; no detection, decision, action, conflict or scope); every other stage and fact still refuses; residual risk accepted (#400 option b1). 025 is held by the unmerged Plan 12.4 branch | Accepted | Operator (decision N3, source S12); recommended by Codex (round 58); drafted and filed by Claude | 2026-10-26 |
+| [027](ADR-027-accepts-adr-007-auto-judge-h.md) | Accepts [ADR-007](ADR-007-auto-mode-tier-routing.md) with arm H as Auto mode's per-turn judge: the rules when confident (≥ 0.8), otherwise Jev `choice`, routing one tier up below 0.95; selected by the Plan 12.4 pilot's pre-registered rule, with its limitations; round 2 to follow | Accepted | Operator (source S13); recommended by Codex (round 62); drafted and filed by Claude | 2026-10-26 |
 
 **Package A delivery:** [local accepted implementation and evidence](../superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md);
 the Plan 12.2 issue (#237), to which the backlog row now points, records current publication/next gates. The frozen ADR-013 repair decision and
