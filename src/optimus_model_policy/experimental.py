@@ -21,6 +21,9 @@ bound to that exact reviewed snapshot and model, keeps ``verified: false``, and 
 size estimate is empirical (passing calls show tested requests fitted, not a universal token bound), and the
 provider-family slug identifies Anthropic, not an exact variant or region. Full admission, disabled provider
 fallback, the response, usage and provider checks, the permanent route stop and receipt-first accounting all stay.
+A third residual (#400 option b1; Codex round 58; operator approval 2026-10-26): a reply whose router pipeline is
+exactly one unflagged ``guardrail`` stage, reporting no detection, decision, action, conflict or scope, is accepted.
+That does not prove the request or reply unchanged, or how the guardrail handled the data. Every other stage refuses.
 Because Haiku 5.5 is both the default planner and the summarizer on this route, one refused or unverifiable reply
 stops every later Haiku call (answers and summaries) for that Gateway process until it restarts. No other
 production snapshot is listed.

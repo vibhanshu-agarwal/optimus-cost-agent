@@ -45,7 +45,7 @@ from optimus_model_policy.binding import (
     verify_disclosure,
 )
 from optimus_model_policy.experimental import ExperimentalRoute, experimental_route
-from optimus_security.failure_facts import bounded
+from optimus_security.failure_facts import MISSING, bounded
 
 __all__ = [
     "AdmittedRequest",
@@ -56,6 +56,7 @@ __all__ = [
     "check_experimental_reply",
     "check_finish_status",
     "parse_route_binding",
+    "unflagged_guardrail_only",
 ]
 
 COMPLETE_FINISH: Final = "stop"
@@ -213,10 +214,35 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
     )
 
 
+def unflagged_guardrail_only(pipeline: tuple[str, ...], guardrails: object) -> bool:
+    """#400 option b1 (Codex round 58; operator approval, 2026-10-26): the one router pipeline an experimental route
+    accepts. That is exactly one ``guardrail`` stage with exactly one closed-facts record, reporting ``flagged`` false,
+    ``detected`` false or absent, no decision, no action, no verdict conflict and no scope
+    (``failure_facts.guardrail_stage_facts``). Values are compared by identity: an explicit null, a wrong type or an
+    unknown string is never a pass.
+
+    The operator accepted the residual risk: such a stage does not prove that the request or the reply was unchanged,
+    or how the guardrail handled the data. Any other stage, a second stage, or any other guardrail fact still
+    refuses."""
+    if pipeline != ("guardrail",) or not isinstance(guardrails, tuple) or len(guardrails) != 1:
+        return False
+    facts = guardrails[0]
+    return (
+        isinstance(facts, Mapping)
+        and facts.get("flagged") is False
+        and (facts.get("detected") is False or facts.get("detected") == MISSING)
+        and facts.get("decision") == MISSING
+        and facts.get("action") == MISSING
+        and facts.get("verdict_conflict") is False
+        and facts.get("guardrail_scope") == MISSING
+    )
+
+
 def check_experimental_reply(admitted: AdmittedRequest, result: Any, policy: GatewayModelPolicy | None = None) -> None:
     """Check one completed reply against what the experimental route assumed (Codex disposition,
     2026-10-09). The router metadata must name the expected provider (identity, not an exact variant),
-    report one attempt and no pipeline stage, and the reported prompt tokens must not exceed the
+    report one attempt and no pipeline stage other than the unflagged guardrail stage #400 accepts
+    (:func:`unflagged_guardrail_only`), and the reported prompt tokens must not exceed the
     empirical estimate the request was admitted under. Unreadable router metadata fails too: no
     provider is guessed. A failure is a permanent (422) billed result. A pass shows only that this
     request fitted. ``policy`` only lets the log's projection of a mismatched provider recognize the trusted
@@ -243,7 +269,7 @@ def check_experimental_reply(admitted: AdmittedRequest, result: Any, policy: Gat
         raise ModelPolicyRefusal("EMPIRICAL_ROUTER_METADATA_MISSING", "the reply carries no router attempt or pipeline record", status=422)
     if attempt != 1:
         raise ModelPolicyRefusal("EMPIRICAL_ROUTER_FALLBACK", f"the router reports attempt {attempt}", status=422)
-    if pipeline:
+    if pipeline and not unflagged_guardrail_only(pipeline, getattr(result, "router_guardrails", None)):
         raise ModelPolicyRefusal("EMPIRICAL_ROUTER_PIPELINE", f"the router ran {', '.join(pipeline)}", status=422)
     if result.input_tokens > admitted.decision.input_tokens:
         raise ModelPolicyRefusal(
