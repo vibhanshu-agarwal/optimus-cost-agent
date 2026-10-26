@@ -7,16 +7,19 @@ from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import create_autospec
 
 import pytest
 
 from optimus.acp.debug_trace import reset_debug_trace_context
 from optimus.acp.preflight import PreflightFailure, run_preflight
 from optimus.agent.state_store import RedisAgentStateStore
+from optimus.gateway.client import GatewayClient
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.redis.async_bridge import shutdown_background_loop
 from optimus.redis.runtime import RedisRuntime
 from optimus.telemetry.redis_adapter import RedisTelemetryAdapter
+from tests.support.contract_doubles import contract_call_scope
 from tools.plan1126_unrun_binding import (
     binding_commit_available,
     format_terminal_summary,
@@ -27,6 +30,14 @@ from tools.plan1126_unrun_binding import (
 from tools.testing import run_context, run_context_guard, run_context_xdist
 
 pytest_plugins = ("tests.support.profiles_plugin",)
+
+
+@pytest.fixture(autouse=True)
+def contract_call_log():
+    """Unexpected calls remain visible even when production catches the exception."""
+    with contract_call_scope() as logs:
+        yield logs
+
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _PLAN1126_UNRUN_COUNT: pytest.StashKey[int] = pytest.StashKey()
@@ -344,8 +355,10 @@ class FakeGatewayClient:
     def __init__(self, output_text: str = "Plan text") -> None:
         self.calls: list[dict[str, object]] = []
         self.output_text = output_text
+        self.checked = create_autospec(GatewayClient, instance=True, spec_set=True)
+        self.checked.create_response.side_effect = self.create_response
 
-    def create_response(self, *, model: str, input_text: str, metadata=None) -> GatewayResponse:
+    def create_response(self, *, model: str, input_text: str, metadata=None, route_binding=None) -> GatewayResponse:
         self.calls.append({"model": model, "input_text": input_text, "metadata": metadata})
         return GatewayResponse(
             response_id="resp-1",

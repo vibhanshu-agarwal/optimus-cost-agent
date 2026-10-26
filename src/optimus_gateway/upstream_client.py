@@ -76,7 +76,8 @@ class ProviderMessageResult:
     (compression, guardrails, ...); empty when none ran, ``None`` without router metadata."""
     router_guardrails: tuple[dict[str, Any], ...] | None = None
     """Each ``guardrail`` stage's closed facts, in pipeline order (``failure_facts.guardrail_stage_facts``, #400);
-    empty when none ran, ``None`` without router metadata. Diagnostic only: no reply check reads them."""
+    empty when none ran, ``None`` without router metadata. Only the experimental route's pipeline check reads them,
+    to accept the one unflagged stage of #400 option b1 (``model_policy.unflagged_guardrail_only``)."""
     router_metadata_error: str | None = None
     """Why the router metadata could not be read (malformed, or more than one selected endpoint). Its
     routing fields are then all ``None``; the reply's usage and cost do not depend on it."""

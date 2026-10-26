@@ -1,4 +1,5 @@
 from decimal import Decimal
+from functools import partial
 from unittest.mock import create_autospec
 
 import pytest
@@ -8,11 +9,16 @@ import redis.asyncio as aioredis
 from optimus.agent.state_store import AgentPlanRecord, InMemoryAgentStateStore, RedisAgentStateStore, validate_redis_url
 from optimus.redis.runtime import CloseablePool, RedisRuntime
 from optimus.runtime.modes import ExecutionMode
+from tests.support.contract_doubles import new_contract_call_log
 
 
 def _checked_redis(script, *, asynchronous=False):
     checked = create_autospec(aioredis.Redis if asynchronous else redis.Redis, instance=True, spec_set=True)
+    calls = new_contract_call_log("Redis")
     for name in ("hset", "hgetall", "expire", "ping", "aclose"):
+        if not hasattr(checked, name):
+            continue
+        getattr(checked, name).side_effect = partial(calls.reject, name)
         if hasattr(script, name):
             getattr(checked, name).side_effect = getattr(script, name)
     return checked

@@ -74,7 +74,7 @@ def _runner(
     usage_callback: callable | None = None,
 ) -> PlanningLoopRunner:
     return PlanningLoopRunner(
-        gateway_client=getattr(gateway, "checked", gateway),
+        gateway_client=gateway.checked,
         model="glm-5.2",
         policy=policy or PlanningLoopPolicy(),
         workspace_root=tmp_path,
@@ -180,18 +180,24 @@ def test_repeated_unparseable_responses_map_to_unparseable_stop(tmp_path):
 
 def test_repeated_gateway_failures_map_to_gateway_failure_stop(tmp_path):
     class FailingGateway(ScriptingGateway):
+        def __init__(self, scripts):
+            super().__init__(scripts)
+            self.attempts = 0
+
         def create_response(
             self,
             *,
             model: str,
             input_text: str,
-            metadata: dict[str, object] | None = None,
+            metadata: dict[str, object] | None = None, route_binding=None,
         ) -> GatewayResponse:
+            self.attempts += 1
             raise RuntimeError("gateway unavailable")
 
+    gateway = FailingGateway([])
     result = _runner(
         tmp_path,
-        gateway=FailingGateway([]),
+        gateway=gateway,
         policy=PlanningLoopPolicy(max_planning_turns=3),
     ).run(
         run_id="run-1",
@@ -206,6 +212,7 @@ def test_repeated_gateway_failures_map_to_gateway_failure_stop(tmp_path):
     assert result.total_cost_usd == Decimal("0")
     assert result.cost_complete is False
     assert result.unknown_cost_attempt_count == 1
+    assert gateway.attempts == 1
 
 
 def test_repeated_identical_read_more_maps_to_read_stop(tmp_path):
@@ -271,8 +278,8 @@ def test_refusal_wins_wall_clock(tmp_path):
     now_value = {"current": start}
 
     class WallClockAfterFirstTurnGateway(ScriptingGateway):
-        def create_response(self, *, model: str, input_text: str, metadata: dict[str, object] | None = None):
-            response = super().create_response(model=model, input_text=input_text, metadata=metadata)
+        def create_response(self, *, model: str, input_text: str, metadata: dict[str, object] | None = None, route_binding=None):
+            response = super().create_response(model=model, input_text=input_text, metadata=metadata, route_binding=route_binding)
             if len(self.calls) >= 2:
                 now_value["current"] = late
             return response
@@ -305,8 +312,8 @@ def test_human_halt_wins_refusal_race(tmp_path):
     halt_after_response = {"active": False}
 
     class HaltAfterResponseGateway(ScriptingGateway):
-        def create_response(self, *, model: str, input_text: str, metadata: dict[str, object] | None = None):
-            response = super().create_response(model=model, input_text=input_text, metadata=metadata)
+        def create_response(self, *, model: str, input_text: str, metadata: dict[str, object] | None = None, route_binding=None):
+            response = super().create_response(model=model, input_text=input_text, metadata=metadata, route_binding=route_binding)
             halt_after_response["active"] = True
             return response
 
@@ -771,13 +778,15 @@ class FailThenSucceedGateway:
 
     def __init__(self) -> None:
         self.attempts = 0
+        self.checked = create_autospec(GatewayClient, instance=True, spec_set=True)
+        self.checked.create_response.side_effect = self.create_response
 
     def create_response(
         self,
         *,
         model: str,
         input_text: str,
-        metadata: dict[str, object] | None = None,
+        metadata: dict[str, object] | None = None, route_binding=None,
     ) -> GatewayResponse:
         self.attempts += 1
         if self.attempts == 1:
@@ -809,13 +818,15 @@ class PermanentFailWithUsageGateway:
 
     def __init__(self) -> None:
         self.attempts = 0
+        self.checked = create_autospec(GatewayClient, instance=True, spec_set=True)
+        self.checked.create_response.side_effect = self.create_response
 
     def create_response(
         self,
         *,
         model: str,
         input_text: str,
-        metadata: dict[str, object] | None = None,
+        metadata: dict[str, object] | None = None, route_binding=None,
     ) -> GatewayResponse:
         self.attempts += 1
         raise GatewayHttpError(
@@ -835,13 +846,15 @@ class UnknownCostGateway:
 
     def __init__(self) -> None:
         self.attempts = 0
+        self.checked = create_autospec(GatewayClient, instance=True, spec_set=True)
+        self.checked.create_response.side_effect = self.create_response
 
     def create_response(
         self,
         *,
         model: str,
         input_text: str,
-        metadata: dict[str, object] | None = None,
+        metadata: dict[str, object] | None = None, route_binding=None,
     ) -> GatewayResponse:
         self.attempts += 1
         raise GatewayHttpError(503, "temporary outage")
@@ -852,13 +865,15 @@ class ReportedThenUnknownGateway:
 
     def __init__(self) -> None:
         self.attempts = 0
+        self.checked = create_autospec(GatewayClient, instance=True, spec_set=True)
+        self.checked.create_response.side_effect = self.create_response
 
     def create_response(
         self,
         *,
         model: str,
         input_text: str,
-        metadata: dict[str, object] | None = None,
+        metadata: dict[str, object] | None = None, route_binding=None,
     ) -> GatewayResponse:
         self.attempts += 1
         if self.attempts == 1:
@@ -880,13 +895,15 @@ class BudgetCapGateway:
 
     def __init__(self) -> None:
         self.attempts = 0
+        self.checked = create_autospec(GatewayClient, instance=True, spec_set=True)
+        self.checked.create_response.side_effect = self.create_response
 
     def create_response(
         self,
         *,
         model: str,
         input_text: str,
-        metadata: dict[str, object] | None = None,
+        metadata: dict[str, object] | None = None, route_binding=None,
     ) -> GatewayResponse:
         self.attempts += 1
         raise GatewayHttpError(
@@ -1123,7 +1140,7 @@ def test_planning_loop_runner_accepts_keyword_only_client_mcp_service(tmp_path):
         ]
     )
     result = PlanningLoopRunner(
-        gateway_client=getattr(gateway, "checked", gateway),
+        gateway_client=gateway.checked,
         model="glm-5.2",
         policy=PlanningLoopPolicy(max_planning_turns=3),
         workspace_root=tmp_path,
@@ -1140,7 +1157,7 @@ def test_planning_loop_runner_accepts_keyword_only_client_mcp_service(tmp_path):
 
 def test_contract_gateway_boundary_rejects_unknown_attributes():
     script = ScriptingGateway([])
-    boundary = getattr(script, "checked", script)
+    boundary = script.checked
     with pytest.raises(AttributeError):
         boundary.unknown_gateway_operation = True
     with pytest.raises(TypeError):
@@ -1161,7 +1178,7 @@ class SizeListReadGateway(ScriptingGateway):
     without one, as the prompt's re-read rule requires. A fixed script would pass on the unfixed loop,
     because guarded reads never check that their size was shown (Codex round 34)."""
 
-    def create_response(self, *, model, input_text, metadata=None):
+    def create_response(self, *, model, input_text, metadata=None, route_binding=None):
         if len(self.calls) == 1:
             sizes = _SIZE_LIST_LINE.findall(input_text)
             reply = (
@@ -1170,7 +1187,7 @@ class SizeListReadGateway(ScriptingGateway):
                 else "REFUSE: no listed byte size to ground the re-read.\n"
             )
             self._scripts[0] = (reply, *self._scripts[0][1:])
-        return super().create_response(model=model, input_text=input_text, metadata=metadata)
+        return super().create_response(model=model, input_text=input_text, metadata=metadata, route_binding=route_binding)
 
 
 def _scripts(*replies: str) -> list[tuple[str, Decimal, str]]:
@@ -1325,12 +1342,12 @@ class NoticeFollowingGateway(ScriptingGateway):
     """Turn 2 recovers only when its input carries the OBSERVE notice; without it, it repeats run 3's omission, so the
     unfixed loop stops at the repeat limit (Codex round 44: a double that cannot recover without the notice)."""
 
-    def create_response(self, *, model, input_text, metadata=None):
+    def create_response(self, *, model, input_text, metadata=None, route_binding=None):
         if len(self.calls) == 1:
             size = (self.workspace / "target.py").stat().st_size
             reply = f"OBSERVE: re-read target.py\nREAD: target.py#bytes=0:{size}\n" if _notice("INTERMEDIATE_REQUIRES_OBSERVE") in input_text else MISSING_OBSERVE
             self._scripts[0] = (reply, *self._scripts[0][1:])
-        return super().create_response(model=model, input_text=input_text, metadata=metadata)
+        return super().create_response(model=model, input_text=input_text, metadata=metadata, route_binding=route_binding)
 
 
 def test_the_feedback_table_covers_exactly_the_closed_codes_with_fixed_text():
@@ -1413,12 +1430,12 @@ def test_the_notice_never_carries_reply_content(tmp_path):
 class _FailsOnceAfterTurnOne(ScriptingGateway):
     """Turn 1 is malformed; turn 2's first wire attempt fails transiently and its retry answers."""
 
-    def create_response(self, *, model, input_text, metadata=None):
+    def create_response(self, *, model, input_text, metadata=None, route_binding=None):
         if len(self.calls) == 1 and not getattr(self, "failed", False):
             self.failed = True
             self.failed_input = input_text
             raise GatewayHttpError(503, "temporary overload", gateway_usage=GatewayUsage(gateway_request_id="gw-503", provider="glm", billing_units=1, cost_usd=Decimal("0.001")))
-        return super().create_response(model=model, input_text=input_text, metadata=metadata)
+        return super().create_response(model=model, input_text=input_text, metadata=metadata, route_binding=route_binding)
 
 
 def test_the_notice_is_stable_across_a_turns_wire_retry(tmp_path):

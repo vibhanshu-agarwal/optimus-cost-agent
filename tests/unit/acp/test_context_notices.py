@@ -25,6 +25,7 @@ from optimus.acp.spec import (
 )
 from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.runtime.modes import ExecutionMode
+from tests.support.contract_doubles import checked_agent_runner
 from tests.unit.acp.test_context_engine_admission import (
     FlakyEngine,
     SummarizerCall,
@@ -481,7 +482,7 @@ async def test_the_session_notice_channel_delivers_the_contributor_notice_before
     outbound = RecordingOutboundChannel()
     client = _ObservingClient(outbound)
     adapter = AcpDuplexAdapter(
-        runner=DispatchingRunner(), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound,
+        runner=checked_agent_runner(DispatchingRunner()), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound,
         context_attachment=_contributor_attachment(client),
     )  # fmt: skip
     session_id = await new_session(adapter, tmp_path, mode="chat")
@@ -509,7 +510,7 @@ async def test_an_undelivered_contributor_notice_sends_no_summary(tmp_path):
     outbound.notify = notify  # type: ignore[method-assign]
     client = _ObservingClient(outbound)
     adapter = AcpDuplexAdapter(
-        runner=DispatchingRunner(), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound,
+        runner=checked_agent_runner(DispatchingRunner()), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound,
         context_attachment=_contributor_attachment(client),
     )  # fmt: skip
     session_id = await new_session(adapter, tmp_path, mode="chat")

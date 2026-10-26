@@ -138,6 +138,15 @@ by this folder.
      - Claude checked, read-only, that each quoted decision appears verbatim in a user turn of the export's main
        transcript. A full app export, not an excerpt. Raw S11 is archival provenance, never an operating, test or
        release dependency; S1–S10 retain their existing meanings.
+   - **Source S12.** The #400 (R-15) decision N3, the operator's message of 2026-10-26 in the Claude session for the
+     Plan 12.4 Auto thread (session `bbe75542-b5c9-4de6-92d1-5e865d05eece`): the approval of option b1 with Codex round
+     58's conditions and its residual risk, main-first delivery, and posting the round-58 review to #400.
+     - External transcript export: `optimus-handoff\decisions-sources\2026-10-26-claude-session-400-b1-export.zip`, produced
+       by the app's session Export, 10,476,954 bytes.
+     - SHA-256: `08947E807171B0C3259BED316490567CE1E2B4A27867200DFDF6345029753618`.
+     - Claude checked, read-only, that the quoted decision appears verbatim in a human user turn of the export's main
+       transcript (`2026-10-26T04:17:04.480Z`). A full app export, not an excerpt. Raw S12 is archival provenance, never
+       an operating, test or release dependency; S1–S11 retain their existing meanings.
 2. **Label the decider.** Each record says who decided: the operator, an agent (Claude or Codex), or an
    agent proposal still awaiting the operator. A value an agent chose must never read as an operator
    requirement.
@@ -219,6 +228,7 @@ by this folder.
 | [023](ADR-023-plan12-shipped-empirical-admission-and-default-planner.md) | Plan 12.2 shipped empirical admission exception (Haiku 5.5, exact registry hash, `verified: false`) and medium-then-easy default planner; partially supersedes the verified-only admission and medium-only default/activation portions of earlier contracts and the related [ADR-003](ADR-003-context-ceiling-and-history-limits.md), [ADR-004](ADR-004-curated-model-registry.md) and [ADR-006](ADR-006-summarizer-model.md) integration claims | Accepted-with-open-items: the policy is accepted for the approved offline implementation, which ships with the Plan 12.2 delivery merge; the ordinary-launch proof for the shipped candidate is tracked in #237. The exception's binding to one hash and one model is superseded by [ADR-025](ADR-025-models-are-configuration-per-model-admission.md) | Operator (policy: the direct answer "Approved" in Codex chat, source S9; relayed to Claude in #237 6249169293, which is coordination evidence, not a new approval); drafted by Codex, filed by Claude | 2026-10-18 |
 | [024](ADR-024-accepts-adr-009-loop-control-phase-1-scope.md) | Accepts [ADR-009](ADR-009-loop-control-without-stopping-the-user.md) as scoped for loop control Phase 1 (Plan 12.3): a detector, one nudge and a Continue/Stop check-in; thresholds 3, one nudge, Continue +3; the legacy goal loop retired; escalation after Auto | Accepted | Operator (D1–D3, source S10); mechanism details by Claude, reviewed by Codex | 2026-10-23 |
 | [025](ADR-025-models-are-configuration-per-model-admission.md) | Models are configuration: per-model admission evidence in each registry entry, a conservative default estimator, per-model stops and the operator override; partially supersedes [ADR-023](ADR-023-plan12-shipped-empirical-admission-and-default-planner.md) and completes [ADR-004](ADR-004-curated-model-registry.md) option C | Accepted | Operator (N1(a) and N2(a), source S11); mechanism details by Claude, reviewed by Codex | 2026-10-25 |
+| [026](ADR-026-exception-routes-accept-one-unflagged-guardrail-stage.md) | Exception routes accept exactly one unflagged `guardrail` router stage (`flagged` false; no detection, decision, action, conflict or scope); every other stage and fact still refuses; residual risk accepted (#400 option b1). 025 is held by the unmerged Plan 12.4 branch | Accepted | Operator (decision N3, source S12); recommended by Codex (round 58); drafted and filed by Claude | 2026-10-26 |
 
 **Package A delivery:** [local accepted implementation and evidence](../superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md);
 the Plan 12.2 issue (#237), to which the backlog row now points, records current publication/next gates. The frozen ADR-013 repair decision and

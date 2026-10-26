@@ -25,6 +25,7 @@ from optimus.acp.shapes import AGENT_MESSAGE_BLOCK_SEPARATOR
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus, AgentToolCall
 from optimus.runtime.modes import ExecutionMode
+from tests.support.contract_doubles import checked_agent_runner
 
 _SCHEMA_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "acp" / "acp-v1-schema.json"
 _SCHEMA = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -109,7 +110,7 @@ def _adapter(
         outbound = RecordingOutboundChannel()
     runner = runner or _ModeRunner()
     adapter = AcpDuplexAdapter(
-        runner=runner,
+        runner=checked_agent_runner(runner),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -427,7 +428,7 @@ async def test_an_ambiguous_mode_update_is_not_success_and_a_same_mode_retry_res
     dedicated.start()
     try:
         adapter = AcpDuplexAdapter(
-            runner=_ModeRunner(),
+            runner=checked_agent_runner(_ModeRunner()),
             workspace_root=tmp_path,
             sessions=InMemoryAcpSpecSessionStore(),
             outbound=NdjsonOutboundChannel(_UnusedLineWriter(), dedicated_writer=dedicated),

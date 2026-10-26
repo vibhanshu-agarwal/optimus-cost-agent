@@ -57,6 +57,7 @@ relevant records before proposing a change in their area.
 | [ADR-023: Plan 12.2 shipped admission and default planner](decisions/ADR-023-plan12-shipped-empirical-admission-and-default-planner.md) | One exact-snapshot empirical admission exception for Haiku 5.5 (`verified: false`) and the medium-then-easy default planner; operator policy approval recorded; ships with the Plan 12.2 delivery merge, and the ordinary proof is tracked in #237 |
 | [ADR-024: Accepts ADR-009 as scoped](decisions/ADR-024-accepts-adr-009-loop-control-phase-1-scope.md) | Loop control Phase 1: a detector, one nudge and a Continue/Stop check-in, escalation after Auto; operator D1–D3 (source S10) |
 | [ADR-025: Models are configuration](decisions/ADR-025-models-are-configuration-per-model-admission.md) | Per-model admission evidence in each registry entry, a conservative default estimator, per-model stops and the operator override; operator N1(a) and N2(a) (source S11) |
+| [ADR-026: Exception routes accept one unflagged guardrail stage](decisions/ADR-026-exception-routes-accept-one-unflagged-guardrail-stage.md) | #400 option b1: one `guardrail` stage reporting `flagged` false and no detection, decision, action, conflict or scope passes the exception-route pipeline check; every other stage still refuses; residual risk accepted by the operator |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 
 ## Research (input for Plan 12)
@@ -86,7 +87,8 @@ Status, priority and ownership live in the record's GitHub issue; the transition
 | [Work status table][work-status-hosted] | Live table of the repository's GitHub issues, the work register, hosted on GitHub Pages (no checkout needed); the issues are authoritative. Source: [`work-status.html`](work-status.html). Fallback: the repository's open issues on GitHub, linked from the page and from the backlog |
 | [Phase 1 roadmap](superpowers/plans/2026-07-01-phase-1-roadmap.md) | Historical sequencing of Phase 1 |
 | [Plan 11 v1.0 milestone charter](superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md) | What v1.0 must contain |
-| [Contract-checked test doubles](superpowers/plans/hardening-test-double-contracts-implementation.md) | Approved one-cohort test-boundary contract; work record #328 |
+| [Contract-checked test doubles](superpowers/plans/hardening-test-double-contracts-implementation_v2.md) | Approved completion contract (authoring v8); work record #328 |
+| [Test-double completion evidence](superpowers/reports/test-double-completion-cohort.md) | Source-bound completion-cohort execution receipt |
 | [Test-double cohort evidence](superpowers/reports/2026-10-20-test-double-contracts-cohort.md) | Source-bound conversion and verification receipt for #328 |
 | [Hardening masterplan](superpowers/plans/hardening-runtime-quality-masterplan.md) | The 15 hardening tracks and their status |
 | [Hardening: CI guardrail truthfulness](superpowers/plans/hardening-ci-guardrail-truthfulness-implementation.md) | CI guardrail enforcement contract |
@@ -103,7 +105,7 @@ Live plans (each listed in the backlog's live plan registry):
 | [P11-FU-6 v2: bounded early POST rejection](superpowers/plans/2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | Gateway early-rejection correction |
 | [Local-hook UTF-8 repair](superpowers/plans/2026-09-06-local-hook-utf8-repair.md) | Pre-commit hook decoding fix |
 | [Evidence collector](superpowers/plans/evidence-handoff-evidence-collector-implementation.md) | Evidence-handoff collector |
-| [Plan 12.4 v7: Auto mode](superpowers/plans/2026-10-23-plan-12-4-auto-mode_v7.md) | Fixed tiers with models as configuration; classifier pilot (rules, Jev, Haiku, DSPy, hybrid); opt-in per-turn tier routing. v6 is in `archive/` |
+| [Plan 12.4 v8: Auto mode](superpowers/plans/2026-10-23-plan-12-4-auto-mode_v8.md) | Fixed tiers with models as configuration; classifier pilot (rules, Jev, Haiku, DSPy, hybrid); opt-in per-turn tier routing; N3 accepts one unflagged guardrail stage (#400). v6 and v7 are in `archive/` |
 
 ## Current designs
 

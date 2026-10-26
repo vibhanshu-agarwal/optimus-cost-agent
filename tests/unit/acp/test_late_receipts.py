@@ -39,6 +39,7 @@ from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.runtime.modes import ExecutionMode
 from optimus.usage.cost_alerts import AlertPolicy
 from optimus.usage.turn_settlement import StageReceipt, TurnSettlement
+from tests.support.contract_doubles import checked_agent_runner
 from tests.unit.acp.test_context_engine_admission import (
     SummarizerCall,
     make_adapter,
@@ -235,7 +236,7 @@ class _PaidThenBroken:
 async def test_an_exception_after_a_paid_attempt_alerts_once_and_keeps_the_cost(tmp_path) -> None:
     store, outbound = InMemoryAcpSpecSessionStore(), RecordingOutboundChannel()
     adapter = AcpDuplexAdapter(
-        runner=_PaidThenBroken(), workspace_root=tmp_path, sessions=store, outbound=outbound,
+        runner=checked_agent_runner(_PaidThenBroken()), workspace_root=tmp_path, sessions=store, outbound=outbound,
         alert_policies=(AlertPolicy(scope="turn", thresholds_usd=(Decimal("0.002"),)),),
     )  # fmt: skip
     session_id = await new_session(adapter, tmp_path, mode="chat")
@@ -267,7 +268,7 @@ async def test_an_outbound_failure_exit_still_alerts_in_its_turn(tmp_path) -> No
 
     outbound.request = refuse  # type: ignore[method-assign]
     adapter = AcpDuplexAdapter(
-        runner=Runner(), workspace_root=tmp_path, sessions=store, outbound=outbound,
+        runner=checked_agent_runner(Runner()), workspace_root=tmp_path, sessions=store, outbound=outbound,
         alert_policies=(AlertPolicy(scope="session", thresholds_usd=(Decimal("0.002"),)),),
     )  # fmt: skip
     session_id = await new_session(adapter, tmp_path)
@@ -467,7 +468,7 @@ async def test_an_unconfirmed_notice_times_out_sends_nothing_and_is_never_counte
     outbound.notify = notify  # type: ignore[method-assign]
     client = _ObservingClient(outbound)
     adapter = AcpDuplexAdapter(
-        runner=DispatchingRunner(), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound,
+        runner=checked_agent_runner(DispatchingRunner()), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound,
         context_attachment=_contributor_attachment(client),
     )  # fmt: skip
     session_id = await new_session(adapter, tmp_path, mode="chat")

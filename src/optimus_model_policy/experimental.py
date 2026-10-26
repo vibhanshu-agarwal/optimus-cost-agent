@@ -12,12 +12,17 @@ An entry's ``admission`` block relaxes up to two registry rules for that model o
 The block is data, not code: it is part of the canonical policy, so it changes the effective hash and is admitted
 only once the operator approves that hash in the launch approval (ADR-025 supersedes the code-pinned table that
 Plan 12.2 bound to one snapshot hash and one model). Every exception route keeps the usage, finish, one-attempt and
-no-pipeline reply checks, disabled provider fallback, receipt-first accounting and a permanent per-model stop for the
+pipeline reply checks, disabled provider fallback, receipt-first accounting and a permanent per-model stop for the
 rest of the Gateway's life after a failed check.
 
 The hashes below are review pins, never admission keys: the two Haiku test profiles' reviewed snapshots
 (``test_profiles.py`` refuses a profile that composes to anything else) and the packaged defaults' reviewed
 snapshot, which the shipped defaults compose to exactly (they are "old defaults + the attached override").
+
+Router pipelines (#400 option b1, ADR-026; operator approval 2026-10-26): an exception route's reply passes with exactly
+one unflagged ``guardrail`` stage that reports no detection, decision, action, conflict or scope. That does not prove the
+request or reply unchanged, or how the guardrail handled the data; each route's admission limitations record it. Every
+other stage refuses.
 """
 
 from __future__ import annotations

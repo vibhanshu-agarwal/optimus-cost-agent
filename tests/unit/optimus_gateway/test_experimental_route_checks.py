@@ -4,7 +4,8 @@ On the reviewed experimental test route (``optimus_model_policy.experimental``) 
 is checked against what the route assumed:
 
 - the router metadata's selected provider is the expected one (provider identity, not an exact variant);
-- the router made one attempt (no fallback) and ran no pipeline stage (no compression, guardrail, ...);
+- the router made one attempt (no fallback) and ran no pipeline stage (no compression, guardrail, ...), except
+  the one unflagged guardrail stage #400 option b1 accepts (ADR-026);
 - the reported prompt tokens do not exceed the empirical estimate the request was admitted under.
 
 A failed check fails that call as a permanent, billed result (its usage and attempt are kept, never
@@ -55,6 +56,7 @@ class Replying(RecordingUpstream):
         provider: str | None = "Anthropic",
         attempt: int | None = 1,
         pipeline: tuple[str, ...] | None = (),
+        guardrails: object = None,
         input_tokens: int = ESTIMATE,
         metadata_error: str | None = None,
     ) -> None:
@@ -63,6 +65,7 @@ class Replying(RecordingUpstream):
             "resolved_provider": provider,
             "router_attempt": attempt,
             "router_pipeline": pipeline,
+            "router_guardrails": guardrails,
             "input_tokens": input_tokens,
             "router_metadata_error": metadata_error,
         }
@@ -143,6 +146,141 @@ def test_a_pipeline_refusal_keeps_the_stage_types_and_ids_in_the_attempt_and_the
     assert (line["usage"]["provider_request_id"], line["usage"]["resolved_provider"]) == ("gen-1", "Anthropic")
 
 
+# --- #400 option b1 (Codex round 58; operator approval 2026-10-26): the one accepted guardrail stage -------------
+
+_ACCEPTED = {"flagged": False, "detected": "missing", "decision": "missing", "action": "missing", "verdict_conflict": False, "guardrail_scope": "missing"}
+_ONE = ("guardrail",)
+
+
+@pytest.mark.parametrize("facts", [_ACCEPTED, {**_ACCEPTED, "detected": False}], ids=["captured-2026-10-26", "detected-false"])
+def test_one_unflagged_guardrail_stage_passes_and_does_not_stop_the_route(facts: dict[str, Any]) -> None:
+    policy = _haiku_policy()
+
+    status, body = _post(policy, Replying(pipeline=_ONE, guardrails=(facts,)))
+
+    assert status == 200, body
+    assert not _stopped_after(policy)
+
+
+@pytest.mark.parametrize(
+    ("pipeline", "guardrails"),
+    [
+        (_ONE, ({**_ACCEPTED, "flagged": True},)),
+        (_ONE, ({**_ACCEPTED, "flagged": "missing"},)),
+        (_ONE, ({**_ACCEPTED, "flagged": "invalid"},)),
+        (_ONE, ({**_ACCEPTED, "flagged": 0},)),
+        (_ONE, ({**_ACCEPTED, "flagged": None},)),
+        (_ONE, ({**_ACCEPTED, "detected": True},)),
+        (_ONE, ({**_ACCEPTED, "detected": "invalid"},)),
+        (_ONE, ({**_ACCEPTED, "decision": "unrecognized"},)),
+        (_ONE, ({**_ACCEPTED, "decision": "invalid"},)),
+        (_ONE, ({**_ACCEPTED, "action": "blocked"},)),
+        (_ONE, ({**_ACCEPTED, "action": "unrecognized"},)),
+        (_ONE, ({**_ACCEPTED, "action": "invalid"},)),
+        (_ONE, ({**_ACCEPTED, "verdict_conflict": True},)),
+        (_ONE, ({**_ACCEPTED, "verdict_conflict": "missing"},)),
+        (_ONE, ({**_ACCEPTED, "guardrail_scope": "api-key"},)),
+        (_ONE, ({**_ACCEPTED, "guardrail_scope": "unrecognized"},)),
+        (_ONE, ({**_ACCEPTED, "guardrail_scope": "invalid"},)),
+        (_ONE, None),
+        (_ONE, ()),
+        (_ONE, (_ACCEPTED, _ACCEPTED)),
+        (_ONE, ("invalid",)),
+        (_ONE, [_ACCEPTED]),
+        (("guardrail", "guardrail"), (_ACCEPTED, _ACCEPTED)),
+        (("guardrail", "context_compression"), (_ACCEPTED,)),
+        (("context_compression", "guardrail"), (_ACCEPTED,)),
+        (("unrecognized",), ()),
+        (("plugin",), ()),
+    ],
+)
+def test_any_other_pipeline_or_guardrail_fact_refuses_the_billed_reply_and_stops_the_route(pipeline: tuple[str, ...], guardrails: object) -> None:
+    policy = _haiku_policy()
+    upstream = Replying(pipeline=pipeline, guardrails=guardrails)
+
+    status, body = _post(policy, upstream)
+
+    assert (status, body["code"], body["retryable"]) == (422, "EMPIRICAL_ROUTER_PIPELINE", False)
+    assert body["gateway_usage"]["cost_usd"] and [attempt["outcome"] for attempt in body["route_attempts"]] == ["completed"]
+    assert len(upstream.calls) == 1
+    # Neither a later reply with the accepted stage nor one with no stage clears the stop: each is refused before
+    # it reaches the provider, so its own client is never called.
+    for number, later_client in enumerate((Replying(pipeline=_ONE, guardrails=(_ACCEPTED,)), Replying()), 2):
+        later_status, later = _post(policy, later_client, request_id=f"host-req-{number}")
+        assert (later_status, later["code"]) == (503, "EMPIRICAL_ROUTE_STOPPED")
+        assert later_client.calls == []
+
+
+@pytest.mark.parametrize(
+    ("evidence", "code"),
+    [
+        ({"input_tokens": ESTIMATE + 1}, "EMPIRICAL_ESTIMATE_EXCEEDED"),
+        ({"provider": "Google"}, "EMPIRICAL_PROVIDER_MISMATCH"),
+        ({"provider": None}, "EMPIRICAL_PROVIDER_MISSING"),
+        ({"attempt": 2}, "EMPIRICAL_ROUTER_FALLBACK"),
+        ({"attempt": None}, "EMPIRICAL_ROUTER_METADATA_MISSING"),
+    ],
+)
+def test_an_accepted_guardrail_stage_keeps_every_other_reply_check(evidence: dict[str, Any], code: str) -> None:
+    policy = _haiku_policy()
+
+    status, body = _post(policy, Replying(pipeline=_ONE, guardrails=(_ACCEPTED,), **evidence))
+
+    assert (status, body["code"]) == (422, code)
+    assert _stopped_after(policy)
+
+
+def test_an_accepted_guardrail_stage_keeps_the_finish_check_and_the_estimate_boundary() -> None:
+    policy = _haiku_policy()
+    assert _post(policy, Replying(pipeline=_ONE, guardrails=(_ACCEPTED,), input_tokens=ESTIMATE))[0] == 200
+
+    upstream = Replying(pipeline=_ONE, guardrails=(_ACCEPTED,))
+    upstream._finish_reason = "content_filter"
+    status, body = _post(policy, upstream, request_id="host-req-2")
+
+    assert (status, body["code"]) == (422, "FINISH_STATUS_UNVERIFIED")
+    assert _stopped_after(policy)
+
+
+def _routed(stages: list[Any]) -> dict[str, Any]:
+    return {"requested": HAIKU, "strategy": "direct", "attempt": 1, "endpoints": {"total": 1, "available": [{"provider": "Anthropic", "model": HAIKU, "selected": True}]}, "pipeline": stages}
+
+
+@pytest.mark.parametrize(
+    ("stages", "status"),
+    [
+        ([{"type": "guardrail", "name": "moderation", "data": {"flagged": False}}], 200),
+        ([{"type": "guardrail", "name": "content-filter", "data": {"flagged": False, "detected": False}}], 200),
+        ([{"type": "guardrail", "name": "moderation", "data": {"flagged": False, "action": None}}], 422),
+        ([{"type": "guardrail", "name": "moderation", "data": {"flagged": False, "decision": None}}], 422),
+        ([{"type": "guardrail", "name": "moderation", "data": {"flagged": False, "decision": "missing"}}], 422),
+        ([{"type": "guardrail", "name": "moderation", "data": {"flagged": False, "action": "missing"}}], 422),
+        ([{"type": "guardrail", "name": "moderation", "data": {"flagged": "false"}}], 422),
+        ([{"type": "guardrail", "name": "moderation", "data": {"flagged": None}}], 422),
+        ([{"type": "guardrail", "name": "moderation", "data": {"flagged": 0}}], 422),
+        ([{"type": "guardrail", "name": "moderation", "data": {"flagged": False, "detected": "no"}}], 422),
+        ([{"type": "guardrail", "name": "moderation", "guardrail_scope": "api-key", "data": {"flagged": False}}], 422),
+        ([{"type": "guardrail", "name": "moderation", "guardrail_scope": "missing", "data": {"flagged": False}}], 422),
+        ([{"type": "guardrail", "name": "moderation"}], 422),
+        ([{"type": "guardrail", "name": "moderation", "data": "flagged=false"}], 422),
+        ([{"type": "guardrail", "data": {"flagged": False}}, {"type": "guardrail", "data": {"flagged": False}}], 422),
+    ],
+)
+def test_the_rule_reads_the_real_clients_closed_facts(monkeypatch, stages: list[Any], status: int) -> None:
+    """Raw OpenRouter metadata, through the real client and the Gateway handler: only the exact unflagged shape
+    passes. An explicit null, a literal "missing" string, a wrong type or a reported scope is never a pass."""
+    Wire(reply=_reply(HAIKU, _routed(stages))).install(monkeypatch)
+    policy = _haiku_policy()
+
+    got, body = _post(policy, _real_client())
+
+    assert got == status, body
+    assert body["gateway_usage"]["cost_usd"] == "0.0001"
+    if status == 422:
+        assert body["code"] == "EMPIRICAL_ROUTER_PIPELINE"
+        assert _stopped_after(policy)
+
+
 def test_the_gateway_log_line_never_carries_the_reply_text() -> None:
     status, body = _post(_haiku_policy(), Replying())
 
@@ -172,8 +310,10 @@ def test_ordinary_verified_routes_keep_their_existing_behaviour(tmp_path: Path) 
 
 
 def _stopped_after(policy) -> bool:
-    status, body = _post(policy, Replying(), request_id="host-req-later")
-    return (status, body.get("code")) == (503, "EMPIRICAL_ROUTE_STOPPED")
+    """True when a later request is refused as stopped without reaching its upstream client."""
+    later = Replying()
+    status, body = _post(policy, later, request_id="host-req-later")
+    return (status, body.get("code")) == (503, "EMPIRICAL_ROUTE_STOPPED") and later.calls == []
 
 
 def test_an_uncertain_possibly_billed_attempt_stops_the_route() -> None:
@@ -189,16 +329,21 @@ def test_an_uncertain_possibly_billed_attempt_stops_the_route() -> None:
     assert _stopped_after(policy)
 
 
-def test_a_reply_whose_usage_cannot_be_verified_stops_the_route(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(("pipeline", "guardrails"), [((), ()), (("guardrail",), ({"flagged": False, "detected": "missing", "decision": "missing", "action": "missing", "verdict_conflict": False, "guardrail_scope": "missing"},))], ids=["no-stage", "accepted-guardrail"])
+def test_a_reply_whose_usage_cannot_be_verified_stops_the_route(monkeypatch: pytest.MonkeyPatch, pipeline: tuple[str, ...], guardrails: object) -> None:
+    """Unverifiable usage stops the route whether or not the reply carries the one accepted guardrail stage (#400 b1)."""
+
     def unverifiable(_usage: dict[str, Any]) -> None:
         raise ValueError("usage incomplete")
 
     monkeypatch.setattr(gateway_responses, "assert_gateway_usage_contract", unverifiable)
     policy = _haiku_policy()
+    upstream = Replying(pipeline=pipeline, guardrails=guardrails)
 
-    status, body = _post(policy, Replying())
+    status, body = _post(policy, upstream)
 
     assert (status, body["code"]) == (502, "UPSTREAM_ATTEMPT_UNCERTAIN")
+    assert [attempt["outcome"] for attempt in body["route_attempts"]] == ["uncertain"] and len(upstream.calls) == 1
     monkeypatch.undo()
     assert _stopped_after(policy)
 
@@ -286,3 +431,36 @@ def test_an_ordinary_route_keeps_its_accounting_when_router_metadata_is_unreadab
     assert status == 200, body
     usage = body["gateway_usage"]
     assert (usage["input_tokens"], usage["output_tokens"], usage["cost_usd"], usage["resolved_provider"]) == (100, 20, "0.0001", None)
+
+
+# --- #400 b1 under each admission part (Plan 12.4 v8, decision N3; Codex round 58, question 4) -----------------
+
+_MODES = {
+    "empirical-only": (True, None, None),
+    "provider-family-only": (False, "anthropic", "Anthropic"),
+    "both": (True, "anthropic", "Anthropic"),
+}
+
+
+@pytest.mark.parametrize("mode", sorted(_MODES))
+@pytest.mark.parametrize(("guardrails", "passes"), [((_ACCEPTED,), True), (({**_ACCEPTED, "flagged": True},), False), (({**_ACCEPTED, "action": "blocked"},), False)], ids=["accepted", "flagged", "blocked"])
+def test_the_guardrail_rule_is_the_same_for_every_admission_part(mode: str, guardrails: tuple[dict[str, Any], ...], passes: bool) -> None:
+    from types import MappingProxyType, SimpleNamespace
+
+    from optimus_gateway.model_policy import AdmittedRequest, ModelPolicyRefusal, check_experimental_reply
+    from optimus_model_policy.capacity import CapacityDecision
+    from optimus_model_policy.experimental import ExperimentalRoute
+
+    empirical, family, name = _MODES[mode]
+    admitted = AdmittedRequest(
+        model_id=HAIKU, input_text=INPUT, output_cap=256, provider_controls=MappingProxyType({}),
+        decision=CapacityDecision(allowed=True, reason=None, input_tokens=ESTIMATE, output_reserve=256, usable_input=ESTIMATE, effective_total=ESTIMATE + 256),
+        request_id="host-req-1", reasoning=None, experimental=ExperimentalRoute(HAIKU, empirical, family, name),
+    )
+    reply = SimpleNamespace(router_metadata_error=None, resolved_provider="Anthropic", router_attempt=1, router_pipeline=_ONE, router_guardrails=guardrails, input_tokens=ESTIMATE)
+    if passes:
+        check_experimental_reply(admitted, reply)
+    else:
+        with pytest.raises(ModelPolicyRefusal) as refused:
+            check_experimental_reply(admitted, reply)
+        assert refused.value.code == "EMPIRICAL_ROUTER_PIPELINE"

@@ -15,6 +15,7 @@ import pytest
 from optimus.acp import errors, server
 from optimus.acp.server import StdioNdjsonLineReader, StdioNdjsonLineWriter
 from tests.integration.acp.test_server_stream import configured_test_agent_server
+from tests.support.contract_doubles import checked_agent_runner
 
 
 async def test_stdio_ndjson_line_reader_returns_bytes_and_detects_eof():
@@ -275,7 +276,7 @@ async def test_serve_ndjson_eof_cancels_pending_requests_and_closes_owned_state_
 
     runner = SlowRunner()
     dispatcher = JsonRpcDispatcher(
-        agent_runner=runner,
+        agent_runner=checked_agent_runner(runner),
         pre_tool_guard=guard,
         workspace_root=workspace_root,
     )

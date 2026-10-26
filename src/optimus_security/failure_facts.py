@@ -87,7 +87,9 @@ def bounded_failure(failure: object) -> dict[str, Any] | None:
 # --- An OpenRouter `guardrail` router stage's closed facts (#400, agreed handling D, Codex round 39) ---------------
 # Only literals OpenRouter's router-metadata and guardrails guides enumerate are recognized (retained 2026-10-23 in
 # the #400 evidence). The guides name `decision` but list no value. None of these facts proves a stage left the
-# request or reply unchanged, so the empirical route still refuses every guardrail stage.
+# request or reply unchanged. The empirical route accepts only the one unflagged shape of #400 option b1
+# (`optimus_gateway.model_policy.unflagged_guardrail_only`, residual risk accepted by the operator 2026-10-26) and
+# refuses every other guardrail stage.
 
 MISSING, INVALID = "missing", "invalid"
 GUARDRAIL_ACTIONS = frozenset({"blocked"})
