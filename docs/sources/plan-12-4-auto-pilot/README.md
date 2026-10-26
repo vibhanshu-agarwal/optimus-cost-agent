@@ -31,4 +31,9 @@ These files carry a digest per item, which trips the local secret scan, so they 
 ## Review
 
 Codex CLI round 62 (gpt-6.1-sol, high) recomputed every metric, winner and interval independently and recommended
-accepting H, with conditions now applied. It is posted verbatim on #395 (comment 6414706221).
+accepting H, with conditions. It is posted verbatim on #395 (comment 6414706221).
+- **Applied:** the documentary corrections (wording, separation, accounting, identities and the acceptance record).
+- **Still pending:**
+  - the production conditions, which Phase B owns: confidence validation, classifier-failure handling and the live
+    slices;
+  - the `auto` hash approval.
