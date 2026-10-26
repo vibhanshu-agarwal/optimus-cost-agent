@@ -172,8 +172,9 @@ The test split is no longer sealed, so these figures can only suggest what a fre
   - `runs\test-1\manifest.jsonl` (300 entries; the content-free manifest):
     `076143fc9ff8c6a84b346c6ea457b5a5aa450b7f9e7c93ec49c744453a830534`.
 
-  The manifest and `evidence.json` stay in the review kit, pinned by these hashes. Their per-item digests trip the
-  local secret scan, and the repository files only scan-clean documents (the 2026-10-05 filing precedent).
+  The original manifest, keyed by prompt digests, and `evidence.json` stay in the review kit, pinned by these
+  hashes. The repository files a manifest keyed by item ID instead (manifest option (ii), approved by the operator on
+  2026-10-26), from which the bundle's `tools/recompute.py` reproduces every view exactly.
 
 ## Deviations for the Plan 12.4 successor
 
