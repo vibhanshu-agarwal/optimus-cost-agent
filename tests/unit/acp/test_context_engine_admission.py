@@ -44,6 +44,7 @@ from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.context.assembly import ContextAttachment, SummarizerRoute, probe_floor
 from optimus.context.maintenance import SummarizerAttempt, SummarizerResponse
 from optimus.runtime.modes import ExecutionMode
+from tests.support.contract_doubles import checked_agent_runner
 
 
 def estimate(text: str) -> int:
@@ -166,7 +167,7 @@ def make_adapter(tmp_path: Path, attachment: ContextAttachment | None, runner: R
     outbound = RecordingOutboundChannel()
     runner = runner or Runner()
     adapter = AcpDuplexAdapter(
-        runner=runner,
+        runner=checked_agent_runner(runner),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,

@@ -7,6 +7,7 @@ or process cleanup -- must still close that runtime, and the original failure mu
 
 from __future__ import annotations
 
+from functools import partial
 from unittest.mock import create_autospec
 
 import pytest
@@ -15,6 +16,7 @@ from optimus.acp import operator_verify, subprocess_env
 from optimus.acp.ndjson_subprocess_session import NdjsonSubprocessSession
 from optimus.redis.async_bridge import RedisLoopOwner
 from optimus.redis.runtime import CloseablePool, RedisRuntime, RedisRuntimeState, RuntimeClient
+from tests.support.contract_doubles import new_contract_call_log
 
 
 class _Resource:
@@ -56,7 +58,9 @@ def _checked_session_factory(script_type):
     def build(*args, **kwargs):
         script = script_type(*args, **kwargs)
         checked = create_autospec(NdjsonSubprocessSession, instance=True, spec_set=True)
+        calls = new_contract_call_log("NdjsonSubprocessSession")
         for name in ("send", "wait_for_response", "close_stdin", "terminate"):
+            getattr(checked, name).side_effect = partial(calls.reject, name)
             if hasattr(script, name):
                 getattr(checked, name).side_effect = getattr(script, name)
         return checked

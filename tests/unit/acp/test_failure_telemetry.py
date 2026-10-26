@@ -36,6 +36,7 @@ from optimus.gateway.client import GatewayRequest, UrllibGatewayTransport
 from optimus.gateway.errors import GatewayHttpError
 from optimus.gateway.models import GatewayResponse, GatewayRouteAttempt, GatewayUsage
 from optimus.telemetry.jsonl import JsonlTelemetryWriter
+from tests.support.contract_doubles import checked_agent_runner
 from tests.unit.acp.test_bootstrap import HAIKU, _fake_client_runtime, _lifetime_runtime, _server_environ
 from tests.unit.acp.test_context_engine_admission import Runner, make_attachment, new_session, prompt, rpc
 from tests.unit.acp.test_context_notices import DispatchingRunner
@@ -336,7 +337,7 @@ def test_the_bound_observer_changes_no_agent_run_event_result_or_receipt(tmp_pat
 def _adapter(tmp_path: Path, attachment: Any = None, runner: Any = None) -> tuple[AcpDuplexAdapter, RecordingOutboundChannel]:
     outbound = RecordingOutboundChannel()
     adapter = AcpDuplexAdapter(
-        runner=runner or Runner(),
+        runner=checked_agent_runner(runner or Runner()),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -448,7 +449,7 @@ async def test_the_records_change_no_reply_and_no_accounting(tmp_path) -> None:
         root.mkdir()
         outbound = RecordingOutboundChannel()
         adapter = AcpDuplexAdapter(
-            runner=DispatchingRunner(),
+            runner=checked_agent_runner(DispatchingRunner()),
             workspace_root=root,
             sessions=InMemoryAcpSpecSessionStore(),
             outbound=outbound,
