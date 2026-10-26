@@ -4719,6 +4719,22 @@
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_failed_legacy_attempt_is_logged_with_its_cause_and_the_request_id",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.mcp.client_sdk:ClientMcpSdkAdapter._open_owned_sdk_contexts:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: ready.exception() observes a local asyncio Future failure so a cancelled opener leaves no unobserved exception; this is not a logger call and exports no exception text. Owned SDK LogRecords are separately sanitized by the runtime-owned observer before propagation.",
+      "sanitizer": "Future exception observation; owned warning observer clears message arguments, traceback and stack data",
+      "test_node": "tests/unit/mcp/test_client_sdk.py::test_warning_observer_sanitizes_only_owned_sdk_records",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.mcp.client_sdk:ClientMcpSdkAdapter.owner:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: ContextVar.set binds two weak references within the persistent SDK owner; no Redis client, hash write or persistence exists on this path. The token is reset in owner finally.",
+      "sanitizer": "process-local weak-reference context; no diagnostic or persistent payload",
+      "test_node": "tests/unit/mcp/test_client_sdk.py::test_confirmed_connection_and_owner_are_collectible",
+      "evidence_tier": "unit"
     }
   ]
 }

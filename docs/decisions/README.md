@@ -248,3 +248,7 @@ authoritative.
   rounds 1–3 of the Context Engine direction.
 - `2026-09-30-claude-four-decisions-pros-cons.md`.
 - `2026-09-30-claude-model-registry-and-cost-alerts-input.md`.
+
+## Idle client-MCP policy, 2026-10-26
+
+[ADR-027](ADR-027-idle-client-mcp-lifetime-contract.md) records #427: retained in-memory ACP continuity, standalone idle limit and fresh atomic permission renewal. The linked receipt preserves the direct operator role assignment and review qualifications.

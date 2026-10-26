@@ -7,7 +7,10 @@ the real SDK injected-httpx2 / streamed-byte claim owned by Task 8.
 from __future__ import annotations
 
 import asyncio
+import gc
+import logging
 import threading
+import weakref
 from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import create_autospec, seal
@@ -36,6 +39,183 @@ from optimus.mcp.client_sdk import (
 )
 from optimus.mcp.client_supervisor import MCPAsyncSupervisor
 from tests.support.concurrency import assert_no_offending_rows, assert_threads_stopped
+from tests.support.idle_mcp import capability as stdio_capability
+
+
+@pytest.mark.parametrize("uncertainty", ["unobservable", "changed", "survivor", "exit_failure"])
+def test_uncertain_owner_release_retains_opaque_pending_identity(supervisor, uncertainty, caplog):
+    caplog.set_level(logging.WARNING, logger="mcp.client.stdio")
+    from optimus.mcp import client_sdk as sdk_module
+    logger = logging.getLogger("mcp.client.stdio")
+    observer = sdk_module._warning_observer
+    class Transport(ControlledRemoteTransportContext):
+        async def __aexit__(self, *exc):
+            await super().__aexit__(*exc)
+            if uncertainty == "changed":
+                logger.setLevel(logging.ERROR)
+            elif uncertainty == "survivor":
+                logger.warning("MCP server process %d is still alive after the kill escalation; abandoning it", 1234)
+            elif uncertainty == "exit_failure":
+                raise RuntimeError("private-target-path")
+    adapter = _adapter_with_owned_sdk_contexts(supervisor, transport=Transport(),
+        session=ControlledRemoteSessionContext(FakeSession()))
+    observer = sdk_module._warning_observer
+    connection = adapter.open(stdio_capability(command="private-target-path"), session_id="uncertain")
+    prior_level = logger.level
+    if uncertainty == "unobservable":
+        logger.removeHandler(observer)
+    try:
+        with pytest.raises(ClientMcpSdkError):
+            adapter.close(connection)
+        assert not connection.closed
+        assert adapter.pending_connections() == (connection.pending_token,)
+        assert adapter.close_failure_recorded
+        assert "private-target-path" not in repr(adapter.diagnostics) + repr(adapter.pending_connections())
+        assert connection.owner_enter_task_id == connection.owner_exit_task_id
+        if uncertainty == "survivor":
+            assert connection.survivor_warning
+    finally:
+        logger.setLevel(prior_level)
+        if observer not in logger.handlers:
+            logger.addHandler(observer)
+
+
+def test_diagnostic_overflow_does_not_erase_survivor_latch(supervisor):
+    adapter = _adapter(supervisor)
+    for _ in range(300):
+        adapter.record_diagnostic("CLOSE_FAILED")
+    assert len(adapter.diagnostics) == 256
+    assert adapter.diagnostics_dropped == 44
+
+
+def test_warning_observer_sanitizes_only_owned_sdk_records(supervisor, caplog):
+    caplog.set_level(logging.WARNING, logger="mcp.client.stdio")
+    logger = logging.getLogger("mcp.client.stdio")
+    logger.warning("unowned context stays unchanged")
+    assert caplog.records[-1].getMessage() == "unowned context stays unchanged"
+    class Transport(ControlledRemoteTransportContext):
+        async def __aexit__(self, *exc):
+            logger.warning("owned target %s", "private-owned-target", stack_info=True)
+            await super().__aexit__(*exc)
+    adapter = _adapter_with_owned_sdk_contexts(supervisor, transport=Transport(),
+        session=ControlledRemoteSessionContext(FakeSession()))
+    connection = adapter.open(_capability(), session_id="sanitize")
+    adapter.close(connection)
+    record = caplog.records[-1]
+    assert record.getMessage() == "owned MCP SDK diagnostic"
+    assert record.args == () and record.exc_info is None and record.stack_info is None
+
+
+def test_reserved_close_slot_remains_available_behind_a_waiting_operation(supervisor):
+    session = FakeSession()
+    adapter = _adapter_with_owned_sdk_contexts(supervisor, transport=ControlledRemoteTransportContext(),
+        session=ControlledRemoteSessionContext(session))
+    connection = adapter.open(_capability(), session_id="pressure")
+    async def exercise():
+        entered, release = asyncio.Event(), asyncio.Event()
+        async def held(*_args, **_kwargs):
+            entered.set()
+            await release.wait()
+            return CallToolResult(content=[])
+        session.checked.call_tool.side_effect = held
+        first = asyncio.create_task(adapter._call_async(connection, "search", {}))
+        await entered.wait()
+        waiting = asyncio.create_task(adapter._call_async(connection, "search", {}))
+        await asyncio.sleep(0)
+        closing = asyncio.create_task(adapter._close_async(connection))
+        await asyncio.sleep(0)
+        try:
+            with pytest.raises(ClientMcpSdkError, match="CONNECTION_CLOSING"):
+                await adapter._call_async(connection, "search", {})
+        finally:
+            release.set()
+            await asyncio.gather(first, waiting, closing)
+    supervisor.submit(exercise(), timeout_seconds=3)
+    assert connection.closed
+
+
+def test_dead_owner_fails_active_and_waiting_calls_without_dead_close_queue(supervisor):
+    session = FakeSession()
+    adapter = _adapter_with_owned_sdk_contexts(supervisor, transport=ControlledRemoteTransportContext(),
+                                               session=ControlledRemoteSessionContext(session))
+    connection = adapter.open(_capability(), session_id="owner-death")
+    async def exercise():
+        entered = asyncio.Event()
+        async def held_call(*_args, **_kwargs):
+            entered.set()
+            await asyncio.Event().wait()
+        session.checked.call_tool.side_effect = held_call
+        first = asyncio.create_task(adapter._call_async(connection, "search", {}))
+        await entered.wait()
+        second = asyncio.create_task(adapter._call_async(connection, "search", {}))
+        await asyncio.sleep(0)
+        connection.owner_task.cancel()
+        outcomes = await asyncio.wait_for(asyncio.gather(first, second, return_exceptions=True), 1)
+        assert all(isinstance(outcome, ClientMcpSdkError) for outcome in outcomes)
+        await asyncio.wait_for(adapter._close_async(connection), 1)
+    supervisor.submit(exercise(), timeout_seconds=3)
+    assert connection.closed and adapter.pending_connections() == ()
+
+
+def test_close_all_attempts_every_connection_after_an_earlier_failure(supervisor):
+    adapter = _adapter(supervisor)
+    first = adapter.open(_capability(name="one"), session_id="one")
+    second = adapter.open(_capability(name="two"), session_id="two")
+    closed = []
+    async def fail():
+        closed.append("one")
+        raise RuntimeError("private-path")
+    async def succeed():
+        closed.append("two")
+    first.close_resources = fail
+    second.close_resources = succeed
+    with pytest.raises(RuntimeError):
+        adapter.close_all()
+    assert closed == ["one", "two"] and second.closed and not first.closed
+    assert adapter.close_failure_recorded
+
+
+def test_failed_initialize_does_not_cancel_its_already_running_context_exit(supervisor):
+    class SlowExit(ControlledRemoteTransportContext):
+        completed = False
+        async def __aexit__(self, *exc):
+            await asyncio.sleep(0.02)
+            await super().__aexit__(*exc)
+            self.completed = True
+    transport = SlowExit()
+    adapter = _adapter_with_owned_sdk_contexts(supervisor, transport=transport,
+        session=ControlledRemoteSessionContext(FakeSession(initialize_result=MalformedInitializeResult())))
+    with pytest.raises(ClientMcpSdkError, match="INVALID_PROTOCOL_VERSION"):
+        adapter.open(_capability(), session_id="failed-open")
+    assert transport.completed
+    assert adapter.pending_connections() == ()
+
+
+def test_failed_warning_probe_still_exits_owned_contexts_without_certifying_release(supervisor, monkeypatch):
+    from optimus.mcp import client_sdk as sdk_module
+    transport = ControlledRemoteTransportContext()
+    adapter = _adapter_with_owned_sdk_contexts(supervisor, transport=transport,
+        session=ControlledRemoteSessionContext(FakeSession()))
+    connection = adapter.open(stdio_capability(command="private-target"), session_id="probe-failure")
+    def failed_probe():
+        raise RuntimeError("controlled probe failure")
+    monkeypatch.setattr(sdk_module, "_warning_snapshot", failed_probe)
+    with pytest.raises(ClientMcpSdkError, match="CLEANUP_UNCERTAIN"):
+        adapter.close(connection)
+    assert transport.exited == 1
+    assert adapter.has_pending_connections_for_session("probe-failure")
+
+
+def test_confirmed_connection_and_owner_are_collectible(supervisor):
+    adapter = _adapter_with_owned_sdk_contexts(supervisor, transport=ControlledRemoteTransportContext(),
+                                               session=ControlledRemoteSessionContext(FakeSession()))
+    connection = adapter.open(_capability(), session_id="collectible")
+    connection_ref, owner_ref = weakref.ref(connection), weakref.ref(connection.owner_task)
+    adapter.close(connection)
+    del connection
+    supervisor.submit(asyncio.sleep(0), timeout_seconds=1)
+    gc.collect()
+    assert connection_ref() is None and owner_ref() is None
 
 
 def _identity(*, name: str = "tools", target: str = "https://mcp.example.com/a") -> ClientMcpSafeIdentity:

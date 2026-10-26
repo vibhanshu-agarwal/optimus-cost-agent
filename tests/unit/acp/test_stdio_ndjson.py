@@ -18,6 +18,23 @@ from tests.integration.acp.test_server_stream import configured_test_agent_serve
 from tests.support.contract_doubles import checked_agent_runner
 
 
+@pytest.mark.parametrize("failure", ["send", "cancel", "timeout"])
+async def test_outbound_request_retires_its_future_after_failure(failure):
+    class Writer:
+        async def write_line(self, _payload):
+            if failure == "send":
+                raise RuntimeError("send failed")
+    channel = server.NdjsonOutboundChannel(Writer())
+    task = asyncio.create_task(channel.request("session/request_permission", {}))
+    await asyncio.sleep(0)
+    if failure == "cancel":
+        task.cancel()
+    with pytest.raises((RuntimeError, asyncio.CancelledError, TimeoutError)):
+        await asyncio.wait_for(task, 0.05)
+    assert channel._futures == {}
+    channel.deliver_client_response({"id": channel.last_outbound_request_id, "result": {}})
+
+
 async def test_stdio_ndjson_line_reader_returns_bytes_and_detects_eof():
     stream = io.BytesIO(b'{"jsonrpc":"2.0","id":1}\n')
     reader = StdioNdjsonLineReader(stream)
@@ -286,6 +303,7 @@ async def test_serve_ndjson_eof_cancels_pending_requests_and_closes_owned_state_
 
     # Minimal runtime: disposition unused for empty mcpServers EOF path.
     runtime = MagicMock(spec=ClientMcpRuntime)
+    runtime.disposition = object()
     runtime.supervisor = supervisor
     runtime.close = lambda: close_counts.__setitem__(
         "supervisor", close_counts["supervisor"] + 1
@@ -322,10 +340,12 @@ async def test_serve_ndjson_handler_exception_still_tears_down_owned_state(tmp_p
     configured = configured_test_agent_server(tmp_path, output_text="READ example.py\n")
     closes = {"n": 0}
 
-    def tracking_close_all(self):
+    real_aclose = server.AcpDuplexAdapter.aclose
+    async def tracking_aclose(self):
         closes["n"] += 1
+        await real_aclose(self)
 
-    monkeypatch.setattr(server.AcpDuplexAdapter, "close_all", tracking_close_all)
+    monkeypatch.setattr(server.AcpDuplexAdapter, "aclose", tracking_aclose)
     reader = StdioNdjsonLineReader(
         io.BytesIO(b'{"jsonrpc":"2.0","id":1,"method":"session/prompt","params":{}}\n')
     )

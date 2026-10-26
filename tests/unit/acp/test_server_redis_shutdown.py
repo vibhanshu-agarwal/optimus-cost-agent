@@ -378,13 +378,13 @@ async def test_a_setup_failure_after_the_handoff_still_closes_the_runtime(tmp_pa
 async def test_an_earlier_cleanup_stage_failure_still_closes_the_runtime_and_keeps_its_error(
     tmp_path, monkeypatch
 ):
-    """R1 MUTATION: adapter.close_all raises inside teardown; Redis closes and the error survives."""
+    """R1 MUTATION: adapter.aclose raises inside teardown; Redis closes and the error survives."""
     from optimus.acp import spec
 
-    def _boom(self):
+    async def _boom(self):
         raise ValueError("adapter close fault")
 
-    monkeypatch.setattr(spec.AcpDuplexAdapter, "close_all", _boom)
+    monkeypatch.setattr(spec.AcpDuplexAdapter, "aclose", _boom)
     client, pool = _CountingResource(), _CountingResource()
     runtime = _runtime(client, pool)
     srv = _redis_server(tmp_path, runtime)

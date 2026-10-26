@@ -41,10 +41,100 @@ from optimus.mcp.client_trust import (
     compute_identity_fingerprint,
     write_client_mcp_durable_from_fingerprint,
 )
+from optimus.mcp.local_ipc import PendingClientMcpCandidateEndpoint
 from optimus.runtime.modes import ExecutionMode, GenerationScope
 from tests.support.concurrency import assert_no_offending_rows, assert_threads_stopped
 
 HMAC_KEY = b"p11-fu-9-disposition-test-hmac-key!!"
+
+
+def test_split_close_detaches_once_and_records_legacy_hook_failure(tmp_path):
+    disposition = _disposition(tmp_path)
+    state = ClientMcpSessionState(session_id="split", _record_close_failure=disposition.record_session_close_failure)
+    calls = []
+    state.register_close_hook(lambda: calls.append("peer"), peer=True)
+    state.register_close_hook(lambda: (_ for _ in ()).throw(RuntimeError("private remote details")))
+    assert state.has_open_peer()
+    state.close()
+    state.close()
+    assert calls == ["peer"]
+    assert disposition.close_failure_recorded
+    assert not state.has_open_peer()
+
+
+async def test_suspend_and_renew_is_atomic_and_replaces_facade(tmp_path):
+    disposition = _disposition(tmp_path)
+    async def allow(_params):
+        return "allow"
+    state = await disposition.disposition_for_new_session("renew", tmp_path, [_http_entry(name="one"), _http_entry(name="two")], allow)
+    old_facade = state.tool_service
+    closed = []
+    state.register_close_hook(lambda: closed.append("peer"), peer=True)
+    hooks = state.prepare_suspend()
+    assert hooks is not None
+    assert closed == []
+    for hook in hooks:
+        hook()
+    assert closed == ["peer"]
+    assert state.complete_suspend(())
+    assert state.suspended and not state.is_leased("one")
+    answers = iter(["allow", "reject"])
+    async def partial(_params):
+        return next(answers)
+    assert await disposition.reopen_suspended(state, partial) == "reject"
+    assert state.suspended and not state.is_leased("one") and not state.is_leased("two")
+    assert await disposition.reopen_suspended(state, allow) == "allow"
+    assert state.tool_service is not old_facade
+    assert state.is_leased("one") and state.is_leased("two")
+    assert not state.suspended
+
+
+async def test_cancelled_initial_disposition_retires_its_owned_candidate(tmp_path):
+    endpoint = PendingClientMcpCandidateEndpoint(authkey=b"cancelled-provisional-session")
+    disposition = _disposition(tmp_path)
+    disposition._candidate_endpoint = endpoint
+    entered = asyncio.Event()
+    async def permission(_params):
+        entered.set()
+        await asyncio.Event().wait()
+    task = asyncio.create_task(disposition.disposition_for_new_session("cancelled-new", tmp_path, [_http_entry()], permission))
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        assert endpoint.pending_count == 1
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert endpoint.pending_count == 0
+    finally:
+        task.cancel()
+        endpoint.close()
+
+
+async def test_answered_candidate_survives_until_session_lifetime_and_denials_stay_bounded(tmp_path):
+    endpoint = PendingClientMcpCandidateEndpoint(authkey=b"candidate-lifetime-test")
+    disposition = _disposition(tmp_path)
+    disposition._candidate_endpoint = endpoint
+    async def allow(_params):
+        return "allow"
+    async def reject(_params):
+        return "reject"
+    state = await disposition.disposition_for_new_session("candidate-owner", tmp_path, [_http_entry()], allow)
+    try:
+        assert endpoint.pending_count == 1
+        candidate_id = next(iter(endpoint._pending))
+        assert endpoint.consume_snapshot(candidate_id).session_id == state.session_id
+        state.register_close_hook(lambda: None, peer=True)
+        for hook in state.prepare_suspend():
+            hook()
+        assert state.complete_suspend(())
+        for _ in range(5):
+            assert await disposition.reopen_suspended(state, reject) == "reject"
+            assert endpoint.pending_count == 1
+        state.close()
+        assert endpoint.pending_count == 0
+    finally:
+        state.close()
+        endpoint.close()
 
 
 class FakeKeyring:

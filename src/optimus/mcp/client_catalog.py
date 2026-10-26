@@ -687,7 +687,7 @@ class ClientMcpSessionService:
     without collapsing multi-server sessions into one catalog.
     """
 
-    __slots__ = ("_services", "_resolver", "_resolution_attempts", "_resolution_failures")
+    __slots__ = ("_services", "_resolver", "_resolution_attempts", "_resolution_failures", "__weakref__")
 
     def __init__(
         self,
@@ -732,6 +732,17 @@ class ClientMcpSessionService:
 
     def detach_resolver(self) -> None:
         object.__setattr__(self, "_resolver", None)
+
+    def retire(self) -> ClientMcpSessionService:
+        """Drop stale connection references, preserving main's sanitized failure evidence."""
+        replacement = ClientMcpSessionService()
+        failures: dict[str, str] = object.__getattribute__(self, "_resolution_failures")
+        replacement_failures: dict[str, str] = object.__getattribute__(replacement, "_resolution_failures")
+        replacement_failures.update(failures)
+        self.detach_resolver()
+        services: dict[str, ClientMcpToolService] = object.__getattribute__(self, "_services")
+        services.clear()
+        return replacement
 
     def register(self, service: ClientMcpToolService) -> None:
         catalog: ClientMcpCatalog = object.__getattribute__(service, "_catalog")

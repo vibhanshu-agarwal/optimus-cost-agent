@@ -27,6 +27,23 @@ from optimus.acp.trusted_paths import WorkspaceIdentity, present_git_context
 _HMAC_KEY = b"test-gate-hmac-key-32-bytes!!!!"
 
 
+@pytest.mark.parametrize("raw,grant,allowed", [("1", None, True), ("3600", None, True),
+    ("3601", None, False), ("3601", "3601", True), ("3601", "4000", False)])
+def test_idle_limit_tightening_or_exact_grant_and_agent_only_projection(tmp_path, raw, grant, allowed):
+    from optimus.acp.launch_gate import _authorize_monotonic_grants
+    candidate = resolve_launch_candidate(
+        snapshot=LaunchEnvironmentSnapshot.capture({"OPTIMUS_ACP_MCP_IDLE_SECONDS": raw}),
+        workspace_identity=_sample_workspace_identity(), operator_paths=_sample_operator_paths(tmp_path), hmac_key=_HMAC_KEY)
+    grants = {} if grant is None else {"OPTIMUS_ACP_MCP_IDLE_SECONDS": grant}
+    if allowed:
+        _authorize_monotonic_grants(candidate=candidate, record_monotonic_grants=grants)
+    else:
+        with pytest.raises(LaunchGateError, match="MONOTONIC_LOOSENING_UNAPPROVED"):
+            _authorize_monotonic_grants(candidate=candidate, record_monotonic_grants=grants)
+    assert candidate.agent_environ["OPTIMUS_ACP_MCP_IDLE_SECONDS"] == raw
+    assert "OPTIMUS_ACP_MCP_IDLE_SECONDS" not in candidate.gateway_environ
+
+
 def _sample_workspace_identity() -> WorkspaceIdentity:
     return WorkspaceIdentity(
         format_version=3,

@@ -247,13 +247,13 @@ class _Observed:
         self.mcp_attempts: list[dict] = []
         self.returned_outcomes: list[object] = []
 
-        real_close_all = server.AcpDuplexAdapter.close_all
+        real_aclose = server.AcpDuplexAdapter.aclose
 
-        def spy_close_all(inner_self):
+        async def spy_aclose(inner_self):
             self.sequence.append("close_all")
-            return real_close_all(inner_self)
+            return await real_aclose(inner_self)
 
-        monkeypatch.setattr(server.AcpDuplexAdapter, "close_all", spy_close_all)
+        monkeypatch.setattr(server.AcpDuplexAdapter, "aclose", spy_aclose)
 
         real_debug_log = server.acp_debug_log
 
