@@ -53,3 +53,26 @@ def test_an_unusable_model_stops_startup_before_any_side_effect(monkeypatch, tmp
     assert started == []
     if isinstance(error, BindingError):
         assert "a fixture registry" not in err, "only the stable code is exported"
+
+
+def test_an_approved_auto_launch_is_refused_until_the_router_exists(monkeypatch, tmp_path, capsys) -> None:
+    """Plan 12.4 Task 4, slice 1 (unshipped branch state): the Auto composition is recomposed and checked against the
+    approval, then the launch stops before any service starts, because the per-turn router does not exist yet."""
+    env = {**_ENV, "OPTIMUS_AGENT_MODEL": "auto"}
+    keyring = FakeKeyring()
+    authorize_workspace_for_test(env=env, workspace_root=tmp_path, fake_keyring=keyring)
+    monkeypatch.setattr(acp_main, "keyring", keyring)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    started: list[object] = []
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: started.append("redis"))
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: started.append("gateway"))
+    monkeypatch.setattr(acp_main, "build_configured_server", lambda **k: started.append("server"))
+
+    assert acp_main.main(["--workspace-root", str(tmp_path)]) == 2
+    assert "optimus-agent: AUTO_NOT_AVAILABLE" in capsys.readouterr().err
+    assert started == []
+
+    assert acp_main.main(["--workspace-root", str(tmp_path), "--model", "anthropic/claude-haiku-5.5"]) == 2
+    assert "AGENT_MODEL_INVALID: OPTIMUS_AGENT_MODEL=auto conflicts with --model" in capsys.readouterr().err
+    assert started == []

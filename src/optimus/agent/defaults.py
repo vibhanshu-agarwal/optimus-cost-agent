@@ -29,6 +29,19 @@ def default_agent_model(registry: RegistrySnapshot | None) -> str:
     raise AgentModelError("the trusted model registry has no eligible medium or easy model")
 
 
+def auto_requested(environ: Mapping[str, str], *, cli_model: str | None = None) -> bool:
+    """Whether this launch is Auto (Plan 12.4 Design 4). Only ``OPTIMUS_AGENT_MODEL=auto`` selects it, since the launch
+    gate composes and approves the registry from the environment alone and never sees ``--model``. Refused:
+    ``--model auto``, and the environment's ``auto`` with a different explicit ``--model``."""
+    cli = (cli_model or "").strip()
+    env = environ.get("OPTIMUS_AGENT_MODEL", "").strip()
+    if cli == AUTO_MODEL:
+        raise AgentModelError("Auto is selected only by OPTIMUS_AGENT_MODEL=auto, never by --model")
+    if env == AUTO_MODEL and cli:
+        raise AgentModelError(f"OPTIMUS_AGENT_MODEL=auto conflicts with --model {cli!r}; use one or the other")
+    return env == AUTO_MODEL
+
+
 def _eligible_implementers(registry: RegistrySnapshot) -> set[str]:
     return {model_id for role in IMPLEMENTER_ROLES for model_id in select_eligible_models(registry, role)}
 
@@ -39,8 +52,8 @@ def resolve_model_for_registry(
     """Resolve the agent model against ``registry`` (None: enforcement inactive, today's rules).
 
     Under an enforced registry a configured model must be an exact ID eligible for an implementer
-    role, and ``auto`` is refused: no accepted resolver is installed, so it is never sent upstream
-    or treated as a medium classification.
+    role, and ``auto`` is refused here: it is never a model ID and never sent upstream. An Auto launch takes the
+    Auto composition's own path (``auto_requested``) instead of this resolution.
     """
     chosen = (cli_model or "").strip() or environ.get("OPTIMUS_AGENT_MODEL", "").strip()
     if registry is None:
@@ -48,7 +61,7 @@ def resolve_model_for_registry(
     if not chosen:
         return default_agent_model(registry)
     if chosen == AUTO_MODEL:
-        raise AgentModelError("'auto' model selection needs an accepted resolver, and none is installed")
+        raise AgentModelError("'auto' is not a model ID; an Auto launch resolves each turn's model through the Auto composition")
     eligible = _eligible_implementers(registry)
     if chosen not in eligible:
         raise AgentModelError(

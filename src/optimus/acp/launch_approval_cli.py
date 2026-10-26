@@ -71,7 +71,10 @@ from optimus.mcp.local_ipc import PendingClientMcpCandidateEndpoint, SafeCandida
 from optimus_model_policy import RegistryError
 from optimus_model_policy.binding import (
     APPROVAL_LITERAL_NAME,
+    AUTO_COMPOSITION,
+    COMPOSITION_LITERAL_NAME,
     BindingError,
+    auto_approval_literal,
     operator_override,
     trusted_approval_literal,
     use_operator_override,
@@ -199,6 +202,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=False,
         help="Auto-start local Phoenix and inject OTEL_EXPORTER_OTLP_ENDPOINT into the Gateway child only.",
     )
+    run_gateway_parser.add_argument(
+        "--auto",
+        action="store_true",
+        default=False,
+        help="Serve the Auto composition (Plan 12.4): signed only when the durable approval binds it.",
+    )
 
     mcp_parser = subparsers.add_parser("mcp", help="Client-supplied ACP MCP trust ceremony.")
     mcp_sub = mcp_parser.add_subparsers(dest="mcp_command")
@@ -288,6 +297,7 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_run_gateway_default(
                 workspace_root,
                 with_local_phoenix=bool(getattr(args, "with_local_phoenix", False)),
+                auto=bool(getattr(args, "auto", False)),
             )
         if args.command == "mcp":
             if getattr(args, "mcp_command", None) != "review":
@@ -947,7 +957,7 @@ _DEFAULT_GATEWAY_BIND_HOST = "127.0.0.1"
 _DEFAULT_GATEWAY_BIND_PORT = 8765
 
 
-def _cmd_run_gateway_default(workspace_root: Path, *, with_local_phoenix: bool = False) -> int:
+def _cmd_run_gateway_default(workspace_root: Path, *, with_local_phoenix: bool = False, auto: bool = False) -> int:
     """Entry point for `optimus-trust run-gateway` with real trusted roots
     and the real OS keyring (no injectable parameters) — the production
     call path. _cmd_run_gateway itself takes explicit trusted_roots/
@@ -963,6 +973,7 @@ def _cmd_run_gateway_default(workspace_root: Path, *, with_local_phoenix: bool =
         trusted_roots=_resolve_trusted_roots(),
         credential_keyring_backend=keyring_backend,
         with_local_phoenix=with_local_phoenix,
+        auto=auto,
     )
 
 
@@ -974,6 +985,7 @@ def _cmd_run_gateway(
     trusted_roots: TrustedOperatorRoots,
     credential_keyring_backend: object,
     with_local_phoenix: bool = False,
+    auto: bool = False,
 ) -> int:
     """Start the local Gateway with the approval ceremony, reading the
     repository's own .env.gateway as untrusted DATA — never sourced or
@@ -1055,7 +1067,7 @@ def _cmd_run_gateway(
         )
         registry_override = operator_override(operator_paths.config_root)
         use_operator_override(registry_override)
-        model_registry = trusted_approval_literal()
+        model_registry = auto_approval_literal() if auto else trusted_approval_literal()
     except OperatorPathConfigurationError as exc:
         print(f"optimus-trust run-gateway: {exc.user_message}", file=sys.stderr)
         return 2
@@ -1074,7 +1086,13 @@ def _cmd_run_gateway(
             approval = hmac_key_source.read_durable(workspace_identity.digest)
         except ApprovalError:
             approval = None
-        if approval is None or approval.security_literals.get(APPROVAL_LITERAL_NAME) != model_registry:
+        # Plan 12.4 Design 1: the Auto composition is signed only under an approval that binds its name too, and an
+        # ordinary run never under an Auto approval.
+        if (
+            approval is None
+            or approval.security_literals.get(APPROVAL_LITERAL_NAME) != model_registry
+            or approval.security_literals.get(COMPOSITION_LITERAL_NAME) != (AUTO_COMPOSITION if auto else None)
+        ):
             print(
                 "optimus-trust run-gateway: MODEL_REGISTRY_NOT_APPROVED: no durable launch approval for this workspace "
                 "binds this model registry. Approve the launch first (optimus-trust approve).",
@@ -1134,6 +1152,7 @@ def _cmd_run_gateway(
             "--manifest",
             serialized_manifest,
             *([] if registry_override is None else ["--registry-override", str(registry_override)]),
+            *(["--auto-composition"] if auto else []),
         ],
         env=child_env,
         shell=False,

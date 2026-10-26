@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 import keyring
 
+from optimus.acp.auto_composition import compose_auto_composition
 from optimus.acp.bootstrap import StartupConfigurationError, build_configured_server, resolve_ephemeral_hmac_flag
 from optimus.acp.debug_trace import (
     configure_debug_trace,
@@ -45,10 +46,10 @@ from optimus.acp.trusted_paths import (
     resolve_workspace_security_state,
     revalidate_workspace_security_state,
 )
-from optimus.agent.defaults import AgentModelError, resolve_agent_model
+from optimus.agent.defaults import AgentModelError, auto_requested, resolve_agent_model
 from optimus.gateway.client import DEFAULT_GATEWAY_TIMEOUT_SECONDS, validate_gateway_timeout_seconds
 from optimus_model_policy import RegistryError, binding
-from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError
+from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, COMPOSITION_LITERAL_NAME, BindingError
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES
 
 if TYPE_CHECKING:
@@ -566,6 +567,7 @@ def main(argv: list[str] | None = None) -> int:
     # (never os.environ) and receives the already-resolved shared secret from
     # the candidate rather than re-resolving it.
     test_composition = None
+    auto_composition = None
     stage_c_launch = None
     try:
         agent_environ = apply_local_defaults(
@@ -586,6 +588,14 @@ def main(argv: list[str] | None = None) -> int:
                 # Plan 12.2 Task 13: the approved envelope, recomposed from source; the ledger the release
                 # ceremony created must exist. Refused here, before any service starts.
                 stage_c_launch = resolve_stage_c_launch(candidate, test_composition)
+        elif auto_requested(agent_environ, cli_model=args.model):
+            # Plan 12.4 Design 1: the Auto composition, re-composed and refused unless it is the one the authorized
+            # candidate digested, with its composition name bound beside its hash.
+            auto_composition = compose_auto_composition(
+                approved_literal=candidate.security_literals.get(APPROVAL_LITERAL_NAME),
+                composition=candidate.security_literals.get(COMPOSITION_LITERAL_NAME),
+            )
+            auto_composition.default_model()
         else:
             # Plan 12.2 Task 5: under an enforced model registry an unusable model fails here with a
             # typed message rather than inside the runtime composition. Inactive: today's rules.
@@ -598,6 +608,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     except StageCLaunchError as exc:
         print(f"optimus-agent: {exc.code}", file=sys.stderr)
+        return 2
+    if auto_composition is not None:
+        # Plan 12.4 Task 4, in progress on this branch (never shipped): the composition, approval and Gateway parts
+        # exist, but the per-turn router does not yet, so an Auto launch is refused before any service starts.
+        print("optimus-agent: AUTO_NOT_AVAILABLE: Auto's per-turn router is not built yet", file=sys.stderr)
         return 2
 
     def _start_local_dependencies() -> tuple[str | None, int | None]:
@@ -628,6 +643,7 @@ def main(argv: list[str] | None = None) -> int:
             # Plan 12.2 Task 5: the registry literal the operator approved, or None while inactive.
             model_registry=candidate.security_literals.get(APPROVAL_LITERAL_NAME),
             test_profile=args.plan12_test_profile,
+            auto_composition=auto_composition is not None,
             stage_c_envelope=None if stage_c_launch is None else stage_c_launch.envelope.literal,
             stage_c_ledger=None if stage_c_launch is None else stage_c_launch.ledger,
         )

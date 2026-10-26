@@ -62,8 +62,11 @@ from optimus.acp.trusted_paths import (
 from optimus_model_policy import RegistryError
 from optimus_model_policy.binding import (
     APPROVAL_LITERAL_NAME,
+    AUTO_COMPOSITION,
+    COMPOSITION_LITERAL_NAME,
     BindingError,
     approval_literal,
+    auto_approval_literal,
     operator_override,
     trusted_approval_literal,
     use_operator_override,
@@ -690,12 +693,19 @@ def resolve_launch_candidate(
     # approves that exact registry and any change to it requires re-approval. While registry
     # enforcement is inactive there is no literal and the digest is unchanged, so existing
     # approvals stay valid; activation adds it and those approvals then need re-approval.
+    auto_launch = model_observation == AUTO_COMPOSITION
+    if auto_launch and test_profile is not None:
+        raise LaunchGateError(code="AUTO_WITH_TEST_PROFILE", detail="Auto and a test profile are mutually exclusive")
     try:
         if test_profile is None:
             # ADR-025 (ADR-004 option C): the operator's override in the trusted config root, composed over the shipped
             # defaults for this process; the approval binds the resulting effective hash. Test profiles never read it.
             use_operator_override(operator_override(operator_paths.config_root))
-            registry_literal = trusted_approval_literal()
+            # Plan 12.4 Design 1: OPTIMUS_AGENT_MODEL=auto composes the Auto overlay too, and binds its name beside its
+            # hash, so an ordinary approval never authorizes an Auto launch, or the reverse.
+            registry_literal = auto_approval_literal() if auto_launch else trusted_approval_literal()
+            if auto_launch:
+                security_literals[COMPOSITION_LITERAL_NAME] = AUTO_COMPOSITION
         else:
             use_operator_override(None)
             # A named test profile binds its own reviewed snapshot (release supplement V2) and its own name: the
@@ -751,7 +761,10 @@ def resolve_launch_candidate(
             LaunchDisplayRow(
                 name=APPROVAL_LITERAL_NAME,
                 tier=LaunchVariableTier.SECURITY,
-                source_class="trusted-composition" if test_profile is None else f"test-profile:{test_profile}",
+                source_class=(
+                    f"test-profile:{test_profile}" if test_profile is not None
+                    else "auto-composition" if auto_launch else "trusted-composition"
+                ),
                 display_value=registry_literal,
                 decision="requires exact approval",
             )

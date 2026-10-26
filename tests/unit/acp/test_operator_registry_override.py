@@ -158,7 +158,7 @@ def test_the_gateway_refuses_a_path_that_is_not_the_override_or_a_profile_with_o
     assert started == []
 
 
-def _run_gateway(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, approval: object) -> tuple[int, list, str]:
+def _run_gateway(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, approval: object, *, auto: bool = False) -> tuple[int, list, str]:
     """``optimus-trust run-gateway`` for the workspace ``tmp_path/workspace``, whose operator config root is the
     separate ``tmp_path/config`` (a config root inside the workspace is refused)."""
     workspace = tmp_path / "workspace"
@@ -188,6 +188,7 @@ def _run_gateway(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, approval: obje
             bind_port=8765,
             trusted_roots=TrustedOperatorRoots(default_config_root=tmp_path / "config", approval_runtime_root=tmp_path / "runtime"),
             credential_keyring_backend=FakeKeyring(),
+            auto=auto,
         )
         written = "".join(call.args[0] for call in stderr.write.call_args_list)
     return code, spawned, written

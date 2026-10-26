@@ -11,8 +11,15 @@ import keyring as _keyring_module
 from optimus_gateway.model_policy import GatewayModelPolicy
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.server import serve_gateway
-from optimus_model_policy import RegistryError
-from optimus_model_policy.binding import BindingError, approval_literal, operator_override, trusted_snapshot, use_operator_override
+from optimus_model_policy import RegistryError, RegistrySnapshot
+from optimus_model_policy.binding import (
+    BindingError,
+    approval_literal,
+    auto_snapshot,
+    operator_override,
+    trusted_snapshot,
+    use_operator_override,
+)
 from optimus_model_policy.stage_c import StageCGuard, StageCLedgerError, compose_stage_c_envelope, require_stage_c_profile
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES, compose_test_profile_snapshot
 from optimus_security.launch_manifest import (
@@ -88,11 +95,21 @@ def main(argv: list[str] | None = None) -> int:
             "defaults; the signed manifest must bind the resulting effective hash. Never with a test profile."
         ),
     )
+    parser.add_argument(
+        "--auto-composition",
+        action="store_true",
+        help=(
+            "Compose the Auto registry (Plan 12.4 Design 1): the shipped defaults, the shipped Auto overlay and any "
+            "registry override, here independently; the signed manifest must bind its exact effective hash."
+        ),
+    )
     args = parser.parse_args(argv)
     if args.plan12_stage_c_ledger is not None and args.plan12_test_profile is None:
         parser.error("--plan12-stage-c-ledger needs --plan12-test-profile")
     if args.registry_override is not None and args.plan12_test_profile is not None:
         parser.error("--registry-override cannot be combined with --plan12-test-profile")
+    if args.auto_composition and args.plan12_test_profile is not None:
+        parser.error("--auto-composition cannot be combined with --plan12-test-profile")
 
     environ = dict(os.environ)
 
@@ -125,7 +142,11 @@ def main(argv: list[str] | None = None) -> int:
             if operator_override(override.parent) != override:
                 raise BindingError("OPERATOR_OVERRIDE_UNSAFE", "not the operator registry override")
             use_operator_override(override)
-        registry = trusted_snapshot() if args.plan12_test_profile is None else compose_test_profile_snapshot(args.plan12_test_profile)
+        registry: RegistrySnapshot | None
+        if args.plan12_test_profile is not None:
+            registry = compose_test_profile_snapshot(args.plan12_test_profile)
+        else:
+            registry = auto_snapshot() if args.auto_composition else trusted_snapshot()
     except (BindingError, RegistryError) as exc:
         print(f"optimus-local-gateway: model registry is not trustworthy ({exc.code}); refusing to start.", file=sys.stderr)
         return 2

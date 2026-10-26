@@ -431,6 +431,7 @@ def ensure_local_gateway(
     test_profile: str | None = None,
     stage_c_envelope: str | None = None,
     stage_c_ledger: Path | None = None,
+    auto_composition: bool = False,
 ) -> LocalGatewayProcess | None:
     """Start the local Gateway child using ALREADY-RESOLVED credentials.
 
@@ -529,6 +530,10 @@ def ensure_local_gateway(
         override = None if test_profile is not None or config_root is None else operator_override(config_root)
         if override is not None:
             profile_argv += ["--registry-override", str(override)]
+        # Plan 12.4 Design 1: an Auto launch's Gateway composes the Auto registry itself; the signed manifest must bind
+        # that hash, so a Gateway composing anything else refuses to start.
+        if auto_composition:
+            profile_argv.append("--auto-composition")
         process = subprocess.Popen(
             [
                 sys.executable,

@@ -39,6 +39,8 @@ from optimus_model_policy.registry import ModelEntry, RegistrySnapshot, load_reg
 
 __all__ = [
     "APPROVAL_LITERAL_NAME",
+    "AUTO_COMPOSITION",
+    "COMPOSITION_LITERAL_NAME",
     "ATTEMPT_COMPLETED",
     "ATTEMPT_NOT_SENT",
     "ATTEMPT_OUTCOMES",
@@ -54,6 +56,8 @@ __all__ = [
     "DisclosureAuthorization",
     "RouteBinding",
     "approval_literal",
+    "auto_approval_literal",
+    "auto_snapshot",
     "compose_trusted_snapshot",
     "disclosure_key",
     "issue_disclosure",
@@ -71,6 +75,13 @@ ENFORCEMENT_ACTIVE: Final = True
 
 APPROVAL_LITERAL_NAME: Final = "_model_registry"
 """The security-literal name under which a launch approval binds the effective registry hash."""
+
+COMPOSITION_LITERAL_NAME: Final = "_composition"
+"""The security-literal name under which an Auto launch's approval also binds its composition (Plan 12.4 Design 1):
+equal hashes never mean shared authority, as with a test profile's name."""
+
+AUTO_COMPOSITION: Final = "auto"
+AUTO_OVERLAY_FILENAME: Final = "auto_overlay.yaml"
 
 _APPROVAL_LITERAL_PREFIX: Final = "optimus-model-registry-v1:"
 ROUTE_BINDING_VERSION: Final = 1
@@ -144,6 +155,23 @@ def approval_literal(snapshot: RegistrySnapshot) -> str:
 
 def trusted_approval_literal() -> str | None:
     snapshot = trusted_snapshot()
+    return None if snapshot is None else approval_literal(snapshot)
+
+
+def auto_snapshot() -> RegistrySnapshot | None:
+    """The ``auto`` composition (Plan 12.4 Design 1, ADR-027): the shipped defaults, then the shipped Auto overlay,
+    then this process's operator override; None while enforcement is inactive. ``trusted_snapshot()`` stays the
+    ordinary composition."""
+    if not ENFORCEMENT_ACTIVE:
+        return None
+    snapshot = load_registry(packaged_defaults(), Path(__file__).with_name(AUTO_OVERLAY_FILENAME), _operator_override)
+    if snapshot.policy.fixture:
+        raise BindingError("FIXTURE_POLICY", "a fixture registry cannot be trusted at launch")
+    return snapshot
+
+
+def auto_approval_literal() -> str | None:
+    snapshot = auto_snapshot()
     return None if snapshot is None else approval_literal(snapshot)
 
 
