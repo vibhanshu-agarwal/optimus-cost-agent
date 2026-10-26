@@ -107,7 +107,7 @@ Live plans (each listed in the backlog's live plan registry):
 | [P11-FU-6 v2: bounded early POST rejection](superpowers/plans/2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | Gateway early-rejection correction |
 | [Local-hook UTF-8 repair](superpowers/plans/2026-09-06-local-hook-utf8-repair.md) | Pre-commit hook decoding fix |
 | [Evidence collector](superpowers/plans/evidence-handoff-evidence-collector-implementation.md) | Evidence-handoff collector |
-| [Plan 12.4 v8: Auto mode](superpowers/plans/2026-10-23-plan-12-4-auto-mode_v8.md) | Fixed tiers with models as configuration; classifier pilot (rules, Jev, Haiku, DSPy, hybrid); opt-in per-turn tier routing; N3 accepts one unflagged guardrail stage (#400). v6 and v7 are in `archive/` |
+| [Plan 12.4 v9: Auto mode](superpowers/plans/2026-10-23-plan-12-4-auto-mode_v9.md) | Fixed tiers with models as configuration; the classifier pilot selected H, the rules then Jev (ADR-027); opt-in per-turn tier routing; round 2, a challenger round on fresh data. v6, v7 and v8 are in `archive/` |
 
 ## Current designs
 

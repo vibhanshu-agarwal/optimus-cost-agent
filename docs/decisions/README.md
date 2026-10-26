@@ -147,15 +147,34 @@ by this folder.
      - Claude checked, read-only, that the quoted decision appears verbatim in a human user turn of the export's main
        transcript (`2026-10-26T04:17:04.480Z`). A full app export, not an excerpt. Raw S12 is archival provenance, never
        an operating, test or release dependency; S1–S11 retain their existing meanings.
-   - **Source S13.** The ADR-007 acceptance, the operator's message of 2026-10-26 in the Claude session for the Plan
-     12.4 Auto thread (session `bbe75542-b5c9-4de6-92d1-5e865d05eece`): accepting arm H as Auto mode's judge per the
-     pre-registered rule and Codex round 62, with its limitations, and the instruction to draft round 2.
+   - **Source S13.** Two operator messages of 2026-10-26 in the Claude session for the Plan 12.4 Auto thread (session
+     `bbe75542-b5c9-4de6-92d1-5e865d05eece`):
+     - **Pilot deviation N4:** the classifier output reserve of 1,024, the unknown-cost call carried as a provision,
+       and the follow-up issue.
+     - **The ADR-007 acceptance:** arm H as Auto mode's judge per the pre-registered rule and Codex round 62, with its
+       limitations, and the instruction to draft round 2.
+
+     The source record:
      - External transcript export: `optimus-handoff\decisions-sources\2026-10-26-claude-session-plan12-4-adr027-export.zip`,
        produced by the app's session Export, 14,044,749 bytes.
      - SHA-256: `35187F1129264F5622926FA788747312B65EA11536337307288A9D9DA38FCECB`.
-     - Claude checked, read-only, that the quoted decision appears verbatim in a human user turn of the export's main
-       transcript (`2026-10-26T12:49:38.157Z`). A full app export, not an excerpt. Raw S13 is archival provenance, never
-       an operating, test or release dependency; S1–S12 retain their existing meanings.
+     - Claude checked, read-only, that each quoted decision appears verbatim in a human user turn of the export's main
+       transcript (N4 `2026-10-26T06:54:23.146Z`; the acceptance `2026-10-26T12:49:38.157Z`). A full app export, not an
+       excerpt. Raw S13 is archival provenance, never an operating, test or release dependency; S1–S12 retain their
+       existing meanings.
+   - **Source S14.** Two operator messages of 2026-10-26 in the same session:
+     - **Plan 12.4 Checkpoint A:** the approval of the `auto` hash, manifest option (ii), and round 2's R1(a), R2(a)
+       and R3, with the instruction to draft Plan 12.4 v9.
+     - **The GitHub writes:** the approval to file the two Plan 12.4 follow-up issues and to post the v9 note on #395.
+
+     The source record:
+     - External transcript export: `optimus-handoff\decisions-sources\2026-10-26-claude-session-plan12-4-v9-export.zip`,
+       produced by the app's session Export, 15,102,277 bytes.
+     - SHA-256: `031879BDA071E83A75D986272B7DFCA94149CAA35E36AF82284377819749F8F2`.
+     - Claude checked, read-only, that each quoted decision appears verbatim in a human user turn of the export's main
+       transcript (`2026-10-26T13:16:56.400Z` and `2026-10-26T13:38:04.632Z`). A full app export, not an excerpt. Raw
+       S14 is archival provenance, never an operating, test or release dependency; S1–S13 retain their existing
+       meanings.
 2. **Label the decider.** Each record says who decided: the operator, an agent (Claude or Codex), or an
    agent proposal still awaiting the operator. A value an agent chose must never read as an operator
    requirement.
