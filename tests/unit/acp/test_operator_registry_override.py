@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 import pytest
 
-from optimus.acp import launch_approval_cli
+from optimus.acp import launch_approval_cli, operator_paths
 from optimus.acp.trusted_paths import TrustedOperatorRoots
 from optimus_gateway import __main__ as gateway_main
 from optimus_model_policy import Role, select_eligible_models
@@ -111,10 +111,17 @@ def test_the_process_override_composes_over_the_shipped_defaults(tmp_path: Path)
     assert trusted_snapshot() == shipped
 
 
-def test_the_launch_approval_binds_the_composed_override_hash(tmp_path: Path) -> None:
+def test_the_launch_approval_binds_the_composed_override_hash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The run guard redirects the OS roots on Windows only; on POSIX the resolved root is the real home, and an override
+    # written there would reach every later launch in the process (PR #428's Linux CI). Pin the roots here on every OS.
+    roots = TrustedOperatorRoots(
+        default_config_root=tmp_path.parent / (tmp_path.name + "-config"), approval_runtime_root=tmp_path / "runtime"
+    )
+    monkeypatch.setattr(operator_paths, "resolve_trusted_operator_roots", lambda **_: roots)
     keyring = FakeKeyring()
     plain, _ = _candidate(tmp_path, keyring)
     config_root = _candidate(tmp_path, keyring)[0].operator_paths.config_root
+    assert config_root.is_relative_to(roots.default_config_root.resolve())
     path = _write_override(config_root)
 
     with_override, _ = _candidate(tmp_path, keyring)
