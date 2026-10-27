@@ -6,6 +6,7 @@ import os
 import tempfile
 import threading
 import time
+from multiprocessing.connection import Client
 from pathlib import Path
 
 import pytest
@@ -69,6 +70,100 @@ def test_network_endpoint_addresses_are_rejected() -> None:
         reject_network_endpoint_address("tcp://127.0.0.1:8765")
     with pytest.raises(ValueError):
         reject_network_endpoint_address("127.0.0.1:8765")
+
+
+def test_successors_are_bounded_and_retirement_is_session_owned():
+    endpoint = PendingClientMcpCandidateEndpoint(authkey=b"bounded-local-candidates")
+    try:
+        first = endpoint.publish(_candidate(session_id="one"))
+        second = endpoint.publish(_candidate(session_id="one"))
+        other = endpoint.publish(_candidate(session_id="two"))
+        assert endpoint.pending_count == 2
+        assert not endpoint.retire(second, session_id="two")
+        with pytest.raises(LookupError):
+            endpoint.consume_snapshot(first)
+        assert endpoint.retire_session("one") == 1
+        assert endpoint.retire_session("one") == 0
+        assert endpoint.consume_snapshot(other).session_id == "two"
+    finally:
+        endpoint.close()
+
+
+def test_real_listener_restart_uses_fresh_address_and_joins_captured_generation():
+    endpoint = PendingClientMcpCandidateEndpoint(authkey=b"owned-generation-test")
+    addresses = []
+    try:
+        for _ in range(3):
+            candidate = endpoint.publish(_candidate())
+            addresses.append(endpoint.endpoint_address)
+            thread = endpoint._thread
+            assert thread is not None and thread.is_alive()
+            assert endpoint.retire(candidate, session_id="session-1")
+            assert not thread.is_alive()
+        assert len(set(addresses)) == 3
+    finally:
+        endpoint.close()
+
+
+def test_incomplete_listener_stop_retains_ownership_and_refuses_replacement():
+    endpoint = PendingClientMcpCandidateEndpoint(authkey=b"held-owned-authentication")
+    peer = None
+    thread = None
+    try:
+        candidate = endpoint.publish(_candidate())
+        _, address = endpoint.endpoint_address
+        thread = endpoint._thread
+        listener = endpoint._listener
+        # Hold the server after its challenge: a connected local peer has not answered.
+        peer = Client(address)
+        assert peer.poll(1)
+        assert peer.recv_bytes()
+        with pytest.raises(LocalIpcError, match="ipc_stop_incomplete"):
+            endpoint.retire(candidate, session_id="session-1")
+        assert endpoint._thread is thread and thread.is_alive()
+        assert endpoint._listener is listener
+        with pytest.raises(LocalIpcError, match="ipc_stop_incomplete"):
+            endpoint.publish(_candidate())
+    finally:
+        if peer is not None:
+            peer.close()
+        if thread is not None:
+            thread.join(2)
+            assert not thread.is_alive()
+        endpoint.close()
+
+
+def test_concurrent_successor_is_not_erased_by_retiring_the_previous_candidate(monkeypatch):
+    endpoint = PendingClientMcpCandidateEndpoint(authkey=b"concurrent-candidate-owner")
+    retired, publish_done = threading.Event(), threading.Event()
+    real_stop = endpoint._stop_listener
+    def held_stop():
+        retired.set()
+        assert publish_done.wait(1)
+        real_stop()
+    monkeypatch.setattr(endpoint, "_stop_listener", held_stop)
+    prior = endpoint.publish(_candidate())
+    errors = []
+    def retire():
+        try:
+            assert endpoint.retire(prior, session_id="session-1")
+        except BaseException as exc:
+            errors.append(exc)
+    worker = threading.Thread(target=retire)
+    worker.start()
+    try:
+        assert retired.wait(1)
+        successor = endpoint.publish(_candidate())
+        publish_done.set()
+        worker.join(2)
+        assert not worker.is_alive() and not errors
+        assert endpoint.pending_count == 1
+        assert endpoint.consume_snapshot(successor).session_id == "session-1"
+    finally:
+        publish_done.set()
+        worker.join(2)
+        monkeypatch.setattr(endpoint, "_stop_listener", real_stop)
+        endpoint.close()
 
 
 def test_ipc_auth_key_is_derived_from_hmac_root() -> None:

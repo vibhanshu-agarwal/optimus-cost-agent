@@ -222,7 +222,7 @@ class _CustodyVisitor(ast.NodeVisitor):
 
 _STAGE_PATTERNS: tuple[tuple[str, str], ...] = (
     ("adapter", r"(?:self\._adapter|adapter)\.(?:close_all|aclose)\("),
-    ("client_mcp_runtime", r"client_mcp_runtime\.close\("),
+    ("client_mcp_runtime", r"(?:client_mcp_runtime\.close\(|asyncio\.to_thread\(\s*self\._client_mcp_runtime\.close\s*\))"),
     ("dedicated_writer", r"dedicated\.close_and_join\("),
     ("reader_task", r"await\s+reader_task"),
     ("redis_runtime", r"_close_redis_runtime_stage\(|redis_runtime\.close(?:_async)?\("),
@@ -498,23 +498,23 @@ def _stage_spy():
     from optimus.redis.runtime import RedisRuntime
 
     sequence: list[str] = []
-    real_close_all = vars(spec.AcpDuplexAdapter)["close_all"]
+    real_aclose = vars(spec.AcpDuplexAdapter)["aclose"]
     real_close_async = vars(RedisRuntime)["close_async"]
 
-    def spy_close_all(inner_self):
+    async def spy_aclose(inner_self):
         sequence.append("adapter")
-        return real_close_all(inner_self)
+        return await real_aclose(inner_self)
 
     async def spy_close_async(inner_self, *, timeout=None):
         sequence.append("redis_runtime")
         return await real_close_async(inner_self, timeout=timeout)
 
-    spec.AcpDuplexAdapter.close_all = spy_close_all  # type: ignore[method-assign]
+    spec.AcpDuplexAdapter.aclose = spy_aclose  # type: ignore[method-assign]
     RedisRuntime.close_async = spy_close_async  # type: ignore[method-assign]
     try:
         yield sequence
     finally:
-        spec.AcpDuplexAdapter.close_all = real_close_all  # type: ignore[method-assign]
+        spec.AcpDuplexAdapter.aclose = real_aclose  # type: ignore[method-assign]
         RedisRuntime.close_async = real_close_async  # type: ignore[method-assign]
 
 
@@ -661,13 +661,13 @@ def _probe_prior_stage_failure(workspace: Path) -> CustodyObservation:
 
     runtime, client, pool = _fresh_runtime()
     facts: dict[str, Any] = {}
-    real_close_all = vars(spec.AcpDuplexAdapter)["close_all"]
+    real_aclose = vars(spec.AcpDuplexAdapter)["aclose"]
 
-    def failing_close_all(inner_self):
-        real_close_all(inner_self)
+    async def failing_aclose(inner_self):
+        await real_aclose(inner_self)
         raise ValueError("plan1126-s1-prior-stage-fault")
 
-    spec.AcpDuplexAdapter.close_all = failing_close_all  # type: ignore[method-assign]
+    spec.AcpDuplexAdapter.aclose = failing_aclose  # type: ignore[method-assign]
     try:
         try:
             asyncio.run(_server_for(runtime, workspace).serve_ndjson(_EofReader(), _NullWriter()))
@@ -677,7 +677,7 @@ def _probe_prior_stage_failure(workspace: Path) -> CustodyObservation:
             facts["earlier_failure_preserved"] = False
         facts.update(_disposition(runtime, client, pool))
     finally:
-        spec.AcpDuplexAdapter.close_all = real_close_all  # type: ignore[method-assign]
+        spec.AcpDuplexAdapter.aclose = real_aclose  # type: ignore[method-assign]
         with contextlib.suppress(Exception):
             runtime.close(timeout=10.0)
     demonstrated = facts.get("earlier_failure_preserved") is True and _closed_once(facts)

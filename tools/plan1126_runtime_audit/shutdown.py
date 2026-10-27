@@ -556,14 +556,6 @@ class _CountedClose:
         self.count += 1
 
 
-class _DetachService:
-    def __init__(self) -> None:
-        self.count = 0
-
-    def detach_resolver(self) -> None:
-        self.count += 1
-
-
 class _CountingComponent:
     def __init__(self) -> None:
         self.count = 0
@@ -795,24 +787,32 @@ def _probe_resource(
         return _repeat_actual_close(store.close_all, lambda: state.count), cause_effect
 
     if resource == "AcpDuplexAdapter":
-        from optimus.acp.spec import AcpDuplexAdapter
+        from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
+        from optimus.mcp.client_disposition import ClientMcpSessionState
 
-        sessions = _CountingComponent()
-        adapter = object.__new__(AcpDuplexAdapter)
-        adapter._closed = False
-        adapter._active_turns = {}
-        adapter._sessions = sessions
-        return _repeat_actual_close(adapter.close_all, lambda: sessions.count), cause_effect
+        sessions = InMemoryAcpSpecSessionStore()
+        session = sessions.create(cwd=Path.cwd())
+        state = ClientMcpSessionState(session_id=session.session_id)
+        hook = _CountedClose()
+        state.register_close_hook(hook.close)
+        session.client_mcp_state = state
+        adapter = AcpDuplexAdapter(runner=object(), workspace_root=Path.cwd(), sessions=sessions,
+                                   outbound=RecordingOutboundChannel())
+        if method == "aclose":
+            async def close_three() -> None:
+                for _ in range(3):
+                    await adapter.aclose()
+            asyncio.run(close_three())
+            return hook.count, cause_effect
+        return _repeat_actual_close(adapter.close_all, lambda: hook.count), cause_effect
 
     if resource == "ClientMcpSessionState":
         from optimus.mcp.client_disposition import ClientMcpSessionState
 
         state = ClientMcpSessionState(session_id="h5-audit")
-        service = _DetachService()
         hook = _CountedClose()
-        state._tool_service = service  # type: ignore[assignment]
         state.register_close_hook(hook.close)
-        return _repeat_actual_close(state.close, lambda: max(service.count, hook.count)), cause_effect
+        return _repeat_actual_close(state.close, lambda: hook.count), cause_effect
 
     if resource == "ClientMcpRuntime":
         from optimus.mcp.client_disposition import ClientMcpRuntime
@@ -1634,7 +1634,7 @@ def _derived_shutdown_order(source: SourceTree) -> tuple[str, ...]:
     text = source.read_text("src/optimus/acp/server.py")
     patterns = (
         ("adapter", r"(?:self\._adapter|adapter)\.(?:close_all|aclose)\("),
-        ("client_mcp_runtime", r"client_mcp_runtime\.close\("),
+        ("client_mcp_runtime", r"(?:client_mcp_runtime\.close\(|asyncio\.to_thread\(\s*self\._client_mcp_runtime\.close\s*\))"),
         ("dedicated_writer", r"dedicated\.close_and_join\("),
         ("reader_task", r"await\s+reader_task"),
         ("redis_runtime", r"redis_runtime\.close\("),

@@ -57,6 +57,7 @@ relevant records before proposing a change in their area.
 | [ADR-023: Plan 12.2 shipped admission and default planner](decisions/ADR-023-plan12-shipped-empirical-admission-and-default-planner.md) | One exact-snapshot empirical admission exception for Haiku 5.5 (`verified: false`) and the medium-then-easy default planner; operator policy approval recorded; ships with the Plan 12.2 delivery merge, and the ordinary proof is tracked in #237 |
 | [ADR-024: Accepts ADR-009 as scoped](decisions/ADR-024-accepts-adr-009-loop-control-phase-1-scope.md) | Loop control Phase 1: a detector, one nudge and a Continue/Stop check-in, escalation after Auto; operator D1–D3 (source S10) |
 | [ADR-026: Exception routes accept one unflagged guardrail stage](decisions/ADR-026-exception-routes-accept-one-unflagged-guardrail-stage.md) | #400 option b1: one `guardrail` stage reporting `flagged` false and no detection, decision, action, conflict or scope passes the exception-route pipeline check; every other stage still refuses; residual risk accepted by the operator |
+| [ADR-027: Idle client-MCP lifetime](decisions/ADR-027-idle-client-mcp-lifetime-contract.md) | Retain in-memory continuity; positive idle delay and fresh atomic permission renewal |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 
 ## Research (input for Plan 12)
@@ -93,6 +94,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
+| [Idle client-MCP lifetime v3](superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v3.md) | #427; A-derived lifetime owner and idle renewal on main |
 | [Plan 11.7 v3: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | Resume an ACP session in Zed |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |
 | [Plan 11.24 v6: guided session-load probe](superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md) | Probe of Zed's `session/load` |
@@ -107,6 +109,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Document | What it is |
 |---|---|
+| [Idle client-MCP lifetime design](superpowers/specs/2026-10-26-idle-mcp-suspension-main-port-design.md) | Self-contained #427 contract; [intake receipt](superpowers/reports/2026-10-26-idle-mcp-suspension-main-port-receipt.md) |
 | [Plan 12.2 Context Engine design (v3)](superpowers/specs/2026-10-01-plan-12-2-context-engine-design_v3.md) | Three history strategies, exact host facts, floor, registry and cost integration; v3 adds the CP4 measured adoption and D7 disposition |
 | [Plan 12.2 ordinary compaction shipping contract](superpowers/specs/2026-10-18-plan-12-2-ordinary-compaction-shipping-contract.md) | Scoped successor for the shipping candidate: the ordinary composition, the shipped empirical exception, the shared numeric policy, approval migration and the closure gates; filed 2026-10-18; its acceptance and closure gate are tracked in #237 |
 | [Plan 12.2 Task 1 contracts (v3)](superpowers/specs/2026-10-02-plan-12-2-task1-contracts_v3.md) | Engine data, summary format, registry/trust/capacity, host integration, D6; v3 adds the CP4 numeric adoption and the trusted test composition. The 2026-10-02 acceptance belongs to the archived first edition |

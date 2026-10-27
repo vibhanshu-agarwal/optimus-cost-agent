@@ -24,6 +24,7 @@ import pytest
 
 from optimus.acp import server
 from optimus.acp.debug_trace import configure_debug_trace, reset_debug_trace_context
+from optimus.acp.outbound_writer import DedicatedOutboundWriter
 from optimus.acp.server import StdioNdjsonLineReader
 from optimus.redis import async_bridge
 from optimus.redis.async_bridge import RedisLoopOwner, RedisLoopOwnerClosed
@@ -378,13 +379,13 @@ async def test_a_setup_failure_after_the_handoff_still_closes_the_runtime(tmp_pa
 async def test_an_earlier_cleanup_stage_failure_still_closes_the_runtime_and_keeps_its_error(
     tmp_path, monkeypatch
 ):
-    """R1 MUTATION: adapter.close_all raises inside teardown; Redis closes and the error survives."""
+    """R1 MUTATION: adapter.aclose raises inside teardown; Redis closes and the error survives."""
     from optimus.acp import spec
 
-    def _boom(self):
+    async def _boom(self):
         raise ValueError("adapter close fault")
 
-    monkeypatch.setattr(spec.AcpDuplexAdapter, "close_all", _boom)
+    monkeypatch.setattr(spec.AcpDuplexAdapter, "aclose", _boom)
     client, pool = _CountingResource(), _CountingResource()
     runtime = _runtime(client, pool)
     srv = _redis_server(tmp_path, runtime)
@@ -394,6 +395,50 @@ async def test_an_earlier_cleanup_stage_failure_still_closes_the_runtime_and_kee
     assert runtime.state is RedisRuntimeState.CLOSED
     assert client.count == 1 and pool.count == 1
     assert runtime.owner.is_terminated
+
+
+async def test_mcp_failure_closes_physical_writer_before_redis_and_preserves_identity(tmp_path, monkeypatch, redis_trace):
+    observed = _RedisObserved(monkeypatch)
+    owned = []
+    failure = ValueError("adapter close failure")
+    runtime_failure = RuntimeError("runtime close failure")
+    class Writer(server.DedicatedOutboundWriter):
+        def start(self):
+            super().start()
+            owned.append(self)
+        def close_and_join(self):
+            observed.sequence.append("writer")
+            super().close_and_join()
+    async def fail(_adapter):
+        observed.sequence.append("close_all")
+        raise failure
+    class McpRuntime:
+        def close(self):
+            observed.sequence.append("mcp_close")
+            raise runtime_failure
+    monkeypatch.setattr(server.AcpDuplexAdapter, "aclose", fail)
+    monkeypatch.setattr(server, "DedicatedOutboundWriter", Writer)
+    client, pool = _CountingResource(), _CountingResource()
+    runtime = _runtime(client, pool)
+    srv = _redis_server(tmp_path, runtime, McpRuntime())
+    task = asyncio.create_task(srv.serve_ndjson(StdioNdjsonLineReader(io.BytesIO(b"")), _PhysicalWriter()))
+    try:
+        done, pending = await asyncio.wait({task}, timeout=BOUND_SECONDS)
+        assert done and not pending
+        assert task.exception() is failure
+        assert failure.__cause__ is runtime_failure
+        assert observed.sequence == ["close_all", "mcp_close", "mcp_incomplete", "writer", "redis_close"]
+        assert len(owned) == 1 and not owned[0]._thread.is_alive()
+        assert client.count == 1 and pool.count == 1 and runtime.owner.is_terminated
+    finally:
+        if not task.done():
+            task.cancel()
+            await asyncio.wait({task}, timeout=BOUND_SECONDS)
+        if not task.cancelled():
+            task.exception()
+        for writer in owned:
+            DedicatedOutboundWriter.close_and_join(writer)
+        await runtime.close_async(timeout=BOUND_SECONDS)
 
 
 async def test_a_failing_mcp_stage_does_not_strand_the_runtime(tmp_path, monkeypatch):
