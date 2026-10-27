@@ -911,6 +911,8 @@ class AcpStreamServer:
                         )
                     )
         finally:
+            primary_failure = sys.exc_info()[1]
+            failures: list[BaseException] = [] if primary_failure is None else [primary_failure]
             # Transport-loss ordering: abandon notices before cancelling request tasks.
             notice.mark_transport_abandoned()
             for turn in list(adapter._active_turns.values()):  # noqa: SLF001
@@ -918,39 +920,65 @@ class AcpStreamServer:
             adapter._cancel_loop_work()  # loop-affine permissions and reservations precede worker teardown
             for task in list(request_tasks):
                 task.cancel()
-            async def shutdown_mcp() -> Any:
-                return_outcome = None
-                if request_tasks:
-                    await asyncio.gather(*request_tasks, return_exceptions=True)
+            mcp_outcome: Any = None
+            mcp_failed = False
+            async def shutdown_mcp() -> None:
+                nonlocal mcp_outcome, mcp_failed
+                try:
+                    if request_tasks:
+                        await asyncio.gather(*request_tasks, return_exceptions=True)
+                except BaseException as exc:
+                    failures.append(exc)
+                    mcp_failed = True
                 try:
                     await adapter.aclose()
-                finally:
+                except BaseException as exc:
+                    failures.append(exc)
+                    mcp_failed = True
+                try:
                     if self._client_mcp_runtime is not None:
-                        return_outcome = await asyncio.to_thread(self._client_mcp_runtime.close)
-                return return_outcome if self._client_mcp_runtime is not None else None
+                        mcp_outcome = await asyncio.to_thread(self._client_mcp_runtime.close)
+                except BaseException as exc:
+                    failures.append(exc)
+                    mcp_failed = True
             self._mcp_shutdown_task = asyncio.create_task(shutdown_mcp(), name="optimus-mcp-shutdown")
-            teardown_cancelled = False
+            teardown_cancelled: asyncio.CancelledError | None = None
             while not self._mcp_shutdown_task.done():
                 try:
                     await asyncio.shield(self._mcp_shutdown_task)
-                except asyncio.CancelledError:
-                    teardown_cancelled = True
-            mcp_outcome = self._mcp_shutdown_task.result()
+                except asyncio.CancelledError as exc:
+                    if teardown_cancelled is None:
+                        teardown_cancelled = exc
+                except BaseException:
+                    break  # Retrieve the task's original failure below, then finish the owned stages.
+            try:
+                self._mcp_shutdown_task.result()
+            except BaseException as exc:
+                failures.append(exc)
+                mcp_failed = True
             # Client-MCP cleanup outcome. The runtime attempts every stage and returns an
             # aggregate result; consuming it here means an incomplete-but-non-raising cleanup
             # (a supervisor still draining, a contained stage failure) is reported instead of
             # passing silently. Only an absent runtime is an implicit clean/no-resource case.
             # The report is made right here, before the later stages, so it is attempted
             # whenever the runtime returned; later stages keep their existing order.
-            if self._client_mcp_runtime is not None:
-                mcp_status = classify_mcp_cleanup(mcp_outcome)
-                if mcp_status != "clean":
-                    report_mcp_cleanup_incomplete(
-                        mcp_outcome if mcp_status == "incomplete" and isinstance(mcp_outcome, ClientMcpShutdownOutcome) else None,
-                        mcp_status,
-                    )
-            if dedicated is not None and owned_dedicated and join_dedicated_writer:
-                dedicated.close_and_join()
+            try:
+                if self._client_mcp_runtime is not None:
+                    mcp_status = classify_mcp_cleanup(mcp_outcome)
+                    if mcp_failed and mcp_status == "clean":
+                        mcp_status = "incomplete"
+                    if mcp_status != "clean":
+                        report_mcp_cleanup_incomplete(
+                            mcp_outcome if mcp_status == "incomplete" and isinstance(mcp_outcome, ClientMcpShutdownOutcome) else None,
+                            mcp_status,
+                        )
+            except BaseException as exc:
+                failures.append(exc)
+            try:
+                if dedicated is not None and owned_dedicated and join_dedicated_writer:
+                    dedicated.close_and_join()
+            except BaseException as exc:
+                failures.append(exc)
             # Reader ownership at teardown. The cooperative path is EOF: `read_lines` put its
             # sentinel and returned, so `reader_task` is already done -- await it (immediate,
             # surfacing any reader error) and complete the full shutdown. But when teardown is
@@ -961,13 +989,22 @@ class AcpStreamServer:
             # executor until it returns on its own (e.g. when the client closes stdin): we do
             # not close shared stdin, do not reclassify incomplete input as EOF, and do not
             # claim a bounded process exit -- only that this await no longer stalls teardown.
-            if reader_task.done():
-                await reader_task
-            else:
-                reader_task.cancel()
-                report_reader_incomplete()
-            if teardown_cancelled:
-                raise asyncio.CancelledError
+            try:
+                if reader_task.done():
+                    await reader_task
+                else:
+                    reader_task.cancel()
+                    report_reader_incomplete()
+            except BaseException as exc:
+                failures.append(exc)
+            if teardown_cancelled is not None:
+                failures.append(teardown_cancelled)
+            if failures:
+                failure = next((exc for exc in failures if not isinstance(exc, Exception)), failures[0])
+                secondary = next((exc for exc in failures if exc is not failure), None)
+                if secondary is not None:
+                    raise failure from secondary
+                raise failure
             # Seam 2, checkpoint B: the Redis runtime is closed LAST by the enclosing
             # `serve_ndjson` finally, after every stage above that may still submit work
             # to it -- and still closed when one of those stages raises.

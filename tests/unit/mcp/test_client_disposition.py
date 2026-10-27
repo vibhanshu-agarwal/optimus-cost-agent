@@ -31,6 +31,7 @@ from optimus.mcp.client_disposition import (
     ClientMcpRuntime,
     ClientMcpSessionState,
     ClientMcpShutdownOutcome,
+    run_close_hooks,
 )
 from optimus.mcp.client_sdk import ClientMcpSdkAdapter
 from optimus.mcp.client_supervisor import MCPAsyncSupervisor, MCPSupervisorState
@@ -41,7 +42,7 @@ from optimus.mcp.client_trust import (
     compute_identity_fingerprint,
     write_client_mcp_durable_from_fingerprint,
 )
-from optimus.mcp.local_ipc import PendingClientMcpCandidateEndpoint
+from optimus.mcp.local_ipc import LocalIpcError, PendingClientMcpCandidateEndpoint
 from optimus.runtime.modes import ExecutionMode, GenerationScope
 from tests.support.concurrency import assert_no_offending_rows, assert_threads_stopped
 
@@ -133,6 +134,41 @@ async def test_answered_candidate_survives_until_session_lifetime_and_denials_st
         state.close()
         assert endpoint.pending_count == 0
     finally:
+        state.close()
+        endpoint.close()
+
+
+@pytest.mark.parametrize("failure_kind", ["retained", "different", "forged"])
+async def test_candidate_retirement_only_separates_typed_retained_listener(tmp_path, monkeypatch, failure_kind):
+    endpoint = PendingClientMcpCandidateEndpoint(authkey=b"retirement-classification")
+    disposition = _disposition(tmp_path)
+    disposition._candidate_endpoint = endpoint
+    async def allow(_params):
+        return "allow"
+    state = await disposition.disposition_for_new_session("retirement", tmp_path, [_http_entry()], allow)
+    class ForgedError(RuntimeError):
+        code = "client_mcp.ipc_stop_incomplete"
+    failure = {
+        "retained": LocalIpcError("client_mcp.ipc_stop_incomplete"),
+        "different": LocalIpcError("client_mcp.ipc_not_listening"),
+        "forged": ForgedError(),
+    }[failure_kind]
+    real_stop = endpoint._stop_listener
+    def incomplete_stop():
+        assert endpoint.pending_count == 0, "actual candidate removal must precede the stop"
+        raise failure
+    try:
+        assert endpoint.pending_count == 1
+        state.register_close_hook(lambda: None, peer=True)
+        with monkeypatch.context() as patch:
+            patch.setattr(endpoint, "_stop_listener", incomplete_stop)
+            failures = run_close_hooks(state.prepare_suspend())
+        assert endpoint.pending_count == 0
+        assert state.complete_suspend(failures) is (failure_kind == "retained")
+        assert disposition.close_failure_recorded is (failure_kind != "retained")
+        assert failures == (() if failure_kind == "retained" else ("SESSION_CLOSE_FAILED",))
+    finally:
+        monkeypatch.setattr(endpoint, "_stop_listener", real_stop)
         state.close()
         endpoint.close()
 

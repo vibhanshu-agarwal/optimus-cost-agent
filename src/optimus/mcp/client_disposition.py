@@ -40,7 +40,7 @@ from optimus.mcp.client_trust import (
     ClientMcpSessionLease,
     compute_identity_fingerprint,
 )
-from optimus.mcp.local_ipc import PendingClientMcpCandidate, PendingClientMcpCandidateEndpoint
+from optimus.mcp.local_ipc import LocalIpcError, PendingClientMcpCandidate, PendingClientMcpCandidateEndpoint
 
 PermissionOutcome = Literal["allow", "reject", "timeout", "outbound_failure"]
 RequestPermissionFn = Callable[[dict[str, Any]], Awaitable[PermissionOutcome | str | dict[str, Any]]]
@@ -364,7 +364,12 @@ class ClientMcpDisposition:
         if endpoint is not None:
             session_id = state.session_id
             def retire() -> None:
-                endpoint.retire_session(session_id)
+                try:
+                    endpoint.retire_session(session_id)
+                except LocalIpcError as exc:
+                    # Candidate removal succeeded; the shared generation remains owned by the endpoint.
+                    if exc.code != "client_mcp.ipc_stop_incomplete":
+                        raise
             state.own_candidate_cleanup(retire)
 
     async def disposition_for_new_session(

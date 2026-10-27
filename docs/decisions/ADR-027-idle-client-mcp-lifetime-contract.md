@@ -20,4 +20,15 @@ Rejected for this delivery: merging the complete sandbox (imports unrelated/dura
 
 Very short delays can cause frequent permission prompts. Logging endpoint snapshots cannot detect a flip and revert entirely between them. Existing session/new keyring blocking and finite outbound IDs remain disclosed #302 residuals. One consolidated implementation/evidence review follows focused development checks; full Windows/WSL checkpoint is separately released. No historical count or platform pass transfers.
 
-The [complete design](../superpowers/specs/2026-10-26-idle-mcp-suspension-main-port-design.md), [v2 plan](../superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v2.md) and [receipt](../superpowers/reports/2026-10-26-idle-mcp-suspension-main-port-receipt.md) define scope and exact review qualifications. Private archives are provenance only.
+The [complete design](../superpowers/specs/2026-10-26-idle-mcp-suspension-main-port-design.md), [v3 plan](../superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v3.md) and [receipt](../superpowers/reports/2026-10-26-idle-mcp-suspension-main-port-receipt.md) define scope and exact review qualifications. Private archives are provenance only.
+
+## Approved v3 correction and explicit limits, 2026-10-27
+
+
+Candidate retirement first removes the session's actual permission candidates. The exact typed `LocalIpcError("client_mcp.ipc_stop_incomplete")` from that retirement callback denotes a retained shared listener generation, not uncertain release of the session's MCP peers. It does not by itself quarantine a successfully suspended session or refuse its Chat prompts. The endpoint retains its thread/listener/generation, refuses replacement while that generation lives, and final runtime close still reports incomplete while it is held. Actual SDK/peer uncertainty, another IPC error or a forged `.code` still fails session cleanup. After an incomplete final runtime-close observation, aggregate failure remains sticky; no separate endpoint sticky flag is invented.
+
+Failure ordering attempts adapter, client-MCP runtime, owned writer and reader decision before the enclosing Redis-last cleanup. Preserve the genuine runtime outcome and one bounded MCP-incomplete diagnostic even when the adapter raises. Control-flow takes precedence after owned cleanup; otherwise preserve the first ordinary failure and chain a secondary failure. Repeated cancellation keeps the same MCP worker owned and joined.
+
+There is no outer observation bound for a hung keyring read or arbitrary close hook: shield/join may wait indefinitely. The old N-c outer-bound sentence is not implemented or claimed; #302 retains this residual alongside synchronous session/new keyring access and the finite90k outbound request-ID iterator. No force-kill or new timeout policy is added.
+
+A logging flip and revert entirely between endpoint snapshots can go undetected. Foreign filters on `mcp.client.stdio`, `dictConfig(disable_existing_loggers=True)` or global WARNING disablement can also make the channel unobservable; stdio suspension then remains disabled with bounded WARNING_UNOBSERVABLE diagnostics. No global logging reconfiguration is performed. These limits do not prove a PC-freeze cause or whole-process bounded exit.

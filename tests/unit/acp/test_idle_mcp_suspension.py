@@ -7,6 +7,7 @@ import logging
 import sys
 import threading
 from decimal import Decimal
+from multiprocessing.connection import Client
 from unittest.mock import Mock
 
 import pytest
@@ -22,6 +23,7 @@ from optimus.mcp.client_disposition import ClientMcpDisposition, ClientMcpRuntim
 from optimus.mcp.client_sdk import ClientMcpSdkAdapter
 from optimus.mcp.client_supervisor import MCPAsyncSupervisor
 from optimus.mcp.client_trust import ClientMcpDurableStore, ClientMcpLeaseAuthority
+from optimus.mcp.local_ipc import LocalIpcError, PendingClientMcpCandidateEndpoint
 from optimus.runtime.modes import ExecutionMode
 from tests.support.contract_doubles import checked_agent_runner
 from tests.support.idle_mcp import context_attachment
@@ -375,6 +377,67 @@ async def test_suspended_chat_stays_suspended_without_permission(composed):
     assert "result" in result.response
     assert session.client_mcp_state.suspended
     assert outbound.requests == [] and runner.requests[-1].execution_mode is ExecutionMode.CHAT
+
+
+@pytest.mark.parametrize("uncertain_peer", [False, True])
+async def test_retained_shared_listener_does_not_quarantine_released_peers(composed, tmp_path, monkeypatch, uncertain_peer):
+    adapter, session, clock, outbound, runner = composed
+    runtime = adapter._client_mcp_runtime
+    endpoint = PendingClientMcpCandidateEndpoint(authkey=b"held-shared-permission-listener")
+    runtime.candidate_endpoint = endpoint
+    runtime.disposition._candidate_endpoint = endpoint
+    async def allow(_params):
+        return "allow"
+    state = session.client_mcp_state = await runtime.disposition.disposition_for_new_session(
+        session.session_id, tmp_path,
+        [{"type": "http", "name": "peer", "url": "https://mcp.example.com/a", "headers": []}], allow,
+    )
+    peer = None
+    owner = None
+    try:
+        address = endpoint.endpoint_address[1]
+        owner = endpoint._thread
+        generation = endpoint._generation
+        assert owner is not None
+        peer = Client(address)
+        assert peer.poll(1) and peer.recv_bytes(), "peer must hold the actual listener's authentication"
+        state.register_close_hook(lambda: None, peer=True)
+        if uncertain_peer:
+            monkeypatch.setattr(runtime.sdk_adapter, "has_pending_connections_for_session", lambda _sid: True)
+        envelope = await prompt(adapter, session)
+        flush(envelope.turn_control)
+        adapter.note_turn_delivered(envelope.turn_control)
+        clock[0] += 11
+        await adapter.sweep_idle_mcp_once()
+        assert endpoint.pending_count == 0
+        assert endpoint._thread is owner and owner.is_alive()
+        assert endpoint._generation == generation
+        with pytest.raises(LocalIpcError, match="ipc_stop_incomplete"):
+            _ = endpoint.endpoint_address
+        session.execution_mode = ExecutionMode.CHAT
+        result = await prompt(adapter, session, 2)
+        if uncertain_peer:
+            assert not state.suspended and "error" in result.response
+        else:
+            assert state.suspended and "result" in result.response
+            assert runner.requests[-1].execution_mode is ExecutionMode.CHAT
+            assert runner.runtime_kwargs[-1].get("client_mcp_service") is None
+            assert runner.runtime_kwargs[-1].get("mcp_permission_broker") is None
+            assert outbound.requests == [] and not runtime.disposition.close_failure_recorded
+        outcome = await asyncio.to_thread(runtime.close)
+        assert not outcome.complete and not outcome.endpoint_closed
+        peer.close()
+        peer = None
+        await asyncio.to_thread(owner.join, 5)
+        assert not owner.is_alive()
+        assert not (await asyncio.to_thread(runtime.close)).complete, "observed final-close failure is sticky"
+    finally:
+        if peer is not None:
+            peer.close()
+        if owner is not None:
+            await asyncio.to_thread(owner.join, 5)
+        endpoint.close()
+        assert owner is None or not owner.is_alive()
 
 
 async def test_slow_close_leaves_serving_loop_responsive(composed):

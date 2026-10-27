@@ -94,7 +94,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
-| [Idle client-MCP lifetime v2](superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v2.md) | #427; A-derived lifetime owner and idle renewal on main |
+| [Idle client-MCP lifetime v3](superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v3.md) | #427; A-derived lifetime owner and idle renewal on main |
 | [Plan 11.7 v3: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | Resume an ACP session in Zed |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |
 | [Plan 11.24 v6: guided session-load probe](superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md) | Probe of Zed's `session/load` |

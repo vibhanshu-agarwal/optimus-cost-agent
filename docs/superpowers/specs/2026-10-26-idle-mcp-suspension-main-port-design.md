@@ -4,6 +4,19 @@ Work authority: [#427](https://github.com/vibhanshu-agarwal/optimus-cost-agent/i
 
 This self-contained operating specification files the complete v2 contract below. The source plan's historical statements about unassigned implementation and unreleased development are superseded only by the operator's explicit 2026-10-26 development instruction in the accompanying receipt. Its scope, policy and review qualifications are unchanged. References to private packets are provenance, never execution dependencies. No historical test result certifies current main.
 
+## Approved v3 continuation, 2026-10-27
+
+The operator approved complete v3, including guard strengthening, byte-preserving local v2 archival before issue posting, normal-hook commit, sequential Windows/WSL acceptance and one compact delta review. Codex implements; actual Claude reviews. The inherited v2 sections below remain historical contract detail, qualified by this current section and the complete v3. Their old unassigned/UNRUN statements describe prior checkpoints, not current authorization. Publication, integration, merge, closure and cleanup remain held.
+
+
+Candidate retirement first removes the session's actual permission candidates. The exact typed `LocalIpcError("client_mcp.ipc_stop_incomplete")` from that retirement callback denotes a retained shared listener generation, not uncertain release of the session's MCP peers. It does not by itself quarantine a successfully suspended session or refuse its Chat prompts. The endpoint retains its thread/listener/generation, refuses replacement while that generation lives, and final runtime close still reports incomplete while it is held. Actual SDK/peer uncertainty, another IPC error or a forged `.code` still fails session cleanup. After an incomplete final runtime-close observation, aggregate failure remains sticky; no separate endpoint sticky flag is invented.
+
+Failure ordering attempts adapter, client-MCP runtime, owned writer and reader decision before the enclosing Redis-last cleanup. Preserve the genuine runtime outcome and one bounded MCP-incomplete diagnostic even when the adapter raises. Control-flow takes precedence after owned cleanup; otherwise preserve the first ordinary failure and chain a secondary failure. Repeated cancellation keeps the same MCP worker owned and joined.
+
+There is no outer observation bound for a hung keyring read or arbitrary close hook: shield/join may wait indefinitely. The old N-c outer-bound sentence is not implemented or claimed; #302 retains this residual alongside synchronous session/new keyring access and the finite90k outbound request-ID iterator. No force-kill or new timeout policy is added.
+
+A logging flip and revert entirely between endpoint snapshots can go undetected. Foreign filters on `mcp.client.stdio`, `dictConfig(disable_existing_loggers=True)` or global WARNING disablement can also make the channel unobservable; stdio suspension then remains disabled with bounded WARNING_UNOBSERVABLE diagnostics. No global logging reconfiguration is performed. These limits do not prove a PC-freeze cause or whole-process bounded exit.
+
 ## Authority and settled decisions
 
 The operator said “Approved”, then “Please get it reviewed”, “It is an advance approval from my end for you and Claude” and “No need to ask again” in this chat on 26 October 2026. That accepts the assessment route and its two contract changes and commissions this review workflow. Frozen assessment sentences saying those choices still need acceptance are historical. The complete implementation plan is a new work product; no runtime implementation, test execution, commit, publication, merge or cleanup has occurred.
@@ -70,7 +83,7 @@ Existing admitted test files:
 - Read-only live-tier comparison: `tests/integration/acp/test_server_stream_live_redis.py`, excluded from this local technical claim and not released for execution.
 
 Governance filing, when separately released:
-- `docs/superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v2.md`
+- `docs/superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v3.md`
 - `docs/superpowers/plans/archive/2026-10-26-idle-mcp-suspension-main-port.md` (unchanged v1 provenance)
 - `docs/superpowers/specs/2026-10-26-idle-mcp-suspension-main-port-design.md`
 - `docs/superpowers/reports/2026-10-26-idle-mcp-suspension-main-port-receipt.md`
