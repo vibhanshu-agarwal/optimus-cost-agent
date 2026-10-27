@@ -109,6 +109,13 @@ async def test_an_easy_turn_escalates_once_then_its_plan_is_approved_and_applied
     assert [r["record"] for r in loop][-1] == "check_in"
     planning = [r for r in receipts if r.stage == "planning"]
     assert len(planning) == 5 and {r.outcome for r in planning} == {"completed"}
+    # Each request's receipt names the route that sent it: Luna's tier role, then Gemini's escalation role.
+    assert [(r.requested_model, r.role) for r in planning] == [(LUNA, "easy")] * 4 + [(GEMINI, "escalation")]
+
+    # The turn's meter still covers every request it sent (the attached packer keeps its readings across the switch).
+    usage = [m["params"]["update"] for m in writer.messages if m.get("method") == "session/update"]
+    [meter] = [u for u in usage if u.get("sessionUpdate") == "usage_update"][-1:]
+    assert meter["used"] > 0 and meter["size"] > 0
 
 
 async def test_a_medium_turn_already_on_the_escalation_model_goes_straight_to_the_check_in_and_says_so(launch, tmp_path) -> None:  # noqa: F811

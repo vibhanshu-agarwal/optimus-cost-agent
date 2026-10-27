@@ -2496,17 +2496,25 @@ class AcpDuplexAdapter:
             current = turn.turn_model
             if control.halt_requested():
                 return EscalationRefusal.HALTED
-            target = None if current is None else router.escalation_target(current)
-            if current is None or target is None:
-                return EscalationRefusal.NO_TARGET
-            # Every fallible part is prepared before anything is published, so a failure leaves the turn as it was.
-            binder = router.escalation_route(target).capture(
-                session_id=turn.session_id, turn_seq=turn.turn_seq, deliver_notice=self._blocking_notice(turn.session_id, loop)
-            )
-            attachment = None if turn.attached is None else router.attachments[target]
-            delivered = not control.transport_abandoned() and notify(
-                escalation_notice_text(router.snapshot, from_model=current, to_model=target, what=move.what)
-            )
+            # Every fallible part is prepared before anything is published, so a failure leaves the turn as it was and
+            # goes to the check-in with its cause recorded.
+            try:
+                target = None if current is None else router.escalation_target(current)
+                if current is None or target is None:
+                    return EscalationRefusal.NO_TARGET
+                binder = router.escalation_route(target).capture(
+                    session_id=turn.session_id, turn_seq=turn.turn_seq, deliver_notice=self._blocking_notice(turn.session_id, loop)
+                )
+                attachment = None if turn.attached is None else router.attachments[target]
+                text = escalation_notice_text(router.snapshot, from_model=current, to_model=target, what=move.what)
+            except Exception as exc:  # noqa: BLE001 - recorded with its class facts, never its text
+                log_auto_route(run_id=turn.run_id, outcome="escalation_failed", reason="error", telemetry=self._failure_telemetry, failure=exc)
+                _operator_line(
+                    f"optimus.acp: auto escalation failed session_id={host_session_id(turn.session_id) or 'none'} "
+                    f"turn_seq={turn.turn_seq} error={type(exc).__name__}"
+                )
+                return EscalationRefusal.FAILED
+            delivered = not control.transport_abandoned() and notify(text)
             if control.halt_requested():
                 return EscalationRefusal.HALTED
             if turn.route_binder is not None:

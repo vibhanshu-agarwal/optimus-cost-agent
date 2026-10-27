@@ -171,19 +171,40 @@ async def test_a_cancel_or_teardown_while_the_notice_is_parked_ends_the_wait_and
     assert (turn.route_binder, turn.escalated_model, turn.permission_handle) == (before, None, None)
 
 
-async def test_a_switch_that_cannot_be_prepared_raises_before_anything_is_published(tmp_path, monkeypatch) -> None:
+async def test_a_switch_that_cannot_be_prepared_fails_with_its_cause_recorded_and_nothing_published(tmp_path, monkeypatch, capsys) -> None:
     router = _router()
     adapter, outbound, _ = _adapter(tmp_path, router)
     turn = _turn(router)
     before = turn.route_binder
+    logged: list[dict] = []
 
     def broken(target):
         raise KeyError(target)
 
     monkeypatch.setattr(type(router), "escalation_route", lambda self, target: broken(target))
-    with pytest.raises(KeyError):
-        await asyncio.to_thread(adapter._recovery_escalation_for(turn, asyncio.get_running_loop()), MOVE)  # noqa: SLF001
+    monkeypatch.setattr(spec_module, "log_auto_route", lambda **kwargs: logged.append(kwargs))
+    outcome = await asyncio.to_thread(adapter._recovery_escalation_for(turn, asyncio.get_running_loop()), MOVE)  # noqa: SLF001
+
+    assert outcome is EscalationRefusal.FAILED
     assert (turn.route_binder, turn.escalated_model, _escalation_texts(outbound)) == (before, None, [])
+    [record] = logged
+    assert (record["outcome"], record["reason"], type(record["failure"])) == ("escalation_failed", "error", KeyError)
+    err = capsys.readouterr().err
+    assert "optimus.acp: auto escalation failed" in err and "error=KeyError" in err
+
+
+def test_an_escalation_failures_record_keeps_the_class_and_never_the_text() -> None:
+    from optimus.acp.debug_trace import log_auto_route
+
+    events: list = []
+
+    class Writer:
+        def append(self, event):
+            events.append(event)
+
+    log_auto_route(run_id="s:1", outcome="escalation_failed", reason="error", telemetry=Writer(), failure=KeyError("secret-path/a.py"))
+    [event] = events
+    assert '"class":"KeyError"' in event.payload["message"] and "secret-path" not in event.payload["message"]
 
 
 # --- The attached turn's switch (assembly.py `escalate_attachment`) ---------------------------------------------------
@@ -295,3 +316,32 @@ async def test_only_an_interactive_auto_turns_planning_is_given_the_escalation(t
     planning, application = runner.kwargs
     assert ("recovery_escalation" in planning) is given
     assert "recovery_escalation" not in application  # the application never plans
+
+
+async def test_after_a_grant_the_approved_application_runs_on_the_moved_to_model_and_binder(tmp_path) -> None:
+    from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore
+    from tests.support.contract_doubles import checked_agent_runner
+    from tests.unit.acp.test_auto_turn_routing import Classifier
+    from tests.unit.acp.test_context_engine_admission import Runner, new_session, prompt
+
+    class Escalating(Runner):
+        """Planning asks the host's real bridge to move the turn, as the planning loop would, then settles a plan."""
+
+        def run(self, request, **kwargs):
+            if "recovery_escalation" in kwargs:
+                self.grant = kwargs["recovery_escalation"](MOVE)
+            return super().run(request, **kwargs)
+
+    outbound, runner = RecordingOutboundChannel(), Escalating()
+    adapter = AcpDuplexAdapter(
+        runner=checked_agent_runner(runner), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound,
+        auto_router=_router(Classifier(["easy"])),
+    )  # fmt: skip
+    session_id = await new_session(adapter, tmp_path)
+    await prompt(adapter, outbound, session_id, "Add example.py.", "p1", approve=True)
+
+    planning, application = runner.kwargs
+    assert isinstance(runner.grant, EscalationGrant) and runner.grant.model_id == GEMINI
+    assert (planning["turn_model"], planning["route_binder"].identity.model_id) == (LUNA, LUNA)
+    assert (application["turn_model"], application["route_binder"].identity.model_id) == (GEMINI, GEMINI)
+    assert application["route_binder"] is runner.grant.route_binder

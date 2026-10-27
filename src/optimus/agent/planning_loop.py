@@ -390,7 +390,7 @@ class EscalationGrant:
     records whether the informational notice was confirmed sent; it never gates the move (ADR-005)."""
 
     model_id: str
-    route_binder: TurnRouteBinder | None
+    route_binder: TurnRouteBinder | None  # None means no binding from here on, never "keep the old one" (its model)
     notice_delivered: bool = False
 
 
