@@ -11,7 +11,7 @@ The operator approved complete v3, including guard strengthening, byte-preservin
 
 Candidate retirement first removes the session's actual permission candidates. The exact typed `LocalIpcError("client_mcp.ipc_stop_incomplete")` from that retirement callback denotes a retained shared listener generation, not uncertain release of the session's MCP peers. It does not by itself quarantine a successfully suspended session or refuse its Chat prompts. The endpoint retains its thread/listener/generation, refuses replacement while that generation lives, and final runtime close still reports incomplete while it is held. Actual SDK/peer uncertainty, another IPC error or a forged `.code` still fails session cleanup. After an incomplete final runtime-close observation, aggregate failure remains sticky; no separate endpoint sticky flag is invented.
 
-Failure ordering attempts adapter, client-MCP runtime, owned writer and reader decision before the enclosing Redis-last cleanup. Preserve the genuine runtime outcome and one bounded MCP-incomplete diagnostic even when the adapter raises. Control-flow takes precedence after owned cleanup; otherwise preserve the first ordinary failure and chain a secondary failure. Repeated cancellation keeps the same MCP worker owned and joined.
+Failure ordering attempts adapter, client-MCP runtime, owned writer and reader decision before the enclosing Redis-last cleanup. Preserve the genuine runtime outcome and one bounded MCP-incomplete diagnostic even when the adapter raises. The approved ordering/lifecycle/signals successor contract preserves the selected original exception instance and its existing cause/context: control-flow takes precedence, then the first ordinary failure, with secondary failures recorded in one bounded note of fixed stage codes and count. It supersedes only this design's earlier secondary-chaining rule; the frozen ADR-027 and original verdict remain historical. Repeated cancellation keeps the same MCP worker owned and joined.
 
 There is no outer observation bound for a hung keyring read or arbitrary close hook: shield/join may wait indefinitely. The old N-c outer-bound sentence is not implemented or claimed; #302 retains this residual alongside synchronous session/new keyring access and the finite90k outbound request-ID iterator. No force-kill or new timeout policy is added.
 
@@ -85,6 +85,7 @@ Existing admitted test files:
 Governance filing, when separately released:
 - `docs/superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v3.md`
 - `docs/superpowers/plans/archive/2026-10-26-idle-mcp-suspension-main-port.md` (unchanged v1 provenance)
+- `docs/superpowers/plans/archive/2026-10-26-idle-mcp-suspension-main-port_v2.md` (unchanged v2 provenance)
 - `docs/superpowers/specs/2026-10-26-idle-mcp-suspension-main-port-design.md`
 - `docs/superpowers/reports/2026-10-26-idle-mcp-suspension-main-port-receipt.md`
 - `docs/decisions/ADR-027-idle-client-mcp-lifetime-contract.md`, `docs/decisions/README.md`

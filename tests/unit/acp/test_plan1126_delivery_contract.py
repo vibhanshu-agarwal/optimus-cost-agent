@@ -295,6 +295,26 @@ def _overlay_baseline() -> SourceTree:
     return SourceTree({path: source.read_text(path) for path in _DELIVERY_PATHS})
 
 
+def _historical_transition_authority(merged: SourceTree, overlay: SourceTree):
+    module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
+    return module.derive_transition_authority(merged, overlay, historical_writer=True)
+
+
+def _typing_authority_repository(root: Path) -> None:
+    current = Path(__file__).resolve().parents[3]
+    historical = _baseline(_MERGED)
+    paths = (
+        "src/optimus/acp/settlement.py", "src/optimus/acp/lifecycle.py",
+        "src/optimus/acp/outbound_writer.py", "src/optimus/acp/spec.py",
+        "src/optimus/acp/conversation.py",
+    )
+    for path in paths:
+        target = root / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        content = historical.read_text(path).encode("utf-8") if path.endswith("/outbound_writer.py") else (current/path).read_bytes()
+        target.write_bytes(content)
+
+
 def _candidates(source: SourceTree) -> list[_Candidate]:
     candidates: list[_Candidate] = []
     for path in source.paths():
@@ -328,7 +348,7 @@ def _expected_conceptual_counts(merged: SourceTree, overlay: SourceTree) -> Coun
 
 def test_delivery_contract_ast_covers_all_send_sites() -> None:
     merged = _baseline(_MERGED)
-    overlay = _baseline(_OVERLAY)
+    overlay = _overlay_baseline()
     discover = getattr(inventory_module, "discover_delivery_sites", None)
     assert discover is not None, "delivery-specific AST inventory rule does not exist"
 
@@ -390,7 +410,7 @@ def test_delivery_contract_ast_covers_all_send_sites() -> None:
 
 
 def test_delivery_inventory_has_one_phase_per_conceptual_site() -> None:
-    sites = inventory_module.discover_delivery_sites(_baseline(_MERGED), overlay=_baseline(_OVERLAY))
+    sites = inventory_module.discover_delivery_sites(_baseline(_MERGED), overlay=_overlay_baseline())
     groups: dict[tuple[str, int, str, str | None], list[object]] = {}
     for site in sites:
         key = (site.path, site.line, site.symbol, site.reference)
@@ -414,7 +434,7 @@ def test_delivery_inventory_has_one_phase_per_conceptual_site() -> None:
 def test_h4_model_and_schema_reject_duplicate_conceptual_sites() -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
-        merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
+        merged=_baseline(_MERGED), overlay=_overlay_baseline(),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
     schema = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -452,17 +472,17 @@ def test_delivery_contract_model_1000_seed_schedule() -> None:
     assert execute is not None, "delivery schedule model does not exist"
 
     frozen = literal_seeds()
-    discovered = inventory_module.discover_delivery_sites(_baseline(_MERGED), overlay=_baseline(_OVERLAY))
+    discovered = inventory_module.discover_delivery_sites(_baseline(_MERGED), overlay=_overlay_baseline())
     observations = execute(
         anchor_commit=_MERGED,
         literal=frozen,
         derived_count=1_000,
         discovered_sites=discovered,
         vocabulary=delivery_module.derive_delivery_vocabulary(
-            _baseline(_MERGED), _baseline(_OVERLAY)
+            _baseline(_MERGED), _overlay_baseline()
         ),
-        transition_authority=delivery_module.derive_transition_authority(
-            _baseline(_MERGED), _baseline(_OVERLAY)
+        transition_authority=_historical_transition_authority(
+            _baseline(_MERGED), _overlay_baseline()
         ),
     )
     assert len(observations) == len(frozen) + 1_000
@@ -489,8 +509,8 @@ def test_delivery_contract_model_1000_seed_schedule() -> None:
     assert_some_row(discovered, lambda site: site.classification is Classification.CONTRADICTORY, 'must hold for some: site.classification is Classification.CONTRADICTORY')
     assert_no_offending_rows(observations, lambda item: item.classification is not Classification.CANONICAL, 'must hold for all: item.classification is Classification.CANONICAL')
     assert_no_offending_rows(observations, lambda item: item.contradiction is not None, 'must hold for all: item.contradiction is None')
-    executed_citations = delivery_module.derive_transition_authority(
-        _baseline(_MERGED), _baseline(_OVERLAY)
+    executed_citations = _historical_transition_authority(
+        _baseline(_MERGED), _overlay_baseline()
     ).executed_definition_citations
     assert_no_offending_rows(observations, lambda item: not (len(item.site_citations) == len(DeliveryPhase)), 'must hold for all: len(item.site_citations) == len(DeliveryPhase)')
     assert_no_offending_rows(observations, lambda item: not (set(item.site_citations) <= executed_citations), 'must hold for all: set(item.site_citations) <= executed_citations')
@@ -533,7 +553,7 @@ def test_h4_record_uses_canonical_evidence_template_and_separate_baseline_identi
     artifact = build(
         replay=_sealed_replay(),
         merged=_baseline(_MERGED),
-        overlay=_baseline(_OVERLAY),
+        overlay=_overlay_baseline(),
         merged_commit=_MERGED,
         overlay_commit=_OVERLAY,
     )
@@ -583,7 +603,7 @@ def test_h4_record_uses_canonical_evidence_template_and_separate_baseline_identi
 def test_h4_separates_structural_closure_from_owned_settled_vocabulary_coverage() -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
-        merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
+        merged=_baseline(_MERGED), overlay=_overlay_baseline(),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
     summary = payload["evidence_records"][0]["schedule_observations"]
@@ -610,7 +630,7 @@ def test_h4_model_schema_and_public_verify_reject_coverage_metadata_mutations(
 ) -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
-        merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
+        merged=_baseline(_MERGED), overlay=_overlay_baseline(),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
     schema = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -672,7 +692,7 @@ def test_h4_render_surfaces_worked_example_evidence_without_payload_content() ->
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     artifact = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=_baseline(_MERGED),
-        overlay=_baseline(_OVERLAY),
+        overlay=_overlay_baseline(),
         merged_commit=_MERGED,
         overlay_commit=_OVERLAY,
     )
@@ -712,7 +732,7 @@ def test_evidence_template_pins_h4_seed_count_without_pinning_later_hypotheses()
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=_baseline(_MERGED),
-        overlay=_baseline(_OVERLAY),
+        overlay=_overlay_baseline(),
         merged_commit=_MERGED,
         overlay_commit=_OVERLAY,
     ).to_dict()
@@ -799,7 +819,7 @@ def next_ephemeral_send_key():
 
 def test_delivery_scanner_recognizes_settled_write_by_following_owner_publication() -> None:
     merged = _baseline(_MERGED)
-    overlay = _baseline(_OVERLAY)
+    overlay = _overlay_baseline()
     sites = inventory_module.discover_delivery_sites(merged, overlay=overlay)
     settled_fallbacks = [
         site
@@ -836,7 +856,7 @@ def test_h4_persists_source_derived_transition_records_not_a_seed_formatter() ->
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     artifact = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=_baseline(_MERGED),
-        overlay=_baseline(_OVERLAY),
+        overlay=_overlay_baseline(),
         merged_commit=_MERGED,
         overlay_commit=_OVERLAY,
     ).to_dict()
@@ -886,8 +906,8 @@ def test_h4_persists_source_derived_transition_records_not_a_seed_formatter() ->
 def test_h4_execution_emits_only_citations_for_behaviors_it_runs() -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     merged = _baseline(_MERGED)
-    overlay = _baseline(_OVERLAY)
-    authority = delivery_module.derive_transition_authority(merged, overlay)
+    overlay = _overlay_baseline()
+    authority = _historical_transition_authority(merged, overlay)
     execution = authority.execute(literal_seeds()[0])
     assert execution.operations
     assert {
@@ -904,8 +924,7 @@ def test_h4_execution_emits_only_citations_for_behaviors_it_runs() -> None:
 
 
 def test_h4_literal_scenarios_are_coherent_primary_transitions() -> None:
-    delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
-    authority = delivery_module.derive_transition_authority(_baseline(_MERGED), _baseline(_OVERLAY))
+    authority = _historical_transition_authority(_baseline(_MERGED), _overlay_baseline())
     expected = {
         0: ("success-known-effect", True, True, "flushed", "after-publication", "accepted", "committed", 1),
         1: ("success-unknown-effect", True, True, "flushed", "after-publication", "accepted", "committed", 1),
@@ -950,8 +969,7 @@ def test_h4_literal_scenarios_are_coherent_primary_transitions() -> None:
 
 
 def test_h4_behavioral_mutations_change_or_invalidate_primary_observation() -> None:
-    delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
-    authority = delivery_module.derive_transition_authority(_baseline(_MERGED), _baseline(_OVERLAY))
+    authority = _historical_transition_authority(_baseline(_MERGED), _overlay_baseline())
     baseline = authority.execute(0)
 
     class PreparationFailureWriter(authority.dedicated_outbound_writer):
@@ -980,7 +998,7 @@ def test_h4_behavioral_mutations_change_or_invalidate_primary_observation() -> N
 def test_h4_persists_primary_scenario_coherence_and_rejects_tamper(tmp_path: Path) -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
-        merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
+        merged=_baseline(_MERGED), overlay=_overlay_baseline(),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
     observations = payload["evidence_records"][0]["schedule_observations"]["observations"]
@@ -1018,9 +1036,8 @@ def test_h4_persists_primary_scenario_coherence_and_rejects_tamper(tmp_path: Pat
 
 
 def test_h4_transition_authority_rejects_immutable_byte_drift() -> None:
-    delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     merged = _baseline(_MERGED)
-    overlay = _baseline(_OVERLAY)
+    overlay = _overlay_baseline()
 
     mutations = (
         (
@@ -1046,7 +1063,7 @@ def test_h4_transition_authority_rejects_immutable_byte_drift() -> None:
             for source_path in merged.paths()
         })
         with pytest.raises(ValueError, match="transition authority bytes drifted"):
-            delivery_module.derive_transition_authority(changed, overlay)
+            _historical_transition_authority(changed, overlay)
 
 
 def test_h4_model_schema_and_public_verify_fail_closed_on_cross_field_mutations(
@@ -1054,7 +1071,7 @@ def test_h4_model_schema_and_public_verify_fail_closed_on_cross_field_mutations(
 ) -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
-        merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
+        merged=_baseline(_MERGED), overlay=_overlay_baseline(),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
     schema = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -1103,7 +1120,7 @@ def test_h4_model_schema_and_public_verify_fail_closed_on_cross_field_mutations(
 def test_h4_global_status_and_findings_retain_truthful_partial_lineage() -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
-        merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
+        merged=_baseline(_MERGED), overlay=_overlay_baseline(),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
     assert payload["static_audit_status"] == "PARTIAL"
@@ -1127,7 +1144,7 @@ def test_public_verify_allows_external_g2_acceptance_without_mechanical_evidence
 ) -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
-        merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
+        merged=_baseline(_MERGED), overlay=_overlay_baseline(),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
     record = payload["evidence_records"][0]
@@ -1151,7 +1168,7 @@ def test_public_verify_rejects_mutable_or_secret_bearing_h4_metadata(
 ) -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
-        merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
+        merged=_baseline(_MERGED), overlay=_overlay_baseline(),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
     if mutation_name == "ACCEPTED_FAKE_COMMAND":
@@ -1171,7 +1188,7 @@ def test_public_verify_rejects_mutable_or_secret_bearing_h4_metadata(
 def test_h4_render_escapes_content_free_markdown_metadata() -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
-        merged=_baseline(_MERGED), overlay=_baseline(_OVERLAY),
+        merged=_baseline(_MERGED), overlay=_overlay_baseline(),
         merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
     hostile = "unsafe | row # heading `tick` <script>x</script>"
@@ -1309,16 +1326,8 @@ def test_h4_verifier_filters_unrelated_findings_symmetrically(tmp_path: Path) ->
 def test_h4_typing_allowance_rejects_every_unapproved_variant(tmp_path: Path, mutation: str) -> None:
     module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     merged, overlay = _baseline(_MERGED), _overlay_baseline()
-    root = Path(__file__).resolve().parents[3]
-    paths = (
-        "src/optimus/acp/settlement.py", "src/optimus/acp/lifecycle.py",
-        "src/optimus/acp/outbound_writer.py", "src/optimus/acp/spec.py",
-        "src/optimus/acp/conversation.py",
-    )
-    for path in paths:
-        target = tmp_path / path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes((root / path).read_bytes())
+    _typing_authority_repository(tmp_path)
+    module.derive_transition_authority(merged, overlay, repository=tmp_path)
     path = "src/optimus/acp/lifecycle.py"
     text = (tmp_path / path).read_text(encoding="utf-8")
     old = "def current_settlement_fields(self) -> dict[str, object]:"
@@ -1345,13 +1354,132 @@ def test_h4_typing_allowance_rejects_every_unapproved_variant(tmp_path: Path, mu
         module.derive_transition_authority(merged, overlay, repository=tmp_path)
 
 
-def test_h4_typing_allowance_preserves_historical_citations() -> None:
+def test_h4_typing_allowance_preserves_historical_citations(tmp_path: Path) -> None:
     module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     historical = _baseline(_MERGED)
-    authority = module.derive_transition_authority(historical, _overlay_baseline())
+    _typing_authority_repository(tmp_path)
+    authority = module.derive_transition_authority(historical, _overlay_baseline(), repository=tmp_path)
     text = historical.read_text("src/optimus/acp/lifecycle.py")
     turn = next(node for node in ast.parse(text).body if isinstance(node, ast.ClassDef) and node.name == "TurnControl")
     method = next(node for node in turn.body if isinstance(node, ast.FunctionDef) and node.name == "current_settlement_fields")
     segment = ast.get_source_segment(text, method).encode("utf-8")
     expected = f"src/optimus/acp/lifecycle.py:{method.lineno}:TurnControl.current_settlement_fields#sha256:{hashlib.sha256(segment).hexdigest()}"
     assert authority.definition_citations["TurnControl.current_settlement_fields"] == expected
+
+
+def test_h4_sealed_writer_provenance_keeps_live_types_untouched() -> None:
+    import sys
+
+    from optimus.acp.outbound_writer import DedicatedOutboundWriter, OutboundQueueItem
+
+    before = {name for name in sys.modules if name.startswith("_optimus_h4_writer_")}
+    authority = _historical_transition_authority(_baseline(_MERGED), _overlay_baseline())
+    writer, item = authority.dedicated_outbound_writer, authority.outbound_queue_item
+    assert writer is not DedicatedOutboundWriter and item is not OutboundQueueItem
+    assert writer.__module__ == item.__module__
+    assert writer.__module__ not in sys.modules
+    assert writer.__init__.__code__.co_filename.startswith("<sealed-h4:")
+    assert "encoded_payload" not in item.__dataclass_fields__
+    assert before == {name for name in sys.modules if name.startswith("_optimus_h4_writer_")}
+    from optimus.acp import outbound_writer as live
+    assert live.DedicatedOutboundWriter is DedicatedOutboundWriter
+    assert live.OutboundQueueItem is OutboundQueueItem
+
+
+@pytest.mark.parametrize("side", ["merged", "overlay", "both"])
+def test_h4_historical_writer_rejects_any_unpinned_complete_text(monkeypatch, side: str) -> None:
+    module = importlib.import_module("tools.plan1126_runtime_audit.delivery_characterization")
+    merged, overlay = _baseline(_MERGED), _overlay_baseline()
+    path = "src/optimus/acp/outbound_writer.py"
+
+    def changed(source):
+        return SourceTree({p: source.read_text(p) + ("\n# extra bytes\n" if p == path else "") for p in source.paths()})
+
+    monkeypatch.setattr(module, "_sealed_writer_types", lambda _text: pytest.fail("untrusted text reached compilation"))
+    if side in ("merged", "both"):
+        merged = changed(merged)
+    if side in ("overlay", "both"):
+        overlay = changed(overlay)
+    with pytest.raises(ValueError, match="untrusted historical H4 writer source"):
+        module.derive_transition_authority(merged, overlay, historical_writer=True)
+
+
+def test_h4_sealed_writer_loader_refuses_unknown_text() -> None:
+    module = importlib.import_module("tools.plan1126_runtime_audit.delivery_characterization")
+    with pytest.raises(ValueError, match="untrusted historical H4 writer source"):
+        module._sealed_writer_types("raise AssertionError('must never execute')")
+
+
+def test_h4_historical_mode_refuses_a_custom_repository(tmp_path: Path) -> None:
+    module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
+    with pytest.raises(ValueError, match="requires the canonical repository"):
+        module.derive_transition_authority(_baseline(_MERGED), _overlay_baseline(), repository=tmp_path, historical_writer=True)
+
+
+def test_h4_default_mode_keeps_the_live_writer_drift_denial(tmp_path: Path) -> None:
+    module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
+    merged, overlay = _baseline(_MERGED), _overlay_baseline()
+    _typing_authority_repository(tmp_path)
+    module.derive_transition_authority(merged, overlay, repository=tmp_path)
+    path = "src/optimus/acp/outbound_writer.py"
+    root = Path(__file__).resolve().parents[3]
+    (tmp_path/path).write_bytes((root/path).read_bytes())
+    with pytest.raises(ValueError, match="transition authority bytes drifted for src/optimus/acp/outbound_writer.py"):
+        module.derive_transition_authority(merged, overlay, repository=tmp_path)
+    with pytest.raises(ValueError, match="transition authority bytes drifted for src/optimus/acp/outbound_writer.py"):
+        module.derive_transition_authority(merged, overlay)
+
+
+def test_h4_historical_mode_keeps_nonwriter_authority_guards() -> None:
+    merged, overlay = _baseline(_MERGED), _overlay_baseline()
+    path = "src/optimus/acp/lifecycle.py"
+    old = "def current_settlement_fields(self) -> dict[str, object]:"
+    text = merged.read_text(path)
+    altered = text.replace(old, "def current_settlement_fields(self) -> object:", 1)
+    assert text != altered
+    changed = SourceTree({p: altered if p == path else merged.read_text(p) for p in merged.paths()})
+    with pytest.raises(ValueError, match="transition authority bytes drifted for src/optimus/acp/lifecycle.py"):
+        _historical_transition_authority(changed, overlay)
+
+
+def test_h4_sealed_writer_declaration_has_no_io_or_thread_start(monkeypatch) -> None:
+    import builtins
+    import threading
+
+    from optimus.acp import lifecycle, settlement
+
+    assert lifecycle.SendKey is not None and settlement.SendOutcome is not None
+    module = importlib.import_module("tools.plan1126_runtime_audit.delivery_characterization")
+    text = _baseline(_MERGED).read_text("src/optimus/acp/outbound_writer.py")
+
+    def refused(*_args, **_kwargs):
+        pytest.fail("sealed writer declaration performed I/O or started a thread")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "open", refused)
+        patch.setattr(threading.Thread, "start", refused)
+        writer, item = module._sealed_writer_types(text)
+    assert writer.__module__ == item.__module__
+
+
+def test_h4_sealed_writer_removes_its_namespace_on_declaration_failure(monkeypatch) -> None:
+    import builtins
+    import sys
+
+    module = importlib.import_module("tools.plan1126_runtime_audit.delivery_characterization")
+    text = _baseline(_MERGED).read_text("src/optimus/acp/outbound_writer.py")
+    seen = []
+    failure = RuntimeError("declaration refused")
+
+    def refused(_code, namespace):
+        name = namespace["__name__"]
+        assert sys.modules[name].__dict__ is namespace
+        seen.append(name)
+        raise failure
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "exec", refused)
+        with pytest.raises(RuntimeError) as caught:
+            module._sealed_writer_types(text)
+    assert caught.value is failure and len(seen) == 1
+    assert seen[0] not in sys.modules

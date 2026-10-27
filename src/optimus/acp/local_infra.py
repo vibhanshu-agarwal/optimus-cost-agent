@@ -4,16 +4,19 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from contextvars import copy_context
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
 from optimus.acp.launch_policy import project_gateway_tool_child_env
 from optimus.acp.local_gateway_secrets import ProviderCredentialResolution, _parse_env_gateway_file
+from optimus.acp.process_lifecycle import cleanup_failure, raise_preserving_failure
 from optimus.agent.defaults import default_agent_model
 from optimus.config.gateway import _LOOPBACK_HOSTS, LOCAL_PROVIDER_KEY_NAMES
 from optimus_model_policy.binding import operator_override, trusted_snapshot
@@ -401,16 +404,48 @@ def ensure_local_phoenix(*, log: Callable[[str], None] = _noop_log) -> str:
 class LocalGatewayProcess:
     process: subprocess.Popen | None
     log_path: Path | None
+    _stop_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False, compare=False)
+    _stop_thread: threading.Thread | None = field(default=None, init=False, repr=False, compare=False)
+    _stop_error: BaseException | None = field(default=None, init=False, repr=False, compare=False)
+
+    @property
+    def stop_pending(self) -> bool:
+        return self._stop_thread is not None and self._stop_thread.is_alive()
+
+    @property
+    def stop_failure(self) -> BaseException | None:
+        return self._stop_error
 
     def stop(self) -> None:
-        if self.process is None or self.process.poll() is not None:
-            return
-        self.process.terminate()
+        with self._stop_lock:
+            if self._stop_thread is None:
+                if self.process is None or self.process.poll() is not None:
+                    return
+                self._stop_thread = threading.Thread(
+                    target=copy_context().run, args=(self._stop_owned_process,), name="optimus-gateway-stop", daemon=False,
+                )
+                try:
+                    self._stop_thread.start()
+                except BaseException:
+                    self._stop_thread = None
+                    raise
+            worker = self._stop_thread
+        worker.join()
+        if self._stop_error is not None:
+            raise_preserving_failure(self._stop_error)
+
+    def _stop_owned_process(self) -> None:
         try:
-            self.process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self.process.kill()
-            self.process.wait(timeout=5)
+            if self.process is None or self.process.poll() is not None:
+                return
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(timeout=5)
+        except BaseException as exc:
+            self._stop_error = exc
 
 
 def ensure_local_gateway(
@@ -517,57 +552,83 @@ def ensure_local_gateway(
         log(f"optimus-agent: could not prepare local gateway log file ({exc}); leaving Gateway pre-flight to fail closed.")
         return None
 
+    process = None
+    owned: LocalGatewayProcess | None = None
+    stop_attempted = False
     try:
-        # A named Plan 12.2 test profile is passed by name only: the Gateway composes it from its own
-        # reviewed source and refuses unless the signed manifest binds that hash (release supplement V2).
-        profile_argv = [] if test_profile is None else ["--plan12-test-profile", test_profile]
-        # Plan 12.2 Task 13 (Stage C): the resolved ledger is passed by path; the Gateway composes the
-        # envelope itself and refuses unless the signed manifest binds exactly that envelope.
-        if stage_c_ledger is not None:
-            profile_argv += ["--plan12-stage-c-ledger", str(stage_c_ledger)]
-        # ADR-025: the operator's registry override is passed by path; the Gateway composes it itself and refuses unless
-        # the signed manifest binds the resulting hash. A test profile never reads it.
-        override = None if test_profile is not None or config_root is None else operator_override(config_root)
-        if override is not None:
-            profile_argv += ["--registry-override", str(override)]
-        # Plan 12.4 Design 1: an Auto launch's Gateway composes the Auto registry itself; the signed manifest must bind
-        # that hash, so a Gateway composing anything else refuses to start.
-        if auto_composition:
-            profile_argv.append("--auto-composition")
-        process = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "optimus_gateway",
-                "--bind-host",
-                host,
-                "--port",
-                str(port),
-                "--manifest",
-                serialized_manifest,
-                *profile_argv,
-            ],
-            env=child_env,
-            stdin=subprocess.DEVNULL,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-        )
-    except OSError as exc:
-        log(f"optimus-agent: could not start local gateway process ({exc}); leaving Gateway pre-flight to fail closed.")
-        return None
-    finally:
-        log_file.close()  # the child holds its own duplicated fd; the parent doesn't need this one
-    log(f"optimus-agent: starting local gateway (pid {process.pid}); logging to {log_path}")
-
-    deadline = time.monotonic() + _GATEWAY_READY_TIMEOUT_SECONDS
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            log(f"optimus-agent: local gateway exited early (code {process.returncode}); see {log_path}")
+        try:
+            # A named Plan 12.2 test profile is passed by name only: the Gateway composes it from its own
+            # reviewed source and refuses unless the signed manifest binds that hash (release supplement V2).
+            profile_argv = [] if test_profile is None else ["--plan12-test-profile", test_profile]
+            # Plan 12.2 Task 13 (Stage C): the resolved ledger is passed by path; the Gateway composes the
+            # envelope itself and refuses unless the signed manifest binds exactly that envelope.
+            if stage_c_ledger is not None:
+                profile_argv += ["--plan12-stage-c-ledger", str(stage_c_ledger)]
+            # ADR-025: the operator's registry override is passed by path; the Gateway composes it itself and refuses unless
+            # the signed manifest binds the resulting hash. A test profile never reads it.
+            override = None if test_profile is not None or config_root is None else operator_override(config_root)
+            if override is not None:
+                profile_argv += ["--registry-override", str(override)]
+            # Plan 12.4 Design 1: an Auto launch's Gateway composes the Auto registry itself; the signed manifest must bind
+            # that hash, so a Gateway composing anything else refuses to start.
+            if auto_composition:
+                profile_argv.append("--auto-composition")
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "optimus_gateway",
+                    "--bind-host",
+                    host,
+                    "--port",
+                    str(port),
+                    "--manifest",
+                    serialized_manifest,
+                    *profile_argv,
+                ],
+                env=child_env,
+                stdin=subprocess.DEVNULL,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+            )
+        except OSError as exc:
+            log(f"optimus-agent: could not start local gateway process ({exc}); leaving Gateway pre-flight to fail closed.")
             return None
-        if _tcp_reachable(host, port):
-            return LocalGatewayProcess(process=process, log_path=log_path)
-        time.sleep(_POLL_INTERVAL_SECONDS)
+        finally:
+            log_file.close()  # the child holds its own duplicated fd; the parent doesn't need this one
+        owned = LocalGatewayProcess(process=process, log_path=log_path)
+        log(f"optimus-agent: starting local gateway (pid {process.pid}); logging to {log_path}")
 
-    log(f"optimus-agent: local gateway did not become ready in time; see {log_path}")
-    LocalGatewayProcess(process=process, log_path=log_path).stop()
-    return None
+        deadline = time.monotonic() + _GATEWAY_READY_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                log(f"optimus-agent: local gateway exited early (code {process.returncode}); see {log_path}")
+                return None
+            if _tcp_reachable(host, port):
+                return owned
+            time.sleep(_POLL_INTERVAL_SECONDS)
+
+        log(f"optimus-agent: local gateway did not become ready in time; see {log_path}")
+        stop_attempted = True
+        assert owned is not None
+        owned.stop()
+        return None
+    except BaseException as primary:
+        if process is None:
+            raise
+        if owned is None:
+            owned = LocalGatewayProcess(process=process, log_path=log_path)
+        if not stop_attempted:
+            try:
+                owned.stop()
+            except BaseException as cleanup:
+                failure = cleanup_failure([("startup", primary), ("gateway", cleanup)])
+                failure.__dict__["_optimus_cleanup_stages"] = ("gateway",)
+                if owned.stop_pending or (owned.process is not None and owned.process.poll() is None):
+                    failure.__dict__["_optimus_pending_gateway"] = owned
+                raise_preserving_failure(failure)
+        elif owned.stop_failure is not None:
+            primary.__dict__["_optimus_cleanup_stages"] = ("gateway",)
+        if owned.stop_pending or (owned.process is not None and owned.process.poll() is None):
+            primary.__dict__["_optimus_pending_gateway"] = owned
+        raise
