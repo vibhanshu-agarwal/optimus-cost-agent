@@ -345,3 +345,95 @@ async def test_after_a_grant_the_approved_application_runs_on_the_moved_to_model
     assert (planning["turn_model"], planning["route_binder"].identity.model_id) == (LUNA, LUNA)
     assert (application["turn_model"], application["route_binder"].identity.model_id) == (GEMINI, GEMINI)
     assert application["route_binder"] is runner.grant.route_binder
+
+
+def test_adopted_readings_join_the_new_binders_under_the_largest_and_smaller_capacity_rule() -> None:
+    from optimus.gateway.route_binding import RequestReading
+
+    router = _router()
+
+    def binders():
+        old = router.route_policy(router.resolve(_outcome("easy"))).capture(session_id="s", turn_seq=1, deliver_notice=Notices())
+        return old, router.escalation_route(GEMINI).capture(session_id="s", turn_seq=1, deliver_notice=Notices())
+
+    # An earlier, larger request keeps the meter.
+    old, new = binders()
+    old.record_dispatch("x" * 5000)
+    earlier = old.largest_dispatch()
+    new.record_dispatch("short")
+    new.adopt_readings(old)
+    assert new.largest_dispatch() == earlier
+
+    # A later, larger request on the new binder still wins.
+    old, new = binders()
+    old.record_dispatch("short")
+    new.record_dispatch("y" * 5000)
+    later = new.largest_dispatch()
+    new.adopt_readings(old)
+    assert new.largest_dispatch() == later
+
+    # Equal sizes: the smaller capacity, whichever binder sent it.
+    old, new = binders()
+    old._readings.append(RequestReading(tokens=100, capacity=150000))  # noqa: SLF001
+    new._readings.append(RequestReading(tokens=100, capacity=200000))  # noqa: SLF001
+    new.adopt_readings(old)
+    assert new.largest_dispatch() == RequestReading(tokens=100, capacity=150000)
+
+
+# --- The runner's scope cell: each request's report uses the route that sent it --------------------------------------
+
+
+def test_after_a_grant_the_ledger_records_every_request_and_a_failure_is_classified_by_the_targets_route(tmp_path) -> None:
+    from decimal import Decimal
+
+    from optimus.agent.planning_loop import CheckInDecision
+    from optimus.agent.runner import AgentRunner
+    from optimus.gateway.errors import GatewayHttpError
+    from optimus.gateway.models import GatewayResponse, GatewayUsage
+    from optimus.runtime.modes import ExecutionMode
+    from tests.unit.agent.test_planning_loop_recovery import READ_A, READ_B, CheckIns
+    from tests.unit.agent.test_route_binding import _request
+
+    # A stop-tripping code that stops a route only when the sending binder's route is experimental.
+    uncertain = GatewayHttpError(502, "uncertain", gateway_code="UPSTREAM_ATTEMPT_UNCERTAIN", retryable=False)
+
+    class Client:
+        def __init__(self, steps) -> None:
+            self.steps, self.models = list(steps), []
+
+        def create_response(self, *, model, input_text, metadata=None, **binding):
+            self.models.append(model)
+            step = self.steps.pop(0)
+            if isinstance(step, BaseException):
+                raise step
+            n = len(self.models)
+            usage = GatewayUsage(gateway_request_id=f"gw-{n}", provider="glm", billing_units=1, cost_usd=Decimal("0.001"))
+            return GatewayResponse(response_id=f"gw-{n}", output_text=step, gateway_usage=usage, raw={"id": f"gw-{n}"})
+
+    class Ledger:
+        def __init__(self) -> None:
+            self.ids: list[str] = []
+
+        def record_gateway_usage(self, gateway_usage, **kwargs) -> None:
+            self.ids.append(gateway_usage.gateway_request_id)
+
+    router = _router()
+    luna = router.route_policy(router.resolve(_outcome("easy"))).capture(session_id="s", turn_seq=1, deliver_notice=Notices())
+    gemini = router.escalation_route(GEMINI).capture(session_id="s", turn_seq=1, deliver_notice=Notices())
+    luna.experimental, gemini.experimental = False, True  # only the target's route trips the stop
+    client, ledger, stops = Client([READ_A] * 4 + [READ_B, uncertain]), Ledger(), []
+    request = _request(tmp_path, ExecutionMode.AGENT, task="Update a.py")
+    (request.workspace_root / "a.py").write_text("0123456789abcdef", encoding="utf-8")
+
+    AgentRunner(gateway_client=client, model=LUNA, usage_accounting=ledger).run(
+        request,
+        route_binder=luna,
+        turn_model=LUNA,
+        model_stops=stops.append,
+        recovery_checkin=CheckIns(CheckInDecision.STOP),
+        recovery_escalation=lambda move: EscalationGrant(model_id=GEMINI, route_binder=gemini),
+    )
+
+    assert client.models == [LUNA] * 4 + [GEMINI] * 2
+    assert ledger.ids == [f"gw-{n}" for n in range(1, 6)]  # every settled request, before and after the switch
+    assert stops == [GEMINI]  # classified by the target's route; the original scope would not have stopped it

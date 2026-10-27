@@ -194,6 +194,13 @@ def test_a_halted_refusal_ends_the_run_rather_than_going_to_the_check_in(tmp_pat
     assert checkins.asked == [] and result.stop_reason == "PLANNING_HALTED"
 
 
+def test_a_host_halted_answer_is_terminal_even_when_the_runs_own_predicate_is_still_false(tmp_path, source):
+    gateway, checkins = Gateway([READ_A] * 4), CheckIns(CheckInDecision.CONTINUE)
+    result = _run(tmp_path, gateway, checkins, Escalations(EscalationRefusal.HALTED))
+    assert checkins.asked == [] and gateway.models == [WEAK] * 4  # never a check-in, never resumed by Continue
+    assert result.stop_reason == "PLANNING_HALTED"
+
+
 def test_a_cancel_during_the_escalation_stops_without_the_stronger_model(tmp_path, source):
     halted = []
     gateway = Gateway([READ_A] * 4)

@@ -1218,6 +1218,8 @@ class PlanningLoopRunner:
                 if not isinstance(outcome, EscalationGrant | EscalationRefusal):
                     outcome = EscalationRefusal.FAILED
                 iteration_runner.record_escalation(move, outcome)
+                if outcome is EscalationRefusal.HALTED:
+                    break  # terminal: the host saw a halt, whatever this run's own predicate says (PLANNING_HALTED)
                 if isinstance(outcome, EscalationGrant) and not self._halt_requested():
                     # The stronger model gets Continue's allowance; the episode stays open, so it ends at the check-in.
                     loop_result = run_allowance(self._policy.continue_grant_steps, spent=loop_result.state.cost_usd_spent)
@@ -1287,6 +1289,8 @@ class _PlanningIterationRunner:
         self._escalation_tried = False
         self._episode_moved_to: str | None = None
         self._episode_no_target = False
+        self._host_halted = False  # the host answered HALTED: the run ends halted
+
         self._loop_event_sink = loop_event_sink
         self._detector = LoopDetector(policy.loop_thresholds)
         self._coverage = ReadCoverage()
@@ -1455,6 +1459,7 @@ class _PlanningIterationRunner:
         if isinstance(outcome, EscalationRefusal):
             self._emit_loop_record("escalation", move.cause, self._steps_run, decision=outcome)
             self._episode_no_target = outcome is EscalationRefusal.NO_TARGET
+            self._host_halted = outcome is EscalationRefusal.HALTED
             return
         self._emit_loop_record(
             "escalation",
@@ -2120,7 +2125,7 @@ class _PlanningIterationRunner:
     def to_planning_result(self, loop_result) -> PlanningLoopResult:
         settled_turns = self._turn_offset + loop_result.state.iteration
         # Unconditional halt recheck before any stop-reason conversion (Plan 11.25 Task 6).
-        if loop_result.state.human_halt_requested or self._halt_requested():
+        if loop_result.state.human_halt_requested or self._halt_requested() or self._host_halted:
             return self._planning_failure_result(
                 stop_reason="PLANNING_HALTED",
                 settled_turns=settled_turns,
