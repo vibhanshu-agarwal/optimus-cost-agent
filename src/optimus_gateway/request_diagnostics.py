@@ -14,7 +14,6 @@ import sys
 import threading
 from typing import Any
 
-from optimus_model_policy.experimental import EXPERIMENTAL_ROUTES
 from optimus_security.failure_facts import UNRECOGNIZED, bounded, bounded_failure, final_sanitize, gateway_request_id
 
 _STATE = threading.local()
@@ -76,8 +75,6 @@ def log_model_attempt(event: Any) -> None:
 # --- Recognized upstream metadata for the log (C1): a value from trusted, code-shipped or registry data, else
 # ``unrecognized``. The reply checks keep using the original values.
 
-_ROUTE_PROVIDERS = frozenset(name for route in EXPERIMENTAL_ROUTES.values() for name in (route.provider_family, route.provider_name))
-_ROUTE_MODELS = frozenset(route.model_id for route in EXPERIMENTAL_ROUTES.values())
 RECOGNIZED_FINISH = frozenset({"stop", "length", "content_filter", "tool_calls", "error"})
 
 
@@ -85,21 +82,28 @@ def _registry(policy: Any) -> tuple[frozenset[str], frozenset[str]]:
     if policy is None:
         return frozenset(), frozenset()
     models = policy.snapshot.policy.models
-    return frozenset(models), frozenset(provider for entry in models.values() for provider in entry.route.providers)
+    providers = {provider for entry in models.values() for provider in entry.route.providers}
+    # A provider-family admission's recorded router name (``Anthropic``) is registry data too (Plan 12.4 v7).
+    providers |= {
+        entry.admission.provider_family.provider_name
+        for entry in models.values()
+        if entry.admission is not None and entry.admission.provider_family is not None
+    }
+    return frozenset(models), frozenset(providers)
 
 
 def recognized_provider(value: object, policy: Any = None) -> str | None:
-    """A router provider recognized by the closed mapping: an experimental route's slug or display name (``anthropic``,
-    ``Anthropic``) or a registry endpoint's provider slug."""
+    """A router provider recognized by the closed mapping: a registry endpoint's provider slug, or a provider-family
+    admission's recorded router name (``Anthropic``)."""
     try:
-        return bounded(value, _ROUTE_PROVIDERS | _registry(policy)[1])
+        return bounded(value, _registry(policy)[1])
     except Exception:  # noqa: BLE001 - an unreadable registry recognizes nothing
         return None if value is None else UNRECOGNIZED
 
 
 def recognized_model(value: object, policy: Any = None) -> str | None:
-    """A model id from the trusted registry, or an experimental route's."""
+    """A model id from the trusted registry."""
     try:
-        return bounded(value, _ROUTE_MODELS | _registry(policy)[0])
+        return bounded(value, _registry(policy)[0])
     except Exception:  # noqa: BLE001 - an unreadable registry recognizes nothing
         return None if value is None else UNRECOGNIZED

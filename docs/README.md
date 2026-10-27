@@ -23,6 +23,7 @@ it and remove its line below. A test checks that this index lists every current 
 | [Agent-mode localized EDIT successor sources](sources/agent-localized-edit/) | Sources, replaced page bodies, authoring driver and validation record for HLD v2.21 and LLD v2.44; preserves the mixed provenance and the separate Plan 12.2 ordinary shipping amendment |
 | [Capability and evidence correction sources](sources/capability-evidence-correction/) | Sources, authoring tools, correction map and validation record for HLD v2.20, LLD v2.43, Roadmap v11 and Test Strategy v1.9, and the Guardrails v1.5 cover |
 | [Plan 12.2 closure publication sources](sources/plan-12-2-context-engine-closure/) | Sources the HLD v2.19, LLD v2.42, Guardrails v1.4 and Test Strategy v1.8 were built from (Plan 12.2 Context Engine closure). Still the source of the Guardrails v1.5 body (unchanged from v1.4), and historical provenance for the archived v2.19, v2.42, v1.4 and v1.8 |
+| [Plan 12.4 Auto-mode pilot evidence](sources/plan-12-4-auto-pilot/) | Content-free evidence for the Auto judge: the evidence report, every view's tables, the frozen settings and the exploratory combinations; the digest-bearing manifest stays in the review kit, pinned by SHA-256 |
 
 ## Decision records (ADRs)
 
@@ -56,8 +57,10 @@ relevant records before proposing a change in their area.
 | [ADR-022: GitHub Issues as the work register](decisions/ADR-022-github-issues-as-the-work-register.md) | Corrects only ADR-021's pool-first intake: new plans, defects and follow-ups are created as issues, the unfinished remainder of the open work migrates in dependency-bounded groups, the backlog is transitional and documents keep scope, design, history and pointers; operator requirement accepted (source S8), mechanism proposed by Claude and reviewed by Codex |
 | [ADR-023: Plan 12.2 shipped admission and default planner](decisions/ADR-023-plan12-shipped-empirical-admission-and-default-planner.md) | One exact-snapshot empirical admission exception for Haiku 5.5 (`verified: false`) and the medium-then-easy default planner; operator policy approval recorded; ships with the Plan 12.2 delivery merge, and the ordinary proof is tracked in #237 |
 | [ADR-024: Accepts ADR-009 as scoped](decisions/ADR-024-accepts-adr-009-loop-control-phase-1-scope.md) | Loop control Phase 1: a detector, one nudge and a Continue/Stop check-in, escalation after Auto; operator D1–D3 (source S10) |
+| [ADR-025: Models are configuration](decisions/ADR-025-models-are-configuration-per-model-admission.md) | Per-model admission evidence in each registry entry, a conservative default estimator, per-model stops and the operator override; operator N1(a) and N2(a) (source S11) |
 | [ADR-026: Exception routes accept one unflagged guardrail stage](decisions/ADR-026-exception-routes-accept-one-unflagged-guardrail-stage.md) | #400 option b1: one `guardrail` stage reporting `flagged` false and no detection, decision, action, conflict or scope passes the exception-route pipeline check; every other stage still refuses; residual risk accepted by the operator |
 | [ADR-027: Idle client-MCP lifetime](decisions/ADR-027-idle-client-mcp-lifetime-contract.md) | Retain in-memory continuity; positive idle delay and fresh atomic permission renewal |
+| [ADR-028: Accepts ADR-007 with arm H](decisions/ADR-028-accepts-adr-007-auto-judge-h.md) | Auto mode's per-turn judge: the rules when confident, otherwise Jev, routing up when unsure; chosen by the Plan 12.4 pilot's pre-registered rule; operator acceptance (source S13) |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 
 ## Research (input for Plan 12)
@@ -103,7 +106,7 @@ Live plans (each listed in the backlog's live plan registry):
 | [P11-FU-6 v2: bounded early POST rejection](superpowers/plans/2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | Gateway early-rejection correction |
 | [Local-hook UTF-8 repair](superpowers/plans/2026-09-06-local-hook-utf8-repair.md) | Pre-commit hook decoding fix |
 | [Evidence collector](superpowers/plans/evidence-handoff-evidence-collector-implementation.md) | Evidence-handoff collector |
-| [Plan 12.4 v8: Auto mode](superpowers/plans/2026-10-23-plan-12-4-auto-mode_v8.md) | Fixed tiers with models as configuration; classifier pilot (rules, Jev, Haiku, DSPy, hybrid); opt-in per-turn tier routing; N3 accepts one unflagged guardrail stage (#400). v6 and v7 are in `archive/` |
+| [Plan 12.4 v9: Auto mode](superpowers/plans/2026-10-23-plan-12-4-auto-mode_v9.md) | Fixed tiers with models as configuration; the classifier pilot selected H, the rules then Jev (ADR-027); opt-in per-turn tier routing; round 2, a challenger round on fresh data. v6, v7 and v8 are in `archive/` |
 
 ## Current designs
 

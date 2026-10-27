@@ -10,10 +10,12 @@ for a role only when it is explicitly assigned to that role and every hard requi
   reserve; a verified route estimator; a set reserve; and an explicit, supported reasoning level that
   the upstream request can express (none at all only when the route has no reasoning levels);
 * summarizer: a passing ``context-summary-v1`` receipt for this exact route and reasoning setting;
-* reviewer and classifier are dormant, so they are never eligible.
+* classifier: its smallest window reaches the classifier's complete-request bound
+  (``CLASSIFIER_REQUEST_BOUND_TOKENS``) instead of the context ceiling (Plan 12.4 v7 Design 1);
+* reviewer is dormant, so it is never eligible.
 
-The reviewed test profiles listed in ``experimental.py`` (each by its exact snapshot hash) may use their
-provider-family slug and empirical estimator; every other snapshot keeps both rules above.
+A model whose entry carries an ``admission`` block (``experimental.py``) may use its recorded provider-family
+slug, its empirical estimator, or both, each by its own part; every other model keeps both rules above.
 
 Eligible models are ordered by per-token price dominance (no dearer on both input and output, and
 cheaper on one); an exact tie puts the China-origin model first. Crossed prices need a declared
@@ -30,6 +32,7 @@ from functools import cmp_to_key
 from optimus_model_policy.binding import WIRE_QUANTIZATIONS, WIRE_REASONING_EFFORTS
 from optimus_model_policy.experimental import EMPIRICAL_ESTIMATOR_METHOD, experimental_route
 from optimus_model_policy.registry import (
+    CLASSIFIER_REQUEST_BOUND_TOKENS,
     DORMANT_ROLES,
     IMPLEMENTER_ROLES,
     SUMMARY_FIXTURE_DIGEST,
@@ -97,6 +100,10 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
         # OpenRouter routes a base slug to every variant and region of that provider, so the request
         # could not be held to the approved endpoint; only an exact variant slug is expressible.
         issue("ROUTE_TARGET_NOT_EXACT", f"provider base slugs {base_slugs} also reach other variants; record exact endpoint slugs")
+    if experimental is not None and experimental.provider_family is not None and experimental.provider_family not in {
+        endpoint.provider for endpoint in endpoints
+    }:
+        issue("ADMISSION_SCOPE_UNUSED", f"the provider-family admission names {experimental.provider_family!r}, which no endpoint uses")
     slugs = [endpoint.provider for endpoint in endpoints]
     if len(set(slugs)) != len(slugs):
         issue("ROUTE_ENDPOINT_DUPLICATE", "an endpoint slug is listed more than once in the route")
@@ -123,8 +130,9 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
     if unknown_window or unknown_output:
         issue("ROUTE_FACT_UNKNOWN", "an endpoint has no recorded window or max output")
     else:
-        if min(windows) < policy.context_ceiling_tokens:
-            issue("ROUTE_WINDOW_BELOW_CEILING", f"smallest window {min(windows)} < ceiling {policy.context_ceiling_tokens}")
+        ceiling = CLASSIFIER_REQUEST_BOUND_TOKENS if role is Role.CLASSIFIER else policy.context_ceiling_tokens
+        if min(windows) < ceiling:
+            issue("ROUTE_WINDOW_BELOW_CEILING", f"smallest window {min(windows)} < ceiling {ceiling}")
         reserve = policy.output_reserve_tokens.get(reserve_class(role))
         if reserve is not None and min(outputs) < reserve:
             issue("ROUTE_OUTPUT_BELOW_RESERVE", f"smallest max output {min(outputs)} < reserve {reserve}")
@@ -132,7 +140,7 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
     estimator = policy.estimators.get(entry.route.estimator)
     if estimator is None:
         issue("ESTIMATOR_UNKNOWN", f"route estimator {entry.route.estimator!r} is not defined")
-    elif not estimator.verified and not (experimental is not None and estimator.method == EMPIRICAL_ESTIMATOR_METHOD):
+    elif not estimator.verified and not (experimental is not None and experimental.empirical_estimate and estimator.method == EMPIRICAL_ESTIMATOR_METHOD):
         issue("ESTIMATOR_UNVERIFIED", f"route estimator {entry.route.estimator!r} is not verified")
 
     if entry.default_reasoning is not None and entry.default_reasoning not in entry.capabilities.reasoning_levels:
@@ -224,8 +232,6 @@ def validate_registry(snapshot: RegistrySnapshot) -> tuple[ValidationIssue, ...]
     issues: list[ValidationIssue] = []
 
     for role, model_ids in policy.roles.items():
-        if role is Role.CLASSIFIER and model_ids:
-            issues.append(ValidationIssue("ROLE_DORMANT", "classifier assignments await accepted ADR-007", role=role))
         seen: set[str] = set()
         for model_id in model_ids:
             if model_id in seen:

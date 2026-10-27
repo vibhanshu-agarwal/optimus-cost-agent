@@ -683,6 +683,25 @@ eligible medium model, else the first eligible easy model). Leave `OPTIMUS_AGENT
 use it, or set an eligible exact model ID. An ineligible ID, including the old `claude-haiku` alias and
 `glm-5.2`, refuses at startup with migration guidance.
 
+**Auto mode (opt-in; Plan 12.4, ADR-028).** Auto sends each turn to the cheapest model that can do it. A judge
+rates the turn easy, medium or complex. The judge is H: its keyword rules first, then the classifier model (today
+Jev) when the rules are unsure. An answer below confidence 0.95, an abstention or a judge failure routes one tier up.
+The turn then uses the cheapest model of that tier that has not stopped in this launch, for the whole turn.
+- **Turn it on:** set `OPTIMUS_AGENT_MODEL=auto`. `--model` never chooses Auto; it refuses `auto`.
+- **Approve it:** with that setting in place, run
+  `optimus-trust --workspace-root <workspace> approve --mode durable`. The approval covers the Auto composition: the
+  shipped defaults, plus the Auto overlay, plus any registry override. An ordinary approval never authorizes Auto,
+  and the reverse also holds. For a manually managed Gateway, run
+  `optimus-trust --workspace-root <workspace> run-gateway --auto`.
+- **Each turn shows** one line, for example `Auto: medium → google/gemini-3.8-flash`, with the reason when the turn
+  routed up or fell back. The judge's own cost appears as the `classification` stage of the turn's cost.
+- **Limitations** (ADR-028):
+  - H's measured rates (4.7% against the pilot's 5% limits) do not establish population rates below 5%;
+  - the previous turn's tier is a barely tested signal (#425);
+  - the savings depend on the model list;
+  - a judge other than H needs its own change (#426).
+- **Turn it off:** unset `OPTIMUS_AGENT_MODEL`, or set an exact model ID.
+
 **OpenRouter is the approved default** (`OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter`).
 Vercel AI Gateway is a future bounded model-endpoint option pending a modest Python transport
 check; it is not the Phase 1 search backend. Direct-provider adapters are a separate retirement

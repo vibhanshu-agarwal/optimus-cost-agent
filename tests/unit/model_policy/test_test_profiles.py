@@ -23,8 +23,8 @@ from optimus_model_policy import test_profiles as profiles
 from optimus_model_policy.binding import BindingError, packaged_defaults, trusted_snapshot
 from optimus_model_policy.registry import SUMMARY_FIXTURE_DIGEST, SUMMARY_FORMAT, SUMMARY_PROMPT_DIGEST, SUMMARY_VALIDATOR, load_registry
 
-QUALIFICATION_HASH = "048c1a2b3e7d3436d371e8964200064bb30f0a1a865c945f92a2fc09d3ba5cba"  # pragma: allowlist secret - registry identity, not a credential
-ATTACHED_HASH = "06e637845f5f7cea2b4a22d23407c59efc9741d7848b06ee5f4c3d2284f3f07d"  # pragma: allowlist secret - registry identity, not a credential
+QUALIFICATION_HASH = "d180f7b1cbfa1f2e6d7655d91b6cc04ed2f045ac66e9a41ccf5d99140cba9ba1"  # pragma: allowlist secret - registry identity, not a credential
+ATTACHED_HASH = "fdcf00f0ffff25030e0d97ea3c3bc5be44155f432d1a2e0d07fe5142a9df88c1"  # pragma: allowlist secret - registry identity, not a credential
 HAIKU = "anthropic/claude-haiku-5.5"
 # The accepted Stage 2 artifacts (Codex acceptance, 2026-10-11): the receipt candidate's exact bytes and the
 # assessment it names. The candidate is rebuilt below from the filed receipt, so the filed copy is proven equal.
@@ -174,3 +174,29 @@ def test_a_malformed_override_is_refused_by_code(monkeypatch: pytest.MonkeyPatch
     with pytest.raises(BindingError) as caught:
         profiles.compose_test_profile_snapshot("qualification")
     assert caught.value.code == "TEST_PROFILE_INVALID"
+
+
+EVALUATION_HASH = "d8d0b90ec7a98df5d5737a550c862d1567ebeb6cf368e00c2248a0e125c634b6"  # pragma: allowlist secret - registry identity, not a credential
+JEV = "typesafe/jev-1.14"
+
+
+def test_the_evaluation_profile_composes_its_pinned_classifier_snapshot() -> None:
+    """Plan 12.4 v7: the pilot's composition adds the classifier role for Jev and Haiku; the agent stays Haiku."""
+    snapshot = profiles.compose_test_profile_snapshot("evaluation")
+    evaluation = profiles.TEST_PROFILES["evaluation"]
+
+    assert snapshot.effective_hash == EVALUATION_HASH == evaluation.effective_hash
+    assert select_eligible_models(snapshot, Role.CLASSIFIER) == (JEV, HAIKU)
+    assert select_eligible_models(snapshot, Role.EASY) == (HAIKU,)
+    assert (evaluation.model_id, evaluation.role, evaluation.output_cap) == (HAIKU, "easy", 32768)
+    assert [issue for issue in validate_registry(snapshot) if issue.role is Role.CLASSIFIER] == []
+    jev = snapshot.policy.models[JEV]
+    assert jev.admission is not None and jev.admission.provider_family is not None
+    assert (jev.admission.provider_family.provider, jev.admission.provider_family.provider_name) == ("typesafe", "TypeSafe")
+
+
+def test_the_evaluation_profile_never_reads_the_operator_override(tmp_path: Path) -> None:
+    override = tmp_path / "model-registry.yaml"
+    override.write_text("roles:\n  classifier: []\n", encoding="utf-8")
+    binding_module.use_operator_override(override)
+    assert profiles.compose_test_profile_snapshot("evaluation").effective_hash == EVALUATION_HASH

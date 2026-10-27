@@ -129,6 +129,19 @@ class GatewayResponse(BaseModel):
         return self.finish_reason in _UNFINISHED_FINISH_REASONS
 
 
+class GatewayDecision(BaseModel):
+    """One classifier decision through the Gateway (Plan 12.4 Task 5). ``answers`` is None when the reply's answers,
+    id or model were malformed: the decision is then unusable, but its usage and attempts are kept for accounting."""
+
+    model_config = ConfigDict(frozen=True)
+
+    decision_id: str | None = None
+    model: str | None = None
+    answers: dict[str, Any] | None
+    gateway_usage: GatewayUsage
+    route_attempts: tuple[GatewayRouteAttempt, ...] = ()
+
+
 def build_responses_payload(
     *,
     model: str,
@@ -253,3 +266,24 @@ def _extract_text_from_output(output: object) -> str | None:
     if not chunks:
         return None
     return "".join(chunks)
+
+
+def parse_decision_response(body: dict[str, Any]) -> GatewayDecision:
+    """Parse a 200 decision reply (Plan 12.4 Task 5). Usage, then attempts, are read first: their defects raise as for
+    a model reply, keeping any valid usage. A malformed ``id``, ``model`` or ``answers`` never raises: it makes the
+    decision unusable while its usage and attempts stay intact for attribution and integrity checks."""
+    usage_body = body.get("gateway_usage")
+    if not isinstance(usage_body, dict):
+        raise GatewayResponseError("gateway_usage missing", audit_code="GATEWAY_USAGE_MISSING")
+    usage = parse_gateway_usage(usage_body)
+    route_attempts: tuple[GatewayRouteAttempt, ...] = ()
+    if "route_attempts" in body:
+        try:
+            route_attempts = parse_route_attempts(body["route_attempts"])
+        except (ValueError, ValidationError) as exc:
+            raise GatewayResponseError("route_attempts is malformed", gateway_usage=usage, audit_code="ROUTE_ATTEMPTS_MALFORMED") from exc
+    decision_id, model, answers = body.get("id"), body.get("model"), body.get("answers")
+    usable = isinstance(answers, dict) and (decision_id is None or isinstance(decision_id, str)) and (model is None or isinstance(model, str))
+    if not usable:
+        return GatewayDecision(answers=None, gateway_usage=usage, route_attempts=route_attempts)
+    return GatewayDecision(decision_id=decision_id, model=model, answers=answers, gateway_usage=usage, route_attempts=route_attempts)

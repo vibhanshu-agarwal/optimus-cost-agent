@@ -4066,6 +4066,22 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     edits_committed = b"from optimus.agent.edits import" in head_runner
     if not edits_committed:
         expected -= {edits_path}
+    # Plan 12.4 Task 4 adds the Auto composition the entrypoint imports (one path), keyed on HEAD's __main__, and the
+    # classifier input contract that composition imports (one path), keyed on HEAD's Auto composition.
+    auto_path = "src/optimus/acp/auto_composition.py"
+    auto_committed = b"from optimus.acp.auto_composition import" in head_main
+    if not auto_committed:
+        expected -= {auto_path}
+    contract_path = "src/optimus/agent/auto_contract.py"
+    head_auto = probe.git_cat_file_blob(REPO_ROOT, "HEAD", auto_path) if auto_committed else b""
+    contract_committed = b"from optimus.agent.auto_contract import" in head_auto
+    if not contract_committed:
+        expected -= {contract_path}
+    # Plan 12.4 Task 5 adds H's backend, which the Auto composition imports (one path), keyed on HEAD's composition.
+    hybrid_path = "src/optimus/acp/auto_hybrid.py"
+    hybrid_committed = b"from optimus.acp.auto_hybrid import" in head_auto
+    if not hybrid_committed:
+        expected -= {hybrid_path}
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
@@ -4083,12 +4099,15 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     assert (runtime_tree_module in closure) is tree_moved
     assert (line_endings_path in closure) is line_endings_committed
     assert (edits_path in closure) is edits_committed
+    assert (auto_path in closure) is auto_committed
+    assert (contract_path in closure) is contract_committed
+    assert (hybrid_path in closure) is hybrid_committed
     base = 136 if seam2_committed else 134 if seam3_committed else 133
     assert len(closure) == base + (4 if task9_committed else 0) + (2 if task10_committed else 0) + (2 if task11_committed else 0) + (
         2 if correction_committed else 0
     ) + tree_committed + composition_committed + stage_c_committed + (2 if ordinary_committed else 0) + runtime_tree_committed + failure_facts_committed + (
         2 if loop_committed else 0
-    ) + tree_moved + line_endings_committed + edits_committed
+    ) + tree_moved + line_endings_committed + edits_committed + auto_committed + contract_committed + hybrid_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

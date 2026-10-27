@@ -61,8 +61,24 @@ from optimus.acp.trusted_paths import (
     WorkspaceSecurityState,
 )
 from optimus_model_policy import RegistryError
-from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError, approval_literal, trusted_approval_literal
-from optimus_model_policy.stage_c import STAGE_C_LITERAL_NAME, STAGE_C_PROFILES, compose_stage_c_envelope, stage_c_ledger_path
+from optimus_model_policy.binding import (
+    APPROVAL_LITERAL_NAME,
+    AUTO_COMPOSITION,
+    COMPOSITION_LITERAL_NAME,
+    BindingError,
+    approval_literal,
+    auto_approval_literal,
+    operator_override,
+    trusted_approval_literal,
+    use_operator_override,
+)
+from optimus_model_policy.stage_c import (
+    STAGE_C_LITERAL_NAME,
+    STAGE_C_PROFILES,
+    compose_stage_c_envelope,
+    require_stage_c_profile,
+    stage_c_ledger_path,
+)
 from optimus_model_policy.test_profiles import TEST_PROFILE_LITERAL_NAME, compose_test_profile_snapshot
 from optimus_security.sanitization import canonicalize_credential_uri, validate_secret_length
 
@@ -686,10 +702,21 @@ def resolve_launch_candidate(
     # approves that exact registry and any change to it requires re-approval. While registry
     # enforcement is inactive there is no literal and the digest is unchanged, so existing
     # approvals stay valid; activation adds it and those approvals then need re-approval.
+    auto_launch = model_observation == AUTO_COMPOSITION
+    if auto_launch and test_profile is not None:
+        raise LaunchGateError(code="AUTO_WITH_TEST_PROFILE", detail="Auto and a test profile are mutually exclusive")
     try:
         if test_profile is None:
-            registry_literal = trusted_approval_literal()
+            # ADR-025 (ADR-004 option C): the operator's override in the trusted config root, composed over the shipped
+            # defaults for this process; the approval binds the resulting effective hash. Test profiles never read it.
+            use_operator_override(operator_override(operator_paths.config_root))
+            # Plan 12.4 Design 1: OPTIMUS_AGENT_MODEL=auto composes the Auto overlay too, and binds its name beside its
+            # hash, so an ordinary approval never authorizes an Auto launch, or the reverse.
+            registry_literal = auto_approval_literal() if auto_launch else trusted_approval_literal()
+            if auto_launch:
+                security_literals[COMPOSITION_LITERAL_NAME] = AUTO_COMPOSITION
         else:
+            use_operator_override(None)
             # A named test profile binds its own reviewed snapshot (release supplement V2) and its own name: the
             # shipped defaults compose to the attached profile's hash (Plan 12.2 closure), and equal hashes never
             # mean shared authority, so neither launch's approval authorizes the other.
@@ -708,6 +735,7 @@ def resolve_launch_candidate(
             raise LaunchGateError(code="STAGE_C_NEEDS_TEST_PROFILE", detail="a Stage C launch names one of its test profiles")
         try:
             envelope = compose_stage_c_envelope(ledger=stage_c_ledger_path(operator_paths.runtime_root))
+            require_stage_c_profile(envelope, test_profile, compose_test_profile_snapshot(test_profile).effective_hash)
         except BindingError as exc:
             raise LaunchGateError(code="STAGE_C_ENVELOPE_INVALID", detail=exc.code) from exc
         stage_c_literal = envelope.literal
@@ -742,7 +770,10 @@ def resolve_launch_candidate(
             LaunchDisplayRow(
                 name=APPROVAL_LITERAL_NAME,
                 tier=LaunchVariableTier.SECURITY,
-                source_class="trusted-composition" if test_profile is None else f"test-profile:{test_profile}",
+                source_class=(
+                    f"test-profile:{test_profile}" if test_profile is not None
+                    else "auto-composition" if auto_launch else "trusted-composition"
+                ),
                 display_value=registry_literal,
                 decision="requires exact approval",
             )

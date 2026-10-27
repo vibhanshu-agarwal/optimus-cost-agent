@@ -9,6 +9,7 @@ from typing import Any
 
 from optimus_gateway import request_diagnostics
 from optimus_gateway.chat_completions import handle_chat_completions_request
+from optimus_gateway.decisions import DECISIONS_PATH, handle_decision_request
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.observability import (
     OpenTelemetryTraceExporter,
@@ -91,7 +92,7 @@ def _discard_rejected_post_body(stream: Any, connection: Any, length: int, deadl
             raise _RejectedPostError(HTTPStatus.REQUEST_TIMEOUT, "request body timeout")
 
 
-_MODEL_ROUTES = frozenset({"/v1/responses", "/v1/chat/completions"})
+_MODEL_ROUTES = frozenset({"/v1/responses", "/v1/chat/completions", DECISIONS_PATH})
 
 
 class OptimusGatewayHandler(BaseHTTPRequestHandler):
@@ -106,7 +107,7 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         path = self.path
         tool_dependencies = self.tool_dependencies
-        if path not in {"/v1/responses", "/v1/chat/completions", "/v1/observability/traces"} and not (
+        if path not in {"/v1/responses", "/v1/chat/completions", DECISIONS_PATH, "/v1/observability/traces"} and not (
             path in TOOL_ROUTE_PATHS and tool_dependencies is not None
         ):
             self._reject_unhandled_post()
@@ -152,6 +153,13 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
                 config=self.config,
                 upstream_client=self.upstream_client,
                 trace_exporter=self.trace_exporter,
+            )
+        elif path == DECISIONS_PATH:
+            status, body = handle_decision_request(
+                authorization_header=self.headers.get("Authorization"),
+                request_body=request_body,
+                config=self.config,
+                upstream_client=self.upstream_client,
             )
         elif path == "/v1/responses":
             status, body = handle_responses_request(

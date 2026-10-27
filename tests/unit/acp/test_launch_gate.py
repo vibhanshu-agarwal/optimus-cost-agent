@@ -1829,7 +1829,7 @@ class TestEffectiveCredentialDisplayRows:
 
 
 _GOLDEN_DISPLAY_DIGEST = "f7af89af0acce664b27825e5af9823c25b11579490bccc73e8f82d4ec316f248"  # pragma: allowlist secret - synthetic test fixture
-_GOLDEN_SHIPPED_DISPLAY_DIGEST = "73f5615b62668f63afdfccfbd613f61c248a9a8cc8440ecc711082977357810c"  # Plan 12.2 closure: shipped registry literal added  # pragma: allowlist secret - synthetic test fixture
+_GOLDEN_SHIPPED_DISPLAY_DIGEST = "7ecdca4240a5104420ed6301ecca8efa29a06a5cc7075c96e6579bc06c44ebcc"  # Plan 12.4 v8 (N3): Haiku's admission records the #400 residual  # pragma: allowlist secret - synthetic test fixture
 _GOLDEN_ENV = {
     "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
     "OPTIMUS_API_KEY": "agent-key",  # pragma: allowlist secret - synthetic test fixture

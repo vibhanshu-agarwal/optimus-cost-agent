@@ -89,7 +89,7 @@ fail_under = 80
 where = ["src"]
 
 [tool.setuptools.package-data]
-optimus_model_policy = ["defaults.yaml", "test_profile_qualification.yaml", "test_profile_attached.yaml"]
+optimus_model_policy = ["defaults.yaml", "test_profile_qualification.yaml", "test_profile_attached.yaml", "test_profile_evaluation.yaml", "auto_overlay.yaml"]
 
 [tool.ruff]
 line-length = 140

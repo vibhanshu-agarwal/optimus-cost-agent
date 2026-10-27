@@ -256,6 +256,17 @@ def _reset_debug_trace_context_between_tests() -> Iterator[None]:
     reset_debug_trace_context()
 
 
+@pytest.fixture(autouse=True)
+def _reset_operator_registry_override_between_tests() -> Iterator[None]:
+    """ADR-025: the operator registry override is process-local module state that the launch gate and the Gateway set
+    for their process. Without this reset, one test's override (often a deleted tmp file) would leak into the next."""
+    from optimus_model_policy.binding import use_operator_override
+
+    use_operator_override(None)
+    yield
+    use_operator_override(None)
+
+
 @pytest.fixture
 def isolated_windows_known_folders(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Give launch/path tests explicit temporary OS folder inputs, never real roots.

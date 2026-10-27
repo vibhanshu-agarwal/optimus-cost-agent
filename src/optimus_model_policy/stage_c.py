@@ -43,7 +43,6 @@ from types import MappingProxyType
 from typing import IO, Any, Final
 
 from optimus_model_policy.binding import ATTEMPT_NOT_SENT, ATTEMPT_REJECTED, BindingError
-from optimus_model_policy.test_profiles import TEST_PROFILES
 
 __all__ = [
     "ATTEMPT_TIMEOUT_SECONDS",
@@ -52,6 +51,7 @@ __all__ = [
     "STAGE_C_LITERAL_NAME",
     "STAGE_C_MAX_ATTEMPTS",
     "STAGE_C_PROFILES",
+    "STAGE_C_PROFILE_HASHES",
     "STAGE_C_ATTACHED_SCENARIO",
     "STAGE_C_RELEASE_ID",
     "STAGE_C_SCENARIOS",
@@ -66,6 +66,7 @@ __all__ = [
     "compose_stage_c_envelope",
     "initialize_stage_c_ledger",
     "ledger_deadline",
+    "require_stage_c_profile",
     "reservation_usd",
     "scenario_catalogue_digest",
     "stage_c_ledger_path",
@@ -77,6 +78,14 @@ STAGE_C_LIMIT_USD: Final = Decimal("8")
 STAGE_C_MAX_ATTEMPTS: Final = 138
 STAGE_C_WINDOW_SECONDS: Final = 60 * 60
 STAGE_C_PROFILES: Final = ("qualification", "attached")
+STAGE_C_PROFILE_HASHES: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "qualification": "048c1a2b3e7d3436d371e8964200064bb30f0a1a865c945f92a2fc09d3ba5cba",  # pragma: allowlist secret - registry identity, not a credential
+        "attached": "06e637845f5f7cea2b4a22d23407c59efc9741d7848b06ee5f4c3d2284f3f07d",  # pragma: allowlist secret - registry identity, not a credential
+    }
+)
+"""Release r9's own profile pins, fixed when Plan 12.4 v7 moved admission into the registry entries, so the historical
+envelope's identity is unchanged. The migrated profiles compose other hashes (``require_stage_c_profile``)."""
 ENVELOPE_LITERAL_PREFIX: Final = "optimus-stage-c-envelope-v1:"
 STAGE_C_LITERAL_NAME: Final = "_stage_c_envelope"
 """The security-literal name under which a Stage C launch approval binds the envelope literal."""
@@ -169,12 +178,7 @@ def compose_stage_c_envelope(*, ledger: Path) -> StageCEnvelope:
     """The reviewed release's envelope for the resolved ``ledger`` path."""
     if not ledger.is_absolute():
         raise BindingError("STAGE_C_LEDGER_NOT_ABSOLUTE", "the ledger path must be the resolved runtime path")
-    profiles = []
-    for name in STAGE_C_PROFILES:
-        pinned = TEST_PROFILES[name].effective_hash
-        if pinned is None:
-            raise BindingError("STAGE_C_PROFILE_UNAVAILABLE", name)
-        profiles.append((name, pinned))
+    profiles = [(name, STAGE_C_PROFILE_HASHES[name]) for name in STAGE_C_PROFILES]
     return StageCEnvelope(
         release_id=STAGE_C_RELEASE_ID,
         limit_usd=STAGE_C_LIMIT_USD,
@@ -184,6 +188,14 @@ def compose_stage_c_envelope(*, ledger: Path) -> StageCEnvelope:
         scenarios=scenario_catalogue_digest(),
         ledger=str(ledger),
     )
+
+
+def require_stage_c_profile(envelope: StageCEnvelope, profile: str, effective_hash: str) -> None:
+    """Refuse a launch that pairs this release with a profile whose snapshot is not the release's own pin: after
+    Plan 12.4 v7 moved admission into the registry entries, the migrated profiles compose other hashes, so the
+    historical release keeps its identity and gains no new authority."""
+    if dict(envelope.profiles).get(profile) != effective_hash:
+        raise BindingError("STAGE_C_PROFILE_MIGRATED", "the release pins another snapshot for this profile")
 
 
 # --- The ledger --------------------------------------------------------------------------------------------

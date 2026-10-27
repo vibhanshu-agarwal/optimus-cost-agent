@@ -37,14 +37,17 @@ from pydantic import (
 )
 
 __all__ = [
+    "Admission",
     "Capabilities",
     "DataUse",
+    "EmpiricalEstimateAdmission",
     "Endpoint",
     "EstimatorProfile",
     "ModelEntry",
     "Origin",
     "Policy",
     "Prices",
+    "ProviderFamilyAdmission",
     "RegistryError",
     "RegistrySnapshot",
     "Role",
@@ -103,8 +106,13 @@ class Role(StrEnum):
 
 
 IMPLEMENTER_ROLES = frozenset({Role.EASY, Role.MEDIUM, Role.COMPLEX, Role.ESCALATION})
-DORMANT_ROLES = frozenset({Role.REVIEWER, Role.CLASSIFIER})
-"""Reviewer awaits its artifact contract (ADR-008); classifier awaits proposed ADR-007."""
+DORMANT_ROLES = frozenset({Role.REVIEWER})
+"""Reviewer awaits its artifact contract (ADR-008). The classifier is active wherever a composition assigns it (Plan
+12.4 v7 Design 1): the shipped defaults assign none; the pilot's ``evaluation`` and the ``auto`` compositions do."""
+
+CLASSIFIER_REQUEST_BOUND_TOKENS = 8_192
+"""The classifier's complete-request bound, frozen with its input contract (Plan 12.4 v7 Design 3): a classifier
+model's window must reach this instead of the global context ceiling."""
 
 ReserveClass = Literal["implementer", "summarizer", "reviewer", "classifier"]
 
@@ -310,6 +318,41 @@ class EstimatorProfile(BaseModel):
         return _decimal_text(value)
 
 
+EvidenceLines = Annotated[tuple[Annotated[str, Field(min_length=1)], ...], Field(min_length=1)]
+
+
+class EmpiricalEstimateAdmission(BaseModel):
+    """The entry's estimator may be unverified (Plan 12.4 v7 Design 1; ADR-025). Passing calls show only that
+    the tested requests fitted; every reply is checked against reported usage."""
+
+    model_config = _FROZEN
+
+    evidence: EvidenceLines
+    assumptions: EvidenceLines
+    limitations: EvidenceLines
+
+
+class ProviderFamilyAdmission(BaseModel):
+    """The route may use ``provider``'s base slug, which can reach any variant or region of that provider; every
+    reply's router metadata must name ``provider_name``."""
+
+    model_config = _FROZEN
+
+    provider: Annotated[str, Field(min_length=1)]
+    provider_name: Annotated[str, Field(min_length=1)]
+    evidence: EvidenceLines
+    limitations: EvidenceLines
+
+
+class Admission(BaseModel):
+    """Per-model admission evidence, approved with the effective hash. The two parts are independent."""
+
+    model_config = _FROZEN
+
+    empirical_estimate: EmpiricalEstimateAdmission | None = None
+    provider_family: ProviderFamilyAdmission | None = None
+
+
 class ModelEntry(BaseModel):
     model_config = _FROZEN
 
@@ -320,6 +363,7 @@ class ModelEntry(BaseModel):
     capabilities: Capabilities
     default_reasoning: str | None
     route: Route
+    admission: Admission | None = None
     summary_receipts: tuple[SummaryReceipt, ...] = ()
     evidence: tuple[str, ...] = ()
 
@@ -416,14 +460,16 @@ def _canonical_hash(policy: Policy) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def load_registry(defaults: Path, override: Path | None) -> RegistrySnapshot:
-    """Load the defaults, combine the optional override over them, validate and hash the result."""
+def load_registry(defaults: Path, *overrides: Path | None) -> RegistrySnapshot:
+    """Load the defaults, combine each given override over them in order, validate and hash the result."""
     base, base_raw = _load_yaml(defaults)
     combined = base
     input_hashes = [(defaults.name, hashlib.sha256(base_raw).hexdigest())]
-    if override is not None:
+    for override in overrides:
+        if override is None:
+            continue
         extra, extra_raw = _load_yaml(override)
-        combined = _combine(base, extra)
+        combined = _combine(combined, extra)
         input_hashes.append((override.name, hashlib.sha256(extra_raw).hexdigest()))
     try:
         policy = Policy.model_validate(combined)

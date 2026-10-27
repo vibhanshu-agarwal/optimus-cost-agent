@@ -500,6 +500,17 @@ class AttachedTurn:
             record_integrity_failure=record_integrity_failure,
         )
 
+    def bind_attachment(self, attachment: ContextAttachment) -> None:
+        """An Auto turn's own attachment: the selected model's limits on the launch's base (Plan 12.4 Task 4). Bound
+        once classification has chosen the model, before preparation; the captured history and settings are kept."""
+        if self._snapshot is not None:
+            raise RuntimeError("an attached turn's attachment is bound before the turn is prepared")
+        self._attachment = attachment
+
+    @property
+    def model_id(self) -> str:
+        return self._attachment.model_id
+
     @property
     def strategy(self) -> str:
         """The strategy captured at admission; a later setter never changes it."""

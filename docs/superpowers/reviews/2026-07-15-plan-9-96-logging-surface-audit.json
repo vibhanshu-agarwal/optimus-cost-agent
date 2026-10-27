@@ -1465,6 +1465,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.decisions:handle_decision_request:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 12.4 Task 1: the decision envelope's validation errors are fixed texts that echo no request content, and each still passes the shared sanitizer (sanitize_error_message) before the 400 reply; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_decisions.py::test_a_malformed_envelope_is_refused",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.capacity:decision_payload_text:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.4 Tasks 1 and 5): decision_payload_text serializes a decision's typed state and questions to canonical JSON only as the capacity measure the Gateway's decision route (admit_decision) and the host's classifier fit share; the JSON is never persisted, logged or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_decisions.py::test_a_typed_request_over_the_classifier_bound_is_refused_before_any_call",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.responses:handle_responses_request:exception_export",
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.responses:handle_responses_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
@@ -4718,6 +4734,30 @@
       "rationale": "Inspection: a failed legacy attempt's cause for the retry observer: the bounded cause attached where it arose, else a parser RuntimeError's module-authored reason passed through slug (anything outside the lower-case reason shape becomes unrecognized), else the exception's class and errno. Exception text is never retained otherwise.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_failed_legacy_attempt_is_logged_with_its_cause_and_the_request_id",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.auto_contract:ClassifierInput.to_json:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Inspection: to_json serializes the frozen Auto classifier input contract (Plan 12.4 v7 Design 3: a bounded prompt excerpt, the mode, an attachment summary and the previous tier) as the functional request payload a classifier receives; it is never persisted or logged by this helper, and sanitizing it would change what the classifier sees.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/agent/test_auto_contract.py::test_short_prompt_is_kept_whole_and_serialized_in_the_frozen_shape",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_decision_once:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: create_decision_once calls urllib's OpenerDirector.open, the provider HTTP request to the System One endpoint, through the attempt opener that records whether the attempt connected; it opens no file, and the reply is parsed in memory, never persisted or logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_decisions.py::test_the_real_client_posts_to_system_one_with_the_route_controls",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_decision_once:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: create_decision_once round-trips the decision request's state, questions and the approved provider routing controls through JSON to copy them into the outbound System One request; nothing is persisted or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_decisions.py::test_the_real_client_posts_to_system_one_with_the_route_controls",
       "evidence_tier": "unit"
     },
     {

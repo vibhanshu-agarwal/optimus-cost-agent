@@ -13,7 +13,7 @@ from decimal import Decimal
 from functools import partial
 from pathlib import Path
 from time import monotonic
-from typing import TYPE_CHECKING, Any, NotRequired, Protocol, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, Protocol, TypedDict
 
 from context_engine import SummaryCheckpoint
 from optimus.acp.conversation import (
@@ -29,6 +29,7 @@ from optimus.acp.debug_trace import (
     PROMPT_REFUSAL_REASONS,
     acp_debug_log,
     debug_trace_enabled,
+    log_auto_route,
     log_context_fault,
     log_pre_run_refusal,
     log_prompt_refusal,
@@ -109,6 +110,7 @@ from optimus.usage.turn_settlement import TurnCostSummary, TurnSettlement, recei
 from optimus_security.failure_facts import host_session_id
 
 if TYPE_CHECKING:
+    from optimus.acp.auto_composition import AutoDecision, AutoRouter
     from optimus.context.assembly import DispatchReading
     from optimus.gateway.route_binding import RequestReading, RoutePolicy, TurnRouteBinder
     from optimus.telemetry.jsonl import JsonlTelemetryWriter
@@ -227,6 +229,14 @@ CONTEXT_PLAN_TOO_LARGE_TEXT = (
     "and nothing was changed. Ask for a smaller change."
 )
 _CONTEXT_CANCELLED_TEXT = "Cancelled before the model was asked."
+# Plan 12.4 Task 4: an Auto turn refused before any answer call; the thread stays open.
+_AUTO_REFUSAL_TEXT = {
+    "AUTO_NO_ROUTABLE_MODEL": (
+        "Auto has no model left to route this turn to: every eligible model has stopped for this launch. Nothing was "
+        "sent. Restart Optimus, or choose a model with OPTIMUS_AGENT_MODEL."
+    ),
+    "ACCOUNTING_INTEGRITY": "Auto could not account for this turn's classification cost, so no answer was requested.",
+}
 # An attached session's storage limit is not the model's context, so its notices name storage
 # (design spec 8.4, 10). Engine-absent sessions keep the texts above.
 ATTACHED_STORAGE_WARNING_TEXT = (
@@ -364,6 +374,9 @@ class AcpSpecSession:
     # alert crossings already reported.
     cost_settlement: TurnSettlement = field(default_factory=TurnSettlement, repr=False, compare=False)
     alert_tracker: AlertTracker = field(default_factory=AlertTracker, repr=False, compare=False)
+    # Plan 12.4 Task 4, Auto launches only: each committed turn's routing, keyed by its turn sequence and published only
+    # when that turn commits as completed or rejected. Kept apart from the canonical five-field turn records.
+    auto_routes: dict[int, AutoDecision] = field(default_factory=dict, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         # The conversation's cost is one projection over this session's receipts, updated whenever a
@@ -390,6 +403,11 @@ class AcpPromptTurn:
     # Codex CP3 ruling R4: the turn's request binder for the trusted planning/answer route, captured
     # before any await. None while no route policy is configured (registry enforcement inactive).
     route_binder: TurnRouteBinder | None = None
+    # Plan 12.4 Task 4: an Auto turn's routing, bound once after classification; its model is the turn's for every
+    # call (planning, the approved application and the answer). None on every other launch.
+    auto_decision: AutoDecision | None = None
+    # Plan 12.4 Task 5: set once the turn's one routing record is written, so a later cancel cannot add a second.
+    auto_recorded: bool = False
 
     @property
     def run_id(self) -> str:
@@ -524,6 +542,7 @@ class AcpDuplexAdapter:
         session_seeder: Callable[[Any], str | None] | None = None,
         failure_telemetry: JsonlTelemetryWriter | None = None,
         interactive_recovery: bool = True,
+        auto_router: AutoRouter | None = None,
         mcp_idle_seconds: int | None = None,
         monotonic_clock: Callable[[], float] = monotonic,
     ) -> None:
@@ -537,6 +556,15 @@ class AcpDuplexAdapter:
         self._mcp_close_tasks: set[asyncio.Task[Any]] = set()
         self._reopen_reservations: dict[str, asyncio.Task[Any]] = {}
         self._reopen_cancelled: set[str] = set()
+        # Plan 12.4 Task 4: an Auto launch binds each turn's route and attachment from its router; new sessions take the
+        # router's base attachment (the default planner's) for their storage class and initial strategy.
+        if auto_router is not None:
+            if route_policy is not None or context_attachment is not None:
+                raise ValueError("an Auto launch binds each turn's route and attachment itself")
+            context_attachment = auto_router.base_attachment
+        self._auto_router = auto_router
+        # The launch's stop set, told of each model a planning or answer call proves stopped (Plan 12.4 Task 4).
+        self._model_stops = None if auto_router is None else auto_router.stops.add
         self._runner = runner
         # Plan 12.3: resolved once by the caller (resolve_interactive_recovery); headless passes no check-in.
         self._interactive_recovery = interactive_recovery
@@ -1345,6 +1373,29 @@ class AcpDuplexAdapter:
                 session_id=session_id, turn_seq=turn_seq, deliver_notice=self._blocking_notice(session_id, asyncio.get_running_loop())
             )
         try:
+            if self._auto_router is not None:
+                try:
+                    routed = await self._route_auto_turn(
+                        request_id=request.get("id"),
+                        session=session,
+                        conversation=conversation,
+                        turn=turn,
+                        prompt_blocks=prompt,
+                        sanitized_user_prompt=admission.sanitized_user_prompt,
+                        ownership_slot=ownership_slot,
+                    )
+                except asyncio.CancelledError:
+                    # Codex round 68: the server's teardown cancels this task mid-routing; the turn keeps its one record.
+                    self._record_auto_turn(
+                        session,
+                        turn,
+                        "abandoned" if turn.turn_control.transport_abandoned() else "cancelled",
+                        outcome=None,
+                        decision=turn.auto_decision,
+                    )
+                    raise
+                if routed is not None:
+                    return routed
             if admission.crosses_warning and conversation.note_warning_threshold_for_attempt(
                 admission.projected_bytes
             ):
@@ -1424,6 +1475,8 @@ class AcpDuplexAdapter:
                     route_binder=turn.route_binder,
                     integrity_failure=session.cost_settlement.record_integrity_failure,
                     recovery_checkin=self._recovery_checkin_for(turn, loop) if self._interactive_recovery else None,
+                    turn_model=None if turn.auto_decision is None else turn.auto_decision.model_id,
+                    model_stops=self._model_stops,
                 ),
             )
             self._apply_turn_cost(
@@ -1586,6 +1639,8 @@ class AcpDuplexAdapter:
                     stage_receipts=session.cost_settlement.record_attempt,
                     route_binder=turn.route_binder,
                     integrity_failure=session.cost_settlement.record_integrity_failure,
+                    turn_model=None if turn.auto_decision is None else turn.auto_decision.model_id,
+                    model_stops=self._model_stops,
                 ),
             )
             # region agent log
@@ -1705,6 +1760,177 @@ class AcpDuplexAdapter:
             ownership_slot,
         )
 
+    async def _route_auto_turn(
+        self,
+        *,
+        request_id: str | int | None,
+        session: AcpSpecSession,
+        conversation: ConversationState,
+        turn: AcpPromptTurn,
+        prompt_blocks: list[Any],
+        sanitized_user_prompt: str,
+        ownership_slot: ResponseOwnershipSlot | None,
+    ) -> TurnResponseEnvelope | None:
+        """Plan 12.4 Tasks 4-5: classify this Auto turn with H in its worker, resolve its model, bind that model's route
+        and context limits for the whole turn, then show its notice. Every admitted Auto turn leaves exactly one routing
+        record. Returns the turn's response when it stops here, or None to dispatch."""
+        from optimus.acp.auto_composition import (
+            AutoTurnRefused,
+            ClassificationAccountingError,
+            ClassifierCall,
+            ClassifierHalted,
+            ClassifierOutcome,
+        )
+        from optimus.agent.auto_contract import build_classifier_input
+        from optimus.gateway.attempts import AttemptIntegrityError
+
+        router = self._auto_router
+        assert router is not None
+        # Frozen before the first await: the prompt, the turn's captured mode, the last committed routed tier, and the
+        # turn's own receipt sink and control for the classifier's call.
+        contract = build_classifier_input(
+            sanitized_user_prompt,
+            mode=turn.execution_mode.value,
+            attachments=_attachments_from_content_blocks(prompt_blocks),
+            previous_tier=session.auto_routes[max(session.auto_routes)].tier if session.auto_routes else None,
+        )
+        call = ClassifierCall(
+            session_id=turn.session_id,
+            turn_seq=turn.turn_seq,
+            run_id=turn.run_id,
+            record_receipt=session.cost_settlement.record_attempt,
+            integrity_failure=session.cost_settlement.record_integrity_failure,
+            operation_control=turn.turn_control,
+        )
+        outcome: ClassifierOutcome | None
+        try:
+            outcome = await self._in_worker(session, turn, router.classify, contract, call)
+        except ClassifierHalted:
+            outcome = None  # the dispatch lease was refused: a cancel or teardown, handled below
+        except (ClassificationAccountingError, AttemptIntegrityError):
+            # Accounting failures never enter the classifier-failure rule (Codex round 67).
+            return await self._refuse_auto_turn(
+                request_id=request_id, session=session, turn=turn, reason="ACCOUNTING_INTEGRITY", outcome=None, ownership_slot=ownership_slot
+            )
+        except AutoTurnRefused as exc:
+            return await self._refuse_auto_turn(
+                request_id=request_id, session=session, turn=turn, reason=exc.code, outcome=None, ownership_slot=ownership_slot
+            )
+        except Exception:  # noqa: BLE001 - a failure the backend did not map takes the failure rule (v9 Design 4)
+            outcome = ClassifierOutcome(tier=None, confidence_band="none", failure_kind="error")
+        if turn.turn_control.transport_abandoned():
+            # Finalization and late-cost handling run as for any turn; no answer call and no new notice start.
+            self._record_auto_turn(session, turn, "abandoned", outcome=outcome)
+            return self._turn(success_response(request_id=request_id, result={"stopReason": "cancelled"}), turn.turn_control, ownership_slot)
+        if outcome is None or turn.turn_control.halt_requested():
+            self._record_auto_turn(session, turn, "cancelled", outcome=outcome)
+            await self._commit_turn(
+                conversation=conversation,
+                turn=turn,
+                sanitized_user_prompt=sanitized_user_prompt,
+                result=_context_stop_result(turn, _CONTEXT_CANCELLED_TEXT),
+                outcome=ConversationOutcome.CANCELLED,
+                completion_text=_CONTEXT_CANCELLED_TEXT,
+            )
+            return self._turn(success_response(request_id=request_id, result={"stopReason": "cancelled"}), turn.turn_control, ownership_slot)
+        try:
+            decision = router.resolve(outcome)
+        except AutoTurnRefused as exc:
+            return await self._refuse_auto_turn(
+                request_id=request_id, session=session, turn=turn, reason=exc.code, outcome=outcome, ownership_slot=ownership_slot
+            )
+        if decision.failure_kind is not None:
+            log_auto_route(run_id=turn.run_id, outcome="failure_rule", reason=decision.failure_kind, telemetry=self._failure_telemetry)
+        turn.route_binder = router.route_policy(decision).capture(
+            session_id=turn.session_id, turn_seq=turn.turn_seq, deliver_notice=self._blocking_notice(turn.session_id, asyncio.get_running_loop())
+        )
+        if turn.attached is not None:
+            turn.attached.bind_attachment(router.attachments[decision.model_id])
+        turn.auto_decision = decision
+        delivered = await self._emit_auto_notice(turn, decision)
+        self._record_auto_turn(session, turn, "routed", outcome=outcome, decision=decision, notice_delivered=delivered)
+        return None
+
+    async def _refuse_auto_turn(
+        self,
+        *,
+        request_id: str | int | None,
+        session: AcpSpecSession,
+        turn: AcpPromptTurn,
+        reason: str,
+        outcome: Any,
+        ownership_slot: ResponseOwnershipSlot | None,
+    ) -> TurnResponseEnvelope:
+        """An Auto turn refused recoverably before any answer call. Nothing is committed, so the thread stays open; any
+        classifier cost already recorded still counts."""
+        log_auto_route(run_id=turn.run_id, outcome="refused", reason=reason, telemetry=self._failure_telemetry)
+        self._record_auto_turn(session, turn, "refused", outcome=outcome, reason=reason)
+        _operator_line(
+            f"optimus.acp: auto turn refused session_id={host_session_id(turn.session_id) or 'none'} turn_seq={turn.turn_seq} reason={reason}"
+        )
+        if not turn.turn_control.transport_abandoned():
+            await self._emit_final_text(session_id=turn.session_id, text=_AUTO_REFUSAL_TEXT[reason], turn=turn)
+            await self._emit_cost_alerts(turn)
+        return self._turn(success_response(request_id=request_id, result={"stopReason": "end_turn"}), turn.turn_control, ownership_slot)
+
+    async def _emit_auto_notice(self, turn: AcpPromptTurn, decision: AutoDecision) -> bool:
+        """The turn's one Auto line (Plan 12.4 Task 5): live-only, never stored in the canonical history. True only once
+        its send is confirmed flushed. It is informational, so an unconfirmed notice never stops the turn."""
+        from optimus.acp.auto_composition import notice_text
+
+        if turn.turn_control.transport_abandoned():
+            return False
+        payload = build_agent_message_chunk_notification(session_id=turn.session_id, text=notice_text(decision))
+        try:
+            await self._outbound.notify("session/update", payload, require_flushed=True)
+        except Exception:  # noqa: BLE001 - recorded as undelivered; never fails the turn
+            return False
+        return True
+
+    def _record_auto_turn(
+        self,
+        session: AcpSpecSession,
+        turn: AcpPromptTurn,
+        disposition: Literal["routed", "refused", "cancelled", "abandoned"],
+        *,
+        outcome: Any,
+        decision: AutoDecision | None = None,
+        reason: str | None = None,
+        notice_delivered: bool = False,
+    ) -> None:
+        """The admitted Auto turn's one routing record (Plan 12.4 Task 5), through the harness's event sink. Contained: a
+        telemetry failure never fails the turn. The classifier attempt's outcome is read from the turn's own receipts."""
+        from datetime import UTC, datetime
+
+        from optimus.acp.auto_composition import routing_record
+        from optimus.telemetry.events import TelemetryEvent
+
+        if turn.auto_recorded:
+            return
+        turn.auto_recorded = True
+        sink = self._settlement_sink
+        if sink is None:
+            return
+        attempts = [r.outcome for r in session.cost_settlement.receipts(turn.run_id) if r.stage == "classification"]
+        record = routing_record(
+            disposition,
+            outcome=outcome,
+            decision=decision,
+            reason=reason,
+            classifier_attempt=attempts[-1] if attempts else None,
+            notice_delivered=notice_delivered,
+        )
+        with contextlib.suppress(Exception):
+            sink(
+                TelemetryEvent.auto_routing(
+                    run_id=turn.run_id,
+                    session_id=turn.session_id,
+                    request_id=f"{turn.run_id}:auto-routing",
+                    occurred_at=datetime.now(tz=UTC),
+                    record=record,
+                )
+            )
+
     async def _prepare_attached_context(
         self,
         *,
@@ -1766,12 +1992,17 @@ class AcpDuplexAdapter:
     def _storage_labelled(self) -> bool:
         """Whether this adapter's conversation limit is storage, not the model's context: attached, or
         absent under a trusted route policy whose requests the Gateway guards (release supplement V1)."""
-        return self._context_attachment is not None or self._route_policy is not None
+        return self._context_attachment is not None or self._bound_routes
+
+    @property
+    def _bound_routes(self) -> bool:
+        """Whether every planning/answer request is bound to a trusted route: one policy, or Auto's per-turn ones."""
+        return self._route_policy is not None or self._auto_router is not None
 
     def _warning_text(self) -> str:
         if self._context_attachment is not None:
             return ATTACHED_STORAGE_WARNING_TEXT
-        return ABSENT_STORAGE_WARNING_TEXT if self._route_policy is not None else CAPACITY_WARNING_TEXT
+        return ABSENT_STORAGE_WARNING_TEXT if self._bound_routes else CAPACITY_WARNING_TEXT
 
     async def _emit_sliding_notice(self, session: AcpSpecSession, *, expected_revision: int | None = None) -> None:
         """The first admitted turn after a switch to sliding says so, once (design spec 10).
@@ -1910,6 +2141,11 @@ class AcpDuplexAdapter:
         )
         conversation.commit_after_final_flush(decision)
         self.record_turn_commit(turn.session_id, turn.turn_seq, committed=decision.commit)
+        if turn.auto_decision is not None and outcome in (ConversationOutcome.COMPLETED, ConversationOutcome.REJECTED):
+            # Plan 12.4 Task 4: only a committed, uncancelled, unfailed turn sets the next turn's previous tier.
+            session = self._sessions.get(turn.session_id)
+            if session is not None:
+                session.auto_routes[turn.turn_seq] = turn.auto_decision
         # A long reply can cross 80% (or fill the conversation outright) after an admission that
         # was well below it; tell the user now, not at the refusal. A reply past the cap never
         # gets the "soon" warning, even when an earlier disposition kept it from closing.
@@ -2217,6 +2453,8 @@ class AcpDuplexAdapter:
         route_binder: Any | None = None,
         integrity_failure: Any | None = None,
         recovery_checkin: Any | None = None,
+        turn_model: str | None = None,
+        model_stops: Any | None = None,
     ) -> dict[str, Any]:
         """Pass client-MCP runtime kwargs only when the runner accepts them."""
         kwargs: dict[str, Any] = {}
@@ -2246,6 +2484,11 @@ class AcpDuplexAdapter:
             _maybe("integrity_failure", integrity_failure)
         if recovery_checkin is not None:
             _maybe("recovery_checkin", recovery_checkin)
+        if turn_model is not None:
+            # A runner that cannot take it still sends its launch model, which its bound-route check then refuses.
+            _maybe("turn_model", turn_model)
+        if model_stops is not None:
+            _maybe("model_stops", model_stops)
         chat = (execution_mode or session.execution_mode) is ExecutionMode.CHAT
         _maybe("client_mcp_service", None if chat else _client_mcp_service(session))
         _maybe("mcp_permission_broker", None if chat else self._mcp_permission_broker_for(session))
@@ -2490,6 +2733,25 @@ def _text_from_content_blocks(blocks: list[Any]) -> str:
         if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str):
             texts.append(block["text"])
     return "\n".join(texts).strip()
+
+
+def _attachments_from_content_blocks(blocks: list[Any]) -> list[tuple[str, int]]:
+    """The Auto classifier contract's attachment summary (Plan 12.4 Design 3): each resource or resource link's URI and
+    size in bytes. Only sizes are taken, never contents; a link without a stated size counts as zero."""
+    items: list[tuple[str, int]] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "resource_link" and isinstance(block.get("uri"), str):
+            size = block.get("size")
+            items.append((block["uri"], size if type(size) is int and size >= 0 else 0))
+        elif block.get("type") == "resource" and isinstance(block.get("resource"), dict):
+            resource = block["resource"]
+            if isinstance(resource.get("uri"), str):
+                text, blob = resource.get("text"), resource.get("blob")
+                size = len(text.encode("utf-8")) if isinstance(text, str) else len(blob) * 3 // 4 if isinstance(blob, str) else 0
+                items.append((resource["uri"], size))
+    return items
 
 
 def _context_stop_result(turn: AcpPromptTurn, text: str) -> AgentRunResult:

@@ -1,0 +1,108 @@
+{
+  "arms": {
+    "A": {
+      "arm": "A",
+      "cut_complex": 4.5,
+      "cut_medium": 0.5,
+      "name": "A",
+      "threshold": 0.8,
+      "tuning_penalty": 0.6384615384615384,
+      "tuning_under": 0.06923076923076923
+    },
+    "B": {
+      "arm": "B",
+      "name": "B",
+      "threshold": 0.95,
+      "tuning_penalty": 0.4461538461538462,
+      "tuning_under": 0.015384615384615385,
+      "variant": "choice"
+    },
+    "C": {
+      "arm": "C",
+      "name": "C",
+      "threshold": 0.85,
+      "tuning_penalty": 0.6615384615384615,
+      "tuning_under": 0.007692307692307693
+    },
+    "D": {
+      "arm": "D",
+      "name": "D",
+      "program": "tune-D-mipro-2",
+      "threshold": 0.0,
+      "tuning_penalty": 0.49230769230769234,
+      "tuning_under": 0.12307692307692308
+    },
+    "H": {
+      "arm": "H",
+      "backend": {
+        "arm": "B",
+        "variant": "choice"
+      },
+      "cut_complex": 4.5,
+      "cut_medium": 0.5,
+      "learned_share": 0.9923076923076923,
+      "name": "H",
+      "rule_confidence": 0.8,
+      "threshold": 0.95,
+      "tuning_penalty": 0.43846153846153846,
+      "tuning_under": 0.015384615384615385
+    }
+  },
+  "candidates": {
+    "B-choice": {
+      "arm": "B",
+      "collect_label": "tune-B-choice",
+      "name": "B-choice",
+      "threshold": 0.95,
+      "tuning_penalty": 0.4461538461538462,
+      "tuning_under": 0.015384615384615385,
+      "variant": "choice"
+    },
+    "B-score": {
+      "arm": "B",
+      "collect_label": "tune-B-score",
+      "name": "B-score",
+      "threshold": 0.9,
+      "tuning_penalty": 0.47692307692307695,
+      "tuning_under": 0.007692307692307693,
+      "variant": "score"
+    },
+    "C": {
+      "arm": "C",
+      "collect_label": "tune-C-1024",
+      "name": "C",
+      "threshold": 0.85,
+      "tuning_penalty": 0.6615384615384615,
+      "tuning_under": 0.007692307692307693
+    },
+    "D:tune-D-brs": {
+      "arm": "D",
+      "collect_label": "tune-collect-D-brs",
+      "name": "D:tune-D-brs",
+      "program": "tune-D-brs",
+      "threshold": 0.0,
+      "tuning_penalty": 0.5461538461538461,
+      "tuning_under": 0.13846153846153847
+    },
+    "D:tune-D-gepa": {
+      "arm": "D",
+      "collect_label": "tune-collect-D-gepa",
+      "name": "D:tune-D-gepa",
+      "program": "tune-D-gepa",
+      "threshold": 0.0,
+      "tuning_penalty": 0.6076923076923076,
+      "tuning_under": 0.16153846153846155
+    },
+    "D:tune-D-mipro-2": {
+      "arm": "D",
+      "collect_label": "tune-collect-D-mipro",
+      "name": "D:tune-D-mipro-2",
+      "program": "tune-D-mipro-2",
+      "threshold": 0.0,
+      "tuning_penalty": 0.49230769230769234,
+      "tuning_under": 0.12307692307692308
+    }
+  },
+  "tuning_ids_sha256": "dcd2679a94c9f1e58af0c1dd0c815faf0c3c2cbb1efbdbc3f9cbd54f1af934c9",
+  "tuning_n": 130
+}

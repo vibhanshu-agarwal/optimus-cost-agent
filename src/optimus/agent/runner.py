@@ -138,12 +138,15 @@ class _RunScope:
     are classified against (post-teardown) and the binder for its requests (Codex CP3 ruling R1/R4).
     It is passed down explicitly and never stored on the runner, which concurrent sessions share.
     `integrity_failure` is told the turn id whose charge the existing ledger refused, so that turn
-    never reads complete (Fable CP3 correction-2 review MINOR-1)."""
+    never reads complete (Fable CP3 correction-2 review MINOR-1). `model` is what this run sends: the turn's
+    selected model under Auto (Plan 12.4 Task 4), else the runner's launch model."""
 
+    model: str
     stage_receipts: Callable[[StageReceipt], None] | None = None
     operation_control: TurnOperationControl | None = None
     route: TurnRouteBinder | None = None
     integrity_failure: Callable[[str], None] | None = None
+    model_stops: Callable[[str], None] | None = None
 
     def transport_abandoned(self) -> bool:
         return self.operation_control is not None and self.operation_control.transport_abandoned()
@@ -322,24 +325,36 @@ class AgentRunner:
         route_binder: TurnRouteBinder | None = None,
         integrity_failure: Callable[[str], None] | None = None,
         recovery_checkin: PlanningCheckInCallback | None = None,
+        turn_model: str | None = None,
+        model_stops: Callable[[str], None] | None = None,
     ) -> AgentRunResult:
         """`stage_receipts` receives every model attempt of this run, known or unknown, once (Plan 12.2
         Task 11). `route_binder` binds each request to the turn's captured trusted route; without it
         no binding is sent (registry enforcement inactive). `integrity_failure` receives this run's
-        turn id when the existing ledger refuses one of its charges. All belong to this invocation alone."""
+        turn id when the existing ledger refuses one of its charges. `turn_model` is an Auto turn's selected
+        model (Plan 12.4 Task 4), sent instead of the launch model; `model_stops` is told each model a failed
+        request proved stopped, for the launch. All belong to this invocation alone."""
         observer = (
             planning_progress_observer
             if planning_progress_observer is not None
             else self._planning_progress_observer
         )
-        if route_binder is not None and route_binder.identity.model_id != self._model:
+        model = turn_model if turn_model is not None else self._model
+        # A bound turn's attached packer states the model its limits were taken for (Plan 12.4 Task 4); it must match too.
+        packer_model = getattr(context_packer, "model_id", None)
+        if route_binder is not None and (route_binder.identity.model_id != model or (packer_model is not None and packer_model != model)):
             # Imported only when a route is bound: the inactive path loads no route-binding module.
             from optimus.gateway.route_binding import RouteIdentityError
 
-            raise RouteIdentityError("the turn's route is bound to a different model than this runner sends")
+            raise RouteIdentityError("the turn's route or context limits are bound to a different model than this run sends")
         matched_skills = self._match_skills(request)
         scope = _RunScope(
-            stage_receipts=stage_receipts, operation_control=operation_control, route=route_binder, integrity_failure=integrity_failure
+            model=model,
+            stage_receipts=stage_receipts,
+            operation_control=operation_control,
+            route=route_binder,
+            integrity_failure=integrity_failure,
+            model_stops=model_stops,
         )
         try:
             result = self._run_once(
@@ -514,7 +529,7 @@ class AgentRunner:
             scope.route.record_dispatch(planner_input)
         try:
             response = self._gateway_client.create_response(
-                model=self._model,
+                model=scope.model,
                 input_text=planner_input,
                 metadata=_with_request_id(
                     {"run_id": request.run_id, "session_id": request.session_id, "purpose": "agent_plan", "task": request.task},
@@ -579,6 +594,7 @@ class AgentRunner:
             gateway_request_ids=(response.gateway_usage.gateway_request_id,),
             planning_turns=1,
             provider=response.gateway_usage.provider,
+            model=scope.model,
             cost_complete=not unknown,
             unknown_cost_attempt_count=unknown,
         )
@@ -629,7 +645,7 @@ class AgentRunner:
 
         planner = PlanningLoopRunner(
             gateway_client=self._gateway_client,
-            model=self._model,
+            model=scope.model,
             policy=policy,
             workspace_root=request.workspace_root,
             execution_mode=request.execution_mode,
@@ -693,6 +709,7 @@ class AgentRunner:
             gateway_request_ids=planning_result.gateway_request_ids,
             planning_turns=planning_result.settled_turns,
             provider=planning_result.provider or "glm",
+            model=scope.model,
             cost_complete=planning_result.cost_complete,
             unknown_cost_attempt_count=planning_result.unknown_cost_attempt_count,
             candidate_plan_text=planning_result.plan_text,
@@ -713,6 +730,7 @@ class AgentRunner:
         gateway_request_ids: tuple[str, ...],
         planning_turns: int,
         provider: str,
+        model: str | None = None,
         cost_complete: bool = True,
         unknown_cost_attempt_count: int = 0,
         candidate_plan_text: str | None = None,
@@ -812,7 +830,7 @@ class AgentRunner:
                     gateway_request_id=gateway_request_id,
                     gateway_request_ids=gateway_request_ids,
                     planning_turns=planning_turns,
-                    model=self._model,
+                    model=model if model is not None else self._model,
                     provider=provider,
                     cost_usd=total_cost_usd,
                     created_at_ms=created_at_ms,
@@ -1053,6 +1071,10 @@ class AgentRunner:
         try:
             self._report_receipts(request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity)
         finally:
+            # Plan 12.4 Task 4: a proven stop is recorded for the launch even when the receipts or accounting raise.
+            experimental = scope.route is not None and scope.route.experimental
+            if failure is not None and identity is not None and scope.model_stops is not None and stops_experimental_route(failure, experimental=experimental):
+                scope.model_stops(identity.model_id)
             self._observe_attempts(request, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, failure=failure)
 
     def _report_receipts(
@@ -1793,7 +1815,7 @@ class AgentRunner:
         identity = _identity(bound)
         try:
             response = self._gateway_client.create_response(
-                model=self._model,
+                model=scope.model,
                 input_text=chat_input,
                 metadata=_with_request_id(
                     {
