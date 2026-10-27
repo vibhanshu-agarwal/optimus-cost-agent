@@ -20,6 +20,18 @@ def lifecycle_module():
     return importlib.import_module(name)
 
 
+def test_signal_with_failed_cleanup_and_borrowed_stdio_reports_failure():
+    module = lifecycle_module()
+    lifecycle = module.ProcessLifecycle()
+    lifecycle.request_stop(module.StopReason.SIGTERM)
+    lifecycle.record(module.ShutdownObservation(False, "borrowed_stdio", 1, ("redis",)))
+    assert lifecycle.exit_code == 74
+    lifecycle.record(module.ShutdownObservation(False, "borrowed_stdio", 1, ()))
+    assert lifecycle.exit_code == 75
+    lifecycle.record(module.ShutdownObservation(False, "writer", 1, ()))
+    assert lifecycle.exit_code is None
+
+
 def test_descriptor_reader_preserves_read_ahead_and_borrowed_handle():
     from optimus.acp.server import _StdinRead
 
@@ -271,7 +283,9 @@ async def test_serve_failure_does_not_erase_recorded_pending_ownership():
     with pytest.raises(RuntimeError) as raised:
         await lifecycle.observe(timeout=2)
     assert raised.value is expected
-    assert lifecycle.exit_code is None
+    assert lifecycle.exit_code == 74
+    assert lifecycle.observation.stage == "writer"
+    assert lifecycle.observation.pending == 1
     assert lifecycle.state != "COMPLETE"
 
 

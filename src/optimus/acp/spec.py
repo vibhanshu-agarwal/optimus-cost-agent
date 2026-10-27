@@ -547,6 +547,9 @@ class ProgressLane:
             self._closed = True
             pending, self._pending = self._pending, None
         if pending is not None:
+            admission = self._sends.get(self._active) if self._active is not None else None
+            if admission is not None:
+                await admission.wait()
             self._start(pending[0])
         for admission in tuple(self._sends.values()):
             await admission.wait()
@@ -1864,19 +1867,22 @@ class AcpDuplexAdapter:
             await self._emit_exit_cost_alerts(turn)
             raise
         finally:
-            if progress is not None:
-                await progress.drain()
-                self._progress_lanes.discard(progress)
-            if idle is not None and not idle.marker_seen:
-                self.record_turn_commit(session_id, turn_seq, committed=False)
-            # Every exit projects what this turn's receipts settled; the projection is idempotent and
-            # later receipts keep updating it (Plan 12.2 Task 11; Codex CP3 ruling R2).
-            self._apply_settled_cost(session, turn)
-            self._report_context_faults(turn)
-            # Recompute after any cancellation so settlement telemetry is exact even for a turn that
-            # ends without a commit (Plan 12.2 Task 2). After transport teardown this is a no-op.
-            turn.turn_control.refresh_effect_state()
-            turn.turn_control.finalize_once(self._placeholder_settlement(turn))
+            try:
+                if progress is not None:
+                    await progress.drain()
+            finally:
+                if progress is not None:
+                    self._progress_lanes.discard(progress)
+                if idle is not None and not idle.marker_seen:
+                    self.record_turn_commit(session_id, turn_seq, committed=False)
+                # Every exit projects what this turn's receipts settled; the projection is idempotent and
+                # later receipts keep updating it (Plan 12.2 Task 11; Codex CP3 ruling R2).
+                self._apply_settled_cost(session, turn)
+                self._report_context_faults(turn)
+                # Recompute after any cancellation so settlement telemetry is exact even for a turn that
+                # ends without a commit (Plan 12.2 Task 2). After transport teardown this is a no-op.
+                turn.turn_control.refresh_effect_state()
+                turn.turn_control.finalize_once(self._placeholder_settlement(turn))
 
     def _mcp_refusal(
         self, request: dict[str, Any], session_id: str, reason: str,

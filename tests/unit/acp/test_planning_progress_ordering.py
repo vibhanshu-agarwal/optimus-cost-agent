@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import threading
 from decimal import Decimal
 from pathlib import Path
@@ -26,6 +27,94 @@ async def loop_turn() -> None:
     tick = asyncio.Event()
     asyncio.get_running_loop().call_soon(tick.set)
     await tick.wait()
+
+
+@pytest.mark.asyncio
+async def test_pending_direct_progress_waits_for_first_admission():
+    entered, admit, physical = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    frames = []
+
+    async def send(event, admission):
+        if event == 1:
+            entered.set()
+            await admit.wait()
+        frames.append(event)
+        admission.set()
+        await physical.wait()
+
+    lane = progress_lane(send)
+    lane.offer(1)
+    await entered.wait()
+    lane.offer(2)
+    barrier = asyncio.create_task(lane.settle())
+    try:
+        await loop_turn()
+        assert frames == []
+        admit.set()
+        await asyncio.wait_for(barrier, 2)
+        assert frames == [1, 2]
+        assert not physical.is_set()
+    finally:
+        admit.set()
+        physical.set()
+        await asyncio.gather(barrier, return_exceptions=True)
+        await lane.drain()
+
+
+@pytest.mark.asyncio
+async def test_cancel_during_physical_progress_drain_finalizes_real_turn(tmp_path, monkeypatch):
+    physical = concurrent.futures.Future()
+    drain_entered = asyncio.Event()
+    settlements = []
+    original_drain = spec.ProgressLane.drain
+
+    async def observed_drain(lane):
+        drain_entered.set()
+        await original_drain(lane)
+
+    monkeypatch.setattr(spec.ProgressLane, "drain", observed_drain)
+
+    class Outbound(RecordingOutboundChannel):
+        async def notify(self, method, params, *, require_flushed=False):
+            submission = spec.progress_submission.get()
+            if submission is not None:
+                submission.admission.physical_future = physical
+                submission.admission.set()
+            await super().notify(method, params, require_flushed=require_flushed)
+
+    class Runner:
+        def run(self, request, *, planning_progress_observer=None, **kwargs):
+            planning_progress_observer(PlanningProgressEvent(run_id=request.run_id, session_id=request.session_id,
+                settled_turn=1, max_planning_turns=1))
+            return AgentRunResult(run_id=request.run_id, session_id=request.session_id,
+                execution_mode=request.execution_mode, status=AgentRunStatus.COMPLETED,
+                final_state="COMPLETED", output_text="answer", tool_calls=(), total_cost_usd=Decimal("0"),
+                mutation_count=0, provider_keys_resolvable=())
+
+    adapter = AcpDuplexAdapter(runner=checked_agent_runner(Runner()), workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(), outbound=Outbound(), settlement_sink=settlements.append)
+    response = await adapter.handle_client_request({"jsonrpc": "2.0", "id": 1, "method": "session/new",
+        "params": {"cwd": str(tmp_path), "mcpServers": []}})
+    session = response.response["result"]["sessionId"]
+    call = asyncio.create_task(adapter.handle_client_request({"jsonrpc": "2.0", "id": 2, "method": "session/prompt",
+        "params": {"sessionId": session, "prompt": [{"type": "text", "text": "Explain"}]}}))
+    try:
+        await asyncio.wait_for(drain_entered.wait(), 3)
+        assert not physical.done() and session in adapter._active_turns
+        call.cancel()
+        await loop_turn()
+        assert not call.done()
+        physical.set_result(None)
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(call, 3)
+        assert len(settlements) == 1
+        assert session not in adapter._active_turns
+        assert not adapter._progress_lanes
+    finally:
+        if not physical.done():
+            physical.set_result(None)
+        await asyncio.gather(call, return_exceptions=True)
+        await adapter.aclose()
 
 
 @pytest.mark.asyncio

@@ -4781,7 +4781,7 @@
       "policy": "safe-by-construction",
       "rationale": "Emits only fixed shutdown stage/count fields or the preserved typed startup/configuration messages; no raw exception or client content is added.",
       "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/acp/test_main_wiring.py::test_completed_owned_cleanup_failure_uses_failed_exit_not_clean_signal",
+      "test_node": "tests/unit/acp/test_main_wiring.py::test_shutdown_report_contains_only_bounded_fields",
       "evidence_tier": "unit"
     },
     {
@@ -4789,7 +4789,7 @@
       "policy": "safe-by-construction",
       "rationale": "Emits only fixed shutdown stage/count fields or the preserved typed startup/configuration messages; no raw exception or client content is added.",
       "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/acp/test_main_wiring.py::test_completed_owned_cleanup_failure_uses_failed_exit_not_clean_signal",
+      "test_node": "tests/unit/acp/test_main_wiring.py::test_main_startup_interrupt_maps_exit_and_restores_signal_handler",
       "evidence_tier": "unit"
     },
     {
@@ -4837,7 +4837,7 @@
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: retrieves an owned asyncio Task/Future exception to consume completion; does not call a logger or export the exception.",
       "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/acp/test_planning_progress_ordering.py::test_started_worker_stays_owned_until_physical_return",
+      "test_node": "tests/unit/acp/test_planning_progress_ordering.py::test_progress_fifo_admission_precedes_every_dependent_branch",
       "evidence_tier": "unit"
     },
     {
@@ -4853,7 +4853,7 @@
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: retrieves an owned asyncio Task/Future exception to consume completion; does not call a logger or export the exception.",
       "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/acp/test_planning_progress_ordering.py::test_started_worker_stays_owned_until_physical_return",
+      "test_node": "tests/unit/acp/test_planning_progress_ordering.py::test_cancel_during_physical_progress_drain_finalizes_real_turn",
       "evidence_tier": "unit"
     },
     {

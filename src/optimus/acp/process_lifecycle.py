@@ -221,6 +221,8 @@ class ProcessLifecycle:
     def exit_code(self) -> int | None:
         self._consume_result()
         if not self._observation.complete:
+            if self._observation.failure_stages:
+                return 74
             return 75 if self._observation.stage == "borrowed_stdio" and self.reason in (StopReason.SIGINT, StopReason.SIGTERM) else None
         if self._observation.failure_stages:
             return 74

@@ -5,6 +5,7 @@ import io
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -251,6 +252,48 @@ def _patch_common(monkeypatch, *, server_factory=None):
     monkeypatch.setattr(acp_main, "build_configured_server", server_factory)
     monkeypatch.setattr(acp_main, "StdioNdjsonLineReader", lambda *_a, **_k: object())
     monkeypatch.setattr(acp_main, "StdioNdjsonLineWriter", lambda *_a, **_k: object())
+
+
+@pytest.mark.parametrize("check_config,fail_stop", [(False, False), (True, False), (False, True)])
+def test_main_startup_interrupt_maps_exit_and_restores_signal_handler(monkeypatch, tmp_path, capsys, check_config, fail_stop):
+    _authorize(monkeypatch, tmp_path, _base_env())
+    stops = []
+
+    class Gateway:
+        def stop(self):
+            stops.append("stop")
+            if fail_stop:
+                raise RuntimeError("private failure detail")
+
+    def interrupt(**_kwargs):
+        handler = signal.getsignal(signal.SIGINT)
+        assert callable(handler)
+        handler(signal.SIGINT, None)
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: Gateway())
+    if check_config:
+        monkeypatch.setattr(acp_main, "run_preflight", lambda *a, **k: interrupt())
+    else:
+        monkeypatch.setattr(acp_main, "build_configured_server", interrupt)
+    previous = signal.getsignal(signal.SIGINT)
+    args = ["--workspace-root", str(tmp_path)]
+    if check_config:
+        args += ["--check-config", "--strict"]
+    assert acp_main.main(args) == (74 if fail_stop else 130)
+    assert stops == ["stop"]
+    assert signal.getsignal(signal.SIGINT) is previous
+    if fail_stop:
+        stderr = capsys.readouterr().err
+        assert "optimus-agent: SHUTDOWN_FAILED stage=gateway" in stderr
+        assert "private failure detail" not in stderr
+
+
+def test_shutdown_report_contains_only_bounded_fields(capsys):
+    from optimus.acp.process_lifecycle import ShutdownObservation
+
+    acp_main._report_shutdown(ShutdownObservation(False, "writer", 1, ()))
+    assert capsys.readouterr().err == "optimus-agent: SHUTDOWN_INCOMPLETE stage=writer pending=1\n"
 
 
 def test_setup_flag_calls_wizard_and_short_circuits(monkeypatch) -> None:
