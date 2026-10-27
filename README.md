@@ -1027,8 +1027,8 @@ optimus-cost-agent/
 | Document | Purpose |
 |----------|---------|
 | [docs/README.md](docs/README.md) | Index of every current document; older versions are in each folder's `archive/` |
-| [docs/Optimus-Cost-Agent-Architecture-v2.21.pdf](docs/Optimus-Cost-Agent-Architecture-v2.21.pdf) | High-level design |
-| [docs/Optimus-Cost-Agent-LLD-v2.44.pdf](docs/Optimus-Cost-Agent-LLD-v2.44.pdf) | Low-level design |
+| [docs/Optimus-Cost-Agent-Architecture-v2.22.pdf](docs/Optimus-Cost-Agent-Architecture-v2.22.pdf) | High-level design; scoped Auto/registry successor at `bf440cb` |
+| [docs/Optimus-Cost-Agent-LLD-v2.45.pdf](docs/Optimus-Cost-Agent-LLD-v2.45.pdf) | Low-level design; Auto composition and routing contracts at `bf440cb` |
 | [docs/Optimus-Cost-Agent-Test-Strategy-v1.9.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.9.pdf) | Testing approach |
 | [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf) | Execution guardrails |
 | [AGENTS.md](AGENTS.md) | Agent behavior, logging, safety, and testing gates |
