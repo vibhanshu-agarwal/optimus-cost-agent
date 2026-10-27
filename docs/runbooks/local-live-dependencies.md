@@ -117,6 +117,8 @@ optimus-agent --workspace-root . --no-auto-start
 
 Or drive the same agent with an independently authored external `acpx` client whose agent command includes `optimus-agent --no-auto-start`. Do not start a second Gateway from Terminal B.
 
+**Auto mode (opt-in, Plan 12.4):** when the agent's environment sets `OPTIMUS_AGENT_MODEL=auto` (for example in the IDE's agent server settings), start Terminal A with `run-gateway --with-local-phoenix --auto`, under a durable approval made with that setting in place. An ordinary Gateway refuses an Auto agent's calls (`REGISTRY_HASH_MISMATCH`), and the reverse also holds. See `README.md`, "Auto mode".
+
 ---
 
 ## 7. Real evidence commands
