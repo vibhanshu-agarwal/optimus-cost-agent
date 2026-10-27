@@ -1,4 +1,4 @@
-"""Plan 12.4 Task 5: H's production backend (ADR-027; the Task 5 implementation note r3, accepted by Codex round 67).
+"""Plan 12.4 Task 5: H's production backend (ADR-028; the Task 5 implementation note r3, accepted by Codex round 67).
 
 H's rules answer when they are confident; otherwise the classifier model answers through the real Gateway decision
 route (``handle_decision_request``) behind a ``GatewayClient`` transport. The System One provider is scripted, but its

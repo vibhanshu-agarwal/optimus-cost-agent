@@ -21,6 +21,14 @@ from optimus_model_policy.experimental import SHIPPED_DEFAULTS_HASH
 HAIKU = "anthropic/claude-haiku-5.5"  # the shipped default agent model (closure plan v3)
 
 
+def test_invalid_idle_setting_is_rejected_before_harness_or_redis(monkeypatch, tmp_path):
+    def forbidden(**_kwargs):
+        raise AssertionError("harness must not be constructed")
+    monkeypatch.setattr(bootstrap_module, "build_agent_harness_runtime", forbidden)
+    with pytest.raises(ValueError, match="OPTIMUS_ACP_MCP_IDLE_SECONDS"):
+        build_configured_server(environ={"OPTIMUS_ACP_MCP_IDLE_SECONDS": "off"}, workspace_root=tmp_path)
+
+
 def _test_sdk_adapter(supervisor) -> ClientMcpSdkAdapter:
     class _NoopProcessControl:
         def terminate_tree(self, *, seam: str) -> None:

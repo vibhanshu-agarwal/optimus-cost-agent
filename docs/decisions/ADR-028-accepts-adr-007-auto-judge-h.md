@@ -1,4 +1,8 @@
-# ADR-027: Accepts ADR-007, with arm H as Auto mode's per-turn judge
+# ADR-028: Accepts ADR-007, with arm H as Auto mode's per-turn judge
+
+**Number:** filed as ADR-027 on the Plan 12.4 branch and in its reviews (#395); renumbered to ADR-028 at merge, because
+main's [ADR-027](ADR-027-idle-client-mcp-lifetime-contract.md) (#427) merged first. The approved `auto` overlay's
+classifier evidence still names it ADR-027: that text is registry data inside the approved hash `f11dc3ab…`.
 
 **Status:** Accepted. **Decision date:** 2026-10-26. **Decider:** the operator (verbatim below, source S13). The
 evidence and the mechanism are Claude's; the review is Codex's (CLI round 62, posted on #395). **Publication:**

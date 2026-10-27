@@ -14,6 +14,12 @@
   "posix_only_caller": "The launch sits inside a test that skips on Windows; it is not reachable in the Windows default selection."
  },
  "sites": {
+  "tests/integration/mcp/test_client_sdk_local_stdio.py::transport_context#1": {
+   "mechanism": "indirect",
+   "disposition": "tripwire_at_site",
+   "proof": "tests/integration/mcp/test_client_sdk_local_stdio.py::test_real_sdk_contexts_enter_and_exit_in_same_owner_task",
+   "basis": "Both adapter-close and peer-EOF cases load the existing child tripwire at interpreter startup before the owned SDK peer imports product code; the parent asserts the tripwire loaded first and recorded zero real known-folder adapter calls. Existing PID/creation-time and exit checks remain in force. No external service or census exemption is used."
+  },
   "tests/unit/tools/test_test_profiles.py::_h5_native_run#1": {
    "mechanism": "python:nested_pytest",
    "disposition": "nested_pytest_passive",

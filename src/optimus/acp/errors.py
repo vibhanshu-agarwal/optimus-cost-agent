@@ -15,6 +15,7 @@ REQUEST_CANCELLED = -32800
 RESOURCE_NOT_FOUND = -32002
 MUTATION_FORBIDDEN = -32910
 DUPLICATE_REQUEST_ID = -32911
+MCP_REOPEN_REFUSED = -32912
 
 JSON_RPC_STANDARD_ERROR_CODES = frozenset(
     {PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERROR}
@@ -22,7 +23,7 @@ JSON_RPC_STANDARD_ERROR_CODES = frozenset(
 ACP_PROTOCOL_ERROR_CODES = frozenset(
     {*JSON_RPC_STANDARD_ERROR_CODES, AUTHENTICATION_REQUIRED, REQUEST_CANCELLED, RESOURCE_NOT_FOUND}
 )
-OPTIMUS_APPLICATION_ERROR_CODES = frozenset({MUTATION_FORBIDDEN, DUPLICATE_REQUEST_ID})
+OPTIMUS_APPLICATION_ERROR_CODES = frozenset({MUTATION_FORBIDDEN, DUPLICATE_REQUEST_ID, MCP_REOPEN_REFUSED})
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,7 @@ class JsonRpcError:
 
 @dataclass(frozen=True)
 class AcpOutboundError(Exception):
-    """Raised when the ACP client rejects an agent-initiated outbound request."""
+    """ACP outbound/application refusal with a protocol-safe structured reason."""
 
     code: int
     message: str

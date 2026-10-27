@@ -190,13 +190,13 @@ class _Harness:
 
         # Forwarding spies: the REAL cleanup still runs; we record order and count.
         self.sequence: list[str] = []
-        real_close_all = server.AcpDuplexAdapter.close_all
+        real_aclose = server.AcpDuplexAdapter.aclose
 
-        def spy_close_all(inner_self):
+        async def spy_aclose(inner_self):
             self.sequence.append("close_all")
-            return real_close_all(inner_self)
+            return await real_aclose(inner_self)
 
-        monkeypatch.setattr(server.AcpDuplexAdapter, "close_all", spy_close_all)
+        monkeypatch.setattr(server.AcpDuplexAdapter, "aclose", spy_aclose)
 
         # Entry-level dispatch spy: records request IDs as they ENTER the real handler.
         # Responses measure settlement, not dispatch -- a request can enter the handler and have

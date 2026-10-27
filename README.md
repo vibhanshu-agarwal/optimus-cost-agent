@@ -683,7 +683,7 @@ eligible medium model, else the first eligible easy model). Leave `OPTIMUS_AGENT
 use it, or set an eligible exact model ID. An ineligible ID, including the old `claude-haiku` alias and
 `glm-5.2`, refuses at startup with migration guidance.
 
-**Auto mode (opt-in; Plan 12.4, ADR-027).** Auto sends each turn to the cheapest model that can do it. A judge
+**Auto mode (opt-in; Plan 12.4, ADR-028).** Auto sends each turn to the cheapest model that can do it. A judge
 rates the turn easy, medium or complex. The judge is H: its keyword rules first, then the classifier model (today
 Jev) when the rules are unsure. An answer below confidence 0.95, an abstention or a judge failure routes one tier up.
 The turn then uses the cheapest model of that tier that has not stopped in this launch, for the whole turn.
@@ -695,7 +695,7 @@ The turn then uses the cheapest model of that tier that has not stopped in this 
   `optimus-trust --workspace-root <workspace> run-gateway --auto`.
 - **Each turn shows** one line, for example `Auto: medium → google/gemini-3.8-flash`, with the reason when the turn
   routed up or fell back. The judge's own cost appears as the `classification` stage of the turn's cost.
-- **Limitations** (ADR-027):
+- **Limitations** (ADR-028):
   - H's measured rates (4.7% against the pilot's 5% limits) do not establish population rates below 5%;
   - the previous turn's tier is a barely tested signal (#425);
   - the savings depend on the model list;

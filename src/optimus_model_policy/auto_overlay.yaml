@@ -14,7 +14,7 @@
 #   variants at other prices.
 # Neither publisher documents a tokenizer the registry can use, so both name the conservative empirical estimator.
 #
-# The classifier (Plan 12.4 Checkpoint A, ADR-027, source S13): Jev 1.14, arm H's model, with its entry as reviewed for
+# The classifier (Plan 12.4 Checkpoint A, ADR-028 (filed as ADR-027), source S13): Jev 1.14, arm H's model, with its entry as reviewed for
 # the evaluation profile (the same catalogue facts and admission evidence). Jev answers on the System One decisions
 # endpoint, whose admission reserves no output tokens; the validator still requires a positive classifier reserve, so
 # 256 (v8 Design 1) is set and unused. Requests stay inside the classifier's 8,192 estimated-token bound.

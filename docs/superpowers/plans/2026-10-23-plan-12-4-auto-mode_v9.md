@@ -7,7 +7,7 @@
   - **The operator, 2026-09-30 (ADR-004), verbatim:** "Model selection will change throughout the life of the project and should be configurable, so tests are not needed just to check tasks". The one exception they kept is ADR-006's summary quality check.
   - **The operator, 2026-10-23, verbatim:** "for Auto we need to research Jev vs DSPy first". ADR-007 stays Proposed and frozen until the pilot's acceptance record.
   - **The operator, 2026-10-26:** decision N3 (#400 option b1), quoted under Decisions.
-  - **The operator, 2026-10-26:** decision N4, and the Checkpoint A decisions: H accepted as Auto's judge (ADR-027), the `auto` hash, manifest option (ii), and round 2 with R1(a), R2(a) and R3. All are quoted under Decisions.
+  - **The operator, 2026-10-26:** decision N4, and the Checkpoint A decisions: H accepted as Auto's judge (ADR-028), the `auto` hash, manifest option (ii), and round 2 with R1(a), R2(a) and R3. All are quoted under Decisions.
 - **Supersedes** v8 (`72cab9f0…`), now unchanged in the plans archive (`archive/2026-10-23-plan-12-4-auto-mode_v8.md`); v8 superseded v7 (`9682ab64…`), and v7 superseded v6 (`433bb8eb…`). This file is the complete successor. The plan file wins over chat.
 - **Workflow:** Claude (Opus 5.5) implements; Codex reviews through the CLI at Checkpoints A, R2 and B. Targeted tests per change; one full suite at the end; Linux CI failures are fixed in the PR.
 - **Estimate:** **10–14 active days**, excluding approval, service and paid-run waits (Codex's figure, kept until N1 and the migration scope are settled). Removing the paid qualification saves little; the override authorization and the admission migration add cross-cutting work.
@@ -20,11 +20,11 @@
 |---|---|---|
 | The classifier's output reserve: 256 tokens for a text classifier (Design 1) | **N4:** 1,024 in the `evaluation` profile, for Haiku. The `auto` composition configures 256, which Jev's decisions route does not use | Haiku's low reasoning shares the output cap; at 256 one reply came back with no content (run `tune-C`, Codex round 61) |
 | Every exception route's reply checks include the finish status, one router attempt and the pipeline (Design 1) | **On the System One decision endpoint:** the cost, the answers' types and values, and the model snapshot. The finish status, router attempts and pipeline cannot be observed there, so they are recorded as Jev's admission limitations. Phase B adds confidence validation | The endpoint returns no router metadata and no finish status (Task 1 design notes; Codex round 62) |
-| Checkpoint A: the operator decides ADR-007 and approves the `auto` hash | **Done:** H accepted ([ADR-027](../../decisions/ADR-027-accepts-adr-007-auto-judge-h.md)); `auto` gains Jev as its classifier, and its hash `f11dc3ab…` is approved | The pre-registered rule selected H; Codex rounds 62 and 63 |
+| Checkpoint A: the operator decides ADR-007 and approves the `auto` hash | **Done:** H accepted ([ADR-028](../../decisions/ADR-028-accepts-adr-007-auto-judge-h.md)); `auto` gains Jev as its classifier, and its hash `f11dc3ab…` is approved | The pre-registered rule selected H; Codex rounds 62 and 63 |
 | The repository's manifest holds each item's SHA-256 digest (Design 3) | **N5 (option (ii)):** the repository files a manifest keyed by item ID, with a tool that recomputes every metric from it; the digest-bearing original stays in the review kit, pinned by SHA-256 | The digests trip the local secret scan, and they are useful only to someone holding the private text (Codex round 63) |
 | The pilot environment: DSPy 3.4.1 and LiteLLM | **Plus DSPy's `optuna` extra,** which MIPROv2 needs | MIPROv2's first run failed on the missing import |
-| One pilot | **Round 2 (Design 5, Task 6):** a challenger round on a fresh, sealed split, with H as an arm. R1(a) changes its tie-break to an estimated total cost | The operator's instruction of 2026-10-26 (ADR-027) and decisions R1–R3 |
-| The classifier backend is whichever arm won (Design 4) | **H,** frozen from the pilot's `frozen-1`. A missing or malformed confidence counts as an abstention | ADR-027; Codex round 62 |
+| One pilot | **Round 2 (Design 5, Task 6):** a challenger round on a fresh, sealed split, with H as an arm. R1(a) changes its tie-break to an estimated total cost | The operator's instruction of 2026-10-26 (ADR-028) and decisions R1–R3 |
+| The classifier backend is whichever arm won (Design 4) | **H,** frozen from the pilot's `frozen-1`. A missing or malformed confidence counts as an abstention | ADR-028; Codex round 62 |
 | Luna "($0.10 / $0.50)" (Design 2) | **$0.20 / $1.00,** as its entry records; still cheaper than Haiku ($0.50 / $2.50) on both prices | A correction |
 
 ## What v8 changes from v7
@@ -72,7 +72,7 @@
 | # | Decision | Options | Status |
 |---|---|---|---|
 | N4 | The classifier output reserve in the `evaluation` profile, after Haiku's empty reply at 256 | **(a) Recommended by Codex (round 61) and Claude:** 1,024. Data only; a new `evaluation` hash, which the operator re-approves. The unknown-cost call stays unknown, carried as a $0.001333 estimate-based provision.<br>**(b) Not recommended:** no reasoning for classifier calls, through a per-role override; a code change.<br>**(c) Not recommended:** keep 256; the Haiku arms then cannot complete | **Approved (a)**; `d8d0b90e…` re-approved |
-| CA1 | ADR-007's acceptance (Checkpoint A) | **(a) Recommended by Codex (round 62) and Claude:** accept H, as the pre-registered rule selects, with its limitations recorded.<br>**(b) Not recommended:** accept B (Jev alone), which overrides the rule's tie-break after seeing the results.<br>**(c) Not recommended as a precondition:** no winner until a larger test; kept as round 2 | **Approved (a):** [ADR-027](../../decisions/ADR-027-accepts-adr-007-auto-judge-h.md) |
+| CA1 | ADR-007's acceptance (Checkpoint A) | **(a) Recommended by Codex (round 62) and Claude:** accept H, as the pre-registered rule selects, with its limitations recorded.<br>**(b) Not recommended:** accept B (Jev alone), which overrides the rule's tie-break after seeing the results.<br>**(c) Not recommended as a precondition:** no winner until a larger test; kept as round 2 | **Approved (a):** [ADR-028](../../decisions/ADR-028-accepts-adr-007-auto-judge-h.md) |
 
 **The operator's approvals, 2026-10-26, verbatim:** N4: "Approved: N4, classifier output reserve 1,024 (evaluation hash d8d0b90e...), per Codex round 61. Carry the unknown ar-042 call as a $0.001333 provision, still unknown. File the follow-up issue for known-cost handling of truncated empty replies." CA1: "Approved: accept arm H (the hybrid: rules, then Jev) as Auto mode's judge per the pre-registered rule and Codex round 62, with its limitations. Draft round 2 (a steadier DSPy, the Jev + DSPy combinations, GPT-6 Luna Decisions, a fresh sealed test set) for Codex review; no paid calls yet."
 
@@ -319,7 +319,7 @@ The pilot names models because it compares approaches. **The winner fills the cl
 
 **The result (2026-10-26):**
 - **Spend:** the pilot ran within its cap. $0.703490 was reported by the Gateway, plus one $0.001333 provision that stays an unknown cost.
-- **The selection:** the rule selected **H**, tied with B and cheaper. The operator accepted it in ADR-027 (CA1).
+- **The selection:** the rule selected **H**, tied with B and cheaper. The operator accepted it in ADR-028 (CA1).
 - **The evidence:** `docs/sources/plan-12-4-auto-pilot/` holds the report, every view's tables, the frozen settings, the manifest and the recompute tool.
 
 ### 4. Minimal opt-in Auto (Tasks 4–5)
@@ -347,7 +347,7 @@ The pilot names models because it compares approaches. **The winner fills the cl
 - **No shared state changes:** the runner sends the turn's bound model, not the launch-time one it holds today (`src/optimus/agent/runner.py:294`, `:335`, `:517`), and no runner or session state is mutated. The launch-scoped stop map (Design 1) is the one exception.
 - **Unchanged:** the summarizer stays Haiku.
 
-**The classifier backend is H** (ADR-027), frozen from the pilot's `frozen-1`:
+**The classifier backend is H** (ADR-028), frozen from the pilot's `frozen-1`:
 - the rules score the input contract, and answer when their confidence is at least 0.8 (cut points 0.5 and 4.5);
 - otherwise Jev answers through the production Gateway adapter, with the frozen `choice` question;
 - any answer below confidence 0.95 routes one tier up;
@@ -466,7 +466,7 @@ The pilot names models because it compares approaches. **The winner fills the cl
 | 1 | **Models as data (Design 1):**<br>- the `admission` block and `conservative-utf8`, replacing `EXPERIMENTAL_ROUTES`;<br>- per-model stops in the Gateway and the host;<br>- under N1(a), the override and the `run-gateway` approval check;<br>- the classifier role, the `classification` stage and the Jev adapter;<br>- the `evaluation` composition;<br>- the new ADR.<br>**Then the operator approves the ordinary and `evaluation` hashes** | The model-policy, binding, launch-gate, approval-CLI, settlement and Gateway unit tests, and the migration checklist below |
 | 2 | **The first inputs (Design 2):** the Auto overlay with the Gemini and Luna entries, from a free drift-check read | Validation of the `auto` composition |
 | 3 | **The pilot (Design 3):** the Jev probe, the smoke test, the labelled set and kappa, the harness, the runs, the analysis, the evidence report and the draft ADR-007 acceptance.<br>**Under N3:** after main's #400 PR merges, the branch merges main and records N3's residual in the exception routes' admission limitations. The operator re-approves the changed hashes, and the smoke test runs again.<br>**Done 2026-10-26** (N4 included) | The harness's own self-checks |
-| **Checkpoint A** | **Codex CLI review** of Tasks 0–3 and the evidence.<br>**The operator decides** the ADR-007 acceptance, and approves the `auto` hash. If there is no winner, the plan stops here.<br>**Done 2026-10-26:** Codex rounds 62 and 63; H accepted (ADR-027, CA1); `auto` `f11dc3ab…` approved (CA2); the evidence bundle filed (N5) | — |
+| **Checkpoint A** | **Codex CLI review** of Tasks 0–3 and the evidence.<br>**The operator decides** the ADR-007 acceptance, and approves the `auto` hash. If there is no winner, the plan stops here.<br>**Done 2026-10-26:** Codex rounds 62 and 63; H accepted (ADR-028, CA1); `auto` `f11dc3ab…` approved (CA2); the evidence bundle filed (N5) | — |
 | 4 | **The production Auto composition (Design 4):** the resolver, routing up, per-turn route and context capture, ordinary compaction, failure handling | `tests/unit/agent` and `tests/unit/acp`: the real launch path; successive turns on different models; concurrent sessions; no shared-state mutation |
 | 5 | The production classifier backend (H, with confidence validation), the routing record, the per-turn notice, and the opt-in | The backend's tests; `tests/unit/acp` (the notice) |
 | 6 | **Round 2 (Design 5),** in parallel with Tasks 4–5:<br>- free: the fresh set (sourced, reviewed and labelled in separate contexts, then sealed); the harness additions (D3, MAX, GATE, HL, the seal, R1's cost measure, the two-level ledger); the measured turn sizes;<br>- the `evaluation` change for Luna Decisions, and the operator's hash approval;<br>- **after the operator releases the paid calls:** the probe, any gated adapter change, the smoke test, tuning, `freeze-2`, the test and the report | The harness's self-checks, including every seal path; the Gateway tests for any adapter change |
@@ -496,7 +496,7 @@ The pilot names models because it compares approaches. **The winner fills the cl
 - **No regression:** with no operator override and without `auto`, the ordinary composition's eligible models, default model and behaviour are unchanged. Haiku keeps its receipt and capacity.
 - **Approval:** an unapproved changed registry is refused, by the normal launch and by `run-gateway`.
 - **Isolation:** one model's stop leaves the other models routable, and its role falls through to its next unstopped model.
-- **The pilot** ran under the pre-registered rule and the frozen input contract, within its cap. The evidence report shows every arm's metrics on the test split, with intervals, and the operator accepted the result: **H** (ADR-027). **Done 2026-10-26.**
+- **The pilot** ran under the pre-registered rule and the frozen input contract, within its cap. The evidence report shows every arm's metrics on the test split, with intervals, and the operator accepted the result: **H** (ADR-028). **Done 2026-10-26.**
 - **Round 2** ran under its pre-registered rule on a sealed, fresh split, within its $5 round and $15 total ceilings, and the operator decided (Checkpoint R2). **Plan 12.4 stays open until round 2 and the operator's disposition of it are complete,** unless an approved successor transfers that work to a named issue. Checkpoint B can ship H before then.
 - **The resolver,** with `OPTIMUS_AGENT_MODEL=auto`, through the real launch path:
   - each turn is classified and sent to the cheapest unstopped eligible model of its role, with that model's route and context limits captured for the turn;
@@ -567,7 +567,7 @@ Verdict: b1, with conditions. Source: `plan12-codex-cli/round-58-r15-pilot-guard
 | Round | Finding or condition | Applied in |
 |---|---|---|
 | 61 | The classifier reserve of 1,024; the unknown-cost call kept unknown, as a provision; known-cost handling as a follow-up | N4; Design 1 (the classifier role); Design 3 (budget); Explicit Exceptions (#423) |
-| 62 | The decision rule implemented faithfully; H selected; author exposure, first-repeat accounting and H's reconstruction disclosed; ADR-007 accepted through a new record; escalation not a present safeguard | CA1; ADR-027; the evidence bundle |
+| 62 | The decision rule implemented faithfully; H selected; author exposure, first-repeat accounting and H's reconstruction disclosed; ADR-007 accepted through a new record; escalation not a present safeguard | CA1; ADR-028; the evidence bundle |
 | 62 | The System One endpoint's checks recorded as limitations; production confidence validation | Design 1 (the per-reply checks); Design 4; Task 5 |
 | 62, 63 | The `auto` composition: Jev's full entry, the classifier, a positive reserve, the bound, the validation record, then an exact hash approval | CA2; Design 1 (the compositions) |
 | 63 | The manifest the plan promises, scan-clean, sufficient to verify without the kit | N5; Design 3 (handling) |

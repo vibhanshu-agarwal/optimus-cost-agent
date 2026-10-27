@@ -1,4 +1,4 @@
-"""Process-scoped Auto composition for the ACP host (Plan 12.4 Designs 1 and 4; ADR-027).
+"""Process-scoped Auto composition for the ACP host (Plan 12.4 Designs 1 and 4; ADR-028).
 
 ``OPTIMUS_AGENT_MODEL=auto`` is the only way to choose Auto (``optimus.agent.defaults.auto_requested``). The launch
 gate composes the Auto registry (the shipped defaults, the shipped Auto overlay and the operator override) and binds

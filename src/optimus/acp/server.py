@@ -8,6 +8,7 @@ import sys
 import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from time import monotonic
 from typing import Any, Protocol
 
 from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled, log_provenance_once
@@ -30,7 +31,7 @@ from optimus.acp.lifecycle import (
     TurnResponseEnvelope,
 )
 from optimus.acp.outbound_writer import DedicatedOutboundWriter, OutboundQueueItem
-from optimus.acp.settlement import SendOutcome, SettlementInvariantError
+from optimus.acp.settlement import RpcResponseDelivery, SendOutcome, SettlementInvariantError
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore
 from optimus.mcp.client_disposition import ClientMcpShutdownOutcome
 from optimus.mcp.client_supervisor import MCPSupervisorState
@@ -257,11 +258,17 @@ class NdjsonOutboundChannel:
                 hypothesis_id="H2",
             )
         # endregion
-        await self._submit_payload(
-            {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params},
-            kind="request",
-        )
-        return await future
+        try:
+            await self._submit_payload(
+                {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params},
+                kind="request",
+            )
+            return await future
+        finally:
+            if self._futures.get(request_id) is future:
+                self._futures.pop(request_id)
+            if not future.done():
+                future.cancel()
 
     def cancel_request(self, request_id: str | int, result: dict[str, Any]) -> None:
         future = self._futures.get(request_id)
@@ -396,6 +403,8 @@ class AcpStreamServer:
         session_seeder: Any | None = None,
         failure_telemetry: Any | None = None,
         auto_router: Any | None = None,
+        mcp_idle_seconds: int | None = None,
+        monotonic_clock: Callable[[], float] = monotonic,
     ) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
         # Correction plan v4, C4: the harness's workspace telemetry writer, passed into every ndjson session adapter
@@ -417,6 +426,9 @@ class AcpStreamServer:
         self._max_planning_turns = max_planning_turns
         self._interactive_recovery = interactive_recovery  # Plan 12.3, resolved with it
         self._client_mcp_runtime = client_mcp_runtime
+        self._mcp_idle_seconds = mcp_idle_seconds
+        self._monotonic_clock = monotonic_clock
+        self._mcp_shutdown_task: asyncio.Task[Any] | None = None
         self._conversation_sanitizer_inputs = conversation_sanitizer_inputs
         # Seam 2, checkpoint B: the serving process retains the Redis runtime the
         # bootstrap built, and closes it LAST in its own teardown. Before this seam the
@@ -587,6 +599,8 @@ class AcpStreamServer:
             session_seeder=self._session_seeder,
             failure_telemetry=self._failure_telemetry,
             auto_router=self._auto_router,
+            mcp_idle_seconds=self._mcp_idle_seconds,
+            monotonic_clock=self._monotonic_clock,
         )
         message_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         request_tasks: set[asyncio.Task[Any]] = set()
@@ -624,14 +638,14 @@ class AcpStreamServer:
                 raise
             response_handle.finalize_once(completion)
 
-        async def submit_via_turn(payload: Mapping[str, Any], turn_control: TurnControl) -> None:
+        async def submit_via_turn(payload: Mapping[str, Any], turn_control: TurnControl) -> bool:
             lease = turn_control.start_response_send()
             if not lease.granted or lease.send_key is None:
-                return
+                return False
             if dedicated is None:
                 await writer.write_line(payload)
                 turn_control.publish_authoritative(lease.send_key, SendOutcome.FLUSHED)
-                return
+                return True
             source_future: concurrent.futures.Future[Any] = concurrent.futures.Future()
             item = OutboundQueueItem(
                 payload=payload,
@@ -644,22 +658,24 @@ class AcpStreamServer:
             dedicated.submit(item)
             try:
                 loop = asyncio.get_running_loop()
-                await asyncio.shield(asyncio.wrap_future(source_future, loop=loop))
+                completion = await asyncio.shield(asyncio.wrap_future(source_future, loop=loop))
             except asyncio.CancelledError:
-                return
+                return False
+            return (completion.outcome is SendOutcome.FLUSHED
+                    and turn_control.rpc_response_delivery is RpcResponseDelivery.FLUSHED)
 
-        async def deliver_envelope(envelope: Any, ownership_slot: ResponseOwnershipSlot) -> None:
+        async def deliver_envelope(envelope: Any, ownership_slot: ResponseOwnershipSlot) -> bool:
             wire = envelope.response
             if isinstance(envelope, TurnResponseEnvelope):
                 if ownership_slot.is_bound and ownership_slot.turn_control is not envelope.turn_control:
                     raise SettlementInvariantError("envelope turn control does not match ownership slot")
-                await submit_via_turn(wire, envelope.turn_control)
-                return
+                return await submit_via_turn(wire, envelope.turn_control)
             if not isinstance(envelope, NonTurnResponseEnvelope):
                 raise SettlementInvariantError("unknown response envelope kind")
             if ownership_slot.is_bound:
                 raise SettlementInvariantError("non-turn envelope returned for bound ownership slot")
             await submit_via_notice(wire, handle=envelope.response_handle)
+            return True
 
         async def read_lines() -> None:
             try:
@@ -822,7 +838,9 @@ class AcpStreamServer:
                         hypothesis_id="H4",
                     )
                 # endregion
-                await deliver_envelope(envelope, ownership_slot)
+                delivered = await deliver_envelope(envelope, ownership_slot)
+                if isinstance(envelope, TurnResponseEnvelope):
+                    adapter.note_turn_delivered(envelope.turn_control, cancelled=not delivered)
             except asyncio.CancelledError:
                 if ownership_slot.turn_control is not None:
                     ownership_slot.turn_control.request_transport_teardown()
@@ -861,6 +879,7 @@ class AcpStreamServer:
                 else:
                     await submit_via_notice(error_payload)
 
+        adapter.start_idle_mcp_sweeper()
         reader_task = asyncio.create_task(read_lines())
         try:
             while True:
@@ -896,31 +915,74 @@ class AcpStreamServer:
                         )
                     )
         finally:
+            primary_failure = sys.exc_info()[1]
+            failures: list[BaseException] = [] if primary_failure is None else [primary_failure]
             # Transport-loss ordering: abandon notices before cancelling request tasks.
             notice.mark_transport_abandoned()
             for turn in list(adapter._active_turns.values()):  # noqa: SLF001
                 turn.turn_control.request_transport_teardown()
+            adapter._cancel_loop_work()  # loop-affine permissions and reservations precede worker teardown
             for task in list(request_tasks):
                 task.cancel()
-            if request_tasks:
-                await asyncio.gather(*request_tasks, return_exceptions=True)
-            adapter.close_all()
+            mcp_outcome: Any = None
+            mcp_failed = False
+            async def shutdown_mcp() -> None:
+                nonlocal mcp_outcome, mcp_failed
+                try:
+                    if request_tasks:
+                        await asyncio.gather(*request_tasks, return_exceptions=True)
+                except BaseException as exc:
+                    failures.append(exc)
+                    mcp_failed = True
+                try:
+                    await adapter.aclose()
+                except BaseException as exc:
+                    failures.append(exc)
+                    mcp_failed = True
+                try:
+                    if self._client_mcp_runtime is not None:
+                        mcp_outcome = await asyncio.to_thread(self._client_mcp_runtime.close)
+                except BaseException as exc:
+                    failures.append(exc)
+                    mcp_failed = True
+            self._mcp_shutdown_task = asyncio.create_task(shutdown_mcp(), name="optimus-mcp-shutdown")
+            teardown_cancelled: asyncio.CancelledError | None = None
+            while not self._mcp_shutdown_task.done():
+                try:
+                    await asyncio.shield(self._mcp_shutdown_task)
+                except asyncio.CancelledError as exc:
+                    if teardown_cancelled is None:
+                        teardown_cancelled = exc
+                except BaseException:
+                    break  # Retrieve the task's original failure below, then finish the owned stages.
+            try:
+                self._mcp_shutdown_task.result()
+            except BaseException as exc:
+                failures.append(exc)
+                mcp_failed = True
             # Client-MCP cleanup outcome. The runtime attempts every stage and returns an
             # aggregate result; consuming it here means an incomplete-but-non-raising cleanup
             # (a supervisor still draining, a contained stage failure) is reported instead of
             # passing silently. Only an absent runtime is an implicit clean/no-resource case.
             # The report is made right here, before the later stages, so it is attempted
             # whenever the runtime returned; later stages keep their existing order.
-            if self._client_mcp_runtime is not None:
-                mcp_outcome = self._client_mcp_runtime.close()
-                mcp_status = classify_mcp_cleanup(mcp_outcome)
-                if mcp_status != "clean":
-                    report_mcp_cleanup_incomplete(
-                        mcp_outcome if mcp_status == "incomplete" and isinstance(mcp_outcome, ClientMcpShutdownOutcome) else None,
-                        mcp_status,
-                    )
-            if dedicated is not None and owned_dedicated and join_dedicated_writer:
-                dedicated.close_and_join()
+            try:
+                if self._client_mcp_runtime is not None:
+                    mcp_status = classify_mcp_cleanup(mcp_outcome)
+                    if mcp_failed and mcp_status == "clean":
+                        mcp_status = "incomplete"
+                    if mcp_status != "clean":
+                        report_mcp_cleanup_incomplete(
+                            mcp_outcome if mcp_status == "incomplete" and isinstance(mcp_outcome, ClientMcpShutdownOutcome) else None,
+                            mcp_status,
+                        )
+            except BaseException as exc:
+                failures.append(exc)
+            try:
+                if dedicated is not None and owned_dedicated and join_dedicated_writer:
+                    dedicated.close_and_join()
+            except BaseException as exc:
+                failures.append(exc)
             # Reader ownership at teardown. The cooperative path is EOF: `read_lines` put its
             # sentinel and returned, so `reader_task` is already done -- await it (immediate,
             # surfacing any reader error) and complete the full shutdown. But when teardown is
@@ -931,11 +993,22 @@ class AcpStreamServer:
             # executor until it returns on its own (e.g. when the client closes stdin): we do
             # not close shared stdin, do not reclassify incomplete input as EOF, and do not
             # claim a bounded process exit -- only that this await no longer stalls teardown.
-            if reader_task.done():
-                await reader_task
-            else:
-                reader_task.cancel()
-                report_reader_incomplete()
+            try:
+                if reader_task.done():
+                    await reader_task
+                else:
+                    reader_task.cancel()
+                    report_reader_incomplete()
+            except BaseException as exc:
+                failures.append(exc)
+            if teardown_cancelled is not None:
+                failures.append(teardown_cancelled)
+            if failures:
+                failure = next((exc for exc in failures if not isinstance(exc, Exception)), failures[0])
+                secondary = next((exc for exc in failures if exc is not failure), None)
+                if secondary is not None:
+                    raise failure from secondary
+                raise failure
             # Seam 2, checkpoint B: the Redis runtime is closed LAST by the enclosing
             # `serve_ndjson` finally, after every stage above that may still submit work
             # to it -- and still closed when one of those stages raises.

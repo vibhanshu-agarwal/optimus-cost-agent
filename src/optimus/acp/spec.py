@@ -10,7 +10,9 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
+from functools import partial
 from pathlib import Path
+from time import monotonic
 from typing import TYPE_CHECKING, Any, Literal, NotRequired, Protocol, TypedDict
 
 from context_engine import SummaryCheckpoint
@@ -34,6 +36,7 @@ from optimus.acp.debug_trace import (
 )
 from optimus.acp.errors import (
     INVALID_REQUEST,
+    MCP_REOPEN_REFUSED,
     METHOD_NOT_FOUND,
     REQUEST_CANCELLED,
     AcpOutboundError,
@@ -93,7 +96,13 @@ from optimus.context.assembly import AttachedTurn, ContextAttachment
 from optimus.gateway.attempts import ROUTE_STOPPED_NO_RETRY
 from optimus.mcp.client_catalog import ClientMcpOneCallApproval
 from optimus.mcp.client_config import ClientMcpConfigError
-from optimus.mcp.client_disposition import AcpMcpPermissionBroker, ClientMcpRuntime, ClientMcpSessionState
+from optimus.mcp.client_disposition import (
+    AcpMcpPermissionBroker,
+    ClientMcpDisposition,
+    ClientMcpRuntime,
+    ClientMcpSessionState,
+    run_close_hooks,
+)
 from optimus.runtime.modes import ExecutionMode
 from optimus.tools.line_endings import WRITE_LINE_ENDINGS_MIXED
 from optimus.usage.cost_alerts import AlertPolicy, AlertTracker, CostScopeSummary
@@ -331,6 +340,17 @@ class AcpOutboundChannel(Protocol):
 
 
 @dataclass
+class _IdleMcpState:
+    phase: str = "ACTIVE"
+    idle_epoch: int = 0
+    deadline: float | None = None
+    turn_seq: int | None = None
+    turn_epoch: int = 0
+    marker_seen: bool = False
+    committed: bool | None = None
+
+
+@dataclass
 class AcpSpecSession:
     session_id: str
     cwd: Path
@@ -523,7 +543,19 @@ class AcpDuplexAdapter:
         failure_telemetry: JsonlTelemetryWriter | None = None,
         interactive_recovery: bool = True,
         auto_router: AutoRouter | None = None,
+        mcp_idle_seconds: int | None = None,
+        monotonic_clock: Callable[[], float] = monotonic,
     ) -> None:
+        if mcp_idle_seconds is not None and (type(mcp_idle_seconds) is not int or not 1 <= mcp_idle_seconds <= 2592000):
+            raise ValueError("invalid MCP idle seconds")
+        self._mcp_idle_seconds = mcp_idle_seconds
+        self._monotonic_clock = monotonic_clock
+        self._idle_mcp: dict[str, _IdleMcpState] = {}
+        self._idle_sweeper: asyncio.Task[None] | None = None
+        self._idle_sweep_lock = asyncio.Lock()
+        self._mcp_close_tasks: set[asyncio.Task[Any]] = set()
+        self._reopen_reservations: dict[str, asyncio.Task[Any]] = {}
+        self._reopen_cancelled: set[str] = set()
         # Plan 12.4 Task 4: an Auto launch binds each turn's route and attachment from its router; new sessions take the
         # router's base attachment (the default planner's) for their storage class and initial strategy.
         if auto_router is not None:
@@ -571,6 +603,195 @@ class AcpDuplexAdapter:
         # seeds nothing.
         self._session_seeder = session_seeder if context_attachment is not None else None
         self._closed = False
+
+    def record_turn_commit(self, session_id: str, turn_seq: int, *, committed: bool | None) -> None:
+        idle = self._idle_mcp.get(session_id)
+        if idle is not None and idle.turn_seq == turn_seq:
+            idle.marker_seen = True
+            idle.committed = committed
+
+    def note_turn_delivered(self, control: TurnControl, *, cancelled: bool = False) -> None:
+        idle = self._idle_mcp.get(control.session_id)
+        session = self._sessions.get(control.session_id)
+        if idle is None or idle.turn_seq != control.turn_seq:
+            return
+        known = idle.marker_seen and idle.committed is not None
+        idle.marker_seen = False
+        state = session.client_mcp_state if session is not None else None
+        if (self._closed or cancelled or control.halt_requested() or not known
+                or idle.turn_epoch != idle.idle_epoch or control.rpc_response_delivery is not RpcResponseDelivery.FLUSHED
+                or state is None or state._closed or state.suspended or not state.has_open_peer()
+                or idle.phase not in {"ACTIVE", "IDLE_CANDIDATE"}):
+            return
+        assert self._mcp_idle_seconds is not None
+        idle.phase = "IDLE_CANDIDATE"
+        idle.deadline = self._monotonic_clock() + self._mcp_idle_seconds
+
+    def start_idle_mcp_sweeper(self) -> None:
+        if self._mcp_idle_seconds is None or self._closed or self._idle_sweeper is not None:
+            return
+        async def sweep() -> None:
+            assert self._mcp_idle_seconds is not None
+            while True:
+                await asyncio.sleep(min(60, self._mcp_idle_seconds))
+                await self.sweep_idle_mcp_once()
+        self._idle_sweeper = asyncio.create_task(sweep(), name="optimus-idle-mcp-sweeper")
+
+    async def stop_idle_mcp_sweeper(self) -> None:
+        task = self._idle_sweeper
+        if task is not None:
+            task.cancel()
+            while not task.done():
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    continue
+            with contextlib.suppress(asyncio.CancelledError):
+                task.result()
+            self._idle_sweeper = None
+
+    async def sweep_idle_mcp_once(self) -> None:
+        runtime = self._client_mcp_runtime
+        if self._mcp_idle_seconds is None or runtime is None or self._closed:
+            return
+        async with self._idle_sweep_lock:
+            for session_id, idle in tuple(self._idle_mcp.items()):
+                session = self._sessions.get(session_id)
+                if session is None:
+                    self._idle_mcp.pop(session_id, None)
+                    continue
+                if (idle.phase != "IDLE_CANDIDATE" or idle.deadline is None or self._monotonic_clock() < idle.deadline
+                        or session_id in self._active_turns or session_id in self._reopen_reservations):
+                    continue
+                state = session.client_mcp_state
+                if state is None:
+                    continue
+                idle.deadline = None
+                if state.has_leased_stdio_server() and not runtime.sdk_adapter.stdio_warning_channel_observable():
+                    runtime.sdk_adapter.record_diagnostic("WARNING_UNOBSERVABLE")
+                    idle.phase = "ACTIVE"
+                    continue
+                hooks = state.prepare_suspend()
+                if hooks is None:
+                    idle.phase = "ACTIVE"
+                    continue
+                idle.phase = "MCP_CLOSING"
+                async def close_peer(
+                    state: ClientMcpSessionState = state, hooks: tuple[Callable[[], None], ...] = hooks,
+                    idle: _IdleMcpState = idle, session_id: str = session_id,
+                ) -> None:
+                    try:
+                        def work() -> tuple[str, ...]:
+                            failures = run_close_hooks(hooks)
+                            if runtime.sdk_adapter.has_pending_connections_for_session(session_id):
+                                failures += ("CLEANUP_UNCERTAIN",)
+                            return failures
+                        failures = await runtime.disposition.run_blocking(work)
+                    except BaseException:
+                        state.complete_suspend(("CLEANUP_UNCERTAIN",))
+                        idle.phase = "QUARANTINED"
+                        raise
+                    if idle.phase == "QUARANTINED":
+                        failures += ("CLEANUP_UNCERTAIN",)
+                    clean = state.complete_suspend(failures)
+                    idle.phase = "MCP_SUSPENDED" if clean else "QUARANTINED"
+                job = asyncio.create_task(close_peer(), name="optimus-idle-mcp-close")
+                self._mcp_close_tasks.add(job)
+                budget = max(1, len(state.server_names())) * runtime.sdk_adapter._operation_timeout_seconds
+                try:
+                    await asyncio.wait_for(asyncio.shield(job), timeout=budget)
+                except TimeoutError:
+                    idle.phase = "QUARANTINED"
+                    runtime.disposition.record_session_close_failure()
+                except Exception:
+                    idle.phase = "QUARANTINED"
+                finally:
+                    if job.done():
+                        self._mcp_close_tasks.discard(job)
+
+    def _cancel_loop_work(self) -> None:
+        self._closed = True
+        for reservation in self._reopen_reservations.values():
+            reservation.cancel()
+        for turn in list(self._active_turns.values()):
+            turn.turn_control.request_session_cancel()
+            if turn.permission_handle is not None:
+                turn.permission_handle.cancel()
+            elif turn.pending_permission_request_id is not None:
+                self._outbound.cancel_request(turn.pending_permission_request_id, {"outcome": {"outcome": "cancelled"}})
+                turn.pending_permission_request_id = None
+
+    async def aclose(self) -> None:
+        self._cancel_loop_work()
+        prior_failure: BaseException | None = None
+        try:
+            await self.stop_idle_mcp_sweeper()
+        except BaseException as exc:
+            prior_failure = exc
+        current = asyncio.current_task()
+        cancelled = current is not None and current.cancelling() > 0
+        reservations = tuple(self._reopen_reservations.values())
+        for task in reservations + tuple(self._mcp_close_tasks):
+            while not task.done():
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    current = asyncio.current_task()
+                    if current is not None and current.cancelling():
+                        cancelled = True
+                except BaseException:
+                    break
+            try:
+                task.result()
+            except BaseException as exc:
+                expected_cancel = task in reservations and isinstance(exc, asyncio.CancelledError)
+                if not expected_cancel and prior_failure is None:
+                    prior_failure = exc
+        self._mcp_close_tasks.clear()
+        runtime = self._client_mcp_runtime
+        disposition = runtime.disposition if isinstance(runtime, ClientMcpRuntime) else None
+        cleanup_lane = disposition if isinstance(disposition, ClientMcpDisposition) else None
+        if prior_failure is not None and cleanup_lane is not None:
+            cleanup_lane.record_session_close_failure()
+        prepared = [(session.client_mcp_state, session.client_mcp_state.prepare_close())
+                    for session in self._sessions._sessions.values() if session.client_mcp_state is not None]
+        async def close_states() -> None:
+            primary: BaseException | None = None
+            for state, hooks in prepared:
+                try:
+                    failures = (await cleanup_lane.run_blocking(partial(run_close_hooks, hooks))
+                                if cleanup_lane is not None else await asyncio.to_thread(run_close_hooks, hooks))
+                except BaseException as exc:
+                    state.complete_close(("SESSION_CLOSE_FAILED",))
+                    if primary is None:
+                        primary = exc
+                else:
+                    state.complete_close(failures)
+            if cleanup_lane is not None:
+                await cleanup_lane.drain()
+            if primary is not None:
+                raise primary
+        job = asyncio.create_task(close_states(), name="optimus-mcp-session-shutdown")
+        self._mcp_close_tasks.add(job)
+        try:
+            while not job.done():
+                try:
+                    await asyncio.shield(job)
+                except asyncio.CancelledError:
+                    cancelled = True
+            try:
+                job.result()
+            except BaseException as exc:
+                if prior_failure is None:
+                    prior_failure = exc
+        finally:
+            if job.done():
+                self._mcp_close_tasks.discard(job)
+        self._idle_mcp.clear()
+        if prior_failure is not None:
+            raise prior_failure
+        if cancelled:
+            raise asyncio.CancelledError
 
     def _remove_active_turn(self, session_id: str, turn_seq: int, control: TurnControl) -> bool:
         current = self._active_turns.get(session_id)
@@ -713,17 +934,7 @@ class AcpDuplexAdapter:
         """Cancel outstanding ACP permission work, then close session states exactly once."""
         if self._closed:
             return
-        self._closed = True
-        for turn in list(self._active_turns.values()):
-            turn.turn_control.request_session_cancel()
-            if turn.permission_handle is not None:
-                turn.permission_handle.cancel()
-            elif turn.pending_permission_request_id is not None:
-                self._outbound.cancel_request(
-                    turn.pending_permission_request_id,
-                    {"outcome": {"outcome": "cancelled"}},
-                )
-                turn.pending_permission_request_id = None
+        self._cancel_loop_work()
         self._sessions.close_all()
 
     async def handle_client_notification(self, notification: dict[str, Any]) -> None:
@@ -743,6 +954,10 @@ class AcpDuplexAdapter:
         session_id = params.get("sessionId")
         if not isinstance(session_id, str):
             return
+        reservation = self._reopen_reservations.get(session_id)
+        if reservation is not None:
+            self._reopen_cancelled.add(session_id)
+            reservation.cancel()
         turn = self._active_turns.get(session_id)
         if turn is None:
             return
@@ -956,6 +1171,17 @@ class AcpDuplexAdapter:
                 state.close()
             self._sessions.remove(session.session_id)
             return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
+        except BaseException:
+            if state is not None:
+                hooks = state.prepare_close()
+                try:
+                    failures = await runtime.disposition.run_blocking(partial(run_close_hooks, hooks))
+                except BaseException:
+                    state.complete_close(("SESSION_CLOSE_FAILED",))
+                else:
+                    state.complete_close(failures)
+            self._sessions.remove(session.session_id)
+            raise
 
         assert state is not None
         session.client_mcp_state = state
@@ -1007,6 +1233,14 @@ class AcpDuplexAdapter:
                 ownership_slot,
             )
 
+        idle = self._idle_mcp.get(session_id)
+        if self._closed or (idle is not None and idle.phase == "MCP_CLOSING"):
+            return self._mcp_refusal(request, session_id, "mcp_closing", ownership_slot)
+        if idle is not None and idle.phase == "QUARANTINED":
+            return self._mcp_refusal(request, session_id, "mcp_cleanup_uncertain", ownership_slot)
+        if session_id in self._reopen_reservations:
+            return self._mcp_refusal(request, session_id, "mcp_reopen_in_progress", ownership_slot)
+
         conversation = session.conversation
         if conversation is None:
             conversation = self._new_conversation()
@@ -1022,6 +1256,58 @@ class AcpDuplexAdapter:
                 ownership_slot=ownership_slot,
             )
 
+        captured_mode = session.execution_mode
+        captured_strategy = session.context_strategy
+        captured_checkpoint = session.context_checkpoint
+        captured_approvals = dict(session.context_approvals)
+        captured_notice = session.sliding_notice_pending
+        captured_revision = session.config_publication.revision
+        if self._mcp_idle_seconds is not None:
+            idle = self._idle_mcp.setdefault(session_id, _IdleMcpState())
+            idle.idle_epoch += 1
+            idle.deadline = None
+            idle.marker_seen = False
+            if idle.phase == "IDLE_CANDIDATE":
+                idle.phase = "ACTIVE"
+        state = session.client_mcp_state
+        if state is not None and state.suspended and captured_mode is not ExecutionMode.CHAT:
+            runtime = self._client_mcp_runtime
+            if runtime is None:
+                return self._mcp_refusal(request, session_id, "mcp_reopen_refused", ownership_slot)
+            async def request_permission(params):
+                return await self._outbound.request("session/request_permission", params)
+            reservation = asyncio.create_task(runtime.disposition.reopen_suspended(state, request_permission),
+                                               name="optimus-mcp-renewal")
+            self._reopen_reservations[session_id] = reservation
+            try:
+                try:
+                    outcome = await reservation
+                except asyncio.CancelledError:
+                    state.restore_suspended()
+                    current = asyncio.current_task()
+                    if current is not None and current.cancelling():
+                        raise
+                    return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
+                except Exception:
+                    outcome = "outbound_failure"
+                if session_id in self._reopen_cancelled:
+                    state.restore_suspended()
+                    return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
+                if outcome != "allow":
+                    return self._mcp_refusal(request, session_id, "mcp_reopen_refused", ownership_slot)
+            finally:
+                self._reopen_reservations.pop(session_id, None)
+                self._reopen_cancelled.discard(session_id)
+            admission = conversation.prepare_admission(task)
+            if self._closed or state._closed or not admission.admitted:
+                state.restore_suspended()
+                if not admission.admitted:
+                    return await self._refuse_prompt(request_id=request.get("id"), session_id=session_id,
+                        conversation=conversation, reason=admission.refuse_reason or "refused", ownership_slot=ownership_slot)
+                return self._mcp_refusal(request, session_id, "mcp_closing", ownership_slot)
+            if idle is not None:
+                idle.phase = "ACTIVE"
+
         assert admission.turn_seq is not None
         turn_seq = conversation.allocate_turn_seq()
         if turn_seq != admission.turn_seq:
@@ -1029,12 +1315,16 @@ class AcpDuplexAdapter:
             turn_seq = admission.turn_seq
             conversation._next_turn_seq = turn_seq + 1  # noqa: SLF001
 
+        if idle is not None:
+            idle.turn_seq = turn_seq
+            idle.turn_epoch = idle.idle_epoch
+
         turn_control = TurnControl(session_id=session_id, turn_seq=turn_seq)
         turn = AcpPromptTurn(
             session_id=session_id,
             turn_seq=turn_seq,
             turn_control=turn_control,
-            execution_mode=session.execution_mode,
+            execution_mode=captured_mode,
         )
         turn_control.set_finalization_hooks(
             active_map_remover=self._remove_active_turn,
@@ -1059,12 +1349,12 @@ class AcpDuplexAdapter:
                 attachment=self._context_attachment,
                 session_key=session_id,
                 records=conversation.records,
-                approvals=session.context_approvals,
+                approvals=captured_approvals,
                 generation=conversation.generation,
                 sanitizer=conversation.sanitizer,
-                strategy=session.context_strategy or self._context_attachment.initial_strategy,
+                strategy=captured_strategy or self._context_attachment.initial_strategy,
                 mode=turn.execution_mode,
-                checkpoint=session.context_checkpoint,
+                checkpoint=captured_checkpoint,
                 current_prompt=admission.sanitized_user_prompt,
                 turn_seq=turn_seq,
                 cancelled=turn.turn_control.halt_requested,
@@ -1112,8 +1402,8 @@ class AcpDuplexAdapter:
                 await self._emit_capacity_notice(
                     session_id=session_id, conversation=conversation, text=self._warning_text(), is_warning=True
                 )
-            if attached_turn is not None and attached_turn.strategy == "sliding_window" and session.sliding_notice_pending:
-                await self._emit_sliding_notice(session)
+            if attached_turn is not None and attached_turn.strategy == "sliding_window" and captured_notice:
+                await self._emit_sliding_notice(session, expected_revision=captured_revision)
 
             if attached_turn is None:
                 planner_task, conversation_envelope = self._planner_inputs(
@@ -1175,6 +1465,7 @@ class AcpDuplexAdapter:
                 self._runner.run,
                 planning_request,
                 **self._runner_runtime_kwargs(
+                    execution_mode=turn.execution_mode,
                     planning_progress_observer=_session_progress_observer,
                     session=session,
                     halt_requested=turn.turn_control.halt_requested,
@@ -1342,6 +1633,7 @@ class AcpDuplexAdapter:
                 self._runner.run,
                 approved_request,
                 **self._runner_runtime_kwargs(
+                    execution_mode=turn.execution_mode,
                     session=session,
                     operation_control=turn.turn_control,
                     stage_receipts=session.cost_settlement.record_attempt,
@@ -1405,6 +1697,8 @@ class AcpDuplexAdapter:
             await self._emit_exit_cost_alerts(turn)
             raise
         finally:
+            if idle is not None and not idle.marker_seen:
+                self.record_turn_commit(session_id, turn_seq, committed=False)
             # Every exit projects what this turn's receipts settled; the projection is idempotent and
             # later receipts keep updating it (Plan 12.2 Task 11; Codex CP3 ruling R2).
             self._apply_settled_cost(session, turn)
@@ -1413,6 +1707,16 @@ class AcpDuplexAdapter:
             # ends without a commit (Plan 12.2 Task 2). After transport teardown this is a no-op.
             turn.turn_control.refresh_effect_state()
             turn.turn_control.finalize_once(self._placeholder_settlement(turn))
+
+    def _mcp_refusal(
+        self, request: dict[str, Any], session_id: str, reason: str,
+        ownership_slot: ResponseOwnershipSlot | None,
+    ) -> ResponseEnvelope:
+        self._pre_run_refused(request, session_id, reason)
+        code = MCP_REOPEN_REFUSED if reason == "mcp_reopen_refused" else REQUEST_CANCELLED
+        return self._non_turn(error_response(request.get("id"), JsonRpcError(
+            code=code, message="client MCP unavailable" if code == MCP_REOPEN_REFUSED else "session unavailable",
+            data={"reason": reason})), ownership_slot)
 
     async def _refuse_prompt(
         self,
@@ -1700,17 +2004,19 @@ class AcpDuplexAdapter:
             return ATTACHED_STORAGE_WARNING_TEXT
         return ABSENT_STORAGE_WARNING_TEXT if self._bound_routes else CAPACITY_WARNING_TEXT
 
-    async def _emit_sliding_notice(self, session: AcpSpecSession) -> None:
+    async def _emit_sliding_notice(self, session: AcpSpecSession, *, expected_revision: int | None = None) -> None:
         """The first admitted turn after a switch to sliding says so, once (design spec 10).
 
         Live-only and best-effort: only a confirmed flush clears the obligation, so a failed or
         ambiguous send is tried again on the next admitted sliding turn; it never fails this turn."""
+        revision = session.config_publication.revision if expected_revision is None else expected_revision
         payload = build_agent_message_chunk_notification(session_id=session.session_id, text=SLIDING_ACTIVE_TEXT)
         try:
             await self._outbound.notify("session/update", payload, require_flushed=True)
         except Exception:  # noqa: BLE001 - a notice failure never fails the turn
             return
-        session.sliding_notice_pending = False
+        if session.config_publication.revision == revision:
+            session.sliding_notice_pending = False
 
     def _blocking_notice(self, session_id: str, loop: asyncio.AbstractEventLoop) -> Any:
         """A notice channel for work off the event loop: delivers `text` to this session and returns
@@ -1821,6 +2127,7 @@ class AcpDuplexAdapter:
         completion = conversation.sanitize_text(
             completion_text if completion_text is not None else _completion_message(result)
         )
+        self.record_turn_commit(turn.session_id, turn.turn_seq, committed=None)
         decision = conversation.prepare_commit(
             turn.turn_seq,
             sanitized_user_prompt=sanitized_user_prompt,
@@ -1833,6 +2140,7 @@ class AcpDuplexAdapter:
             effect_state=turn.turn_control.refresh_effect_state(),
         )
         conversation.commit_after_final_flush(decision)
+        self.record_turn_commit(turn.session_id, turn.turn_seq, committed=decision.commit)
         if turn.auto_decision is not None and outcome in (ConversationOutcome.COMPLETED, ConversationOutcome.REJECTED):
             # Plan 12.4 Task 4: only a committed, uncancelled, unfailed turn sets the next turn's previous tier.
             session = self._sessions.get(turn.session_id)
@@ -2136,6 +2444,7 @@ class AcpDuplexAdapter:
         self,
         *,
         session: AcpSpecSession,
+        execution_mode: ExecutionMode | None = None,
         planning_progress_observer: Any | None = None,
         halt_requested: Any | None = None,
         operation_control: Any | None = None,
@@ -2180,8 +2489,9 @@ class AcpDuplexAdapter:
             _maybe("turn_model", turn_model)
         if model_stops is not None:
             _maybe("model_stops", model_stops)
-        _maybe("client_mcp_service", _client_mcp_service(session))
-        _maybe("mcp_permission_broker", self._mcp_permission_broker_for(session))
+        chat = (execution_mode or session.execution_mode) is ExecutionMode.CHAT
+        _maybe("client_mcp_service", None if chat else _client_mcp_service(session))
+        _maybe("mcp_permission_broker", None if chat else self._mcp_permission_broker_for(session))
         return kwargs
 
     def _mcp_permission_broker_for(self, session: AcpSpecSession) -> AcpMcpPermissionBroker | None:

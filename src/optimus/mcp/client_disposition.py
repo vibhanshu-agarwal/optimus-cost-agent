@@ -8,6 +8,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
+from functools import partial
 from pathlib import Path
 from time import monotonic
 from typing import Any, Literal, Protocol
@@ -39,10 +40,25 @@ from optimus.mcp.client_trust import (
     ClientMcpSessionLease,
     compute_identity_fingerprint,
 )
-from optimus.mcp.local_ipc import PendingClientMcpCandidate, PendingClientMcpCandidateEndpoint
+from optimus.mcp.local_ipc import LocalIpcError, PendingClientMcpCandidate, PendingClientMcpCandidateEndpoint
 
 PermissionOutcome = Literal["allow", "reject", "timeout", "outbound_failure"]
 RequestPermissionFn = Callable[[dict[str, Any]], Awaitable[PermissionOutcome | str | dict[str, Any]]]
+
+
+def run_close_hooks(hooks: tuple[Callable[[], None], ...]) -> tuple[str, ...]:
+    failures: list[str] = []
+    control_failure: BaseException | None = None
+    for hook in hooks:
+        try:
+            hook()
+        except BaseException as exc:
+            failures.append("SESSION_CLOSE_FAILED")
+            if not isinstance(exc, Exception) and control_failure is None:
+                control_failure = exc
+    if control_failure is not None:
+        raise control_failure
+    return tuple(failures)
 
 
 class ClientMcpServiceFactory(Protocol):
@@ -73,6 +89,13 @@ class ClientMcpSessionState:
     _close_hooks: list[Callable[[], None]] = field(default_factory=list)
     _capabilities: list[ClientMcpRuntimeCapability] = field(default_factory=list)
     _workspace_root: Path | None = None
+    _record_close_failure: Callable[[], None] | None = field(default=None, repr=False)
+    _open_peers: int = 0
+    _suspending: bool = False
+    suspended: bool = False
+    _former_servers: dict[str, _ServerEntry] = field(default_factory=dict, repr=False)
+    _resolver_adapter: ClientMcpSdkAdapter | None = field(default=None, repr=False)
+    _candidate_cleanup_registered: bool = False
 
     @property
     def tool_service(self) -> ClientMcpSessionService:
@@ -97,12 +120,71 @@ class ClientMcpSessionState:
         entry = self._servers.get(server_name)
         return None if entry is None else entry.durable
 
-    def register_close_hook(self, hook: Callable[[], None]) -> bool:
-        if self._closed:
+    def register_close_hook(self, hook: Callable[[], None], *, peer: bool = False) -> bool:
+        if self._closed or self._suspending or self.suspended:
             hook()
             return False
         self._close_hooks.append(hook)
+        self._open_peers += int(peer)
         return True
+
+    def has_open_peer(self) -> bool:
+        return self._open_peers > 0
+
+    def own_candidate_cleanup(self, hook: Callable[[], None]) -> None:
+        if self._closed:
+            hook()
+        elif not self._candidate_cleanup_registered:
+            self._candidate_cleanup_registered = True
+            self._close_hooks.append(hook)
+
+    def has_leased_stdio_server(self) -> bool:
+        return any(cap.safe_identity.transport == "stdio" and self.is_leased(cap.safe_identity.server_name)
+                   for cap in self._capabilities)
+
+    def _detach_hooks(self) -> tuple[Callable[[], None], ...]:
+        hooks = tuple(self._close_hooks)
+        self._close_hooks.clear()
+        self._open_peers = 0
+        self._candidate_cleanup_registered = False
+        self._tool_service = self._tool_service.retire()
+        return hooks
+
+    def prepare_suspend(self) -> tuple[Callable[[], None], ...] | None:
+        if self._closed or self._suspending or self.suspended or not self.has_open_peer():
+            return None
+        self._suspending = True
+        self._former_servers = dict(self._servers)
+        self._servers = {name: replace(entry, lease=None) for name, entry in self._servers.items()}
+        return self._detach_hooks()
+
+    def complete_suspend(self, failures: tuple[str, ...]) -> bool:
+        if failures and self._record_close_failure is not None:
+            self._record_close_failure()
+        self._suspending = False
+        self.suspended = not failures and not self._closed
+        return self.suspended
+
+    def restore_suspended(self) -> None:
+        if not self._closed:
+            self._servers = {name: replace(entry, lease=None) for name, entry in self._former_servers.items()}
+            self._tool_service = self._tool_service.retire()
+            self.suspended = True
+
+    def prepare_close(self) -> tuple[Callable[[], None], ...]:
+        if self._closed:
+            return ()
+        self._closed = True
+        self.suspended = False
+        self._former_servers.clear()
+        self._capabilities.clear()
+        self._servers.clear()
+        self._resolver_adapter = None
+        return self._detach_hooks()
+
+    def complete_close(self, failures: tuple[str, ...]) -> None:
+        if failures and self._record_close_failure is not None:
+            self._record_close_failure()
 
     def _capability_for(self, server_name: str) -> ClientMcpRuntimeCapability | None:
         return next(
@@ -115,15 +197,13 @@ class ClientMcpSessionState:
         )
 
     def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        self._tool_service.detach_resolver()
-        for hook in list(self._close_hooks):
-            with suppress(Exception):
-                hook()
-        self._close_hooks.clear()
-        self._capabilities.clear()
+        hooks = self.prepare_close()
+        try:
+            failures = run_close_hooks(hooks)
+        except BaseException:
+            self.complete_close(("SESSION_CLOSE_FAILED",))
+            raise
+        self.complete_close(failures)
 
 
 @dataclass
@@ -185,6 +265,8 @@ class ClientMcpRuntime:
         sdk_closed = True
         try:
             self.sdk_adapter.close_all()
+            if isinstance(self.sdk_adapter, ClientMcpSdkAdapter):
+                sdk_closed = not self.sdk_adapter.pending_connections() and not self.sdk_adapter.close_failure_recorded
         except Exception:
             sdk_closed = False
 
@@ -203,6 +285,8 @@ class ClientMcpRuntime:
         supervisor_state = self.supervisor.state
 
         if not (sdk_closed and endpoint_closed and supervisor_closed):
+            self._stage_failure_recorded = True
+        if isinstance(self.disposition, ClientMcpDisposition) and self.disposition.close_failure_recorded:
             self._stage_failure_recorded = True
         complete = (not self._stage_failure_recorded) and (
             supervisor_state is MCPSupervisorState.DEAD
@@ -237,6 +321,56 @@ class ClientMcpDisposition:
         self._workspace_digest = workspace_digest
         self._permission_timeout_seconds = permission_timeout_seconds
         self._candidate_endpoint = candidate_endpoint
+        self.close_failure_recorded = False
+        self._cleanup_lock = asyncio.Lock()
+        self._jobs: set[asyncio.Task[Any]] = set()
+
+    def record_session_close_failure(self) -> None:
+        self.close_failure_recorded = True
+
+    async def run_blocking(self, operation: Callable[[], Any]) -> Any:
+        """One off-loop lane; cancellation cannot abandon the underlying work."""
+        async with self._cleanup_lock:
+            job = asyncio.create_task(asyncio.to_thread(operation))
+            self._jobs.add(job)
+            cancelled = False
+            try:
+                while not job.done():
+                    try:
+                        await asyncio.shield(job)
+                    except asyncio.CancelledError:
+                        cancelled = True
+                result = job.result()
+                if cancelled:
+                    raise asyncio.CancelledError
+                return result
+            finally:
+                self._jobs.discard(job)
+
+    async def drain(self) -> None:
+        while self._jobs:
+            for job in tuple(self._jobs):
+                while not job.done():
+                    try:
+                        await asyncio.shield(job)
+                    except asyncio.CancelledError:
+                        continue
+                    except Exception:
+                        break
+                self._jobs.discard(job)
+
+    def _own_candidates(self, state: ClientMcpSessionState) -> None:
+        endpoint = self._candidate_endpoint
+        if endpoint is not None:
+            session_id = state.session_id
+            def retire() -> None:
+                try:
+                    endpoint.retire_session(session_id)
+                except LocalIpcError as exc:
+                    # Candidate removal succeeded; the shared generation remains owned by the endpoint.
+                    if exc.code != "client_mcp.ipc_stop_incomplete":
+                        raise
+            state.own_candidate_cleanup(retire)
 
     async def disposition_for_new_session(
         self,
@@ -246,70 +380,133 @@ class ClientMcpDisposition:
         request_permission: RequestPermissionFn,
     ) -> ClientMcpSessionState:
         workspace_root = cwd.resolve()
-        state = ClientMcpSessionState(session_id=session_id, _workspace_root=workspace_root)
+        state = ClientMcpSessionState(session_id=session_id, _workspace_root=workspace_root,
+                                     _record_close_failure=self.record_session_close_failure)
+        self._own_candidates(state)
         if entries is None or len(entries) == 0:
             return state
 
-        capabilities = self._normalizer.normalize(
-            entries,
-            workspace_root=workspace_root,
-            controlled_path=self._controlled_path,
-            hmac_key=self._hmac_key,
-        )
-        state._capabilities.extend(capabilities)
+        try:
+            capabilities = self._normalizer.normalize(
+                entries,
+                workspace_root=workspace_root,
+                controlled_path=self._controlled_path,
+                hmac_key=self._hmac_key,
+            )
+            state._capabilities.extend(capabilities)
 
-        for capability in capabilities:
-            identity = capability.safe_identity
-            fingerprint = compute_identity_fingerprint(identity, hmac_key=self._hmac_key)
+            for capability in capabilities:
+                identity = capability.safe_identity
+                fingerprint = compute_identity_fingerprint(identity, hmac_key=self._hmac_key)
+                candidate_id = uuid.uuid4().hex
+                if self._candidate_endpoint is not None:
+                    view = capability.safe_view()
+                    candidate_id = self._candidate_endpoint.publish(
+                        PendingClientMcpCandidate(
+                            workspace_digest=self._workspace_digest,
+                            session_id=session_id,
+                            identity=identity,
+                            rendered_fingerprint=fingerprint,
+                            provenance=view.provenance,
+                            scanner_rule_ids=view.scanner_rule_ids,
+                        )
+                    )
+                params = build_client_mcp_permission_params(
+                    session_id=session_id,
+                    candidate_id=candidate_id,
+                    server_name=identity.server_name,
+                    transport=identity.transport,
+                    identity_fingerprint=fingerprint,
+                )
+                outcome = await self._await_permission(request_permission, params)
+                if outcome == "allow":
+                    lease = self._lease_authority.acquire_allow_once(
+                        session_id=session_id,
+                        workspace_digest=self._workspace_digest,
+                        identity=identity,
+                        identity_fingerprint=fingerprint,
+                    )
+                    durable = self._lease_authority.lookup_durable(
+                        self._workspace_digest,
+                        identity.server_name,
+                        fingerprint,
+                    )
+                    if durable is not None:
+                        lease = replace(lease, effect_ceiling=durable.effect_ceiling)
+                    state._servers[identity.server_name] = _ServerEntry(
+                        server_name=identity.server_name,
+                        outcome="leased",
+                        lease=lease,
+                        durable=durable,
+                        identity_fingerprint=fingerprint,
+                    )
+                else:
+                    state._servers[identity.server_name] = _ServerEntry(
+                        server_name=identity.server_name,
+                        outcome="unavailable",
+                        identity_fingerprint=fingerprint,
+                    )
+            return state
+        except BaseException as primary:
+            hooks = state.prepare_close()
+            try:
+                failures = await self.run_blocking(partial(run_close_hooks, hooks))
+            except BaseException:
+                state.complete_close(("SESSION_CLOSE_FAILED",))
+            else:
+                state.complete_close(failures)
+            raise primary
+
+
+    async def reopen_suspended(
+        self, state: ClientMcpSessionState, request_permission: RequestPermissionFn,
+    ) -> PermissionOutcome:
+        if state._closed or not state.suspended:
+            return "reject"
+        self._own_candidates(state)
+        renewed = dict(state._former_servers)
+        for name, entry in state._former_servers.items():
+            if entry.lease is None:
+                continue
+            capability = state._capability_for(name)
+            if capability is None or entry.identity_fingerprint is None:
+                return "reject"
             candidate_id = uuid.uuid4().hex
             if self._candidate_endpoint is not None:
+                endpoint = self._candidate_endpoint
                 view = capability.safe_view()
-                candidate_id = self._candidate_endpoint.publish(
-                    PendingClientMcpCandidate(
-                        workspace_digest=self._workspace_digest,
-                        session_id=session_id,
-                        identity=identity,
-                        rendered_fingerprint=fingerprint,
-                        provenance=view.provenance,
-                        scanner_rule_ids=view.scanner_rule_ids,
-                    )
+                candidate = PendingClientMcpCandidate(
+                    workspace_digest=self._workspace_digest, session_id=state.session_id,
+                    identity=capability.safe_identity, rendered_fingerprint=entry.identity_fingerprint,
+                    provenance=view.provenance, scanner_rule_ids=view.scanner_rule_ids,
                 )
+                candidate_id = await self.run_blocking(partial(endpoint.publish, candidate))
             params = build_client_mcp_permission_params(
-                session_id=session_id,
-                candidate_id=candidate_id,
-                server_name=identity.server_name,
-                transport=identity.transport,
-                identity_fingerprint=fingerprint,
+                session_id=state.session_id, candidate_id=candidate_id, server_name=name,
+                transport=capability.safe_identity.transport, identity_fingerprint=entry.identity_fingerprint,
             )
             outcome = await self._await_permission(request_permission, params)
-            if outcome == "allow":
-                lease = self._lease_authority.acquire_allow_once(
-                    session_id=session_id,
-                    workspace_digest=self._workspace_digest,
-                    identity=identity,
-                    identity_fingerprint=fingerprint,
-                )
-                durable = self._lease_authority.lookup_durable(
-                    self._workspace_digest,
-                    identity.server_name,
-                    fingerprint,
-                )
-                if durable is not None:
-                    lease = replace(lease, effect_ceiling=durable.effect_ceiling)
-                state._servers[identity.server_name] = _ServerEntry(
-                    server_name=identity.server_name,
-                    outcome="leased",
-                    lease=lease,
-                    durable=durable,
-                    identity_fingerprint=fingerprint,
-                )
-            else:
-                state._servers[identity.server_name] = _ServerEntry(
-                    server_name=identity.server_name,
-                    outcome="unavailable",
-                    identity_fingerprint=fingerprint,
-                )
-        return state
+            if outcome != "allow":
+                return outcome
+            durable = await self.run_blocking(partial(self._lease_authority.lookup_durable,
+                self._workspace_digest, name, entry.identity_fingerprint,
+            ))
+            lease = self._lease_authority.acquire_allow_once(
+                session_id=state.session_id, workspace_digest=self._workspace_digest,
+                identity=capability.safe_identity, identity_fingerprint=entry.identity_fingerprint,
+            )
+            if durable is not None:
+                lease = replace(lease, effect_ceiling=durable.effect_ceiling)
+            renewed[name] = replace(entry, lease=lease, durable=durable)
+        if state._closed:
+            return "reject"
+        state._servers = renewed
+        state._tool_service = state._tool_service.retire()
+        state.suspended = False
+        self._own_candidates(state)
+        if state._resolver_adapter is not None:
+            self.attach_runtime_resolver(state, sdk_adapter=state._resolver_adapter)
+        return "allow"
 
     def materialize_tool_service(
         self,
@@ -372,6 +569,7 @@ class ClientMcpDisposition:
     ) -> None:
         """Attach a transport-opening resolver only after disposition has succeeded."""
         builder = service_factory_builder or _adapter_backed_service_factory
+        state._resolver_adapter = sdk_adapter
 
         def resolve(server: str) -> ClientMcpToolService | None:
             return self._resolve_server(
@@ -422,7 +620,7 @@ class ClientMcpDisposition:
             ) -> None:
                 adapter.close(opened)
 
-            close_registered = state.register_close_hook(close_opened)
+            close_registered = state.register_close_hook(close_opened, peer=True)
             if not close_registered:
                 state.tool_service.unregister(service)
                 return None

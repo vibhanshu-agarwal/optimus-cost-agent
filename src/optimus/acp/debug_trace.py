@@ -440,7 +440,8 @@ def log_provider_attempts(
 # Fixed admission refusal reasons (optimus.acp.conversation and spec's fallback).
 PROMPT_REFUSAL_REASONS = frozenset({"cap", "cap_closed", "reservation", "delivery_indeterminate", "refused"})
 # Fixed refusals of a prompt request before any turn starts (spec `_handle_session_prompt`, correction plan v4 C5).
-PRE_RUN_REFUSAL_REASONS = frozenset({"invalid_params", "invalid_prompt_shape", "unknown_session", "empty_prompt", "turn_in_progress"})
+PRE_RUN_REFUSAL_REASONS = frozenset({"invalid_params", "invalid_prompt_shape", "unknown_session", "empty_prompt", "turn_in_progress",
+                                   "mcp_reopen_refused", "mcp_cleanup_uncertain", "mcp_reopen_in_progress", "mcp_closing"})
 
 
 def _refusal_record(session_id: object, request_id: object, reason: str, allowed: frozenset[str]) -> dict[str, Any]:

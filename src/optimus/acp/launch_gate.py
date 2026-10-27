@@ -32,6 +32,7 @@ from optimus.acp.launch_approvals import (
     compute_security_snapshot_digest,
 )
 from optimus.acp.launch_policy import (
+    DEFAULT_ACP_MCP_IDLE_SECONDS,
     DEFAULT_LIVE_MAX_COST_USD,
     DEFAULT_MAX_PLANNING_TURNS,
     LAUNCH_VARIABLE_POLICIES,
@@ -86,6 +87,7 @@ from optimus_security.sanitization import canonicalize_credential_uri, validate_
 # default are a tightening (or exact match) and require no approval; values
 # above it require an exact matching grant in the approval record.
 _MONOTONIC_DEFAULTS: Mapping[str, Decimal | int] = {
+    "OPTIMUS_ACP_MCP_IDLE_SECONDS": DEFAULT_ACP_MCP_IDLE_SECONDS,
     "OPTIMUS_LIVE_MAX_COST_USD": DEFAULT_LIVE_MAX_COST_USD,
     "OPTIMUS_MAX_PLANNING_TURNS": DEFAULT_MAX_PLANNING_TURNS,
     "OPTIMUS_LOOP_RECOVERY": 1,  # interactive; headless (0) is a free tightening
@@ -596,6 +598,13 @@ def resolve_launch_candidate(
             except ValueError as exc:
                 raise LaunchGateError(code="MONOTONIC_VALUE_INVALID", detail=name) from exc
             monotonic_grants[name] = value.strip()
+
+    if "OPTIMUS_ACP_MCP_IDLE_SECONDS" not in snapshot.values:
+        idle_policy = LAUNCH_VARIABLE_POLICIES["OPTIMUS_ACP_MCP_IDLE_SECONDS"]
+        display_rows.append(LaunchDisplayRow(
+            name=idle_policy.name, tier=idle_policy.tier, source_class="default",
+            display_value=idle_policy.display(str(DEFAULT_ACP_MCP_IDLE_SECONDS)), decision="allowed",
+        ))
 
     # Also check non-OPTIMUS provider keys that are in the registry.
     for name in LAUNCH_VARIABLE_POLICIES:

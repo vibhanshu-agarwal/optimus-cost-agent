@@ -159,7 +159,7 @@ def trusted_approval_literal() -> str | None:
 
 
 def auto_snapshot() -> RegistrySnapshot | None:
-    """The ``auto`` composition (Plan 12.4 Design 1, ADR-027): the shipped defaults, then the shipped Auto overlay,
+    """The ``auto`` composition (Plan 12.4 Design 1, ADR-028): the shipped defaults, then the shipped Auto overlay,
     then this process's operator override; None while enforcement is inactive. ``trusted_snapshot()`` stays the
     ordinary composition."""
     if not ENFORCEMENT_ACTIVE:

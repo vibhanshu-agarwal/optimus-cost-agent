@@ -4,6 +4,11 @@
 schema = "test-profiles-v1"
 
 [[rules]]
+tier = "proc"
+paths = ["tests/integration/mcp/test_client_sdk_local_stdio.py"]
+why = "Owns a real official-SDK stdio child in both normal-close and early-EOF cases; run serially outside core-parallel."
+
+[[rules]]
 tier = "audit-current"
 paths = [
   "tests/unit/acp/test_plan1126_shutdown.py",
@@ -607,6 +612,7 @@ paths = [
   "tests/integration/acp/test_launch_trust_flow.py",
   "tests/integration/evidence/test_private_files_platform.py",
   "tests/integration/evidence/test_subprocess_truncation.py",
+  "tests/integration/mcp/test_client_sdk_local_stdio.py",
   "tests/unit/acp/test_acp_subprocess_env.py",
   "tests/unit/acp/test_auto_launch_composition.py",
   "tests/unit/acp/test_evidence_redaction_adapter.py",

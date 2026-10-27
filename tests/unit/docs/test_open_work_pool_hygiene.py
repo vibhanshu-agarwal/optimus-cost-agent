@@ -5,6 +5,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import os
 import re
 import subprocess
 from collections import Counter
@@ -15,6 +16,7 @@ from urllib.parse import urlsplit
 import pytest
 
 from tools.doc_paths import doc_path, link_resolves, repo_relative
+from tools.tracked_repository_files import TrackedFileInventoryError, index_environment
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 OPTIMUS_POOL = doc_path("2026-07-23-consolidated-deferred-followups-backlog.md")
@@ -630,11 +632,20 @@ def _markdown_table_cells(line: str) -> tuple[str, ...]:
     return tuple(cell.strip() for cell in stripped[1:-1].split("|"))
 
 
-def _frozen_disposition_exception(plan_path: Path) -> tuple[str, str] | None:
-    """The pinned (row, disposition) a plan may keep, only for exactly its approved bytes. The digest is of the
-    bytes whose text is checked (approved plans are `-text`, so they equal the committed blob)."""
-    digest = hashlib.sha256(plan_path.read_bytes()).hexdigest().upper()
+def _frozen_disposition_exception(plan_path: Path, checked_bytes: bytes | None = None) -> tuple[str, str] | None:
+    """Only the exact approved bytes being checked may receive the pinned cell exception."""
+    digest = hashlib.sha256(plan_path.read_bytes() if checked_bytes is None else checked_bytes).hexdigest().upper()
     return FROZEN_DISPOSITION_EXCEPTIONS.get((plan_path.name, digest))
+
+
+def _prerequisites_plan_bytes(plan_path: Path) -> bytes:
+    environment = index_environment(REPO_ROOT)
+    revision = ":" if environment is not None else "HEAD:"
+    result = subprocess.run(
+        ["git", "show", revision + plan_path.relative_to(REPO_ROOT).as_posix()],
+        cwd=REPO_ROOT, env=environment, check=True, capture_output=True,
+    )
+    return result.stdout
 
 
 def _assert_prerequisites_table(plan: str, exception: tuple[str, str] | None = None) -> None:
@@ -690,16 +701,20 @@ def _post_amendment_plan_paths(name_status: str) -> tuple[Path, ...]:
 
 
 def _git_name_status_since_prerequisites_amendment() -> str:
+    environment = index_environment(REPO_ROOT)
+    revisions = (["--cached", PREREQUISITES_AMENDMENT_COMMIT] if environment is not None
+                 else [f"{PREREQUISITES_AMENDMENT_COMMIT}..HEAD"])
     result = subprocess.run(
         [
             "git",
             "diff",
             "--name-status",
-            f"{PREREQUISITES_AMENDMENT_COMMIT}..HEAD",
+            *revisions,
             "--",
             "docs/superpowers/plans",
         ],
         cwd=REPO_ROOT,
+        env=environment,
         check=True,
         capture_output=True,
         text=True,
@@ -1316,9 +1331,8 @@ def test_post_amendment_plans_declare_prerequisites_with_required_columns() -> N
     assert changed == (PLANS_ROOT / "2026-08-18-plan-11-23-example.md",)
 
     for plan_path in _post_amendment_plan_paths(_git_name_status_since_prerequisites_amendment()):
-        if not plan_path.is_file():
-            plan_path = PLANS_ROOT / "archive" / plan_path.name
-        _assert_prerequisites_table(_read(plan_path), _frozen_disposition_exception(plan_path))
+        checked_bytes = _prerequisites_plan_bytes(plan_path)
+        _assert_prerequisites_table(checked_bytes.decode("utf-8"), _frozen_disposition_exception(plan_path, checked_bytes))
 
 
 def test_one_approved_plan_cell_is_the_only_prerequisite_disposition_exception(tmp_path: Path) -> None:
@@ -1364,6 +1378,91 @@ def test_guardrails_checkout_fetches_prerequisite_amendment_history() -> None:
     workflow = _read(GUARDRAILS_WORKFLOW)
 
     assert "uses: actions/checkout@v4\n        with:\n          fetch-depth: 0" in workflow
+
+
+@pytest.fixture
+def prerequisite_candidate(tmp_path: Path, monkeypatch):
+    """Use a real owned index, never this checkout's source or index."""
+    _init_git_fixture(tmp_path)
+    (tmp_path / ".gitattributes").write_text("docs/superpowers/plans/*.md -text\n", encoding="utf-8")
+    (tmp_path / "seed.md").write_text("fixture base\n", encoding="utf-8")
+    subprocess.run(["git", "add", "seed.md", ".gitattributes"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "fixture base"], cwd=tmp_path, check=True)
+    base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True).strip()
+    monkeypatch.setitem(globals(), "REPO_ROOT", tmp_path)
+    monkeypatch.setitem(globals(), "PLANS_ROOT", tmp_path / "docs/superpowers/plans")
+    monkeypatch.setitem(globals(), "PREREQUISITES_AMENDMENT_COMMIT", base)
+    index = tmp_path / ".git/index"
+    monkeypatch.setenv("TEST_RUN_COMMIT_INDEX_FILE", str(index))
+    monkeypatch.setenv("TEST_RUN_COMMIT_INDEX_ROOT", str(tmp_path))
+    plan = PLANS_ROOT / "2026-10-27-candidate.md"
+    plan.parent.mkdir(parents=True)
+    valid = (
+        "## Prerequisites\n\n"
+        "| Prerequisite | Satisfied today? | Owner | If unsatisfied: genuinely hard, or merely unauthorized? |\n"
+        "|---|---|---|---|\n"
+        "| Fixture | no | operator | merely unauthorized |\n"
+    ).encode()
+    return tmp_path, plan, valid, index
+
+
+@pytest.mark.parametrize("alternate", [False, True])
+def test_prerequisite_candidate_sees_first_staged_addition(prerequisite_candidate, monkeypatch, alternate):
+    root, plan, valid, index = prerequisite_candidate
+    if alternate:
+        owned = root / ".git/candidate-index"
+        owned.write_bytes(index.read_bytes())
+        monkeypatch.setenv("TEST_RUN_COMMIT_INDEX_FILE", str(owned))
+        environment = {**os.environ, "GIT_INDEX_FILE": str(owned)}
+    else:
+        environment = None
+    plan.write_bytes(valid)
+    relative = plan.relative_to(root).as_posix()
+    subprocess.run(["git", "add", relative], cwd=root, env=environment, check=True)
+    assert plan in _post_amendment_plan_paths(_git_name_status_since_prerequisites_amendment())
+    test_post_amendment_plans_declare_prerequisites_with_required_columns()
+
+
+def test_prerequisite_candidate_refuses_missing_owned_index(prerequisite_candidate, monkeypatch):
+    root, _, _, _ = prerequisite_candidate
+    monkeypatch.setenv("TEST_RUN_COMMIT_INDEX_FILE", str(root / ".git/missing-index"))
+    with pytest.raises(TrackedFileInventoryError, match="commit_index_missing"):
+        _git_name_status_since_prerequisites_amendment()
+
+
+@pytest.mark.parametrize("staged_valid", [False, True])
+def test_prerequisite_candidate_checks_blob_not_worktree(prerequisite_candidate, staged_valid):
+    root, plan, valid, _ = prerequisite_candidate
+    invalid = valid.replace(b"merely unauthorized |", b"unclassified |")
+    plan.write_bytes(valid if staged_valid else invalid)
+    subprocess.run(["git", "add", plan.relative_to(root).as_posix()], cwd=root, check=True)
+    plan.write_bytes(invalid if staged_valid else valid)
+    if staged_valid:
+        test_post_amendment_plans_declare_prerequisites_with_required_columns()
+    else:
+        with pytest.raises(AssertionError):
+            test_post_amendment_plans_declare_prerequisites_with_required_columns()
+
+
+@pytest.mark.parametrize("staged_approved", [False, True])
+def test_prerequisite_candidate_exception_hashes_the_checked_blob(prerequisite_candidate, staged_approved):
+    root, fixture_plan, _, _ = prerequisite_candidate
+    (name, _), _exception = next(iter(FROZEN_DISPOSITION_EXCEPTIONS.items()))
+    approved_path = doc_path(name)
+    approved = approved_path.read_bytes()
+    plan = fixture_plan.with_name(name)
+    altered = approved + b"\n"
+    plan.write_bytes(approved if staged_approved else altered)
+    subprocess.run(["git", "add", plan.relative_to(root).as_posix()], cwd=root, check=True)
+    assert subprocess.check_output(["git", "show", ":" + plan.relative_to(root).as_posix()], cwd=root) == (
+        approved if staged_approved else altered
+    )
+    plan.write_bytes(altered if staged_approved else approved)
+    if staged_approved:
+        test_post_amendment_plans_declare_prerequisites_with_required_columns()
+    else:
+        with pytest.raises(AssertionError):
+            test_post_amendment_plans_declare_prerequisites_with_required_columns()
 
 
 def test_markdown_tables_keep_sibling_tables_under_one_h2() -> None:

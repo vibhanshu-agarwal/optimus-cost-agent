@@ -59,6 +59,135 @@ SENTINEL_PAYLOAD = {
 }
 
 
+class _TeardownControl(BaseException):
+    pass
+
+
+@pytest.mark.parametrize("faults", ["adapter", "runtime", "both", "writer", "control", "cancel"])
+async def test_raising_mcp_stage_still_joins_physical_writer(tmp_path, monkeypatch, mcp_trace, faults):
+    observed = _Observed(monkeypatch)
+    writers = []
+    adapter_failure = _TeardownControl() if faults == "control" else (
+        asyncio.CancelledError() if faults == "cancel" else ValueError("adapter failure")
+    )
+    runtime_failure = RuntimeError("runtime failure")
+    writer_failure = RuntimeError("writer failure")
+    real_aclose = server.AcpDuplexAdapter.aclose
+
+    async def failing_aclose(adapter):
+        await real_aclose(adapter)
+        if faults != "runtime":
+            raise adapter_failure
+
+    class OwnedWriter(DedicatedOutboundWriter):
+        def start(self):
+            super().start()
+            writers.append(self)
+
+        def close_and_join(self):
+            observed.sequence.append("writer")
+            super().close_and_join()
+            if faults == "writer":
+                raise writer_failure
+
+    outcome = ClientMcpShutdownOutcome(True, True, True, MCPSupervisorState.DEAD, True)
+
+    class Runtime:
+        def close(self):
+            observed.sequence.append("mcp_close")
+            if faults in {"runtime", "both"}:
+                raise runtime_failure
+            return outcome
+
+    monkeypatch.setattr(server.AcpDuplexAdapter, "aclose", failing_aclose)
+    monkeypatch.setattr(server, "DedicatedOutboundWriter", OwnedWriter)
+    srv = _server(tmp_path, Runtime())
+    task = asyncio.create_task(srv.serve_ndjson(StdioNdjsonLineReader(io.BytesIO(b"")), _PhysicalWriter()))
+    try:
+        done, pending = await asyncio.wait({task}, timeout=BOUND_SECONDS)
+        assert done and not pending
+        expected = runtime_failure if faults == "runtime" else adapter_failure
+        if faults == "cancel":
+            assert task.cancelled()
+        else:
+            assert task.exception() is expected
+        assert len(writers) == 1 and writers[0]._thread is not None
+        assert not writers[0]._thread.is_alive(), "owned non-daemon writer was left running"
+        assert observed.sequence == ["close_all", "mcp_close", "mcp_incomplete", "writer"]
+        [attempt] = observed.mcp_attempts
+        assert attempt.payload == (SENTINEL_PAYLOAD if faults in {"runtime", "both"} else {
+            "sdk_closed": True, "endpoint_closed": True,
+            "supervisor_closed": True, "supervisor_state": "DEAD",
+        })
+        if faults in {"both", "writer"}:
+            assert expected.__cause__ is (runtime_failure if faults == "both" else writer_failure)
+    finally:
+        if not task.done():
+            await _settle(task)
+        if not task.cancelled():
+            task.exception()
+        for writer in writers:
+            DedicatedOutboundWriter.close_and_join(writer)
+            assert not writer._thread.is_alive()
+
+
+@pytest.mark.parametrize("writer_fault", [False, True])
+async def test_mcp_failure_and_repeated_cancel_still_make_reader_decision(tmp_path, monkeypatch, mcp_trace, writer_fault):
+    observed = _Observed(monkeypatch)
+    entered, release = threading.Event(), threading.Event()
+    workers = []
+    failure = ValueError("mcp failure")
+    class Writer(DedicatedOutboundWriter):
+        def start(self):
+            super().start()
+            workers.append(self)
+        def close_and_join(self):
+            super().close_and_join()
+            if writer_fault:
+                raise RuntimeError("writer close failure")
+
+    async def failing_aclose(_adapter):
+        raise failure
+
+    class Runtime:
+        def close(self):
+            entered.set()
+            assert release.wait(BOUND_SECONDS)
+            return ClientMcpShutdownOutcome(True, True, True, MCPSupervisorState.DEAD, True)
+
+    monkeypatch.setattr(server.AcpDuplexAdapter, "aclose", failing_aclose)
+    monkeypatch.setattr(server, "DedicatedOutboundWriter", Writer)
+    pipe = _Pipe(asyncio.get_running_loop())
+    srv = _server(tmp_path, Runtime())
+    task = asyncio.create_task(srv.serve_ndjson(pipe.reader, _PhysicalWriter()))
+    try:
+        assert await pipe.stream.wait_until(lambda: pipe.stream.outstanding == 1)
+        task.cancel()
+        assert await asyncio.to_thread(entered.wait, BOUND_SECONDS)
+        task.cancel()
+        await asyncio.sleep(0)
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done(), "repeated cancellation abandoned the MCP worker"
+        release.set()
+        done, pending = await asyncio.wait({task}, timeout=BOUND_SECONDS)
+        assert done and not pending and task.cancelled()
+        assert len(workers) == 1 and not workers[0]._thread.is_alive()
+        assert pipe.stream.outstanding == 1
+        assert len(_reader_records(mcp_trace)) == 1
+        assert len(observed.mcp_attempts) == 1
+        assert observed.mcp_attempts[0].payload["supervisor_state"] == "DEAD"
+    finally:
+        release.set()
+        if not task.done():
+            await _settle(task)
+        if not task.cancelled():
+            task.exception()
+        for writer in workers:
+            DedicatedOutboundWriter.close_and_join(writer)
+        await pipe.aclose()
+
+
 # --------------------------------------------------------------------------------------
 # Trace fixtures
 # --------------------------------------------------------------------------------------
@@ -247,13 +376,13 @@ class _Observed:
         self.mcp_attempts: list[dict] = []
         self.returned_outcomes: list[object] = []
 
-        real_close_all = server.AcpDuplexAdapter.close_all
+        real_aclose = server.AcpDuplexAdapter.aclose
 
-        def spy_close_all(inner_self):
+        async def spy_aclose(inner_self):
             self.sequence.append("close_all")
-            return real_close_all(inner_self)
+            return await real_aclose(inner_self)
 
-        monkeypatch.setattr(server.AcpDuplexAdapter, "close_all", spy_close_all)
+        monkeypatch.setattr(server.AcpDuplexAdapter, "aclose", spy_aclose)
 
         real_debug_log = server.acp_debug_log
 

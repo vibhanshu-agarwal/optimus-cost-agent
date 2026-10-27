@@ -2,7 +2,7 @@
 
 This bundle holds the content-free evidence for the Plan 12.4 pilot, which chose Auto mode's per-turn judge. The pilot
 ran under Plan 12.4 v8 Design 3 on 2026-10-26, with a decision rule fixed before any run. The operator accepted its
-result, arm H, in [ADR-027](../../decisions/ADR-027-accepts-adr-007-auto-judge-h.md) (source S13).
+result, arm H, in [ADR-028](../../decisions/ADR-028-accepts-adr-007-auto-judge-h.md) (source S13).
 
 **No prompt text is filed here.** The labelled requests stay in the local review kit beside the worktrees
 (`optimus-handoff\sandbox-review-kit\plan12-4-auto\task3\`).

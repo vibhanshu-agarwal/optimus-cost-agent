@@ -1,5 +1,5 @@
 """Arm H, Auto mode's production classifier: its rules first, its classifier model only when they are unsure (Plan 12.4
-v9 Design 4; ADR-027; the Task 5 implementation note r3, accepted by Codex round 67).
+v9 Design 4; ADR-028; the Task 5 implementation note r3, accepted by Codex round 67).
 
 Every number and text below is frozen from the pilot's ``frozen-1`` (review kit ``task3/runs/frozen-1/frozen.json``,
 SHA-256 ``0a16c2ef0ddd4448...``) and the pilot's ``arms.py``: the rules, their cut points 0.5 and 4.5, the rules'

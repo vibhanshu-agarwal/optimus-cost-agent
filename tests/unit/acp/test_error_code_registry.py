@@ -12,6 +12,7 @@ from optimus.acp.errors import (
     INVALID_PARAMS,
     INVALID_REQUEST,
     JSON_RPC_STANDARD_ERROR_CODES,
+    MCP_REOPEN_REFUSED,
     METHOD_NOT_FOUND,
     MUTATION_FORBIDDEN,
     OPTIMUS_APPLICATION_ERROR_CODES,
@@ -49,6 +50,7 @@ def test_registry_is_unique_and_protocol_aligned() -> None:
         RESOURCE_NOT_FOUND,
         MUTATION_FORBIDDEN,
         DUPLICATE_REQUEST_ID,
+        MCP_REOPEN_REFUSED,
     )
 
     assert len(registry_values) == len(set(registry_values))
@@ -62,7 +64,8 @@ def test_registry_is_unique_and_protocol_aligned() -> None:
     assert all(not (RESERVED_MIN <= code <= RESERVED_MAX) for code in OPTIMUS_APPLICATION_ERROR_CODES)
     assert MUTATION_FORBIDDEN == -32910
     assert DUPLICATE_REQUEST_ID == -32911
-    assert OPTIMUS_APPLICATION_ERROR_CODES == frozenset({MUTATION_FORBIDDEN, DUPLICATE_REQUEST_ID})
+    assert MCP_REOPEN_REFUSED == -32912
+    assert OPTIMUS_APPLICATION_ERROR_CODES == frozenset({MUTATION_FORBIDDEN, DUPLICATE_REQUEST_ID, MCP_REOPEN_REFUSED})
 
 
 EXPECTED_LEGACY_ERROR_CODE_SITES: frozenset[tuple[str, str]] = frozenset()

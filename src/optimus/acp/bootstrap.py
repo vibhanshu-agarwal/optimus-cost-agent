@@ -12,6 +12,7 @@ from optimus.acp.debug_trace import log_planning_replan_event, log_provider_atte
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.failure_notes import attach_failure_note
 from optimus.acp.harness_runtime import AgentHarnessRuntime
+from optimus.acp.launch_policy import resolve_acp_mcp_idle_seconds
 from optimus.acp.server import AcpStreamServer
 from optimus.acp.spec import resolve_interactive_recovery, resolve_max_planning_turns
 from optimus.acp.subprocess_env import system_environ_view
@@ -219,6 +220,7 @@ def build_configured_server(
     :return: A fully configured instance of `AcpStreamServer`.
     :rtype: AcpStreamServer
     """
+    mcp_idle_seconds = resolve_acp_mcp_idle_seconds(environ)
     harness = build_agent_harness_runtime(
         environ=environ,
         workspace_root=Path(workspace_root or "."),
@@ -323,6 +325,7 @@ def build_configured_server(
             max_planning_turns=max_planning_turns,
             interactive_recovery=interactive_recovery,
             client_mcp_runtime=client_mcp_runtime,
+            mcp_idle_seconds=mcp_idle_seconds,
             conversation_sanitizer_inputs=conversation_sanitizer_inputs,
             redis_runtime=harness.redis_runtime,
             route_policy=route_policy,

@@ -2,7 +2,7 @@
 
 Which per-turn judge should Auto mode use? Content-free: no prompt text appears here or in the manifest.
 
-**Accepted by the operator on 2026-10-26:** arm H, recorded in ADR-027 (source S13). Paths such as `runs\...` and
+**Accepted by the operator on 2026-10-26:** arm H, recorded in ADR-028 (source S13). Paths such as `runs\...` and
 `harness\...` are in the review kit, `optimus-handoff\sandbox-review-kit\plan12-4-auto\task3\`.
 
 ## The result
