@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
@@ -370,6 +371,39 @@ class PlanningCheckIn(BaseModel):
 
 # Blocks the planning worker until the user answers; nothing runs meanwhile (ADR-009 requirement 3).
 PlanningCheckInCallback = Callable[[PlanningCheckIn], CheckInDecision]
+
+
+class PlanningEscalation(BaseModel):
+    """An episode's request to move the rest of the turn to a stronger model once its nudge has not helped (#397,
+    ADR-009 rung 2). ``what`` is the check-in's sanitized description of the repetition, for the user's notice."""
+
+    model_config = ConfigDict(frozen=True)
+
+    cause: str
+    planning_steps: int = Field(ge=1)
+    what: str
+
+
+@dataclass(frozen=True, slots=True)
+class EscalationGrant:
+    """The host moved the turn: every later request sends ``model_id`` through ``route_binder``. ``notice_delivered``
+    records whether the informational notice was confirmed sent; it never gates the move (ADR-005)."""
+
+    model_id: str
+    route_binder: TurnRouteBinder | None
+    notice_delivered: bool = False
+
+
+class EscalationRefusal(StrEnum):
+    """Why the host did not move the turn. A halt ends the run; any other refusal goes to the episode's check-in."""
+
+    NO_TARGET = "no_target"  # no stronger eligible model (or the turn already runs it)
+    HALTED = "halted"
+    FAILED = "failed"  # the host's callback raised or answered something else
+
+
+# Called only in interactive Auto runs; like the check-in it blocks the planning worker.
+PlanningEscalationCallback = Callable[[PlanningEscalation], EscalationGrant | EscalationRefusal]
 _TURN_LIMIT, _WALL_CLOCK = "TURN_LIMIT", "WALL_CLOCK"
 _NUDGE_STEP = object()  # the next recovery move is one budgeted nudge step, not a check-in
 
@@ -1046,14 +1080,17 @@ class PlanningLoopRunner:
         route_binder: TurnRouteBinder | None = None,
         recovery_checkin: PlanningCheckInCallback | None = None,
         loop_event_sink: Callable[[TelemetryEvent], None] | None = None,
+        recovery_escalation: PlanningEscalationCallback | None = None,
     ) -> None:
         """`recovery_checkin` makes the run interactive (Plan 12.3, Design 6): repetition and the end of
         the allowance get a nudge, then a check-in, instead of a stop. Without it the run is headless
-        and keeps today's hard caps."""
+        and keeps today's hard caps. `recovery_escalation` (an interactive Auto turn only, #397) is asked
+        once per episode, between the nudge and the check-in, to move the turn to a stronger model."""
         self._gateway_client = gateway_client
         self._model = model
         self._policy = policy
         self._recovery_checkin = recovery_checkin
+        self._recovery_escalation = recovery_escalation if recovery_checkin is not None else None
         self._loop_event_sink = loop_event_sink
         self._workspace_root = workspace_root.resolve()
         self._execution_mode = execution_mode
@@ -1129,6 +1166,7 @@ class PlanningLoopRunner:
             attempt_callback=self._attempt_callback,
             route_binder=self._route_binder,
             interactive=self._recovery_checkin is not None,
+            escalates=self._recovery_escalation is not None,
             loop_event_sink=self._loop_event_sink,
         )
         tools = GuardedLoopToolExecutor(guard=self._guard)
@@ -1170,6 +1208,19 @@ class PlanningLoopRunner:
                 # A detection on the allowance's last step, or after the clock: its nudge still comes
                 # before the check-in, in exactly one more step (Plan 12.3, Design 4).
                 loop_result = run_allowance(1, budgeted=True, spent=loop_result.state.cost_usd_spent)
+                continue
+            if isinstance(move, PlanningEscalation):
+                assert self._recovery_escalation is not None
+                try:
+                    outcome = self._recovery_escalation(move)
+                except Exception:  # noqa: BLE001 - a host that cannot move the turn leaves it to the check-in
+                    outcome = EscalationRefusal.FAILED
+                if not isinstance(outcome, EscalationGrant | EscalationRefusal):
+                    outcome = EscalationRefusal.FAILED
+                iteration_runner.record_escalation(move, outcome)
+                if isinstance(outcome, EscalationGrant) and not self._halt_requested():
+                    # The stronger model gets Continue's allowance; the episode stays open, so it ends at the check-in.
+                    loop_result = run_allowance(self._policy.continue_grant_steps, spent=loop_result.state.cost_usd_spent)
                 continue
             assert isinstance(move, PlanningCheckIn)
             try:
@@ -1222,6 +1273,7 @@ class _PlanningIterationRunner:
         attempt_callback: PlanningAttemptCallback | None = None,
         route_binder: TurnRouteBinder | None = None,
         interactive: bool = False,
+        escalates: bool = False,
         loop_event_sink: Callable[[TelemetryEvent], None] | None = None,
     ) -> None:
         self._gateway_client = gateway_client
@@ -1230,6 +1282,11 @@ class _PlanningIterationRunner:
         # Plan 12.3 interactive recovery. Steps are numbered across allowances, so each request keeps
         # its own operation id; costs, evidence and receipts simply carry on.
         self._interactive = interactive
+        # #397: the open episode's escalation, asked at most once per episode; per-episode facts for its check-in.
+        self._escalates = escalates
+        self._escalation_tried = False
+        self._episode_moved_to: str | None = None
+        self._episode_no_target = False
         self._loop_event_sink = loop_event_sink
         self._detector = LoopDetector(policy.loop_thresholds)
         self._coverage = ReadCoverage()
@@ -1346,9 +1403,9 @@ class _PlanningIterationRunner:
         self._allowance_end = self._steps_run + steps
         self._budgeted_step = budgeted
 
-    def next_recovery_move(self, loop_result: GoalLoopResult) -> PlanningCheckIn | object | None:
-        """After an allowance: the budgeted nudge step, a check-in, or None when the result stands.
-        First-occurrence typed failures, refusals and halts stay stops."""
+    def next_recovery_move(self, loop_result: GoalLoopResult) -> PlanningCheckIn | PlanningEscalation | object | None:
+        """After an allowance: the budgeted nudge step, the episode's one escalation (#397), a check-in, or
+        None when the result stands. First-occurrence typed failures, refusals and halts stay stops."""
         if self._typed_planning_stop_reason is not None:
             return None
         stop = loop_result.stop_reason
@@ -1366,6 +1423,9 @@ class _PlanningIterationRunner:
             return None
         if self._episode is not None:
             cause: str = self._episode.kind
+            if self._escalates and not self._escalation_tried and not (plan_waiting or refusal_waiting):
+                # The nudge was carried and the model still struggles: help comes before asking (ADR-009 rung 2).
+                return PlanningEscalation(cause=cause, planning_steps=self._steps_run, what=self._episode_text())
         else:
             cause = _WALL_CLOCK if stop is LoopStopReason.WALL_CLOCK else _TURN_LIMIT
         return PlanningCheckIn(
@@ -1388,19 +1448,44 @@ class _PlanningIterationRunner:
         detail += _CHECKIN_ENDINGS.get(decision, "")
         self._recovery_stop = (_RECOVERY_STOP_REASONS[checkin.cause], detail)
 
+    def record_escalation(self, move: PlanningEscalation, outcome: EscalationGrant | EscalationRefusal) -> None:
+        """A grant moves every later request to its model and binder. The episode stays open: the detector restarts
+        for the new model, whose first request carries the episode's note, and the next detection asks the user."""
+        self._escalation_tried = True
+        if isinstance(outcome, EscalationRefusal):
+            self._emit_loop_record("escalation", move.cause, self._steps_run, decision=outcome)
+            self._episode_no_target = outcome is EscalationRefusal.NO_TARGET
+            return
+        self._emit_loop_record(
+            "escalation",
+            move.cause,
+            self._steps_run,
+            decision="granted",
+            escalation=(self._model, outcome.model_id, outcome.notice_delivered),
+        )
+        self._model, self._route_binder, self._episode_moved_to = outcome.model_id, outcome.route_binder, outcome.model_id
+        self._escalates = False  # one switch per turn: later episodes on the stronger model go to their check-in
+        self._detector.reset()
+        self._checkin_requested = False
+        assert self._episode is not None
+        self._nudge = self._recovery_note(self._episode, escalated=True)
+
     def end_episode(self) -> None:
         """Continue ends the episode: a later detection starts a new one, with its own nudge."""
         self._episode, self._nudge, self._nudged, self._checkin_requested = None, None, False, False
+        self._escalation_tried, self._episode_moved_to, self._episode_no_target = False, None, False
         self._detector.reset()
         if self._last_decision is not None and self._last_decision.kind is PlanningTurnKind.REFUSE:
             self._last_decision = None  # Continue sets the refusal aside for more planning steps
 
-    def _recovery_note(self, detection: LoopDetection) -> str:
-        lines = [
-            "Your recent planning steps "
-            + _SIGNAL_TEXT[detection.kind].format(subject=detection.step.subject)
-            + ". Do not repeat that request."
-        ]
+    def _recovery_note(self, detection: LoopDetection, *, escalated: bool = False) -> str:
+        what = _SIGNAL_TEXT[detection.kind].format(subject=detection.step.subject)
+        if escalated:
+            # The stronger model did not make those steps: it is told why the turn moved to it (#397).
+            first = f"Optimus moved this planning to you: the earlier steps {what}, and one request to change approach did not help."
+        else:
+            first = f"Your recent planning steps {what}."
+        lines = [first + " Do not repeat that request."]
         error = self._last_error_step
         if error is not None:
             lines.append(f"Last error: the reply did not parse (parser reason {error.error_class}): {error.error_message}")
@@ -1411,18 +1496,25 @@ class _PlanningIterationRunner:
         note = sanitize_workspace_text("\n".join(lines), workspace_root=self._workspace_root)
         return note.encode("utf-8")[:_RECOVERY_NOTE_MAX_BYTES].decode("utf-8", errors="ignore")
 
+    def _episode_text(self) -> str:
+        assert self._episode is not None
+        what = _SIGNAL_TEXT[self._episode.kind].format(subject=self._episode.step.subject)
+        return sanitize_workspace_text(what, workspace_root=self._workspace_root)
+
     def _checkin_text(self, cause: str, plan_waiting: bool, refusal_waiting: bool) -> str:
         minutes = self._policy.max_wall_clock_minutes
         if self._episode is not None:
-            what = (
-                "the model " + _SIGNAL_TEXT[self._episode.kind].format(subject=self._episode.step.subject)
-                + ", and was asked once to try a different approach"
-            )
+            what = "the model " + _SIGNAL_TEXT[self._episode.kind].format(subject=self._episode.step.subject)
+            what += ", and was asked once to try a different approach"
+            if self._episode_moved_to is not None:
+                what += f", then moved to {self._episode_moved_to}"
         elif cause == _WALL_CLOCK:
             what = f"the {minutes}-minute planning time ran out without a final plan"
         else:
             what = "the planning steps ran out without a final plan"
         text = f"Planning paused after step {self._steps_run}: {what}."
+        if self._episode_no_target:
+            text += " Auto had no stronger eligible model to try."
         if plan_waiting:
             text += " A final plan is ready: Continue shows it for your approval."
         elif refusal_waiting:
@@ -1436,8 +1528,17 @@ class _PlanningIterationRunner:
         text += " Continue never approves a change; every change still needs its own approval. Stop ends this turn."
         return sanitize_workspace_text(text, workspace_root=self._workspace_root)
 
-    def _emit_loop_record(self, record: str, signal: str, planning_step: int, *, decision: CheckInDecision | None = None) -> None:
-        """Content-free: no path, tool, argument or reply text (Plan 12.3, Design 7)."""
+    def _emit_loop_record(
+        self,
+        record: str,
+        signal: str,
+        planning_step: int,
+        *,
+        decision: str | None = None,
+        escalation: tuple[str, str, bool] | None = None,
+    ) -> None:
+        """Content-free: no path, tool, argument or reply text (Plan 12.3, Design 7). A granted escalation (#397) adds
+        its (from model, to model, notice delivered)."""
         if self._loop_event_sink is None:
             return
         self._loop_event_sink(
@@ -1449,7 +1550,8 @@ class _PlanningIterationRunner:
                 record=record,
                 signal=str(signal),
                 planning_step=planning_step,
-                decision=None if decision is None else decision.value,
+                decision=None if decision is None else str(decision),
+                escalation=escalation,
             )
         )
 

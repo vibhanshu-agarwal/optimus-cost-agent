@@ -158,6 +158,14 @@ class TurnRouteBinder:
             with self._lock:
                 self._readings.append(RequestReading(tokens=decision.input_tokens, capacity=decision.usable_input))
 
+    def adopt_readings(self, previous: TurnRouteBinder) -> None:
+        """An escalated turn's new binder (#397) keeps the earlier binder's readings, each with its own capacity, so
+        the turn's meter still covers every request the turn sent."""
+        with previous._lock:
+            readings = list(previous._readings)
+        with self._lock:
+            self._readings[:0] = readings
+
     def largest_dispatch(self) -> RequestReading | None:
         """The turn's meter reading: the largest request sent, the smaller capacity on a tie; None when
         nothing was sent."""

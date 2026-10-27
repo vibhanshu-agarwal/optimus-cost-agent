@@ -105,7 +105,9 @@ def test_with_no_routable_tier_and_a_stopped_default_the_turn_is_refused() -> No
 def test_every_routable_model_has_its_own_route_policy_and_context_limits_and_the_summarizer_stays() -> None:
     router = _router()
     assert router.base_attachment is not None
-    assert sorted(router.route_policies) == sorted({(LUNA, "easy"), (HAIKU, "easy"), (GEMINI, "medium"), (GEMINI, "complex")})
+    assert sorted(router.route_policies) == sorted(
+        {(LUNA, "easy"), (HAIKU, "easy"), (GEMINI, "medium"), (GEMINI, "complex"), (GEMINI, "escalation")}
+    )
     for (model_id, role), policy in router.route_policies.items():
         assert (policy.identity.model_id, policy.identity.role) == (model_id, role)
     for model_id in (LUNA, HAIKU, GEMINI):

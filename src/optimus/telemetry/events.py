@@ -549,12 +549,16 @@ class TelemetryEvent(BaseModel):
         signal: str,
         planning_step: int,
         decision: str | None = None,
+        escalation: tuple[str, str, bool] | None = None,
     ) -> TelemetryEvent:
-        """One interactive loop detection or check-in decision (Plan 12.3). Content-free: the signal is a
-        fixed kind, never a path, tool, argument or reply text."""
+        """One interactive loop detection, escalation (#397) or check-in decision (Plan 12.3). Content-free: the
+        signal is a fixed kind, never a path, tool, argument or reply text. A granted escalation adds its
+        ``(from_model, to_model, notice_delivered)``."""
         payload: dict[str, Any] = {"record": record, "signal": signal, "planning_step": planning_step}
         if decision is not None:
             payload["decision"] = decision
+        if escalation is not None:
+            payload["from_model"], payload["to_model"], payload["notice_delivered"] = escalation
         return cls(
             kind=TelemetryEventKind.LOOP_RECOVERY,
             run_id=run_id,
