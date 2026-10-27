@@ -228,6 +228,25 @@ def test_an_unverifiable_decision_reply_is_refused(reply: dict[str, Any]) -> Non
         parse_decision_response(reply, questions=QUESTIONS)
 
 
+@pytest.mark.parametrize("choice", [[], {}, ["easy"], None, 1])
+def test_a_choice_of_the_wrong_type_is_uncertain_and_stops_the_route(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, choice: Any) -> None:
+    # Codex round 68: an unhashable choice once raised TypeError past the attempt contract, leaving Jev routable.
+    snapshot = _snapshot(tmp_path)
+    policy = model_policy(snapshot)
+    reply = _reply(answers={"tier": {"type": "choice", "choice": choice, "confidence": 0.9}})
+    wire = Wire(reply=http_reply(200, json.dumps(reply).encode("utf-8"))).install(monkeypatch)
+    client = UrllibOpenAICompatibleClient(api_key=PROVIDER_KEY, base_url="https://openrouter.ai/api/v1", sleep=lambda _s: None)
+
+    status, body = _post(policy, client, snapshot)
+    assert (status, body["code"]) == (502, "UPSTREAM_ATTEMPT_UNCERTAIN")
+    assert [attempt["outcome"] for attempt in body["route_attempts"]] == ["uncertain"]
+    assert len(wire.sent) == 1
+
+    status, body = _post(policy, client, snapshot)
+    assert body["code"] == "EMPIRICAL_ROUTE_STOPPED"
+    assert len(wire.sent) == 1
+
+
 def test_noul_and_score_answers_are_range_checked() -> None:
     questions = {"bug": {"type": "noul", "criteria": {"true": "a", "false": "b"}}, "size": {"type": "score", "criteria": ["s", "m", "l"]}}
     ok = _reply(answers={"bug": {"type": "noul", "noul": 0.2}, "size": {"type": "score", "score": 1.5}})

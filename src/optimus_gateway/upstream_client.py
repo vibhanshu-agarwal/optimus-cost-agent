@@ -375,7 +375,7 @@ def parse_decision_response(body: Mapping[str, Any], *, questions: Mapping[str, 
         if not isinstance(answer, dict) or answer.get("type") != kind or kind not in _DECISION_TYPES:
             raise RuntimeError("a decision answer has the wrong type")
         value = answer.get(kind)
-        if kind == "choice" and value not in asked.get("criteria", {}):
+        if kind == "choice" and not (isinstance(value, str) and value in asked.get("criteria", {})):
             raise RuntimeError("a choice answer is not one of the options")
         if kind == "noul" and not (isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 1):
             raise RuntimeError("a noul answer is not a probability")

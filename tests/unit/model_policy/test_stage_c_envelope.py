@@ -78,10 +78,15 @@ def test_a_relative_ledger_is_refused() -> None:
     assert caught.value.code == "STAGE_C_LEDGER_NOT_ABSOLUTE"
 
 
-def test_the_migration_keeps_the_historical_envelope_identity() -> None:
+def test_the_migration_keeps_the_historical_envelope_identity(tmp_path: Path) -> None:
     """Plan 12.4 v7 moved admission into the registry entries, which changed both profiles' composed hashes. Release r9
-    keeps its own pins, so its envelope is the one recorded before the migration, byte for byte."""
-    envelope = stage_c.compose_stage_c_envelope(ledger=Path(r"C:\stage-c\ledger.jsonl").resolve())
+    keeps its own pins, so its envelope is the one recorded before the migration, byte for byte. The recorded envelope's
+    ledger is the serialized Windows path, fixed here as a string so the identity holds on every platform (Codex round
+    68)."""
+    native = stage_c.stage_c_ledger_path(tmp_path)
+    composed = stage_c.compose_stage_c_envelope(ledger=native)
+    assert composed.ledger == str(native)
+    envelope = stage_c.StageCEnvelope(**{**composed.__dict__, "ledger": r"C:\stage-c\ledger.jsonl"})
 
     assert dict(envelope.profiles) == {"qualification": QUALIFICATION_HASH, "attached": ATTACHED_HASH}
     assert envelope.literal == "optimus-stage-c-envelope-v1:3675df47fbf159ea488a745d9302aafae5ca9ea90dc77a8481aa0930f399be75"  # pragma: allowlist secret - envelope identity, not a credential

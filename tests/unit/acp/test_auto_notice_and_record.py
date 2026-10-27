@@ -5,6 +5,7 @@ admitted Auto turn leaves exactly one content-free routing record (the Task 5 im
 from __future__ import annotations
 
 import asyncio
+import threading
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,7 @@ from optimus.telemetry.events import TelemetryEventKind
 from optimus.usage.turn_settlement import StageReceipt
 from tests.support.contract_doubles import checked_agent_runner
 from tests.unit.acp.test_auto_turn_routing import GEMINI, LUNA, Classifier, _router
-from tests.unit.acp.test_context_engine_admission import Runner, new_session, prompt, session_of, texts
+from tests.unit.acp.test_context_engine_admission import Runner, new_session, prompt, prompt_request, rpc, session_of, texts
 
 RECORD_KEYS = {
     "arm", "disposition", "reason", "answered_by", "predicted_tier", "classifier_tier", "confidence_band",
@@ -170,6 +171,92 @@ async def test_teardown_during_classification_sends_nothing_more_and_records_aba
     assert runner.requests == [] and not any(text.startswith("Auto:") for text in texts(outbound))
     [record] = _records(events)
     assert (record["disposition"], record["classifier_attempt"], record["answered_by"]) == ("abandoned", "uncertain", "classifier")
+
+
+def _tear_down(adapter: AcpDuplexAdapter, task: asyncio.Task) -> None:
+    """The server's transport-loss order (`server.py`): mark each active turn torn down, then cancel the request task."""
+    for turn in list(adapter._active_turns.values()):  # noqa: SLF001
+        turn.turn_control.request_transport_teardown()
+    task.cancel()
+
+
+async def test_a_request_task_cancelled_during_classification_records_once_and_keeps_its_late_receipt(tmp_path) -> None:
+    # Codex round 68: the real teardown cancels the request task while the classifier is still outstanding.
+    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+
+    class Outstanding:
+        def __call__(self, contract: Any, stops: Any, call: Any) -> ClassifierOutcome:
+            entered.set()
+            release.wait(5)
+            call.record_receipt(_receipt(call, "uncertain", None))
+            finished.set()
+            return ClassifierOutcome(tier="easy", confidence_band="high", predicted_tier="easy", answered_by="classifier")
+
+    adapter, outbound, runner, events, _ = _adapter(tmp_path, Outstanding())
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    task = asyncio.create_task(rpc(adapter, prompt_request(session_id, "Hello?", "q1")))
+    assert await asyncio.to_thread(entered.wait, 5)
+
+    _tear_down(adapter, task)
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    release.set()
+    assert await asyncio.to_thread(finished.wait, 5)
+
+    assert runner.requests == [] and not any(text.startswith("Auto:") for text in texts(outbound))
+    [record] = _records(events)
+    assert (record["disposition"], record["model_id"]) == ("abandoned", None)
+    receipts = session_of(adapter, session_id).cost_settlement.receipts(f"{session_id}:1")
+    assert [(r.stage, r.outcome) for r in receipts] == [("classification", "uncertain")], "the late receipt still settles"
+
+
+async def test_a_request_task_cancelled_while_the_notice_waits_records_once(tmp_path) -> None:
+    class Stalls(RecordingOutboundChannel):
+        async def notify(self, method: str, params: dict[str, Any], *, require_flushed: bool = False) -> None:
+            if params.get("update", {}).get("content", {}).get("text", "").startswith("Auto:"):
+                await asyncio.Event().wait()
+            await super().notify(method, params, require_flushed=require_flushed)
+
+    adapter, outbound, runner, events, _ = _adapter(tmp_path, Classifier(["easy"]), outbound=Stalls())
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    task = asyncio.create_task(rpc(adapter, prompt_request(session_id, "Hello?", "q1")))
+    for _ in range(200):
+        turns = list(adapter._active_turns.values())  # noqa: SLF001
+        if turns and turns[0].auto_decision is not None:
+            break
+        await asyncio.sleep(0.01)
+
+    _tear_down(adapter, task)
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert runner.requests == []
+    [record] = _records(events)
+    assert (record["disposition"], record["model_id"], record["notice_delivered"]) == ("abandoned", LUNA, False)
+
+
+async def test_a_cancel_after_the_record_is_written_adds_no_second_record(tmp_path) -> None:
+    class StallsText(RecordingOutboundChannel):
+        async def notify(self, method: str, params: dict[str, Any], *, require_flushed: bool = False) -> None:
+            if params.get("update", {}).get("sessionUpdate") == "agent_message_chunk":
+                await asyncio.Event().wait()
+            await super().notify(method, params, require_flushed=require_flushed)
+
+    adapter, outbound, runner, events, router = _adapter(tmp_path, Classifier(["complex"]), outbound=StallsText())
+    router.stops.add(GEMINI)
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    task = asyncio.create_task(rpc(adapter, prompt_request(session_id, "Hello?", "q1")))
+    for _ in range(200):
+        if _records(events):
+            break
+        await asyncio.sleep(0.01)
+
+    _tear_down(adapter, task)
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    [record] = _records(events)
+    assert (record["disposition"], record["reason"]) == ("refused", "AUTO_NO_ROUTABLE_MODEL")
 
 
 def _receipt(call: Any, outcome: str, cost: Decimal | None) -> StageReceipt:

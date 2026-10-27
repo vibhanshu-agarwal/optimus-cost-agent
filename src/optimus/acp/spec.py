@@ -386,6 +386,8 @@ class AcpPromptTurn:
     # Plan 12.4 Task 4: an Auto turn's routing, bound once after classification; its model is the turn's for every
     # call (planning, the approved application and the answer). None on every other launch.
     auto_decision: AutoDecision | None = None
+    # Plan 12.4 Task 5: set once the turn's one routing record is written, so a later cancel cannot add a second.
+    auto_recorded: bool = False
 
     @property
     def run_id(self) -> str:
@@ -1082,15 +1084,26 @@ class AcpDuplexAdapter:
             )
         try:
             if self._auto_router is not None:
-                routed = await self._route_auto_turn(
-                    request_id=request.get("id"),
-                    session=session,
-                    conversation=conversation,
-                    turn=turn,
-                    prompt_blocks=prompt,
-                    sanitized_user_prompt=admission.sanitized_user_prompt,
-                    ownership_slot=ownership_slot,
-                )
+                try:
+                    routed = await self._route_auto_turn(
+                        request_id=request.get("id"),
+                        session=session,
+                        conversation=conversation,
+                        turn=turn,
+                        prompt_blocks=prompt,
+                        sanitized_user_prompt=admission.sanitized_user_prompt,
+                        ownership_slot=ownership_slot,
+                    )
+                except asyncio.CancelledError:
+                    # Codex round 68: the server's teardown cancels this task mid-routing; the turn keeps its one record.
+                    self._record_auto_turn(
+                        session,
+                        turn,
+                        "abandoned" if turn.turn_control.transport_abandoned() else "cancelled",
+                        outcome=None,
+                        decision=turn.auto_decision,
+                    )
+                    raise
                 if routed is not None:
                     return routed
             if admission.crosses_warning and conversation.note_warning_threshold_for_attempt(
@@ -1588,6 +1601,9 @@ class AcpDuplexAdapter:
         from optimus.acp.auto_composition import routing_record
         from optimus.telemetry.events import TelemetryEvent
 
+        if turn.auto_recorded:
+            return
+        turn.auto_recorded = True
         sink = self._settlement_sink
         if sink is None:
             return
