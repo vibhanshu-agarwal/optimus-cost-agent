@@ -842,32 +842,40 @@ def _timeout_adapter(supervisor: MCPAsyncSupervisor, *, session: FakeSession | N
 
 def test_discover_over_budget_is_operation_timeout(supervisor: MCPAsyncSupervisor) -> None:
     session = FakeSession()
+    entered = threading.Event()
 
     async def _slow_list_tools(*, params: Any = None) -> ListToolsResult:
+        entered.set()
         await asyncio.sleep(2.0)
         return ListToolsResult(tools=[])
 
     session.list_tools = _slow_list_tools  # type: ignore[method-assign]
-    adapter = _timeout_adapter(supervisor, session=session)
+    adapter = _adapter(supervisor, session=session)
     connection = adapter.open(_capability(), session_id="s1")
+    adapter._operation_timeout_seconds = 0.2
     with pytest.raises(ClientMcpSdkError) as exc_info:
         adapter.discover(connection)
     assert exc_info.value.code == "OPERATION_TIMEOUT"
+    assert entered.is_set(), "the target operation must have started before its timeout"
 
 
 def test_call_over_budget_is_operation_timeout(supervisor: MCPAsyncSupervisor) -> None:
     session = FakeSession()
+    entered = threading.Event()
 
     async def _slow_call(name: str, arguments: dict[str, Any]) -> CallToolResult:
+        entered.set()
         await asyncio.sleep(2.0)
         return CallToolResult(content=[])
 
     session.call_tool = _slow_call  # type: ignore[method-assign]
-    adapter = _timeout_adapter(supervisor, session=session)
+    adapter = _adapter(supervisor, session=session)
     connection = adapter.open(_capability(), session_id="s1")
+    adapter._operation_timeout_seconds = 0.2
     with pytest.raises(ClientMcpSdkError) as exc_info:
         adapter.call(connection, "search", {"q": "x"})
     assert exc_info.value.code == "OPERATION_TIMEOUT"
+    assert entered.is_set(), "the target operation must have started before its timeout"
 
 
 def test_stream_over_budget_is_operation_timeout(supervisor: MCPAsyncSupervisor) -> None:
