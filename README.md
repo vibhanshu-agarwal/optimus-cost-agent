@@ -699,7 +699,9 @@ The turn then uses the cheapest model of that tier that has not stopped in this 
   - H's measured rates (4.7% against the pilot's 5% limits) do not establish population rates below 5%;
   - the previous turn's tier is a barely tested signal (#425);
   - the savings depend on the model list;
-  - a judge other than H needs its own change (#426).
+  - a challenger round on fresh data (round 2, 2026-10-27) kept H: the DSPy judges were more accurate but sent more
+    turns to too cheap a model, and with very long turns H's estimated saving against always choosing the complex
+    tier was about 6% (`docs/sources/plan-12-4-auto-round2/`).
 - **Turn it off:** unset `OPTIMUS_AGENT_MODEL`, or set an exact model ID.
 
 **OpenRouter is the approved default** (`OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter`).

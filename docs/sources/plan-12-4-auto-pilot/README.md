@@ -43,9 +43,9 @@ result, arm H, in [ADR-028](../../decisions/ADR-028-accepts-adr-007-auto-judge-h
 Codex CLI round 62 (gpt-6.1-sol, high) recomputed every metric, winner and interval independently and recommended
 accepting H, with conditions. It is posted verbatim on #395 (comment 6414706221).
 - **Applied:** the documentary corrections (wording, separation, accounting, identities and the acceptance record).
-- **Still pending:**
-  - the production conditions, which Phase B owns: confidence validation, classifier-failure handling and the live
-    slices.
+- **Met since:** the production conditions, which Phase B owned: confidence validation and classifier-failure
+  handling shipped in PR #428 (main `bf440cb`), and the live slices passed 3 of 3 on 2026-10-27. Round 2 kept H
+  ([round 2 evidence](../plan-12-4-auto-round2/); Plan 12.4 v10, the closing record).
 
 **The `auto` hash:** the operator approved `f11dc3ab…` (defaults plus the Auto overlay, no override) on 2026-10-26,
 after Codex round 63 accepted the composition.

@@ -1,0 +1,47 @@
+{
+  "arms": {
+    "A": {
+      "arm": "A",
+      "cut_complex": 0.5,
+      "cut_medium": -1.0,
+      "threshold": 0.0
+    },
+    "B": {
+      "arm": "B",
+      "threshold": 0.95,
+      "variant": "choice"
+    },
+    "D3": {
+      "arm": "D3",
+      "program": "tune-D-mipro-2",
+      "threshold": 0.0
+    },
+    "GATE": {
+      "arm": "GATE",
+      "d3_threshold": 0.0,
+      "jev_threshold": 0.95
+    },
+    "H": {
+      "arm": "H",
+      "backend": {
+        "arm": "B",
+        "variant": "choice"
+      },
+      "cut_complex": 4.5,
+      "cut_medium": 0.5,
+      "frozen_from": "frozen-1",
+      "learned_share": 0.9923076923076923,
+      "name": "H",
+      "rule_confidence": 0.8,
+      "threshold": 0.95,
+      "tuning_penalty": 0.43846153846153846,
+      "tuning_under": 0.015384615384615385
+    },
+    "MAX": {
+      "arm": "MAX",
+      "threshold": 0.0
+    }
+  },
+  "tuning_ids_sha256": "3c381dd344126e33fc0e0193ff246ca6a8ac93848d0bc54ee9e3d2fb535d7f85",
+  "tuning_n": 280
+}

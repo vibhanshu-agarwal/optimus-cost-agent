@@ -25,6 +25,7 @@ it and remove its line below. A test checks that this index lists every current 
 | [Capability and evidence correction sources](sources/capability-evidence-correction/) | Sources, authoring tools, correction map and validation record for HLD v2.20, LLD v2.43, Roadmap v11 and Test Strategy v1.9, and the Guardrails v1.5 cover |
 | [Plan 12.2 closure publication sources](sources/plan-12-2-context-engine-closure/) | Sources the HLD v2.19, LLD v2.42, Guardrails v1.4 and Test Strategy v1.8 were built from (Plan 12.2 Context Engine closure). Still the source of the Guardrails v1.5 body (unchanged from v1.4), and historical provenance for the archived v2.19, v2.42, v1.4 and v1.8 |
 | [Plan 12.4 Auto-mode pilot evidence](sources/plan-12-4-auto-pilot/) | Content-free evidence for the Auto judge: the evidence report, every view's tables, the frozen settings and the exploratory combinations; the digest-bearing manifest stays in the review kit, pinned by SHA-256 |
+| [Plan 12.4 round 2 evidence](sources/plan-12-4-auto-round2/) | Content-free evidence for round 2, the challenger round on a fresh sealed split: the evidence report, every view's tables, the frozen settings, the manifest and a tool that recomputes every view; H stays (Checkpoint R2, 2026-10-27; Plan 12.4 v10, the closing record, is in the plans archive) |
 
 ## Decision records (ADRs)
 
@@ -107,7 +108,6 @@ Live plans (each listed in the backlog's live plan registry):
 | [P11-FU-6 v2: bounded early POST rejection](superpowers/plans/2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | Gateway early-rejection correction |
 | [Local-hook UTF-8 repair](superpowers/plans/2026-09-06-local-hook-utf8-repair.md) | Pre-commit hook decoding fix |
 | [Evidence collector](superpowers/plans/evidence-handoff-evidence-collector-implementation.md) | Evidence-handoff collector |
-| [Plan 12.4 v9: Auto mode](superpowers/plans/2026-10-23-plan-12-4-auto-mode_v9.md) | Fixed tiers with models as configuration; H, the rules then Jev, accepted by ADR-028 (filed as ADR-027 before the merge-time renumbering); opt-in per-turn routing and a separate round 2. Earlier editions are in `archive/`; #395 owns status and next gates |
 
 ## Current designs
 

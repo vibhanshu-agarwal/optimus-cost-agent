@@ -175,6 +175,22 @@ by this folder.
        transcript (`2026-10-26T13:16:56.400Z` and `2026-10-26T13:38:04.632Z`). A full app export, not an excerpt. Raw
        S14 is archival provenance, never an operating, test or release dependency; S1–S13 retain their existing
        meanings.
+   - **Source S15.** Four operator messages of 2026-10-27 in the same session:
+     - **Plan 12.4 Checkpoint B:** the live acpx slices, one per routable tier, and the merge after they pass (CB1);
+       the HLD v2.22 / LLD v2.45 successor with `SKIP=check-added-large-files` for its PDFs (CB2).
+     - **Round 2:** option (c), dropping the L and HL arms (R4); the turn sizes from the operator's Claude Code usage
+       counts (N6); the reused two-call round-1 row (N7); the paid release.
+     - **Checkpoint R2:** the acceptance of round 2, H staying, and #426 closed as not needed (CR2), with the
+       close-out instruction.
+
+     The source record:
+     - External transcript export: `optimus-handoff\decisions-sources\2026-10-27-claude-session-plan12-4-r2-export.zip`,
+       produced by the app's session Export, 34,129,684 bytes.
+     - SHA-256: `8BFA4F333B462C157363A7E897639AD1DFE7322F899457E89343D6A03F1EDD85`.
+     - Claude checked, read-only, that each quoted decision appears verbatim in a human user turn of the export's main
+       transcript (`2026-10-27T06:54:07.529Z`, `2026-10-27T08:57:44.918Z`, `2026-10-27T13:47:50.587Z` and
+       `2026-10-27T16:35:31.612Z`). A full app export, not an excerpt. Raw S15 is archival provenance, never an
+       operating, test or release dependency; S1–S14 retain their existing meanings.
 2. **Label the decider.** Each record says who decided: the operator, an agent (Claude or Codex), or an
    agent proposal still awaiting the operator. A value an agent chose must never read as an operator
    requirement.
@@ -256,8 +272,8 @@ by this folder.
 | [023](ADR-023-plan12-shipped-empirical-admission-and-default-planner.md) | Plan 12.2 shipped empirical admission exception (Haiku 5.5, exact registry hash, `verified: false`) and medium-then-easy default planner; partially supersedes the verified-only admission and medium-only default/activation portions of earlier contracts and the related [ADR-003](ADR-003-context-ceiling-and-history-limits.md), [ADR-004](ADR-004-curated-model-registry.md) and [ADR-006](ADR-006-summarizer-model.md) integration claims | Accepted-with-open-items: the policy is accepted for the approved offline implementation, which ships with the Plan 12.2 delivery merge; the ordinary-launch proof for the shipped candidate is tracked in #237. The exception's binding to one hash and one model is superseded by [ADR-025](ADR-025-models-are-configuration-per-model-admission.md) | Operator (policy: the direct answer "Approved" in Codex chat, source S9; relayed to Claude in #237 6249169293, which is coordination evidence, not a new approval); drafted by Codex, filed by Claude | 2026-10-18 |
 | [024](ADR-024-accepts-adr-009-loop-control-phase-1-scope.md) | Accepts [ADR-009](ADR-009-loop-control-without-stopping-the-user.md) as scoped for loop control Phase 1 (Plan 12.3): a detector, one nudge and a Continue/Stop check-in; thresholds 3, one nudge, Continue +3; the legacy goal loop retired; escalation after Auto | Accepted | Operator (D1–D3, source S10); mechanism details by Claude, reviewed by Codex | 2026-10-23 |
 | [025](ADR-025-models-are-configuration-per-model-admission.md) | Models are configuration: per-model admission evidence in each registry entry, a conservative default estimator, per-model stops and the operator override; partially supersedes [ADR-023](ADR-023-plan12-shipped-empirical-admission-and-default-planner.md) and completes [ADR-004](ADR-004-curated-model-registry.md) option C | Accepted | Operator (N1(a) and N2(a), source S11); mechanism details by Claude, reviewed by Codex | 2026-10-25 |
-| [026](ADR-026-exception-routes-accept-one-unflagged-guardrail-stage.md) | Exception routes accept exactly one unflagged `guardrail` router stage (`flagged` false; no detection, decision, action, conflict or scope); every other stage and fact still refuses; residual risk accepted (#400 option b1). 025 is held by the unmerged Plan 12.4 branch | Accepted | Operator (decision N3, source S12); recommended by Codex (round 58); drafted and filed by Claude | 2026-10-26 |
-| [028](ADR-028-accepts-adr-007-auto-judge-h.md) | Accepts [ADR-007](ADR-007-auto-mode-tier-routing.md) with arm H as Auto mode's per-turn judge: the rules when confident (≥ 0.8), otherwise Jev `choice`, routing one tier up below 0.95; selected by the Plan 12.4 pilot's pre-registered rule, with its limitations; round 2 to follow | Accepted | Operator (source S13); recommended by Codex (round 62); drafted and filed by Claude | 2026-10-26 |
+| [026](ADR-026-exception-routes-accept-one-unflagged-guardrail-stage.md) | Exception routes accept exactly one unflagged `guardrail` router stage (`flagged` false; no detection, decision, action, conflict or scope); every other stage and fact still refuses; residual risk accepted (#400 option b1) | Accepted | Operator (decision N3, source S12); recommended by Codex (round 58); drafted and filed by Claude | 2026-10-26 |
+| [028](ADR-028-accepts-adr-007-auto-judge-h.md) | Accepts [ADR-007](ADR-007-auto-mode-tier-routing.md) with arm H as Auto mode's per-turn judge: the rules when confident (≥ 0.8), otherwise Jev `choice`, routing one tier up below 0.95; selected by the Plan 12.4 pilot's pre-registered rule, with its limitations; round 2 (2026-10-27) kept H under the same rule (Checkpoint R2, source S15; [plan v10](../superpowers/plans/archive/2026-10-23-plan-12-4-auto-mode_v10.md)) | Accepted | Operator (source S13); recommended by Codex (round 62); drafted and filed by Claude | 2026-10-26 |
 
 **Package A delivery:** [local accepted implementation and evidence](../superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md);
 the Plan 12.2 issue (#237), to which the backlog row now points, records current publication/next gates. The frozen ADR-013 repair decision and
