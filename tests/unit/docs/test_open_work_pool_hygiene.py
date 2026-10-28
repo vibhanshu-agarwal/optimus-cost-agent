@@ -709,6 +709,7 @@ def _git_name_status_since_prerequisites_amendment() -> str:
             "git",
             "diff",
             "--name-status",
+            "--no-renames",
             *revisions,
             "--",
             "docs/superpowers/plans",
@@ -1428,6 +1429,37 @@ def test_prerequisite_candidate_refuses_missing_owned_index(prerequisite_candida
     monkeypatch.setenv("TEST_RUN_COMMIT_INDEX_FILE", str(root / ".git/missing-index"))
     with pytest.raises(TrackedFileInventoryError, match="commit_index_missing"):
         _git_name_status_since_prerequisites_amendment()
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("near_copy", [False, True])
+def test_prerequisite_candidate_cannot_hide_added_plan_as_rename(prerequisite_candidate, monkeypatch, cached, near_copy):
+    root, plan, valid, _ = prerequisite_candidate
+    predecessor = plan.with_name("2026-09-01-approved-predecessor.md")
+    invalid = valid.replace(b"merely unauthorized |", b"unclassified |") + b"\n".join(
+        f"Historical detail {number}".encode() for number in range(100)
+    )
+    predecessor.write_bytes(invalid)
+    subprocess.run(["git", "add", "."], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "grandfathered predecessor"], cwd=root, check=True)
+    base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    monkeypatch.setitem(globals(), "PREREQUISITES_AMENDMENT_COMMIT", base)
+    predecessor.replace(plan)
+    if near_copy:
+        plan.write_bytes(invalid + b"\nNew successor detail\n")
+    subprocess.run(["git", "add", "."], cwd=root, check=True)
+    if cached:
+        revisions = ["--cached", base]
+    else:
+        subprocess.run(["git", "commit", "-q", "-m", "move candidate"], cwd=root, check=True)
+        monkeypatch.delenv("TEST_RUN_COMMIT_INDEX_FILE")
+        monkeypatch.delenv("TEST_RUN_COMMIT_INDEX_ROOT")
+        revisions = [f"{base}..HEAD"]
+    inferred = subprocess.check_output(["git", "diff", "--name-status", "--find-renames", *revisions], cwd=root, text=True)
+    assert inferred.startswith("R"), inferred
+    assert plan in _post_amendment_plan_paths(_git_name_status_since_prerequisites_amendment())
+    with pytest.raises(AssertionError):
+        test_post_amendment_plans_declare_prerequisites_with_required_columns()
 
 
 @pytest.mark.parametrize("staged_valid", [False, True])

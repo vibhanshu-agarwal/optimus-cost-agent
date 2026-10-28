@@ -236,6 +236,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/acp/operator_paths.py",
     "src/optimus/acp/outbound_writer.py",
     "src/optimus/acp/preflight.py",
+    "src/optimus/acp/process_lifecycle.py",
     "src/optimus/acp/request_ids.py",
     "src/optimus/acp/server.py",
     "src/optimus/acp/session_config.py",

@@ -11,6 +11,7 @@ import ast
 import asyncio
 import contextlib
 import hashlib
+import io
 import json
 import re
 import threading
@@ -77,7 +78,7 @@ H5_SOURCE_PATHS = (
 #: historical list above is bound to the historical baselines and must not gain paths
 #: those commits do not contain; the leaf bundle module exists only on current source,
 #: so the fresh `h5.shutdown_schedule` entry discovers from this list instead.
-H5_CURRENT_SOURCE_PATHS = (*H5_SOURCE_PATHS, "src/optimus/acp/harness_runtime.py")
+H5_CURRENT_SOURCE_PATHS = (*H5_SOURCE_PATHS, "src/optimus/acp/harness_runtime.py", "src/optimus/acp/process_lifecycle.py")
 
 _CLOSE_DEFINITION_NAMES = {
     "close",
@@ -776,6 +777,22 @@ def _probe_resource(
         writer.start()
         _repeat_actual_close(writer.close_and_join, lambda: int(writer._joined))
         return int(writer._joined), f"{terminal_cause}:writer_thread_joined"
+
+    if resource == "StdioByteWriter":
+        from optimus.acp import server as server_module
+
+        verify_executing_module(source, "src/optimus/acp/server.py", server_module)
+        stream = io.BytesIO()
+        framed_writer = server_module.StdioByteWriter(stream)
+        try:
+            framed_writer.write(b"owned-framed-probe")
+            asyncio.run(framed_writer.drain())
+            _repeat_actual_close(framed_writer.close_and_join, lambda: int(framed_writer._dedicated._joined))
+            assert stream.getvalue() == b"owned-framed-probe"
+            return int(framed_writer._dedicated._joined), f"{terminal_cause}:framed_writer_thread_joined"
+        finally:
+            if framed_writer.thread_alive:
+                framed_writer.close_and_join()
 
     if resource == "InMemoryAcpSpecSessionStore":
         from optimus.acp.spec import InMemoryAcpSpecSessionStore
@@ -1632,6 +1649,10 @@ class ShutdownEvidenceRecord:
 
 def _derived_shutdown_order(source: SourceTree) -> tuple[str, ...]:
     text = source.read_text("src/optimus/acp/server.py")
+    if "_close_writer_stage" in text:
+        from .serving_custody import _serving_shutdown_order
+
+        return _serving_shutdown_order(text)
     patterns = (
         ("adapter", r"(?:self\._adapter|adapter)\.(?:close_all|aclose)\("),
         ("client_mcp_runtime", r"(?:client_mcp_runtime\.close\(|asyncio\.to_thread\(\s*self\._client_mcp_runtime\.close\s*\))"),

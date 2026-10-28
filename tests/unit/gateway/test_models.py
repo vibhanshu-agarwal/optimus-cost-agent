@@ -9,8 +9,33 @@ from optimus.gateway.models import (
     GatewayUsage,
     build_chat_completions_payload,
     build_responses_payload,
+    parse_decision_response,
     parse_gateway_response,
 )
+
+
+@pytest.mark.parametrize("fragment", [{}, {"gateway_usage": None}, {"gateway_usage": []}])
+def test_decision_rejects_missing_or_nonmapping_usage(fragment):
+    with pytest.raises(GatewayResponseError) as exc:
+        parse_decision_response({"answers": {"result": "yes"}, **fragment})
+    assert exc.value.audit_code == "GATEWAY_USAGE_MISSING"
+    assert exc.value.gateway_usage is None
+
+
+def test_decision_accepts_valid_usage_without_optional_fields():
+    decision = parse_decision_response({
+        "answers": {"result": "yes"},
+        "gateway_usage": {"gateway_request_id": "gw-1", "provider": "glm", "cache_hit": False,
+                          "billing_units": 1, "cost_usd": "0.01"},
+    })
+    assert decision.answers == {"result": "yes"}
+    assert decision.route_attempts == ()
+    assert decision.decision_id is None and decision.model is None
+    assert decision.gateway_usage.gateway_request_id == "gw-1"
+    assert decision.gateway_usage.provider == "glm"
+    assert decision.gateway_usage.cache_hit is False
+    assert decision.gateway_usage.billing_units == 1
+    assert decision.gateway_usage.cost_usd == Decimal("0.01")
 
 
 def test_responses_payload_uses_input_not_messages():

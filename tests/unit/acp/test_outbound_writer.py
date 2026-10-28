@@ -216,6 +216,31 @@ def test_close_and_join_is_idempotent_and_non_daemon() -> None:
     writer.close_and_join()
 
 
+def test_close_observation_retains_a_blocked_non_daemon_writer() -> None:
+    transport = ControllableTransport()
+    transport.allow_write.clear()
+    writer = DedicatedOutboundWriter(transport)
+    writer.start()
+    owner = EphemeralSendOwner()
+    item = _item(owner, payload={"id": 1})
+    writer.submit(item)
+    try:
+        assert transport.write_entered.wait(2)
+        assert hasattr(writer, "request_close"), "closing must not join on the serving loop"
+        writer.request_close()
+        writer.request_close()
+        assert not writer.observe_closed(0.001)
+        assert not item.source_future.done()
+        with pytest.raises(RuntimeError):
+            writer.submit(_item(owner, payload={"id": 2}))
+        transport.allow_write.set()
+        assert writer.observe_closed(2)
+        assert item.source_future.result().outcome is SendOutcome.FLUSHED
+    finally:
+        transport.allow_write.set()
+        writer.close_and_join()
+
+
 def test_no_direct_ndjson_physical_write_outside_writer_and_adapter() -> None:
     allowed_names = {"outbound_writer.py", "server.py"}
     offenders: list[str] = []

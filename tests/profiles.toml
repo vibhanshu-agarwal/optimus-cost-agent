@@ -5,8 +5,8 @@ schema = "test-profiles-v1"
 
 [[rules]]
 tier = "proc"
-paths = ["tests/integration/mcp/test_client_sdk_local_stdio.py"]
-why = "Owns a real official-SDK stdio child in both normal-close and early-EOF cases; run serially outside core-parallel."
+paths = ["tests/integration/mcp/test_client_sdk_local_stdio.py", "tests/integration/acp/test_process_signals.py"]
+why = "Owns real official-SDK stdio children or isolated native-signal/serving children; run serially outside core-parallel."
 
 [[rules]]
 tier = "audit-current"
@@ -75,6 +75,12 @@ nodes = [
   "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_execution_emits_only_citations_for_behaviors_it_runs",
   "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_literal_scenarios_are_coherent_primary_transitions",
   "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_transition_authority_rejects_immutable_byte_drift",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_typing_allowance_rejects_every_unapproved_variant",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_typing_allowance_preserves_historical_citations",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_sealed_writer_provenance_keeps_live_types_untouched",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_historical_writer_rejects_any_unpinned_complete_text",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_default_mode_keeps_the_live_writer_drift_denial",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_historical_mode_keeps_nonwriter_authority_guards",
   "tests/unit/acp/test_plan1126_queue_policy.py::test_connection_health_probe_and_pool_ownership_are_classified",
   "tests/unit/acp/test_plan1126_queue_policy.py::test_h9_refuses_an_inventory_discovered_from_a_different_source",
   "tests/unit/acp/test_plan1126_queue_policy.py::test_h9_refuses_to_measure_a_source_it_is_not_executing",
@@ -610,6 +616,7 @@ why = "Reviewed product race/async/teardown tests that do not use the shared hel
 name = "platform"
 paths = [
   "tests/integration/acp/test_launch_trust_flow.py",
+  "tests/integration/acp/test_process_signals.py",
   "tests/integration/evidence/test_private_files_platform.py",
   "tests/integration/evidence/test_subprocess_truncation.py",
   "tests/integration/mcp/test_client_sdk_local_stdio.py",

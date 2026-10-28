@@ -63,6 +63,56 @@ class _TeardownControl(BaseException):
     pass
 
 
+async def test_clean_eof_inside_foreign_except_does_not_raise_foreign_error(tmp_path):
+    configured = configured_test_agent_server(tmp_path, output_text="unused")
+    try:
+        raise LookupError("unrelated caller context")
+    except LookupError:
+        await configured.server.serve_ndjson(StdioNdjsonLineReader(io.BytesIO(b"")), _PhysicalWriter())
+
+
+async def test_primary_existing_cause_and_context_survive_three_cleanup_failures(tmp_path, monkeypatch):
+    primary = ValueError("primary")
+    cause = LookupError("original cause")
+    context = RuntimeError("original context")
+    primary.__cause__ = cause
+    primary.__context__ = context
+    real_close = server.AcpDuplexAdapter.aclose
+    real_start = DedicatedOutboundWriter.start
+
+    async def adapter_close(adapter):
+        await real_close(adapter)
+        raise primary
+
+    def writer_start(writer):
+        real_start(writer)
+        real_join = writer._thread.join
+
+        def join(timeout=None):
+            real_join(timeout)
+            if not writer._thread.is_alive():
+                raise OSError("tertiary physical writer failure")
+
+        monkeypatch.setattr(writer._thread, "join", join)
+
+    class Runtime:
+        def close(self):
+            raise RuntimeError("secondary runtime failure")
+
+    monkeypatch.setattr(server.AcpDuplexAdapter, "aclose", adapter_close)
+    monkeypatch.setattr(DedicatedOutboundWriter, "start", writer_start)
+    srv = _server(tmp_path, Runtime())
+    with pytest.raises(ValueError) as raised:
+        await srv.serve_ndjson(StdioNdjsonLineReader(io.BytesIO(b"")), _PhysicalWriter())
+    assert raised.value is primary
+    assert primary.__cause__ is cause
+    assert primary.__context__ is context
+    notes = [note for note in getattr(primary, "__notes__", ()) if note.startswith("optimus cleanup stages:")]
+    assert len(notes) == 1
+    assert "mcp" in notes[0] and "writer" in notes[0]
+    assert "secondary runtime failure" not in notes[0] and "tertiary physical writer failure" not in notes[0]
+
+
 @pytest.mark.parametrize("faults", ["adapter", "runtime", "both", "writer", "control", "cancel"])
 async def test_raising_mcp_stage_still_joins_physical_writer(tmp_path, monkeypatch, mcp_trace, faults):
     observed = _Observed(monkeypatch)
@@ -120,7 +170,10 @@ async def test_raising_mcp_stage_still_joins_physical_writer(tmp_path, monkeypat
             "supervisor_closed": True, "supervisor_state": "DEAD",
         })
         if faults in {"both", "writer"}:
-            assert expected.__cause__ is (runtime_failure if faults == "both" else writer_failure)
+            assert expected.__cause__ is None
+            note = next(note for note in expected.__notes__ if note.startswith("optimus cleanup stages: "))
+            assert ("mcp" if faults == "both" else "writer") in note
+            assert "failure" not in note
     finally:
         if not task.done():
             await _settle(task)

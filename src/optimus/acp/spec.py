@@ -6,8 +6,10 @@ import contextlib
 import inspect
 import itertools
 import sys
+import threading
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
+from contextvars import ContextVar, copy_context
 from dataclasses import dataclass, field
 from decimal import Decimal
 from functools import partial
@@ -49,9 +51,11 @@ from optimus.acp.lifecycle import (
     NoticeControl,
     ResponseEnvelope,
     ResponseOwnershipSlot,
+    SendCompletion,
     SendKind,
     TurnControl,
     TurnResponseEnvelope,
+    TurnSendKey,
 )
 from optimus.acp.session_config import (
     SLIDING_ACTIVE_TEXT,
@@ -453,6 +457,142 @@ class InMemoryAcpSpecSessionStore:
         state.close()
 
 
+class ProgressAdmission(asyncio.Event):
+    """FIFO admission and physical completion are independent ownership facts."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.physical_future: concurrent.futures.Future[SendCompletion] | None = None
+
+
+@dataclass(frozen=True)
+class ProgressSubmission:
+    control: TurnControl
+    send_key: TurnSendKey
+    admission: ProgressAdmission
+
+
+progress_submission: ContextVar[ProgressSubmission | None] = ContextVar("progress_submission", default=None)
+
+
+class ProgressLane:
+    """One active send and one replaceable event, with a final FIFO admission barrier."""
+
+    def __init__(self, send: Callable[[Any, ProgressAdmission], Awaitable[None]]) -> None:
+        self._send = send
+        self._loop = asyncio.get_running_loop()
+        self._lock = threading.Lock()
+        self._pending: tuple[Any] | None = None
+        self._wakeup = False
+        self._closed = False
+        self._cancelled = False
+        self._active: asyncio.Task[None] | None = None
+        self._sends: dict[asyncio.Task[None], ProgressAdmission] = {}
+        self.late_offers = 0
+
+    def offer(self, event: Any) -> None:
+        with self._lock:
+            if self._closed:
+                self.late_offers = min(self.late_offers + 1, 2**31 - 1)
+                return
+            self._pending = (event,)
+            if self._wakeup:
+                return
+            self._wakeup = True
+            try:
+                self._loop.call_soon_threadsafe(self._wake)
+            except RuntimeError:
+                self._wakeup = False
+                self._pending = None
+                self._closed = True
+                self.late_offers = min(self.late_offers + 1, 2**31 - 1)
+
+    def _wake(self) -> None:
+        with self._lock:
+            self._wakeup = False
+            if self._closed or (self._active is not None and not self._active.done()):
+                return
+            pending, self._pending = self._pending, None
+        if pending is not None:
+            self._start(pending[0])
+
+    def _start(self, event: Any) -> None:
+        admission = ProgressAdmission()
+
+        async def send() -> None:
+            try:
+                await self._send(event, admission)
+            finally:
+                admission.set()  # failure/suppression also ends admission observation
+
+        task = asyncio.create_task(send(), name="optimus-planning-progress")
+        self._sends[task] = admission
+        self._active = task
+        task.add_done_callback(self._done)
+
+    def _done(self, task: asyncio.Task[None]) -> None:
+        if not task.cancelled():
+            task.exception()  # best-effort progress failures never escape a callback
+        admission = self._sends.get(task)
+        if admission is not None:
+            admission.set()
+        if admission is not None and (admission.physical_future is None or admission.physical_future.done()):
+            self._sends.pop(task, None)
+        if self._active is task:
+            self._active = None
+            self._wake()
+
+    async def settle(self) -> None:
+        with self._lock:
+            self._closed = True
+            pending, self._pending = self._pending, None
+        if pending is not None:
+            admission = self._sends.get(self._active) if self._active is not None else None
+            if admission is not None:
+                await admission.wait()
+            self._start(pending[0])
+        for admission in tuple(self._sends.values()):
+            await admission.wait()
+
+    def cancel(self) -> None:
+        with self._lock:
+            self._closed = True
+            self._pending = None
+        if self._cancelled:
+            return
+        self._cancelled = True
+        for task, admission in tuple(self._sends.items()):
+            if not admission.is_set() or admission.physical_future is not None:
+                task.cancel()
+
+    async def drain(self) -> None:
+        cancelled = False
+        for task, admission in tuple(self._sends.items()):
+            while not task.done():
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    if not task.done():
+                        cancelled = True
+                except Exception:
+                    break
+            future = admission.physical_future
+            if future is not None:
+                completion = asyncio.wrap_future(future)
+                while not completion.done():
+                    try:
+                        await asyncio.shield(completion)
+                    except asyncio.CancelledError:
+                        cancelled = True
+                    except Exception:
+                        break
+                if not completion.cancelled():
+                    completion.exception()
+            self._sends.pop(task, None)
+        if cancelled:
+            raise asyncio.CancelledError
+
+
 class RecordingOutboundChannel:
     """
     Represents an outbound channel used for recording JSON-RPC notifications and
@@ -554,6 +694,8 @@ class AcpDuplexAdapter:
         self._idle_sweeper: asyncio.Task[None] | None = None
         self._idle_sweep_lock = asyncio.Lock()
         self._mcp_close_tasks: set[asyncio.Task[Any]] = set()
+        self._worker_tasks: set[asyncio.Task[Any]] = set()
+        self._progress_lanes: set[ProgressLane] = set()
         self._reopen_reservations: dict[str, asyncio.Task[Any]] = {}
         self._reopen_cancelled: set[str] = set()
         # Plan 12.4 Task 4: an Auto launch binds each turn's route and attachment from its router; new sessions take the
@@ -711,6 +853,8 @@ class AcpDuplexAdapter:
 
     def _cancel_loop_work(self) -> None:
         self._closed = True
+        for lane in tuple(self._progress_lanes):
+            lane.cancel()
         for reservation in self._reopen_reservations.values():
             reservation.cancel()
         for turn in list(self._active_turns.values()):
@@ -728,6 +872,21 @@ class AcpDuplexAdapter:
             await self.stop_idle_mcp_sweeper()
         except BaseException as exc:
             prior_failure = exc
+        for task in tuple(self._worker_tasks):
+            while not task.done():
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    continue
+                except BaseException:
+                    break
+        for lane in tuple(self._progress_lanes):
+            try:
+                await lane.drain()
+            except BaseException as exc:
+                if prior_failure is None:
+                    prior_failure = exc
+            self._progress_lanes.discard(lane)
         current = asyncio.current_task()
         cancelled = current is not None and current.cancelling() > 0
         reservations = tuple(self._reopen_reservations.values())
@@ -1193,6 +1352,7 @@ class AcpDuplexAdapter:
         *,
         ownership_slot: ResponseOwnershipSlot | None = None,
     ) -> ResponseEnvelope:
+        progress: ProgressLane | None = None
         params = request.get("params")
         if not isinstance(params, dict):
             self._pre_run_refused(request, None, "invalid_params")
@@ -1451,34 +1611,44 @@ class AcpDuplexAdapter:
                 else None
             )
 
+            async def send_progress(event: PlanningProgressEvent, admitted: ProgressAdmission) -> None:
+                await self._emit_planning_progress(session_id=session_id, event=event, turn=turn, admission=admitted)
+
+            lane = ProgressLane(send_progress)
+            progress = lane
+            self._progress_lanes.add(lane)
+
             def _session_progress_observer(event: PlanningProgressEvent) -> None:
                 if default_observer is not None:
                     default_observer(event)
-                asyncio.run_coroutine_threadsafe(
-                    self._emit_planning_progress(session_id=session_id, event=event, turn=turn),
-                    loop,
-                )
+                lane.offer(event)
 
-            planning_result = await self._in_worker(
-                session,
-                turn,
-                self._runner.run,
-                planning_request,
-                **self._runner_runtime_kwargs(
-                    execution_mode=turn.execution_mode,
-                    planning_progress_observer=_session_progress_observer,
-                    session=session,
-                    halt_requested=turn.turn_control.halt_requested,
-                    operation_control=turn.turn_control,
-                    context_packer=attached_turn,
-                    stage_receipts=session.cost_settlement.record_attempt,
-                    route_binder=turn.route_binder,
-                    integrity_failure=session.cost_settlement.record_integrity_failure,
-                    recovery_checkin=self._recovery_checkin_for(turn, loop) if self._interactive_recovery else None,
-                    turn_model=None if turn.auto_decision is None else turn.auto_decision.model_id,
-                    model_stops=self._model_stops,
-                ),
-            )
+            try:
+                planning_result = await self._in_worker(
+                    session,
+                    turn,
+                    self._runner.run,
+                    planning_request,
+                    **self._runner_runtime_kwargs(
+                        execution_mode=turn.execution_mode,
+                        planning_progress_observer=_session_progress_observer,
+                        session=session,
+                        halt_requested=turn.turn_control.halt_requested,
+                        operation_control=turn.turn_control,
+                        context_packer=attached_turn,
+                        stage_receipts=session.cost_settlement.record_attempt,
+                        route_binder=turn.route_binder,
+                        integrity_failure=session.cost_settlement.record_integrity_failure,
+                        recovery_checkin=self._recovery_checkin_for(turn, loop) if self._interactive_recovery else None,
+                        turn_model=None if turn.auto_decision is None else turn.auto_decision.model_id,
+                        model_stops=self._model_stops,
+                    ),
+                )
+            except asyncio.CancelledError:
+                progress.cancel()
+                raise
+            finally:
+                await progress.settle()
             self._apply_turn_cost(
                 session,
                 turn,
@@ -1697,16 +1867,22 @@ class AcpDuplexAdapter:
             await self._emit_exit_cost_alerts(turn)
             raise
         finally:
-            if idle is not None and not idle.marker_seen:
-                self.record_turn_commit(session_id, turn_seq, committed=False)
-            # Every exit projects what this turn's receipts settled; the projection is idempotent and
-            # later receipts keep updating it (Plan 12.2 Task 11; Codex CP3 ruling R2).
-            self._apply_settled_cost(session, turn)
-            self._report_context_faults(turn)
-            # Recompute after any cancellation so settlement telemetry is exact even for a turn that
-            # ends without a commit (Plan 12.2 Task 2). After transport teardown this is a no-op.
-            turn.turn_control.refresh_effect_state()
-            turn.turn_control.finalize_once(self._placeholder_settlement(turn))
+            try:
+                if progress is not None:
+                    await progress.drain()
+            finally:
+                if progress is not None:
+                    self._progress_lanes.discard(progress)
+                if idle is not None and not idle.marker_seen:
+                    self.record_turn_commit(session_id, turn_seq, committed=False)
+                # Every exit projects what this turn's receipts settled; the projection is idempotent and
+                # later receipts keep updating it (Plan 12.2 Task 11; Codex CP3 ruling R2).
+                self._apply_settled_cost(session, turn)
+                self._report_context_faults(turn)
+                # Recompute after any cancellation so settlement telemetry is exact even for a turn that
+                # ends without a commit (Plan 12.2 Task 2). After transport teardown this is a no-op.
+                turn.turn_control.refresh_effect_state()
+                turn.turn_control.finalize_once(self._placeholder_settlement(turn))
 
     def _mcp_refusal(
         self, request: dict[str, Any], session_id: str, reason: str,
@@ -2202,16 +2378,42 @@ class AcpDuplexAdapter:
         teardown), and a worker that never started can never start later (Codex CP3 ruling R2)."""
         invocation = session.cost_settlement.open_invocation(turn.run_id)
 
-        def call() -> Any:
+        def call() -> tuple[bool, Any]:
             if not invocation.start():
-                return None  # its turn already stopped waiting; nothing may run now
+                return True, None  # its turn already stopped waiting; nothing may run now
             try:
-                return function(*args, **kwargs)
+                return True, function(*args, **kwargs)
+            except BaseException as exc:
+                return False, exc
             finally:
                 invocation.end()
 
+        context = copy_context()
+        loop = asyncio.get_running_loop()
+
+        async def observe_worker() -> tuple[bool, Any]:
+            # The executor future survives even direct cancellation of its supervisor task.
+            physical = loop.run_in_executor(None, context.run, call)
+            while True:
+                try:
+                    return await asyncio.shield(physical)
+                except asyncio.CancelledError:
+                    invocation.abandon_unstarted()
+
+        task = asyncio.create_task(observe_worker(), name="optimus-owned-turn-worker")
+        self._worker_tasks.add(task)
+
+        def finished(owned: asyncio.Task[Any]) -> None:
+            self._worker_tasks.discard(owned)
+            if not owned.cancelled():
+                owned.exception()
+
+        task.add_done_callback(finished)
         try:
-            return await asyncio.to_thread(call)
+            succeeded, result = await asyncio.shield(task)
+            if not succeeded:
+                raise result
+            return result
         finally:
             invocation.abandon_unstarted()
 
@@ -2611,21 +2813,32 @@ class AcpDuplexAdapter:
         session_id: str,
         event: PlanningProgressEvent,
         turn: AcpPromptTurn | None = None,
+        admission: ProgressAdmission | None = None,
     ) -> None:
+        admission = admission or ProgressAdmission()
+        submission = None
         if turn is not None:
             lease = turn.turn_control.try_start(
                 SendKind.PROGRESS,
-                f"progress-{event.settled_turn}",
+                f"progress-{event.settled_turn}-{uuid.uuid4().hex}",
             )
             if not lease.granted:
+                admission.set()
                 return
+            assert lease.send_key is not None
+            submission = ProgressSubmission(turn.turn_control, lease.send_key, admission)
         payload = build_planning_progress_notification(
             session_id=session_id,
             settled_turn=event.settled_turn,
             max_planning_turns=event.max_planning_turns,
             read_request_count=event.read_request_count,
         )
-        await self._outbound.notify("session/update", payload)
+        token = progress_submission.set(submission)
+        try:
+            await self._outbound.notify("session/update", payload)
+        finally:
+            progress_submission.reset(token)
+            admission.set()
 
 
 _VISIBLE_WORKSPACE_CONTEXT_FAILURES = frozenset(

@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+import io
 import json
+import os
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -13,6 +18,181 @@ pytestmark = pytest.mark.usefixtures("isolated_windows_known_folders")
 
 from optimus.acp import __main__ as acp_main
 from tests.unit.acp.conftest import FakeKeyring, authorize_workspace_for_test
+
+
+def _owned_serving():
+    function = getattr(acp_main, "_run_serving_process", None)
+    assert function is not None, "the CLI must keep serving, cleanup and observation on one retained loop"
+    return function
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("framed", [False, True])
+async def test_owned_cli_clean_eof_joins_real_stdio_owners(tmp_path, framed):
+    from optimus.acp.process_lifecycle import ProcessLifecycle
+    from optimus.acp.server import StdioByteReader, StdioByteWriter, StdioNdjsonLineReader, StdioNdjsonLineWriter
+    from tests.integration.acp.test_server_stream import configured_test_agent_server
+
+    function = _owned_serving()
+    configured = configured_test_agent_server(tmp_path, output_text="unused")
+    lifecycle = ProcessLifecycle()
+    reader = StdioByteReader(io.BytesIO(b"")) if framed else StdioNdjsonLineReader(io.BytesIO(b""))
+    writer = StdioByteWriter(io.BytesIO()) if framed else StdioNdjsonLineWriter(io.BytesIO())
+    assert await function(configured.server, lifecycle=lifecycle, reader=reader, writer=writer, framed=framed) == 0
+    assert reader.observe_closed(2)
+    assert lifecycle.state == "COMPLETE"
+
+
+@pytest.mark.asyncio
+async def test_owned_cli_signal_returns_incomplete_for_only_borrowed_input(tmp_path):
+    from optimus.acp.process_lifecycle import ProcessLifecycle, StopReason
+    from optimus.acp.server import StdioNdjsonLineReader, StdioNdjsonLineWriter
+    from tests.integration.acp.test_server_stream import configured_test_agent_server
+
+    function = _owned_serving()
+    entered = threading.Event()
+    read_fd, write_fd = os.pipe()
+    stream = os.fdopen(read_fd, "rb", buffering=0)
+
+    class Input:
+        def readline(self):
+            entered.set()
+            return stream.readline()
+
+    reader = StdioNdjsonLineReader(Input())
+    lifecycle = ProcessLifecycle()
+    configured = configured_test_agent_server(tmp_path, output_text="unused")
+    call = asyncio.create_task(function(configured.server, lifecycle=lifecycle, reader=reader,
+        writer=StdioNdjsonLineWriter(io.BytesIO()), observation_seconds=0.03))
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        lifecycle.request_stop(StopReason.SIGTERM)
+        assert await asyncio.wait_for(call, 2) == 75
+        assert not reader.pending_read.done()
+        assert reader.read_thread.daemon
+        assert lifecycle.state != "COMPLETE"
+    finally:
+        os.close(write_fd)
+        reader.request_close()
+        await asyncio.to_thread(reader.observe_closed, 2)
+        if not call.done():
+            lifecycle.request_stop(StopReason.SIGTERM)
+        await asyncio.gather(call, return_exceptions=True)
+        stream.close()
+
+
+@pytest.mark.asyncio
+async def test_owned_cli_reports_failed_actual_redis_teardown_as_nonzero(tmp_path):
+    from optimus.acp.process_lifecycle import ProcessLifecycle
+    from optimus.acp.server import StdioNdjsonLineReader, StdioNdjsonLineWriter
+    from tests.integration.acp.test_server_stream import configured_test_agent_server
+    from tests.unit.acp.test_server_redis_shutdown import _CountingResource, _runtime
+
+    function = _owned_serving()
+    client, pool = _CountingResource(error=RuntimeError("close failed")), _CountingResource()
+    runtime = _runtime(client=client, pool=pool)
+    configured = configured_test_agent_server(tmp_path, output_text="unused")
+    configured.server._redis_runtime = runtime
+    lifecycle = ProcessLifecycle()
+    code = await function(configured.server, lifecycle=lifecycle, reader=StdioNdjsonLineReader(io.BytesIO(b"")),
+        writer=StdioNdjsonLineWriter(io.BytesIO()))
+    assert code == 74
+    assert runtime.teardown_record.owner_terminated
+    assert not runtime.teardown_record.is_clean
+    assert client.count == pool.count == 1
+
+
+@pytest.mark.asyncio
+async def test_startup_stop_cleanup_never_starts_a_later_read_or_serving_phase(tmp_path):
+    import inspect
+
+    from optimus.acp.process_lifecycle import ProcessLifecycle, StopReason
+    from optimus.acp.server import StdioNdjsonLineReader, StdioNdjsonLineWriter
+    from tests.integration.acp.test_server_stream import configured_test_agent_server
+
+    function = _owned_serving()
+    assert "start_serving" in inspect.signature(function).parameters, "pre-bind startup interruption needs cleanup without serving"
+
+    class Input:
+        def readline(self):
+            raise AssertionError("a latched startup stop cannot start input")
+
+    configured = configured_test_agent_server(tmp_path, output_text="unused")
+    reader = StdioNdjsonLineReader(Input())
+    lifecycle = ProcessLifecycle()
+    lifecycle.request_stop(StopReason.SIGINT)
+    code = await function(configured.server, lifecycle=lifecycle, reader=reader, writer=StdioNdjsonLineWriter(io.BytesIO()), start_serving=False)
+    assert code == 130
+    assert reader.read_thread is None
+    assert configured.fake_gateway_call_count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["adapter", "writer"])
+async def test_completed_owned_cleanup_failure_uses_failed_exit_not_clean_signal(tmp_path, monkeypatch, stage):
+    from optimus.acp import server as server_module
+    from optimus.acp.outbound_writer import DedicatedOutboundWriter
+    from optimus.acp.process_lifecycle import ProcessLifecycle
+    from optimus.acp.server import StdioNdjsonLineReader, StdioNdjsonLineWriter
+    from tests.integration.acp.test_server_stream import configured_test_agent_server
+
+    function = _owned_serving()
+    configured = configured_test_agent_server(tmp_path, output_text="unused")
+    if stage == "adapter":
+        original = server_module.AcpDuplexAdapter.aclose
+
+        async def close(adapter):
+            await original(adapter)
+            raise ValueError("completed cleanup failure")
+
+        monkeypatch.setattr(server_module.AcpDuplexAdapter, "aclose", close)
+    else:
+        original = DedicatedOutboundWriter.close_and_join
+
+        def close(writer):
+            original(writer)
+            raise ValueError("completed cleanup failure")
+
+        monkeypatch.setattr(DedicatedOutboundWriter, "close_and_join", close)
+    code = await function(configured.server, lifecycle=ProcessLifecycle(), reader=StdioNdjsonLineReader(io.BytesIO(b"")),
+        writer=StdioNdjsonLineWriter(io.BytesIO()))
+    assert code == 74
+
+
+@pytest.mark.asyncio
+async def test_signal_does_not_absorb_an_independent_cleanup_control(tmp_path, monkeypatch):
+    from optimus.acp import server as server_module
+    from optimus.acp.process_lifecycle import ProcessLifecycle, StopReason
+    from optimus.acp.server import StdioNdjsonLineWriter
+    from tests.integration.acp.test_server_stream import configured_test_agent_server
+
+    class CleanupControl(BaseException):
+        pass
+
+    entered = asyncio.Event()
+    expected = CleanupControl()
+
+    class Reader:
+        async def readline(self):
+            entered.set()
+            await asyncio.Event().wait()
+
+    original = server_module.AcpDuplexAdapter.aclose
+
+    async def close(adapter):
+        await original(adapter)
+        raise expected
+
+    monkeypatch.setattr(server_module.AcpDuplexAdapter, "aclose", close)
+    configured = configured_test_agent_server(tmp_path, output_text="unused")
+    lifecycle = ProcessLifecycle()
+    task = asyncio.create_task(_owned_serving()(configured.server, lifecycle=lifecycle, reader=Reader(),
+        writer=StdioNdjsonLineWriter(io.BytesIO())))
+    await entered.wait()
+    lifecycle.request_stop(StopReason.SIGINT)
+    with pytest.raises(CleanupControl) as raised:
+        await task
+    assert raised.value is expected
 
 _HOST_STARTERS = ("ensure_local_redis", "ensure_local_phoenix", "ensure_local_gateway")
 
@@ -72,6 +252,48 @@ def _patch_common(monkeypatch, *, server_factory=None):
     monkeypatch.setattr(acp_main, "build_configured_server", server_factory)
     monkeypatch.setattr(acp_main, "StdioNdjsonLineReader", lambda *_a, **_k: object())
     monkeypatch.setattr(acp_main, "StdioNdjsonLineWriter", lambda *_a, **_k: object())
+
+
+@pytest.mark.parametrize("check_config,fail_stop", [(False, False), (True, False), (False, True)])
+def test_main_startup_interrupt_maps_exit_and_restores_signal_handler(monkeypatch, tmp_path, capsys, check_config, fail_stop):
+    _authorize(monkeypatch, tmp_path, _base_env())
+    stops = []
+
+    class Gateway:
+        def stop(self):
+            stops.append("stop")
+            if fail_stop:
+                raise RuntimeError("private failure detail")
+
+    def interrupt(**_kwargs):
+        handler = signal.getsignal(signal.SIGINT)
+        assert callable(handler)
+        handler(signal.SIGINT, None)
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: Gateway())
+    if check_config:
+        monkeypatch.setattr(acp_main, "run_preflight", lambda *a, **k: interrupt())
+    else:
+        monkeypatch.setattr(acp_main, "build_configured_server", interrupt)
+    previous = signal.getsignal(signal.SIGINT)
+    args = ["--workspace-root", str(tmp_path)]
+    if check_config:
+        args += ["--check-config", "--strict"]
+    assert acp_main.main(args) == (74 if fail_stop else 130)
+    assert stops == ["stop"]
+    assert signal.getsignal(signal.SIGINT) is previous
+    if fail_stop:
+        stderr = capsys.readouterr().err
+        assert "optimus-agent: SHUTDOWN_FAILED stage=gateway" in stderr
+        assert "private failure detail" not in stderr
+
+
+def test_shutdown_report_contains_only_bounded_fields(capsys):
+    from optimus.acp.process_lifecycle import ShutdownObservation
+
+    acp_main._report_shutdown(ShutdownObservation(False, "writer", 1, ()))
+    assert capsys.readouterr().err == "optimus-agent: SHUTDOWN_INCOMPLETE stage=writer pending=1\n"
 
 
 def test_setup_flag_calls_wizard_and_short_circuits(monkeypatch) -> None:
