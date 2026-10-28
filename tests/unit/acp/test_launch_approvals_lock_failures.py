@@ -9,6 +9,7 @@ so both paths run, and are checked, on every run. No production code changes.
 
 from __future__ import annotations
 
+import errno
 import sys
 from pathlib import Path
 from typing import IO, Any
@@ -21,6 +22,8 @@ from tests.unit.acp.test_launch_approvals import FakeKeyring, _sample_approval_r
 
 _HMAC_KEY = bytes(range(32))
 _NONCE = bytes([0xBB]) * 32
+# What a non-blocking acquire reports while another holder has the lock (#433 retries or refuses only this).
+_CONTENTION_ERRNO = errno.EACCES if sys.platform == "win32" else errno.EWOULDBLOCK
 
 
 @pytest.fixture
@@ -74,7 +77,7 @@ def test_a_held_lock_refuses_with_lock_contention_and_keeps_the_approval(
     def _held_elsewhere(fd: int, mode: int, *args: Any) -> Any:
         if mode == acquire_mode:
             acquisitions.append(fd)
-            raise OSError("lock held by another consumer")
+            raise OSError(_CONTENTION_ERRNO, "lock held by another consumer")
         return real_lock(fd, mode, *args)
 
     monkeypatch.setattr(module, name, _held_elsewhere)
@@ -83,7 +86,8 @@ def test_a_held_lock_refuses_with_lock_contention_and_keeps_the_approval(
 
     assert refused.value.code == "LOCK_CONTENTION"
     assert len(acquisitions) == 1
-    _assert_only_closed_lock_files(opened_files, tmp_path, expected=1)
+    # #433: every operation holds the service lock, so the one-shot write opened one lock file too.
+    _assert_only_closed_lock_files(opened_files, tmp_path, expected=2)
 
     # The refusal consumed nothing: once the lock is free, the same approval is consumed once.
     monkeypatch.setattr(module, name, real_lock)
@@ -92,7 +96,7 @@ def test_a_held_lock_refuses_with_lock_contention_and_keeps_the_approval(
     with pytest.raises(ApprovalError) as again:
         _store(tmp_path, keyring).consume_one_shot(handle, record.security_snapshot_digest)
     assert again.value.code == "ONE_SHOT_NOT_FOUND"
-    _assert_only_closed_lock_files(opened_files, tmp_path, expected=2)
+    _assert_only_closed_lock_files(opened_files, tmp_path, expected=4)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="only the Windows path unlocks explicitly in finally")
@@ -118,10 +122,10 @@ def test_a_failed_unlock_keeps_the_consumed_result_and_still_closes_the_lock_fil
 
     assert consumed == record
     assert len(unlocks) == 1
-    _assert_only_closed_lock_files(opened_files, tmp_path, expected=1)
+    _assert_only_closed_lock_files(opened_files, tmp_path, expected=2)  # the write's lock file and the consume's
     # Delete-before-use held despite the unlock failure: the approval cannot be consumed twice.
     monkeypatch.setattr(msvcrt, "locking", real_lock)
     with pytest.raises(ApprovalError) as again:
         _store(tmp_path, keyring).consume_one_shot(handle, record.security_snapshot_digest)
     assert again.value.code == "ONE_SHOT_NOT_FOUND"
-    _assert_only_closed_lock_files(opened_files, tmp_path, expected=1)
+    _assert_only_closed_lock_files(opened_files, tmp_path, expected=3)

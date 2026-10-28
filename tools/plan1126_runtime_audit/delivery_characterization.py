@@ -11,10 +11,11 @@ import ast
 import concurrent.futures
 import hashlib
 import json
+import sys
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from typing import Mapping
 
 from .corpus import derived_seed, literal_seeds
@@ -491,13 +492,46 @@ def _pinned_settlement_annotation_variant(path: str, symbol: str, before: bytes,
     return ast.dump(historical_ast, include_attributes=False) == ast.dump(candidate_ast, include_attributes=False)
 
 
+_H4_WRITER_DIGEST = "e7091b21c5f30a121b1235eba2015db8560e77fb4a2833af21f7e066e0f90a64"  # pragma: allowlist secret - nonsecret complete immutable H4 writer source digest
+
+
+def _sealed_writer_types(text: str) -> tuple[object, object]:
+    identity = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    if identity != _H4_WRITER_DIGEST:
+        raise ValueError("untrusted historical H4 writer source")
+    module = ModuleType("_optimus_h4_writer")
+    name = f"_optimus_h4_writer_{id(module):x}"
+    module.__name__ = name
+    if name in sys.modules:
+        raise RuntimeError("historical H4 writer namespace collision")
+    sys.modules[name] = module
+    try:
+        # Only the complete pinned module is executable; never publish live aliases.
+        exec(compile(text, f"<sealed-h4:{identity}/outbound_writer.py>", "exec"), module.__dict__)
+        return module.DedicatedOutboundWriter, module.OutboundQueueItem
+    finally:
+        if sys.modules.get(name) is module:
+            del sys.modules[name]
+
+
 def derive_transition_authority(
     merged: SourceTree,
     overlay: SourceTree,
     *,
     repository: Path | None = None,
+    historical_writer: bool = False,
 ) -> _TransitionAuthority:
-    """Require immutable equality plus one exact reviewed return-annotation variant."""
+    """Strict live authority by default; sealed H4 may explicitly execute its pinned writer."""
+
+    if historical_writer and repository is not None:
+        raise ValueError("historical writer mode requires the canonical repository")
+    writer_path = "src/optimus/acp/outbound_writer.py"
+    writer_text = merged.read_text(writer_path)
+    if historical_writer and any(
+        hashlib.sha256(text.encode("utf-8")).hexdigest() != _H4_WRITER_DIGEST
+        for text in (writer_text, overlay.read_text(writer_path))
+    ):
+        raise ValueError(f"production transition authority bytes drifted for {writer_path}: untrusted historical H4 writer source")
 
     root = repository or Path(__file__).resolve().parents[2]
     selected_methods = {
@@ -552,7 +586,8 @@ def derive_transition_authority(
     for path in _TRANSITION_PATHS:
         before = authority_segments(path, merged.read_text(path))
         after = authority_segments(path, overlay.read_text(path))
-        local = authority_segments(path, (root / path).read_text(encoding="utf-8"))
+        local_text = writer_text if historical_writer and path == writer_path else (root / path).read_text(encoding="utf-8")
+        local = authority_segments(path, local_text)
         before_bytes = {name: segment for name, (segment, _) in before.items()}
         after_bytes = {name: segment for name, (segment, _) in after.items()}
         local_bytes = {name: segment for name, (segment, _) in local.items()}
@@ -597,13 +632,17 @@ def derive_transition_authority(
     ):
         if {member.name: member.value for member in enum_type} != vocabulary[enum_type.__name__]:
             raise ValueError(f"loaded production {enum_type.__name__} does not match immutable source")
+    writer_type: object = DedicatedOutboundWriter
+    item_type: object = OutboundQueueItem
+    if historical_writer:
+        writer_type, item_type = _sealed_writer_types(writer_text)
     return _TransitionAuthority(
         send_outcome=SendOutcome,
         turn_control=TurnControl,
         directive_kind=DirectiveKind,
         acp_duplex_adapter=AcpDuplexAdapter,
-        dedicated_outbound_writer=DedicatedOutboundWriter,
-        outbound_queue_item=OutboundQueueItem,
+        dedicated_outbound_writer=writer_type,
+        outbound_queue_item=item_type,
         conversation_state=ConversationState,
         conversation_sanitizer=ConversationSanitizer,
         conversation_sanitizer_inputs=ConversationSanitizerInputs,

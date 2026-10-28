@@ -2,7 +2,7 @@
 
 These probes use the REAL `StdioNdjsonLineReader` over REAL OS pipes. An in-memory reader
 fake cannot exhibit the defect at all -- the whole question is what happens to a blocking
-`readline` already running inside `asyncio.to_thread`, and a fake never enters one.
+`readline` already running inside its owned daemon, and a fake never enters one.
 
 Only the *stream handed to the real reader* is instrumented, so the genuine blocking read
 still happens; the instrumentation merely acknowledges entry to and return from that read,
@@ -10,8 +10,9 @@ from inside the worker thread, at the read site. Receiving a protocol response w
 prove the worker re-entered a read -- that is a race, not evidence.
 
 Cancelling the async wrapper returns promptly while the worker thread stays blocked in its
-read. The interpreter may then wait on the default executor at interpreter shutdown; that is
-an executor wait, not a guaranteed process-exit bound, and this module asserts no such bound.
+read. The borrowed stream is never closed; this module joins its fixture-owned read only after
+the producer releases it. The CLI's separately tested incomplete-exit contract uses lock-free
+descriptor reads, rather than leaving a daemon holding Python's shared buffered stdin.
 The runtime actually used is recorded by the B2 case rather than assumed. Consequently a test
 here may NEVER wait for a physical read to finish on its own: it must release the producer,
 and every fixture releases it before waiting on anything.
@@ -674,6 +675,10 @@ async def main():
     except asyncio.CancelledError:
         pass
     _emit("TEARDOWN_COMPLETE")
+    _emit("DAEMON=" + str(reader.read_thread.daemon))
+    # Fixture custody only: keep the child alive until the parent releases its borrowed input.
+    if not await asyncio.to_thread(reader.observe_closed, 30):
+        raise AssertionError("fixture did not release its physical read")
 
 asyncio.run(main())
 '''
@@ -771,7 +776,8 @@ def test_seam4_b2_teardown_completes_in_a_child_while_the_parent_holds_stdin_ope
             "coroutine teardown never completed in the child while the parent held stdin open; "
             f"markers={markers} stderr={errors}"
         )
-        # Teardown completing does NOT mean the process exited: the worker read is still held.
+        assert _b2_wait_marker(markers, lock, "DAEMON=True", B2_BOUND_SECONDS)
+        # This fixture explicitly observes its read; this is not a product exit guarantee.
         assert proc.poll() is None, (
             "the child exited before input was released; this slice does not claim, and must "
             "not accidentally assert, a bounded process exit while a read is outstanding"

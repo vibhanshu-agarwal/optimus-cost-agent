@@ -635,6 +635,21 @@ def test_adapter_probe_exercises_the_discovered_close_method(method, monkeypatch
     assert calls == {"aclose": 3 if method == "aclose" else 0, "close_all": 3 if method == "close_all" else 0}
 
 
+def test_framed_writer_probe_retires_the_discovered_physical_owner() -> None:
+    """Fixture control for the new close surface, separate from entry-level binding acceptance."""
+    import threading
+
+    module = _shutdown_module()
+    source = _current_source(module.H5_CURRENT_SOURCE_PATHS)
+    record = next(row for row in module.discover_shutdown_inventory(source).resources
+        if row.resource_type == "StdioByteWriter" and row.close_method == "close_and_join")
+    before = {thread.ident for thread in threading.enumerate()}
+    count, outcome = module._probe_resource(record, "orderly_eof", source=source)
+    assert count == 1 and outcome == "orderly_eof:framed_writer_thread_joined"
+    assert not [thread for thread in threading.enumerate()
+        if thread.ident not in before and thread.name.startswith("optimus-acp-")]
+
+
 def test_session_close_probe_retires_the_real_facade_once(monkeypatch) -> None:
     """Unit fixture control: an invented detach-only service cannot prove retirement."""
     from optimus.mcp.client_catalog import ClientMcpSessionService

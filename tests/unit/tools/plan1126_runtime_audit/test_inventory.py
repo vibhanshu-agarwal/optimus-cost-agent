@@ -6,6 +6,24 @@ from tools.plan1126_runtime_audit.inventory import discover_sites
 from tools.plan1126_runtime_audit.model import BaselineScope, Classification, InventoryKind
 from tools.plan1126_runtime_audit.source import SourceTree
 
+
+def test_current_queue_discovery_includes_nowait_admission_and_consumption():
+    from tools.plan1126_runtime_audit.queue_policy import discover_queue_inventory
+
+    source = SourceTree({"fixture.py": """
+import queue
+class Reader:
+    def __init__(self):
+        self.commands = queue.Queue(maxsize=2)
+    def write(self):
+        self.commands.put_nowait(None)
+    def read(self):
+        self.commands.get_nowait()
+"""})
+    [definition] = discover_queue_inventory(source).queues
+    assert definition.declared_bound == 2
+    assert len(definition.producer_lines) == len(definition.consumer_lines) == 1
+
 _SOURCE = '''
 import asyncio
 import sys

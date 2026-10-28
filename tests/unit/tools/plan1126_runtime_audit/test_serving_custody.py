@@ -426,6 +426,15 @@ def test_serving_order_recognizes_only_executed_runtime_close(statement, redis_f
     assert serving_custody._serving_shutdown_order(source) == expected
 
 
+@pytest.mark.parametrize("writer", ["dedicated.close_and_join()", "await self._close_writer_stage(dedicated)"])
+@pytest.mark.parametrize("reader", ["await reader_task", "reader.request_close()"])
+def test_current_serving_order_recognizes_owned_writer_and_reader_decision(writer, reader) -> None:
+    source = "async def serve_ndjson(self):\n    " + "\n    ".join([
+        "await adapter.aclose()", writer, reader, "await self._close_redis_runtime_stage()",
+    ]) + "\n"
+    assert serving_custody._serving_shutdown_order(source) == ("adapter", "dedicated_writer", "reader_task", "redis_runtime")
+
+
 # --- the execution closure is enforced (R3) --------------------------------------------
 
 

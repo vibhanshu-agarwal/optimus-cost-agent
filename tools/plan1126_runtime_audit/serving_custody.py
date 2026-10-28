@@ -54,6 +54,7 @@ S1_SOURCE_PATHS = (
     "src/optimus/acp/harness_runtime.py",
     "src/optimus/acp/operator_verify.py",
     "src/optimus/acp/preflight.py",
+    "src/optimus/acp/process_lifecycle.py",
     "src/optimus/acp/server.py",
     "src/optimus/agent/state_store.py",
     "src/optimus/redis/async_bridge.py",
@@ -223,8 +224,8 @@ class _CustodyVisitor(ast.NodeVisitor):
 _STAGE_PATTERNS: tuple[tuple[str, str], ...] = (
     ("adapter", r"(?:self\._adapter|adapter)\.(?:close_all|aclose)\("),
     ("client_mcp_runtime", r"(?:client_mcp_runtime\.close\(|asyncio\.to_thread\(\s*self\._client_mcp_runtime\.close\s*\))"),
-    ("dedicated_writer", r"dedicated\.close_and_join\("),
-    ("reader_task", r"await\s+reader_task"),
+    ("dedicated_writer", r"(?:dedicated\.close_and_join\(|self\._close_writer_stage\(dedicated\))"),
+    ("reader_task", r"(?:await\s+reader_task|reader\.request_close\()"),
     ("redis_runtime", r"_close_redis_runtime_stage\(|redis_runtime\.close(?:_async)?\("),
 )
 

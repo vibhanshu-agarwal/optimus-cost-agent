@@ -426,7 +426,8 @@ async def test_mcp_failure_closes_physical_writer_before_redis_and_preserves_ide
         done, pending = await asyncio.wait({task}, timeout=BOUND_SECONDS)
         assert done and not pending
         assert task.exception() is failure
-        assert failure.__cause__ is runtime_failure
+        assert failure.__cause__ is None
+        assert any(note.startswith("optimus cleanup stages: mcp; count=") for note in failure.__notes__)
         assert observed.sequence == ["close_all", "mcp_close", "mcp_incomplete", "writer", "redis_close"]
         assert len(owned) == 1 and not owned[0]._thread.is_alive()
         assert client.count == 1 and pool.count == 1 and runtime.owner.is_terminated

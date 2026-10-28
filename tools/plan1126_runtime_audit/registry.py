@@ -40,8 +40,12 @@ _H5_PROBE_EXECUTES = (
     "src/optimus/acp/harness_runtime.py",
     "src/optimus/acp/local_infra.py",
     "src/optimus/acp/outbound_writer.py",
+    "src/optimus/acp/process_lifecycle.py",
     # Plan 12.2 Task 10: spec.py imports the full-set config module, so the H5 probe executes it.
+    "src/optimus/acp/server.py",
     "src/optimus/acp/session_config.py",
+    "src/optimus/acp/lifecycle.py",
+    "src/optimus/acp/settlement.py",
     "src/optimus/acp/spec.py",
     "src/optimus/agent/state_store.py",
     # Plan 12.2 CP3 correction: the summarizer host imports the one shared attempt classifier.
@@ -222,6 +226,7 @@ _S1_PROBE_EXECUTES = (
     "src/optimus/acp/local_infra.py",
     "src/optimus/acp/operator_verify.py",
     "src/optimus/acp/outbound_writer.py",
+    "src/optimus/acp/process_lifecycle.py",
     "src/optimus/acp/preflight.py",
     "src/optimus/acp/request_ids.py",
     "src/optimus/acp/server.py",

@@ -26,6 +26,7 @@ it and remove its line below. A test checks that this index lists every current 
 | [Plan 12.2 closure publication sources](sources/plan-12-2-context-engine-closure/) | Sources the HLD v2.19, LLD v2.42, Guardrails v1.4 and Test Strategy v1.8 were built from (Plan 12.2 Context Engine closure). Still the source of the Guardrails v1.5 body (unchanged from v1.4), and historical provenance for the archived v2.19, v2.42, v1.4 and v1.8 |
 | [Plan 12.4 Auto-mode pilot evidence](sources/plan-12-4-auto-pilot/) | Content-free evidence for the Auto judge: the evidence report, every view's tables, the frozen settings and the exploratory combinations; the digest-bearing manifest stays in the review kit, pinned by SHA-256 |
 | [Plan 12.4 round 2 evidence](sources/plan-12-4-auto-round2/) | Content-free evidence for round 2, the challenger round on a fresh sealed split: the evidence report, every view's tables, the frozen settings, the manifest and a tool that recomputes every view; H stays (Checkpoint R2, 2026-10-27; Plan 12.4 v10, the closing record, is in the plans archive) |
+| [#433 approval-store validation](sources/p433-approval-store/) | Sanitized evidence for bounded multipart approval storage: the measured Windows credential limit, the real Credential Manager round trip and the test runs, with hashes (ADR-030) |
 
 ## Decision records (ADRs)
 
@@ -63,6 +64,8 @@ relevant records before proposing a change in their area.
 | [ADR-026: Exception routes accept one unflagged guardrail stage](decisions/ADR-026-exception-routes-accept-one-unflagged-guardrail-stage.md) | #400 option b1: one `guardrail` stage reporting `flagged` false and no detection, decision, action, conflict or scope passes the exception-route pipeline check; every other stage still refuses; residual risk accepted by the operator |
 | [ADR-027: Idle client-MCP lifetime](decisions/ADR-027-idle-client-mcp-lifetime-contract.md) | Retain in-memory continuity; positive idle delay and fresh atomic permission renewal |
 | [ADR-028: Accepts ADR-007 with arm H](decisions/ADR-028-accepts-adr-007-auto-judge-h.md) | Auto mode's per-turn judge: the rules when confident, otherwise Jev, routing up when unsure; chosen by the Plan 12.4 pilot's pre-registered rule; operator acceptance (source S13) |
+| [ADR-030: Approval records in bounded keyring parts](decisions/ADR-030-approval-records-in-bounded-keyring-parts.md) | Keeps the 1,800-byte approval policy; stores a record over one Windows credential blob as two authenticated parts; one service-wide approvals lock (#433) |
+| [Ordering/lifecycle/signals and queue decision](decisions/2026-10-27-ordering-lifecycle-signals-queue-contract.md) | Exact operator authority, accepted proposals, alternatives and scoped ADR-027 supersession |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 
 ## Research (input for Plan 12)
@@ -114,6 +117,7 @@ Live plans (each listed in the backlog's live plan registry):
 | Document | What it is |
 |---|---|
 | [Idle client-MCP lifetime design](superpowers/specs/2026-10-26-idle-mcp-suspension-main-port-design.md) | Self-contained #427 contract; [intake receipt](superpowers/reports/2026-10-26-idle-mcp-suspension-main-port-receipt.md) |
+| [Ordering/lifecycle/signals and queue plan](superpowers/plans/2026-10-27-ordering-lifecycle-signals-queue-plan.md) | Approved two-batch contract; [initial filing receipt](superpowers/reports/2026-10-27-ordering-lifecycle-signals-queue-receipt.md); GitHub issues own work status |
 | [Plan 12.2 Context Engine design (v3)](superpowers/specs/2026-10-01-plan-12-2-context-engine-design_v3.md) | Three history strategies, exact host facts, floor, registry and cost integration; v3 adds the CP4 measured adoption and D7 disposition |
 | [Plan 12.2 ordinary compaction shipping contract](superpowers/specs/2026-10-18-plan-12-2-ordinary-compaction-shipping-contract.md) | Scoped successor for the shipping candidate: the ordinary composition, the shipped empirical exception, the shared numeric policy, approval migration and the closure gates; filed 2026-10-18; its acceptance and closure gate are tracked in #237 |
 | [Plan 12.2 Task 1 contracts (v3)](superpowers/specs/2026-10-02-plan-12-2-task1-contracts_v3.md) | Engine data, summary format, registry/trust/capacity, host integration, D6; v3 adds the CP4 numeric adoption and the trusted test composition. The 2026-10-02 acceptance belongs to the archived first edition |

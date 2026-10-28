@@ -11,12 +11,15 @@ to the approval-store HMAC key.
 from __future__ import annotations
 
 import base64
+import errno
 import getpass
 import hashlib
 import hmac
 import json
+import re
 import secrets
-from collections.abc import Mapping
+import time
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -34,6 +37,9 @@ APPROVAL_SCHEMA_VERSION = 2
 LEGACY_APPROVAL_SCHEMA_VERSION = 1
 LAUNCH_POLICY_COMPATIBILITY = "P9.99-v1"
 MAX_APPROVAL_RECORD_BYTES = 1800
+# Windows CRED_MAX_CREDENTIAL_BLOB_SIZE; its keyring backend stores values as UTF-16-LE (#433). Applied on every
+# platform, so a record over this is split into bounded parts behind an authenticated manifest.
+MAX_KEYRING_VALUE_UTF16_BYTES = 2560
 ONE_SHOT_TTL_SECONDS = 300
 DIAGNOSTIC_TTL_SECONDS = 900
 
@@ -43,6 +49,18 @@ _HANDLE_DOMAIN = b"p996-one-shot-handle-v1"
 _FINGERPRINT_DOMAIN = b"p996-secret-fingerprint-v1"
 _RECORD_HMAC_DOMAIN = b"p996-record-hmac-v1"
 _GRANT_HMAC_DOMAIN = b"p996-diagnostic-grant-hmac-v1"
+_MANIFEST_HMAC_DOMAIN = b"p433-approval-parts-manifest-v1"
+_MANIFEST_FIELDS = frozenset(
+    {"approval_parts", "generation", "legacy_source_digest", "manifest_hmac", "part_lengths", "payload_sha256", "workspace_digest"}
+)
+_MAX_PARTS = 2
+_GENERATION_RE = re.compile(r"[0-9a-f]{32}")
+_LOCK_WAIT_SECONDS = 2.0
+_LOCK_POLL_SECONDS = 0.02
+_LOCK_FILE_NAME = "approval-service.lock"
+# Errnos a non-blocking acquire reports when another holder has the lock (msvcrt: EACCES; flock: EWOULDBLOCK).
+_CONTENTION_ERRNOS = frozenset({errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK, errno.EDEADLK})
+_CREDENTIAL_FUNCTIONS = frozenset({"CredRead", "CredWrite", "CredDelete"})
 
 
 # --- Error type ---
@@ -476,6 +494,113 @@ def _deserialize_approval_record(raw: str, *, hmac_key: bytes) -> ApprovalRecord
     return record
 
 
+# --- Bounded multipart storage (#433) ---
+
+
+@dataclass(frozen=True)
+class _PartsManifest:
+    """A verified manifest: the publication value of a record stored as generation-specific parts."""
+
+    generation: str
+    part_lengths: tuple[int, ...]
+    payload_sha256: str
+    workspace_digest: str
+    legacy_source_digest: str | None
+
+
+def _utf16_len(value: str) -> int:
+    return len(value.encode("utf-16-le"))
+
+
+def _canonical_json(data: Mapping[str, object]) -> str:
+    return json.dumps(data, sort_keys=True, separators=(",", ":"))
+
+
+def _part_key(publication_key: str, generation: str, index: int) -> str:
+    return f"{publication_key}#{generation}:{index}"
+
+
+def _manifest_hmac(body: Mapping[str, object], *, publication_key: str, hmac_key: bytes) -> str:
+    """HMAC over every manifest field except manifest_hmac, bound to the key the manifest is published at."""
+    unsigned = {name: value for name, value in body.items() if name != "manifest_hmac"}
+    msg = _MANIFEST_HMAC_DOMAIN + b"\x00" + publication_key.encode() + b"\x00" + _canonical_json(unsigned).encode()
+    return hmac.new(hmac_key, msg, hashlib.sha256).hexdigest()
+
+
+def _parse_manifest(raw: str, *, publication_key: str, hmac_key: bytes) -> _PartsManifest | None:
+    """Return the verified manifest published at a key, or None when the value is a single-entry record."""
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or "approval_parts" not in data:
+        return None
+    try:
+        lengths = data["part_lengths"]
+        manifest = _PartsManifest(
+            generation=data["generation"],
+            part_lengths=tuple(lengths),
+            payload_sha256=data["payload_sha256"],
+            workspace_digest=data["workspace_digest"],
+            legacy_source_digest=data["legacy_source_digest"],
+        )
+        if (
+            set(data) != _MANIFEST_FIELDS
+            or type(data["approval_parts"]) is not int  # not JSON true or 1.0
+            or data["approval_parts"] != 1
+            or not isinstance(manifest.generation, str)
+            or not _GENERATION_RE.fullmatch(manifest.generation)
+            or not isinstance(lengths, list)
+            or not 1 <= len(lengths) <= _MAX_PARTS
+            or not all(type(length) is int and length > 0 for length in lengths)
+            or not all(isinstance(data[name], str) for name in ("payload_sha256", "workspace_digest", "manifest_hmac"))
+            or not isinstance(manifest.legacy_source_digest, (str, type(None)))
+        ):
+            raise ValueError("invalid approval manifest")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ApprovalError(code="RECORD_CORRUPT", detail="invalid approval manifest") from exc
+    expected = _manifest_hmac(data, publication_key=publication_key, hmac_key=hmac_key)
+    if not hmac.compare_digest(data["manifest_hmac"].encode(), expected.encode()):
+        raise ApprovalError(code="INTEGRITY_FAILURE", detail="approval manifest HMAC mismatch")
+    return manifest
+
+
+def _part_generation(raw: str | None) -> str | None:
+    """The generation a publication value names, unverified: used to delete parts, never to authorize."""
+    try:
+        generation = json.loads(raw)["generation"] if raw else None
+    except (ValueError, TypeError, KeyError):
+        return None
+    return generation if isinstance(generation, str) and _GENERATION_RE.fullmatch(generation) else None
+
+
+def _backend_failure(exc: Exception) -> str:
+    """Name a keyring backend failure without its message, which a backend may build from the stored value."""
+    funcname, winerror = getattr(exc, "funcname", None), getattr(exc, "winerror", None)
+    if funcname in _CREDENTIAL_FUNCTIONS and type(winerror) is int:
+        return f"keyring backend {type(exc).__name__} ({funcname}, winerror {winerror})"
+    return f"keyring backend {type(exc).__name__}"
+
+
+def _policy_serialization(record: ApprovalRecord) -> str:
+    """The canonical record JSON, refused when it exceeds the 1,800-byte policy (setting names only in the detail)."""
+    serialized = serialize_approval_record(record)
+    byte_len = len(serialized.encode("utf-8"))
+    if byte_len > MAX_APPROVAL_RECORD_BYTES:
+        names = ", ".join(sorted({*record.security_literals, *record.secret_fingerprints, *record.monotonic_grants}))
+        raise ApprovalError(
+            code="RECORD_TOO_LARGE",
+            detail=f"{byte_len} bytes exceeds {MAX_APPROVAL_RECORD_BYTES} limit; bound settings: {names or '(none)'}",
+        )
+    return serialized
+
+
+def _manifest_metadata(record: ApprovalRecord) -> tuple[str, str | None]:
+    """The record facts a manifest repeats: its workspace digest and its legacy source, if migrated."""
+    provenance = record.migration_provenance
+    return record.workspace_digest, provenance.source_workspace_digest if provenance is not None else None
+
+
 # --- Keyring Approval Store ---
 
 
@@ -512,80 +637,287 @@ class KeyringApprovalStore:
         return self._hmac_key
 
     def _ensure_hmac_key(self) -> bytes:
-        """Load or create the HMAC integrity key."""
-        raw = self._keyring.get_password(self._service_name, _HMAC_KEY_ENTRY)
-        if raw:
-            return base64.urlsafe_b64decode(raw)
-        # Generate a new 32-byte key.
-        key = secrets.token_bytes(32)
-        encoded = base64.urlsafe_b64encode(key).decode("ascii")
-        self._keyring.set_password(self._service_name, _HMAC_KEY_ENTRY, encoded)
-        return key
+        """Load or create the HMAC integrity key.
+
+        Reading an existing key needs no lock (a read cannot resurrect an entry); creation re-reads under the
+        service lock, so two first-time stores cannot install different keys.
+        """
+        raw = self._get(_HMAC_KEY_ENTRY)
+        if not raw:
+            with self._service_lock():
+                raw = self._get(_HMAC_KEY_ENTRY)
+                if not raw:
+                    key = secrets.token_bytes(32)
+                    self._set(_HMAC_KEY_ENTRY, base64.urlsafe_b64encode(key).decode("ascii"))
+                    return key
+        return base64.urlsafe_b64decode(raw)
 
     def read_durable(self, workspace_digest: str) -> ApprovalRecord | None:
         """Read a durable approval record for the given workspace digest."""
-        entry_key = f"durable:{workspace_digest}"
-        raw = self._keyring.get_password(self._service_name, entry_key)
-        if raw is None:
+        with self._service_lock():
+            loaded = self._load(f"durable:{workspace_digest}")
+        if loaded is None:
             return None
-        record = _deserialize_approval_record(raw, hmac_key=self._hmac_key)
-        if record.policy_compatibility != LAUNCH_POLICY_COMPATIBILITY:
+        if loaded.policy_compatibility != LAUNCH_POLICY_COMPATIBILITY:
             raise ApprovalError(code="POLICY_MISMATCH")
-        return record
+        return loaded
 
     def write_durable(self, record: ApprovalRecord) -> None:
-        """Write a durable approval record."""
-        serialized = serialize_approval_record(record)
-        byte_len = len(serialized.encode("utf-8"))
-        if byte_len > MAX_APPROVAL_RECORD_BYTES:
-            raise ApprovalError(
-                code="RECORD_TOO_LARGE",
-                detail=f"{byte_len} bytes exceeds {MAX_APPROVAL_RECORD_BYTES} limit",
-            )
-        entry_key = f"durable:{record.workspace_digest}"
-        self._keyring.set_password(self._service_name, entry_key, serialized)
+        """Write a durable approval record.
+
+        Replacing a migrated record first deletes its authenticated legacy source (confirmed), so revoking the
+        replacement later cannot expose that legacy record to lookup. An unauthenticated previous value names no
+        legacy source and is replaced as it is (after rotate-key every value is unauthenticated).
+        """
+        key = f"durable:{record.workspace_digest}"
+        with self._service_lock():
+            _policy_serialization(record)
+            try:
+                legacy_digest = self._legacy_source(key)
+            except ApprovalError as exc:
+                if exc.code not in {"RECORD_CORRUPT", "INTEGRITY_FAILURE"}:
+                    raise
+                legacy_digest = None
+            if legacy_digest is not None:
+                self._unpublish(f"durable:{legacy_digest}")
+            self._publish(key, record)
 
     def write_one_shot(self, record: ApprovalRecord, nonce: bytes) -> str:
         """Write a one-shot approval record and return the handle."""
         handle = derive_one_shot_handle(nonce)
-        serialized = serialize_approval_record(record)
-        byte_len = len(serialized.encode("utf-8"))
-        if byte_len > MAX_APPROVAL_RECORD_BYTES:
-            raise ApprovalError(
-                code="RECORD_TOO_LARGE",
-                detail=f"{byte_len} bytes exceeds {MAX_APPROVAL_RECORD_BYTES} limit",
-            )
-        entry_key = f"oneshot:{handle}"
-        self._keyring.set_password(self._service_name, entry_key, serialized)
+        with self._service_lock():
+            self._publish(f"oneshot:{handle}", record)
         return handle
 
-    def _workspace_lock_path(self, workspace_digest: str) -> Path:
-        """Return the lock file path for a workspace-digest under runtime_root."""
-        lock_dir = self._runtime_root / "locks"
-        lock_dir.mkdir(parents=True, exist_ok=True)
-        return lock_dir / f"{workspace_digest}.lock"
+    # --- Keyring access: typed failures, bounded parts, publication last. Callers hold the service lock. ---
+
+    def _get(self, key: str) -> str | None:
+        try:
+            return self._keyring.get_password(self._service_name, key)
+        except Exception as exc:  # noqa: BLE001 - every backend failure becomes a typed refusal
+            raise ApprovalError(code="APPROVAL_STORE_READ_FAILED", detail=_backend_failure(exc)) from None
+
+    def _set(self, key: str, value: str) -> None:
+        try:
+            self._keyring.set_password(self._service_name, key, value)
+        except Exception as exc:  # noqa: BLE001 - every backend failure becomes a typed refusal
+            raise ApprovalError(code="APPROVAL_STORE_WRITE_FAILED", detail=_backend_failure(exc)) from None
+
+    def _delete(self, key: str) -> None:
+        """Delete an entry and confirm it is gone. Backends differ on deleting a missing entry, so absence decides."""
+        failure = ""
+        try:
+            self._keyring.delete_password(self._service_name, key)
+        except Exception as exc:  # noqa: BLE001 - a missing entry raises on some backends; the read below decides
+            failure = _backend_failure(exc)
+        if self._get(key) is not None:
+            raise ApprovalError(code="DELETION_FAILED", detail=failure)
+
+    def _delete_parts(self, key: str, raw: str | None) -> None:
+        """Best-effort removal of the parts a publication value names; unreferenced parts authorize nothing."""
+        generation = _part_generation(raw)
+        if generation is None:
+            return
+        for index in range(_MAX_PARTS):
+            try:
+                self._delete(_part_key(key, generation, index))
+            except ApprovalError:
+                pass
+
+    def _read(self, key: str) -> tuple[str, _PartsManifest | None] | None:
+        """Return the canonical record JSON published at `key` and its manifest, or None; fail closed on any defect.
+
+        The caller holds the service lock, so no replacement or deletion removes parts mid-read.
+        """
+        raw = self._get(key)
+        if raw is None:
+            return None
+        manifest = _parse_manifest(raw, publication_key=key, hmac_key=self._hmac_key)
+        payload = raw
+        if manifest is not None:
+            parts = [self._get(_part_key(key, manifest.generation, index)) for index in range(len(manifest.part_lengths))]
+            for part, length in zip(parts, manifest.part_lengths, strict=True):
+                if part is None or len(part) != length or _utf16_len(part) > MAX_KEYRING_VALUE_UTF16_BYTES:
+                    raise ApprovalError(code="RECORD_CORRUPT", detail="approval part missing or invalid")
+            payload = "".join(part for part in parts if part is not None)
+            digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+            if not hmac.compare_digest(digest.encode(), manifest.payload_sha256.encode()):
+                raise ApprovalError(code="INTEGRITY_FAILURE", detail="approval parts do not match their manifest")
+        if len(payload.encode("utf-8")) > MAX_APPROVAL_RECORD_BYTES:
+            raise ApprovalError(code="RECORD_CORRUPT", detail="approval record exceeds the size limit")
+        return payload, manifest
+
+    def _publish(self, key: str, record: ApprovalRecord) -> str:
+        """Publish a record at `key` and return its canonical JSON.
+
+        A record that fits one keyring value is stored inline, as before #433. A larger one is written as two
+        immutable generation-specific parts, each read back, then the authenticated manifest is published last and
+        verified by a full read. A failure is rolled back and reported with its confirmed outcome (_rollback), so a
+        partial record is never published and the previous approval is never claimed without a confirming read.
+        """
+        serialized = _policy_serialization(record)
+        value, parts = serialized, {}
+        if _utf16_len(serialized) > MAX_KEYRING_VALUE_UTF16_BYTES:
+            generation = secrets.token_hex(16)
+            middle = len(serialized) // 2
+            chunks = (serialized[:middle], serialized[middle:])
+            parts = {_part_key(key, generation, index): chunk for index, chunk in enumerate(chunks)}
+            workspace_digest, legacy_source_digest = _manifest_metadata(record)
+            body: dict[str, object] = {
+                "approval_parts": 1,
+                "generation": generation,
+                "legacy_source_digest": legacy_source_digest,
+                "part_lengths": [len(chunk) for chunk in chunks],
+                "payload_sha256": hashlib.sha256(serialized.encode("utf-8")).hexdigest(),
+                "workspace_digest": workspace_digest,
+            }
+            body["manifest_hmac"] = _manifest_hmac(body, publication_key=key, hmac_key=self._hmac_key)
+            value = _canonical_json(body)
+        if any(_utf16_len(stored) > MAX_KEYRING_VALUE_UTF16_BYTES for stored in (value, *parts.values())):
+            raise ApprovalError(code="RECORD_TOO_LARGE", detail="an approval part exceeds the keyring value limit")
+
+        previous = self._get(key)
+        key_written = False
+        try:
+            for part_key, chunk in parts.items():
+                self._set(part_key, chunk)
+                if self._get(part_key) != chunk:
+                    raise ApprovalError(code="APPROVAL_STORE_WRITE_FAILED", detail="approval part read-back mismatch")
+            key_written = True
+            self._set(key, value)
+            try:
+                published = self._read(key)
+            except ApprovalError as exc:
+                raise ApprovalError(code="APPROVAL_STORE_WRITE_FAILED", detail=f"read-back verification failed ({exc.code})") from None
+            if published is None or published[0] != serialized:
+                raise ApprovalError(code="APPROVAL_STORE_WRITE_FAILED", detail="read-back verification failed")
+        except ApprovalError as failure:
+            raise self._rollback(failure, key, previous, parts, key_written=key_written) from None
+        self._delete_parts(key, previous)
+        return serialized
+
+    def _rollback(
+        self, failure: ApprovalError, key: str, previous: str | None, new_parts: Mapping[str, str], *, key_written: bool
+    ) -> ApprovalError:
+        """Undo a failed publication and return the error naming its confirmed outcome.
+
+        A publication key that was never written still holds `previous`: the lock is held and parts use other keys
+        (WinVault's slot re-save moves a value, never changes it), so it is left alone even when reads fail. Otherwise
+        the outcome is confirmed by a read. It is decided before any cleanup, and cleanup failures never change it.
+        An unknown outcome claims no invalidation: an inline value has no parts, and the same faults can block part
+        deletion.
+        """
+        outcome = "unknown" if key_written else "kept"
+        if key_written:
+            try:
+                if self._get(key) != previous:
+                    if previous is None:
+                        self._delete(key)
+                    else:
+                        self._set(key, previous)
+            except ApprovalError:
+                pass  # a restore can store and still raise; only the read below decides
+            try:
+                if self._get(key) == previous:
+                    outcome = "kept"
+            except ApprovalError:
+                pass
+        if outcome == "unknown":
+            try:
+                self._delete(key)
+                outcome = "removed"
+            except ApprovalError:
+                pass
+        for part_key in new_parts:
+            try:
+                self._delete(part_key)
+            except ApprovalError:
+                pass  # unreferenced, or behind an outcome already reported as unknown
+        if outcome == "kept":
+            kept = "previous approval unchanged" if previous is not None else "no approval was written"
+            return ApprovalError(code=failure.code, detail=f"{failure.detail}; {kept}")
+        if outcome == "removed":
+            self._delete_parts(key, previous)
+            return ApprovalError(
+                code="APPROVAL_STORE_WRITE_FAILED",
+                detail=f"{failure.detail}; the previous approval could not be restored and was removed; approve again",
+            )
+        return ApprovalError(
+            code="APPROVAL_STORE_STATE_UNKNOWN",
+            detail=(
+                f"{failure.detail}; the approval entry could not be restored or removed, so it may hold the new "
+                "approval, the previous one, or none; check it with optimus-trust inspect"
+            ),
+        )
+
+    def _load(self, key: str) -> ApprovalRecord | None:
+        """The verified record published at `key`; a manifest must repeat the record's own metadata."""
+        published = self._read(key)
+        if published is None:
+            return None
+        payload, manifest = published
+        record = _deserialize_approval_record(payload, hmac_key=self._hmac_key)
+        if manifest is not None and (manifest.workspace_digest, manifest.legacy_source_digest) != _manifest_metadata(record):
+            raise ApprovalError(code="INTEGRITY_FAILURE", detail="approval manifest does not match its record")
+        return record
+
+    def _legacy_source(self, key: str) -> str | None:
+        """The authenticated legacy source of the record published at `key`, without needing its parts.
+
+        Raises RECORD_CORRUPT / INTEGRITY_FAILURE when the publication value cannot be authenticated.
+        """
+        raw = self._get(key)
+        if raw is None:
+            return None
+        manifest = _parse_manifest(raw, publication_key=key, hmac_key=self._hmac_key)
+        if manifest is not None:
+            return manifest.legacy_source_digest
+        return _manifest_metadata(_deserialize_approval_record(raw, hmac_key=self._hmac_key))[1]
+
+    def _unpublish(self, key: str) -> None:
+        """Delete a publication value and confirm it is gone, then its parts: once it is gone nothing authorizes."""
+        raw = self._get(key)
+        if raw is None:
+            return
+        self._delete(key)
+        self._delete_parts(key, raw)
 
     @contextmanager
-    def _exclusive_workspace_lock(self, workspace_digest: str):
+    def _service_lock(self, *, wait: bool = True) -> Iterator[None]:
+        """Serialize every operation on the approvals keyring service (#433).
+
+        WinVaultKeyring.set_password re-saves whatever entry occupies the service's shared slot before it writes, so
+        an unserialized writer could resurrect an entry another process had just consumed or revoked. Every process
+        builds its store on the per-user approval runtime root, so they share this file. `wait` retries real
+        contention until _LOCK_WAIT_SECONDS; otherwise one attempt. Any other lock failure is LOCK_FAILED at once.
+        """
         import sys
 
-        lock_path = self._workspace_lock_path(workspace_digest)
-        lock_fd = open(lock_path, "w")  # noqa: SIM115
         try:
-            if sys.platform == "win32":
-                import msvcrt
-
+            lock_dir = self._runtime_root / "locks"
+            lock_dir.mkdir(parents=True, exist_ok=True)
+            lock_fd = open(lock_dir / _LOCK_FILE_NAME, "w")  # noqa: SIM115
+        except OSError as exc:
+            raise ApprovalError(code="LOCK_FAILED", detail=f"cannot open the approval lock file (errno {exc.errno})") from None
+        try:
+            deadline = time.monotonic() + (_LOCK_WAIT_SECONDS if wait else 0.0)
+            while True:
                 try:
-                    msvcrt.locking(lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
-                except OSError as exc:
-                    raise ApprovalError(code="LOCK_CONTENTION", detail="another consumer holds the lock") from exc
-            else:
-                import fcntl
+                    if sys.platform == "win32":
+                        import msvcrt
 
-                try:
-                    fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        msvcrt.locking(lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
+                    else:
+                        import fcntl
+
+                        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
                 except OSError as exc:
-                    raise ApprovalError(code="LOCK_CONTENTION", detail="another consumer holds the lock") from exc
+                    if exc.errno not in _CONTENTION_ERRNOS:
+                        raise ApprovalError(code="LOCK_FAILED", detail=f"cannot lock the approval lock file (errno {exc.errno})") from None
+                    if time.monotonic() >= deadline:
+                        raise ApprovalError(code="LOCK_CONTENTION", detail="another consumer holds the lock") from exc
+                    time.sleep(_LOCK_POLL_SECONDS)
             yield
         finally:
             if sys.platform == "win32":
@@ -605,17 +937,10 @@ class KeyringApprovalStore:
         expected_legacy_snapshot_digest: str,
         current_security_snapshot_digest: str,
     ) -> DurableApprovalLookup:
-        """Look up v3 first; promote exact legacy only when v3 is absent."""
-        current_key = f"durable:{current_identity.digest}"
-        raw_v3 = self._keyring.get_password(self._service_name, current_key)
-        if raw_v3 is not None:
-            record = _deserialize_approval_record(raw_v3, hmac_key=self._hmac_key)
-            if record.policy_compatibility != LAUNCH_POLICY_COMPATIBILITY:
-                raise ApprovalError(code="POLICY_MISMATCH")
-            state: Literal["current", "migrated"] = (
-                "migrated" if record.migration_provenance is not None else "current"
-            )
-            return DurableApprovalLookup(record=record, state=state)
+        """Look up v3 first; promote exact legacy only when v3 is absent.
+
+        Both steps run under the service lock in promote_legacy_durable, which reads v3 before any legacy record.
+        """
         return self.promote_legacy_durable(
             current_identity=current_identity,
             legacy_workspace_digest=legacy_workspace_digest,
@@ -635,11 +960,11 @@ class KeyringApprovalStore:
         if legacy_workspace_digest.startswith("oneshot:") or current_identity.digest.startswith("oneshot:"):
             raise ApprovalError(code="ONE_SHOT_VERSION_MISMATCH", detail="durable migration must not touch oneshot keys")
 
-        with self._exclusive_workspace_lock(current_identity.digest):
+        with self._service_lock():
             current_key = f"durable:{current_identity.digest}"
-            raw_v3 = self._keyring.get_password(self._service_name, current_key)
-            if raw_v3 is not None:
-                record = _deserialize_approval_record(raw_v3, hmac_key=self._hmac_key)
+            loaded_v3 = self._load(current_key)
+            if loaded_v3 is not None:
+                record = loaded_v3
                 if record.policy_compatibility != LAUNCH_POLICY_COMPATIBILITY:
                     raise ApprovalError(code="POLICY_MISMATCH")
                 state: Literal["current", "migrated"] = (
@@ -650,12 +975,11 @@ class KeyringApprovalStore:
             if not legacy_workspace_digest:
                 return DurableApprovalLookup(record=None, state="legacy_reapproval_required")
 
-            legacy_key = f"durable:{legacy_workspace_digest}"
-            raw_legacy = self._keyring.get_password(self._service_name, legacy_key)
-            if raw_legacy is None:
+            loaded_legacy = self._load(f"durable:{legacy_workspace_digest}")
+            if loaded_legacy is None:
                 return DurableApprovalLookup(record=None, state="legacy_reapproval_required")
 
-            legacy = _deserialize_approval_record(raw_legacy, hmac_key=self._hmac_key)
+            legacy = loaded_legacy
             if legacy.policy_compatibility != LAUNCH_POLICY_COMPATIBILITY:
                 raise ApprovalError(code="POLICY_MISMATCH")
             if legacy.mode != "durable":
@@ -692,14 +1016,8 @@ class KeyringApprovalStore:
                 ),
             )
             promoted = replace(promoted, record_hmac=compute_record_hmac(promoted, hmac_key=self._hmac_key))
-            serialized = serialize_approval_record(promoted)
-            if len(serialized.encode("utf-8")) > MAX_APPROVAL_RECORD_BYTES:
-                raise ApprovalError(code="RECORD_TOO_LARGE")
-            self._keyring.set_password(self._service_name, current_key, serialized)
-            read_back = self._keyring.get_password(self._service_name, current_key)
-            if read_back != serialized:
-                raise ApprovalError(code="RECORD_CORRUPT", detail="v3 read-back verification failed")
-            verified = _deserialize_approval_record(read_back, hmac_key=self._hmac_key)
+            # _publish verifies the v3 read-back, so its result is the verified record.
+            verified = _deserialize_approval_record(self._publish(current_key, promoted), hmac_key=self._hmac_key)
             return DurableApprovalLookup(record=verified, state="migrated")
 
     def consume_one_shot(self, handle: str, expected_snapshot_digest: str) -> ApprovalRecord:
@@ -709,52 +1027,17 @@ class KeyringApprovalStore:
         cross-platform file lock (msvcrt.locking on Windows, fcntl.flock on
         POSIX) per Plan 9.96 Step 3. Under the lock: verify handle/HMAC/
         snapshot/expiry, delete the record, confirm deletion, then return it.
-        Crash or deletion failure leaves startup unauthorized.
+        Crash or deletion failure leaves startup unauthorized. #433: the lock is
+        the service lock, taken in one attempt before anything is read, so no
+        record is peeked at outside it.
         """
-        import sys
-
         entry_key = f"oneshot:{handle}"
 
-        # Derive workspace digest from the stored record for locking.
-        # We need to read first to know which workspace to lock, but the
-        # critical section re-reads after acquiring the lock.
-        raw_peek = self._keyring.get_password(self._service_name, entry_key)
-        if raw_peek is None:
-            raise ApprovalError(code="ONE_SHOT_NOT_FOUND")
-
-        # Parse minimally to get workspace_digest for the lock path.
-        try:
-            peek_data = json.loads(raw_peek)
-            ws_digest = peek_data["workspace_digest"]
-        except (json.JSONDecodeError, KeyError) as exc:
-            raise ApprovalError(code="RECORD_CORRUPT", detail="cannot determine workspace") from exc
-
-        lock_path = self._workspace_lock_path(ws_digest)
-
-        # Acquire cross-platform exclusive lock.
-        lock_fd = open(lock_path, "w")  # noqa: SIM115
-        try:
-            if sys.platform == "win32":
-                import msvcrt
-
-                try:
-                    msvcrt.locking(lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
-                except OSError as exc:
-                    raise ApprovalError(code="LOCK_CONTENTION", detail="another consumer holds the lock") from exc
-            else:
-                import fcntl
-
-                try:
-                    fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except OSError as exc:
-                    raise ApprovalError(code="LOCK_CONTENTION", detail="another consumer holds the lock") from exc
-
-            # Under lock: re-read the record (TOCTOU protection).
-            raw = self._keyring.get_password(self._service_name, entry_key)
-            if raw is None:
+        with self._service_lock(wait=False):
+            loaded = self._load(entry_key)
+            if loaded is None:
                 raise ApprovalError(code="ONE_SHOT_NOT_FOUND")
-
-            record = _deserialize_approval_record(raw, hmac_key=self._hmac_key)
+            record = loaded
 
             if record.schema_version != APPROVAL_SCHEMA_VERSION:
                 raise ApprovalError(
@@ -768,31 +1051,17 @@ class KeyringApprovalStore:
 
             # Check expiry.
             if record.expires_at and datetime.now(timezone.utc) > record.expires_at:
-                self._keyring.delete_password(self._service_name, entry_key)
+                self._unpublish(entry_key)
                 raise ApprovalError(code="APPROVAL_EXPIRED")
 
             # Check snapshot digest.
             if record.security_snapshot_digest != expected_snapshot_digest:
                 raise ApprovalError(code="SNAPSHOT_MISMATCH")
 
-            # Delete before returning (delete-before-use semantics).
-            self._keyring.delete_password(self._service_name, entry_key)
-
-            # Confirm deletion — if the record still exists, fail.
-            if self._keyring.get_password(self._service_name, entry_key) is not None:
-                raise ApprovalError(code="DELETION_FAILED")
-
+            # Delete before returning (delete-before-use semantics); _unpublish confirms the deletion
+            # (DELETION_FAILED if the record still exists) before removing any parts.
+            self._unpublish(entry_key)
             return record
-        finally:
-            # Release lock and close.
-            if sys.platform == "win32":
-                import msvcrt
-
-                try:
-                    msvcrt.locking(lock_fd.fileno(), msvcrt.LK_UNLCK, 1)
-                except OSError:
-                    pass
-            lock_fd.close()
 
     def write_diagnostic_grant(self, grant: DiagnosticGrant) -> None:
         """Write a diagnostic grant."""
@@ -806,12 +1075,17 @@ class KeyringApprovalStore:
         }
         serialized = json.dumps(data, sort_keys=True, separators=(",", ":"))
         entry_key = f"grant:{grant.grant_id}"
-        self._keyring.set_password(self._service_name, entry_key, serialized)
+        with self._service_lock():
+            self._set(entry_key, serialized)
 
     def consume_diagnostic_grant(self, grant_id: str, launch_session_id: str) -> DiagnosticGrant:
         """Consume a diagnostic grant: verify session, delete, return."""
+        with self._service_lock():
+            return self._consume_diagnostic_grant(grant_id, launch_session_id)
+
+    def _consume_diagnostic_grant(self, grant_id: str, launch_session_id: str) -> DiagnosticGrant:
         entry_key = f"grant:{grant_id}"
-        raw = self._keyring.get_password(self._service_name, entry_key)
+        raw = self._get(entry_key)
         if raw is None:
             raise ApprovalError(code="GRANT_NOT_FOUND")
 
@@ -836,11 +1110,11 @@ class KeyringApprovalStore:
             raise ApprovalError(code="GRANT_SESSION_MISMATCH")
 
         if datetime.now(timezone.utc) > grant.expires_at:
-            self._keyring.delete_password(self._service_name, entry_key)
+            self._delete(entry_key)
             raise ApprovalError(code="GRANT_EXPIRED")
 
         # Delete before returning.
-        self._keyring.delete_password(self._service_name, entry_key)
+        self._delete(entry_key)
         return grant
 
     def revoke_workspace(self, workspace_digest: str) -> None:
@@ -848,20 +1122,33 @@ class KeyringApprovalStore:
 
         A migrated record also deletes the authenticated legacy source key
         recorded in provenance. Fresh v3 records do not search for legacy keys.
+        A multipart record names its legacy source in its HMAC-verified manifest,
+        so missing or damaged parts cannot hide it. The legacy source goes first:
+        a crash between the two deletes leaves the v3 record active (revoke again)
+        rather than a legacy record that the next launch would promote.
+        An entry that cannot be authenticated names no trustworthy legacy source,
+        so revocation refuses (REVOCATION_INCOMPLETE) and deletes nothing: the
+        entry keeps failing closed, and lookup never falls back to legacy while
+        it exists.
         """
         entry_key = f"durable:{workspace_digest}"
-        raw = self._keyring.get_password(self._service_name, entry_key)
-        provenance_legacy_key: str | None = None
-        if raw is not None:
+        with self._service_lock():
             try:
-                record = _deserialize_approval_record(raw, hmac_key=self._hmac_key)
-            except ApprovalError:
-                record = None
-            if record is not None and record.migration_provenance is not None:
-                provenance_legacy_key = f"durable:{record.migration_provenance.source_workspace_digest}"
-        self._keyring.delete_password(self._service_name, entry_key)
-        if provenance_legacy_key is not None:
-            self._keyring.delete_password(self._service_name, provenance_legacy_key)
+                legacy_digest = self._legacy_source(entry_key)
+            except ApprovalError as exc:
+                if exc.code not in {"RECORD_CORRUPT", "INTEGRITY_FAILURE"}:
+                    raise
+                raise ApprovalError(
+                    code="REVOCATION_INCOMPLETE",
+                    detail=(
+                        "the approval entry cannot be authenticated, so its legacy source is unknown; nothing was "
+                        "deleted and the entry keeps failing closed. Approving again replaces it, but a legacy approval "
+                        "it may have been migrated from can remain (#433)"
+                    ),
+                ) from None
+            if legacy_digest is not None:
+                self._unpublish(f"durable:{legacy_digest}")
+            self._unpublish(entry_key)
 
     def rotate_hmac_key(self) -> None:
         """Rotate the HMAC integrity key.
@@ -870,7 +1157,8 @@ class KeyringApprovalStore:
         """
         key = secrets.token_bytes(32)
         encoded = base64.urlsafe_b64encode(key).decode("ascii")
-        self._keyring.set_password(self._service_name, _HMAC_KEY_ENTRY, encoded)
+        with self._service_lock():
+            self._set(_HMAC_KEY_ENTRY, encoded)
         self._hmac_key = key
 
 
