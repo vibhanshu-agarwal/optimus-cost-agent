@@ -14,6 +14,12 @@
   "posix_only_caller": "The launch sits inside a test that skips on Windows; it is not reachable in the Windows default selection."
  },
  "sites": {
+  "tests/integration/acp/test_process_signals.py::launch#1": {
+   "mechanism": "indirect",
+   "disposition": "tripwire_at_site",
+   "proof": "tests/integration/acp/test_process_signals.py::test_owned_process_stop_preserves_actual_disposition",
+   "basis": "The real base interpreter avoids Windows venv redirector PID ambiguity. The serve peer explicitly loads this lane's own frozen environment and source before product imports, installs the existing child tripwire first, and the parent asserts zero real-adapter calls even on forced exit. The signal broker branch imports only stdlib, refuses any console membership other than itself plus the exact owned live target, and never imports product or resolves application folders. Native SIGINT is never substituted by force or SIGBREAK."
+  },
   "tests/integration/mcp/test_client_sdk_local_stdio.py::transport_context#1": {
    "mechanism": "indirect",
    "disposition": "tripwire_at_site",

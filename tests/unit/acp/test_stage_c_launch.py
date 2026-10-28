@@ -32,6 +32,7 @@ from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
 from optimus.acp.operator_paths import resolve_authorized_operator_paths
 from optimus.acp.outbound_writer import DedicatedOutboundWriter as _REAL_DEDICATED_WRITER  # before the launch fixture stubs it
 from optimus.acp.trusted_paths import resolve_workspace_security_state
+from optimus.redis.runtime import RedisRuntime
 from optimus_model_policy import stage_c
 from optimus_model_policy.binding import APPROVAL_LITERAL_NAME
 from optimus_model_policy.stage_c import STAGE_C_LITERAL_NAME
@@ -263,7 +264,13 @@ def test_without_stage_c_the_profile_launch_is_unchanged(launch, monkeypatch: py
 # --- The L2 wiring proof (Codex's review f381e730, item 4) -------------------------------------------------------
 
 
-class _FakeRedisRuntime:
+class _FakeRedisRuntime(RedisRuntime):
+    def __init__(self):
+        from tests.unit.acp.test_server_redis_shutdown import _runtime
+
+        runtime = _runtime()
+        super().__init__(pool=runtime.pool, client=runtime.client, owner=runtime.owner)
+
     def ping(self):
         return None
 
@@ -279,7 +286,7 @@ class _FakeRedisRuntime:
         return asyncio.run(operation())
 
     def close(self, *, timeout=None):
-        return None
+        return super().close(timeout=timeout)
 
 
 def test_the_generated_l2_host_arguments_wire_the_attached_stage_c_launch_and_answer_initialize(launch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -370,6 +377,9 @@ def test_the_generated_l2_host_arguments_wire_the_attached_stage_c_launch_and_an
 
     try:
         assert acp_main.main(argv) == 0
+        runtime = servers[-1][1].redis_runtime
+        assert runtime.teardown_record.is_clean and runtime.owner.is_terminated
+        assert runtime.pool.count == runtime.client.count == 1
     finally:
         reset_debug_trace_context()
 

@@ -4,8 +4,12 @@ import asyncio
 import concurrent.futures
 import functools
 import json
+import os
+import queue
 import sys
+import threading
 import uuid
+import weakref
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from time import monotonic
@@ -30,9 +34,10 @@ from optimus.acp.lifecycle import (
     TurnControl,
     TurnResponseEnvelope,
 )
-from optimus.acp.outbound_writer import DedicatedOutboundWriter, OutboundQueueItem
+from optimus.acp.outbound_writer import DedicatedOutboundWriter, EphemeralSendOwner, OutboundQueueItem, next_ephemeral_send_key
+from optimus.acp.process_lifecycle import ProcessLifecycle, ShutdownObservation, cleanup_failure, raise_preserving_failure
 from optimus.acp.settlement import RpcResponseDelivery, SendOutcome, SettlementInvariantError
-from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore
+from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, progress_submission
 from optimus.mcp.client_disposition import ClientMcpShutdownOutcome
 from optimus.mcp.client_supervisor import MCPSupervisorState
 
@@ -97,42 +102,230 @@ def _inbound_response_payload(message: Mapping[str, object]) -> Callable[[], dic
     return payload
 
 
-class StdioByteReader:
+class _StdinRead:
+    """Exclusive ACP input without holding Python's shared buffered-stdin lock at exit."""
+
+    def __init__(self, descriptor: int) -> None:
+        self._descriptor = descriptor
+        self._buffer = bytearray()
+
+    def read(self, size: int) -> bytes:
+        if size == 0:
+            return b""
+        if self._buffer:
+            result = bytes(self._buffer if size < 0 else self._buffer[:size])
+            del self._buffer[:len(result)]
+            return result
+        return os.read(self._descriptor, 8192 if size < 0 else size)
+
+    def readline(self, size: int = -1) -> bytes:
+        while True:
+            newline = self._buffer.find(b"\n")
+            count = newline + 1 if newline >= 0 else len(self._buffer)
+            if size >= 0:
+                count = min(count, size)
+            if newline >= 0 or (size >= 0 and len(self._buffer) >= size):
+                result = bytes(self._buffer[:count])
+                del self._buffer[:count]
+                return result
+            chunk = os.read(self._descriptor, 8192 if size < 0 else min(8192, size - len(self._buffer)))
+            if not chunk:
+                result = bytes(self._buffer)
+                self._buffer.clear()
+                return result
+            self._buffer.extend(chunk)
+
+
+class _OwnedStdioReader:
+    """One daemon owns borrowed input; cancelling an await never closes that input."""
+
+    def __init__(self, operation: Callable[..., bytes]) -> None:
+        self._operation = operation
+        self._commands: queue.Queue[tuple[concurrent.futures.Future[bytes], tuple[Any, ...]] | None] = queue.Queue(maxsize=2)
+        self._pending_read: concurrent.futures.Future[bytes] | None = None
+        self._read_thread: threading.Thread | None = None
+        self._read_lock = threading.Lock()
+        self._read_closed = False
+        self._awaiting_read = False
+
+    @property
+    def pending_read(self) -> concurrent.futures.Future[bytes] | None:
+        return self._pending_read
+
+    @property
+    def read_thread(self) -> threading.Thread | None:
+        return self._read_thread
+
+    async def _read(self, *args: Any) -> bytes:
+        with self._read_lock:
+            if self._read_closed:
+                raise RuntimeError("stdio reader is closed")
+            if self._awaiting_read:
+                raise RuntimeError("concurrent stdio reads are not supported")
+            self._awaiting_read = True
+            if self._pending_read is None:
+                self._pending_read = concurrent.futures.Future()
+                if self._read_thread is None:
+                    self._read_thread = threading.Thread(target=self._run_read, name="optimus-acp-stdin", daemon=True)
+                    try:
+                        self._read_thread.start()
+                    except BaseException:
+                        self._read_thread = None
+                        self._pending_read = None
+                        self._awaiting_read = False
+                        raise
+                self._commands.put_nowait((self._pending_read, args))
+            pending = self._pending_read
+        try:
+            result = await asyncio.shield(asyncio.wrap_future(pending))
+        except BaseException:
+            raise
+        else:
+            with self._read_lock:
+                if self._pending_read is pending:
+                    self._pending_read = None
+            return result
+        finally:
+            with self._read_lock:
+                self._awaiting_read = False
+
+    def _run_read(self) -> None:
+        while True:
+            command = self._commands.get()
+            if command is None:
+                return
+            future, args = command
+            if future.set_running_or_notify_cancel():
+                try:
+                    result = self._operation(*args)
+                except BaseException as exc:
+                    future.set_exception(exc)
+                else:
+                    future.set_result(result)
+
+    def request_close(self) -> None:
+        with self._read_lock:
+            if self._read_closed:
+                return
+            self._read_closed = True
+            if self._pending_read is not None:
+                self._pending_read.cancel()  # succeeds only before the physical call starts
+            if self._read_thread is not None:
+                self._commands.put_nowait(None)  # second slot is reserved for this one marker
+
+    def observe_closed(self, timeout: float) -> bool:
+        thread = self._read_thread
+        if thread is None:
+            return True
+        thread.join(timeout)
+        return not thread.is_alive()
+
+
+class _StdioReadFacade:
+    def __init__(self, operation: Callable[..., bytes]) -> None:
+        self._owner = _OwnedStdioReader(operation)
+        # The owner thread retains its state, not this facade; retirement can wake an idle owner.
+        self._retire = weakref.finalize(self, self._owner.request_close)
+
+    @property
+    def pending_read(self) -> concurrent.futures.Future[bytes] | None:
+        return self._owner.pending_read
+
+    @property
+    def read_thread(self) -> threading.Thread | None:
+        return self._owner.read_thread
+
+    async def _read(self, *args: Any) -> bytes:
+        return await self._owner._read(*args)
+
+    def request_close(self) -> None:
+        self._retire()
+
+    def observe_closed(self, timeout: float) -> bool:
+        return self._owner.observe_closed(timeout)
+
+
+class StdioByteReader(_StdioReadFacade):
     def __init__(self, stream: SyncByteReader) -> None:
         self._stream = stream
+        physical = _StdinRead(sys.stdin.fileno()) if stream is getattr(sys.stdin, "buffer", None) else stream
+        super().__init__(physical.read)
 
     async def read(self, size: int) -> bytes:
-        return await asyncio.to_thread(self._stream.read, size)
+        return await self._read(size)
 
 
 class StdioByteWriter:
     def __init__(self, stream: SyncByteWriter) -> None:
         self._stream = stream
+        self._physical = StdioNdjsonLineWriter(stream)
+        self._dedicated = DedicatedOutboundWriter(self._physical)
+        self._last_send: concurrent.futures.Future[SendCompletion] | None = None
+        self._retire = weakref.finalize(self, self._dedicated.request_close)
 
     def write(self, data: bytes) -> None:
-        self._stream.write(data)
+        self._dedicated.start()
+        owner = EphemeralSendOwner()
+        key = next_ephemeral_send_key("framed")
+        owner.create_queued(key)
+        source: concurrent.futures.Future[SendCompletion] = concurrent.futures.Future()
+        self._dedicated.submit(OutboundQueueItem(payload={}, send_key=key, owner=owner, source_future=source, encoded_payload=data))
+        self._last_send = source
 
     async def drain(self) -> None:
-        await asyncio.to_thread(self._stream.flush)
+        if self._last_send is not None:
+            completion = await asyncio.shield(asyncio.wrap_future(self._last_send))
+            if self._physical.physical_failure is not None:
+                raise_preserving_failure(self._physical.physical_failure)
+            if completion.outcome is not SendOutcome.FLUSHED:
+                raise OSError("framed output delivery incomplete")
+
+    def request_close(self) -> None:
+        self._dedicated.request_close()
+
+    def observe_closed(self, timeout: float | None) -> bool:
+        return self._dedicated.observe_closed(timeout)
+
+    def close_and_join(self) -> None:
+        self._dedicated.close_and_join()
+
+    @property
+    def thread_alive(self) -> bool:
+        return self._dedicated.thread_alive
 
 
-class StdioNdjsonLineReader:
+class StdioNdjsonLineReader(_StdioReadFacade):
     def __init__(self, stream: SyncLineReader) -> None:
         self._stream = stream
+        physical = _StdinRead(sys.stdin.fileno()) if stream is getattr(sys.stdin, "buffer", None) else stream
+        super().__init__(physical.readline)
 
     async def readline(self) -> bytes:
-        return await asyncio.to_thread(self._stream.readline)
+        return await self._read()
 
 
 class StdioNdjsonLineWriter:
     def __init__(self, stream: SyncByteWriter) -> None:
         self._stream = stream
+        self._physical_failure: BaseException | None = None
+
+    @property
+    def physical_failure(self) -> BaseException | None:
+        return self._physical_failure
 
     def write_bytes(self, data: bytes) -> None:
-        self._stream.write(data)
+        try:
+            self._stream.write(data)
+        except BaseException as exc:
+            self._physical_failure = exc
+            raise
 
     def flush(self) -> None:
-        self._stream.flush()
+        try:
+            self._stream.flush()
+        except BaseException as exc:
+            self._physical_failure = exc
+            raise
 
     async def write_line(self, message: Mapping[str, Any]) -> None:
         payload = (json.dumps(message, separators=(",", ":")) + "\n").encode("utf-8")
@@ -193,18 +386,40 @@ class NdjsonOutboundChannel:
 
     async def _submit_payload(self, message: Mapping[str, Any], *, kind: str) -> SendOutcome | None:
         """Returns the dedicated writer's outcome; ``None`` on the direct path, which raises on failure."""
+        progress = progress_submission.get()
         if self._dedicated_writer is None:
-            await self._writer.write_line(message)
+            if progress is not None and progress.control.claim_write_started(progress.send_key).value == "suppressed":
+                progress.admission.set()
+                return SendOutcome.SUPPRESSED
+            try:
+                await self._writer.write_line(message)
+            except BaseException:
+                if progress is not None:
+                    progress.control.publish_authoritative(progress.send_key, SendOutcome.AMBIGUOUS)
+                raise
+            else:
+                if progress is not None:
+                    progress.control.publish_authoritative(progress.send_key, SendOutcome.FLUSHED)
+            finally:
+                if progress is not None:
+                    progress.admission.set()
             return None
         from optimus.acp.outbound_writer import (
             EphemeralSendOwner,
             OutboundQueueItem,
+            SendOwner,
             next_ephemeral_send_key,
         )
 
-        owner = EphemeralSendOwner()
-        send_key = next_ephemeral_send_key(kind)
-        owner.create_queued(send_key)
+        owner: SendOwner
+        if progress is None:
+            ephemeral = EphemeralSendOwner()
+            send_key = next_ephemeral_send_key(kind)
+            ephemeral.create_queued(send_key)
+            owner = ephemeral
+        else:
+            send_key = progress.send_key
+            owner = progress.control
         source: concurrent.futures.Future[SendCompletion] = concurrent.futures.Future()
         item = OutboundQueueItem(
             payload=message,
@@ -212,7 +427,19 @@ class NdjsonOutboundChannel:
             owner=owner,
             source_future=source,
         )
-        self._dedicated_writer.submit(item)
+        if progress is not None:
+            progress.admission.physical_future = source
+        try:
+            self._dedicated_writer.submit(item)
+        except RuntimeError:
+            if progress is None:
+                raise
+            owner.publish_authoritative(send_key, SendOutcome.SUPPRESSED)
+            source.set_result(SendCompletion(send_key=send_key, outcome=SendOutcome.SUPPRESSED))
+            return SendOutcome.SUPPRESSED
+        finally:
+            if progress is not None:
+                progress.admission.set()
         loop = asyncio.get_running_loop()
         completion = await asyncio.shield(asyncio.wrap_future(source, loop=loop))
         if completion.outcome is SendOutcome.CONCLUSIVE_FAILURE:
@@ -429,6 +656,15 @@ class AcpStreamServer:
         self._mcp_idle_seconds = mcp_idle_seconds
         self._monotonic_clock = monotonic_clock
         self._mcp_shutdown_task: asyncio.Task[Any] | None = None
+        self._writer_shutdown_task: asyncio.Task[Any] | None = None
+        self._process_lifecycle: ProcessLifecycle | None = None
+        self._shutdown_failures: set[str] = set()
+        self._serving_failure: BaseException | None = None
+        self._cleanup_started = False
+        self._cleanup_control_failure: tuple[str, BaseException] | None = None
+        self._mcp_shutdown_outcome: ClientMcpShutdownOutcome | None = None
+        self._serving_dedicated: DedicatedOutboundWriter | None = None
+        self._serving_dedicated_owned = False
         self._conversation_sanitizer_inputs = conversation_sanitizer_inputs
         # Seam 2, checkpoint B: the serving process retains the Redis runtime the
         # bootstrap built, and closes it LAST in its own teardown. Before this seam the
@@ -453,6 +689,80 @@ class AcpStreamServer:
     def context_attachment(self) -> Any | None:
         return self._context_attachment
 
+    @property
+    def cleanup_failure_stages(self) -> tuple[str, ...]:
+        return tuple(sorted(self._shutdown_failures))
+
+    @property
+    def serving_failure(self) -> BaseException | None:
+        return self._serving_failure
+
+    @property
+    def cleanup_started(self) -> bool:
+        return self._cleanup_started
+
+    @property
+    def cleanup_control_failure(self) -> tuple[str, BaseException] | None:
+        return self._cleanup_control_failure
+
+    def _remember_cleanup_failures(self, failures: list[tuple[str, BaseException]]) -> None:
+        self._shutdown_failures.update(stage for stage, _exc in failures if stage != "serve")
+        if self._cleanup_control_failure is None:
+            self._cleanup_control_failure = next(((stage, exc) for stage, exc in failures
+                if stage != "serve" and not isinstance(exc, Exception)), None)
+
+    @property
+    def mcp_shutdown_outcome(self) -> ClientMcpShutdownOutcome | None:
+        return self._mcp_shutdown_outcome
+
+    def _cleanup_phase(self, stage: str) -> None:
+        self._cleanup_started = True
+        if self._process_lifecycle is not None:
+            self._process_lifecycle.begin_cleanup()
+            self._process_lifecycle.record(ShutdownObservation(False, stage, 1, self.cleanup_failure_stages))
+
+    async def _finish_cleanup_task(self, task: asyncio.Task[Any], *, stage: str) -> Any:
+        cancelled: asyncio.CancelledError | None = None
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError as exc:
+                cancelled = cancelled or exc
+            except BaseException:
+                break
+        if cancelled is not None:
+            try:
+                task.result()
+            except BaseException as exc:
+                raise_preserving_failure(cleanup_failure([("serve", cancelled), (stage, exc)]))
+            raise_preserving_failure(cancelled)
+        return task.result()
+
+    async def _close_writer_stage(self, writer: DedicatedOutboundWriter | StdioByteWriter) -> None:
+        self._cleanup_phase("writer")
+        if self._writer_shutdown_task is None:
+            self._writer_shutdown_task = asyncio.create_task(asyncio.to_thread(writer.close_and_join), name="optimus-writer-shutdown")
+        await self._finish_cleanup_task(self._writer_shutdown_task, stage="writer")
+
+    def _remember_mcp_outcome(self, outcome: Any) -> None:
+        if isinstance(outcome, ClientMcpShutdownOutcome):
+            self._mcp_shutdown_outcome = outcome
+            if not (outcome.sdk_closed and outcome.endpoint_closed and outcome.supervisor_closed):
+                self._shutdown_failures.add("mcp")
+        else:
+            self._shutdown_failures.add("mcp")
+
+    async def _close_unused_mcp_stage(self) -> None:
+        if self._client_mcp_runtime is None or self._mcp_shutdown_task is not None:
+            return
+        self._cleanup_phase("mcp")
+        self._mcp_shutdown_task = asyncio.create_task(asyncio.to_thread(self._client_mcp_runtime.close), name="optimus-mcp-startup-shutdown")
+        try:
+            self._remember_mcp_outcome(await self._finish_cleanup_task(self._mcp_shutdown_task, stage="mcp"))
+        except BaseException:
+            self._shutdown_failures.add("mcp")
+            raise
+
     async def _close_redis_runtime_stage(self) -> None:
         """The LAST teardown stage: observe the retained runtime's single teardown.
 
@@ -469,6 +779,7 @@ class AcpStreamServer:
         runtime = self._redis_runtime
         if runtime is None:
             return
+        self._cleanup_phase("redis")
         from optimus.redis.runtime import RedisRuntimeShutdownIncomplete
 
         outcome = "clean"
@@ -485,6 +796,8 @@ class AcpStreamServer:
         except Exception:  # noqa: BLE001 - a resource-stage failure republished by close_async
             outcome = "failed"
         if outcome != "clean":
+            if outcome == "failed":
+                self._shutdown_failures.add("redis")
             report_redis_cleanup_incomplete(runtime, outcome)
 
     @property
@@ -504,14 +817,38 @@ class AcpStreamServer:
         writer.write(encode_message(response))
         await writer.drain()
 
-    async def serve(self, reader: AsyncByteReader, writer: AsyncByteWriter) -> None:
+    async def serve(self, reader: AsyncByteReader, writer: AsyncByteWriter, *, lifecycle: ProcessLifecycle | None = None) -> None:
         # Seam 2, checkpoint B (round 2, R1): custody protection begins the moment this
         # server is entered. Nothing runs outside this try, so a failure anywhere --
         # setup, serving or an earlier cleanup -- still reaches the Redis stage below.
+        self._process_lifecycle = lifecycle
+        failures: list[tuple[str, BaseException]] = []
         try:
-            await self._serve_framed(reader, writer)
+            try:
+                await self._serve_framed(reader, writer)
+            except BaseException as exc:
+                self._serving_failure = exc
+                failures.append(("serve", exc))
         finally:
-            await self._close_redis_runtime_stage()
+            self._cleanup_phase("mcp")
+            try:
+                await self._close_unused_mcp_stage()
+            except BaseException as exc:
+                failures.append(("mcp", exc))
+            try:
+                if isinstance(writer, StdioByteWriter):
+                    await self._close_writer_stage(writer)
+            except BaseException as exc:
+                failures.append(("writer", exc))
+            if isinstance(reader, _StdioReadFacade):
+                reader.request_close()
+            try:
+                await self._close_redis_runtime_stage()
+            except BaseException as exc:
+                failures.append(("redis", exc))
+        self._remember_cleanup_failures(failures)
+        if failures:
+            raise_preserving_failure(cleanup_failure(failures))
 
     async def _serve_framed(self, reader: AsyncByteReader, writer: AsyncByteWriter) -> None:
         while True:
@@ -539,6 +876,7 @@ class AcpStreamServer:
         dedicated_writer: DedicatedOutboundWriter | None = None,
         notice_control: NoticeControl | None = None,
         join_dedicated_writer: bool = True,
+        lifecycle: ProcessLifecycle | None = None,
     ) -> None:
         # Seam 2, checkpoint B (round 2, R1): the retained Redis runtime is closed by THIS
         # finally, which encloses setup, serving and every earlier teardown stage. The
@@ -548,16 +886,41 @@ class AcpStreamServer:
         # path (adapter, MCP runtime, owned writer, reader decision, then Redis); on a
         # failing path the earlier stages keep their own outcomes and the failure they
         # raised, and Redis is still closed afterwards -- never before them.
+        self._process_lifecycle = lifecycle
+        failures: list[tuple[str, BaseException]] = []
         try:
-            await self._serve_ndjson(
-                reader,
-                writer,
-                dedicated_writer=dedicated_writer,
-                notice_control=notice_control,
-                join_dedicated_writer=join_dedicated_writer,
-            )
+            try:
+                await self._serve_ndjson(
+                    reader,
+                    writer,
+                    dedicated_writer=dedicated_writer,
+                    notice_control=notice_control,
+                    join_dedicated_writer=join_dedicated_writer,
+                )
+            except BaseException as exc:
+                if not self._cleanup_started:
+                    self._serving_failure = exc
+                failures.append(("serve", exc))
         finally:
-            await self._close_redis_runtime_stage()
+            self._cleanup_phase("mcp")
+            try:
+                await self._close_unused_mcp_stage()
+            except BaseException as exc:
+                failures.append(("mcp", exc))
+            try:
+                if self._serving_dedicated_owned and self._serving_dedicated is not None and self._writer_shutdown_task is None:
+                    await self._close_writer_stage(self._serving_dedicated)
+            except BaseException as exc:
+                failures.append(("writer", exc))
+            if isinstance(reader, _StdioReadFacade):
+                reader.request_close()
+            try:
+                await self._close_redis_runtime_stage()
+            except BaseException as exc:
+                failures.append(("redis", exc))
+        self._remember_cleanup_failures(failures)
+        if failures:
+            raise_preserving_failure(cleanup_failure(failures))
 
     async def _serve_ndjson(
         self,
@@ -575,12 +938,16 @@ class AcpStreamServer:
         workspace_root = self._dispatcher.workspace_root or Path.cwd()
         notice = notice_control or NoticeControl()
         physical = writer if hasattr(writer, "write_bytes") and hasattr(writer, "flush") else None
-        owned_dedicated = dedicated_writer is None
+        owned_dedicated = dedicated_writer is None or (self._process_lifecycle is not None and join_dedicated_writer)
         dedicated = dedicated_writer
         if dedicated is None and physical is not None:
             dedicated = DedicatedOutboundWriter(physical)  # type: ignore[arg-type]
+            self._serving_dedicated = dedicated
+            self._serving_dedicated_owned = join_dedicated_writer
             dedicated.start()
             owned_dedicated = True
+        self._serving_dedicated = dedicated
+        self._serving_dedicated_owned = owned_dedicated and join_dedicated_writer
         outbound = NdjsonOutboundChannel(writer, dedicated_writer=dedicated)
         sessions = InMemoryAcpSpecSessionStore()
         adapter = AcpDuplexAdapter(
@@ -881,6 +1248,7 @@ class AcpStreamServer:
 
         adapter.start_idle_mcp_sweeper()
         reader_task = asyncio.create_task(read_lines())
+        primary_failure: BaseException | None = None
         try:
             while True:
                 message = await message_queue.get()
@@ -914,9 +1282,12 @@ class AcpStreamServer:
                             on_request_task_done, operation_id=operation_id, request_method=request_method
                         )
                     )
+        except BaseException as exc:
+            primary_failure = exc
+            self._serving_failure = exc
         finally:
-            primary_failure = sys.exc_info()[1]
-            failures: list[BaseException] = [] if primary_failure is None else [primary_failure]
+            self._cleanup_phase("mcp")
+            failures: list[tuple[str, BaseException]] = [] if primary_failure is None else [("serve", primary_failure)]
             # Transport-loss ordering: abandon notices before cancelling request tasks.
             notice.mark_transport_abandoned()
             for turn in list(adapter._active_turns.values()):  # noqa: SLF001
@@ -932,18 +1303,20 @@ class AcpStreamServer:
                     if request_tasks:
                         await asyncio.gather(*request_tasks, return_exceptions=True)
                 except BaseException as exc:
-                    failures.append(exc)
+                    failures.append(("request", exc))
                     mcp_failed = True
                 try:
                     await adapter.aclose()
                 except BaseException as exc:
-                    failures.append(exc)
+                    failures.append(("adapter", exc))
                     mcp_failed = True
                 try:
                     if self._client_mcp_runtime is not None:
                         mcp_outcome = await asyncio.to_thread(self._client_mcp_runtime.close)
+                        self._remember_mcp_outcome(mcp_outcome)
                 except BaseException as exc:
-                    failures.append(exc)
+                    failures.append(("mcp", exc))
+                    self._shutdown_failures.add("mcp")
                     mcp_failed = True
             self._mcp_shutdown_task = asyncio.create_task(shutdown_mcp(), name="optimus-mcp-shutdown")
             teardown_cancelled: asyncio.CancelledError | None = None
@@ -958,7 +1331,7 @@ class AcpStreamServer:
             try:
                 self._mcp_shutdown_task.result()
             except BaseException as exc:
-                failures.append(exc)
+                failures.append(("mcp", exc))
                 mcp_failed = True
             # Client-MCP cleanup outcome. The runtime attempts every stage and returns an
             # aggregate result; consuming it here means an incomplete-but-non-raising cleanup
@@ -977,12 +1350,12 @@ class AcpStreamServer:
                             mcp_status,
                         )
             except BaseException as exc:
-                failures.append(exc)
+                failures.append(("mcp", exc))
             try:
                 if dedicated is not None and owned_dedicated and join_dedicated_writer:
-                    dedicated.close_and_join()
+                    await self._close_writer_stage(dedicated)
             except BaseException as exc:
-                failures.append(exc)
+                failures.append(("writer", exc))
             # Reader ownership at teardown. The cooperative path is EOF: `read_lines` put its
             # sentinel and returned, so `reader_task` is already done -- await it (immediate,
             # surfacing any reader error) and complete the full shutdown. But when teardown is
@@ -994,21 +1367,20 @@ class AcpStreamServer:
             # not close shared stdin, do not reclassify incomplete input as EOF, and do not
             # claim a bounded process exit -- only that this await no longer stalls teardown.
             try:
+                if isinstance(reader, _StdioReadFacade):
+                    reader.request_close()
                 if reader_task.done():
                     await reader_task
                 else:
                     reader_task.cancel()
                     report_reader_incomplete()
             except BaseException as exc:
-                failures.append(exc)
+                failures.append(("reader", exc))
             if teardown_cancelled is not None:
-                failures.append(teardown_cancelled)
+                failures.append(("serve", teardown_cancelled))
+            self._remember_cleanup_failures(failures)
             if failures:
-                failure = next((exc for exc in failures if not isinstance(exc, Exception)), failures[0])
-                secondary = next((exc for exc in failures if exc is not failure), None)
-                if secondary is not None:
-                    raise failure from secondary
-                raise failure
+                raise_preserving_failure(cleanup_failure(failures))
             # Seam 2, checkpoint B: the Redis runtime is closed LAST by the enclosing
             # `serve_ndjson` finally, after every stage above that may still submit work
             # to it -- and still closed when one of those stages raises.

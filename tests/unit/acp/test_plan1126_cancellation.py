@@ -12,6 +12,7 @@ from jsonschema import Draft202012Validator
 
 from tests.support.concurrency import assert_no_offending_rows
 from tools.plan1126_runtime_audit.cancellation import (
+    H3_CURRENT_SOURCE_PATHS,
     H3_SOURCE_PATHS,
     _canonical_digest,
     cancellation_schedule_observations,
@@ -26,6 +27,18 @@ from tools.plan1126_runtime_audit.source import GitCommitSource, SourceTree
 _MERGED = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"  # pragma: allowlist secret - Historical commit-identity pin in _MERGED;
 _OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"  # pragma: allowlist secret - Historical commit-identity pin in _OVERLAY;
 _SCHEMA_PATH = Path("tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json")
+
+
+def test_current_task_inventory_includes_process_roots_and_physical_executor():
+    root = Path(__file__).resolve().parents[3]
+    current = SourceTree({path: (root / path).read_text(encoding="utf-8") for path in H3_CURRENT_SOURCE_PATHS})
+    inventory = discover_task_supervision(current)
+    created = [site for site in inventory.discovered_sites if site.kind is InventoryKind.TASK_CREATE]
+    assert any(site.reference == "loop.run_in_executor" and "observe_worker" in site.symbol for site in created)
+    assert any(site.path.endswith("/__main__.py") and "_run_serving_process" in site.symbol for site in created)
+    assert any(site.reference == "threading.Thread" and site.path.endswith("/local_infra.py") for site in created)
+    assert any(site.path.endswith("/process_lifecycle.py") and site.kind is InventoryKind.CANCELLATION_POINT
+        for site in inventory.discovered_sites)
 
 
 def _sealed_replay():
