@@ -1,6 +1,6 @@
 # ADR-030: Approval records larger than one Windows credential blob are stored as bounded parts
 
-Status: Proposed — mechanism recommended by Codex and drafted by Claude for [#433](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/433); the operator's decision is recorded here before merge.
+Status: Accepted — the operator accepted it on 2026-10-28 (see Decider and provenance). Mechanism recommended by Codex and drafted by Claude for [#433](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/433).
 
 ## Context
 
@@ -35,5 +35,5 @@ A probe of the real backend, under an isolated throwaway service, stored 1,280 c
 ## Decider and provenance
 
 - Mechanism: recommended by Codex (CLI review, round 76 follow-up 3 and round 78, posted verbatim on #433), designed and implemented by Claude.
-- Operator decision: _to be recorded verbatim before merge._
+- Operator decision, 2026-10-28: asked through AskUserQuestion in the Plan 12.4 session, and relayed from there to the #433 session. The question was "ADR-030 is the record of how #433 fixes the Windows approval crash. Do you accept it as your decision?" The operator answered "Accept ADR-030 (Recommended)".
 - The frozen Plan 9.96 design is not edited; this record supersedes only its record-size and no-chunking statements.

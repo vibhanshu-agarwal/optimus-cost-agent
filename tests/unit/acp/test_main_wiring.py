@@ -1928,7 +1928,9 @@ def _seed_legacy_v1_approval(workspace: Path, env: dict[str, str], fake_keyring:
     state = resolve_workspace_security_state(workspace)
     store = KeyringApprovalStore(
         keyring_backend=fake_keyring,
-        runtime_root=workspace / ".optimus-runtime",
+        # Outside the workspace, like production's approval runtime root: the store's lock directory created inside
+        # it would change the workspace root's ctime, which the legacy v2 digest hashes (#433, Linux CI).
+        runtime_root=workspace.parent / "approval-runtime",
     )
     candidate = resolve_launch_candidate(
         snapshot=snapshot,
@@ -1967,6 +1969,9 @@ def _seed_legacy_v1_approval(workspace: Path, env: dict[str, str], fake_keyring:
         _APPROVAL_SERVICE,
         f"durable:{state.legacy_v2_digest}",
         serialize_approval_record(legacy),
+    )
+    assert resolve_workspace_security_state(workspace).legacy_v2_digest == state.legacy_v2_digest, (
+        "seeding changed the workspace's legacy v2 digest (its root ctime), so launch cannot find the record"
     )
     return candidate, store
 
