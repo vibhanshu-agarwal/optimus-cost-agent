@@ -1427,8 +1427,9 @@ class _PlanningIterationRunner:
             return None
         if self._episode is not None:
             cause: str = self._episode.kind
-            if self._escalates and not self._escalation_tried and not (plan_waiting or refusal_waiting):
-                # The nudge was carried and the model still struggles: help comes before asking (ADR-009 rung 2).
+            # The nudge was carried and the model still struggles, or gave up with a REFUSE (plan r5): help comes before
+            # asking (ADR-009 rung 2). A plan the nudge produced goes to the user.
+            if self._escalates and not self._escalation_tried and not plan_waiting and (self._nudged or not refusal_waiting):
                 return PlanningEscalation(cause=cause, planning_steps=self._steps_run, what=self._episode_text())
         else:
             cause = _WALL_CLOCK if stop is LoopStopReason.WALL_CLOCK else _TURN_LIMIT
@@ -1472,6 +1473,8 @@ class _PlanningIterationRunner:
         self._escalates = False  # one switch per turn: later episodes on the stronger model go to their check-in
         self._detector.reset()
         self._checkin_requested = False
+        if self._last_decision is not None and self._last_decision.kind is PlanningTurnKind.REFUSE:
+            self._last_decision = None  # the weak model's refusal is set aside for the stronger one; the episode stays
         assert self._episode is not None
         self._nudge = self._recovery_note(self._episode, escalated=True)
 

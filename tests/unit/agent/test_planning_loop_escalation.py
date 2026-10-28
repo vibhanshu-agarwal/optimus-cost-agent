@@ -126,7 +126,7 @@ def test_the_allowance_ending_after_the_nudge_without_a_plan_escalates(tmp_path,
     assert (result.stop_reason, result.plan_text) == (None, FINAL_PLAN)
 
 
-def test_a_plan_or_refusal_settled_by_the_nudge_goes_to_the_check_in_without_escalating(tmp_path, source):
+def test_a_plan_settled_by_the_nudge_goes_to_the_check_in_without_escalating(tmp_path, source):
     gateway = Gateway([READ_A] * 3 + [FINAL_PLAN])
     checkins, escalations = CheckIns(CheckInDecision.CONTINUE), Escalations()
     _run(tmp_path, gateway, checkins, escalations)
@@ -229,3 +229,62 @@ def test_the_escalation_is_recorded_without_content(tmp_path, source):
         {"record": "check_in", "signal": "REPEATED_READ", "planning_step": 7, "decision": "stop"},
     ]
     assert "a.py" not in str([e.model_dump() for e in events])
+
+
+# --- r5: a refusal settled after the nudge also takes the episode's one escalation ------------------------------------
+
+REFUSE = "REFUSE: The evidence is not enough for a safe change.\n"
+STRONG_REFUSE = "REFUSE: The word is still not published.\n"
+
+
+def test_a_refusal_after_the_nudge_escalates_and_the_stronger_model_settles_the_plan(tmp_path, source):
+    # Repeats at steps 1-3 open the episode; the nudge step 4 refuses; the grant sets that refusal aside.
+    gateway = Gateway([READ_A] * 3 + [REFUSE, FINAL_PLAN])
+    checkins, escalations = CheckIns(CheckInDecision.CONTINUE), Escalations(GRANT)
+    result = _run(tmp_path, gateway, checkins, escalations)
+
+    assert gateway.models == [WEAK] * 4 + [STRONG]
+    [move] = escalations.asked
+    assert move.planning_steps == 4
+    [checkin] = checkins.asked
+    assert checkin.plan_waiting and not checkin.refusal_waiting and "then moved to strong/model" in checkin.text
+    assert (result.stop_reason, result.plan_text, result.refusal_reason) == (None, FINAL_PLAN, None)
+
+
+def test_a_refusal_after_the_nudge_escalates_and_the_stronger_models_own_refusal_waits_for_the_check_in(tmp_path, source):
+    gateway = Gateway([READ_A] * 3 + [REFUSE, STRONG_REFUSE])
+    checkins = CheckIns(CheckInDecision.STOP)
+    result = _run(tmp_path, gateway, checkins, Escalations(GRANT))
+
+    assert gateway.models == [WEAK] * 4 + [STRONG]
+    [checkin] = checkins.asked
+    assert checkin.refusal_waiting and "then moved to strong/model" in checkin.text
+    assert "The model then refused: The word is still not published." in checkin.text
+    assert (result.stop_reason, result.refusal_reason) == ("PLANNING_MODEL_REFUSED", "The word is still not published.")
+
+
+@pytest.mark.parametrize("refusal", [EscalationRefusal.NO_TARGET, EscalationRefusal.FAILED])
+def test_a_refusal_after_the_nudge_with_no_grant_keeps_the_original_refusal_for_the_check_in(tmp_path, source, refusal):
+    gateway = Gateway([READ_A] * 3 + [REFUSE])
+    checkins = CheckIns(CheckInDecision.STOP)
+    result = _run(tmp_path, gateway, checkins, Escalations(refusal))
+
+    assert gateway.models == [WEAK] * 4
+    [checkin] = checkins.asked
+    assert checkin.refusal_waiting and "The model then refused: The evidence is not enough for a safe change." in checkin.text
+    assert ("Auto had no stronger eligible model to try." in checkin.text) is (refusal is EscalationRefusal.NO_TARGET)
+    assert (result.stop_reason, result.refusal_reason) == ("PLANNING_MODEL_REFUSED", "The evidence is not enough for a safe change.")
+
+
+def test_a_first_refusal_with_no_episode_stays_a_refusal_and_never_escalates(tmp_path, source):
+    escalations = Escalations()
+    result = _run(tmp_path, Gateway([REFUSE]), CheckIns(), escalations)
+    assert escalations.asked == []
+    assert (result.stop_reason, result.refusal_reason) == ("PLANNING_MODEL_REFUSED", "The evidence is not enough for a safe change.")
+
+
+def test_without_an_escalation_callback_a_refusal_after_the_nudge_waits_for_the_check_in_as_in_phase_one(tmp_path, source):
+    checkins = CheckIns(CheckInDecision.STOP)
+    gateway = Gateway([READ_A] * 3 + [REFUSE])
+    _run(tmp_path, gateway, checkins, None)
+    assert gateway.models == [WEAK] * 4 and checkins.asked[0].refusal_waiting
