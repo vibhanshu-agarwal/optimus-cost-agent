@@ -2251,3 +2251,42 @@ def test_main_preserves_an_explicitly_empty_pathext_and_keeps_an_absent_one_abse
     assert acp_main.main(["--workspace-root", str(tmp_path)]) == 0
     assert captured["system_environ"]["PATH"] == "/captured/bin"
     assert "PATHEXT" not in captured["system_environ"]
+
+
+# --- #433: approval-store keyring failures at the launch entry point are typed refusals ---------------------------
+
+
+class _UnreadableKeyring(FakeKeyring):
+    def get_password(self, service: str, key: str) -> str | None:
+        raise RuntimeError("backend message quoting a stored value")
+
+
+def test_a_keyring_failure_building_the_approval_store_is_a_typed_refusal(monkeypatch, tmp_path, capsys) -> None:
+    monkeypatch.setattr(acp_main, "keyring", _UnreadableKeyring())
+    for name, value in _base_env().items():
+        monkeypatch.setenv(name, value)
+
+    assert acp_main.main(["--workspace-root", str(tmp_path)]) == 2
+
+    err = capsys.readouterr().err
+    assert "optimus-agent: APPROVAL_STORE_READ_FAILED: keyring backend RuntimeError" in err
+    assert "backend message" not in err and "Traceback" not in err
+    assert not (tmp_path / ".optimus").exists()
+
+
+def test_a_keyring_failure_building_the_server_store_is_a_typed_refusal(monkeypatch, tmp_path, capsys) -> None:
+    from optimus.acp.launch_approvals import ApprovalError
+
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **_kwargs: None)
+
+    def _store_fails(**_kwargs):
+        raise ApprovalError(code="APPROVAL_STORE_READ_FAILED", detail="keyring backend RuntimeError")
+
+    _patch_common(monkeypatch, server_factory=_store_fails)
+
+    assert acp_main.main(["--no-auto-start", "--workspace-root", str(tmp_path)]) == 2
+    err = capsys.readouterr().err
+    assert "optimus-agent: APPROVAL_STORE_READ_FAILED: keyring backend RuntimeError" in err and "Traceback" not in err

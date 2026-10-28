@@ -286,7 +286,11 @@ def _authorize_or_exit(
     # Module-level `keyring` import (rather than a local import inside this
     # function) so tests can monkeypatch acp_main.keyring with a fake
     # backend without touching the real OS keychain.
-    store = KeyringApprovalStore(keyring_backend=keyring, runtime_root=roots.approval_runtime_root)
+    try:
+        store = KeyringApprovalStore(keyring_backend=keyring, runtime_root=roots.approval_runtime_root)
+    except ApprovalError as exc:  # #433: a keyring failure reading or creating the HMAC key
+        print(f"optimus-agent: {exc}", file=sys.stderr)
+        return 2
 
     try:
         candidate: LaunchCandidate = resolve_launch_candidate(
@@ -726,6 +730,9 @@ def main(argv: list[str] | None = None) -> int:
         except StartupConfigurationError as exc:
             print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
             return exc.exit_code
+        except ApprovalError as exc:  # #433: the server's approval store hit a keyring failure
+            print(f"optimus-agent: {exc}", file=sys.stderr)
+            return 2
 
         if args.framed:
             asyncio.run(server.serve(StdioByteReader(sys.stdin.buffer), StdioByteWriter(sys.stdout.buffer)))

@@ -556,8 +556,9 @@ def _cmd_approve(
     )
 
     # Plan 12.2 F1: prepare the Stage C ledger before any approval is persisted, so a refused preparation persists
-    # nothing (an earlier durable approval stays as it was). A keyring failure while persisting below has an unknown
-    # outcome: nothing is rolled back and no success is reported. The two stores are never claimed to be atomic.
+    # nothing (an earlier durable approval stays as it was). A keyring failure while persisting below is a typed
+    # refusal and no success is reported; the approval store rolls back its own publication and reports the confirmed
+    # outcome (#433), but the prepared ledger is not rolled back. The two stores are never claimed to be atomic.
     if stage_c:
         _initialize_stage_c_ledger(candidate)
 
