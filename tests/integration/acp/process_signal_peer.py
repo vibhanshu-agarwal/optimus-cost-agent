@@ -6,6 +6,7 @@ import json
 import os
 import signal
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -135,6 +136,16 @@ def serve_peer(workspace: Path, mode: str, scenario: str, packages: str, root: s
         AcpDuplexAdapter.__init__ = with_worker
     configured = configured_test_agent_server(workspace, output_text="unused")
     lifecycle = ProcessLifecycle()
+    watcher_stop = threading.Event()
+
+    def observe_signals() -> None:
+        seen = 0
+        while not watcher_stop.wait(0.005):
+            while seen < lifecycle.signal_count:
+                seen += 1
+                mark(f"signals-{seen}.json", {"signals": seen})
+
+    watcher = threading.Thread(target=observe_signals, daemon=True)
     framed = mode == "framed"
     reader = StdioByteReader(sys.stdin.buffer) if framed else StdioNdjsonLineReader(sys.stdin.buffer)
     physical_read = reader._owner._operation
@@ -146,6 +157,7 @@ def serve_peer(workspace: Path, mode: str, scenario: str, packages: str, root: s
 
     reader._owner._operation = acknowledged_read
     writer = StdioByteWriter(Output()) if framed else StdioNdjsonLineWriter(Output())
+    watcher.start()
     try:
         with signal_handlers(lifecycle):
             code = asyncio.run(_run_serving_process(configured.server, lifecycle=lifecycle, framed=framed,
@@ -155,8 +167,11 @@ def serve_peer(workspace: Path, mode: str, scenario: str, packages: str, root: s
             "signals": lifecycle.signal_count, "attempts": attempts, "worker_calls": worker_calls})
         return code
     finally:
+        watcher_stop.set()
+        watcher.join(timeout=2)
         AcpDuplexAdapter.aclose = original_close
         AcpDuplexAdapter.__init__ = original_init
+        assert not watcher.is_alive()
 
 
 if __name__ == "__main__":

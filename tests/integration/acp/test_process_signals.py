@@ -127,8 +127,10 @@ def _exercise(workspace, mode, scenario):
             elif scenario in {"term", "term-clean"}:
                 os.kill(target.pid, signal.SIGTERM)
                 if scenario == "term-clean":
+                    assert wait_marker(workspace / "signals-1.json", target) == {"signals": 1}
                     wait_marker(workspace / "held.json", target)
                     os.kill(target.pid, signal.SIGTERM)
+                    assert wait_marker(workspace / "signals-2.json", target) == {"signals": 2}
                     assert target.poll() is None
                     target.stdin.close()
                     (workspace / "release").touch()
@@ -142,8 +144,10 @@ def _exercise(workspace, mode, scenario):
                     wait_marker(workspace / "held.json", target)
                 deliver_sigint(target, workspace, 1, output)
                 if scenario in {"writer", "mcp", "worker"}:
+                    assert wait_marker(workspace / "signals-1.json", target) == {"signals": 1}
                     wait_marker(workspace / "held.json", target)
                     deliver_sigint(target, workspace, 2, output)
+                    assert wait_marker(workspace / "signals-2.json", target) == {"signals": 2}
                     assert target.poll() is None, "second signal must not discard the owned cleanup"
                     target.stdin.close()
                     (workspace / "release").touch()
