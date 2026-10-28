@@ -50,7 +50,8 @@ coverage gate and the dataset validation.
 The legacy v2 workspace digest hashes the workspace root's `st_ctime_ns`. The test helper `_seed_legacy_v1_approval`
 computed that digest, then built its `KeyringApprovalStore` with a runtime root inside the workspace. Since this PR, the
 store creates its HMAC key under the service-wide lock, so it creates `<workspace>/.optimus-runtime/locks` at that point.
-On Linux, creating a subdirectory changes the parent's ctime (see Probes). The workspace's digest therefore changed
+`<workspace>/.optimus-runtime` did not exist yet (the operator-path bootstrap creates only `<workspace>/.optimus`), so
+the new directory appears directly in the workspace root. On Linux, that changes the root's ctime (see Probes). The workspace's digest therefore changed
 after the helper had keyed the legacy record to it, and launch found no record. On Windows, ctime is the creation time,
 so this test passed in attempts 2 and 3.
 
