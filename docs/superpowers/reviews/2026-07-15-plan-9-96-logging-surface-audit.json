@@ -745,19 +745,19 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.launch_approvals:KeyringApprovalStore.consume_one_shot:file_open",
+      "key": "optimus.acp.launch_approvals:KeyringApprovalStore._service_lock:file_open",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.acp.launch_approvals:KeyringApprovalStore.consume_one_shot:file_open opens only a trusted lock, audit, log, or read-hash path for its stated functional operation, not a diagnostic-retention payload.",
+      "rationale": "Inspection: KeyringApprovalStore._service_lock:file_open opens only the trusted approval-runtime lock file that serializes every approvals-service operation (#433; it replaces the per-workspace lock files of consume_one_shot and _exclusive_workspace_lock); it writes nothing to the file and does not retain diagnostic payloads.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/acp/test_launch_approvals.py::test_consume_one_shot_returns_record_and_deletes",
+      "test_node": "tests/unit/acp/test_launch_approvals_lock_failures.py::test_a_held_lock_refuses_with_lock_contention_and_keeps_the_approval",
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.launch_approvals:KeyringApprovalStore._exclusive_workspace_lock:file_open",
+      "key": "optimus.acp.launch_approvals:_canonical_json:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: KeyringApprovalStore._exclusive_workspace_lock:file_open opens only the trusted approval-runtime lock file for exclusive durable lookup/promotion; it does not retain diagnostic payloads.",
+      "rationale": "Inspection: _canonical_json serializes only the fixed multipart manifest (#433): format version, generation, part lengths, payload SHA-256, workspace digest, legacy source digest and manifest HMAC; it contains no record content, credential or setting value.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/acp/test_launch_approvals.py::test_promotion_writes_verified_v3_and_reports_migrated",
+      "test_node": "tests/unit/acp/test_launch_approvals_multipart.py::test_a_successful_replacement_removes_the_previous_generation",
       "evidence_tier": "unit"
     },
     {

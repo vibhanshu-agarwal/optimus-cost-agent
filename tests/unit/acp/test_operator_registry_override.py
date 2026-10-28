@@ -186,7 +186,12 @@ def _run_gateway(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, approval: obje
         return SimpleNamespace(returncode=0, stdout="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(launch_approval_cli.KeyringApprovalStore, "read_durable", lambda self, digest: approval)
+    def read_durable(self, digest):
+        if isinstance(approval, BaseException):
+            raise approval
+        return approval
+
+    monkeypatch.setattr(launch_approval_cli.KeyringApprovalStore, "read_durable", read_durable)
     with patch("sys.stdin") as stdin, patch("sys.stdout") as stdout, patch("sys.stderr") as stderr:
         stdin.isatty.return_value = stdout.isatty.return_value = True
         code = launch_approval_cli._cmd_run_gateway(
@@ -208,6 +213,16 @@ def test_run_gateway_refuses_a_registry_no_durable_approval_binds(tmp_path: Path
     other = SimpleNamespace(security_literals={APPROVAL_LITERAL_NAME: "optimus-model-registry-v1:" + "d" * 64})
     code, spawned, err = _run_gateway(tmp_path, monkeypatch, approval=other)
     assert (code, spawned) == (2, []) and "MODEL_REGISTRY_NOT_APPROVED" in err
+
+
+@pytest.mark.parametrize("code", ["LOCK_CONTENTION", "LOCK_FAILED", "APPROVAL_STORE_READ_FAILED"])
+def test_run_gateway_reports_an_approval_store_failure_not_a_missing_approval(tmp_path: Path, monkeypatch, code: str) -> None:
+    """#433: the store's own failures reach the CLI's typed handler instead of reading as "approve first"."""
+    from optimus.acp.launch_approvals import ApprovalError
+
+    with pytest.raises(ApprovalError) as raised:
+        _run_gateway(tmp_path, monkeypatch, approval=ApprovalError(code=code))
+    assert raised.value.code == code
 
 
 def test_run_gateway_signs_an_approved_override_and_passes_it_by_path(tmp_path: Path, monkeypatch) -> None:

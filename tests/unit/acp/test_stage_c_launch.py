@@ -468,6 +468,15 @@ def _approval_keys(keyring: FakeKeyring) -> dict[str, str]:
     return {key: value for (_service, key), value in keyring._store.items() if key.startswith(("durable:", "oneshot:"))}
 
 
+def _approval_kinds(keyring: FakeKeyring) -> list[str]:
+    """The kind of each published approval. A Stage C record exceeds one Windows credential blob, so #433 stores it as
+    a manifest plus two `<key>#<generation>:<i>` parts; the parts are not approvals of their own."""
+    keys = _approval_keys(keyring)
+    publications = [key for key in keys if "#" not in key]
+    assert all(key.split("#")[0] in publications for key in keys), "a part without its publication"
+    return [key.split(":")[0] for key in publications]
+
+
 def _write_ledger(workspace: Path, *records: dict[str, Any], envelope_literal: str | None = None) -> Path:
     ledger = _ledger(workspace)
     ledger.parent.mkdir(parents=True, exist_ok=True)
@@ -596,11 +605,13 @@ def test_the_ledger_is_prepared_before_a_failing_approval_write(monkeypatch, tmp
 
     outcome, workspace, _ = _ceremony(monkeypatch, tmp_path, keyring)
 
-    assert isinstance(outcome, PasswordSetError)
+    # #433: a keyring backend failure is a typed refusal, not a raw exception.
+    captured = capsys.readouterr()
+    assert outcome == 2 and "optimus-trust: APPROVAL_STORE_WRITE_FAILED: keyring backend PasswordSetError" in captured.err
     ledger = _ledger(workspace)
     assert ledger.is_file(), "the ledger is prepared before any approval persistence call"
     assert stage_c.stage_c_ledger_status(ledger, stage_c.compose_stage_c_envelope(ledger=ledger)).state.attempts == 0
-    assert "approval written" not in capsys.readouterr().out
+    assert "approval written" not in captured.out
 
 
 def test_a_kept_ledger_reports_its_replayed_state(monkeypatch, tmp_path, capsys) -> None:
@@ -623,7 +634,7 @@ def test_a_one_shot_ceremony_creates_the_ledger_and_writes_its_approval(monkeypa
     outcome, workspace, spawned = _ceremony(monkeypatch, tmp_path, keyring, mode="one-shot")
 
     assert outcome == 0 and _ledger(workspace).is_file() and spawned == []
-    assert [key.split(":")[0] for key in _approval_keys(keyring)] == ["oneshot"]
+    assert _approval_kinds(keyring) == ["oneshot"]
 
 
 def test_a_declined_stage_c_ceremony_creates_nothing(monkeypatch, tmp_path) -> None:
@@ -640,17 +651,20 @@ def test_a_keyring_that_stores_then_fails_leaves_a_valid_ledger_unchanged_and_cl
     ledger = _write_ledger(workspace)
     before = ledger.read_bytes()
 
-    outcome, _, _ = _ceremony(monkeypatch, tmp_path, _PersistFailingKeyring(store_first=True))
+    keyring = _PersistFailingKeyring(store_first=True)
+    outcome, _, _ = _ceremony(monkeypatch, tmp_path, keyring)
 
-    assert isinstance(outcome, PasswordSetError)
+    captured = capsys.readouterr()
+    assert outcome == 2 and "APPROVAL_STORE_WRITE_FAILED" in captured.err
     assert ledger.read_bytes() == before
-    assert "approval written" not in capsys.readouterr().out  # the stored entry is an unknown outcome, not asserted
+    assert "approval written" not in captured.out
+    assert _approval_keys(keyring) == {}  # #433: the store rolls back the entry its failed publication left
 
 
 def test_a_failed_one_shot_approval_write_never_spawns(monkeypatch, tmp_path) -> None:
     outcome, _, spawned = _ceremony(monkeypatch, tmp_path, _PersistFailingKeyring(store_first=False), mode="one-shot", target_argv=(sys.executable, "-c", "pass"))
 
-    assert isinstance(outcome, PasswordSetError) and spawned == []
+    assert outcome == 2 and spawned == []
 
 
 def test_an_expired_or_exhausted_but_bound_ledger_is_kept_and_the_approval_written(monkeypatch, tmp_path, capsys) -> None:
@@ -669,4 +683,4 @@ def test_an_expired_or_exhausted_but_bound_ledger_is_kept_and_the_approval_writt
 
     assert outcome == 0 and ledger.read_bytes() == before
     assert "kept as it is (never reset)" in capsys.readouterr().out
-    assert [key.split(":")[0] for key in _approval_keys(keyring)] == ["durable"]
+    assert _approval_kinds(keyring) == ["durable"]

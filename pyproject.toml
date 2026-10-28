@@ -66,7 +66,7 @@ markers = [
   "requires_live_gateway: integration test that needs the local Optimus Gateway service process and Anthropic API key on that process only",
   "requires_phoenix: integration test that needs a live Phoenix trace collector reachable via the Gateway-only OTLP endpoint",
   "requires_os_keyring: integration test that reads existing operator-approved credentials from the real OS credential store without writing or deleting them",
-  "requires_os_keyring_write: integration test that may create, overwrite, or delete evidence-handoff ledger signing-key entries in the real OS credential store under an isolated test service name",
+  "requires_os_keyring_write: integration test that may create, overwrite, or delete evidence-handoff ledger signing-key or launch-approval entries in the real OS credential store under an isolated test service name",
   "requires_acpx: requires independently authored acpx and a real agent process",
   "requires_zed: requires a real supported Zed instance and its real logs",
   "requires_windows_desktop: requires an interactive Windows desktop and real DWM",
