@@ -40,10 +40,11 @@ no backend message or stored value.
 | Repeats of the two attempt-4 tests | `71710e9`, clean | each test alone in a fresh pytest process, both loops running at once, with `faulthandler_timeout=45` and a 120 s kill | the checkpoint test passed 40 of 40 runs; the relay test file passed 15 of 15 runs (48 passed, 2 skipped each); neither reproduced | summaries `240cfead4dbaa0dfb43243f06b35d6c3d0a4e6c2f99708a9a26880e1f42a46c5` (checkpoint), `05aa23ebaa4dcedad8351250547779a7843b41127f9534bc14208cc00832f9a4` (relay); script `f34750eff7ef622d49c33c86a49960e7b1ccc9f4d0733e6bf68c3f9939a9302e` |
 | Checkpoint lock on an unlinked file another handle still holds (Windows 11) | n/a | `O_CREAT\|O_EXCL` open after the lock file is unlinked while a `FILE_SHARE_DELETE` handle is open | the name is gone at once and the create succeeds, so the cause cannot be that the lock refuses a delete-pending file on this host | `b671474e16a489eb44ea9bd5c1f04bbf33104bc5e90324bcf028bf974f534623` (script `595c7854fe0b4ef5d606f4de1a2ecaba3162cd5a004746cd9b1384898b13ced1`) |
 
-Attempt 3 covers the PR's code at `408a43e`. The merge with `origin/main` and the test-only fix that follow it are covered
-by the check that Codex rules on for the final head. That check's result, and the Linux PR CI result with its run URL and
-head SHA, are recorded on #433. The Linux PR CI job is guardrails → `clean-environment-recheck`, which also runs the
-coverage gate and the dataset validation.
+Attempt 3 is valid evidence for `408a43e`. It does not establish a Windows full-suite pass for the merged combination,
+and no such pass exists. For the merge with `origin/main` and the test-only fix after it, Codex round 80 ruled that no
+further Windows full suite is needed. It required two checks instead: the targeted Windows selection, re-run on the clean
+final head, and a green Linux `clean-environment-recheck` on the PR candidate, including the coverage floors and the
+dataset validation. Both results are recorded on #433, with the PR head and the SHA that CI checked out.
 
 ## Linux CI failure on `71710e9`
 
@@ -51,18 +52,25 @@ The legacy v2 workspace digest hashes the workspace root's `st_ctime_ns`. The te
 computed that digest, then built its `KeyringApprovalStore` with a runtime root inside the workspace. Since this PR, the
 store creates its HMAC key under the service-wide lock, so it creates `<workspace>/.optimus-runtime/locks` at that point.
 `<workspace>/.optimus-runtime` did not exist yet (the operator-path bootstrap creates only `<workspace>/.optimus`), so
-the new directory appears directly in the workspace root. On Linux, that changes the root's ctime (see Probes). The workspace's digest therefore changed
-after the helper had keyed the legacy record to it, and launch found no record. On Windows, ctime is the creation time,
-so this test passed in attempts 2 and 3.
+the new directory appears directly in the workspace root. On Linux, that changes the root's ctime (see Probes). The
+workspace's digest therefore changed after the helper had keyed the legacy record to it, and launch found no record. On
+Windows, ctime is the creation time, so this test passed in attempts 2 and 3.
 
-Production builds the store with the approval runtime root, which is outside the workspace. The fix is test-only: the
-helper's runtime root moves beside the workspace, as other tests in that file already do. The helper now asserts that
+Production builds the store with the OS-derived approval runtime root, which is normally outside the workspace. That
+separation is not enforced: an operator can open the runtime root's parent, or the runtime root itself, as the
+workspace. That overlap existed before #433. Lock directories were created before #433 too, but this PR creates them
+earlier, so it is not established that the overlap case did not regress. Codex round 80 found that no production fix is
+required on this evidence. The fix is test-only: the helper's runtime root moves beside the workspace, as other tests
+in that file already do. The helper now asserts that
 seeding leaves the workspace's legacy v2 digest unchanged. Without the fix, that assertion would fail on Linux at the
 same change that run 40676815817 later reported as `NO_APPROVAL`. This is inferred from that run and the ctime probe; the
 test itself was not run on Linux without the fix.
 
-The attempt-4 failure and hang are unrelated to this PR. Their causes are not established. The run kept no failure
-text and no stack, and neither test reproduced in isolation.
+Two observations from attempt 4 stay unresolved: the checkpoint test's failure and the relay test's hang. Neither
+affected implementation changed, and their relationship to this change is unestablished. Passing repeats show neither
+independence nor a cause. The run kept no failure text and no stack. An unbounded `recv()` in the relay control client
+is demonstrable; where the hang happened is not. Custody stays with #433 until the operator approves filing a follow-up
+(related to #273, which does not own it).
 
 ## Reviews
 
@@ -73,3 +81,7 @@ text and no stack, and neither test reproduced in isolation.
 - Codex CLI round 79, checkpoint review of `6c630f1`: approve with changes. It asked for: an exact integer manifest
   version; this record's provisional labels and missing rows; narrowing two claims in this record and ADR-030; and
   dataset validation beside the full suite. All four are applied in the next commit.
+- Codex CLI round 80, review of `71710e9..e9437d9` (the Linux CI fix and the ADR-030 acceptance): approve with changes.
+  It asked for the two qualifications above, a refreshed PR description, the targeted selection re-run on the clean
+  final head, and a wider scope for the follow-up draft. It ruled out another Windows full suite (option A). The
+  qualifications are applied in the commit after `e9437d9`.
