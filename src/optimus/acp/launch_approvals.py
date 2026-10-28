@@ -657,9 +657,9 @@ class KeyringApprovalStore:
             loaded = self._load(f"durable:{workspace_digest}")
         if loaded is None:
             return None
-        if loaded[0].policy_compatibility != LAUNCH_POLICY_COMPATIBILITY:
+        if loaded.policy_compatibility != LAUNCH_POLICY_COMPATIBILITY:
             raise ApprovalError(code="POLICY_MISMATCH")
-        return loaded[0]
+        return loaded
 
     def write_durable(self, record: ApprovalRecord) -> None:
         """Write a durable approval record.
@@ -776,11 +776,13 @@ class KeyringApprovalStore:
             raise ApprovalError(code="RECORD_TOO_LARGE", detail="an approval part exceeds the keyring value limit")
 
         previous = self._get(key)
+        key_written = False
         try:
             for part_key, chunk in parts.items():
                 self._set(part_key, chunk)
                 if self._get(part_key) != chunk:
                     raise ApprovalError(code="APPROVAL_STORE_WRITE_FAILED", detail="approval part read-back mismatch")
+            key_written = True
             self._set(key, value)
             try:
                 published = self._read(key)
@@ -789,30 +791,36 @@ class KeyringApprovalStore:
             if published is None or published[0] != serialized:
                 raise ApprovalError(code="APPROVAL_STORE_WRITE_FAILED", detail="read-back verification failed")
         except ApprovalError as failure:
-            raise self._rollback(failure, key, previous, parts) from None
+            raise self._rollback(failure, key, previous, parts, key_written=key_written) from None
         self._delete_parts(key, previous)
         return serialized
 
-    def _rollback(self, failure: ApprovalError, key: str, previous: str | None, new_parts: Mapping[str, str]) -> ApprovalError:
+    def _rollback(
+        self, failure: ApprovalError, key: str, previous: str | None, new_parts: Mapping[str, str], *, key_written: bool
+    ) -> ApprovalError:
         """Undo a failed publication and return the error naming its confirmed outcome.
 
-        The outcome is decided before any cleanup, and cleanup failures never change it. An unknown outcome claims
-        no invalidation: an inline value has no parts, and the same faults can block part deletion.
+        A publication key that was never written still holds `previous`: the lock is held and parts use other keys
+        (WinVault's slot re-save moves a value, never changes it), so it is left alone even when reads fail. Otherwise
+        the outcome is confirmed by a read. It is decided before any cleanup, and cleanup failures never change it.
+        An unknown outcome claims no invalidation: an inline value has no parts, and the same faults can block part
+        deletion.
         """
-        outcome = "unknown"
-        try:
-            if self._get(key) != previous:
-                if previous is None:
-                    self._delete(key)
-                else:
-                    self._set(key, previous)
-        except ApprovalError:
-            pass  # a restore can store and still raise; only the read below decides
-        try:
-            if self._get(key) == previous:
-                outcome = "kept"
-        except ApprovalError:
-            pass
+        outcome = "unknown" if key_written else "kept"
+        if key_written:
+            try:
+                if self._get(key) != previous:
+                    if previous is None:
+                        self._delete(key)
+                    else:
+                        self._set(key, previous)
+            except ApprovalError:
+                pass  # a restore can store and still raise; only the read below decides
+            try:
+                if self._get(key) == previous:
+                    outcome = "kept"
+            except ApprovalError:
+                pass
         if outcome == "unknown":
             try:
                 self._delete(key)
@@ -836,12 +844,12 @@ class KeyringApprovalStore:
         return ApprovalError(
             code="APPROVAL_STORE_STATE_UNKNOWN",
             detail=(
-                f"{failure.detail}; the approval entry could not be restored or removed, so it may still hold the new "
-                "approval; check it with optimus-trust inspect"
+                f"{failure.detail}; the approval entry could not be restored or removed, so it may hold the new "
+                "approval, the previous one, or none; check it with optimus-trust inspect"
             ),
         )
 
-    def _load(self, key: str) -> tuple[ApprovalRecord, _PartsManifest | None] | None:
+    def _load(self, key: str) -> ApprovalRecord | None:
         """The verified record published at `key`; a manifest must repeat the record's own metadata."""
         published = self._read(key)
         if published is None:
@@ -850,7 +858,7 @@ class KeyringApprovalStore:
         record = _deserialize_approval_record(payload, hmac_key=self._hmac_key)
         if manifest is not None and (manifest.workspace_digest, manifest.legacy_source_digest) != _manifest_metadata(record):
             raise ApprovalError(code="INTEGRITY_FAILURE", detail="approval manifest does not match its record")
-        return record, manifest
+        return record
 
     def _legacy_source(self, key: str) -> str | None:
         """The authenticated legacy source of the record published at `key`, without needing its parts.
@@ -955,7 +963,7 @@ class KeyringApprovalStore:
             current_key = f"durable:{current_identity.digest}"
             loaded_v3 = self._load(current_key)
             if loaded_v3 is not None:
-                record = loaded_v3[0]
+                record = loaded_v3
                 if record.policy_compatibility != LAUNCH_POLICY_COMPATIBILITY:
                     raise ApprovalError(code="POLICY_MISMATCH")
                 state: Literal["current", "migrated"] = (
@@ -970,7 +978,7 @@ class KeyringApprovalStore:
             if loaded_legacy is None:
                 return DurableApprovalLookup(record=None, state="legacy_reapproval_required")
 
-            legacy = loaded_legacy[0]
+            legacy = loaded_legacy
             if legacy.policy_compatibility != LAUNCH_POLICY_COMPATIBILITY:
                 raise ApprovalError(code="POLICY_MISMATCH")
             if legacy.mode != "durable":
@@ -1028,7 +1036,7 @@ class KeyringApprovalStore:
             loaded = self._load(entry_key)
             if loaded is None:
                 raise ApprovalError(code="ONE_SHOT_NOT_FOUND")
-            record = loaded[0]
+            record = loaded
 
             if record.schema_version != APPROVAL_SCHEMA_VERSION:
                 raise ApprovalError(

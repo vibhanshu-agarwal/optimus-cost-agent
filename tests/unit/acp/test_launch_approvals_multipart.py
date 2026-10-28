@@ -870,12 +870,34 @@ def test_a_failed_publication_reports_a_confirmed_rollback_outcome(
         if part_deletes_work:
             assert keyring.keys() == set()
     else:
-        assert "could not be restored or removed, so it may still hold the new approval" in refused.value.detail
+        assert "could not be restored or removed, so it may hold the new approval, the previous one, or none" in refused.value.detail
         if new_chars is None or not part_deletes_work:
             # Nothing invalidated it: an inline value has no parts, and failed cleanup left the new parts.
             assert _store(tmp_path, keyring).read_durable(previous.workspace_digest) == replacement
         else:
             assert _read_code(tmp_path, keyring, previous) == "RECORD_CORRUPT"
+
+
+def test_a_failure_before_publication_never_touches_the_previous_approval_even_when_reads_then_fail(tmp_path: Path) -> None:
+    """Fable checkpoint finding 1: a confirming read is not needed for a publication key that was never written."""
+    keyring, previous, _key = _written(tmp_path)
+    backend_down = {"now": False}
+
+    def hook(op: str, key: str) -> None:
+        if op == "set" and "#" in key and key.endswith(":0"):
+            backend_down["now"] = True
+            raise _CredWriteError()
+        if op == "get" and backend_down["now"]:
+            raise RuntimeError("backend unavailable")
+
+    keyring.hook = hook
+    with pytest.raises(ApprovalError) as refused:
+        _store(tmp_path, keyring).write_durable(_record(1700))
+
+    assert refused.value.code == "APPROVAL_STORE_WRITE_FAILED"
+    assert refused.value.detail.endswith("; previous approval unchanged")
+    keyring.hook = None
+    assert _store(tmp_path, keyring).read_durable(previous.workspace_digest) == previous
 
 
 @pytest.mark.parametrize(

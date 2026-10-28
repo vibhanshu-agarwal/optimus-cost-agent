@@ -1085,7 +1085,9 @@ def _cmd_run_gateway(
     if model_registry is not None:
         try:
             approval = hmac_key_source.read_durable(workspace_identity.digest)
-        except ApprovalError:
+        except ApprovalError as exc:
+            if exc.code in {"LOCK_CONTENTION", "LOCK_FAILED", "APPROVAL_STORE_READ_FAILED"}:
+                raise  # #433: a store failure is not a missing approval; main reports it as typed
             approval = None
         # Plan 12.4 Design 1: the Auto composition is signed only under an approval that binds its name too, and an
         # ordinary run never under an Auto approval.
