@@ -290,13 +290,18 @@ def test_a_malformed_manifest_fails_closed(tmp_path: Path, mutate: Callable[[dic
 
 
 def _signed_manifest(
-    key: str, parts: list[str], *, workspace_digest: str = "a" * 64, legacy_source_digest: str | None = None
+    key: str,
+    parts: list[str],
+    *,
+    workspace_digest: str = "a" * 64,
+    legacy_source_digest: str | None = None,
+    approval_parts: object = 1,
 ) -> str:
     """A correctly signed manifest over arbitrary parts, as only a holder of the store key could write."""
     import hashlib
 
     body = {
-        "approval_parts": 1,
+        "approval_parts": approval_parts,
         "generation": "f" * 32,
         "legacy_source_digest": legacy_source_digest,
         "part_lengths": [len(part) for part in parts],
@@ -322,6 +327,22 @@ def test_signed_but_oversized_parts_fail_closed(tmp_path: Path, parts: list[str]
         keyring.set_password(_SERVICE, f"{key}#{'f' * 32}:{index}", part)
     with pytest.raises(ApprovalError) as refused:
         _store(tmp_path, keyring).read_durable("a" * 64)
+    assert refused.value.code == "RECORD_CORRUPT"
+
+
+@pytest.mark.parametrize("version", [True, 1.0], ids=["json-true", "json-float"])
+def test_a_signed_manifest_whose_version_is_not_the_integer_1_fails_closed(tmp_path: Path, version: object) -> None:
+    """Codex round 79: the format version is an exact JSON integer; true and 1.0 compare equal to 1 in Python."""
+    keyring = FakeKeyring()
+    record = _record(1700)
+    key = f"durable:{record.workspace_digest}"
+    payload = serialize_approval_record(record)
+    parts = [payload[:850], payload[850:]]
+    keyring.set_password(_SERVICE, key, _signed_manifest(key, parts, approval_parts=version))
+    for index, part in enumerate(parts):
+        keyring.set_password(_SERVICE, f"{key}#{'f' * 32}:{index}", part)
+    with pytest.raises(ApprovalError) as refused:
+        _store(tmp_path, keyring).read_durable(record.workspace_digest)
     assert refused.value.code == "RECORD_CORRUPT"
 
 

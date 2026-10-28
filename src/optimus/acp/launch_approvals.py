@@ -546,6 +546,7 @@ def _parse_manifest(raw: str, *, publication_key: str, hmac_key: bytes) -> _Part
         )
         if (
             set(data) != _MANIFEST_FIELDS
+            or type(data["approval_parts"]) is not int  # not JSON true or 1.0
             or data["approval_parts"] != 1
             or not isinstance(manifest.generation, str)
             or not _GENERATION_RE.fullmatch(manifest.generation)

@@ -13,9 +13,9 @@ A probe of the real backend, under an isolated throwaway service, stored 1,280 c
 ## Decision
 
 - **Kept:** the 1,800-byte UTF-8 policy limit, and the typed `RECORD_TOO_LARGE` rejection of a record over it. The canonical record JSON and its record HMAC are unchanged.
-- **Corrected:** every stored keyring value is checked against 2,560 UTF-16-LE bytes, on every platform.
+- **Corrected:** every value an approval record is stored as (a single entry, a manifest, or a part) is checked against 2,560 UTF-16-LE bytes before it is written, on every platform. The HMAC key and diagnostic grants, which are small fixed-size values, are not checked.
 - **Permitted:** a record over one value is stored as at most two immutable, generation-specific parts, plus an HMAC-authenticated, versioned manifest that is published last at the record's existing key. A record that fits one value is stored as a single entry, as before. Missing, mixed-generation, oversized, tampered or inconsistent parts fail closed.
-- **Locking:** every operation on the approvals keyring service holds one service-wide lock file under the approval runtime root. This replaces the per-workspace locks. `WinVaultKeyring.set_password` re-saves whatever entry occupies the shared service slot. Without serialization, a writer could therefore resurrect an entry that another process had just consumed or revoked.
+- **Locking:** every operation on the approvals keyring service holds one service-wide lock file under the approval runtime root. The one exception is reading an HMAC key that already exists: a read cannot resurrect an entry, and creating the key re-reads it under the lock. This replaces the per-workspace locks. `WinVaultKeyring.set_password` re-saves whatever entry occupies the shared service slot. Without serialization, a writer could therefore resurrect an entry that another process had just consumed or revoked.
 - **Failures:** keyring backend failures become typed `ApprovalError`s that carry no backend message, record, value or key material. A failed publication reports whether the previous approval was confirmed in place, removed, or left in an unknown state.
 
 ## Options considered
