@@ -114,11 +114,13 @@ Live plans (each listed in the backlog's live plan registry):
 | [P11-FU-6 v2: bounded early POST rejection](superpowers/plans/2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | Gateway early-rejection correction |
 | [Local-hook UTF-8 repair](superpowers/plans/2026-09-06-local-hook-utf8-repair.md) | Pre-commit hook decoding fix |
 | [Evidence collector](superpowers/plans/evidence-handoff-evidence-collector-implementation.md) | Evidence-handoff collector |
+| [Plan 12.5 v3: memory evaluation contract (M0a-2)](superpowers/plans/2026-10-22-plan-12-5-memory-evaluation-implementation_v3.md) | Case contract, 24 memory trajectories, localization seeds, offline grader, pinned generic harness |
 
 ## Current designs
 
 | Document | What it is |
 |---|---|
+| [Plan 12.x memory design (v4)](superpowers/specs/2026-10-22-plan12-memory-design_v4.md) | Whole-feature design for Plan 12.x memory: file policy, hybrid retrieval and project graph, automatic memory and continuity, recovery and key rotation, and durable cost accounting; scope frozen at discovery v12; v4 renumbers the first-slice plans |
 | [Idle client-MCP lifetime design](superpowers/specs/2026-10-26-idle-mcp-suspension-main-port-design.md) | Self-contained #427 contract; [intake receipt](superpowers/reports/2026-10-26-idle-mcp-suspension-main-port-receipt.md) |
 | [Ordering/lifecycle/signals and queue plan](superpowers/plans/2026-10-27-ordering-lifecycle-signals-queue-plan.md) | Approved two-batch contract; [initial filing receipt](superpowers/reports/2026-10-27-ordering-lifecycle-signals-queue-receipt.md); GitHub issues own work status |
 | [Plan 12.2 Context Engine design (v3)](superpowers/specs/2026-10-01-plan-12-2-context-engine-design_v3.md) | Three history strategies, exact host facts, floor, registry and cost integration; v3 adds the CP4 measured adoption and D7 disposition |
