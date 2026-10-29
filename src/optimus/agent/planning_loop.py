@@ -235,6 +235,11 @@ class PlanningReadEvidence(BaseModel):
     range_text: str
     line_endings: LineEndingStyle  # the whole file's, from the hashed snapshot (#410)
 
+    @property
+    def returned_end_byte(self) -> int:
+        """Where the returned bytes end: a range past the end of the file returns fewer than it asked for (#432)."""
+        return self.start_byte + len(self.range_text.encode("utf-8"))
+
 
 class PlanningEvidenceEnvelope(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -342,7 +347,7 @@ def planning_read_telemetry_fields(
     return (
         tuple(f"{item.path}#bytes={item.start_byte}:{item.end_byte}" for item in ordered),
         tuple(item.source_sha256 for item in ordered),
-        tuple(item.end_byte - item.start_byte for item in ordered),
+        tuple(item.returned_end_byte - item.start_byte for item in ordered),  # bytes returned, not asked for (#432)
     )
 
 
@@ -2001,7 +2006,10 @@ class _PlanningIterationRunner:
                     cost_usd=attempt_cost,
                 ),
                 read_step(
-                    (ReadResult(e.path, e.start_byte, e.end_byte, e.source_sha256) for e in read_evidence),
+                    (
+                        ReadResult(e.path, e.start_byte, e.end_byte, e.source_sha256, e.returned_end_byte)
+                        for e in read_evidence
+                    ),
                     self._coverage,
                 ),
                 planning_turn,

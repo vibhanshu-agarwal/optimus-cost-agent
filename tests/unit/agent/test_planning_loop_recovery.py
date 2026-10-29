@@ -92,6 +92,7 @@ def _run(
     now: Callable[[], datetime] | None = None,
     halt: Callable[[], bool] | None = None,
     events: list[TelemetryEvent] | None = None,
+    progress: list | None = None,
 ):
     return PlanningLoopRunner(
         gateway_client=gateway,
@@ -105,6 +106,7 @@ def _run(
         halt_requested=halt,
         recovery_checkin=checkins,
         loop_event_sink=None if events is None else events.append,
+        progress_observer=None if progress is None else progress.append,
     ).run(run_id="run-123", session_id="session-123", task="Update a.py")
 
 
@@ -227,6 +229,53 @@ def test_fully_covered_re_reads_are_no_progress(tmp_path, source):
     assert _nudged(gateway) == [5]
     assert checkins.asked[0].cause == "NO_PROGRESS"
     assert result.stop_reason == "PLANNING_NO_PROGRESS"
+
+
+def _no_progress_after(tmp_path: Path, path: str, ranges: list[str], progress: list | None = None) -> Gateway:
+    """Four reads of `path` in a five-step allowance; the fifth request must carry the no-progress nudge."""
+    gateway = Gateway([f"OBSERVE: poll\nREAD: {path}#bytes={r}\n" for r in ranges] + [FINAL_PLAN])
+    checkins = CheckIns(CheckInDecision.STOP)
+    result = _run(tmp_path, gateway, checkins, policy=PlanningLoopPolicy(max_planning_turns=5), progress=progress)
+    assert _nudged(gateway) == [5]
+    assert checkins.asked[0].cause == "NO_PROGRESS"
+    assert result.stop_reason == "PLANNING_NO_PROGRESS"
+    return gateway
+
+
+def test_reads_growing_past_the_end_of_an_unchanged_file_are_no_progress(tmp_path, source):
+    """#432, as Luna polled status.txt in #397's A1: every read returns the same 16 bytes."""
+    _no_progress_after(tmp_path, "a.py", ["0:16", "0:64", "0:65", "0:4096"])
+
+
+def test_empty_reads_past_the_end_of_a_file_are_no_progress(tmp_path, source):
+    _no_progress_after(tmp_path, "a.py", ["0:16", "16:32", "20:40", "100:200"])
+
+
+def test_polling_an_unchanged_empty_file_is_no_progress(tmp_path):
+    (tmp_path / "status.txt").write_bytes(b"")
+    _no_progress_after(tmp_path, "status.txt", ["0:8", "0:64", "0:65", "0:4096"])
+
+
+def test_first_reads_of_three_distinct_empty_files_are_progress(tmp_path, source):
+    for name in ("x.py", "y.py", "z.py"):
+        (tmp_path / name).write_bytes(b"")
+    gateway = Gateway([f"OBSERVE: check {name}\nREAD: {name}#bytes=0:8\n" for name in ("x.py", "y.py", "z.py")] + [FINAL_PLAN])
+    checkins = CheckIns()
+    result = _run(tmp_path, gateway, checkins, policy=PlanningLoopPolicy(max_planning_turns=5))
+    assert (result.stop_reason, checkins.asked, _nudged(gateway)) == (None, [], [])
+
+
+def test_returned_bytes_are_measured_in_utf8_bytes_not_characters(tmp_path):
+    (tmp_path / "u.txt").write_bytes("aéb".encode())  # 4 bytes, 3 characters
+    _no_progress_after(tmp_path, "u.txt", ["0:64", "3:4", "0:1", "1:3"])
+
+
+def test_read_byte_counts_report_the_bytes_returned_not_the_range_asked_for(tmp_path, source):
+    progress: list = []
+    _no_progress_after(tmp_path, "a.py", ["0:16", "0:64", "10:4096", "100:200"], progress)
+    counts = [event.read_byte_counts for event in progress if event.read_identities]
+    assert counts == [(16,), (16,), (6,), (0,)]
+    assert [event.read_identities for event in progress if event.read_identities][1] == ("a.py#bytes=0:64",)
 
 
 def test_a_parse_failure_recovers_through_its_nudge_and_the_plan_waits_for_the_check_in(tmp_path, source):

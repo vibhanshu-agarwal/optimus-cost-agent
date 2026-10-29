@@ -1,7 +1,7 @@
 """What a planning step did, what came back and whether it was new (Plan 12.3, Design 1).
 
 A step is an action fingerprint (its kind plus a normalised target) and a result digest (the
-outcome's identity). Novelty is new evidence or a changed result: a read range not yet seen with that
+outcome's identity). Novelty is new evidence or a changed result: returned bytes not yet seen with that
 file content, a file whose hash changed since its last read, an MCP result not seen before in this
 turn, or one that changed since the same call's last result. A parse failure is never novel.
 """
@@ -41,6 +41,7 @@ class ReadResult:
     start_byte: int
     end_byte: int
     source_sha256: str
+    returned_end_byte: int  # where the returned bytes end; a range past the end of the file returns fewer (#432)
 
 
 class ReadCoverage:
@@ -51,13 +52,18 @@ class ReadCoverage:
         self._last_sha: dict[str, str] = {}
 
     def add(self, read: ReadResult) -> bool:
-        """Record `read`; True if the file's hash changed since its last read, or if any of its bytes
-        was not covered by an earlier read of the same content."""
+        """Record `read`; True if the file's hash changed since its last read, or if any byte it
+        returned was not covered by an earlier read of the same content. A read that returned nothing
+        (past the end of the file) is new only as the path's first read or after a change."""
+        first_seen = read.path not in self._last_sha
         changed = self._last_sha.setdefault(read.path, read.source_sha256) != read.source_sha256
         self._last_sha[read.path] = read.source_sha256
         spans = self._spans.setdefault((read.path, read.source_sha256), [])
-        novel = changed or not _covers(spans, read.start_byte, read.end_byte)
-        spans.append((read.start_byte, read.end_byte))
+        start, end = read.start_byte, read.returned_end_byte
+        if end <= start:
+            return first_seen or changed
+        novel = changed or not _covers(spans, start, end)
+        spans.append((start, end))
         spans.sort()
         merged: list[tuple[int, int]] = []
         for start, end in spans:
