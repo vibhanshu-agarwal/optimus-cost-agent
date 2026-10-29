@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any, Protocol
 
+from optimus.acp.admission import DEFAULT_LIMITS
 from optimus.acp.errors import INVALID_REQUEST, PARSE_ERROR
 
 
@@ -41,7 +42,7 @@ def parse_content_length(header_bytes: bytes) -> int:
     raise FramingError("missing Content-Length")
 
 
-async def read_message(reader: AsyncByteReader, header_limit: int = 8192) -> dict[str, Any]:
+async def read_message(reader: AsyncByteReader, header_limit: int = 8192, *, body_limit: int = DEFAULT_LIMITS.frame_bytes) -> dict[str, Any]:
     header = bytearray()
     while b"\r\n\r\n" not in header:
         chunk = await reader.read(1)
@@ -53,9 +54,11 @@ async def read_message(reader: AsyncByteReader, header_limit: int = 8192) -> dic
 
     header_bytes, _, remainder = bytes(header).partition(b"\r\n\r\n")
     content_length = parse_content_length(header_bytes)
+    if content_length > body_limit:
+        raise FramingError("body too large", code=INVALID_REQUEST)
     body = bytearray(remainder)
     while len(body) < content_length:
-        chunk = await reader.read(content_length - len(body))
+        chunk = await reader.read(min(65536, content_length - len(body)))
         if chunk == b"":
             raise FramingError("unexpected end of stream")
         body.extend(chunk)

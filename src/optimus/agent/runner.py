@@ -306,8 +306,8 @@ class AgentRunner:
         self._model = model
         self._guard = guard
         self._event_sink = event_sink
-        self._state_store = state_store or InMemoryAgentStateStore(clock_ms=clock_ms)
         self._clock_ms = clock_ms or _epoch_ms
+        self._state_store = state_store if state_store is not None else InMemoryAgentStateStore(clock_ms=self._clock_ms)
         self._shell_runner = shell_runner
         self._workspace_context_observer = workspace_context_observer
         self._usage_accounting = usage_accounting
@@ -718,7 +718,7 @@ class AgentRunner:
                 status=status,
                 final_state=status.value if status is AgentRunStatus.FAILED else "TERMINATED",
                 output_text=output_text,
-                tool_calls=(),
+                tool_calls=planning_result.tool_calls,
                 total_cost_usd=planning_result.total_cost_usd,
                 stop_reason=planning_result.stop_reason,
                 cost_complete=planning_result.cost_complete,
@@ -729,7 +729,7 @@ class AgentRunner:
             request=request,
             context=context,
             toolbox=toolbox,
-            tool_calls=[],
+            tool_calls=list(planning_result.tool_calls),
             output_text=planning_result.plan_text or "",
             total_cost_usd=planning_result.total_cost_usd,
             gateway_request_id=planning_result.gateway_request_ids[-1],

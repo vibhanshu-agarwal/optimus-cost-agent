@@ -1765,3 +1765,40 @@ def test_an_ordinary_file_symlink_into_the_runtime_tree_is_denied_by_its_resolve
     _assert_runtime_bytes_never_surface(gateway, guard, result)
     assert _reads(result) == ("read src/a.py",)
     assert "path.runtime.read" in _blocked(guard)
+
+
+@pytest.mark.parametrize("composition", ["default", "injected_clock", "supplied_store"])
+def test_expired_fallback_approval_never_executes_or_replans(tmp_path, monkeypatch, composition):
+    import optimus.agent.runner as runner_module
+    now = [1000]
+    monkeypatch.setattr(runner_module, "_epoch_ms", lambda: now[0])
+    target = tmp_path / "example.py"
+    target.write_text("original\n", encoding="utf-8")
+    gateway = FakeGatewayClient("WRITE example.py\nexpired mutation\n")
+    kwargs = {}
+    if composition == "injected_clock":
+        kwargs["clock_ms"] = lambda: now[0]
+    elif composition == "supplied_store":
+        kwargs["state_store"] = InMemoryAgentStateStore(clock_ms=lambda: now[0])
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2", **kwargs)
+    request = AgentRunRequest(run_id="expiry-run", task="change example.py", execution_mode=ExecutionMode.AGENT, workspace_root=tmp_path)
+    planned = runner.run(request)
+    assert planned.status is AgentRunStatus.AWAITING_APPROVAL
+    now[0] = 3_601_000
+    approved = request.model_copy(update={"approval": AgentApproval(approved=True, approval_id="expiry-approval", plan_hash=planned.plan_hash)})
+    result = runner.run(approved)
+    assert result.status is AgentRunStatus.FAILED
+    assert result.stop_reason == "PLAN_NOT_FOUND_OR_EXPIRED"
+    assert result.mutation_count == 0 and len(gateway.calls) == 1
+    assert target.read_text(encoding="utf-8") == "original\n"
+
+
+def test_explicit_falsey_store_keeps_ownership_of_the_planned_record(tmp_path):
+    class SuppliedStore(InMemoryAgentStateStore):
+        def __bool__(self):
+            return False
+    store = SuppliedStore(clock_ms=lambda: 1000)
+    runner = AgentRunner(gateway_client=FakeGatewayClient("WRITE example.py\nplanned\n"), model="glm-5.2", state_store=store, clock_ms=lambda: 1000)
+    result = runner.run(AgentRunRequest(run_id="supplied-run", task="plan only", execution_mode=ExecutionMode.AGENT, workspace_root=tmp_path))
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL
+    assert store.load_plan(run_id="supplied-run", plan_hash=result.plan_hash).plan_text == result.output_text

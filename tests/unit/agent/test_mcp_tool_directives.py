@@ -10,8 +10,9 @@ from typing import Any
 import pytest
 
 from optimus.agent.directives import AgentDirectiveParseError, parse_agent_plan
-from optimus.agent.models import AgentMcpToolOutput, AgentRunRequest, AgentToolCall
+from optimus.agent.models import AgentMcpToolOutput, AgentRunRequest, AgentRunStatus, AgentToolCall
 from optimus.agent.planning_loop import (
+    CheckInDecision,
     PlanningLoopPolicy,
     PlanningLoopRunner,
     PlanningTurnKind,
@@ -20,6 +21,7 @@ from optimus.agent.planning_loop import (
 )
 from optimus.agent.prompts import build_agent_planner_input, build_multi_turn_planner_input
 from optimus.agent.runner import AgentRunner
+from optimus.agent.state_store import InMemoryAgentStateStore
 from optimus.agent.tools import AgentToolbox
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest
@@ -329,7 +331,8 @@ def test_toolbox_mcp_list_then_call_through_generics_only(tmp_path):
     assert list_call.tool_name == "mcp_list_tools"
     assert "arguments" not in list_call.model_dump()
     assert "output" not in list_call.model_dump()
-    assert listed.text not in list_call.summary or True  # summary may mention count only
+    assert list_call.summary == "listed 2 tools for tools"
+    assert listed.text not in list_call.summary
     dumped = list_call.model_dump()
     assert set(dumped) <= {"tool_name", "summary", "cost_usd", "authorization_outcome"}
 
@@ -466,6 +469,10 @@ def test_planning_loop_list_then_call_feeds_safe_output_to_next_turn(tmp_path):
     )
     result = runner.run(run_id="run-1", session_id="sess-1", task="use mcp then write")
     assert result.stop_reason is None
+    assert [(c.tool_name, c.authorization_outcome, c.summary, c.cost_usd) for c in result.tool_calls] == [
+        ("mcp_list_tools", "ALLOW", "listed 1 tools for tools", Decimal("0")),
+        ("mcp_call", "ALLOW", "authorized mcp call: lookup", Decimal("0")),
+    ]
     assert result.plan_text is not None
     assert "WRITE a.py" in result.plan_text
     assert len(gateway.calls) == 3
@@ -512,7 +519,7 @@ def test_runner_threads_keyword_only_mcp_runtime_and_keeps_them_off_request_resu
         client_mcp_service=service,
         mcp_permission_broker=broker,
     )
-    assert result.status is not None
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL
     dumped = result.model_dump()
     assert "client_mcp_service" not in dumped
     assert "mcp_permission_broker" not in dumped
@@ -523,11 +530,12 @@ def test_runner_threads_keyword_only_mcp_runtime_and_keeps_them_off_request_resu
     # Service was used (list happened).
     assert service.list_calls == ["tools"]
     # No descriptor-named tools registered on result.
-    assert all(c.tool_name in {"mcp_list_tools", "mcp_call", "file_reader", "write_file", "test_runner"} or c.tool_name.startswith("mcp_") for c in result.tool_calls) or True
+    assert [(c.tool_name, c.authorization_outcome) for c in result.tool_calls] == [("mcp_list_tools", "ALLOW")]
     assert all(c.tool_name != "lookup" for c in result.tool_calls)
 
 
-def test_toolbox_operates_against_real_client_mcp_tool_service(tmp_path) -> None:
+@pytest.fixture
+def real_mcp_runtime(tmp_path):
     """AgentToolbox must call the production ClientMcpToolService surface, not a forged API.
 
     Cross-component boundary regression: a FakeClientMcpService that invents list_tools(server)/
@@ -541,7 +549,6 @@ def test_toolbox_operates_against_real_client_mcp_tool_service(tmp_path) -> None
         ClientMcpDescriptorExposureAdapter,
         ClientMcpSessionService,
         ClientMcpToolService,
-        arguments_digest,
     )
     from optimus.mcp.client_config import ClientMcpSafeIdentity
     from optimus.mcp.client_trust import ClientMcpSessionLease
@@ -590,9 +597,12 @@ def test_toolbox_operates_against_real_client_mcp_tool_service(tmp_path) -> None
         client_mcp_authorizer=authorizer,
     )
 
+    dispatched = []
+
     class DispatchingService(ClientMcpToolService):
         def _dispatch(self, tool_name: str, arguments: dict[str, Any]) -> str:
-            return json.dumps({"ok": True, "tool": tool_name}, sort_keys=True, separators=(",", ":"))
+            dispatched.append((tool_name, dict(arguments)))
+            return json.dumps({"ok": True, "tool": tool_name, "observation": "visibility-observation-9f3b"}, sort_keys=True, separators=(",", ":"))
 
     per_server = DispatchingService(guard=guard, catalog=catalog, authorizer=authorizer)
     session = ClientMcpSessionService()
@@ -606,6 +616,13 @@ def test_toolbox_operates_against_real_client_mcp_tool_service(tmp_path) -> None
                 arguments=dict(request.mcp_arguments or {}),
             )
 
+    return session, guard, RealBroker(), dispatched
+
+
+def test_toolbox_operates_against_real_client_mcp_tool_service(tmp_path, real_mcp_runtime) -> None:
+    from optimus.mcp.client_catalog import arguments_digest
+
+    session, guard, broker, dispatched = real_mcp_runtime
     toolbox = AgentToolbox(
         workspace_root=tmp_path,
         context=_approved_context(),
@@ -613,7 +630,7 @@ def test_toolbox_operates_against_real_client_mcp_tool_service(tmp_path) -> None
         run_id="run-real",
         session_id="s-real",
         client_mcp_service=session,
-        mcp_permission_broker=RealBroker(),
+        mcp_permission_broker=broker,
     )
 
     listed, list_audit = toolbox.mcp_list_tools("tools")
@@ -634,3 +651,126 @@ def test_toolbox_operates_against_real_client_mcp_tool_service(tmp_path) -> None
     assert missing_audit.authorization_outcome == "BLOCK"
     assert missing.text.startswith("unavailable:")
     assert arguments_digest({"id": 1})  # digest helper still used by broker path
+
+
+
+def _visibility_planner(tmp_path, gateway, service=None, **kwargs):
+    return PlanningLoopRunner(
+        gateway_client=gateway, model="glm-5.2", workspace_root=tmp_path,
+        policy=kwargs.pop("policy", PlanningLoopPolicy(max_planning_turns=5)),
+        execution_mode=ExecutionMode.AGENT,
+        guard=PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=()),
+        client_mcp_service=service, **kwargs,
+    )
+
+
+@pytest.mark.parametrize(
+    "directive,service,broker,outcome,name",
+    [
+        ("MCP_LIST tools\n", None, None, "BLOCK", "mcp_list_tools"),
+        ("MCP_LIST down\n", FakeClientMcpService(unavailable_servers={"down"}), None, "BLOCK", "mcp_list_tools"),
+        ("MCP_CALL tools missing {}\n", FakeClientMcpService(servers={"tools": {}}), None, "BLOCK", "mcp_call"),
+        ("MCP_CALL tools apply_patch {}\n", FakeClientMcpService(servers={"tools": {"apply_patch": {}}}, write_tools={"apply_patch"}), FakeMcpPermissionBroker(allow=False), "HOLD", "mcp_call"),
+    ],
+)
+def test_visibility_denied_attempts_are_retained_without_dispatch(tmp_path, directive, service, broker, outcome, name):
+    gateway = ScriptingGateway([(directive, Decimal("0.001"), "gw-1"), ("WRITE a.py\nx = 2\n", Decimal("0.001"), "gw-2")])
+    result = _visibility_planner(tmp_path, gateway, service, mcp_permission_broker=broker).run(run_id="denied", session_id="sess-1", task="plan")
+    assert result.stop_reason is None
+    assert [(c.tool_name, c.authorization_outcome, c.cost_usd) for c in result.tool_calls] == [(name, outcome, Decimal("0"))]
+    if service is not None:
+        assert service.dispatched == []
+    if broker is not None:
+        assert len(broker.requests) == 1
+
+
+@pytest.mark.parametrize("ending,turns,cap,expected,count", [
+    ("REFUSE: Cannot safely continue.\n", 5, None, "PLANNING_MODEL_REFUSED", 1),
+    (None, 1, None, "PLANNING_TURN_LIMIT_EXHAUSTED", 1),
+    ("MCP_LIST tools\n", 5, None, "PLANNING_REPEATED_MCP_REQUEST", 2),
+    (None, 5, Decimal("0.001"), "PLANNING_BUDGET_EXHAUSTED", 1),
+])
+def test_visibility_stops_keep_completed_attempts(tmp_path, ending, turns, cap, expected, count):
+    service = FakeClientMcpService(servers={"tools": {"lookup": {}}})
+    scripts = [("MCP_LIST tools\n", Decimal("0.001"), "gw-1")]
+    if ending is not None:
+        scripts.append((ending, Decimal("0.001"), "gw-2"))
+    gateway = ScriptingGateway(scripts)
+    result = _visibility_planner(tmp_path, gateway, service, policy=PlanningLoopPolicy(max_planning_turns=turns), max_cost_usd=cap).run(run_id="stopped", session_id=None, task="plan")
+    assert result.stop_reason == expected
+    assert result.plan_text is None
+    assert result.settled_turns == len(scripts)
+    assert result.total_cost_usd == Decimal("0.001") * len(scripts)
+    assert [(c.tool_name, c.authorization_outcome) for c in result.tool_calls] == [("mcp_list_tools", "ALLOW")] * count
+    assert service.list_calls == ["tools"] * count
+
+
+def test_visibility_halt_after_call_keeps_only_completed_record(tmp_path):
+    service = FakeClientMcpService(servers={"tools": {"lookup": {}}})
+    gateway = ScriptingGateway([("MCP_LIST tools\n", Decimal("0.001"), "gw-1")])
+    result = _visibility_planner(tmp_path, gateway, service, halt_requested=lambda: bool(service.list_calls)).run(run_id="halt", session_id=None, task="plan")
+    assert result.stop_reason == "PLANNING_HALTED"
+    assert [(c.tool_name, c.authorization_outcome) for c in result.tool_calls] == [("mcp_list_tools", "ALLOW")]
+    assert service.list_calls == ["tools"]
+
+
+def test_visibility_reused_planner_resets_records_and_empty_budget_stays_empty(tmp_path):
+    service = FakeClientMcpService(servers={"tools": {"lookup": {}}})
+    gateway = ScriptingGateway([(text, Decimal("0.001"), f"gw-{i}") for i, text in enumerate(["MCP_LIST tools\n", "WRITE a.py\nx = 2\n", "WRITE a.py\nx = 3\n"])])
+    planner = _visibility_planner(tmp_path, gateway, service)
+    first = planner.run(run_id="first", session_id=None, task="plan")
+    second = planner.run(run_id="second", session_id=None, task="plan")
+    empty = _visibility_planner(tmp_path, ScriptingGateway([]), service, max_cost_usd=Decimal("0")).run(run_id="empty", session_id=None, task="plan")
+    assert [c.tool_name for c in first.tool_calls] == ["mcp_list_tools"]
+    assert second.tool_calls == ()
+    assert empty.tool_calls == () and empty.settled_turns == 0
+    assert empty.stop_reason == "PLANNING_BUDGET_EXHAUSTED"
+    assert service.list_calls == ["tools"]
+
+
+def test_visibility_recovery_allowance_keeps_records_once_in_order(tmp_path):
+    service = FakeClientMcpService(servers={"tools": {"lookup": {}}})
+    gateway = ScriptingGateway([(text, Decimal("0.001"), f"gw-{i}") for i, text in enumerate(["MCP_LIST tools\n", 'MCP_CALL tools lookup {"q":"x"}\n', "WRITE a.py\nx = 2\n"])])
+    checkins = []
+    def continue_once(checkin):
+        checkins.append(checkin)
+        return CheckInDecision.CONTINUE
+    result = _visibility_planner(tmp_path, gateway, service, policy=PlanningLoopPolicy(max_planning_turns=1), recovery_checkin=continue_once).run(run_id="recovery", session_id=None, task="plan")
+    assert result.stop_reason is None
+    assert result.settled_turns == 3
+    assert len(checkins) == 1
+    assert [c.tool_name for c in result.tool_calls] == ["mcp_list_tools", "mcp_call"]
+    assert service.list_calls == ["tools"] and service.dispatched == [("tools", "lookup")]
+
+
+@pytest.mark.parametrize("stop", [False, True])
+def test_visibility_real_composition_survives_runner_and_stays_private(tmp_path, real_mcp_runtime, stop):
+    """Local controlled dispatch; real catalog/lease/guard/services, not live MCP protocol evidence."""
+    session, guard, broker, dispatched = real_mcp_runtime
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    final = "REFUSE: Cannot safely continue.\n" if stop else "READ a.py\nWRITE a.py\nx = 2\n"
+    gateway = ScriptingGateway([(text, Decimal("0.001"), f"gw-{i}") for i, text in enumerate(["MCP_LIST tools\n", 'MCP_CALL tools lookup {"q":"visibility-argument-7c2a"}\n', final])])
+    events = []
+    store = InMemoryAgentStateStore()
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2", guard=guard, state_store=store, event_sink=events.append)
+    request = AgentRunRequest(run_id="real-visibility", session_id="s-real", task="plan", execution_mode=ExecutionMode.AGENT, workspace_root=tmp_path, max_planning_turns=5)
+    result = runner.run(request, client_mcp_service=session, mcp_permission_broker=broker)
+    assert dispatched == [("lookup", {"q": "visibility-argument-7c2a"})]
+    assert "visibility-observation-9f3b" in str(gateway.calls[2]["input_text"])
+    assert result.status is (AgentRunStatus.FAILED if stop else AgentRunStatus.AWAITING_APPROVAL)
+    assert result.stop_reason == ("PLANNING_MODEL_REFUSED" if stop else None)
+    assert result.mutation_count == 0 and result.total_cost_usd == Decimal("0.003")
+    expected = ["mcp_list_tools", "mcp_call:lookup"] + ([] if stop else ["file_reader"])
+    [run_event] = [e for e in events if e.kind.value == "agent_run"]
+    persisted = None if stop else store.load_plan(run_id=request.run_id, plan_hash=result.plan_hash)
+    if not stop:
+        assert persisted.plan_text == final
+        assert persisted.gateway_request_ids == ("gw-0", "gw-1", "gw-2")
+    for payload in [request.model_dump_json(), result.model_dump_json(), *(e.model_dump_json() for e in events), *([] if stop else [persisted.model_dump_json()])]:
+        for secret in ("visibility-observation-9f3b", "visibility-argument-7c2a", "client_mcp_service", "mcp_permission_broker", "AgentMcpToolOutput"):
+            assert secret not in payload
+    assert (tmp_path / "a.py").read_text(encoding="utf-8") == "x = 1\n"
+    assert [c.tool_name for c in result.tool_calls] == expected
+    assert [c.authorization_outcome for c in result.tool_calls] == ["ALLOW"] * len(expected)
+    assert all(type(c) is AgentToolCall for c in result.tool_calls)
+    assert list(run_event.payload["tool_names"]) == expected

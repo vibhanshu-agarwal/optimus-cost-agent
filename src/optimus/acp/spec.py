@@ -18,6 +18,7 @@ from time import monotonic
 from typing import TYPE_CHECKING, Any, Literal, NotRequired, Protocol, TypedDict
 
 from context_engine import SummaryCheckpoint
+from optimus.acp.admission import AdmissionClass
 from optimus.acp.conversation import (
     AttachedConversationState,
     ConversationDisposition,
@@ -33,6 +34,7 @@ from optimus.acp.debug_trace import (
     debug_trace_enabled,
     log_auto_route,
     log_context_fault,
+    log_late_worker_failure,
     log_pre_run_refusal,
     log_prompt_refusal,
 )
@@ -66,10 +68,9 @@ from optimus.acp.session_config import (
     build_session_config_options,
 )
 from optimus.acp.settlement import (
-    ConversationCommit,
-    EffectState,
-    FinalDelivery,
     RpcResponseDelivery,
+    SendOutcome,
+    SendState,
     Settlement,
     TurnSettlementSnapshot,
 )
@@ -120,7 +121,7 @@ from optimus.runtime.modes import ExecutionMode
 from optimus.tools.line_endings import WRITE_LINE_ENDINGS_MIXED
 from optimus.usage.cost_alerts import AlertPolicy, AlertTracker, CostScopeSummary
 from optimus.usage.turn_settlement import TurnCostSummary, TurnSettlement, receipt_from_maintenance
-from optimus_security.failure_facts import host_session_id
+from optimus_security.failure_facts import host_route_id, host_session_id
 
 if TYPE_CHECKING:
     from optimus.acp.auto_composition import AutoDecision, AutoRouter
@@ -486,9 +487,11 @@ class ProgressSubmission:
     control: TurnControl
     send_key: TurnSendKey
     admission: ProgressAdmission
+    admission_class: AdmissionClass = AdmissionClass.ORDINARY
 
 
 progress_submission: ContextVar[ProgressSubmission | None] = ContextVar("progress_submission", default=None)
+request_worker_custody: ContextVar[set[asyncio.Task[Any]] | None] = ContextVar("request_worker_custody", default=None)
 
 
 class ProgressLane:
@@ -633,8 +636,15 @@ class RecordingOutboundChannel:
         self._futures: dict[str | int, asyncio.Future[dict[str, Any]]] = {}
 
     async def notify(self, method: str, params: dict[str, Any], *, require_flushed: bool = False) -> None:
-        del require_flushed  # a recorded notification is always delivered
+        del require_flushed  # Recording is this channel's explicit simulated delivery boundary.
+        submission = progress_submission.get()
+        if submission is not None and submission.control.claim_write_started(submission.send_key) is SendState.SUPPRESSED:
+            submission.admission.set()
+            return
         self.notifications.append({"jsonrpc": "2.0", "method": method, "params": params})
+        if submission is not None:
+            submission.control.publish_authoritative(submission.send_key, SendOutcome.FLUSHED)
+            submission.admission.set()
 
     async def request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         request_id = f"agent-{next(self._request_ids)}"
@@ -1024,22 +1034,6 @@ class AcpDuplexAdapter:
             return sanitized_prompt, envelope
         return (f"{envelope}\n{sanitized_prompt}" if envelope else sanitized_prompt), ""
 
-    def _placeholder_settlement(self, turn: AcpPromptTurn) -> TurnSettlementSnapshot:
-        fields = turn.turn_control.current_settlement_fields()
-        settlement = (
-            Settlement.TRANSPORT_ABANDONED
-            if fields["post_teardown"]
-            else Settlement.COMPLETED
-        )
-        return TurnSettlementSnapshot(
-            settlement=settlement,
-            final_delivery=FinalDelivery(fields["final_delivery"]),
-            rpc_response_delivery=RpcResponseDelivery(fields["rpc_response_delivery"]),
-            conversation_commit=ConversationCommit.NOT_COMMITTED,
-            effect_state=EffectState(fields["effect_state"]),
-            cost_complete=bool(fields["cost_complete"]),
-        )
-
     def _settlement_evidence_callback(self, turn: AcpPromptTurn):
         def _callback(outcome: TurnSettlementSnapshot) -> None:
             from datetime import UTC, datetime
@@ -1079,6 +1073,22 @@ class AcpDuplexAdapter:
         request: dict[str, Any],
         ownership_slot: ResponseOwnershipSlot | None = None,
     ) -> ResponseEnvelope:
+        """Handle a request; no supplied slot is the in-process completion boundary.
+
+        Direct callers finalize here with RPC NOT_ATTEMPTED. Transport drivers supply
+        a slot and finalize its exact owner in their response-exit finally.
+        """
+        if ownership_slot is None:
+            direct_slot = ResponseOwnershipSlot()
+            try:
+                return await self.handle_client_request(request, ownership_slot=direct_slot)
+            except asyncio.CancelledError:
+                if direct_slot.turn_control is not None:
+                    direct_slot.turn_control.request_transport_teardown()
+                raise
+            finally:
+                if direct_slot.turn_control is not None:
+                    direct_slot.turn_control.finalize_once()
         request_id = request.get("id")
         if request.get("jsonrpc") != "2.0" or "method" not in request:
             return self._non_turn(
@@ -1689,6 +1699,8 @@ class AcpDuplexAdapter:
                 hypothesis_id="H3",
             )
             # endregion
+            if planning_result.status is not AgentRunStatus.AWAITING_APPROVAL:
+                turn_control.record_outcome(Settlement(_conversation_outcome(planning_result).value))
             if turn.execution_mode is ExecutionMode.CHAT:
                 return await self._finish_chat_turn(
                     request_id=request.get("id"),
@@ -1708,6 +1720,7 @@ class AcpDuplexAdapter:
             ):
                 # Design spec 4.2: a plan the attached record cannot keep fails before approval or any
                 # effect, and its exact failed outcome is kept instead of the plan.
+                turn_control.record_outcome(Settlement.FAILED)
                 await self._emit_final_text(session_id=session_id, text=CONTEXT_PLAN_TOO_LARGE_TEXT, turn=turn)
                 await self._commit_turn(
                     conversation=conversation,
@@ -1850,6 +1863,7 @@ class AcpDuplexAdapter:
                 run_id="post-fix",
             )
             # endregion
+            turn_control.record_outcome(Settlement(_conversation_outcome(approved_result).value))
             await self._emit_result_updates(session_id=session_id, result=approved_result, planning=False, turn=turn)
             await self._emit_completion_message(session_id=session_id, result=approved_result, turn=turn)
             await self._commit_turn(
@@ -1904,7 +1918,6 @@ class AcpDuplexAdapter:
                 # Recompute after any cancellation so settlement telemetry is exact even for a turn that
                 # ends without a commit (Plan 12.2 Task 2). After transport teardown this is a no-op.
                 turn.turn_control.refresh_effect_state()
-                turn.turn_control.finalize_once(self._placeholder_settlement(turn))
 
     def _mcp_refusal(
         self, request: dict[str, Any], session_id: str, reason: str,
@@ -2285,6 +2298,7 @@ class AcpDuplexAdapter:
             outcome = _conversation_outcome(result)
             if outcome is ConversationOutcome.COMPLETED:
                 outcome = ConversationOutcome.FAILED
+        turn.turn_control.record_outcome(Settlement(outcome.value))
         await self._emit_final_text(session_id=session_id, text=text, turn=turn)
         await self._commit_turn(
             conversation=conversation,
@@ -2300,15 +2314,22 @@ class AcpDuplexAdapter:
             ownership_slot,
         )
 
-    async def _emit_final_text(self, *, session_id: str, text: str, turn: AcpPromptTurn) -> None:
-        turn.turn_control.seal_final_delivery()
-        lease = turn.turn_control.start_terminal_message("final_text")
+    async def _send_terminal(self, turn: AcpPromptTurn, message_id: str, payload: dict[str, Any]) -> None:
+        lease = turn.turn_control.start_terminal_message(message_id)
         if not lease.granted:
             return
-        await self._outbound.notify(
-            "session/update",
-            build_agent_message_chunk_notification(session_id=session_id, text=text),
-        )
+        assert lease.send_key is not None
+        submission = ProgressSubmission(turn.turn_control, lease.send_key, ProgressAdmission(), AdmissionClass.REQUIRED)
+        token = progress_submission.set(submission)
+        try:
+            await self._outbound.notify("session/update", payload, require_flushed=True)
+        finally:
+            progress_submission.reset(token)
+
+    async def _emit_final_text(self, *, session_id: str, text: str, turn: AcpPromptTurn) -> None:
+        turn.turn_control.seal_final_delivery()
+        turn.turn_control.declare_terminal_messages(("final_text",))
+        await self._send_terminal(turn, "final_text", build_agent_message_chunk_notification(session_id=session_id, text=text))
 
     async def _commit_turn(
         self,
@@ -2320,6 +2341,7 @@ class AcpDuplexAdapter:
         outcome: ConversationOutcome,
         completion_text: str | None = None,
     ) -> None:
+        turn.turn_control.record_outcome(Settlement(outcome.value))
         raw_plan = result.candidate_plan_text or ""
         plan_text = conversation.sanitize_text(raw_plan) if raw_plan else ""
         completion = conversation.sanitize_text(
@@ -2337,8 +2359,11 @@ class AcpDuplexAdapter:
             # settles NONE.
             effect_state=turn.turn_control.refresh_effect_state(),
         )
-        conversation.commit_after_final_flush(decision)
-        self.record_turn_commit(turn.session_id, turn.turn_seq, committed=decision.commit)
+        committed = decision.commit and turn.turn_control.commit_conversation(lambda: conversation.commit_after_final_flush(decision))
+        self.record_turn_commit(turn.session_id, turn.turn_seq, committed=committed)
+        if not committed:
+            await self._emit_exit_cost_alerts(turn)
+            return
         if turn.auto_decision is not None and outcome in (ConversationOutcome.COMPLETED, ConversationOutcome.REJECTED):
             # Plan 12.4 Task 4: only a committed, uncancelled, unfailed turn sets the next turn's previous tier.
             session = self._sessions.get(turn.session_id)
@@ -2424,20 +2449,55 @@ class AcpDuplexAdapter:
 
         task = asyncio.create_task(observe_worker(), name="optimus-owned-turn-worker")
         self._worker_tasks.add(task)
+        request_workers = request_worker_custody.get()
+        if request_workers is not None:
+            request_workers.add(task)
+
+        waiter_attached = True
+        outcome_observed = False
+
+        def observe_detached(owned: asyncio.Task[Any]) -> None:
+            nonlocal outcome_observed
+            if outcome_observed or not owned.done():
+                return
+            outcome_observed = True
+            if owned.cancelled():
+                return
+            failed = owned.exception() is not None
+            if not failed:
+                succeeded, _ = owned.result()
+                failed = not succeeded
+            if failed:
+                with contextlib.suppress(Exception):
+                    _operator_line(f"optimus.acp: worker failed after waiter detached run_id={host_route_id(turn.run_id)}")
+                with contextlib.suppress(Exception):
+                    log_late_worker_failure(run_id=turn.run_id, telemetry=self._failure_telemetry)
 
         def finished(owned: asyncio.Task[Any]) -> None:
             self._worker_tasks.discard(owned)
-            if not owned.cancelled():
-                owned.exception()
+            if request_workers is not None:
+                request_workers.discard(owned)
+            if not waiter_attached:
+                observe_detached(owned)
 
         task.add_done_callback(finished)
         try:
-            succeeded, result = await asyncio.shield(task)
+            try:
+                succeeded, result = await asyncio.shield(task)
+            except asyncio.CancelledError:
+                raise
+            except BaseException:
+                outcome_observed = True
+                raise
+            outcome_observed = True
             if not succeeded:
                 raise result
             return result
         finally:
+            waiter_attached = False
             invocation.abandon_unstarted()
+            # Completion may beat cancellation before the waiter's continuation runs.
+            observe_detached(task)
 
     async def _emit_exit_cost_alerts(self, turn: AcpPromptTurn) -> None:
         """Alerts for a live exit that did not commit. Never after transport teardown: the facts stay
@@ -2865,19 +2925,16 @@ class AcpDuplexAdapter:
     ) -> None:
         if turn is not None:
             turn.turn_control.seal_final_delivery()
-            lease = turn.turn_control.start_terminal_message("completed_plan")
-            if not lease.granted:
-                return
+            turn.turn_control.declare_terminal_messages(("completed_plan", "final_text"))
         completed_plan = build_plan_session_update(
             session_id=session_id,
             plan_text=result.output_text,
             entry_status="completed",
         )
-        await self._outbound.notify("session/update", completed_plan)
-        if turn is not None:
-            lease = turn.turn_control.start_terminal_message("final_text")
-            if not lease.granted:
-                return
+        if turn is None:
+            await self._outbound.notify("session/update", completed_plan)
+        else:
+            await self._send_terminal(turn, "completed_plan", completed_plan)
         message = _completion_message(result)
         message_payload = build_agent_message_chunk_notification(session_id=session_id, text=message)
         # region agent log
@@ -2894,7 +2951,10 @@ class AcpDuplexAdapter:
             run_id="post-fix",
         )
         # endregion
-        await self._outbound.notify("session/update", message_payload)
+        if turn is None:
+            await self._outbound.notify("session/update", message_payload)
+        else:
+            await self._send_terminal(turn, "final_text", message_payload)
 
     async def _emit_planning_progress(
         self,
@@ -2940,6 +3000,7 @@ _VISIBLE_WORKSPACE_CONTEXT_FAILURES = frozenset(
 
 _PLANNING_TERMINAL_STOP_REASONS = frozenset(
     {
+        "PLANNING_BUDGET_EXHAUSTED",
         "PLANNING_GATEWAY_FAILURE",
         "PLANNING_GATEWAY_COST_UNKNOWN",
         "PLANNING_GATEWAY_REFUSED",
@@ -2977,17 +3038,17 @@ def _completion_message(result: AgentRunResult) -> str:
         return result.output_text  # the closed code and that nothing was written (#407)
     if result.stop_reason == WRITE_LINE_ENDINGS_MIXED:
         return result.output_text  # the refused WRITE and the TESTs that did not run (#410)
+    if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES or result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
+        return result.output_text
+    if result.status is AgentRunStatus.TERMINATED and result.stop_reason == "cancelled":
+        return result.output_text
     if result.mutation_count > 0:
         writes = [call.summary for call in result.tool_calls if call.tool_name == "write_file"]
         if writes:
             return "Completed:\n" + "\n".join(f"- {summary}" for summary in writes)
         return f"Completed {result.mutation_count} file change(s)."
     if result.tool_calls:
-        return "Executed:\n" + "\n".join(f"- {call.summary}" for call in result.tool_calls)
-    if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES:
-        return result.output_text
-    if result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
-        return result.output_text
+        return "Tool activity:\n" + "\n".join(f"- {call.summary}" for call in result.tool_calls)
     return "Turn completed."
 
 

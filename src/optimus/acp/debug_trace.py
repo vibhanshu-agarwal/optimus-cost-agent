@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable, Iterable
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -538,6 +539,18 @@ def log_auto_route(
         _emit_failure(telemetry, error_type="auto_route", record=record, run_id=run, session_id=session, request_id=None)
     except Exception:  # noqa: BLE001 - a diagnostic never fails the turn
         return
+
+
+def log_late_worker_failure(*, run_id: str, telemetry: JsonlTelemetryWriter | None = None) -> None:
+    """One safe outcome per detached physical worker; neither sink changes settlement."""
+    run = host_route_id(run_id)
+    record = {"run_id": run, "outcome": "failed_after_detach"}
+    with suppress(Exception):
+        acp_debug_log(location="debug_trace.py:log_late_worker_failure", message="late worker failure", data=record)
+    if telemetry is not None:
+        with suppress(Exception):
+            session = host_session_id(run.split(":")[0]) if run not in (None, UNRECOGNIZED) else None
+            _emit_failure(telemetry, error_type="late_worker_failure", record=record, run_id=run, session_id=session, request_id=None)
 
 
 def log_planning_replan_event(event: PlanningProgressEvent, *, stop_reason: str | None = None) -> None:

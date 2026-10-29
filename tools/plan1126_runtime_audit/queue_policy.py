@@ -462,11 +462,10 @@ def queue_admission_observations(
         raise ValueError("queue characterization requires exactly 10,000 admissions per queue")
     rows: list[QueueAdmissionObservation] = []
 
-    def append_row(definition: QueueDefinition, index: int, elapsed_ms: float) -> None:
-        outcome = AdmissionOutcome.ACCEPTED
+    def append_row(definition: QueueDefinition, index: int, elapsed_ms: float, outcome: AdmissionOutcome, *, accepted_count: int) -> None:
         inference = classify_admission_behavior(
             constructor_policy=definition.constructor_policy,
-            accepted_count=index + 1, attempted_count=index + 1,
+            accepted_count=accepted_count, attempted_count=index + 1,
             elapsed_ms=elapsed_ms,
             explicit_timeout_seconds=definition.explicit_admission_timeout_seconds,
             observed_outcome=outcome,
@@ -483,8 +482,13 @@ def queue_admission_observations(
     async def admit_async(definition: QueueDefinition, target: asyncio.Queue[int]) -> None:
         for index in range(admission_count):
             started = time.perf_counter_ns()
-            await target.put(index)
-            append_row(definition, index, (time.perf_counter_ns() - started) / 1_000_000)
+            try:
+                target.put_nowait(index)
+            except asyncio.QueueFull:
+                outcome = AdmissionOutcome.FULL_REJECTED
+            else:
+                outcome = AdmissionOutcome.ACCEPTED
+            append_row(definition, index, (time.perf_counter_ns() - started) / 1_000_000, outcome, accepted_count=target.qsize())
 
     for definition in inventory.queues:
         maxsize = definition.declared_bound or 0
@@ -494,8 +498,13 @@ def queue_admission_observations(
         target: Any = sync_queue.Queue(maxsize=maxsize)
         for index in range(admission_count):
             started = time.perf_counter_ns()
-            target.put(index)
-            append_row(definition, index, (time.perf_counter_ns() - started) / 1_000_000)
+            try:
+                target.put_nowait(index)
+            except sync_queue.Full:
+                outcome = AdmissionOutcome.FULL_REJECTED
+            else:
+                outcome = AdmissionOutcome.ACCEPTED
+            append_row(definition, index, (time.perf_counter_ns() - started) / 1_000_000, outcome, accepted_count=target.qsize())
     return tuple(rows)
 
 
@@ -655,7 +664,7 @@ def connection_health_observations(
             runtime.close(timeout=10.0)
         rows.append(HealthObservation(
             scenario=scenario, outcome=outcome,
-            deadline_policy=HealthDeadlinePolicy.CONNECT_ONLY,
+            deadline_policy=HealthDeadlinePolicy.FULL_OPERATION,
             pool_ownership=PoolOwnership.RUNTIME_OWNED_CLIENT_THEN_POOL,
             evidence_digest=_digest({"scenario": scenario.value, "outcome": outcome.value}),
         ))

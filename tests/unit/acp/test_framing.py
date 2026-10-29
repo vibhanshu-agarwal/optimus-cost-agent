@@ -1,4 +1,5 @@
 import asyncio
+import io
 import json
 
 import pytest
@@ -115,3 +116,34 @@ async def test_read_message_leaves_next_framed_message_available():
 
     assert first_message["id"] == "a"
     assert second_message["id"] == "b"
+
+async def test_framed_oversize_is_rejected_before_body_read():
+    reader = ChunkedReader([b"Content-Length: 8388609\r\n\r\n", b"unread"])
+    with pytest.raises(FramingError, match="body too large") as error:
+        await read_message(reader)
+    assert error.value.code == INVALID_REQUEST
+    assert reader._chunks == [b"unread"]
+
+
+async def test_framed_body_reads_are_chunk_bounded():
+    payload = {"value": "x" * 100000}
+    class BoundedReader(ChunkedReader):
+        async def read(self, size):
+            assert size <= 65536
+            return await super().read(size)
+    assert await read_message(BoundedReader([encode_message(payload)])) == payload
+
+
+async def test_framed_exact_default_limit_accepts_split_utf8_codepoint():
+    from optimus.acp.admission import DEFAULT_LIMITS
+    value = "x" * (65535 - len(b'{"value":"')) + "\U0001f642"
+    body_size = len(json.dumps({"value": value}, separators=(",", ":"), ensure_ascii=False).encode())
+    payload = {"value": value + "y" * (DEFAULT_LIMITS.frame_bytes - body_size)}
+    framed = encode_message(payload)
+    assert len(framed.split(b"\r\n\r\n", 1)[1]) == DEFAULT_LIMITS.frame_bytes
+    class Reader:
+        stream = io.BytesIO(framed)
+        async def read(self, size):
+            assert size <= 65536
+            return self.stream.read(size)
+    assert await read_message(Reader()) == payload

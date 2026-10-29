@@ -250,14 +250,16 @@ async def test_serve_ndjson_sanitizes_reader_failure_to_stderr(tmp_path, monkeyp
         async def readline(self):
             raise RuntimeError("OPTIMUS_API_KEY=top-secret-canary")
 
-    await asyncio.wait_for(configured.server.serve_ndjson(FailingReader(), _CapturingNdjsonWriter()), timeout=1)
+    with pytest.raises(RuntimeError):
+        await asyncio.wait_for(configured.server.serve_ndjson(FailingReader(), _CapturingNdjsonWriter()), timeout=1)
 
     stderr = capsys.readouterr().err
     assert "ndjson reader failed" in stderr
     assert "top-secret-canary" not in stderr
 
     monkeypatch.setattr(errors, "sanitize_for_persistence", lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("failure")))
-    await asyncio.wait_for(configured.server.serve_ndjson(FailingReader(), _CapturingNdjsonWriter()), timeout=1)
+    with pytest.raises(RuntimeError):
+        await asyncio.wait_for(configured.server.serve_ndjson(FailingReader(), _CapturingNdjsonWriter()), timeout=1)
     failed_stderr = capsys.readouterr().err
     assert "internal error" in failed_stderr
     assert "top-secret-canary" not in failed_stderr

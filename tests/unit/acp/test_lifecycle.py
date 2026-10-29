@@ -320,27 +320,12 @@ def test_finalize_once_identity_conditional_and_idempotent() -> None:
         callbacks.append(snapshot)
 
     control.set_finalization_hooks(active_map_remover=remover, settlement_callback=sink)
-    first = TurnSettlementSnapshot(
-        settlement=Settlement.CANCELLED,
-        final_delivery=FinalDelivery.NOT_ATTEMPTED,
-        rpc_response_delivery=RpcResponseDelivery.NOT_ATTEMPTED,
-        conversation_commit=ConversationCommit.NOT_COMMITTED,
-        effect_state=EffectState.NONE,
-        cost_complete=True,
-    )
-    out1 = control.finalize_once(first)
-    out2 = control.finalize_once(
-        TurnSettlementSnapshot(
-            settlement=Settlement.FAILED,
-            final_delivery=FinalDelivery.AMBIGUOUS,
-            rpc_response_delivery=RpcResponseDelivery.AMBIGUOUS,
-            conversation_commit=ConversationCommit.NOT_COMMITTED,
-            effect_state=EffectState.INDETERMINATE,
-            cost_complete=False,
-        )
-    )
-    assert out1 is first
-    assert out2 is first
+    control.record_outcome(Settlement.CANCELLED)
+    first = control.finalize_once()
+    control.record_outcome(Settlement.FAILED)
+    assert first.settlement is Settlement.CANCELLED
+    assert first.conversation_commit is ConversationCommit.NOT_COMMITTED
+    assert control.finalize_once() is first
     assert removals == [("sess-1", 1, id(control))]
     assert callbacks == [first]
 
@@ -355,16 +340,9 @@ def test_finalize_once_skips_remover_when_identity_mismatches() -> None:
         return False
 
     control.set_finalization_hooks(active_map_remover=remover)
-    snap = TurnSettlementSnapshot(
-        settlement=Settlement.COMPLETED,
-        final_delivery=FinalDelivery.FLUSHED,
-        rpc_response_delivery=RpcResponseDelivery.FLUSHED,
-        conversation_commit=ConversationCommit.COMMITTED,
-        effect_state=EffectState.COMPLETE,
-        cost_complete=True,
-    )
+    control.record_outcome(Settlement.COMPLETED)
     # Remover is still invoked with this control; it decides mismatch.
-    control.finalize_once(snap)
+    control.finalize_once()
     assert called["n"] == 1
     assert other.session_id == "sess-1"
 
@@ -666,18 +644,11 @@ def test_finalize_once_settlement_callback_contains_sink_exceptions() -> None:
         raise RuntimeError("jsonl failed")
 
     control.set_finalization_hooks(settlement_callback=raising_sink)
-    snap = TurnSettlementSnapshot(
-        settlement=Settlement.COMPLETED,
-        final_delivery=FinalDelivery.FLUSHED,
-        rpc_response_delivery=RpcResponseDelivery.FLUSHED,
-        conversation_commit=ConversationCommit.COMMITTED,
-        effect_state=EffectState.NONE,
-        cost_complete=True,
-    )
-    out = control.finalize_once(snap)
-    assert out is snap
+    control.record_outcome(Settlement.COMPLETED)
+    first = control.finalize_once()
+    assert first.settlement is Settlement.COMPLETED
     assert attempts["n"] == 1
-    assert control.finalize_once(snap) is snap
+    assert control.finalize_once() is first
     assert attempts["n"] == 1
 
 

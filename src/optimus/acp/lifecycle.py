@@ -119,6 +119,8 @@ class TurnControl:
         self._send_slots: dict[TurnSendKey, SendSlot] = {}
         self._teardown_classification: FinalDelivery | None = None
         self._frozen_snapshot: TurnSettlementSnapshot | None = None
+        self._settlement = Settlement.FAILED
+        self._conversation_commit = ConversationCommit.NOT_COMMITTED
         self._final_delivery = FinalDelivery.NOT_ATTEMPTED
         self._rpc_response_delivery = RpcResponseDelivery.NOT_ATTEMPTED
         self._prior_history_flush = False
@@ -310,10 +312,38 @@ class TurnControl:
                 )
             return self._terminal_decision
 
+    def record_outcome(self, outcome: Settlement) -> None:
+        """Keep semantic outcome independently of delivery and canonical insertion."""
+        with self._lock:
+            if self._frozen_snapshot is None and not self._finalized:
+                self._settlement = Settlement.CANCELLED if self._cancellation_accepted else outcome
+
+    def commit_conversation(self, insert: Callable[[], None]) -> bool:
+        """Serialize actual insertion with teardown; a flushed prefix cannot authorize it."""
+        with self._lock:
+            if self._finalized or self._transport_abandoned or self._final_delivery is not FinalDelivery.FLUSHED:
+                return False
+            insert()
+            self._conversation_commit = ConversationCommit.COMMITTED
+            return True
+
+    def declare_terminal_messages(self, message_ids: Sequence[str]) -> None:
+        """Declare the whole required set before its first physical submission."""
+        with self._lock:
+            if self._transport_abandoned or self._finalized:
+                return
+            for message_id in message_ids:
+                key = TurnSendKey(kind="terminal_set", message_id=message_id)
+                self._send_slots.setdefault(key, SendSlot(
+                    send_key=key, authoritative=SendState.QUEUED, work_class="terminal_set"))
+            self._final_delivery = self._classify_teardown_delivery_locked()
+
     def start_terminal_message(self, message_id: str, *, fallback: bool = False) -> StartLease:
         with self._lock:
             kind = "fallback" if fallback else "terminal_set"
             send_key = TurnSendKey(kind=kind, message_id=message_id)
+            if self._finalized:
+                return StartLease(granted=False, send_key=send_key)
             if self._terminal_lane is not TerminalLane.GRANTED:
                 self._send_slots[send_key] = SendSlot(
                     send_key=send_key,
@@ -321,20 +351,15 @@ class TurnControl:
                     work_class=kind,
                 )
                 return StartLease(granted=False, send_key=send_key)
-            self._send_slots[send_key] = SendSlot(
-                send_key=send_key,
-                authoritative=SendState.QUEUED,
-                work_class=kind,
-            )
-            return StartLease(granted=True, send_key=send_key)
+            slot = self._send_slots.setdefault(send_key, SendSlot(
+                send_key=send_key, authoritative=SendState.QUEUED, work_class=kind))
+            return StartLease(granted=slot.authoritative is SendState.QUEUED, send_key=send_key)
 
     def start_response_send(self) -> StartLease:
         with self._lock:
             send_key = TurnSendKey(kind="protocol_response", message_id="response")
-            if self._response_started and send_key in self._send_slots:
-                slot = self._send_slots[send_key]
-                granted = slot.authoritative is SendState.QUEUED
-                return StartLease(granted=granted, send_key=send_key)
+            if self._response_started or self._finalized:
+                return StartLease(granted=False, send_key=send_key)
             self._response_started = True
             if self._transport_abandoned:
                 self._send_slots[send_key] = SendSlot(
@@ -369,6 +394,9 @@ class TurnControl:
     def publish_authoritative(self, send_key: TurnSendKey, outcome: SendOutcome) -> None:
         with self._lock:
             slot = self._send_slots[send_key]
+            if self._finalized:
+                slot.diagnostic = outcome
+                return
             if slot.authoritative in {
                 SendState.FLUSHED,
                 SendState.CONCLUSIVE_FAILURE,
@@ -386,6 +414,8 @@ class TurnControl:
 
     def request_transport_teardown(self) -> FinalDelivery:
         with self._lock:
+            if self._finalized:
+                return self._final_delivery
             if self._teardown_classification is not None:
                 return self._teardown_classification
 
@@ -408,7 +438,7 @@ class TurnControl:
                 settlement=Settlement.TRANSPORT_ABANDONED,
                 final_delivery=self._final_delivery,
                 rpc_response_delivery=self._rpc_response_delivery,
-                conversation_commit=ConversationCommit.NOT_COMMITTED,
+                conversation_commit=self._conversation_commit,
                 effect_state=self._effect_state,
                 cost_complete=self._cost_complete,
             )
@@ -436,12 +466,29 @@ class TurnControl:
 
         return self._teardown_classification
 
-    def finalize_once(self, outcome: TurnSettlementSnapshot) -> TurnSettlementSnapshot:
+    def finalize_once(self) -> TurnSettlementSnapshot:
         claimed = False
         with self._lock:
             if self._finalized:
                 assert self._final_outcome is not None
                 return self._final_outcome
+            self._execution_gate_open = False
+            self._directives_frozen = True
+            for slot in self._send_slots.values():
+                if slot.authoritative is SendState.QUEUED:
+                    slot.authoritative = SendState.SUPPRESSED
+                    self._apply_send_consequence_locked(slot, SendOutcome.SUPPRESSED)
+                elif slot.authoritative is SendState.WRITE_STARTED:
+                    slot.authoritative = SendState.AMBIGUOUS
+                    self._apply_send_consequence_locked(slot, SendOutcome.AMBIGUOUS)
+            outcome = self._frozen_snapshot or TurnSettlementSnapshot(
+                settlement=Settlement.CANCELLED if self._cancellation_accepted else self._settlement,
+                final_delivery=self._final_delivery,
+                rpc_response_delivery=self._rpc_response_delivery,
+                conversation_commit=self._conversation_commit,
+                effect_state=self._effect_state,
+                cost_complete=self._cost_complete,
+            )
             self._finalized = True
             self._final_outcome = outcome
             claimed = True
@@ -475,16 +522,7 @@ class TurnControl:
     def _apply_send_consequence_locked(self, slot: SendSlot, outcome: SendOutcome) -> None:
         kind = slot.work_class
         if kind in {"terminal_set", "fallback"}:
-            if outcome is SendOutcome.SUPPRESSED:
-                # Keep prior aggregate unless this is the sole classification path.
-                if self._final_delivery is FinalDelivery.NOT_ATTEMPTED:
-                    self._final_delivery = FinalDelivery.NOT_ATTEMPTED
-            elif outcome is SendOutcome.AMBIGUOUS:
-                self._final_delivery = FinalDelivery.AMBIGUOUS
-            elif outcome is SendOutcome.FLUSHED:
-                self._final_delivery = FinalDelivery.FLUSHED
-            elif outcome is SendOutcome.CONCLUSIVE_FAILURE:
-                self._final_delivery = FinalDelivery.CONCLUSIVE_FAILURE
+            self._final_delivery = self._classify_teardown_delivery_locked()
         elif kind == "protocol_response":
             if outcome is SendOutcome.SUPPRESSED:
                 self._rpc_response_delivery = RpcResponseDelivery.NOT_ATTEMPTED
@@ -512,21 +550,15 @@ class TurnControl:
             return FinalDelivery.NOT_ATTEMPTED
 
         states = {slot.authoritative for slot in terminal_slots}
-        if SendState.AMBIGUOUS in states or SendState.WRITE_STARTED in states:
+        if SendState.AMBIGUOUS in states:
             return FinalDelivery.AMBIGUOUS
-        if states <= {SendState.SUPPRESSED} or states <= {SendState.QUEUED, SendState.SUPPRESSED}:
-            return FinalDelivery.NOT_ATTEMPTED
-        if SendState.FLUSHED in states and (
-            SendState.SUPPRESSED in states or len(states) > 1
-        ):
-            # One flushed and another not fully flushed → partial.
-            if states != {SendState.FLUSHED}:
-                return FinalDelivery.PARTIAL
         if states == {SendState.FLUSHED}:
             return FinalDelivery.FLUSHED
         if SendState.FLUSHED in states:
             return FinalDelivery.PARTIAL
-        return self._final_delivery
+        if SendState.CONCLUSIVE_FAILURE in states:
+            return FinalDelivery.CONCLUSIVE_FAILURE
+        return FinalDelivery.NOT_ATTEMPTED
 
     def _recompute_effect_and_cost_locked(self) -> None:
         effectful: list[tuple[str, str]] = []
