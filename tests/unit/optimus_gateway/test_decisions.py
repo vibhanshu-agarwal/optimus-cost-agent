@@ -10,15 +10,25 @@ checked (design notes, 2026-10-25).
 from __future__ import annotations
 
 import json
+import time
+import types
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+import optimus_gateway.upstream_client as upstream_module
 from optimus_gateway.decisions import handle_decision_request
-from optimus_gateway.upstream_client import DecisionResult, UpstreamAttemptFailure, UrllibOpenAICompatibleClient, parse_decision_response
-from optimus_model_policy.binding import packaged_defaults
+from optimus_gateway.upstream_client import (
+    DecisionResult,
+    UpstreamAttemptFailure,
+    UrllibOpenAICompatibleClient,
+    begin_request_budget,
+    end_request_budget,
+    parse_decision_response,
+)
+from optimus_model_policy.binding import GATEWAY_REQUEST_BUDGET_SECONDS, UPSTREAM_ATTEMPT_TIMEOUT_SECONDS, packaged_defaults
 from optimus_model_policy.registry import RegistrySnapshot, load_registry
 from tests.unit.optimus_gateway.model_policy_support import AUTH, PROVIDER_KEY, Wire, binding, gateway_config, http_reply, model_policy
 
@@ -266,3 +276,20 @@ def test_the_real_client_posts_to_system_one_with_the_route_controls(monkeypatch
     head, _, sent_body = bytes(wire.sent[-1]).partition(b"\r\n\r\n")
     assert head.startswith(b"POST /api/v1/systemone HTTP/1.1\r\n")
     assert json.loads(sent_body) == {"model": JEV, "state": STATE, "questions": QUESTIONS, "provider": {"only": ["typesafe"], "allow_fallbacks": False}}
+
+
+def test_a_decision_that_could_outlast_the_host_is_never_dispatched(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#397 live Z2, Codex round 1: decisions check the host request's budget at dispatch, as model attempts do."""
+    snapshot = _snapshot(tmp_path)
+    clock = [0.0]
+    monkeypatch.setattr(upstream_module, "time", types.SimpleNamespace(monotonic=lambda: clock[0], sleep=time.sleep))
+    upstream = Deciding(_result())
+    begin_request_budget()
+    clock[0] += GATEWAY_REQUEST_BUDGET_SECONDS - UPSTREAM_ATTEMPT_TIMEOUT_SECONDS + 1
+    try:
+        status, body = _post(model_policy(snapshot), upstream, snapshot)
+    finally:
+        end_request_budget()
+    assert (status, body["code"]) == (502, "UPSTREAM_ATTEMPT_NOT_SENT")
+    assert upstream.calls == []
+    assert [(r["outcome"], r["failure"]) for r in body["route_attempts"]] == [("not_sent", {"kind": "request_budget"})]

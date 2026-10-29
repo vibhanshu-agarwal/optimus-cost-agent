@@ -587,13 +587,15 @@ run live evidence or IDE sessions. Skipping step 1 after a code change produces 
 | `--setup` | One-time wizard: store provider key + shared secret in the OS keychain, then exit |
 | `--no-auto-start` | Skip auto-starting Redis and the local gateway; assume both are already running |
 | `--check-config` | Validate credentials, Redis, and workspace; exit without serving |
-| `--gateway-timeout-seconds SECONDS` | Raise the Gateway request timeout for this process; default is 30 seconds |
+| `--gateway-timeout-seconds SECONDS` | Override the Gateway request timeout for this process; default is 135 seconds |
 
-For a slow Gateway/model response during a one-off investigation, run
-`optimus-agent --gateway-timeout-seconds 90`. The value applies only to that agent process;
-omitting it preserves the 30-second default. It changes how long the first Gateway request may
-wait; it does not enable retries or weaken the fail-closed `PLANNING_GATEWAY_COST_UNKNOWN`
-behavior when the Gateway cannot report cost.
+The default comes from the shared contract (`HOST_GATEWAY_TIMEOUT_SECONDS`): the Gateway's 120-second
+upstream-dispatch budget for one request (it waits for each upstream attempt at most 60 seconds and dispatches none
+that could outlast the budget) plus 15 seconds of slack for its own processing. While that processing and its storage
+are responsive, the Gateway's answer, a reply or a recorded failure, reaches the agent before the agent stops waiting.
+A lower value is allowed, with a warning, but can abandon a reply the provider has billed; the turn then stops as
+`PLANNING_GATEWAY_COST_UNKNOWN`. The value applies only to that agent process. It does not enable retries or weaken
+the fail-closed `PLANNING_GATEWAY_COST_UNKNOWN` behavior when the Gateway cannot report cost.
 
 `--no-auto-start` disables **both** Redis and gateway auto-start consistently.
 

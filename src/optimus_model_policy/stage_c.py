@@ -42,7 +42,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import IO, Any, Final
 
-from optimus_model_policy.binding import ATTEMPT_NOT_SENT, ATTEMPT_REJECTED, BindingError
+from optimus_model_policy.binding import ATTEMPT_NOT_SENT, ATTEMPT_REJECTED, UPSTREAM_ATTEMPT_TIMEOUT_SECONDS, BindingError
 
 __all__ = [
     "ATTEMPT_TIMEOUT_SECONDS",
@@ -89,9 +89,9 @@ envelope's identity is unchanged. The migrated profiles compose other hashes (``
 ENVELOPE_LITERAL_PREFIX: Final = "optimus-stage-c-envelope-v1:"
 STAGE_C_LITERAL_NAME: Final = "_stage_c_envelope"
 """The security-literal name under which a Stage C launch approval binds the envelope literal."""
-ATTEMPT_TIMEOUT_SECONDS: Final = 60.0
-"""The Gateway's upstream attempt timeout (``UrllibOpenAICompatibleClient``'s default): an attempt is admitted
-only if it can time out inside the window."""
+ATTEMPT_TIMEOUT_SECONDS: Final = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS
+"""The Gateway's upstream attempt timeout, from the shared contract: an attempt is admitted only if it can time out
+inside the window."""
 _LEDGER_DIRECTORY: Final = "plan12-stage-c"
 
 STAGE_C_ATTACHED_SCENARIO: Final = "attached-maintenance-v1"

@@ -57,7 +57,19 @@ def slug(reason: object) -> str:
 
 
 FAILURE_KINDS = frozenset(
-    {"http", "transport", "invalid_utf8", "invalid_json", "schema", "usage_contract", "gateway_invalid_json", "gateway_non_object_json"}
+    {
+        "http",
+        "transport",
+        "invalid_utf8",
+        "invalid_json",
+        "schema",
+        "usage_contract",
+        "gateway_invalid_json",
+        "gateway_non_object_json",
+        "attempt_deadline",  # #397 live Z2: an upstream attempt abandoned at its deadline
+        "attempt_capacity",  # #397 live Z2: no attempt slot free, as earlier attempts still run past their deadline
+        "request_budget",  # #397 live Z2: an attempt never dispatched, as it could have outlasted the host
+    }
 )
 
 

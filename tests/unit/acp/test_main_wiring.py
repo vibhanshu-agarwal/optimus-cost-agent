@@ -1258,6 +1258,33 @@ def test_main_forwards_gateway_timeout_seconds_to_build_configured_server(monkey
     assert captured_kwargs.get("gateway_timeout_seconds") == 90.0
 
 
+@pytest.mark.parametrize(("seconds", "warned"), [("30", True), ("135", False), ("200", False)])
+def test_main_warns_once_when_the_gateway_timeout_override_is_below_the_shared_host_wait(monkeypatch, tmp_path, capsys, seconds, warned) -> None:
+    """Codex round 1 on #397 Z2: a lower override is allowed, but can abandon a reply the provider has billed."""
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+
+    def capturing_build(**_kwargs):
+        class FakeServer:
+            def serve_ndjson(self, *_a, **_k):
+                async def _noop():
+                    return None
+
+                return _noop()
+
+        return FakeServer()
+
+    _patch_common(monkeypatch, server_factory=capturing_build)
+
+    exit_code = acp_main.main(["--no-auto-start", "--workspace-root", str(tmp_path), "--gateway-timeout-seconds", seconds])
+
+    assert exit_code == 0
+    warnings = [line for line in capsys.readouterr().err.splitlines() if "--gateway-timeout-seconds" in line]
+    assert len(warnings) == (1 if warned else 0)
+    if warned:
+        assert "below the default 135" in warnings[0] and "PLANNING_GATEWAY_COST_UNKNOWN" in warnings[0]
+
+
 def test_main_omits_gateway_timeout_override_when_flag_absent(monkeypatch, tmp_path) -> None:
     env = _base_env()
     _authorize(monkeypatch, tmp_path, env)

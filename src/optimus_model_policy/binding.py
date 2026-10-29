@@ -47,9 +47,12 @@ __all__ = [
     "ATTEMPT_REJECTED",
     "ATTEMPT_UNCERTAIN",
     "ENFORCEMENT_ACTIVE",
+    "GATEWAY_REQUEST_BUDGET_SECONDS",
+    "HOST_GATEWAY_TIMEOUT_SECONDS",
     "MAX_ROUTE_ATTEMPTS",
     "OPERATOR_OVERRIDE_FILENAME",
     "ROUTE_BINDING_VERSION",
+    "UPSTREAM_ATTEMPT_TIMEOUT_SECONDS",
     "WIRE_QUANTIZATIONS",
     "WIRE_REASONING_EFFORTS",
     "BindingError",
@@ -217,6 +220,21 @@ MAX_ROUTE_ATTEMPTS: Final = 2
 """Provider attempts per host model request under enforcement: one primary attempt plus at most one
 identical-payload recovery attempt, and only after an attempt that certainly reached no model (Task 1
 contracts §4: a finite bound of 2; §6: an uncertain, possibly billed attempt is never re-sent)."""
+
+UPSTREAM_ATTEMPT_TIMEOUT_SECONDS: Final = 60.0
+"""How long the Gateway waits for one upstream attempt: a model, a decision or a tool provider."""
+
+GATEWAY_REQUEST_BUDGET_SECONDS: Final = MAX_ROUTE_ATTEMPTS * UPSTREAM_ATTEMPT_TIMEOUT_SECONDS
+"""The Gateway's upstream-dispatch budget for one host request: each upstream attempt is waited for no longer than its
+deadline (``optimus_gateway.upstream_client.AttemptDeadline``), and none is dispatched that could still be running after
+this budget (``request_budget_admits``). The Gateway's own processing (reading the request, the Stage C ledger, logging,
+writing the reply) is outside it."""
+
+HOST_GATEWAY_TIMEOUT_SECONDS: Final = GATEWAY_REQUEST_BUDGET_SECONDS + 15.0
+"""How long the host waits for one Gateway reply: the upstream-dispatch budget plus 15 s of slack for the Gateway's own
+processing, enough while that processing and its storage are responsive. Any shorter, and a reply the provider already
+billed can be abandoned while the Gateway still works on it, its cost then recorded as unknown (#397 live Z2: a 30 s
+host wait against a 60 s attempt)."""
 
 ATTEMPT_COMPLETED: Final = "completed"
 ATTEMPT_NOT_SENT: Final = "not_sent"

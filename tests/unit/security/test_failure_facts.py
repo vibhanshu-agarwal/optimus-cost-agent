@@ -225,3 +225,9 @@ def test_final_sanitize_redacts_a_bare_credential_by_its_prefix_and_keeps_real_i
     cleaned = final_sanitize({"error": f"refused {BARE_KEY}", **real})
     assert BARE_KEY not in json.dumps(cleaned)
     assert {key: cleaned[key] for key in real} == real
+
+
+@pytest.mark.parametrize("kind", ["attempt_deadline", "attempt_capacity", "request_budget"])
+def test_the_request_budget_failure_kinds_survive_re_bounding(kind: str) -> None:
+    """Codex round 2 on #397 Z2: an unlisted kind is persisted as unrecognized, losing why the attempt ended."""
+    assert bounded_failure({"kind": kind}) == {"kind": kind}

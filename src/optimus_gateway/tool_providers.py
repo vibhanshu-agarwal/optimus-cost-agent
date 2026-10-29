@@ -5,7 +5,7 @@ import json
 from collections.abc import Callable
 from typing import Protocol
 from urllib.parse import quote, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from defusedxml import ElementTree
 from defusedxml.common import DefusedXmlException
@@ -26,6 +26,8 @@ from optimus_gateway.tool_models import (
     WebSearchResult,
 )
 from optimus_gateway.tool_provider_http import ToolProviderError, ToolUrlOpen, request_bytes, request_json
+from optimus_gateway.upstream_client import watched_urlopen
+from optimus_model_policy.binding import UPSTREAM_ATTEMPT_TIMEOUT_SECONDS
 
 
 class WebToolProvider(Protocol):
@@ -50,8 +52,8 @@ class TavilyWebToolProvider:
         *,
         api_key: str,
         base_url: str,
-        urlopen: ToolUrlOpen = urlopen,
-        timeout_seconds: float = 60.0,
+        urlopen: ToolUrlOpen = watched_urlopen,
+        timeout_seconds: float = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
         sleep: Callable[[float], None] | None = None,
         on_retry: Callable[[int], None] | None = None,
     ) -> None:
@@ -157,8 +159,8 @@ class PackageRegistryToolProvider:
         pypi_base_url: str,
         npm_base_url: str,
         maven_base_url: str,
-        urlopen: ToolUrlOpen = urlopen,
-        timeout_seconds: float = 60.0,
+        urlopen: ToolUrlOpen = watched_urlopen,
+        timeout_seconds: float = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
         sleep: Callable[[float], None] | None = None,
         on_retry: Callable[[int], None] | None = None,
     ) -> None:
@@ -303,8 +305,8 @@ class OsvAdvisoryToolProvider:
         *,
         base_url: str,
         api_key: str | None = None,
-        urlopen: ToolUrlOpen = urlopen,
-        timeout_seconds: float = 60.0,
+        urlopen: ToolUrlOpen = watched_urlopen,
+        timeout_seconds: float = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
         sleep: Callable[[float], None] | None = None,
         on_retry: Callable[[int], None] | None = None,
     ) -> None:

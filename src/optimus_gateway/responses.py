@@ -24,11 +24,19 @@ from optimus_gateway.models import (
     validate_responses_envelope,
 )
 from optimus_gateway.request_diagnostics import recognized_model, recognized_provider
-from optimus_gateway.upstream_client import KNOWN_ROUTER_STAGES, ProviderMessageResult, UpstreamAttemptFailure, UpstreamClient
+from optimus_gateway.upstream_client import (
+    KNOWN_ROUTER_STAGES,
+    ProviderMessageResult,
+    UpstreamAttemptFailure,
+    UpstreamClient,
+    request_budget_admits,
+)
 from optimus_model_policy.binding import (
     ATTEMPT_COMPLETED,
+    ATTEMPT_NOT_SENT,
     ATTEMPT_UNCERTAIN,
     MAX_ROUTE_ATTEMPTS,
+    UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
     RouteBinding,
 )
 from optimus_model_policy.stage_c import Admission, StageCRefusal, reservation_usd
@@ -177,6 +185,13 @@ def _run_enforced_completion(
             except StageCRefusal as exc:
                 status, body = policy_refusal(ModelPolicyRefusal(exc.code, exc.detail, status=503))
                 return status, {**body, **correlation}
+        if not request_budget_admits(UPSTREAM_ATTEMPT_TIMEOUT_SECONDS):
+            # Checked at dispatch, after any admission and recovery delay: nothing is sent that could still be running
+            # once the host stops waiting, so this attempt certainly reached no model.
+            if admission is not None and guard is not None:
+                guard.settle_unbilled(admission, ATTEMPT_NOT_SENT)
+            attempts.append(_attempt_record(number, attempt_id, ATTEMPT_NOT_SENT, failure=dict(_REQUEST_BUDGET_FAILURE)))
+            return 502, {"error": sanitize_error_message("upstream attempt failed (UPSTREAM_ATTEMPT_NOT_SENT)"), "code": "UPSTREAM_ATTEMPT_NOT_SENT", **correlation}
         try:
             provider_result = upstream_client.create_message_once(
                 model=admitted.model_id,
@@ -189,7 +204,12 @@ def _run_enforced_completion(
             if admission is not None and guard is not None:  # an admission exists only from a guard
                 guard.settle_unbilled(admission, failure.outcome)  # an outcome not proven unbilled is unknown
             attempts.append(_attempt_record(number, attempt_id, failure.outcome, http_status=failure.http_status, failure=failure.failure))
-            if failure.recoverable and number < MAX_ROUTE_ATTEMPTS:
+            # A recovery attempt also has to end while the host is still waiting for this reply.
+            if (
+                failure.recoverable
+                and number < MAX_ROUTE_ATTEMPTS
+                and request_budget_admits(_RECOVERY_DELAY_SECONDS + UPSTREAM_ATTEMPT_TIMEOUT_SECONDS)
+            ):
                 _sleep(_RECOVERY_DELAY_SECONDS)
                 continue
             code = f"UPSTREAM_ATTEMPT_{failure.outcome.upper()}"
@@ -266,6 +286,8 @@ def _stop_experimental_route(policy: GatewayModelPolicy, admitted: AdmittedReque
 
 _RECOVERY_DELAY_SECONDS = 0.5
 _sleep = time.sleep
+_REQUEST_BUDGET_FAILURE = {"kind": "request_budget"}
+"""An attempt never dispatched: it could not have ended before the host stops waiting (#397 live Z2)."""
 
 
 def _attempt_record(

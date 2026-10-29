@@ -14,6 +14,8 @@ import io
 import json
 import socket
 import ssl
+import time
+import types
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -22,13 +24,19 @@ from urllib.error import HTTPError, URLError
 import pytest
 
 import optimus_gateway.responses as gateway_responses
+import optimus_gateway.upstream_client as upstream_module
 from optimus.gateway.client import _try_parse_error_correlation
 from optimus.gateway.errors import GatewayHttpError
 from optimus.gateway.models import parse_gateway_response
 from optimus.retry.policy import FailureKind, classify_failure
 from optimus_gateway.responses import handle_responses_request
-from optimus_gateway.upstream_client import UpstreamAttemptFailure, UrllibOpenAICompatibleClient
-from optimus_model_policy.binding import MAX_ROUTE_ATTEMPTS
+from optimus_gateway.upstream_client import (
+    UpstreamAttemptFailure,
+    UrllibOpenAICompatibleClient,
+    begin_request_budget,
+    end_request_budget,
+)
+from optimus_model_policy.binding import GATEWAY_REQUEST_BUDGET_SECONDS, MAX_ROUTE_ATTEMPTS, UPSTREAM_ATTEMPT_TIMEOUT_SECONDS
 from tests.unit.optimus_gateway.model_policy_support import (
     AUTH,
     PROVIDER_KEY,
@@ -564,3 +572,66 @@ def test_a_reply_whose_usage_fails_the_contract_is_an_uncertain_attempt(snapshot
     assert [r["outcome"] for r in body["route_attempts"]] == ["uncertain"]
     assert "gateway_usage" not in body
     assert len(upstream.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("spent", "calls", "status"),
+    [(0.0, 2, 200), (UPSTREAM_ATTEMPT_TIMEOUT_SECONDS, 1, 502)],
+    ids=["fast-not-sent", "connect-timeout"],
+)
+def test_a_recovery_attempt_starts_only_if_it_ends_while_the_host_still_waits(snapshot, no_sleep, monkeypatch, spent, calls, status) -> None:
+    """#397 live Z2: a not-sent first attempt that used a whole attempt timeout (a connect timeout) leaves too little of
+    the host request's budget for another; a fast one leaves room for the recovery attempt."""
+    clock = [0.0]
+    monkeypatch.setattr(upstream_module, "time", types.SimpleNamespace(monotonic=lambda: clock[0], sleep=time.sleep))
+
+    class _Spending(RecordingUpstream):
+        def create_message_once(self, **kwargs: Any):
+            clock[0] += spent
+            return super().create_message_once(**kwargs)
+
+    upstream = _Spending(attempts=[NOT_SENT, None])
+    begin_request_budget()
+    try:
+        got_status, body = _enforced(snapshot, upstream)
+    finally:
+        end_request_budget()
+    assert (got_status, len(upstream.calls)) == (status, calls)
+    assert [record["outcome"] for record in body["route_attempts"]] == ["not_sent", "completed"][:calls]
+
+
+def _spent_budget(monkeypatch, clock: list[float]) -> None:
+    monkeypatch.setattr(upstream_module, "time", types.SimpleNamespace(monotonic=lambda: clock[0], sleep=time.sleep))
+
+
+def test_a_first_attempt_that_could_outlast_the_host_is_never_dispatched(snapshot, no_sleep, monkeypatch) -> None:
+    """Checked at dispatch (Codex round 1): a request that spent its budget before the first attempt sends nothing."""
+    clock = [0.0]
+    _spent_budget(monkeypatch, clock)
+    upstream = RecordingUpstream()
+    begin_request_budget()
+    clock[0] += GATEWAY_REQUEST_BUDGET_SECONDS - UPSTREAM_ATTEMPT_TIMEOUT_SECONDS + 1
+    try:
+        status, body = _enforced(snapshot, upstream)
+    finally:
+        end_request_budget()
+    assert (status, body["code"], body["retryable"]) == (502, "UPSTREAM_ATTEMPT_NOT_SENT", False)
+    assert upstream.calls == []
+    [record] = body["route_attempts"]
+    assert (record["attempt"], record["outcome"], record["failure"]) == (1, "not_sent", {"kind": "request_budget"})
+
+
+def test_a_recovery_attempt_is_rechecked_after_its_delay(snapshot, monkeypatch) -> None:
+    """Eligible before the delay, but an oversleep leaves no room: the recovery attempt is never dispatched."""
+    clock = [0.0]
+    _spent_budget(monkeypatch, clock)
+    monkeypatch.setattr(gateway_responses, "_sleep", lambda _seconds: clock.__setitem__(0, clock[0] + UPSTREAM_ATTEMPT_TIMEOUT_SECONDS + 1))
+    upstream = RecordingUpstream(attempts=[NOT_SENT, None])
+    begin_request_budget()
+    try:
+        status, body = _enforced(snapshot, upstream)
+    finally:
+        end_request_budget()
+    assert (status, body["code"]) == (502, "UPSTREAM_ATTEMPT_NOT_SENT")
+    assert len(upstream.calls) == 1
+    assert [(r["outcome"], r["failure"]) for r in body["route_attempts"]] == [("not_sent", None), ("not_sent", {"kind": "request_budget"})]
