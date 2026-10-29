@@ -292,32 +292,46 @@ def call_with_upstream_retry(
     sleeper = sleep or time.sleep
     if not request_budget_admits(attempt_timeout_seconds):
         raise UpstreamBudgetExhausted("no upstream attempt fits in the host request's remaining budget")
+
+    def report(failed: tuple[int, str, float, dict[str, Any] | None], disposition: Literal["retry", "terminal"]) -> None:
+        number, classification, latency, failure = failed
+        if on_attempt_failure is not None:
+            on_attempt_failure(number, classification, latency, disposition, failure)
+        if disposition == "retry" and on_retry is not None:
+            on_retry(number)
+
     attempt = 1
+    # A retried failure is reported once its retry has been dispatched: no observer runs between the dispatch-time
+    # budget check and the dispatch (Codex, Checkpoint C), and no retry is reported that never ran (Fable, Checkpoint C).
+    retried: tuple[int, str, float, dict[str, Any] | None] | None = None
     while True:
         started_at = time.monotonic()
         try:
-            return operation()
+            result = operation()
         except Exception as exc:
             latency = time.monotonic() - started_at
+            if retried is not None:
+                report(retried, "retry")
             retryable = is_retryable_upstream_fault(exc)
+            failed = (attempt, "transient" if retryable else "permanent", latency, _attempt_failure(exc))
             delay = backoff_seconds[min(attempt - 1, len(backoff_seconds) - 1)]
             retrying = retryable and attempt < max_attempts and request_budget_admits(delay + attempt_timeout_seconds)
             if retrying:
                 sleeper(delay)
                 # Rechecked at dispatch, after the backoff (Codex round 1): if the next attempt no longer fits, this
-                # failure is final rather than a claim that nothing was sent, and it is reported as final (Fable, C).
+                # failure is final rather than a claim that nothing was sent.
                 retrying = request_budget_admits(attempt_timeout_seconds)
-            disposition: Literal["retry", "terminal"] = "retry" if retrying else "terminal"
-            if on_attempt_failure is not None:
-                on_attempt_failure(attempt, "transient" if retryable else "permanent", latency, disposition, _attempt_failure(exc))
-            if disposition == "retry":
-                if on_retry is not None:
-                    on_retry(attempt)
+            if retrying:
+                retried = failed
                 attempt += 1
                 continue
+            report(failed, "terminal")
             if retryable:
                 raise RuntimeError(str(exc)) from exc
             raise
+        if retried is not None:
+            report(retried, "retry")
+        return result
 
 
 class UrllibOpenAICompatibleClient:

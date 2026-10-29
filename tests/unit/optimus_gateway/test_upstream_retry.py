@@ -469,6 +469,39 @@ def test_a_retry_whose_backoff_outlasts_the_budget_ends_with_the_previous_failur
     assert (reported, retries) == (["terminal"], [])
 
 
+def test_a_slow_observer_cannot_push_a_retry_past_the_budget(monkeypatch):
+    """Codex at Checkpoint C: the production observer locks and flushes stderr. Had it run between the dispatch-time
+    check and the retry, a 20 s stall would dispatch at 79 s an attempt that could end after the 120 s budget."""
+    clock = [0.0]
+    monkeypatch.setattr(upstream_module, "time", types.SimpleNamespace(monotonic=lambda: clock[0], sleep=time.sleep))
+    timeline: list[tuple[str, int, float]] = []
+    calls: list[int] = []
+
+    def operation() -> str:
+        calls.append(len(calls) + 1)
+        timeline.append(("dispatch", calls[-1], clock[0]))
+        if calls == [1]:
+            clock[0] = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS - 1
+            raise RetryableUpstreamError("transient")
+        return "ok"
+
+    def slow_observer(number: int, _kind: str, _latency: float, disposition: str, _failure: object) -> None:
+        timeline.append((disposition, number, clock[0]))
+        clock[0] += 20
+
+    def backoff(delay: float) -> None:
+        clock[0] += delay
+
+    begin_request_budget()
+    try:
+        assert call_with_upstream_retry(operation, sleep=backoff, on_attempt_failure=slow_observer) == "ok"
+    finally:
+        end_request_budget()
+    assert [entry[:2] for entry in timeline] == [("dispatch", 1), ("dispatch", 2), ("retry", 1)]
+    retry_dispatched_at = timeline[1][2]
+    assert retry_dispatched_at + UPSTREAM_ATTEMPT_TIMEOUT_SECONDS <= GATEWAY_REQUEST_BUDGET_SECONDS
+
+
 # --- an attempt ends at its deadline, whatever the provider keeps sending (Codex round 1, finding 1) ---
 
 _DRIP_BODY = (
