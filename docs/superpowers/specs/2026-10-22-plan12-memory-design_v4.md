@@ -181,7 +181,7 @@ K1–K6 are **UNRUN** here. A probe failure/unknown is recorded honestly; a synt
 | Plan/slice | Scope and closure |
 |---|---|
 | M0a-1 foundations (#390) | Former Tasks 0–2: integrated #385 gate, shared file policy plus architecture ADR, project registry. Own production tests and platform checks; no probe prerequisite. |
-| Plan 12.5 / M0a-2 evaluation (#389) | Former Task 3: case contract, 24 trajectories, 12 localization seeds, offline grader, pinned generic-harness choice. Independent of 12.3 and native-resource availability; actual harness/model results stay UNRUN. |
+| Plan 12.5 / M0a-2 evaluation (#389) | Former Task 3: case contract, 24 trajectories, 12 localization seeds, offline grader, pinned generic-harness choice. Independent of M0a-1 (#390) and native-resource availability; actual harness/model results stay UNRUN. |
 | M0a-3 feasibility (#391) | Former Tasks 4–6: package/parser/embedding/worker, Redis, Postgres and ACP/Zed probes. Each probe gets an observed result or an accepted named handoff with consequence; a blocked probe does not hold siblings or administrative closure. |
 | Start of M5a | Former Task 7 Initializr probe: dated/hashed metadata and generated-POM/BOM compatibility evidence, fallible endpoint and authoritative fallback, no invented coordinate or unapproved build/private upload. |
 | Start of M7 | Former Task 7 graph probe: bounded deterministic G1′ versus G0 over synthetic Java/Python modules, traversal/localization, new-caller invalidation, source hashes, node/time bounds and malformed/stale inputs. No LLM-invented edges. |
