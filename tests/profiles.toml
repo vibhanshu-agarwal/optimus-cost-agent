@@ -645,6 +645,7 @@ paths = [
   "tests/unit/mcp/test_client_disposition.py",
   "tests/unit/mcp/test_client_supervisor.py",
   "tests/unit/mcp/test_local_ipc.py",
+  "tests/unit/optimus_gateway/test_server.py",
   "tests/unit/security/test_sanitization.py",
   "tests/unit/support/test_concurrency_diagnostics.py",
   "tests/unit/tools/test_bounded_command.py",
