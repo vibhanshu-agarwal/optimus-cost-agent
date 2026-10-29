@@ -1,14 +1,16 @@
-# Plan 12 memory: whole-feature design v3
+# Plan 12 memory: whole-feature design v4
 
-**Date/base:** revised 2026-10-23; source rechecked at main `dbdfaa3210b329c9fae6de2fb80811174e361786`.
+**Date/base:** v4 revised 2026-10-29; the design text is v3's, whose source was rechecked at main `dbdfaa3210b329c9fae6de2fb80811174e361786`.
 
 **Authority:** discovery scope is frozen at v12, SHA-256 `33670c6b84aceccd629437c14f03609ba4293d70cde95b242dd93a2b0ad4fb14`; operator acceptance is in the freeze record, SHA-256 `13880f7779a72a51a90444d0f659faaf8f9a251cc430e06cbdc37daa68c4073f`. The authoring brief has SHA-256 `f81a080b3b9065295dd47b817fbd411c00d2cba9b3614b1d69c41dc06796acd9`. These are provenance under `optimus-handoff/plan-12-discovery`, not runtime/test dependencies.
 
-**Owners:** Codex authors; Claude reviews and implements after operator approval; Codex reviews implementation. This is an unpublished design for review, not an execution release. Agent-selected mechanisms/defaults below are proposals implementing the frozen requirements, not new operator quotations.
+**Owners:** Codex authored v1–v3; Claude implements each slice plan after the operator's approval, and Codex reviews through the CLI under `AGENTS.md` `## Cross-agent review`. Filing this design is not an execution release. Agent-selected mechanisms/defaults below are proposals implementing the frozen requirements, not new operator quotations.
 
-**Revision/sequence authority:** complete successor to the preserved design v2 `2026-10-22-plan12-memory-design_v2.md`, SHA-256 `93b7cb47c896fd67232cbf369b4e5a38abed7585c3e309527420c53ad709d82e`. Claude's review is SHA-256 `1872834f0d8c344abd6dedbf18dd74f1797dc0ac5dcffd1086c9bca946dc7bac`; the endorsed cover note is `ebde0286753248ca7bdf3b230b4abc87579115a16debeebdaa5b887627941633`. §10 records R-1–R-3 and N-1–N-5 dispositions; prior review bytes remain unchanged. Frozen v12 stays byte-for-byte unchanged. The post-freeze operator amendment authorizes splitting M0a into three independently closable plans, postponing former Task 7, and adding optional purge with key rotation. It changes sequencing and adds the specified option; no earlier operator decision is reopened.
+**v4 renumbering revision (2026-10-29):** complete successor to v3, `2026-10-22-plan12-memory-design_v3.md`, SHA-256 `a3f469df07f981eb516e16cbefb8ea12f4b19377b90bda3c2ed021e7d2ea96ab`, preserved in the handoff folder. The loop-control and Auto-mode plans took 12.3 and 12.4, so the evaluation slice is now Plan 12.5 ([#389](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389)). The foundations and feasibility slices are named by slice ID (M0a-1, [#390](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/390); M0a-3, [#391](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/391)) until they are picked up and numbered. Only plan names, links, the owner line, #385's handler and the §9 filing sentence change; the design is unchanged.
 
-**First-slice plans:** [12.3 foundations](../plans/2026-10-22-plan-12-3-memory-m0a-implementation_v3.md), [12.4 evaluation](../plans/2026-10-22-plan-12-4-memory-evaluation-implementation_v2.md), [12.5 feasibility](../plans/2026-10-22-plan-12-5-memory-feasibility-implementation_v2.md). These are unregistered review drafts; later slices require their own plans.
+**Revision/sequence authority (v3):** complete successor to the preserved design v2 `2026-10-22-plan12-memory-design_v2.md`, SHA-256 `93b7cb47c896fd67232cbf369b4e5a38abed7585c3e309527420c53ad709d82e`. Claude's review is SHA-256 `1872834f0d8c344abd6dedbf18dd74f1797dc0ac5dcffd1086c9bca946dc7bac`; the endorsed cover note is `ebde0286753248ca7bdf3b230b4abc87579115a16debeebdaa5b887627941633`. §10 records R-1–R-3 and N-1–N-5 dispositions; prior review bytes remain unchanged. Frozen v12 stays byte-for-byte unchanged. The post-freeze operator amendment authorizes splitting M0a into three independently closable plans, postponing former Task 7, and adding optional purge with key rotation. It changes sequencing and adds the specified option; no earlier operator decision is reopened.
+
+**First-slice plans:** [Plan 12.5, M0a-2 evaluation](../plans/2026-10-22-plan-12-5-memory-evaluation-implementation_v3.md) is filed. M0a-1 foundations and M0a-3 feasibility are approved review drafts held outside the repository until they are picked up and numbered. Later slices require their own plans.
 
 ## 1. Goal, decisions and boundaries
 
@@ -16,7 +18,7 @@ Give Optimus useful project context, durable cross-session memory and grounded d
 
 Carry the operator's decisions unchanged: automatic memory without a review queue; hybrid retrieval; GraphRAG for project Q&A; Redis first and no SQLite; Postgres for analytical facts; Option A for documentation code; seven-day brief plus `/welcome`; no inactivity deletion; configurable backups off by default; scheduled workspace recovery export; cloud opt-in; optional per-item encryption subject to CF-1; imported notes optional only; ranking-only strength decay. Memory never grants execution authority. No model picker, cost stops or full session replay is added. Existing `session/load` work stays separate. Existing diagnostic paths retain Q27's exclusion from B1.
 
-The canonical delivery order stays **M0a → M0b → M1 → M3 → M2 → M5a → M7 → M6 → M5b**, with M0a now delivered as independently closable **12.3 foundations, 12.4 evaluation and 12.5 feasibility** under the post-freeze amendment (§8.1). M0b gates complete-history/savings claims, not M1 development. M4 and the retrieval subagent remain deferred. C3/C4 affect M5a; OC-4 affects #248. Their unsettled choices do not block this design or M0a.
+The canonical delivery order stays **M0a → M0b → M1 → M3 → M2 → M5a → M7 → M6 → M5b**, with M0a now delivered as independently closable **M0a-1 foundations, M0a-2 evaluation (Plan 12.5) and M0a-3 feasibility** under the post-freeze amendment (§8.1). M0b gates complete-history/savings claims, not M1 development. M4 and the retrieval subagent remain deferred. C3/C4 affect M5a; OC-4 affects #248. Their unsettled choices do not block this design or M0a.
 
 ## 2. Components and ownership
 
@@ -104,7 +106,7 @@ Only the path, rotation ID and instructions enter ACP. The phrase never enters c
 
 Do not overwrite or regenerate the phrase to redisplay it; after a crash reconcile the existing file and rotation state. Require a real-user acknowledgement bound to the rotation/generation manifest that the new phrase was saved, then remove the temporary file before retirement can complete. Missing acknowledgement, failed file deletion or unresolved copies keeps completion pending/unbounded. M3 tests ACLs, denial paths, crash recovery and deletion on Windows and Linux; encryption enablement and rotation remain unavailable until an accepted channel is qualified. No new CLI or separate GUI is assumed.
 
-Plan 12.5 P5 probes nonpersistent Zed display using **synthetic canaries only**, across displayed history, reopen/restart, persisted thread state and accessible logs. An uninspectable history sink means INCONCLUSIVE. A card rendering successfully does not prove confidentiality. Any alternative to the file fallback needs an explicit accepted M3 decision and client/version-bound evidence before secrets use it.
+M0a-3 P5 probes nonpersistent Zed display using **synthetic canaries only**, across displayed history, reopen/restart, persisted thread state and accessible logs. An uninspectable history sink means INCONCLUSIVE. A card rendering successfully does not prove confidentiality. Any alternative to the file fallback needs an explicit accepted M3 decision and client/version-bound evidence before secrets use it.
 
 ### 6.1.2 Rotation protocol
 
@@ -132,7 +134,7 @@ An assertion that old material is “probably gone” or that just one phrase wa
 
 ### 6.2 Additional K5 rotation cases
 
-These are two added test obligations, represented in the 24 seed trajectory families in Plan 12.4; they do not execute here. M3 owns the full implementation and tests on each supported native keystore backend.
+These are two added test obligations, represented in the 24 seed trajectory families in Plan 12.5; they do not execute here. M3 owns the full implementation and tests on each supported native keystore backend.
 
 - **K5-R1, successful rotation and its boundary:** start with at least three encrypted live items and a historical backup; purge at least two items as one declared batch while retaining another, rotate, acknowledge the new phrase and restore the retained item using the new root and separately the new phrase. Verify fresh data keys/ciphertext, absence of the purged key, and rejection of old generations using current credentials in a fresh process. Test deletion of the old managed root on the actual platform. Include the negative control that an intentionally retained old phrase plus historical envelope can still decrypt its old backup: this must prevent both verified and attested completion while that known copy exists. Then test the separate destruction-attestation path with managed deletion checks and correctly scoped `completed-attested` output; do not treat the attestation as physical proof. Demonstrate the plaintext-export and temporary handoff-file limits explicitly.
 - **K5-R2, interrupted rotation:** inject interruption before/after prepare, verification, acknowledgement, pointer commit and each old-root cleanup boundary. Reopen in a fresh process. At least one verified usable generation survives; no old root is destroyed before verification plus acknowledgement; purged items remain excluded; cleanup is idempotent and incomplete managed/backend deletion never reports completion; absent external attestation cannot produce `completed-attested`. Include interruption during handoff-file creation/deletion, batch membership changes after the cutover watermark, and restart before a required acknowledgement.
@@ -165,48 +167,48 @@ Evaluation uses pointer-based, snapshot/cutoff-bound golden cases and synthetic 
 
 | Oracle | First proof and later obligation |
 |---|---|
-| K1 | 12.3 real policy controls; 12.4 fixture/oracle validation. M3 owns real automatic admission, hostile input, notice binding, import and conflict controls. Former Task 7's source/egress controls move to starts of M5a (Initializr) and M7 (graph). |
-| K2 | 12.5 package/worker and synthetic real-Redis feasibility through a dedicated probe marker/config/endpoint, independently dispositioned. M1 owns real-corpus qualification; M3 actual memory acknowledgement/erasure paths. Former Task 7's bounded compute/runtime feasibility moves to starts of M7 (graph) and M5b (L2). |
-| K3 | 12.4 expected-attempt/coverage fixtures; 12.5 Postgres readiness only. M0b owns the real durable ledger, interrupted tails, outages and replay. |
-| K4 | 12.4 arithmetic/label fixtures; #248 owns actual tables and separately authorized comparisons. |
-| K5 | 12.3 registry/isolation; 12.4 restore and rotation oracle definitions. M3 owns continuity, deletion continuity, backup, native keystore deletion and K5-R1/R2 execution. Former Task 7's source-hash/new-caller invalidation case moves to the start of M7. |
-| K6 | 12.5 version-bound real-client capability probes, separately closable, including host-generated notice cards with no model call and nonpersistent-display canaries. Unsupported/unreleased capability selects the explicit fallback or named follow-up. M1/M3 own integration; M3 qualifies the recovery channel before use. |
+| K1 | M0a-1 real policy controls; Plan 12.5 fixture/oracle validation. M3 owns real automatic admission, hostile input, notice binding, import and conflict controls. Former Task 7's source/egress controls move to starts of M5a (Initializr) and M7 (graph). |
+| K2 | M0a-3 package/worker and synthetic real-Redis feasibility through a dedicated probe marker/config/endpoint, independently dispositioned. M1 owns real-corpus qualification; M3 actual memory acknowledgement/erasure paths. Former Task 7's bounded compute/runtime feasibility moves to starts of M7 (graph) and M5b (L2). |
+| K3 | Plan 12.5 expected-attempt/coverage fixtures; M0a-3 Postgres readiness only. M0b owns the real durable ledger, interrupted tails, outages and replay. |
+| K4 | Plan 12.5 arithmetic/label fixtures; #248 owns actual tables and separately authorized comparisons. |
+| K5 | M0a-1 registry/isolation; Plan 12.5 restore and rotation oracle definitions. M3 owns continuity, deletion continuity, backup, native keystore deletion and K5-R1/R2 execution. Former Task 7's source-hash/new-caller invalidation case moves to the start of M7. |
+| K6 | M0a-3 version-bound real-client capability probes, separately closable, including host-generated notice cards with no model call and nonpersistent-display canaries. Unsupported/unreleased capability selects the explicit fallback or named follow-up. M1/M3 own integration; M3 qualifies the recovery channel before use. |
 
-K1–K6 are **UNRUN** here. A probe failure/unknown is recorded honestly; a synthetic adapter is never a substitute for a tier's named real dependency. The three plans carry independent prerequisites, evidence and closure; Plan 12.4 validates oracle definitions without depending on the Plan 12.3 runtime or real probes. Fixture validity is never a production-capability pass. Later plans refine implementation without reopening frozen product decisions.
+K1–K6 are **UNRUN** here. A probe failure/unknown is recorded honestly; a synthetic adapter is never a substitute for a tier's named real dependency. The three plans carry independent prerequisites, evidence and closure; Plan 12.5 validates oracle definitions without depending on the M0a-1 runtime or real probes. Fixture validity is never a production-capability pass. Later plans refine implementation without reopening frozen product decisions.
 
 ### 8.1 Sequencing amendment and delayed-probe custody
 
 | Plan/slice | Scope and closure |
 |---|---|
-| 12.3 / M0a-1 foundations | Former Tasks 0–2: integrated #385 gate, shared file policy plus architecture ADR, project registry. Own production tests and platform checks; no probe prerequisite. |
-| 12.4 / M0a-2 evaluation | Former Task 3: case contract, 24 trajectories, 12 localization seeds, offline grader, pinned generic-harness choice. Independent of 12.3 and native-resource availability; actual harness/model results stay UNRUN. |
-| 12.5 / M0a-3 feasibility | Former Tasks 4–6: package/parser/embedding/worker, Redis, Postgres and ACP/Zed probes. Each probe gets an observed result or an accepted named handoff with consequence; a blocked probe does not hold siblings or administrative closure. |
+| M0a-1 foundations (#390) | Former Tasks 0–2: integrated #385 gate, shared file policy plus architecture ADR, project registry. Own production tests and platform checks; no probe prerequisite. |
+| Plan 12.5 / M0a-2 evaluation (#389) | Former Task 3: case contract, 24 trajectories, 12 localization seeds, offline grader, pinned generic-harness choice. Independent of 12.3 and native-resource availability; actual harness/model results stay UNRUN. |
+| M0a-3 feasibility (#391) | Former Tasks 4–6: package/parser/embedding/worker, Redis, Postgres and ACP/Zed probes. Each probe gets an observed result or an accepted named handoff with consequence; a blocked probe does not hold siblings or administrative closure. |
 | Start of M5a | Former Task 7 Initializr probe: dated/hashed metadata and generated-POM/BOM compatibility evidence, fallible endpoint and authoritative fallback, no invented coordinate or unapproved build/private upload. |
 | Start of M7 | Former Task 7 graph probe: bounded deterministic G1′ versus G0 over synthetic Java/Python modules, traversal/localization, new-caller invalidation, source hashes, node/time bounds and malformed/stale inputs. No LLM-invented edges. |
 | Start of M5b | Former Task 7 L2 probe: installed JVM/LSP/runtime availability, bounded resolution and missing-runtime negative controls; no automatic download. |
 
-Former Task 7's cases and acceptance content are retained with these owners; only timing changes. The three feasibility experiments are not hidden prerequisites for 12.3/12.4/12.5. Former Task 8's source-bound reporting and closure are distributed into each plan. The endorsed run order is **12.4 → 12.3 → 12.5**. #385 is still open with `handler:unassigned` at the source recheck, so 12.3's dependent product work is blocked. Claude coordinates a proposed hardening owner; the operator must separately authorize any GitHub assignment. This does not make the preceding plans prerequisites of the independent feasibility probes. M0b/M1 consume the relevant contracts and honest limitations rather than an invented all-probes-PASS gate. Their own plans must resolve any truly necessary handed-off prerequisite before dependent execution.
+Former Task 7's cases and acceptance content are retained with these owners; only timing changes. The three feasibility experiments are not hidden prerequisites for any M0a slice. Former Task 8's source-bound reporting and closure are distributed into each plan. The endorsed run order is **M0a-2 (Plan 12.5) → M0a-1 → M0a-3**. #385 is still open (`handler:claude`, hardening lane, since 2026-10-23), so M0a-1's dependent product work is blocked. This does not make the preceding plans prerequisites of the independent feasibility probes. M0b/M1 consume the relevant contracts and honest limitations rather than an invented all-probes-PASS gate. Their own plans must resolve any truly necessary handed-off prerequisite before dependent execution.
 
 ## 9. Alternatives and delivery conditions
 
 Chosen: neutral engine plus host adapters and Redis-first stores. Rejected for this delivery: a replacement agent framework, a separate index daemon, a new accounting system, mandatory mirror/backups, semantic-answer serving and a review queue. Their tradeoffs and reconsideration triggers remain in frozen v12; this spec does not erase them. The durable outbox tolerates Postgres outages; its cost is explicit recovery/cursor work. Recoverable key envelopes preserve usability at the cost of conditional erasure, stated above.
 
-Before repository filing, publish repository-visible decision provenance and an architecture ADR, index the current spec, and register each of the three issues/plans under ADR-022 with separate GitHub approval. Do not make tests or commands require the private handoff directory. ADR-001, ADR-005/012, existing compaction/shipping contracts, mode boundaries and evidence policy remain authoritative. This design changes neither current source nor the existing shipped empirical model qualification.
+Decision provenance is Source S10 in `docs/decisions/README.md`. The architecture ADR is written by M0a-1 under the next free number (ADR-024, named in earlier drafts, is taken). Index the current spec, and register each slice plan under ADR-022 when it is filed, with separate GitHub approval. Do not make tests or commands require the private handoff directory. ADR-001, ADR-005/012, existing compaction/shipping contracts, mode boundaries and evidence policy remain authoritative. This design changes neither current source nor the existing shipped empirical model qualification.
 
 ## 10. Response to Claude's review (2026-10-23)
 
-All three required edits and five endorsed recommendations are incorporated as design/plan revisions; none is an execution, filing or assignment release.
+All three required edits and five endorsed recommendations are incorporated as design/plan revisions (plan names updated to v4's); none is an execution, filing or assignment release.
 
 | Point | Disposition and changed passage |
 |---|---|
-| R-1 | Applied: §6 copy inventory and §6.1.1 name the restricted-file fallback, its plaintext lifetime and access checks; unverified IDE privacy cannot carry a secret. 12.5 Task 5 adds nonpersistent-display canaries; M3 gates encryption/rotation on qualification. |
-| R-2 | Applied: 12.5 owns a dedicated `requires_plan12_probe_redis` marker, default/profile exclusion plus matching run-context approved-marker update, explicit probe config and endpoint/instance protection. No shared preflight or fallback fixture. |
-| R-3 | Applied within 24 families: 12.4 M01 requires memory-ID/version citations, M13/M18 cover mixed-project import isolation and M21 covers registry-based restore re-keying. |
+| R-1 | Applied: §6 copy inventory and §6.1.1 name the restricted-file fallback, its plaintext lifetime and access checks; unverified IDE privacy cannot carry a secret. M0a-3 Task 5 adds nonpersistent-display canaries; M3 gates encryption/rotation on qualification. |
+| R-2 | Applied: M0a-3 owns a dedicated `requires_plan12_probe_redis` marker, default/profile exclusion plus matching run-context approved-marker update, explicit probe config and endpoint/instance protection. No shared preflight or fallback fixture. |
+| R-3 | Applied within 24 families: Plan 12.5 M01 requires memory-ID/version citations, M13/M18 cover mixed-project import isolation and M21 covers registry-based restore re-keying. |
 | N-1 | Applied with qualification: §6.1.2 adds `completed-attested`, separate from verified completion, requiring managed deletion plus a specific user attestation and no known unresolved path in its boundary. Global plaintext limits remain visible. |
 | N-2 | Applied: §6.1 batches pending purges under one immutable watermark/manifest and one new generation; M23/M24 test batching and crash boundaries. |
-| N-3 | Applied: run order 12.4 → 12.3 → 12.5. #385 ownership remains a separate authorized hardening/GitHub action, not silently assigned here. |
-| N-4 | Agree: 12.3 is high/5 active days for cross-platform path/ignore and crash-safe registry proof; 12.4 remains medium/3d and 12.5 high/5d, excluding waits. Label writes remain at filing. |
-| N-5 | Applied: 12.5 P5 names host-only notice-card rendering, with zero model/provider calls and a client-only-versus-Optimus distinction. M3 still proves binding to actual saves. |
+| N-3 | Applied: run order M0a-2 → M0a-1 → M0a-3. #385 ownership remains a separate authorized hardening/GitHub action, not silently assigned here. |
+| N-4 | Agree: M0a-1 is high/5 active days for cross-platform path/ignore and crash-safe registry proof; M0a-2 remains medium/3d and M0a-3 high/5d, excluding waits. Label writes remain at filing. |
+| N-5 | Applied: M0a-3 P5 names host-only notice-card rendering, with zero model/provider calls and a client-only-versus-Optimus distinction. M3 still proves binding to actual saves. |
 
 Reviewed predecessors, the review/cover note and frozen v12 inputs remain immutable. All implementation tests and K1–K6 probes are UNRUN in this authoring pass. Claude rechecks the changed passages; the operator approves the exact successor hashes in the owning chat before later filing/execution.
 
