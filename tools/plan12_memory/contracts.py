@@ -11,11 +11,22 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-Id = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")]
+
+def _no_parent_segment(value: str) -> str:
+    if ".." in value:
+        raise ValueError("an id never contains '..'")
+    return value
+
+
+# Repository paths are allowed ("path:src/x.py"), but never "..".
+Id = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$"), AfterValidator(_no_parent_segment)]
 Status = Literal["PASS", "FAIL", "INCONCLUSIVE", "UNRUN"]
 Layer = Literal["authority", "retrieval", "answer", "cost"]
+Oracle = Literal["K1", "K2", "K3", "K4", "K5", "K6"]
+Trust = Literal["user-authored", "agent-derived", "legacy-import", "off"]
+MemoryStatus = Literal["active", "reverify", "conflicted", "superseded", "withdrawn", "purged", "archived"]
 
 
 class _Record(BaseModel):
@@ -36,10 +47,59 @@ class Provenance(_Record):
 class ExpectedCost(_Record):
     known_usd: Decimal
     complete: bool | None
+    savings_usd: Decimal | None  # None: the report must carry no savings figure
+
+
+class ExpectedMemory(_Record):
+    """The memory item's final state; ``absent`` means it must not exist at all."""
+
+    key: Id
+    project_id: Id
+    trust: Trust | Literal["absent"]
+    status: MemoryStatus | None
+
+    @model_validator(mode="after")
+    def _absent_has_no_status(self) -> ExpectedMemory:
+        if (self.trust == "absent") != (self.status is None):
+            raise ValueError("status is null exactly when trust is absent")
+        return self
+
+
+class AttemptReceipt(_Record):
+    """One model attempt. Token categories are nullable and a null is never read as zero."""
+
+    attempt_id: Id
+    gateway_request_id: Id | None
+    state: Literal["settled", "intent_only", "late"]
+    input_tokens: int | None = Field(ge=0)
+    output_tokens: int | None = Field(ge=0)
+    cache_tokens: int | None = Field(ge=0)
+    reasoning_tokens: int | None = Field(ge=0)
+    price_snapshot_id: Id | None
+    cost_usd: Decimal | None
+
+
+class CaseInput(_Record):
+    """One ordered input: synthetic text, or a receipt the accounting path ingests."""
+
+    seq: int = Field(ge=0)
+    actor: Literal["user", "assistant", "tool", "import", "host", "gateway", "clock"]
+    text: str | None = Field(min_length=1)
+    attempt: AttemptReceipt | None
+
+    @model_validator(mode="after")
+    def _one_payload(self) -> CaseInput:
+        if (self.text is None) == (self.attempt is None):
+            raise ValueError("exactly one of text and attempt")
+        return self
 
 
 class GoldenCase(_Record):
-    """One versioned case. Source-dependent gold is pointers and IDs, never source bodies."""
+    """One versioned case. Source-dependent gold is pointers and IDs, never source bodies.
+
+    A ``control`` exercises the allowed path, so a ``probe`` that is refused proves denial
+    rather than a system that refuses everything.
+    """
 
     schema_id: Literal["plan12-memory-case/1"] = Field(alias="schema")
     case_id: Id
@@ -47,7 +107,9 @@ class GoldenCase(_Record):
     family: Id
     split: Literal["train", "development", "held_out"]
     kind: Literal["lifecycle", "localization", "accounting"]
-    input_ref: str = Field(min_length=1)
+    role: Literal["probe", "control"]
+    oracles: tuple[Oracle, ...] = Field(min_length=1)
+    inputs: tuple[CaseInput, ...] = Field(min_length=1)
     project_id: Id
     snapshot: Id
     cutoff: AwareDatetime
@@ -57,9 +119,35 @@ class GoldenCase(_Record):
     prohibited_claims: tuple[Id, ...]
     required_events: tuple[Id, ...]
     prohibited_events: tuple[Id, ...]
+    expected_memory: tuple[ExpectedMemory, ...]
     expected_cost: ExpectedCost | None
     verification: str = Field(min_length=1)
     provenance: Provenance
+
+    @model_validator(mode="after")
+    def _ordered_unique(self) -> GoldenCase:
+        seqs = [item.seq for item in self.inputs]
+        if seqs != sorted(set(seqs)):
+            raise ValueError("input seq values must be strictly increasing")
+        keys = [(item.key, item.project_id) for item in self.expected_memory]
+        if len(keys) != len(set(keys)):
+            raise ValueError("expected_memory repeats a key")
+        if set(self.required_facts) & set(self.prohibited_claims) or set(self.required_events) & set(self.prohibited_events):
+            raise ValueError("an id is both required and prohibited")
+        if self.expected_action == "abstain" and self.required_facts:
+            raise ValueError("an abstention cannot require facts")
+        asserts = (self.required_facts, self.required_evidence, self.prohibited_claims, self.required_events,
+                   self.prohibited_events, self.expected_memory)
+        if not any(asserts) and self.expected_cost is None and self.expected_action == "answer":
+            raise ValueError("the case asserts nothing beyond answering")
+        return self
+
+
+class MemoryStateObservation(_Record):
+    key: Id
+    project_id: Id
+    trust: Trust
+    status: MemoryStatus
 
 
 class TraceEvent(_Record):
@@ -96,20 +184,6 @@ class AnswerObservation(_Record):
     judge_status: Literal["ok", "error", "uncertain"]
 
 
-class AttemptReceipt(_Record):
-    """One model attempt. Token categories are nullable and a null is never read as zero."""
-
-    attempt_id: Id
-    gateway_request_id: Id | None
-    state: Literal["settled", "intent_only", "late"]
-    input_tokens: int | None = Field(ge=0)
-    output_tokens: int | None = Field(ge=0)
-    cache_tokens: int | None = Field(ge=0)
-    reasoning_tokens: int | None = Field(ge=0)
-    price_snapshot_id: Id | None
-    cost_usd: Decimal | None
-
-
 class SavingsClaim(_Record):
     label: Literal["estimated", "measured"]
     basis: Literal["same_tokens_repriced", "matched_run"]
@@ -135,12 +209,20 @@ class ObservedTrace(_Record):
     events: tuple[TraceEvent, ...]
     evidence: tuple[ObservedEvidence, ...]
     served_memory: tuple[MemoryRef, ...]
+    memory_state: tuple[MemoryStateObservation, ...]
     answer: AnswerObservation
     attempts: tuple[AttemptReceipt, ...]
     reported_cost: ReportedCost
     coverage_complete: bool | None
     missing_coverage: tuple[str, ...]
     timing_ms: int | None = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _one_state_per_memory(self) -> ObservedTrace:
+        keys = [(item.key, item.project_id) for item in self.memory_state]
+        if len(keys) != len(set(keys)):
+            raise ValueError("memory_state repeats a key")
+        return self
 
 
 class LayerVerdict(_Record):
@@ -169,9 +251,20 @@ class CaseVerdict(_Record):
     measurements: Measurements | None
 
 
+class SplitManifest(_Record):
+    """The versioned family-to-split assignment that every fixture case must match."""
+
+    schema_id: Literal["plan12-memory-splits/1"] = Field(alias="schema")
+    version: int = Field(ge=1)
+    families: dict[Literal["train", "development", "held_out"], tuple[Id, ...]]
+    expected_family_counts: dict[Literal["lifecycle", "localization", "accounting"], int]
+    chronological_kinds: tuple[Literal["lifecycle", "localization", "accounting"], ...]
+
+
 class ValidationReport(_Record):
     files: tuple[str, ...]
     case_count: int
     kind_counts: tuple[tuple[str, int], ...]
+    family_counts: tuple[tuple[str, int], ...]
     split_counts: tuple[tuple[str, int], ...]
     errors: tuple[str, ...]

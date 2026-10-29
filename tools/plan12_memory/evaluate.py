@@ -13,6 +13,7 @@ import json
 from collections import Counter, defaultdict
 from collections.abc import Sequence
 from decimal import Decimal
+from itertools import pairwise
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -25,11 +26,13 @@ from tools.plan12_memory.contracts import (
     LayerVerdict,
     Measurements,
     ObservedTrace,
+    SplitManifest,
     Status,
     ValidationReport,
 )
 
 FIXTURE_SCHEMA = "plan12-memory-fixtures/1"
+SPLITS_SCHEMA = "plan12-memory-splits/1"
 _SEVERITY: dict[Status, int] = {"PASS": 0, "INCONCLUSIVE": 1, "FAIL": 2, "UNRUN": 3}
 
 
@@ -49,6 +52,13 @@ def _authority(case: GoldenCase, trace: ObservedTrace) -> LayerVerdict:
         for memory in trace.served_memory
         if memory.project_id != case.project_id
     ]
+    state = {(item.key, item.project_id): item for item in trace.memory_state}
+    for expected in case.expected_memory:
+        observed = state.get((expected.key, expected.project_id))
+        found = "absent" if observed is None else f"{observed.trust}/{observed.status}"
+        wanted = "absent" if expected.trust == "absent" else f"{expected.trust}/{expected.status}"
+        if found != wanted:
+            fails.append(f"memory {expected.key} in {expected.project_id} is {found}, expected {wanted}")
     return _layer(fails, [])
 
 
@@ -179,6 +189,9 @@ def _cost(case: GoldenCase, trace: ObservedTrace) -> tuple[LayerVerdict, Decimal
             fails.append(f"receipts give known cost {known}, gold expects {expected.known_usd}")
         if expected.complete is not None and expected.complete != complete:
             fails.append(f"receipts give completeness {complete}, gold expects {expected.complete}")
+        reported_savings = savings.amount_usd if savings else None
+        if reported_savings != expected.savings_usd:
+            fails.append(f"reported savings {reported_savings}, gold expects {expected.savings_usd}")
     return _layer(fails, [], notes), known, complete
 
 
@@ -220,16 +233,55 @@ def grade_trace(case: GoldenCase, trace: ObservedTrace | None) -> CaseVerdict:
     )
 
 
+def _invalid_fields(exc: ValidationError) -> list[str]:
+    return sorted({".".join(str(part) for part in error["loc"]) for error in exc.errors()})
+
+
+def _manifest_errors(manifest: SplitManifest, cases: list[GoldenCase]) -> list[str]:
+    errors: list[str] = []
+    assigned = {family: split for split, families in manifest.families.items() for family in families}
+    families_by_kind: defaultdict[str, set[str]] = defaultdict(set)
+    for case in cases:
+        families_by_kind[case.kind].add(case.family)
+        if case.family not in assigned:
+            errors.append(f"case {case.case_id}: family {case.family} is not in the split manifest")
+        elif assigned[case.family] != case.split:
+            errors.append(f"case {case.case_id}: split {case.split}, manifest says {assigned[case.family]}")
+    present = {case.family for case in cases}
+    errors += [f"manifest family {family} has no cases" for family in sorted(assigned.keys() - present)]
+    for kind, expected in manifest.expected_family_counts.items():
+        if len(families_by_kind[kind]) != expected:
+            errors.append(f"{kind}: {len(families_by_kind[kind])} families, manifest expects {expected}")
+    order = ("train", "development", "held_out")
+    for kind in manifest.chronological_kinds:
+        cutoffs = {split: [c.cutoff for c in cases if c.kind == kind and c.split == split] for split in order}
+        for earlier, later in pairwise(order):
+            if cutoffs[earlier] and cutoffs[later] and max(cutoffs[earlier]) >= min(cutoffs[later]):
+                errors.append(f"{kind}: a {earlier} cutoff is not before every {later} cutoff")
+    return errors
+
+
 def validate_cases(path: Path) -> ValidationReport:
-    """Validate every fixture file at ``path`` (a file or a directory of ``*.json``)."""
+    """Validate every fixture file at ``path`` (a file or a directory of ``*.json``).
+
+    A ``plan12-memory-splits/1`` file in the same directory is the split manifest: every
+    case must then match its family assignment, cardinalities and chronological order.
+    """
     files = sorted(path.glob("*.json")) if path.is_dir() else [path]
     errors: list[str] = [] if files else [f"{path}: no fixture files"]
     cases: list[GoldenCase] = []
+    manifests: list[SplitManifest] = []
     for file in files:
         try:
             payload = json.loads(file.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             errors.append(f"{file.name}: unreadable JSON ({type(exc).__name__})")
+            continue
+        if isinstance(payload, dict) and payload.get("schema") == SPLITS_SCHEMA:
+            try:
+                manifests.append(SplitManifest.model_validate(payload))
+            except ValidationError as exc:
+                errors.append(f"{file.name}: invalid split manifest fields {_invalid_fields(exc)}")
             continue
         if not isinstance(payload, dict) or payload.get("schema") != FIXTURE_SCHEMA or not isinstance(payload.get("cases"), list):
             errors.append(f"{file.name}: not a {FIXTURE_SCHEMA} file")
@@ -238,21 +290,31 @@ def validate_cases(path: Path) -> ValidationReport:
             try:
                 cases.append(GoldenCase.model_validate(raw))
             except ValidationError as exc:
-                fields = sorted({".".join(str(part) for part in error["loc"]) for error in exc.errors()})
-                errors.append(f"{file.name} case {index}: invalid fields {fields}")
+                errors.append(f"{file.name} case {index}: invalid fields {_invalid_fields(exc)}")
     seen: set[tuple[str, int]] = set()
     family_splits: defaultdict[str, set[str]] = defaultdict(set)
+    controlled: set[str] = set()
     for case in cases:
         key = (case.case_id, case.version)
         if key in seen:
             errors.append(f"duplicate case {case.case_id} v{case.version}")
         seen.add(key)
         family_splits[case.family].add(case.split)
+        if case.role == "control":
+            controlled.add(case.family)
     errors += [f"family {family} spans splits {sorted(splits)}" for family, splits in sorted(family_splits.items()) if len(splits) > 1]
+    lifecycle = sorted({case.family for case in cases if case.kind == "lifecycle"})
+    errors += [f"lifecycle family {family} has no control case" for family in lifecycle if family not in controlled]
+    if len(manifests) > 1:
+        errors.append("more than one split manifest")
+    elif manifests:
+        errors += _manifest_errors(manifests[0], cases)
+    families = {(case.kind, case.family) for case in cases}
     return ValidationReport(
         files=tuple(file.name for file in files),
         case_count=len(cases),
         kind_counts=tuple(sorted(Counter(case.kind for case in cases).items())),
+        family_counts=tuple(sorted(Counter(kind for kind, _ in families).items())),
         split_counts=tuple(sorted(Counter(case.split for case in cases).items())),
         errors=tuple(errors),
     )
@@ -266,8 +328,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("path", type=Path)
     args = parser.parse_args(argv)
     report = validate_cases(args.path)
-    print(f"{report.case_count} cases in {len(report.files)} files; kinds {dict(report.kind_counts)}; "
-          f"splits {dict(report.split_counts)}; {len(report.errors)} errors")
+    print(f"{report.case_count} cases in {len(report.files)} files; families {dict(report.family_counts)}; "
+          f"cases by kind {dict(report.kind_counts)}; splits {dict(report.split_counts)}; {len(report.errors)} errors")
     for error in report.errors:
         print(f"error: {error}")
     return 1 if report.errors else 0

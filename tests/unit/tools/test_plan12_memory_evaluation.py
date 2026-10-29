@@ -29,7 +29,12 @@ def _case(**overrides: Any) -> dict[str, Any]:
         "family": "M01",
         "split": "train",
         "kind": "lifecycle",
-        "input_ref": "synthetic:m01/turns-1",
+        "role": "control",
+        "oracles": ["K1", "K6"],
+        "inputs": [
+            {"seq": 0, "actor": "user", "text": "From now on, use tabs for indentation.", "attempt": None},
+            {"seq": 1, "actor": "user", "text": "How should I indent new files?", "attempt": None},
+        ],
         "project_id": "proj-a",
         "snapshot": "snap-1",
         "cutoff": CUTOFF,
@@ -39,6 +44,7 @@ def _case(**overrides: Any) -> dict[str, Any]:
         "prohibited_claims": ["claim-user-said-spaces"],
         "required_events": ["memory.committed", "memory.notice"],
         "prohibited_events": ["memory.trust_from_import"],
+        "expected_memory": [{"key": "pref-indent", "project_id": "proj-a", "trust": "user-authored", "status": "active"}],
         "expected_cost": None,
         "verification": "deterministic trace comparison",
         "provenance": {"drafted_by": "claude", "verified_by": None, "source": "plan 12.5 Task 2 M01"},
@@ -64,6 +70,7 @@ def _trace(**overrides: Any) -> dict[str, Any]:
              "observed_at": "2026-09-30T12:00:00+00:00", "supports": ["R1"]},
         ],
         "served_memory": [{"memory_id": "mem-7", "version": 2, "project_id": "proj-a"}],
+        "memory_state": [{"key": "pref-indent", "project_id": "proj-a", "trust": "user-authored", "status": "active"}],
         "answer": {
             "action": "answer",
             "claims": ["fact-pref-tabs"],
@@ -383,10 +390,10 @@ def test_repricing_with_a_null_token_category_is_unavailable() -> None:
 
 def test_accounting_gold_is_compared_with_the_report() -> None:
     case = _case(kind="accounting", family="A01", case_id="A01-a",
-                 expected_cost={"known_usd": "0.002", "complete": True})
+                 expected_cost={"known_usd": "0.002", "complete": True, "savings_usd": None})
     trace = _trace(case_id="A01-a")
     assert _grade(case=case, trace=trace).layers["cost"].status == "PASS"
-    case["expected_cost"] = {"known_usd": "0.003", "complete": True}
+    case["expected_cost"] = {"known_usd": "0.003", "complete": True, "savings_usd": None}
     assert _grade(case=case, trace=trace).layers["cost"].status == "FAIL"
 
 
@@ -428,3 +435,147 @@ def test_validate_only_cli_exit_status(tmp_path: Path, capsys: pytest.CaptureFix
     assert "1 cases" in capsys.readouterr().out
     _write_fixture(tmp_path / "ok.json", [_case(case_id="")])
     assert main(["--validate-only", str(tmp_path)]) == 1
+
+
+# --- Task 2 contract extensions -----------------------------------------------------
+
+
+def test_expected_memory_state_is_graded_including_absence() -> None:
+    assert _grade().layers["authority"].status == "PASS"
+    demoted = [{"key": "pref-indent", "project_id": "proj-a", "trust": "off", "status": "active"}]
+    verdict = _grade(trace=_trace(memory_state=demoted))
+    assert verdict.layers["authority"].status == "FAIL"
+    assert "expected user-authored/active" in _reasons(verdict)
+    absent = [{"key": "pref-indent", "project_id": "proj-a", "trust": "absent", "status": None}]
+    assert _grade(case=_case(expected_memory=absent), trace=_trace(memory_state=[])).layers["authority"].status == "PASS"
+    assert _grade(case=_case(expected_memory=absent)).layers["authority"].status == "FAIL"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"inputs": [{"seq": 0, "actor": "user", "text": "x", "attempt": _attempt()}]},
+        {"inputs": [{"seq": 0, "actor": "user", "text": None, "attempt": None}]},
+        {"inputs": [{"seq": 1, "actor": "user", "text": "a", "attempt": None},
+                    {"seq": 1, "actor": "user", "text": "b", "attempt": None}]},
+        {"inputs": []},
+        {"oracles": []},
+        {"oracles": ["K7"]},
+        {"expected_memory": [{"key": "k", "project_id": "p", "trust": "off", "status": "active"}] * 2},
+        {"expected_memory": [{"key": "k", "project_id": "p", "trust": "absent", "status": "active"}]},
+        {"family": "a..b"},
+        {"prohibited_claims": ["fact-pref-tabs"]},
+        {"prohibited_events": ["memory.committed"]},
+        {"expected_action": "abstain"},
+        {"required_facts": [], "required_evidence": [], "prohibited_claims": [], "required_events": [],
+         "prohibited_events": [], "expected_memory": []},
+    ],
+)
+def test_case_extension_constraints(change: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        GoldenCase.model_validate(_case(**change))
+
+
+def test_repository_path_ids_are_allowed() -> None:
+    requirement = [{"requirement_id": "R1", "any_of": ["path:src/optimus/acp/spec.py", "symbol:src/optimus/acp/spec.py::Store.remove"]}]
+    GoldenCase.model_validate(_case(required_evidence=requirement))
+
+
+def test_trace_memory_state_must_be_unique() -> None:
+    state = _trace()["memory_state"] * 2
+    with pytest.raises(ValidationError):
+        ObservedTrace.model_validate(_trace(memory_state=state))
+
+
+def test_accounting_gold_includes_the_savings_figure() -> None:
+    case = _case(kind="accounting", family="A01", case_id="A01-a",
+                 expected_cost={"known_usd": "0.002", "complete": True, "savings_usd": "-0.004"})
+    with_savings = _trace(case_id="A01-a", reported_cost=_cost_with(_savings(amount_usd="-0.004")))
+    assert _grade(case=case, trace=with_savings).layers["cost"].status == "PASS"
+    verdict = _grade(case=case, trace=_trace(case_id="A01-a"))
+    assert verdict.layers["cost"].status == "FAIL"
+    assert "gold expects -0.004" in _reasons(verdict)
+
+
+def _manifest(**overrides: Any) -> dict[str, Any]:
+    manifest: dict[str, Any] = {
+        "schema": "plan12-memory-splits/1",
+        "version": 1,
+        "families": {"train": ["M01", "L01"], "development": ["L02"], "held_out": ["M02"]},
+        "expected_family_counts": {"lifecycle": 2, "localization": 2},
+        "chronological_kinds": ["localization"],
+    }
+    manifest.update(overrides)
+    return manifest
+
+
+def _seed(tmp_path: Path, manifest: dict[str, Any], *, l02_cutoff: str = "2026-10-05T00:00:00+00:00") -> list[str]:
+    cases = [
+        _case(),
+        _case(case_id="M02-a", family="M02", split="held_out"),
+        _case(case_id="L01-a", family="L01", kind="localization", role="probe", cutoff="2026-10-02T00:00:00+00:00"),
+        _case(case_id="L02-a", family="L02", kind="localization", role="probe", split="development", cutoff=l02_cutoff),
+    ]
+    _write_fixture(tmp_path / "cases.json", cases)
+    (tmp_path / "splits.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return list(validate_cases(tmp_path).errors)
+
+
+def test_split_manifest_accepts_a_matching_seed(tmp_path: Path) -> None:
+    assert _seed(tmp_path, _manifest()) == []
+    assert dict(validate_cases(tmp_path).family_counts) == {"lifecycle": 2, "localization": 2}
+
+
+@pytest.mark.parametrize(
+    ("manifest", "reason"),
+    [
+        (_manifest(families={"train": ["M01", "L01"], "development": ["L02"], "held_out": []}), "family M02 is not in the split manifest"),
+        (_manifest(families={"train": ["M01", "L01", "M02"], "development": ["L02"], "held_out": []}), "manifest says train"),
+        (_manifest(families={"train": ["M01", "L01"], "development": ["L02"], "held_out": ["M02", "M03"]}), "manifest family M03 has no cases"),
+        (_manifest(expected_family_counts={"lifecycle": 24, "localization": 2}), "manifest expects 24"),
+    ],
+)
+def test_split_manifest_mismatches_are_reported(tmp_path: Path, manifest: dict[str, Any], reason: str) -> None:
+    assert reason in " | ".join(_seed(tmp_path, manifest))
+
+
+def test_chronological_split_rejects_a_later_train_cutoff(tmp_path: Path) -> None:
+    errors = _seed(tmp_path, _manifest(), l02_cutoff="2026-10-01T00:00:00+00:00")
+    assert "localization: a train cutoff is not before every development cutoff" in errors
+
+
+def test_lifecycle_family_without_a_control_is_reported(tmp_path: Path) -> None:
+    _write_fixture(tmp_path / "cases.json", [_case(role="probe")])
+    assert "lifecycle family M01 has no control case" in validate_cases(tmp_path).errors
+
+
+SEED = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "plan12_memory"
+TASK0_MANIFEST = Path(__file__).resolve().parents[3] / "reports" / "plan12-memory-evaluation" / "manifest.json"
+
+
+def test_seed_set_validates_with_its_cardinalities() -> None:
+    report = validate_cases(SEED)
+    assert report.errors == ()
+    assert dict(report.family_counts) == {"accounting": 8, "lifecycle": 24, "localization": 12}
+    assert main(["--validate-only", str(SEED)]) == 0
+
+
+def test_seed_split_matches_the_task0_manifest() -> None:
+    task0 = json.loads(TASK0_MANIFEST.read_text(encoding="utf-8"))["split"]
+    expected = {split: {family for group in groups for family in task0["lifecycle_groups"][next(
+        name for name in task0["lifecycle_groups"] if name.split()[0] == group)]}
+        for split, groups in task0["lifecycle_assignment"].items()}
+    seed = json.loads((SEED / "splits.json").read_text(encoding="utf-8"))["families"]
+    assert {split: {f for f in families if f.startswith("M")} for split, families in seed.items()} == expected
+    assert not {f for f in seed["held_out"] if f.startswith("A")}  # accounting is never held out
+
+
+def test_every_seed_event_is_in_the_reviewed_vocabulary() -> None:
+    review = json.loads((TASK0_MANIFEST.parent / "case-review.json").read_text(encoding="utf-8"))
+    events = {
+        event
+        for name in ("lifecycle", "localization", "accounting")
+        for case in json.loads((SEED / f"{name}.json").read_text(encoding="utf-8"))["cases"]
+        for event in case["required_events"] + case["prohibited_events"]
+    }
+    assert events <= set(review["event_vocabulary"]), sorted(events - set(review["event_vocabulary"]))

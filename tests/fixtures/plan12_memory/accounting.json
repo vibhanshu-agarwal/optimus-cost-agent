@@ -1,0 +1,593 @@
+{
+ "schema": "plan12-memory-fixtures/1",
+ "cases": [
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "A01-a",
+   "version": 1,
+   "family": "A01",
+   "split": "train",
+   "kind": "accounting",
+   "role": "control",
+   "oracles": [
+    "K3",
+    "K4"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "gateway",
+     "text": null,
+     "attempt": {
+      "attempt_id": "att-1",
+      "gateway_request_id": "gw-1",
+      "state": "settled",
+      "input_tokens": 1000,
+      "output_tokens": 200,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "price_snapshot_id": "price-actual-2026-10-01",
+      "cost_usd": "0.002"
+     }
+    },
+    {
+     "seq": 1,
+     "actor": "gateway",
+     "text": null,
+     "attempt": {
+      "attempt_id": "att-2",
+      "gateway_request_id": "gw-2",
+      "state": "settled",
+      "input_tokens": 1000,
+      "output_tokens": 200,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "price_snapshot_id": "price-actual-2026-10-01",
+      "cost_usd": "0.002"
+     }
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "What did this session cost?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_cost": {
+    "known_usd": "0.004",
+    "complete": true,
+    "savings_usd": null
+   },
+   "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 1/2 accounting A01"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "A02-a",
+   "version": 1,
+   "family": "A02",
+   "split": "train",
+   "kind": "accounting",
+   "role": "probe",
+   "oracles": [
+    "K3",
+    "K4"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "gateway",
+     "text": null,
+     "attempt": {
+      "attempt_id": "att-1",
+      "gateway_request_id": "gw-1",
+      "state": "settled",
+      "input_tokens": 1000,
+      "output_tokens": 200,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "price_snapshot_id": "price-actual-2026-10-01",
+      "cost_usd": "0.002"
+     }
+    },
+    {
+     "seq": 1,
+     "actor": "gateway",
+     "text": null,
+     "attempt": {
+      "attempt_id": "att-1",
+      "gateway_request_id": "gw-1",
+      "state": "settled",
+      "input_tokens": 1000,
+      "output_tokens": 200,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "price_snapshot_id": "price-actual-2026-10-01",
+      "cost_usd": "0.002"
+     }
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "What did this session cost?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_cost": {
+    "known_usd": "0.002",
+    "complete": true,
+    "savings_usd": null
+   },
+   "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 1/2 accounting A02"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "A03-a",
+   "version": 1,
+   "family": "A03",
+   "split": "train",
+   "kind": "accounting",
+   "role": "probe",
+   "oracles": [
+    "K3",
+    "K4"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "gateway",
+     "text": null,
+     "attempt": {
+      "attempt_id": "att-1",
+      "gateway_request_id": "gw-1",
+      "state": "settled",
+      "input_tokens": 1000,
+      "output_tokens": 200,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "price_snapshot_id": "price-actual-2026-10-01",
+      "cost_usd": "0.002"
+     }
+    },
+    {
+     "seq": 1,
+     "actor": "gateway",
+     "text": null,
+     "attempt": {
+      "attempt_id": "att-1",
+      "gateway_request_id": "gw-1",
+      "state": "settled",
+      "input_tokens": 1000,
+      "output_tokens": 200,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "price_snapshot_id": "price-actual-2026-10-01",
+      "cost_usd": "0.009"
+     }
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "What did this session cost?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_cost": {
+    "known_usd": "0",
+    "complete": false,
+    "savings_usd": null
+   },
+   "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 1/2 accounting A03"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "A04-a",
+   "version": 1,
+   "family": "A04",
+   "split": "development",
+   "kind": "accounting",
+   "role": "probe",
+   "oracles": [
+    "K3",
+    "K4"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "gateway",
+     "text": null,
+     "attempt": {
+      "attempt_id": "att-1",
+      "gateway_request_id": "gw-1",
+      "state": "settled",
+      "input_tokens": 1000,
+      "output_tokens": 200,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "price_snapshot_id": "price-actual-2026-10-01",
+      "cost_usd": "0.002"
+     }
+    },
+    {
+     "seq": 1,
+     "actor": "gateway",
+     "text": null,
+     "attempt": {
+      "attempt_id": "att-2",
+      "gateway_request_id": "gw-2",
+      "state": "intent_only",
+      "input_tokens": 1000,
+      "output_tokens": 200,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "price_snapshot_id": "price-actual-2026-10-01",
+      "cost_usd": null
+     }
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "What did this session cost?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_cost": {
+    "known_usd": "0.002",
+    "complete": false,
+    "savings_usd": null
+   },
+   "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 1/2 accounting A04"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "A05-a",
+   "version": 1,
+   "family": "A05",
+   "split": "development",
+   "kind": "accounting",
+   "role": "probe",
+   "oracles": [
+    "K3",
+    "K4"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "gateway",
+     "text": null,
+     "attempt": {
+      "attempt_id": "att-1",
+      "gateway_request_id": "gw-1",
+      "state": "settled",
+      "input_tokens": 1000,
+      "output_tokens": 200,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "price_snapshot_id": "price-actual-2026-10-01",
+      "cost_usd": "0.002"
+     }
+    },
+    {
+     "seq": 1,
+     "actor": "gateway",
+     "text": null,
+     "attempt": {
+      "attempt_id": "att-2",
+      "gateway_request_id": "gw-2",
+      "state": "late",
+      "input_tokens": 1000,
+      "output_tokens": 200,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "price_snapshot_id": "price-actual-2026-10-01",
+      "cost_usd": "0.002"
+     }
+    },
+    {
+     "seq": 2,
+     "actor": "gateway",
+     "text": null,
+     "attempt": {
+      "attempt_id": "att-3",
+      "gateway_request_id": null,
+      "state": "settled",
+      "input_tokens": 1000,
+      "output_tokens": 200,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "price_snapshot_id": "price-actual-2026-10-01",
+      "cost_usd": "0.002"
+     }
+    },
+    {
+     "seq": 3,
+     "actor": "user",
+     "text": "What did this session cost?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_cost": {
+    "known_usd": "0.004",
+    "complete": false,
+    "savings_usd": null
+   },
+   "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 1/2 accounting A05"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "A06-a",
+   "version": 1,
+   "family": "A06",
+   "split": "train",
+   "kind": "accounting",
+   "role": "probe",
+   "oracles": [
+    "K3",
+    "K4"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "gateway",
+     "text": null,
+     "attempt": {
+      "attempt_id": "att-1",
+      "gateway_request_id": "gw-1",
+      "state": "settled",
+      "input_tokens": 1000,
+      "output_tokens": 200,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "price_snapshot_id": "price-actual-2026-10-01",
+      "cost_usd": "0.002"
+     }
+    },
+    {
+     "seq": 1,
+     "actor": "gateway",
+     "text": null,
+     "attempt": {
+      "attempt_id": "att-2",
+      "gateway_request_id": "gw-2",
+      "state": "settled",
+      "input_tokens": 1000,
+      "output_tokens": 200,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "price_snapshot_id": null,
+      "cost_usd": null
+     }
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "What did this session cost?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_cost": {
+    "known_usd": "0.002",
+    "complete": false,
+    "savings_usd": null
+   },
+   "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 1/2 accounting A06"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "A07-a",
+   "version": 1,
+   "family": "A07",
+   "split": "development",
+   "kind": "accounting",
+   "role": "probe",
+   "oracles": [
+    "K3",
+    "K4"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "gateway",
+     "text": null,
+     "attempt": {
+      "attempt_id": "att-1",
+      "gateway_request_id": "gw-1",
+      "state": "settled",
+      "input_tokens": 1000,
+      "output_tokens": 200,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "price_snapshot_id": "price-actual-2026-10-01",
+      "cost_usd": "0.010"
+     }
+    },
+    {
+     "seq": 1,
+     "actor": "host",
+     "text": "Reference price snapshot price-ref-2026-10-01: same tokens repriced cost 0.006 against actual 0.010.",
+     "attempt": null
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "What did this session cost?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_cost": {
+    "known_usd": "0.010",
+    "complete": true,
+    "savings_usd": "-0.004"
+   },
+   "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 1/2 accounting A07"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "A08-a",
+   "version": 1,
+   "family": "A08",
+   "split": "train",
+   "kind": "accounting",
+   "role": "probe",
+   "oracles": [
+    "K3",
+    "K4"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "gateway",
+     "text": null,
+     "attempt": {
+      "attempt_id": "att-1",
+      "gateway_request_id": "gw-1",
+      "state": "settled",
+      "input_tokens": 1000,
+      "output_tokens": 200,
+      "cache_tokens": 0,
+      "reasoning_tokens": null,
+      "price_snapshot_id": "price-actual-2026-10-01",
+      "cost_usd": "0.002"
+     }
+    },
+    {
+     "seq": 1,
+     "actor": "host",
+     "text": "Reference price snapshot price-ref-2026-10-01 is available; this receipt's reasoning-token count is null.",
+     "attempt": null
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "What did this session cost?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_cost": {
+    "known_usd": "0.002",
+    "complete": true,
+    "savings_usd": null
+   },
+   "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 1/2 accounting A08"
+   }
+  }
+ ]
+}
