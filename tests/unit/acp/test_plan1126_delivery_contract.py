@@ -301,7 +301,6 @@ def _historical_transition_authority(merged: SourceTree, overlay: SourceTree):
 
 
 def _typing_authority_repository(root: Path) -> None:
-    current = Path(__file__).resolve().parents[3]
     historical = _baseline(_MERGED)
     paths = (
         "src/optimus/acp/settlement.py", "src/optimus/acp/lifecycle.py",
@@ -311,8 +310,12 @@ def _typing_authority_repository(root: Path) -> None:
     for path in paths:
         target = root / path
         target.parent.mkdir(parents=True, exist_ok=True)
-        content = historical.read_text(path).encode("utf-8") if path.endswith("/outbound_writer.py") else (current/path).read_bytes()
-        target.write_bytes(content)
+        content = historical.read_text(path)
+        if path.endswith("/lifecycle.py"):
+            old = "def current_settlement_fields(self) -> dict[str, object]:"
+            assert content.count(old) == 1
+            content = content.replace(old, "def current_settlement_fields(self) -> _SettlementFields:", 1)
+        target.write_text(content, encoding="utf-8")
 
 
 def _candidates(source: SourceTree) -> list[_Candidate]:
@@ -1373,8 +1376,8 @@ def test_h4_sealed_writer_provenance_keeps_live_types_untouched() -> None:
     from optimus.acp.outbound_writer import DedicatedOutboundWriter, OutboundQueueItem
 
     before = {name for name in sys.modules if name.startswith("_optimus_h4_writer_")}
-    authority = _historical_transition_authority(_baseline(_MERGED), _overlay_baseline())
-    writer, item = authority.dedicated_outbound_writer, authority.outbound_queue_item
+    module = importlib.import_module("tools.plan1126_runtime_audit.delivery_characterization")
+    writer, item = module._sealed_writer_types(_baseline(_MERGED).read_text("src/optimus/acp/outbound_writer.py"))
     assert writer is not DedicatedOutboundWriter and item is not OutboundQueueItem
     assert writer.__module__ == item.__module__
     assert writer.__module__ not in sys.modules
@@ -1426,7 +1429,7 @@ def test_h4_default_mode_keeps_the_live_writer_drift_denial(tmp_path: Path) -> N
     (tmp_path/path).write_bytes((root/path).read_bytes())
     with pytest.raises(ValueError, match="transition authority bytes drifted for src/optimus/acp/outbound_writer.py"):
         module.derive_transition_authority(merged, overlay, repository=tmp_path)
-    with pytest.raises(ValueError, match="transition authority bytes drifted for src/optimus/acp/outbound_writer.py"):
+    with pytest.raises(ValueError, match="transition authority bytes drifted for src/optimus/acp/lifecycle.py"):
         module.derive_transition_authority(merged, overlay)
 
 
@@ -1440,6 +1443,8 @@ def test_h4_historical_mode_keeps_nonwriter_authority_guards() -> None:
     changed = SourceTree({p: altered if p == path else merged.read_text(p) for p in merged.paths()})
     with pytest.raises(ValueError, match="transition authority bytes drifted for src/optimus/acp/lifecycle.py"):
         _historical_transition_authority(changed, overlay)
+    with pytest.raises(ValueError, match="transition authority bytes drifted for src/optimus/acp/lifecycle.py"):
+        _historical_transition_authority(merged, overlay)
 
 
 def test_h4_sealed_writer_declaration_has_no_io_or_thread_start(monkeypatch) -> None:

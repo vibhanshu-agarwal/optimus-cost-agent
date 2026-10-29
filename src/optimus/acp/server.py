@@ -1009,6 +1009,7 @@ class AcpStreamServer:
         reader_failure: Exception | None = None
         control_task: asyncio.Task[None] | None = None
         request_tasks: set[asyncio.Task[Any]] = set()
+        response_exits: dict[TurnControl, asyncio.Event] = {}
         serving_task = asyncio.current_task()
         serving_loop = asyncio.get_running_loop()
         stop_requested = False
@@ -1070,6 +1071,7 @@ class AcpStreamServer:
             response_handle.finalize_once(completion)
 
         async def submit_via_turn(payload: Mapping[str, Any], turn_control: TurnControl) -> bool:
+            response_exits.setdefault(turn_control, asyncio.Event())
             lease = turn_control.start_response_send()
             if not lease.granted or lease.send_key is None:
                 return False
@@ -1187,12 +1189,18 @@ class AcpStreamServer:
                         continue
                     params = message.get("params")
                     session_id = params.get("sessionId") if isinstance(params, dict) else None
-                    if message.get("method") == "session/prompt" and isinstance(session_id, str) and session_id in adapter._active_turns:
-                        # The existing busy path validates and refuses before any provider/await boundary.
-                        envelope = await adapter.handle_client_request(message)
-                        assert isinstance(envelope, NonTurnResponseEnvelope)
-                        await submit_via_notice(envelope.response, handle=envelope.response_handle, observe=False)
-                        continue
+                    if message.get("method") == "session/prompt" and isinstance(session_id, str):
+                        prior = adapter._active_turns.get(session_id)
+                        if prior is not None and prior.turn_control.rpc_response_delivery is RpcResponseDelivery.FLUSHED:
+                            response_exit = response_exits.get(prior.turn_control)
+                            if response_exit is not None:
+                                # Join only response retirement; physical worker custody can outlive it.
+                                await response_exit.wait()
+                        if session_id in adapter._active_turns:
+                            envelope = await adapter.handle_client_request(message)
+                            assert isinstance(envelope, NonTurnResponseEnvelope)
+                            await submit_via_notice(envelope.response, handle=envelope.response_handle, observe=False)
+                            continue
                     admission_reservation = None if pending_count >= limits.pending_items else inbound.try_reserve(1, size, AdmissionClass.ORDINARY)
                     if admission_reservation is None:
                         await submit_via_notice(error_response(message.get("id"), JsonRpcError(code=REQUEST_CANCELLED, message="Server busy", data={"reason": "QUEUE_FULL"})), observe=False)
@@ -1404,7 +1412,12 @@ class AcpStreamServer:
                     current_task = asyncio.current_task()
                     if current_task is not None and current_task.cancelling():
                         control.request_transport_teardown()
-                    control.finalize_once()
+                    try:
+                        control.finalize_once()
+                    finally:
+                        response_exit = response_exits.pop(control, None)
+                        if response_exit is not None:
+                            response_exit.set()
 
         async def owned_request(message: dict[str, Any], operation_id: str) -> None:
             workers: set[asyncio.Task[Any]] = set()

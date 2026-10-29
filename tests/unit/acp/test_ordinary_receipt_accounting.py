@@ -24,7 +24,6 @@ import pytest
 
 import optimus_gateway.responses as gateway_responses
 from optimus.acp.context_attachment import ordinary_attachment, ordinary_route_policy
-from optimus.acp.conversation import ConversationOutcome
 from optimus.acp.spec import CONTEXT_FALLBACK_TEXT
 from optimus.agent.runner import CHAT_ROUTE_STOPPED_MESSAGES, AgentRunner
 from optimus.context.maintenance import MaintenanceIdentity
@@ -124,6 +123,8 @@ async def test_a_cancel_during_ordinary_maintenance_still_settles_the_attempt(tm
     adapter, outbound, runner, session_id = await _two_notes_then(tmp_path, transport)
     session = session_of(adapter, session_id)
     checkpoint_before, answers_before = session.context_checkpoint, len(runner.requests)
+    records_before = dict(session.conversation.records)
+    turn_id = f"{session_id}:{session.conversation.next_turn_seq}"
 
     task = asyncio.create_task(rpc(adapter, prompt_request(session_id, "What release code name was chosen?", "c1")))
     assert await asyncio.to_thread(entered.wait, 5)
@@ -134,11 +135,10 @@ async def test_a_cancel_during_ordinary_maintenance_still_settles_the_attempt(tm
     assert response["result"]["stopReason"] == "cancelled"
     assert len(runner.requests) == answers_before, "no answer is dispatched"
     assert session.context_checkpoint is checkpoint_before, "nothing is published"
-    receipts, turn_id = _summary_receipts(adapter, session_id)
+    receipts = [r for r in session.cost_settlement.receipts(turn_id) if r.stage == "summarization"]
     assert [(r.outcome, r.reported_cost_usd) for r in receipts] == [("completed", COST)], "the attempt still settles"
     assert session.cost_settlement.settle_turn(turn_id).known_subtotal_usd == COST
-    record = session.conversation.records[max(session.conversation.records)]
-    assert record.outcome is ConversationOutcome.CANCELLED
+    assert session.conversation.records == records_before, "the paid attempt settles independently of history"
 
 
 # --- The shared route stop ------------------------------------------------------------------------------------

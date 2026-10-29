@@ -576,3 +576,61 @@ async def test_safe_mcp_activity_keeps_terminal_text_and_settlement_gates(tmp_pa
         terminal_release.set()
         rpc_release.set()
         await h.close()
+
+
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_flushed_response_handoff_does_not_wait_for_owned_worker(tmp_path, monkeypatch, cancelled):
+    from optimus.acp.spec import request_worker_custody
+
+    release_worker = threading.Event()
+    worker_entered = threading.Event()
+    def held_worker():
+        worker_entered.set()
+        assert release_worker.wait(5)
+    worker = asyncio.create_task(asyncio.to_thread(held_worker))
+    assert await asyncio.to_thread(worker_entered.wait, 3)
+    script = Script()
+    original_run = script.run
+    first = True
+    def run(request, **kwargs):
+        nonlocal first
+        if first:
+            first = False
+            request_worker_custody.get().add(worker)
+            script.cancel = cancelled
+        else:
+            script.cancel = False
+        return original_run(request, **kwargs)
+    script.run = run
+    h = ServerTurn(tmp_path, monkeypatch, script)
+    await h.start()
+    read_followup = threading.Event()
+    original_readline = h.reader.readline
+    async def readline():
+        line = await original_readline()
+        if line and json.loads(line).get("id") == "followup":
+            read_followup.set()
+        return line
+    monkeypatch.setattr(h.reader, "readline", readline)
+    original_publish = TurnControl.publish_authoritative
+    def publish(control, key, outcome):
+        original_publish(control, key, outcome)
+        if key.kind == "protocol_response" and control.turn_seq == 1 and outcome is SendOutcome.FLUSHED:
+            followup = {"jsonrpc": "2.0", "id": "followup", "method": "session/prompt", "params": {
+                "sessionId": h.session_id, "prompt": [{"type": "text", "text": "Continue"}]}}
+            h.transport.loop.call_soon_threadsafe(h.reader._queue.put_nowait, (json.dumps(followup) + "\n").encode())
+            assert read_followup.wait(3), "reader must receive follow-up before response future completes"
+    monkeypatch.setattr(TurnControl, "publish_authoritative", publish)
+    try:
+        await h.prompt()
+        response = await h.transport.until(lambda m: m.get("id") == "followup")
+        assert response.get("result") == {"stopReason": "end_turn"}
+        assert not worker.done(), "physical custody remains independent of response exit"
+        await h.reader.send({"jsonrpc": "2.0", "id": "setter", "method": "session/set_mode",
+            "params": {"sessionId": h.session_id, "modeId": "chat"}})
+        assert (await h.transport.until(lambda m: m.get("id") == "setter"))["result"] == {}
+        assert not h.sink_errors
+    finally:
+        release_worker.set()
+        await worker
+        await h.close()

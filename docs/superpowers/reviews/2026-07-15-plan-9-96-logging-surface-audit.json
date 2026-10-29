@@ -4935,6 +4935,14 @@
       "sanitizer": "Ownership-only ContextVar/Event operation; no raw diagnostic persistence",
       "test_node": "tests/unit/acp/test_settlement_truth.py::test_direct_and_transport_owned_completion_boundaries",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:AcpStreamServer.process_request:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: acknowledges exact response-owner retirement with a loop-local asyncio.Event after finalization; no Redis write, persisted content or diagnostic payload.",
+      "sanitizer": "Ownership-only ContextVar/Event operation; no raw diagnostic persistence",
+      "test_node": "tests/unit/acp/test_settlement_truth.py::test_flushed_response_handoff_does_not_wait_for_owned_worker",
+      "evidence_tier": "unit"
     }
   ]
 }

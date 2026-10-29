@@ -14,8 +14,10 @@ import pytest
 
 from optimus.acp import launch_policy
 from optimus.acp.errors import AcpOutboundError
+from optimus.acp.lifecycle import ResponseOwnershipSlot
 from optimus.acp.outbound_writer import SendOutcome
 from optimus.acp.server import NdjsonOutboundChannel
+from optimus.acp.settlement import RpcResponseDelivery, SendState
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.mcp.client_config import ClientMcpConfigNormalizer
@@ -76,15 +78,18 @@ async def composed(tmp_path):
         runtime.close()
 
 
-async def prompt(adapter, session, request_id=1):
+async def prompt(adapter, session, request_id=1, *, defer_response=False):
     return await adapter.handle_client_request({"jsonrpc": "2.0", "id": request_id, "method": "session/prompt",
-        "params": {"sessionId": session.session_id, "prompt": [{"type": "text", "text": "hello"}]}})
+        "params": {"sessionId": session.session_id, "prompt": [{"type": "text", "text": "hello"}]}},
+        ownership_slot=ResponseOwnershipSlot() if defer_response else None)
 
 
 def flush(control):
     lease = control.start_response_send()
     assert lease.granted and lease.send_key is not None
+    assert control.claim_write_started(lease.send_key) is SendState.WRITE_STARTED
     control.publish_authoritative(lease.send_key, SendOutcome.FLUSHED)
+    control.finalize_once()
 
 
 def suspend(state):
@@ -218,7 +223,7 @@ async def test_known_noncommit_normal_error_envelope_can_arm_after_flush(compose
     def refused(*_args, **_kwargs):
         raise AcpOutboundError(code=-32800, message="controlled refusal")
     monkeypatch.setattr(runner, "run", refused)
-    envelope = await prompt(adapter, session)
+    envelope = await prompt(adapter, session, defer_response=True)
     assert "error" in envelope.response and not session.conversation.records
     flush(envelope.turn_control)
     adapter.note_turn_delivered(envelope.turn_control)
@@ -256,7 +261,7 @@ async def test_real_commit_marker_survives_prepare_failure_or_postcommit_cancell
 async def test_pending_sdk_release_quarantines_and_blocks_future_prompts(composed, monkeypatch):
     adapter, session, clock, _, runner = composed
     session.client_mcp_state.register_close_hook(lambda: None, peer=True)
-    envelope = await prompt(adapter, session)
+    envelope = await prompt(adapter, session, defer_response=True)
     flush(envelope.turn_control)
     adapter.note_turn_delivered(envelope.turn_control)
     monkeypatch.setattr(adapter._client_mcp_runtime.sdk_adapter, "has_pending_connections_for_session", lambda _: True)
@@ -277,7 +282,7 @@ async def test_unobservable_warning_preflight_keeps_peer_open_until_a_later_turn
         [{"name": "peer", "command": sys.executable, "args": [], "env": []}], allow)
     closed = []
     session.client_mcp_state.register_close_hook(lambda: closed.append("peer"), peer=True)
-    response = await prompt(adapter, session)
+    response = await prompt(adapter, session, defer_response=True)
     flush(response.turn_control)
     adapter.note_turn_delivered(response.turn_control)
     clock[0] += 10
@@ -285,7 +290,7 @@ async def test_unobservable_warning_preflight_keeps_peer_open_until_a_later_turn
         patch.setattr(runtime.sdk_adapter, "stdio_warning_channel_observable", lambda: False)
         await adapter.sweep_idle_mcp_once()
     assert not closed and runtime.sdk_adapter.diagnostics[-1] == "WARNING_UNOBSERVABLE"
-    response = await prompt(adapter, session, 2)
+    response = await prompt(adapter, session, 2, defer_response=True)
     flush(response.turn_control)
     adapter.note_turn_delivered(response.turn_control)
     clock[0] += 10
@@ -296,7 +301,7 @@ async def test_unobservable_warning_preflight_keeps_peer_open_until_a_later_turn
 async def test_pre_admission_capacity_refusal_preserves_deadline_and_asks_no_permission(composed):
     adapter, session, _, outbound, _ = composed
     session.client_mcp_state.register_close_hook(lambda: None, peer=True)
-    envelope = await prompt(adapter, session)
+    envelope = await prompt(adapter, session, defer_response=True)
     flush(envelope.turn_control)
     adapter.note_turn_delivered(envelope.turn_control)
     deadline = adapter._idle_mcp[session.session_id].deadline
@@ -312,7 +317,7 @@ async def test_unknown_marker_and_cancelled_delivery_never_arm(composed):
     closed = []
     session.client_mcp_state.register_close_hook(lambda: closed.append("peer"), peer=True)
     for unknown, cancelled in [(True, False), (False, True)]:
-        response = await prompt(adapter, session)
+        response = await prompt(adapter, session, defer_response=True)
         if unknown:
             adapter.record_turn_commit(session.session_id, response.turn_control.turn_seq, committed=None)
         flush(response.turn_control)
@@ -324,7 +329,7 @@ async def test_unknown_marker_and_cancelled_delivery_never_arm(composed):
 
 async def test_never_opened_lease_does_not_arm_or_renew(composed):
     adapter, session, clock, outbound, _ = composed
-    response = await prompt(adapter, session)
+    response = await prompt(adapter, session, defer_response=True)
     flush(response.turn_control)
     adapter.note_turn_delivered(response.turn_control)
     clock[0] += 20
@@ -341,7 +346,7 @@ async def test_idle_requires_actual_flush_and_exact_deadline(composed):
     clock[0] = 1000
     await adapter.sweep_idle_mcp_once()
     assert closed == []
-    envelope = await prompt(adapter, session, 2)
+    envelope = await prompt(adapter, session, 2, defer_response=True)
     flush(envelope.turn_control)
     adapter.note_turn_delivered(envelope.turn_control)
     clock[0] = 1009.999
@@ -356,9 +361,15 @@ async def test_new_prompt_invalidates_late_older_flush(composed):
     adapter, session, clock, _, _ = composed
     closed = []
     session.client_mcp_state.register_close_hook(lambda: closed.append("peer"), peer=True)
-    old = await prompt(adapter, session)
+    old = await prompt(adapter, session, defer_response=True)
+    lease = old.turn_control.start_response_send()
+    assert lease.granted and lease.send_key is not None
+    assert old.turn_control.claim_write_started(lease.send_key) is SendState.WRITE_STARTED
+    old.turn_control.finalize_once()
     await prompt(adapter, session, 2)
-    flush(old.turn_control)
+    old.turn_control.publish_authoritative(lease.send_key, SendOutcome.FLUSHED)
+    assert old.turn_control.rpc_response_delivery is RpcResponseDelivery.AMBIGUOUS
+    assert old.turn_control.send_slot(lease.send_key).diagnostic is SendOutcome.FLUSHED
     adapter.note_turn_delivered(old.turn_control)
     clock[0] = 1000
     await adapter.sweep_idle_mcp_once()
@@ -404,7 +415,7 @@ async def test_retained_shared_listener_does_not_quarantine_released_peers(compo
         state.register_close_hook(lambda: None, peer=True)
         if uncertain_peer:
             monkeypatch.setattr(runtime.sdk_adapter, "has_pending_connections_for_session", lambda _sid: True)
-        envelope = await prompt(adapter, session)
+        envelope = await prompt(adapter, session, defer_response=True)
         flush(envelope.turn_control)
         adapter.note_turn_delivered(envelope.turn_control)
         clock[0] += 11
@@ -447,7 +458,7 @@ async def test_slow_close_leaves_serving_loop_responsive(composed):
         entered.set()
         assert release.wait(0.5)
     session.client_mcp_state.register_close_hook(slow_peer, peer=True)
-    envelope = await prompt(adapter, session)
+    envelope = await prompt(adapter, session, defer_response=True)
     flush(envelope.turn_control)
     adapter.note_turn_delivered(envelope.turn_control)
     clock[0] = 110

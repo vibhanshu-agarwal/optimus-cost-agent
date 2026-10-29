@@ -474,6 +474,7 @@ async def test_a_cancel_during_maintenance_dispatches_and_publishes_nothing_but_
         await prompt(adapter, outbound, session_id, f"Earlier prompt {n}", f"p{n}")
     session = session_of(adapter, session_id)
     checkpoint_before = session.context_checkpoint
+    records_before = dict(session.conversation.records)
     calls_before, receipts_before = len(runner.requests), len(receipts)
     summarizer._during = block  # noqa: SLF001
 
@@ -487,8 +488,7 @@ async def test_a_cancel_during_maintenance_dispatches_and_publishes_nothing_but_
     assert len(runner.requests) == calls_before  # no planning/answer dispatch
     assert session.context_checkpoint is checkpoint_before  # nothing published
     assert len(receipts) == receipts_before + 1  # the summarizer attempt still settles
-    record = session.conversation.records[max(session.conversation.records)]
-    assert record.user_prompt == "Cancel me" and record.outcome is ConversationOutcome.CANCELLED
+    assert session.conversation.records == records_before, "cancellation without terminal flush cannot commit"
 
 
 async def test_a_missing_summarizer_uses_the_stated_fallback(tmp_path):
