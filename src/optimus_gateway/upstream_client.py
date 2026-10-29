@@ -86,8 +86,10 @@ class AttemptCapacityExhausted(AttemptDeadlineExpired):
 
 
 _MAX_OUTSTANDING_ATTEMPTS: Final = 32
-"""Attempt workers that may run at once. An abandoned worker can outlive its deadline where nothing can interrupt it
-(a name lookup, a TLS handshake), so the slots bound what stalled attempts can hold (Codex round 3)."""
+"""Attempt workers that may run at once. An abandoned worker can outlive its deadline where nothing can interrupt it:
+a name lookup, the per-address connect loop inside ``socket.create_connection`` (up to one attempt timeout per
+address, before any socket is handed over) and a TLS handshake (on a socket ``wrap_socket`` has taken over). The
+slots bound what stalled attempts can hold (Codex round 3, Fable at Checkpoint C)."""
 _ATTEMPT_SLOTS = threading.BoundedSemaphore(_MAX_OUTSTANDING_ATTEMPTS)
 
 
@@ -296,30 +298,23 @@ def call_with_upstream_retry(
         try:
             return operation()
         except Exception as exc:
+            latency = time.monotonic() - started_at
             retryable = is_retryable_upstream_fault(exc)
             delay = backoff_seconds[min(attempt - 1, len(backoff_seconds) - 1)]
-            disposition: Literal["retry", "terminal"] = (
-                "retry"
-                if retryable and attempt < max_attempts and request_budget_admits(delay + attempt_timeout_seconds)
-                else "terminal"
-            )
+            retrying = retryable and attempt < max_attempts and request_budget_admits(delay + attempt_timeout_seconds)
+            if retrying:
+                sleeper(delay)
+                # Rechecked at dispatch, after the backoff (Codex round 1): if the next attempt no longer fits, this
+                # failure is final rather than a claim that nothing was sent, and it is reported as final (Fable, C).
+                retrying = request_budget_admits(attempt_timeout_seconds)
+            disposition: Literal["retry", "terminal"] = "retry" if retrying else "terminal"
             if on_attempt_failure is not None:
-                on_attempt_failure(
-                    attempt,
-                    "transient" if retryable else "permanent",
-                    time.monotonic() - started_at,
-                    disposition,
-                    _attempt_failure(exc),
-                )
+                on_attempt_failure(attempt, "transient" if retryable else "permanent", latency, disposition, _attempt_failure(exc))
             if disposition == "retry":
                 if on_retry is not None:
                     on_retry(attempt)
-                sleeper(delay)
-                # Rechecked at dispatch, after the backoff (Codex round 1): if the next attempt no longer fits, this
-                # failure is final rather than a claim that nothing was sent.
-                if request_budget_admits(attempt_timeout_seconds):
-                    attempt += 1
-                    continue
+                attempt += 1
+                continue
             if retryable:
                 raise RuntimeError(str(exc)) from exc
             raise

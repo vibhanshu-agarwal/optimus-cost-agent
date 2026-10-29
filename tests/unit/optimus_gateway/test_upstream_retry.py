@@ -446,6 +446,8 @@ def test_a_retry_whose_backoff_outlasts_the_budget_ends_with_the_previous_failur
     clock = [0.0]
     monkeypatch.setattr(upstream_module, "time", types.SimpleNamespace(monotonic=lambda: clock[0], sleep=time.sleep))
     calls: list[int] = []
+    reported: list[str] = []
+    retries: list[int] = []
 
     def oversleep(_delay: float) -> None:
         clock[0] += GATEWAY_REQUEST_BUDGET_SECONDS - UPSTREAM_ATTEMPT_TIMEOUT_SECONDS + 1
@@ -453,11 +455,18 @@ def test_a_retry_whose_backoff_outlasts_the_budget_ends_with_the_previous_failur
     begin_request_budget()
     try:
         with pytest.raises(RuntimeError, match="transient") as raised:
-            call_with_upstream_retry(_always_transient(calls), sleep=oversleep)
+            call_with_upstream_retry(
+                _always_transient(calls),
+                sleep=oversleep,
+                on_retry=retries.append,
+                on_attempt_failure=lambda _n, _kind, _latency, disposition, _failure: reported.append(disposition),
+            )
     finally:
         end_request_budget()
     assert calls == [1]
     assert not isinstance(raised.value, UpstreamBudgetExhausted), "the attempt that ran is the outcome, not 'nothing sent'"
+    # Fable at Checkpoint C: the failure is reported once, as final, and no retry is announced that never happened.
+    assert (reported, retries) == (["terminal"], [])
 
 
 # --- an attempt ends at its deadline, whatever the provider keeps sending (Codex round 1, finding 1) ---
