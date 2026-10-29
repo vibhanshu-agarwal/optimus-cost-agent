@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import time
+import types
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -20,10 +22,17 @@ from typing import Any
 import pytest
 
 import optimus_gateway.responses as gateway_responses
+import optimus_gateway.upstream_client as upstream_module
 from optimus_gateway.responses import handle_responses_request
-from optimus_gateway.upstream_client import ProviderMessageResult, UpstreamAttemptFailure
+from optimus_gateway.upstream_client import ProviderMessageResult, UpstreamAttemptFailure, begin_request_budget, end_request_budget
 from optimus_model_policy import stage_c
-from optimus_model_policy.binding import ATTEMPT_NOT_SENT, ATTEMPT_REJECTED, ATTEMPT_UNCERTAIN
+from optimus_model_policy.binding import (
+    ATTEMPT_NOT_SENT,
+    ATTEMPT_REJECTED,
+    ATTEMPT_UNCERTAIN,
+    GATEWAY_REQUEST_BUDGET_SECONDS,
+    UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
+)
 from optimus_model_policy.stage_c import StageCGuard
 from tests.unit.optimus_gateway.model_policy_support import (
     AUTH,
@@ -205,3 +214,21 @@ def test_without_a_guard_the_enforced_path_is_unchanged(tmp_path: Path) -> None:
     )
     assert status == 200 and len(upstream.calls) == 1
     assert gateway_config(policy).stage_c_guard is None
+
+
+def test_an_attempt_refused_at_dispatch_releases_its_reservation_as_unbilled(guarded, monkeypatch) -> None:
+    """#397 live Z2, Codex round 1: admitted by the guard, then refused by the host request's budget before dispatch."""
+    policy, guard, path, _ = guarded
+    clock = [0.0]
+    monkeypatch.setattr(upstream_module, "time", types.SimpleNamespace(monotonic=lambda: clock[0], sleep=time.sleep))
+    upstream = Observing(path)
+    begin_request_budget()
+    clock[0] += GATEWAY_REQUEST_BUDGET_SECONDS - UPSTREAM_ATTEMPT_TIMEOUT_SECONDS + 1
+    try:
+        status, body = _post(policy, guard, upstream)
+    finally:
+        end_request_budget()
+    assert (status, body["code"]) == (502, "UPSTREAM_ATTEMPT_NOT_SENT")
+    assert upstream.calls == []
+    assert [r["result"] for r in _records(path, "settle")] == ["unbilled"]
+    assert (guard.state.charged_usd, guard.state.outstanding_usd) == (Decimal("0"), Decimal("0"))

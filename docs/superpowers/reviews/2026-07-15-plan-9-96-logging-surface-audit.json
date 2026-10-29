@@ -4169,11 +4169,11 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_message_once:file_open",
+      "key": "optimus_gateway.upstream_client:_read_reply:file_open",
       "policy": "safe-by-construction",
-      "rationale": "AST overmatch: create_message_once calls urllib's OpenerDirector.open, the provider HTTP request that urlopen makes, through an opener whose connections record whether the attempt connected; it opens no file, and the reply is parsed in memory, never persisted or logged.",
+      "rationale": "AST overmatch: _read_reply calls urllib's OpenerDirector.open, the provider HTTP request of one enforced attempt (create_message_once or create_decision_once), on its AttemptDeadline's worker thread and through an opener whose connections record whether the attempt connected; it opens no file, and it returns the reply's bytes and headers for in-memory parsing, never persisted or logged.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_route_attempts.py::test_a_wrapped_send_phase_tls_failure_is_one_uncertain_attempt_end_to_end",
+      "test_node": "tests/unit/optimus_gateway/test_upstream_retry.py::test_an_enforced_attempt_ends_at_its_deadline_while_bytes_keep_arriving",
       "evidence_tier": "unit"
     },
     {
@@ -4745,11 +4745,11 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_decision_once:file_open",
+      "key": "optimus_gateway.upstream_client:watched_urlopen:file_open",
       "policy": "safe-by-construction",
-      "rationale": "AST overmatch: create_decision_once calls urllib's OpenerDirector.open, the provider HTTP request to the System One endpoint, through the attempt opener that records whether the attempt connected; it opens no file, and the reply is parsed in memory, never persisted or logged.",
+      "rationale": "AST overmatch: watched_urlopen calls urllib's OpenerDirector.open, the provider HTTP request of one legacy or tool-provider attempt, through the watched opener under an AttemptDeadline; it opens no file, and it returns the response to its caller, which parses the reply in memory; nothing is persisted or logged here.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_decisions.py::test_the_real_client_posts_to_system_one_with_the_route_controls",
+      "test_node": "tests/unit/optimus_gateway/test_upstream_retry.py::test_a_legacy_attempt_ends_at_its_deadline_while_bytes_keep_arriving",
       "evidence_tier": "unit"
     },
     {

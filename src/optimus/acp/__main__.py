@@ -311,6 +311,15 @@ def _parse_gateway_timeout_seconds(value: str) -> float:
         ) from None
 
 
+def _short_gateway_timeout_warning(seconds: float) -> str:
+    """Allowed (an explicit investigation override), but below the shared host wait (Codex round 1 on #397 Z2)."""
+    return (
+        f"optimus-agent: warning: --gateway-timeout-seconds {seconds:g} is below the default "
+        f"{DEFAULT_GATEWAY_TIMEOUT_SECONDS:g}, which outlasts the Gateway's upstream budget for one request; a slower reply the "
+        "provider has billed can be abandoned, and its turn then stops as PLANNING_GATEWAY_COST_UNKNOWN"
+    )
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="optimus-agent")
     parser.add_argument("--workspace-root", default=".", help="Workspace root exposed to the ACP agent.")
@@ -958,6 +967,8 @@ def main(argv: list[str] | None = None) -> int:
                 }
                 if args.gateway_timeout_seconds is not None:
                     build_server_kwargs["gateway_timeout_seconds"] = args.gateway_timeout_seconds
+                    if args.gateway_timeout_seconds < DEFAULT_GATEWAY_TIMEOUT_SECONDS:
+                        print(_short_gateway_timeout_warning(args.gateway_timeout_seconds), file=sys.stderr)
                 if test_composition is not None:
                     build_server_kwargs["test_composition"] = test_composition
                 if stage_c_launch is not None:

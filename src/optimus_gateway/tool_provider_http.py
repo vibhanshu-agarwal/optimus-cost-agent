@@ -4,15 +4,21 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from optimus_gateway.upstream_client import (
+    AttemptDeadline,
+    AttemptDeadlineExpired,
     RetryableUpstreamError,
     call_with_upstream_retry,
     is_retryable_upstream_fault,
+    watched_urlopen,
 )
+from optimus_model_policy.binding import UPSTREAM_ATTEMPT_TIMEOUT_SECONDS
+
+T = TypeVar("T")
 
 
 class BinaryResponse(Protocol):
@@ -31,8 +37,8 @@ def request_json(
     request: Request,
     *,
     label: str,
-    urlopen_fn: ToolUrlOpen = urlopen,
-    timeout_seconds: float = 60.0,
+    urlopen_fn: ToolUrlOpen = watched_urlopen,
+    timeout_seconds: float = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
     sleep: Callable[[float], None] | None = None,
     on_retry: Callable[[int], None] | None = None,
 ) -> dict[str, Any]:
@@ -57,7 +63,12 @@ def request_json(
         return body
 
     try:
-        return call_with_upstream_retry(call, sleep=sleep, on_retry=on_retry)
+        return call_with_upstream_retry(
+            lambda: _under_deadline(call, timeout_seconds=timeout_seconds),
+            sleep=sleep,
+            on_retry=on_retry,
+            attempt_timeout_seconds=timeout_seconds,
+        )
     except Exception:
         raise ToolProviderError(f"{label} failed") from None
 
@@ -66,8 +77,8 @@ def request_bytes(
     request: Request,
     *,
     label: str,
-    urlopen_fn: ToolUrlOpen = urlopen,
-    timeout_seconds: float = 60.0,
+    urlopen_fn: ToolUrlOpen = watched_urlopen,
+    timeout_seconds: float = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
     sleep: Callable[[float], None] | None = None,
     on_retry: Callable[[int], None] | None = None,
 ) -> bytes:
@@ -89,6 +100,20 @@ def request_bytes(
             raise RuntimeError(f"{label} response failure") from None
 
     try:
-        return call_with_upstream_retry(call, sleep=sleep, on_retry=on_retry)
+        return call_with_upstream_retry(
+            lambda: _under_deadline(call, timeout_seconds=timeout_seconds),
+            sleep=sleep,
+            on_retry=on_retry,
+            attempt_timeout_seconds=timeout_seconds,
+        )
     except Exception:
         raise ToolProviderError(f"{label} failed") from None
+
+
+def _under_deadline(call: Callable[[], T], *, timeout_seconds: float) -> T:
+    """One tool attempt bounded by its :class:`AttemptDeadline` in every phase; an abandoned one is a timeout, retried
+    only while the host request's budget admits another (#397 live Z2, Codex rounds 1-2)."""
+    try:
+        return AttemptDeadline(timeout_seconds).run(call)
+    except AttemptDeadlineExpired:
+        raise RetryableUpstreamError("tool attempt abandoned") from None

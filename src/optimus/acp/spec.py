@@ -94,7 +94,16 @@ from optimus.acp.shapes import (
     tool_kind_for_name,
 )
 from optimus.agent.models import TEST_STOP_REASONS, AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
-from optimus.agent.planning_loop import CheckInDecision, PlanningCheckIn, PlanningCheckInCallback, PlanningProgressEvent
+from optimus.agent.planning_loop import (
+    CheckInDecision,
+    EscalationGrant,
+    EscalationRefusal,
+    PlanningCheckIn,
+    PlanningCheckInCallback,
+    PlanningEscalation,
+    PlanningEscalationCallback,
+    PlanningProgressEvent,
+)
 from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
 from optimus.context.assembly import AttachedTurn, ContextAttachment
 from optimus.gateway.attempts import ROUTE_STOPPED_NO_RETRY
@@ -412,10 +421,17 @@ class AcpPromptTurn:
     auto_decision: AutoDecision | None = None
     # Plan 12.4 Task 5: set once the turn's one routing record is written, so a later cancel cannot add a second.
     auto_recorded: bool = False
+    # #397: the model a recovery escalation moved the turn to, once; `auto_decision` stays the classifier's routing.
+    escalated_model: str | None = None
 
     @property
     def run_id(self) -> str:
         return f"{self.session_id}:{self.turn_seq}"
+
+    @property
+    def turn_model(self) -> str | None:
+        """The model the turn's calls send now: the escalation's once moved, else the routed one; None off Auto."""
+        return self.escalated_model or (None if self.auto_decision is None else self.auto_decision.model_id)
 
 
 class InMemoryAcpSpecSessionStore:
@@ -1640,8 +1656,13 @@ class AcpDuplexAdapter:
                         route_binder=turn.route_binder,
                         integrity_failure=session.cost_settlement.record_integrity_failure,
                         recovery_checkin=self._recovery_checkin_for(turn, loop) if self._interactive_recovery else None,
-                        turn_model=None if turn.auto_decision is None else turn.auto_decision.model_id,
+                        turn_model=turn.turn_model,
                         model_stops=self._model_stops,
+                        recovery_escalation=(
+                            self._recovery_escalation_for(turn, loop)
+                            if self._interactive_recovery and turn.auto_decision is not None
+                            else None
+                        ),
                     ),
                 )
             except asyncio.CancelledError:
@@ -1809,7 +1830,8 @@ class AcpDuplexAdapter:
                     stage_receipts=session.cost_settlement.record_attempt,
                     route_binder=turn.route_binder,
                     integrity_failure=session.cost_settlement.record_integrity_failure,
-                    turn_model=None if turn.auto_decision is None else turn.auto_decision.model_id,
+                    # An escalated turn's application runs on the model and binder it moved to (#397).
+                    turn_model=turn.turn_model,
                     model_stops=self._model_stops,
                 ),
             )
@@ -2642,6 +2664,70 @@ class AcpDuplexAdapter:
 
         return recovery_checkin
 
+    def _recovery_escalation_for(self, turn: AcpPromptTurn, loop: asyncio.AbstractEventLoop) -> PlanningEscalationCallback:
+        """The planning worker's bridge to an Auto turn's one escalation (#397, ADR-009 rung 2): the target from
+        configuration, a best-effort notice, then the switch of the turn's binder, meter and context limits. It blocks
+        that worker, never the event loop, and a halt wins before the target, after the notice and before the switch."""
+        from optimus.acp.auto_composition import escalation_notice_text
+
+        router = self._auto_router
+        assert router is not None
+        control = turn.turn_control
+
+        def notify(text: str) -> bool:
+            # Informational (ADR-005): bounded by the notice flush timeout and cancelled by teardown like a pending
+            # check-in; a timeout, failure or cancel is only recorded as undelivered.
+            payload = build_agent_message_chunk_notification(session_id=turn.session_id, text=text)
+            pending = asyncio.run_coroutine_threadsafe(self._outbound.notify("session/update", payload, require_flushed=True), loop)
+            # Teardown cancels the control's handle and session/cancel the turn's, as for a pending check-in.
+            control.set_permission_handle(pending)
+            turn.permission_handle = pending
+            try:
+                if control.halt_requested():
+                    pending.cancel()
+                pending.result(timeout=_NOTICE_FLUSH_TIMEOUT_SECONDS)
+            except (Exception, concurrent.futures.CancelledError):  # noqa: BLE001
+                pending.cancel()
+                return False
+            finally:
+                control.set_permission_handle(None)
+                turn.permission_handle = None
+            return True
+
+        def recovery_escalation(move: PlanningEscalation) -> EscalationGrant | EscalationRefusal:
+            current = turn.turn_model
+            if control.halt_requested():
+                return EscalationRefusal.HALTED
+            # Every fallible part is prepared before anything is published, so a failure leaves the turn as it was and
+            # goes to the check-in with its cause recorded.
+            try:
+                target = None if current is None else router.escalation_target(current)
+                if current is None or target is None:
+                    return EscalationRefusal.NO_TARGET
+                binder = router.escalation_route(target).capture(
+                    session_id=turn.session_id, turn_seq=turn.turn_seq, deliver_notice=self._blocking_notice(turn.session_id, loop)
+                )
+                attachment = None if turn.attached is None else router.attachments[target]
+                text = escalation_notice_text(router.snapshot, from_model=current, to_model=target, what=move.what)
+            except Exception as exc:  # noqa: BLE001 - recorded with its class facts, never its text
+                log_auto_route(run_id=turn.run_id, outcome="escalation_failed", reason="error", telemetry=self._failure_telemetry, failure=exc)
+                _operator_line(
+                    f"optimus.acp: auto escalation failed session_id={host_session_id(turn.session_id) or 'none'} "
+                    f"turn_seq={turn.turn_seq} error={type(exc).__name__}"
+                )
+                return EscalationRefusal.FAILED
+            delivered = not control.transport_abandoned() and notify(text)
+            if control.halt_requested():
+                return EscalationRefusal.HALTED
+            if turn.route_binder is not None:
+                binder.adopt_readings(turn.route_binder)
+            if turn.attached is not None and attachment is not None:
+                turn.attached.escalate_attachment(attachment)
+            turn.route_binder, turn.escalated_model = binder, target
+            return EscalationGrant(model_id=target, route_binder=binder, notice_delivered=delivered)
+
+        return recovery_escalation
+
     def _runner_runtime_kwargs(
         self,
         *,
@@ -2657,6 +2743,7 @@ class AcpDuplexAdapter:
         recovery_checkin: Any | None = None,
         turn_model: str | None = None,
         model_stops: Any | None = None,
+        recovery_escalation: Any | None = None,
     ) -> dict[str, Any]:
         """Pass client-MCP runtime kwargs only when the runner accepts them."""
         kwargs: dict[str, Any] = {}
@@ -2691,6 +2778,8 @@ class AcpDuplexAdapter:
             _maybe("turn_model", turn_model)
         if model_stops is not None:
             _maybe("model_stops", model_stops)
+        if recovery_escalation is not None:
+            _maybe("recovery_escalation", recovery_escalation)
         chat = (execution_mode or session.execution_mode) is ExecutionMode.CHAT
         _maybe("client_mcp_service", None if chat else _client_mcp_service(session))
         _maybe("mcp_permission_broker", None if chat else self._mcp_permission_broker_for(session))

@@ -5,7 +5,7 @@ import hashlib
 import subprocess
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from functools import partial
@@ -57,7 +57,14 @@ from optimus.usage.accounting import UsageAccountingService
 from optimus.usage.turn_settlement import StageReceipt
 
 if TYPE_CHECKING:
-    from optimus.agent.planning_loop import PlanningCheckInCallback, PlanningProgressObserver
+    from optimus.agent.planning_loop import (
+        EscalationGrant,
+        EscalationRefusal,
+        PlanningCheckInCallback,
+        PlanningEscalation,
+        PlanningEscalationCallback,
+        PlanningProgressObserver,
+    )
     from optimus.gateway.route_binding import BoundRequest, RouteIdentity, TurnRouteBinder
 
 WorkspaceContextObserver = Callable[[AgentRunRequest, WorkspaceContextResult], None]
@@ -139,7 +146,8 @@ class _RunScope:
     It is passed down explicitly and never stored on the runner, which concurrent sessions share.
     `integrity_failure` is told the turn id whose charge the existing ledger refused, so that turn
     never reads complete (Fable CP3 correction-2 review MINOR-1). `model` is what this run sends: the turn's
-    selected model under Auto (Plan 12.4 Task 4), else the runner's launch model."""
+    selected model under Auto (Plan 12.4 Task 4), else the runner's launch model; an escalation (#397) replaces
+    `model` and `route` for the rest of the run."""
 
     model: str
     stage_receipts: Callable[[StageReceipt], None] | None = None
@@ -147,6 +155,7 @@ class _RunScope:
     route: TurnRouteBinder | None = None
     integrity_failure: Callable[[str], None] | None = None
     model_stops: Callable[[str], None] | None = None
+    recovery_escalation: PlanningEscalationCallback | None = None
 
     def transport_abandoned(self) -> bool:
         return self.operation_control is not None and self.operation_control.transport_abandoned()
@@ -327,13 +336,15 @@ class AgentRunner:
         recovery_checkin: PlanningCheckInCallback | None = None,
         turn_model: str | None = None,
         model_stops: Callable[[str], None] | None = None,
+        recovery_escalation: PlanningEscalationCallback | None = None,
     ) -> AgentRunResult:
         """`stage_receipts` receives every model attempt of this run, known or unknown, once (Plan 12.2
         Task 11). `route_binder` binds each request to the turn's captured trusted route; without it
         no binding is sent (registry enforcement inactive). `integrity_failure` receives this run's
         turn id when the existing ledger refuses one of its charges. `turn_model` is an Auto turn's selected
         model (Plan 12.4 Task 4), sent instead of the launch model; `model_stops` is told each model a failed
-        request proved stopped, for the launch. All belong to this invocation alone."""
+        request proved stopped, for the launch. `recovery_escalation` (#397) may move an interactive planning run
+        to a stronger model once. All belong to this invocation alone."""
         observer = (
             planning_progress_observer
             if planning_progress_observer is not None
@@ -355,6 +366,7 @@ class AgentRunner:
             route=route_binder,
             integrity_failure=integrity_failure,
             model_stops=model_stops,
+            recovery_escalation=recovery_escalation,
         )
         try:
             result = self._run_once(
@@ -629,8 +641,12 @@ class AgentRunner:
             max_wall_clock_minutes=request.planning_wall_clock_minutes,
         )
 
+        # The scope in effect: an escalation (#397) replaces its model and route before the first escalated request,
+        # so each request's report reads the route that sent it; earlier reports keep theirs.
+        current = [scope]
+
         def usage_callback(gateway_usage: GatewayUsage, settled_turn: int, wire_attempt: int) -> None:
-            self._record_ledger_entry(request, scope, gateway_usage, settled_turn=settled_turn, wire_attempt=wire_attempt)
+            self._record_ledger_entry(request, current[0], gateway_usage, settled_turn=settled_turn, wire_attempt=wire_attempt)
 
         def attempt_callback(
             settled_turn: int,
@@ -640,8 +656,17 @@ class AgentRunner:
             failure: BaseException | None = None,
         ) -> None:
             self._report_attempts(
-                request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity, failure=failure
+                request, current[0], settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity, failure=failure
             )
+
+        def escalate(move: PlanningEscalation) -> EscalationGrant | EscalationRefusal:
+            from optimus.agent.planning_loop import EscalationGrant
+
+            assert scope.recovery_escalation is not None
+            outcome = scope.recovery_escalation(move)
+            if isinstance(outcome, EscalationGrant):
+                current[0] = replace(current[0], model=outcome.model_id, route=outcome.route_binder)
+            return outcome
 
         planner = PlanningLoopRunner(
             gateway_client=self._gateway_client,
@@ -662,6 +687,7 @@ class AgentRunner:
             context_packer=context_packer,
             recovery_checkin=recovery_checkin,
             loop_event_sink=self._event_sink,
+            recovery_escalation=None if scope.recovery_escalation is None else escalate,
         )
         planning_result = planner.run(
             run_id=request.run_id,
@@ -675,6 +701,7 @@ class AgentRunner:
             # caller keeps its existing input (design spec 7; Fable CP3 review MINOR-8).
             conversation_envelope=request.conversation_envelope if request.selection_text is not None else "",
         )
+        scope = current[0]  # the plan's result names the model that produced it
         if planning_result.stop_reason is not None:
             status = (
                 AgentRunStatus.FAILED

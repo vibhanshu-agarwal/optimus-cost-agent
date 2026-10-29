@@ -26,6 +26,7 @@ from optimus_security.failure_facts import (
     bounded,
     bounded_failure,
     bounded_guardrail_list,
+    exception_fact,
     final_sanitize,
     gateway_request_id,
     host_route_id,
@@ -514,12 +515,18 @@ AUTO_ROUTE_REASONS = frozenset(
 )
 
 
-def log_auto_route(*, run_id: str, outcome: str, reason: str, telemetry: JsonlTelemetryWriter | None = None) -> None:
-    """An Auto turn's refusal (``outcome`` refused) or classifier failure (``outcome`` failure_rule) with its bounded
-    reason, in the trace and the always-on ``auto_route`` event. Never the prompt or the classifier's input."""
+def log_auto_route(
+    *, run_id: str, outcome: str, reason: str, telemetry: JsonlTelemetryWriter | None = None, failure: BaseException | None = None
+) -> None:
+    """An Auto turn's refusal (``outcome`` refused), classifier failure (``outcome`` failure_rule) or escalation that
+    could not be prepared (``outcome`` escalation_failed, #397, with ``failure``'s class facts) with its bounded reason,
+    in the trace and the always-on ``auto_route`` event. Never the prompt, the classifier's input or an error's text."""
 
     def data() -> dict[str, Any]:
-        return {"run_id": host_route_id(run_id), "outcome": outcome, "reason": bounded(reason, AUTO_ROUTE_REASONS)}
+        record: dict[str, Any] = {"run_id": host_route_id(run_id), "outcome": outcome, "reason": bounded(reason, AUTO_ROUTE_REASONS)}
+        if failure is not None:
+            record["failure"] = exception_fact(failure)
+        return record
 
     acp_debug_log(location="debug_trace.py:log_auto_route", message="auto route", data=data, hypothesis_id="P12.4-AUTO")
     if telemetry is None:

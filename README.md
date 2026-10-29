@@ -269,6 +269,12 @@ out of planning steps ([ADR-024](docs/decisions/ADR-024-accepts-adr-009-loop-con
   - **Continue** grants 3 more planning steps and a fresh 30 minutes. It never approves a change: a plan still needs
     its own approval.
   - **Stop** ends the turn with the actual cause.
+- **Escalation (Auto mode only, #397).** Before that check-in, an Auto turn whose note did not help is moved once to
+  the registry's escalation model, which is Gemini 3.8 Flash today, so only easy-tier turns have a step. The move
+  comes with a live line that gives the price change, for example
+  `Auto: escalating to google/gemini-3.8-flash: ... Price per million tokens: $0.75 in / $3.75 out (was $0.20 in / $1.00 out).`
+  The stronger model gets 3 steps, and then the check-in follows as usual. A turn already on the escalation model,
+  or a fixed-model launch, goes straight to the check-in.
 
 An approved `TEST` directive runs in a contained process tree with a 15-minute deadline and the turn's
 cancellation. A timeout, a containment failure or a stop that cannot be confirmed ends the plan: the later
@@ -581,13 +587,15 @@ run live evidence or IDE sessions. Skipping step 1 after a code change produces 
 | `--setup` | One-time wizard: store provider key + shared secret in the OS keychain, then exit |
 | `--no-auto-start` | Skip auto-starting Redis and the local gateway; assume both are already running |
 | `--check-config` | Validate credentials, Redis, and workspace; exit without serving |
-| `--gateway-timeout-seconds SECONDS` | Raise the Gateway request timeout for this process; default is 30 seconds |
+| `--gateway-timeout-seconds SECONDS` | Override the Gateway request timeout for this process; default is 135 seconds |
 
-For a slow Gateway/model response during a one-off investigation, run
-`optimus-agent --gateway-timeout-seconds 90`. The value applies only to that agent process;
-omitting it preserves the 30-second default. It changes how long the first Gateway request may
-wait; it does not enable retries or weaken the fail-closed `PLANNING_GATEWAY_COST_UNKNOWN`
-behavior when the Gateway cannot report cost.
+The default comes from the shared contract (`HOST_GATEWAY_TIMEOUT_SECONDS`): the Gateway's 120-second
+upstream-dispatch budget for one request (it waits for each upstream attempt at most 60 seconds and dispatches none
+that could outlast the budget) plus 15 seconds of slack for its own processing. While that processing and its storage
+are responsive, the Gateway's answer, a reply or a recorded failure, reaches the agent before the agent stops waiting.
+A lower value is allowed, with a warning, but can abandon a reply the provider has billed; the turn then stops as
+`PLANNING_GATEWAY_COST_UNKNOWN`. The value applies only to that agent process. It does not enable retries or weaken
+the fail-closed `PLANNING_GATEWAY_COST_UNKNOWN` behavior when the Gateway cannot report cost.
 
 `--no-auto-start` disables **both** Redis and gateway auto-start consistently.
 
@@ -614,6 +622,21 @@ minutes on a slow network; container create/start have no timeout in this path.
 ```
 
 Do **not** point Zed at `.venv\Scripts\optimus-agent.exe` — use the PATH command above.
+
+**For Auto mode,** give the entry an `env` block, then approve the launch with that setting in place (see "Auto
+mode" below):
+
+```json
+{
+  "agent_servers": {
+    "optimus": {
+      "command": "optimus-agent",
+      "args": ["--workspace-root", "."],
+      "env": { "OPTIMUS_AGENT_MODEL": "auto" }
+    }
+  }
+}
+```
 
 **Troubleshooting (Windows PATH)**
 
@@ -695,6 +718,8 @@ The turn then uses the cheapest model of that tier that has not stopped in this 
   `optimus-trust --workspace-root <workspace> run-gateway --auto`.
 - **Each turn shows** one line, for example `Auto: medium → google/gemini-3.8-flash`, with the reason when the turn
   routed up or fell back. The judge's own cost appears as the `classification` stage of the turn's cost.
+- **A struggling turn** can be moved once to the escalation model before its loop check-in (see "Planning loop
+  recovery" above).
 - **Limitations** (ADR-028):
   - H's measured rates (4.7% against the pilot's 5% limits) do not establish population rates below 5%;
   - the previous turn's tier is a barely tested signal (#425);

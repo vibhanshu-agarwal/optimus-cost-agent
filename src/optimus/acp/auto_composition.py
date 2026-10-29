@@ -42,6 +42,7 @@ __all__ = [
     "StopSet",
     "auto_router",
     "compose_auto_composition",
+    "escalation_notice_text",
     "notice_text",
     "routing_record",
 ]
@@ -171,6 +172,20 @@ def notice_text(decision: AutoDecision) -> str:
     return f"Auto: {decision.tier} → {decision.model_id}" + (f" ({'; '.join(reasons)})" if reasons else "")
 
 
+def escalation_notice_text(snapshot: RegistrySnapshot, *, from_model: str, to_model: str, what: str) -> str:
+    """The live line when a struggling Auto turn moves to its escalation model (#397), from the actual recovery signal,
+    with the price change from the registry: information, never a limit (ADR-005)."""
+
+    def price(model_id: str) -> str:
+        prices = snapshot.policy.models[model_id].prices
+        return f"${prices.input_usd_per_million} in / ${prices.output_usd_per_million} out"
+
+    return (
+        f"Auto: escalating to {to_model}: the model {what}, and one nudge did not help. "
+        f"Price per million tokens: {price(to_model)} (was {price(from_model)})."
+    )
+
+
 def routing_record(
     disposition: Literal["routed", "refused", "cancelled", "abandoned"],
     *,
@@ -293,6 +308,19 @@ class AutoRouter:
             return decision(default_tier, self.default_model, role=self.default_role, default_fallback=True)
         raise AutoTurnRefused("AUTO_NO_ROUTABLE_MODEL")
 
+    def escalation_target(self, current_model_id: str) -> str | None:
+        """ADR-009 rung 2's one edge (#397): the escalation role's first routable model, or None when the turn already
+        runs it or it has less usable input than the turn's model (the prepared context must still fit). The role's later
+        models are fallbacks for a stopped first one, never further steps."""
+        routable = [model_id for model_id in select_eligible_models(self.snapshot, Role.ESCALATION) if model_id not in self.stops]
+        if not routable or routable[0] == current_model_id:
+            return None
+        usable = attachment_limits(self.snapshot, routable[0]).usable_input_tokens
+        return routable[0] if usable >= attachment_limits(self.snapshot, current_model_id).usable_input_tokens else None
+
+    def escalation_route(self, target: str) -> RoutePolicy:
+        return self.route_policies[(target, Role.ESCALATION.value)]
+
     def route_policy(self, decision: AutoDecision) -> RoutePolicy:
         return self.route_policies[(decision.model_id, decision.role)]
 
@@ -323,7 +351,8 @@ def auto_router(
     key = disclosure_key(shared_secret)
     default_model = composition.default_model()
     default_role = implementer_role(snapshot, default_model).value
-    pairs: set[tuple[str, str]] = {(model_id, tier) for tier in TIERS for model_id in select_eligible_models(snapshot, Role(tier))}
+    roles = (*TIERS, Role.ESCALATION.value)  # the escalation role's models are #397's possible mid-turn targets
+    pairs: set[tuple[str, str]] = {(model_id, role) for role in roles for model_id in select_eligible_models(snapshot, Role(role))}
     pairs.add((default_model, default_role))
     policies = {
         (model_id, role): RoutePolicy(snapshot=snapshot, disclosure_key=key, model_id=model_id, role=role, output_cap=output_cap)

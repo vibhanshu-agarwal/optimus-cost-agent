@@ -21,12 +21,14 @@ from optimus.gateway.models import (
     parse_gateway_usage,
     parse_route_attempts,
 )
+from optimus_model_policy.binding import HOST_GATEWAY_TIMEOUT_SECONDS
 from optimus_security.failure_facts import exception_fact
 
 if TYPE_CHECKING:
     from optimus_model_policy.binding import RouteBinding
 
-DEFAULT_GATEWAY_TIMEOUT_SECONDS = 30.0
+# Shared upstream-dispatch budget plus processing slack; delivery depends on responsive Gateway processing and storage.
+DEFAULT_GATEWAY_TIMEOUT_SECONDS = HOST_GATEWAY_TIMEOUT_SECONDS
 
 
 def validate_gateway_timeout_seconds(value: object) -> float:

@@ -16,6 +16,7 @@ from optimus_gateway import request_diagnostics
 from optimus_gateway.model_policy import ModelPolicyRefusal, admit_decision, check_decision_reply, parse_route_binding
 from optimus_gateway.models import GatewayServiceConfig, authorize_bearer
 from optimus_gateway.responses import (
+    _REQUEST_BUDGET_FAILURE,
     _attempt_record,
     _stop_experimental_route,
     assert_gateway_usage_contract,
@@ -23,9 +24,9 @@ from optimus_gateway.responses import (
     policy_refusal,
     sanitize_error_message,
 )
-from optimus_gateway.upstream_client import DecisionResult, UpstreamAttemptFailure, UpstreamClient
+from optimus_gateway.upstream_client import DecisionResult, UpstreamAttemptFailure, UpstreamClient, request_budget_admits
 from optimus_model_policy import decision_payload_text
-from optimus_model_policy.binding import ATTEMPT_COMPLETED, ATTEMPT_UNCERTAIN
+from optimus_model_policy.binding import ATTEMPT_COMPLETED, ATTEMPT_NOT_SENT, ATTEMPT_UNCERTAIN, UPSTREAM_ATTEMPT_TIMEOUT_SECONDS
 
 __all__ = ["DECISIONS_PATH", "handle_decision_request"]
 
@@ -86,6 +87,10 @@ def handle_decision_request(
     correlation = {"route_request_id": admitted.request_id, "route_attempts": attempts, "retryable": False}
     attempt_id = f"gw-{uuid.uuid4().hex}"
     request_diagnostics.note(gateway_request_id=attempt_id)
+    if not request_budget_admits(UPSTREAM_ATTEMPT_TIMEOUT_SECONDS):
+        # As for a model attempt: nothing is dispatched that could still be running once the host stops waiting.
+        attempts.append(_attempt_record(1, attempt_id, ATTEMPT_NOT_SENT, failure=dict(_REQUEST_BUDGET_FAILURE)))
+        return 502, {"error": sanitize_error_message("upstream attempt failed (UPSTREAM_ATTEMPT_NOT_SENT)"), "code": "UPSTREAM_ATTEMPT_NOT_SENT", **correlation}
     try:
         result = upstream_client.create_decision_once(
             model=admitted.model_id, state=state, questions=questions, provider_controls=admitted.provider_controls

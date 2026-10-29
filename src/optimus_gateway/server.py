@@ -19,7 +19,7 @@ from optimus_gateway.observability import (
 from optimus_gateway.providers import build_tool_dependencies, build_upstream_client
 from optimus_gateway.responses import handle_responses_request, model_request_log_line
 from optimus_gateway.tool_handlers import TOOL_ROUTE_PATHS, GatewayToolDependencies, handle_tool_request
-from optimus_gateway.upstream_client import UpstreamClient
+from optimus_gateway.upstream_client import UpstreamClient, begin_request_budget, end_request_budget
 
 # P11-FU-6: limits for POSTs to routes this handler rejects with 404 (unknown routes and tool routes
 # without configured dependencies). The early 404 used to be written, and the connection closed,
@@ -34,6 +34,7 @@ _REJECTED_POST_WRITE_SECONDS = 2.0
 _REJECTED_POST_READ_CHUNK = 8192
 _MAX_LENGTH_DIGITS = len(str(_REJECTED_POST_MAX_BYTES))
 _monotonic = time.monotonic
+_CORE_ROUTES = frozenset({"/v1/responses", "/v1/chat/completions", DECISIONS_PATH, "/v1/observability/traces"})
 
 
 class _RejectedPostError(Exception):
@@ -107,18 +108,18 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         path = self.path
         tool_dependencies = self.tool_dependencies
-        if path not in {"/v1/responses", "/v1/chat/completions", DECISIONS_PATH, "/v1/observability/traces"} and not (
-            path in TOOL_ROUTE_PATHS and tool_dependencies is not None
-        ):
+        if path not in _CORE_ROUTES and not (path in TOOL_ROUTE_PATHS and tool_dependencies is not None):
             self._reject_unhandled_post()
             return
 
         # Correction plan v4, C9: one request-scoped diagnostic context per model request, read by `_finish` into the
         # log line and cleared once the reply is sent. Never part of a response.
         request_diagnostics.begin()
+        begin_request_budget()
         try:
             self._handle_post(path, tool_dependencies)
         finally:
+            end_request_budget()
             request_diagnostics.end()
 
     def _handle_post(self, path: str, tool_dependencies: GatewayToolDependencies | None) -> None:
@@ -208,15 +209,23 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
     def _send_json(self, status: HTTPStatus | int, body: dict[str, Any], *, write_deadline: float | None = None) -> None:
         payload = json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8")
         code = int(status)
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(payload)))
-        if write_deadline is not None:
-            self._arm_write_deadline(write_deadline)
-        self.end_headers()
-        if write_deadline is not None:
-            self._arm_write_deadline(write_deadline)
-        self.wfile.write(payload)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            if write_deadline is not None:
+                self._arm_write_deadline(write_deadline)
+            self.end_headers()
+            if write_deadline is not None:
+                self._arm_write_deadline(write_deadline)
+            self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            # The host stopped waiting before the reply. `_finish` already logged the outcome, so one line records the
+            # lost reply instead of an unhandled traceback (#397 live Z2).
+            self.close_connection = True
+            # Only a known route is named: any other request target is the client's text and may carry a secret.
+            route = self.path if self.path in _CORE_ROUTES or self.path in TOOL_ROUTE_PATHS else "unrecognized"
+            request_diagnostics.write_log_line(json.dumps({"event": "reply_undeliverable", "path": route, "status": code}))
 
 
 def serve_gateway(

@@ -512,7 +512,7 @@ def test_planning_read_telemetry_fields_sorts_once_from_evidence():
             path="zeta.py", start_byte=0, end_byte=3, source_sha256="z" * 64, range_text="ZZZ", line_endings="none"
         ),
         PlanningReadEvidence(
-            path="alpha.py", start_byte=2, end_byte=9, source_sha256="a" * 64, range_text="AAAAA", line_endings="none"
+            path="alpha.py", start_byte=2, end_byte=9, source_sha256="a" * 64, range_text="AAAAAAA", line_endings="none"
         ),
     )
     identities, sha256s, byte_counts = planning_read_telemetry_fields(evidence)

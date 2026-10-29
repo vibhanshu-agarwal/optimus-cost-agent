@@ -6,8 +6,11 @@ SHA_A = "a" * 64
 SHA_B = "b" * 64
 
 
-def _read(start: int, end: int, sha: str = SHA_A, path: str = "src/a.py") -> ReadResult:
-    return ReadResult(path=path, start_byte=start, end_byte=end, source_sha256=sha)
+def _read(start: int, end: int, sha: str = SHA_A, path: str = "src/a.py", returned: int | None = None) -> ReadResult:
+    """`returned` is where the returned bytes end, for a range past the end of the file; by default all came back."""
+    return ReadResult(
+        path=path, start_byte=start, end_byte=end, source_sha256=sha, returned_end_byte=end if returned is None else returned
+    )
 
 
 def test_a_fully_covered_re_read_of_unchanged_content_is_not_novel():
@@ -36,6 +39,40 @@ def test_a_changed_file_is_novel_even_for_a_covered_range():
     step = read_step([_read(0, 100, sha=SHA_B)], coverage)
     assert step.novel
     assert step.result_digest == SHA_B
+
+
+def test_a_read_growing_past_the_end_of_an_unchanged_file_is_not_novel():
+    """#432: on an 8-byte file, 0:64 and 0:65 return the same 8 bytes as 0:8."""
+    coverage = ReadCoverage()
+    novelty = [read_step([_read(0, end, returned=8)], coverage).novel for end in (8, 64, 65, 4096)]
+    assert novelty == [True, False, False, False]
+
+
+def test_an_empty_read_past_the_end_is_novel_only_as_the_paths_first_read_or_after_a_change():
+    coverage = ReadCoverage()
+    assert read_step([_read(100, 200, returned=100)], coverage).novel  # the first look shows the file is shorter
+    assert not read_step([_read(200, 300, returned=200)], coverage).novel
+    assert read_step([_read(0, 64, returned=8)], coverage).novel
+    assert not read_step([_read(8, 64, returned=8)], coverage).novel
+    assert read_step([_read(8, 64, sha=SHA_B, returned=8)], coverage).novel
+
+
+def test_first_empty_reads_of_distinct_files_are_each_novel():
+    coverage = ReadCoverage()
+    assert all(read_step([_read(0, 8, path=p, returned=0)], coverage).novel for p in ("a/__init__.py", "b/__init__.py"))
+
+
+def test_a_growing_read_that_returns_bytes_not_yet_seen_is_novel():
+    coverage = ReadCoverage()
+    assert read_step([_read(0, 8)], coverage).novel
+    assert read_step([_read(0, 64, returned=16)], coverage).novel
+    assert not read_step([_read(8, 16)], coverage).novel
+
+
+def test_a_past_the_end_read_keeps_its_requested_range_as_its_identity():
+    step = read_step([_read(0, 64, returned=8, path="status.txt")], ReadCoverage())
+    assert step.fingerprint == "READ:status.txt#bytes=0:64"
+    assert step.subject == "the read of status.txt#bytes=0:64"
 
 
 def test_a_read_fingerprint_is_the_exact_ranges_and_the_digest_their_hashes():

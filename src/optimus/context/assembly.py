@@ -507,6 +507,20 @@ class AttachedTurn:
             raise RuntimeError("an attached turn's attachment is bound before the turn is prepared")
         self._attachment = attachment
 
+    def escalate_attachment(self, target: ContextAttachment) -> None:
+        """A prepared turn moves to its escalation model mid-turn (#397). What is measured in the target's tokens is
+        taken from it: the request estimator and capacity, and the history limits, which come from the same estimator
+        ratio, so `fit()`'s overflow and a repack's view cost share one unit. The turn keeps its own parameters (whose
+        digest keys its checkpoint), summarizer, captured history and admission (its digest stays the turn's historical
+        identity), maintenance allowance, repacks and dispatch readings."""
+        self._attachment = dataclasses.replace(
+            self._attachment,
+            model_id=target.model_id,
+            estimate_request=target.estimate_request,
+            usable_input_tokens=target.usable_input_tokens,
+            limits=target.limits,
+        )
+
     @property
     def model_id(self) -> str:
         return self._attachment.model_id
