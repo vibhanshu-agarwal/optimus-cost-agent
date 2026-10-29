@@ -357,23 +357,34 @@ async def test_idle_requires_actual_flush_and_exact_deadline(composed):
     assert closed == ["peer"] and session.client_mcp_state.suspended
 
 
-async def test_new_prompt_invalidates_late_older_flush(composed):
+@pytest.mark.parametrize("stale", [False, True], ids=["current", "stale"])
+async def test_new_prompt_invalidates_late_older_flush(composed, stale):
+    """Delay delivery observation of an authoritative flush; late physical publication is covered separately."""
     adapter, session, clock, _, _ = composed
     closed = []
     session.client_mcp_state.register_close_hook(lambda: closed.append("peer"), peer=True)
     old = await prompt(adapter, session, defer_response=True)
-    lease = old.turn_control.start_response_send()
-    assert lease.granted and lease.send_key is not None
-    assert old.turn_control.claim_write_started(lease.send_key) is SendState.WRITE_STARTED
-    old.turn_control.finalize_once()
-    await prompt(adapter, session, 2)
-    old.turn_control.publish_authoritative(lease.send_key, SendOutcome.FLUSHED)
-    assert old.turn_control.rpc_response_delivery is RpcResponseDelivery.AMBIGUOUS
-    assert old.turn_control.send_slot(lease.send_key).diagnostic is SendOutcome.FLUSHED
-    adapter.note_turn_delivered(old.turn_control)
-    clock[0] = 1000
+    flush(old.turn_control)
+    current = await prompt(adapter, session, 2, defer_response=True)
+    flush(current.turn_control)
+    assert old.turn_control.rpc_response_delivery is RpcResponseDelivery.FLUSHED
+    assert current.turn_control.rpc_response_delivery is RpcResponseDelivery.FLUSHED
+    idle = adapter._idle_mcp[session.session_id]
+    assert idle.turn_seq == current.turn_control.turn_seq != old.turn_control.turn_seq
+    assert idle.marker_seen and idle.committed is True
+    assert idle.turn_epoch == idle.idle_epoch
+    assert idle.phase == "ACTIVE" and idle.deadline is None
+    assert session.session_id not in adapter._active_turns
+    assert session.client_mcp_state.has_open_peer()
+    adapter.note_turn_delivered(old.turn_control if stale else current.turn_control)
+    assert idle.deadline == (None if stale else 110)
+    clock[0] = 109.999
     await adapter.sweep_idle_mcp_once()
     assert closed == []
+    clock[0] = 110
+    await adapter.sweep_idle_mcp_once()
+    assert closed == ([] if stale else ["peer"])
+    assert session.client_mcp_state.suspended is (not stale)
 
 
 async def test_suspended_chat_stays_suspended_without_permission(composed):

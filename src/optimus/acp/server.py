@@ -1002,6 +1002,7 @@ class AcpStreamServer:
         prompt_queue: asyncio.Queue[tuple[dict[str, Any], Reservation]] = asyncio.Queue(maxsize=limits.pending_items)
         pending_count = 0
         active = [0, 0]
+        prompt_sessions: set[str] = set()
         inbound = AdmissionAccount(count=limits.pending_items + limits.active_prompts + limits.active_requests, bytes=limits.inbound_bytes)
         self._inbound_admission = inbound
         wake = asyncio.Event()
@@ -1009,7 +1010,6 @@ class AcpStreamServer:
         reader_failure: Exception | None = None
         control_task: asyncio.Task[None] | None = None
         request_tasks: set[asyncio.Task[Any]] = set()
-        response_exits: dict[TurnControl, asyncio.Event] = {}
         serving_task = asyncio.current_task()
         serving_loop = asyncio.get_running_loop()
         stop_requested = False
@@ -1071,7 +1071,6 @@ class AcpStreamServer:
             response_handle.finalize_once(completion)
 
         async def submit_via_turn(payload: Mapping[str, Any], turn_control: TurnControl) -> bool:
-            response_exits.setdefault(turn_control, asyncio.Event())
             lease = turn_control.start_response_send()
             if not lease.granted or lease.send_key is None:
                 return False
@@ -1191,12 +1190,7 @@ class AcpStreamServer:
                     session_id = params.get("sessionId") if isinstance(params, dict) else None
                     if message.get("method") == "session/prompt" and isinstance(session_id, str):
                         prior = adapter._active_turns.get(session_id)
-                        if prior is not None and prior.turn_control.rpc_response_delivery is RpcResponseDelivery.FLUSHED:
-                            response_exit = response_exits.get(prior.turn_control)
-                            if response_exit is not None:
-                                # Join only response retirement; physical worker custody can outlive it.
-                                await response_exit.wait()
-                        if session_id in adapter._active_turns:
+                        if prior is not None and prior.turn_control.rpc_response_delivery is not RpcResponseDelivery.FLUSHED:
                             envelope = await adapter.handle_client_request(message)
                             assert isinstance(envelope, NonTurnResponseEnvelope)
                             await submit_via_notice(envelope.response, handle=envelope.response_handle, observe=False)
@@ -1407,17 +1401,21 @@ class AcpStreamServer:
                     await submit_via_notice(error_payload)
 
             finally:
-                control = ownership_slot.turn_control
-                if control is not None:
-                    current_task = asyncio.current_task()
-                    if current_task is not None and current_task.cancelling():
-                        control.request_transport_teardown()
-                    try:
-                        control.finalize_once()
-                    finally:
-                        response_exit = response_exits.pop(control, None)
-                        if response_exit is not None:
-                            response_exit.set()
+                try:
+                    control = ownership_slot.turn_control
+                    if control is not None:
+                        try:
+                            current_task = asyncio.current_task()
+                            if current_task is not None and current_task.cancelling():
+                                control.request_transport_teardown()
+                        finally:
+                            control.finalize_once()
+                finally:
+                    params = message.get("params")
+                    session_id = params.get("sessionId") if isinstance(params, dict) else None
+                    if method == "session/prompt" and isinstance(session_id, str):
+                        prompt_sessions.discard(session_id)
+                    wake.set()
 
         async def owned_request(message: dict[str, Any], operation_id: str) -> None:
             workers: set[asyncio.Task[Any]] = set()
@@ -1454,8 +1452,17 @@ class AcpStreamServer:
                         raise reader_failure
                     break
                 for index, (target, capacity) in enumerate(((message_queue, limits.active_requests), (prompt_queue, limits.active_prompts))):
-                    while active[index] < capacity and not target.empty():
-                        message, reservation = message_queue.get_nowait() if index == 0 else prompt_queue.get_nowait()
+                    # Complete the rotation even at capacity so deferred prompts keep FIFO order.
+                    for _ in range(target.qsize()):
+                        message, reservation = target.get_nowait()
+                        params = message.get("params")
+                        session_id = params.get("sessionId") if isinstance(params, dict) else None
+                        if active[index] >= capacity or (index == 1 and isinstance(session_id, str)
+                                and session_id in prompt_sessions):
+                            target.put_nowait((message, reservation))
+                            continue
+                        if index == 1 and isinstance(session_id, str):
+                            prompt_sessions.add(session_id)
                         pending_count -= 1
                         active[index] += 1
                         def release_request(task: asyncio.Task[Any], *, reservation: Reservation = reservation, index: int = index) -> None:
