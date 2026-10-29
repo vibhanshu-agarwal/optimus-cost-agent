@@ -1454,12 +1454,16 @@ class AcpStreamServer:
                 for index, (target, capacity) in enumerate(((message_queue, limits.active_requests), (prompt_queue, limits.active_prompts))):
                     # Complete the rotation even at capacity so deferred prompts keep FIFO order.
                     for _ in range(target.qsize()):
-                        message, reservation = target.get_nowait()
+                        # Keep concrete receivers visible to the source-bound queue inventory.
+                        message, reservation = message_queue.get_nowait() if index == 0 else prompt_queue.get_nowait()
                         params = message.get("params")
                         session_id = params.get("sessionId") if isinstance(params, dict) else None
                         if active[index] >= capacity or (index == 1 and isinstance(session_id, str)
                                 and session_id in prompt_sessions):
-                            target.put_nowait((message, reservation))
+                            if index == 0:
+                                message_queue.put_nowait((message, reservation))
+                            else:
+                                prompt_queue.put_nowait((message, reservation))
                             continue
                         if index == 1 and isinstance(session_id, str):
                             prompt_sessions.add(session_id)
