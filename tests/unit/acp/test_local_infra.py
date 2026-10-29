@@ -376,6 +376,97 @@ def _ensure_gateway_kwargs(**overrides: object) -> dict[str, object]:
     return defaults
 
 
+@pytest.mark.parametrize("stop_error", [False, True])
+def test_interrupted_post_popen_readiness_retains_failure_and_stops_owned_child(tmp_path, monkeypatch, stop_error):
+    calls = []
+    primary = KeyboardInterrupt()
+    cause = ValueError("original cause")
+    primary.__cause__ = cause
+
+    class Process:
+        pid = 4321
+        returncode = None
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            calls.append("terminate")
+            self.returncode = 0
+
+        def wait(self, *, timeout):
+            calls.append(("wait", timeout))
+            if stop_error:
+                raise OSError("stop observation failed")
+            return self.returncode
+
+    process = Process()
+    monkeypatch.setattr(local_infra.subprocess, "Popen", lambda *_a, **_k: process)
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: False)
+
+    def interrupted(_seconds):
+        raise primary
+
+    monkeypatch.setattr(local_infra.time, "sleep", interrupted)
+    with pytest.raises(KeyboardInterrupt) as raised:
+        local_infra.ensure_local_gateway(**_ensure_gateway_kwargs(), runtime_root=tmp_path / ".optimus")
+    assert raised.value is primary
+    assert primary.__cause__ is cause
+    assert calls == ["terminate", ("wait", 5)]
+    if stop_error:
+        assert any("gateway" in note for note in primary.__notes__)
+
+
+def test_gateway_stop_interrupted_observer_rejoins_one_physical_stop(monkeypatch):
+    import threading
+
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+
+    class Process:
+        returncode = None
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            calls.append("terminate")
+
+        def wait(self, *, timeout):
+            calls.append(("wait", timeout))
+            entered.set()
+            assert release.wait(5)
+            self.returncode = 0
+            return 0
+
+    handle = local_infra.LocalGatewayProcess(Process(), None)
+    assert hasattr(handle, "stop_pending"), "an interrupted observer must retain the same physical stop"
+    real_join = threading.Thread.join
+    interrupted = False
+
+    def join(thread, timeout=None):
+        nonlocal interrupted
+        if thread.name == "optimus-gateway-stop" and not interrupted:
+            interrupted = True
+            raise KeyboardInterrupt
+        return real_join(thread, timeout)
+
+    monkeypatch.setattr(threading.Thread, "join", join)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            handle.stop()
+        assert entered.wait(2)
+        assert handle.stop_pending
+        release.set()
+        handle.stop()
+        handle.stop()
+        assert calls == ["terminate", ("wait", 5)]
+        assert not handle.stop_pending
+    finally:
+        release.set()
+        handle.stop()
+
+
 def test_ensure_local_gateway_noops_when_already_reachable(tmp_path, monkeypatch) -> None:
     popen_calls: list[object] = []
     monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)

@@ -28,6 +28,8 @@ class TelemetryEventKind(StrEnum):
     GOLDEN_TASK = "golden_task"
     RELEASE_GATE = "release_gate"
     GOAL_LOOP = "goal_loop"
+    LOOP_RECOVERY = "loop_recovery"
+    AUTO_ROUTING = "auto_routing"
     SKILL_SELECTION = "skill_selection"
     SKILL_INVOCATION = "skill_invocation"
     AGENT_RUN = "agent_run"
@@ -536,6 +538,60 @@ class TelemetryEvent(BaseModel):
         )
 
     @classmethod
+    def loop_recovery(
+        cls,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        occurred_at: datetime,
+        record: str,
+        signal: str,
+        planning_step: int,
+        decision: str | None = None,
+        escalation: tuple[str, str, bool] | None = None,
+    ) -> TelemetryEvent:
+        """One interactive loop detection, escalation (#397) or check-in decision (Plan 12.3). Content-free: the
+        signal is a fixed kind, never a path, tool, argument or reply text. A granted escalation adds its
+        ``(from_model, to_model, notice_delivered)``."""
+        payload: dict[str, Any] = {"record": record, "signal": signal, "planning_step": planning_step}
+        if decision is not None:
+            payload["decision"] = decision
+        if escalation is not None:
+            payload["from_model"], payload["to_model"], payload["notice_delivered"] = escalation
+        return cls(
+            kind=TelemetryEventKind.LOOP_RECOVERY,
+            run_id=run_id,
+            trace_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=occurred_at,
+            payload=payload,
+        )
+
+    @classmethod
+    def auto_routing(
+        cls,
+        *,
+        run_id: str,
+        session_id: str | None,
+        request_id: str,
+        occurred_at: datetime,
+        record: dict[str, Any],
+    ) -> TelemetryEvent:
+        """One Auto turn's routing record (Plan 12.4 Task 5). Content-free: fixed kinds, tiers, a confidence band and the
+        model ID, never the prompt, the classifier's input or answer text, or a confidence value."""
+        return cls(
+            kind=TelemetryEventKind.AUTO_ROUTING,
+            run_id=run_id,
+            trace_id=run_id,
+            session_id=session_id,
+            request_id=request_id,
+            occurred_at=occurred_at,
+            payload=dict(record),
+        )
+
+    @classmethod
     def agent_run(
         cls,
         *,
@@ -549,6 +605,7 @@ class TelemetryEvent(BaseModel):
         total_cost_usd: Decimal,
         mutation_count: int,
         stop_reason: str | None,
+        edit_failure_code: str | None = None,
         matched_skills: tuple[str, ...] = (),
         execution_mode: str = "AGENT",
         generation_scope: str = "FILE_MUTATION",
@@ -570,6 +627,7 @@ class TelemetryEvent(BaseModel):
                 "total_cost_usd": total_cost_usd,
                 "mutation_count": mutation_count,
                 "stop_reason": stop_reason,
+                "edit_failure_code": edit_failure_code,
                 "matched_skills": matched_skills,
                 "execution_mode": execution_mode,
                 "generation_scope": generation_scope,

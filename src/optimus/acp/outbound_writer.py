@@ -84,6 +84,7 @@ class OutboundQueueItem:
     writer_token: WriterToken | None = None
     handle: Any | None = None
     prepare_error: BaseException | None = None
+    encoded_payload: bytes | None = None
 
 
 _SENTINEL = object()
@@ -115,6 +116,10 @@ class DedicatedOutboundWriter:
         self._join_lock = threading.Lock()
         self._joined = False
 
+    @property
+    def thread_alive(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
     def start(self) -> None:
         if self._started:
             return
@@ -127,22 +132,33 @@ class DedicatedOutboundWriter:
         self._thread.start()
 
     def submit(self, item: OutboundQueueItem) -> concurrent.futures.Future[SendCompletion]:
-        if self._closed:
-            raise RuntimeError("dedicated outbound writer is closed")
-        if not self._started:
-            raise RuntimeError("dedicated outbound writer not started")
-        self._queue.put(item)
+        with self._join_lock:
+            if self._closed:
+                raise RuntimeError("dedicated outbound writer is closed")
+            if not self._started:
+                raise RuntimeError("dedicated outbound writer not started")
+            self._queue.put_nowait(item)
         return item.source_future
 
-    def close_and_join(self) -> None:
+    def request_close(self) -> None:
         with self._join_lock:
-            if self._joined:
+            if self._closed:
                 return
             self._closed = True
-            self._queue.put(_SENTINEL)
-            if self._thread is not None:
-                self._thread.join()
+            self._queue.put_nowait(_SENTINEL)
+
+    def observe_closed(self, timeout: float | None) -> bool:
+        thread = self._thread
+        if thread is not None:
+            thread.join(timeout)
+        joined = thread is None or not thread.is_alive()
+        if joined:
             self._joined = True
+        return joined
+
+    def close_and_join(self) -> None:
+        self.request_close()
+        self.observe_closed(None)  # explicit blocking compatibility path; never under admission lock
 
     def _run(self) -> None:
         while True:
@@ -171,9 +187,9 @@ class DedicatedOutboundWriter:
                 item.writer_token.release()
             return
 
-        payload_bytes: bytes | None = None
+        payload_bytes: bytes | None = item.encoded_payload
         preparation_error: BaseException | None = item.prepare_error
-        if preparation_error is None:
+        if preparation_error is None and payload_bytes is None:
             try:
                 payload_bytes = (
                     json.dumps(dict(item.payload), separators=(",", ":")) + "\n"

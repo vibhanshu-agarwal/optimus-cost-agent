@@ -41,6 +41,7 @@ from optimus.gateway.attempts import (
     attempts_from_failure,
     attempts_from_response,
     first_error,
+    stops_experimental_route,
 )
 from optimus.gateway.models import GatewayUsage
 from optimus_model_policy.binding import RouteBinding
@@ -93,6 +94,9 @@ class SummarizerResponse:
     attempts: tuple[SummarizerAttempt, ...]
     integrity_error: AttemptIntegrityError | None = None
     diagnostic: Callable[[], None] | None = field(default=None, compare=False, repr=False)
+    route_stopped: bool = False
+    """The request's failure proved its experimental route stopped (#400): a host fact for the turn's user text only,
+    never a summary fact, an accounting input or a reason the engine sees."""
 
 
 class SummarizerCall(Protocol):
@@ -170,6 +174,8 @@ class HostMaintenance:
         self._record = record_receipt
         self._cancelled = cancelled
         self._clock = clock
+        # Sticky: a call's failure proved the shared experimental route stopped; it never restarts (#400).
+        self.route_stopped = False
 
     def __call__(self, request: MaintenanceRequest) -> MaintenanceResult:
         if request.prompt_version != PROMPT_VERSION or request.format_version != SUMMARY_FORMAT:
@@ -177,6 +183,8 @@ class HostMaintenance:
         if self._cancelled():
             return MaintenanceResult(summary_text=None, attempt_ids=(), status="cancelled", finish_status=None)
         response = self._call(prompt=build_summary_prompt(request.input_text), max_output_tokens=request.max_output_tokens)
+        if response.route_stopped:
+            self.route_stopped = True
         # Every attempt is offered to the sink even if an earlier one is refused; the first refusal,
         # then any integrity error, is raised only after all were recorded (Codex CP3 correction ruling
         # C2): a reported charge is never dropped because its report or a sibling receipt failed. Only
@@ -254,6 +262,9 @@ class GatewaySummarizerCall:
     `bind(request_id, input_text, output_cap)` returns the request's route binding (with its
     Contributor disclosure, noticed first, where required) or None when a required notice was not
     delivered: then nothing is sent. Without `bind` no binding is sent (registry enforcement inactive).
+    `experimental`: the trusted snapshot names this route experimental, so a stop-tripping failure proves it
+    stopped (#400). `model_stops`, an Auto launch's stop set (Plan 12.4 Task 4), is told each proven stop and
+    checked before any call: a stopped model is never sent another request.
     """
 
     def __init__(
@@ -265,6 +276,8 @@ class GatewaySummarizerCall:
         request_ids: Callable[[], str],
         bind: Callable[[str, str, int], RouteBinding | None] | None = None,
         attempt_observer: Callable[..., None] | None = None,
+        experimental: bool = False,
+        model_stops: Any | None = None,
     ) -> None:
         self._client = gateway_client
         self._model_id = model_id
@@ -272,9 +285,16 @@ class GatewaySummarizerCall:
         self._request_ids = request_ids
         self._bind = bind
         self._attempt_observer = attempt_observer
+        self._experimental = experimental
+        self._model_stops = model_stops
 
     def __call__(self, *, prompt: str, max_output_tokens: int) -> SummarizerResponse:
         request_id = self._request_ids()
+        if self._model_stops is not None and self._model_id in self._model_stops:
+            # Plan 12.4 Task 4: a model this launch proved stopped is never called again; the turn reads it as a stopped route.
+            unsent = SummarizerAttempt(attempt_id=f"{request_id}:1", gateway_request_id=None, outcome="not_sent", cost_usd=Decimal("0"))
+            skipped = SummarizerResponse(text=None, finish_status=None, attempts=(unsent,), route_stopped=True)
+            return self._observed(request_id, (), skipped, reason="summary_model_stopped")
         binding = None
         if self._bind is not None:
             binding = self._bind(request_id, prompt, max_output_tokens)
@@ -289,13 +309,16 @@ class GatewaySummarizerCall:
                 model=self._model_id, input_text=prompt, metadata=metadata, route_binding=binding
             )
         except Exception as exc:  # noqa: BLE001 - every failure is classified; transport loss stays unknown
+            # Evaluated first, so the integrity branch below records a proven stop too (Plan 12.4 Task 4).
+            stopped = stops_experimental_route(exc, experimental=self._experimental)
+            if stopped and self._model_stops is not None:
+                self._model_stops.add(self._model_id)
             try:
                 provider = attempts_from_failure(exc)
             except AttemptIntegrityError as error:
                 return self._observed(request_id, error.attempts, _unattributable(request_id, error), failure=exc)
-            return self._observed(
-                request_id, provider, SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, provider)), failure=exc
-            )
+            failed = SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, provider), route_stopped=stopped)
+            return self._observed(request_id, provider, failed, failure=exc)
         try:
             provider = attempts_from_response(response)
         except AttemptIntegrityError as error:
@@ -367,6 +390,7 @@ def gateway_summarizer_factory(
     snapshot: Any | None,
     disclosure_key: bytes | None,
     attempt_observer: Callable[..., None] | None = None,
+    model_stops: Any | None = None,
 ) -> SummarizerFactory:
     """The production summarizer for an attachment: one `GatewaySummarizerCall` per turn.
 
@@ -385,12 +409,15 @@ def gateway_summarizer_factory(
     else raises `RouteIdentityError` before a request exists, so no attempt is ever relabelled."""
     from optimus.gateway.disclosure import ContributorDisclosure
     from optimus.gateway.route_binding import RouteIdentityError, registry_route_identity
+    from optimus_model_policy.experimental import experimental_route
 
     configured = (route.model_id, route.role, route.route, route.reasoning, route.quantizations)
     if snapshot is not None:
         trusted = registry_route_identity(snapshot, model_id=route.model_id, role=route.role)
         if configured != (trusted.model_id, trusted.role, trusted.route, trusted.reasoning, trusted.quantizations):
             raise RouteIdentityError("the summarizer route does not match the trusted registry")
+    # Read from the trusted snapshot only, as the planner's binder does (route_binding.TurnRouteBinder).
+    experimental = snapshot is not None and experimental_route(snapshot, route.model_id) is not None
 
     def bind_turn(identity: MaintenanceIdentity, deliver_notice: Callable[[str], bool]) -> SummarizerCall:
         captured = (identity.model_id, identity.role, identity.route, identity.reasoning, identity.quantizations)
@@ -417,6 +444,8 @@ def gateway_summarizer_factory(
             request_ids=request_ids,
             bind=bind,
             attempt_observer=attempt_observer,
+            experimental=experimental,
+            model_stops=model_stops,
         )
 
     return bind_turn

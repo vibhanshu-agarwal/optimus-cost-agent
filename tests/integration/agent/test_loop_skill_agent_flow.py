@@ -3,7 +3,6 @@ from decimal import Decimal
 from optimus.agent.models import AgentRunRequest
 from optimus.agent.runner import AgentRunner
 from optimus.gateway.models import GatewayResponse, GatewayUsage
-from optimus.loops.models import IterationOutcome, IterationState
 from optimus.runtime.modes import ExecutionMode
 from optimus.telemetry.events import TelemetryEventKind
 
@@ -30,16 +29,11 @@ Run the narrow failing test first, inspect the failure, then patch the smallest 
 """
 
 
-class CompleteOnFirstIteration:
-    def run_iteration(self, state: IterationState, tools) -> IterationOutcome:
-        return IterationOutcome(summary="pytest tests green", deterministic_completion=True)
-
-
 class FakeGatewayClient:
     def create_response(self, *, model: str, input_text: str, metadata=None) -> GatewayResponse:
         return GatewayResponse(
             response_id="resp-1",
-            output_text="plan",
+            output_text="REFUSE: The failing test is not in the workspace.",
             gateway_usage=GatewayUsage(
                 gateway_request_id="gw-1",
                 provider="glm",
@@ -50,7 +44,8 @@ class FakeGatewayClient:
         )
 
 
-def test_loop_skill_agent_flow_emits_skill_selection_and_completed_stop_reason(tmp_path):
+def test_skill_agent_flow_emits_skill_selection_and_its_stop_reason(tmp_path):
+    """A one-shot Agent run (Plan 12.3 retired the goal loop this test used to drive)."""
     skill_path = tmp_path / "skills" / "pytest" / "SKILL.md"
     skill_path.parent.mkdir(parents=True)
     skill_path.write_text(SKILL_TEXT, encoding="utf-8")
@@ -59,7 +54,6 @@ def test_loop_skill_agent_flow_emits_skill_selection_and_completed_stop_reason(t
         gateway_client=FakeGatewayClient(),
         model="glm-5.2",
         event_sink=events.append,
-        loop_iteration_runner=CompleteOnFirstIteration(),
     )
 
     result = runner.run(
@@ -69,13 +63,12 @@ def test_loop_skill_agent_flow_emits_skill_selection_and_completed_stop_reason(t
             execution_mode=ExecutionMode.AGENT,
             workspace_root=tmp_path,
             skill_paths=(skill_path,),
-            completion_condition="pytest tests pass",
         )
     )
 
-    assert result.stop_reason == "COMPLETED"
+    assert result.stop_reason == "PLANNING_MODEL_REFUSED"
     assert any(event.kind is TelemetryEventKind.SKILL_SELECTION for event in events)
     assert any(event.kind is TelemetryEventKind.AGENT_RUN for event in events)
     agent_run = next(event for event in events if event.kind is TelemetryEventKind.AGENT_RUN)
     assert agent_run.payload["matched_skills"] == ("pytest-debugging",)
-    assert agent_run.payload["stop_reason"] == "COMPLETED"
+    assert agent_run.payload["stop_reason"] == "PLANNING_MODEL_REFUSED"

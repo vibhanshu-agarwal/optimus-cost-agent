@@ -117,6 +117,8 @@ optimus-agent --workspace-root . --no-auto-start
 
 Or drive the same agent with an independently authored external `acpx` client whose agent command includes `optimus-agent --no-auto-start`. Do not start a second Gateway from Terminal B.
 
+**Auto mode (opt-in, Plan 12.4):** when the agent's environment sets `OPTIMUS_AGENT_MODEL=auto` (for example in the IDE's agent server settings), start Terminal A with `run-gateway --with-local-phoenix --auto`, under a durable approval made with that setting in place. An ordinary Gateway refuses an Auto agent's calls (`REGISTRY_HASH_MISMATCH`), and the reverse also holds. See `README.md`, "Auto mode".
+
 ---
 
 ## 7. Real evidence commands
@@ -128,7 +130,7 @@ uv run --frozen pytest tests/integration/agent/test_redis_live_agent.py -m requi
 uv run --frozen pytest tests/integration/telemetry/test_phoenix_live.py -m requires_phoenix -q
 ```
 
-The legacy live Gateway harnesses (`test_gateway_live.py` and `test_gateway_live_smoke.py`) were retired by Plan 12.2 R-4 (see #237): they predate route binding, and an enforced Gateway refuses their unbound requests. The ordinary chat path is live-verified through `acpx` by Plan 12.2's D1(b) run (#237). The remaining live agent tiers are the process tier (`tests/e2e/acp/test_spawned_agent_live.py` and `python tools/verify_live_agent.py`, which drive the agent through this project's own ACP client) and the independent-client `acpx` tools, such as the one below; the `e2e` marker selects tests of both kinds. Live AGENT-mode evidence through `acpx` on the enforced registry is not yet established; see #237.
+The legacy live Gateway harnesses (`test_gateway_live.py` and `test_gateway_live_smoke.py`) were retired by Plan 12.2 R-4 (see #237): they predate route binding, and an enforced Gateway refuses their unbound requests. The ordinary chat path is live-verified through `acpx` by Plan 12.2's D1(b) run (#237). The remaining live agent tiers are the process tier (`tests/e2e/acp/test_spawned_agent_live.py` and `python tools/verify_live_agent.py`, which drive the agent through this project's own ACP client) and the independent-client `acpx` tools, such as the one below; the `e2e` marker selects tests of both kinds. Live AGENT-mode evidence through `acpx` on the enforced registry was established on 2026-10-24 by #387 run 5 (main `f4b804f1`): a plan, its approval and a byte-exact EDIT of a CRLF file; see #387.
 
 External `acpx` cost-observability capture (independent-client tier; a separate consolidated-launcher exercise that opts into Phoenix itself):
 

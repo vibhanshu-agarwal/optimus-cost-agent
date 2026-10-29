@@ -16,7 +16,6 @@ def test_agent_run_request_requires_run_id_task_and_workspace(tmp_path):
         workspace_root=tmp_path,
         approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash="hash-1"),
         max_cost_usd=Decimal("0.05"),
-        completion_condition="example.py contains a docstring",
     )
 
     assert request.workspace_root == tmp_path.resolve()

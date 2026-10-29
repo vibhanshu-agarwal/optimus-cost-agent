@@ -30,6 +30,7 @@ from optimus.acp.settlement import EffectState
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.runtime.modes import ExecutionMode
+from tests.support.contract_doubles import checked_agent_runner
 
 # Text the JSON encoder must escape or encode as several UTF-8 bytes.
 _AWKWARD = 'é ü 漢字 😀 "quoted" back\\slash tab\tnew\nline </script>  '
@@ -207,7 +208,7 @@ async def _rpc(adapter: AcpDuplexAdapter, request: dict[str, Any]) -> dict[str, 
 async def test_both_modes_send_the_model_order_to_the_planner(tmp_path: Path) -> None:
     runner = _EnvelopeRunner()
     adapter = AcpDuplexAdapter(
-        runner=runner,
+        runner=checked_agent_runner(runner),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=RecordingOutboundChannel(),

@@ -294,7 +294,7 @@ def write_evidence_sidecar(
             f"{destination} already holds different sealed evidence; refusing to replace it"
         )
     descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{reference.location}.", suffix=".tmp", dir=str(target)
+        prefix=".evidence-", suffix=".tmp", dir=str(target)
     )
     temporary = Path(temporary_name)
     try:

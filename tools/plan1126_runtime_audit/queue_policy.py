@@ -332,9 +332,9 @@ class _QueueVisitor(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call) -> None:
         name = _attribute_name(node.func)
         receiver, _, method = name.rpartition(".")
-        if receiver and method == "put":
+        if receiver and method in {"put", "put_nowait"}:
             self.queue_operations.append(self._site(node, QueueSiteKind.QUEUE_ADMISSION, receiver))
-        elif receiver and method == "get":
+        elif receiver and method in {"get", "get_nowait"}:
             self.queue_operations.append(self._site(node, QueueSiteKind.QUEUE_CONSUMER, receiver))
         health = {
             "aioredis.ConnectionPool.from_url": QueueSiteKind.POOL_CONSTRUCTOR,

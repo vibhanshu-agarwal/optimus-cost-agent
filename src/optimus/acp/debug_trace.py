@@ -25,6 +25,8 @@ from optimus_security.failure_facts import (
     UNRECOGNIZED,
     bounded,
     bounded_failure,
+    bounded_guardrail_list,
+    exception_fact,
     final_sanitize,
     gateway_request_id,
     host_route_id,
@@ -317,11 +319,12 @@ def _attempt_fields(attempt: ProviderAttempt) -> dict[str, Any]:
     record's is the outer host-to-Gateway status, kept apart so a Gateway 502 never reads as an upstream one.
     ``router_pipeline`` is the allowlisted router stage types the Gateway reported; ``gateway_request_id`` and
     ``provider_request_id`` are the correlation ids, each kept only in its own generated shape (correction plan v4,
-    C1); ``failure`` is the attempt's re-bounded cause. Each is None when not reported."""
+    C1); ``failure`` is the attempt's re-bounded cause. Each is None when not reported. ``router_guardrails``, each
+    guardrail stage's re-bounded facts (#400), is added only when the Gateway reported them."""
     routed = attempt.routed is True
     status = _status(attempt.http_status)
     stages = attempt.router_pipeline
-    return {
+    fields = {
         "attempt": attempt.key,
         "outcome": attempt.outcome,
         "routed": routed,
@@ -332,6 +335,9 @@ def _attempt_fields(attempt: ProviderAttempt) -> dict[str, Any]:
         "provider_request_id": provider_request_id(attempt.provider_request_id),
         "failure": bounded_failure(attempt.failure),
     }
+    if attempt.router_guardrails is not None:
+        fields["router_guardrails"] = bounded_guardrail_list(attempt.router_guardrails)
+    return fields
 
 
 _CORRELATION_IDS: dict[str, Callable[[object], str | None]] = {"run_id": host_route_id, "session_id": host_session_id, "request_id": host_route_id}
@@ -367,7 +373,7 @@ def _emit_failure(
 
 
 # Causes a diagnostic can record without an exception (Codex round 13 finding 2).
-TRACE_REASONS = frozenset({"summary_disclosure_undelivered"})
+TRACE_REASONS = frozenset({"summary_disclosure_undelivered", "summary_model_stopped"})
 
 
 def log_provider_attempts(
@@ -435,7 +441,8 @@ def log_provider_attempts(
 # Fixed admission refusal reasons (optimus.acp.conversation and spec's fallback).
 PROMPT_REFUSAL_REASONS = frozenset({"cap", "cap_closed", "reservation", "delivery_indeterminate", "refused"})
 # Fixed refusals of a prompt request before any turn starts (spec `_handle_session_prompt`, correction plan v4 C5).
-PRE_RUN_REFUSAL_REASONS = frozenset({"invalid_params", "invalid_prompt_shape", "unknown_session", "empty_prompt", "turn_in_progress"})
+PRE_RUN_REFUSAL_REASONS = frozenset({"invalid_params", "invalid_prompt_shape", "unknown_session", "empty_prompt", "turn_in_progress",
+                                   "mcp_reopen_refused", "mcp_cleanup_uncertain", "mcp_reopen_in_progress", "mcp_closing"})
 
 
 def _refusal_record(session_id: object, request_id: object, reason: str, allowed: frozenset[str]) -> dict[str, Any]:
@@ -490,6 +497,45 @@ def log_context_fault(*, run_id: str, phase: str, category: str, detail: str | N
         run = record["run_id"]
         session = host_session_id(run.split(":")[0]) if run not in (None, UNRECOGNIZED) else None
         _emit_failure(telemetry, error_type="context_fault", record=record, run_id=run, session_id=session, request_id=None)
+    except Exception:  # noqa: BLE001 - a diagnostic never fails the turn
+        return
+
+
+# An Auto turn refused before any answer call, or routed by the classifier-failure rule (Plan 12.4 Task 4).
+AUTO_ROUTE_REASONS = frozenset(
+    {
+        "AUTO_NO_ROUTABLE_MODEL",
+        "ACCOUNTING_INTEGRITY",
+        "timeout",
+        "invalid_answer",
+        "abstention",
+        "stopped_classifier",
+        "error",
+    }
+)
+
+
+def log_auto_route(
+    *, run_id: str, outcome: str, reason: str, telemetry: JsonlTelemetryWriter | None = None, failure: BaseException | None = None
+) -> None:
+    """An Auto turn's refusal (``outcome`` refused), classifier failure (``outcome`` failure_rule) or escalation that
+    could not be prepared (``outcome`` escalation_failed, #397, with ``failure``'s class facts) with its bounded reason,
+    in the trace and the always-on ``auto_route`` event. Never the prompt, the classifier's input or an error's text."""
+
+    def data() -> dict[str, Any]:
+        record: dict[str, Any] = {"run_id": host_route_id(run_id), "outcome": outcome, "reason": bounded(reason, AUTO_ROUTE_REASONS)}
+        if failure is not None:
+            record["failure"] = exception_fact(failure)
+        return record
+
+    acp_debug_log(location="debug_trace.py:log_auto_route", message="auto route", data=data, hypothesis_id="P12.4-AUTO")
+    if telemetry is None:
+        return
+    try:
+        record = data()
+        run = record["run_id"]
+        session = host_session_id(run.split(":")[0]) if run not in (None, UNRECOGNIZED) else None
+        _emit_failure(telemetry, error_type="auto_route", record=record, run_id=run, session_id=session, request_id=None)
     except Exception:  # noqa: BLE001 - a diagnostic never fails the turn
         return
 

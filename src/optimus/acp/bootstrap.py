@@ -6,13 +6,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from optimus.acp.auto_composition import auto_router
 from optimus.acp.context_attachment import ordinary_attachment, ordinary_route_policy
 from optimus.acp.debug_trace import log_planning_replan_event, log_provider_attempts, log_workspace_context_result
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.failure_notes import attach_failure_note
 from optimus.acp.harness_runtime import AgentHarnessRuntime
+from optimus.acp.launch_policy import resolve_acp_mcp_idle_seconds
 from optimus.acp.server import AcpStreamServer
-from optimus.acp.spec import resolve_max_planning_turns
+from optimus.acp.spec import resolve_interactive_recovery, resolve_max_planning_turns
 from optimus.acp.subprocess_env import system_environ_view
 from optimus.agent.defaults import resolve_agent_model
 from optimus.agent.runner import AgentRunner
@@ -27,6 +29,7 @@ from optimus.telemetry.redis_sink import RedisTelemetryEventSink
 from optimus_model_policy.binding import trusted_snapshot
 
 if TYPE_CHECKING:
+    from optimus.acp.auto_composition import AutoComposition
     from optimus.acp.stage_c import StageCLaunch
     from optimus.acp.test_composition import TestComposition
 
@@ -85,6 +88,7 @@ def build_agent_harness_runtime(
     model: str | None = None,
     gateway_timeout_seconds: float | None = None,
     test_composition: TestComposition | None = None,
+    auto_composition: AutoComposition | None = None,
 ) -> AgentHarnessRuntime:
     """
     Builds an AgentRunner and the Redis runtime it runs on, as ONE owned lifetime.
@@ -146,8 +150,15 @@ def build_agent_harness_runtime(
         attempt_observer = functools.partial(log_provider_attempts, telemetry=telemetry_writer)
 
         # A reviewed test composition (release supplement V2) fixes the exact eligible model; without
-        # one, today's resolution against the installed trusted snapshot.
-        agent_model = test_composition.agent_model(environ, cli_model=model) if test_composition is not None else resolve_agent_model(environ, cli_model=model)
+        # one, today's resolution against the installed trusted snapshot, or the Auto composition when there is
+        # one; an Auto launch's runner holds the default planner for non-Auto paths only, since each Auto turn sends
+        # its own selected model (Plan 12.4 Task 4).
+        if test_composition is not None:
+            agent_model = test_composition.agent_model(environ, cli_model=model)
+        elif auto_composition is not None:
+            agent_model = auto_composition.default_model()
+        else:
+            agent_model = resolve_agent_model(environ, cli_model=model)
         agent_runner = AgentRunner(
             gateway_client=gateway_client,
             model=agent_model,
@@ -174,6 +185,7 @@ def build_configured_server(
     gateway_timeout_seconds: float | None = None,
     test_composition: TestComposition | None = None,
     stage_c: StageCLaunch | None = None,
+    auto_composition: AutoComposition | None = None,
 ) -> AcpStreamServer:
     """
     Builds and configures an `AcpStreamServer` instance with the specified environment
@@ -208,12 +220,14 @@ def build_configured_server(
     :return: A fully configured instance of `AcpStreamServer`.
     :rtype: AcpStreamServer
     """
+    mcp_idle_seconds = resolve_acp_mcp_idle_seconds(environ)
     harness = build_agent_harness_runtime(
         environ=environ,
         workspace_root=Path(workspace_root or "."),
         model=model,
         gateway_timeout_seconds=gateway_timeout_seconds,
         test_composition=test_composition,
+        auto_composition=auto_composition,
     )
     client_mcp_runtime = None
     try:
@@ -231,6 +245,9 @@ def build_configured_server(
         # authorized/sanitized) agent environ passed into this function, rather
         # than read from os.environ per-request deep inside AcpDuplexAdapter.
         max_planning_turns = resolve_max_planning_turns(environ)
+        # Plan 12.3, Design 6: an ordinary launch's prompts default to interactive loop recovery; a reviewed
+        # test composition (Stage C, qualification) has no one to ask and defaults to headless.
+        interactive_recovery = resolve_interactive_recovery(environ, caller_default=test_composition is None)
         # Seam 3: the same rule as resolve_max_planning_turns above, and the invariant
         # __main__ documents -- every downstream helper reads captured input, never
         # os.environ. The MCP path was the one that still escaped it. The system view
@@ -252,10 +269,19 @@ def build_configured_server(
         # ordinary launch binds through the enforced shipped registry the same way, for the resolved model.
         route_policy = None
         ordinary_snapshot = None
+        auto = None
         if test_composition is not None:
             route_policy = test_composition.route_policy(
                 model_id=test_composition.agent_model(environ, cli_model=model),
                 shared_secret=settings.optimus_api_key.get_secret_value(),
+            )
+        elif auto_composition is not None:
+            # Plan 12.4 Task 4: the approved Auto composition binds each turn's route and attachment itself.
+            auto = auto_router(
+                auto_composition,
+                gateway_client=gateway_client,
+                shared_secret=settings.optimus_api_key.get_secret_value(),
+                attempt_observer=harness.attempt_observer,
             )
         else:
             ordinary_snapshot = trusted_snapshot()
@@ -297,13 +323,16 @@ def build_configured_server(
         return AcpStreamServer(
             dispatcher=dispatcher,
             max_planning_turns=max_planning_turns,
+            interactive_recovery=interactive_recovery,
             client_mcp_runtime=client_mcp_runtime,
+            mcp_idle_seconds=mcp_idle_seconds,
             conversation_sanitizer_inputs=conversation_sanitizer_inputs,
             redis_runtime=harness.redis_runtime,
             route_policy=route_policy,
             context_attachment=context_attachment,
             session_seeder=session_seeder,
             failure_telemetry=harness.telemetry_writer,
+            auto_router=auto,
         )
     except BaseException as exc:
         # Composition failed after the harness (and possibly the client-MCP runtime)

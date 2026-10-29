@@ -19,6 +19,7 @@ from optimus.usage.turn_settlement import (
     TurnSettlement,
     receipt_from_maintenance,
 )
+from tests.support.contract_doubles import checked_agent_runner
 
 AT = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
 
@@ -316,7 +317,7 @@ async def test_a_configured_alert_is_shown_once_and_refuses_nothing(tmp_path):
 
     outbound = RecordingOutboundChannel()
     adapter = AcpDuplexAdapter(
-        runner=_ReceiptRunner(),
+        runner=checked_agent_runner(_ReceiptRunner()),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -476,7 +477,7 @@ def test_a_daily_alert_policy_is_refused_by_a_host_without_a_reconciled_ledger(t
 
     with pytest.raises(ValueError, match="reconciled durable ledger"):
         AcpDuplexAdapter(
-            runner=_ReceiptRunner(),
+            runner=checked_agent_runner(_ReceiptRunner()),
             workspace_root=tmp_path,
             sessions=InMemoryAcpSpecSessionStore(),
             outbound=RecordingOutboundChannel(),

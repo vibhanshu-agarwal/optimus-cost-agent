@@ -386,6 +386,7 @@ def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attemp
         src / "optimus_gateway" / "model_policy.py",
         src / "optimus_gateway" / "responses.py",
         src / "optimus_gateway" / "chat_completions.py",
+        src / "optimus_gateway" / "decisions.py",
         src / "optimus_model_policy" / "capacity.py",
         src / "optimus_model_policy" / "binding.py",
         src / "optimus_model_policy" / "stage_c.py",  # the Stage C guard's pre-dispatch refusals (Codex review R1)
@@ -394,6 +395,7 @@ def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attemp
     codes = {match for path in sources for pair in pattern.findall(path.read_text(encoding="utf-8")) for match in pair if match}
     # Raised after a completed, billed attempt (with its usage), or only at launch: never a preflight refusal.
     assert PREFLIGHT_REFUSAL_CODES == codes - {
+        "DECISION_MODEL_MISMATCH",
         "FINISH_STATUS_UNVERIFIED",
         "EMPIRICAL_ESTIMATE_EXCEEDED",
         "EMPIRICAL_PROVIDER_MISMATCH",
@@ -404,7 +406,8 @@ def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attemp
         "EMPIRICAL_ROUTER_PIPELINE",
         "FIXTURE_POLICY",
         "STAGE_C_LEDGER_NOT_ABSOLUTE",
-        "STAGE_C_PROFILE_UNAVAILABLE",
+        "STAGE_C_PROFILE_MIGRATED",
+        "OPERATOR_OVERRIDE_UNSAFE",
     }
 
 

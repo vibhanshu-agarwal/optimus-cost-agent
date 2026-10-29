@@ -7,11 +7,17 @@ the real SDK injected-httpx2 / streamed-byte claim owned by Task 8.
 from __future__ import annotations
 
 import asyncio
+import gc
+import logging
 import threading
+import weakref
 from dataclasses import dataclass, field
 from typing import Any
+from unittest.mock import create_autospec, seal
 
+import httpx2
 import pytest
+from mcp import ClientSession
 from mcp.types import (
     CallToolResult,
     Implementation,
@@ -33,6 +39,183 @@ from optimus.mcp.client_sdk import (
 )
 from optimus.mcp.client_supervisor import MCPAsyncSupervisor
 from tests.support.concurrency import assert_no_offending_rows, assert_threads_stopped
+from tests.support.idle_mcp import capability as stdio_capability
+
+
+@pytest.mark.parametrize("uncertainty", ["unobservable", "changed", "survivor", "exit_failure"])
+def test_uncertain_owner_release_retains_opaque_pending_identity(supervisor, uncertainty, caplog):
+    caplog.set_level(logging.WARNING, logger="mcp.client.stdio")
+    from optimus.mcp import client_sdk as sdk_module
+    logger = logging.getLogger("mcp.client.stdio")
+    observer = sdk_module._warning_observer
+    class Transport(ControlledRemoteTransportContext):
+        async def __aexit__(self, *exc):
+            await super().__aexit__(*exc)
+            if uncertainty == "changed":
+                logger.setLevel(logging.ERROR)
+            elif uncertainty == "survivor":
+                logger.warning("MCP server process %d is still alive after the kill escalation; abandoning it", 1234)
+            elif uncertainty == "exit_failure":
+                raise RuntimeError("private-target-path")
+    adapter = _adapter_with_owned_sdk_contexts(supervisor, transport=Transport(),
+        session=ControlledRemoteSessionContext(FakeSession()))
+    observer = sdk_module._warning_observer
+    connection = adapter.open(stdio_capability(command="private-target-path"), session_id="uncertain")
+    prior_level = logger.level
+    if uncertainty == "unobservable":
+        logger.removeHandler(observer)
+    try:
+        with pytest.raises(ClientMcpSdkError):
+            adapter.close(connection)
+        assert not connection.closed
+        assert adapter.pending_connections() == (connection.pending_token,)
+        assert adapter.close_failure_recorded
+        assert "private-target-path" not in repr(adapter.diagnostics) + repr(adapter.pending_connections())
+        assert connection.owner_enter_task_id == connection.owner_exit_task_id
+        if uncertainty == "survivor":
+            assert connection.survivor_warning
+    finally:
+        logger.setLevel(prior_level)
+        if observer not in logger.handlers:
+            logger.addHandler(observer)
+
+
+def test_diagnostic_overflow_does_not_erase_survivor_latch(supervisor):
+    adapter = _adapter(supervisor)
+    for _ in range(300):
+        adapter.record_diagnostic("CLOSE_FAILED")
+    assert len(adapter.diagnostics) == 256
+    assert adapter.diagnostics_dropped == 44
+
+
+def test_warning_observer_sanitizes_only_owned_sdk_records(supervisor, caplog):
+    caplog.set_level(logging.WARNING, logger="mcp.client.stdio")
+    logger = logging.getLogger("mcp.client.stdio")
+    logger.warning("unowned context stays unchanged")
+    assert caplog.records[-1].getMessage() == "unowned context stays unchanged"
+    class Transport(ControlledRemoteTransportContext):
+        async def __aexit__(self, *exc):
+            logger.warning("owned target %s", "private-owned-target", stack_info=True)
+            await super().__aexit__(*exc)
+    adapter = _adapter_with_owned_sdk_contexts(supervisor, transport=Transport(),
+        session=ControlledRemoteSessionContext(FakeSession()))
+    connection = adapter.open(_capability(), session_id="sanitize")
+    adapter.close(connection)
+    record = caplog.records[-1]
+    assert record.getMessage() == "owned MCP SDK diagnostic"
+    assert record.args == () and record.exc_info is None and record.stack_info is None
+
+
+def test_reserved_close_slot_remains_available_behind_a_waiting_operation(supervisor):
+    session = FakeSession()
+    adapter = _adapter_with_owned_sdk_contexts(supervisor, transport=ControlledRemoteTransportContext(),
+        session=ControlledRemoteSessionContext(session))
+    connection = adapter.open(_capability(), session_id="pressure")
+    async def exercise():
+        entered, release = asyncio.Event(), asyncio.Event()
+        async def held(*_args, **_kwargs):
+            entered.set()
+            await release.wait()
+            return CallToolResult(content=[])
+        session.checked.call_tool.side_effect = held
+        first = asyncio.create_task(adapter._call_async(connection, "search", {}))
+        await entered.wait()
+        waiting = asyncio.create_task(adapter._call_async(connection, "search", {}))
+        await asyncio.sleep(0)
+        closing = asyncio.create_task(adapter._close_async(connection))
+        await asyncio.sleep(0)
+        try:
+            with pytest.raises(ClientMcpSdkError, match="CONNECTION_CLOSING"):
+                await adapter._call_async(connection, "search", {})
+        finally:
+            release.set()
+            await asyncio.gather(first, waiting, closing)
+    supervisor.submit(exercise(), timeout_seconds=3)
+    assert connection.closed
+
+
+def test_dead_owner_fails_active_and_waiting_calls_without_dead_close_queue(supervisor):
+    session = FakeSession()
+    adapter = _adapter_with_owned_sdk_contexts(supervisor, transport=ControlledRemoteTransportContext(),
+                                               session=ControlledRemoteSessionContext(session))
+    connection = adapter.open(_capability(), session_id="owner-death")
+    async def exercise():
+        entered = asyncio.Event()
+        async def held_call(*_args, **_kwargs):
+            entered.set()
+            await asyncio.Event().wait()
+        session.checked.call_tool.side_effect = held_call
+        first = asyncio.create_task(adapter._call_async(connection, "search", {}))
+        await entered.wait()
+        second = asyncio.create_task(adapter._call_async(connection, "search", {}))
+        await asyncio.sleep(0)
+        connection.owner_task.cancel()
+        outcomes = await asyncio.wait_for(asyncio.gather(first, second, return_exceptions=True), 1)
+        assert all(isinstance(outcome, ClientMcpSdkError) for outcome in outcomes)
+        await asyncio.wait_for(adapter._close_async(connection), 1)
+    supervisor.submit(exercise(), timeout_seconds=3)
+    assert connection.closed and adapter.pending_connections() == ()
+
+
+def test_close_all_attempts_every_connection_after_an_earlier_failure(supervisor):
+    adapter = _adapter(supervisor)
+    first = adapter.open(_capability(name="one"), session_id="one")
+    second = adapter.open(_capability(name="two"), session_id="two")
+    closed = []
+    async def fail():
+        closed.append("one")
+        raise RuntimeError("private-path")
+    async def succeed():
+        closed.append("two")
+    first.close_resources = fail
+    second.close_resources = succeed
+    with pytest.raises(RuntimeError):
+        adapter.close_all()
+    assert closed == ["one", "two"] and second.closed and not first.closed
+    assert adapter.close_failure_recorded
+
+
+def test_failed_initialize_does_not_cancel_its_already_running_context_exit(supervisor):
+    class SlowExit(ControlledRemoteTransportContext):
+        completed = False
+        async def __aexit__(self, *exc):
+            await asyncio.sleep(0.02)
+            await super().__aexit__(*exc)
+            self.completed = True
+    transport = SlowExit()
+    adapter = _adapter_with_owned_sdk_contexts(supervisor, transport=transport,
+        session=ControlledRemoteSessionContext(FakeSession(initialize_result=MalformedInitializeResult())))
+    with pytest.raises(ClientMcpSdkError, match="INVALID_PROTOCOL_VERSION"):
+        adapter.open(_capability(), session_id="failed-open")
+    assert transport.completed
+    assert adapter.pending_connections() == ()
+
+
+def test_failed_warning_probe_still_exits_owned_contexts_without_certifying_release(supervisor, monkeypatch):
+    from optimus.mcp import client_sdk as sdk_module
+    transport = ControlledRemoteTransportContext()
+    adapter = _adapter_with_owned_sdk_contexts(supervisor, transport=transport,
+        session=ControlledRemoteSessionContext(FakeSession()))
+    connection = adapter.open(stdio_capability(command="private-target"), session_id="probe-failure")
+    def failed_probe():
+        raise RuntimeError("controlled probe failure")
+    monkeypatch.setattr(sdk_module, "_warning_snapshot", failed_probe)
+    with pytest.raises(ClientMcpSdkError, match="CLEANUP_UNCERTAIN"):
+        adapter.close(connection)
+    assert transport.exited == 1
+    assert adapter.has_pending_connections_for_session("probe-failure")
+
+
+def test_confirmed_connection_and_owner_are_collectible(supervisor):
+    adapter = _adapter_with_owned_sdk_contexts(supervisor, transport=ControlledRemoteTransportContext(),
+                                               session=ControlledRemoteSessionContext(FakeSession()))
+    connection = adapter.open(_capability(), session_id="collectible")
+    connection_ref, owner_ref = weakref.ref(connection), weakref.ref(connection.owner_task)
+    adapter.close(connection)
+    del connection
+    supervisor.submit(asyncio.sleep(0), timeout_seconds=1)
+    gc.collect()
+    assert connection_ref() is None and owner_ref() is None
 
 
 def _identity(*, name: str = "tools", target: str = "https://mcp.example.com/a") -> ClientMcpSafeIdentity:
@@ -85,12 +268,11 @@ def _locked_sdk_initialize_result(
     )
 
 
-@dataclass
-class MalformedInitializeResult:
-    protocol_version: str | None = None
-    instructions: str = "Search approved docs."
-    server_info: Implementation = field(
-        default_factory=lambda: Implementation(name="fake", version="0")
+def MalformedInitializeResult() -> InitializeResult:
+    # Isolated negative model: exercise the consumer's missing-version refusal.
+    return InitializeResult.model_construct(
+        protocolVersion=None, capabilities=ServerCapabilities(),
+        serverInfo=Implementation(name="fake", version="0"), instructions="Search approved docs.",
     )
 
 
@@ -102,6 +284,13 @@ class FakeSession:
     active_calls: int = 0
     max_observed_concurrency: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def __post_init__(self) -> None:
+        self.checked = create_autospec(ClientSession, instance=True, spec_set=True)
+        for name in ("initialize", "list_tools", "call_tool"):
+            async def delegate(*args, _name=name, **kwargs):
+                return await getattr(self, _name)(*args, **kwargs)
+            getattr(self.checked, name).side_effect = delegate
 
     async def initialize(self) -> Any:
         self.calls.append(("initialize", None))
@@ -134,18 +323,30 @@ class FakeHttpClient:
     stream_chunks: list[bytes] = field(default_factory=list)
     opened_urls: list[str] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        self.checked = create_autospec(httpx2.AsyncClient, instance=True)
+        self.checked.follow_redirects = self.follow_redirects
+        self.checked.trust_env = self.trust_env
+        self.checked.stream.side_effect = self.stream
+        self.checked.aclose.return_value = None
+        seal(self.checked)
+
     def stream(self, method: str, url: str, **_kwargs: Any) -> Any:
-        """Match httpx2.AsyncClient.stream: return an async context manager."""
         self.opened_urls.append(url)
         outer = self
 
+        class Chunks(httpx2.AsyncByteStream):
+            async def __aiter__(self):
+                async for chunk in outer.aiter_bytes():
+                    yield chunk
+
         class _Stream:
-            async def __aenter__(self) -> FakeHttpClient:
-                await asyncio.sleep(0)
-                return outer
+            async def __aenter__(self) -> httpx2.Response:
+                self.response = httpx2.Response(200, request=httpx2.Request(method, url), stream=Chunks())
+                return self.response
 
             async def __aexit__(self, *_exc: object) -> None:
-                return None
+                await self.response.aclose()
 
         return _Stream()
 
@@ -201,7 +402,7 @@ class ControlledRemoteSessionContext:
 
     async def __aenter__(self) -> FakeSession:
         self.entered += 1
-        return self.session
+        return self.session.checked
 
     async def __aexit__(self, *_exc: object) -> None:
         self.exited += 1
@@ -228,8 +429,8 @@ def _adapter(
     fake_session = session or FakeSession()
     return ClientMcpSdkAdapter(
         supervisor=supervisor,
-        session_factory=lambda _capability: fake_session,
-        http_client_factory=lambda: http_client or FakeHttpClient(follow_redirects=False, trust_env=False),
+        session_factory=lambda _capability: fake_session.checked,
+        http_client_factory=lambda: (http_client or FakeHttpClient(follow_redirects=False, trust_env=False)).checked,
         stdio_transport_factory=lambda _capability: stdio_transport or FakeStdioTransport(),
         process_control=process_control or FakeProcessControl(),
         connection_budget=connection_budget,
@@ -248,8 +449,8 @@ def _adapter_with_owned_sdk_contexts(
 ) -> ClientMcpSdkAdapter:
     return ClientMcpSdkAdapter(
         supervisor=supervisor,
-        session_factory=lambda _capability: FakeSession(),
-        http_client_factory=lambda: FakeHttpClient(follow_redirects=False, trust_env=False),
+        session_factory=lambda _capability: FakeSession().checked,
+        http_client_factory=lambda: FakeHttpClient(follow_redirects=False, trust_env=False).checked,
         stdio_transport_factory=lambda _capability: FakeStdioTransport(),
         process_control=process_control or FakeProcessControl(),
         transport_context_factory=lambda _capability: transport,
@@ -411,12 +612,12 @@ def test_sessions_are_isolated_by_session_id_and_identity(supervisor: MCPAsyncSu
     def _factory(_capability: ClientMcpRuntimeCapability) -> FakeSession:
         session = FakeSession()
         sessions.append(session)
-        return session
+        return session.checked
 
     adapter = ClientMcpSdkAdapter(
         supervisor=supervisor,
         session_factory=_factory,
-        http_client_factory=lambda: FakeHttpClient(follow_redirects=False, trust_env=False),
+        http_client_factory=lambda: FakeHttpClient(follow_redirects=False, trust_env=False).checked,
         stdio_transport_factory=lambda _capability: FakeStdioTransport(),
         process_control=FakeProcessControl(),
         connection_budget=8,
@@ -465,12 +666,12 @@ def test_same_identity_open_reuses_live_connection_without_bypassing_budget(
     def _factory(_capability: ClientMcpRuntimeCapability) -> FakeSession:
         session = FakeSession()
         sessions.append(session)
-        return session
+        return session.checked
 
     adapter = ClientMcpSdkAdapter(
         supervisor=supervisor,
         session_factory=_factory,
-        http_client_factory=lambda: FakeHttpClient(follow_redirects=False, trust_env=False),
+        http_client_factory=lambda: FakeHttpClient(follow_redirects=False, trust_env=False).checked,
         stdio_transport_factory=lambda _capability: FakeStdioTransport(),
         process_control=FakeProcessControl(),
         connection_budget=3,
@@ -500,13 +701,13 @@ def test_close_only_tears_down_the_closed_connection_slot(
     def _factory(_capability: ClientMcpRuntimeCapability) -> FakeSession:
         session = FakeSession()
         sessions.append(session)
-        return session
+        return session.checked
 
     control = FakeProcessControl()
     adapter = ClientMcpSdkAdapter(
         supervisor=supervisor,
         session_factory=_factory,
-        http_client_factory=lambda: FakeHttpClient(follow_redirects=False, trust_env=False),
+        http_client_factory=lambda: FakeHttpClient(follow_redirects=False, trust_env=False).checked,
         stdio_transport_factory=lambda _capability: FakeStdioTransport(),
         process_control=control,
         connection_budget=8,
@@ -580,15 +781,15 @@ def test_remote_stream_byte_overflow_closes_connection(supervisor: MCPAsyncSuper
     )
     adapter = _adapter(supervisor, http_client=client)
     with pytest.raises(ClientMcpSdkError) as exc_info:
-        adapter.read_streamed_bytes_for_tests(client, budget_bytes=1 * 1024 * 1024)
+        adapter.read_streamed_bytes_for_tests(client.checked, budget_bytes=1 * 1024 * 1024)
     assert exc_info.value.code == "REMOTE_BYTE_OVERFLOW"
 
 
 def test_operation_deadline_is_enforced(supervisor: MCPAsyncSupervisor) -> None:
     adapter = ClientMcpSdkAdapter(
         supervisor=supervisor,
-        session_factory=lambda _capability: FakeSession(),
-        http_client_factory=lambda: FakeHttpClient(follow_redirects=False, trust_env=False),
+        session_factory=lambda _capability: FakeSession().checked,
+        http_client_factory=lambda: FakeHttpClient(follow_redirects=False, trust_env=False).checked,
         stdio_transport_factory=lambda _capability: FakeStdioTransport(),
         process_control=FakeProcessControl(),
         connection_budget=8,
@@ -629,8 +830,8 @@ def test_operation_deadline_is_enforced(supervisor: MCPAsyncSupervisor) -> None:
 def _timeout_adapter(supervisor: MCPAsyncSupervisor, *, session: FakeSession | None = None) -> ClientMcpSdkAdapter:
     return ClientMcpSdkAdapter(
         supervisor=supervisor,
-        session_factory=lambda _capability: session or FakeSession(),
-        http_client_factory=lambda: FakeHttpClient(follow_redirects=False, trust_env=False),
+        session_factory=lambda _capability: (session or FakeSession()).checked,
+        http_client_factory=lambda: FakeHttpClient(follow_redirects=False, trust_env=False).checked,
         stdio_transport_factory=lambda _capability: FakeStdioTransport(),
         process_control=FakeProcessControl(),
         connection_budget=8,
@@ -641,32 +842,40 @@ def _timeout_adapter(supervisor: MCPAsyncSupervisor, *, session: FakeSession | N
 
 def test_discover_over_budget_is_operation_timeout(supervisor: MCPAsyncSupervisor) -> None:
     session = FakeSession()
+    entered = threading.Event()
 
     async def _slow_list_tools(*, params: Any = None) -> ListToolsResult:
+        entered.set()
         await asyncio.sleep(2.0)
         return ListToolsResult(tools=[])
 
     session.list_tools = _slow_list_tools  # type: ignore[method-assign]
-    adapter = _timeout_adapter(supervisor, session=session)
+    adapter = _adapter(supervisor, session=session)
     connection = adapter.open(_capability(), session_id="s1")
+    adapter._operation_timeout_seconds = 0.2
     with pytest.raises(ClientMcpSdkError) as exc_info:
         adapter.discover(connection)
     assert exc_info.value.code == "OPERATION_TIMEOUT"
+    assert entered.is_set(), "the target operation must have started before its timeout"
 
 
 def test_call_over_budget_is_operation_timeout(supervisor: MCPAsyncSupervisor) -> None:
     session = FakeSession()
+    entered = threading.Event()
 
     async def _slow_call(name: str, arguments: dict[str, Any]) -> CallToolResult:
+        entered.set()
         await asyncio.sleep(2.0)
         return CallToolResult(content=[])
 
     session.call_tool = _slow_call  # type: ignore[method-assign]
-    adapter = _timeout_adapter(supervisor, session=session)
+    adapter = _adapter(supervisor, session=session)
     connection = adapter.open(_capability(), session_id="s1")
+    adapter._operation_timeout_seconds = 0.2
     with pytest.raises(ClientMcpSdkError) as exc_info:
         adapter.call(connection, "search", {"q": "x"})
     assert exc_info.value.code == "OPERATION_TIMEOUT"
+    assert entered.is_set(), "the target operation must have started before its timeout"
 
 
 def test_stream_over_budget_is_operation_timeout(supervisor: MCPAsyncSupervisor) -> None:
@@ -679,7 +888,7 @@ def test_stream_over_budget_is_operation_timeout(supervisor: MCPAsyncSupervisor)
     client.aiter_bytes = _slow_bytes  # type: ignore[method-assign]
     adapter = _timeout_adapter(supervisor)
     with pytest.raises(ClientMcpSdkError) as exc_info:
-        adapter.read_streamed_bytes_for_tests(client, budget_bytes=1 * 1024 * 1024)
+        adapter.read_streamed_bytes_for_tests(client.checked, budget_bytes=1 * 1024 * 1024)
     assert exc_info.value.code == "OPERATION_TIMEOUT"
 
 
@@ -706,7 +915,10 @@ async def test_sse_sdk_factory_accepts_optional_arguments_and_returns_same_clien
     from optimus.mcp.client_sdk import _sse_transport_context
 
     class HardenedClient:
-        closed = 0
+        def __init__(self):
+            self.closed = 0
+            self.checked = create_autospec(httpx2.AsyncClient, instance=True, spec_set=True)
+            self.checked.aclose.side_effect = self.aclose
 
         async def aclose(self):
             self.closed += 1
@@ -716,17 +928,17 @@ async def test_sse_sdk_factory_accepts_optional_arguments_and_returns_same_clien
 
     def allocate():
         allocated.append(client)
-        return client
+        return client.checked
 
     @asynccontextmanager
     async def transport(url, *, httpx_client_factory):
         assert url == "https://offline.invalid/sse"
-        assert httpx_client_factory() is client
-        assert httpx_client_factory({"X-Test": "fixture"}, None, None) is client
-        assert httpx_client_factory(headers=None, timeout=None, auth=None) is client
+        assert httpx_client_factory() is client.checked
+        assert httpx_client_factory({"X-Test": "fixture"}, None, None) is client.checked
+        assert httpx_client_factory(headers=None, timeout=None, auth=None) is client.checked
         yield ("read", "write")
 
-    monkeypatch.setattr(mcp.client.sse, "sse_client", transport)
+    monkeypatch.setattr(mcp.client.sse, "sse_client", create_autospec(mcp.client.sse.sse_client, side_effect=transport))
     async with _sse_transport_context("https://offline.invalid/sse", http_client_factory=allocate) as streams:
         assert streams == ("read", "write")
         assert client.closed == 0
@@ -836,3 +1048,27 @@ def test_catalog_sdk_imports_are_clean_in_either_order(monkeypatch: pytest.Monke
         for name in names:
             assert sys.modules[f"optimus.mcp.{name}"] is originals[name]
             assert getattr(package, name) is originals[name]
+
+
+def test_contract_mcp_session_rejects_unknown_attributes():
+    session = FakeSession()
+    boundary = getattr(session, "checked", session)
+    with pytest.raises(AttributeError):
+        boundary.unknown_session_operation = True
+    with pytest.raises(TypeError):
+        boundary.list_tools(obsolete_cursor="next")
+
+
+async def test_contract_http_stream_yields_real_response():
+    import httpx2
+
+    client = FakeHttpClient(follow_redirects=False, trust_env=False, stream_chunks=[b"first", b"second"])
+    boundary = getattr(client, "checked", client)
+    with pytest.raises(AttributeError):
+        boundary.unknown_http_operation = True
+    with pytest.raises(TypeError):
+        boundary.stream("GET", "https://offline.invalid/stream", obsolete_transport=True)
+    async with boundary.stream("GET", "https://offline.invalid/stream") as response:
+        assert isinstance(response, httpx2.Response)
+        assert b"".join([part async for part in response.aiter_bytes()]) == b"firstsecond"
+    assert response.is_closed

@@ -226,9 +226,12 @@ def resolve_authorized_operator_paths(
     workspace_root: Path | str,
     snapshot_values: Mapping[str, str],
     platform_name: str | None = None,
+    trusted_roots: TrustedOperatorRoots | None = None,
 ) -> OperatorPaths:
     """Single shared entry point for resolving operator paths from an
-    authorized launch snapshot.
+    authorized launch snapshot. ``trusted_roots``: the caller's already-resolved
+    OS roots (``optimus-trust run-gateway`` takes them injectably); resolved here
+    when omitted.
 
     Plan 9.96, Task 5 review: this is the ONE place that composes trusted-root
     resolution, OPTIMUS_CONFIG_ROOT override validation, and
@@ -244,7 +247,8 @@ def resolve_authorized_operator_paths(
     a source other than the captured snapshot can let the digest-bound value
     and the actually-used config root diverge.
     """
-    trusted_roots = resolve_trusted_operator_roots(platform_name=platform_name or sys.platform)
+    if trusted_roots is None:
+        trusted_roots = resolve_trusted_operator_roots(platform_name=platform_name or sys.platform)
     override = snapshot_values.get("OPTIMUS_CONFIG_ROOT", "").strip()
     validated_config_root = (
         validate_config_root_override(override, workspace_root=Path(workspace_root), platform_name=platform_name)

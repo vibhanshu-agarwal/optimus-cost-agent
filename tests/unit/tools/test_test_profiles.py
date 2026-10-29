@@ -6,6 +6,7 @@ hold the repository's own manifest (`tests/profiles.toml`) against the real coll
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -13,10 +14,13 @@ import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from xml.etree import ElementTree as ET
 
 import pytest
 
 from tools.testing import test_profiles as profiles
+
+_WINDOWS_H5_ONLY = pytest.mark.skipif(sys.platform != "win32", reason="requires native Windows H5 capture")
 
 _NODES = (
     "tests/unit/a/test_one.py::test_x",
@@ -522,7 +526,7 @@ _REVIEWED_CHEAP_LAUNCHERS = {
     "tests/unit/tools/test_registry_maintenance.py": "one literal child whose identity the PID-reuse controls end; tool unit tests",
     "tests/unit/tools/test_run_context_xdist_probes.py": "the xdist targets: one literal sleep grandchild, started only inside the nested grandchild control; otherwise empty",
     "tests/unit/tools/test_run_plan996_acpx_security_evidence.py": _MIXED,
-    "tests/unit/tools/test_test_profiles.py": _MIXED,
+    "tests/unit/tools/test_test_profiles.py": "existing launching nodes have proc/gates rules; the six H5 core nodes launch seven owned two-node synthetic passive pytest children through one inventoried helper, never the H5 probe; remaining core nodes run in-process",
     "tests/unit/tools/test_verify_plan99_noneditable_install.py": _MIXED,
 }
 
@@ -633,6 +637,27 @@ def test_the_platform_tag_follows_its_maintained_signal(
     assert sorted(tagged - signal) == [], "a platform-tagged file no longer reads the platform"
 
 
+def test_h5_budget_platform_tags_are_node_scoped(manifest):
+    nodes = (
+        "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_short_sidecar_temp_path[native]",
+        "tests/unit/tools/test_h5_failure_capture.py::test_capture_path_budget",
+        "tests/unit/tools/test_h5_failure_capture.py::test_retains_every_ordered_row_and_long_error_metadata",
+        "tests/unit/tools/test_test_profiles.py::test_capture_controls_never_touch_inherited_outer_base",
+        "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_short_sidecar_temp_path[simulated]",
+        "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_short_sidecar_fault_cleanup[write]",
+        "tests/unit/tools/test_h5_failure_capture.py::test_non_windows_branch_is_simulated_and_does_no_io",
+    )
+    found = profiles.classify_nodes(nodes, manifest)
+    targets = frozenset(nodes[:4])
+    assert profiles.profile_members(found, "platform") == targets
+    assert {node for node, tags in found.tags.items() if "platform" in tags} == targets
+    assert all(found.tiers[node] == "core" for node in targets)
+    assert targets <= profiles.profile_members(found, "core-serial")
+    parallel = profiles.profile_members(found, "core-parallel")
+    assert targets.isdisjoint(parallel) and nodes[-1] in parallel
+    assert all(not found.tags[node] for node in nodes[4:])
+
+
 def test_every_file_that_launches_a_child_has_a_reviewed_tier(classification: profiles.Classification) -> None:
     sites = json.loads((_ROOT / "tests" / "unit" / "tools" / "run_context_child_sites.json").read_text(encoding="utf-8"))["sites"]
     files = _files(classification)
@@ -679,3 +704,876 @@ def test_every_selection_declaration_still_names_something(
         dead += [f"{rule.label}.paths: {pattern}" for pattern in rule.patterns if not any(path.full_match(pattern) for path in tracked)]
         dead += [f"{rule.label}.files: {pattern}" for pattern in rule.files if not any(file.full_match(pattern) for file in files)]
     assert dead == []
+
+
+@pytest.fixture
+def h5_capture_scope(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Synthetic bridge state; inherited activation and outer state never escape this scope."""
+    from tests.support import profiles_plugin as plugin
+    from tools.testing import run_context
+
+    monkeypatch.delenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", raising=False)
+    context = run_context.RunContext(
+        run_id=f"20261023T000000-{os.getpid()}-abc123", mode="passive", reason="synthetic_fixture",
+        record_dir=tmp_path / "records", started_utc="2026-10-23T00:00:00+00:00",
+        worktree=str(_ROOT), head="a" * 40, root={"pid": os.getpid(), "creation_time": 123456},
+    )
+    monkeypatch.setattr(plugin, "_h5_context", lambda: context)
+    monkeypatch.setattr(plugin, "_SESSIONS", [{"depth": "full", "reused": []}, {"depth": "full", "reused": []}])
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist (call)")
+    directory = tmp_path / "capture"
+    directory.mkdir()
+    monkeypatch.setenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", str(directory))
+    return plugin, context, directory
+
+
+def test_legacy_h5_activation_does_not_admit(h5_capture_scope, monkeypatch):
+    from tests.support import h5_failure_capture as capture
+
+    plugin, _, directory = h5_capture_scope
+    monkeypatch.delenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY")
+    monkeypatch.setenv("OPTIMUS_H5_CAPTURE_DIRECTORY", str(directory))
+    binding, result, calls = _h5_stub(monkeypatch)
+    monkeypatch.setattr(capture, "validate_capture_directory", lambda *a: pytest.fail("no capture I/O"))
+    monkeypatch.setattr(plugin, "_h5_utc_now", lambda: pytest.fail("no diagnostic timing"))
+    actual = _h5_bridge(plugin)
+    assert actual[0] is binding and actual[1] is result and len(calls) == 1
+    session = plugin.current_audit_session()
+    assert "h5_capture" not in session and "h5_lines" not in session
+    assert _h5_report(plugin).sections == [("existing", "UNCHANGED")]
+    assert os.listdir(directory) == []
+
+
+def _h5_synthetic_measurement():
+    """Full synthetic 100-repeat fixture, never a measured acceptance result."""
+    from tools.plan1126_runtime_audit.measurement import EnvironmentBinding
+    from tools.plan1126_runtime_audit.shutdown import ResourceOwnershipRecord, ShutdownScheduleObservation
+
+    binding = EnvironmentBinding(sys.executable, sys.version, sys.prefix, "a" * 64,
+                                 (("src/fixture.py", str(_ROOT / "src/fixture.py"), "b" * 64),), ())
+    resource = ResourceOwnershipRecord("h5-synthetic", "Fixture", "Fixture.close", "fixture", "fixture", "fixture",
+                                       "fixture", "fixture", "fixture", 1, ("merged",), True)
+    inventory = {"kind": "shutdown-close-paths", "resources": [resource.to_dict()], "source_fingerprint": "a" * 64, "close_path_count": 1, "close_sites": []}
+    rows = []
+    for cause in ("orderly_eof", "request_cancellation", "transport_failure", "server_cancellation", "partial_startup_failure"):
+        for _ in range(100):
+            row = ShutdownScheduleObservation("h5-synthetic", cause, True, 3, ("MainThread",), (), (),
+                                              "WITHIN_100MS", 1, "CLOSED_ONCE", f"{cause}:prepared").to_dict()
+            rows.append({"observation_id": "h5-synthetic", **row})
+    return binding, {"inventory": inventory, "inventory_identifiers": ["h5-synthetic"], "observations": rows}
+
+
+@_WINDOWS_H5_ONLY
+def test_h5_existing_bridge_retains_complete_bundle_before_assertions(h5_capture_scope, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tools.plan1126_runtime_audit import measurement
+
+    plugin, context, directory = h5_capture_scope
+    binding, result = _h5_synthetic_measurement()
+    calls = []
+
+    def measure(**kwargs):
+        calls.append(kwargs)
+        return binding, result, None
+
+    monkeypatch.setattr(measurement, "session_measurement_reuse", lambda: SimpleNamespace(measure=measure))
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist (call)")
+    actual_binding, actual_result = plugin.measure_current_entry(
+        source=None, spec=None, entry="h5.shutdown_schedule", options={"repeats": 100}, repository_root=_ROOT,
+    )
+    assert actual_binding is binding and actual_result is result
+    assert len(calls) == 1 and calls[0]["depth"] == "full" and calls[0]["options"] == {"repeats": 100}
+    assert calls[0]["requester"] == "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist"
+    assert context.root["pid"] == os.getpid() and Path(context.worktree) == _ROOT and len(plugin._SESSIONS) == 2
+    assert (directory / context.run_id / "h5/capture.json").is_file(), "existing bridge must retain the complete bundle"
+
+
+def _h5_stub(monkeypatch, *, earlier=None, error=None):
+    from tools.plan1126_runtime_audit import measurement
+    binding, result = _h5_synthetic_measurement()
+    calls = []
+    def measure(**kwargs):
+        calls.append(kwargs)
+        if error is not None:
+            raise error
+        return binding, result, earlier
+    monkeypatch.setattr(measurement, "session_measurement_reuse", lambda: SimpleNamespace(measure=measure))
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist (call)")
+    return binding, result, calls
+
+
+def _h5_bridge(plugin, **overrides):
+    arguments = dict(source=None, spec=None, entry="h5.shutdown_schedule", options={"repeats": 100}, repository_root=_ROOT)
+    arguments.update(overrides)
+    return plugin.measure_current_entry(**arguments)
+
+
+def _h5_report(plugin, *, nodeid=None):
+    nodeid = nodeid or "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist"
+    report = SimpleNamespace(sections=[("existing", "UNCHANGED")], outcome="failed", when="call", longrepr=object())
+    original = (report.outcome, report.when, report.longrepr)
+    hook = plugin.pytest_runtest_makereport(SimpleNamespace(nodeid=nodeid), SimpleNamespace(when="call"))
+    next(hook)
+    with pytest.raises(StopIteration) as finished:
+        hook.send(report)
+    assert finished.value.value is report
+    assert (report.outcome, report.when, report.longrepr) == original
+    return report
+
+
+@pytest.mark.parametrize("defect", ["absent", "empty", "other_node", "setup", "quick", "other_entry", "bool", "nested", "root"])
+def test_h5_disabled_and_ineligible_calls_do_no_observer_work(h5_capture_scope, monkeypatch, defect):
+    from tests.support import h5_failure_capture as capture
+    plugin, context, directory = h5_capture_scope
+    binding, result, calls = _h5_stub(monkeypatch)
+    overrides = {}
+    if defect == "absent":
+        monkeypatch.delenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY")
+    elif defect == "empty":
+        monkeypatch.setenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", "")
+    elif defect in {"other_node", "setup"}:
+        monkeypatch.setenv("PYTEST_CURRENT_TEST", "tests/unit/acp/test_other.py::test_other (call)" if defect == "other_node" else
+                           "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist (setup)")
+    elif defect == "quick":
+        plugin.current_audit_session()["depth"] = "quick"
+    elif defect == "other_entry":
+        overrides["entry"] = "h4.fixture"
+    elif defect == "bool":
+        overrides["options"] = {"repeats": True}
+    elif defect == "nested":
+        plugin._SESSIONS.append({"depth": "full", "reused": []})
+    else:
+        context.worktree = str(directory)
+    monkeypatch.setattr(capture, "validate_capture_directory", lambda *a: pytest.fail("no capture I/O"))
+    monkeypatch.setattr(plugin, "_h5_utc_now", lambda: pytest.fail("no diagnostic timing"))
+    actual = _h5_bridge(plugin, **overrides)
+    assert actual[0] is binding and actual[1] is result and len(calls) == 1
+    assert "h5_capture" not in plugin.current_audit_session()
+    assert _h5_report(plugin).sections == [("existing", "UNCHANGED")]
+    assert not (directory / context.run_id).exists()
+
+
+def test_disabled_raising_target_keeps_original_report_sections(h5_capture_scope, monkeypatch):
+    plugin, context, directory = h5_capture_scope
+    error = OSError("ORIGINAL")
+    _h5_stub(monkeypatch, error=error)
+    monkeypatch.delenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY")
+    monkeypatch.setattr(plugin, "_h5_utc_now", lambda: pytest.fail("no disabled timestamp"))
+    with pytest.raises(OSError) as found:
+        _h5_bridge(plugin)
+    assert found.value is error
+    assert "h5_capture" not in plugin.current_audit_session()
+    assert _h5_report(plugin).sections == [("existing", "UNCHANGED")]
+    assert plugin.current_audit_session().get("h5_lines", []) == []
+    assert not (directory / context.run_id).exists()
+
+
+@_WINDOWS_H5_ONLY
+@pytest.mark.parametrize("kind", ["source", "source_subclass", "ordinary", "base"])
+def test_measurement_failure_kind_and_original_exception_escape(h5_capture_scope, monkeypatch, kind):
+    from tools.plan1126_runtime_audit.source import ExecutingSourceMismatch
+    class DerivedRefusal(ExecutingSourceMismatch):
+        pass
+    errors = {"source": ExecutingSourceMismatch("SOURCE_REFUSAL"), "source_subclass": DerivedRefusal("SOURCE_REFUSAL"),
+              "ordinary": OSError("ORIGINAL"), "base": KeyboardInterrupt()}
+    plugin, context, directory = h5_capture_scope
+    error = errors[kind]
+    _h5_stub(monkeypatch, error=error)
+    with pytest.raises(type(error)) as found:
+        _h5_bridge(plugin)
+    assert found.value is error and error.__traceback__.tb_next is not None
+    expected = None if kind == "base" else "ORDINARY" if kind == "ordinary" else "SOURCE_REFUSAL"
+    assert plugin.current_audit_session()["h5_capture"]["failure_kind"] == expected
+    report = _h5_report(plugin)
+    if expected is not None:
+        assert len(report.sections) == 2
+        assert report.sections[1][1] == ("ISSUE287_H5_MEASUREMENT_RAISED" if kind == "ordinary" else "ISSUE287_H5_SOURCE_REFUSAL")
+    else:
+        assert report.sections == [("existing", "UNCHANGED")]
+    assert not (directory / context.run_id).exists()
+
+
+@_WINDOWS_H5_ONLY
+def test_failure_kind_write_error_preserves_original_exception(h5_capture_scope, monkeypatch):
+    plugin, _, _ = h5_capture_scope
+    error = OSError("ORIGINAL")
+    cause = ValueError("CAUSE")
+    error.__cause__ = cause
+    _h5_stub(monkeypatch, error=error)
+    def broken_write(*args):
+        raise RuntimeError("DIAGNOSTIC_WRITE")
+    monkeypatch.setattr(plugin, "_h5_record_failure", broken_write)
+    with pytest.raises(OSError) as found:
+        _h5_bridge(plugin)
+    assert found.value is error and error.__cause__ is cause and error.__context__ is None
+    frames = []
+    tb = error.__traceback__
+    while tb:
+        frames.append(tb.tb_frame.f_code.co_name)
+        tb = tb.tb_next
+    assert frames[-1] == "measure" and "broken_write" not in frames
+    assert plugin.current_audit_session()["h5_capture"]["failure_kind"] is None
+
+
+@_WINDOWS_H5_ONLY
+def test_h5_reuse_keeps_original_objects_and_existing_bookkeeping(h5_capture_scope, monkeypatch):
+    plugin, context, directory = h5_capture_scope
+    earlier = "tests/unit/acp/test_fixture.py::test_earlier"
+    binding, result, calls = _h5_stub(monkeypatch, earlier=earlier)
+    actual = _h5_bridge(plugin)
+    assert actual[0] is binding and actual[1] is result and len(calls) == 1
+    assert plugin.current_audit_session()["reused"] == [{"entry": "h5.shutdown_schedule", "nodeid": calls[0]["requester"], "from_nodeid": earlier}]
+    receipt = json.loads((directory / context.run_id / "h5/capture.json").read_text())
+    assert receipt["reuse_state"] == "REUSED" and receipt["producer_window"] == "unknown"
+    assert _h5_report(plugin).sections == [("existing", "UNCHANGED")]
+    assert "ISSUE287_H5_CAPTURE_METRICS" in "\n".join(plugin.current_audit_session()["h5_lines"])
+    assert _h5_report(plugin, nodeid="tests/unit/acp/test_fixture.py::test_later").sections == [("existing", "UNCHANGED")]
+
+
+def test_same_interpreter_nested_capture_is_ineligible_even_with_outer_context(h5_capture_scope, monkeypatch):
+    plugin, context, directory = h5_capture_scope
+    _h5_stub(monkeypatch)
+    outer = plugin.current_audit_session()
+    outer["h5_capture"] = {"sentinel": "outer"}
+    config = SimpleNamespace(getoption=lambda name, default=None: {"audit_depth": "full"}.get(name, default))
+    plugin.pytest_configure(config)
+    try:
+        _h5_bridge(plugin)
+        assert "h5_capture" not in plugin.current_audit_session()
+    finally:
+        plugin.pytest_unconfigure(config)
+    assert plugin.current_audit_session() is outer and outer["h5_capture"] == {"sentinel": "outer"}
+    assert not (directory / context.run_id).exists()
+
+
+@_WINDOWS_H5_ONLY
+def test_fixture_and_production_use_the_same_root_predicate(h5_capture_scope, monkeypatch, tmp_path):
+    plugin, context, directory = h5_capture_scope
+    _h5_stub(monkeypatch)
+    owned_root = tmp_path / "synthetic-root"
+    owned_root.mkdir()
+    monkeypatch.setattr(plugin, "_H5_REPOSITORY_ROOT", owned_root)
+    context.worktree = str(owned_root)
+    _h5_bridge(plugin, repository_root=owned_root)
+    assert (directory / context.run_id / "h5/capture.json").is_file()
+
+
+def test_root_mismatch_is_ineligible_without_writes(h5_capture_scope, monkeypatch):
+    plugin, context, directory = h5_capture_scope
+    _h5_stub(monkeypatch)
+    context.worktree = str(directory)
+    _h5_bridge(plugin)
+    assert "h5_capture" not in plugin.current_audit_session() and not (directory / context.run_id).exists()
+
+
+def test_simulated_non_windows_status_is_visible_for_a_passing_call(h5_capture_scope, monkeypatch):
+    plugin, context, directory = h5_capture_scope
+    _h5_stub(monkeypatch)
+    monkeypatch.setattr(plugin, "_H5_PLATFORM", "linux")
+    _h5_bridge(plugin)
+    report = _h5_report(plugin)
+    assert report.sections[-1] == ("H5 in-suite capture", "ISSUE287_H5_CAPTURE_UNSUPPORTED")
+    assert plugin.current_audit_session()["h5_lines"] == ["ISSUE287_H5_CAPTURE_UNSUPPORTED"]
+    assert not (directory / context.run_id).exists()
+
+
+@pytest.fixture
+def h5_isolated_activation(monkeypatch):
+    monkeypatch.delenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", raising=False)
+
+
+def _h5_native_fixture(tmp_path: Path) -> Path:
+    """Owned isolated child fixture; source data are synthetic, mode remains passive."""
+    root = tmp_path / "child"
+    target = root / "tests/unit/acp"
+    target.mkdir(parents=True)
+    (root / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    (root / "conftest.py").write_text('''
+import json, os
+from pathlib import Path
+from types import SimpleNamespace
+import pytest
+from tools.testing import run_context, run_context_records, run_context_windows
+ROOT = Path(__file__).parent.resolve()
+REPOSITORY = Path(run_context.__file__).resolve().parents[2]
+forbidden = {"start_run": 0, "prune_run_folders": 0, "repository_append": 0}
+def refuse_start(*args, **kwargs):
+    forbidden["start_run"] += 1
+    raise AssertionError("H5_FIXTURE_FORBIDDEN_START")
+def refuse_prune(*args, **kwargs):
+    forbidden["prune_run_folders"] += 1
+    raise AssertionError("H5_FIXTURE_FORBIDDEN_PRUNE")
+original_append = run_context._append
+def guarded_append(context, *args, **kwargs):
+    if Path(context.record_dir).resolve().is_relative_to(REPOSITORY / "tmp/test-runs"):
+        forbidden["repository_append"] += 1
+        raise AssertionError("H5_FIXTURE_FORBIDDEN_APPEND")
+    return original_append(context, *args, **kwargs)
+run_context.start_run = refuse_start
+run_context_records.prune_run_folders = refuse_prune
+run_context._append = guarded_append
+# Install custody tripwires before importing the fixture/data helpers or profile plugin.
+from tests.support import profiles_plugin as plugin
+from tests.support import h5_failure_capture as capture
+from tools.plan1126_runtime_audit import measurement
+from tests.unit.tools.test_test_profiles import _h5_synthetic_measurement
+pytest_plugins = ["tests.support.profiles_plugin"]
+try:
+    identity = run_context_windows.current_identity()
+    assert type(identity.pid) is int and identity.pid == os.getpid()
+    assert type(identity.creation_time) is int and identity.creation_time > 0 and identity.error is None
+except Exception:
+    raise RuntimeError("H-NATIVE-IDENTITY") from None
+facts = {"pid": identity.pid, "creation_time": identity.creation_time,
+    "identity_method": "run_context_windows.current_identity/GetCurrentProcess/GetProcessTimes",
+    "run_id": f"20261023T000000-{os.getpid()}-abc123", "head": "a"*40, "worktree": str(ROOT),
+    "mode": "passive", "forbidden": forbidden, "collected": [], "executed": [], "stub_calls": 0}
+reports, before = [], {}
+@pytest.fixture(autouse=True)
+def synthetic(monkeypatch):
+    context=run_context.RunContext(run_id=facts["run_id"],mode="passive",reason="synthetic_fixture",
+        record_dir=ROOT/"records",started_utc="2026-10-23T00:00:00+00:00",worktree=str(ROOT),head="a"*40,
+        root={"pid":identity.pid,"creation_time":identity.creation_time})
+    monkeypatch.setattr(run_context,"_current",context)
+    monkeypatch.setattr(capture,"os",SimpleNamespace(path=os.path,getpid=os.getpid,lstat=os.lstat,rename=os.rename))
+    monkeypatch.setattr(plugin,"_H5_REPOSITORY_ROOT",ROOT)
+    binding,result=_h5_synthetic_measurement()
+    def measure(**kwargs):
+        facts["stub_calls"] += 1
+        assert kwargs["entry"] == "h5.shutdown_schedule" and kwargs["options"] == {"repeats": 100}
+        assert kwargs["depth"] == "full" and kwargs["repository_root"].resolve() == ROOT
+        return binding,result,None
+    monkeypatch.setattr(measurement,"session_measurement_reuse",lambda:SimpleNamespace(measure=measure))
+    def fail(*args,**kwargs): raise OSError("PRIVATE_CAPTURE_MESSAGE")
+    failure=os.environ.get("H5_FIXTURE_FAILURE")
+    if failure=="write": monkeypatch.setattr(capture.evidence_store,"write_evidence_sidecar",fail)
+    if failure=="verify": monkeypatch.setattr(capture,"_verify_bundle",fail)
+    if failure=="rename": monkeypatch.setattr(capture.os,"rename",fail)
+def pytest_collection_modifyitems(items):
+    facts["collected"] = [item.nodeid for item in items]
+@pytest.hookimpl(wrapper=True,trylast=True)
+def pytest_runtest_makereport(item,call):
+    report=yield
+    if report.when=="call": before[item.nodeid]=(report,report.outcome,report.when,report.longrepr,list(report.sections))
+    return report
+def pytest_runtest_logreport(report):
+    if report.when=="call":
+        original,outcome,when,longrepr,sections=before[report.nodeid]
+        assert report is original and report.outcome==outcome and report.when==when and report.longrepr is longrepr
+        if report.nodeid.endswith("test_later"): assert report.sections==sections
+        facts["executed"].append(report.nodeid)
+        reports.append({"nodeid":report.nodeid,"outcome":report.outcome,"when":report.when,
+            "longrepr":str(report.longrepr),"sections":report.sections,"same_object":True})
+def pytest_sessionfinish(session):
+    (ROOT/"reports.json").write_text(json.dumps(reports),encoding="utf-8")
+    (ROOT/"contract.json").write_text(json.dumps(facts),encoding="utf-8")
+''', encoding="utf-8")
+    (target / "test_plan1126_shutdown.py").write_text('''
+import os
+from pathlib import Path
+from tests.support.profiles_plugin import measure_current_entry
+def test_shutdown_causes_repeat_100_with_control_allowlist():
+    measure_current_entry(source=None,spec=None,entry="h5.shutdown_schedule",options={"repeats":100},repository_root=Path(__file__).parents[3])
+    if os.environ.get("H5_FIXTURE_PASS")!="yes": raise AssertionError("ORIGINAL_H5_FAILURE")
+def test_later(): pass
+''', encoding="utf-8")
+    known = ("pytest.ini", "conftest.py", "tests/unit/acp/test_plan1126_shutdown.py")
+    (root / "fixture-source.json").write_text(json.dumps({name: hashlib.sha256((root / name).read_bytes()).hexdigest()
+                                                        for name in known}), encoding="utf-8")
+    return root
+
+
+def _h5_native_run(root: Path, directory: Path | None, *, failure="", passed=False):
+    known = ("pytest.ini", "conftest.py", "tests/unit/acp/test_plan1126_shutdown.py")
+    manifest = json.loads((root / "fixture-source.json").read_text(encoding="utf-8"))
+    assert set(manifest) == set(known)
+    assert manifest == {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in known}
+    assert (root / "pytest.ini").read_text(encoding="utf-8") == "[pytest]\n"
+    runs_before = set(os.listdir(_ROOT / "tmp/test-runs"))
+    env = dict(os.environ)
+    env.pop("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", None)
+    env.update(PYTHONPATH=str(_ROOT), H5_FIXTURE_FAILURE=failure, H5_FIXTURE_PASS="yes" if passed else "no", PYTHONUTF8="1")
+    if directory is not None:
+        directory.mkdir(exist_ok=True)
+        env["PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY"] = str(directory)
+    completed = subprocess.run([sys.executable, "-m", "pytest", "--no-cov", "-q", "-c", str(root / "pytest.ini"),
+                                "--rootdir", str(root), "--junitxml", str(root / "junit.xml"), str(root / "tests")],
+                               cwd=root, env=env, capture_output=True, text=True, timeout=90, check=False)
+    assert set(os.listdir(_ROOT / "tmp/test-runs")) == runs_before, "H5_FIXTURE_RUN_RECORD_DRIFT"
+    output = completed.stdout + completed.stderr
+    facts = json.loads((root / "contract.json").read_text(encoding="utf-8"))
+    reports = json.loads((root / "reports.json").read_text(encoding="utf-8"))
+    nodes = ["tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist",
+             "tests/unit/acp/test_plan1126_shutdown.py::test_later"]
+    assert facts["collected"] == facts["executed"] == [r["nodeid"] for r in reports] == nodes
+    assert facts["stub_calls"] == 1 and facts["forbidden"] == {"start_run": 0, "prune_run_folders": 0, "repository_append": 0}
+    assert type(facts["pid"]) is int and facts["pid"] > 0 and facts["pid"] != os.getpid()
+    assert type(facts["creation_time"]) is int and facts["creation_time"] > 0
+    assert facts["identity_method"] == "run_context_windows.current_identity/GetCurrentProcess/GetProcessTimes"
+    assert facts["mode"] == "passive" and facts["head"] == "a" * 40 and Path(facts["worktree"]) == root
+    assert completed.returncode == (0 if passed else 1), output
+    assert "INTERNALERROR" not in output and "PRIVATE_CAPTURE_MESSAGE" not in output
+    assert [r["outcome"] for r in reports] == (["passed", "passed"] if passed else ["failed", "passed"])
+    assert all(r["same_object"] and r["when"] == "call" for r in reports) and reports[1]["sections"] == []
+    suite = ET.parse(root / "junit.xml").getroot().find("testsuite")
+    assert suite is not None and suite.attrib["tests"] == "2" and suite.attrib["failures"] == ("0" if passed else "1")
+    if directory is None:
+        assert "ISSUE287_H5_" not in output and reports[0]["sections"] == []
+    elif failure:
+        assert "ISSUE287_H5_CAPTURE_INVALID" in output and reports[0]["sections"][-1][1] == "ISSUE287_H5_CAPTURE_INVALID"
+        assert not (directory / facts["run_id"] / "h5").exists()
+    else:
+        from tests.support.h5_failure_capture import verify_h5_capture_bundle
+
+        bundle = verify_h5_capture_bundle(directory / facts["run_id"] / "h5", expected_run_id=facts["run_id"],
+            expected_head=facts["head"], expected_pid=facts["pid"], expected_creation_time=facts["creation_time"],
+            expected_repository_root=root)
+        assert len(bundle["observations"]) == 500 and bundle["receipt"]["mode"] == "passive"
+        assert "ISSUE287_H5_CAPTURE_METRICS" in output and "ISSUE287_H5_CAPTURE_CAPTURED" in output
+    prefix = "disabled" if directory is None else "enabled"
+    for name in ("contract.json", "reports.json", "junit.xml"):
+        with (root / f"{prefix}-{name}").open("xb") as handle:
+            handle.write((root / name).read_bytes())
+    with (root / f"{prefix}-execution.json").open("x", encoding="utf-8") as handle:
+        json.dump({"command": completed.args, "exit_code": completed.returncode,
+                   "stdout": completed.stdout, "stderr": completed.stderr}, handle)
+    return completed, reports
+
+
+def _h5_record_parent_retention(tmp_path, request, tmp_path_factory):
+    """Observe local retention without changing the native contract's outcome."""
+    try:
+        ini_policy = request.config.getini("tmp_path_retention_policy")
+        factory_policy = getattr(tmp_path_factory, "_retention_policy", None)
+        policies = ("all", "failed", "none")
+        facts = {
+            "kind": "test-local-parent-retention-evidence",
+            "ini_policy": ini_policy if ini_policy in policies else None,
+            "factory_policy": factory_policy if factory_policy in policies else None,
+            "parent": str(tmp_path.resolve(strict=True)),
+        }
+        (tmp_path / "retention.json").write_text(json.dumps(facts), encoding="utf-8")
+    except Exception:
+        pass  # Missing observational facts are assessed by the separate archive.
+
+
+@_WINDOWS_H5_ONLY
+@pytest.mark.parametrize("failure,passed", [("", False), ("write", False), ("verify", False), ("rename", False), ("write", True)])
+def test_native_h5_capture_preserves_original_failure_and_later_test(tmp_path, monkeypatch, failure, passed, request, tmp_path_factory):
+    from tests.support.h5_failure_capture import verify_h5_capture_bundle
+
+    _h5_record_parent_retention(tmp_path, request, tmp_path_factory)
+    test_h5_native_launcher_caller_inventory_is_complete()
+    monkeypatch.delenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", raising=False)
+    root = _h5_native_fixture(tmp_path)
+    directory = tmp_path / "capture"
+    done, reports = _h5_native_run(root, directory, failure=failure, passed=passed)
+    output = done.stdout + done.stderr
+    assert done.returncode == (0 if passed else 1), output
+    assert "INTERNALERROR" not in output and "PRIVATE_CAPTURE_MESSAGE" not in output
+    assert [report["outcome"] for report in reports] == (["passed", "passed"] if passed else ["failed", "passed"])
+    assert reports[1]["sections"] == [] and all(report["same_object"] for report in reports)
+    suite = ET.parse(root / "junit.xml").getroot().find("testsuite")
+    assert suite is not None and suite.attrib["tests"] == "2" and suite.attrib["failures"] == ("0" if passed else "1")
+    if failure:
+        assert "ISSUE287_H5_CAPTURE_INVALID" in output and reports[0]["sections"][-1][0] == "H5 in-suite capture"
+    else:
+        # Owned, bounded enumeration; no recursive repository walker or newest-session guess.
+        run_names = os.listdir(directory)
+        assert len(run_names) == 1
+        run_id = run_names[0]
+        facts = json.loads((root / "contract.json").read_text(encoding="utf-8"))
+        bundle = verify_h5_capture_bundle(directory / run_id / "h5", expected_run_id=run_id, expected_head="a"*40,
+            expected_pid=facts["pid"], expected_creation_time=facts["creation_time"], expected_repository_root=root)
+        assert len(bundle["observations"]) == 500 and bundle["receipt"]["mode"] == "passive"
+        assert "ISSUE287_H5_CAPTURE_METRICS" in output
+
+
+@_WINDOWS_H5_ONLY
+def test_capture_controls_never_touch_inherited_outer_base(tmp_path, monkeypatch, request, tmp_path_factory):
+    _h5_record_parent_retention(tmp_path, request, tmp_path_factory)
+    root = _h5_native_fixture(tmp_path)
+    outer = tmp_path / "outer"
+    outer.mkdir()
+    (outer / "sentinel").write_bytes(b"preserve")
+    monkeypatch.setenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", str(outer))
+    disabled, disabled_reports = _h5_native_run(root, None)
+    enabled, enabled_reports = _h5_native_run(root, tmp_path / "child-capture")
+    assert disabled.returncode == enabled.returncode == 1
+    assert disabled_reports[0]["longrepr"] == enabled_reports[0]["longrepr"]
+    assert disabled_reports[0]["sections"] == enabled_reports[0]["sections"] == []
+    assert "ISSUE287_H5_" not in disabled.stdout
+    disabled_facts = json.loads((root / "disabled-contract.json").read_text(encoding="utf-8"))
+    enabled_facts = json.loads((root / "enabled-contract.json").read_text(encoding="utf-8"))
+    assert (disabled_facts["pid"], disabled_facts["creation_time"]) != (enabled_facts["pid"], enabled_facts["creation_time"])
+    assert disabled_facts["forbidden"] == enabled_facts["forbidden"] == {"start_run": 0, "prune_run_folders": 0, "repository_append": 0}
+    assert (outer / "sentinel").read_bytes() == b"preserve" and os.listdir(outer) == ["sentinel"]
+    assert os.environ["PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY"] == str(outer)
+
+
+@pytest.mark.parametrize("node", ["target", "other"])
+@pytest.mark.parametrize("declaration", ["relative-capture", "../capture"])
+def test_malformed_capture_path_non_target_has_no_output(h5_capture_scope, monkeypatch, node, declaration):
+    from tests.support import h5_failure_capture as capture
+
+    plugin, context, directory = h5_capture_scope
+    binding, result, calls = _h5_stub(monkeypatch)
+    if node == "other":
+        monkeypatch.setenv("PYTEST_CURRENT_TEST", "tests/unit/acp/test_other.py::test_other (call)")
+    monkeypatch.setenv("PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY", declaration)
+    events = []
+    session = plugin.current_audit_session()
+    def path(value):
+        events.append("syntax")
+        return Path(value)
+    def current():
+        events.append("session")
+        return session
+    monkeypatch.setattr(plugin, "Path", path)
+    monkeypatch.setattr(plugin, "current_audit_session", current)
+    monkeypatch.setattr(capture, "validate_capture_directory", lambda *a: pytest.fail("no filesystem admission"))
+    monkeypatch.setattr(plugin, "_h5_utc_now", lambda: pytest.fail("no diagnostic timing"))
+    actual = _h5_bridge(plugin)
+    assert actual[0] is binding and actual[1] is result and len(calls) == 1
+    assert events == ["syntax", "session"], "syntax must precede all candidate/state work"
+    assert "h5_capture" not in session and session.get("h5_lines", []) == []
+    assert _h5_report(plugin).sections == [("existing", "UNCHANGED")]
+    assert not (directory / context.run_id).exists()
+
+
+def test_h5_activation_token_is_item_and_call_scoped_and_cleared(h5_capture_scope, monkeypatch):
+    plugin, _, _ = h5_capture_scope
+    _h5_stub(monkeypatch)
+    _h5_bridge(plugin)
+    session = plugin.current_audit_session()
+    token = session["h5_capture"]
+    for node, phase in ((plugin._H5_TARGET, "setup"), ("tests/unit/acp/test_fixture.py::test_later", "call")):
+        report = SimpleNamespace(sections=[], outcome="passed", when=phase, longrepr=None)
+        hook = plugin.pytest_runtest_makereport(SimpleNamespace(nodeid=node), SimpleNamespace(when=phase))
+        next(hook)
+        with pytest.raises(StopIteration) as finished:
+            hook.send(report)
+        assert finished.value.value is report and report.sections == []
+        assert session["h5_capture"] is token and "h5_lines" not in session
+    token["phase"] = "setup"
+    assert _h5_report(plugin).sections == [("existing", "UNCHANGED")]
+    assert session.get("h5_capture") is token and "h5_lines" not in session
+    token["phase"] = "call"
+    _h5_report(plugin)
+    assert "h5_capture" not in session
+    lines = list(session["h5_lines"])
+    assert _h5_report(plugin).sections == [("existing", "UNCHANGED")]
+    assert _h5_report(plugin, nodeid="tests/unit/acp/test_fixture.py::test_later").sections == [("existing", "UNCHANGED")]
+    assert session["h5_lines"] == lines
+
+
+def _h5_launcher_callers(source):
+    import ast
+    tree = ast.parse(source)
+    definitions = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.name == "_h5_native_run"]
+    assert len(definitions) == 1 and isinstance(definitions[0], ast.FunctionDef) and definitions[0] in tree.body
+    parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+    calls = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Global, ast.Nonlocal)):
+            assert "_h5_native_run" not in node.names, "no scope rebinding"
+        if isinstance(node, ast.arg):
+            assert node.arg != "_h5_native_run", "no parameter rebinding"
+        if isinstance(node, ast.alias):
+            assert (node.asname or node.name) != "_h5_native_run", "no import rebinding"
+        if isinstance(node, ast.Name) and node.id == "_h5_native_run":
+            assert isinstance(node.ctx, ast.Load), "no rebinding"
+            call = parents[node]
+            assert isinstance(call, ast.Call) and call.func is node, "no alias or callback escape"
+            owner = parents[call]
+            while owner is not tree and not isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                owner = parents[owner]
+            assert isinstance(owner, ast.FunctionDef) and owner in tree.body, "no module/class/nested caller"
+            calls.append((owner.name, ast.unparse(call)))
+    # ast.walk is breadth-first; source offsets preserve the exact reviewed caller order.
+    calls.sort(key=lambda pair: next(n.lineno for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == pair[0]))
+    return definitions, calls
+
+
+@pytest.mark.usefixtures("h5_isolated_activation")
+def test_h5_native_launcher_caller_inventory_is_complete():
+    import ast
+
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    definitions, calls = _h5_launcher_callers(Path(__file__).read_text(encoding="utf-8"))
+    assert calls == [
+        ("test_native_h5_capture_preserves_original_failure_and_later_test", "_h5_native_run(root, directory, failure=failure, passed=passed)"),
+        ("test_capture_controls_never_touch_inherited_outer_base", "_h5_native_run(root, None)"),
+        ("test_capture_controls_never_touch_inherited_outer_base", "_h5_native_run(root, tmp_path / 'child-capture')"),
+    ]
+    # Core's classification control must not reach a nested collection via fixture dependencies.
+    fixtures = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)
+                and any(ast.unparse(d).startswith("pytest.fixture") for d in n.decorator_list)}
+    check = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                 and n.name == "test_h5_launching_nodes_have_explicit_reviewed_core_disposition")
+    pending, visited = [arg.arg for arg in check.args.args], set()
+    while pending:
+        name = pending.pop()
+        if name in visited or name not in fixtures:
+            continue
+        visited.add(name)
+        fixture = fixtures[name]
+        assert not any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                       and n.func.id in {"_pytest", "_h5_native_run"} for n in ast.walk(fixture)), "core fixture must not launch pytest"
+        pending.extend(arg.arg for arg in fixture.args.args)
+    launches = [n for n in ast.walk(definitions[0]) if isinstance(n, ast.Call) and ast.unparse(n.func) == "subprocess.run"]
+    assert len(launches) == 1
+    primary = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == calls[0][0])
+    decorator = next(n for n in primary.decorator_list if isinstance(n, ast.Call))
+    assert ast.literal_eval(decorator.args[1]) == [("", False), ("write", False), ("verify", False), ("rename", False), ("write", True)]
+    factory = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_h5_native_fixture")
+    program = next(n.value for n in ast.walk(factory) if isinstance(n, ast.Constant) and isinstance(n.value, str) and "pytest_plugins" in n.value)
+    child = ast.parse(program)
+    statements = [ast.unparse(n) for n in child.body]
+    helper_import = next(i for i,s in enumerate(statements) if "from tests.unit.tools.test_test_profiles import" in s)
+    for assignment in ("run_context.start_run =", "run_context_records.prune_run_folders =", "run_context._append ="):
+        assert any(s.startswith(assignment) for s in statements[:helper_import]), assignment
+    assert "current_identity()" in program and "123456" not in program
+
+
+_H5_UNTRACKED = ("tests/support/h5_failure_capture.py", "tests/unit/tools/test_h5_failure_capture.py")
+
+
+def _h5_check_untracked_source(relative, source):
+    """Bounded direct-source checks supplement the tracked guards' alias limits."""
+    import ast
+
+    from tests.unit.guardrails.test_tracked_file_scanners import _walker_calls_from_source
+
+    tree = ast.parse(source)
+    assert not _walker_calls_from_source(relative, source)
+    aliases = {}
+    banned_modules = {"subprocess", "multiprocessing", "asyncio", "ctypes", "importlib", "tools.process_tree"}
+    admitted_imports = {
+        "__future__.annotations", "copy", "json", "os", "re", "stat", "sys", "tempfile", "time", "pytest", "_winapi",
+        "collections.Counter", "collections.abc.Mapping", "dataclasses.dataclass", "dataclasses.fields",
+        "datetime.UTC", "datetime.datetime", "pathlib.Path", "types.SimpleNamespace", "typing.Any",
+        "jsonschema.Draft202012Validator", "tests.support.h5_failure_capture",
+        "tools.plan1126_runtime_audit.evidence_store", "tools.plan1126_runtime_audit.shutdown",
+        "tools.plan1126_runtime_audit.measurement.EnvironmentBinding", "tools.plan1126_runtime_audit.shutdown.CloseSite",
+        "tools.plan1126_runtime_audit.shutdown.ResourceOwnershipRecord", "tools.plan1126_runtime_audit.shutdown.ShutdownScheduleObservation",
+        "tools.plan1126_runtime_audit.source.ExecutingSourceMismatch", "tools.testing.run_context.RunContext",
+        "tools.testing.run_context_records.COMMIT", "tools.testing.run_context_records.RUN_ID",
+    }
+    helper_imports = {
+        "tests.unit.tools.plan1126_runtime_audit.test_current_measurement._budget_tempfile_facade",
+        "tests.unit.tools.plan1126_runtime_audit.test_current_measurement._pad_budget_directory",
+    } if relative == _H5_UNTRACKED[1] else set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                assert alias.name in admitted_imports, "unreviewed import"
+                assert not any(alias.name == m or alias.name.startswith(m + ".") for m in banned_modules)
+                aliases[alias.asname or alias.name.split(".")[0]] = alias.name if alias.asname else alias.name.split(".")[0]
+        elif isinstance(node, ast.ImportFrom):
+            assert node.module is not None and all(a.name != "*" for a in node.names)
+            assert not any(node.module == m or node.module.startswith(m + ".") for m in banned_modules)
+            for alias in node.names:
+                assert node.level == 0 and node.module + "." + alias.name in (
+                    admitted_imports | helper_imports
+                ), "unreviewed import/re-export"
+                aliases[alias.asname or alias.name] = node.module + "." + alias.name
+    def name(node):
+        if isinstance(node, ast.Name):
+            return aliases.get(node.id, node.id)
+        if isinstance(node, ast.Attribute):
+            return name(node.value) + "." + node.attr
+        return ""
+    inert = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "exec"
+             and len(n.args) == 2 and not n.keywords and isinstance(n.args[1], ast.Dict) and not n.args[1].keys
+             and isinstance(n.args[0], ast.Call) and isinstance(n.args[0].func, ast.Name) and n.args[0].func.id == "compile"
+             and not n.args[0].keywords and len(n.args[0].args) == 3
+             and isinstance(n.args[0].args[0], ast.Constant) and n.args[0].args[0].value == "raise OSError(5, 'PRIVATE_MESSAGE')"
+             and isinstance(n.args[0].args[1], ast.Name) and n.args[0].args[1].id == "filename"
+             and isinstance(n.args[0].args[2], ast.Constant) and n.args[0].args[2].value == "exec"]
+    assert len(inert) <= (1 if relative == _H5_UNTRACKED[1] else 0)
+    allowed_dynamic = {id(n.func) for call in inert for n in (call, call.args[0])}
+    dangerous = {"system", "popen", "startfile", "CreateProcess", "ShellExecute", "stdio_client", "StdioServerParameters",
+                 "vars", "__dict__", "modules", "importorskip"}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Name, ast.Attribute)):
+            spelled = name(node)
+            tail = spelled.rsplit(".", 1)[-1]
+            assert not (tail in dangerous or tail.startswith(("CreateProcess", "ShellExecute", "create_subprocess"))
+                        or tail in {"glob", "iglob", "rglob", "iterdir", "listdir", "scandir", "fork", "forkpty"}
+                        or (tail == "walk" and spelled != "ast.walk")
+                        or (spelled.startswith("os.") and tail.startswith(("spawn", "exec", "posix_spawn"))))
+            assert not (spelled.startswith("_winapi.") and spelled != "_winapi.CreateJunction")
+            if tail in {"exec", "eval", "compile", "__import__"}:
+                assert id(node) in allowed_dynamic
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                assert node.id not in aliases and node.id not in {"exec", "eval", "compile", "__import__"}
+        if isinstance(node, ast.Call) and name(node.func) == "getattr":
+            assert (not node.keywords and len(node.args) == 3 and ast.unparse(node.args[0]) == "info"
+                    and isinstance(node.args[1], ast.Constant) and node.args[1].value == "st_file_attributes"
+                    and isinstance(node.args[2], ast.Constant) and node.args[2].value == 0), "dynamic attribute lookup"
+
+
+def _h5_recognized_untracked(monkeypatch, sources):
+    from tests.support import child_launch_inventory
+
+    paths = tuple(_ROOT / relative for relative in _H5_UNTRACKED)
+    real_read = Path.read_text
+    with monkeypatch.context() as scoped:
+        scoped.setattr(child_launch_inventory, "tracked_repository_files", lambda *a, **kw: paths)
+        scoped.setattr(Path, "read_text", lambda path, *a, **kw: sources[path.relative_to(_ROOT).as_posix()]
+                       if path in paths else real_read(path, *a, **kw))
+        return child_launch_inventory.launch_sites(_ROOT)
+
+
+@pytest.mark.usefixtures("h5_isolated_activation")
+def test_h5_untracked_files_have_no_launch_or_scanner_sites(monkeypatch):
+    sources = {relative: (_ROOT / relative).read_text(encoding="utf-8") for relative in _H5_UNTRACKED}
+    assert not _h5_recognized_untracked(monkeypatch, sources)
+    for relative, source in sources.items():
+        _h5_check_untracked_source(relative, source)
+
+
+@pytest.mark.usefixtures("h5_isolated_activation")
+@pytest.mark.parametrize("relative,source,accepted", [
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _budget_tempfile_facade", True, id="facade"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _pad_budget_directory", True, id="padding"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _budget_tempfile_facade, _pad_budget_directory", True, id="both"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _budget_tempfile_facade as facade, _pad_budget_directory as padding", True, id="aliases"),
+    pytest.param(_H5_UNTRACKED[0], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _budget_tempfile_facade", False, id="support-facade"),
+    pytest.param(_H5_UNTRACKED[0], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _pad_budget_directory", False, id="support-padding"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import *", False, id="star"),
+    pytest.param(_H5_UNTRACKED[1], "import tests.unit.tools.plan1126_runtime_audit.test_current_measurement", False, id="module"),
+    pytest.param(_H5_UNTRACKED[1], "import tests.unit.tools.plan1126_runtime_audit.test_current_measurement as hidden", False, id="module-alias"),
+    pytest.param(_H5_UNTRACKED[1], "import tests.unit.tools.plan1126_runtime_audit.test_current_measurement._budget_tempfile_facade", False, id="dotted-facade"),
+    pytest.param(_H5_UNTRACKED[1], "import tests.unit.tools.plan1126_runtime_audit.test_current_measurement._pad_budget_directory", False, id="dotted-padding"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit import test_current_measurement", False, id="parent-reexport"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _tree", False, id="unknown-helper"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import run_fresh_measurement", False, id="measurement"),
+    pytest.param(_H5_UNTRACKED[1], "from tests.unit.tools.plan1126_runtime_audit.test_current_measurement import _budget_tempfile_facade, _tree", False, id="mixed"),
+])
+def test_h5_budget_helper_imports_are_scoped(relative, source, accepted):
+    if accepted:
+        _h5_check_untracked_source(relative, source)
+    else:
+        with pytest.raises(AssertionError):
+            _h5_check_untracked_source(relative, source)
+
+
+@pytest.mark.usefixtures("h5_isolated_activation")
+def test_h5_untracked_file_check_detects_forbidden_sites(monkeypatch):
+    sources = {relative: "" for relative in _H5_UNTRACKED}
+    sources[_H5_UNTRACKED[0]] = "import subprocess\ndef bad(): subprocess.run(['python', '-c', 'pass'])"
+    sites = _h5_recognized_untracked(monkeypatch, sources)
+    assert [site["key"] for site in sites] == [_H5_UNTRACKED[0] + "::bad#1"]
+    for source in (
+        sources[_H5_UNTRACKED[0]], "from subprocess import run as hidden\nhidden([])",
+        "import os as hidden\nhidden.system('ignored')", "from os import spawnv as hidden\nhidden(0, 'x', [])",
+        "import multiprocessing as hidden\nhidden.Process()", "import _winapi\n_winapi.CreateProcess()",
+        "import ctypes\nctypes.windll.kernel32.CreateProcessW()", "from pathlib import Path\nPath('.').rglob('*')",
+        "import os as hidden\nhidden.listdir('.')", "eval('ignored')", "f = exec\nf('ignored')",
+        "exec(compile('import subprocess', filename, 'exec'), {})", "import importlib\nimportlib.import_module('subprocess')",
+        "import os\ngetattr(os, 'system')('ignored')", "from unknown_launcher import launch\nlaunch()",
+    ):
+        with pytest.raises(AssertionError):
+            _h5_check_untracked_source(_H5_UNTRACKED[1], source)
+
+
+def test_h5_fixture_keeps_outer_recorder_context(h5_capture_scope):
+    from tools.testing import run_context
+    _, synthetic, _ = h5_capture_scope
+    assert run_context.current() is not synthetic
+    assert run_context.current() is not None
+
+
+@_WINDOWS_H5_ONLY
+@pytest.mark.parametrize("site", ["admission_import", "returned_import", "status_constructor"])
+def test_h5_diagnostic_import_and_constructor_errors_are_contained(h5_capture_scope, monkeypatch, site):
+    import builtins
+
+    from tests.support import h5_failure_capture as capture
+    plugin, _, _ = h5_capture_scope
+    binding, result, calls = _h5_stub(monkeypatch)
+    real_import = builtins.__import__
+    def fail_import(name, *args, **kwargs):
+        if name == "tests.support.h5_failure_capture":
+            raise ImportError("PRIVATE_IMPORT")
+        return real_import(name, *args, **kwargs)
+    if site == "admission_import":
+        with monkeypatch.context() as scoped:
+            scoped.setattr(builtins, "__import__", fail_import)
+            actual = _h5_bridge(plugin)
+        assert actual[0] is binding and actual[1] is result and len(calls) == 1
+        assert "h5_capture" not in plugin.current_audit_session()
+        assert _h5_report(plugin).sections == [("existing", "UNCHANGED")]
+    else:
+        if site == "status_constructor":
+            def fail_status(*args, **kwargs):
+                raise RuntimeError("PRIVATE_CONSTRUCTOR")
+            monkeypatch.setattr(capture, "CaptureStatus", fail_status)
+        # Fail the post-measurement import at its real bridge point, after admission succeeds.
+        if site == "returned_import":
+            def measure(**kwargs):
+                calls.append(kwargs)
+                monkeypatch.setattr(builtins, "__import__", fail_import)
+                return binding, result, None
+            from tools.plan1126_runtime_audit import measurement
+            monkeypatch.setattr(measurement, "session_measurement_reuse", lambda: SimpleNamespace(measure=measure))
+        actual = _h5_bridge(plugin)
+        monkeypatch.setattr(builtins, "__import__", real_import)
+        assert actual[0] is binding and actual[1] is result and len(calls) == 1
+        assert _h5_report(plugin).sections[-1] == ("H5 in-suite capture", "ISSUE287_H5_CAPTURE_INVALID")
+        assert "PRIVATE_" not in str(plugin.current_audit_session().get("h5_lines", []))
+
+
+@_WINDOWS_H5_ONLY
+def test_h5_duplicate_call_preserves_first_status_and_bundle(h5_capture_scope, monkeypatch):
+    plugin, context, directory = h5_capture_scope
+    binding, result, calls = _h5_stub(monkeypatch, earlier="tests/unit/acp/test_fixture.py::test_earlier")
+    first = _h5_bridge(plugin)
+    original = (directory / context.run_id / "h5/capture.json").read_bytes()
+    second = _h5_bridge(plugin)
+    assert first[0] is second[0] is binding and first[1] is second[1] is result
+    assert len(calls) == 2 and len(plugin.current_audit_session()["reused"]) == 2
+    assert (directory / context.run_id / "h5/capture.json").read_bytes() == original
+    _h5_report(plugin)
+    lines = plugin.current_audit_session()["h5_lines"]
+    assert [line for line in lines if not line.startswith("ISSUE287_H5_CAPTURE_METRICS")] == [
+        "ISSUE287_H5_CAPTURE_CAPTURED", "ISSUE287_H5_CAPTURE_INVALID"]
+    assert "h5_capture" not in plugin.current_audit_session()
+
+
+@pytest.mark.parametrize("escape", ["alias = _h5_native_run", "class Escape:\n    alias = _h5_native_run", "class _h5_native_run: pass", "def escape():\n    global _h5_native_run\n    _h5_native_run = None"])
+def test_h5_launcher_inventory_rejects_outside_and_rebound_references(escape):
+    with pytest.raises(AssertionError):
+        _h5_launcher_callers("def _h5_native_run(): pass\n" + escape)
+
+
+@pytest.mark.parametrize("source", [
+    "import sys\nsys.modules['subprocess'].run([])",
+    "import os\nvars(os)['system']('ignored')",
+    "import os\nos.__dict__['system']('ignored')",
+    "import pytest\npytest.importorskip('subprocess').run([])",
+])
+def test_h5_untracked_checker_rejects_namespace_escapes(source):
+    with pytest.raises(AssertionError):
+        _h5_check_untracked_source(_H5_UNTRACKED[0], source)
+
+
+def test_h5_launching_nodes_have_explicit_reviewed_core_disposition(manifest):
+    import ast
+
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    primary = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                   and n.name == "test_native_h5_capture_preserves_original_failure_and_later_test")
+    parameterize = next(n for n in primary.decorator_list if isinstance(n, ast.Call)
+                        and ast.unparse(n.func) == "pytest.mark.parametrize")
+    assert ast.literal_eval(parameterize.args[0]) == "failure,passed"
+    cases = ast.literal_eval(parameterize.args[1])
+    nodes = tuple(f"tests/unit/tools/test_test_profiles.py::{primary.name}[{failure}-{passed}]"
+                  for failure, passed in cases) + (
+        "tests/unit/tools/test_test_profiles.py::test_capture_controls_never_touch_inherited_outer_base",
+    )
+    actual = profiles.classify_nodes(nodes, manifest).tiers
+    assert len(actual) == 6 and set(actual.values()) == {"core"}
+    rationale = _REVIEWED_CHEAP_LAUNCHERS["tests/unit/tools/test_test_profiles.py"]
+    assert rationale != _MIXED and "synthetic passive" in rationale and "never the H5 probe" in rationale

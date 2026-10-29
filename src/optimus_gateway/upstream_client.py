@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import contextlib
 import functools
 import http.client
 import json
+import socket
+import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from http.client import HTTPException
-from typing import Any, Literal, NamedTuple, Protocol, TypeVar
+from typing import Any, Final, Literal, NamedTuple, Protocol, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.request import (
     HTTPDefaultErrorHandler,
@@ -19,11 +22,17 @@ from urllib.request import (
     ProxyHandler,
     Request,
     UnknownHandler,
-    urlopen,
+    build_opener,
 )
 
-from optimus_model_policy.binding import ATTEMPT_NOT_SENT, ATTEMPT_REJECTED, ATTEMPT_UNCERTAIN
-from optimus_security.failure_facts import bounded, exception_fact, slug
+from optimus_model_policy.binding import (
+    ATTEMPT_NOT_SENT,
+    ATTEMPT_REJECTED,
+    ATTEMPT_UNCERTAIN,
+    GATEWAY_REQUEST_BUDGET_SECONDS,
+    UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
+)
+from optimus_security.failure_facts import bounded, exception_fact, guardrail_stage_facts, slug
 
 # OpenRouter's documented router pipeline stage types (router-metadata guide, 2026-10-20). Any other type is
 # recorded as ``unrecognized``: it still counts as a stage, but its text is never persisted.
@@ -35,6 +44,146 @@ _MAX_UPSTREAM_ATTEMPTS = 4
 _MODEL_MAX_UPSTREAM_ATTEMPTS = 3
 _TRANSIENT_HTTP_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 _DEFAULT_BACKOFF_SECONDS = (0.05, 0.1, 0.2)
+
+# The server handles each host request on its own thread, so one thread-local deadline bounds every upstream attempt
+# the request makes, across all its provider calls.
+_REQUEST = threading.local()
+
+
+def begin_request_budget() -> None:
+    """Start this thread's host request: from now, no upstream attempt starts that could outlast its budget."""
+    _REQUEST.deadline = time.monotonic() + GATEWAY_REQUEST_BUDGET_SECONDS
+
+
+def end_request_budget() -> None:
+    _REQUEST.deadline = None
+
+
+def request_budget_admits(seconds: float) -> bool:
+    """Whether ``seconds`` more (an attempt's timeout, plus any wait before it) still ends inside the current host
+    request's budget, so the host is still waiting for the reply. Always true outside a request."""
+    deadline = getattr(_REQUEST, "deadline", None)
+    return deadline is None or time.monotonic() + seconds <= deadline
+
+
+class UpstreamBudgetExhausted(RuntimeError):
+    """No upstream attempt was started: it could have outlasted the host request's budget (#397 live Z2)."""
+
+
+_WATCH = threading.local()
+
+
+class AttemptDeadlineExpired(Exception):
+    """An upstream attempt abandoned at its deadline (:meth:`AttemptDeadline.run`)."""
+
+    failure_kind = "attempt_deadline"
+
+
+class AttemptCapacityExhausted(AttemptDeadlineExpired):
+    """No attempt was started: every worker slot is held by an earlier attempt still running after its deadline."""
+
+    failure_kind = "attempt_capacity"
+
+
+_MAX_OUTSTANDING_ATTEMPTS: Final = 32
+"""Attempt workers that may run at once. An abandoned worker can outlive its deadline where nothing can interrupt it:
+a name lookup, the per-address connect loop inside ``socket.create_connection`` (up to one attempt timeout per
+address, before any socket is handed over) and a TLS handshake (on a socket ``wrap_socket`` has taken over). The
+slots bound what stalled attempts can hold (Codex round 3, Fable at Checkpoint C)."""
+_ATTEMPT_SLOTS = threading.BoundedSemaphore(_MAX_OUTSTANDING_ATTEMPTS)
+
+
+class AttemptDeadline:
+    """Bounds one upstream attempt in every phase: name resolution, each address's connect, a proxy tunnel, the TLS
+    handshake, the send and every read. urllib's timeout bounds each blocking operation, not the attempt, so a provider
+    or proxy that keeps sending bytes could hold an attempt open past the host's wait (#397 live Z2, Codex rounds 1-2).
+
+    :meth:`run` does the attempt's I/O on its own thread and waits for it no longer than the deadline. A reply that
+    completes in time is the attempt's result. Past the deadline the attempt is abandoned: its socket is shut down if it
+    has one, and a connection it completes later is refused before any request byte leaves, so an abandoned attempt
+    that never had a connection accepted certainly sent nothing (``accepted`` stays false). The socket is handed over
+    as soon as it is connected, before any proxy tunnel or TLS handshake, so shutting it down also ends a stalled
+    tunnel. Each worker holds one of ``_MAX_OUTSTANDING_ATTEMPTS`` slots until it actually exits."""
+
+    def __init__(self, seconds: float) -> None:
+        self.seconds = seconds
+        self.expired = False
+        self.accepted = False
+        self._sock: socket.socket | None = None
+        self._lock = threading.Lock()
+
+    def run(self, attempt: Callable[[], T]) -> T:
+        outcome: list[tuple[bool, Any]] = []
+
+        def work() -> None:
+            _WATCH.current = self
+            try:
+                outcome.append((True, attempt()))
+            except BaseException as exc:  # handed to the waiting thread, which raises it
+                outcome.append((False, exc))
+            finally:
+                _WATCH.current = None
+
+        slots = _ATTEMPT_SLOTS  # the slot is returned to the pool it was taken from
+        if not slots.acquire(blocking=False):
+            raise AttemptCapacityExhausted("every upstream attempt slot is held by an attempt past its deadline")
+
+        def work_in_slot() -> None:
+            try:
+                work()
+            finally:
+                slots.release()
+
+        worker = threading.Thread(target=work_in_slot, name="optimus-upstream-attempt", daemon=True)
+        try:
+            worker.start()
+        except BaseException:
+            slots.release()
+            raise
+        worker.join(self.seconds)
+        if worker.is_alive():
+            self._abandon()
+            raise AttemptDeadlineExpired("the upstream attempt was abandoned at its deadline")
+        succeeded, value = outcome[0]
+        if not succeeded:
+            raise value
+        return value  # type: ignore[no-any-return]
+
+    def opened(self, sock: socket.socket) -> None:
+        """Called on the attempt's thread as soon as its TCP connection exists, before any proxy tunnel or TLS: from now
+        on abandoning the attempt shuts this socket down. Nothing has been sent yet."""
+        with self._lock:
+            if self.expired:
+                raise TimeoutError("the upstream attempt's deadline passed before its request was sent")
+            self._sock = sock
+
+    def connected(self, sock: socket.socket) -> None:
+        """Called on the attempt's thread once its connection is established, before any request byte leaves."""
+        with self._lock:
+            if self.expired:
+                raise TimeoutError("the upstream attempt's deadline passed before its request was sent")
+            self._sock = sock
+            self.accepted = True
+
+    def _abandon(self) -> None:
+        with self._lock:
+            self.expired = True
+            sock = self._sock
+        if sock is not None:
+            with contextlib.suppress(OSError):
+                socket.socket.shutdown(sock, socket.SHUT_RDWR)  # the base method: never touches an SSL object's state
+
+
+def _attempt_opened(sock: socket.socket) -> None:
+    deadline = getattr(_WATCH, "current", None)
+    if deadline is not None:
+        deadline.opened(sock)
+
+
+def _attempt_connected(sock: socket.socket) -> None:
+    deadline = getattr(_WATCH, "current", None)
+    if deadline is not None:
+        deadline.connected(sock)
 
 
 @dataclass(frozen=True)
@@ -74,6 +223,10 @@ class ProviderMessageResult:
     router_pipeline: tuple[str, ...] | None = None
     """The ``type`` of every router pipeline stage that materially changed the request or response
     (compression, guardrails, ...); empty when none ran, ``None`` without router metadata."""
+    router_guardrails: tuple[dict[str, Any], ...] | None = None
+    """Each ``guardrail`` stage's closed facts, in pipeline order (``failure_facts.guardrail_stage_facts``, #400);
+    empty when none ran, ``None`` without router metadata. Only the experimental route's pipeline check reads them,
+    to accept the one unflagged stage of #400 option b1 (``model_policy.unflagged_guardrail_only``)."""
     router_metadata_error: str | None = None
     """Why the router metadata could not be read (malformed, or more than one selected endpoint). Its
     routing fields are then all ``None``; the reply's usage and cost do not depend on it."""
@@ -93,6 +246,16 @@ class UpstreamClient(Protocol):
         reasoning: str | None,
     ) -> ProviderMessageResult:
         """One provider attempt under an enforced model policy; raises UpstreamAttemptFailure."""
+
+    def create_decision_once(
+        self,
+        *,
+        model: str,
+        state: Mapping[str, Any],
+        questions: Mapping[str, Any],
+        provider_controls: Mapping[str, Any],
+    ) -> DecisionResult:
+        """One System One decision attempt under an enforced model policy; raises UpstreamAttemptFailure."""
 
 
 class RetryableUpstreamError(Exception):
@@ -120,37 +283,55 @@ def call_with_upstream_retry(
     on_retry: Callable[[int], None] | None = None,
     on_attempt_failure: Callable[[int, str, float, Literal["retry", "terminal"], dict[str, Any] | None], None] | None = None,
     backoff_seconds: tuple[float, ...] = _DEFAULT_BACKOFF_SECONDS,
+    attempt_timeout_seconds: float = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
 ) -> T:
     """Retry only transient upstream faults; reraise the final failure as RuntimeError. ``on_attempt_failure`` also
-    gets each failed attempt's bounded cause (correction plan v4, C9)."""
+    gets each failed attempt's bounded cause (correction plan v4, C9). No attempt is dispatched that could outlast the
+    host request's budget, at ``attempt_timeout_seconds`` each, checked after any backoff: a first attempt raises
+    :class:`UpstreamBudgetExhausted`, and after a failure that failure is final."""
     sleeper = sleep or time.sleep
+    if not request_budget_admits(attempt_timeout_seconds):
+        raise UpstreamBudgetExhausted("no upstream attempt fits in the host request's remaining budget")
+
+    def report(failed: tuple[int, str, float, dict[str, Any] | None], disposition: Literal["retry", "terminal"]) -> None:
+        number, classification, latency, failure = failed
+        if on_attempt_failure is not None:
+            on_attempt_failure(number, classification, latency, disposition, failure)
+        if disposition == "retry" and on_retry is not None:
+            on_retry(number)
+
     attempt = 1
+    # A retried failure is reported once its retry has been dispatched: no observer runs between the dispatch-time
+    # budget check and the dispatch (Codex, Checkpoint C), and no retry is reported that never ran (Fable, Checkpoint C).
+    retried: tuple[int, str, float, dict[str, Any] | None] | None = None
     while True:
         started_at = time.monotonic()
         try:
-            return operation()
+            result = operation()
         except Exception as exc:
+            latency = time.monotonic() - started_at
+            if retried is not None:
+                report(retried, "retry")
             retryable = is_retryable_upstream_fault(exc)
-            disposition: Literal["retry", "terminal"] = (
-                "retry" if retryable and attempt < max_attempts else "terminal"
-            )
-            if on_attempt_failure is not None:
-                on_attempt_failure(
-                    attempt,
-                    "transient" if retryable else "permanent",
-                    time.monotonic() - started_at,
-                    disposition,
-                    _attempt_failure(exc),
-                )
-            if disposition == "terminal":
-                if retryable:
-                    raise RuntimeError(str(exc)) from exc
-                raise
-            if on_retry is not None:
-                on_retry(attempt)
+            failed = (attempt, "transient" if retryable else "permanent", latency, _attempt_failure(exc))
             delay = backoff_seconds[min(attempt - 1, len(backoff_seconds) - 1)]
-            sleeper(delay)
-            attempt += 1
+            retrying = retryable and attempt < max_attempts and request_budget_admits(delay + attempt_timeout_seconds)
+            if retrying:
+                sleeper(delay)
+                # Rechecked at dispatch, after the backoff (Codex round 1): if the next attempt no longer fits, this
+                # failure is final rather than a claim that nothing was sent.
+                retrying = request_budget_admits(attempt_timeout_seconds)
+            if retrying:
+                retried = failed
+                attempt += 1
+                continue
+            report(failed, "terminal")
+            if retryable:
+                raise RuntimeError(str(exc)) from exc
+            raise
+        if retried is not None:
+            report(retried, "retry")
+        return result
 
 
 class UrllibOpenAICompatibleClient:
@@ -159,7 +340,7 @@ class UrllibOpenAICompatibleClient:
         *,
         api_key: str,
         base_url: str,
-        timeout_seconds: float = 60.0,
+        timeout_seconds: float = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
         max_attempts: int = _MODEL_MAX_UPSTREAM_ATTEMPTS,
         sleep: Callable[[float], None] | None = None,
         on_retry: Callable[[RetryEvent], None] | None = None,
@@ -174,9 +355,9 @@ class UrllibOpenAICompatibleClient:
         self._on_retry = on_retry
         self._attempt_opener: OpenerDirector | None = None
 
-    def _request(self, payload: Mapping[str, Any], request_class: type[Request] = Request) -> Request:
+    def _request(self, payload: Mapping[str, Any], request_class: type[Request] = Request, *, path: str = "/chat/completions") -> Request:
         return request_class(
-            f"{self._base_url}/chat/completions",
+            f"{self._base_url}{path}",
             data=json.dumps(payload).encode("utf-8"),
             headers={
                 "Authorization": f"Bearer {self._api_key}",
@@ -195,11 +376,12 @@ class UrllibOpenAICompatibleClient:
         request = self._request(payload)
 
         def call() -> ProviderMessageResult:
-            body, headers = _urlopen_json(
-                request,
-                timeout_seconds=self._timeout_seconds,
-                label="upstream",
-            )
+            try:
+                body, headers = AttemptDeadline(self._timeout_seconds).run(
+                    lambda: _urlopen_json(request, timeout_seconds=self._timeout_seconds, label="upstream")
+                )
+            except AttemptDeadlineExpired as exc:
+                raise _with_failure(RetryableUpstreamError("upstream attempt abandoned"), {"kind": exc.failure_kind}) from exc
             return parse_openai_chat_completion(body, headers, requested_model=model)
 
         def report_failure(
@@ -225,6 +407,7 @@ class UrllibOpenAICompatibleClient:
             max_attempts=self._max_attempts,
             sleep=self._sleep,
             on_attempt_failure=report_failure,
+            attempt_timeout_seconds=self._timeout_seconds,
         )
 
     def create_message_once(
@@ -256,10 +439,13 @@ class UrllibOpenAICompatibleClient:
         request = _attempt_of(self._request(payload, request_class=_AttemptRequest))
         if self._attempt_opener is None:
             self._attempt_opener = _build_attempt_opener()
+        opener = self._attempt_opener
+        deadline = AttemptDeadline(self._timeout_seconds)
         try:
-            with self._attempt_opener.open(request, timeout=self._timeout_seconds) as response:
-                raw = response.read()
-                headers = {str(name).casefold(): str(value) for name, value in getattr(response, "headers", {}).items()}
+            raw, headers = deadline.run(lambda: _read_reply(opener, request, self._timeout_seconds))
+        except AttemptDeadlineExpired as exc:
+            # Sent only if a connection was accepted before the deadline; a later one is refused before any byte leaves.
+            raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN if deadline.accepted else ATTEMPT_NOT_SENT, failure={"kind": exc.failure_kind}) from exc
         except HTTPError as exc:
             # A 4xx (other than a request timeout) is the provider refusing the request before any
             # model ran; a 408, a 5xx or an unfollowed redirect may follow a model run that was billed.
@@ -286,6 +472,112 @@ class UrllibOpenAICompatibleClient:
             # A reply arrived but its usage cannot be verified: it may have been billed.
             raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN, failure=_unreadable_reply(exc)) from exc
 
+    def create_decision_once(
+        self,
+        *,
+        model: str,
+        state: Mapping[str, Any],
+        questions: Mapping[str, Any],
+        provider_controls: Mapping[str, Any],
+    ) -> DecisionResult:
+        """Exactly one System One decision attempt (Plan 12.4 v7: the Jev adapter), with the same attempt contract
+        as :meth:`create_message_once`: a failure says whether the request certainly reached no model or may have
+        been billed, and nothing is retried here. The approved endpoints are the request's ``provider`` object."""
+        payload = {
+            "model": model,
+            "state": json.loads(json.dumps(dict(state))),
+            "questions": json.loads(json.dumps(dict(questions))),
+            "provider": json.loads(json.dumps(dict(provider_controls))),
+        }
+        request = _attempt_of(self._request(payload, request_class=_AttemptRequest, path="/systemone"))
+        if self._attempt_opener is None:
+            self._attempt_opener = _build_attempt_opener()
+        opener = self._attempt_opener
+        deadline = AttemptDeadline(self._timeout_seconds)
+        try:
+            raw, _headers = deadline.run(lambda: _read_reply(opener, request, self._timeout_seconds))
+        except AttemptDeadlineExpired as exc:
+            raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN if deadline.accepted else ATTEMPT_NOT_SENT, failure={"kind": exc.failure_kind}) from exc
+        except HTTPError as exc:
+            refused = 400 <= exc.code < 500 and exc.code != 408
+            # The upstream error body is never read: it can echo the request's state.
+            raise UpstreamAttemptFailure(
+                ATTEMPT_REJECTED if refused else ATTEMPT_UNCERTAIN, http_status=exc.code, failure={"kind": "http"}
+            ) from exc
+        except (OSError, HTTPException) as exc:
+            raise UpstreamAttemptFailure(
+                ATTEMPT_UNCERTAIN if request.connected else ATTEMPT_NOT_SENT, failure={"kind": "transport", **exception_fact(exc)}
+            ) from exc
+        try:
+            decoded = json.loads(raw.decode("utf-8"))
+            if not isinstance(decoded, dict):
+                raise RuntimeError("decision response was not an object")
+            return parse_decision_response(decoded, questions=questions)
+        except (UnicodeError, ValueError, RuntimeError) as exc:
+            raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN, failure=_unreadable_reply(exc)) from exc
+
+
+@dataclass(frozen=True)
+class DecisionResult:
+    """One System One decision reply: its typed answers and the usage it reported (output is free, so ``cost_usd``
+    is the input charge)."""
+
+    decision_id: str
+    resolved_model: str
+    resolved_provider: str | None
+    answers: Mapping[str, Any]
+    input_tokens: int
+    output_tokens: int
+    cost_usd: Decimal
+
+
+_DECISION_TYPES: Final = frozenset({"choice", "noul", "score"})
+
+
+def parse_decision_response(body: Mapping[str, Any], *, questions: Mapping[str, Any]) -> DecisionResult:
+    """Parse a System One reply, failing closed: every asked question has exactly one answer of its own type with a
+    value in range, and the usage is complete. A reply that cannot be verified raises ``RuntimeError``."""
+    decision_id, resolved_model = body.get("id"), body.get("model")
+    if not isinstance(decision_id, str) or not decision_id or not isinstance(resolved_model, str) or not resolved_model:
+        raise RuntimeError("decision response has no id or model")
+    provider = body.get("provider")
+    answers = body.get("answers")
+    if not isinstance(answers, dict) or set(answers) != set(questions):
+        raise RuntimeError("decision answers do not match the questions")
+    for name, answer in answers.items():
+        asked = questions[name]
+        kind = asked.get("type") if isinstance(asked, dict) else None
+        if not isinstance(answer, dict) or answer.get("type") != kind or kind not in _DECISION_TYPES:
+            raise RuntimeError("a decision answer has the wrong type")
+        value = answer.get(kind)
+        if kind == "choice" and not (isinstance(value, str) and value in asked.get("criteria", {})):
+            raise RuntimeError("a choice answer is not one of the options")
+        if kind == "noul" and not (isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 1):
+            raise RuntimeError("a noul answer is not a probability")
+        if kind == "score" and not (isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= max(len(asked.get("criteria", [])) - 1, 0)):
+            raise RuntimeError("a score answer is outside its scale")
+    usage = body.get("usage")
+    if not isinstance(usage, dict):
+        raise RuntimeError("decision response has no usage")
+    cost = usage.get("cost")
+    if isinstance(cost, bool) or not isinstance(cost, (int, float, str)):
+        raise RuntimeError("decision usage has no cost")
+    try:
+        cost_usd = Decimal(str(cost))
+    except ArithmeticError as exc:
+        raise RuntimeError("decision usage cost is not a number") from exc
+    if not cost_usd.is_finite() or cost_usd < 0:
+        raise RuntimeError("decision usage cost is not a non-negative number")
+    return DecisionResult(
+        decision_id=decision_id,
+        resolved_model=resolved_model,
+        resolved_provider=provider if isinstance(provider, str) and provider else None,
+        answers=answers,
+        input_tokens=_required_nonnegative_int(usage.get("input_tokens"), "input_tokens"),
+        output_tokens=_required_nonnegative_int(usage.get("output_tokens"), "output_tokens"),
+        cost_usd=cost_usd,
+    )
+
 
 class _AttemptRequest(Request):
     """One enforced attempt's request. ``connected`` turns true once its connection is established (the
@@ -295,16 +587,40 @@ class _AttemptRequest(Request):
     connected = False
 
 
-class _MarksAttemptConnected:
-    """Mixed into an http.client connection: marks the attempt connected when ``connect()`` returns.
-    http.client connects lazily from its first ``send()``, before writing any request byte."""
+class _WatchesConnect:
+    """Mixed into an http.client connection: hands its socket to the running :class:`AttemptDeadline` twice, as soon as
+    the TCP connection exists (before any proxy tunnel or TLS) and once established, when the deadline refuses it if it
+    already passed. http.client connects lazily from its first ``send()``, before writing any request byte."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        create = self._create_connection  # type: ignore[has-type]
+
+        def create_watched(*create_args: Any, **create_kwargs: Any) -> socket.socket:
+            sock = create(*create_args, **create_kwargs)
+            try:
+                _attempt_opened(sock)
+            except BaseException:
+                sock.close()
+                raise
+            return sock
+
+        self._create_connection = create_watched
+
+    def connect(self) -> None:
+        super().connect()  # type: ignore[misc]
+        _attempt_connected(self.sock)  # type: ignore[attr-defined]
+
+
+class _MarksAttemptConnected(_WatchesConnect):
+    """Also marks the attempt connected once ``connect()`` returns, so a refusal by its deadline is still not sent."""
 
     def __init__(self, *args: Any, attempt: _AttemptRequest, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._attempt = attempt
 
     def connect(self) -> None:
-        super().connect()  # type: ignore[misc]
+        super().connect()
         self._attempt.connected = True
 
 
@@ -354,6 +670,43 @@ def _build_attempt_opener() -> OpenerDirector:
     return opener
 
 
+class _WatchedHTTPConnection(_WatchesConnect, http.client.HTTPConnection):
+    pass
+
+
+class _WatchedHTTPSConnection(_WatchesConnect, http.client.HTTPSConnection):
+    pass
+
+
+class _WatchedHTTPHandler(HTTPHandler):
+    def http_open(self, req: Request) -> http.client.HTTPResponse:
+        return self.do_open(_WatchedHTTPConnection, req)
+
+
+class _WatchedHTTPSHandler(HTTPSHandler):
+    def https_open(self, req: Request) -> http.client.HTTPResponse:
+        return self.do_open(_WatchedHTTPSConnection, req, context=self._context)  # type: ignore[attr-defined]
+
+
+@functools.cache
+def _watched_opener() -> OpenerDirector:
+    """``urlopen``'s default handlers, redirects included, with connections an :class:`AttemptDeadline` can end."""
+    return build_opener(_WatchedHTTPHandler(), _WatchedHTTPSHandler())
+
+
+def watched_urlopen(request: Request, *, timeout: float) -> Any:
+    """``urlopen`` for one upstream attempt of today's routing or a tool provider, run under an :class:`AttemptDeadline`."""
+    return _watched_opener().open(request, timeout=timeout)
+
+
+def _read_reply(opener: OpenerDirector, request: Request, timeout_seconds: float) -> tuple[bytes, dict[str, str]]:
+    """One enforced attempt's I/O, run on its :class:`AttemptDeadline`'s thread: the reply's bytes and its headers."""
+    with opener.open(request, timeout=timeout_seconds) as response:
+        raw = response.read()
+        headers = {str(name).casefold(): str(value) for name, value in getattr(response, "headers", {}).items()}
+    return raw, headers
+
+
 def _unreadable_reply(exc: BaseException) -> dict[str, Any]:
     """Why an arrived reply could not be read: invalid UTF-8, invalid JSON, or this module's own schema reason as a
     slug. Never the reply's text."""
@@ -385,7 +738,7 @@ def _urlopen_json(
     request: Request, *, timeout_seconds: float, label: str
 ) -> tuple[dict[str, Any], dict[str, str]]:
     try:
-        with urlopen(request, timeout=timeout_seconds) as response:
+        with watched_urlopen(request, timeout=timeout_seconds) as response:
             decoded = json.loads(response.read().decode("utf-8"))
             if not isinstance(decoded, dict):
                 raise RuntimeError(f"{label} response was not an object")
@@ -508,6 +861,7 @@ def parse_openai_chat_completion(
         finish_reason=finish_reason,
         router_attempt=router.attempt,
         router_pipeline=router.pipeline,
+        router_guardrails=router.guardrails,
         router_metadata_error=router.error,
     )
 
@@ -517,6 +871,7 @@ class _RouterEvidence(NamedTuple):
     model: str | None = None
     attempt: int | None = None
     pipeline: tuple[str, ...] | None = None
+    guardrails: tuple[dict[str, Any], ...] | None = None
     error: str | None = None
 
 
@@ -530,11 +885,14 @@ def _router_evidence(metadata: object) -> _RouterEvidence:
         if not isinstance(metadata, dict):
             raise RuntimeError("upstream response has malformed router metadata")
         selected = _selected_endpoint(metadata)
+        pipeline = _router_pipeline(metadata)
         return _RouterEvidence(
             provider=_optional_string(selected, "provider", "router metadata"),
             model=_optional_string(selected, "model", "router metadata"),
             attempt=_optional_nonnegative_int(metadata, "attempt", "router metadata attempt"),
-            pipeline=_router_pipeline(metadata),
+            pipeline=pipeline,
+            # _router_pipeline has already checked that every stage is an object with a string type.
+            guardrails=tuple(guardrail_stage_facts(stage) for stage in metadata.get("pipeline", []) if stage["type"] == "guardrail"),
         )
     except RuntimeError as exc:
         return _RouterEvidence(error=str(exc))

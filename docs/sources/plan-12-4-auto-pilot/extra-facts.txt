@@ -1,0 +1,26 @@
+test labels {'medium': 80, 'easy': 28, 'complex': 42}
+A final (rows = label, cols = easy/medium/complex): {'easy': [1, 23, 4], 'medium': [0, 52, 28], 'complex': [0, 18, 24]}
+A before route-up: {'easy': [24, 4, 0], 'medium': [51, 29, 0], 'complex': [17, 23, 2]}
+A under-routes by kind: {('complex', 'medium'): 18} to easy: 0
+B final (rows = label, cols = easy/medium/complex): {'easy': [10, 16, 2], 'medium': [1, 37, 42], 'complex': [0, 5, 37]}
+B before route-up: {'easy': [26, 1, 1], 'medium': [38, 33, 9], 'complex': [4, 9, 29]}
+B under-routes by kind: {('complex', 'medium'): 5, ('medium', 'easy'): 1} to easy: 1
+C final (rows = label, cols = easy/medium/complex): {'easy': [14, 5, 9], 'medium': [2, 15, 63], 'complex': [0, 0, 42]}
+C before route-up: {'easy': [19, 9, 0], 'medium': [17, 63, 0], 'complex': [0, 20, 22]}
+C under-routes by kind: {('medium', 'easy'): 2} to easy: 2
+D final (rows = label, cols = easy/medium/complex): {'easy': [15, 13, 0], 'medium': [1, 73, 6], 'complex': [0, 14, 28]}
+D before route-up: {'easy': [15, 13, 0], 'medium': [1, 73, 6], 'complex': [0, 14, 28]}
+D under-routes by kind: {('complex', 'medium'): 14, ('medium', 'easy'): 1} to easy: 1
+H final (rows = label, cols = easy/medium/complex): {'easy': [10, 16, 2], 'medium': [1, 38, 41], 'complex': [0, 6, 36]}
+H before route-up: {'easy': [26, 1, 1], 'medium': [38, 33, 9], 'complex': [4, 10, 28]}
+H under-routes by kind: {('complex', 'medium'): 6, ('medium', 'easy'): 1} to easy: 1
+H minus B penalty: 0.013 [-0.020, 0.060]
+D minus B penalty: -0.107 [-0.267, 0.060]
+2x B minus A: -0.140 [-0.280, -0.007]
+2x H minus A: -0.133 [-0.267, 0.000]
+2x H minus B: 0.007 [-0.020, 0.040]
+5x B minus A: -0.380 [-0.667, -0.107]
+5x H minus A: -0.353 [-0.627, -0.080]
+5x H minus B: 0.027 [-0.020, 0.100]
+H answered by rules alone: 4 of 150
+always-complex routed cost: $11.25 per 1,000; easy tier $3.00

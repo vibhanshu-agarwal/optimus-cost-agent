@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+import io
 import json
+import os
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -13,6 +18,181 @@ pytestmark = pytest.mark.usefixtures("isolated_windows_known_folders")
 
 from optimus.acp import __main__ as acp_main
 from tests.unit.acp.conftest import FakeKeyring, authorize_workspace_for_test
+
+
+def _owned_serving():
+    function = getattr(acp_main, "_run_serving_process", None)
+    assert function is not None, "the CLI must keep serving, cleanup and observation on one retained loop"
+    return function
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("framed", [False, True])
+async def test_owned_cli_clean_eof_joins_real_stdio_owners(tmp_path, framed):
+    from optimus.acp.process_lifecycle import ProcessLifecycle
+    from optimus.acp.server import StdioByteReader, StdioByteWriter, StdioNdjsonLineReader, StdioNdjsonLineWriter
+    from tests.integration.acp.test_server_stream import configured_test_agent_server
+
+    function = _owned_serving()
+    configured = configured_test_agent_server(tmp_path, output_text="unused")
+    lifecycle = ProcessLifecycle()
+    reader = StdioByteReader(io.BytesIO(b"")) if framed else StdioNdjsonLineReader(io.BytesIO(b""))
+    writer = StdioByteWriter(io.BytesIO()) if framed else StdioNdjsonLineWriter(io.BytesIO())
+    assert await function(configured.server, lifecycle=lifecycle, reader=reader, writer=writer, framed=framed) == 0
+    assert reader.observe_closed(2)
+    assert lifecycle.state == "COMPLETE"
+
+
+@pytest.mark.asyncio
+async def test_owned_cli_signal_returns_incomplete_for_only_borrowed_input(tmp_path):
+    from optimus.acp.process_lifecycle import ProcessLifecycle, StopReason
+    from optimus.acp.server import StdioNdjsonLineReader, StdioNdjsonLineWriter
+    from tests.integration.acp.test_server_stream import configured_test_agent_server
+
+    function = _owned_serving()
+    entered = threading.Event()
+    read_fd, write_fd = os.pipe()
+    stream = os.fdopen(read_fd, "rb", buffering=0)
+
+    class Input:
+        def readline(self):
+            entered.set()
+            return stream.readline()
+
+    reader = StdioNdjsonLineReader(Input())
+    lifecycle = ProcessLifecycle()
+    configured = configured_test_agent_server(tmp_path, output_text="unused")
+    call = asyncio.create_task(function(configured.server, lifecycle=lifecycle, reader=reader,
+        writer=StdioNdjsonLineWriter(io.BytesIO()), observation_seconds=0.03))
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        lifecycle.request_stop(StopReason.SIGTERM)
+        assert await asyncio.wait_for(call, 2) == 75
+        assert not reader.pending_read.done()
+        assert reader.read_thread.daemon
+        assert lifecycle.state != "COMPLETE"
+    finally:
+        os.close(write_fd)
+        reader.request_close()
+        await asyncio.to_thread(reader.observe_closed, 2)
+        if not call.done():
+            lifecycle.request_stop(StopReason.SIGTERM)
+        await asyncio.gather(call, return_exceptions=True)
+        stream.close()
+
+
+@pytest.mark.asyncio
+async def test_owned_cli_reports_failed_actual_redis_teardown_as_nonzero(tmp_path):
+    from optimus.acp.process_lifecycle import ProcessLifecycle
+    from optimus.acp.server import StdioNdjsonLineReader, StdioNdjsonLineWriter
+    from tests.integration.acp.test_server_stream import configured_test_agent_server
+    from tests.unit.acp.test_server_redis_shutdown import _CountingResource, _runtime
+
+    function = _owned_serving()
+    client, pool = _CountingResource(error=RuntimeError("close failed")), _CountingResource()
+    runtime = _runtime(client=client, pool=pool)
+    configured = configured_test_agent_server(tmp_path, output_text="unused")
+    configured.server._redis_runtime = runtime
+    lifecycle = ProcessLifecycle()
+    code = await function(configured.server, lifecycle=lifecycle, reader=StdioNdjsonLineReader(io.BytesIO(b"")),
+        writer=StdioNdjsonLineWriter(io.BytesIO()))
+    assert code == 74
+    assert runtime.teardown_record.owner_terminated
+    assert not runtime.teardown_record.is_clean
+    assert client.count == pool.count == 1
+
+
+@pytest.mark.asyncio
+async def test_startup_stop_cleanup_never_starts_a_later_read_or_serving_phase(tmp_path):
+    import inspect
+
+    from optimus.acp.process_lifecycle import ProcessLifecycle, StopReason
+    from optimus.acp.server import StdioNdjsonLineReader, StdioNdjsonLineWriter
+    from tests.integration.acp.test_server_stream import configured_test_agent_server
+
+    function = _owned_serving()
+    assert "start_serving" in inspect.signature(function).parameters, "pre-bind startup interruption needs cleanup without serving"
+
+    class Input:
+        def readline(self):
+            raise AssertionError("a latched startup stop cannot start input")
+
+    configured = configured_test_agent_server(tmp_path, output_text="unused")
+    reader = StdioNdjsonLineReader(Input())
+    lifecycle = ProcessLifecycle()
+    lifecycle.request_stop(StopReason.SIGINT)
+    code = await function(configured.server, lifecycle=lifecycle, reader=reader, writer=StdioNdjsonLineWriter(io.BytesIO()), start_serving=False)
+    assert code == 130
+    assert reader.read_thread is None
+    assert configured.fake_gateway_call_count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["adapter", "writer"])
+async def test_completed_owned_cleanup_failure_uses_failed_exit_not_clean_signal(tmp_path, monkeypatch, stage):
+    from optimus.acp import server as server_module
+    from optimus.acp.outbound_writer import DedicatedOutboundWriter
+    from optimus.acp.process_lifecycle import ProcessLifecycle
+    from optimus.acp.server import StdioNdjsonLineReader, StdioNdjsonLineWriter
+    from tests.integration.acp.test_server_stream import configured_test_agent_server
+
+    function = _owned_serving()
+    configured = configured_test_agent_server(tmp_path, output_text="unused")
+    if stage == "adapter":
+        original = server_module.AcpDuplexAdapter.aclose
+
+        async def close(adapter):
+            await original(adapter)
+            raise ValueError("completed cleanup failure")
+
+        monkeypatch.setattr(server_module.AcpDuplexAdapter, "aclose", close)
+    else:
+        original = DedicatedOutboundWriter.close_and_join
+
+        def close(writer):
+            original(writer)
+            raise ValueError("completed cleanup failure")
+
+        monkeypatch.setattr(DedicatedOutboundWriter, "close_and_join", close)
+    code = await function(configured.server, lifecycle=ProcessLifecycle(), reader=StdioNdjsonLineReader(io.BytesIO(b"")),
+        writer=StdioNdjsonLineWriter(io.BytesIO()))
+    assert code == 74
+
+
+@pytest.mark.asyncio
+async def test_signal_does_not_absorb_an_independent_cleanup_control(tmp_path, monkeypatch):
+    from optimus.acp import server as server_module
+    from optimus.acp.process_lifecycle import ProcessLifecycle, StopReason
+    from optimus.acp.server import StdioNdjsonLineWriter
+    from tests.integration.acp.test_server_stream import configured_test_agent_server
+
+    class CleanupControl(BaseException):
+        pass
+
+    entered = asyncio.Event()
+    expected = CleanupControl()
+
+    class Reader:
+        async def readline(self):
+            entered.set()
+            await asyncio.Event().wait()
+
+    original = server_module.AcpDuplexAdapter.aclose
+
+    async def close(adapter):
+        await original(adapter)
+        raise expected
+
+    monkeypatch.setattr(server_module.AcpDuplexAdapter, "aclose", close)
+    configured = configured_test_agent_server(tmp_path, output_text="unused")
+    lifecycle = ProcessLifecycle()
+    task = asyncio.create_task(_owned_serving()(configured.server, lifecycle=lifecycle, reader=Reader(),
+        writer=StdioNdjsonLineWriter(io.BytesIO())))
+    await entered.wait()
+    lifecycle.request_stop(StopReason.SIGINT)
+    with pytest.raises(CleanupControl) as raised:
+        await task
+    assert raised.value is expected
 
 _HOST_STARTERS = ("ensure_local_redis", "ensure_local_phoenix", "ensure_local_gateway")
 
@@ -72,6 +252,48 @@ def _patch_common(monkeypatch, *, server_factory=None):
     monkeypatch.setattr(acp_main, "build_configured_server", server_factory)
     monkeypatch.setattr(acp_main, "StdioNdjsonLineReader", lambda *_a, **_k: object())
     monkeypatch.setattr(acp_main, "StdioNdjsonLineWriter", lambda *_a, **_k: object())
+
+
+@pytest.mark.parametrize("check_config,fail_stop", [(False, False), (True, False), (False, True)])
+def test_main_startup_interrupt_maps_exit_and_restores_signal_handler(monkeypatch, tmp_path, capsys, check_config, fail_stop):
+    _authorize(monkeypatch, tmp_path, _base_env())
+    stops = []
+
+    class Gateway:
+        def stop(self):
+            stops.append("stop")
+            if fail_stop:
+                raise RuntimeError("private failure detail")
+
+    def interrupt(**_kwargs):
+        handler = signal.getsignal(signal.SIGINT)
+        assert callable(handler)
+        handler(signal.SIGINT, None)
+
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: Gateway())
+    if check_config:
+        monkeypatch.setattr(acp_main, "run_preflight", lambda *a, **k: interrupt())
+    else:
+        monkeypatch.setattr(acp_main, "build_configured_server", interrupt)
+    previous = signal.getsignal(signal.SIGINT)
+    args = ["--workspace-root", str(tmp_path)]
+    if check_config:
+        args += ["--check-config", "--strict"]
+    assert acp_main.main(args) == (74 if fail_stop else 130)
+    assert stops == ["stop"]
+    assert signal.getsignal(signal.SIGINT) is previous
+    if fail_stop:
+        stderr = capsys.readouterr().err
+        assert "optimus-agent: SHUTDOWN_FAILED stage=gateway" in stderr
+        assert "private failure detail" not in stderr
+
+
+def test_shutdown_report_contains_only_bounded_fields(capsys):
+    from optimus.acp.process_lifecycle import ShutdownObservation
+
+    acp_main._report_shutdown(ShutdownObservation(False, "writer", 1, ()))
+    assert capsys.readouterr().err == "optimus-agent: SHUTDOWN_INCOMPLETE stage=writer pending=1\n"
 
 
 def test_setup_flag_calls_wizard_and_short_circuits(monkeypatch) -> None:
@@ -1036,6 +1258,33 @@ def test_main_forwards_gateway_timeout_seconds_to_build_configured_server(monkey
     assert captured_kwargs.get("gateway_timeout_seconds") == 90.0
 
 
+@pytest.mark.parametrize(("seconds", "warned"), [("30", True), ("135", False), ("200", False)])
+def test_main_warns_once_when_the_gateway_timeout_override_is_below_the_shared_host_wait(monkeypatch, tmp_path, capsys, seconds, warned) -> None:
+    """Codex round 1 on #397 Z2: a lower override is allowed, but can abandon a reply the provider has billed."""
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+
+    def capturing_build(**_kwargs):
+        class FakeServer:
+            def serve_ndjson(self, *_a, **_k):
+                async def _noop():
+                    return None
+
+                return _noop()
+
+        return FakeServer()
+
+    _patch_common(monkeypatch, server_factory=capturing_build)
+
+    exit_code = acp_main.main(["--no-auto-start", "--workspace-root", str(tmp_path), "--gateway-timeout-seconds", seconds])
+
+    assert exit_code == 0
+    warnings = [line for line in capsys.readouterr().err.splitlines() if "--gateway-timeout-seconds" in line]
+    assert len(warnings) == (1 if warned else 0)
+    if warned:
+        assert "below the default 135" in warnings[0] and "PLANNING_GATEWAY_COST_UNKNOWN" in warnings[0]
+
+
 def test_main_omits_gateway_timeout_override_when_flag_absent(monkeypatch, tmp_path) -> None:
     env = _base_env()
     _authorize(monkeypatch, tmp_path, env)
@@ -1706,7 +1955,9 @@ def _seed_legacy_v1_approval(workspace: Path, env: dict[str, str], fake_keyring:
     state = resolve_workspace_security_state(workspace)
     store = KeyringApprovalStore(
         keyring_backend=fake_keyring,
-        runtime_root=workspace / ".optimus-runtime",
+        # Outside the workspace, like production's approval runtime root: the store's lock directory created inside
+        # it would change the workspace root's ctime, which the legacy v2 digest hashes (#433, Linux CI).
+        runtime_root=workspace.parent / "approval-runtime",
     )
     candidate = resolve_launch_candidate(
         snapshot=snapshot,
@@ -1745,6 +1996,9 @@ def _seed_legacy_v1_approval(workspace: Path, env: dict[str, str], fake_keyring:
         _APPROVAL_SERVICE,
         f"durable:{state.legacy_v2_digest}",
         serialize_approval_record(legacy),
+    )
+    assert resolve_workspace_security_state(workspace).legacy_v2_digest == state.legacy_v2_digest, (
+        "seeding changed the workspace's legacy v2 digest (its root ctime), so launch cannot find the record"
     )
     return candidate, store
 
@@ -2251,3 +2505,42 @@ def test_main_preserves_an_explicitly_empty_pathext_and_keeps_an_absent_one_abse
     assert acp_main.main(["--workspace-root", str(tmp_path)]) == 0
     assert captured["system_environ"]["PATH"] == "/captured/bin"
     assert "PATHEXT" not in captured["system_environ"]
+
+
+# --- #433: approval-store keyring failures at the launch entry point are typed refusals ---------------------------
+
+
+class _UnreadableKeyring(FakeKeyring):
+    def get_password(self, service: str, key: str) -> str | None:
+        raise RuntimeError("backend message quoting a stored value")
+
+
+def test_a_keyring_failure_building_the_approval_store_is_a_typed_refusal(monkeypatch, tmp_path, capsys) -> None:
+    monkeypatch.setattr(acp_main, "keyring", _UnreadableKeyring())
+    for name, value in _base_env().items():
+        monkeypatch.setenv(name, value)
+
+    assert acp_main.main(["--workspace-root", str(tmp_path)]) == 2
+
+    err = capsys.readouterr().err
+    assert "optimus-agent: APPROVAL_STORE_READ_FAILED: keyring backend RuntimeError" in err
+    assert "backend message" not in err and "Traceback" not in err
+    assert not (tmp_path / ".optimus").exists()
+
+
+def test_a_keyring_failure_building_the_server_store_is_a_typed_refusal(monkeypatch, tmp_path, capsys) -> None:
+    from optimus.acp.launch_approvals import ApprovalError
+
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **_kwargs: None)
+
+    def _store_fails(**_kwargs):
+        raise ApprovalError(code="APPROVAL_STORE_READ_FAILED", detail="keyring backend RuntimeError")
+
+    _patch_common(monkeypatch, server_factory=_store_fails)
+
+    assert acp_main.main(["--no-auto-start", "--workspace-root", str(tmp_path)]) == 2
+    err = capsys.readouterr().err
+    assert "optimus-agent: APPROVAL_STORE_READ_FAILED: keyring backend RuntimeError" in err and "Traceback" not in err

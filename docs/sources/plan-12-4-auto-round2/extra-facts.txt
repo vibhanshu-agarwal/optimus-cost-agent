@@ -1,0 +1,37 @@
+test labels {'easy': 26, 'complex': 42, 'medium': 82}
+A final (rows = label, cols = easy/medium/complex): {'easy': [2, 16, 8], 'medium': [1, 46, 35], 'complex': [0, 13, 29]}
+A before route-up (cols = easy/medium/complex/abstain): {'easy': [2, 16, 8, 0], 'medium': [1, 46, 35, 0], 'complex': [0, 13, 29, 0]}
+A under-routes by kind: {('complex', 'medium'): 13, ('medium', 'easy'): 1} to easy: 1
+B final (rows = label, cols = easy/medium/complex): {'easy': [10, 15, 1], 'medium': [2, 39, 41], 'complex': [0, 3, 39]}
+B before route-up (cols = easy/medium/complex/abstain): {'easy': [25, 0, 1, 0], 'medium': [35, 43, 4, 0], 'complex': [3, 14, 25, 0]}
+B under-routes by kind: {('medium', 'easy'): 2, ('complex', 'medium'): 3} to easy: 2
+D3 final (rows = label, cols = easy/medium/complex): {'easy': [10, 16, 0], 'medium': [1, 77, 4], 'complex': [0, 15, 27]}
+D3 before route-up (cols = easy/medium/complex/abstain): {'easy': [10, 16, 0, 0], 'medium': [1, 77, 4, 0], 'complex': [0, 15, 27, 0]}
+D3 under-routes by kind: {('complex', 'medium'): 15, ('medium', 'easy'): 1} to easy: 1
+GATE final (rows = label, cols = easy/medium/complex): {'easy': [13, 13, 0], 'medium': [3, 75, 4], 'complex': [0, 15, 27]}
+GATE before route-up (cols = easy/medium/complex/abstain): {'easy': [13, 13, 0, 0], 'medium': [3, 75, 4, 0], 'complex': [0, 15, 27, 0]}
+GATE under-routes by kind: {('complex', 'medium'): 15, ('medium', 'easy'): 3} to easy: 3
+H final (rows = label, cols = easy/medium/complex): {'easy': [10, 15, 1], 'medium': [3, 38, 41], 'complex': [0, 3, 39]}
+H before route-up (cols = easy/medium/complex/abstain): {'easy': [25, 0, 1, 0], 'medium': [36, 41, 5, 0], 'complex': [3, 14, 25, 0]}
+H under-routes by kind: {('medium', 'easy'): 3, ('complex', 'medium'): 3} to easy: 3
+MAX final (rows = label, cols = easy/medium/complex): {'easy': [10, 15, 1], 'medium': [1, 75, 6], 'complex': [0, 9, 33]}
+MAX before route-up (cols = easy/medium/complex/abstain): {'easy': [10, 15, 1, 0], 'medium': [1, 75, 6, 0], 'complex': [0, 9, 33, 0]}
+MAX under-routes by kind: {('complex', 'medium'): 9, ('medium', 'easy'): 1} to easy: 1
+B minus H penalty: -0.020 [-0.053, 0.000]
+H minus B penalty (decide2's tie test; B has the lower mean): 0.020 [0.000, 0.053]; the tie holds because the test is inclusive (low <= 0)
+items where B and H penalties differ: 2 (H higher on 2, B higher on 0)
+2x B minus A: -0.180 [-0.313, -0.047]
+2x D3 minus A: -0.287 [-0.407, -0.160]
+2x GATE minus A: -0.280 [-0.413, -0.140]
+2x H minus A: -0.167 [-0.300, -0.027]
+2x MAX minus A: -0.347 [-0.473, -0.220]
+2x H minus B: 0.013 [0.000, 0.033]
+5x B minus A: -0.360 [-0.627, -0.100]
+5x D3 minus A: -0.247 [-0.487, 0.007]
+5x GATE minus A: -0.200 [-0.460, 0.067]
+5x H minus A: -0.327 [-0.587, -0.073]
+5x MAX minus A: -0.427 [-0.673, -0.173]
+5x H minus B: 0.033 [0.000, 0.093]
+H answered by rules alone: 5 of 150; H route-up rate: 67.3%
+GATE called D3: 120 of 150
+always-complex estimated total cost: $2463.35 per 1,000; always-easy $656.89

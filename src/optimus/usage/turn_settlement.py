@@ -35,7 +35,8 @@ if TYPE_CHECKING:
     from optimus.context.maintenance import MaintenanceReceipt
     from optimus.usage.accounting import UsageAccountingService
 
-STAGES = frozenset({"planning", "answer", "summarization"})
+STAGES = frozenset({"planning", "answer", "summarization", "classification"})
+# `classification`: Auto's per-turn classifier call, settled as its own stage (Plan 12.4 v7; ADR-007).
 # `unattributed`: usage the Gateway reported but did not attribute to a single completed attempt. Its
 # reported cost is known and counts once; its turn is never complete (Codex CP3 correction ruling C1/C2).
 OUTCOMES = frozenset({"completed", "failed", "not_sent", "rejected", "uncertain", "unattributed"})

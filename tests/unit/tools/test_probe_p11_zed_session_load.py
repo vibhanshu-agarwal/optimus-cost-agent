@@ -3791,8 +3791,8 @@ def test_real_zed_revoke_interrupt_retains_workspace_and_records_remediation(
 
 # --- Task 15: Git-blob authority and freshness gate ---
 
-def _establishing_git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
+def _establishing_git(repo: Path, *args: str) -> str:
+    return subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
 
 
 def _init_establishing_repo(repo: Path, *, content: str = "alpha\n", path: str = "tracked.txt") -> str:
@@ -3962,6 +3962,10 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     seam3_committed = b"from optimus.acp.subprocess_env import" in head_main
     if not seam3_committed:
         expected -= {seam3_path}
+    lifecycle_path = "src/optimus/acp/process_lifecycle.py"
+    lifecycle_committed = b"from optimus.acp.process_lifecycle import" in head_main
+    if not lifecycle_committed:
+        expected -= {lifecycle_path}
     # Seam 2 (checkpoint B) adds exactly two modules that bootstrap imports: the harness bundle and the
     # frozen-safe failure notes. The expectation is keyed on whether HEAD's bootstrap carries that
     # import, so committed predecessors keep their exact 134-path closure and seam 2 pins 136.
@@ -4040,6 +4044,48 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     failure_facts_committed = b"from optimus_security.failure_facts import" in head_attempts
     if not failure_facts_committed:
         expected -= {failure_facts_path}
+    # Plan 12.3 loop recovery adds the result-aware detector and its step signals (two paths) the planning
+    # loop imports, keyed on HEAD's planning loop.
+    loop_paths = frozenset({"src/optimus/loops/detector.py", "src/optimus/loops/signals.py"})
+    head_planning = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/agent/planning_loop.py")
+    loop_committed = b"from optimus.loops.detector import" in head_planning
+    if not loop_committed:
+        expected -= loop_paths
+    # Plan 12.3 moves the process-tree code into the runtime package; tools/process_tree.py stays as its alias
+    # (one more path), keyed on HEAD's alias.
+    runtime_tree_module = "src/optimus/runtime/process_tree.py"
+    head_tree = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "tools/process_tree.py")
+    tree_moved = b"from optimus.runtime import process_tree" in head_tree
+    if not tree_moved:
+        expected -= {runtime_tree_module}
+    # #410 adds the pure line-ending rules the mutation tools import (one path), keyed on HEAD's mutation tools.
+    line_endings_path = "src/optimus/tools/line_endings.py"
+    head_mutation_tools = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/tools/mutation_tools.py")
+    line_endings_committed = b"from optimus.tools.line_endings import" in head_mutation_tools
+    if not line_endings_committed:
+        expected -= {line_endings_path}
+    # #407 adds the EDIT apply module the runner imports (one path), keyed on HEAD's runner.
+    edits_path = "src/optimus/agent/edits.py"
+    head_runner = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/agent/runner.py")
+    edits_committed = b"from optimus.agent.edits import" in head_runner
+    if not edits_committed:
+        expected -= {edits_path}
+    # Plan 12.4 Task 4 adds the Auto composition the entrypoint imports (one path), keyed on HEAD's __main__, and the
+    # classifier input contract that composition imports (one path), keyed on HEAD's Auto composition.
+    auto_path = "src/optimus/acp/auto_composition.py"
+    auto_committed = b"from optimus.acp.auto_composition import" in head_main
+    if not auto_committed:
+        expected -= {auto_path}
+    contract_path = "src/optimus/agent/auto_contract.py"
+    head_auto = probe.git_cat_file_blob(REPO_ROOT, "HEAD", auto_path) if auto_committed else b""
+    contract_committed = b"from optimus.agent.auto_contract import" in head_auto
+    if not contract_committed:
+        expected -= {contract_path}
+    # Plan 12.4 Task 5 adds H's backend, which the Auto composition imports (one path), keyed on HEAD's composition.
+    hybrid_path = "src/optimus/acp/auto_hybrid.py"
+    hybrid_committed = b"from optimus.acp.auto_hybrid import" in head_auto
+    if not hybrid_committed:
+        expected -= {hybrid_path}
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
@@ -4053,10 +4099,20 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     assert (ordinary_paths <= closure) is ordinary_committed
     assert (runtime_tree_path in closure) is runtime_tree_committed
     assert (failure_facts_path in closure) is failure_facts_committed
+    assert (loop_paths <= closure) is loop_committed
+    assert (runtime_tree_module in closure) is tree_moved
+    assert (line_endings_path in closure) is line_endings_committed
+    assert (edits_path in closure) is edits_committed
+    assert (auto_path in closure) is auto_committed
+    assert (contract_path in closure) is contract_committed
+    assert (hybrid_path in closure) is hybrid_committed
+    assert (lifecycle_path in closure) is lifecycle_committed
     base = 136 if seam2_committed else 134 if seam3_committed else 133
     assert len(closure) == base + (4 if task9_committed else 0) + (2 if task10_committed else 0) + (2 if task11_committed else 0) + (
         2 if correction_committed else 0
-    ) + tree_committed + composition_committed + stage_c_committed + (2 if ordinary_committed else 0) + runtime_tree_committed + failure_facts_committed
+    ) + tree_committed + composition_committed + stage_c_committed + (2 if ordinary_committed else 0) + runtime_tree_committed + failure_facts_committed + (
+        2 if loop_committed else 0
+    ) + tree_moved + line_endings_committed + edits_committed + auto_committed + contract_committed + hybrid_committed + lifecycle_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base
@@ -4087,17 +4143,27 @@ def test_establishing_import_closure_refuses_each_seam2_module_when_unlisted(omi
     head_bootstrap = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/acp/bootstrap.py")
     if b"from optimus.acp.harness_runtime import" not in head_bootstrap:
         pytest.skip("HEAD predates seam 2; the omission control applies to the committed seam-2 tree")
+    allowed = _seam2_full_allowlist()
+    assert omitted in probe.compute_establishing_import_closure(REPO_ROOT, allowed_py_paths=allowed)
     # The probe names the first candidate spelling (the package form ".../<module>/__init__.py").
     with pytest.raises(probe.ProbeError, match="unlisted module path: " + omitted.removesuffix(".py")):
-        probe.compute_establishing_import_closure(REPO_ROOT, allowed_py_paths=_seam2_full_allowlist() - {omitted})
+        probe.compute_establishing_import_closure(REPO_ROOT, allowed_py_paths=allowed - {omitted})
 
 
 def test_establishing_import_closure_refuses_a_genuinely_unlisted_reachable_module() -> None:
     """A reachable, tracked project module that is absent from the explicit list is refused, never inferred."""
     import tools.probe_p11_zed_session_load as probe
 
-    with pytest.raises(probe.ProbeError, match="unlisted module path: src/optimus/acp/bootstrap"):
-        probe.compute_establishing_import_closure(REPO_ROOT, allowed_py_paths=_seam2_full_allowlist() - {"src/optimus/acp/bootstrap.py"})
+    omitted_paths = ["src/optimus/acp/bootstrap.py"]
+    head_main = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/acp/__main__.py")
+    if b"from optimus.acp.process_lifecycle import" in head_main:
+        omitted_paths.append("src/optimus/acp/process_lifecycle.py")
+    allowed = _seam2_full_allowlist()
+    closure = probe.compute_establishing_import_closure(REPO_ROOT, allowed_py_paths=allowed)
+    for omitted in omitted_paths:
+        assert omitted in closure
+        with pytest.raises(probe.ProbeError, match="unlisted module path: " + omitted.removesuffix(".py")):
+            probe.compute_establishing_import_closure(REPO_ROOT, allowed_py_paths=allowed - {omitted})
 
 
 def test_establishing_import_closure_traverses_package_init_reexports(tmp_path: Path) -> None:
@@ -4128,6 +4194,18 @@ def test_establishing_import_closure_traverses_package_init_reexports(tmp_path: 
     )
     assert "tools/pkg/__init__.py" in closure
     assert "tools/pkg/leaf.py" in closure
+    (repo / "tools" / "pkg" / "leaf.py").write_text("from tools.pkg.later import value\n", encoding="utf-8")
+    (repo / "tools" / "pkg" / "later.py").write_text("value = 2\n", encoding="utf-8")
+    _establishing_git(repo, "add", "-A")
+    candidate_tree = _establishing_git(repo, "write-tree")
+    assert len(candidate_tree) == 40
+    assert probe.compute_establishing_import_closure(repo, root_modules=("tools.entry",), allowed_py_paths=allowed) == closure
+    with pytest.raises(probe.ProbeError, match="unlisted module path: tools/pkg/later"):
+        probe.compute_establishing_import_closure(repo, candidate_tree, root_modules=("tools.entry",), allowed_py_paths=allowed)
+    candidate_allowed = allowed | {"tools/pkg/later.py"}
+    assert probe.compute_establishing_import_closure(
+        repo, candidate_tree, root_modules=("tools.entry",), allowed_py_paths=candidate_allowed,
+    ) == candidate_allowed
 
 
 def _commit_establishing_repo(repo: Path) -> None:

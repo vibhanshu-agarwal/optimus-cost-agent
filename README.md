@@ -256,20 +256,46 @@ not a dependency. Plan 9 bounded loops and skill loading, and Plan 12
 context-window optimization gates, are out of scope for the Phase 1 golden
 fixture set described above.
 
+### Planning loop recovery
+
+In an interactive ACP session, Agent-mode planning is never stopped outright for repeating itself or for running
+out of planning steps ([ADR-024](docs/decisions/ADR-024-accepts-adr-009-loop-control-phase-1-scope.md)).
+
+- **Detection.** A result-aware detector watches each planning step: 3 identical requests with unchanged results,
+  an A–B alternation over 3 cycles, 3 steps without new evidence, or 3 identical parse errors. Polling that returns
+  changing results, re-reading a changed file and reading new ranges are progress.
+- **Recovery.** The model first gets one corrective note in its next request. If the episode persists, or the
+  allowance (3 steps or 30 minutes) runs out, the user gets a Continue/Stop check-in.
+  - **Continue** grants 3 more planning steps and a fresh 30 minutes. It never approves a change: a plan still needs
+    its own approval.
+  - **Stop** ends the turn with the actual cause.
+- **Escalation (Auto mode only, #397).** Before that check-in, an Auto turn whose note did not help is moved once to
+  the registry's escalation model, which is Gemini 3.8 Flash today, so only easy-tier turns have a step. The move
+  comes with a live line that gives the price change, for example
+  `Auto: escalating to google/gemini-3.8-flash: ... Price per million tokens: $0.75 in / $3.75 out (was $0.20 in / $1.00 out).`
+  The stronger model gets 3 steps, and then the check-in follows as usual. A turn already on the escalation model,
+  or a fixed-model launch, goes straight to the check-in.
+
+An approved `TEST` directive runs in a contained process tree with a 15-minute deadline and the turn's
+cancellation. A timeout, a containment failure or a stop that cannot be confirmed ends the plan: the later
+directives are not run, and the outcome is reported.
+
+`OPTIMUS_LOOP_RECOVERY=headless` keeps the earlier hard caps. Use it for clients that answer every permission
+request on their own, such as acpx `--approve-all`. Reviewed test compositions and every non-ACP caller
+(golden, evaluation) are headless by default.
+
 ### Bounded Goal Loops and Curated Workflow Skills
 
-Plan 9 adds architectural support for bounded goal-driven loops and curated
-workflow skills. Loops are not the default execution mode. They are enabled only
-when a task has a machine-checkable completion condition and explicit
-`LoopBudgetPolicy` bounds for iterations, wall-clock time and repeated
-failures. A product loop has no dollar stop; only an independently authorized
-evaluation caller may pass its own explicit dollar cap (Plan 12.2 Task 11).
+Plan 9 added bounded goal-driven loops and curated workflow skills. Plan 12.3 retired the goal-loop path
+(ADR-024, D3): no supported client used it, and an `optimus.agent.run` request that carries a
+`completion_condition` is now rejected with a clear error instead of being run once. `GoalLoopController` stays
+as the planning loop's controller, with explicit `LoopBudgetPolicy` bounds for iterations, wall-clock time and
+repeated failures. A product loop has no dollar stop; only an independently authorized evaluation caller may
+pass its own explicit dollar cap (Plan 12.2 Task 11).
 
-Loop iterations persist progress to an append-only ledger and must use the same
-`PreToolGuard` and permission policy as ordinary Agent-mode tool calls. A loop
-that reaches completion, max iterations, wall-clock timeout, repeated failure,
-human halt, or an evaluation caller's explicit dollar cap records a stable
-`LoopStopReason`.
+Loop iterations must use the same `PreToolGuard` and permission policy as ordinary Agent-mode tool calls. A
+loop that reaches completion, max iterations, wall-clock timeout, repeated failure, human halt, or an
+evaluation caller's explicit dollar cap records a stable `LoopStopReason`.
 
 Skills are reviewed Markdown artifacts with frontmatter metadata. Trusted skills
 may be loaded only when their description or globs match the task. Draft skills
@@ -561,13 +587,15 @@ run live evidence or IDE sessions. Skipping step 1 after a code change produces 
 | `--setup` | One-time wizard: store provider key + shared secret in the OS keychain, then exit |
 | `--no-auto-start` | Skip auto-starting Redis and the local gateway; assume both are already running |
 | `--check-config` | Validate credentials, Redis, and workspace; exit without serving |
-| `--gateway-timeout-seconds SECONDS` | Raise the Gateway request timeout for this process; default is 30 seconds |
+| `--gateway-timeout-seconds SECONDS` | Override the Gateway request timeout for this process; default is 135 seconds |
 
-For a slow Gateway/model response during a one-off investigation, run
-`optimus-agent --gateway-timeout-seconds 90`. The value applies only to that agent process;
-omitting it preserves the 30-second default. It changes how long the first Gateway request may
-wait; it does not enable retries or weaken the fail-closed `PLANNING_GATEWAY_COST_UNKNOWN`
-behavior when the Gateway cannot report cost.
+The default comes from the shared contract (`HOST_GATEWAY_TIMEOUT_SECONDS`): the Gateway's 120-second
+upstream-dispatch budget for one request (it waits for each upstream attempt at most 60 seconds and dispatches none
+that could outlast the budget) plus 15 seconds of slack for its own processing. While that processing and its storage
+are responsive, the Gateway's answer, a reply or a recorded failure, reaches the agent before the agent stops waiting.
+A lower value is allowed, with a warning, but can abandon a reply the provider has billed; the turn then stops as
+`PLANNING_GATEWAY_COST_UNKNOWN`. The value applies only to that agent process. It does not enable retries or weaken
+the fail-closed `PLANNING_GATEWAY_COST_UNKNOWN` behavior when the Gateway cannot report cost.
 
 `--no-auto-start` disables **both** Redis and gateway auto-start consistently.
 
@@ -594,6 +622,21 @@ minutes on a slow network; container create/start have no timeout in this path.
 ```
 
 Do **not** point Zed at `.venv\Scripts\optimus-agent.exe` — use the PATH command above.
+
+**For Auto mode,** give the entry an `env` block, then approve the launch with that setting in place (see "Auto
+mode" below):
+
+```json
+{
+  "agent_servers": {
+    "optimus": {
+      "command": "optimus-agent",
+      "args": ["--workspace-root", "."],
+      "env": { "OPTIMUS_AGENT_MODEL": "auto" }
+    }
+  }
+}
+```
 
 **Troubleshooting (Windows PATH)**
 
@@ -663,6 +706,29 @@ eligible medium model, else the first eligible easy model). Leave `OPTIMUS_AGENT
 use it, or set an eligible exact model ID. An ineligible ID, including the old `claude-haiku` alias and
 `glm-5.2`, refuses at startup with migration guidance.
 
+**Auto mode (opt-in; Plan 12.4, ADR-028).** Auto sends each turn to the cheapest model that can do it. A judge
+rates the turn easy, medium or complex. The judge is H: its keyword rules first, then the classifier model (today
+Jev) when the rules are unsure. An answer below confidence 0.95, an abstention or a judge failure routes one tier up.
+The turn then uses the cheapest model of that tier that has not stopped in this launch, for the whole turn.
+- **Turn it on:** set `OPTIMUS_AGENT_MODEL=auto`. `--model` never chooses Auto; it refuses `auto`.
+- **Approve it:** with that setting in place, run
+  `optimus-trust --workspace-root <workspace> approve --mode durable`. The approval covers the Auto composition: the
+  shipped defaults, plus the Auto overlay, plus any registry override. An ordinary approval never authorizes Auto,
+  and the reverse also holds. For a manually managed Gateway, run
+  `optimus-trust --workspace-root <workspace> run-gateway --auto`.
+- **Each turn shows** one line, for example `Auto: medium → google/gemini-3.8-flash`, with the reason when the turn
+  routed up or fell back. The judge's own cost appears as the `classification` stage of the turn's cost.
+- **A struggling turn** can be moved once to the escalation model before its loop check-in (see "Planning loop
+  recovery" above).
+- **Limitations** (ADR-028):
+  - H's measured rates (4.7% against the pilot's 5% limits) do not establish population rates below 5%;
+  - the previous turn's tier is a barely tested signal (#425);
+  - the savings depend on the model list;
+  - a challenger round on fresh data (round 2, 2026-10-27) kept H: the DSPy judges were more accurate but sent more
+    turns to too cheap a model, and with very long turns H's estimated saving against always choosing the complex
+    tier was about 6% (`docs/sources/plan-12-4-auto-round2/`).
+- **Turn it off:** unset `OPTIMUS_AGENT_MODEL`, or set an exact model ID.
+
 **OpenRouter is the approved default** (`OPTIMUS_LOCAL_GATEWAY_PROVIDER=openrouter`).
 Vercel AI Gateway is a future bounded model-endpoint option pending a modest Python transport
 check; it is not the Phase 1 search backend. Direct-provider adapters are a separate retirement
@@ -676,7 +742,8 @@ chat path is live-verified through `acpx` by Plan 12.2's D1(b) run (#237). The l
 `tests/e2e/acp/test_spawned_agent_live.py` and `python tools/verify_live_agent.py` drive the agent through this
 project's own ACP client (process tier), and the `acpx` evidence tools in `tools/` drive it through an independent
 client. The `e2e` marker selects tests of both kinds. Live AGENT-mode evidence through `acpx` on the enforced
-registry is not yet established; see #237.
+registry was established on 2026-10-24 by #387 run 5 (main `f4b804f1`): a plan, its approval and a byte-exact EDIT of
+a CRLF file; see #387.
 
 Security: bind stays on loopback (`127.0.0.1` by default). Do not expose this service beyond
 localhost without adding real TLS first.
@@ -987,10 +1054,10 @@ optimus-cost-agent/
 | Document | Purpose |
 |----------|---------|
 | [docs/README.md](docs/README.md) | Index of every current document; older versions are in each folder's `archive/` |
-| [docs/Optimus-Cost-Agent-Architecture-v2.19.pdf](docs/Optimus-Cost-Agent-Architecture-v2.19.pdf) | High-level design |
-| [docs/Optimus-Cost-Agent-LLD-v2.42.pdf](docs/Optimus-Cost-Agent-LLD-v2.42.pdf) | Low-level design |
-| [docs/Optimus-Cost-Agent-Test-Strategy-v1.8.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.8.pdf) | Testing approach |
-| [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.4.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.4.pdf) | Execution guardrails |
+| [docs/Optimus-Cost-Agent-Architecture-v2.23.pdf](docs/Optimus-Cost-Agent-Architecture-v2.23.pdf) | High-level design; scoped Auto-escalation and host/Gateway timing successor at `5977155` |
+| [docs/Optimus-Cost-Agent-LLD-v2.46.pdf](docs/Optimus-Cost-Agent-LLD-v2.46.pdf) | Low-level design; one Auto recovery move and host/Gateway timing contracts at `5977155` |
+| [docs/Optimus-Cost-Agent-Test-Strategy-v1.9.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.9.pdf) | Testing approach |
+| [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf) | Execution guardrails |
 | [AGENTS.md](AGENTS.md) | Agent behavior, logging, safety, and testing gates |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Human and agent contribution workflow |
 | [plan backlog](docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md) | Transitional register of work not yet moved to a GitHub issue (`Moved` rows link their issues; it takes no new work entries); the flat `plans/archive/` holds terminal history |

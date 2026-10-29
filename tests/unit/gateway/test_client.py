@@ -9,6 +9,7 @@ from pydantic import SecretStr
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.client import GatewayClient, GatewayRequest, UrllibGatewayTransport, _decode_gateway_json
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
+from optimus_model_policy.binding import GATEWAY_REQUEST_BUDGET_SECONDS, HOST_GATEWAY_TIMEOUT_SECONDS
 
 
 # Test double for GatewayTransport: records requests and returns canned JSON without I/O.
@@ -38,7 +39,7 @@ class FakeTransport:
 def settings() -> OptimusGatewaySettings:
     return OptimusGatewaySettings(
         gateway_url="http://127.0.0.1:8765",
-        optimus_api_key="opt_live_abc",
+        optimus_api_key="opt_live_abc",  # pragma: allowlist secret
     )
 
 
@@ -292,13 +293,14 @@ def test_post_tool_json_rejects_non_tool_path():
         client.post_tool_json(path="/v1/responses", payload={})
 
 
-def test_gateway_client_default_timeout_remains_thirty_seconds():
+def test_gateway_client_default_timeout_outlasts_the_gateway_request_budget():
+    """#397 live Z2: the old 30 s default abandoned a reply the Gateway's 60 s attempt went on to receive and bill."""
     transport = FakeTransport()
     client = GatewayClient(settings=settings(), transport=transport)
 
     client.create_response(model="glm-5.2", input_text="hello")
 
-    assert transport.requests[0].timeout_seconds == 30.0
+    assert transport.requests[0].timeout_seconds == HOST_GATEWAY_TIMEOUT_SECONDS > GATEWAY_REQUEST_BUDGET_SECONDS
 
 
 def test_gateway_client_explicit_timeout_reaches_transport():

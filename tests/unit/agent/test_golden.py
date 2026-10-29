@@ -4,10 +4,11 @@ from optimus.agent.golden import AgentGoldenTaskHarness
 from optimus.agent.models import AgentRunResult, AgentRunStatus, AgentToolCall
 from optimus.golden.tasks import GoldenTask
 from optimus.runtime.modes import ExecutionMode
+from tests.support.contract_doubles import checked_agent_runner
 
 
 class FakeRunner:
-    def run(self, request):
+    def run(self, request, **runtime_kwargs):
         return AgentRunResult(
             run_id=request.run_id,
             session_id=request.session_id,
@@ -27,7 +28,7 @@ class SequenceRunner:
         self.results = list(results)
         self.requests = []
 
-    def run(self, request):
+    def run(self, request, **runtime_kwargs):
         self.requests.append(request)
         return self.results.pop(0)
 
@@ -81,7 +82,7 @@ def test_agent_golden_harness_converts_runner_result(tmp_path):
         mutation_expected=False,
         release_gate=False,
     )
-    harness = AgentGoldenTaskHarness(runner=FakeRunner(), workspace_root=tmp_path)
+    harness = AgentGoldenTaskHarness(runner=checked_agent_runner(FakeRunner()), workspace_root=tmp_path)
 
     result = harness.run(task)
 
@@ -100,7 +101,7 @@ def test_agent_golden_harness_short_circuits_terminated_plan(tmp_path):
             plan_hash=None,
         )
     )
-    harness = AgentGoldenTaskHarness(runner=runner, workspace_root=tmp_path)
+    harness = AgentGoldenTaskHarness(runner=checked_agent_runner(runner), workspace_root=tmp_path)
 
     result = harness.run(agent_task("budget-exhausted", max_cost_usd=Decimal("0.001")))
 
@@ -126,7 +127,7 @@ def test_agent_golden_harness_sums_plan_and_execution_cost(tmp_path):
             mutation_count=1,
         ),
     )
-    harness = AgentGoldenTaskHarness(runner=runner, workspace_root=tmp_path)
+    harness = AgentGoldenTaskHarness(runner=checked_agent_runner(runner), workspace_root=tmp_path)
 
     result = harness.run(agent_task("plan-then-approve-agent"))
 

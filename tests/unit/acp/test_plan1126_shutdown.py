@@ -601,3 +601,91 @@ def test_shutdown_protocol_filter_preserves_real_current_owner_probes() -> None:
             assert observation["close_invocation_count"] == 3
             assert observation["underlying_close_count"] == 1
     assert seen == required
+
+
+@pytest.mark.parametrize("method", ["aclose", "close_all"])
+def test_adapter_probe_exercises_the_discovered_close_method(method, monkeypatch) -> None:
+    """Unit fixture control: routing an async row through sync close must fail."""
+    from optimus.acp.spec import AcpDuplexAdapter
+
+    module = _shutdown_module()
+    source = _current_source(module.H5_CURRENT_SOURCE_PATHS)
+    record = next(row for row in module.discover_shutdown_inventory(source).resources
+                  if row.resource_type == "AcpDuplexAdapter" and row.close_method == method)
+    calls = {"aclose": 0, "close_all": 0}
+    real_async, real_sync = AcpDuplexAdapter.aclose, AcpDuplexAdapter.close_all
+
+    async def tracked_async(self):
+        calls["aclose"] += 1
+        await real_async(self)
+
+    def tracked_sync(self):
+        calls["close_all"] += 1
+        real_sync(self)
+
+    monkeypatch.setattr(AcpDuplexAdapter, "aclose", tracked_async)
+    monkeypatch.setattr(AcpDuplexAdapter, "close_all", tracked_sync)
+    error = None
+    try:
+        count, _ = module._probe_resource(record, "orderly_eof", source=source)
+    except Exception as exc:
+        error = exc
+    assert error is None, f"incomplete probe fixture: {error!r}"
+    assert count == 1
+    assert calls == {"aclose": 3 if method == "aclose" else 0, "close_all": 3 if method == "close_all" else 0}
+
+
+def test_framed_writer_probe_retires_the_discovered_physical_owner() -> None:
+    """Fixture control for the new close surface, separate from entry-level binding acceptance."""
+    import threading
+
+    module = _shutdown_module()
+    source = _current_source(module.H5_CURRENT_SOURCE_PATHS)
+    record = next(row for row in module.discover_shutdown_inventory(source).resources
+        if row.resource_type == "StdioByteWriter" and row.close_method == "close_and_join")
+    before = {thread.ident for thread in threading.enumerate()}
+    count, outcome = module._probe_resource(record, "orderly_eof", source=source)
+    assert count == 1 and outcome == "orderly_eof:framed_writer_thread_joined"
+    assert not [thread for thread in threading.enumerate()
+        if thread.ident not in before and thread.name.startswith("optimus-acp-")]
+
+
+def test_session_close_probe_retires_the_real_facade_once(monkeypatch) -> None:
+    """Unit fixture control: an invented detach-only service cannot prove retirement."""
+    from optimus.mcp.client_catalog import ClientMcpSessionService
+
+    module = _shutdown_module()
+    source = _current_source(module.H5_CURRENT_SOURCE_PATHS)
+    record = next(row for row in module.discover_shutdown_inventory(source).resources
+                  if row.resource_type == "ClientMcpSessionState" and row.close_method == "close")
+    retired = []
+    real_retire = ClientMcpSessionService.retire
+
+    def tracked_retire(self):
+        replacement = real_retire(self)
+        retired.append((self, replacement))
+        return replacement
+
+    monkeypatch.setattr(ClientMcpSessionService, "retire", tracked_retire)
+    error = None
+    try:
+        count, _ = module._probe_resource(record, "orderly_eof", source=source)
+    except Exception as exc:
+        error = exc
+    assert error is None, f"incomplete probe facade: {error!r}"
+    assert count == 1 and len(retired) == 1
+    assert retired[0][0] is not retired[0][1]
+
+
+@pytest.mark.parametrize(("statement", "redis_first", "expected"), [
+    ("self._client_mcp_runtime.close()", False, ("adapter", "client_mcp_runtime", "dedicated_writer", "reader_task", "redis_runtime")),
+    ("await asyncio.to_thread(self._client_mcp_runtime.close)", False, ("adapter", "client_mcp_runtime", "dedicated_writer", "reader_task", "redis_runtime")),
+    ("await asyncio.to_thread(other.close)", False, ("adapter", "dedicated_writer", "reader_task", "redis_runtime")),
+    ("self._client_mcp_runtime.close", False, ("adapter", "dedicated_writer", "reader_task", "redis_runtime")),
+    ("await asyncio.to_thread(self._client_mcp_runtime.close)", True, ("redis_runtime", "adapter", "client_mcp_runtime", "dedicated_writer", "reader_task")),
+])
+def test_shutdown_order_recognizes_only_executed_runtime_close(statement, redis_first, expected) -> None:
+    body = ["await adapter.aclose()", statement, "dedicated.close_and_join()", "await reader_task"]
+    body.insert(0 if redis_first else len(body), "self.redis_runtime.close()")
+    source = SourceTree({"src/optimus/acp/server.py": "async def serve_ndjson(self):\n    " + "\n    ".join(body) + "\n"})
+    assert _shutdown_module()._derived_shutdown_order(source) == expected

@@ -5,7 +5,9 @@ same code. Enforcement is active (Plan 12.2 closure plan v3; the operator's appr
 and policy, #237 6249169293): :func:`trusted_snapshot` composes the packaged defaults, whose reviewed hash is
 ``experimental.SHIPPED_DEFAULTS_HASH``; launch approvals and Gateway manifests bind it and the Gateway
 enforces it. It was built inactive (operator decision 2026-10-02). Activation stays a reviewed code change,
-never an environment variable, file or caller field.
+never an environment variable, file or caller field. The operator's registry override (ADR-025, ADR-004 option C)
+changes what the snapshot holds, never whether it is enforced, and counts only through the effective hash the
+operator approves in the launch approval.
 
 Trust flows one way. The launch gate composes the snapshot, folds :func:`approval_literal` into the
 HMAC-protected approval (so the operator approves that exact effective hash) and signs it into the
@@ -37,27 +39,37 @@ from optimus_model_policy.registry import ModelEntry, RegistrySnapshot, load_reg
 
 __all__ = [
     "APPROVAL_LITERAL_NAME",
+    "AUTO_COMPOSITION",
+    "COMPOSITION_LITERAL_NAME",
     "ATTEMPT_COMPLETED",
     "ATTEMPT_NOT_SENT",
     "ATTEMPT_OUTCOMES",
     "ATTEMPT_REJECTED",
     "ATTEMPT_UNCERTAIN",
     "ENFORCEMENT_ACTIVE",
+    "GATEWAY_REQUEST_BUDGET_SECONDS",
+    "HOST_GATEWAY_TIMEOUT_SECONDS",
     "MAX_ROUTE_ATTEMPTS",
+    "OPERATOR_OVERRIDE_FILENAME",
     "ROUTE_BINDING_VERSION",
+    "UPSTREAM_ATTEMPT_TIMEOUT_SECONDS",
     "WIRE_QUANTIZATIONS",
     "WIRE_REASONING_EFFORTS",
     "BindingError",
     "DisclosureAuthorization",
     "RouteBinding",
     "approval_literal",
+    "auto_approval_literal",
+    "auto_snapshot",
     "compose_trusted_snapshot",
     "disclosure_key",
     "issue_disclosure",
+    "operator_override",
     "payload_digest",
     "route_digest",
     "trusted_approval_literal",
     "trusted_snapshot",
+    "use_operator_override",
     "verify_disclosure",
 ]
 
@@ -66,6 +78,13 @@ ENFORCEMENT_ACTIVE: Final = True
 
 APPROVAL_LITERAL_NAME: Final = "_model_registry"
 """The security-literal name under which a launch approval binds the effective registry hash."""
+
+COMPOSITION_LITERAL_NAME: Final = "_composition"
+"""The security-literal name under which an Auto launch's approval also binds its composition (Plan 12.4 Design 1):
+equal hashes never mean shared authority, as with a test profile's name."""
+
+AUTO_COMPOSITION: Final = "auto"
+AUTO_OVERLAY_FILENAME: Final = "auto_overlay.yaml"
 
 _APPROVAL_LITERAL_PREFIX: Final = "optimus-model-registry-v1:"
 ROUTE_BINDING_VERSION: Final = 1
@@ -92,19 +111,44 @@ def packaged_defaults() -> Path:
     return Path(__file__).with_name("defaults.yaml")
 
 
-def compose_trusted_snapshot(defaults: Path) -> RegistrySnapshot:
-    """Load the registry a launch may trust. Fixture policies never activate."""
-    snapshot = load_registry(defaults, None)
+OPERATOR_OVERRIDE_FILENAME: Final = "model-registry.yaml"
+"""The operator's registry override (ADR-004 option C; ADR-025): one file in the trusted operator config root."""
+
+_operator_override: Path | None = None
+
+
+def operator_override(config_root: Path) -> Path | None:
+    """The operator's override in the trusted ``config_root``, or None when there is none. Only a regular file
+    counts: a symlink or any other kind of entry is refused, never followed."""
+    path = config_root / OPERATOR_OVERRIDE_FILENAME
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise BindingError("OPERATOR_OVERRIDE_UNSAFE", "the operator registry override must be a regular file")
+    return path if path.is_file() else None
+
+
+def use_operator_override(path: Path | None) -> None:
+    """Fix the operator override this process composes its trusted snapshot with (ADR-025). The launch gate sets it
+    from the trusted config root it resolved; the Gateway sets it from its signed launch's argument. The override
+    counts only through the effective hash the operator approved, which the Gateway compares with its manifest."""
+    global _operator_override
+    _operator_override = path
+
+
+def compose_trusted_snapshot(defaults: Path, override: Path | None = None) -> RegistrySnapshot:
+    """Load the registry a launch may trust: the defaults, then the operator override if any. Fixture policies never
+    activate."""
+    snapshot = load_registry(defaults, override)
     if snapshot.policy.fixture:
         raise BindingError("FIXTURE_POLICY", "a fixture registry cannot be trusted at launch")
     return snapshot
 
 
 def trusted_snapshot() -> RegistrySnapshot | None:
-    """The snapshot this install enforces, or None while enforcement is inactive."""
+    """The snapshot this install enforces (with this process's operator override), or None while enforcement is
+    inactive."""
     if not ENFORCEMENT_ACTIVE:
         return None
-    return compose_trusted_snapshot(packaged_defaults())
+    return compose_trusted_snapshot(packaged_defaults(), _operator_override)
 
 
 def approval_literal(snapshot: RegistrySnapshot) -> str:
@@ -114,6 +158,23 @@ def approval_literal(snapshot: RegistrySnapshot) -> str:
 
 def trusted_approval_literal() -> str | None:
     snapshot = trusted_snapshot()
+    return None if snapshot is None else approval_literal(snapshot)
+
+
+def auto_snapshot() -> RegistrySnapshot | None:
+    """The ``auto`` composition (Plan 12.4 Design 1, ADR-028): the shipped defaults, then the shipped Auto overlay,
+    then this process's operator override; None while enforcement is inactive. ``trusted_snapshot()`` stays the
+    ordinary composition."""
+    if not ENFORCEMENT_ACTIVE:
+        return None
+    snapshot = load_registry(packaged_defaults(), Path(__file__).with_name(AUTO_OVERLAY_FILENAME), _operator_override)
+    if snapshot.policy.fixture:
+        raise BindingError("FIXTURE_POLICY", "a fixture registry cannot be trusted at launch")
+    return snapshot
+
+
+def auto_approval_literal() -> str | None:
+    snapshot = auto_snapshot()
     return None if snapshot is None else approval_literal(snapshot)
 
 
@@ -159,6 +220,21 @@ MAX_ROUTE_ATTEMPTS: Final = 2
 """Provider attempts per host model request under enforcement: one primary attempt plus at most one
 identical-payload recovery attempt, and only after an attempt that certainly reached no model (Task 1
 contracts §4: a finite bound of 2; §6: an uncertain, possibly billed attempt is never re-sent)."""
+
+UPSTREAM_ATTEMPT_TIMEOUT_SECONDS: Final = 60.0
+"""How long the Gateway waits for one upstream attempt: a model, a decision or a tool provider."""
+
+GATEWAY_REQUEST_BUDGET_SECONDS: Final = MAX_ROUTE_ATTEMPTS * UPSTREAM_ATTEMPT_TIMEOUT_SECONDS
+"""The Gateway's upstream-dispatch budget for one host request: each upstream attempt is waited for no longer than its
+deadline (``optimus_gateway.upstream_client.AttemptDeadline``), and none is dispatched that could still be running after
+this budget (``request_budget_admits``). The Gateway's own processing (reading the request, the Stage C ledger, logging,
+writing the reply) is outside it."""
+
+HOST_GATEWAY_TIMEOUT_SECONDS: Final = GATEWAY_REQUEST_BUDGET_SECONDS + 15.0
+"""How long the host waits for one Gateway reply: the upstream-dispatch budget plus 15 s of slack for the Gateway's own
+processing, enough while that processing and its storage are responsive. Any shorter, and a reply the provider already
+billed can be abandoned while the Gateway still works on it, its cost then recorded as unknown (#397 live Z2: a 30 s
+host wait against a 60 s attempt)."""
 
 ATTEMPT_COMPLETED: Final = "completed"
 ATTEMPT_NOT_SENT: Final = "not_sent"

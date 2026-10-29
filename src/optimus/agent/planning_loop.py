@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
@@ -12,11 +13,18 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from optimus.agent.directives import (
+    EDIT_END_MARKER,
+    EDIT_OLD_MARKER,
     AgentDirectiveParseError,
     AgentPlanDirectives,
+    directive_text,
     parse_agent_plan,
     parse_mcp_call_line,
     parse_mcp_list_line,
+    plan_line_text,
+    plan_lines,
+    split_cr_lf_keepends,
+    strip_plan_text,
 )
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
 from optimus.agent.operation_control import TurnOperationControl
@@ -24,6 +32,7 @@ from optimus.agent.prompts import build_multi_turn_planner_input, format_mcp_evi
 from optimus.agent.tools import AgentToolbox
 from optimus.agent.workspace_context import DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
 from optimus.gateway.attempts import (
+    ROUTE_STOPPED_NO_RETRY,
     AttemptIntegrityError,
     ProviderAttempt,
     attempts_from_failure,
@@ -33,18 +42,24 @@ from optimus.gateway.attempts import (
     is_gateway_registry_mismatch,
     is_input_capacity_refusal,
     is_preflight_refusal,
+    stops_experimental_route,
 )
 from optimus.gateway.errors import GatewayError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.loops.completion import DeterministicCompletionEvaluator
-from optimus.loops.controller import GoalLoopController
+from optimus.loops.controller import GoalLoopController, GoalLoopResult
+from optimus.loops.detector import LoopDetection, LoopDetector, LoopSignalKind, LoopThresholds
 from optimus.loops.ledger import InMemoryProgressLedger
 from optimus.loops.models import IterationOutcome, IterationState, LoopBudgetPolicy, LoopStopReason, LoopToolExecutorProtocol
+from optimus.loops.signals import LoopStep, McpResults, ReadCoverage, ReadResult, mcp_step, parse_failure_step, read_step
 from optimus.retry.policy import RetryController, RetryPolicy
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import RuntimeContext
+from optimus.telemetry.events import TelemetryEvent
 from optimus.telemetry.subjects import sanitize_workspace_text
+from optimus.tools.line_endings import LineEndingStyle
+from optimus_security.failure_facts import bounded
 
 if TYPE_CHECKING:
     from optimus.gateway.route_binding import BoundRequest, TurnRouteBinder
@@ -65,7 +80,7 @@ _PLACEHOLDER_SOURCE_SHA256 = "0" * 64
 _OBSERVE_DIRECTIVE = re.compile(r"^OBSERVE:\s*(.*)$", re.DOTALL)
 _READ_RANGE_DIRECTIVE = re.compile(r"^READ:\s+(\S+)#bytes=(\d+):(\d+)\s*$")
 _REFUSE_DIRECTIVE = re.compile(r"^REFUSE:\s*(.+)$")
-_WRITE_DIRECTIVE = re.compile(r"^WRITE\s+(\S+)\s*$")
+_WRITE_DIRECTIVE = re.compile(r"^WRITE[ \t]+(\S+)[ \t]*$")  # #410 R1: spaces and tabs only
 _DIRECTIVE_PREFIXES = ("OBSERVE:", "READ:", "WRITE", "TEST", "REFUSE:", "PLAN:", "MCP_LIST", "MCP_CALL")
 _REFUSE_REASON_DIRECTIVE_PREFIX = re.compile(
     r"^(?:OBSERVE:|READ:|WRITE(?:\s|$)|TEST\s|PLAN:|CONTENT:|END_CONTENT|MCP_LIST\s|MCP_CALL\s)"
@@ -81,7 +96,71 @@ class PlanningTurnKind(StrEnum):
 
 
 class PlanningTurnParseError(ValueError):
-    pass
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        super().__init__(message)
+
+
+# Every reason a planning turn fails to parse (#388). Trace records carry only the code, never the
+# message, which may quote the reply.
+PLANNING_TURN_PARSE_CODES = frozenset(
+    {
+        "GRAMMAR_UNRECOGNIZED",
+        "REFUSE_NOT_ONE_LINE",
+        "REFUSE_TOO_LONG",
+        "REFUSE_HAS_DIRECTIVE_PREFIX",
+        "MCP_MIXED_DIRECTIVES",
+        "MCP_NOT_EXACTLY_ONE",
+        "MCP_LIST_INVALID",
+        "MCP_CALL_INVALID",
+        "MCP_DIRECTIVE_MALFORMED",
+        "OBSERVE_MULTIPLE",
+        "READ_RANGE_EMPTY",
+        "INTERMEDIATE_UNSUPPORTED_DIRECTIVE",
+        "INTERMEDIATE_UNRECOGNIZED_CONTENT",
+        "INTERMEDIATE_REQUIRES_OBSERVE",
+        "INTERMEDIATE_REQUIRES_READ",
+        "OBSERVATION_TOO_LARGE",
+        "READ_PATH_NOT_RELATIVE",
+        "READ_RANGES_DUPLICATE",
+        "READ_RANGES_OVERLAP",
+    }
+)
+_MCP_AUTHORIZATION_OUTCOMES = frozenset({"ALLOW", "BLOCK", "HOLD"})
+
+# #403 (option B, Codex round 44): the fixed notice the next turn carries after an unparseable one, one per closed
+# code. Fixed text only: never the reply, the parse message, a path or exception text. Strict parsing is unchanged.
+PLANNING_PARSE_FEEDBACK: dict[str, str] = {
+    "GRAMMAR_UNRECOGNIZED": (
+        "it matched no planning-turn form. Reply with exactly one form: an intermediate turn (one OBSERVE: line, "
+        "then ranged READ: lines), one MCP_LIST or MCP_CALL line, a final plan, or a one-line REFUSE:."
+    ),
+    "REFUSE_NOT_ONE_LINE": "a REFUSE: reply must be a single non-empty line.",
+    "REFUSE_TOO_LONG": "a REFUSE: reason must be at most 512 UTF-8 bytes.",
+    "REFUSE_HAS_DIRECTIVE_PREFIX": "a REFUSE: reason must not contain directive prefixes.",
+    "MCP_MIXED_DIRECTIVES": "an MCP_LIST or MCP_CALL line must be the whole reply, never mixed with other directives.",
+    "MCP_NOT_EXACTLY_ONE": "an MCP turn must contain exactly one MCP_LIST or MCP_CALL line.",
+    "MCP_LIST_INVALID": "the MCP_LIST line was malformed; use MCP_LIST <server>.",
+    "MCP_CALL_INVALID": "the MCP_CALL line was malformed; use MCP_CALL <server> <tool> <canonical-json-object>.",
+    "MCP_DIRECTIVE_MALFORMED": "the MCP directive was malformed; use MCP_LIST <server> or MCP_CALL <server> <tool> <json>.",
+    "OBSERVE_MULTIPLE": "an intermediate turn must contain exactly one OBSERVE: line.",
+    "READ_RANGE_EMPTY": "each READ: range must end after it starts.",
+    "INTERMEDIATE_UNSUPPORTED_DIRECTIVE": "an intermediate turn may contain only one OBSERVE: line and ranged READ: lines.",
+    "INTERMEDIATE_UNRECOGNIZED_CONTENT": (
+        "an intermediate turn may contain only one OBSERVE: line and ranged READ: lines, with no other text."
+    ),
+    "INTERMEDIATE_REQUIRES_OBSERVE": "an intermediate turn needs an OBSERVE: line before its READ: lines.",
+    "INTERMEDIATE_REQUIRES_READ": "an intermediate turn needs at least one ranged READ: line after its OBSERVE: line.",
+    "OBSERVATION_TOO_LARGE": "the OBSERVE: note and its READ: requests exceeded the observation budget; keep the note shorter.",
+    "READ_PATH_NOT_RELATIVE": "each READ: path must be workspace-relative.",
+    "READ_RANGES_DUPLICATE": "the READ: ranges must not repeat.",
+    "READ_RANGES_OVERLAP": "the READ: ranges must not overlap.",
+}
+
+
+def _correction_notice(code: str | None) -> str:
+    """The next turn's notice for the previous turn's parse-failure code, or "" when that turn parsed (#403)."""
+    return PLANNING_PARSE_FEEDBACK[code] if code is not None else ""
 
 
 class PlanningReadError(ValueError):
@@ -110,6 +189,10 @@ class PlanningLoopPolicy(BaseModel):
 
     max_planning_turns: int = Field(default=3, ge=1)
     max_wall_clock_minutes: int = Field(default=30, ge=1)
+    # Plan 12.3 (ADR-024, D2): interactive recovery only. Continue grants these steps and a fresh
+    # max_wall_clock_minutes; headless runs keep the hard caps above.
+    loop_thresholds: LoopThresholds = Field(default_factory=LoopThresholds)
+    continue_grant_steps: int = Field(default=3, ge=1)
 
     def to_loop_budget_policy(self, *, max_cost_usd: Decimal | None = None) -> LoopBudgetPolicy:
         """The loop's finite work controls; a dollar bound only for an evaluation caller's explicit cap
@@ -150,6 +233,12 @@ class PlanningReadEvidence(BaseModel):
     end_byte: int = Field(ge=1)
     source_sha256: str = Field(min_length=1)
     range_text: str
+    line_endings: LineEndingStyle  # the whole file's, from the hashed snapshot (#410)
+
+    @property
+    def returned_end_byte(self) -> int:
+        """Where the returned bytes end: a range past the end of the file returns fewer than it asked for (#432)."""
+        return self.start_byte + len(self.range_text.encode("utf-8"))
 
 
 class PlanningEvidenceEnvelope(BaseModel):
@@ -191,6 +280,8 @@ class PlanningLoopResult(BaseModel):
     corrective_text: str = ""
     refusal_reason: str | None = None
     evidence_metadata: dict[str, str] = Field(default_factory=dict)
+    # Path -> sha256 of the raw evidence visible on the final plan's turn; an EDIT is bound to it (#407).
+    evidence_sha256s: dict[str, str] = Field(default_factory=dict)
 
 
 class PlanningProgressEvent(BaseModel):
@@ -256,11 +347,70 @@ def planning_read_telemetry_fields(
     return (
         tuple(f"{item.path}#bytes={item.start_byte}:{item.end_byte}" for item in ordered),
         tuple(item.source_sha256 for item in ordered),
-        tuple(item.end_byte - item.start_byte for item in ordered),
+        tuple(item.returned_end_byte - item.start_byte for item in ordered),  # bytes returned, not asked for (#432)
     )
 
 
 PlanningProgressObserver = Callable[[PlanningProgressEvent], None]
+
+
+class CheckInDecision(StrEnum):
+    CONTINUE = "continue"
+    STOP = "stop"
+    UNAVAILABLE = "unavailable"  # the client could not be asked
+    INVALID = "invalid"  # an unrecognised answer: treated as Stop, with a recoverable explanation
+
+
+class PlanningCheckIn(BaseModel):
+    """What the user is asked at a recovery check-in (Plan 12.3, Design 5). Continue grants only a
+    fresh planning allowance: never a WRITE or TEST approval, which keeps its own request."""
+
+    model_config = ConfigDict(frozen=True)
+
+    cause: str
+    planning_steps: int = Field(ge=1)
+    text: str
+    plan_waiting: bool = False
+    refusal_waiting: bool = False
+
+
+# Blocks the planning worker until the user answers; nothing runs meanwhile (ADR-009 requirement 3).
+PlanningCheckInCallback = Callable[[PlanningCheckIn], CheckInDecision]
+
+
+class PlanningEscalation(BaseModel):
+    """An episode's request to move the rest of the turn to a stronger model once its nudge has not helped (#397,
+    ADR-009 rung 2). ``what`` is the check-in's sanitized description of the repetition, for the user's notice."""
+
+    model_config = ConfigDict(frozen=True)
+
+    cause: str
+    planning_steps: int = Field(ge=1)
+    what: str
+
+
+@dataclass(frozen=True, slots=True)
+class EscalationGrant:
+    """The host moved the turn: every later request sends ``model_id`` through ``route_binder``. ``notice_delivered``
+    records whether the informational notice was confirmed sent; it never gates the move (ADR-005)."""
+
+    model_id: str
+    route_binder: TurnRouteBinder | None  # None means no binding from here on, never "keep the old one" (its model)
+    notice_delivered: bool = False
+
+
+class EscalationRefusal(StrEnum):
+    """Why the host did not move the turn. A halt ends the run; any other refusal goes to the episode's check-in."""
+
+    NO_TARGET = "no_target"  # no stronger eligible model (or the turn already runs it)
+    HALTED = "halted"
+    FAILED = "failed"  # the host's callback raised or answered something else
+
+
+# Called only in interactive Auto runs; like the check-in it blocks the planning worker.
+PlanningEscalationCallback = Callable[[PlanningEscalation], EscalationGrant | EscalationRefusal]
+_TURN_LIMIT, _WALL_CLOCK = "TURN_LIMIT", "WALL_CLOCK"
+_NUDGE_STEP = object()  # the next recovery move is one budgeted nudge step, not a check-in
 
 
 def pack_planning_evidence(
@@ -423,7 +573,8 @@ def _serialize_planning_read_evidence(evidence: PlanningReadEvidence) -> str:
         "READ_BLOCK "
         f"path={evidence.path} "
         f"bytes={evidence.start_byte}:{evidence.end_byte} "
-        f"sha256={evidence.source_sha256}\n"
+        f"sha256={evidence.source_sha256} "
+        f"eol={evidence.line_endings}\n"
         f"{evidence.range_text}\n"
         "END_READ_BLOCK\n"
     )
@@ -438,20 +589,20 @@ def _resolve_workspace_file(*, workspace_root: Path, relative_path: str) -> Path
 
 
 _RANGED_READ_LINE = re.compile(r"^READ:\s+\S+#bytes=\d+:\d+\s*$")
-_FINAL_READ_DIRECTIVE = re.compile(r"^READ\s+(\S+)\s*$")
-_FINAL_TEST_DIRECTIVE = re.compile(r"^TEST\s+(.+)$")
+_FINAL_READ_DIRECTIVE = re.compile(r"^READ[ \t]+(\S+)[ \t]*$")  # #410 R1: spaces and tabs only
+_FINAL_TEST_DIRECTIVE = re.compile(r"^TEST[ \t]+(.+)$")
 
 
 def parse_planning_turn(text: str) -> PlanningTurnDecision:
-    stripped = text.strip()
+    stripped = strip_plan_text(text)  # #410 R1: a content separator at either end survives classification
     if not stripped:
-        raise PlanningTurnParseError("no recognized planning-turn grammar")
+        raise PlanningTurnParseError("GRAMMAR_UNRECOGNIZED", "no recognized planning-turn grammar")
 
     refuse_decision = _try_parse_refuse(stripped)
     if refuse_decision is not None:
         return refuse_decision
     if stripped.startswith("REFUSE:"):
-        raise PlanningTurnParseError("REFUSE reason must be one non-empty line")
+        raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
 
     mcp_decision = _try_parse_mcp_turn(stripped)
     if mcp_decision is not None:
@@ -468,25 +619,31 @@ def parse_planning_turn(text: str) -> PlanningTurnDecision:
     if _surface_has_ranged_read(surface_lines):
         return _parse_intermediate_turn(stripped)
 
-    raise PlanningTurnParseError("no recognized planning-turn grammar")
+    raise PlanningTurnParseError("GRAMMAR_UNRECOGNIZED", "no recognized planning-turn grammar")
 
 
 def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    lines = [stripped for line in _outside_edit_blocks(text) if (stripped := plan_line_text(line))]  # #407; #410 R1
     if not lines:
         return None
-    if not (lines[0].startswith("MCP_LIST") or lines[0].startswith("MCP_CALL")):
+    # #410 R1: classify by directive text, so a line holding a content separator never counts as MCP.
+    heads = [directive_text(line) for line in lines]
+    if not (heads[0].startswith("MCP_LIST") or heads[0].startswith("MCP_CALL")):
         # If MCP appears mixed later with other content, reject below when surface has MCP.
-        if any(line.startswith("MCP_LIST") or line.startswith("MCP_CALL") for line in lines):
-            raise PlanningTurnParseError("MCP directives must be a single intermediate tool request")
+        if any(head.startswith("MCP_LIST") or head.startswith("MCP_CALL") for head in heads):
+            raise PlanningTurnParseError(
+                "MCP_MIXED_DIRECTIVES", "MCP directives must be a single intermediate tool request"
+            )
         return None
     if len(lines) != 1:
-        raise PlanningTurnParseError("MCP turn must contain exactly one MCP_LIST or MCP_CALL directive")
+        raise PlanningTurnParseError(
+            "MCP_NOT_EXACTLY_ONE", "MCP turn must contain exactly one MCP_LIST or MCP_CALL directive"
+        )
 
     try:
         list_directive = parse_mcp_list_line(lines[0])
     except AgentDirectiveParseError as exc:
-        raise PlanningTurnParseError(str(exc)) from exc
+        raise PlanningTurnParseError("MCP_LIST_INVALID", str(exc)) from exc
     if list_directive is not None:
         return PlanningTurnDecision(
             kind=PlanningTurnKind.MCP_TOOL,
@@ -497,7 +654,7 @@ def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
     try:
         call_directive = parse_mcp_call_line(lines[0])
     except AgentDirectiveParseError as exc:
-        raise PlanningTurnParseError(str(exc)) from exc
+        raise PlanningTurnParseError("MCP_CALL_INVALID", str(exc)) from exc
     if call_directive is not None:
         return PlanningTurnDecision(
             kind=PlanningTurnKind.MCP_TOOL,
@@ -508,12 +665,31 @@ def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
         )
 
     if lines[0].startswith("MCP_LIST") or lines[0].startswith("MCP_CALL"):
-        raise PlanningTurnParseError("malformed MCP directive")
+        raise PlanningTurnParseError("MCP_DIRECTIVE_MALFORMED", "malformed MCP directive")
     return None
 
 
+def _outside_edit_blocks(text: str) -> list[str]:
+    """The lines outside EDIT blocks: OLD/NEW bodies are opaque content, never directives (#407). Blocks end
+    at CR/LF lines, as the plan parser's do; the text outside them takes #410's R1 split (LF and CRLF lines that
+    keep their terminators), like the final-plan parser's."""
+    outside: list[str] = []
+    pending = ""
+    inside = False
+    for line in split_cr_lf_keepends(text):
+        marker = line.strip()
+        if inside:
+            inside = marker != EDIT_END_MARKER
+        elif marker == EDIT_OLD_MARKER:
+            outside += plan_lines(pending)
+            pending, inside = "", True
+        else:
+            pending += line
+    return outside + plan_lines(pending)
+
+
 def _directive_surface_lines(text: str) -> tuple[str, ...]:
-    lines = text.splitlines()
+    lines = _outside_edit_blocks(text)  # #407: EDIT blocks are opaque; #410 R1: LF and CRLF lines elsewhere
     surface_lines: list[str] = []
     index = 0
     while index < len(lines):
@@ -524,7 +700,7 @@ def _directive_surface_lines(text: str) -> tuple[str, ...]:
             while index < len(lines) and not _is_final_directive_line(lines[index]):
                 index += 1
             continue
-        stripped = line.strip()
+        stripped = plan_line_text(line)
         if stripped:
             surface_lines.append(stripped)
         index += 1
@@ -532,11 +708,11 @@ def _directive_surface_lines(text: str) -> tuple[str, ...]:
 
 
 def _normalize_directive_surface_line(line: str) -> str:
-    normalized = line.strip()
+    normalized = directive_text(line)  # #410 R1: a line holding a content separator is never directive syntax
     while True:
         for prefix in _BULLET_PREFIXES:
             if normalized.startswith(prefix):
-                normalized = normalized[len(prefix) :].lstrip()
+                normalized = normalized[len(prefix) :].lstrip(" \t")
                 break
         else:
             return normalized
@@ -601,7 +777,7 @@ def _parse_intermediate_turn(text: str) -> PlanningTurnDecision:
         observe_match = _OBSERVE_DIRECTIVE.match(line)
         if observe_match is not None:
             if observation_text is not None:
-                raise PlanningTurnParseError("multiple OBSERVE directives are not supported")
+                raise PlanningTurnParseError("OBSERVE_MULTIPLE", "multiple OBSERVE directives are not supported")
             observation_text = observe_match.group(1).strip()
             continue
 
@@ -611,22 +787,28 @@ def _parse_intermediate_turn(text: str) -> PlanningTurnDecision:
             start_byte = int(read_match.group(2))
             end_byte = int(read_match.group(3))
             if end_byte <= start_byte:
-                raise PlanningTurnParseError("READ range end must be greater than start")
+                raise PlanningTurnParseError("READ_RANGE_EMPTY", "READ range end must be greater than start")
             read_requests.append(
                 PlanningReadRequest(path=path, start_byte=start_byte, end_byte=end_byte)
             )
             continue
 
         if line.startswith(_DIRECTIVE_PREFIXES):
-            raise PlanningTurnParseError("intermediate planning turn contains unsupported directive")
+            raise PlanningTurnParseError(
+                "INTERMEDIATE_UNSUPPORTED_DIRECTIVE", "intermediate planning turn contains unsupported directive"
+            )
 
-        raise PlanningTurnParseError("intermediate planning turn contains unrecognized content")
+        raise PlanningTurnParseError(
+            "INTERMEDIATE_UNRECOGNIZED_CONTENT", "intermediate planning turn contains unrecognized content"
+        )
 
     if observation_text is None:
-        raise PlanningTurnParseError("intermediate planning turn requires OBSERVE")
+        raise PlanningTurnParseError("INTERMEDIATE_REQUIRES_OBSERVE", "intermediate planning turn requires OBSERVE")
 
     if not read_requests:
-        raise PlanningTurnParseError("intermediate planning turn requires at least one ranged READ")
+        raise PlanningTurnParseError(
+            "INTERMEDIATE_REQUIRES_READ", "intermediate planning turn requires at least one ranged READ"
+        )
 
     read_request_tuple = tuple(read_requests)
     if (
@@ -636,7 +818,7 @@ def _parse_intermediate_turn(text: str) -> PlanningTurnDecision:
         )
         > PLANNING_OBSERVATION_MAX_BYTES
     ):
-        raise PlanningTurnParseError("observation exceeds planning observation budget")
+        raise PlanningTurnParseError("OBSERVATION_TOO_LARGE", "observation exceeds planning observation budget")
 
     _validate_non_overlapping_reads(read_requests)
 
@@ -654,26 +836,27 @@ def _try_parse_refuse(text: str) -> PlanningTurnDecision | None:
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(lines) != 1:
-        raise PlanningTurnParseError("REFUSE reason must be one non-empty line")
+        raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
 
     refuse_match = _REFUSE_DIRECTIVE.match(lines[0])
     if refuse_match is None:
-        raise PlanningTurnParseError("REFUSE reason must be one non-empty line")
+        raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
 
     reason = refuse_match.group(1).strip()
     if not reason:
-        raise PlanningTurnParseError("REFUSE reason must be one non-empty line")
+        raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
     if len(reason.encode("utf-8")) > 512:
-        raise PlanningTurnParseError("REFUSE reason exceeds 512 UTF-8 bytes")
+        raise PlanningTurnParseError("REFUSE_TOO_LONG", "REFUSE reason exceeds 512 UTF-8 bytes")
     if _REFUSE_REASON_DIRECTIVE_PREFIX.match(reason):
-        raise PlanningTurnParseError("REFUSE reason must not contain directive prefixes")
+        raise PlanningTurnParseError("REFUSE_HAS_DIRECTIVE_PREFIX", "REFUSE reason must not contain directive prefixes")
 
     return PlanningTurnDecision(kind=PlanningTurnKind.REFUSE, reason=reason)
 
 
 def _try_parse_final_plan(text: str) -> PlanningTurnDecision | None:
     try:
-        directives = parse_agent_plan(text)
+        # A model's EDIT never carries a base: the harness binds it before approval (#407).
+        directives = parse_agent_plan(text, edit_base="forbidden")
     except AgentDirectiveParseError:
         return None
 
@@ -688,12 +871,12 @@ def _normalize_workspace_relative_path(path_text: str) -> str:
     from pathlib import Path
 
     if not path_text:
-        raise PlanningTurnParseError("READ path must be workspace-relative")
+        raise PlanningTurnParseError("READ_PATH_NOT_RELATIVE", "READ path must be workspace-relative")
     path = Path(path_text)
     if path.is_absolute() or ".." in path.parts:
-        raise PlanningTurnParseError("READ path must be workspace-relative")
+        raise PlanningTurnParseError("READ_PATH_NOT_RELATIVE", "READ path must be workspace-relative")
     if re.match(r"^[A-Za-z]:[\\/]|^/", path_text):
-        raise PlanningTurnParseError("READ path must be workspace-relative")
+        raise PlanningTurnParseError("READ_PATH_NOT_RELATIVE", "READ path must be workspace-relative")
     return path.as_posix()
 
 
@@ -707,9 +890,9 @@ def _validate_non_overlapping_reads(read_requests: list[PlanningReadRequest]) ->
         for index, current in enumerate(sorted_ranges):
             for other in sorted_ranges[index + 1 :]:
                 if current.start_byte == other.start_byte and current.end_byte == other.end_byte:
-                    raise PlanningTurnParseError(f"duplicate READ ranges for {path}")
+                    raise PlanningTurnParseError("READ_RANGES_DUPLICATE", f"duplicate READ ranges for {path}")
                 if current.start_byte < other.end_byte and other.start_byte < current.end_byte:
-                    raise PlanningTurnParseError(f"overlapping READ ranges for {path}")
+                    raise PlanningTurnParseError("READ_RANGES_OVERLAP", f"overlapping READ ranges for {path}")
 
 
 def _normalized_read_failure_signature(read_requests: list[PlanningReadRequest]) -> str:
@@ -726,6 +909,60 @@ _PLANNING_STOP_REASONS = {
     LoopStopReason.MAX_ITERATIONS: "PLANNING_TURN_LIMIT_EXHAUSTED",
     LoopStopReason.HUMAN_HALT: "PLANNING_HALTED",
 }
+# The actual cause of a recovery stop, per detection or allowance (Plan 12.3, Design 7).
+_RECOVERY_STOP_REASONS: dict[str, str] = {
+    LoopSignalKind.REPEATED_READ: "PLANNING_REPEATED_READ_REQUEST",
+    LoopSignalKind.REPEATED_MCP: "PLANNING_REPEATED_MCP_REQUEST",
+    LoopSignalKind.CYCLE: "PLANNING_ACTION_CYCLE",
+    LoopSignalKind.NO_PROGRESS: "PLANNING_NO_PROGRESS",
+    LoopSignalKind.REPEATED_PARSE_ERROR: "PLANNING_UNPARSEABLE_RESPONSE",
+    _TURN_LIMIT: "PLANNING_TURN_LIMIT_EXHAUSTED",
+    _WALL_CLOCK: "PLANNING_WALL_CLOCK_EXHAUSTED",
+}
+_SIGNAL_TEXT = {
+    LoopSignalKind.REPEATED_READ: "repeated {subject} with unchanged results",
+    LoopSignalKind.REPEATED_MCP: "repeated {subject} with unchanged results",
+    LoopSignalKind.CYCLE: "alternated between the same two requests with unchanged results, ending with {subject}",
+    LoopSignalKind.NO_PROGRESS: "made several steps without new evidence, ending with {subject}",
+    LoopSignalKind.REPEATED_PARSE_ERROR: "repeated {subject}",
+}
+_RECOVERY_NOTE_MAX_BYTES = 1024
+_CHECKIN_ENDINGS = {
+    CheckInDecision.UNAVAILABLE: (
+        " The check-in to continue could not be shown, so the turn ended. Nothing was changed; send the request again to retry."
+    ),
+    CheckInDecision.INVALID: (
+        " The answer to the check-in was not recognised, so the turn ended as if you chose Stop. Nothing was changed; "
+        "send the request again to retry."
+    ),
+}
+
+
+# #400: the same failures when they prove the experimental route stopped, as Chat says them (r8). The Gateway then
+# admits no further request on that route while it runs, so these never suggest a retry. Same stop reasons.
+# Each speaks only for the failed request and the absent plan: an earlier turn of the same run may already have run
+# an approved MCP call (Codex round 40, finding 3).
+PLANNING_ROUTE_STOPPED_MESSAGES: dict[str, str] = {
+    "PLANNING_GATEWAY_FAILURE": (
+        "Planning stopped because the model gateway refused the model's reply after the call was charged, and this "
+        f"experimental route is now stopped. That reply was not used, and no plan was offered for approval. {ROUTE_STOPPED_NO_RETRY}"
+    ),
+    "PLANNING_GATEWAY_COST_UNKNOWN": (
+        "Planning stopped because the model gateway failed without reporting the call's cost, and this experimental "
+        f"route is now stopped. No plan was offered for approval. {ROUTE_STOPPED_NO_RETRY}"
+    ),
+    # A later refusal proves only the stop and this request's free refusal, never the stop's cause (Codex review P2).
+    "PLANNING_GATEWAY_REFUSED": (
+        "Planning stopped because the model gateway has stopped this experimental route, so it refused this request "
+        f"before it reached any model and nothing was charged for it. No plan was offered for approval. {ROUTE_STOPPED_NO_RETRY}"
+    ),
+    # A summary this turn stopped the route, and the request then did not fit (Codex round 41): no capacity
+    # recovery can help while the route is stopped.
+    "CONTEXT_CAPACITY_EXCEEDED": (
+        "Planning stopped because its next request would not fit the model's input capacity, and the model gateway "
+        f"has stopped this experimental route. That request was not sent, and no plan was offered for approval. {ROUTE_STOPPED_NO_RETRY}"
+    ),
+}
 
 
 def planning_corrective_text(
@@ -733,12 +970,32 @@ def planning_corrective_text(
     *,
     refusal_reason: str | None = None,
     workspace_root: Path | None = None,
+    route_stopped: bool = False,
+    detail: str | None = None,
+) -> str:
+    """The user's text for `stop_reason`. ``route_stopped``: the request's failure proved its experimental route
+    stopped (#400). `detail` names what repeated (Plan 12.3, Design 7)."""
+    text = _corrective_template(
+        stop_reason, refusal_reason=refusal_reason, workspace_root=workspace_root, route_stopped=route_stopped
+    )
+    return text + sanitize_workspace_text(detail, workspace_root=workspace_root) if detail and text else text
+
+
+def _corrective_template(
+    stop_reason: str | None, *, refusal_reason: str | None, workspace_root: Path | None, route_stopped: bool
 ) -> str:
     if stop_reason == "PLANNING_MODEL_REFUSED" and refusal_reason is not None:
         return sanitize_workspace_text(refusal_reason, workspace_root=workspace_root)
+    if route_stopped and stop_reason in PLANNING_ROUTE_STOPPED_MESSAGES:
+        return PLANNING_ROUTE_STOPPED_MESSAGES[stop_reason]
     templates = {
         "PLANNING_REPEATED_READ_REQUEST": "Planning stopped after repeated non-progress read requests.",
-        "PLANNING_GATEWAY_FAILURE": "Planning stopped after repeated gateway request failures.",
+        "PLANNING_REPEATED_MCP_REQUEST": "Planning stopped after repeated MCP requests that returned the same result.",
+        "PLANNING_ACTION_CYCLE": (
+            "Planning stopped after the model alternated between the same requests with unchanged results."
+        ),
+        "PLANNING_NO_PROGRESS": "Planning stopped after several steps that produced no new evidence.",
+        "PLANNING_GATEWAY_FAILURE": "Planning stopped because the model gateway request failed.",
         "PLANNING_GATEWAY_COST_UNKNOWN": (
             "Planning stopped because a gateway attempt cost could not be verified; "
             "no further retry was dispatched."
@@ -826,10 +1083,20 @@ class PlanningLoopRunner:
         context_packer: ContextPacker | None = None,
         attempt_callback: PlanningAttemptCallback | None = None,
         route_binder: TurnRouteBinder | None = None,
+        recovery_checkin: PlanningCheckInCallback | None = None,
+        loop_event_sink: Callable[[TelemetryEvent], None] | None = None,
+        recovery_escalation: PlanningEscalationCallback | None = None,
     ) -> None:
+        """`recovery_checkin` makes the run interactive (Plan 12.3, Design 6): repetition and the end of
+        the allowance get a nudge, then a check-in, instead of a stop. Without it the run is headless
+        and keeps today's hard caps. `recovery_escalation` (an interactive Auto turn only, #397) is asked
+        once per episode, between the nudge and the check-in, to move the turn to a stronger model."""
         self._gateway_client = gateway_client
         self._model = model
         self._policy = policy
+        self._recovery_checkin = recovery_checkin
+        self._recovery_escalation = recovery_escalation if recovery_checkin is not None else None
+        self._loop_event_sink = loop_event_sink
         self._workspace_root = workspace_root.resolve()
         self._execution_mode = execution_mode
         self._max_cost_usd = max_cost_usd
@@ -863,6 +1130,8 @@ class PlanningLoopRunner:
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
         conversation_envelope: str = "",
+        required_file_sizes: dict[str, int] | None = None,
+        initial_workspace_sha256s: dict[str, str] | None = None,
     ) -> PlanningLoopResult:
         # Only an evaluation caller's explicit cap can stop planning on money (Plan 12.2 Task 11).
         if self._max_cost_usd is not None and self._max_cost_usd <= Decimal("0"):
@@ -879,6 +1148,8 @@ class PlanningLoopRunner:
             task=task,
             initial_workspace_context=initial_workspace_context,
             initial_workspace_file_sizes=initial_workspace_file_sizes or {},
+            required_file_sizes=required_file_sizes,
+            initial_workspace_sha256s=initial_workspace_sha256s,
             workspace_root=self._workspace_root,
             run_id=run_id,
             session_id=session_id,
@@ -899,28 +1170,79 @@ class PlanningLoopRunner:
             context_packer=self._context_packer,
             attempt_callback=self._attempt_callback,
             route_binder=self._route_binder,
+            interactive=self._recovery_checkin is not None,
+            escalates=self._recovery_escalation is not None,
+            loop_event_sink=self._loop_event_sink,
         )
-        controller = GoalLoopController(
-            policy=iteration_runner.loop_budget_policy,
-            runner=iteration_runner,
-            tools=GuardedLoopToolExecutor(guard=self._guard),
-            evaluator=DeterministicCompletionEvaluator(
-                completed=False,
-                reason="planning loop uses per-turn settlement",
-            ),
-            ledger=InMemoryProgressLedger(),
-            halt_requested=self._halt_requested,
-            now=self._now,
-        )
-        loop_result = controller.run(
-            IterationState(
-                run_id=run_id,
-                session_id=session_id,
-                goal=task,
-                completion_condition=task,
-                started_at=self._now(),
+        tools = GuardedLoopToolExecutor(guard=self._guard)
+
+        def run_allowance(steps: int, *, budgeted: bool = False, spent: Decimal = Decimal("0")) -> GoalLoopResult:
+            # One allowance: `steps` planning steps and a fresh wall clock. A headless run has exactly one.
+            # It starts from the turn's spend, so an evaluation caller's cap covers the whole turn.
+            iteration_runner.start_allowance(steps, budgeted=budgeted)
+            controller = GoalLoopController(
+                policy=iteration_runner.loop_budget_policy.model_copy(update={"max_iterations": steps}),
+                runner=iteration_runner,
+                tools=tools,
+                evaluator=DeterministicCompletionEvaluator(
+                    completed=False,
+                    reason="planning loop uses per-turn settlement",
+                ),
+                ledger=InMemoryProgressLedger(),
+                halt_requested=self._halt_requested,
+                now=self._now,
             )
-        )
+            return controller.run(
+                IterationState(
+                    run_id=run_id,
+                    session_id=session_id,
+                    goal=task,
+                    completion_condition=task,
+                    started_at=self._now(),
+                    cost_usd_spent=spent,
+                )
+            )
+
+        loop_result = run_allowance(self._policy.max_planning_turns)
+        checkin = self._recovery_checkin
+        while checkin is not None and not self._halt_requested():
+            move = iteration_runner.next_recovery_move(loop_result)
+            if move is None:
+                break
+            if move is _NUDGE_STEP:
+                # A detection on the allowance's last step, or after the clock: its nudge still comes
+                # before the check-in, in exactly one more step (Plan 12.3, Design 4).
+                loop_result = run_allowance(1, budgeted=True, spent=loop_result.state.cost_usd_spent)
+                continue
+            if isinstance(move, PlanningEscalation):
+                assert self._recovery_escalation is not None
+                try:
+                    outcome = self._recovery_escalation(move)
+                except Exception:  # noqa: BLE001 - a host that cannot move the turn leaves it to the check-in
+                    outcome = EscalationRefusal.FAILED
+                if not isinstance(outcome, EscalationGrant | EscalationRefusal):
+                    outcome = EscalationRefusal.FAILED
+                iteration_runner.record_escalation(move, outcome)
+                if outcome is EscalationRefusal.HALTED:
+                    break  # terminal: the host saw a halt, whatever this run's own predicate says (PLANNING_HALTED)
+                if isinstance(outcome, EscalationGrant) and not self._halt_requested():
+                    # The stronger model gets Continue's allowance; the episode stays open, so it ends at the check-in.
+                    loop_result = run_allowance(self._policy.continue_grant_steps, spent=loop_result.state.cost_usd_spent)
+                continue
+            assert isinstance(move, PlanningCheckIn)
+            try:
+                decision = checkin(move)
+            except Exception:  # noqa: BLE001 - a check-in that cannot be shown ends the turn recoverably
+                decision = CheckInDecision.UNAVAILABLE
+            if not isinstance(decision, CheckInDecision):
+                decision = CheckInDecision.INVALID
+            iteration_runner.record_checkin(move, decision)
+            if self._halt_requested() or decision is not CheckInDecision.CONTINUE:
+                break
+            iteration_runner.end_episode()
+            if move.plan_waiting:
+                break  # the kept final plan goes on to the normal plan approval
+            loop_result = run_allowance(self._policy.continue_grant_steps, spent=loop_result.state.cost_usd_spent)
         result = iteration_runner.to_planning_result(loop_result)
         iteration_runner.emit_final_progress(result)
         return result
@@ -935,6 +1257,8 @@ class _PlanningIterationRunner:
         task: str,
         initial_workspace_context: str,
         initial_workspace_file_sizes: dict[str, int],
+        required_file_sizes: dict[str, int] | None = None,
+        initial_workspace_sha256s: dict[str, str] | None = None,
         workspace_root: Path,
         run_id: str,
         session_id: str | None,
@@ -955,16 +1279,52 @@ class _PlanningIterationRunner:
         context_packer: ContextPacker | None = None,
         attempt_callback: PlanningAttemptCallback | None = None,
         route_binder: TurnRouteBinder | None = None,
+        interactive: bool = False,
+        escalates: bool = False,
+        loop_event_sink: Callable[[TelemetryEvent], None] | None = None,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
         self._task = task
+        # Plan 12.3 interactive recovery. Steps are numbered across allowances, so each request keeps
+        # its own operation id; costs, evidence and receipts simply carry on.
+        self._interactive = interactive
+        # #397: the open episode's escalation, asked at most once per episode; per-episode facts for its check-in.
+        self._escalates = escalates
+        self._escalation_tried = False
+        self._episode_moved_to: str | None = None
+        self._episode_no_target = False
+        self._host_halted = False  # the host answered HALTED: the run ends halted
+
+        self._loop_event_sink = loop_event_sink
+        self._detector = LoopDetector(policy.loop_thresholds)
+        self._coverage = ReadCoverage()
+        self._mcp_results = McpResults()
+        self._steps_run = 0
+        self._turn_offset = 0
+        self._allowance_end = policy.max_planning_turns
+        self._budgeted_step = False
+        self._episode: LoopDetection | None = None  # the first detection of the open episode
+        self._nudge: str | None = None  # the open episode's note, until a request carries it
+        self._nudged = False
+        self._checkin_requested = False
+        self._last_error_step: LoopStep | None = None
+        self._recovery_stop: tuple[str, str] | None = None  # (stop reason, the user's detail)
+        self._refusal_detail = ""
         self._attempt_callback = attempt_callback
         self._route_binder = route_binder
+        # Sticky: a Gateway failure proved this route stopped, and a stopped route never restarts (#400).
+        self._route_stopped = False
+        # The previous turn's closed parse-failure code, for the next turn's notice; None once a turn parses (#403).
+        self._parse_failure_code: str | None = None
         self._conversation_envelope = conversation_envelope
         self._context_packer = context_packer
         self._initial_workspace_context = initial_workspace_context
         self._initial_workspace_file_sizes = initial_workspace_file_sizes
+        self._required_file_sizes = required_file_sizes or {}
+        self._initial_workspace_sha256s = initial_workspace_sha256s or {}
+        # The raw evidence the final plan's turn showed, by path; set when a final plan settles (#407).
+        self._final_evidence_sha256s: dict[str, str] = {}
         self._workspace_root = workspace_root
         self._run_id = run_id
         self._session_id = session_id
@@ -1028,6 +1388,184 @@ class _PlanningIterationRunner:
             deterministic_completion=True,
             failure_signature=None,
             cost_usd=cost_usd,
+        )
+
+    # Plan 12.3 interactive recovery (Design 4). The order after each step: the outcome is recorded
+    # (the controller), then the detector runs (here), then the controller applies the allowance.
+    def _observed(self, outcome: IterationOutcome, step: LoopStep, planning_turn: int) -> IterationOutcome:
+        if not self._interactive:
+            return outcome  # headless keeps today's consecutive counter and its hard stop
+        if step.error_class is not None:
+            self._last_error_step = step
+        detection = self._detector.observe(step)
+        if detection is not None:
+            self._emit_loop_record("detection", detection.kind, planning_turn)
+            if self._episode is None:
+                self._episode = detection
+                self._nudge = self._recovery_note(detection)  # help comes before asking
+            elif self._nudged:
+                self._checkin_requested = True
+        return outcome.model_copy(update={"failure_signature": None, "deterministic_completion": self._checkin_requested})
+
+    def start_allowance(self, steps: int, *, budgeted: bool) -> None:
+        self._turn_offset = self._steps_run
+        self._allowance_end = self._steps_run + steps
+        self._budgeted_step = budgeted
+
+    def next_recovery_move(self, loop_result: GoalLoopResult) -> PlanningCheckIn | PlanningEscalation | object | None:
+        """After an allowance: the budgeted nudge step, the episode's one escalation (#397), a check-in, or
+        None when the result stands. First-occurrence typed failures, refusals and halts stay stops."""
+        if self._typed_planning_stop_reason is not None:
+            return None
+        stop = loop_result.stop_reason
+        kind = None if self._last_decision is None else self._last_decision.kind
+        plan_waiting, refusal_waiting = kind is PlanningTurnKind.FINAL_PLAN, kind is PlanningTurnKind.REFUSE
+        if stop is LoopStopReason.COMPLETED:
+            # An open episode always ends at a check-in, even when its nudge produced a plan or a refusal.
+            if not (self._checkin_requested or ((plan_waiting or refusal_waiting) and self._episode is not None)):
+                return None
+        elif stop in (LoopStopReason.MAX_ITERATIONS, LoopStopReason.WALL_CLOCK):
+            if self._nudge is not None:
+                return _NUDGE_STEP
+            plan_waiting = refusal_waiting = False
+        else:
+            return None
+        if self._episode is not None:
+            cause: str = self._episode.kind
+            # The nudge was carried and the model still struggles, or gave up with a REFUSE (plan r5): help comes before
+            # asking (ADR-009 rung 2). A plan the nudge produced goes to the user.
+            if self._escalates and not self._escalation_tried and not plan_waiting and (self._nudged or not refusal_waiting):
+                return PlanningEscalation(cause=cause, planning_steps=self._steps_run, what=self._episode_text())
+        else:
+            cause = _WALL_CLOCK if stop is LoopStopReason.WALL_CLOCK else _TURN_LIMIT
+        return PlanningCheckIn(
+            cause=cause,
+            planning_steps=self._steps_run,
+            text=self._checkin_text(cause, plan_waiting, refusal_waiting),
+            plan_waiting=plan_waiting,
+            refusal_waiting=refusal_waiting,
+        )
+
+    def record_checkin(self, checkin: PlanningCheckIn, decision: CheckInDecision) -> None:
+        self._emit_loop_record("check_in", checkin.cause, self._steps_run, decision=decision)
+        if decision is CheckInDecision.CONTINUE:
+            return
+        if checkin.refusal_waiting:
+            # A refusal that is not continued stands, with the model's reason and any check-in explanation.
+            self._refusal_detail = _CHECKIN_ENDINGS.get(decision, "")
+            return
+        detail = "" if self._episode is None else f" Last repeated step: {self._episode.step.subject}."
+        detail += _CHECKIN_ENDINGS.get(decision, "")
+        self._recovery_stop = (_RECOVERY_STOP_REASONS[checkin.cause], detail)
+
+    def record_escalation(self, move: PlanningEscalation, outcome: EscalationGrant | EscalationRefusal) -> None:
+        """A grant moves every later request to its model and binder. The episode stays open: the detector restarts
+        for the new model, whose first request carries the episode's note, and the next detection asks the user."""
+        self._escalation_tried = True
+        if isinstance(outcome, EscalationRefusal):
+            self._emit_loop_record("escalation", move.cause, self._steps_run, decision=outcome)
+            self._episode_no_target = outcome is EscalationRefusal.NO_TARGET
+            self._host_halted = outcome is EscalationRefusal.HALTED
+            return
+        self._emit_loop_record(
+            "escalation",
+            move.cause,
+            self._steps_run,
+            decision="granted",
+            escalation=(self._model, outcome.model_id, outcome.notice_delivered),
+        )
+        self._model, self._route_binder, self._episode_moved_to = outcome.model_id, outcome.route_binder, outcome.model_id
+        self._escalates = False  # one switch per turn: later episodes on the stronger model go to their check-in
+        self._detector.reset()
+        self._checkin_requested = False
+        if self._last_decision is not None and self._last_decision.kind is PlanningTurnKind.REFUSE:
+            self._last_decision = None  # the weak model's refusal is set aside for the stronger one; the episode stays
+        assert self._episode is not None
+        self._nudge = self._recovery_note(self._episode, escalated=True)
+
+    def end_episode(self) -> None:
+        """Continue ends the episode: a later detection starts a new one, with its own nudge."""
+        self._episode, self._nudge, self._nudged, self._checkin_requested = None, None, False, False
+        self._escalation_tried, self._episode_moved_to, self._episode_no_target = False, None, False
+        self._detector.reset()
+        if self._last_decision is not None and self._last_decision.kind is PlanningTurnKind.REFUSE:
+            self._last_decision = None  # Continue sets the refusal aside for more planning steps
+
+    def _recovery_note(self, detection: LoopDetection, *, escalated: bool = False) -> str:
+        what = _SIGNAL_TEXT[detection.kind].format(subject=detection.step.subject)
+        if escalated:
+            # The stronger model did not make those steps: it is told why the turn moved to it (#397).
+            first = f"Optimus moved this planning to you: the earlier steps {what}, and one request to change approach did not help."
+        else:
+            first = f"Your recent planning steps {what}."
+        lines = [first + " Do not repeat that request."]
+        error = self._last_error_step
+        if error is not None:
+            lines.append(f"Last error: the reply did not parse (parser reason {error.error_class}): {error.error_message}")
+        lines.append(
+            "Try a different approach: request different evidence, or settle a final plan or a REFUSE: line "
+            "with the evidence you already have."
+        )
+        note = sanitize_workspace_text("\n".join(lines), workspace_root=self._workspace_root)
+        return note.encode("utf-8")[:_RECOVERY_NOTE_MAX_BYTES].decode("utf-8", errors="ignore")
+
+    def _episode_text(self) -> str:
+        assert self._episode is not None
+        what = _SIGNAL_TEXT[self._episode.kind].format(subject=self._episode.step.subject)
+        return sanitize_workspace_text(what, workspace_root=self._workspace_root)
+
+    def _checkin_text(self, cause: str, plan_waiting: bool, refusal_waiting: bool) -> str:
+        minutes = self._policy.max_wall_clock_minutes
+        if self._episode is not None:
+            what = "the model " + _SIGNAL_TEXT[self._episode.kind].format(subject=self._episode.step.subject)
+            what += ", and was asked once to try a different approach"
+            if self._episode_moved_to is not None:
+                what += f", then moved to {self._episode_moved_to}"
+        elif cause == _WALL_CLOCK:
+            what = f"the {minutes}-minute planning time ran out without a final plan"
+        else:
+            what = "the planning steps ran out without a final plan"
+        text = f"Planning paused after step {self._steps_run}: {what}."
+        if self._episode_no_target:
+            text += " Auto had no stronger eligible model to try."
+        if plan_waiting:
+            text += " A final plan is ready: Continue shows it for your approval."
+        elif refusal_waiting:
+            assert self._last_decision is not None
+            text += (
+                f" The model then refused: {self._last_decision.reason} Continue sets the refusal aside and grants "
+                f"{self._policy.continue_grant_steps} more planning steps and {minutes} minutes; Stop keeps the refusal."
+            )
+        else:
+            text += f" Continue grants {self._policy.continue_grant_steps} more planning steps and {minutes} minutes."
+        text += " Continue never approves a change; every change still needs its own approval. Stop ends this turn."
+        return sanitize_workspace_text(text, workspace_root=self._workspace_root)
+
+    def _emit_loop_record(
+        self,
+        record: str,
+        signal: str,
+        planning_step: int,
+        *,
+        decision: str | None = None,
+        escalation: tuple[str, str, bool] | None = None,
+    ) -> None:
+        """Content-free: no path, tool, argument or reply text (Plan 12.3, Design 7). A granted escalation (#397) adds
+        its (from model, to model, notice delivered)."""
+        if self._loop_event_sink is None:
+            return
+        self._loop_event_sink(
+            TelemetryEvent.loop_recovery(
+                run_id=self._run_id,
+                session_id=self._session_id,
+                request_id=f"{self._run_id}:loop-recovery:{planning_step}:{record}",
+                occurred_at=self._now(),
+                record=record,
+                signal=str(signal),
+                planning_step=planning_step,
+                decision=None if decision is None else str(decision),
+                escalation=escalation,
+            )
         )
 
     def _record_reported_gateway_usage(
@@ -1156,6 +1694,8 @@ class _PlanningIterationRunner:
                 # reported, a proven preflight refusal costs nothing, and anything without settled
                 # usage stays unknown. Settled usage is recorded first, so a paid attempt reaches the
                 # totals and the ledger even if its report then fails.
+                if stops_experimental_route(exc, experimental=self._route_binder is not None and self._route_binder.experimental):
+                    self._route_stopped = True
                 usage = getattr(exc, "gateway_usage", None)
                 attempts = account(usage, _failure_classifier(exc), exc)
                 if attempts is None:
@@ -1244,8 +1784,9 @@ class _PlanningIterationRunner:
         )
 
     def run_iteration(self, state: IterationState, tools: LoopToolExecutorProtocol) -> IterationOutcome:
-        planning_turn = state.iteration + 1
-        remaining_wall_clock = max(
+        self._steps_run += 1
+        planning_turn = self._turn_offset + state.iteration + 1
+        remaining_wall_clock = 0 if self._budgeted_step else max(
             0,
             self._policy.max_wall_clock_minutes - state.elapsed_minutes(now=self._now()),
         )
@@ -1269,26 +1810,35 @@ class _PlanningIterationRunner:
                 cost_usd=Decimal("0"),
             )
         mcp_evidence_envelope = self._mcp_evidence_envelope
+        recovery_note = self._nudge or ""
+        # Captured once per turn, so every repack and wire retry of this turn carries the same notice (#403).
+        correction_notice = _correction_notice(self._parse_failure_code)
 
         def build(conversation_envelope: str) -> str:
             return build_multi_turn_planner_input(
                 self._task,
                 planning_turn=planning_turn,
-                max_planning_turns=self._policy.max_planning_turns,
+                max_planning_turns=self._allowance_end,
                 remaining_wall_clock_minutes=remaining_wall_clock,
+                recovery_note=recovery_note,
                 carried_observations_envelope=carried_envelope,
                 current_read_evidence_envelope=current_envelope,
                 mcp_evidence_envelope=mcp_evidence_envelope,
                 initial_workspace_context=self._initial_workspace_context if planning_turn == 1 else "",
+                # The sizes stay until the first guarded read: a turn that read nothing still needs
+                # them to size its re-read (#388). The raw context stays turn-1-only (Plan 9.87).
                 initial_workspace_file_sizes=(
-                    self._initial_workspace_file_sizes if planning_turn == 1 else {}
+                    self._initial_workspace_file_sizes if planning_turn == 1 or not self._observations else {}
                 ),
+                # Metadata of files no turn showed in full: every ranged read is sized from it.
+                required_file_sizes=self._required_file_sizes,
                 evidence_limits=(
                     PLANNING_OBSERVATION_MAX_BYTES,
                     PLANNING_NEW_READ_MAX_BYTES,
                     DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES,
                 ),
                 conversation_envelope=conversation_envelope,
+                correction_notice=correction_notice,
             )
 
         if self._context_packer is None:
@@ -1305,6 +1855,10 @@ class _PlanningIterationRunner:
                     cost_usd=Decimal("0"),
                 )
             if fitted is None:
+                # A summary this turn may have stopped the shared route (#400; Codex round 41). Packers that
+                # predate the fact (test doubles) have none.
+                if getattr(self._context_packer, "route_stopped", False) is True:
+                    self._route_stopped = True
                 return self._typed_planning_failure(
                     stop_reason="CONTEXT_CAPACITY_EXCEEDED",
                     summary="the planning request does not fit the model's usable input",
@@ -1313,6 +1867,8 @@ class _PlanningIterationRunner:
             prompt = fitted
         # MCP evidence is one-shot for the turn that just received it.
         self._mcp_evidence_envelope = ""
+        if self._nudge is not None:
+            self._nudge, self._nudged = None, True  # one nudge per episode, carried by this request
         try:
             response, attempt_cost = self._invoke_planning_gateway(planning_turn=planning_turn, prompt=prompt)
         except _PlanningGatewayInvocationError as exc:
@@ -1343,15 +1899,31 @@ class _PlanningIterationRunner:
 
         try:
             decision = parse_planning_turn(response.output_text)
-        except PlanningTurnParseError:
+        except PlanningTurnParseError as exc:
             self._last_non_progress_kind = "UNPARSEABLE"
-            return IterationOutcome(
-                summary="planning response was unparseable",
-                deterministic_completion=False,
-                failure_signature="UNPARSEABLE",
-                cost_usd=attempt_cost,
+            self._parse_failure_code = exc.code  # the next turn's notice; the repeat signature is unchanged (#403)
+            from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
+
+            if debug_trace_enabled():
+                acp_debug_log(
+                    location="planning_loop.py:execute_iteration:unparseable",
+                    message="planning turn made no progress",
+                    data=_non_progress_payload(self, "UNPARSEABLE", planning_turn, response, exc=exc),
+                    hypothesis_id="P12.2-NONPROGRESS",
+                    run_id=self._run_id,
+                )
+            return self._observed(
+                IterationOutcome(
+                    summary="planning response was unparseable",
+                    deterministic_completion=False,
+                    failure_signature="UNPARSEABLE",
+                    cost_usd=attempt_cost,
+                ),
+                parse_failure_step(code=exc.code, message=str(exc)),
+                planning_turn,
             )
 
+        self._parse_failure_code = None  # this turn parsed: no notice follows it (#403)
         self._last_decision = decision
         if decision.kind is PlanningTurnKind.READ_MORE:
             self._last_non_progress_kind = "READ_MORE"
@@ -1415,7 +1987,7 @@ class _PlanningIterationRunner:
                         run_id=self._run_id,
                         session_id=self._session_id,
                         settled_turn=planning_turn,
-                        max_planning_turns=self._policy.max_planning_turns,
+                        max_planning_turns=self._allowance_end,
                         read_request_count=len(read_evidence),
                         read_identities=identities,
                         source_sha256s=sha256s,
@@ -1426,11 +1998,21 @@ class _PlanningIterationRunner:
                         wire_retry_count=self._last_wire_retry_count,
                     )
                 )
-            return IterationOutcome(
-                summary="planning requested guarded read evidence",
-                deterministic_completion=False,
-                failure_signature=decision.failure_signature,
-                cost_usd=attempt_cost,
+            return self._observed(
+                IterationOutcome(
+                    summary="planning requested guarded read evidence",
+                    deterministic_completion=False,
+                    failure_signature=decision.failure_signature,
+                    cost_usd=attempt_cost,
+                ),
+                read_step(
+                    (
+                        ReadResult(e.path, e.start_byte, e.end_byte, e.source_sha256, e.returned_end_byte)
+                        for e in read_evidence
+                    ),
+                    self._coverage,
+                ),
+                planning_turn,
             )
 
         if decision.kind is PlanningTurnKind.MCP_TOOL:
@@ -1456,14 +2038,40 @@ class _PlanningIterationRunner:
             self._mcp_tool_calls.append(call)
             self._mcp_evidence_envelope = format_mcp_evidence_envelope(output)
             self._current_reads = ()
-            return IterationOutcome(
-                summary="planning requested generic MCP tool evidence",
-                deterministic_completion=False,
-                failure_signature=f"MCP:{decision.mcp_operation}:{decision.mcp_server}",
-                cost_usd=attempt_cost,
+            from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
+
+            if debug_trace_enabled():
+                acp_debug_log(
+                    location="planning_loop.py:execute_iteration:mcp_tool",
+                    message="planning turn made no progress",
+                    data=_non_progress_payload(self, "MCP_TOOL", planning_turn, response, decision=decision, call=call),
+                    hypothesis_id="P12.2-NONPROGRESS",
+                    run_id=self._run_id,
+                )
+            return self._observed(
+                IterationOutcome(
+                    summary="planning requested generic MCP tool evidence",
+                    deterministic_completion=False,
+                    failure_signature=f"MCP:{decision.mcp_operation}:{decision.mcp_server}",
+                    cost_usd=attempt_cost,
+                ),
+                mcp_step(
+                    operation=decision.mcp_operation or "",
+                    server=decision.mcp_server or "",
+                    tool=decision.mcp_tool or "",
+                    arguments=decision.mcp_arguments or {},
+                    evidence_envelope=self._mcp_evidence_envelope,
+                    results=self._mcp_results,
+                ),
+                planning_turn,
             )
 
         if decision.kind is PlanningTurnKind.FINAL_PLAN:
+            # The same turn-1-only rule as the initial context the prompt showed, plus this turn's current reads.
+            self._final_evidence_sha256s = {
+                **(self._initial_workspace_sha256s if planning_turn == 1 else {}),
+                **{read.path: read.source_sha256 for read in self._current_reads},
+            }
             return IterationOutcome(
                 summary="planning settled with a final directive plan",
                 deterministic_completion=True,
@@ -1486,7 +2094,8 @@ class _PlanningIterationRunner:
         cap = self.loop_budget_policy.max_budget_usd
         if cap is not None and state.cost_usd_spent >= cap:  # an evaluation cap only (Plan 12.2 Task 11)
             return "PLANNING_BUDGET_EXHAUSTED"
-        if state.elapsed_minutes(now=self._now()) >= self.loop_budget_policy.max_wall_clock_minutes:
+        # Interactive: a final plan that arrives in the step where the clock expired is kept (Design 4).
+        if not self._interactive and state.elapsed_minutes(now=self._now()) >= self.loop_budget_policy.max_wall_clock_minutes:
             return "PLANNING_WALL_CLOCK_EXHAUSTED"
         return None
 
@@ -1496,6 +2105,7 @@ class _PlanningIterationRunner:
         stop_reason: str,
         settled_turns: int,
         refusal_reason: str | None = None,
+        detail: str | None = None,
     ) -> PlanningLoopResult:
         return PlanningLoopResult(
             stop_reason=stop_reason,
@@ -1508,6 +2118,8 @@ class _PlanningIterationRunner:
                 stop_reason,
                 refusal_reason=refusal_reason,
                 workspace_root=self._workspace_root,
+                route_stopped=self._route_stopped,
+                detail=detail,
             ),
             refusal_reason=(
                 planning_corrective_text(
@@ -1522,13 +2134,17 @@ class _PlanningIterationRunner:
         )
 
     def to_planning_result(self, loop_result) -> PlanningLoopResult:
-        settled_turns = loop_result.state.iteration
+        settled_turns = self._turn_offset + loop_result.state.iteration
         # Unconditional halt recheck before any stop-reason conversion (Plan 11.25 Task 6).
-        if loop_result.state.human_halt_requested or self._halt_requested():
+        if loop_result.state.human_halt_requested or self._halt_requested() or self._host_halted:
             return self._planning_failure_result(
                 stop_reason="PLANNING_HALTED",
                 settled_turns=settled_turns,
             )
+        if self._recovery_stop is not None:
+            # Stop at a check-in, or one that could not be shown: the actual cause (Design 7).
+            stop_reason, detail = self._recovery_stop
+            return self._planning_failure_result(stop_reason=stop_reason, settled_turns=settled_turns, detail=detail)
 
         if loop_result.stop_reason is LoopStopReason.COMPLETED:
             decision = self._last_decision
@@ -1544,6 +2160,7 @@ class _PlanningIterationRunner:
                     stop_reason="PLANNING_MODEL_REFUSED",
                     settled_turns=settled_turns,
                     refusal_reason=decision.reason,
+                    detail=self._refusal_detail,
                 )
 
             if decision is not None and decision.kind is PlanningTurnKind.FINAL_PLAN:
@@ -1571,6 +2188,7 @@ class _PlanningIterationRunner:
                     provider=self._last_provider,
                     directives=decision.directives,
                     evidence_metadata={"settled_turns": str(settled_turns)},
+                    evidence_sha256s=dict(self._final_evidence_sha256s),
                 )
 
             raise AssertionError("planning loop completed without a settled decision")
@@ -1579,6 +2197,7 @@ class _PlanningIterationRunner:
             repeated_stops: dict[str | None, str] = {
                 "GATEWAY_FAILURE": "PLANNING_GATEWAY_FAILURE",
                 "UNPARSEABLE": "PLANNING_UNPARSEABLE_RESPONSE",
+                "MCP_TOOL": "PLANNING_REPEATED_MCP_REQUEST",  # not a read (Plan 12.3, Design 7)
             }
             repeated_stop = repeated_stops.get(self._last_non_progress_kind, "PLANNING_REPEATED_READ_REQUEST")
             return self._planning_failure_result(
@@ -1616,7 +2235,7 @@ class _PlanningIterationRunner:
                 run_id=self._run_id,
                 session_id=self._session_id,
                 settled_turn=result.settled_turns,
-                max_planning_turns=self._policy.max_planning_turns,
+                max_planning_turns=self._allowance_end,
                 total_cost_usd=self._total_cost_usd,
                 remaining_budget_usd=self._remaining_cap(self._total_cost_usd),
                 gateway_request_ids=tuple(self._gateway_request_ids),
@@ -1656,5 +2275,36 @@ def _read_rejection_payload(self: _PlanningIterationRunner, exc: PlanningReadErr
         "start_byte": request.start_byte,
         "end_byte": request.end_byte,
         }
+
+    return payload
+
+
+def _non_progress_payload(
+    self: _PlanningIterationRunner,
+    kind: str,
+    planning_turn: int,
+    response: GatewayResponse,
+    *,
+    exc: PlanningTurnParseError | None = None,
+    decision: PlanningTurnDecision | None = None,
+    call: AgentToolCall | None = None,
+) -> Callable[[], dict[str, object]]:
+    """A turn that made no progress, without its content: never the reply, the parse message (it may
+    quote the reply), an MCP server or tool name, or a path (#388)."""
+
+    def payload() -> dict[str, object]:
+        data: dict[str, object] = {
+            "run_id": self._run_id,
+            "session_id": self._session_id,
+            "planning_turn": planning_turn,
+            "kind": kind,
+            "output_bytes": len(response.output_text.encode("utf-8")),
+        }
+        if exc is not None:
+            data["reason_code"] = exc.code
+        if decision is not None and call is not None:
+            data["mcp_operation"] = decision.mcp_operation
+            data["authorization_outcome"] = bounded(call.authorization_outcome, _MCP_AUTHORIZATION_OUTCOMES)
+        return data
 
     return payload

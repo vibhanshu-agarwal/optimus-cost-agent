@@ -3,10 +3,13 @@ import json
 import threading
 from decimal import Decimal
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
+from unittest.mock import create_autospec
 
+import httpx2
 import pytest
+from mcp import ClientSession
+from mcp.types import Implementation, InitializeResult, ServerCapabilities
 
 from optimus.acp.errors import METHOD_NOT_FOUND
 from optimus.acp.launch_approvals import KeyringApprovalStore
@@ -15,6 +18,7 @@ from optimus.acp.spec import (
     _PLANNING_TERMINAL_STOP_REASONS,
     ACP_PROTOCOL_VERSION,
     AcpDuplexAdapter,
+    AcpOutboundChannel,
     InMemoryAcpSpecSessionStore,
     RecordingOutboundChannel,
     resolve_max_planning_turns,
@@ -38,8 +42,23 @@ from optimus.mcp.client_trust import (
     write_client_mcp_durable_from_fingerprint,
 )
 from optimus.runtime.modes import ExecutionMode, GenerationScope
+from tests.support.contract_doubles import checked_agent_runner
 
 _HMAC_KEY = b"p11-fu-9-disposition-test-hmac-key!!"
+
+
+def _recording_outbound():
+    observer = RecordingOutboundChannel()
+    checked = create_autospec(observer, spec_set=True)
+    protocol = create_autospec(AcpOutboundChannel, instance=True, spec_set=True)
+    checked.notifications = observer.notifications
+    checked.requests = observer.requests
+    for name in ("notify", "request", "cancel_request"):
+        getattr(protocol, name).side_effect = getattr(observer, name)
+        setattr(checked, name, getattr(protocol, name))
+    checked.respond.side_effect = observer.respond
+    checked.wait_for_request.side_effect = observer.wait_for_request
+    return checked
 
 
 async def _rpc(adapter, request, ownership_slot=None):
@@ -142,7 +161,7 @@ class FakeRunner:
     def __init__(self) -> None:
         self.requests = []
 
-    def run(self, request, *, planning_progress_observer=None, client_mcp_service=None, mcp_permission_broker=None):
+    def run(self, request, *, planning_progress_observer=None, client_mcp_service=None, mcp_permission_broker=None, **runtime_kwargs):
         del planning_progress_observer, client_mcp_service, mcp_permission_broker
         self.requests.append(request)
         if request.execution_mode is ExecutionMode.AGENT and not request.approval.approved:
@@ -202,7 +221,7 @@ class _RecordingCompletedRunner:
     def __init__(self) -> None:
         self.requests = []
 
-    def run(self, request, *, planning_progress_observer=None, client_mcp_service=None, mcp_permission_broker=None):
+    def run(self, request, *, planning_progress_observer=None, client_mcp_service=None, mcp_permission_broker=None, **runtime_kwargs):
         del planning_progress_observer, client_mcp_service, mcp_permission_broker
         self.requests.append(request)
         return AgentRunResult(
@@ -222,10 +241,10 @@ class _RecordingCompletedRunner:
 async def test_session_prompt_applies_max_planning_turns_override(tmp_path):
     runner = _RecordingCompletedRunner()
     adapter = AcpDuplexAdapter(
-        runner=runner,
+        runner=checked_agent_runner(runner),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
-        outbound=RecordingOutboundChannel(),
+        outbound=_recording_outbound(),
         max_planning_turns=resolve_max_planning_turns({"OPTIMUS_MAX_PLANNING_TURNS": "1"}),
     )
     session_id = (
@@ -249,10 +268,10 @@ async def test_session_prompt_applies_max_planning_turns_override(tmp_path):
 async def test_session_prompt_uses_default_max_planning_turns_when_unset(tmp_path):
     runner = _RecordingCompletedRunner()
     adapter = AcpDuplexAdapter(
-        runner=runner,
+        runner=checked_agent_runner(runner),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
-        outbound=RecordingOutboundChannel(),
+        outbound=_recording_outbound(),
         max_planning_turns=resolve_max_planning_turns({}),
     )
     session_id = (
@@ -296,10 +315,10 @@ async def test_session_prompt_never_lets_optimus_live_max_cost_usd_override_agen
 
     runner = _RecordingCompletedRunner()
     adapter = AcpDuplexAdapter(
-        runner=runner,
+        runner=checked_agent_runner(runner),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
-        outbound=RecordingOutboundChannel(),
+        outbound=_recording_outbound(),
     )
     session_id = (
         await _rpc(adapter,
@@ -332,9 +351,9 @@ async def test_session_prompt_never_lets_optimus_live_max_cost_usd_override_agen
 
 
 async def test_initialize_returns_spec_capabilities(tmp_path):
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     adapter = AcpDuplexAdapter(
-        runner=FakeRunner(),
+        runner=checked_agent_runner(FakeRunner()),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -371,8 +390,8 @@ async def test_initialize_returns_spec_capabilities(tmp_path):
 
 async def test_session_prompt_sends_permission_request_and_keeps_prompt_pending(tmp_path):
     runner = FakeRunner()
-    outbound = RecordingOutboundChannel()
-    adapter = AcpDuplexAdapter(runner=runner, workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound)
+    outbound = _recording_outbound()
+    adapter = AcpDuplexAdapter(runner=checked_agent_runner(runner), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound)
     new_response = await _rpc(adapter,
         {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
     )
@@ -417,8 +436,8 @@ async def test_session_prompt_sends_permission_request_and_keeps_prompt_pending(
 
 async def test_permission_response_replays_approved_plan_before_prompt_response(tmp_path):
     runner = FakeRunner()
-    outbound = RecordingOutboundChannel()
-    adapter = AcpDuplexAdapter(runner=runner, workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound)
+    outbound = _recording_outbound()
+    adapter = AcpDuplexAdapter(runner=checked_agent_runner(runner), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound)
     session_id = (
         await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
@@ -481,8 +500,8 @@ async def test_permission_response_replays_approved_plan_before_prompt_response(
 
 async def test_permission_cancel_option_does_not_execute_plan(tmp_path):
     runner = FakeRunner()
-    outbound = RecordingOutboundChannel()
-    adapter = AcpDuplexAdapter(runner=runner, workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound)
+    outbound = _recording_outbound()
+    adapter = AcpDuplexAdapter(runner=checked_agent_runner(runner), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound)
     session_id = (
         await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
@@ -517,8 +536,8 @@ async def test_permission_cancel_option_does_not_execute_plan(tmp_path):
 
 
 async def test_session_cancel_resolves_prompt_and_pending_permission(tmp_path):
-    outbound = RecordingOutboundChannel()
-    adapter = AcpDuplexAdapter(runner=FakeRunner(), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound)
+    outbound = _recording_outbound()
+    adapter = AcpDuplexAdapter(runner=checked_agent_runner(FakeRunner()), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound)
     session_id = (
         await _rpc(adapter,
             {"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}}
@@ -554,10 +573,10 @@ async def test_session_cancel_resolves_prompt_and_pending_permission(tmp_path):
 
 async def test_client_calling_session_update_or_request_permission_is_method_not_found(tmp_path):
     adapter = AcpDuplexAdapter(
-        runner=FakeRunner(),
+        runner=checked_agent_runner(FakeRunner()),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
-        outbound=RecordingOutboundChannel(),
+        outbound=_recording_outbound(),
     )
 
     update_response = await _rpc(adapter,
@@ -583,7 +602,7 @@ async def test_workspace_context_failure_surfaces_corrective_refusal_message(tmp
     )
 
     class AmbiguousFailureRunner:
-        def run(self, request, *, planning_progress_observer=None):
+        def run(self, request, *, planning_progress_observer=None, **runtime_kwargs):
             del planning_progress_observer
             return AgentRunResult(
                 run_id=request.run_id,
@@ -599,9 +618,9 @@ async def test_workspace_context_failure_surfaces_corrective_refusal_message(tmp
                 stop_reason="AMBIGUOUS_WORKSPACE_REFERENCE",
             )
 
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     adapter = AcpDuplexAdapter(
-        runner=AmbiguousFailureRunner(),
+        runner=checked_agent_runner(AmbiguousFailureRunner()),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -641,7 +660,7 @@ async def test_unparseable_plan_completion_does_not_echo_raw_model_output(tmp_pa
     )
 
     class UnparseablePlanRunner:
-        def run(self, request, *, planning_progress_observer=None):
+        def run(self, request, *, planning_progress_observer=None, **runtime_kwargs):
             del planning_progress_observer
             return AgentRunResult(
                 run_id=request.run_id,
@@ -658,9 +677,9 @@ async def test_unparseable_plan_completion_does_not_echo_raw_model_output(tmp_pa
                 plan_hash=None,
             )
 
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     adapter = AcpDuplexAdapter(
-        runner=UnparseablePlanRunner(),
+        runner=checked_agent_runner(UnparseablePlanRunner()),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -699,7 +718,7 @@ async def test_multi_turn_planning_emits_progress_before_final_permission(tmp_pa
         def __init__(self) -> None:
             self.requests = []
 
-        def run(self, request, *, planning_progress_observer=None):
+        def run(self, request, *, planning_progress_observer=None, **runtime_kwargs):
             self.requests.append(request)
             if request.approval.approved:
                 return AgentRunResult(
@@ -746,9 +765,9 @@ async def test_multi_turn_planning_emits_progress_before_final_permission(tmp_pa
             )
 
     runner = MultiTurnRunner()
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     adapter = AcpDuplexAdapter(
-        runner=runner,
+        runner=checked_agent_runner(runner),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -797,7 +816,7 @@ async def test_planning_failure_emits_end_turn_without_permission(tmp_path):
     corrective_text = "Planning stopped because the wall-clock limit was reached."
 
     class PlanningFailureRunner:
-        def run(self, request, *, planning_progress_observer=None):
+        def run(self, request, *, planning_progress_observer=None, **runtime_kwargs):
             del planning_progress_observer
             return AgentRunResult(
                 run_id=request.run_id,
@@ -814,9 +833,9 @@ async def test_planning_failure_emits_end_turn_without_permission(tmp_path):
                 plan_hash=None,
             )
 
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     adapter = AcpDuplexAdapter(
-        runner=PlanningFailureRunner(),
+        runner=checked_agent_runner(PlanningFailureRunner()),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -855,7 +874,7 @@ async def test_planning_model_refused_emits_sanitized_text_without_permission(tm
     refusal = "Inspect <workspace>; token **********"
 
     class RefusalRunner:
-        def run(self, request, *, planning_progress_observer=None):
+        def run(self, request, *, planning_progress_observer=None, **runtime_kwargs):
             del planning_progress_observer
             return AgentRunResult(
                 run_id=request.run_id,
@@ -872,9 +891,9 @@ async def test_planning_model_refused_emits_sanitized_text_without_permission(tm
                 plan_hash=None,
             )
 
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     adapter = AcpDuplexAdapter(
-        runner=RefusalRunner(),
+        runner=checked_agent_runner(RefusalRunner()),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -914,7 +933,7 @@ async def test_superseded_approval_hash_does_not_execute_plan(tmp_path):
         def __init__(self) -> None:
             self.requests = []
 
-        def run(self, request, *, planning_progress_observer=None):
+        def run(self, request, *, planning_progress_observer=None, **runtime_kwargs):
             del planning_progress_observer
             self.requests.append(request)
             if request.approval.approved:
@@ -946,9 +965,9 @@ async def test_superseded_approval_hash_does_not_execute_plan(tmp_path):
             )
 
     runner = SupersededHashRunner()
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     adapter = AcpDuplexAdapter(
-        runner=runner,
+        runner=checked_agent_runner(runner),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -1002,7 +1021,7 @@ async def test_concurrent_sessions_route_planning_progress_to_own_session_only(t
             self._lock = threading.Lock()
             self._both_entered = threading.Event()
 
-        def run(self, request, *, planning_progress_observer=None):
+        def run(self, request, *, planning_progress_observer=None, **runtime_kwargs):
             if request.approval.approved:
                 return AgentRunResult(
                     run_id=request.run_id,
@@ -1053,9 +1072,9 @@ async def test_concurrent_sessions_route_planning_progress_to_own_session_only(t
             )
 
     runner = ConcurrentRaceRunner()
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     adapter = AcpDuplexAdapter(
-        runner=runner,
+        runner=checked_agent_runner(runner),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -1137,9 +1156,9 @@ async def test_planning_observation_overflow_emits_end_turn_not_internal_error(t
                 f"gw-{index + 1}",
             )
         )
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     adapter = AcpDuplexAdapter(
-        runner=AgentRunner(gateway_client=ScriptingGateway(scripts), model="glm-5.2"),
+        runner=AgentRunner(gateway_client=ScriptingGateway(scripts).checked, model="glm-5.2"),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -1191,7 +1210,7 @@ async def test_unknown_cost_emits_end_turn_without_permission_request(tmp_path):
     )
 
     class UnknownCostRunner:
-        def run(self, request, *, planning_progress_observer=None):
+        def run(self, request, *, planning_progress_observer=None, **runtime_kwargs):
             del planning_progress_observer
             return AgentRunResult(
                 run_id=request.run_id,
@@ -1210,9 +1229,9 @@ async def test_unknown_cost_emits_end_turn_without_permission_request(tmp_path):
                 plan_hash=None,
             )
 
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     adapter = AcpDuplexAdapter(
-        runner=UnknownCostRunner(),
+        runner=checked_agent_runner(UnknownCostRunner()),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -1326,10 +1345,9 @@ def _test_sdk_adapter(supervisor, *, operations=None, process_control=None, cata
         async def initialize(self):
             if operations is not None:
                 operations.append("open")
-            return SimpleNamespace(
-                protocol_version="2025-11-25",
-                instructions="",
-                server_info=SimpleNamespace(name="tools", description=""),
+            return InitializeResult(
+                protocolVersion="2025-11-25", instructions="", capabilities=ServerCapabilities(),
+                serverInfo=Implementation(name="tools", version="0", description=""),
             )
 
         async def list_tools(self, *, params=None):
@@ -1357,20 +1375,27 @@ def _test_sdk_adapter(supervisor, *, operations=None, process_control=None, cata
                 operations.append(("call", name, arguments))
             return CallToolResult(content=[TextContent(type="text", text="controlled remote result")])
 
+    def checked_session():
+        observer = _ControlledRemoteSession()
+        checked = create_autospec(ClientSession, instance=True, spec_set=True)
+        for name in ("initialize", "list_tools", "call_tool"):
+            getattr(checked, name).side_effect = getattr(observer, name)
+        return checked
+
     return ClientMcpSdkAdapter(
         supervisor=supervisor,
-        session_factory=lambda _capability: _ControlledRemoteSession(),
-        http_client_factory=lambda: SimpleNamespace(follow_redirects=False, trust_env=False),
+        session_factory=lambda _capability: checked_session(),
+        http_client_factory=lambda: httpx2.AsyncClient(follow_redirects=False, trust_env=False),
         stdio_transport_factory=lambda _capability: None,
         process_control=process_control or _NoopProcessControl(),
     )
 
 
 async def test_session_new_absent_or_empty_mcp_servers_is_exact_noop(tmp_path):
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     sessions = InMemoryAcpSpecSessionStore()
     adapter = AcpDuplexAdapter(
-        runner=FakeRunner(),
+        runner=checked_agent_runner(FakeRunner()),
         workspace_root=tmp_path,
         sessions=sessions,
         outbound=outbound,
@@ -1392,10 +1417,10 @@ async def test_session_new_absent_or_empty_mcp_servers_is_exact_noop(tmp_path):
 
 
 async def test_session_new_malformed_mcp_servers_removes_provisional_session(tmp_path):
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     sessions = InMemoryAcpSpecSessionStore()
     adapter = AcpDuplexAdapter(
-        runner=FakeRunner(),
+        runner=checked_agent_runner(FakeRunner()),
         workspace_root=tmp_path,
         sessions=sessions,
         outbound=outbound,
@@ -1422,10 +1447,10 @@ async def test_session_new_malformed_mcp_servers_removes_provisional_session(tmp
 
 
 async def test_session_new_awaits_transport_permission_with_opaque_safe_fields(tmp_path):
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     sessions = InMemoryAcpSpecSessionStore()
     adapter = AcpDuplexAdapter(
-        runner=FakeRunner(),
+        runner=checked_agent_runner(FakeRunner()),
         workspace_root=tmp_path,
         sessions=sessions,
         outbound=outbound,
@@ -1481,10 +1506,10 @@ async def test_session_new_attaches_lazy_resolver_without_opening_transport(tmp_
     runtime = _client_mcp_runtime_for_tests(tmp_path)
     runtime.supervisor.start()
     runtime.sdk_adapter = _test_sdk_adapter(runtime.supervisor, operations=operations)
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     sessions = InMemoryAcpSpecSessionStore()
     duplex = AcpDuplexAdapter(
-        runner=FakeRunner(),
+        runner=checked_agent_runner(FakeRunner()),
         workspace_root=tmp_path,
         sessions=sessions,
         outbound=outbound,
@@ -1572,10 +1597,10 @@ async def test_real_client_mcp_runtime_composes_lazily_through_guard_and_tears_d
         side_effect_eligible=True,
     )
     runtime.supervisor.start()
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     sessions = InMemoryAcpSpecSessionStore()
     duplex = AcpDuplexAdapter(
-        runner=FakeRunner(),
+        runner=checked_agent_runner(FakeRunner()),
         workspace_root=tmp_path,
         sessions=sessions,
         outbound=outbound,
@@ -1707,10 +1732,10 @@ async def test_real_client_mcp_runtime_composes_lazily_through_guard_and_tears_d
     )
     empty_runtime.supervisor.start()
     empty_duplex = AcpDuplexAdapter(
-        runner=FakeRunner(),
+        runner=checked_agent_runner(FakeRunner()),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
-        outbound=RecordingOutboundChannel(),
+        outbound=_recording_outbound(),
         client_mcp_runtime=empty_runtime,
     )
     try:
@@ -1770,10 +1795,10 @@ async def test_session_new_timeout_and_reject_keep_usable_session_unavailable(tm
         supervisor=supervisor,
         sdk_adapter=_test_sdk_adapter(supervisor),
     )
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     sessions = InMemoryAcpSpecSessionStore()
     adapter = AcpDuplexAdapter(
-        runner=FakeRunner(),
+        runner=checked_agent_runner(FakeRunner()),
         workspace_root=tmp_path,
         sessions=sessions,
         outbound=outbound,
@@ -1806,11 +1831,11 @@ async def test_session_new_timeout_and_reject_keep_usable_session_unavailable(tm
     assert session is not None
     assert session.client_mcp_state.is_unavailable("tools")
 
-    outbound2 = RecordingOutboundChannel()
+    outbound2 = _recording_outbound()
     sessions2 = InMemoryAcpSpecSessionStore()
     runtime2 = _client_mcp_runtime_for_tests(tmp_path)
     adapter2 = AcpDuplexAdapter(
-        runner=FakeRunner(),
+        runner=checked_agent_runner(FakeRunner()),
         workspace_root=tmp_path,
         sessions=sessions2,
         outbound=outbound2,
@@ -1848,10 +1873,10 @@ async def test_session_new_timeout_and_reject_keep_usable_session_unavailable(tm
 
 async def test_session_load_still_method_not_found(tmp_path):
     adapter = AcpDuplexAdapter(
-        runner=FakeRunner(),
+        runner=checked_agent_runner(FakeRunner()),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
-        outbound=RecordingOutboundChannel(),
+        outbound=_recording_outbound(),
     )
     response = await _rpc(adapter,
         {"jsonrpc": "2.0", "id": 9, "method": "session/load", "params": {"sessionId": "x"}}
@@ -1869,7 +1894,7 @@ def _record_session_state_closes(monkeypatch, *, error=None):
             raise error
         original_close(state)
 
-    monkeypatch.setattr(ClientMcpSessionState, "close", close)
+    monkeypatch.setattr(ClientMcpSessionState, "close", create_autospec(ClientMcpSessionState.close, side_effect=close))
     return closed_states
 
 
@@ -1974,7 +1999,7 @@ def test_session_store_close_ordering_preserves_live_markers(tmp_path, monkeypat
 async def test_session_new_failure_releases_closed_state_id(tmp_path, monkeypatch, failure):
     """Every current session/new removal must release the attached empty state's marker."""
     sessions = InMemoryAcpSpecSessionStore()
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     operations = []
     closed_states = _record_session_state_closes(monkeypatch)
     runtime = None if failure == "runtime-missing" else _client_mcp_runtime_for_tests(tmp_path, operations=operations)
@@ -1992,13 +2017,13 @@ async def test_session_new_failure_releases_closed_state_id(tmp_path, monkeypatc
         raise RuntimeError("controlled resolver attachment failure")
 
     if failure == "disposition":
-        monkeypatch.setattr(ClientMcpDisposition, "disposition_for_new_session", disposition_error)
+        monkeypatch.setattr(ClientMcpDisposition, "disposition_for_new_session", create_autospec(ClientMcpDisposition.disposition_for_new_session, side_effect=disposition_error))
     elif failure == "resolver":
-        monkeypatch.setattr(ClientMcpDisposition, "disposition_for_new_session", return_provisional)
-        monkeypatch.setattr(ClientMcpDisposition, "attach_runtime_resolver", resolver_error)
+        monkeypatch.setattr(ClientMcpDisposition, "disposition_for_new_session", create_autospec(ClientMcpDisposition.disposition_for_new_session, side_effect=return_provisional))
+        monkeypatch.setattr(ClientMcpDisposition, "attach_runtime_resolver", create_autospec(ClientMcpDisposition.attach_runtime_resolver, side_effect=resolver_error))
 
     adapter = AcpDuplexAdapter(
-        runner=FakeRunner(), workspace_root=tmp_path, sessions=sessions,
+        runner=checked_agent_runner(FakeRunner()), workspace_root=tmp_path, sessions=sessions,
         outbound=outbound, client_mcp_runtime=runtime,
     )
     servers = [{"type": "http", "name": "tools", "url": "https://mcp.example.com/v1", "headers": []}]
@@ -2032,10 +2057,10 @@ async def test_session_new_failure_releases_closed_state_id(tmp_path, monkeypatc
 
 async def test_close_all_closes_session_states_exactly_once(tmp_path):
     sessions = InMemoryAcpSpecSessionStore()
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     runtime = _client_mcp_runtime_for_tests(tmp_path)
     adapter = AcpDuplexAdapter(
-        runner=FakeRunner(),
+        runner=checked_agent_runner(FakeRunner()),
         workspace_root=tmp_path,
         sessions=sessions,
         outbound=outbound,
@@ -2058,7 +2083,7 @@ async def test_session_prompt_threads_client_mcp_service_without_serializing(tmp
             super().__init__()
             self.kwargs = []
 
-        def run(self, request, *, planning_progress_observer=None, client_mcp_service=None, mcp_permission_broker=None):
+        def run(self, request, *, planning_progress_observer=None, client_mcp_service=None, mcp_permission_broker=None, **runtime_kwargs):
             self.kwargs.append(
                 {
                     "client_mcp_service": client_mcp_service,
@@ -2069,10 +2094,10 @@ async def test_session_prompt_threads_client_mcp_service_without_serializing(tmp
             return super().run(request, planning_progress_observer=planning_progress_observer)
 
     runner = CapturingRunner()
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     sessions = InMemoryAcpSpecSessionStore()
     adapter = AcpDuplexAdapter(
-        runner=runner,
+        runner=checked_agent_runner(runner),
         workspace_root=tmp_path,
         sessions=sessions,
         outbound=outbound,
@@ -2139,9 +2164,9 @@ async def test_spec_mcp_broker_issue_fails_closed_until_catalog_authorizer_attac
     (tracked as P11-FU-20), allow-path issuance returns None (fail closed) rather than a
     token that later surfaces as mcp.client.one_call_unknown.
     """
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     adapter = AcpDuplexAdapter(
-        runner=FakeRunner(),
+        runner=checked_agent_runner(FakeRunner()),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -2255,10 +2280,10 @@ async def test_concurrent_same_session_prompt_is_request_cancelled(tmp_path):
                 plan_hash=None,
             )
 
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     sessions = InMemoryAcpSpecSessionStore()
     adapter = AcpDuplexAdapter(
-        runner=SlowRunner(),
+        runner=checked_agent_runner(SlowRunner()),
         workspace_root=tmp_path,
         sessions=sessions,
         outbound=outbound,
@@ -2325,10 +2350,10 @@ async def test_sequential_prompts_reuse_wire_id_with_distinct_turn_seq(tmp_path)
                 plan_hash=None,
             )
 
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     sessions = InMemoryAcpSpecSessionStore()
     adapter = AcpDuplexAdapter(
-        runner=TrackingRunner(),
+        runner=checked_agent_runner(TrackingRunner()),
         workspace_root=tmp_path,
         sessions=sessions,
         outbound=outbound,
@@ -2366,10 +2391,10 @@ async def test_sequential_prompts_reuse_wire_id_with_distinct_turn_seq(tmp_path)
 async def test_cap_closed_refusal_is_explanatory_not_jsonrpc_error(tmp_path):
     from optimus.acp.conversation import ConversationDisposition
 
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     sessions = InMemoryAcpSpecSessionStore()
     adapter = AcpDuplexAdapter(
-        runner=FakeRunner(),
+        runner=checked_agent_runner(FakeRunner()),
         workspace_root=tmp_path,
         sessions=sessions,
         outbound=outbound,
@@ -2432,10 +2457,10 @@ async def test_turn_finalization_emits_content_free_settlement_once(tmp_path):
                 plan_hash=None,
             )
 
-    outbound = RecordingOutboundChannel()
+    outbound = _recording_outbound()
     sessions = InMemoryAcpSpecSessionStore()
     adapter = AcpDuplexAdapter(
-        runner=CompletedRunner(),
+        runner=checked_agent_runner(CompletedRunner()),
         workspace_root=tmp_path,
         sessions=sessions,
         outbound=outbound,
@@ -2531,9 +2556,9 @@ def test_typing_missing_conversation_refuses_before_projection(tmp_path, method)
         calls.append("projection")
         pytest.fail("missing conversation reached projection")
 
-    session.cost_settlement.project = forbidden_projection
+    session.cost_settlement.project = create_autospec(session.cost_settlement.project, side_effect=forbidden_projection)
     if method == "_apply_turn_cost":
-        adapter._apply_settled_cost = forbidden_projection
+        adapter._apply_settled_cost = create_autospec(adapter._apply_settled_cost, side_effect=forbidden_projection)
     with pytest.raises(RuntimeError, match="^conversation is not initialized$"):
         if method == "_apply_turn_cost":
             adapter._apply_turn_cost(session, turn, planning_cost=Decimal("0"), planning_complete=True)
@@ -2567,11 +2592,33 @@ async def test_outbound_id_is_captured_once_with_original_non_none_rule(value, r
 
     channel = Channel()
     adapter = object.__new__(AcpDuplexAdapter)
+    checked_request = create_autospec(AcpOutboundChannel, instance=True, spec_set=True).request
+    checked_request.side_effect = channel.request
+    channel.request = checked_request
     adapter._outbound = channel
     turn = AcpPromptTurn(session_id="s", turn_seq=1, turn_control=TurnControl(session_id="s", turn_seq=1))
     adapter._active_turns = {"s": turn}
-    result = SimpleNamespace(output_text="plan", plan_hash="hash", run_id="s:1")
+    result = AgentRunResult(output_text="plan", plan_hash="hash", run_id="s:1", session_id="s", execution_mode=ExecutionMode.AGENT, status=AgentRunStatus.PLAN_READY, final_state="plan_ready")
     assert await adapter._request_permission(turn=turn, result=result) == {"outcome": "cancel"}
     expected = "recorded-id" if recorded else value
     assert turn.pending_permission_request_id is expected
     assert channel.reads == (0 if recorded else 1)
+
+
+async def test_contract_outbound_protocol_preserves_observer_and_rejects_drift():
+    outbound = _recording_outbound()
+    with pytest.raises(AttributeError):
+        outbound.unknown_outbound_operation = True
+    with pytest.raises(TypeError):
+        outbound.notify("session/update", {}, obsolete_flush=True)
+    await outbound.notify("session/update", {"sessionId": "s"}, require_flushed=True)
+    assert outbound.notifications == [{"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "s"}}]
+    request = asyncio.create_task(outbound.request("session/request_permission", {"sessionId": "s"}))
+    try:
+        message = await outbound.wait_for_request("session/request_permission")
+        outbound.respond(message["id"], {"outcome": "approved"})
+        assert await request == {"outcome": "approved"}
+    finally:
+        if not request.done():
+            request.cancel()
+        await asyncio.gather(request, return_exceptions=True)

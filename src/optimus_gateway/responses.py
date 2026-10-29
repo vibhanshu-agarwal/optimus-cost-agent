@@ -24,17 +24,26 @@ from optimus_gateway.models import (
     validate_responses_envelope,
 )
 from optimus_gateway.request_diagnostics import recognized_model, recognized_provider
-from optimus_gateway.upstream_client import KNOWN_ROUTER_STAGES, ProviderMessageResult, UpstreamAttemptFailure, UpstreamClient
+from optimus_gateway.upstream_client import (
+    KNOWN_ROUTER_STAGES,
+    ProviderMessageResult,
+    UpstreamAttemptFailure,
+    UpstreamClient,
+    request_budget_admits,
+)
 from optimus_model_policy.binding import (
     ATTEMPT_COMPLETED,
+    ATTEMPT_NOT_SENT,
     ATTEMPT_UNCERTAIN,
     MAX_ROUTE_ATTEMPTS,
+    UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
     RouteBinding,
 )
 from optimus_model_policy.stage_c import Admission, StageCRefusal, reservation_usd
 from optimus_security.failure_facts import (
     bounded,
     bounded_failure,
+    bounded_guardrail_list,
     final_sanitize,
     gateway_request_id,
     host_route_id,
@@ -176,6 +185,13 @@ def _run_enforced_completion(
             except StageCRefusal as exc:
                 status, body = policy_refusal(ModelPolicyRefusal(exc.code, exc.detail, status=503))
                 return status, {**body, **correlation}
+        if not request_budget_admits(UPSTREAM_ATTEMPT_TIMEOUT_SECONDS):
+            # Checked at dispatch, after any admission and recovery delay: nothing is sent that could still be running
+            # once the host stops waiting, so this attempt certainly reached no model.
+            if admission is not None and guard is not None:
+                guard.settle_unbilled(admission, ATTEMPT_NOT_SENT)
+            attempts.append(_attempt_record(number, attempt_id, ATTEMPT_NOT_SENT, failure=dict(_REQUEST_BUDGET_FAILURE)))
+            return 502, {"error": sanitize_error_message("upstream attempt failed (UPSTREAM_ATTEMPT_NOT_SENT)"), "code": "UPSTREAM_ATTEMPT_NOT_SENT", **correlation}
         try:
             provider_result = upstream_client.create_message_once(
                 model=admitted.model_id,
@@ -188,7 +204,12 @@ def _run_enforced_completion(
             if admission is not None and guard is not None:  # an admission exists only from a guard
                 guard.settle_unbilled(admission, failure.outcome)  # an outcome not proven unbilled is unknown
             attempts.append(_attempt_record(number, attempt_id, failure.outcome, http_status=failure.http_status, failure=failure.failure))
-            if failure.recoverable and number < MAX_ROUTE_ATTEMPTS:
+            # A recovery attempt also has to end while the host is still waiting for this reply.
+            if (
+                failure.recoverable
+                and number < MAX_ROUTE_ATTEMPTS
+                and request_budget_admits(_RECOVERY_DELAY_SECONDS + UPSTREAM_ATTEMPT_TIMEOUT_SECONDS)
+            ):
                 _sleep(_RECOVERY_DELAY_SECONDS)
                 continue
             code = f"UPSTREAM_ATTEMPT_{failure.outcome.upper()}"
@@ -214,6 +235,7 @@ def _run_enforced_completion(
                 ATTEMPT_UNCERTAIN,
                 provider_request_id=provider_result.message_id,
                 router_pipeline=provider_result.router_pipeline,
+                router_guardrails=provider_result.router_guardrails,
                 failure={"kind": "usage_contract", "reason": slug(str(exc))},
             )
         )
@@ -224,7 +246,12 @@ def _run_enforced_completion(
     gateway_usage["cost_usd"] = format_cost_usd(provider_result.cost_usd)
     attempts.append(
         _attempt_record(
-            number, attempt_id, ATTEMPT_COMPLETED, provider_request_id=provider_result.message_id, router_pipeline=provider_result.router_pipeline
+            number,
+            attempt_id,
+            ATTEMPT_COMPLETED,
+            provider_request_id=provider_result.message_id,
+            router_pipeline=provider_result.router_pipeline,
+            router_guardrails=provider_result.router_guardrails,
         )
     )
     try:
@@ -251,14 +278,16 @@ def _attempt_reservation(policy: GatewayModelPolicy, admitted: AdmittedRequest) 
 
 
 def _stop_experimental_route(policy: GatewayModelPolicy, admitted: AdmittedRequest, code: str) -> None:
-    """On the experimental test route a failed or unverifiable reply stops every later call (Codex
-    disposition, 2026-10-09); ordinary routes keep their per-request failure handling."""
+    """On an exception route a failed or unverifiable reply stops every later call to that model (Codex
+    disposition, 2026-10-09; Plan 12.4 v7: per model); ordinary routes keep their per-request failure handling."""
     if admitted.experimental is not None:
-        policy.route_stop.trip(code)
+        policy.route_stops.trip(admitted.model_id, code)
 
 
 _RECOVERY_DELAY_SECONDS = 0.5
 _sleep = time.sleep
+_REQUEST_BUDGET_FAILURE = {"kind": "request_budget"}
+"""An attempt never dispatched: it could not have ended before the host stops waiting (#397 live Z2)."""
 
 
 def _attempt_record(
@@ -269,12 +298,14 @@ def _attempt_record(
     http_status: int | None = None,
     provider_request_id: str | None = None,
     router_pipeline: tuple[str, ...] | None = None,
+    router_guardrails: tuple[dict[str, Any], ...] | None = None,
     failure: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """``router_pipeline``: the stage types the router reported for a completed attempt (empty when none ran,
-    None without router metadata). ``failure``: a failed attempt's bounded, content-free cause. Both keep a
-    failure diagnosable."""
-    return {
+    None without router metadata). ``router_guardrails``: each guardrail stage's closed facts (#400), added only
+    when one ran, so every other record is unchanged. ``failure``: a failed attempt's bounded, content-free cause.
+    Each keeps a failure diagnosable."""
+    record = {
         "attempt": number,
         "gateway_request_id": attempt_id,
         "outcome": outcome,
@@ -283,6 +314,9 @@ def _attempt_record(
         "router_pipeline": None if router_pipeline is None else list(router_pipeline),
         "failure": failure,
     }
+    if router_guardrails:
+        record["router_guardrails"] = list(router_guardrails)
+    return record
 
 
 _LOGGED_USAGE_FIELDS = ("gateway_request_id", "provider_request_id", "resolved_provider", "resolved_model", "input_tokens", "output_tokens", "cost_usd")
@@ -316,7 +350,7 @@ def model_request_log_line(path: str, status: int, body: dict[str, Any], *, poli
 
 def _logged_attempt(item: dict[str, Any]) -> dict[str, Any]:
     stages = item.get("router_pipeline")
-    return {
+    logged = {
         "attempt": item.get("attempt") if type(item.get("attempt")) is int else None,
         "gateway_request_id": gateway_request_id(item.get("gateway_request_id")),
         "outcome": item.get("outcome"),
@@ -325,6 +359,9 @@ def _logged_attempt(item: dict[str, Any]) -> dict[str, Any]:
         "router_pipeline": [bounded(stage, KNOWN_ROUTER_STAGES) for stage in stages] if isinstance(stages, list) else None,
         "failure": bounded_failure(item.get("failure")),
     }
+    if "router_guardrails" in item:
+        logged["router_guardrails"] = bounded_guardrail_list(item["router_guardrails"])
+    return logged
 
 
 def _logged_usage(usage: dict[str, Any], policy: GatewayModelPolicy | None) -> dict[str, Any]:

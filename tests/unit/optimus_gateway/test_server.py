@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import socket
+import struct
+import sys
 import threading
+import time
 from decimal import Decimal
 from http.client import HTTPConnection
 from typing import Any
@@ -11,7 +15,7 @@ import pytest
 
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.observability import GatewayTraceBatch, GatewayTraceExportResult, TraceDeliveryState, TraceExporter
-from optimus_gateway.server import serve_gateway
+from optimus_gateway.server import OptimusGatewayHandler, serve_gateway
 from optimus_gateway.tool_handlers import GatewayToolDependencies
 from optimus_gateway.tool_models import (
     AdvisoryProviderResult,
@@ -24,7 +28,8 @@ from optimus_gateway.tool_models import (
 )
 from optimus_gateway.tool_policy import GatewayToolPolicy
 from optimus_gateway.tool_state import InMemoryGatewayToolStateStore
-from optimus_gateway.upstream_client import ProviderMessageResult
+from optimus_gateway.upstream_client import ProviderMessageResult, request_budget_admits
+from optimus_model_policy.binding import GATEWAY_REQUEST_BUDGET_SECONDS
 
 
 class _SmokeUpstreamClient:
@@ -743,3 +748,88 @@ def test_all_core_routes_reject_missing_and_wrong_bearer(path: str):
         assert "or-test" not in str(missing_body) + str(wrong_body)
     finally:
         _stop_server(server, thread)
+
+
+# --- #397 live Z2: the host request budget and a host that stopped waiting ---
+
+
+def test_each_host_request_runs_under_the_gateway_request_budget():
+    seen: list[tuple[bool, bool]] = []
+
+    class _BudgetProbe(_SmokeUpstreamClient):
+        def create_message(self, *, model: str, input_text: str) -> ProviderMessageResult:
+            seen.append((request_budget_admits(GATEWAY_REQUEST_BUDGET_SECONDS - 1), request_budget_admits(GATEWAY_REQUEST_BUDGET_SECONDS + 1)))
+            return super().create_message(model=model, input_text=input_text)
+
+    server, thread, host, port = _start_server(upstream_client=_BudgetProbe())
+    try:
+        for _ in range(2):
+            status, _body = _post_json(host, port, "/v1/responses", body=json.dumps({"model": "claude-haiku", "input": "ping"}))
+            assert status == 200
+    finally:
+        _stop_server(server, thread)
+    assert seen == [(True, False), (True, False)], "every request gets its own full budget, and no more"
+
+
+def test_a_reply_the_host_stopped_waiting_for_is_one_log_line_not_a_traceback(capsys: pytest.CaptureFixture[str]):
+    """#397 live Z2: the host timed out, so the Gateway's write met a reset connection and logged a traceback."""
+    upstream_started, host_gone = threading.Event(), threading.Event()
+
+    class _HeldUpstream(_SmokeUpstreamClient):
+        def create_message(self, *, model: str, input_text: str) -> ProviderMessageResult:
+            upstream_started.set()
+            host_gone.wait(5)
+            return super().create_message(model=model, input_text=input_text)
+
+    server, thread, host, port = _start_server(upstream_client=_HeldUpstream())
+    err = ""
+    try:
+        body = json.dumps({"model": "claude-haiku", "input": "ping"}).encode("utf-8")
+        head = (
+            "POST /v1/responses HTTP/1.1\r\nHost: gateway\r\nAuthorization: Bearer http-test-secret\r\n"
+            f"Content-Type: application/json\r\nContent-Length: {len(body)}\r\n\r\n"
+        )
+        sock = socket.create_connection((host, port), timeout=5)
+        sock.sendall(head.encode("ascii") + body)
+        assert upstream_started.wait(5)
+        # A zero linger closes with a reset, as the host's socket does when its own timeout ends the wait.
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("HH" if sys.platform == "win32" else "ii", 1, 0))
+        sock.close()
+        time.sleep(0.3)
+        host_gone.set()
+        deadline = time.monotonic() + 5
+        while "reply_undeliverable" not in err and "Traceback" not in err and time.monotonic() < deadline:
+            time.sleep(0.05)
+            err += capsys.readouterr().err
+    finally:
+        _stop_server(server, thread)
+        err += capsys.readouterr().err
+    assert "Traceback" not in err
+    undeliverable = [json.loads(line) for line in err.splitlines() if "reply_undeliverable" in line]
+    assert undeliverable == [{"event": "reply_undeliverable", "path": "/v1/responses", "status": 200}]
+
+
+class _ResetWriter:
+    def write(self, _data: bytes) -> int:
+        raise ConnectionResetError("reset by the host")
+
+    def flush(self) -> None:
+        return None
+
+
+@pytest.mark.parametrize(
+    ("target", "named"),
+    [("/missing?api_key=s3cret-value", "unrecognized"), ("/v1/s3cret-value/responses", "unrecognized"), ("/v1/responses", "/v1/responses")],
+)
+def test_a_lost_reply_names_only_a_known_route(capsys: pytest.CaptureFixture[str], target: str, named: str):
+    """Codex round 1: any other request target is the client's text and may carry a secret, so it is never logged."""
+    handler = OptimusGatewayHandler.__new__(OptimusGatewayHandler)
+    handler.path, handler.command, handler.request_version = target, "POST", "HTTP/1.1"
+    handler.requestline, handler.close_connection, handler.wfile = f"POST {target} HTTP/1.1", False, _ResetWriter()
+
+    handler._send_json(404, {"error": "not found"})
+
+    err = capsys.readouterr().err
+    assert "s3cret" not in err
+    assert [json.loads(line) for line in err.splitlines()] == [{"event": "reply_undeliverable", "path": named, "status": 404}]
+    assert handler.close_connection is True

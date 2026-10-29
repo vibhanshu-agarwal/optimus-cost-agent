@@ -3,16 +3,18 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import subprocess
-from collections.abc import Callable
-from dataclasses import dataclass
+import time
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from optimus.agent.directives import AgentDirectiveParseError, parse_agent_plan
-from optimus.agent.models import AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall, ContextPacker
+from optimus.agent.directives import AgentDirectiveParseError, AgentEditDirective, bind_edit_base, parse_agent_plan
+from optimus.agent.edits import EditNotApplicable, apply_edit_blocks, edit_failure_text
+from optimus.agent.models import TEST_STOP_REASONS, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall, ContextPacker
 from optimus.agent.operation_control import TurnOperationControl
 from optimus.agent.prompts import build_agent_planner_input
 from optimus.agent.state_store import (
@@ -21,8 +23,13 @@ from optimus.agent.state_store import (
     InMemoryAgentStateStore,
 )
 from optimus.agent.tools import AgentToolbox
-from optimus.agent.workspace_context import WorkspaceContextResult, assemble_workspace_context_for_prompt
+from optimus.agent.workspace_context import (
+    WorkspaceContextResult,
+    WorkspaceReferenceStatus,
+    assemble_workspace_context_for_prompt,
+)
 from optimus.gateway.attempts import (
+    ROUTE_STOPPED_NO_RETRY,
     AttemptIntegrityError,
     ProviderAttempt,
     attempts_from_failure,
@@ -38,28 +45,26 @@ from optimus.gateway.client import GatewayClient
 from optimus.gateway.models import GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.guardrails.runtime_tree import has_runtime_component, resolve_target, target_reserved
-from optimus.loops.completion import DeterministicCompletionEvaluator
-from optimus.loops.controller import GoalLoopController, IterationRunner
-from optimus.loops.ledger import InMemoryProgressLedger
-from optimus.loops.models import (
-    CompletionEvaluatorProtocol,
-    IterationOutcome,
-    IterationState,
-    LoopBudgetPolicy,
-    LoopStopReason,
-    LoopToolExecutorProtocol,
-)
-from optimus.loops.tools import GuardedLoopToolExecutor
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.mutation import MutationForbidden
+from optimus.runtime.process_tree import CommandStopped
 from optimus.runtime.state import AgentState, AwaitingApproval, RuntimeContext, StateTransition, TransitionValidator
 from optimus.skills.registry import SkillRegistry
 from optimus.telemetry.events import TelemetryEvent
+from optimus.tools.line_endings import WRITE_LINE_ENDINGS_MIXED
+from optimus.tools.mutation_tools import DEFAULT_TEST_DEADLINE_SECONDS, WriteRefused, WriteSourceChanged
 from optimus.usage.accounting import UsageAccountingService
 from optimus.usage.turn_settlement import StageReceipt
 
 if TYPE_CHECKING:
-    from optimus.agent.planning_loop import PlanningProgressObserver
+    from optimus.agent.planning_loop import (
+        EscalationGrant,
+        EscalationRefusal,
+        PlanningCheckInCallback,
+        PlanningEscalation,
+        PlanningEscalationCallback,
+        PlanningProgressObserver,
+    )
     from optimus.gateway.route_binding import BoundRequest, RouteIdentity, TurnRouteBinder
 
 WorkspaceContextObserver = Callable[[AgentRunRequest, WorkspaceContextResult], None]
@@ -93,9 +98,6 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
     "CHAT_OUTPUT_UNFINISHED": (
         "A content filter or a provider error ended the model's answer before it finished, so it is not shown."
     ),
-    "CHAT_COMPLETION_CONDITION_UNSUPPORTED": (
-        "Chat answers a single question and cannot run toward a completion condition. Use Agent mode for goal loops."
-    ),
     "CHAT_CONTEXT_CAPACITY_EXCEEDED": (
         "Chat could not answer: the request would not fit the model's input capacity, even with a smaller view "
         "of the conversation. It was not sent. A shorter prompt or a narrower request that involves fewer "
@@ -112,20 +114,27 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
 
 # r8 offline correction: the same failures when they prove the experimental test route stopped. The Gateway then
 # admits no further request on that route while it runs, so these never suggest a retry. Same stop reasons.
-_NO_RETRY = "No further request on this route will be sent while this agent runs, so retrying will not help."
+_NO_RETRY = ROUTE_STOPPED_NO_RETRY
 CHAT_ROUTE_STOPPED_MESSAGES: dict[str, str] = {
     "CHAT_GATEWAY_FAILURE": (
         "Chat could not get an answer: the model gateway refused the model's reply after the call was charged, "
-        f"and this experimental test route is now stopped. {_NO_RETRY}"
+        f"and this experimental route is now stopped. {_NO_RETRY}"
     ),
     "CHAT_GATEWAY_COST_UNKNOWN": (
         "Chat stopped because the model gateway failed without reporting the call's cost, and this experimental "
-        f"test route is now stopped. {_NO_RETRY}"
+        f"route is now stopped. {_NO_RETRY}"
     ),
     # A later refusal proves only the stop and this request's free refusal, never the stop's cause (Codex review P2).
+    # "experimental route", not "test route": ADR-023 shipped it for ordinary use (Codex round 40).
     "CHAT_GATEWAY_REFUSED": (
-        "Chat could not answer: the model gateway has stopped this experimental test route, so it refused this "
+        "Chat could not answer: the model gateway has stopped this experimental route, so it refused this "
         f"request before it reached any model and nothing was charged. {_NO_RETRY}"
+    ),
+    # A summary this turn stopped the route, and the request then did not fit (#400, Codex round 41): no capacity
+    # recovery can help while the route is stopped. Same stop reason.
+    "CHAT_CONTEXT_CAPACITY_EXCEEDED": (
+        "Chat could not answer: the request would not fit the model's input capacity, and the model gateway has "
+        f"stopped this experimental route. It was not sent. {_NO_RETRY}"
     ),
 }
 
@@ -136,12 +145,17 @@ class _RunScope:
     are classified against (post-teardown) and the binder for its requests (Codex CP3 ruling R1/R4).
     It is passed down explicitly and never stored on the runner, which concurrent sessions share.
     `integrity_failure` is told the turn id whose charge the existing ledger refused, so that turn
-    never reads complete (Fable CP3 correction-2 review MINOR-1)."""
+    never reads complete (Fable CP3 correction-2 review MINOR-1). `model` is what this run sends: the turn's
+    selected model under Auto (Plan 12.4 Task 4), else the runner's launch model; an escalation (#397) replaces
+    `model` and `route` for the rest of the run."""
 
+    model: str
     stage_receipts: Callable[[StageReceipt], None] | None = None
     operation_control: TurnOperationControl | None = None
     route: TurnRouteBinder | None = None
     integrity_failure: Callable[[str], None] | None = None
+    model_stops: Callable[[str], None] | None = None
+    recovery_escalation: PlanningEscalationCallback | None = None
 
     def transport_abandoned(self) -> bool:
         return self.operation_control is not None and self.operation_control.transport_abandoned()
@@ -151,23 +165,6 @@ def _selection_text(request: AgentRunRequest) -> str:
     """What selects workspace files and skills (Plan 12.2 Task 9): an attached turn's exact selection
     text, never its summarized history; otherwise the task, as before."""
     return request.selection_text if request.selection_text is not None else request.task
-
-
-class _AgentLoopIterationRunner:
-    def __init__(self, agent_runner: AgentRunner, request: AgentRunRequest, scope: _RunScope) -> None:
-        self._agent_runner = agent_runner
-        self._request = request
-        self._scope = scope
-        self.last_result: AgentRunResult | None = None
-
-    def run_iteration(self, state: IterationState, tools: LoopToolExecutorProtocol) -> IterationOutcome:
-        result = self._agent_runner._run_once(self._request, scope=self._scope)
-        self.last_result = result
-        return IterationOutcome(
-            summary=result.output_text,
-            cost_usd=result.total_cost_usd,
-            deterministic_completion=result.status is AgentRunStatus.COMPLETED,
-        )
 
 
 class _DirectiveGate:
@@ -182,7 +179,14 @@ class _DirectiveGate:
     def __init__(self, control: TurnOperationControl | None, *, run_id: str, phase: str) -> None:
         self._control = control
         self._prefix = f"{run_id}:{phase}"
+        self.run_id = run_id
         self.halted = False
+        self.stopped: CommandStopped | None = None  # a TEST that timed out, was not contained or would not stop
+        self.refused: WriteRefused | None = None  # a WRITE refused before any effect (#410)
+        self.edit_failure: str | None = None  # an EDIT that could not be applied: nothing written, TESTs suppressed
+
+    def halt_requested(self) -> bool:
+        return self._control is not None and self._control.halt_requested()
 
     def operation_id(self, label: str, ordinal: int) -> str:
         return f"{self._prefix}:{label}:{ordinal}"
@@ -212,8 +216,8 @@ def _failure_terminal(exc: BaseException) -> str:
     # Only a typed guard denial proves an effectful producer never ran: MutationForbidden is raised
     # before any write or subprocess (the toolbox re-raises it as PermissionError, keeping it as the
     # cause). Any other failure after the lease may already have had an effect.
-    if isinstance(exc, MutationForbidden) or isinstance(exc.__cause__, MutationForbidden):
-        return "failed_no_effect"
+    if isinstance(exc, (MutationForbidden, WriteRefused)) or isinstance(exc.__cause__, MutationForbidden):
+        return "failed_no_effect"  # WriteRefused is raised before the write (#410)
     return "failed_effect_unknown"
 
 
@@ -263,11 +267,6 @@ class AgentRunner:
     :type guard: PreToolGuard | None
     :ivar event_sink: An optional callable used to collect telemetry events.
     :type event_sink: Callable[[TelemetryEvent], None] | None
-    :ivar loop_iteration_runner: Optional runner for managing iterations in a
-        bounded loop during agent execution.
-    :type loop_iteration_runner: IterationRunner | None
-    :ivar loop_evaluator: Protocol for evaluating the completion of tasks in a loop setting.
-    :type loop_evaluator: CompletionEvaluatorProtocol | None
     :ivar state_store: Storage interface for maintaining the state of the agent during
         execution.
     :type state_store: AgentStateStore
@@ -294,8 +293,6 @@ class AgentRunner:
         model: str,
         guard: PreToolGuard | None = None,
         event_sink: Callable[[TelemetryEvent], None] | None = None,
-        loop_iteration_runner: IterationRunner | None = None,
-        loop_evaluator: CompletionEvaluatorProtocol | None = None,
         state_store: AgentStateStore | None = None,
         clock_ms: Callable[[], int] | None = None,
         shell_runner: Callable[[list[str]], subprocess.CompletedProcess[str]] | None = None,
@@ -303,13 +300,12 @@ class AgentRunner:
         usage_accounting: UsageAccountingService | None = None,
         planning_progress_observer: PlanningProgressObserver | None = None,
         provider_attempt_observer: ProviderAttemptObserver | None = None,
+        test_deadline_seconds: float = DEFAULT_TEST_DEADLINE_SECONDS,
     ) -> None:
         self._gateway_client = gateway_client
         self._model = model
         self._guard = guard
         self._event_sink = event_sink
-        self._loop_iteration_runner = loop_iteration_runner
-        self._loop_evaluator = loop_evaluator
         self._state_store = state_store or InMemoryAgentStateStore(clock_ms=clock_ms)
         self._clock_ms = clock_ms or _epoch_ms
         self._shell_runner = shell_runner
@@ -317,6 +313,7 @@ class AgentRunner:
         self._usage_accounting = usage_accounting
         self._planning_progress_observer = planning_progress_observer
         self._provider_attempt_observer = provider_attempt_observer
+        self._test_deadline_seconds = test_deadline_seconds
         self._transition_validator = TransitionValidator()
 
     @property
@@ -336,43 +333,53 @@ class AgentRunner:
         stage_receipts: Callable[[StageReceipt], None] | None = None,
         route_binder: TurnRouteBinder | None = None,
         integrity_failure: Callable[[str], None] | None = None,
+        recovery_checkin: PlanningCheckInCallback | None = None,
+        turn_model: str | None = None,
+        model_stops: Callable[[str], None] | None = None,
+        recovery_escalation: PlanningEscalationCallback | None = None,
     ) -> AgentRunResult:
         """`stage_receipts` receives every model attempt of this run, known or unknown, once (Plan 12.2
         Task 11). `route_binder` binds each request to the turn's captured trusted route; without it
         no binding is sent (registry enforcement inactive). `integrity_failure` receives this run's
-        turn id when the existing ledger refuses one of its charges. All belong to this invocation alone."""
+        turn id when the existing ledger refuses one of its charges. `turn_model` is an Auto turn's selected
+        model (Plan 12.4 Task 4), sent instead of the launch model; `model_stops` is told each model a failed
+        request proved stopped, for the launch. `recovery_escalation` (#397) may move an interactive planning run
+        to a stronger model once. All belong to this invocation alone."""
         observer = (
             planning_progress_observer
             if planning_progress_observer is not None
             else self._planning_progress_observer
         )
-        if route_binder is not None and route_binder.identity.model_id != self._model:
+        model = turn_model if turn_model is not None else self._model
+        # A bound turn's attached packer states the model its limits were taken for (Plan 12.4 Task 4); it must match too.
+        packer_model = getattr(context_packer, "model_id", None)
+        if route_binder is not None and (route_binder.identity.model_id != model or (packer_model is not None and packer_model != model)):
             # Imported only when a route is bound: the inactive path loads no route-binding module.
             from optimus.gateway.route_binding import RouteIdentityError
 
-            raise RouteIdentityError("the turn's route is bound to a different model than this runner sends")
+            raise RouteIdentityError("the turn's route or context limits are bound to a different model than this run sends")
         matched_skills = self._match_skills(request)
         scope = _RunScope(
-            stage_receipts=stage_receipts, operation_control=operation_control, route=route_binder, integrity_failure=integrity_failure
+            model=model,
+            stage_receipts=stage_receipts,
+            operation_control=operation_control,
+            route=route_binder,
+            integrity_failure=integrity_failure,
+            model_stops=model_stops,
+            recovery_escalation=recovery_escalation,
         )
         try:
-            if request.completion_condition and request.execution_mode is ExecutionMode.CHAT:
-                # Chat is one Gateway call. The goal loop would repeat it outside the
-                # turn's halt and directive gates, so the combination is refused up front.
-                result = self._chat_failure(request, stop_reason="CHAT_COMPLETION_CONDITION_UNSUPPORTED")
-            elif request.completion_condition:
-                result = self._run_bounded_loop(request, matched_skills=matched_skills, scope=scope)
-            else:
-                result = self._run_once(
-                    request,
-                    scope=scope,
-                    planning_progress_observer=observer,
-                    client_mcp_service=client_mcp_service,
-                    mcp_permission_broker=mcp_permission_broker,
-                    halt_requested=halt_requested,
-                    operation_control=operation_control,
-                    context_packer=context_packer,
-                )
+            result = self._run_once(
+                request,
+                scope=scope,
+                planning_progress_observer=observer,
+                client_mcp_service=client_mcp_service,
+                mcp_permission_broker=mcp_permission_broker,
+                halt_requested=halt_requested,
+                operation_control=operation_control,
+                context_packer=context_packer,
+                recovery_checkin=recovery_checkin,
+            )
             self._emit_agent_run(
                 request,
                 result,
@@ -405,54 +412,6 @@ class AgentRunner:
         )
         return tuple(match.manifest.name for match in matches)
 
-    def _run_bounded_loop(self, request: AgentRunRequest, *, matched_skills: tuple[str, ...], scope: _RunScope) -> AgentRunResult:
-        del matched_skills
-        workspace_root = request.workspace_root
-        guard = self._guard or PreToolGuard.for_workspace(workspace_root=workspace_root, allowed_network_hosts=())
-        iteration_runner = self._loop_iteration_runner or _AgentLoopIterationRunner(self, request, scope)
-        evaluator = self._loop_evaluator or DeterministicCompletionEvaluator(completed=False, reason="goal not complete")
-        controller = GoalLoopController(
-            # Plan 12.2 Task 11: an ordinary goal loop has no dollar stop (no positive minimum or
-            # sentinel); only an evaluation caller's own explicit cap travels into the loop. Its count,
-            # time, repeated-failure and halt controls remain.
-            policy=LoopBudgetPolicy(
-                max_iterations=5,
-                max_budget_usd=request.max_cost_usd,
-                max_wall_clock_minutes=30,
-            ),
-            runner=iteration_runner,
-            tools=GuardedLoopToolExecutor(guard=guard),
-            evaluator=evaluator,
-            ledger=InMemoryProgressLedger(),
-            event_sink=self._event_sink,
-        )
-        loop_result = controller.run(
-            IterationState(
-                run_id=request.run_id,
-                session_id=request.session_id,
-                goal=request.task,
-                completion_condition=request.completion_condition or request.task,
-                started_at=datetime.now(tz=UTC),
-            )
-        )
-        if isinstance(iteration_runner, _AgentLoopIterationRunner) and iteration_runner.last_result is not None:
-            return iteration_runner.last_result.model_copy(update={"stop_reason": loop_result.stop_reason.value})
-        return AgentRunResult(
-            run_id=request.run_id,
-            session_id=request.session_id,
-            execution_mode=request.execution_mode,
-            status=AgentRunStatus.COMPLETED
-            if loop_result.stop_reason is LoopStopReason.COMPLETED
-            else AgentRunStatus.TERMINATED,
-            final_state=loop_result.stop_reason.value,
-            output_text=loop_result.summary,
-            tool_calls=(),
-            total_cost_usd=Decimal("0"),
-            mutation_count=0,
-            provider_keys_resolvable=(),
-            stop_reason=loop_result.stop_reason.value,
-        )
-
     def _run_once(
         self,
         request: AgentRunRequest,
@@ -464,6 +423,7 @@ class AgentRunner:
         halt_requested: Callable[[], bool] | None = None,
         operation_control: TurnOperationControl | None = None,
         context_packer: ContextPacker | None = None,
+        recovery_checkin: PlanningCheckInCallback | None = None,
     ) -> AgentRunResult:
         context = RuntimeContext(execution_mode=request.execution_mode)
         toolbox = AgentToolbox.for_workspace(
@@ -514,12 +474,22 @@ class AgentRunner:
                     toolbox=toolbox,
                     initial_workspace_context="",
                     initial_workspace_file_sizes={},
+                    # Nothing is shown, so the model sizes its ranged reads of the task's files from these.
+                    required_file_sizes=self._initial_workspace_file_sizes(
+                        request.workspace_root,
+                        tuple(
+                            diagnostic.candidates[0]
+                            for diagnostic in workspace_context.diagnostics
+                            if diagnostic.status in (WorkspaceReferenceStatus.RESOLVED, WorkspaceReferenceStatus.TOO_LARGE)
+                        ),
+                    ),
                     progress_observer=planning_progress_observer,
                     client_mcp_service=client_mcp_service,
                     mcp_permission_broker=mcp_permission_broker,
                     halt_requested=halt_requested,
                     operation_control=operation_control,
                     context_packer=context_packer,
+                    recovery_checkin=recovery_checkin,
                 )
             return self._build_result(
                 request=request,
@@ -541,12 +511,14 @@ class AgentRunner:
                     request.workspace_root,
                     workspace_context.prioritized_paths,
                 ),
+                initial_workspace_sha256s=dict(workspace_context.file_sha256s),
                 progress_observer=planning_progress_observer,
                 client_mcp_service=client_mcp_service,
                 mcp_permission_broker=mcp_permission_broker,
                 halt_requested=halt_requested,
                 operation_control=operation_control,
                 context_packer=context_packer,
+                recovery_checkin=recovery_checkin,
             )
         planner_input = build_agent_planner_input(request.task, workspace_context=workspace_context.text)
         bound = None
@@ -569,7 +541,7 @@ class AgentRunner:
             scope.route.record_dispatch(planner_input)
         try:
             response = self._gateway_client.create_response(
-                model=self._model,
+                model=scope.model,
                 input_text=planner_input,
                 metadata=_with_request_id(
                     {"run_id": request.run_id, "session_id": request.session_id, "purpose": "agent_plan", "task": request.task},
@@ -634,6 +606,7 @@ class AgentRunner:
             gateway_request_ids=(response.gateway_usage.gateway_request_id,),
             planning_turns=1,
             provider=response.gateway_usage.provider,
+            model=scope.model,
             cost_complete=not unknown,
             unknown_cost_attempt_count=unknown,
         )
@@ -647,12 +620,15 @@ class AgentRunner:
         toolbox: AgentToolbox,
         initial_workspace_context: str = "",
         initial_workspace_file_sizes: dict[str, int] | None = None,
+        required_file_sizes: dict[str, int] | None = None,
+        initial_workspace_sha256s: dict[str, str] | None = None,
         progress_observer: PlanningProgressObserver | None = None,
         client_mcp_service: object | None = None,
         mcp_permission_broker: object | None = None,
         halt_requested: Callable[[], bool] | None = None,
         operation_control: TurnOperationControl | None = None,
         context_packer: ContextPacker | None = None,
+        recovery_checkin: PlanningCheckInCallback | None = None,
     ) -> AgentRunResult:
         from optimus.agent.planning_loop import PlanningLoopPolicy, PlanningLoopRunner
 
@@ -665,8 +641,12 @@ class AgentRunner:
             max_wall_clock_minutes=request.planning_wall_clock_minutes,
         )
 
+        # The scope in effect: an escalation (#397) replaces its model and route before the first escalated request,
+        # so each request's report reads the route that sent it; earlier reports keep theirs.
+        current = [scope]
+
         def usage_callback(gateway_usage: GatewayUsage, settled_turn: int, wire_attempt: int) -> None:
-            self._record_ledger_entry(request, scope, gateway_usage, settled_turn=settled_turn, wire_attempt=wire_attempt)
+            self._record_ledger_entry(request, current[0], gateway_usage, settled_turn=settled_turn, wire_attempt=wire_attempt)
 
         def attempt_callback(
             settled_turn: int,
@@ -676,12 +656,21 @@ class AgentRunner:
             failure: BaseException | None = None,
         ) -> None:
             self._report_attempts(
-                request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity, failure=failure
+                request, current[0], settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity, failure=failure
             )
+
+        def escalate(move: PlanningEscalation) -> EscalationGrant | EscalationRefusal:
+            from optimus.agent.planning_loop import EscalationGrant
+
+            assert scope.recovery_escalation is not None
+            outcome = scope.recovery_escalation(move)
+            if isinstance(outcome, EscalationGrant):
+                current[0] = replace(current[0], model=outcome.model_id, route=outcome.route_binder)
+            return outcome
 
         planner = PlanningLoopRunner(
             gateway_client=self._gateway_client,
-            model=self._model,
+            model=scope.model,
             policy=policy,
             workspace_root=request.workspace_root,
             execution_mode=request.execution_mode,
@@ -696,6 +685,9 @@ class AgentRunner:
             halt_requested=halt_requested,
             operation_control=operation_control,
             context_packer=context_packer,
+            recovery_checkin=recovery_checkin,
+            loop_event_sink=self._event_sink,
+            recovery_escalation=None if scope.recovery_escalation is None else escalate,
         )
         planning_result = planner.run(
             run_id=request.run_id,
@@ -703,10 +695,13 @@ class AgentRunner:
             task=request.task,
             initial_workspace_context=initial_workspace_context,
             initial_workspace_file_sizes=initial_workspace_file_sizes,
+            required_file_sizes=required_file_sizes,
+            initial_workspace_sha256s=initial_workspace_sha256s,
             # Only an attached turn's planner renders history in its own section; every other
             # caller keeps its existing input (design spec 7; Fable CP3 review MINOR-8).
             conversation_envelope=request.conversation_envelope if request.selection_text is not None else "",
         )
+        scope = current[0]  # the plan's result names the model that produced it
         if planning_result.stop_reason is not None:
             status = (
                 AgentRunStatus.FAILED
@@ -741,10 +736,12 @@ class AgentRunner:
             gateway_request_ids=planning_result.gateway_request_ids,
             planning_turns=planning_result.settled_turns,
             provider=planning_result.provider or "glm",
+            model=scope.model,
             cost_complete=planning_result.cost_complete,
             unknown_cost_attempt_count=planning_result.unknown_cost_attempt_count,
             candidate_plan_text=planning_result.plan_text,
             operation_control=operation_control,
+            edit_evidence_sha256s=planning_result.evidence_sha256s,
         )
 
     def _finish_agent_planning(
@@ -760,14 +757,16 @@ class AgentRunner:
         gateway_request_ids: tuple[str, ...],
         planning_turns: int,
         provider: str,
+        model: str | None = None,
         cost_complete: bool = True,
         unknown_cost_attempt_count: int = 0,
         candidate_plan_text: str | None = None,
         operation_control: TurnOperationControl | None = None,
+        edit_evidence_sha256s: Mapping[str, str] | None = None,
     ) -> AgentRunResult:
         if request.execution_mode is ExecutionMode.AGENT:
             try:
-                parse_agent_plan(output_text)
+                directives = parse_agent_plan(output_text, edit_base="forbidden")
             except AgentDirectiveParseError:
                 return self._build_result(
                     request=request,
@@ -781,6 +780,24 @@ class AgentRunner:
                     unknown_cost_attempt_count=unknown_cost_attempt_count,
                     candidate_plan_text=None,
                 )
+            if isinstance(directives.write, AgentEditDirective):
+                # Bound before the plan is hashed, so approval, the stored record and replay all carry the base.
+                try:
+                    output_text = _bind_edit(output_text, directives.write, request.workspace_root, edit_evidence_sha256s or {})
+                except EditNotApplicable as failure:
+                    _log_edit(request.run_id, directives.write.path, failure.code, base_sha256=None)
+                    return self._edit_failure_result(
+                        request=request,
+                        code=failure.code,
+                        path=directives.write.path,
+                        tool_calls=tool_calls,
+                        total_cost_usd=total_cost_usd,
+                        plan_hash=None,
+                        cost_complete=cost_complete,
+                        unknown_cost_attempt_count=unknown_cost_attempt_count,
+                    )
+                if candidate_plan_text is not None:
+                    candidate_plan_text = output_text
         plan_hash = hashlib.sha256(output_text.encode("utf-8")).hexdigest()
         created_at_ms = self._clock_ms()
         if candidate_plan_text is None and request.execution_mode is ExecutionMode.AGENT:
@@ -840,7 +857,7 @@ class AgentRunner:
                     gateway_request_id=gateway_request_id,
                     gateway_request_ids=gateway_request_ids,
                     planning_turns=planning_turns,
-                    model=self._model,
+                    model=model if model is not None else self._model,
                     provider=provider,
                     cost_usd=total_cost_usd,
                     created_at_ms=created_at_ms,
@@ -897,6 +914,11 @@ class AgentRunner:
         write_calls = self._execute_write_directives(output_text, workspace_root=request.workspace_root, toolbox=toolbox, gate=gate)
         tool_calls.extend(write_calls)
         mutation_count = sum(1 for call in write_calls if call.tool_name == "write_file")
+        if gate.refused is not None:
+            return self._write_refused_result(
+                request=request, refused=gate.refused, tool_calls=tool_calls, total_cost_usd=total_cost_usd, plan_hash=plan_hash,
+                cost_complete=cost_complete, unknown_cost_attempt_count=unknown_cost_attempt_count,
+            )  # fmt: skip
         if not gate.halted:
             try:
                 tool_calls.extend(self._execute_test_directives(output_text, toolbox=toolbox, gate=gate))
@@ -904,12 +926,25 @@ class AgentRunner:
                 if "unsafe TEST directive" in str(exc):
                     return self._unsafe_test_directive_result(request)
                 raise
+        if gate.stopped is not None:
+            return self._test_stopped_result(request=request, stop=gate.stopped, tool_calls=tool_calls, mutation_count=mutation_count, total_cost_usd=total_cost_usd, plan_hash=plan_hash)
         if gate.halted:
             return self._cancelled_execution_result(
                 request=request,
                 plan_text=output_text,
                 tool_calls=tool_calls,
                 mutation_count=mutation_count,
+                total_cost_usd=total_cost_usd,
+                plan_hash=plan_hash,
+                cost_complete=cost_complete,
+                unknown_cost_attempt_count=unknown_cost_attempt_count,
+            )
+        if gate.edit_failure is not None:
+            return self._edit_failure_result(
+                request=request,
+                code=gate.edit_failure,
+                path=_edit_path(output_text),
+                tool_calls=tool_calls,
                 total_cost_usd=total_cost_usd,
                 plan_hash=plan_hash,
                 cost_complete=cost_complete,
@@ -1063,6 +1098,10 @@ class AgentRunner:
         try:
             self._report_receipts(request, scope, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, identity=identity)
         finally:
+            # Plan 12.4 Task 4: a proven stop is recorded for the launch even when the receipts or accounting raise.
+            experimental = scope.route is not None and scope.route.experimental
+            if failure is not None and identity is not None and scope.model_stops is not None and stops_experimental_route(failure, experimental=experimental):
+                scope.model_stops(identity.model_id)
             self._observe_attempts(request, settled_turn=settled_turn, wire_attempt=wire_attempt, attempts=attempts, failure=failure)
 
     def _report_receipts(
@@ -1202,6 +1241,10 @@ class AgentRunner:
         )
         tool_calls.extend(write_calls)
         mutation_count = sum(1 for call in write_calls if call.tool_name == "write_file")
+        if gate.refused is not None:
+            return self._write_refused_result(
+                request=request, refused=gate.refused, tool_calls=tool_calls, total_cost_usd=record.cost_usd, plan_hash=record.plan_hash
+            )
         if not gate.halted:
             try:
                 tool_calls.extend(self._execute_test_directives(record.plan_text, toolbox=approved_toolbox, gate=gate))
@@ -1209,12 +1252,23 @@ class AgentRunner:
                 if "unsafe TEST directive" in str(exc):
                     return self._unsafe_test_directive_result(request)
                 raise
+        if gate.stopped is not None:
+            return self._test_stopped_result(request=request, stop=gate.stopped, tool_calls=tool_calls, mutation_count=mutation_count, total_cost_usd=record.cost_usd, plan_hash=record.plan_hash)
         if gate.halted:
             return self._cancelled_execution_result(
                 request=request,
                 plan_text=record.plan_text,
                 tool_calls=tool_calls,
                 mutation_count=mutation_count,
+                total_cost_usd=record.cost_usd,
+                plan_hash=record.plan_hash,
+            )
+        if gate.edit_failure is not None:
+            return self._edit_failure_result(
+                request=request,
+                code=gate.edit_failure,
+                path=_edit_path(record.plan_text),
+                tool_calls=tool_calls,
                 total_cost_usd=record.cost_usd,
                 plan_hash=record.plan_hash,
             )
@@ -1238,6 +1292,56 @@ class AgentRunner:
             mutation_count=mutation_count,
             plan_hash=record.plan_hash,
             candidate_plan_text=record.plan_text,
+        )
+
+    def _test_stopped_result(
+        self,
+        *,
+        request: AgentRunRequest,
+        stop: CommandStopped,
+        tool_calls: list[AgentToolCall],
+        mutation_count: int,
+        total_cost_usd: Decimal,
+        plan_hash: str | None,
+    ) -> AgentRunResult:
+        """A TEST that timed out, could not be contained or would not stop ends the plan (Plan 12.3, Design 8)."""
+        applied = "".join(f"\n- {call.summary}" for call in tool_calls if call.tool_name == "write_file")
+        return self._build_result(
+            request=request,
+            status=AgentRunStatus.FAILED,
+            final_state="FAILED",
+            output_text=f"A TEST directive {stop}; the later directives were not run." + (f" Applied:{applied}" if applied else ""),
+            tool_calls=tuple(tool_calls),
+            total_cost_usd=total_cost_usd,
+            mutation_count=mutation_count,
+            plan_hash=plan_hash,
+            stop_reason=TEST_STOP_REASONS[stop.outcome],
+        )
+
+    def _write_refused_result(
+        self,
+        *,
+        request: AgentRunRequest,
+        refused: WriteRefused,
+        tool_calls: list[AgentToolCall],
+        total_cost_usd: Decimal,
+        plan_hash: str | None,
+        **cost: Any,
+    ) -> AgentRunResult:
+        """A WRITE refused before any effect ends the plan before its TESTs (#410, design v3 R7). The text speaks only
+        for this WRITE and the TESTs after it: an earlier planning turn's MCP effect stays as it was."""
+        reason = {WRITE_LINE_ENDINGS_MIXED: "has mixed line endings, which Optimus does not rewrite."}[refused.code]
+        return self._build_result(
+            request=request,
+            status=AgentRunStatus.FAILED,
+            final_state="FAILED",
+            output_text=f"{Path(refused.path).as_posix()} {reason} This WRITE did not change the file. "
+            "No subsequent TEST directives from this plan ran.",
+            tool_calls=tuple(tool_calls),
+            total_cost_usd=total_cost_usd,
+            plan_hash=plan_hash,
+            stop_reason=refused.code,
+            **cost,
         )
 
     def _missing_plan_result(self, request: AgentRunRequest) -> AgentRunResult:
@@ -1287,6 +1391,7 @@ class AgentRunner:
                 total_cost_usd=result.total_cost_usd,
                 mutation_count=result.mutation_count,
                 stop_reason=result.stop_reason,
+                edit_failure_code=result.edit_failure_code,
                 matched_skills=matched_skills,
                 execution_mode=request.execution_mode.value,
                 user_approval_id=request.approval.approval_id or "unauthorized_direct_run",
@@ -1336,6 +1441,9 @@ class AgentRunner:
             directives = parse_agent_plan(plan_text)
         except AgentDirectiveParseError:
             return []
+        # A READ of the EDIT's own target (as a path, so ./a.py is a.py) leaves a decode failure to the EDIT,
+        # which reports it typed (#407).
+        edit_target = workspace_root / directives.write.path if isinstance(directives.write, AgentEditDirective) else None
         calls: list[AgentToolCall] = []
         for ordinal, relative_path in enumerate(directives.read_paths):
             if not self._is_safe_relative_path(relative_path):
@@ -1350,6 +1458,10 @@ class AgentRunner:
                     gate, kind, operation_id, partial(toolbox.read_file, target, requested=relative_path), effectful=False
                 )
             except OSError:
+                continue
+            except UnicodeDecodeError:
+                if edit_target is None or target != edit_target:
+                    raise
                 continue
             if not started:
                 break
@@ -1373,10 +1485,12 @@ class AgentRunner:
         if directives.write is None:
             return []
         relative_path = directives.write.path
-        content = directives.write.content
         if not self._is_safe_relative_path(relative_path):
             return []
         target = workspace_root / relative_path
+        if isinstance(directives.write, AgentEditDirective):
+            return self._execute_edit_directive(directives.write, target=target, toolbox=toolbox, gate=gate)
+        content = directives.write.content
         calls: list[AgentToolCall] = []
         if target.exists():
             read_id = gate.operation_id("read-before-write", 0)
@@ -1388,11 +1502,86 @@ class AgentRunner:
                 return calls
             calls.append(read[1])
         write_id = gate.operation_id("write", 0)
-        started, write_call = _run_gated(
-            gate, DirectiveKind.WRITE, write_id, partial(toolbox.write_file, target, content, requested=relative_path), effectful=True
-        )
+        try:
+            started, write_call = _run_gated(
+                gate, DirectiveKind.WRITE, write_id, partial(toolbox.write_file, target, content, requested=relative_path), effectful=True
+            )
+        except WriteRefused as refused:
+            # #410 R7: terminal for the plan, before any TEST; the registered TESTs are suppressed.
+            gate.refused = refused
+            for ordinal in range(len(directives.tests)):
+                gate.complete(DirectiveKind.TEST, gate.operation_id("test", ordinal), "suppressed")
+            return calls
         if started:
             calls.append(write_call)
+        return calls
+
+    def _execute_edit_directive(
+        self,
+        edit: AgentEditDirective,
+        *,
+        target: Path,
+        toolbox: AgentToolbox,
+        gate: _DirectiveGate,
+    ) -> list[AgentToolCall]:
+        """Apply an approved, bound EDIT (#407): a raw gated read, the blocks applied to it, then one raw gated
+        write that re-checks the base after the guard. Any applicability failure writes nothing."""
+        from optimus.acp.lifecycle import DirectiveKind
+
+        write_id = gate.operation_id("write", 0)
+        calls: list[AgentToolCall] = []
+
+        def not_applicable(code: str) -> list[AgentToolCall]:
+            gate.edit_failure = code
+            gate.complete(DirectiveKind.WRITE, write_id, "suppressed")
+            _log_edit(gate.run_id, edit.path, code, base_sha256=edit.base_sha256)
+            return calls
+
+        if edit.base_sha256 is None:  # replay accepts only a bound EDIT and never binds one itself
+            return not_applicable("EDIT_SOURCE_UNSEEN")
+        if not target.is_file():
+            return not_applicable("EDIT_TARGET_MISSING")
+        read_id = gate.operation_id("read-before-write", 0)
+        gate.register([(DirectiveKind.READ, read_id)])
+        try:
+            started, read = _run_gated(
+                gate,
+                DirectiveKind.READ,
+                read_id,
+                partial(toolbox.read_file, target, requested=edit.path, newline=""),
+                effectful=False,
+            )
+        except UnicodeDecodeError:
+            return not_applicable("EDIT_NOT_UTF8")
+        if not started:
+            return calls
+        text, read_call = read
+        calls.append(read_call)
+        if hashlib.sha256(text.encode("utf-8")).hexdigest() != edit.base_sha256:
+            return not_applicable("EDIT_SOURCE_CHANGED")
+        try:
+            content = apply_edit_blocks(text, edit.blocks)
+        except EditNotApplicable as failure:
+            return not_applicable(failure.code)
+        write = partial(
+            toolbox.write_file, target, content, requested=edit.path, newline="", expected_sha256=edit.base_sha256
+        )
+        try:
+            started, write_call = _run_gated(gate, DirectiveKind.WRITE, write_id, write, effectful=True)
+        except WriteSourceChanged:
+            # _run_gated has settled the WRITE as failed_no_effect: the check precedes the write.
+            gate.edit_failure = "EDIT_SOURCE_CHANGED"
+            _log_edit(gate.run_id, edit.path, "EDIT_SOURCE_CHANGED", base_sha256=edit.base_sha256)
+            return calls
+        if started:
+            calls.append(write_call)
+            _log_edit(
+                gate.run_id,
+                edit.path,
+                "EDIT_APPLIED",
+                base_sha256=edit.base_sha256,
+                result_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            )
         return calls
 
     def _execute_test_directives(
@@ -1405,13 +1594,36 @@ class AgentRunner:
         from optimus.acp.lifecycle import DirectiveKind
 
         directives = parse_agent_plan(plan_text)
+        if gate.edit_failure is not None:
+            # A plan's TESTs check its change; with the EDIT not applied, none of them runs.
+            for ordinal in range(len(directives.tests)):
+                gate.complete(DirectiveKind.TEST, gate.operation_id("test", ordinal), "suppressed")
+            return []
         calls: list[AgentToolCall] = []
         for ordinal, command in enumerate(directives.tests):
             # A test that runs and exits non-zero still executed: its terminal is "succeeded" and its
-            # failing verdict stays in the tool call's summary.
-            started, call = _run_gated(
-                gate, DirectiveKind.TEST, gate.operation_id("test", ordinal), partial(toolbox.run_tests, command), effectful=True
+            # failing verdict stays in the tool call's summary. Each TEST gets one deadline and the
+            # turn's cancellation (Plan 12.3, Design 8).
+            run = partial(
+                toolbox.run_tests,
+                command,
+                deadline=time.monotonic() + self._test_deadline_seconds,
+                cancelled=gate.halt_requested,
             )
+            try:
+                started, call = _run_gated(gate, DirectiveKind.TEST, gate.operation_id("test", ordinal), run, effectful=True)
+            except CommandStopped as stop:
+                calls.append(
+                    AgentToolCall(tool_name="test_runner", summary=f"ran {' '.join(command)}: {stop}", authorization_outcome="ALLOW")
+                )
+                if stop.outcome == "cancelled":
+                    gate.halted = True
+                    break
+                # Terminal for the plan: the later directives are suppressed.
+                gate.stopped = stop
+                for later in range(ordinal + 1, len(directives.tests)):
+                    gate.complete(DirectiveKind.TEST, gate.operation_id("test", later), "suppressed")
+                break
             if not started:
                 break
             calls.append(call)
@@ -1447,6 +1659,32 @@ class AgentRunner:
             cost_complete=cost_complete,
             unknown_cost_attempt_count=unknown_cost_attempt_count,
             candidate_plan_text=plan_text,
+        )
+
+    def _edit_failure_result(
+        self,
+        *,
+        request: AgentRunRequest,
+        code: str,
+        path: str,
+        tool_calls: list[AgentToolCall],
+        total_cost_usd: Decimal,
+        plan_hash: str | None,
+        cost_complete: bool = True,
+        unknown_cost_attempt_count: int = 0,
+    ) -> AgentRunResult:
+        return self._build_result(
+            request=request,
+            status=AgentRunStatus.FAILED,
+            final_state="FAILED",
+            output_text=edit_failure_text(code, path),
+            tool_calls=tuple(tool_calls),
+            total_cost_usd=total_cost_usd,
+            stop_reason="EDIT_NOT_APPLICABLE",
+            edit_failure_code=code,
+            plan_hash=plan_hash,
+            cost_complete=cost_complete,
+            unknown_cost_attempt_count=unknown_cost_attempt_count,
         )
 
     def _write_execution_failure_if_needed(
@@ -1568,7 +1806,10 @@ class AgentRunner:
             if fitted is None:
                 if halt_requested is not None and halt_requested():
                     return self._chat_failure(request, stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
-                return self._chat_failure(request, stop_reason="CHAT_CONTEXT_CAPACITY_EXCEEDED")
+                # A summary this turn may have stopped the shared route (#400; Codex round 41). Packers that
+                # predate the fact (test doubles) have none.
+                stopped_text = CHAT_ROUTE_STOPPED_MESSAGES["CHAT_CONTEXT_CAPACITY_EXCEEDED"] if getattr(context_packer, "route_stopped", False) is True else None
+                return self._chat_failure(request, stop_reason="CHAT_CONTEXT_CAPACITY_EXCEEDED", output_text=stopped_text)
             chat_input = fitted
         if halt_requested is not None and halt_requested():
             return self._chat_failure(request, stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
@@ -1601,7 +1842,7 @@ class AgentRunner:
         identity = _identity(bound)
         try:
             response = self._gateway_client.create_response(
-                model=self._model,
+                model=scope.model,
                 input_text=chat_input,
                 metadata=_with_request_id(
                     {
@@ -1741,6 +1982,7 @@ class AgentRunner:
         mutation_count: int = 0,
         plan_hash: str | None = None,
         stop_reason: str | None = None,
+        edit_failure_code: str | None = None,
         cost_complete: bool = True,
         unknown_cost_attempt_count: int = 0,
         candidate_plan_text: str | None = None,
@@ -1760,6 +2002,7 @@ class AgentRunner:
             provider_keys_resolvable=(),
             plan_hash=plan_hash,
             stop_reason=stop_reason,
+            edit_failure_code=edit_failure_code,
             candidate_plan_text=candidate_plan_text,
         )
 
@@ -1783,6 +2026,39 @@ def _binding_kwargs(bound: BoundRequest | None) -> dict[str, Any]:
 
 def _with_request_id(metadata: dict[str, Any], bound: BoundRequest | None) -> dict[str, Any]:
     return {**metadata, "request_id": bound.request_id} if bound is not None else metadata
+
+
+def _bind_edit(plan_text: str, edit: AgentEditDirective, workspace_root: Path, evidence: Mapping[str, str]) -> str:
+    """Bind the model's EDIT to the digest of the raw evidence it was shown, once that still matches the file."""
+    from optimus.agent.planning_loop import PlanningReadError, verify_planning_source_hash
+
+    evidence_sha256 = evidence.get(Path(edit.path).as_posix())
+    if evidence_sha256 is None:
+        raise EditNotApplicable("EDIT_SOURCE_UNSEEN")
+    try:
+        verify_planning_source_hash(workspace_root=workspace_root, path=edit.path, expected_sha256=evidence_sha256)
+    except PlanningReadError as exc:
+        changed = exc.code == "PLANNING_READ_SOURCE_CHANGED"
+        raise EditNotApplicable("EDIT_SOURCE_CHANGED" if changed else "EDIT_TARGET_MISSING") from exc
+    return bind_edit_base(plan_text, base_sha256=evidence_sha256)
+
+
+def _edit_path(plan_text: str) -> str:
+    write = parse_agent_plan(plan_text).write
+    return write.path if write is not None else ""
+
+
+def _log_edit(run_id: str, path: str, outcome: str, *, base_sha256: str | None, result_sha256: str | None = None) -> None:
+    """Every EDIT outcome keeps its closed code and digests in the debug trace; never file or model content."""
+    from optimus.acp.debug_trace import acp_debug_log
+
+    acp_debug_log(
+        location="runner.py:edit",
+        message="edit outcome",
+        data={"path": path, "outcome": outcome, "base_sha256": base_sha256, "result_sha256": result_sha256},
+        hypothesis_id="P407-EDIT",
+        run_id=run_id,
+    )
 
 
 def _record_matches_request(record: AgentPlanRecord, request: AgentRunRequest) -> bool:

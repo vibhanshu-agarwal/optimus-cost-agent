@@ -377,6 +377,64 @@ def test_a_failing_earlier_stage_still_demonstrates_custody_on_this_tree(tmp_pat
     assert row.outcome is CustodyOutcome.DEMONSTRATED, row.detail
 
 
+@pytest.mark.parametrize("body_raises", [False, True])
+def test_stage_spy_observes_awaited_adapter_and_restores_it(tmp_path, body_raises) -> None:
+    from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
+
+    adapter = AcpDuplexAdapter(runner=object(), workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(), outbound=RecordingOutboundChannel())
+    original = AcpDuplexAdapter.aclose
+    try:
+        with serving_custody._stage_spy() as sequence:
+            asyncio.run(adapter.aclose())
+            if body_raises:
+                raise RuntimeError("owned-spy-control")
+    except RuntimeError as exc:
+        assert body_raises and str(exc) == "owned-spy-control"
+    assert sequence == ["adapter"]
+    assert AcpDuplexAdapter.aclose is original
+
+
+def test_prior_stage_probe_rejects_an_unrelated_failure(tmp_path, monkeypatch) -> None:
+    from optimus.acp.spec import AcpDuplexAdapter
+
+    original = AcpDuplexAdapter.aclose
+
+    async def unrelated_failure(self):
+        await original(self)
+        raise ValueError("different-owned-fault")
+
+    monkeypatch.setattr(AcpDuplexAdapter, "aclose", unrelated_failure)
+    row = serving_custody._probe_prior_stage_failure(tmp_path)
+    assert row.outcome is CustodyOutcome.NOT_DEMONSTRATED
+    assert "earlier_failure_preserved=False" in row.detail
+    assert "state=CLOSED" in row.detail and "owner_terminated=True" in row.detail
+    assert AcpDuplexAdapter.aclose is unrelated_failure
+
+
+@pytest.mark.parametrize(("statement", "redis_first", "expected"), [
+    ("self._client_mcp_runtime.close()", False, ("adapter", "client_mcp_runtime", "dedicated_writer", "reader_task", "redis_runtime")),
+    ("await asyncio.to_thread(self._client_mcp_runtime.close)", False, ("adapter", "client_mcp_runtime", "dedicated_writer", "reader_task", "redis_runtime")),
+    ("await asyncio.to_thread(other.close)", False, ("adapter", "dedicated_writer", "reader_task", "redis_runtime")),
+    ("self._client_mcp_runtime.close", False, ("adapter", "dedicated_writer", "reader_task", "redis_runtime")),
+    ("await asyncio.to_thread(self._client_mcp_runtime.close)", True, ("redis_runtime", "adapter", "client_mcp_runtime", "dedicated_writer", "reader_task")),
+])
+def test_serving_order_recognizes_only_executed_runtime_close(statement, redis_first, expected) -> None:
+    body = ["await adapter.aclose()", statement, "dedicated.close_and_join()", "await reader_task"]
+    body.insert(0 if redis_first else len(body), "self.redis_runtime.close()")
+    source = "async def serve_ndjson(self):\n    " + "\n    ".join(body) + "\n"
+    assert serving_custody._serving_shutdown_order(source) == expected
+
+
+@pytest.mark.parametrize("writer", ["dedicated.close_and_join()", "await self._close_writer_stage(dedicated)"])
+@pytest.mark.parametrize("reader", ["await reader_task", "reader.request_close()"])
+def test_current_serving_order_recognizes_owned_writer_and_reader_decision(writer, reader) -> None:
+    source = "async def serve_ndjson(self):\n    " + "\n    ".join([
+        "await adapter.aclose()", writer, reader, "await self._close_redis_runtime_stage()",
+    ]) + "\n"
+    assert serving_custody._serving_shutdown_order(source) == ("adapter", "dedicated_writer", "reader_task", "redis_runtime")
+
+
 # --- the execution closure is enforced (R3) --------------------------------------------
 
 

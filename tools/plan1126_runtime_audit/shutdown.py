@@ -11,6 +11,7 @@ import ast
 import asyncio
 import contextlib
 import hashlib
+import io
 import json
 import re
 import threading
@@ -18,7 +19,7 @@ import time
 import weakref
 from collections import Counter
 from dataclasses import dataclass, replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, Callable, Mapping
 
 from tools.concurrency_capture import (
@@ -77,7 +78,7 @@ H5_SOURCE_PATHS = (
 #: historical list above is bound to the historical baselines and must not gain paths
 #: those commits do not contain; the leaf bundle module exists only on current source,
 #: so the fresh `h5.shutdown_schedule` entry discovers from this list instead.
-H5_CURRENT_SOURCE_PATHS = (*H5_SOURCE_PATHS, "src/optimus/acp/harness_runtime.py")
+H5_CURRENT_SOURCE_PATHS = (*H5_SOURCE_PATHS, "src/optimus/acp/harness_runtime.py", "src/optimus/acp/process_lifecycle.py")
 
 _CLOSE_DEFINITION_NAMES = {
     "close",
@@ -556,14 +557,6 @@ class _CountedClose:
         self.count += 1
 
 
-class _DetachService:
-    def __init__(self) -> None:
-        self.count = 0
-
-    def detach_resolver(self) -> None:
-        self.count += 1
-
-
 class _CountingComponent:
     def __init__(self) -> None:
         self.count = 0
@@ -785,6 +778,22 @@ def _probe_resource(
         _repeat_actual_close(writer.close_and_join, lambda: int(writer._joined))
         return int(writer._joined), f"{terminal_cause}:writer_thread_joined"
 
+    if resource == "StdioByteWriter":
+        from optimus.acp import server as server_module
+
+        verify_executing_module(source, "src/optimus/acp/server.py", server_module)
+        stream = io.BytesIO()
+        framed_writer = server_module.StdioByteWriter(stream)
+        try:
+            framed_writer.write(b"owned-framed-probe")
+            asyncio.run(framed_writer.drain())
+            _repeat_actual_close(framed_writer.close_and_join, lambda: int(framed_writer._dedicated._joined))
+            assert stream.getvalue() == b"owned-framed-probe"
+            return int(framed_writer._dedicated._joined), f"{terminal_cause}:framed_writer_thread_joined"
+        finally:
+            if framed_writer.thread_alive:
+                framed_writer.close_and_join()
+
     if resource == "InMemoryAcpSpecSessionStore":
         from optimus.acp.spec import InMemoryAcpSpecSessionStore
 
@@ -795,24 +804,32 @@ def _probe_resource(
         return _repeat_actual_close(store.close_all, lambda: state.count), cause_effect
 
     if resource == "AcpDuplexAdapter":
-        from optimus.acp.spec import AcpDuplexAdapter
+        from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
+        from optimus.mcp.client_disposition import ClientMcpSessionState
 
-        sessions = _CountingComponent()
-        adapter = object.__new__(AcpDuplexAdapter)
-        adapter._closed = False
-        adapter._active_turns = {}
-        adapter._sessions = sessions
-        return _repeat_actual_close(adapter.close_all, lambda: sessions.count), cause_effect
+        sessions = InMemoryAcpSpecSessionStore()
+        session = sessions.create(cwd=Path.cwd())
+        state = ClientMcpSessionState(session_id=session.session_id)
+        hook = _CountedClose()
+        state.register_close_hook(hook.close)
+        session.client_mcp_state = state
+        adapter = AcpDuplexAdapter(runner=object(), workspace_root=Path.cwd(), sessions=sessions,
+                                   outbound=RecordingOutboundChannel())
+        if method == "aclose":
+            async def close_three() -> None:
+                for _ in range(3):
+                    await adapter.aclose()
+            asyncio.run(close_three())
+            return hook.count, cause_effect
+        return _repeat_actual_close(adapter.close_all, lambda: hook.count), cause_effect
 
     if resource == "ClientMcpSessionState":
         from optimus.mcp.client_disposition import ClientMcpSessionState
 
         state = ClientMcpSessionState(session_id="h5-audit")
-        service = _DetachService()
         hook = _CountedClose()
-        state._tool_service = service  # type: ignore[assignment]
         state.register_close_hook(hook.close)
-        return _repeat_actual_close(state.close, lambda: max(service.count, hook.count)), cause_effect
+        return _repeat_actual_close(state.close, lambda: hook.count), cause_effect
 
     if resource == "ClientMcpRuntime":
         from optimus.mcp.client_disposition import ClientMcpRuntime
@@ -1101,6 +1118,105 @@ def _leftover_task_descriptions(baseline: weakref.WeakSet[asyncio.Task[Any]]) ->
     return _describe_tasks(_leftover_tasks(baseline))
 
 
+_PROBE_METADATA_CONTROLS = re.compile(r"[\u0000-\u001f\u007f-\u009f\u2028\u2029]")
+
+
+def _probe_error_effect(cause: str, exc: Exception) -> str:
+    """Retain content-free throw-site metadata, never exception messages or values."""
+    def _metadata(read: Callable[[], Any]) -> Any:
+        try:
+            return read()
+        except ExecutingSourceMismatch:
+            raise
+        except Exception:
+            return "unknown"
+
+    try:
+        name = type(exc).__name__
+    except ExecutingSourceMismatch:
+        raise
+    except Exception:
+        name = "Exception"
+    if type(name) is not str or not name:
+        name = "Exception"  # This bucket cannot distinguish unavailable from genuine Exception.
+    token = f"{cause}:probe_error:{name}"
+
+    def _number(attribute: str) -> str:
+        value = _metadata(lambda: getattr(exc, attribute))
+        return str(value) if type(value) is int and -(2**63) <= value < 2**63 else "unknown"
+
+    def _frames() -> list[FrameLocation]:
+        frames = []
+        tb = exc.__traceback__
+        while tb is not None:
+            code = tb.tb_frame.f_code
+            frames.append(FrameLocation(code.co_filename, tb.tb_lineno, code.co_name))
+            tb = tb.tb_next
+        return frames
+
+    def _location(frame: FrameLocation) -> str:
+        if not frame.filename or not frame.function or type(frame.lineno) is not int or frame.lineno <= 0:
+            return "unknown"
+        pseudo = frame.filename.startswith("<") and frame.filename.endswith(">")
+        if pseudo:
+            if "/" in frame.filename or "\\" in frame.filename:
+                return "unknown"
+            rendered = f"{frame.filename}:{frame.lineno} in {frame.function}"
+        elif Path(frame.filename).is_absolute():
+            if not Path(frame.filename).name:
+                return "unknown"
+            rendered = _locations((frame,), "unknown")
+        else:
+            foreign = PureWindowsPath(frame.filename) if PureWindowsPath(frame.filename).is_absolute() else PurePosixPath(frame.filename)
+            if not foreign.is_absolute() or not foreign.name:
+                return "unknown"  # Relative filenames have no trustworthy base directory.
+            rendered = f"{foreign.name}:{frame.lineno} in {frame.function}"
+        return _content_free(_PROBE_METADATA_CONTROLS.sub(" ", rendered).replace("|", "_"))
+
+    def _probe_location(frames: list[FrameLocation]) -> str:
+        package = _REPOSITORY_ROOT / "tools/plan1126_runtime_audit"
+        for frame in reversed(frames):
+            if not frame.filename or (frame.filename.startswith("<") and frame.filename.endswith(">")):
+                continue
+            if not Path(frame.filename).is_absolute():
+                if PureWindowsPath(frame.filename).is_absolute() or PurePosixPath(frame.filename).is_absolute():
+                    continue  # A foreign absolute path cannot identify this host's package.
+                return "unknown"
+            def _inside_package(frame: FrameLocation = frame) -> bool:
+                return Path(frame.filename).resolve().is_relative_to(package)
+
+            inside = _metadata(_inside_package)
+            if inside == "unknown":
+                return "unknown"  # A deeper unclassified frame prevents a definite deepest location.
+            if inside is True:
+                return _location(frame)
+        return "unknown"
+
+    def _chain() -> str:
+        direct_cause, context = exc.__cause__, exc.__context__
+        if direct_cause is not None:
+            return "both" if context is not None else "cause"
+        return "context" if context is not None else "none"
+
+    def _group() -> str:
+        if not isinstance(exc, BaseExceptionGroup):
+            return "none"
+        members = exc.exceptions  # Read once; do not traverse or render members.
+        return str(len(members)) if type(members) is tuple and 0 < len(members) < 2**63 else "unknown"
+
+    try:
+        errno, winerror = _number("errno"), _number("winerror")
+        frames = _metadata(_frames)
+        origin = _metadata(lambda: _location(frames[-1])) if isinstance(frames, list) and frames else "unknown"
+        probe = _metadata(lambda: _probe_location(frames)) if isinstance(frames, list) else "unknown"
+        chain, group = _metadata(_chain), _metadata(_group)
+        return f"{token} | errno={errno} | winerror={winerror} | origin={origin} | probe={probe} | chain={chain} | group={group}"
+    except ExecutingSourceMismatch:
+        raise
+    except Exception:
+        return token + " | errno=unknown | winerror=unknown | origin=unknown | probe=unknown | chain=unknown | group=unknown"
+
+
 def _run_schedule(observations, applicable, repeats, source, control_thread_names, control_counts) -> None:
     task_baseline = _pending_task_baseline()
     for record in applicable:
@@ -1123,9 +1239,9 @@ def _run_schedule(observations, applicable, repeats, source, control_thread_name
                     # that refusal into a `probe_error` row -- producing a schedule that
                     # looks measured while recording that the measurement was refused.
                     raise
-                except Exception as exc:  # pragma: no cover - preserved as audit evidence
+                except Exception as exc:
                     underlying_count = 0
-                    cause_effect = f"{cause}:probe_error:{type(exc).__name__}"
+                    cause_effect = _probe_error_effect(cause, exc)
                     complete = True
                     outcome = "ERROR"
                 elapsed = time.perf_counter() - started
@@ -1533,9 +1649,13 @@ class ShutdownEvidenceRecord:
 
 def _derived_shutdown_order(source: SourceTree) -> tuple[str, ...]:
     text = source.read_text("src/optimus/acp/server.py")
+    if "_close_writer_stage" in text:
+        from .serving_custody import _serving_shutdown_order
+
+        return _serving_shutdown_order(text)
     patterns = (
         ("adapter", r"(?:self\._adapter|adapter)\.(?:close_all|aclose)\("),
-        ("client_mcp_runtime", r"client_mcp_runtime\.close\("),
+        ("client_mcp_runtime", r"(?:client_mcp_runtime\.close\(|asyncio\.to_thread\(\s*self\._client_mcp_runtime\.close\s*\))"),
         ("dedicated_writer", r"dedicated\.close_and_join\("),
         ("reader_task", r"await\s+reader_task"),
         ("redis_runtime", r"redis_runtime\.close\("),

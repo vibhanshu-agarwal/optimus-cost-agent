@@ -5,14 +5,16 @@ import asyncio
 import os
 import secrets
 import sys
+import time
 from collections.abc import Mapping
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 import keyring
 
+from optimus.acp.auto_composition import AutoComposition, compose_auto_composition
 from optimus.acp.bootstrap import StartupConfigurationError, build_configured_server, resolve_ephemeral_hmac_flag
 from optimus.acp.debug_trace import (
     configure_debug_trace,
@@ -24,8 +26,10 @@ from optimus.acp.launch_approvals import LAUNCH_POLICY_COMPATIBILITY, ApprovalEr
 from optimus.acp.launch_audit import LaunchAuditError, LaunchAuditEvent, append_launch_audit_event
 from optimus.acp.launch_gate import AuthorizedLaunch, LaunchCandidate, LaunchGateError, authorize_launch, resolve_launch_candidate
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
+from optimus.acp.lifecycle import NoticeControl
 from optimus.acp.local_gateway_secrets import run_setup_wizard
 from optimus.acp.local_infra import (
+    LocalGatewayProcess,
     LocalInfrastructureError,
     apply_local_defaults,
     ensure_local_gateway,
@@ -33,8 +37,18 @@ from optimus.acp.local_infra import (
     ensure_local_redis,
 )
 from optimus.acp.operator_paths import OperatorPathConfigurationError, resolve_authorized_operator_paths
+from optimus.acp.outbound_writer import DedicatedOutboundWriter
 from optimus.acp.preflight import PreflightFailure, run_preflight
-from optimus.acp.server import StdioByteReader, StdioByteWriter, StdioNdjsonLineReader, StdioNdjsonLineWriter
+from optimus.acp.process_lifecycle import (
+    ProcessLifecycle,
+    ShutdownObservation,
+    StartupTermination,
+    StopReason,
+    cleanup_failure,
+    raise_preserving_failure,
+    signal_handlers,
+)
+from optimus.acp.server import AcpStreamServer, StdioByteReader, StdioByteWriter, StdioNdjsonLineReader, StdioNdjsonLineWriter
 from optimus.acp.stage_c import StageCLaunchError, resolve_stage_c_launch
 from optimus.acp.subprocess_env import system_environ_view
 from optimus.acp.test_composition import compose_test_composition
@@ -45,11 +59,17 @@ from optimus.acp.trusted_paths import (
     resolve_workspace_security_state,
     revalidate_workspace_security_state,
 )
-from optimus.agent.defaults import AgentModelError, resolve_agent_model
+from optimus.agent.defaults import AgentModelError, auto_requested, resolve_agent_model
 from optimus.gateway.client import DEFAULT_GATEWAY_TIMEOUT_SECONDS, validate_gateway_timeout_seconds
+from optimus.mcp.client_disposition import ClientMcpRuntime
+from optimus.mcp.client_supervisor import MCPSupervisorState
+from optimus.redis.runtime import RedisRuntime, RedisRuntimeShutdownIncomplete
 from optimus_model_policy import RegistryError, binding
-from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, BindingError
+from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, COMPOSITION_LITERAL_NAME, BindingError
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES
+
+_OWNED_READER_TYPES = (StdioByteReader, StdioNdjsonLineReader)
+_FRAMED_WRITER_TYPE = StdioByteWriter
 
 if TYPE_CHECKING:
     from optimus.acp.stage_c import StageCLaunch
@@ -65,11 +85,219 @@ class _BuildServerKwargs(TypedDict):
     gateway_timeout_seconds: NotRequired[float]
     test_composition: NotRequired[TestComposition]
     stage_c: NotRequired[StageCLaunch]
+    auto_composition: NotRequired[AutoComposition]
 
 
 
 def _print_log(message: str) -> None:
     print(message, file=sys.stderr)
+
+
+def _report_shutdown(observation: ShutdownObservation) -> None:
+    print(f"optimus-agent: SHUTDOWN_INCOMPLETE stage={observation.stage} pending={observation.pending}", file=sys.stderr)
+
+
+def _stop_startup_gateway(gateway: LocalGatewayProcess, lifecycle: ProcessLifecycle, primary: BaseException | None) -> None:
+    if lifecycle.gateway_attempted:
+        return
+    lifecycle.gateway_attempted = True
+    lifecycle.begin_cleanup()
+    try:
+        gateway.stop()
+    except BaseException as exc:
+        failure = cleanup_failure(([("startup", primary)] if primary is not None else []) + [("gateway", exc)])
+        process = getattr(gateway, "process", None)
+        alive = bool(getattr(gateway, "stop_pending", False)) or (process is not None and process.poll() is None)
+        lifecycle.record(ShutdownObservation(not alive, "gateway" if alive else "done", int(alive), ("gateway",)))
+        if alive and isinstance(gateway, LocalGatewayProcess):
+            failure.__dict__["_optimus_pending_gateway"] = gateway
+        failure.__dict__["_optimus_cleanup_stages"] = ("gateway",)
+        failure.__dict__["_optimus_cleanup_only"] = primary is None and isinstance(exc, Exception)
+        try:
+            _print_log("optimus-agent: SHUTDOWN_FAILED stage=gateway")
+        except BaseException:
+            pass
+        raise_preserving_failure(failure)
+    lifecycle.record(ShutdownObservation(True, "done", 0, lifecycle.observation.failure_stages))
+
+
+async def _run_serving_process(
+    server: Any,
+    *,
+    lifecycle: ProcessLifecycle,
+    framed: bool = False,
+    gateway_process: LocalGatewayProcess | None = None,
+    reader: Any | None = None,
+    writer: Any | None = None,
+    observation_seconds: float = 10.0,
+    start_serving: bool = True,
+) -> int:
+    source_reader = reader if reader is not None else (
+        StdioByteReader(sys.stdin.buffer) if framed else StdioNdjsonLineReader(sys.stdin.buffer)
+    )
+    source_writer = writer if writer is not None else (
+        StdioByteWriter(sys.stdout.buffer) if framed else StdioNdjsonLineWriter(sys.stdout.buffer)
+    )
+    dedicated: DedicatedOutboundWriter | None = None
+    failures: list[tuple[str, BaseException]] = []
+    failed: set[str] = set()
+
+    def record_failure(stage: str, exc: BaseException) -> None:
+        failed.add(stage)
+        if not any(old_stage == stage and isinstance(old, Exception) == isinstance(exc, Exception) for old_stage, old in failures):
+            failures.append((stage, exc))
+
+    def pending(stage: str) -> None:
+        lifecycle.record(ShutdownObservation(False, stage, 1, tuple(sorted(failed))))
+
+    async def finish() -> ShutdownObservation:
+        lifecycle.begin_cleanup()
+        close_mcp = getattr(server, "_close_unused_mcp_stage", None)
+        runtime = getattr(server, "client_mcp_runtime", None)
+        try:
+            if callable(close_mcp):
+                await close_mcp()
+            elif isinstance(runtime, ClientMcpRuntime) and runtime.supervisor.state is not MCPSupervisorState.DEAD:
+                await asyncio.to_thread(runtime.close)
+        except BaseException as exc:
+            record_failure("mcp", exc)
+        if isinstance(runtime, ClientMcpRuntime):
+            while runtime.supervisor.state is not MCPSupervisorState.DEAD:
+                pending("mcp")
+                try:
+                    # STOPPING close only observes/finalizes the retained generation; no SDK hook is replayed.
+                    await asyncio.to_thread(runtime.supervisor.close)
+                except BaseException as exc:
+                    record_failure("mcp", exc)
+                    await asyncio.sleep(0.1)
+            if runtime._stage_failure_recorded:
+                failed.add("mcp")
+        elif runtime is not None:
+            failed.add("mcp")  # a foreign runtime cannot establish clean production custody
+
+        closer = dedicated if dedicated is not None else source_writer if isinstance(source_writer, _FRAMED_WRITER_TYPE) else None
+        if closer is not None:
+            pending("writer")
+            already_observed = getattr(server, "_writer_shutdown_task", None) is not None
+            try:
+                close_writer = getattr(server, "_close_writer_stage", None)
+                if callable(close_writer):
+                    await close_writer(closer)
+                else:
+                    await asyncio.to_thread(closer.close_and_join)
+            except BaseException as exc:
+                failed.add("writer")
+                if not already_observed:
+                    record_failure("writer", exc)
+            while closer.thread_alive:
+                pending("writer")
+                try:
+                    await asyncio.to_thread(closer.observe_closed, 0.1)
+                except BaseException:
+                    failed.add("writer")
+                    await asyncio.sleep(0.1)
+
+        redis = getattr(server, "redis_runtime", None)
+        if isinstance(redis, RedisRuntime):
+            while True:
+                pending("redis")
+                try:
+                    record = await redis.close_async(timeout=1.0)
+                except RedisRuntimeShutdownIncomplete:
+                    continue  # another observation of the same record, never another teardown
+                except BaseException as exc:
+                    record_failure("redis", exc)
+                    failed_record = redis.teardown_record
+                    if failed_record is None or not failed_record.owner_terminated:
+                        await asyncio.sleep(0.1)
+                        continue
+                    break
+                if record is not None and not record.is_clean:
+                    failed.add("redis")
+                break
+        elif redis is not None:
+            failed.add("redis")
+        failed.update(getattr(server, "cleanup_failure_stages", ()))
+
+        if gateway_process is not None:
+            pending("gateway")
+            lifecycle.gateway_attempted = True
+            try:
+                await asyncio.to_thread(gateway_process.stop)
+            except BaseException as exc:
+                record_failure("gateway", exc)
+            process = getattr(gateway_process, "process", None)
+            while getattr(gateway_process, "stop_pending", False) or (process is not None and process.poll() is None):
+                pending("gateway")
+                await asyncio.sleep(0.1)  # retain a failed owned stop; never repeat terminate/kill
+
+        if isinstance(source_reader, _OWNED_READER_TYPES):
+            source_reader.request_close()
+            while True:
+                remaining = lifecycle.remaining(observation_seconds)
+                if await asyncio.to_thread(source_reader.observe_closed, min(0.1, remaining)):
+                    break
+                observation = ShutdownObservation(False, "borrowed_stdio", 1, tuple(sorted(failed)))
+                lifecycle.record(observation)
+                if remaining <= 0:
+                    lifecycle.report_incomplete()
+                    return observation
+        return ShutdownObservation(True, "done", 0, tuple(sorted(failed)))
+
+    async def owned() -> ShutdownObservation:
+        nonlocal dedicated
+        try:
+            if not start_serving:
+                lifecycle.begin_cleanup()
+            elif framed:
+                await server.serve(source_reader, source_writer, lifecycle=lifecycle)
+            else:
+                if hasattr(source_writer, "write_bytes") and hasattr(source_writer, "flush"):
+                    dedicated = DedicatedOutboundWriter(source_writer)
+                    dedicated.start()
+                await server.serve_ndjson(source_reader, source_writer, dedicated_writer=dedicated,
+                    notice_control=NoticeControl(), join_dedicated_writer=True, lifecycle=lifecycle)
+        except BaseException as exc:
+            if isinstance(server, AcpStreamServer) and server.cleanup_control_failure is not None:
+                record_failure(*server.cleanup_control_failure)
+            if (isinstance(exc, Exception) and isinstance(server, AcpStreamServer)
+                    and server.cleanup_started and server.serving_failure is None):
+                failed.update(server.cleanup_failure_stages)
+            elif not (isinstance(exc, asyncio.CancelledError) and lifecycle.reason in (StopReason.SIGINT, StopReason.SIGTERM)):
+                record_failure("serve", exc)
+        lifecycle.begin_cleanup()
+        job = asyncio.create_task(finish(), name="optimus-process-cleanup")
+        cancelled: asyncio.CancelledError | None = None
+        while not job.done():
+            try:
+                await asyncio.shield(job)
+            except asyncio.CancelledError as exc:
+                cancelled = cancelled or exc
+            except BaseException:
+                break
+        observation = job.result()
+        lifecycle.record(observation)
+        if cancelled is not None and lifecycle.reason not in (StopReason.SIGINT, StopReason.SIGTERM):
+            failures.append(("serve", cancelled))
+        if failures and (any(stage == "serve" for stage, _exc in failures) or any(not isinstance(exc, Exception) for _stage, exc in failures)):
+            raise_preserving_failure(cleanup_failure(failures))
+        return observation
+
+    task = asyncio.create_task(owned(), name="optimus-process-lifetime")
+    lifecycle.bind(asyncio.get_running_loop(), task)
+    await lifecycle.wait_for_stop()
+    await lifecycle.observe(timeout=observation_seconds)
+    if not task.done():
+        await asyncio.shield(task)  # non-stdio ownership may genuinely remain incomplete
+    code = lifecycle.exit_code
+    if code is None and isinstance(source_reader, _OWNED_READER_TYPES):
+        while not await asyncio.to_thread(source_reader.observe_closed, 0.1):
+            pass
+        lifecycle.record(ShutdownObservation(True, "done", 0, tuple(sorted(failed))))
+        code = lifecycle.exit_code
+    if code is None:
+        raise RuntimeError("process cleanup remains incomplete")
+    return code
 
 
 def _parse_gateway_timeout_seconds(value: str) -> float:
@@ -81,6 +309,15 @@ def _parse_gateway_timeout_seconds(value: str) -> float:
         raise argparse.ArgumentTypeError(
             "gateway timeout must be a positive finite number of seconds"
         ) from None
+
+
+def _short_gateway_timeout_warning(seconds: float) -> str:
+    """Allowed (an explicit investigation override), but below the shared host wait (Codex round 1 on #397 Z2)."""
+    return (
+        f"optimus-agent: warning: --gateway-timeout-seconds {seconds:g} is below the default "
+        f"{DEFAULT_GATEWAY_TIMEOUT_SECONDS:g}, which outlasts the Gateway's upstream budget for one request; a slower reply the "
+        "provider has billed can be abandoned, and its turn then stops as PLANNING_GATEWAY_COST_UNKNOWN"
+    )
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -284,7 +521,11 @@ def _authorize_or_exit(
     # Module-level `keyring` import (rather than a local import inside this
     # function) so tests can monkeypatch acp_main.keyring with a fake
     # backend without touching the real OS keychain.
-    store = KeyringApprovalStore(keyring_backend=keyring, runtime_root=roots.approval_runtime_root)
+    try:
+        store = KeyringApprovalStore(keyring_backend=keyring, runtime_root=roots.approval_runtime_root)
+    except ApprovalError as exc:  # #433: a keyring failure reading or creating the HMAC key
+        print(f"optimus-agent: {exc}", file=sys.stderr)
+        return 2
 
     try:
         candidate: LaunchCandidate = resolve_launch_candidate(
@@ -566,6 +807,7 @@ def main(argv: list[str] | None = None) -> int:
     # (never os.environ) and receives the already-resolved shared secret from
     # the candidate rather than re-resolving it.
     test_composition = None
+    auto_composition = None
     stage_c_launch = None
     try:
         agent_environ = apply_local_defaults(
@@ -586,6 +828,16 @@ def main(argv: list[str] | None = None) -> int:
                 # Plan 12.2 Task 13: the approved envelope, recomposed from source; the ledger the release
                 # ceremony created must exist. Refused here, before any service starts.
                 stage_c_launch = resolve_stage_c_launch(candidate, test_composition)
+        elif auto_requested(agent_environ, cli_model=args.model):
+            # Plan 12.4 Design 1: the Auto composition, re-composed and refused unless it is the one the authorized
+            # candidate digested, with its composition name bound beside its hash.
+            auto_composition = compose_auto_composition(
+                approved_literal=candidate.security_literals.get(APPROVAL_LITERAL_NAME),
+                composition=candidate.security_literals.get(COMPOSITION_LITERAL_NAME),
+            )
+            auto_composition.default_model()
+            # Plan 12.4 Task 5: the classifier model is checked here too, before Redis, the Gateway or the server start.
+            auto_composition.classifier_model()
         else:
             # Plan 12.2 Task 5: under an enforced model registry an unusable model fails here with a
             # typed message rather than inside the runtime composition. Inactive: today's rules.
@@ -628,116 +880,150 @@ def main(argv: list[str] | None = None) -> int:
             # Plan 12.2 Task 5: the registry literal the operator approved, or None while inactive.
             model_registry=candidate.security_literals.get(APPROVAL_LITERAL_NAME),
             test_profile=args.plan12_test_profile,
+            auto_composition=auto_composition is not None,
             stage_c_envelope=None if stage_c_launch is None else stage_c_launch.envelope.literal,
             stage_c_ledger=None if stage_c_launch is None else stage_c_launch.ledger,
         )
 
-    if args.check_config:
+    lifecycle = ProcessLifecycle(report=_report_shutdown)
+    configured_server: Any | None = None
+    startup_control = False
+
+    def run_authorized() -> int:
+        nonlocal configured_server, startup_control
+        startup_failure: BaseException | None = None
+        if args.check_config:
+            gateway_process = None
+            try:
+                otlp_endpoint = None
+                if not args.no_auto_start:
+                    otlp_endpoint, error_exit = _start_local_dependencies()
+                    if error_exit is not None:
+                        return error_exit
+                    # Strict check-config (and Phoenix, which requires strict) must exercise
+                    # the Gateway path that receives OTLP configuration.
+                    if args.strict or args.with_local_phoenix:
+                        gateway_process = _start_gateway(otlp_endpoint=otlp_endpoint)
+                try:
+                    run_preflight(
+                        agent_environ,
+                        workspace_root=workspace_root,
+                        strict=args.strict,
+                        require_timeseries=True,
+                        cli_model=args.model,
+                    )
+                except PreflightFailure as exc:
+                    print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
+                    return exc.exit_code
+                log_provenance_once()
+                print("Optimus ACP agent configuration OK.", file=sys.stderr)
+                return 0
+            except BaseException as exc:
+                startup_failure = exc
+                if not lifecycle.bound and lifecycle.reason in (StopReason.SIGINT, StopReason.SIGTERM):
+                    startup_control = isinstance(exc, (KeyboardInterrupt, StartupTermination))
+                raise
+            finally:
+                if gateway_process is not None:
+                    _stop_startup_gateway(gateway_process, lifecycle, startup_failure)
+
         gateway_process = None
+        startup_failure = None
+        # Single try/finally around BOTH build_configured_server(...) and serve(...): an earlier draft
+        # of this plan wrapped only the serve() call, so an unexpected (non-StartupConfigurationError)
+        # exception from build_configured_server() would skip both the except block below and the
+        # inner finally, leaking the already-spawned gateway_process. Nesting everything inside one
+        # outer finally means every exit path — normal completion, StartupConfigurationError, or any
+        # other exception — stops it exactly once.
         try:
-            otlp_endpoint = None
             if not args.no_auto_start:
                 otlp_endpoint, error_exit = _start_local_dependencies()
                 if error_exit is not None:
                     return error_exit
-                # Strict check-config (and Phoenix, which requires strict) must exercise
-                # the Gateway path that receives OTLP configuration.
-                if args.strict or args.with_local_phoenix:
-                    gateway_process = _start_gateway(otlp_endpoint=otlp_endpoint)
+                gateway_process = _start_gateway(otlp_endpoint=otlp_endpoint)
+                if test_composition is not None and gateway_process is None:
+                    # The profiled launch owns its profiled Gateway child. A Gateway already listening, or none
+                    # at all, would refuse every bound request with a generic text (Fable CP4 release review M1).
+                    print(
+                        "optimus-agent: TEST_PROFILE_GATEWAY_NOT_STARTED: a test-profile launch must start its own "
+                        "profiled Gateway; stop any Gateway already listening on the configured URL and see the "
+                        "local gateway log.",
+                        file=sys.stderr,
+                    )
+                    return 2
             try:
-                run_preflight(
-                    agent_environ,
-                    workspace_root=workspace_root,
-                    strict=args.strict,
-                    require_timeseries=True,
-                    cli_model=args.model,
-                )
-            except PreflightFailure as exc:
+                # Seam 3: MCP construction reads PATH/PATHEXT/SystemRoot and the
+                # ephemeral-HMAC request from the ORIGINAL launch snapshot, projected to
+                # allowlisted system names only. agent_environ is the registry
+                # projection -- it has already lost the system keys and legitimately
+                # carries the Gateway credential, which must not cross the narrower MCP
+                # subprocess boundary. Both views are derived from the one capture.
+                build_server_kwargs: _BuildServerKwargs = {
+                    "environ": agent_environ,
+                    "system_environ": system_environ_view(snapshot.values),
+                    "ephemeral_hmac": resolve_ephemeral_hmac_flag(snapshot.values),
+                    "workspace_root": workspace_root,
+                    "model": args.model,
+                }
+                if args.gateway_timeout_seconds is not None:
+                    build_server_kwargs["gateway_timeout_seconds"] = args.gateway_timeout_seconds
+                    if args.gateway_timeout_seconds < DEFAULT_GATEWAY_TIMEOUT_SECONDS:
+                        print(_short_gateway_timeout_warning(args.gateway_timeout_seconds), file=sys.stderr)
+                if test_composition is not None:
+                    build_server_kwargs["test_composition"] = test_composition
+                if stage_c_launch is not None:
+                    build_server_kwargs["stage_c"] = stage_c_launch
+                if auto_composition is not None:
+                    build_server_kwargs["auto_composition"] = auto_composition
+                server = build_configured_server(**build_server_kwargs)
+                configured_server = server
+            except StartupConfigurationError as exc:
                 print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
                 return exc.exit_code
-            log_provenance_once()
-            print("Optimus ACP agent configuration OK.", file=sys.stderr)
-            return 0
+            except ApprovalError as exc:  # #433: the server's approval store hit a keyring failure
+                print(f"optimus-agent: {exc}", file=sys.stderr)
+                return 2
+
+            return asyncio.run(_run_serving_process(server, lifecycle=lifecycle, framed=args.framed, gateway_process=gateway_process))
+        except BaseException as exc:
+            startup_failure = exc
+            if not lifecycle.bound and lifecycle.reason in (StopReason.SIGINT, StopReason.SIGTERM):
+                startup_control = isinstance(exc, (KeyboardInterrupt, StartupTermination))
+            raise
         finally:
-            if gateway_process is not None:
-                gateway_process.stop()
+            if configured_server is not None and not lifecycle.bound:
+                asyncio.run(_run_serving_process(configured_server, lifecycle=lifecycle, framed=args.framed,
+                    gateway_process=gateway_process, start_serving=False))
+            if gateway_process is not None and not lifecycle.gateway_attempted:
+                _stop_startup_gateway(gateway_process, lifecycle, startup_failure)
+        return 0
 
-    gateway_process = None
-    if not args.no_auto_start:
-        otlp_endpoint, error_exit = _start_local_dependencies()
-        if error_exit is not None:
-            return error_exit
-        gateway_process = _start_gateway(otlp_endpoint=otlp_endpoint)
-        if test_composition is not None and gateway_process is None:
-            # The profiled launch owns its profiled Gateway child. A Gateway already listening, or none
-            # at all, would refuse every bound request with a generic text (Fable CP4 release review M1).
-            print(
-                "optimus-agent: TEST_PROFILE_GATEWAY_NOT_STARTED: a test-profile launch must start its own "
-                "profiled Gateway; stop any Gateway already listening on the configured URL and see the "
-                "local gateway log.",
-                file=sys.stderr,
-            )
-            return 2
-
-    # Single try/finally around BOTH build_configured_server(...) and serve(...): an earlier draft
-    # of this plan wrapped only the serve() call, so an unexpected (non-StartupConfigurationError)
-    # exception from build_configured_server() would skip both the except block below and the
-    # inner finally, leaking the already-spawned gateway_process. Nesting everything inside one
-    # outer finally means every exit path — normal completion, StartupConfigurationError, or any
-    # other exception — stops it exactly once.
-    try:
+    with signal_handlers(lifecycle):
         try:
-            # Seam 3: MCP construction reads PATH/PATHEXT/SystemRoot and the
-            # ephemeral-HMAC request from the ORIGINAL launch snapshot, projected to
-            # allowlisted system names only. agent_environ is the registry
-            # projection -- it has already lost the system keys and legitimately
-            # carries the Gateway credential, which must not cross the narrower MCP
-            # subprocess boundary. Both views are derived from the one capture.
-            build_server_kwargs: _BuildServerKwargs = {
-                "environ": agent_environ,
-                "system_environ": system_environ_view(snapshot.values),
-                "ephemeral_hmac": resolve_ephemeral_hmac_flag(snapshot.values),
-                "workspace_root": workspace_root,
-                "model": args.model,
-            }
-            if args.gateway_timeout_seconds is not None:
-                build_server_kwargs["gateway_timeout_seconds"] = args.gateway_timeout_seconds
-            if test_composition is not None:
-                build_server_kwargs["test_composition"] = test_composition
-            if stage_c_launch is not None:
-                build_server_kwargs["stage_c"] = stage_c_launch
-            server = build_configured_server(**build_server_kwargs)
-        except StartupConfigurationError as exc:
-            print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
-            return exc.exit_code
-
-        if args.framed:
-            asyncio.run(server.serve(StdioByteReader(sys.stdin.buffer), StdioByteWriter(sys.stdout.buffer)))
-        else:
-            from optimus.acp.lifecycle import NoticeControl
-            from optimus.acp.outbound_writer import DedicatedOutboundWriter
-
-            ndjson_writer = StdioNdjsonLineWriter(sys.stdout.buffer)
-            dedicated = DedicatedOutboundWriter(ndjson_writer)
-            dedicated.start()
-            notice_control = NoticeControl()
-            try:
-                asyncio.run(
-                    server.serve_ndjson(
-                        StdioNdjsonLineReader(sys.stdin.buffer),
-                        ndjson_writer,
-                        dedicated_writer=dedicated,
-                        notice_control=notice_control,
-                        join_dedicated_writer=False,
-                    )
-                )
-            finally:
-                # Process-lifetime writer: one sentinel and join without timeout after asyncio.run.
-                dedicated.close_and_join()
-    finally:
-        if gateway_process is not None:
-            gateway_process.stop()
-    return 0
+            return run_authorized()
+        except BaseException as exc:
+            retained = getattr(exc, "_optimus_pending_gateway", None)
+            if isinstance(retained, LocalGatewayProcess):
+                lifecycle.begin_cleanup()
+                while retained.stop_pending or (retained.process is not None and retained.process.poll() is None):
+                    lifecycle.record(ShutdownObservation(False, "gateway", 1, ("gateway",)))
+                    if lifecycle.remaining() <= 0:
+                        lifecycle.report_incomplete()
+                    time.sleep(0.1)
+                lifecycle.record(ShutdownObservation(True, "done", 0, ("gateway",)))
+            stages = getattr(exc, "_optimus_cleanup_stages", ())
+            if stages:
+                lifecycle.record(ShutdownObservation(True, "done", 0, stages))
+            if startup_control or (not lifecycle.bound and lifecycle.reason in (StopReason.SIGINT, StopReason.SIGTERM)
+                    and isinstance(exc, (KeyboardInterrupt, StartupTermination))):
+                if lifecycle.observation.pending == 0 and not lifecycle.observation.failure_stages:
+                    lifecycle.record(ShutdownObservation(True, "done", 0, ()))
+                code = lifecycle.exit_code
+                if code is not None:
+                    return code
+            if getattr(exc, "_optimus_cleanup_only", False):
+                return 74
+            raise
 
 
 if __name__ == "__main__":

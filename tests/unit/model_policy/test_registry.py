@@ -416,12 +416,29 @@ def test_changing_any_qualification_key_withdraws_eligibility(tmp_path: Path, ch
     assert select_eligible_models(snapshot, Role.SUMMARIZER) == ()
 
 
-def test_dormant_roles_are_never_eligible(tmp_path: Path) -> None:
+def test_the_reviewer_is_dormant_and_the_classifier_needs_its_own_reserve(tmp_path: Path) -> None:
+    """Plan 12.4 v7 Design 1: the classifier is active wherever a composition assigns it, and like any active role it
+    needs its reserve; the reviewer stays dormant (ADR-008)."""
     text = _edited("roles:\n  medium: [us/beta, cn/alpha]\n", "roles:\n  medium: [us/beta, cn/alpha]\n  reviewer: [us/beta]\n  classifier: [cn/alpha]\n")
     snapshot = load_registry(_write(tmp_path, "defaults.yaml", text), None)
     assert select_eligible_models(snapshot, Role.REVIEWER) == ()
     assert select_eligible_models(snapshot, Role.CLASSIFIER) == ()
-    assert {i.role for i in _issues(snapshot, "ROLE_DORMANT")} == {Role.CLASSIFIER}
+    assert {i.role for i in _issues(snapshot, "RESERVE_UNSET")} == {Role.CLASSIFIER}
+    assert _issues(snapshot, "ROLE_DORMANT") == []
+
+    reserved = load_registry(_write(tmp_path, "reserved.yaml", text.replace("  reviewer: 8192\n", "  reviewer: 8192\n  classifier: 256\n")), None)
+    assert select_eligible_models(reserved, Role.CLASSIFIER) == ("cn/alpha",)
+
+
+def test_a_classifier_window_need_only_reach_the_classifier_request_bound(tmp_path: Path) -> None:
+    """A classifier's window is measured against its complete-request bound (8,192), not the global ceiling."""
+    text = _edited("roles:\n  medium: [us/beta, cn/alpha]\n", "roles:\n  medium: [us/beta, cn/alpha]\n  classifier: [cn/alpha]\n")
+    text = text.replace("  reviewer: 8192\n", "  reviewer: 8192\n  classifier: 256\n").replace("context_window_tokens: 300000", "context_window_tokens: 32768")
+    snapshot = load_registry(_write(tmp_path, "small.yaml", text), None)
+    assert select_eligible_models(snapshot, Role.CLASSIFIER) == ("cn/alpha",)
+    assert "cn/alpha" not in select_eligible_models(snapshot, Role.MEDIUM)  # the same window is below the global ceiling
+    too_small = load_registry(_write(tmp_path, "tiny.yaml", text.replace("context_window_tokens: 32768", "context_window_tokens: 8191")), None)
+    assert select_eligible_models(too_small, Role.CLASSIFIER) == ()
 
 
 def test_an_assignment_to_an_unknown_model_is_reported(tmp_path: Path) -> None:

@@ -220,7 +220,7 @@ def test_cancel_between_write_and_test_keeps_the_write_and_suppresses_the_test(t
     assert result.status is AgentRunStatus.TERMINATED
     assert result.stop_reason == "cancelled"
     assert result.mutation_count == 1
-    assert (tmp_path / "example.py").read_text(encoding="utf-8") == "new"
+    assert (tmp_path / "example.py").read_text(encoding="utf-8") == "new\n"  # #410: the existing final newline is kept
     assert shell.commands == []
     assert control.terminal(DirectiveKind.WRITE, _single(control, DirectiveKind.WRITE)) == "succeeded"
     assert control.terminal(DirectiveKind.TEST, _single(control, DirectiveKind.TEST)) == "suppressed"
@@ -349,7 +349,7 @@ def test_runs_without_a_control_keep_their_behavior(tmp_path: Path) -> None:
 
     assert result.status is AgentRunStatus.COMPLETED
     assert result.mutation_count == 1
-    assert (tmp_path / "example.py").read_text(encoding="utf-8") == "new"
+    assert (tmp_path / "example.py").read_text(encoding="utf-8") == "new\n"  # #410: the existing final newline is kept
     assert shell.commands == [["pytest", "-q"]]
 
 
@@ -395,3 +395,133 @@ def test_unreachable_pre_approved_branch_threads_the_control(tmp_path: Path) -> 
     assert control.terminal(DirectiveKind.WRITE, _single(control, DirectiveKind.WRITE)) == "succeeded"
     assert control.terminal(DirectiveKind.TEST, _single(control, DirectiveKind.TEST)) == "succeeded"
     assert control.refresh_effect_state() is EffectState.COMPLETE
+
+
+# --- #410: byte-faithful WRITE, and the typed refusal of a mixed-ending target (design v3, R4 and R7) ---------------
+
+_REFUSAL_TEXT = (
+    "example.py has mixed line endings, which Optimus does not rewrite. This WRITE did not change the file. "
+    "No subsequent TEST directives from this plan ran."
+)
+
+
+def test_the_387_task_writes_the_crlf_seed_byte_for_byte(tmp_path: Path) -> None:
+    (tmp_path / "example.py").write_bytes(b"# greeting\r\nprint('hello world')\r\n")
+    runner, request = _approved(tmp_path, "READ example.py\nWRITE example.py\n# hello optimus\nprint('hello world')", _Shell())
+
+    result = runner.run(request)
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert (tmp_path / "example.py").read_bytes() == b"# hello optimus\r\nprint('hello world')\r\n"
+
+
+def test_a_mixed_target_is_a_typed_refusal_before_any_test(tmp_path: Path) -> None:
+    (tmp_path / "example.py").write_bytes(b"a\r\nb\n")
+    control = _RecordingControl()
+    shell = _Shell(control)
+    runner, request = _approved(tmp_path, WRITE_THEN_TEST, shell)
+
+    result = runner.run(request, operation_control=control)
+
+    assert (result.status, result.stop_reason, result.output_text) == (AgentRunStatus.FAILED, "WRITE_LINE_ENDINGS_MIXED", _REFUSAL_TEXT)
+    assert (result.mutation_count, result.total_cost_usd, result.cost_complete) == (0, Decimal("0.001"), True)
+    assert shell.commands == []
+    assert (tmp_path / "example.py").read_bytes() == b"a\r\nb\n"
+    assert control.terminal(DirectiveKind.WRITE, _single(control, DirectiveKind.WRITE)) == "failed_no_effect"
+    assert control.terminal(DirectiveKind.TEST, _single(control, DirectiveKind.TEST)) == "suppressed"
+    assert control.refresh_effect_state() is EffectState.NONE
+
+
+def test_the_unreachable_pre_approved_branch_refuses_the_same_way(tmp_path: Path) -> None:
+    (tmp_path / "example.py").write_bytes(b"a\r\nb\n")
+    control = _RecordingControl()
+    shell = _Shell(control)
+    runner = AgentRunner(gateway_client=_PlanGateway(WRITE_THEN_TEST), model="test-model", state_store=InMemoryAgentStateStore(), shell_runner=shell)
+    plan_hash = hashlib.sha256(WRITE_THEN_TEST.encode("utf-8")).hexdigest()
+    request = AgentRunRequest(
+        run_id="run-1",
+        session_id="sess-1",
+        task="Change example.py",
+        execution_mode=ExecutionMode.AGENT,
+        workspace_root=tmp_path,
+        approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan_hash),
+    )
+    context = RuntimeContext(execution_mode=ExecutionMode.AGENT, state=AgentState.PLANNING)
+    toolbox = agent_tools.AgentToolbox.for_workspace(workspace_root=tmp_path, context=context, run_id="run-1")
+
+    result = runner._finish_agent_planning(  # noqa: SLF001
+        request=request,
+        context=context,
+        toolbox=toolbox,
+        tool_calls=[],
+        output_text=WRITE_THEN_TEST,
+        total_cost_usd=Decimal("0.002"),
+        gateway_request_id="gw-1",
+        gateway_request_ids=("gw-1",),
+        planning_turns=1,
+        provider="test",
+        operation_control=control,
+    )
+
+    assert (result.status, result.stop_reason, result.output_text) == (AgentRunStatus.FAILED, "WRITE_LINE_ENDINGS_MIXED", _REFUSAL_TEXT)
+    assert (result.mutation_count, result.total_cost_usd) == (0, Decimal("0.002"))
+    assert shell.commands == []
+    assert control.terminal(DirectiveKind.WRITE, _single(control, DirectiveKind.WRITE)) == "failed_no_effect"
+    assert control.terminal(DirectiveKind.TEST, _single(control, DirectiveKind.TEST)) == "suppressed"
+
+
+class _ScriptedPlans:
+    def __init__(self, *texts: str) -> None:
+        self._texts = list(texts)
+
+    def create_response(self, *, model: str, input_text: str, metadata: dict[str, Any] | None = None) -> GatewayResponse:
+        del model, input_text, metadata
+        text = self._texts.pop(0)
+        return GatewayResponse(
+            response_id=f"resp-{len(self._texts)}",
+            output_text=text,
+            gateway_usage=GatewayUsage(gateway_request_id=f"gw-{len(self._texts)}", provider="test", billing_units=1, cost_usd=Decimal("0.001")),
+            raw={"id": "resp"},
+        )
+
+
+class _ApprovingMcp:
+    """A write-classified client MCP tool whose one call is approved and dispatched (as in the #400 control)."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    def requires_write_approval(self, server: str, tool: str) -> bool:
+        return True
+
+    def call_tool(self, server: str, tool: str, arguments: dict, *, one_call_approval: str | None = None):
+        from optimus.agent.models import AgentMcpToolOutput, AgentToolCall
+
+        self.calls.append((server, tool))
+        return (
+            AgentMcpToolOutput(server_name=server, tool_name=tool, text='{"ok":true}'),
+            AgentToolCall(tool_name="mcp_call", summary="called", authorization_outcome="ALLOW"),
+        )
+
+
+class _Broker:
+    def request_write(self, request: Any) -> Any:
+        return type("Approval", (), {"token": "one-call-token"})()
+
+
+def test_the_refusal_never_denies_an_earlier_mcp_effect(tmp_path: Path) -> None:
+    """Round 49, correction 4: an approved, dispatched MCP write on a planning turn stays reported; the refusal
+    speaks only for this WRITE and the TESTs after it."""
+    (tmp_path / "example.py").write_bytes(b"a\r\nb\n")
+    service = _ApprovingMcp()
+    runner = AgentRunner(
+        gateway_client=_ScriptedPlans("MCP_CALL tools write {}", WRITE_THEN_TEST), model="test-model", state_store=InMemoryAgentStateStore(), shell_runner=_Shell()
+    )
+    base: dict[str, Any] = {"run_id": "run-1", "session_id": "sess-1", "task": "Change example.py", "execution_mode": ExecutionMode.AGENT, "workspace_root": tmp_path}
+    plan = runner.run(AgentRunRequest(**base), client_mcp_service=service, mcp_permission_broker=_Broker())
+    assert plan.status is AgentRunStatus.AWAITING_APPROVAL and service.calls == [("tools", "write")]
+
+    result = runner.run(AgentRunRequest(**base, approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan.plan_hash)))
+
+    assert result.output_text == _REFUSAL_TEXT
+    assert "Nothing" not in result.output_text and "no change" not in result.output_text.lower()

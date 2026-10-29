@@ -60,6 +60,8 @@ H3_SOURCE_PATHS = (
     "src/optimus/acp/spec.py",
 )
 
+H3_CURRENT_SOURCE_PATHS = (*H3_SOURCE_PATHS, "src/optimus/acp/process_lifecycle.py", "src/optimus/acp/__main__.py", "src/optimus/acp/local_infra.py")
+
 _OWNERSHIP_ROLES = (
     "REGISTRATION",
     "TASK_GROUP",
@@ -324,6 +326,7 @@ class _SupervisionVisitor(ast.NodeVisitor):
             "asyncio.to_thread",
             "asyncio.run_coroutine_threadsafe",
             "threading.Thread",
+            "loop.run_in_executor",
         }
     )
 

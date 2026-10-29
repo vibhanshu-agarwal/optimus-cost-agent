@@ -1538,3 +1538,167 @@ def test_the_replay_carrier_reads_every_family_and_refuses_a_gap() -> None:
                 record[field][key] = []
         with pytest.raises(MissingSealedEvidence, match=re.escape(f"{field}.{key}")):
             SealedObservations.from_sealed(without_rows)
+
+
+
+def _pad_budget_directory(root: Path, length: int) -> Path:
+    """Construct only owned ASCII components; never shorten or alias an external root."""
+    path = root.resolve(strict=True)
+    assert str(path) == os.path.realpath(path) and len(str(path)) <= length
+    while len(str(path)) < length:
+        remaining = length - len(str(path))
+        assert remaining > 1, "ISSUE287_PATH_GEOMETRY"
+        count = min(40, remaining - 1)
+        if remaining - count - 1 == 1:
+            count -= 1
+        path = path / ("p" * count)
+        path.mkdir()
+    assert len(str(path)) == length and path.resolve(strict=True) == path
+    assert path.is_relative_to(root.resolve(strict=True))
+    return path
+
+
+def _budget_tempfile_facade(reference_name: str, facts: dict, *, simulated: bool):
+    """Observe only the evidence writer's tempfile call, preserving process-wide modules."""
+    import errno
+
+    match = re.fullmatch(r"(CM-h5-shutdown_schedule|CM-identity-echo_bound_modules)\.[0-9a-f]{32}\.evidence\.json", reference_name)
+    assert match is not None
+    selected = match.group(1)
+    basename_length, parent_length, short_length = {
+        "CM-h5-shutdown_schedule": (70, 175, 198),
+        "CM-identity-echo_bound_modules": (77, 168, 191),
+    }[selected]
+    real_mkstemp = tempfile.mkstemp
+
+    def mkstemp(*, prefix, suffix, dir):
+        parent = Path(dir)
+        actual_length = len(str(parent / (prefix + "0" * 8 + suffix)))
+        old_length = len(str(parent / ("." + reference_name + "." + "0" * 8 + suffix)))
+        facts.update(selected_case=selected, parent=str(parent), basename_length=len(reference_name), parent_length=len(str(parent)),
+                     final_length=len(str(parent / reference_name)), old_temp_length=old_length,
+                     actual_temp_length=actual_length, simulated=simulated, real_mkstemp_delegated=False)
+        print("ISSUE287_V19_PATH_FACTS " + json.dumps({**facts, "event": "geometry"}, sort_keys=True))
+        assert len(reference_name) == basename_length
+        assert actual_length == (260 if prefix == "." + reference_name + "." else short_length)
+        assert parent.resolve(strict=True) == parent and str(parent) == os.path.realpath(parent)
+        assert len(str(parent)) == parent_length and len(str(parent / reference_name)) == 246
+        assert old_length == 260 and suffix == ".tmp"
+        assert len(str(parent)) < 248 and not str(parent).startswith("\\\\")
+        assert max(map(len, parent.parts[1:])) < 256 and len(reference_name) < 256
+        assert prefix in {"." + reference_name + ".", ".evidence-"}
+        before = parent.stat()
+        facts.update(parent=str(parent), parent_length=len(str(parent)), final_length=len(str(parent / reference_name)), old_temp_length=old_length,
+                     actual_temp_length=actual_length, parent_identity=[before.st_dev, before.st_ino],
+                     parent_component_max=max(map(len, parent.parts[1:])),
+                     final_component_max=max(map(len, (parent / reference_name).parts[1:])),
+                     temp_component_max=max(map(len, (parent / (prefix + "0" * 8 + suffix)).parts[1:])),
+                     simulated=simulated, controls=[], native_error=None, real_mkstemp_delegated=False)
+        if not simulated:
+            for filename in ("short-control", "b" * (259 - len(str(parent)) - 1)):
+                control = parent / filename
+                created = False
+                try:
+                    with control.open("xb") as stream:
+                        created = True
+                        stream.write(b"control")
+                    assert control.read_bytes() == b"control"
+                    facts["controls"].append(dict(length=len(str(control)), passed=True, bytes=7))
+                finally:
+                    if created:
+                        control.unlink()
+            after_controls = parent.stat()
+            assert (before.st_dev, before.st_ino) == (after_controls.st_dev, after_controls.st_ino)
+        if simulated and actual_length >= 260:
+            facts["simulated_denial"] = True
+            raise OSError(errno.ENAMETOOLONG, "ISSUE287_SIMULATED_LIMIT")
+        try:
+            facts["real_mkstemp_delegated"] = True
+            result = real_mkstemp(prefix=prefix, suffix=suffix, dir=dir)
+        except OSError as error:
+            after = parent.stat()
+            filename = str(error.filename) if error.filename is not None else None
+            stable = (before.st_dev, before.st_ino) == (after.st_dev, after.st_ino)
+            signals = []
+            if getattr(error, "winerror", None) in {3, 206}:
+                signals.append("winerror")
+            if error.errno in {errno.ENOENT, errno.ENAMETOOLONG}:
+                signals.append("errno")
+            facts["native_error"] = dict(category="OS_ERROR", errno=error.errno,
+                winerror=getattr(error, "winerror", None), filename_length=len(filename) if filename else None,
+                filename_parent_matches=Path(filename).parent == parent if filename else False,
+                parent_stable=stable, qualifying_signals=signals)
+            facts["qualifying_native_red"] = bool(not simulated and stable and signals and filename
+                and len(filename) == 260 and Path(filename).parent == parent
+                and [row["length"] for row in facts["controls"]] == [len(str(parent / "short-control")), 259])
+            raise
+        else:
+            facts["created_temp_length"] = len(result[1])
+            return result
+
+    return SimpleNamespace(mkstemp=mkstemp)
+
+
+@pytest.mark.parametrize("mode", [pytest.param("native", marks=pytest.mark.skipif(sys.platform != "win32", reason="native Windows IO")), "simulated"], ids=["native", "simulated"])
+def test_short_sidecar_temp_path(tmp_path, monkeypatch, mode):
+    result = {"inventory": {"kind": "bound-modules", "paths": ["a.py"]},
+              "inventory_identifiers": ["a.py"], "observations": [{"observation_id": "a.py", "value": 1}]}
+    _, encoded, reference = evidence_store.build_evidence_payload(record_id="CM-identity-echo_bound_modules",
+        entry="identity.echo_bound_modules", binding=_REVIEW_BINDING, result=result)
+    assert len(reference.location) == 77
+    directory = _pad_budget_directory(tmp_path, 168)
+    assert len(str(directory / reference.location)) == 246 and len(str(directory)) < 248
+    assert len(str(directory / ("." + reference.location + "." + "0" * 8 + ".tmp"))) == 260
+    assert max(map(len, (directory / reference.location).parts[1:])) < 256
+    facts = {"kind": "ISSUE287_V19_PATH_BUDGET", "mode": mode, "pid": os.getpid()}
+    monkeypatch.setattr(evidence_store, "tempfile", _budget_tempfile_facade(reference.location, facts, simulated=mode == "simulated"))
+    try:
+        actual = write_evidence_sidecar(directory=directory, record_id="CM-identity-echo_bound_modules",
+            entry="identity.echo_bound_modules", binding=_REVIEW_BINDING, result=result)
+        assert actual == reference and (directory / reference.location).read_bytes() == encoded
+        restored = evidence_store.verify_retained_evidence(record_id="CM-identity-echo_bound_modules", measurement_binding=_REVIEW_BINDING,
+            observation_digest=reference.observation_digest, reference=actual, base_directory=directory)
+        assert restored["observations"] == result["observations"] and restored["inventory"] == result["inventory"]
+        assert _files_under(directory) == {reference.location}
+        assert facts["created_temp_length"] < 260
+    finally:
+        (tmp_path / "path-budget.json").write_text(json.dumps(facts, sort_keys=True), encoding="utf-8")
+        print("ISSUE287_V19_PATH_FACTS " + json.dumps({**facts, "proof": str(tmp_path / "path-budget.json")}, sort_keys=True))
+
+
+@pytest.mark.parametrize("failure", ["write", "fsync", "replace"])
+def test_short_sidecar_fault_cleanup(tmp_path, monkeypatch, failure):
+    sentinel = tmp_path / "unrelated"
+    sentinel.write_bytes(b"preserve")
+    result = {"inventory": {"kind": "bound-modules", "paths": ["a.py"]},
+              "inventory_identifiers": ["a.py"], "observations": [{"observation_id": "a.py", "value": 1}]}
+    error = OSError("ISSUE287_SYNTHETIC_WRITE_FAILURE")
+    real_fdopen, real_fsync, real_replace = os.fdopen, os.fsync, os.replace
+
+    def fail(*args, **kwargs):
+        raise error
+
+    class FailingWrite:
+        def __init__(self, descriptor, mode):
+            self.stream = real_fdopen(descriptor, mode)
+
+        def __enter__(self):
+            self.stream.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.stream.__exit__(*args)
+
+        def write(self, data):
+            raise error
+
+    facade = SimpleNamespace(fdopen=FailingWrite if failure == "write" else real_fdopen,
+                             fsync=fail if failure == "fsync" else real_fsync,
+                             replace=fail if failure == "replace" else real_replace)
+    monkeypatch.setattr(evidence_store, "os", facade)
+    with pytest.raises(OSError) as caught:
+        write_evidence_sidecar(directory=tmp_path, record_id="CM-identity-echo_bound_modules",
+            entry="identity.echo_bound_modules", binding=_REVIEW_BINDING, result=result)
+    assert caught.value is error
+    assert _files_under(tmp_path) == {"unrelated"}
+    assert sentinel.read_bytes() == b"preserve"

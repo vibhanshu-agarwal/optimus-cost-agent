@@ -85,6 +85,11 @@ class GatewayRouteAttempt(BaseModel):
     provider_request_id: str | None = None
     router_pipeline: tuple[str, ...] | None = None
     """The router pipeline stage types the Gateway reported for a completed attempt (None when not reported)."""
+    router_guardrails: Any = None
+    """Each guardrail stage's closed facts, as the Gateway reported them when one ran (#400). Diagnostic only, so any
+    value at all is accepted here, container or entry, and re-bounded before any trace
+    (``failure_facts.bounded_guardrail_list``): it can never make the attempt list malformed and so disturb its
+    accounting (Codex round 40, finding 1). None when not reported."""
     failure: dict[str, str | int | None] | None = None
     """A failed attempt's bounded, content-free cause, as the Gateway reported it (re-bounded before any trace)."""
 
@@ -122,6 +127,19 @@ class GatewayResponse(BaseModel):
         Such a reply is never used as a plan or shown as an answer (operator decision 2026-10-02,
         Claude and Codex concurring). A missing or other status is left to the activation contract."""
         return self.finish_reason in _UNFINISHED_FINISH_REASONS
+
+
+class GatewayDecision(BaseModel):
+    """One classifier decision through the Gateway (Plan 12.4 Task 5). ``answers`` is None when the reply's answers,
+    id or model were malformed: the decision is then unusable, but its usage and attempts are kept for accounting."""
+
+    model_config = ConfigDict(frozen=True)
+
+    decision_id: str | None = None
+    model: str | None = None
+    answers: dict[str, Any] | None
+    gateway_usage: GatewayUsage
+    route_attempts: tuple[GatewayRouteAttempt, ...] = ()
 
 
 def build_responses_payload(
@@ -248,3 +266,24 @@ def _extract_text_from_output(output: object) -> str | None:
     if not chunks:
         return None
     return "".join(chunks)
+
+
+def parse_decision_response(body: dict[str, Any]) -> GatewayDecision:
+    """Parse a 200 decision reply (Plan 12.4 Task 5). Usage, then attempts, are read first: their defects raise as for
+    a model reply, keeping any valid usage. A malformed ``id``, ``model`` or ``answers`` never raises: it makes the
+    decision unusable while its usage and attempts stay intact for attribution and integrity checks."""
+    usage_body = body.get("gateway_usage")
+    if not isinstance(usage_body, dict):
+        raise GatewayResponseError("gateway_usage missing", audit_code="GATEWAY_USAGE_MISSING")
+    usage = parse_gateway_usage(usage_body)
+    route_attempts: tuple[GatewayRouteAttempt, ...] = ()
+    if "route_attempts" in body:
+        try:
+            route_attempts = parse_route_attempts(body["route_attempts"])
+        except (ValueError, ValidationError) as exc:
+            raise GatewayResponseError("route_attempts is malformed", gateway_usage=usage, audit_code="ROUTE_ATTEMPTS_MALFORMED") from exc
+    decision_id, model, answers = body.get("id"), body.get("model"), body.get("answers")
+    usable = isinstance(answers, dict) and (decision_id is None or isinstance(decision_id, str)) and (model is None or isinstance(model, str))
+    if not usable:
+        return GatewayDecision(answers=None, gateway_usage=usage, route_attempts=route_attempts)
+    return GatewayDecision(decision_id=decision_id, model=model, answers=answers, gateway_usage=usage, route_attempts=route_attempts)

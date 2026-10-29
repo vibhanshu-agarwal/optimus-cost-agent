@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
-from optimus.gateway.models import GatewayResponse, GatewayRouteAttempt, GatewayUsage
+from optimus.gateway.models import GatewayDecision, GatewayResponse, GatewayRouteAttempt, GatewayUsage
 from optimus_security.failure_facts import bounded, bounded_failure, exception_fact
 
 __all__ = [
@@ -47,6 +47,7 @@ __all__ = [
     "UPSTREAM_ATTEMPT_CODES",
     "AttemptIntegrityError",
     "ProviderAttempt",
+    "attempts_from_decision",
     "attempts_from_failure",
     "attempts_from_response",
     "first_error",
@@ -74,6 +75,8 @@ PREFLIGHT_REFUSAL_CODES = frozenset(
         "BINDING_UNSUPPORTED",
         "BINDING_VERSION_UNSUPPORTED",
         "CAPACITY_REFUSED",
+        "DECISIONS_NEED_REGISTRY",
+        "DECISION_DISCLOSURE_UNSUPPORTED",
         "DISCLOSURE_INVALID",
         "DISCLOSURE_REQUIRED",
         "EMPIRICAL_ROUTE_STOPPED",
@@ -102,6 +105,7 @@ PREFLIGHT_REFUSAL_CODES = frozenset(
 # checks, status 422). On the experimental route each one also stops the route (r8 offline correction).
 REPLY_REFUSAL_CODES = frozenset(
     {
+        "DECISION_MODEL_MISMATCH",
         "EMPIRICAL_ESTIMATE_EXCEEDED",
         "EMPIRICAL_PROVIDER_MISMATCH",
         "EMPIRICAL_PROVIDER_MISSING",
@@ -168,6 +172,7 @@ class ProviderAttempt:
     gateway_usage: GatewayUsage | None = None
     routed: bool = False
     router_pipeline: tuple[str, ...] | None = None
+    router_guardrails: Any = None  # as received; diagnostic only, re-bounded wherever it is persisted (#400)
     failure: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
@@ -315,9 +320,18 @@ def stops_experimental_route(exc: BaseException, *, experimental: bool) -> bool:
     return exc.gateway_code == "EMPIRICAL_ROUTE_STOPPED" or experimental
 
 
+# The closing sentence of every stopped-route text, Chat's and Agent mode's (r8 offline correction; #400).
+ROUTE_STOPPED_NO_RETRY = "No further request on this route will be sent while this agent runs, so retrying will not help."
+
+
 def attempts_from_response(response: GatewayResponse) -> tuple[ProviderAttempt, ...]:
     """Every provider attempt behind a successful response."""
     return _attempts(response.route_attempts, response.gateway_usage, http_status=None)
+
+
+def attempts_from_decision(decision: GatewayDecision) -> tuple[ProviderAttempt, ...]:
+    """Every provider attempt behind a 200 decision reply (Plan 12.4 Task 5), attributed as for a model reply."""
+    return _attempts(decision.route_attempts, decision.gateway_usage, http_status=None)
 
 
 def attempts_from_failure(exc: BaseException) -> tuple[ProviderAttempt, ...]:
@@ -395,5 +409,6 @@ def _routed(item: GatewayRouteAttempt, usage: GatewayUsage | None) -> ProviderAt
         gateway_usage=usage,
         routed=True,
         router_pipeline=item.router_pipeline,
+        router_guardrails=item.router_guardrails,
         failure=item.failure,
     )

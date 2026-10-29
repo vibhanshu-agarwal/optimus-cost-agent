@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import threading
+from unittest.mock import create_autospec
 
 import pytest
 
@@ -19,9 +20,11 @@ from optimus.redis.async_bridge import (
     RedisLoopOwnerShutdownIncomplete,
 )
 from optimus.redis.runtime import (
+    CloseablePool,
     RedisRuntime,
     RedisRuntimeShutdownIncomplete,
     RedisRuntimeState,
+    RuntimeClient,
     StageOutcome,
 )
 from optimus.telemetry.redis_adapter import RedisTelemetryAdapter
@@ -60,8 +63,16 @@ def owner():
             pass
 
 
+def _checked_resource(script, contract):
+    if script is None:
+        return None
+    checked = create_autospec(contract, instance=True, spec_set=True)
+    checked.aclose.side_effect = script.aclose
+    return checked
+
+
 def _runtime(owner, *, client=None, pool=None) -> RedisRuntime:
-    return RedisRuntime(pool=pool or _CountingResource(), client=client, owner=owner)
+    return RedisRuntime(pool=_checked_resource(pool or _CountingResource(), CloseablePool), client=_checked_resource(client, RuntimeClient), owner=owner)
 
 
 def test_redis_runtime_shares_pool_between_state_store_and_telemetry():
@@ -243,7 +254,7 @@ def test_startup_rollback_closes_the_pool_when_the_client_cannot_be_built(monkey
         async def aclose(self) -> None:
             closed.append("pool")
 
-    monkeypatch.setattr(aioredis.ConnectionPool, "from_url", staticmethod(lambda *a, **k: _Pool()))
+    monkeypatch.setattr(aioredis.ConnectionPool, "from_url", create_autospec(aioredis.ConnectionPool.from_url, side_effect=lambda *a, **k: _checked_resource(_Pool(), CloseablePool)))
     monkeypatch.setattr(
         aioredis,
         "Redis",
@@ -288,7 +299,7 @@ def test_startup_rollback_preserves_the_original_error_over_a_cleanup_failure(mo
         async def aclose(self) -> None:
             raise RuntimeError("pool cleanup failed")
 
-    monkeypatch.setattr(aioredis.ConnectionPool, "from_url", staticmethod(lambda *a, **k: _AngryPool()))
+    monkeypatch.setattr(aioredis.ConnectionPool, "from_url", create_autospec(aioredis.ConnectionPool.from_url, side_effect=lambda *a, **k: _checked_resource(_AngryPool(), CloseablePool)))
     monkeypatch.setattr(
         aioredis,
         "Redis",
@@ -433,7 +444,7 @@ def test_admitted_work_settles_before_any_resource_is_closed(owner):
         async def aclose(self) -> None:
             observations.append(done.is_set())
 
-    runtime = RedisRuntime(pool=_Observer(), client=_Observer(), owner=owner)
+    runtime = RedisRuntime(pool=_checked_resource(_Observer(), CloseablePool), client=_checked_resource(_Observer(), RuntimeClient), owner=owner)
     handle = owner.submit(_operation)
     assert entered.wait(5)
 
@@ -532,7 +543,7 @@ def test_a_resource_timeout_is_not_reported_as_an_incomplete_shutdown(owner, fai
     client = _TimingOutResource("client", failing_stage, calls)
     pool = _TimingOutResource("pool", failing_stage, calls)
     failure = client.error if failing_stage == "client" else pool.error
-    runtime = RedisRuntime(pool=pool, client=client, owner=owner)
+    runtime = RedisRuntime(pool=_checked_resource(pool, CloseablePool), client=_checked_resource(client, RuntimeClient), owner=owner)
 
     observed: list[BaseException] = []
     for _ in range(2):  # first AND repeated observer
@@ -561,7 +572,7 @@ def test_concurrent_observers_both_receive_the_original_resource_timeout(owner):
     calls: list[str] = []
     client = _TimingOutResource("client", "client", calls)
     pool = _TimingOutResource("pool", "client", calls)
-    runtime = RedisRuntime(pool=pool, client=client, owner=owner)
+    runtime = RedisRuntime(pool=_checked_resource(pool, CloseablePool), client=_checked_resource(client, RuntimeClient), owner=owner)
 
     seen: list[BaseException] = []
 
@@ -862,3 +873,33 @@ def test_typing_runtime_required_client_refuses_missing_and_preserves_identity()
     client = object()
     present = RedisRuntime(pool=object(), client=client, owner=object())
     assert present.required_client is client
+
+
+def test_contract_runtime_resource_rejects_unknown_attributes(owner):
+    script = _CountingResource()
+    runtime = _runtime(owner, client=script)
+    try:
+        with pytest.raises(AttributeError):
+            runtime.required_client.unknown_client_operation = True
+        with pytest.raises(TypeError):
+            runtime.required_client.aclose(obsolete_timeout=1)
+    finally:
+        runtime.close(timeout=5)
+
+
+@pytest.mark.parametrize("invalid_sync_return", [False, True])
+def test_contract_runtime_awaits_close_and_attributes_invalid_return(owner, invalid_sync_return):
+    client, pool = _CountingResource(), _CountingResource()
+    runtime = _runtime(owner, client=client, pool=pool)
+    if invalid_sync_return:
+        runtime.required_client.aclose.side_effect = lambda: None
+        with pytest.raises(TypeError) as failure:
+            runtime.close(timeout=5)
+        record = runtime.teardown_record
+        assert record.client is StageOutcome.FAILED
+        assert record.client_error is failure.value
+        assert client.count == 0
+    else:
+        record = runtime.close(timeout=5)
+        assert record.is_clean and client.count == 1
+    assert record.owner_terminated and pool.count == 1

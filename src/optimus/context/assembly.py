@@ -302,6 +302,8 @@ class ContextOutcome:
     kind: Literal["view", "fallback", "unavailable", "cancelled"]
     reason: str | None = None
     floor_bytes: int | None = None
+    route_stopped: bool = False
+    """A summary call's failure proved the shared experimental route stopped (#400); selects user text only."""
 
 
 # --- Attachment configuration --------------------------------------------------------------------
@@ -362,6 +364,11 @@ class _TurnMaintenance:
         self.raised = False
         self.last_status: str | None = None
         self.last_finish: str | None = None
+
+    @property
+    def route_stopped(self) -> bool:
+        """Whether a call this turn proved the shared experimental route stopped (#400)."""
+        return self._host is not None and self._host.route_stopped
 
     @property
     def remaining(self) -> int:
@@ -493,6 +500,31 @@ class AttachedTurn:
             record_integrity_failure=record_integrity_failure,
         )
 
+    def bind_attachment(self, attachment: ContextAttachment) -> None:
+        """An Auto turn's own attachment: the selected model's limits on the launch's base (Plan 12.4 Task 4). Bound
+        once classification has chosen the model, before preparation; the captured history and settings are kept."""
+        if self._snapshot is not None:
+            raise RuntimeError("an attached turn's attachment is bound before the turn is prepared")
+        self._attachment = attachment
+
+    def escalate_attachment(self, target: ContextAttachment) -> None:
+        """A prepared turn moves to its escalation model mid-turn (#397). What is measured in the target's tokens is
+        taken from it: the request estimator and capacity, and the history limits, which come from the same estimator
+        ratio, so `fit()`'s overflow and a repack's view cost share one unit. The turn keeps its own parameters (whose
+        digest keys its checkpoint), summarizer, captured history and admission (its digest stays the turn's historical
+        identity), maintenance allowance, repacks and dispatch readings."""
+        self._attachment = dataclasses.replace(
+            self._attachment,
+            model_id=target.model_id,
+            estimate_request=target.estimate_request,
+            usable_input_tokens=target.usable_input_tokens,
+            limits=target.limits,
+        )
+
+    @property
+    def model_id(self) -> str:
+        return self._attachment.model_id
+
     @property
     def strategy(self) -> str:
         """The strategy captured at admission; a later setter never changes it."""
@@ -501,6 +533,12 @@ class AttachedTurn:
     @property
     def maintenance_calls(self) -> int:
         return self._maintenance.calls if self._maintenance is not None else 0
+
+    @property
+    def route_stopped(self) -> bool:
+        """Whether a summary call this turn, in preparation or in any repack, proved the shared experimental route
+        stopped (#400; Codex round 41). The context-fit exits read it to choose their text; nothing else does."""
+        return self._maintenance is not None and self._maintenance.route_stopped
 
     @property
     def fallback(self) -> bool:
@@ -567,11 +605,12 @@ class AttachedTurn:
             self._admit("view", view)
             return ContextOutcome("view")
         floor = probe_floor(self._records, self._current_prompt, turn_seq=self._turn_seq)
+        stopped = self._maintenance.route_stopped
         if floor > CONVERSATION_MAX_BYTES:
-            return ContextOutcome("unavailable", reason=view.reason, floor_bytes=floor)
+            return ContextOutcome("unavailable", reason=view.reason, floor_bytes=floor, route_stopped=stopped)
         self._fallback = True
         self._admit("full_history", full_history_view(snapshot))
-        return ContextOutcome("fallback", reason=view.reason, floor_bytes=floor)
+        return ContextOutcome("fallback", reason=view.reason, floor_bytes=floor, route_stopped=stopped)
 
     def _prepare_view(
         self, history_tokens: int, checkpoint: SummaryCheckpoint | None, *, phase: Literal["prepare", "repack"]

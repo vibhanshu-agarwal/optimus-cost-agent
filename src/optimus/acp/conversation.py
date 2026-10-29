@@ -275,6 +275,10 @@ class ConversationState:
         return len(self._records)
 
     @property
+    def next_turn_seq(self) -> int:
+        return self._next_turn_seq
+
+    @property
     def sanitizer(self) -> ConversationSanitizer:
         return self._sanitizer
 

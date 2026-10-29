@@ -78,6 +78,26 @@ class LaunchPolicyError(ValueError):
 
 DEFAULT_LIVE_MAX_COST_USD = Decimal("0.25")
 DEFAULT_MAX_PLANNING_TURNS = 3
+DEFAULT_ACP_MCP_IDLE_SECONDS = 3600
+MAX_ACP_MCP_IDLE_SECONDS = 2592000
+
+
+def _parse_acp_mcp_idle_seconds(value: str) -> int:
+    raw = value.strip()
+    if len(raw) > 7 or not raw.isascii() or not raw.isdecimal() or not 1 <= int(raw) <= MAX_ACP_MCP_IDLE_SECONDS:
+        raise ValueError("OPTIMUS_ACP_MCP_IDLE_SECONDS must be an integer from 1 through 2592000")
+    return int(raw)
+
+
+def resolve_acp_mcp_idle_seconds(environ: Mapping[str, str]) -> int:
+    return _parse_acp_mcp_idle_seconds(environ.get("OPTIMUS_ACP_MCP_IDLE_SECONDS", str(DEFAULT_ACP_MCP_IDLE_SECONDS)))
+
+
+def _display_acp_mcp_idle(value: str) -> str:
+    raw = value.strip()
+    if raw.isascii() and raw.isdecimal() and len(raw) <= 7 and int(raw) <= 60:
+        return raw + " seconds; very short delays cause frequent fresh permission prompts"
+    return raw
 
 # --- Prefix constant ---
 
@@ -233,6 +253,15 @@ def _model_value_has_userinfo(value: str) -> bool:
         return True
     parsed = urlparse(value)
     return bool(parsed.scheme) and (parsed.username is not None or parsed.password is not None)
+
+
+def _parse_loop_recovery(value: str) -> int:
+    """Parse the loop-recovery mode into its monotonic order: headless 0, interactive 1 (Plan 12.3)."""
+    order = {"headless": 0, "interactive": 1}
+    stripped = value.strip().lower()
+    if stripped not in order:
+        raise ValueError(f"Loop recovery must be interactive or headless, got: {stripped!r}")
+    return order[stripped]
 
 
 def _parse_model(value: str) -> str:
@@ -546,6 +575,27 @@ _register(
     tier=LaunchVariableTier.MONOTONIC_LIMIT,
     propagation=frozenset({PropagationTarget.AGENT_CHILD}),
     parser=_parse_monotonic_turns,
+    display=_display_literal,
+    approval="monotonic_tighten_or_exact",
+    uri_userinfo=False,
+)
+
+# Plan 12.3: headless (0) is tighter than the default interactive (1), so choosing it needs no approval.
+_register(
+    "OPTIMUS_ACP_MCP_IDLE_SECONDS",
+    tier=LaunchVariableTier.MONOTONIC_LIMIT,
+    propagation=frozenset({PropagationTarget.AGENT_CHILD}),
+    parser=_parse_acp_mcp_idle_seconds,
+    display=_display_acp_mcp_idle,
+    approval="monotonic_tighten_or_exact",
+    uri_userinfo=False,
+)
+
+_register(
+    "OPTIMUS_LOOP_RECOVERY",
+    tier=LaunchVariableTier.MONOTONIC_LIMIT,
+    propagation=frozenset({PropagationTarget.AGENT_CHILD}),
+    parser=_parse_loop_recovery,
     display=_display_literal,
     approval="monotonic_tighten_or_exact",
     uri_userinfo=False,

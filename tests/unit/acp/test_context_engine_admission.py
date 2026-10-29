@@ -44,6 +44,7 @@ from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.context.assembly import ContextAttachment, SummarizerRoute, probe_floor
 from optimus.context.maintenance import SummarizerAttempt, SummarizerResponse
 from optimus.runtime.modes import ExecutionMode
+from tests.support.contract_doubles import checked_agent_runner
 
 
 def estimate(text: str) -> int:
@@ -166,7 +167,7 @@ def make_adapter(tmp_path: Path, attachment: ContextAttachment | None, runner: R
     outbound = RecordingOutboundChannel()
     runner = runner or Runner()
     adapter = AcpDuplexAdapter(
-        runner=runner,
+        runner=checked_agent_runner(runner),
         workspace_root=tmp_path,
         sessions=InMemoryAcpSpecSessionStore(),
         outbound=outbound,
@@ -347,6 +348,55 @@ async def test_unavailable_engine_refusals_above_the_floor_stay_open_until_a_hea
     assert response["result"]["stopReason"] == "end_turn"
     assert len(runner.requests) == 1 and engine.calls == 4
     assert conversation.disposition is ConversationDisposition.OPEN
+
+
+class _SummarizingThenFailingEngine:
+    """Calls the host's maintenance once, as a real compaction does, then reports `maintenance failed`."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def prepare_view(self, snapshot, **kwargs) -> PreparedView:
+        from context_engine.contracts import MaintenanceRequest
+
+        self.calls += 1
+        kwargs["maintenance"](
+            MaintenanceRequest(input_text="history", covered_turn_ids=(1,), max_output_tokens=10, prompt_version=PROMPT_VERSION, format_version=SUMMARY_FORMAT)
+        )
+        return PreparedView((), (), None, snapshot.protected, (), (), False, "maintenance failed")
+
+
+class _StoppedRouteSummarizer:
+    """A summary request whose failure proved the shared experimental route stopped (#400): no summary, no charge."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def __call__(self, *, prompt: str, max_output_tokens: int) -> SummarizerResponse:
+        self.calls += 1
+        return SummarizerResponse(text=None, finish_status=None, attempts=(), route_stopped=True)
+
+
+async def test_a_summary_that_proved_the_route_stopped_says_so_and_never_suggests_a_retry(tmp_path):
+    """Codex round 40, finding 2: the summarizer shares the planner's stopped route, so neither a retry nor Sliding
+    window can help. Accounting, the engine reason and the unavailable decision are unchanged."""
+    engine, summarizer = _SummarizingThenFailingEngine(), _StoppedRouteSummarizer()
+    adapter, outbound, runner = make_adapter(tmp_path, make_attachment(engine=engine, summarizer=summarizer))
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    conversation = session_of(adapter, session_id).conversation
+    commit_record(conversation, ("history " * CONVERSATION_MAX_BYTES)[: CONVERSATION_MAX_BYTES - 2000])
+    text = "p" * (CONVERSATION_MAX_BYTES + 1 - probe_floor(conversation.records, ""))
+
+    response = await prompt(adapter, outbound, session_id, text, "stopped")
+
+    assert response["result"]["stopReason"] == "end_turn"
+    assert (engine.calls, summarizer.calls, runner.requests) == (1, 1, [])  # unavailable: no planning or answer call
+    [shown] = texts(outbound)
+    assert shown == context_unavailable_text("maintenance failed", "compaction", route_stopped=True)
+    lowered = shown.lower()
+    assert "retrying may help" not in lowered and "sliding window" not in lowered
+    assert "retrying will not help" in lowered and shown.endswith(CONTEXT_UNAVAILABLE_ENDING)
+    assert shown != context_unavailable_text("maintenance failed", "compaction")
 
 
 async def test_genuine_source_exhaustion_is_not_overridden_by_a_healthy_engine(tmp_path):

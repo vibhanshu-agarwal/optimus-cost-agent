@@ -8,12 +8,16 @@ import json
 import uuid
 from urllib.error import URLError
 
+import pytest
+
 from optimus_security.failure_facts import (
     bounded,
     bounded_failure,
+    bounded_guardrail_facts,
     exception_fact,
     final_sanitize,
     gateway_request_id,
+    guardrail_stage_facts,
     host_route_id,
     host_session_id,
     provider_request_id,
@@ -22,6 +26,89 @@ from optimus_security.failure_facts import (
 )
 
 CANARY = "Bearer " + "failure-facts-canary-token"  # synthetic; must never survive into a fact
+
+
+# --- #400: a guardrail router stage's closed facts (agreed handling D, Codex round 39) ----------------------------
+
+# OpenRouter's documented blocked-guardrail stage (router-metadata guide, "Guardrail Blocked (403)"), with a canary in
+# every free-text or identifying field.
+BLOCKED_STAGE = {
+    "type": "guardrail",
+    "name": CANARY,
+    "guardrail_id": CANARY,
+    "guardrail_scope": "api-key",
+    "summary": CANARY,
+    "data": {"action": "blocked", "detected": True, "engines": [CANARY], "patterns": [CANARY]},
+}
+
+
+def test_a_guardrail_stage_keeps_only_its_documented_closed_facts() -> None:
+    facts = guardrail_stage_facts(BLOCKED_STAGE)
+    assert facts == {
+        "flagged": "missing", "detected": True, "decision": "missing", "action": "blocked",
+        "verdict_conflict": False, "guardrail_scope": "api-key",
+    }  # fmt: skip
+    assert CANARY not in json.dumps(facts)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(True, True), (False, False), ("false", "invalid"), (0, "invalid"), (None, "invalid")],
+)
+def test_a_guardrail_boolean_is_never_coerced(value, expected) -> None:
+    assert guardrail_stage_facts({"type": "guardrail", "data": {"flagged": value}})["flagged"] == expected
+
+
+def test_undocumented_verdicts_and_scopes_are_unrecognized_and_wrong_types_invalid() -> None:
+    stage = {"type": "guardrail", "guardrail_scope": "workspace", "data": {"action": "redacted", "decision": "allow"}}
+    facts = guardrail_stage_facts(stage)
+    assert (facts["action"], facts["decision"], facts["guardrail_scope"]) == ("unrecognized", "unrecognized", "unrecognized")
+    facts = guardrail_stage_facts({"type": "guardrail", "guardrail_scope": 7, "data": {"action": 5}})
+    assert (facts["action"], facts["guardrail_scope"]) == ("invalid", "invalid")
+
+
+def test_a_stage_without_readable_data_records_why() -> None:
+    assert guardrail_stage_facts({"type": "guardrail"}) == {
+        "flagged": "missing", "detected": "missing", "decision": "missing", "action": "missing",
+        "verdict_conflict": False, "guardrail_scope": "missing",
+    }  # fmt: skip
+    facts = guardrail_stage_facts({"type": "guardrail", "data": [CANARY]})
+    assert {facts[key] for key in ("flagged", "detected", "decision", "action")} == {"invalid"}
+    assert CANARY not in json.dumps(facts)
+
+
+def test_disagreeing_decision_and_action_set_the_conflict_indicator_and_neither_is_preferred() -> None:
+    def conflict(data: dict) -> bool:
+        return guardrail_stage_facts({"type": "guardrail", "data": data})["verdict_conflict"]
+
+    assert conflict({"decision": "block", "action": "blocked"}) is True
+    assert conflict({"decision": "blocked", "action": "blocked"}) is False
+    assert conflict({"action": "blocked"}) is False
+    facts = guardrail_stage_facts({"type": "guardrail", "data": {"decision": "block", "action": "blocked"}})
+    assert (facts["decision"], facts["action"]) == ("unrecognized", "blocked")  # recorded apart, no alias wins
+
+
+def test_an_explicit_null_verdict_is_present_and_can_conflict_but_a_missing_one_cannot() -> None:
+    """Codex round 40, finding 4: presence is the key, never its value."""
+
+    def facts(data: dict) -> dict:
+        return guardrail_stage_facts({"type": "guardrail", "data": data})
+
+    assert facts({"decision": None, "action": "blocked"})["verdict_conflict"] is True
+    assert facts({"decision": None, "action": None})["verdict_conflict"] is False  # present and equal
+    assert facts({"action": "blocked"})["verdict_conflict"] is False
+    assert facts({"decision": None})["verdict_conflict"] is False
+    assert facts({"decision": None})["decision"] == "invalid"
+
+
+def test_received_guardrail_facts_are_re_bounded_before_they_are_persisted() -> None:
+    received = {"flagged": "yes", "detected": True, "decision": CANARY, "action": "blocked", "verdict_conflict": CANARY,
+                "guardrail_scope": CANARY, "name": CANARY}  # fmt: skip
+    assert bounded_guardrail_facts(received) == {
+        "flagged": "invalid", "detected": True, "decision": "unrecognized", "action": "blocked",
+        "verdict_conflict": "invalid", "guardrail_scope": "unrecognized",
+    }  # fmt: skip
+    assert bounded_guardrail_facts(CANARY) is None
 
 
 def test_an_exception_fact_names_its_class_and_errno_and_never_its_text() -> None:
@@ -138,3 +225,9 @@ def test_final_sanitize_redacts_a_bare_credential_by_its_prefix_and_keeps_real_i
     cleaned = final_sanitize({"error": f"refused {BARE_KEY}", **real})
     assert BARE_KEY not in json.dumps(cleaned)
     assert {key: cleaned[key] for key in real} == real
+
+
+@pytest.mark.parametrize("kind", ["attempt_deadline", "attempt_capacity", "request_budget"])
+def test_the_request_budget_failure_kinds_survive_re_bounding(kind: str) -> None:
+    """Codex round 2 on #397 Z2: an unlisted kind is persisted as unrecognized, losing why the attempt ended."""
+    assert bounded_failure({"kind": kind}) == {"kind": kind}

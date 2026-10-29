@@ -1,8 +1,9 @@
 """Plan 12.2 Task 5: the agent model default and the host's route-binding wire.
 
 Enforcement is active (closure plan v3). Under an enforced registry the default is its cheapest eligible medium
-model, else its first eligible easy model; configured models must be exact eligible IDs, and ``auto`` is refused
-because no accepted resolver is installed. ``registry=None`` keeps the inactive rules for callers that pass it.
+model, else its first eligible easy model; configured models must be exact eligible IDs, and ``auto`` is never a model
+ID: an Auto launch takes its own composition path (Plan 12.4; ``test_auto_launch_composition.py``). ``registry=None``
+keeps the inactive rules for callers that pass it.
 """
 
 from __future__ import annotations
@@ -56,8 +57,8 @@ def test_enforced_registry_accepts_an_eligible_configured_model(tmp_path: Path) 
     assert resolve_model_for_registry({"OPTIMUS_AGENT_MODEL": "us/idle"}, cli_model="us/contrib", registry=registry) == "us/contrib"
 
 
-def test_auto_is_refused_without_an_accepted_resolver(tmp_path: Path) -> None:
-    with pytest.raises(AgentModelError, match="resolver"):
+def test_auto_is_never_resolved_as_a_model_id(tmp_path: Path) -> None:
+    with pytest.raises(AgentModelError, match="not a model ID"):
         resolve_model_for_registry({}, cli_model="auto", registry=verified_snapshot(tmp_path))
 
 

@@ -124,7 +124,7 @@ def test_live_agent_runner_replays_plan_from_redis_with_fresh_runner(tmp_path, l
 
     planner_gateway = FakeGatewayClient(plan_text)
     planner = AgentRunner(
-        gateway_client=planner_gateway,
+        gateway_client=planner_gateway.checked,
         model="glm-5.2",
         guard=guard,
         state_store=store,
@@ -145,7 +145,7 @@ def test_live_agent_runner_replays_plan_from_redis_with_fresh_runner(tmp_path, l
 
     replay_gateway = FakeGatewayClient("WRITE example.py\nBROKEN SECOND PLAN\n")
     replay_runner = AgentRunner(
-        gateway_client=replay_gateway,
+        gateway_client=replay_gateway.checked,
         model="glm-5.2",
         guard=guard,
         state_store=RedisAgentStateStore.from_url(redis_url),
@@ -202,7 +202,7 @@ def test_live_agent_runner_rejects_approval_when_redis_plan_missing(tmp_path, li
     store, run_id = live_redis_store
     guard = PreToolGuard.for_workspace(workspace_root=tmp_path.resolve(), allowed_network_hosts=())
     runner = AgentRunner(
-        gateway_client=FakeGatewayClient("WRITE example.py\ncontent"),
+        gateway_client=FakeGatewayClient("WRITE example.py\ncontent").checked,
         model="glm-5.2",
         guard=guard,
         state_store=store,
@@ -227,7 +227,7 @@ def test_live_two_run_ids_do_not_collide_in_redis(tmp_path, live_redis_store):
     other_run_id = f"live-{uuid.uuid4().hex}"
     guard = PreToolGuard.for_workspace(workspace_root=tmp_path.resolve(), allowed_network_hosts=())
     runner = AgentRunner(
-        gateway_client=FakeGatewayClient("WRITE example.py\ncontent"),
+        gateway_client=FakeGatewayClient("WRITE example.py\ncontent").checked,
         model="glm-5.2",
         guard=guard,
         state_store=store,
@@ -243,7 +243,7 @@ def test_live_two_run_ids_do_not_collide_in_redis(tmp_path, live_redis_store):
             )
         )
         runner_b = AgentRunner(
-            gateway_client=FakeGatewayClient("WRITE other.py\nother content"),
+            gateway_client=FakeGatewayClient("WRITE other.py\nother content").checked,
             model="glm-5.2",
             guard=guard,
             state_store=store,
@@ -279,7 +279,7 @@ def test_live_multi_turn_planning_persists_final_plan_and_replays_without_gatewa
         ]
     )
     planner = AgentRunner(
-        gateway_client=gateway,
+        gateway_client=gateway.checked,
         model="glm-5.2",
         guard=guard,
         state_store=store,
@@ -308,7 +308,7 @@ def test_live_multi_turn_planning_persists_final_plan_and_replays_without_gatewa
 
     replay_gateway = ScriptingGateway([("WRITE large.py\nstale replay\n", Decimal("0.01"), "gw-stale")])
     replay_runner = AgentRunner(
-        gateway_client=replay_gateway,
+        gateway_client=replay_gateway.checked,
         model="glm-5.2",
         guard=guard,
         state_store=RedisAgentStateStore.from_url(redis_url),

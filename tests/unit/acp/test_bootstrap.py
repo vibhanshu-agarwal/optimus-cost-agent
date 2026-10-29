@@ -16,9 +16,18 @@ from optimus.acp.preflight import PreflightFailure
 from optimus.agent.runner import AgentRunner
 from optimus.mcp.client_disposition import ClientMcpRuntime
 from optimus.mcp.client_sdk import ClientMcpSdkAdapter
+from optimus_model_policy.binding import HOST_GATEWAY_TIMEOUT_SECONDS
 from optimus_model_policy.experimental import SHIPPED_DEFAULTS_HASH
 
 HAIKU = "anthropic/claude-haiku-5.5"  # the shipped default agent model (closure plan v3)
+
+
+def test_invalid_idle_setting_is_rejected_before_harness_or_redis(monkeypatch, tmp_path):
+    def forbidden(**_kwargs):
+        raise AssertionError("harness must not be constructed")
+    monkeypatch.setattr(bootstrap_module, "build_agent_harness_runtime", forbidden)
+    with pytest.raises(ValueError, match="OPTIMUS_ACP_MCP_IDLE_SECONDS"):
+        build_configured_server(environ={"OPTIMUS_ACP_MCP_IDLE_SECONDS": "off"}, workspace_root=tmp_path)
 
 
 def _test_sdk_adapter(supervisor) -> ClientMcpSdkAdapter:
@@ -139,7 +148,7 @@ def test_bootstrap_builds_agent_configured_server(tmp_path, monkeypatch):
     assert server.conversation_sanitizer_inputs.known_pii == ()
 
 
-def test_bootstrap_gateway_timeout_defaults_to_thirty_seconds(tmp_path, monkeypatch):
+def test_bootstrap_gateway_timeout_defaults_to_the_shared_host_wait(tmp_path, monkeypatch):
     class FakeStore:
         def ping(self):
             return None
@@ -190,8 +199,9 @@ def test_bootstrap_gateway_timeout_defaults_to_thirty_seconds(tmp_path, monkeypa
         model=HAIKU,
     )
 
-    assert server._dispatcher._gateway_client._timeout_seconds == 30.0
-    assert server._dispatcher._agent_runner._gateway_client._timeout_seconds == 30.0
+    # The shared contract's host wait, longer than any work the Gateway does for one request (#397 live Z2).
+    assert server._dispatcher._gateway_client._timeout_seconds == HOST_GATEWAY_TIMEOUT_SECONDS
+    assert server._dispatcher._agent_runner._gateway_client._timeout_seconds == HOST_GATEWAY_TIMEOUT_SECONDS
 
 
 def test_bootstrap_reports_unreachable_redis(tmp_path, monkeypatch):

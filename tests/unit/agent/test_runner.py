@@ -1,5 +1,6 @@
 import hashlib
 import os
+import re
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -15,7 +16,6 @@ from optimus.agent.workspace_context import WorkspaceContextResult
 from optimus.gateway.errors import GatewayHttpError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
-from optimus.loops.models import IterationOutcome, IterationState
 from optimus.runtime.modes import ExecutionMode
 from optimus.telemetry.events import TelemetryEventKind
 from optimus.usage.accounting import UsageAccountingService
@@ -215,6 +215,28 @@ def test_agent_mode_without_approval_returns_awaiting_approval(tmp_path):
     assert result.final_state == "AWAITING_APPROVAL"
     assert result.mutation_count == 0
     assert result.plan_hash is not None
+
+
+def test_agent_mode_recovers_from_an_unparseable_first_turn_through_a_listed_size_read(tmp_path):
+    """#388 through the real runner: the turn-1 size list comes from the workspace context it builds."""
+    from tests.unit.agent.test_planning_loop_runner import (
+        PROSE,
+        SIZES_HEADER,
+        TARGET_FINAL_PLAN,
+        TARGET_SOURCE,
+        SizeListReadGateway,
+        _scripts,
+    )
+
+    (tmp_path / "target.py").write_text(TARGET_SOURCE, encoding="utf-8")
+    gateway = SizeListReadGateway(_scripts(PROSE, "", TARGET_FINAL_PLAN))
+    result = AgentRunner(gateway_client=gateway, model="glm-5.2").run(
+        AgentRunRequest(run_id="run-388", task="Update target.py", execution_mode=ExecutionMode.AGENT, workspace_root=tmp_path)
+    )
+
+    assert f"{SIZES_HEADER}\n- target.py: " in gateway.calls[0]["input_text"], "precondition: turn 1 lists the size"
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL, result.stop_reason
+    assert len(gateway.calls) == 3
 
 
 def test_read_directive_on_directory_skips_without_aborting_agent_turn(tmp_path):
@@ -829,6 +851,49 @@ def test_oversized_required_file_settles_after_read_more_then_final(tmp_path):
     assert all(entry.native_unit == "tokens" for entry in accounting.provider_ledger.entries)
 
 
+class OversizedSizeReadGateway(ScriptingGateway):
+    """Reads the oversized file in two halves, sizing each read only from the size line in the input it
+    actually receives, and refuses without one, as the prompt's rules require (the Plan 12.3 live refusal)."""
+
+    def create_response(self, *, model, input_text, metadata=None):
+        sizes = re.findall(r"^- large\.py: size (\d+) bytes", input_text, re.MULTILINE)
+        if not sizes:
+            reply = "REFUSE: large.py byte count is not shown.\n"
+        elif len(self.calls) == 0:
+            reply = f"OBSERVE: first half\nREAD: large.py#bytes=0:{int(sizes[0]) // 2}\n"
+        elif len(self.calls) == 1:
+            reply = f"OBSERVE: second half\nREAD: large.py#bytes={int(sizes[0]) // 2}:{sizes[0]}\n"
+        else:
+            reply = self._scripts[0][0]
+        self._scripts[0] = (reply, *self._scripts[0][1:])
+        return super().create_response(model=model, input_text=input_text, metadata=metadata)
+
+
+def test_oversized_required_file_lists_its_size_on_every_planning_turn(tmp_path):
+    (tmp_path / "large.py").write_text("x" * (20 * 1024), encoding="utf-8")
+    final_plan = "READ large.py\nWRITE large.py\nupdated header\n"
+    gateway = OversizedSizeReadGateway(
+        [("", Decimal("0.001"), "gw-1"), ("", Decimal("0.001"), "gw-2"), (final_plan, Decimal("0.001"), "gw-3")]
+    )
+    runner = AgentRunner(gateway_client=gateway, model="glm-5.2", state_store=InMemoryAgentStateStore())
+
+    result = runner.run(
+        AgentRunRequest(
+            run_id="run-1",
+            task="List every function in large.py",
+            execution_mode=ExecutionMode.AGENT,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert result.status is AgentRunStatus.AWAITING_APPROVAL, result.output_text
+    assert len(gateway.calls) == 3
+    for call in gateway.calls:
+        assert "- large.py: size 20480 bytes" in str(call["input_text"])
+        # A full-range hint would exceed the current-read limit and end planning.
+        assert "READ: large.py#bytes=0:20480" not in str(call["input_text"])
+
+
 def test_oversized_required_file_honors_max_planning_turns_override(tmp_path):
     (tmp_path / "large.py").write_text("x" * (17 * 1024), encoding="utf-8")
     read_more = "OBSERVE: need header\nREAD: large.py#bytes=0:5\n"
@@ -999,36 +1064,6 @@ def test_missing_path_can_reach_gateway_for_create_task(tmp_path):
     assert len(gateway.calls) == 1
     assert result.status is AgentRunStatus.AWAITING_APPROVAL
 
-
-class _CompleteAtRunBudget:
-    def run_iteration(self, state: IterationState, tools) -> IterationOutcome:
-        del state, tools
-        return IterationOutcome(
-            summary="pytest tests green",
-            cost_usd=Decimal("0.05"),
-            deterministic_completion=True,
-        )
-
-
-def test_bounded_auto_fix_loop_still_completes_when_finishing_turn_cost_equals_budget(tmp_path):
-    runner = AgentRunner(
-        gateway_client=FakeGatewayClient(),
-        model="glm-5.2",
-        loop_iteration_runner=_CompleteAtRunBudget(),
-    )
-
-    result = runner.run(
-        AgentRunRequest(
-            run_id="run-1",
-            task="Debug the failing pytest test",
-            execution_mode=ExecutionMode.AGENT,
-            workspace_root=tmp_path,
-            completion_condition="pytest tests pass",
-        )
-    )
-
-    assert result.stop_reason == "COMPLETED"
-    assert result.status is AgentRunStatus.COMPLETED
 
 
 class _FlushCountingEventSink:

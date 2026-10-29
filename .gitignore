@@ -81,6 +81,10 @@ reports/.plan*-workspace/
 *.sublime-workspace
 .air/
 .kiro/
+.junie/
+
+# Agent-app worktrees; worktrees belong under C:\worktrees, never nested here
+.claude/worktrees/
 
 # --- OS ---
 .DS_Store

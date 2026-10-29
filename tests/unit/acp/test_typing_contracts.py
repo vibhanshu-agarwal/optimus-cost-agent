@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import create_autospec
 
 import pytest
 
@@ -15,9 +17,9 @@ from tests.unit.acp.test_launch_approvals import _sample_workspace_identity
 def test_fixed_offline_approval_json_and_hmac_vector(monkeypatch, mode, expected_json):
     from optimus.acp import launch_approvals as approvals
 
-    monkeypatch.setattr(approvals.secrets, "token_hex", lambda _length: "0" * 24)
-    monkeypatch.setattr(approvals, "_creator_identity", lambda: "offline-operator")
-    monkeypatch.setattr(approvals, "_package_version", lambda: "0.0.test")
+    monkeypatch.setattr(approvals.secrets, "token_hex", create_autospec(approvals.secrets.token_hex, return_value="0" * 24))
+    monkeypatch.setattr(approvals, "_creator_identity", create_autospec(approvals._creator_identity, return_value="offline-operator"))
+    monkeypatch.setattr(approvals, "_package_version", create_autospec(approvals._package_version, return_value="0.0.test"))
     record = build_approval_record(
         mode=mode, workspace_identity=_sample_workspace_identity(),
         security_literals={"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765"},
@@ -34,7 +36,6 @@ def test_fixed_offline_approval_json_and_hmac_vector(monkeypatch, mode, expected
 def _typing_dacl_api(monkeypatch, module, *, null):
     """Allocated ACE positive control; NULL is intercepted before any unsafe dereference."""
     import ctypes
-    from types import SimpleNamespace
 
     calls = []
     ace = (ctypes.c_ubyte * 12)()  # ACCESS_ALLOWED_ACE, with allocated SID storage.
@@ -110,19 +111,28 @@ def test_typing_posix_check_on_windows_has_explicit_refusal(monkeypatch, tmp_pat
     assert (error.value.code, error.value.detail) == ("CONFIG_FILE_PLATFORM_CHECK_FAILED", "platform cannot verify file permissions")
 
 
-@pytest.mark.parametrize("parsed", [None, "3", object()], ids=["none", "string", "foreign"])
-def test_typing_nonnumeric_monotonic_parser_refuses(monkeypatch, parsed):
+def _monotonic_candidate(tmp_path, grants):
     from dataclasses import replace
-    from types import SimpleNamespace
+
+    from tests.unit.acp.conftest import FakeKeyring
+    from tests.unit.acp.test_launch_gate_model_registry import _candidate
+
+    candidate, _store = _candidate(tmp_path, FakeKeyring())
+    return replace(candidate, monotonic_grants=grants)
+
+
+@pytest.mark.parametrize("parsed", [None, "3", object()], ids=["none", "string", "foreign"])
+def test_typing_nonnumeric_monotonic_parser_refuses(monkeypatch, parsed, tmp_path):
+    from dataclasses import replace
 
     from optimus.acp import launch_gate as gate
 
     name = "OPTIMUS_MAX_PLANNING_TURNS"
     policies = dict(gate.LAUNCH_VARIABLE_POLICIES)
-    policies[name] = replace(policies[name], parser=lambda _raw: parsed)
+    policies[name] = replace(policies[name], parser=create_autospec(policies[name].parser, return_value=parsed))
     monkeypatch.setattr(gate, "LAUNCH_VARIABLE_POLICIES", policies)
     with pytest.raises(LaunchGateError) as error:
-        gate._authorize_monotonic_grants(candidate=SimpleNamespace(monotonic_grants={name: "3"}), record_monotonic_grants={})
+        gate._authorize_monotonic_grants(candidate=_monotonic_candidate(tmp_path, {name: "3"}), record_monotonic_grants={})
     assert (error.value.code, error.value.detail) == ("MONOTONIC_VALUE_INVALID", name)
 
 
@@ -140,12 +150,11 @@ def test_typing_nonnumeric_monotonic_parser_refuses(monkeypatch, parsed):
     ("OPTIMUS_MAX_PLANNING_TURNS", "4", "04", False),
     ("OPTIMUS_MAX_PLANNING_TURNS", "5", "4", False),
 ])
-def test_fixed_monotonic_decimal_and_integer_authorization_table(name, raw, grant, allowed):
-    from types import SimpleNamespace
+def test_fixed_monotonic_decimal_and_integer_authorization_table(name, raw, grant, allowed, tmp_path):
 
     from optimus.acp import launch_gate as gate
 
-    candidate = SimpleNamespace(monotonic_grants={name: raw})
+    candidate = _monotonic_candidate(tmp_path, {name: raw})
     grants = {} if grant is None else {name: grant}
     if allowed:
         gate._authorize_monotonic_grants(candidate=candidate, record_monotonic_grants=grants)

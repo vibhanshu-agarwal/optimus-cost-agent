@@ -42,7 +42,8 @@ def test_run_gateway_refuses_an_untrustworthy_registry_before_starting_anything(
             tmp_path,
             bind_host="127.0.0.1",
             bind_port=8765,
-            trusted_roots=TrustedOperatorRoots(default_config_root=tmp_path / "config", approval_runtime_root=tmp_path / "runtime"),
+            # Production never resolves a config root inside the workspace (operator_paths containment).
+            trusted_roots=TrustedOperatorRoots(default_config_root=tmp_path.parent / (tmp_path.name + "-config"), approval_runtime_root=tmp_path / "runtime"),
             credential_keyring_backend=_FakeKeyring(),
         )
 

@@ -27,6 +27,23 @@ from optimus.acp.trusted_paths import WorkspaceIdentity, present_git_context
 _HMAC_KEY = b"test-gate-hmac-key-32-bytes!!!!"
 
 
+@pytest.mark.parametrize("raw,grant,allowed", [("1", None, True), ("3600", None, True),
+    ("3601", None, False), ("3601", "3601", True), ("3601", "4000", False)])
+def test_idle_limit_tightening_or_exact_grant_and_agent_only_projection(tmp_path, raw, grant, allowed):
+    from optimus.acp.launch_gate import _authorize_monotonic_grants
+    candidate = resolve_launch_candidate(
+        snapshot=LaunchEnvironmentSnapshot.capture({"OPTIMUS_ACP_MCP_IDLE_SECONDS": raw}),
+        workspace_identity=_sample_workspace_identity(), operator_paths=_sample_operator_paths(tmp_path), hmac_key=_HMAC_KEY)
+    grants = {} if grant is None else {"OPTIMUS_ACP_MCP_IDLE_SECONDS": grant}
+    if allowed:
+        _authorize_monotonic_grants(candidate=candidate, record_monotonic_grants=grants)
+    else:
+        with pytest.raises(LaunchGateError, match="MONOTONIC_LOOSENING_UNAPPROVED"):
+            _authorize_monotonic_grants(candidate=candidate, record_monotonic_grants=grants)
+    assert candidate.agent_environ["OPTIMUS_ACP_MCP_IDLE_SECONDS"] == raw
+    assert "OPTIMUS_ACP_MCP_IDLE_SECONDS" not in candidate.gateway_environ
+
+
 def _sample_workspace_identity() -> WorkspaceIdentity:
     return WorkspaceIdentity(
         format_version=3,
@@ -210,6 +227,42 @@ class TestResolveLaunchCandidateValidatesEnvGatewayPermissions:
 
 class TestCandidateResolution:
     """Resolve launch candidate from immutable snapshot."""
+
+
+    def test_h5_capture_activation_is_launch_neutral(self, tmp_path: Path) -> None:
+        directories = (tmp_path / "capture-a", tmp_path / "capture-b")
+        for created_directory in directories:
+            created_directory.mkdir()
+        candidates = []
+        for directory in (None, *directories):
+            env = dict(_REQUIRED_LAUNCH_ENV)
+            if directory is not None:
+                env["PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY"] = str(directory)
+            candidates.append(resolve_launch_candidate(
+                snapshot=LaunchEnvironmentSnapshot.capture(env),
+                workspace_identity=_sample_workspace_identity(),
+                operator_paths=_sample_operator_paths(tmp_path),
+                hmac_key=_HMAC_KEY,
+                credential_keyring_backend=_FakeCredentialKeyring(),
+            ))
+        for candidate in candidates:
+            assert candidate.security_snapshot_digest == candidates[0].security_snapshot_digest
+            assert candidate.display_rows == candidates[0].display_rows
+            assert "PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY" not in candidate.agent_environ
+            assert "PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY" not in candidate.gateway_environ
+
+    @pytest.mark.parametrize("name", ["OPTIMUS_H5_CAPTURE_DIRECTORY", "OPTIMUS_UNKNOWN_H5_FIXTURE"])
+    def test_retired_h5_capture_name_is_unclassified(self, tmp_path: Path, name: str) -> None:
+        env = {**_REQUIRED_LAUNCH_ENV, name: str(tmp_path)}
+        with pytest.raises(LaunchGateError) as caught:
+            resolve_launch_candidate(
+                snapshot=LaunchEnvironmentSnapshot.capture(env),
+                workspace_identity=_sample_workspace_identity(),
+                operator_paths=_sample_operator_paths(tmp_path),
+                hmac_key=_HMAC_KEY,
+                credential_keyring_backend=_FakeCredentialKeyring(),
+            )
+        assert caught.value.code == "UNCLASSIFIED_VARIABLE"
 
     def test_basic_resolution_with_required_vars(self, tmp_path: Path) -> None:
         env = {
@@ -1776,7 +1829,7 @@ class TestEffectiveCredentialDisplayRows:
 
 
 _GOLDEN_DISPLAY_DIGEST = "f7af89af0acce664b27825e5af9823c25b11579490bccc73e8f82d4ec316f248"  # pragma: allowlist secret - synthetic test fixture
-_GOLDEN_SHIPPED_DISPLAY_DIGEST = "73f5615b62668f63afdfccfbd613f61c248a9a8cc8440ecc711082977357810c"  # Plan 12.2 closure: shipped registry literal added  # pragma: allowlist secret - synthetic test fixture
+_GOLDEN_SHIPPED_DISPLAY_DIGEST = "7ecdca4240a5104420ed6301ecca8efa29a06a5cc7075c96e6579bc06c44ebcc"  # Plan 12.4 v8 (N3): Haiku's admission records the #400 residual  # pragma: allowlist secret - synthetic test fixture
 _GOLDEN_ENV = {
     "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
     "OPTIMUS_API_KEY": "agent-key",  # pragma: allowlist secret - synthetic test fixture

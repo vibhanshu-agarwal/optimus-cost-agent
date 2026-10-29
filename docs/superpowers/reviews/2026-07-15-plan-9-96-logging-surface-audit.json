@@ -745,19 +745,19 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.launch_approvals:KeyringApprovalStore.consume_one_shot:file_open",
+      "key": "optimus.acp.launch_approvals:KeyringApprovalStore._service_lock:file_open",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.acp.launch_approvals:KeyringApprovalStore.consume_one_shot:file_open opens only a trusted lock, audit, log, or read-hash path for its stated functional operation, not a diagnostic-retention payload.",
+      "rationale": "Inspection: KeyringApprovalStore._service_lock:file_open opens only the trusted approval-runtime lock file that serializes every approvals-service operation (#433; it replaces the per-workspace lock files of consume_one_shot and _exclusive_workspace_lock); it writes nothing to the file and does not retain diagnostic payloads.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/acp/test_launch_approvals.py::test_consume_one_shot_returns_record_and_deletes",
+      "test_node": "tests/unit/acp/test_launch_approvals_lock_failures.py::test_a_held_lock_refuses_with_lock_contention_and_keeps_the_approval",
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.launch_approvals:KeyringApprovalStore._exclusive_workspace_lock:file_open",
+      "key": "optimus.acp.launch_approvals:_canonical_json:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: KeyringApprovalStore._exclusive_workspace_lock:file_open opens only the trusted approval-runtime lock file for exclusive durable lookup/promotion; it does not retain diagnostic payloads.",
+      "rationale": "Inspection: _canonical_json serializes only the fixed multipart manifest (#433): format version, generation, part lengths, payload SHA-256, workspace digest, legacy source digest and manifest HMAC; it contains no record content, credential or setting value.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/acp/test_launch_approvals.py::test_promotion_writes_verified_v3_and_reports_migrated",
+      "test_node": "tests/unit/acp/test_launch_approvals_multipart.py::test_a_successful_replacement_removes_the_previous_generation",
       "evidence_tier": "unit"
     },
     {
@@ -964,14 +964,6 @@
       "key": "optimus.acp.server:AcpStreamServer._serve_framed:text_write",
       "policy": "protocol-only",
       "rationale": "Functional protocol serialization at optimus.acp.server:AcpStreamServer.serve:text_write sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
-      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
-      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus.acp.server:StdioByteWriter.write:text_write",
-      "policy": "protocol-only",
-      "rationale": "Functional protocol serialization at optimus.acp.server:StdioByteWriter.write:text_write sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
       "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
       "evidence_tier": "unit"
@@ -1233,6 +1225,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.loops.signals:mcp_step:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: mcp_step json.dumps only canonicalizes a planning step's MCP call arguments in memory to compute a SHA-256 fingerprint for loop detection (Plan 12.3); the payload is not persisted, logged or exported, and loop telemetry carries only the fixed signal kind.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/loops/test_signals.py::test_an_mcp_fingerprint_separates_tools_and_arguments_on_one_server",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.mcp.client_disposition:ClientMcpDisposition._resolve_server:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: sdk_adapter.open(...) opens an MCP transport through ClientMcpSdkAdapter; the broad AST heuristic falsely name-flags this method call as file_open, but the path performs no file I/O or diagnostic persistence.",
@@ -1385,6 +1385,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.tools.mutation_tools:write_file_keeping_line_endings:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "optimus.tools.mutation_tools:write_file_keeping_line_endings:text_file_write is the authorized Agent WRITE mutation payload (#410), fitted to the target's line endings after the mutation gate and guard allow it; sanitization would alter approved content rather than protect a diagnostic artifact.",
+      "sanitizer": "MutationGuard and PreToolGuard authorization; no diagnostic sanitization",
+      "test_node": "tests/unit/tools/test_line_endings.py::test_the_agent_write_fits_the_crlf_seed_byte_for_byte",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.__main__:main:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus_gateway.__main__:main:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
@@ -1446,6 +1454,22 @@
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.observability:handle_observability_traces_request:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/optimus_gateway/test_server.py::test_observability_traces_rejects_non_object_events",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.decisions:handle_decision_request:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Plan 12.4 Task 1: the decision envelope's validation errors are fixed texts that echo no request content, and each still passes the shared sanitizer (sanitize_error_message) before the 400 reply; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/optimus_gateway/test_decisions.py::test_a_malformed_envelope_is_refused",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.capacity:decision_payload_text:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.4 Tasks 1 and 5): decision_payload_text serializes a decision's typed state and questions to canonical JSON only as the capacity measure the Gateway's decision route (admit_decision) and the host's classifier fit share; the JSON is never persisted, logged or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_decisions.py::test_a_typed_request_over_the_classifier_bound_is_refused_before_any_call",
       "evidence_tier": "unit"
     },
     {
@@ -1862,6 +1886,14 @@
       "rationale": "Inspection: render_manifest serializes the inventory manifest (schema, baseline pins, section classifications and records derived from committed planning documents) with a fixed layout; it reads no runtime state or secrets.",
       "sanitizer": "fixed manifest schema",
       "test_node": "tests/unit/tools/test_github_work_tracking.py::test_draft_reproduces_the_committed_manifest_byte_for_byte",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.shutdown:_probe_resource:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Writes the fixed owned-framed-probe literal to an owned in-memory BytesIO while proving the physical framed writer closes exactly once; no caller payload or diagnostic data is written.",
+      "sanitizer": "fixed synthetic in-memory probe bytes only",
+      "test_node": "tests/unit/acp/test_plan1126_shutdown.py::test_framed_writer_probe_retires_the_discovered_physical_owner",
       "evidence_tier": "unit"
     },
     {
@@ -4137,11 +4169,11 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_message_once:file_open",
+      "key": "optimus_gateway.upstream_client:_read_reply:file_open",
       "policy": "safe-by-construction",
-      "rationale": "AST overmatch: create_message_once calls urllib's OpenerDirector.open, the provider HTTP request that urlopen makes, through an opener whose connections record whether the attempt connected; it opens no file, and the reply is parsed in memory, never persisted or logged.",
+      "rationale": "AST overmatch: _read_reply calls urllib's OpenerDirector.open, the provider HTTP request of one enforced attempt (create_message_once or create_decision_once), on its AttemptDeadline's worker thread and through an opener whose connections record whether the attempt connected; it opens no file, and it returns the reply's bytes and headers for in-memory parsing, never persisted or logged.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_route_attempts.py::test_a_wrapped_send_phase_tls_failure_is_one_uncertain_attempt_end_to_end",
+      "test_node": "tests/unit/optimus_gateway/test_upstream_retry.py::test_an_enforced_attempt_ends_at_its_deadline_while_bytes_keep_arriving",
       "evidence_tier": "unit"
     },
     {
@@ -4702,6 +4734,134 @@
       "rationale": "Inspection: a failed legacy attempt's cause for the retry observer: the bounded cause attached where it arose, else a parser RuntimeError's module-authored reason passed through slug (anything outside the lower-case reason shape becomes unrecognized), else the exception's class and errno. Exception text is never retained otherwise.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_failed_legacy_attempt_is_logged_with_its_cause_and_the_request_id",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.agent.auto_contract:ClassifierInput.to_json:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Inspection: to_json serializes the frozen Auto classifier input contract (Plan 12.4 v7 Design 3: a bounded prompt excerpt, the mode, an attachment summary and the previous tier) as the functional request payload a classifier receives; it is never persisted or logged by this helper, and sanitizing it would change what the classifier sees.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/agent/test_auto_contract.py::test_short_prompt_is_kept_whole_and_serialized_in_the_frozen_shape",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:watched_urlopen:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: watched_urlopen calls urllib's OpenerDirector.open, the provider HTTP request of one legacy or tool-provider attempt, through the watched opener under an AttemptDeadline; it opens no file, and it returns the response to its caller, which parses the reply in memory; nothing is persisted or logged here.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_upstream_retry.py::test_a_legacy_attempt_ends_at_its_deadline_while_bytes_keep_arriving",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.upstream_client:UrllibOpenAICompatibleClient.create_decision_once:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: create_decision_once round-trips the decision request's state, questions and the approved provider routing controls through JSON to copy them into the outbound System One request; nothing is persisted or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_decisions.py::test_the_real_client_posts_to_system_one_with_the_route_controls",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.mcp.client_sdk:ClientMcpSdkAdapter._open_owned_sdk_contexts:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: ready.exception() observes a local asyncio Future failure so a cancelled opener leaves no unobserved exception; this is not a logger call and exports no exception text. Owned SDK LogRecords are separately sanitized by the runtime-owned observer before propagation.",
+      "sanitizer": "Future exception observation; owned warning observer clears message arguments, traceback and stack data",
+      "test_node": "tests/unit/mcp/test_client_sdk.py::test_warning_observer_sanitizes_only_owned_sdk_records",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.mcp.client_sdk:ClientMcpSdkAdapter.owner:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: ContextVar.set binds two weak references within the persistent SDK owner; no Redis client, hash write or persistence exists on this path. The token is reset in owner finally.",
+      "sanitizer": "process-local weak-reference context; no diagnostic or persistent payload",
+      "test_node": "tests/unit/mcp/test_client_sdk.py::test_confirmed_connection_and_owner_are_collectible",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.__main__:_report_shutdown:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Emits only fixed shutdown stage/count fields or the preserved typed startup/configuration messages; no raw exception or client content is added.",
+      "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_main_wiring.py::test_shutdown_report_contains_only_bounded_fields",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.__main__:run_authorized:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Emits only fixed shutdown stage/count fields or the preserved typed startup/configuration messages; no raw exception or client content is added.",
+      "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_main_wiring.py::test_main_startup_interrupt_maps_exit_and_restores_signal_handler",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.process_lifecycle:ProcessLifecycle._apply_stop:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: sets a loop-local asyncio.Event to acknowledge stop/admission/completion; no Redis/storage write or diagnostic payload.",
+      "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_planning_progress_ordering.py::test_progress_fifo_admission_precedes_every_dependent_branch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.process_lifecycle:ProcessLifecycle.begin_cleanup:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: sets a loop-local asyncio.Event to acknowledge stop/admission/completion; no Redis/storage write or diagnostic payload.",
+      "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_planning_progress_ordering.py::test_progress_fifo_admission_precedes_every_dependent_branch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.server:NdjsonOutboundChannel._submit_payload:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: sets a loop-local asyncio.Event to acknowledge stop/admission/completion; no Redis/storage write or diagnostic payload.",
+      "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_planning_progress_ordering.py::test_progress_fifo_admission_precedes_every_dependent_branch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:AcpDuplexAdapter._emit_planning_progress:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: sets a loop-local asyncio.Event to acknowledge stop/admission/completion; no Redis/storage write or diagnostic payload.",
+      "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_planning_progress_ordering.py::test_progress_fifo_admission_precedes_every_dependent_branch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:AcpDuplexAdapter.finished:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: retrieves an owned asyncio Task/Future exception to consume completion; does not call a logger or export the exception.",
+      "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_planning_progress_ordering.py::test_started_worker_stays_owned_until_physical_return",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:ProgressLane._done:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: retrieves an owned asyncio Task/Future exception to consume completion; does not call a logger or export the exception.",
+      "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_planning_progress_ordering.py::test_progress_fifo_admission_precedes_every_dependent_branch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:ProgressLane._done:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: sets a loop-local asyncio.Event to acknowledge stop/admission/completion; no Redis/storage write or diagnostic payload.",
+      "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_planning_progress_ordering.py::test_progress_fifo_admission_precedes_every_dependent_branch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:ProgressLane.drain:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: retrieves an owned asyncio Task/Future exception to consume completion; does not call a logger or export the exception.",
+      "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_planning_progress_ordering.py::test_cancel_during_physical_progress_drain_finalizes_real_turn",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:ProgressLane.send:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: sets a loop-local asyncio.Event to acknowledge stop/admission/completion; no Redis/storage write or diagnostic payload.",
+      "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_planning_progress_ordering.py::test_progress_fifo_admission_precedes_every_dependent_branch",
       "evidence_tier": "unit"
     }
   ]

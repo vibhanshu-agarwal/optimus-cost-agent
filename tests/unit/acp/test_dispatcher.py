@@ -11,7 +11,7 @@ from optimus.runtime.state import AgentState, RuntimeContext
 
 def test_dispatcher_routes_agent_run_to_runner(tmp_path):
     agent_runner = FakeAgentRunner()
-    dispatcher = JsonRpcDispatcher(agent_runner=agent_runner, workspace_root=tmp_path)
+    dispatcher = JsonRpcDispatcher(agent_runner=checked_agent_runner(agent_runner), workspace_root=tmp_path)
 
     response = dispatcher.dispatch(
         {
@@ -35,7 +35,7 @@ def test_dispatcher_routes_agent_run_to_runner(tmp_path):
 
 def test_dispatcher_rejects_agent_run_outside_configured_workspace(tmp_path):
     agent_runner = FakeAgentRunner()
-    dispatcher = JsonRpcDispatcher(agent_runner=agent_runner, workspace_root=tmp_path)
+    dispatcher = JsonRpcDispatcher(agent_runner=checked_agent_runner(agent_runner), workspace_root=tmp_path)
     outside = tmp_path.parent / "outside"
     outside.mkdir(exist_ok=True)
 
@@ -57,11 +57,35 @@ def test_dispatcher_rejects_agent_run_outside_configured_workspace(tmp_path):
     assert agent_runner.requests == []
 
 
+def test_dispatcher_rejects_a_goal_loop_request_instead_of_running_it_once(tmp_path):
+    """Plan 12.3 (D3) retired the goal loop; a completion condition is refused clearly, never dropped."""
+    agent_runner = FakeAgentRunner()
+    dispatcher = JsonRpcDispatcher(agent_runner=checked_agent_runner(agent_runner), workspace_root=tmp_path)
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "agent-run-1",
+            "method": "optimus.agent.run",
+            "params": {
+                "run_id": "run-1",
+                "task": "Fix the tests",
+                "execution_mode": "agent",
+                "workspace_root": str(tmp_path),
+                "completion_condition": "pytest passes",
+            },
+        }
+    )
+
+    assert "goal loops were retired" in response["error"]["message"]
+    assert agent_runner.requests == []
+
+
 class FakeAgentRunner:
     def __init__(self):
         self.requests = []
 
-    def run(self, request):
+    def run(self, request, **runtime_kwargs):
         from optimus.agent.models import AgentRunResult, AgentRunStatus
 
         self.requests.append(request)
@@ -587,6 +611,7 @@ def test_dispatcher_maps_gateway_trust_value_error_to_json_rpc_error():
 
 
 from optimus.gateway.tool_models import PackageLookupResult, SecurityAdvisoryResult
+from tests.support.contract_doubles import checked_agent_runner
 
 
 class FakePackageAdvisoryService:
@@ -946,3 +971,20 @@ def test_dispatcher_keeps_recent_denials_and_forwards_exact_drop_count(tmp_path)
     assert len(dispatcher.audit_events()) == 16
     assert all(event.verdict == "BLOCK" for event in dispatcher.audit_events())
     assert dispatcher.audit_events_dropped == 4
+
+
+def test_dispatcher_write_file_writes_the_clients_bytes_exactly(tmp_path):
+    """#410 (design v3, R6): `optimus.mutation.writeFile` no longer translates line endings on any platform."""
+    dispatcher = JsonRpcDispatcher(runtime_context=approved_agent_context(), workspace_root=tmp_path)
+
+    response = dispatcher.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": "write-exact",
+            "method": "optimus.mutation.writeFile",
+            "params": {"path": str(tmp_path / "mixed.txt"), "content": "lf\ncrlf\r\nend"},
+        }
+    )
+
+    assert response["result"] == {"written": str(tmp_path / "mixed.txt")}
+    assert (tmp_path / "mixed.txt").read_bytes() == b"lf\ncrlf\r\nend"

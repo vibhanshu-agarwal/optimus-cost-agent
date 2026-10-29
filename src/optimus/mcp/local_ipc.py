@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import contextlib
 import os
+import socket
+import sys
 import tempfile
 import threading
 import uuid
@@ -46,8 +48,6 @@ def default_local_candidate_address(*, token: str | None = None) -> tuple[str, s
     if os.name == "nt":
         return "af_pipe", rf"\\.\pipe\optimus-client-mcp-{marker}"
     sock = Path(tempfile.gettempdir()) / f"optimus-cmcp-{marker}.sock"
-    if sock.exists():
-        sock.unlink()
     return "af_unix", str(sock)
 
 
@@ -86,10 +86,14 @@ class PendingClientMcpCandidateEndpoint:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._endpoint_address: tuple[str, str] | None = address
+        self._generation = 0
 
     @property
     def endpoint_address(self) -> tuple[str, str]:
         with self._lock:
+            self._reap_listener_locked()
+            if self._thread is not None and self._stop.is_set():
+                raise LocalIpcError("client_mcp.ipc_stop_incomplete")
             if self._endpoint_address is None:
                 raise LocalIpcError("client_mcp.ipc_not_listening")
             if self._listener is None and self._pending:
@@ -108,11 +112,38 @@ class PendingClientMcpCandidateEndpoint:
     def publish(self, candidate: PendingClientMcpCandidate) -> str:
         candidate_id = uuid.uuid4().hex
         with self._lock:
+            self._reap_listener_locked()
+            if self._thread is not None and self._stop.is_set():
+                raise LocalIpcError("client_mcp.ipc_stop_incomplete")
+            for key, prior in tuple(self._pending.items()):
+                if prior.session_id == candidate.session_id and prior.identity.server_name == candidate.identity.server_name:
+                    self._pending.pop(key)
             self._pending[candidate_id] = candidate
             if self._endpoint_address is None:
                 self._endpoint_address = default_local_candidate_address()
                 reject_network_endpoint_address(self._endpoint_address[1])
         return candidate_id
+
+    def retire(self, candidate_id: str, *, session_id: str) -> bool:
+        with self._lock:
+            candidate = self._pending.get(candidate_id)
+            if candidate is None or candidate.session_id != session_id:
+                return False
+            self._pending.pop(candidate_id)
+            should_stop = not self._pending
+        if should_stop:
+            self._stop_listener()
+        return True
+
+    def retire_session(self, session_id: str) -> int:
+        with self._lock:
+            ids = [key for key, candidate in self._pending.items() if candidate.session_id == session_id]
+            for key in ids:
+                self._pending.pop(key)
+            should_stop = not self._pending
+        if should_stop:
+            self._stop_listener()
+        return len(ids)
 
     def consume_snapshot(self, candidate_id: str) -> SafeCandidateSnapshot:
         should_stop = False
@@ -135,19 +166,47 @@ class PendingClientMcpCandidateEndpoint:
         assert self._endpoint_address is not None
         kind, address = self._endpoint_address
         reject_network_endpoint_address(address)
-        self._stop.clear()
-        self._listener = Listener(address, authkey=self._authkey)
-        self._thread = threading.Thread(target=self._serve, name=f"client-mcp-ipc-{kind}", daemon=True)
+        self._stop = threading.Event()
+        listener = Listener(address, authkey=self._authkey)
+        self._listener = listener
+        self._generation += 1
+        self._thread = threading.Thread(target=self._serve, args=(listener, self._stop),
+                                        name=f"client-mcp-ipc-{kind}", daemon=True)
         self._thread.start()
+
+    def _reap_listener_locked(self) -> None:
+        if self._thread is not None and not self._thread.is_alive():
+            if self._listener is not None:
+                self._listener.close()
+            self._thread = None
+            self._listener = None
+            self._endpoint_address = None
 
     def _stop_listener(self) -> None:
         with self._lock:
+            self._reap_listener_locked()
+            # A concurrent publish owns the listener again; do not stop its generation.
+            if self._pending:
+                return
             self._stop.set()
             listener = self._listener
             thread = self._thread
             endpoint = self._endpoint_address
-            self._listener = None
-            self._thread = None
+            generation = self._generation
+        # Closing a Windows PipeListener only closes its spare handle, not a blocked
+        # accept. A nonwaiting local connect/EOF wakes the captured accept first.
+        if listener is not None and endpoint is not None and thread is not threading.current_thread():
+            with contextlib.suppress(OSError):
+                if sys.platform == "win32":
+                    import _winapi
+                    handle = _winapi.CreateFile(endpoint[1], _winapi.GENERIC_READ | _winapi.GENERIC_WRITE,
+                                               0, _winapi.NULL, _winapi.OPEN_EXISTING,
+                                               _winapi.FILE_FLAG_OVERLAPPED, _winapi.NULL)
+                    _winapi.CloseHandle(handle)
+                else:
+                    with socket.socket(socket.AF_UNIX) as wake:
+                        wake.settimeout(0.2)
+                        wake.connect(endpoint[1])
         if listener is not None:
             with contextlib.suppress(OSError, ValueError):
                 listener.close()
@@ -159,23 +218,19 @@ class PendingClientMcpCandidateEndpoint:
         ):
             thread.join(timeout=2.0)
         with self._lock:
-            if endpoint is not None and endpoint[0] == "af_unix" and endpoint[1]:
-                sock = Path(endpoint[1])
-                if sock.exists():
-                    with contextlib.suppress(OSError):
-                        sock.unlink()
-            if not self._pending:
+            if self._generation == generation:
+                self._reap_listener_locked()
+            if thread is None and not self._pending:
                 self._endpoint_address = None
+            if thread is not None and thread is not threading.current_thread() and thread.is_alive():
+                raise LocalIpcError("client_mcp.ipc_stop_incomplete")
 
-    def _serve(self) -> None:
-        while not self._stop.is_set():
-            listener = self._listener
-            if listener is None:
-                return
+    def _serve(self, listener: Listener, stop: threading.Event) -> None:
+        while not stop.is_set():
             conn = None
             try:
                 conn = listener.accept()
-            except OSError:
+            except (OSError, EOFError, ValueError):
                 # Closed/interrupted listener while stopping, or transient accept failure.
                 conn = None
             if conn is None:

@@ -1,3 +1,4 @@
+
 import asyncio
 import json
 from collections.abc import Mapping
@@ -5,6 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from unittest.mock import create_autospec
 
 from optimus.acp import errors
 from optimus.acp.dispatcher import JsonRpcDispatcher
@@ -13,6 +15,7 @@ from optimus.acp.framing import encode_message
 from optimus.acp.server import AcpStreamServer
 from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import InMemoryAgentStateStore
+from optimus.gateway.client import GatewayClient
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
 
@@ -134,8 +137,11 @@ class FakeGatewayClient:
     def __init__(self, output_text: str = "Plan text") -> None:
         self.calls: list[dict[str, Any]] = []
         self.output_text = output_text
+        self.checked = create_autospec(GatewayClient, instance=True, spec_set=True)
+        self.checked.create_response.side_effect = self.create_response
+        self.create_response = self.checked.create_response
 
-    def create_response(self, *, model: str, input_text: str, metadata=None):
+    def create_response(self, *, model: str, input_text: str, metadata=None, route_binding=None) -> GatewayResponse:
         self.calls.append({"model": model, "input_text": input_text, "metadata": metadata})
         return GatewayResponse(
             response_id="resp-1",
@@ -165,13 +171,13 @@ def configured_test_agent_server(tmp_path: Path, *, output_text: str) -> Configu
     gateway = FakeGatewayClient(output_text)
     guard = PreToolGuard.for_workspace(workspace_root=workspace_root, allowed_network_hosts=())
     runner = AgentRunner(
-        gateway_client=gateway,
+        gateway_client=getattr(gateway, "checked", gateway),
         model="glm-5.2",
         guard=guard,
         state_store=InMemoryAgentStateStore(),
     )
     dispatcher = JsonRpcDispatcher(
-        gateway_client=gateway,
+        gateway_client=getattr(gateway, "checked", gateway),
         agent_runner=runner,
         pre_tool_guard=guard,
         workspace_root=workspace_root,
@@ -417,7 +423,7 @@ async def test_ndjson_permission_rejection_sanitizes_live_outbound_error(tmp_pat
                     "message": "OPTIMUS_API_KEY=top-secret-canary",
                     "data": {
                         "nested": {
-                            "url": "redis://user:top-secret-canary@host/0",
+                            "url": "redis://user:top-secret-canary@host/0",  # pragma: allowlist secret - synthetic redaction canary, not a real credential
                             "items": ["Bearer top-secret-canary"],
                         }
                     },
@@ -471,7 +477,7 @@ async def test_ndjson_permission_rejection_drops_data_when_sanitizer_fails(tmp_p
         permission_request = await writer.wait_for_request("session/request_permission")
         payload = {
             "message": "OPTIMUS_API_KEY=top-secret-canary",
-            "nested": {"url": "redis://user:top-secret-canary@host/0"},
+            "nested": {"url": "redis://user:top-secret-canary@host/0"},  # pragma: allowlist secret - synthetic redaction canary, not a real credential
         }
         await reader.send(
             {"jsonrpc": "2.0", "id": permission_request["id"], "error": {"code": -32099, "message": payload["message"], "data": payload}}
