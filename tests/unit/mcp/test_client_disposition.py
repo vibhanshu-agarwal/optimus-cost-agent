@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
 import pickle
 import sys
+import weakref
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -47,6 +50,256 @@ from optimus.runtime.modes import ExecutionMode, GenerationScope
 from tests.support.concurrency import assert_no_offending_rows, assert_threads_stopped
 
 HMAC_KEY = b"p11-fu-9-disposition-test-hmac-key!!"
+
+
+def test_owned_close_first_empty_claim_is_real_and_repeat_is_not():
+    state = ClientMcpSessionState(session_id='empty-owned')
+    operation = state.prepare_owned_close()
+    assert operation.claim_hooks() == ()
+    assert not operation.result.done()
+    state.close()
+    assert state.prepare_owned_close() is operation
+    assert operation.claim_hooks() is None
+    assert not operation.result.done()
+    operation.finish(())
+    assert operation.result.result() == ()
+
+
+def test_owned_close_failure_is_sticky_and_independent():
+    state = ClientMcpSessionState(session_id='failed-owned')
+    other = ClientMcpSessionState(session_id='other-owned')
+    calls = []
+
+    def fail():
+        calls.append('failed')
+        raise RuntimeError('private remote detail')
+
+    state.register_close_hook(fail)
+    state.close()
+    operation = state.prepare_owned_close()
+    assert operation.result.result() == ('SESSION_CLOSE_FAILED',)
+    state.close()
+    assert state.prepare_owned_close() is operation
+    operation.finish(())
+    assert operation.result.result() == ('SESSION_CLOSE_FAILED',)
+    assert calls == ['failed']
+    other.close()
+    assert other.prepare_owned_close().result.result() == ()
+
+
+def test_owned_close_legacy_tuple_path_is_unknown():
+    state = ClientMcpSessionState(session_id='legacy')
+    assert state.prepare_close() == ()
+    state.complete_close(())
+    state.close()
+    assert state.prepare_owned_close().result.result() == ('SESSION_CLOSE_UNKNOWN',)
+
+
+def _owned_context_sdk(supervisor, operations):
+    class Remote(_ControlledRemoteSession):
+        async def initialize(self):
+            if self.server_name == 'broken':
+                operations.append('failed-open')
+                raise ValueError('controlled initialize failure')
+            return await super().initialize()
+
+    @asynccontextmanager
+    async def transport(capability):
+        name = capability.safe_identity.server_name
+        try:
+            yield name, None
+        finally:
+            if name == 'broken':
+                raise OSError(5, 'controlled context exit failure')
+
+    @asynccontextmanager
+    async def session(name, _write):
+        yield Remote(name, operations, _catalog_pages())
+
+    return ClientMcpSdkAdapter(
+        supervisor=supervisor, session_factory=lambda _capability: None,
+        http_client_factory=lambda: SimpleNamespace(follow_redirects=False, trust_env=False),
+        stdio_transport_factory=lambda _capability: None, process_control=_ControlledProcessControl(),
+        transport_context_factory=transport, session_context_factory=session,
+    )
+
+
+async def test_bound_store_failed_sdk_open_without_hook_retains_capacity(tmp_path, sdk_supervisor):
+    from time import monotonic
+
+    from optimus.acp.session_retention import (
+        RetirementReason,
+        RetirementStatus,
+        SessionCapacityError,
+        SessionRetentionOwner,
+        SessionRetentionPolicy,
+    )
+    from optimus.acp.spec import InMemoryAcpSpecSessionStore
+
+    operations = []
+    adapter = _owned_context_sdk(sdk_supervisor, operations)
+    disp = _disposition(tmp_path)
+    store = InMemoryAcpSpecSessionStore()
+
+    async def unused_close(session, states):
+        raise AssertionError('synchronous retirement must not retry')
+
+    owner = SessionRetentionOwner(policy=SessionRetentionPolicy(2), clock=monotonic,
+                                  close_session=unused_close, detach_session=store._detach_session)
+    store.bind_retention(owner)
+    broken, live = store.create(cwd=tmp_path), store.create(cwd=tmp_path)
+    bad = broken.client_mcp_state = await disp.disposition_for_new_session(
+        broken.session_id, tmp_path, [_http_entry(name='broken')], _allow)
+    good = live.client_mcp_state = await disp.disposition_for_new_session(
+        live.session_id, tmp_path, [_http_entry()], _allow)
+    disp.attach_runtime_resolver(bad, sdk_adapter=adapter)
+    disp.attach_runtime_resolver(good, sdk_adapter=adapter)
+    bad.tool_service.list_tools('broken')
+    assert operations == ['failed-open']
+    assert bad._close_hooks == [] and not bad.has_open_peer()
+    assert adapter.has_pending_connections_for_session(broken.session_id)
+    pending = next(connection for connection in adapter._connections.values()
+                   if connection.session_id == broken.session_id)
+    assert pending.owner_terminal and isinstance(pending.owner_error, OSError)
+    store.remove(broken.session_id)
+    assert owner.retained_count == 2
+    result, = await owner.drain()
+    assert result.status is RetirementStatus.QUARANTINED and result.close.pending
+    assert store.get(broken.session_id) is broken
+    with pytest.raises(SessionCapacityError):
+        store.create(cwd=tmp_path)
+    assert bad.prepare_owned_close()._adapter is adapter
+    assert bad._resolver_adapter is None
+    assert owner.request_retire(broken.session_id, reason=RetirementReason.SHUTDOWN) is RetirementStatus.QUARANTINED
+    listed, call = good.tool_service.list_tools('tools')
+    assert call.authorization_outcome == 'ALLOW' and 'list_providers' in listed.text
+    store.remove(live.session_id)
+    assert owner.retained_count == 1 and store.get(live.session_id) is None
+    assert adapter.has_pending_connections_for_session(broken.session_id)
+    assert not adapter.has_pending_connections_for_session(live.session_id)
+    assert good.prepare_owned_close()._adapter is None
+    assert await owner.drain() == (result,)
+    assert operations.count('failed-open') == 1
+
+
+async def test_bound_store_sdk_pending_query_error_is_owned_unknown(tmp_path, sdk_supervisor):
+    from time import monotonic
+
+    from optimus.acp.session_retention import RetirementStatus, SessionRetentionOwner, SessionRetentionPolicy
+    from optimus.acp.spec import InMemoryAcpSpecSessionStore
+    from optimus.mcp.client_supervisor import MCPSupervisorError
+
+    adapter = _owned_context_sdk(sdk_supervisor, [])
+    disp = _disposition(tmp_path)
+    store = InMemoryAcpSpecSessionStore()
+
+    async def unused_close(session, states):
+        raise AssertionError('synchronous retirement must not retry')
+
+    owner = SessionRetentionOwner(policy=SessionRetentionPolicy(1), clock=monotonic,
+                                  close_session=unused_close, detach_session=store._detach_session)
+    store.bind_retention(owner)
+    session = store.create(cwd=tmp_path)
+    state = session.client_mcp_state = await disp.disposition_for_new_session(
+        session.session_id, tmp_path, [_http_entry(name='broken')], _allow)
+    disp.attach_runtime_resolver(state, sdk_adapter=adapter)
+    state.tool_service.list_tools('broken')
+    assert adapter.has_pending_connections_for_session(session.session_id)
+    sdk_supervisor.close()
+    with pytest.raises(MCPSupervisorError, match='SUPERVISOR_DEAD'):
+        store.remove(session.session_id)
+    result, = await owner.drain()
+    assert result.status is RetirementStatus.QUARANTINED and result.close.pending
+    operation = state.prepare_owned_close()
+    assert operation._adapter is adapter
+    assert operation.failure_fact == {'class': 'MCPSupervisorError', 'errno': None}
+    assert owner.retained_count == 1 and store.get(session.session_id) is session
+    store.remove(session.session_id)
+    assert await owner.drain() == (result,)
+
+
+async def test_standalone_owned_close_releases_sdk_reference(tmp_path, sdk_supervisor):
+    adapter = _owned_context_sdk(sdk_supervisor, [])
+    disp = _disposition(tmp_path)
+    state = await disp.disposition_for_new_session('standalone', tmp_path, [_http_entry()], _allow)
+    disp.attach_runtime_resolver(state, sdk_adapter=adapter)
+    listed, call = state.tool_service.list_tools('tools')
+    assert call.authorization_outcome == 'ALLOW' and 'list_providers' in listed.text
+    adapter_ref = weakref.ref(adapter)
+    state.close()
+    assert adapter.pending_connections() == ()
+    del adapter
+    sdk_supervisor.submit(asyncio.sleep(0), timeout_seconds=1)
+    gc.collect()
+    assert adapter_ref() is None
+
+
+@pytest.mark.parametrize('failure_point', ['callback', 'candidate'])
+async def test_provisional_callback_precedes_registration_and_owned_close_preserves_primary(tmp_path, monkeypatch, failure_point):
+    disp = _disposition(tmp_path)
+    states, closed = [], []
+    primary = ValueError('controlled callback failure') if failure_point == 'callback' else asyncio.CancelledError('controlled candidate cancellation')
+
+    def fail_close():
+        closed.append('closed')
+        raise OSError('secondary cleanup failure')
+
+    def provisional(state):
+        states.append(state)
+        state.register_close_hook(fail_close)
+        if failure_point == 'callback':
+            raise primary
+
+    original = disp._own_candidates
+
+    def candidates(state):
+        assert states == [state]
+        original(state)
+        raise primary
+
+    monkeypatch.setattr(disp, '_own_candidates', candidates)
+    with pytest.raises(type(primary)) as caught:
+        await disp.disposition_for_new_session('provisional', tmp_path, None, _allow,
+                                               on_provisional_state=provisional)
+    assert caught.value is primary and closed == ['closed']
+    operation = states[0].prepare_owned_close()
+    assert operation.result.result() == ('SESSION_CLOSE_FAILED',)
+    states[0].close()
+    assert states[0].prepare_owned_close() is operation and closed == ['closed']
+
+
+async def test_provisional_callback_success_precedes_first_permission_await(tmp_path):
+    disp = _disposition(tmp_path)
+    states = []
+
+    async def permission(params):
+        assert len(states) == 1 and states[0]._capabilities
+        await asyncio.sleep(0)
+        return 'reject'
+
+    state = await disp.disposition_for_new_session('provisional', tmp_path, [_http_entry()], permission,
+                                                   on_provisional_state=states.append)
+    assert states == [state]
+    state.close()
+    assert state.prepare_owned_close().result.result() == ()
+
+
+@pytest.mark.parametrize('failure', [asyncio.CancelledError('cancel'), SystemExit(19)])
+def test_owned_close_preserves_control_exception_and_first_failure(failure):
+    state = ClientMcpSessionState(session_id='control')
+    calls = []
+
+    def fail():
+        raise failure
+
+    state.register_close_hook(fail)
+    state.register_close_hook(lambda: calls.append('remaining'))
+    with pytest.raises(type(failure)) as caught:
+        state.close()
+    assert caught.value is failure
+    assert calls == ['remaining']
+    state.close()
+    assert state.prepare_owned_close().result.result() == ('SESSION_CLOSE_FAILED',)
 
 
 def test_split_close_detaches_once_and_records_legacy_hook_failure(tmp_path):

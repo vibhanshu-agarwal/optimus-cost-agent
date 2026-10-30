@@ -4,6 +4,35 @@
 schema = "test-profiles-v1"
 
 [[rules]]
+tier = "core"
+paths = ["tests/unit/acp/test_session_retention.py", "tests/unit/acp/test_session_retirement.py"]
+why = "Cap-only retention ownership, real in-process adapter/writer custody and graph release; no external services or child processes."
+
+[[rules]]
+tier = "audit-current"
+nodes = [
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::test_current_retention_execution_is_bound_and_omission_is_refused",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py::test_current_retention_import_closure_and_unlisted_refusal",
+]
+why = "Read the actual candidate source and bind executing modules or walk its strict import closure, including the new retention owner."
+
+[[tags]]
+name = "concurrency"
+paths = ["tests/unit/acp/test_session_retention.py", "tests/unit/acp/test_session_retirement.py"]
+why = "Loop-affine use leases, cancellation-safe close, dedicated physical writers and held worker/receipt controls."
+
+[[inputs]]
+paths = ["src/optimus/acp/session_retention.py"]
+files = [
+  "tests/unit/acp/test_session_retention.py",
+  "tests/unit/acp/test_session_retirement.py",
+  "tests/integration/mcp/test_client_sdk_local_stdio.py",
+  "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py",
+  "tests/unit/tools/test_probe_p11_zed_session_load.py",
+]
+why = "The owner is composed by spec/server; current audit bindings and strict AST inventories must cover this exact new dependency as well as its real custody/SDK controls."
+
+[[rules]]
 tier = "proc"
 paths = ["tests/integration/mcp/test_client_sdk_local_stdio.py", "tests/integration/acp/test_process_signals.py"]
 why = "Owns real official-SDK stdio children or isolated native-signal/serving children; run serially outside core-parallel."

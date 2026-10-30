@@ -12,7 +12,6 @@ from collections.abc import Awaitable, Callable, Mapping
 from contextvars import ContextVar, copy_context
 from dataclasses import dataclass, field
 from decimal import Decimal
-from functools import partial
 from pathlib import Path
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Literal, NotRequired, Protocol, TypedDict
@@ -67,6 +66,15 @@ from optimus.acp.session_config import (
     SessionConfigSnapshot,
     build_session_config_options,
 )
+from optimus.acp.session_retention import (
+    DEFAULT_SESSION_RETENTION_POLICY,
+    RetirementReason,
+    SessionCapacityError,
+    SessionCloseResult,
+    SessionRetentionOwner,
+    SessionRetentionPolicy,
+    SessionUseLease,
+)
 from optimus.acp.settlement import (
     RpcResponseDelivery,
     SendOutcome,
@@ -109,7 +117,6 @@ from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
 from optimus.context.assembly import AttachedTurn, ContextAttachment
 from optimus.gateway.attempts import ROUTE_STOPPED_NO_RETRY
 from optimus.mcp.client_catalog import ClientMcpOneCallApproval
-from optimus.mcp.client_config import ClientMcpConfigError
 from optimus.mcp.client_disposition import (
     AcpMcpPermissionBroker,
     ClientMcpDisposition,
@@ -439,8 +446,22 @@ class InMemoryAcpSpecSessionStore:
     def __init__(self) -> None:
         self._sessions: dict[str, AcpSpecSession] = {}
         self._closed_state_ids: set[str] = set()
+        self._retention: SessionRetentionOwner | None = None
 
-    def create(self, *, cwd: Path, conversation: ConversationState | None = None) -> AcpSpecSession:
+    def bind_retention(self, owner: SessionRetentionOwner) -> None:
+        if self._retention is not None:
+            raise RuntimeError('session store already bound')
+        owner.adopt(tuple(self._sessions.values()))
+        self._retention = owner
+
+    def create(self, *, cwd: Path, conversation: ConversationState | None = None,
+               provisional: bool = False) -> AcpSpecSession:
+        if self._retention is not None:
+            return self._retention.create(lambda: self._create_unchecked(cwd=cwd, conversation=conversation),
+                                          provisional=provisional)
+        return self._create_unchecked(cwd=cwd, conversation=conversation)
+
+    def _create_unchecked(self, *, cwd: Path, conversation: ConversationState | None = None) -> AcpSpecSession:
         session = AcpSpecSession(
             session_id=f"session-{uuid.uuid4().hex}",
             cwd=cwd.resolve(),
@@ -449,18 +470,34 @@ class InMemoryAcpSpecSessionStore:
         self._sessions[session.session_id] = session
         return session
 
+    def _detach_session(self, session: AcpSpecSession) -> bool:
+        if self._sessions.get(session.session_id) is not session:
+            return False
+        del self._sessions[session.session_id]
+        self._closed_state_ids.discard(session.session_id)
+        return True
+
     def get(self, session_id: str) -> AcpSpecSession | None:
         return self._sessions.get(session_id)
 
     def remove(self, session_id: str) -> None:
-        session = self._sessions.pop(session_id, None)
+        if self._retention is not None:
+            self._retention.remove_sync(session_id)
+            return
+        session = self._sessions.get(session_id)
+        already_closed = session_id in self._closed_state_ids
+        if session is not None:
+            self._detach_session(session)
         try:
-            if session is not None and session.client_mcp_state is not None:
+            if session is not None and session.client_mcp_state is not None and not already_closed:
                 self._close_state_once(session)
         finally:
             self._closed_state_ids.discard(session_id)
 
     def close_all(self) -> None:
+        if self._retention is not None:
+            self._retention.close_all_sync()
+            return
         for session in list(self._sessions.values()):
             self._close_state_once(session)
 
@@ -492,6 +529,14 @@ class ProgressSubmission:
 
 progress_submission: ContextVar[ProgressSubmission | None] = ContextVar("progress_submission", default=None)
 request_worker_custody: ContextVar[set[asyncio.Task[Any]] | None] = ContextVar("request_worker_custody", default=None)
+request_session_custody: ContextVar[list[SessionUseLease] | None] = ContextVar('request_session_custody', default=None)
+
+
+def fork_request_session_use(session_id: str | None = None) -> SessionUseLease | None:
+    for use in reversed(request_session_custody.get() or ()):
+        if use.session_id is not None and (session_id is None or use.session_id == session_id):
+            return use.fork()
+    return None
 
 
 class ProgressLane:
@@ -711,6 +756,7 @@ class AcpDuplexAdapter:
         auto_router: AutoRouter | None = None,
         mcp_idle_seconds: int | None = None,
         monotonic_clock: Callable[[], float] = monotonic,
+        session_retention_policy: SessionRetentionPolicy = DEFAULT_SESSION_RETENTION_POLICY,
     ) -> None:
         if mcp_idle_seconds is not None and (type(mcp_idle_seconds) is not int or not 1 <= mcp_idle_seconds <= 2592000):
             raise ValueError("invalid MCP idle seconds")
@@ -771,6 +817,70 @@ class AcpDuplexAdapter:
         # seeds nothing.
         self._session_seeder = session_seeder if context_attachment is not None else None
         self._closed = False
+        self._session_retention_policy = session_retention_policy
+        self._retention: SessionRetentionOwner | None = None
+        self._shutdown_task: asyncio.Task[None] | None = None
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass  # Standalone synchronous construction binds on its first serving-loop use.
+        else:
+            self._ensure_retention()
+
+    def _ensure_retention(self) -> SessionRetentionOwner:
+        if self._retention is None:
+            owner = SessionRetentionOwner(policy=self._session_retention_policy, clock=self._monotonic_clock,
+                                          close_session=self._close_retained_session, detach_session=self._detach_retained_session)
+            self._sessions.bind_retention(owner)
+            self._retention = owner
+        return self._retention
+
+    @property
+    def retention(self) -> SessionRetentionOwner:
+        return self._ensure_retention()
+
+    def _detach_retained_session(self, session: AcpSpecSession) -> bool:
+        if not self._sessions._detach_session(session):
+            return False
+        self._idle_mcp.pop(session.session_id, None)
+        self._reopen_reservations.pop(session.session_id, None)
+        self._reopen_cancelled.discard(session.session_id)
+        self._active_turns.pop(session.session_id, None)
+        return True
+
+    async def _close_retained_session(self, session: AcpSpecSession,
+                                      states: tuple[ClientMcpSessionState, ...]) -> SessionCloseResult:
+        runtime = self._client_mcp_runtime
+        disposition = runtime.disposition if isinstance(runtime, ClientMcpRuntime) else None
+        lane = disposition if isinstance(disposition, ClientMcpDisposition) else None
+        primary: BaseException | None = None
+        failures: list[str] = []
+        pending = False
+        idle = self._idle_mcp.get(session.session_id)
+        if idle is not None and idle.phase == 'QUARANTINED':
+            failures.append('CLEANUP_UNCERTAIN')
+        for state in reversed(states):
+            operation = state.prepare_owned_close()
+            try:
+                if not operation.result.done():
+                    if lane is not None:
+                        await lane.run_blocking(state.close)
+                    else:
+                        await asyncio.to_thread(state.close)
+                state_failures = await asyncio.shield(asyncio.wrap_future(operation.result))
+                failures.extend(state_failures)
+            except BaseException as exc:
+                if primary is None:
+                    primary = exc
+                if operation.result.done():
+                    failures.extend(operation.result.result())
+                else:
+                    failures.append('SESSION_CLOSE_UNKNOWN')
+            pending = pending or operation.pending
+        if primary is not None:
+            self.retention.retain_close_result(session, SessionCloseResult(tuple(failures), pending))
+            raise primary
+        return SessionCloseResult(tuple(failures), pending)
 
     def record_turn_commit(self, session_id: str, turn_seq: int, *, committed: bool | None) -> None:
         idle = self._idle_mcp.get(session_id)
@@ -818,6 +928,14 @@ class AcpDuplexAdapter:
                 task.result()
             self._idle_sweeper = None
 
+    def _quarantine_idle_mcp(self, session_id: str, idle: _IdleMcpState,
+                             failures: tuple[str, ...] = ('CLEANUP_UNCERTAIN',)) -> None:
+        if idle.phase != 'QUARANTINED':
+            session = self._sessions.get(session_id)
+            if session is not None:
+                self.retention.retain_close_result(session, SessionCloseResult(failures, False))
+        idle.phase = 'QUARANTINED'
+
     async def sweep_idle_mcp_once(self) -> None:
         runtime = self._client_mcp_runtime
         if self._mcp_idle_seconds is None or runtime is None or self._closed:
@@ -839,14 +957,18 @@ class AcpDuplexAdapter:
                     runtime.sdk_adapter.record_diagnostic("WARNING_UNOBSERVABLE")
                     idle.phase = "ACTIVE"
                     continue
+                use = self.retention.acquire(session_id)
+                if use is None:
+                    continue
                 hooks = state.prepare_suspend()
                 if hooks is None:
+                    use.release()
                     idle.phase = "ACTIVE"
                     continue
                 idle.phase = "MCP_CLOSING"
                 async def close_peer(
                     state: ClientMcpSessionState = state, hooks: tuple[Callable[[], None], ...] = hooks,
-                    idle: _IdleMcpState = idle, session_id: str = session_id,
+                    idle: _IdleMcpState = idle, session_id: str = session_id, use: SessionUseLease = use,
                 ) -> None:
                     try:
                         def work() -> tuple[str, ...]:
@@ -857,22 +979,27 @@ class AcpDuplexAdapter:
                         failures = await runtime.disposition.run_blocking(work)
                     except BaseException:
                         state.complete_suspend(("CLEANUP_UNCERTAIN",))
-                        idle.phase = "QUARANTINED"
+                        self._quarantine_idle_mcp(session_id, idle)
                         raise
+                    finally:
+                        use.release()
                     if idle.phase == "QUARANTINED":
                         failures += ("CLEANUP_UNCERTAIN",)
                     clean = state.complete_suspend(failures)
-                    idle.phase = "MCP_SUSPENDED" if clean else "QUARANTINED"
+                    if clean:
+                        idle.phase = "MCP_SUSPENDED"
+                    else:
+                        self._quarantine_idle_mcp(session_id, idle, failures)
                 job = asyncio.create_task(close_peer(), name="optimus-idle-mcp-close")
                 self._mcp_close_tasks.add(job)
                 budget = max(1, len(state.server_names())) * runtime.sdk_adapter._operation_timeout_seconds
                 try:
                     await asyncio.wait_for(asyncio.shield(job), timeout=budget)
                 except TimeoutError:
-                    idle.phase = "QUARANTINED"
+                    self._quarantine_idle_mcp(session_id, idle)
                     runtime.disposition.record_session_close_failure()
                 except Exception:
-                    idle.phase = "QUARANTINED"
+                    self._quarantine_idle_mcp(session_id, idle)
                 finally:
                     if job.done():
                         self._mcp_close_tasks.discard(job)
@@ -892,6 +1019,35 @@ class AcpDuplexAdapter:
                 turn.pending_permission_request_id = None
 
     async def aclose(self) -> None:
+        if self._shutdown_task is None:
+            self._shutdown_task = asyncio.create_task(self._shutdown_retained_sessions(), name='optimus-session-shutdown')
+            self._mcp_close_tasks.add(self._shutdown_task)
+        job = self._shutdown_task
+        cancelled = False
+        try:
+            while not job.done():
+                try:
+                    await asyncio.shield(job)
+                except asyncio.CancelledError:
+                    cancelled = True
+                except BaseException:
+                    break
+            job.result()
+        finally:
+            if job.done():
+                self._mcp_close_tasks.discard(job)
+        if cancelled:
+            raise asyncio.CancelledError
+
+    async def _shutdown_retained_sessions(self) -> None:
+        owner = self.retention
+        owner.close_admission()
+        barriers = []
+        for session_id in owner.session_ids:
+            use = owner.acquire(session_id)
+            if use is not None:
+                barriers.append(use)
+            owner.request_retire(session_id, reason=RetirementReason.SHUTDOWN)
         self._cancel_loop_work()
         prior_failure: BaseException | None = None
         try:
@@ -916,7 +1072,7 @@ class AcpDuplexAdapter:
         current = asyncio.current_task()
         cancelled = current is not None and current.cancelling() > 0
         reservations = tuple(self._reopen_reservations.values())
-        for task in reservations + tuple(self._mcp_close_tasks):
+        for task in reservations + tuple(task for task in self._mcp_close_tasks if task is not asyncio.current_task()):
             while not task.done():
                 try:
                     await asyncio.shield(task)
@@ -932,47 +1088,24 @@ class AcpDuplexAdapter:
                 expected_cancel = task in reservations and isinstance(exc, asyncio.CancelledError)
                 if not expected_cancel and prior_failure is None:
                     prior_failure = exc
-        self._mcp_close_tasks.clear()
+        self._mcp_close_tasks.intersection_update({asyncio.current_task()})
         runtime = self._client_mcp_runtime
         disposition = runtime.disposition if isinstance(runtime, ClientMcpRuntime) else None
         cleanup_lane = disposition if isinstance(disposition, ClientMcpDisposition) else None
         if prior_failure is not None and cleanup_lane is not None:
             cleanup_lane.record_session_close_failure()
-        prepared = [(session.client_mcp_state, session.client_mcp_state.prepare_close())
-                    for session in self._sessions._sessions.values() if session.client_mcp_state is not None]
-        async def close_states() -> None:
-            primary: BaseException | None = None
-            for state, hooks in prepared:
-                try:
-                    failures = (await cleanup_lane.run_blocking(partial(run_close_hooks, hooks))
-                                if cleanup_lane is not None else await asyncio.to_thread(run_close_hooks, hooks))
-                except BaseException as exc:
-                    state.complete_close(("SESSION_CLOSE_FAILED",))
-                    if primary is None:
-                        primary = exc
-                else:
-                    state.complete_close(failures)
-            if cleanup_lane is not None:
-                await cleanup_lane.drain()
-            if primary is not None:
-                raise primary
-        job = asyncio.create_task(close_states(), name="optimus-mcp-session-shutdown")
-        self._mcp_close_tasks.add(job)
+        for use in barriers:
+            use.release()
+        barriers.clear()
         try:
-            while not job.done():
-                try:
-                    await asyncio.shield(job)
-                except asyncio.CancelledError:
-                    cancelled = True
-            try:
-                job.result()
-            except BaseException as exc:
-                if prior_failure is None:
-                    prior_failure = exc
-        finally:
-            if job.done():
-                self._mcp_close_tasks.discard(job)
-        self._idle_mcp.clear()
+            results = await owner.drain()
+            if any(result.close.failures or result.close.pending for result in results):
+                raise RuntimeError('session cleanup incomplete')
+        except BaseException as exc:
+            if prior_failure is None:
+                prior_failure = exc
+        if cleanup_lane is not None:
+            await cleanup_lane.drain()
         if prior_failure is not None:
             raise prior_failure
         if cancelled:
@@ -1073,6 +1206,37 @@ class AcpDuplexAdapter:
         request: dict[str, Any],
         ownership_slot: ResponseOwnershipSlot | None = None,
     ) -> ResponseEnvelope:
+        owner = self.retention
+        custody = request_session_custody.get()
+        own_custody = custody is None
+        token = None
+        if custody is None:
+            custody = []
+            token = request_session_custody.set(custody)
+        try:
+            params = request.get('params')
+            session_id = params.get('sessionId') if isinstance(params, dict) else None
+            if isinstance(session_id, str) and not any(use.session_id == session_id for use in custody):
+                use = owner.acquire(session_id) if owner.is_active(session_id) else None
+                if use is not None:
+                    custody.append(use)
+                elif self._sessions.get(session_id) is not None:
+                    return self._non_turn(error_response(request.get('id'),
+                                          JsonRpcError(code=INVALID_REQUEST, message='unknown session')), ownership_slot)
+            return await self._handle_client_request(request, ownership_slot)
+        finally:
+            if own_custody:
+                assert token is not None
+                request_session_custody.reset(token)
+                for use in custody:
+                    use.release()
+                custody.clear()
+
+    async def _handle_client_request(
+        self,
+        request: dict[str, Any],
+        ownership_slot: ResponseOwnershipSlot | None = None,
+    ) -> ResponseEnvelope:
         """Handle a request; no supplied slot is the in-process completion boundary.
 
         Direct callers finalize here with RPC NOT_ATTEMPTED. Transport drivers supply
@@ -1117,6 +1281,8 @@ class AcpDuplexAdapter:
 
     def close_all(self) -> None:
         """Cancel outstanding ACP permission work, then close session states exactly once."""
+        if self._sessions._retention is not None:
+            self._sessions._retention.precheck_sync()
         if self._closed:
             return
         self._cancel_loop_work()
@@ -1308,69 +1474,54 @@ class AcpDuplexAdapter:
         if not isinstance(mcp_servers, list):
             return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
 
-        # Provisional in-memory session after input-shape validation.
-        session = self._sessions.create(cwd=cwd, conversation=self._new_conversation())
-        if self._context_attachment is not None:
-            session.context_strategy = self._context_attachment.initial_strategy
-            session.sliding_notice_pending = session.context_strategy == "sliding_window"
-            refusal = self._session_seeder(session) if self._session_seeder is not None else None
-            if refusal is not None:
-                self._sessions.remove(session.session_id)
-                return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message=refusal))
+        try:
+            session = self._sessions.create(cwd=cwd, provisional=True)
+        except SessionCapacityError:
+            return error_response(request.get('id'), JsonRpcError(code=REQUEST_CANCELLED, message='Server busy',
+                                  data={'reason': 'SESSION_CAPACITY'}))
+        use = self.retention.acquire(session.session_id)
+        assert use is not None
+        custody = request_session_custody.get()
+        assert custody is not None
+        custody.append(use)
         empty_state = ClientMcpSessionState(session_id=session.session_id)
         session.client_mcp_state = empty_state
-
-        if len(mcp_servers) == 0:
-            return success_response(request_id=request.get("id"), result=self._session_new_result(session))
-
-        runtime = self._client_mcp_runtime
-        if runtime is None:
-            self._sessions.remove(session.session_id)
-            return error_response(
-                request.get("id"),
-                JsonRpcError(code=INVALID_REQUEST, message="client MCP runtime not configured"),
-            )
-
-        state: ClientMcpSessionState | None = None
+        self.retention.retain_setup_state(session.session_id, empty_state)
+        completed = False
         try:
-            async def request_permission(permission_params: dict[str, Any]) -> dict[str, Any]:
-                return await self._outbound.request("session/request_permission", permission_params)
-
-            state = await runtime.disposition.disposition_for_new_session(
-                session.session_id,
-                cwd,
-                mcp_servers,
-                request_permission,
-            )
-            runtime.disposition.attach_runtime_resolver(
-                state,
-                sdk_adapter=runtime.sdk_adapter,
-            )
-        except ClientMcpConfigError:
-            if state is not None:
-                state.close()
-            self._sessions.remove(session.session_id)
-            return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
-        except Exception:
-            if state is not None:
-                state.close()
-            self._sessions.remove(session.session_id)
-            return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
-        except BaseException:
-            if state is not None:
-                hooks = state.prepare_close()
+            session.conversation = self._new_conversation()
+            if self._context_attachment is not None:
+                session.context_strategy = self._context_attachment.initial_strategy
+                session.sliding_notice_pending = session.context_strategy == 'sliding_window'
+                refusal = self._session_seeder(session) if self._session_seeder is not None else None
+                if refusal is not None:
+                    return error_response(request.get('id'), JsonRpcError(code=INVALID_REQUEST, message=refusal))
+            if mcp_servers:
+                runtime = self._client_mcp_runtime
+                if runtime is None:
+                    return error_response(request.get('id'), JsonRpcError(code=INVALID_REQUEST,
+                                          message='client MCP runtime not configured'))
+                async def request_permission(permission_params: dict[str, Any]) -> dict[str, Any]:
+                    return await self._outbound.request('session/request_permission', permission_params)
                 try:
-                    failures = await runtime.disposition.run_blocking(partial(run_close_hooks, hooks))
-                except BaseException:
-                    state.complete_close(("SESSION_CLOSE_FAILED",))
-                else:
-                    state.complete_close(failures)
-            self._sessions.remove(session.session_id)
-            raise
-
-        assert state is not None
-        session.client_mcp_state = state
-        return success_response(request_id=request.get("id"), result=self._session_new_result(session))
+                    state = await runtime.disposition.disposition_for_new_session(
+                        session.session_id, cwd, mcp_servers, request_permission,
+                        on_provisional_state=lambda state: self.retention.retain_setup_state(session.session_id, state))
+                    session.client_mcp_state = state
+                    runtime.disposition.attach_runtime_resolver(state, sdk_adapter=runtime.sdk_adapter)
+                except Exception:
+                    return error_response(request.get('id'), JsonRpcError(code=INVALID_REQUEST, message='invalid request'))
+            result = self._session_new_result(session)
+            self.retention.activate(session.session_id)
+            completed = True
+            return success_response(request_id=request.get('id'), result=result)
+        finally:
+            if not completed:
+                custody.remove(use)
+                use.release()
+                self.retention.request_retire(session.session_id, reason=RetirementReason.CREATE_FAILED)
+                with contextlib.suppress(BaseException):
+                    await self.retention.wait_retired(session.session_id)
 
     async def _handle_session_prompt(
         self,
@@ -2423,6 +2574,9 @@ class AcpDuplexAdapter:
         """Run `function` off the event loop as one invocation of this turn: the turn's cost stays
         incomplete while the worker runs, even after this coroutine stops waiting for it (transport
         teardown), and a worker that never started can never start later (Codex CP3 ruling R2)."""
+        use = fork_request_session_use(session.session_id) or self.retention.acquire(session.session_id)
+        if use is None and self._sessions.get(session.session_id) is not None:
+            raise RuntimeError('unknown session')
         invocation = session.cost_settlement.open_invocation(turn.run_id)
 
         def call() -> tuple[bool, Any]:
@@ -2474,6 +2628,8 @@ class AcpDuplexAdapter:
                     log_late_worker_failure(run_id=turn.run_id, telemetry=self._failure_telemetry)
 
         def finished(owned: asyncio.Task[Any]) -> None:
+            if use is not None:
+                use.release()
             self._worker_tasks.discard(owned)
             if request_workers is not None:
                 request_workers.discard(owned)
@@ -2851,7 +3007,13 @@ class AcpDuplexAdapter:
         loop = asyncio.get_running_loop()
 
         async def _request(params: dict[str, Any]) -> dict[str, Any]:
-            return await self._outbound.request("session/request_permission", params)
+            use = fork_request_session_use(session.session_id) or self.retention.acquire(session.session_id)
+            if use is None:
+                raise RuntimeError('unknown session')
+            try:
+                return await self._outbound.request("session/request_permission", params)
+            finally:
+                use.release()
 
         def _issue(request: Any) -> ClientMcpOneCallApproval | None:
             state = session.client_mcp_state
