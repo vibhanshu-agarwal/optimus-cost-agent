@@ -2005,11 +2005,13 @@ async def test_session_new_failure_releases_closed_state_id(tmp_path, monkeypatc
     runtime = None if failure == "runtime-missing" else _client_mcp_runtime_for_tests(tmp_path, operations=operations)
     returned_states = []
 
-    async def disposition_error(self, session_id, cwd, entries, request_permission):
+    async def disposition_error(self, session_id, cwd, entries, request_permission, *, on_provisional_state=None):
         raise RuntimeError("controlled disposition failure")
 
-    async def return_provisional(self, session_id, cwd, entries, request_permission):
+    async def return_provisional(self, session_id, cwd, entries, request_permission, *, on_provisional_state=None):
         state = ClientMcpSessionState(session_id=session_id)
+        if on_provisional_state is not None:
+            on_provisional_state(state)
         returned_states.append(state)
         return state
 
@@ -2046,8 +2048,11 @@ async def test_session_new_failure_releases_closed_state_id(tmp_path, monkeypatc
             assert closed_states[0] is returned_states[0]
             assert closed_states[1] is not returned_states[0]
             assert closed_states[0].session_id == closed_states[1].session_id
+        elif failure == 'configuration':
+            assert len(closed_states) == 2
+            assert closed_states[0] is not closed_states[1]
+            assert closed_states[0].prepare_owned_close().result.result() == ()
         else:
-            # The configuration normalizer's never-returned state is outside this slice.
             assert len(closed_states) == 1
         assert sessions._closed_state_ids == set()
     finally:
@@ -2075,6 +2080,60 @@ async def test_close_all_closes_session_states_exactly_once(tmp_path):
     adapter.close_all()
     adapter.close_all()
     assert closes["n"] == 1
+
+
+async def test_bound_adapter_sync_close_prechecks_before_cancelling(tmp_path):
+    sessions = InMemoryAcpSpecSessionStore()
+    adapter = AcpDuplexAdapter(runner=checked_agent_runner(FakeRunner()), workspace_root=tmp_path,
+                               sessions=sessions, outbound=_recording_outbound(),
+                               client_mcp_runtime=_client_mcp_runtime_for_tests(tmp_path))
+    owner = adapter.retention
+    session = sessions.create(cwd=tmp_path)
+    state = session.client_mcp_state = ClientMcpSessionState(session.session_id)
+    closed = []
+    state.register_close_hook(lambda: closed.append('closed'))
+    lease = owner.acquire(session.session_id)
+    with pytest.raises(RuntimeError, match='requires await aclose'):
+        adapter.close_all()
+    assert adapter._closed is False
+    assert closed == [] and sessions.get(session.session_id) is session
+    lease.release()
+    adapter.close_all()
+    adapter.close_all()
+    await adapter.aclose()
+    assert closed == ['closed'] and owner.retained_count == 0
+
+
+async def test_bound_store_sync_failure_survives_adapter_aclose(tmp_path):
+    from optimus.acp.session_retention import (
+        RetirementStatus,
+        SessionRetentionPolicy,
+    )
+
+    sessions = InMemoryAcpSpecSessionStore()
+
+    adapter = AcpDuplexAdapter(runner=checked_agent_runner(FakeRunner()), workspace_root=tmp_path,
+                               sessions=sessions, outbound=_recording_outbound(),
+                               client_mcp_runtime=_client_mcp_runtime_for_tests(tmp_path),
+                               session_retention_policy=SessionRetentionPolicy(1))
+    owner = adapter.retention
+    session = sessions.create(cwd=tmp_path)
+    state = session.client_mcp_state = ClientMcpSessionState(session.session_id)
+    closed = []
+
+    def fail():
+        closed.append('failed')
+        raise RuntimeError('owned close failure')
+
+    state.register_close_hook(fail)
+    adapter.close_all()
+    first, = await owner.drain()
+    assert first.status is RetirementStatus.QUARANTINED
+    with pytest.raises(RuntimeError, match='session cleanup incomplete'):
+        await adapter.aclose()
+    assert await owner.drain() == (first,)
+    assert state.prepare_owned_close().result.result() == ('SESSION_CLOSE_FAILED',)
+    assert owner.retained_count == 1 and closed == ['failed']
 
 
 async def test_session_prompt_threads_client_mcp_service_without_serializing(tmp_path):

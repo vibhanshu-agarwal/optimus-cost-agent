@@ -3942,6 +3942,22 @@ def test_establishing_applicability_rejects_dirty_execution_surface(tmp_path: Pa
     assert probe.execution_surface_clean(repo, ("tracked.txt",)) is False
 
 
+def test_current_retention_import_closure_and_unlisted_refusal(monkeypatch) -> None:
+    import tools.probe_p11_zed_session_load as probe
+
+    # The strict walker reads committed blobs in production. This candidate-source control supplies
+    # actual checkout bytes through the same source-provider seam, including its new untracked file.
+    tracked = probe._tracked_py_paths(REPO_ROOT, 'HEAD') | {'src/optimus/acp/session_retention.py'}
+    monkeypatch.setattr(probe, '_tracked_py_paths', lambda *_args: tracked)
+    monkeypatch.setattr(probe, 'git_cat_file_blob', lambda _root, _commit, path: (REPO_ROOT / path).read_bytes())
+    closure = probe.compute_establishing_import_closure(REPO_ROOT)
+    allowed = frozenset(path for path in probe.ESTABLISHING_EXECUTION_GIT_PATHS if path.endswith('.py'))
+    assert closure == allowed
+    with pytest.raises(probe.ProbeError, match='session_retention'):
+        probe.compute_establishing_import_closure(REPO_ROOT,
+            allowed_py_paths=allowed - {'src/optimus/acp/session_retention.py'})
+
+
 def test_establishing_import_closure_equals_explicit_module_path_subset() -> None:
     """baseline-green preservation: live AST closure matches the explicit module-path subset.
 
@@ -3978,6 +3994,10 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     # adds the full-set config module and, through the summarizer factory, the Contributor disclosure
     # (two paths). Keyed on HEAD's spec, so each committed state pins its exact count.
     head_spec = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/acp/spec.py")
+    retention_path = 'src/optimus/acp/session_retention.py'
+    retention_committed = b'from optimus.acp.session_retention import' in head_spec
+    if not retention_committed:
+        expected -= {retention_path}
     task9_paths = frozenset(
         {
             "src/optimus/context/__init__.py",
@@ -4107,6 +4127,7 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     assert (admission_path in closure) is admission_committed
     assert (secret_paths_path in closure) is secret_paths_committed
     assert (file_policy_path in closure) is file_policy_committed
+    assert (retention_path in closure) is retention_committed
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
@@ -4133,7 +4154,7 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         2 if correction_committed else 0
     ) + tree_committed + composition_committed + stage_c_committed + (2 if ordinary_committed else 0) + runtime_tree_committed + failure_facts_committed + (
         2 if loop_committed else 0
-    ) + tree_moved + line_endings_committed + edits_committed + auto_committed + contract_committed + hybrid_committed + lifecycle_committed + admission_committed + secret_paths_committed + file_policy_committed
+    ) + tree_moved + line_endings_committed + edits_committed + auto_committed + contract_committed + hybrid_committed + lifecycle_committed + admission_committed + retention_committed + secret_paths_committed + file_policy_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

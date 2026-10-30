@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import contextlib
 import functools
 import io
 import json
@@ -40,8 +41,16 @@ from optimus.acp.lifecycle import (
 )
 from optimus.acp.outbound_writer import DedicatedOutboundWriter, EphemeralSendOwner, OutboundQueueItem, next_ephemeral_send_key
 from optimus.acp.process_lifecycle import ProcessLifecycle, ShutdownObservation, StopReason, cleanup_failure, raise_preserving_failure
+from optimus.acp.session_retention import DEFAULT_SESSION_RETENTION_POLICY, SessionRetentionPolicy, SessionUseLease
 from optimus.acp.settlement import RpcResponseDelivery, SendOutcome, SettlementInvariantError
-from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, progress_submission, request_worker_custody
+from optimus.acp.spec import (
+    AcpDuplexAdapter,
+    InMemoryAcpSpecSessionStore,
+    fork_request_session_use,
+    progress_submission,
+    request_session_custody,
+    request_worker_custody,
+)
 from optimus.mcp.client_disposition import ClientMcpShutdownOutcome
 from optimus.mcp.client_supervisor import MCPSupervisorState
 
@@ -104,6 +113,30 @@ def _inbound_response_payload(message: Mapping[str, object]) -> Callable[[], dic
             "result": message.get("result") if "result" in message else None,
         }
     return payload
+
+
+def _submit_dedicated(
+    writer: DedicatedOutboundWriter, item: OutboundQueueItem,
+    *, rejection: SendOutcome = SendOutcome.CONCLUSIVE_FAILURE,
+) -> concurrent.futures.Future[SendCompletion]:
+    try:
+        return writer.submit(item)
+    except BaseException:
+        # An accepted reservation remains physical custody even if submit's caller raises.
+        if item.reservation is None and not item.source_future.running():
+            completion = SendCompletion(send_key=item.send_key, outcome=rejection)
+            with contextlib.suppress(BaseException):
+                item.owner.publish_authoritative(item.send_key, rejection)
+            if not item.source_future.done():
+                with contextlib.suppress(BaseException):
+                    item.source_future.set_result(completion)
+            if item.writer_token is not None:
+                with contextlib.suppress(BaseException):
+                    item.writer_token.release()
+            if item.handle is not None:
+                with contextlib.suppress(BaseException):
+                    item.handle.finalize_once(completion)
+        raise
 
 
 class _StdinRead:
@@ -273,7 +306,7 @@ class StdioByteWriter:
         key = next_ephemeral_send_key("framed")
         owner.create_queued(key)
         source: concurrent.futures.Future[SendCompletion] = concurrent.futures.Future()
-        self._dedicated.submit(OutboundQueueItem(payload={}, send_key=key, owner=owner, source_future=source, encoded_payload=data))
+        _submit_dedicated(self._dedicated, OutboundQueueItem(payload={}, send_key=key, owner=owner, source_future=source, encoded_payload=data))
         self._last_send = source
 
     async def drain(self) -> None:
@@ -408,9 +441,12 @@ class NdjsonOutboundChannel:
     async def _submit_payload(self, message: Mapping[str, Any], *, kind: str, admission_class: AdmissionClass = AdmissionClass.REQUIRED) -> SendOutcome | None:
         """Returns the dedicated writer's outcome; ``None`` on the direct path, which raises on failure."""
         progress = progress_submission.get()
+        session_use = fork_request_session_use()
         if self._dedicated_writer is None:
             if progress is not None and progress.control.claim_write_started(progress.send_key).value == "suppressed":
                 progress.admission.set()
+                if session_use is not None:
+                    session_use.release()
                 return SendOutcome.SUPPRESSED
             try:
                 await self._writer.write_line(message)
@@ -422,6 +458,8 @@ class NdjsonOutboundChannel:
                 if progress is not None:
                     progress.control.publish_authoritative(progress.send_key, SendOutcome.FLUSHED)
             finally:
+                if session_use is not None:
+                    session_use.release()
                 if progress is not None:
                     progress.admission.set()
             return None
@@ -442,6 +480,8 @@ class NdjsonOutboundChannel:
             send_key = progress.send_key
             owner = progress.control
         source: concurrent.futures.Future[SendCompletion] = concurrent.futures.Future()
+        if session_use is not None:
+            session_use.release_on(source)
         item = OutboundQueueItem(
             payload=message,
             send_key=send_key,
@@ -452,12 +492,11 @@ class NdjsonOutboundChannel:
         if progress is not None:
             progress.admission.physical_future = source
         try:
-            self._dedicated_writer.submit(item)
+            _submit_dedicated(self._dedicated_writer, item,
+                              rejection=SendOutcome.SUPPRESSED if progress is not None else SendOutcome.CONCLUSIVE_FAILURE)
         except RuntimeError:
-            if progress is None:
+            if progress is None or item.reservation is not None or source.running():
                 raise
-            owner.publish_authoritative(send_key, SendOutcome.SUPPRESSED)
-            source.set_result(SendCompletion(send_key=send_key, outcome=SendOutcome.SUPPRESSED))
             return SendOutcome.SUPPRESSED
         finally:
             if progress is not None:
@@ -656,9 +695,11 @@ class AcpStreamServer:
         mcp_idle_seconds: int | None = None,
         monotonic_clock: Callable[[], float] = monotonic,
         admission_limits: AdmissionLimits = DEFAULT_LIMITS,
+        session_retention_policy: SessionRetentionPolicy = DEFAULT_SESSION_RETENTION_POLICY,
     ) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
         self._admission_limits = admission_limits
+        self._session_retention_policy = session_retention_policy
         self._ignored_notifications = 0
         # Correction plan v4, C4: the harness's workspace telemetry writer, passed into every ndjson session adapter
         # for its always-on refusal and fault records. None writes none.
@@ -996,10 +1037,11 @@ class AcpStreamServer:
             auto_router=self._auto_router,
             mcp_idle_seconds=self._mcp_idle_seconds,
             monotonic_clock=self._monotonic_clock,
+            session_retention_policy=self._session_retention_policy,
         )
         limits = self._admission_limits
-        message_queue: asyncio.Queue[tuple[dict[str, Any], Reservation]] = asyncio.Queue(maxsize=limits.pending_items)
-        prompt_queue: asyncio.Queue[tuple[dict[str, Any], Reservation]] = asyncio.Queue(maxsize=limits.pending_items)
+        message_queue: asyncio.Queue[tuple[dict[str, Any], Reservation, SessionUseLease | None]] = asyncio.Queue(maxsize=limits.pending_items)
+        prompt_queue: asyncio.Queue[tuple[dict[str, Any], Reservation, SessionUseLease | None]] = asyncio.Queue(maxsize=limits.pending_items)
         pending_count = 0
         active = [0, 0]
         prompt_sessions: set[str] = set()
@@ -1031,16 +1073,26 @@ class AcpStreamServer:
                     return  # Loop loss cannot be repaired by a writer callback.
             dedicated.set_admission_failure_callback(required_failed)
 
-        async def submit_via_notice(payload: Mapping[str, Any], *, handle: Any | None = None, observe: bool = True) -> None:
+        async def submit_via_notice(payload: Mapping[str, Any], *, handle: Any | None = None, observe: bool = True,
+                                    session_use: SessionUseLease | None = None) -> None:
+            source_use = session_use.fork() if session_use is not None else fork_request_session_use()
             if dedicated is None:
-                await writer.write_line(payload)
+                try:
+                    await writer.write_line(payload)
+                finally:
+                    if source_use is not None:
+                        source_use.release()
                 return
             response_handle = handle or notice.allocate_response_handle(ResponseKind.ORDINARY)
             ticket = response_handle.start_non_turn_response_send()
             if ticket.immediate_completion is not None:
                 response_handle.finalize_once(ticket.immediate_completion)
+                if source_use is not None:
+                    source_use.release()
                 return
             assert ticket.source_future is not None
+            if source_use is not None:
+                source_use.release_on(ticket.source_future)
             item = OutboundQueueItem(
                 payload=payload,
                 send_key=ticket.send_key,
@@ -1049,7 +1101,7 @@ class AcpStreamServer:
                 writer_token=ticket.writer_token,
                 handle=response_handle,
             )
-            dedicated.submit(item)
+            _submit_dedicated(dedicated, item)
             if not observe:
                 def finalize(source: concurrent.futures.Future[SendCompletion]) -> None:
                     if not source.cancelled():
@@ -1074,6 +1126,7 @@ class AcpStreamServer:
             lease = turn_control.start_response_send()
             if not lease.granted or lease.send_key is None:
                 return False
+            source_use = fork_request_session_use(turn_control.session_id)
             if dedicated is None:
                 turn_control.claim_write_started(lease.send_key)
                 try:
@@ -1081,9 +1134,14 @@ class AcpStreamServer:
                 except BaseException:
                     turn_control.publish_authoritative(lease.send_key, SendOutcome.AMBIGUOUS)
                     raise
+                finally:
+                    if source_use is not None:
+                        source_use.release()
                 turn_control.publish_authoritative(lease.send_key, SendOutcome.FLUSHED)
                 return True
             source_future: concurrent.futures.Future[Any] = concurrent.futures.Future()
+            if source_use is not None:
+                source_use.release_on(source_future)
             item = OutboundQueueItem(
                 payload=payload,
                 send_key=lease.send_key,
@@ -1092,11 +1150,7 @@ class AcpStreamServer:
                 writer_token=None,
                 handle=None,
             )
-            try:
-                dedicated.submit(item)
-            except Exception:
-                turn_control.publish_authoritative(lease.send_key, SendOutcome.CONCLUSIVE_FAILURE)
-                raise
+            _submit_dedicated(dedicated, item)
             try:
                 loop = asyncio.get_running_loop()
                 completion = await asyncio.shield(asyncio.wrap_future(source_future, loop=loop))
@@ -1121,6 +1175,7 @@ class AcpStreamServer:
 
         async def read_lines() -> None:
             nonlocal pending_count, reader_done, reader_failure, control_task
+            session_use: SessionUseLease | None = None
             try:
                 while not reader_done:
                     if isinstance(reader, StdioNdjsonLineReader) and reader.supports_limited_read:
@@ -1151,19 +1206,24 @@ class AcpStreamServer:
                             if isinstance(session_id, str):
                                 cancelled_messages = []
                                 for _ in range(prompt_queue.qsize()):
-                                    queued, reservation = prompt_queue.get_nowait()
+                                    queued, reservation, queued_use = prompt_queue.get_nowait()
                                     queued_params = queued.get("params")
                                     if isinstance(queued_params, dict) and queued_params.get("sessionId") == session_id:
                                         pending_count -= 1
-                                        cancelled_messages.append((queued.get("id"), reservation))
+                                        cancelled_messages.append((queued.get("id"), reservation, queued_use))
                                     else:
-                                        prompt_queue.put_nowait((queued, reservation))
+                                        prompt_queue.put_nowait((queued, reservation, queued_use))
                                 try:
-                                    for request_id, _ in cancelled_messages:
-                                        await submit_via_notice({"jsonrpc": "2.0", "id": request_id, "result": {"stopReason": "cancelled"}}, observe=False)
+                                    for request_id, _, queued_use in cancelled_messages:
+                                        await submit_via_notice({"jsonrpc": "2.0", "id": request_id, "result": {"stopReason": "cancelled"}},
+                                                                observe=False, session_use=queued_use)
                                 finally:
-                                    for _, reservation in cancelled_messages:
+                                    for _, reservation, queued_use in cancelled_messages:
                                         reservation.release()
+                                        if queued_use is not None:
+                                            queued_use.release()
+                                    cancelled_messages.clear()
+                                    queued_use = None
                             if control_task is not None:
                                 await asyncio.shield(control_task)
                             control_task = asyncio.create_task(adapter.handle_client_notification(message))
@@ -1188,21 +1248,34 @@ class AcpStreamServer:
                         continue
                     params = message.get("params")
                     session_id = params.get("sessionId") if isinstance(params, dict) else None
+                    session_use = (adapter.retention.acquire(session_id)
+                                   if isinstance(session_id, str) and adapter.retention.is_active(session_id) else None)
                     if message.get("method") == "session/prompt" and isinstance(session_id, str):
                         prior = adapter._active_turns.get(session_id)
                         if prior is not None and prior.turn_control.rpc_response_delivery is not RpcResponseDelivery.FLUSHED:
                             envelope = await adapter.handle_client_request(message)
                             assert isinstance(envelope, NonTurnResponseEnvelope)
-                            await submit_via_notice(envelope.response, handle=envelope.response_handle, observe=False)
+                            await submit_via_notice(envelope.response, handle=envelope.response_handle,
+                                                    observe=False, session_use=session_use)
+                            if session_use is not None:
+                                session_use.release()
+                                session_use = None
                             continue
                     admission_reservation = None if pending_count >= limits.pending_items else inbound.try_reserve(1, size, AdmissionClass.ORDINARY)
                     if admission_reservation is None:
-                        await submit_via_notice(error_response(message.get("id"), JsonRpcError(code=REQUEST_CANCELLED, message="Server busy", data={"reason": "QUEUE_FULL"})), observe=False)
+                        await submit_via_notice(error_response(message.get("id"), JsonRpcError(code=REQUEST_CANCELLED, message="Server busy", data={"reason": "QUEUE_FULL"})),
+                                                observe=False, session_use=session_use)
+                        if session_use is not None:
+                            session_use.release()
+                            session_use = None
                         continue
                     if message.get("method") == "session/prompt":
-                        prompt_queue.put_nowait((message, admission_reservation))
+                        prompt_queue.put_nowait((message, admission_reservation, session_use))
                     else:
-                        message_queue.put_nowait((message, admission_reservation))
+                        message_queue.put_nowait((message, admission_reservation, session_use))
+                    session_use = None
+                    message, params, session_id = {}, None, None
+                    line, stripped = b'', b''
                     pending_count += 1
                     wake.set()
                     await asyncio.sleep(0)  # One scheduler gets a turn even with an always-ready injected reader.
@@ -1215,6 +1288,8 @@ class AcpStreamServer:
                 except Exception:
                     return  # The retained reader failure remains primary if reporting fails.
             finally:
+                if session_use is not None:
+                    session_use.release()
                 reader_done = True
                 wake.set()
 
@@ -1417,9 +1492,11 @@ class AcpStreamServer:
                         prompt_sessions.discard(session_id)
                     wake.set()
 
-        async def owned_request(message: dict[str, Any], operation_id: str) -> None:
+        async def owned_request(message: dict[str, Any], operation_id: str, session_use: SessionUseLease | None) -> None:
             workers: set[asyncio.Task[Any]] = set()
             token = request_worker_custody.set(workers)
+            custody = [] if session_use is None else [session_use]
+            session_token = request_session_custody.set(custody)
             try:
                 await process_request(message, operation_id)
             finally:
@@ -1433,6 +1510,10 @@ class AcpStreamServer:
                             cancelled = exc
                         except BaseException:
                             break
+                request_session_custody.reset(session_token)
+                for use in custody:
+                    use.release()
+                custody.clear()
                 if cancelled is not None:
                     raise cancelled
 
@@ -1455,15 +1536,16 @@ class AcpStreamServer:
                     # Complete the rotation even at capacity so deferred prompts keep FIFO order.
                     for _ in range(target.qsize()):
                         # Keep concrete receivers visible to the source-bound queue inventory.
-                        message, reservation = message_queue.get_nowait() if index == 0 else prompt_queue.get_nowait()
+                        message, reservation, session_use = message_queue.get_nowait() if index == 0 else prompt_queue.get_nowait()
                         params = message.get("params")
                         session_id = params.get("sessionId") if isinstance(params, dict) else None
                         if active[index] >= capacity or (index == 1 and isinstance(session_id, str)
                                 and session_id in prompt_sessions):
                             if index == 0:
-                                message_queue.put_nowait((message, reservation))
+                                message_queue.put_nowait((message, reservation, session_use))
                             else:
-                                prompt_queue.put_nowait((message, reservation))
+                                prompt_queue.put_nowait((message, reservation, session_use))
+                            session_use = None
                             continue
                         if index == 1 and isinstance(session_id, str):
                             prompt_sessions.add(session_id)
@@ -1478,7 +1560,9 @@ class AcpStreamServer:
                     # variable, and threaded into process_request for its own diagnostics.
                         operation_id = uuid.uuid4().hex
                         request_method = approved_method_category(message.get("method"))
-                        task = asyncio.create_task(owned_request(message, operation_id))
+                        task = asyncio.create_task(owned_request(message, operation_id, session_use))
+                        session_use = None
+                        message, params, session_id = {}, None, None
                         request_tasks.add(task)
                         task.add_done_callback(release_request)
                         task.add_done_callback(
@@ -1496,8 +1580,11 @@ class AcpStreamServer:
             inbound.close()
             for target in (message_queue, prompt_queue):
                 while not target.empty():
-                    _, reservation = target.get_nowait()
+                    _, reservation, session_use = target.get_nowait()
                     reservation.release()
+                    if session_use is not None:
+                        session_use.release()
+                    session_use = None
             self._cleanup_phase("mcp")
             failures: list[tuple[str, BaseException]] = [] if primary_failure is None else [("serve", primary_failure)]
             # Transport-loss ordering: abandon notices before cancelling request tasks.

@@ -21,6 +21,7 @@ import ast
 import asyncio
 import io
 import json
+import sys
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -30,6 +31,7 @@ import pytest
 
 from optimus.acp import debug_trace
 from optimus.acp import server as server_module
+from optimus.acp import session_retention as retention_module
 from optimus.acp import spec as spec_module
 from optimus.acp.debug_trace import configure_debug_trace
 from optimus.acp.errors import INTERNAL_ERROR, AcpOutboundError
@@ -42,6 +44,7 @@ from optimus.agent.planning_loop import PlanningReadError, PlanningReadRequest
 from optimus.mcp.client_disposition import ClientMcpShutdownOutcome
 from optimus.mcp.client_supervisor import MCPSupervisorState
 from optimus.runtime.modes import ExecutionMode
+from optimus_security.failure_facts import host_session_id
 from tests.integration.acp.test_server_stream import (
     InteractiveLineReader,
     MemoryLineWriter,
@@ -53,7 +56,10 @@ SOURCE_FOR_PREFIX = {
     "server.py": ROOT / "src/optimus/acp/server.py",
     "spec.py": ROOT / "src/optimus/acp/spec.py",
     "planning_loop.py": ROOT / "src/optimus/agent/planning_loop.py",
+    "session_retention.py": ROOT / "src/optimus/acp/session_retention.py",
 }
+BOUND_LOG_MODULES = (server_module, spec_module, retention_module)
+RETENTION_SITE = "session_retention.py:SessionRetentionOwner"
 
 # Hot sites run per message or per tool call: they guard even the supplier allocation.
 HOT = (
@@ -65,7 +71,7 @@ HOT = (
     "server.py:serve_ndjson:inbound_client_response_raw",
     "spec.py:_emit_result_updates:tool_call",
 )
-# Warm sites run once per turn or per failure: a supplier is enough.
+# Lifecycle/turn/failure sites defer their payload work to the sink.
 WARM = (
     "server.py:process_request:exception",
     "spec.py:handle_client_notification:session_cancel",
@@ -81,6 +87,7 @@ WARM = (
     "planning_loop.py:execute_iteration",
     "planning_loop.py:execute_iteration:unparseable",
     "planning_loop.py:execute_iteration:mcp_tool",
+    RETENTION_SITE,
 )
 # Cold reporters keep constant or two-string dict payloads (seam 4 A / 4 B contracts).
 COLD = (
@@ -125,6 +132,13 @@ def test_call_inventory_is_exactly_the_classified_sites():
                 assert location not in found, f"duplicate location {location}"
                 found.add(location)
     assert found == set(HOT) | set(WARM) | set(COLD) | {MCP_REPORTER, REDIS_REPORTER}
+
+
+def test_supplier_failure_injection_covers_all_import_bound_sinks():
+    bound = {module for name, module in tuple(sys.modules.items())
+             if name.startswith('optimus.') and module is not None and module is not debug_trace
+             and vars(module).get('acp_debug_log') is debug_trace.acp_debug_log}
+    assert bound == set(BOUND_LOG_MODULES)
 
 
 def _diagnostic_statement(location):
@@ -195,6 +209,7 @@ INPUT_NAMES = (
     "notification", "session_id", "request", "run_id", "turn_seq", "planning_result", "permission_result",
     "approved_result", "turn", "result", "update_payload", "tool_call", "tool_call_id", "payload",
     "completed_plan", "message_payload", "self", "planning_turn", "wire_attempt", "response", "decision", "call",
+    "entry", "event",
 )
 
 
@@ -207,6 +222,7 @@ PAYLOAD_FACTORIES = {
     "_unknown_cost_payload": planning_module._unknown_cost_payload,
     "_read_rejection_payload": planning_module._read_rejection_payload,
     "_non_progress_payload": planning_module._non_progress_payload,
+    "host_session_id": host_session_id,
 }
 
 
@@ -286,7 +302,11 @@ EXPECTED = {
                "output_bytes": 6, "reason_code": "GRAMMAR_UNRECOGNIZED"},
     WARM[13]: {"run_id": "run-1", "session_id": "session-1", "planning_turn": 1, "kind": "MCP_TOOL",
                "output_bytes": 6, "mcp_operation": "call", "authorization_outcome": "HOLD"},
+    RETENTION_SITE: {"event": "retired", "session_id": "session-" + "a" * 32, "phase": "QUARANTINED",
+                     "uses": 0, "retained_count": 1, "reason": "EXPLICIT_REMOVE", "elapsed_seconds": 2.0,
+                     "failures": ("SESSION_CLOSE_FAILED",), "failure_fact": {"class": "OSError", "errno": 5}},
 }
+PERSISTED_EXPECTED = {RETENTION_SITE: {**EXPECTED[RETENTION_SITE], "failures": ["SESSION_CLOSE_FAILED"]}}
 MESSAGES = {WARM[0]: "client request failed"}
 
 
@@ -301,6 +321,12 @@ def _site_namespace(location, sink):
         namespace["request"] = PlanningReadRequest(path="policy.txt", start_byte=0, end_byte=1024)
     elif location == WARM[12]:
         namespace["exc"] = SimpleNamespace(code="GRAMMAR_UNRECOGNIZED")
+    elif location == RETENTION_SITE:
+        namespace.update(event='retired', self=SimpleNamespace(retained_count=1, _clock=lambda: 6.0),
+            entry=SimpleNamespace(session=SimpleNamespace(session_id='session-' + 'a' * 32), phase='QUARANTINED',
+                uses=0, reason=retention_module.RetirementReason.EXPLICIT_REMOVE, created=4.0,
+                result=SimpleNamespace(close=retention_module.SessionCloseResult(('SESSION_CLOSE_FAILED',), False)),
+                failure_fact={'class': 'OSError', 'errno': 5}))
     return namespace
 
 
@@ -387,7 +413,7 @@ def test_enabled_diagnostics_preserve_payload_fields(location, tmp_path):
     records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     assert len(records) == 1
     assert records[0]["location"] == location
-    assert records[0]["data"] == EXPECTED[location]
+    assert records[0]["data"] == PERSISTED_EXPECTED.get(location, EXPECTED[location])
     if location in MESSAGES:
         assert records[0]["message"] == MESSAGES[location]
 
@@ -416,7 +442,7 @@ def test_enabled_supplier_is_invoked_exactly_once_per_site(location, tmp_path):
     assert len(evaluations) == 1
     assert evaluations[0] == EXPECTED[location]
     [record] = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
-    assert record["data"] == EXPECTED[location], "the sink wrote exactly the evaluation that was observed"
+    assert record["data"] == PERSISTED_EXPECTED.get(location, EXPECTED[location]), "the sink wrote exactly the evaluation that was observed"
 
 
 PARAMS_READING_SITES = (HOT[0], HOT[1], WARM[7])
@@ -610,8 +636,8 @@ def _apply_condition(condition, monkeypatch, tmp_path):
         breaker = _supplier_breaker()
         # server/spec bind the name at import; planning_loop and the sink module's own
         # helpers resolve it through the module at call time.
-        monkeypatch.setattr(server_module, "acp_debug_log", create_autospec(server_module.acp_debug_log, side_effect=breaker))
-        monkeypatch.setattr("optimus.acp.spec.acp_debug_log", create_autospec(spec_module.acp_debug_log, side_effect=breaker))
+        for module in BOUND_LOG_MODULES:
+            monkeypatch.setattr(module, "acp_debug_log", create_autospec(module.acp_debug_log, side_effect=breaker))
         monkeypatch.setattr(debug_trace, "acp_debug_log", create_autospec(debug_trace.acp_debug_log, side_effect=breaker))
     elif condition == "write-fails":
         path.mkdir()
@@ -688,7 +714,7 @@ async def test_full_session_wire_output_is_identical_under_diagnostic_failure(co
     if condition == "trace-on":
         records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
         locations = {record["location"] for record in records}
-        expected = set(HOT) | {WARM[2], WARM[3], WARM[4], WARM[5], WARM[7], WARM[8], WARM[9]}
+        expected = set(HOT) | {WARM[2], WARM[3], WARM[4], WARM[5], WARM[7], WARM[8], WARM[9], RETENTION_SITE}
         assert expected <= locations, expected - locations
     elif condition == "write-fails":
         assert path.is_dir()

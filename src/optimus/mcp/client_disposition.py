@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import secrets
+import threading
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
@@ -41,6 +43,7 @@ from optimus.mcp.client_trust import (
     compute_identity_fingerprint,
 )
 from optimus.mcp.local_ipc import LocalIpcError, PendingClientMcpCandidate, PendingClientMcpCandidateEndpoint
+from optimus_security.failure_facts import exception_fact
 
 PermissionOutcome = Literal["allow", "reject", "timeout", "outbound_failure"]
 RequestPermissionFn = Callable[[dict[str, Any]], Awaitable[PermissionOutcome | str | dict[str, Any]]]
@@ -78,6 +81,44 @@ ClientMcpServiceFactoryBuilder = Callable[
 ]
 
 
+class ClientMcpOwnedClose:
+    """The first physical close owns the verdict, including an empty first close."""
+
+    def __init__(self, hooks: tuple[Callable[[], None], ...], *,
+                 adapter: ClientMcpSdkAdapter | None = None, session_id: str = '') -> None:
+        self._hooks: tuple[Callable[[], None], ...] | None = hooks
+        self._lock = threading.RLock()
+        self._adapter = adapter
+        self._session_id = session_id
+        self.pending = True
+        self.failure_fact: dict[str, Any] | None = None
+        self.result: concurrent.futures.Future[tuple[str, ...]] = concurrent.futures.Future()
+
+    def claim_hooks(self) -> tuple[Callable[[], None], ...] | None:
+        with self._lock:
+            hooks, self._hooks = self._hooks, None
+            return hooks
+
+    def finish(self, failures: tuple[str, ...]) -> None:
+        with self._lock:
+            if self.result.done():
+                return
+            try:
+                self.pending = (self._adapter is not None and
+                                self._adapter.has_pending_connections_for_session(self._session_id) is not False)
+            except BaseException as exc:
+                self.pending = True
+                self.failure_fact = exception_fact(exc)
+                self.result.set_result(failures + ("CLEANUP_UNCERTAIN",))
+                raise
+            else:
+                if self.pending:
+                    failures += ("CLEANUP_UNCERTAIN",)
+                else:
+                    self._adapter = None
+                self.result.set_result(failures)
+
+
 @dataclass
 class ClientMcpSessionState:
     """Opaque per-session client-MCP disposition; never serialized onto ACP payloads."""
@@ -96,6 +137,7 @@ class ClientMcpSessionState:
     _former_servers: dict[str, _ServerEntry] = field(default_factory=dict, repr=False)
     _resolver_adapter: ClientMcpSdkAdapter | None = field(default=None, repr=False)
     _candidate_cleanup_registered: bool = False
+    _owned_close: ClientMcpOwnedClose | None = field(default=None, repr=False, compare=False)
 
     @property
     def tool_service(self) -> ClientMcpSessionService:
@@ -186,6 +228,16 @@ class ClientMcpSessionState:
         if failures and self._record_close_failure is not None:
             self._record_close_failure()
 
+    def prepare_owned_close(self) -> ClientMcpOwnedClose:
+        if self._owned_close is None:
+            unobserved = self._closed
+            adapter = self._resolver_adapter
+            self._owned_close = ClientMcpOwnedClose(self.prepare_close(), adapter=adapter, session_id=self.session_id)
+            if unobserved:
+                self._owned_close.claim_hooks()
+                self._owned_close.finish(("SESSION_CLOSE_UNKNOWN",))
+        return self._owned_close
+
     def _capability_for(self, server_name: str) -> ClientMcpRuntimeCapability | None:
         return next(
             (
@@ -197,13 +249,25 @@ class ClientMcpSessionState:
         )
 
     def close(self) -> None:
-        hooks = self.prepare_close()
+        operation = self.prepare_owned_close()
+        hooks = operation.claim_hooks()
+        if hooks is None:
+            return
         try:
             failures = run_close_hooks(hooks)
         except BaseException:
-            self.complete_close(("SESSION_CLOSE_FAILED",))
+            with suppress(BaseException):
+                operation.finish(("SESSION_CLOSE_FAILED",))
+            with suppress(BaseException):
+                self.complete_close(operation.result.result())
             raise
-        self.complete_close(failures)
+        try:
+            operation.finish(failures)
+        except BaseException:
+            with suppress(BaseException):
+                self.complete_close(operation.result.result())
+            raise
+        self.complete_close(operation.result.result())
 
 
 @dataclass
@@ -378,15 +442,18 @@ class ClientMcpDisposition:
         cwd: Path,
         entries: Sequence[Mapping[str, object]] | None,
         request_permission: RequestPermissionFn,
+        *,
+        on_provisional_state: Callable[[ClientMcpSessionState], None] | None = None,
     ) -> ClientMcpSessionState:
         workspace_root = cwd.resolve()
         state = ClientMcpSessionState(session_id=session_id, _workspace_root=workspace_root,
                                      _record_close_failure=self.record_session_close_failure)
-        self._own_candidates(state)
-        if entries is None or len(entries) == 0:
-            return state
-
         try:
+            if on_provisional_state is not None:
+                on_provisional_state(state)
+            self._own_candidates(state)
+            if entries is None or len(entries) == 0:
+                return state
             capabilities = self._normalizer.normalize(
                 entries,
                 workspace_root=workspace_root,
@@ -447,15 +514,13 @@ class ClientMcpDisposition:
                         identity_fingerprint=fingerprint,
                     )
             return state
-        except BaseException as primary:
-            hooks = state.prepare_close()
-            try:
-                failures = await self.run_blocking(partial(run_close_hooks, hooks))
-            except BaseException:
-                state.complete_close(("SESSION_CLOSE_FAILED",))
-            else:
-                state.complete_close(failures)
-            raise primary
+        except BaseException:
+            with suppress(BaseException):
+                operation = state.prepare_owned_close()
+                if not operation.result.done():
+                    await self.run_blocking(state.close)
+                await asyncio.shield(asyncio.wrap_future(operation.result))
+            raise
 
 
     async def reopen_suspended(

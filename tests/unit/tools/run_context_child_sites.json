@@ -26,6 +26,12 @@
    "proof": "tests/integration/mcp/test_client_sdk_local_stdio.py::test_real_sdk_contexts_enter_and_exit_in_same_owner_task",
    "basis": "Both adapter-close and peer-EOF cases load the existing child tripwire at interpreter startup before the owned SDK peer imports product code; the parent asserts the tripwire loaded first and recorded zero real known-folder adapter calls. Existing PID/creation-time and exit checks remain in force. No external service or census exemption is used."
   },
+  "tests/integration/mcp/test_client_sdk_local_stdio.py::transport_context#2": {
+   "mechanism": "indirect",
+   "disposition": "tripwire_at_site",
+   "proof": "tests/integration/mcp/test_client_sdk_local_stdio.py::test_retiring_one_real_sdk_peer_releases_only_its_owned_graph",
+   "basis": "Both independently owned local SDK peers load the child tripwire at interpreter startup before product imports. The parent reads facts for the exact distinct ProcessWatch PIDs, asserts zero real known-folder calls, verifies real child identity and exit, and verifies the surviving peer still responds. The launcher resolves to this lane's frozen interpreter. No external service or census exemption is used."
+  },
   "tests/unit/tools/test_test_profiles.py::_h5_native_run#1": {
    "mechanism": "python:nested_pytest",
    "disposition": "nested_pytest_passive",
