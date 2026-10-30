@@ -8,6 +8,8 @@ before any client or socket exists. No shared Redis fixture, preflight or URL va
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 
 import pytest
 
@@ -36,11 +38,8 @@ def test_the_shared_server_is_refused_on_every_database(probe_config: probes.Pro
 
 
 def test_synthetic_k2_on_the_released_instance(probe_config: probes.ProbeConfig) -> None:
-    before = probes.source_identity()
-    result, context = probes.run_probe("redis", probe_config)
-    probes.bind_source(result, before, probes.source_identity())
-    path = probes.write_attempt(result, probes.DEFAULT_OUT, context.ram_only)
-    record = json.loads(path.read_text(encoding="ascii"))
+    outcome = probes.run_contained("redis", Path(os.environ[probes.CONFIG_ENV]))  # its whole tree is stopped on return
+    record = json.loads(Path(outcome["record"]).read_text(encoding="ascii"))
     assert record["source"]["before"] == record["source"]["after"] and record["source"]["before"]["head"] != "UNKNOWN"
     assert record["observations"]["identity"]["container"] == probe_config.redis.container, record["limitations"]
     assert record["outcome"] in {"PASS", "FAIL"}, record["limitations"]

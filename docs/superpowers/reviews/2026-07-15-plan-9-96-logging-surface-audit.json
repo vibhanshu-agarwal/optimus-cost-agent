@@ -5159,6 +5159,22 @@
       "sanitizer": "fixed requirement-line schema from validated pins and digests",
       "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_an_admitted_set_installs_by_bound_hash_and_a_malformed_smoke_is_inconclusive",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.probes:run_selftest:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the runner's containment self-test appends single tick characters to one file under the released tmp/plan12-probe* directory, from the probe process and an orphaned grandchild, to prove both stop with the contained tree; no data, credentials or bodies.",
+      "sanitizer": "fixed one-character ticks to a released path",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_a_contained_probe_stops_its_body_and_an_orphaned_grandchild",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.probes:run_selftest:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the runner's containment self-test appends single tick characters to one file under the released tmp/plan12-probe* directory, from the probe process and an orphaned grandchild, to prove both stop with the contained tree; no data, credentials or bodies.",
+      "sanitizer": "fixed one-character ticks to a released path",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_a_contained_probe_stops_its_body_and_an_orphaned_grandchild",
+      "evidence_tier": "unit"
     }
   ]
 }

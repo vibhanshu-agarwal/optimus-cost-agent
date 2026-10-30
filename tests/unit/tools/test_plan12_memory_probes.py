@@ -15,6 +15,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from compression import zstd
 from pathlib import Path
 from typing import Any
@@ -693,7 +694,8 @@ def _model_runner(embed_output: dict[str, Any]) -> Any:
     calls: list[str] = []
     info = {"ok": True, "repo": "qdrant/bge", "revision": "r" * 40, "license": "mit",
             "files": [{"name": "model.onnx", "size": 500, "sha256": "sha256:" + "d" * 64}]}
-    fetched = {"ok": True, "files": {"model.onnx": ["sha256:" + "d" * 64, "gitsha1:" + "e" * 40]}, "bytes": 500}
+    fetched = {"ok": True, "files": {"model.onnx": ["sha256:" + "d" * 64, "gitsha1:" + "e" * 40]}, "bytes": 500,
+               "snapshot_path": "tmp/plan12-probe-models/snapshot"}
 
     def runner(argv: list[str], timeout: float, env: Any = None, stdin: Any = None) -> subprocess.CompletedProcess[str]:
         mode = argv[2]
@@ -826,3 +828,87 @@ def test_source_identity_binds_head_and_diff_and_a_change_is_inconclusive() -> N
     result = probes.ProbeResult(kind="redis", run_label="r", config_sha256="c", outcome="PASS", disposition="concluded")
     probes.bind_source(result, identity, {**identity, "diff_sha256": "0" * 64})
     assert result.outcome == "INCONCLUSIVE" and result.source["before"] != result.source["after"]
+
+
+# --- Checkpoint 1 follow-up (Codex round 84, follow-up 1): B1-B5 ---
+
+def test_a_contained_probe_stops_its_body_and_an_orphaned_grandchild(tmp_path: Path) -> None:
+    run = probes.RELEASED_ROOT / f"plan12-probe-selftest-{uuid.uuid4().hex[:8]}"
+    run.mkdir(parents=True)
+    tick = run / "tick.txt"
+    config = tmp_path / "probe-config.json"
+    config.write_text(json.dumps(_config(limits={"timeout_seconds": 1, "grace_seconds": 0.2, "max_download_bytes": 0},
+                                         selftest={"tick_file": str(tick)})), encoding="utf-8")
+    try:
+        outcome = probes.run_contained(probes.SELFTEST, config, tmp_path / "out")
+        written = tick.read_text(encoding="ascii")
+        time.sleep(1.0)
+        assert tick.read_text(encoding="ascii") == written, "a side effect continued after the run returned"
+        assert "c" in written and "g" in written, "both the body and its orphaned grandchild ran"
+        record = json.loads(Path(outcome["record"]).read_text(encoding="ascii"))
+        assert record["outcome"] == "INCONCLUSIVE" and outcome["tree_stopped"]
+    finally:
+        probes.remove_released(run)
+
+
+def test_a_joint_resolution_that_adds_an_unapproved_pin_is_refused(released_root: Path) -> None:
+    def runner(argv: list[str], timeout: float, env: Any = None, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+        if "--generate-hashes" in argv:  # alone redisvl is clean; jointly it pulls in gplthing
+            text = f"redisvl==1.0 \\\n    --hash=sha256:{'a' * 64}\ngplthing==2.0 \\\n    --hash=sha256:{'b' * 64}\n"
+            return subprocess.CompletedProcess(argv, 0, text, "")
+        if argv[:3] == ["uv", "pip", "compile"]:
+            return subprocess.CompletedProcess(argv, 0, "redisvl==1.0\n", "")
+        raise AssertionError(f"nothing may be installed: {argv}")
+
+    result, _ = probes.run_probe("packages", _packages(["redisvl"]), bodies={
+        "packages": lambda ctx, res: probes.run_packages(ctx, res, runner=runner, fetch=_fetch)})
+    assert result.outcome == "FAIL" and result.observations["admission"]["unapproved"] == ["gplthing==2.0"]
+
+
+def test_real_smoke_output_validates_and_keeps_failed_rows() -> None:
+    names = ["pathspec", "p127-no-such-distribution"]
+    completed = subprocess.CompletedProcess([], 0, json.dumps(probe_child.smoke(names)), "")
+    rows = probes.child_json(completed, "smoke", names)["packages"]
+    assert rows["pathspec"]["ok"] is True and rows["p127-no-such-distribution"]["ok"] is False
+
+
+def test_incomplete_model_size_metadata_is_refused_before_download(released_root: Path) -> None:
+    calls: list[str] = []
+    info = {"ok": True, "repo": "qdrant/bge", "revision": "r" * 40, "license": "mit",
+            "files": [{"name": "model.onnx", "size": None, "sha256": "sha256:" + "d" * 64}]}
+
+    def runner(argv: list[str], timeout: float, env: Any = None, stdin: Any = None) -> subprocess.CompletedProcess[str]:
+        calls.append(argv[2])
+        return subprocess.CompletedProcess(argv, 0, json.dumps(info), "")
+
+    result, _ = probes.run_probe("embedding", _embedding(released_root, ["MIT"]), bodies={
+        "embedding": lambda ctx, res: probes.run_embedding(ctx, res, runner=runner)})
+    assert result.outcome == "FAIL" and calls == ["model-info"]
+
+
+def test_a_failed_model_acquisition_removes_the_released_cache(released_root: Path) -> None:
+    cache = released_root / "tmp/plan12-probe-models"
+    cache.mkdir(parents=True)
+    (cache / "partial.onnx").write_bytes(b"x")
+    info = {"ok": True, "repo": "qdrant/bge", "revision": "r" * 40, "license": "mit",
+            "files": [{"name": "model.onnx", "size": 500, "sha256": "sha256:" + "d" * 64}]}
+
+    def runner(argv: list[str], timeout: float, env: Any = None, stdin: Any = None) -> subprocess.CompletedProcess[str]:
+        output = info if argv[2] == "model-info" else {"ok": False, "error": "HfHubHTTPError"}
+        return subprocess.CompletedProcess(argv, 0, json.dumps(output), "")
+
+    result, _ = probes.run_probe("embedding", _embedding(released_root, ["MIT"]), bodies={
+        "embedding": lambda ctx, res: probes.run_embedding(ctx, res, runner=runner)})
+    assert result.outcome == "INCONCLUSIVE" and not cache.exists()
+
+
+def test_a_canary_that_was_never_displayed_cannot_qualify_nonpersistence(tmp_path: Path) -> None:
+    shot = {"screenshot_sha256": "f" * 64}
+    phases = {phase: {"canary_visible": False, **shot} for phase in ("visible_history", "close_reopen", "restart")}
+    p5 = _zed(tmp_path / "never", {"P5-d": {"phases": phases}}).observations["P5"]
+    assert p5["P5-d"]["status"] == "UNSUPPORTED"
+
+
+def test_a_non_hex_screenshot_hash_is_not_evidence(tmp_path: Path) -> None:
+    p5 = _zed(tmp_path / "hex", {"P5-b": {"pre_prompt_text_visible": True, "screenshot_sha256": "z" * 64}}).observations["P5"]
+    assert p5["P5-b"]["status"] == "UNRUN"

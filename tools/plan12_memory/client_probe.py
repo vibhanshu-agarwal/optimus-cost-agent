@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sqlite3
 import sys
 import time
@@ -188,7 +189,8 @@ _PHASES = ("visible_history", "close_reopen", "restart")
 
 
 def _shot(entry: Any) -> bool:
-    return isinstance(entry, dict) and isinstance(entry.get("screenshot_sha256"), str) and len(entry["screenshot_sha256"]) == 64
+    return isinstance(entry, dict) and isinstance(entry.get("screenshot_sha256"), str) and bool(
+        re.fullmatch(r"[0-9a-f]{64}", entry["screenshot_sha256"]))
 
 
 def _observed(entry: Any, key: str) -> bool | None:
@@ -254,6 +256,7 @@ def run_zed(context: Any, result: Any, runner: Callable[..., Any] | None = None)
     complete = bool(section.get("sink_roots")) and sinks["files_scanned"] > 0 and not sinks["unreadable"] and not sinks["opaque"]
     p5["P5-d"] = {"status": ("UNRUN" if not rows else
                              "FAIL" if persisted or seen["close_reopen"] or seen["restart"] else
+                             "UNSUPPORTED" if seen["visible_history"] is False else  # never displayed: nothing to qualify
                              "INCONCLUSIVE" if not complete or None in seen.values() else "PASS"),
                   "canaries_persisted_in": persisted, "phases": seen,
                   "sink_scan": {key: value for key, value in sinks.items() if key != "found"},

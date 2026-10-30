@@ -39,6 +39,8 @@ from urllib.parse import urlsplit
 
 SCHEMA_VERSION = 1
 KINDS = ("packages", "embedding", "redis", "postgres", "zed")
+# The runner's own containment self-test, never a feasibility probe.
+SELFTEST = "selftest"
 OUTCOMES = frozenset({"PASS", "FAIL", "INCONCLUSIVE", "UNRUN", "UNAVAILABLE", "ERROR"})
 DISPOSITIONS = frozenset({"concluded", "handoff", "open"})
 CONFIG_ENV = "OPTIMUS_PLAN12_PROBE_CONFIG"
@@ -62,7 +64,7 @@ _SECRET_PATTERNS = (
     ("url-userinfo", re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://[^/@\s:]*:[^/@\s]+@")),
 )
 _TOP_KEYS = {"schema_version", "run_label", "authorization", "limits", "allowed_hosts", "allowed_licenses", "redis",
-             "postgres", "zed", "packages", "embedding", "targets"}
+             "postgres", "zed", "packages", "embedding", "selftest", "targets"}
 _REDIS_KEYS = {"endpoint", "container", "image", "image_id", "volume", "username", "credential_env"}
 _POSTGRES_KEYS = {"host", "port", "container", "image_id", "volume", "user", "database", "credential_env"}
 REDIS_TARGETS = ("items", "vector_dimensions", "item_bytes", "concurrency", "maxmemory_bytes", "admission_reserve_bytes",
@@ -107,6 +109,7 @@ class ProbeConfig:
     run_label: str
     authorization: str
     timeout_seconds: float
+    grace_seconds: float
     max_download_bytes: int
     allowed_hosts: tuple[str, ...]
     allowed_licenses: tuple[str, ...]
@@ -206,6 +209,9 @@ def parse_config(raw: bytes) -> ProbeConfig:
         raise ConfigError(f"schema_version must be {SCHEMA_VERSION}")
     limits = _require(data, "limits", dict, "config")
     timeout = _require(limits, "timeout_seconds", int | float, "limits")
+    grace = limits.get("grace_seconds", 5)
+    if not isinstance(grace, int | float) or isinstance(grace, bool) or grace <= 0:
+        raise ConfigError("limits.grace_seconds must be a positive number")
     max_download = _require(limits, "max_download_bytes", int, "limits")
     if timeout <= 0 or max_download < 0:
         raise ConfigError("limits must be positive")
@@ -225,10 +231,11 @@ def parse_config(raw: bytes) -> ProbeConfig:
         run_label=_require(data, "run_label", str, "config"),
         authorization=_require(data, "authorization", str, "config"),
         timeout_seconds=float(timeout),
+        grace_seconds=float(grace),
         max_download_bytes=max_download,
         allowed_hosts=tuple(host.lower() for host in _strings(data, "allowed_hosts")),
         allowed_licenses=_strings(data, "allowed_licenses"),
-        sections={key: data[key] for key in ("postgres", "zed", "packages", "embedding") if key in data},
+        sections={key: data[key] for key in ("postgres", "zed", "packages", "embedding", "selftest") if key in data},
         targets=targets,
         redis=redis,
         sha256=hashlib.sha256(raw).hexdigest(),
@@ -432,7 +439,7 @@ def _bodies() -> dict[str, ProbeBody]:
     from tools.plan12_memory import client_probe, redis_probe
 
     return {"packages": run_packages, "embedding": run_embedding, "redis": redis_probe.run_redis,
-            "postgres": run_postgres, "zed": client_probe.run_zed}
+            "postgres": run_postgres, "zed": client_probe.run_zed, SELFTEST: run_selftest}
 
 
 def _run_cleanups(context: ProbeContext, journal: list[dict[str, Any]]) -> None:
@@ -446,14 +453,16 @@ def _run_cleanups(context: ProbeContext, journal: list[dict[str, Any]]) -> None:
 
 
 def run_probe(kind: str, config: ProbeConfig, *, source: Mapping[str, Any] | None = None,
-              bodies: Mapping[str, ProbeBody] | None = None, grace_seconds: float = 5.0) -> tuple[ProbeResult, ProbeContext]:
+              bodies: Mapping[str, ProbeBody] | None = None, grace_seconds: float | None = None,
+              ) -> tuple[ProbeResult, ProbeContext]:
     """Run one probe body under its deadline. Any failure becomes an attributable outcome, never an exception.
 
     Cleanups run only once the body has stopped, or as the last means of stopping it. A body that is
     still running after that is abandoned: its result object is never returned or recorded.
     """
-    if kind not in KINDS:
+    if kind not in (*KINDS, SELFTEST):
         raise ConfigError(f"unknown probe kind {kind!r}")
+    grace_seconds = config.grace_seconds if grace_seconds is None else grace_seconds
     started = _utc()
     working = ProbeResult(kind=kind, run_label=config.run_label, config_sha256=config.sha256,
                           source=dict(source or {}), environment=_environment(), started_utc=started)
@@ -580,8 +589,9 @@ def child_json(completed: subprocess.CompletedProcess[str], mode: str, names: Se
         if not isinstance(value.get("files"), list) or not value.get("revision") or not value.get("repo"):
             raise MalformedEvidence("model-info: repo, revision and file list are required")
     elif mode == "model-fetch":
-        if not isinstance(value.get("files"), dict) or not isinstance(value.get("bytes"), int):
-            raise MalformedEvidence("model-fetch: file digests and byte count are required")
+        if not isinstance(value.get("files"), dict) or not isinstance(value.get("bytes"), int) or not isinstance(
+                value.get("snapshot_path"), str):
+            raise MalformedEvidence("model-fetch: file digests, byte count and snapshot path are required")
     return value
 
 
@@ -678,8 +688,11 @@ def run_packages(context: ProbeContext, result: ProbeResult, runner: Runner = ru
         result.outcome, result.disposition = "FAIL", "concluded"
         result.limitations.append("the admitted candidates do not resolve together: " + joint.stderr.strip()[-400:])
         return
-    artifacts, unbound = {}, []
+    artifacts, unbound, unapproved = {}, [], []
     for pin, data in _compiled_pins(joint.stdout).items():
+        ids = license_ids(release(pin, data["version"]).get("info") or {})
+        if not ids or not ids <= approved:
+            unapproved.append(f"{pin}=={data['version']}")
         wheel = _compatible_wheel(release(pin, data["version"]).get("urls") or [], data["hashes"])
         if wheel is None:
             unbound.append(pin)
@@ -687,11 +700,11 @@ def run_packages(context: ProbeContext, result: ProbeResult, runner: Runner = ru
         artifacts[pin] = {"version": data["version"], "filename": wheel["filename"], "sha256": wheel["digests"]["sha256"],
                           "bytes": int(wheel.get("size") or 0)}
     total = sum(item["bytes"] for item in artifacts.values())
-    result.observations["admission"] = {"artifacts": artifacts, "download_bytes": total,
+    result.observations["admission"] = {"artifacts": artifacts, "download_bytes": total, "unapproved": unapproved,
                                         "budget_bytes": config.max_download_bytes, "unbound": unbound}
-    if unbound or total > config.max_download_bytes or any(not item["bytes"] for item in artifacts.values()):
+    if unapproved or unbound or total > config.max_download_bytes or any(not item["bytes"] for item in artifacts.values()):
         result.outcome, result.disposition = "FAIL", "concluded"
-        result.limitations.append("refused before install: an artifact is unbound, unsized or over the download budget")
+        result.limitations.append("refused before install: an artifact is unlicensed, unbound, unsized or over budget")
         return
     requirements = released_path(venv.parent / (venv.name + "-requirements.txt"))
     requirements.parent.mkdir(parents=True, exist_ok=True)
@@ -745,17 +758,24 @@ def run_embedding(context: ProbeContext, result: ProbeResult, runner: Runner = r
         return
     info = child_json(runner([str(python), str(_CHILD), "model-info", "--model", section["model"]], context.timeout(120), online),
                       "model-info")
-    model_bytes = sum(int(item.get("size") or 0) for item in info["files"])
+    sizes = [item.get("size") for item in info["files"]]
+    sized = bool(sizes) and all(isinstance(size, int) and not isinstance(size, bool) and size >= 0 for size in sizes)
+    model_bytes = sum(sizes) if sized else None
     gate = {"repo": info["repo"], "revision": info["revision"], "license": info.get("license"), "bytes": model_bytes,
             "budget_bytes": budget, "license_approved": str(info.get("license") or "").upper() in
             {name.upper() for name in config.allowed_licenses}}
     result.observations["model_gate"] = gate
-    if not gate["license_approved"] or not budget or model_bytes > budget or not all(item.get("sha256") for item in info["files"]):
+    if (not gate["license_approved"] or not budget or model_bytes is None or model_bytes > budget
+            or not all(item.get("sha256") for item in info["files"])):
         result.outcome, result.disposition = "FAIL", "concluded"
-        result.limitations.append("model refused before download: license, size or file digests not established")
+        result.limitations.append("model refused before download: license, complete sizes or file digests not established")
         return
-    fetched = child_json(runner([str(python), str(_CHILD), "model-fetch", "--repo", info["repo"], "--revision", info["revision"],
-                                 "--cache", str(cache)], context.timeout(900), online), "model-fetch")
+    try:
+        fetched = child_json(runner([str(python), str(_CHILD), "model-fetch", "--repo", info["repo"], "--revision",
+                                     info["revision"], "--cache", str(cache)], context.timeout(900), online), "model-fetch")
+    except (MalformedEvidence, TimeoutError):
+        remove_released(cache)  # a failed acquisition leaves nothing unverified behind
+        raise
     expected = {item["name"]: item["sha256"] for item in info["files"]}
     matches = set(fetched["files"]) == set(expected) and all(expected[name] in fetched["files"][name] for name in expected)
     bound = matches and fetched["bytes"] <= budget
@@ -768,8 +788,8 @@ def run_embedding(context: ProbeContext, result: ProbeResult, runner: Runner = r
     work = released_path(Path(section.get("work_dir", "tmp/plan12-probe-embedding")) / result.attempt_id[:12])
     work.mkdir(parents=True, exist_ok=True)
     offline = {"HF_HUB_DISABLE_TELEMETRY": "1", "HF_HUB_OFFLINE": "1"}
-    base = [str(python), str(_CHILD), "embed", "--model", section["model"], "--cache", str(cache), "--items", str(items),
-            "--batch", str(section.get("batch", 64))]
+    base = [str(python), str(_CHILD), "embed", "--model", section["model"], "--model-path", str(fetched["snapshot_path"]),
+            "--items", str(items), "--batch", str(section.get("batch", 64))]
     limit = context.config.timeout_seconds
 
     def embed(cursor: str, *extra: str) -> dict[str, Any]:
@@ -836,7 +856,7 @@ def run_postgres(context: ProbeContext, result: ProbeResult, runner: Runner = ru
 
     connect = connect or psycopg.connect
     params = {"host": section["host"], "port": section["port"], "user": section["user"], "password": credential,
-              "dbname": section["database"]}
+              "dbname": section["database"], "options": "-c statement_timeout=30000"}
     observations: dict[str, Any] = {"identity": identity, "driver": {"psycopg": psycopg.__version__,
                                                                        "libpq": psycopg.pq.version()}}
     checks: dict[str, bool | None] = {}
@@ -928,17 +948,72 @@ def bind_source(result: ProbeResult, before: Mapping[str, Any], after: Mapping[s
             result.outcome = "INCONCLUSIVE"
 
 
+def run_selftest(context: ProbeContext, result: ProbeResult) -> None:
+    """Containment self-test: ticks a released file from this process and an orphaned grandchild, ignoring cancel."""
+    tick = released_path((context.config.sections.get(SELFTEST) or {})["tick_file"])
+    loop = f"import time\nwhile True:\n    open({str(tick)!r}, 'a').write('g')\n    time.sleep(0.02)\n"
+    subprocess.Popen([sys.executable, "-c", loop], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL)
+    while True:
+        with tick.open("a", encoding="ascii") as handle:
+            handle.write("c")
+        time.sleep(0.02)
+
+
+_CHILD_MARGIN_SECONDS = 30.0
+
+
+def run_contained(kind: str, config_path: Path, out_dir: Path = DEFAULT_OUT, *, python: str = sys.executable) -> dict[str, Any]:
+    """Run one probe in its own contained process tree. However the child ends, the whole tree is killed and
+    confirmed stopped before this returns, so no abandoned body, client or grandchild keeps touching a resource."""
+    from tools import process_tree
+
+    config = load_config(config_path)
+    bound = config.timeout_seconds + 2 * config.grace_seconds + _CHILD_MARGIN_SECONDS
+    argv = [python, "-m", "tools.plan12_memory.probes", "--kind", kind, "--config", str(config_path), "--out", str(out_dir),
+            "--in-process"]
+    process = process_tree.popen(argv, cwd=REPO_ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
+    try:
+        out, err = process.communicate(timeout=bound)
+        timed_out = False
+    except subprocess.TimeoutExpired:
+        out, err, timed_out = "", "", True
+    process_tree.kill_tree(process)  # orphans that redirected their pipes elsewhere die with the job too
+    stop_deadline = time.monotonic() + 30
+    while not process_tree._tree_stopped(process):  # noqa: SLF001 - the module's own confirmation, not a reimplementation
+        if time.monotonic() > stop_deadline:
+            raise RuntimeError("the probe's process tree did not stop; resources may still be in use")
+        time.sleep(0.05)
+    if timed_out:
+        process.communicate(timeout=10)
+    record = next((line.split(" -> ", 1)[1].strip() for line in out.splitlines() if " -> " in line), None)
+    if timed_out or record is None:
+        result = ProbeResult(kind=kind, run_label=config.run_label, config_sha256=config.sha256, outcome="INCONCLUSIVE",
+                             disposition="open", started_utc=_utc())
+        result.limitations.append(f"contained child {'exceeded its bound' if timed_out else 'wrote no record'}; tree killed")
+        result.observations["child"] = {"returncode": process.returncode, "stderr_tail": err[-400:]}
+        result.ended_utc = _utc()
+        return {"record": write_attempt(result, out_dir).as_posix(), "returncode": process.returncode, "tree_stopped": True}
+    return {"record": record, "returncode": process.returncode, "tree_stopped": True}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
-    parser.add_argument("--kind", required=True, choices=KINDS)
+    parser.add_argument("--kind", required=True, choices=(*KINDS, SELFTEST))
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--in-process", action="store_true", help="the contained child's mode; run_contained passes it")
     args = parser.parse_args(argv)
     try:
         config = load_config(args.config)
     except (OSError, ConfigError) as error:
         print(f"config refused: {error}", file=sys.stderr)
         return 2
+    if not args.in_process:
+        outcome = run_contained(args.kind, args.config, args.out)
+        print(f"{args.kind}: contained run -> {outcome['record']}")
+        return 0
     before = source_identity()
     result, context = run_probe(args.kind, config)
     bind_source(result, before, source_identity())

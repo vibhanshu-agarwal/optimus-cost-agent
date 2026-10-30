@@ -138,7 +138,7 @@ def smoke(names: list[str]) -> dict:
         except Exception as error:  # every failure is a row, not a crash
             row.update(ok=False, error=f"{type(error).__name__}: {error}"[:400])
         rows[name] = row
-    return {"python": sys.version.split()[0], "platform": sys.platform, "packages": rows}
+    return {"ok": True, "python": sys.version.split()[0], "platform": sys.platform, "packages": rows}
 
 
 def corpus(items: int) -> list[str]:
@@ -164,7 +164,7 @@ def embed(args: argparse.Namespace) -> dict:
     from fastembed import TextEmbedding
 
     started = time.perf_counter()
-    model = TextEmbedding(model_name=args.model, cache_dir=args.cache, local_files_only=True)
+    model = TextEmbedding(model_name=args.model, specific_model_path=args.model_path, local_files_only=True)
     loaded = time.perf_counter()
     catalogue = {row.get("model"): row for row in TextEmbedding.list_supported_models()}
     texts = corpus(args.items)
@@ -190,7 +190,7 @@ def embed(args: argparse.Namespace) -> dict:
     elapsed = time.perf_counter() - loaded
     memory = psutil.Process().memory_info()
     entry = catalogue.get(args.model, {})
-    cache = Path(args.cache)
+    cache = Path(args.model_path)
     return {"ok": True, "status": "complete", "output_sha256": state["chain"], "batches": batches,
             "batches_this_run": done_here, "items_this_run": min(args.items, done_here * args.batch),
             "dimensions": dimensions or entry.get("dim"), "load_seconds": round(loaded - started, 3),
@@ -238,15 +238,13 @@ def model_fetch(repo: str, revision: str, cache: str) -> dict:
     """Download the repo's main ref and require it to be the gated commit; report every file's digest."""
     from huggingface_hub import snapshot_download
 
-    snapshot = Path(snapshot_download(repo_id=repo, revision="main", cache_dir=cache))
-    if snapshot.name != revision:
-        return {"ok": False, "error": "the main ref moved after the metadata gate"}
+    snapshot = Path(snapshot_download(repo_id=repo, revision=revision, cache_dir=cache))  # the gated commit, never a ref
     files = {}
     for path in sorted(p for p in snapshot.rglob("*") if p.is_file()):
         name = path.relative_to(snapshot).as_posix()
         files[name] = digests(path.read_bytes())
     total = sum(p.stat().st_size for p in Path(cache).rglob("*") if p.is_file())
-    return {"ok": True, "snapshot": revision, "files": files, "bytes": total}
+    return {"ok": True, "snapshot": revision, "snapshot_path": str(snapshot), "files": files, "bytes": total}
 
 
 def main(argv: list[str]) -> int:
@@ -255,7 +253,7 @@ def main(argv: list[str]) -> int:
     smoke_parser = sub.add_parser("smoke")
     smoke_parser.add_argument("names", nargs="+")
     embed_parser = sub.add_parser("embed")
-    for name in ("--model", "--cache", "--cursor"):
+    for name in ("--model", "--model-path", "--cursor"):
         embed_parser.add_argument(name, required=True)
     embed_parser.add_argument("--items", type=int, required=True)
     embed_parser.add_argument("--batch", type=int, required=True)
