@@ -301,7 +301,6 @@ def _historical_transition_authority(merged: SourceTree, overlay: SourceTree):
 
 
 def _typing_authority_repository(root: Path) -> None:
-    current = Path(__file__).resolve().parents[3]
     historical = _baseline(_MERGED)
     paths = (
         "src/optimus/acp/settlement.py", "src/optimus/acp/lifecycle.py",
@@ -311,8 +310,12 @@ def _typing_authority_repository(root: Path) -> None:
     for path in paths:
         target = root / path
         target.parent.mkdir(parents=True, exist_ok=True)
-        content = historical.read_text(path).encode("utf-8") if path.endswith("/outbound_writer.py") else (current/path).read_bytes()
-        target.write_bytes(content)
+        content = historical.read_text(path)
+        if path.endswith("/lifecycle.py"):
+            old = "def current_settlement_fields(self) -> dict[str, object]:"
+            assert content.count(old) == 1
+            content = content.replace(old, "def current_settlement_fields(self) -> _SettlementFields:", 1)
+        target.write_text(content, encoding="utf-8")
 
 
 def _candidates(source: SourceTree) -> list[_Candidate]:
@@ -1365,6 +1368,13 @@ def test_h4_typing_allowance_preserves_historical_citations(tmp_path: Path) -> N
     segment = ast.get_source_segment(text, method).encode("utf-8")
     expected = f"src/optimus/acp/lifecycle.py:{method.lineno}:TurnControl.current_settlement_fields#sha256:{hashlib.sha256(segment).hexdigest()}"
     assert authority.definition_citations["TurnControl.current_settlement_fields"] == expected
+    path = "src/optimus/acp/lifecycle.py"
+    live_text = (Path(__file__).resolve().parents[3] / path).read_text(encoding="utf-8")
+    live_turn = next(node for node in ast.parse(live_text).body if isinstance(node, ast.ClassDef) and node.name == "TurnControl")
+    live_method = next(node for node in live_turn.body if isinstance(node, ast.FunctionDef) and node.name == "current_settlement_fields")
+    live_segment = ast.get_source_segment(live_text, live_method).encode("utf-8")
+    characterization = importlib.import_module("tools.plan1126_runtime_audit.delivery_characterization")
+    assert characterization._pinned_settlement_annotation_variant(path, "TurnControl.current_settlement_fields", segment, live_segment)
 
 
 def test_h4_sealed_writer_provenance_keeps_live_types_untouched() -> None:
@@ -1373,8 +1383,8 @@ def test_h4_sealed_writer_provenance_keeps_live_types_untouched() -> None:
     from optimus.acp.outbound_writer import DedicatedOutboundWriter, OutboundQueueItem
 
     before = {name for name in sys.modules if name.startswith("_optimus_h4_writer_")}
-    authority = _historical_transition_authority(_baseline(_MERGED), _overlay_baseline())
-    writer, item = authority.dedicated_outbound_writer, authority.outbound_queue_item
+    module = importlib.import_module("tools.plan1126_runtime_audit.delivery_characterization")
+    writer, item = module._sealed_writer_types(_baseline(_MERGED).read_text("src/optimus/acp/outbound_writer.py"))
     assert writer is not DedicatedOutboundWriter and item is not OutboundQueueItem
     assert writer.__module__ == item.__module__
     assert writer.__module__ not in sys.modules
@@ -1426,11 +1436,20 @@ def test_h4_default_mode_keeps_the_live_writer_drift_denial(tmp_path: Path) -> N
     (tmp_path/path).write_bytes((root/path).read_bytes())
     with pytest.raises(ValueError, match="transition authority bytes drifted for src/optimus/acp/outbound_writer.py"):
         module.derive_transition_authority(merged, overlay, repository=tmp_path)
-    with pytest.raises(ValueError, match="transition authority bytes drifted for src/optimus/acp/outbound_writer.py"):
+    with pytest.raises(ValueError, match="transition authority bytes drifted for src/optimus/acp/lifecycle.py"):
         module.derive_transition_authority(merged, overlay)
 
 
-def test_h4_historical_mode_keeps_nonwriter_authority_guards() -> None:
+def test_h4_historical_mode_keeps_nonwriter_authority_guards(monkeypatch) -> None:
+    module = importlib.import_module("tools.plan1126_runtime_audit.delivery_characterization")
+    matcher = module._pinned_settlement_annotation_variant
+    calls = []
+
+    def observe_match(path, symbol, before, local):
+        calls.append((path, symbol, before, local))
+        return matcher(path, symbol, before, local)
+
+    monkeypatch.setattr(module, "_pinned_settlement_annotation_variant", observe_match)
     merged, overlay = _baseline(_MERGED), _overlay_baseline()
     path = "src/optimus/acp/lifecycle.py"
     old = "def current_settlement_fields(self) -> dict[str, object]:"
@@ -1440,6 +1459,10 @@ def test_h4_historical_mode_keeps_nonwriter_authority_guards() -> None:
     changed = SourceTree({p: altered if p == path else merged.read_text(p) for p in merged.paths()})
     with pytest.raises(ValueError, match="transition authority bytes drifted for src/optimus/acp/lifecycle.py"):
         _historical_transition_authority(changed, overlay)
+    assert calls == [], "historical pair drift must refuse before local annotation matching"
+    with pytest.raises(ValueError, match="transition authority bytes drifted for src/optimus/acp/lifecycle.py"):
+        _historical_transition_authority(merged, overlay)
+    assert calls, "canonical history must reach real local matching before live lifecycle drift refuses"
 
 
 def test_h4_sealed_writer_declaration_has_no_io_or_thread_start(monkeypatch) -> None:

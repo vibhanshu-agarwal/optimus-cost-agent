@@ -491,9 +491,8 @@ async def test_the_meter_follows_chat_answers_and_cancelled_chat_turns(tmp_path:
 
     assert cancelled["result"] == {"stopReason": "cancelled"}
     conversation = adapter._sessions.get(session_id).conversation  # noqa: SLF001
-    assert conversation.records[2].outcome is ConversationOutcome.CANCELLED
-    assert [u["sessionUpdate"] for u in _session_updates(outbound)] == ["usage_update"]
-    assert _meters(outbound)[-1]["used"] == conversation.used_bytes // 4
+    assert set(conversation.records) == {1}, "cancellation without terminal flush cannot commit"
+    assert _session_updates(outbound) == [], "no changed history meter is published"
 
 
 async def test_a_failed_meter_never_fails_the_turn(tmp_path: Path) -> None:

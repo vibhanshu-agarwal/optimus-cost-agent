@@ -273,6 +273,7 @@ class PlanningLoopResult(BaseModel):
     cost_complete: bool = True
     unknown_cost_attempt_count: int = Field(default=0, ge=0)
     gateway_request_ids: tuple[str, ...] = ()
+    tool_calls: tuple[AgentToolCall, ...] = ()
     plan_text: str | None = None
     plan_hash: str | None = None
     provider: str | None = None
@@ -2114,6 +2115,7 @@ class _PlanningIterationRunner:
             cost_complete=self._cost_complete,
             unknown_cost_attempt_count=self._unknown_cost_attempt_count,
             gateway_request_ids=tuple(self._gateway_request_ids),
+            tool_calls=tuple(self._mcp_tool_calls),
             corrective_text=planning_corrective_text(
                 stop_reason,
                 refusal_reason=refusal_reason,
@@ -2183,6 +2185,7 @@ class _PlanningIterationRunner:
                     cost_complete=self._cost_complete,
                     unknown_cost_attempt_count=self._unknown_cost_attempt_count,
                     gateway_request_ids=tuple(self._gateway_request_ids),
+                    tool_calls=tuple(self._mcp_tool_calls),
                     plan_text=plan_text,
                     plan_hash=plan_hash,
                     provider=self._last_provider,
@@ -2213,6 +2216,7 @@ class _PlanningIterationRunner:
             cost_complete=self._cost_complete,
             unknown_cost_attempt_count=self._unknown_cost_attempt_count,
             gateway_request_ids=tuple(self._gateway_request_ids),
+            tool_calls=tuple(self._mcp_tool_calls),
             corrective_text=planning_corrective_text(
                 mapped_stop,
                 workspace_root=self._workspace_root,

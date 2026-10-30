@@ -260,6 +260,71 @@ def test_telemetry_sink_failures_are_contained(tmp_path: Path) -> None:
     assert all(row.failure_digest for row in observations)
 
 
+@pytest.mark.parametrize("repeat_index", [0, 3])
+def test_sink_control_timeout_retains_chain_and_iteration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repeat_index: int) -> None:
+    import asyncio
+    import traceback
+
+    module = _telemetry_module()
+    inventory = module.discover_telemetry_inventory(_immutable_source(_MERGED, module.H8_SOURCE_PATHS))
+    invoke = module._invoke_stderr
+    observed_timeouts = []
+    control_index = 0
+
+    async def blocked_readline(self):
+        await asyncio.Future()
+
+    def instrumented_stderr(stream, workspace):
+        nonlocal control_index
+        if isinstance(stream, io.StringIO):
+            current = control_index
+            control_index += 1
+            if current == repeat_index:
+                with monkeypatch.context() as patch:
+                    patch.setattr(module._InvalidNdjsonReader, "readline", blocked_readline)
+                    try:
+                        return invoke(stream, workspace)
+                    except TimeoutError as exc:
+                        observed_timeouts.append(exc)
+                        raise
+        return invoke(stream, workspace)
+
+    monkeypatch.setattr(module, "_invoke_stderr", instrumented_stderr)
+    with pytest.raises(ValueError) as caught:
+        module.telemetry_sink_failure_observations(inventory=inventory, repeats=100, workspace=tmp_path)
+
+    assert len(observed_timeouts) == 1
+    assert caught.value.__cause__ is observed_timeouts[0]
+    assert isinstance(observed_timeouts[0].__cause__, asyncio.CancelledError)
+    assert str(caught.value) == (
+        f"sink control failed for stderr: raised:TimeoutError (repeat_index={repeat_index}, repeats=100)"
+    )
+    rendered = "".join(traceback.format_exception(caught.value))
+    assert "CancelledError" in rendered
+    assert "_invoke_stderr" in rendered
+    assert control_index == repeat_index + 1
+
+
+def test_sink_control_error_retains_original_exception(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _telemetry_module()
+    inventory = module.discover_telemetry_inventory(_immutable_source(_MERGED, module.H8_SOURCE_PATHS))
+    error = OSError("diagnostic exception sentinel")
+    invoke = module._invoke_stderr
+
+    def failed_control(stream, workspace):
+        if isinstance(stream, io.StringIO):
+            raise error
+        return invoke(stream, workspace)
+
+    monkeypatch.setattr(module, "_invoke_stderr", failed_control)
+    with pytest.raises(ValueError) as caught:
+        module.telemetry_sink_failure_observations(inventory=inventory, repeats=100, workspace=tmp_path)
+
+    assert caught.value.__cause__ is error
+    assert str(caught.value) == "sink control failed for stderr: raised:OSError (repeat_index=0, repeats=100)"
+    assert str(error) not in str(caught.value)
+
+
 def test_h8_artifact_recomputes_s2_cost_coverage_and_findings(tmp_path: Path) -> None:
     module = _telemetry_module()
     artifact = module.build_h8_audit_artifact(replay=_sealed_replay(),

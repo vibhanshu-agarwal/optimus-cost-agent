@@ -5,9 +5,11 @@ import queue
 import subprocess
 import threading
 import time
+from collections import deque
 from collections.abc import Callable, Mapping
 from typing import Any, Never
 
+from optimus.acp.admission import DEFAULT_LIMITS, AdmissionAccount, AdmissionClass, AdmissionLimits, Reservation
 from optimus.acp.e2e_transcript import E2eAcpTranscriptWriter
 from optimus_security.sanitization import sanitize_for_persistence
 
@@ -61,17 +63,26 @@ class NdjsonSubprocessSession:
     :ivar transcript: The transcript writer that records inbound and outbound messages.
     :type transcript: E2eAcpTranscriptWriter
     """
-    def __init__(self, *, process: subprocess.Popen[str], transcript: E2eAcpTranscriptWriter) -> None:
+    def __init__(self, *, process: subprocess.Popen[str], transcript: E2eAcpTranscriptWriter, limits: AdmissionLimits = DEFAULT_LIMITS) -> None:
         self._process = process
         self._transcript = transcript
-        self._inbound: queue.Queue[dict[str, Any] | None] = queue.Queue()
-        self._stderr_lines: list[str] = []
+        self._limits = limits
+        self._inbound: queue.Queue[tuple[dict[str, Any], Reservation]] = queue.Queue(maxsize=limits.subprocess_items)
+        self._admission = AdmissionAccount(count=limits.subprocess_items, bytes=limits.inbound_bytes, queue_id="subprocess")
+        self._stdout_done = threading.Event()
+        self._fatal: str | None = None
+        self._stderr_lines: deque[str] = deque()
+        self._stderr_lock = threading.Lock()
+        self._stderr_bytes = 0
+        self._stderr_omitted = 0
+        self._gate_rejection = ""
         self._reader = threading.Thread(target=self._read_stdout, daemon=True)
         self._stderr_reader = threading.Thread(target=self._read_stderr, daemon=True)
         self._reader.start()
         self._stderr_reader.start()
 
     def send(self, message: Mapping[str, object]) -> None:
+        self._check_fatal()
         if self._process.stdin is None:
             raise LiveSessionError("subprocess stdin is not available")
         payload = dict(message)
@@ -107,14 +118,21 @@ class NdjsonSubprocessSession:
         error_message: str,
     ) -> dict[str, Any]:
         while time.monotonic() < deadline:
+            self._check_fatal()
             if self._process.poll() is not None:
                 self._fail_subprocess_exited(error_message)
             try:
-                message = self._inbound.get(timeout=0.2)
+                message, reservation = self._inbound.get(timeout=min(0.2, max(0.0, deadline - time.monotonic())))
             except queue.Empty:
-                continue
-            if message is None:
-                self._fail_subprocess_exited(error_message)
+                self._check_fatal()
+                if not self._stdout_done.is_set():
+                    continue
+                try:
+                    message, reservation = self._inbound.get_nowait()
+                except queue.Empty:
+                    self._fail_subprocess_exited(error_message)
+            reservation.release()
+            self._check_fatal()
             if predicate(message):
                 return message
         self._fail_timeout(error_message)
@@ -134,14 +152,21 @@ class NdjsonSubprocessSession:
         )
 
     def read_next(self, *, deadline: float) -> dict[str, Any] | None:
+        self._check_fatal()
         if self._process.poll() is not None:
             self._fail_subprocess_exited("ACP subprocess exited while waiting for ndjson traffic")
         try:
-            message = self._inbound.get(timeout=max(0.0, min(0.2, deadline - time.monotonic())))
+            message, reservation = self._inbound.get(timeout=max(0.0, min(0.2, deadline - time.monotonic())))
         except queue.Empty:
-            return None
-        if message is None:
-            self._fail_subprocess_exited("ACP subprocess stdout closed while waiting for ndjson traffic")
+            self._check_fatal()
+            if not self._stdout_done.is_set():
+                return None
+            try:
+                message, reservation = self._inbound.get_nowait()
+            except queue.Empty:
+                self._fail_subprocess_exited("ACP subprocess stdout closed while waiting for ndjson traffic")
+        reservation.release()
+        self._check_fatal()
         return message
 
     def terminate(self) -> None:
@@ -151,26 +176,113 @@ class NdjsonSubprocessSession:
         self._stderr_reader.join(timeout=5)
 
     def stderr_text(self) -> str:
-        return "".join(self._stderr_lines)
+        with self._stderr_lock:
+            tail = "".join(self._stderr_lines)
+            gate = self._gate_rejection if self._gate_rejection not in self._stderr_lines else ""
+            omitted = f"[stderr omitted lines: {self._stderr_omitted}]\n" if self._stderr_omitted else ""
+            return gate + omitted + tail
+
+    def _check_fatal(self) -> None:
+        if self._fatal is not None:
+            raise LiveSessionError(self._fatal, stderr=self.stderr_text())
 
     def _read_stdout(self) -> None:
         assert self._process.stdout is not None
-        for line in self._process.stdout:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            message = json.loads(stripped)
-            self._transcript.record_inbound(message)
-            self._inbound.put(message)
-        self._inbound.put(None)
+        parts: list[str] = []
+        size = 0
+        try:
+            while True:
+                chunk = self._process.stdout.readline(4096)
+                if not chunk:
+                    if parts:
+                        self._fatal = self._fatal or "ACP subprocess incomplete frame"
+                    return
+                if self._fatal is not None:
+                    continue  # Bounded drain; the caller retains child teardown authority.
+                size += len(chunk.encode("utf-8"))
+                if size > self._limits.frame_bytes:
+                    parts.clear()
+                    self._fatal = "ACP subprocess frame too large"
+                    continue
+                parts.append(chunk)
+                if not chunk.endswith("\n"):
+                    continue
+                line = "".join(parts)
+                parts.clear()
+                if not line.strip():
+                    size = 0
+                    continue
+                message = json.loads(line)
+                if not isinstance(message, dict):
+                    self._fatal = "ACP subprocess invalid frame"
+                    continue
+                reservation = self._admission.try_reserve(1, size, AdmissionClass.ORDINARY)
+                size = 0
+                if reservation is None:
+                    self._fatal = "ACP subprocess inbound capacity exceeded"
+                    continue
+                try:
+                    self._transcript.record_inbound(message)
+                    self._inbound.put_nowait((message, reservation))
+                except BaseException:
+                    reservation.release()
+                    raise
+        except Exception:
+            self._fatal = self._fatal or "ACP subprocess reader failed"
+        finally:
+            self._admission.close()
+            self._stdout_done.set()
 
     def _read_stderr(self) -> None:
         assert self._process.stderr is not None
-        for line in self._process.stderr:
-            sanitized = sanitize_for_persistence(line).value
-            if not isinstance(sanitized, str):
-                raise LiveSessionError("stderr sanitizer returned non-text output")
+        parts: list[str] = []
+        size = 0
+        discarded = False
+        while True:
+            try:
+                chunk = self._process.stderr.readline(4096)
+                chunk_size = len(chunk.encode("utf-8"))
+            except Exception:
+                self._fatal = self._fatal or "ACP subprocess stderr reader failed"
+                self._retain_stderr(None)
+                return
+            size = min(self._limits.stderr_line_bytes + 1, size + chunk_size)
+            if size > self._limits.stderr_line_bytes:
+                parts.clear()
+                discarded = True
+            if not discarded:
+                parts.append(chunk)
+            if chunk and not chunk.endswith("\n"):
+                continue
+            if size:
+                self._retain_stderr(None if discarded else "".join(parts))
+            if not chunk:
+                return
+            parts.clear()
+            size = 0
+            discarded = False
+
+    def _retain_stderr(self, line: str | None) -> None:
+        sanitized: str | None = None
+        if line is not None:
+            try:
+                value = sanitize_for_persistence(line).value
+                if isinstance(value, str) and len(value.encode("utf-8")) <= min(self._limits.stderr_line_bytes, self._limits.stderr_bytes):
+                    sanitized = value
+            except Exception:
+                sanitized = None
+        with self._stderr_lock:
+            if not sanitized:
+                self._stderr_omitted = min(2**63 - 1, self._stderr_omitted + 1)
+                return
+            if not self._gate_rejection and sanitized.startswith(_GATE_REJECTION_PREFIX):
+                self._gate_rejection = sanitized
+            size = len(sanitized.encode("utf-8"))
+            while self._stderr_bytes + size > self._limits.stderr_bytes:
+                self._stderr_bytes -= len(self._stderr_lines.popleft().encode("utf-8"))
+                self._stderr_omitted = min(2**63 - 1, self._stderr_omitted + 1)
             self._stderr_lines.append(sanitized)
+            self._stderr_bytes += size
 
     def _fail_subprocess_exited(self, error_message: str) -> Never:
         # wait_for()'s and read_next()'s poll() checks (and send()'s

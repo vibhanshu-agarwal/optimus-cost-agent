@@ -4086,6 +4086,12 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     hybrid_committed = b"from optimus.acp.auto_hybrid import" in head_auto
     if not hybrid_committed:
         expected -= {hybrid_path}
+    admission_path = "src/optimus/acp/admission.py"
+    head_server = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/acp/server.py")
+    admission_committed = b"from optimus.acp.admission import" in head_server
+    if not admission_committed:
+        expected -= {admission_path}
+    assert (admission_path in closure) is admission_committed
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
@@ -4112,7 +4118,7 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         2 if correction_committed else 0
     ) + tree_committed + composition_committed + stage_c_committed + (2 if ordinary_committed else 0) + runtime_tree_committed + failure_facts_committed + (
         2 if loop_committed else 0
-    ) + tree_moved + line_endings_committed + edits_committed + auto_committed + contract_committed + hybrid_committed + lifecycle_committed
+    ) + tree_moved + line_endings_committed + edits_committed + auto_committed + contract_committed + hybrid_committed + lifecycle_committed + admission_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

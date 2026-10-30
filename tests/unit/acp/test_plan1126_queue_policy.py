@@ -341,7 +341,7 @@ def test_connection_health_probe_and_pool_ownership_are_classified() -> None:
     assert {row["outcome"] for row in observations} == {
         "HEALTHY", "CONNECTION_FAILURE", "UNEXPECTED_PROPAGATED"
     }
-    assert_no_offending_rows(observations, lambda row: not (row["deadline_policy"] == "CONNECT_ONLY"), 'must hold for all: row["deadline_policy"] == "CONNECT_ONLY"')
+    assert_no_offending_rows(observations, lambda row: not (row["deadline_policy"] == "FULL_OPERATION"), 'must hold for all: row["deadline_policy"] == "FULL_OPERATION"')
     assert_no_offending_rows(observations, lambda row: not (row["pool_ownership"] == "RUNTIME_OWNED_CLIENT_THEN_POOL"), 'must hold for all: row["pool_ownership"] == "RUNTIME_OWNED_CLIENT_THEN_POOL"')
     assert_no_offending_rows(observations, lambda row: not (row["complete"]), 'must hold for all: row["complete"]')
 
@@ -528,3 +528,23 @@ def _sealed_shutdown_observations():
         )
     )
     return replayed_shutdown_observations(payload)
+
+
+@pytest.mark.parametrize("queue_type", ["queue.Queue", "asyncio.Queue"])
+def test_bounded_queue_probe_counts_only_successful_admissions(monkeypatch, queue_type):
+    from dataclasses import replace
+    module = _queue_module()
+    inventory = module.discover_queue_inventory(_immutable_source(_MERGED, module.H9_SOURCE_PATHS))
+    definition = replace(inventory.queues[0], queue_type=queue_type, declared_bound=2,
+                         constructor_policy=module.ConstructorPolicy.DECLARED_BOUNDED,
+                         constructor_declares_unbounded=False)
+    seen = []
+    original = module.classify_admission_behavior
+    def classify(**kwargs):
+        seen.append((kwargs["accepted_count"], kwargs["attempted_count"]))
+        return original(**kwargs)
+    monkeypatch.setattr(module, "classify_admission_behavior", classify)
+    rows = module.queue_admission_observations(inventory=replace(inventory, queues=(definition,)))
+    assert seen[:3] == [(1, 1), (2, 2), (2, 3)]
+    assert seen[-1] == (2, 10000)
+    assert sum(row.observed_outcome is module.AdmissionOutcome.ACCEPTED for row in rows) == 2

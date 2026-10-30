@@ -589,6 +589,9 @@ why = "The do-nothing targets the xdist controls run on real workers (Plan 11.30
 [[tags]]
 name = "concurrency"
 paths = [
+  "tests/unit/acp/test_queue_backpressure.py",
+  "tests/unit/acp/test_ndjson_subprocess_backpressure.py",
+  "tests/unit/redis/test_health_deadline.py",
   "tests/unit/acp/test_server_mcp_shutdown.py",
   "tests/unit/acp/test_server_redis_shutdown.py",
   "tests/unit/evidence_handoff/test_lifecycle.py",

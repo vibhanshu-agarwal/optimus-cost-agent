@@ -78,7 +78,7 @@ H5_SOURCE_PATHS = (
 #: historical list above is bound to the historical baselines and must not gain paths
 #: those commits do not contain; the leaf bundle module exists only on current source,
 #: so the fresh `h5.shutdown_schedule` entry discovers from this list instead.
-H5_CURRENT_SOURCE_PATHS = (*H5_SOURCE_PATHS, "src/optimus/acp/harness_runtime.py", "src/optimus/acp/process_lifecycle.py")
+H5_CURRENT_SOURCE_PATHS = (*H5_SOURCE_PATHS, "src/optimus/acp/harness_runtime.py", "src/optimus/acp/process_lifecycle.py", "src/optimus/acp/admission.py")
 
 _CLOSE_DEFINITION_NAMES = {
     "close",
@@ -656,6 +656,13 @@ def _probe_resource(
     resource = record.resource_type
     method = record.close_method
     cause_effect = f"{terminal_cause}:prepared"
+
+    if resource == "AdmissionAccount":
+        from optimus.acp import admission
+
+        verify_executing_module(source, "src/optimus/acp/admission.py", admission)
+        account = admission.AdmissionAccount(count=1, bytes=8)
+        return _repeat_actual_close(account.close, lambda: int(account._closed)), cause_effect
 
     if resource == "RedisLoopOwner":
         # New owner code must be measurable, not merely discovered. Without a probe

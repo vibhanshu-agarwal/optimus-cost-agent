@@ -1084,6 +1084,7 @@ def telemetry_sink_failure_observations(
             settlement = repeat_index % 2 == 1 and sink_id in {"jsonl", "redis", "gateway_export"}
             event = _settlement_event(repeat_index) if settlement else _ordinary_event(repeat_index)
             control_state = "returned"
+            control_error: Exception | None = None
             failure_state = "returned"
             try:
                 if sink_id in {"jsonl", "redis", "gateway_export"}:
@@ -1105,6 +1106,7 @@ def telemetry_sink_failure_observations(
                     _invoke_stderr(io.StringIO(), root)
             except Exception as exc:  # pragma: no cover - a control failure is itself a failed predicate
                 control_state = f"raised:{type(exc).__name__}"
+                control_error = exc
 
             try:
                 if sink_id == "jsonl":
@@ -1137,7 +1139,10 @@ def telemetry_sink_failure_observations(
                 debug_trace.reset_debug_trace_context()
 
             if control_state != "returned":
-                raise ValueError(f"sink control failed for {sink_id}: {control_state}")
+                raise ValueError(
+                    f"sink control failed for {sink_id}: {control_state} "
+                    f"(repeat_index={repeat_index}, repeats={repeats})"
+                ) from control_error
             result = (
                 SinkFailureResult.PROPAGATED
                 if failure_state.startswith("raised:")

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
@@ -145,33 +147,73 @@ class AgentStateStore(Protocol):
 
 class InMemoryAgentStateStore:
     def __init__(self, *, clock_ms: Callable[[], int] | None = None) -> None:
-        self._clock_ms = clock_ms or (lambda: 0)
+        self._clock_ms = clock_ms or _epoch_ms
         self._plans: dict[tuple[str, str], AgentPlanRecord] = {}
+        self._lock = threading.Lock()
 
     def save_plan(self, record: AgentPlanRecord) -> None:
-        self._plans[(record.run_id, record.plan_hash)] = record
+        self._save_unexpired(record)
 
     def persist_plan(self, record: AgentPlanRecord) -> PlanPersistenceResult:
-        self.save_plan(record)
+        if not self._save_unexpired(record):
+            return PlanPersistenceResult(outcome=PlanPersistenceOutcome.PERSISTENCE_FAILED)
         return PlanPersistenceResult(
             outcome=PlanPersistenceOutcome.PERSISTED,
             completed_substeps=("primary", "expiry", "pointer"),
         )
 
     def load_plan(self, *, run_id: str, plan_hash: str) -> AgentPlanRecord:
-        record = self._plans.get((run_id, plan_hash))
-        if record is None or record.expires_at_ms <= self._clock_ms():
+        with self._lock:
+            expired = self._retire_expired(self._clock_ms())
+            record = self._plans.get((run_id, plan_hash))
+            retained = len(self._plans)
+        self._report_retirement(expired, retained)
+        if record is None:
             raise KeyError("stored plan not found")
         return record
 
     def latest_plan_for_run(self, *, run_id: str) -> AgentPlanRecord | None:
-        records = [record for (stored_run_id, _), record in self._plans.items() if stored_run_id == run_id]
-        if not records:
-            return None
-        active_records = [record for record in records if record.expires_at_ms > self._clock_ms()]
-        if not active_records:
-            return None
-        return max(active_records, key=lambda record: record.created_at_ms)
+        with self._lock:
+            expired = self._retire_expired(self._clock_ms())
+            record = max(
+                (record for (stored_run_id, _), record in self._plans.items() if stored_run_id == run_id),
+                key=lambda record: record.created_at_ms,
+                default=None,
+            )
+            retained = len(self._plans)
+        self._report_retirement(expired, retained)
+        return record
+
+    def _save_unexpired(self, record: AgentPlanRecord) -> bool:
+        with self._lock:
+            now = self._clock_ms()
+            expired = self._retire_expired(now)
+            persisted = record.expires_at_ms > now
+            if persisted:
+                self._plans[(record.run_id, record.plan_hash)] = record
+            retained = len(self._plans)
+        self._report_retirement(expired, retained)
+        return persisted
+
+    def _retire_expired(self, now: int) -> int:
+        # Callers hold the store lock across expiry and the associated read/write.
+        expired = [key for key, record in self._plans.items() if record.expires_at_ms <= now]
+        for key in expired:
+            del self._plans[key]
+        return len(expired)
+
+    @staticmethod
+    def _report_retirement(expired: int, retained: int) -> None:
+        if not expired:
+            return
+        try:
+            logger = logging.getLogger(__name__)
+            logger.info(
+                "in-memory plan records expired",
+                extra={"expired_count": expired, "retained_count": retained},
+            )
+        except Exception:
+            return
 
     def ping(self) -> None:
         return None

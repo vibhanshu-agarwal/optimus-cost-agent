@@ -27,7 +27,6 @@ from optimus.acp.auto_composition import (
     auto_router,
 )
 from optimus.acp.auto_hybrid import HybridClassifier
-from optimus.acp.conversation import ConversationOutcome
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.agent.runner import AgentRunner
@@ -239,7 +238,7 @@ async def test_a_cancel_during_classification_makes_no_answer_call_and_publishes
     assert response["result"]["stopReason"] == "cancelled" and runner.requests == []
     session = session_of(adapter, session_id)
     assert session.auto_routes == {}
-    assert session.conversation.records[1].outcome is ConversationOutcome.CANCELLED
+    assert session.conversation.records == {}, "no terminal text was flushed for the cancelled turn"
 
 
 async def test_a_mode_change_while_classification_is_outstanding_does_not_alter_the_frozen_turn(tmp_path) -> None:

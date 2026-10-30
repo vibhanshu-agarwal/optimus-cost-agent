@@ -649,6 +649,8 @@ async def test_cancelled_chat_turn_returns_cancelled_without_a_plan_card(tmp_pat
     release = threading.Event()
     runner = _ModeRunner(block=release)
     adapter, outbound, _ = _adapter(tmp_path, runner)
+    settlements = []
+    adapter._settlement_sink = settlements.append
     session_id = (await _new_session(adapter, tmp_path))["sessionId"]
     await _rpc(adapter, _set_mode_request(session_id, "chat", via="set_mode", request_id="to-chat"))
     outbound.notifications.clear()
@@ -663,10 +665,13 @@ async def test_cancelled_chat_turn_returns_cancelled_without_a_plan_card(tmp_pat
 
     assert response["result"]["stopReason"] == "cancelled"
     assert [u for u in _updates(outbound) if u["sessionUpdate"] == "plan"] == []
-    record = adapter._sessions.get(session_id).conversation.records[1]  # noqa: SLF001
-    assert record.outcome.value == "cancelled"
-    # A cancelled Chat turn must not carry a success-shaped completion.
-    assert record.completion_text not in {CHAT_ANSWER, "Turn completed."}
+    # This existing cancellation path emits no terminal set, so it cannot commit history.
+    assert adapter._sessions.get(session_id).conversation.records == {}  # noqa: SLF001
+    assert [u for u in _updates(outbound) if u["sessionUpdate"] == "agent_message_chunk"] == []
+    assert len(settlements) == 1
+    assert settlements[0].payload["settlement"] == "cancelled"
+    assert settlements[0].payload["conversation_commit"] == "not_committed"
+    assert settlements[0].payload["final_delivery"] == "not_attempted"
 
 
 def test_mode_setters_are_approved_diagnostic_method_categories():

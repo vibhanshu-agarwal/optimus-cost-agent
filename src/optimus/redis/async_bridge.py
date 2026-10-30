@@ -42,6 +42,10 @@ from typing import TypeVar
 
 T = TypeVar("T")
 
+
+class RedisOperationDeadlineExceeded(TimeoutError):
+    """Owner admission or pre-entry deadline expired; no operation was started."""
+
 _START_TIMEOUT_SECONDS = 10.0
 #: Default per-call shutdown *observation* budget. It spans resource cleanup and
 #: thread termination together -- not only the join -- so a blocked cleanup cannot
@@ -114,13 +118,14 @@ class _OwnerOperation:
       nothing reaches Redis.
     """
 
-    __slots__ = ("_cancel_requested", "_lock", "_loop", "_task", "future")
+    __slots__ = ("_cancel_requested", "_deadline", "_lock", "_loop", "_task", "future")
 
-    def __init__(self, loop: asyncio.AbstractEventLoop, operation: Callable[[], Awaitable[T]]) -> None:
+    def __init__(self, loop: asyncio.AbstractEventLoop, operation: Callable[[], Awaitable[T]], *, deadline: float | None = None) -> None:
         self._loop = loop
         self._lock = threading.Lock()
         self._task: asyncio.Task | None = None
         self._cancel_requested = False
+        self._deadline = deadline
         self.future: ConcurrentFuture = asyncio.run_coroutine_threadsafe(self._drive(operation), loop)
 
     async def _drive(self, operation: Callable[[], Awaitable[T]]) -> T:
@@ -128,6 +133,8 @@ class _OwnerOperation:
         # from the submitting thread, closes the pre-start window: a cancel requested
         # before this first step is seen right here, before `operation()` is called.
         with self._lock:
+            if self._deadline is not None and time.monotonic() >= self._deadline:
+                raise RedisOperationDeadlineExceeded("Redis operation deadline expired before entry")
             if self._cancel_requested:
                 raise asyncio.CancelledError
             self._task = asyncio.current_task()
@@ -263,6 +270,7 @@ class RedisLoopOwner:
         *,
         guard: Callable[[], None] | None = None,
         teardown: bool = False,
+        deadline: float | None = None,
     ) -> _OwnerOperation:
         """Admit ``operation`` and return its handle.
 
@@ -276,7 +284,7 @@ class RedisLoopOwner:
         that must still reach a loop whose admission has just been closed. It is never a
         general bypass: a CLOSED owner refuses it too.
         """
-        return self._submit(operation, guard=guard, teardown=teardown)
+        return self._submit(operation, guard=guard, teardown=teardown, deadline=deadline)
 
     def run_sync(self, operation: Callable[[], Awaitable[T]], *, timeout: float | None = None) -> T:
         """Run ``operation`` on the owner loop and block until it completes."""
@@ -564,12 +572,19 @@ class RedisLoopOwner:
         *,
         guard: Callable[[], None] | None = None,
         teardown: bool = False,
+        deadline: float | None = None,
     ) -> _OwnerOperation:
         # Constructed under the lock so that "admission is still open", the submission
         # and the registry insert are one atomic step against a concurrent `close()`.
         # Otherwise an operation could slip in after close snapshotted the in-flight
         # set and would then never be cancelled or abandoned.
-        with self._state_lock:
+        acquired = (self._state_lock.acquire() if deadline is None
+                    else self._state_lock.acquire(timeout=max(0.0, deadline - time.monotonic())))
+        if not acquired:
+            raise RedisOperationDeadlineExceeded("Redis owner admission deadline expired")
+        try:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise RedisOperationDeadlineExceeded("Redis owner admission deadline expired")
             if guard is not None:
                 # Evaluated under THIS lock so a runtime-level admission decision and
                 # this registration cannot be separated by a concurrent close.
@@ -583,12 +598,14 @@ class RedisLoopOwner:
             if self._state is RedisLoopOwnerState.CLOSED:
                 raise RedisLoopOwnerClosed("the Redis loop owner is closed and never starts a replacement loop")
             try:
-                handle = _OwnerOperation(self._loop, operation)
+                handle = _OwnerOperation(self._loop, operation, deadline=deadline)
             except RuntimeError as exc:  # pragma: no cover - the loop closed underneath us
                 raise RedisLoopOwnerClosed(
                     "the Redis loop owner is closed and never starts a replacement loop"
                 ) from exc
             self._live.add(handle)
+        finally:
+            self._state_lock.release()
         # Registered OUTSIDE the lock: an already-completed future runs its done
         # callback inline on this thread, and `_forget` takes the same non-reentrant
         # lock.
@@ -596,6 +613,8 @@ class RedisLoopOwner:
         return handle
 
     def _forget(self, future: ConcurrentFuture) -> None:
+        if not future.cancelled():
+            future.exception()  # Retrieve late failures independently of the public observer.
         with self._state_lock:
             self._live = {handle for handle in self._live if handle.future is not future}
 

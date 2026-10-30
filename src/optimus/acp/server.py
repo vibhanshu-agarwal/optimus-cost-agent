@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import functools
+import io
 import json
 import os
 import queue
@@ -15,10 +16,13 @@ from pathlib import Path
 from time import monotonic
 from typing import Any, Protocol
 
+from optimus.acp.admission import DEFAULT_LIMITS, AdmissionAccount, AdmissionClass, AdmissionLimits, Reservation
 from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled, log_provenance_once
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.errors import (
     INTERNAL_ERROR,
+    INVALID_REQUEST,
+    REQUEST_CANCELLED,
     AcpOutboundError,
     JsonRpcError,
     error_response,
@@ -35,9 +39,9 @@ from optimus.acp.lifecycle import (
     TurnResponseEnvelope,
 )
 from optimus.acp.outbound_writer import DedicatedOutboundWriter, EphemeralSendOwner, OutboundQueueItem, next_ephemeral_send_key
-from optimus.acp.process_lifecycle import ProcessLifecycle, ShutdownObservation, cleanup_failure, raise_preserving_failure
+from optimus.acp.process_lifecycle import ProcessLifecycle, ShutdownObservation, StopReason, cleanup_failure, raise_preserving_failure
 from optimus.acp.settlement import RpcResponseDelivery, SendOutcome, SettlementInvariantError
-from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, progress_submission
+from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, progress_submission, request_worker_custody
 from optimus.mcp.client_disposition import ClientMcpShutdownOutcome
 from optimus.mcp.client_supervisor import MCPSupervisorState
 
@@ -295,13 +299,30 @@ class StdioByteWriter:
 
 
 class StdioNdjsonLineReader(_StdioReadFacade):
-    def __init__(self, stream: SyncLineReader) -> None:
+    def __init__(self, stream: SyncLineReader, *, limited_readline: Callable[[int], bytes] | None = None) -> None:
         self._stream = stream
         physical = _StdinRead(sys.stdin.fileno()) if stream is getattr(sys.stdin, "buffer", None) else stream
+        self.supports_limited_read = limited_readline is not None or isinstance(physical, (_StdinRead, io.IOBase))
+        if limited_readline is not None:
+            super().__init__(lambda size=None: stream.readline() if size is None else limited_readline(size))
+            return
         super().__init__(physical.readline)
 
     async def readline(self) -> bytes:
         return await self._read()
+
+    async def readline_limited(self, limit: int) -> bytes:
+        if not self.supports_limited_read:
+            raise TypeError("injected stream requires an explicit limited-read seam")
+        line = await self._read(limit + 2)
+        if len(line.removesuffix(b"\n").removesuffix(b"\r")) <= limit:
+            return line
+        ended = line.endswith(b"\n")
+        del line
+        while not ended:
+            chunk = await self._read(min(65536, limit + 1))
+            ended = not chunk or chunk.endswith(b"\n")
+        raise FramingError("body too large", code=INVALID_REQUEST)
 
 
 class StdioNdjsonLineWriter:
@@ -384,7 +405,7 @@ class NdjsonOutboundChannel:
             params=params,
         )
 
-    async def _submit_payload(self, message: Mapping[str, Any], *, kind: str) -> SendOutcome | None:
+    async def _submit_payload(self, message: Mapping[str, Any], *, kind: str, admission_class: AdmissionClass = AdmissionClass.REQUIRED) -> SendOutcome | None:
         """Returns the dedicated writer's outcome; ``None`` on the direct path, which raises on failure."""
         progress = progress_submission.get()
         if self._dedicated_writer is None:
@@ -426,6 +447,7 @@ class NdjsonOutboundChannel:
             send_key=send_key,
             owner=owner,
             source_future=source,
+            admission_class=progress.admission_class if progress is not None else admission_class,
         )
         if progress is not None:
             progress.admission.physical_future = source
@@ -459,6 +481,7 @@ class NdjsonOutboundChannel:
         outcome = await self._submit_payload(
             {"jsonrpc": "2.0", "method": method, "params": params},
             kind="notify",
+            admission_class=AdmissionClass.REQUIRED if require_flushed else AdmissionClass.ORDINARY,
         )
         # Plan 12.1 mode updates pass require_flushed: an ambiguous or suppressed send
         # is not success, so the setter keeps its pending flag for a retry. Other
@@ -632,8 +655,11 @@ class AcpStreamServer:
         auto_router: Any | None = None,
         mcp_idle_seconds: int | None = None,
         monotonic_clock: Callable[[], float] = monotonic,
+        admission_limits: AdmissionLimits = DEFAULT_LIMITS,
     ) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
+        self._admission_limits = admission_limits
+        self._ignored_notifications = 0
         # Correction plan v4, C4: the harness's workspace telemetry writer, passed into every ndjson session adapter
         # for its always-on refusal and fault records. None writes none.
         self._failure_telemetry = failure_telemetry
@@ -863,6 +889,8 @@ class AcpStreamServer:
                 )
                 writer.write(encode_message(response))
                 await writer.drain()
+                if str(exc) in {"body too large", "header too large"}:
+                    return
                 continue
             response = self._dispatcher.dispatch(request)
             writer.write(encode_message(response))
@@ -941,7 +969,7 @@ class AcpStreamServer:
         owned_dedicated = dedicated_writer is None or (self._process_lifecycle is not None and join_dedicated_writer)
         dedicated = dedicated_writer
         if dedicated is None and physical is not None:
-            dedicated = DedicatedOutboundWriter(physical)  # type: ignore[arg-type]
+            dedicated = DedicatedOutboundWriter(physical, limits=self._admission_limits)  # type: ignore[arg-type]
             self._serving_dedicated = dedicated
             self._serving_dedicated_owned = join_dedicated_writer
             dedicated.start()
@@ -969,10 +997,41 @@ class AcpStreamServer:
             mcp_idle_seconds=self._mcp_idle_seconds,
             monotonic_clock=self._monotonic_clock,
         )
-        message_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+        limits = self._admission_limits
+        message_queue: asyncio.Queue[tuple[dict[str, Any], Reservation]] = asyncio.Queue(maxsize=limits.pending_items)
+        prompt_queue: asyncio.Queue[tuple[dict[str, Any], Reservation]] = asyncio.Queue(maxsize=limits.pending_items)
+        pending_count = 0
+        active = [0, 0]
+        prompt_sessions: set[str] = set()
+        inbound = AdmissionAccount(count=limits.pending_items + limits.active_prompts + limits.active_requests, bytes=limits.inbound_bytes)
+        self._inbound_admission = inbound
+        wake = asyncio.Event()
+        reader_done = False
+        reader_failure: Exception | None = None
+        control_task: asyncio.Task[None] | None = None
         request_tasks: set[asyncio.Task[Any]] = set()
+        serving_task = asyncio.current_task()
+        serving_loop = asyncio.get_running_loop()
+        stop_requested = False
+        if dedicated is not None:
+            def apply_required_stop() -> None:
+                nonlocal stop_requested
+                if reader_done or stop_requested:
+                    return
+                stop_requested = True
+                if self._process_lifecycle is not None and self._process_lifecycle.bound:
+                    self._process_lifecycle.request_stop(StopReason.ERROR)
+                elif serving_task is not None and not serving_task.done():
+                    serving_task.cancel()
 
-        async def submit_via_notice(payload: Mapping[str, Any], *, handle: Any | None = None) -> None:
+            def required_failed() -> None:
+                try:
+                    serving_loop.call_soon_threadsafe(apply_required_stop)
+                except RuntimeError:
+                    return  # Loop loss cannot be repaired by a writer callback.
+            dedicated.set_admission_failure_callback(required_failed)
+
+        async def submit_via_notice(payload: Mapping[str, Any], *, handle: Any | None = None, observe: bool = True) -> None:
             if dedicated is None:
                 await writer.write_line(payload)
                 return
@@ -991,6 +1050,12 @@ class AcpStreamServer:
                 handle=response_handle,
             )
             dedicated.submit(item)
+            if not observe:
+                def finalize(source: concurrent.futures.Future[SendCompletion]) -> None:
+                    if not source.cancelled():
+                        response_handle.finalize_once(source.result())
+                ticket.source_future.add_done_callback(finalize)
+                return
             try:
                 loop = asyncio.get_running_loop()
                 completion = await asyncio.shield(
@@ -1010,7 +1075,12 @@ class AcpStreamServer:
             if not lease.granted or lease.send_key is None:
                 return False
             if dedicated is None:
-                await writer.write_line(payload)
+                turn_control.claim_write_started(lease.send_key)
+                try:
+                    await writer.write_line(payload)
+                except BaseException:
+                    turn_control.publish_authoritative(lease.send_key, SendOutcome.AMBIGUOUS)
+                    raise
                 turn_control.publish_authoritative(lease.send_key, SendOutcome.FLUSHED)
                 return True
             source_future: concurrent.futures.Future[Any] = concurrent.futures.Future()
@@ -1022,12 +1092,17 @@ class AcpStreamServer:
                 writer_token=None,
                 handle=None,
             )
-            dedicated.submit(item)
+            try:
+                dedicated.submit(item)
+            except Exception:
+                turn_control.publish_authoritative(lease.send_key, SendOutcome.CONCLUSIVE_FAILURE)
+                raise
             try:
                 loop = asyncio.get_running_loop()
                 completion = await asyncio.shield(asyncio.wrap_future(source_future, loop=loop))
             except asyncio.CancelledError:
-                return False
+                turn_control.request_transport_teardown()
+                raise
             return (completion.outcome is SendOutcome.FLUSHED
                     and turn_control.rpc_response_delivery is RpcResponseDelivery.FLUSHED)
 
@@ -1045,24 +1120,103 @@ class AcpStreamServer:
             return True
 
         async def read_lines() -> None:
+            nonlocal pending_count, reader_done, reader_failure, control_task
             try:
-                while True:
-                    line = await reader.readline()
-                    if line == b"":
-                        await message_queue.put(None)
+                while not reader_done:
+                    if isinstance(reader, StdioNdjsonLineReader) and reader.supports_limited_read:
+                        line = await reader.readline_limited(limits.frame_bytes)
+                    else:
+                        line = await reader.readline()
+                    if reader_done:
                         return
+                    if line == b"":
+                        return
+                    if len(line.removesuffix(b"\n").removesuffix(b"\r")) > limits.frame_bytes:
+                        raise FramingError("body too large", code=INVALID_REQUEST)
+                    size = len(line)
                     stripped = line.strip()
                     if not stripped:
                         continue
                     try:
-                        await message_queue.put(json.loads(stripped.decode("utf-8")))
+                        message = json.loads(stripped.decode("utf-8"))
                     except json.JSONDecodeError as exc:
                         print(f"optimus.acp: invalid ndjson line: {sanitize_protocol_error_message(str(exc))}", file=sys.stderr)
-                        await message_queue.put(None)
                         return
+                    if not isinstance(message, dict):
+                        continue
+                    if "method" in message and "id" not in message:
+                        if message.get("method") == "session/cancel":
+                            params = message.get("params")
+                            session_id = params.get("sessionId") if isinstance(params, dict) else None
+                            if isinstance(session_id, str):
+                                cancelled_messages = []
+                                for _ in range(prompt_queue.qsize()):
+                                    queued, reservation = prompt_queue.get_nowait()
+                                    queued_params = queued.get("params")
+                                    if isinstance(queued_params, dict) and queued_params.get("sessionId") == session_id:
+                                        pending_count -= 1
+                                        cancelled_messages.append((queued.get("id"), reservation))
+                                    else:
+                                        prompt_queue.put_nowait((queued, reservation))
+                                try:
+                                    for request_id, _ in cancelled_messages:
+                                        await submit_via_notice({"jsonrpc": "2.0", "id": request_id, "result": {"stopReason": "cancelled"}}, observe=False)
+                                finally:
+                                    for _, reservation in cancelled_messages:
+                                        reservation.release()
+                            if control_task is not None:
+                                await asyncio.shield(control_task)
+                            control_task = asyncio.create_task(adapter.handle_client_notification(message))
+                            control_task.add_done_callback(lambda _task: wake.set())
+                            wake.set()
+                        else:
+                            self._ignored_notifications = min(2**63 - 1, self._ignored_notifications + 1)
+                            await asyncio.sleep(0)
+                        continue
+                    if "id" in message and ("result" in message or "error" in message) and "method" not in message:
+                        if isinstance(message.get("id"), (str, int)):
+                            if debug_trace_enabled():
+                                acp_debug_log(
+                                    location="server.py:serve_ndjson:inbound_client_response_raw",
+                                    message="raw inbound id-bearing client response before deliver_client_response",
+                                    data=_inbound_response_payload(message),
+                                    hypothesis_id="H2-REPLY",
+                                )
+                            outbound.deliver_client_response(message)
+                        continue
+                    if "method" not in message or "id" not in message:
+                        continue
+                    params = message.get("params")
+                    session_id = params.get("sessionId") if isinstance(params, dict) else None
+                    if message.get("method") == "session/prompt" and isinstance(session_id, str):
+                        prior = adapter._active_turns.get(session_id)
+                        if prior is not None and prior.turn_control.rpc_response_delivery is not RpcResponseDelivery.FLUSHED:
+                            envelope = await adapter.handle_client_request(message)
+                            assert isinstance(envelope, NonTurnResponseEnvelope)
+                            await submit_via_notice(envelope.response, handle=envelope.response_handle, observe=False)
+                            continue
+                    admission_reservation = None if pending_count >= limits.pending_items else inbound.try_reserve(1, size, AdmissionClass.ORDINARY)
+                    if admission_reservation is None:
+                        await submit_via_notice(error_response(message.get("id"), JsonRpcError(code=REQUEST_CANCELLED, message="Server busy", data={"reason": "QUEUE_FULL"})), observe=False)
+                        continue
+                    if message.get("method") == "session/prompt":
+                        prompt_queue.put_nowait((message, admission_reservation))
+                    else:
+                        message_queue.put_nowait((message, admission_reservation))
+                    pending_count += 1
+                    wake.set()
+                    await asyncio.sleep(0)  # One scheduler gets a turn even with an always-ready injected reader.
+            except FramingError as exc:
+                reader_failure = exc
             except Exception as exc:
-                print(f"optimus.acp: ndjson reader failed: {sanitize_protocol_error_message(str(exc))}", file=sys.stderr)
-                await message_queue.put(None)
+                reader_failure = exc
+                try:
+                    print(f"optimus.acp: ndjson reader failed: {sanitize_protocol_error_message(str(exc))}", file=sys.stderr)
+                except Exception:
+                    return  # The retained reader failure remains primary if reporting fails.
+            finally:
+                reader_done = True
+                wake.set()
 
         def approved_method_category(method: object) -> str:
             # Never copy arbitrary client content into a diagnostic: an unapproved method
@@ -1246,46 +1400,104 @@ class AcpStreamServer:
                 else:
                     await submit_via_notice(error_payload)
 
+            finally:
+                try:
+                    control = ownership_slot.turn_control
+                    if control is not None:
+                        try:
+                            current_task = asyncio.current_task()
+                            if current_task is not None and current_task.cancelling():
+                                control.request_transport_teardown()
+                        finally:
+                            control.finalize_once()
+                finally:
+                    params = message.get("params")
+                    session_id = params.get("sessionId") if isinstance(params, dict) else None
+                    if method == "session/prompt" and isinstance(session_id, str):
+                        prompt_sessions.discard(session_id)
+                    wake.set()
+
+        async def owned_request(message: dict[str, Any], operation_id: str) -> None:
+            workers: set[asyncio.Task[Any]] = set()
+            token = request_worker_custody.set(workers)
+            try:
+                await process_request(message, operation_id)
+            finally:
+                request_worker_custody.reset(token)
+                cancelled: asyncio.CancelledError | None = None
+                for worker in tuple(workers):
+                    while not worker.done():
+                        try:
+                            await asyncio.shield(worker)
+                        except asyncio.CancelledError as exc:
+                            cancelled = exc
+                        except BaseException:
+                            break
+                if cancelled is not None:
+                    raise cancelled
+
         adapter.start_idle_mcp_sweeper()
         reader_task = asyncio.create_task(read_lines())
         primary_failure: BaseException | None = None
         try:
             while True:
-                message = await message_queue.get()
-                if message is None:
+                await wake.wait()
+                wake.clear()
+                if control_task is not None:
+                    await asyncio.shield(control_task)
+                if reader_done:
+                    if reader_failure is not None:
+                        if self._process_lifecycle is not None:
+                            self._process_lifecycle.request_stop(StopReason.ERROR)
+                        raise reader_failure
                     break
-                if "method" in message and "id" not in message:
-                    await adapter.handle_client_notification(message)
-                    continue
-                if "id" in message and ("result" in message or "error" in message) and "method" not in message:
-                    # region agent log
-                    if debug_trace_enabled():
-                        acp_debug_log(
-                            location="server.py:serve_ndjson:inbound_client_response_raw",
-                            message="raw inbound id-bearing client response before deliver_client_response",
-                            data=_inbound_response_payload(message),
-                            hypothesis_id="H2-REPLY",
-                        )
-                    # endregion
-                    outbound.deliver_client_response(message)
-                    continue
-                if "method" in message and "id" in message:
+                for index, (target, capacity) in enumerate(((message_queue, limits.active_requests), (prompt_queue, limits.active_prompts))):
+                    # Complete the rotation even at capacity so deferred prompts keep FIFO order.
+                    for _ in range(target.qsize()):
+                        # Keep concrete receivers visible to the source-bound queue inventory.
+                        message, reservation = message_queue.get_nowait() if index == 0 else prompt_queue.get_nowait()
+                        params = message.get("params")
+                        session_id = params.get("sessionId") if isinstance(params, dict) else None
+                        if active[index] >= capacity or (index == 1 and isinstance(session_id, str)
+                                and session_id in prompt_sessions):
+                            if index == 0:
+                                message_queue.put_nowait((message, reservation))
+                            else:
+                                prompt_queue.put_nowait((message, reservation))
+                            continue
+                        if index == 1 and isinstance(session_id, str):
+                            prompt_sessions.add(session_id)
+                        pending_count -= 1
+                        active[index] += 1
+                        def release_request(task: asyncio.Task[Any], *, reservation: Reservation = reservation, index: int = index) -> None:
+                            reservation.release()
+                            active[index] -= 1
+                            wake.set()
                     # Mint the operation id once here, before the task exists, so the same id
                     # can be bound into the completion observer without a late-bound loop
                     # variable, and threaded into process_request for its own diagnostics.
-                    operation_id = uuid.uuid4().hex
-                    request_method = approved_method_category(message.get("method"))
-                    task = asyncio.create_task(process_request(message, operation_id))
-                    request_tasks.add(task)
-                    task.add_done_callback(
-                        functools.partial(
-                            on_request_task_done, operation_id=operation_id, request_method=request_method
+                        operation_id = uuid.uuid4().hex
+                        request_method = approved_method_category(message.get("method"))
+                        task = asyncio.create_task(owned_request(message, operation_id))
+                        request_tasks.add(task)
+                        task.add_done_callback(release_request)
+                        task.add_done_callback(
+                            functools.partial(
+                                on_request_task_done, operation_id=operation_id, request_method=request_method
+                            )
                         )
-                    )
         except BaseException as exc:
             primary_failure = exc
             self._serving_failure = exc
         finally:
+            reader_done = True
+            if dedicated is not None:
+                dedicated.set_admission_failure_callback(None)
+            inbound.close()
+            for target in (message_queue, prompt_queue):
+                while not target.empty():
+                    _, reservation = target.get_nowait()
+                    reservation.release()
             self._cleanup_phase("mcp")
             failures: list[tuple[str, BaseException]] = [] if primary_failure is None else [("serve", primary_failure)]
             # Transport-loss ordering: abandon notices before cancelling request tasks.
@@ -1300,6 +1512,10 @@ class AcpStreamServer:
             async def shutdown_mcp() -> None:
                 nonlocal mcp_outcome, mcp_failed
                 try:
+                    if control_task is not None:
+                        if not control_task.done():
+                            control_task.cancel()
+                        await asyncio.gather(control_task, return_exceptions=True)
                     if request_tasks:
                         await asyncio.gather(*request_tasks, return_exceptions=True)
                 except BaseException as exc:

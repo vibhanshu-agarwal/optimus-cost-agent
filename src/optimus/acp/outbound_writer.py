@@ -6,10 +6,11 @@ import concurrent.futures
 import json
 import queue
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from optimus.acp.admission import DEFAULT_LIMITS, AdmissionAccount, AdmissionClass, AdmissionLimits, Reservation
 from optimus.acp.lifecycle import SendCompletion, SendKey, TurnSendKey, WriterToken
 from optimus.acp.settlement import SendOutcome, SendState
 
@@ -85,6 +86,8 @@ class OutboundQueueItem:
     handle: Any | None = None
     prepare_error: BaseException | None = None
     encoded_payload: bytes | None = None
+    admission_class: AdmissionClass = AdmissionClass.REQUIRED
+    reservation: Reservation | None = None
 
 
 _SENTINEL = object()
@@ -107,14 +110,25 @@ def classify_physical_outcome(
 class DedicatedOutboundWriter:
     """Single non-daemon FIFO thread owning every physical NDJSON write+flush."""
 
-    def __init__(self, transport: PhysicalNdjsonTransport) -> None:
+    def __init__(self, transport: PhysicalNdjsonTransport, *, limits: AdmissionLimits = DEFAULT_LIMITS) -> None:
         self._transport = transport
-        self._queue: queue.Queue[OutboundQueueItem | object] = queue.Queue()
+        self._queue: queue.Queue[OutboundQueueItem | object] = queue.Queue(maxsize=limits.outbound_items + limits.control_items + 1)
+        self._admission = AdmissionAccount(count=limits.outbound_items, bytes=limits.outbound_bytes,
+                                           reserved_count=limits.control_items, reserved_bytes=limits.control_bytes, queue_id="outbound")
         self._thread: threading.Thread | None = None
         self._started = False
         self._closed = False
         self._join_lock = threading.Lock()
         self._joined = False
+        self.admission_failure: concurrent.futures.Future[None] = concurrent.futures.Future()
+        self._admission_failure_callback: Callable[[], None] | None = None
+
+    def set_admission_failure_callback(self, callback: Callable[[], None] | None) -> None:
+        with self._join_lock:
+            self._admission_failure_callback = callback
+            failed = self.admission_failure.done()
+        if failed and callback is not None:
+            callback()
 
     @property
     def thread_alive(self) -> bool:
@@ -132,12 +146,33 @@ class DedicatedOutboundWriter:
         self._thread.start()
 
     def submit(self, item: OutboundQueueItem) -> concurrent.futures.Future[SendCompletion]:
+        if item.prepare_error is None and item.encoded_payload is None:
+            try:
+                item.encoded_payload = (json.dumps(dict(item.payload), separators=(",", ":")) + "\n").encode("utf-8")
+            except BaseException as exc:
+                item.prepare_error = exc
         with self._join_lock:
             if self._closed:
                 raise RuntimeError("dedicated outbound writer is closed")
             if not self._started:
                 raise RuntimeError("dedicated outbound writer not started")
-            self._queue.put_nowait(item)
+            if item.prepare_error is None:
+                assert item.encoded_payload is not None
+                item.reservation = self._admission.try_reserve(1, len(item.encoded_payload), item.admission_class)
+            if item.reservation is not None:
+                self._queue.put_nowait(item)
+                return item.source_future
+        outcome = (SendOutcome.SUPPRESSED if item.source_future.cancelled() or (item.prepare_error is None and item.admission_class is AdmissionClass.ORDINARY)
+                   else SendOutcome.CONCLUSIVE_FAILURE)
+        self._fail_closed(item, outcome)
+        if item.prepare_error is None and item.admission_class is AdmissionClass.REQUIRED and not item.source_future.cancelled():
+            callback = None
+            with self._join_lock:
+                if not self.admission_failure.done():
+                    self.admission_failure.set_result(None)
+                    callback = self._admission_failure_callback
+            if callback is not None:
+                callback()
         return item.source_future
 
     def request_close(self) -> None:
@@ -146,6 +181,7 @@ class DedicatedOutboundWriter:
                 return
             self._closed = True
             self._queue.put_nowait(_SENTINEL)
+        self._admission.close()
 
     def observe_closed(self, timeout: float | None) -> bool:
         thread = self._thread
@@ -173,12 +209,13 @@ class DedicatedOutboundWriter:
                     self._fail_closed(item, SendOutcome.AMBIGUOUS)
                 except BaseException:
                     pass
+            finally:
+                if item.reservation is not None:
+                    item.reservation.release()
 
     def _process_item(self, item: OutboundQueueItem) -> None:
         if not item.source_future.set_running_or_notify_cancel():
-            state = item.owner.claim_write_started(item.send_key)
-            if state is SendState.QUEUED:
-                item.owner.publish_authoritative(item.send_key, SendOutcome.SUPPRESSED)
+            item.owner.publish_authoritative(item.send_key, SendOutcome.SUPPRESSED)
             if not item.source_future.done():
                 item.source_future.set_result(
                     SendCompletion(send_key=item.send_key, outcome=SendOutcome.SUPPRESSED)
@@ -189,14 +226,6 @@ class DedicatedOutboundWriter:
 
         payload_bytes: bytes | None = item.encoded_payload
         preparation_error: BaseException | None = item.prepare_error
-        if preparation_error is None and payload_bytes is None:
-            try:
-                payload_bytes = (
-                    json.dumps(dict(item.payload), separators=(",", ":")) + "\n"
-                ).encode("utf-8")
-            except BaseException as exc:
-                preparation_error = exc
-
         state = item.owner.claim_write_started(item.send_key)
         if state is SendState.SUPPRESSED:
             item.source_future.set_result(
@@ -257,10 +286,19 @@ class DedicatedOutboundWriter:
             item.writer_token.release()
 
     def _fail_closed(self, item: OutboundQueueItem, outcome: SendOutcome) -> None:
-        if not item.source_future.done():
-            item.source_future.set_result(SendCompletion(send_key=item.send_key, outcome=outcome))
-        if item.writer_token is not None:
-            item.writer_token.release()
+        try:
+            item.owner.publish_authoritative(item.send_key, outcome)
+            try:
+                current = item.owner.claim_write_started(item.send_key)
+                if current in {SendState.FLUSHED, SendState.CONCLUSIVE_FAILURE, SendState.AMBIGUOUS, SendState.SUPPRESSED}:
+                    outcome = SendOutcome(current.value)
+            except BaseException:
+                pass  # The original owner failure still completes fail-closed.
+        finally:
+            if not item.source_future.done():
+                item.source_future.set_result(SendCompletion(send_key=item.send_key, outcome=outcome))
+            if item.writer_token is not None:
+                item.writer_token.release()
 
 
 _ephemeral_counter = 0

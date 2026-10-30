@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import math
 import threading
 import time
 from collections.abc import Awaitable, Callable
@@ -22,12 +23,17 @@ from optimus.redis.async_bridge import (
     SHUTDOWN_OBSERVATION_BUDGET_SECONDS,
     RedisLoopOwner,
     RedisLoopOwnerClosed,
+    RedisOperationDeadlineExceeded,
 )
 from optimus.telemetry.redis_adapter import RedisTelemetryAdapter, RedisTelemetryClient
 
 
 class CloseablePool(Protocol):
     def aclose(self) -> Awaitable[None]: ...
+
+
+class RedisHealthDeadlineExceeded(ConnectionError):
+    """Health observation expired; owner-side completion remains retained."""
 
 
 class RuntimeClient(AsyncStateClient, RedisTelemetryClient, Protocol):
@@ -164,10 +170,16 @@ class _RuntimeLifecycle:
                 return self.record, True
             return self.record, False
 
-    def check_admission(self) -> None:
-        with self._lock:
+    def check_admission(self, *, deadline: float | None = None) -> None:
+        acquired = (self._lock.acquire() if deadline is None
+                    else self._lock.acquire(timeout=max(0.0, deadline - time.monotonic())))
+        if not acquired:
+            raise RedisOperationDeadlineExceeded("Redis runtime admission deadline expired")
+        try:
             if self.state in (RedisRuntimeState.CLOSING, RedisRuntimeState.CLOSED):
                 raise RedisLoopOwnerClosed("the Redis runtime is closing and admits no new work")
+        finally:
+            self._lock.release()
 
     def mark_closed(self) -> None:
         with self._lock:
@@ -279,8 +291,23 @@ class RedisRuntime:
 
         return RedisTelemetryEventSink(self.telemetry_adapter(), submit=self.run_sync)
 
-    def ping(self) -> None:
-        self.run_sync(self._ping_async)
+    def ping(self, *, timeout: float = 2.0) -> None:
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("health timeout must be positive and finite")
+        deadline = time.monotonic() + timeout
+        self.owner.reject_reentrancy("ping")
+        try:
+            handle = self.owner.submit(self._ping_async, guard=lambda: self.lifecycle.check_admission(deadline=deadline), deadline=deadline)
+        except RedisOperationDeadlineExceeded as exc:
+            raise RedisHealthDeadlineExceeded("Redis health deadline expired") from exc
+        done, _ = futures_wait((handle.future,), timeout=max(0.0, deadline - time.monotonic()))
+        if not done or time.monotonic() >= deadline:
+            handle.request_cancel()
+            raise RedisHealthDeadlineExceeded("Redis health deadline expired")
+        try:
+            handle.future.result()
+        except RedisOperationDeadlineExceeded as exc:
+            raise RedisHealthDeadlineExceeded("Redis health deadline expired") from exc
 
     async def _ping_async(self) -> None:
         try:

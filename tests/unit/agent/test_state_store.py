@@ -1,3 +1,7 @@
+import gc
+import logging
+import time
+import weakref
 from decimal import Decimal
 from functools import partial
 from unittest.mock import create_autospec
@@ -75,7 +79,7 @@ def plan_record() -> AgentPlanRecord:
 
 
 def test_in_memory_store_replays_exact_plan_text():
-    store = InMemoryAgentStateStore()
+    store = InMemoryAgentStateStore(clock_ms=lambda: 1000)
     record = plan_record()
 
     store.save_plan(record)
@@ -539,3 +543,146 @@ def test_contract_redis_store_boundary_rejects_unknown_attributes():
         boundary.unknown_redis_operation = True
     with pytest.raises(TypeError):
         boundary.hset("key", obsolete_mapping={})
+
+
+# These controls exercise actual records/store ownership, not a copied TTL implementation.
+def _short_plan(**changes):
+    return plan_record().model_copy(update={"created_at_ms": 1000, "expires_at_ms": 2000, **changes})
+
+
+@pytest.mark.parametrize("lookup", ["load", "latest"])
+def test_default_clock_never_returns_an_expired_plan(lookup):
+    now = int(time.time() * 1000)
+    store = InMemoryAgentStateStore()
+    expired = _short_plan(created_at_ms=now - 2000, expires_at_ms=now - 1000)
+    live = _short_plan(run_id="live-run", expires_at_ms=now + 3_600_000)
+    store.save_plan(expired)
+    store.save_plan(live)
+    if lookup == "load":
+        with pytest.raises(KeyError, match="stored plan not found"):
+            store.load_plan(run_id=expired.run_id, plan_hash=expired.plan_hash)
+    else:
+        assert store.latest_plan_for_run(run_id=expired.run_id) is None
+    assert store.load_plan(run_id=live.run_id, plan_hash=live.plan_hash) is live
+
+
+@pytest.mark.parametrize("lookup", ["load", "latest"])
+def test_expiry_boundary_uses_one_consistent_store_snapshot(lookup):
+    now = [1000]
+    store = InMemoryAgentStateStore(clock_ms=lambda: now[0])
+    record = _short_plan()
+    store.save_plan(record)
+    now[0] = 1999
+    assert store.load_plan(run_id=record.run_id, plan_hash=record.plan_hash) is record
+    now[0] = 2000
+    if lookup == "load":
+        with pytest.raises(KeyError, match="stored plan not found"):
+            store.load_plan(run_id=record.run_id, plan_hash=record.plan_hash)
+    else:
+        assert store.latest_plan_for_run(run_id=record.run_id) is None
+    now[0] = 2001
+    assert store.latest_plan_for_run(run_id=record.run_id) is None
+
+
+@pytest.mark.parametrize("operation", ["save", "persist", "load", "latest"])
+def test_every_store_operation_releases_unrelated_expired_records(operation):
+    now = [1000]
+    store = InMemoryAgentStateStore(clock_ms=lambda: now[0])
+    expired = _short_plan(task="expiry-private-payload-canary")
+    live = _short_plan(run_id="live-run", expires_at_ms=4000)
+    store.save_plan(expired)
+    store.save_plan(live)
+    reference = weakref.ref(expired)
+    del expired
+    now[0] = 2000
+    if operation == "save":
+        store.save_plan(live)
+    elif operation == "persist":
+        assert store.persist_plan(live).authorizing
+    elif operation == "load":
+        assert store.load_plan(run_id=live.run_id, plan_hash=live.plan_hash) is live
+    else:
+        assert store.latest_plan_for_run(run_id=live.run_id) is live
+    gc.collect()
+    assert reference() is None
+    assert store.load_plan(run_id=live.run_id, plan_hash=live.plan_hash) is live
+
+
+@pytest.mark.parametrize("operation", ["save", "persist", "load", "latest"])
+def test_each_store_operation_samples_the_clock_once(operation):
+    samples = []
+    def clock():
+        samples.append(None)
+        return 1000
+    store = InMemoryAgentStateStore(clock_ms=clock)
+    record = _short_plan()
+    for index in range(3):
+        store.save_plan(record.model_copy(update={"plan_hash": f"plan-{index}"}))
+    samples.clear()
+    if operation == "save":
+        store.save_plan(record)
+    elif operation == "persist":
+        assert store.persist_plan(record).authorizing
+    elif operation == "load":
+        store.load_plan(run_id=record.run_id, plan_hash="plan-0")
+    else:
+        assert store.latest_plan_for_run(run_id=record.run_id) is not None
+    assert len(samples) == 1
+
+
+@pytest.mark.parametrize("operation", ["save", "persist"])
+def test_expired_write_is_not_retained_or_authorizing(operation):
+    from optimus.agent.state_store import PlanPersistenceOutcome
+    store = InMemoryAgentStateStore(clock_ms=lambda: 2000)
+    record = _short_plan()
+    reference = weakref.ref(record)
+    if operation == "persist":
+        result = store.persist_plan(record)
+        assert result.outcome is PlanPersistenceOutcome.PERSISTENCE_FAILED
+        assert not result.authorizing and result.completed_substeps == ()
+    else:
+        store.save_plan(record)
+    del record
+    gc.collect()
+    assert reference() is None
+    with pytest.raises(KeyError, match="stored plan not found"):
+        store.load_plan(run_id="run-1", plan_hash="hash-1")
+
+
+def test_expired_write_cannot_replace_a_live_plan_with_the_same_key():
+    store = InMemoryAgentStateStore(clock_ms=lambda: 2000)
+    live = _short_plan(expires_at_ms=4000)
+    store.save_plan(live)
+    assert not store.persist_plan(_short_plan()).authorizing
+    assert store.load_plan(run_id=live.run_id, plan_hash=live.plan_hash) is live
+
+
+def test_retirement_diagnostic_contains_only_aggregate_counts(caplog):
+    now = [1000]
+    store = InMemoryAgentStateStore(clock_ms=lambda: now[0])
+    store.save_plan(_short_plan(run_id="expiry-private-payload-canary"))
+    now[0] = 2000
+    with caplog.at_level(logging.INFO, logger="optimus.agent.state_store"):
+        assert store.latest_plan_for_run(run_id="expiry-private-payload-canary") is None
+    events = [r for r in caplog.records if r.name == "optimus.agent.state_store"]
+    assert len(events) == 1
+    assert events[0].getMessage() == "in-memory plan records expired"
+    assert (events[0].expired_count, events[0].retained_count) == (1, 0)
+    assert "expiry-private-payload-canary" not in caplog.text
+
+
+def test_expiry_reporting_failure_preserves_refusal_and_releases_record(monkeypatch):
+    now = [1000]
+    store = InMemoryAgentStateStore(clock_ms=lambda: now[0])
+    record = _short_plan()
+    store.save_plan(record)
+    reference = weakref.ref(record)
+    del record
+    def failed(*args, **kwargs):
+        raise OSError("expiry-private-payload-canary")
+    monkeypatch.setattr(logging.getLogger("optimus.agent.state_store"), "info", failed)
+    now[0] = 2000
+    with pytest.raises(KeyError, match="stored plan not found"):
+        store.load_plan(run_id="run-1", plan_hash="hash-1")
+    gc.collect()
+    assert reference() is None

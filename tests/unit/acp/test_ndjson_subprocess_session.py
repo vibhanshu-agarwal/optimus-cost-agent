@@ -15,10 +15,13 @@ the prefix its siblings all use).
 from __future__ import annotations
 
 import io
+import threading
+from collections import deque
 from types import SimpleNamespace
 
 import pytest
 
+from optimus.acp.admission import AdmissionLimits
 from optimus.acp.ndjson_subprocess_session import (
     LiveSessionError,
     NdjsonSubprocessSession,
@@ -26,12 +29,28 @@ from optimus.acp.ndjson_subprocess_session import (
 )
 
 
+def _bare_session():
+    session = object.__new__(NdjsonSubprocessSession)
+    session._limits = AdmissionLimits()
+    session._stderr_lock = threading.Lock()
+    session._stderr_bytes = 0
+    session._stderr_omitted = 0
+    session._gate_rejection = ""
+    session._fatal = None
+    return session
+
+
 def test_stderr_is_sanitized_before_retention_without_breaking_gate_detection() -> None:
     canary = "ndjson-stderr-canary"
     stderr_line = f"optimus-agent: NO_APPROVAL: token={canary}\n"
-    session = object.__new__(NdjsonSubprocessSession)
+    session = _bare_session()
     session._process = SimpleNamespace(stderr=io.StringIO(stderr_line))
-    session._stderr_lines = []
+    session._limits = AdmissionLimits()
+    session._stderr_lines = deque()
+    session._stderr_lock = threading.Lock()
+    session._stderr_bytes = 0
+    session._stderr_omitted = 0
+    session._gate_rejection = ""
 
     session._read_stderr()
 
@@ -140,7 +159,7 @@ class TestSendAndCloseStdinSurviveAnAlreadyExitedChild:
     exit, not let a raw OSError escape."""
 
     def test_send_broken_pipe_surfaces_the_gate_rejection_cleanly(self) -> None:
-        session = object.__new__(NdjsonSubprocessSession)
+        session = _bare_session()
         session._process = SimpleNamespace(
             stdin=_BrokenPipeStdin(),
             poll=lambda: 2,
@@ -163,7 +182,7 @@ class TestSendAndCloseStdinSurviveAnAlreadyExitedChild:
     def test_send_broken_pipe_without_a_gate_rejection_still_raises_cleanly(self) -> None:
         """No stderr at all (a bare crash, not a gate rejection) must still
         convert to a LiveSessionError -- never a raw BrokenPipeError."""
-        session = object.__new__(NdjsonSubprocessSession)
+        session = _bare_session()
         session._process = SimpleNamespace(
             stdin=_BrokenPipeStdin(),
             poll=lambda: 1,
@@ -183,7 +202,7 @@ class TestSendAndCloseStdinSurviveAnAlreadyExitedChild:
             def close(self) -> None:
                 raise BrokenPipeError(32, "Broken pipe")
 
-        session = object.__new__(NdjsonSubprocessSession)
+        session = _bare_session()
         session._process = SimpleNamespace(stdin=_AlreadyClosedStdin())
 
         session.close_stdin()  # must not raise
@@ -195,7 +214,7 @@ class TestSendAndCloseStdinSurviveAnAlreadyExitedChild:
             def close(self) -> None:
                 closed.append(True)
 
-        session = object.__new__(NdjsonSubprocessSession)
+        session = _bare_session()
         session._process = SimpleNamespace(stdin=_HealthyStdin())
 
         session.close_stdin()
@@ -221,7 +240,7 @@ class TestFailSubprocessExitedWaitsForTheStderrReaderToDrain:
     def _make_session(
         self, *, poll_result: int | None, stderr_after_join: list[str]
     ) -> NdjsonSubprocessSession:
-        session = object.__new__(NdjsonSubprocessSession)
+        session = _bare_session()
         session._stderr_lines = []
 
         def _join(timeout: float | None = None) -> None:
