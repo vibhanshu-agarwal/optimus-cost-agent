@@ -1,0 +1,144 @@
+{
+  "attempt_id": "hex:2604347331134c61b5337e66b6d0051f",
+  "cleanup": [
+    {
+      "action": "kill owner-exit worker",
+      "status": "done"
+    }
+  ],
+  "config_sha256": "hex:025e75328b24ab3e2757a2ee3096fff99acca8f391acb5209335ba4d7bb5c0be",
+  "disposition": "concluded",
+  "ended_utc": "2026-10-30T20:07:37.056+00:00",
+  "environment": {
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "python": "3.14.4",
+    "release": "11",
+    "system": "Windows"
+  },
+  "follow_up": "M1 qualifies the production worker and model choice on the real corpus",
+  "kind": "embedding",
+  "limitations": [
+    "a feasibility cursor, not the persisted-generation production indexer (M1)",
+    "the Hugging Face endpoint is pinned; its CDN redirects are not socket-enforced"
+  ],
+  "observations": {
+    "cancel_resume": {
+      "cancelled": {
+        "batches": 32,
+        "next_batch": 5,
+        "ok": true,
+        "status": "stopped"
+      },
+      "resumed": {
+        "batches": 32,
+        "batches_this_run": 27,
+        "cpu_count": 12,
+        "dimensions": 384,
+        "embed_seconds": 18.679,
+        "items_per_second": 92.5,
+        "items_this_run": 1728,
+        "load_seconds": 0.253,
+        "model_cache_bytes": 67414362,
+        "model_license": "mit",
+        "model_sources": {
+          "_deprecated_tar_struct": false,
+          "hf": "Qdrant/bge-small-en-v1.5-onnx-Q",
+          "url": null
+        },
+        "ok": true,
+        "output_sha256": "hex:0138ff294bde0d08e6dc77972cae2bc45fe441e27c788212e6894f8e893160e4",
+        "peak_working_set_bytes": 452960256,
+        "rss_bytes": 452960256,
+        "status": "complete"
+      }
+    },
+    "checks": {
+      "cancel_stopped_at_batch": true,
+      "full_run_complete": true,
+      "owner_killed_mid_run": true,
+      "restart_identical": true,
+      "resume_identical": true
+    },
+    "full_run": {
+      "batches": 32,
+      "batches_this_run": 32,
+      "cpu_count": 12,
+      "dimensions": 384,
+      "embed_seconds": 22.567,
+      "items_per_second": 88.6,
+      "items_this_run": 2000,
+      "load_seconds": 0.271,
+      "model_cache_bytes": 67414362,
+      "model_license": "mit",
+      "model_sources": {
+        "_deprecated_tar_struct": false,
+        "hf": "Qdrant/bge-small-en-v1.5-onnx-Q",
+        "url": null
+      },
+      "ok": true,
+      "output_sha256": "hex:0138ff294bde0d08e6dc77972cae2bc45fe441e27c788212e6894f8e893160e4",
+      "peak_working_set_bytes": 453591040,
+      "rss_bytes": 453591040,
+      "status": "complete"
+    },
+    "model_fetch": {
+      "bytes": 67415756,
+      "files_match_metadata": true
+    },
+    "model_gate": {
+      "budget_bytes": 268435456,
+      "bytes": 67414362,
+      "license": "mit",
+      "license_approved": true,
+      "repo": "Qdrant/bge-small-en-v1.5-onnx-Q",
+      "revision": "hex:aa8f8b060edb00e03bfdd08813a2949946c8ba55"
+    },
+    "owner_exit_restart": {
+      "killed": {
+        "batches_at_kill": 5,
+        "killed": true,
+        "returncode": 1
+      },
+      "restarted": {
+        "batches": 32,
+        "batches_this_run": 27,
+        "cpu_count": 12,
+        "dimensions": 384,
+        "embed_seconds": 17.175,
+        "items_per_second": 100.6,
+        "items_this_run": 1728,
+        "load_seconds": 0.227,
+        "model_cache_bytes": 67414362,
+        "model_license": "mit",
+        "model_sources": {
+          "_deprecated_tar_struct": false,
+          "hf": "Qdrant/bge-small-en-v1.5-onnx-Q",
+          "url": null
+        },
+        "ok": true,
+        "output_sha256": "hex:0138ff294bde0d08e6dc77972cae2bc45fe441e27c788212e6894f8e893160e4",
+        "peak_working_set_bytes": 452710400,
+        "rss_bytes": 452710400,
+        "status": "complete"
+      }
+    }
+  },
+  "outcome": "PASS",
+  "owner": "claude",
+  "redactions": 0,
+  "run_label": "plan12.7-m0a3-2026-10-31",
+  "source": {
+    "after": {
+      "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dirty": false,
+      "head": "hex:d0819e5616f7240b83b2789cef5d379f8fbbff18"
+    },
+    "before": {
+      "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dirty": false,
+      "head": "hex:d0819e5616f7240b83b2789cef5d379f8fbbff18"
+    }
+  },
+  "started_utc": "2026-10-30T20:06:09.677+00:00"
+}
