@@ -186,3 +186,75 @@ def test_lock_contention_is_bounded_and_reported(tmp_path, repos):
         waiter.resolve(resolve_workspace_identity(repos["plain"]), create=True)
 
     assert contention.value.code == "LOCK_CONTENTION"
+
+
+# --- Codex round 82: registry loss, restore, and the commit boundaries ---
+
+
+def test_a_lost_registry_requires_recovery_and_restore_keeps_the_ids(tmp_path, repos):
+    registry = _registry(tmp_path)
+    identity = resolve_workspace_identity(repos["origin"])
+    original = registry.resolve(identity, create=True)
+    exported = registry.snapshot()
+    registry.path.unlink()
+
+    with pytest.raises(ProjectRegistryError) as lost:
+        registry.resolve(identity, create=True)
+    registry.restore(exported)
+
+    assert lost.value.code == "RECOVERY_REQUIRED"
+    assert registry.resolve(identity, create=False).project_id == original.project_id
+
+
+def test_restore_never_overwrites_and_rejects_a_malformed_snapshot(tmp_path, repos):
+    registry = _registry(tmp_path)
+    registry.resolve(resolve_workspace_identity(repos["plain"]), create=True)
+    before = registry.path.read_bytes()
+
+    for snapshot in (registry.snapshot(), {"registry_version": 1, "projects": []}):
+        with pytest.raises(ProjectRegistryError, match="RESTORE_REFUSED"):
+            registry.restore(snapshot)
+    assert registry.path.read_bytes() == before
+
+
+def test_a_failure_after_the_replacement_is_reported_as_uncertain(tmp_path, repos, monkeypatch):
+    registry = _registry(tmp_path)
+    registry.resolve(resolve_workspace_identity(repos["origin"]), create=True)
+
+    def failing(directory):
+        raise OSError(5, "simulated directory fsync failure")
+
+    monkeypatch.setattr(project_registry, "_fsync_directory", failing)
+    with pytest.raises(ProjectRegistryError) as uncertain:
+        registry.resolve(resolve_workspace_identity(repos["clone"]), create=True)
+    monkeypatch.undo()
+
+    assert uncertain.value.code == "WRITE_UNCERTAIN"
+    assert len(registry.snapshot()["projects"]) == 2, "reopening shows the replaced registry, whole"
+
+
+def test_a_process_killed_at_the_commit_boundary_leaves_the_previous_registry(tmp_path, repos):
+    config = tmp_path / "config"
+    registry = ProjectRegistry(config)
+    kept = registry.resolve(resolve_workspace_identity(repos["origin"]), create=True)
+    before = registry.path.read_bytes()
+    script = (
+        "import os, sys; from pathlib import Path\n"
+        "from optimus.acp.trusted_paths import resolve_workspace_identity\n"
+        "from optimus.context import project_registry as pr\n"
+        "pr.os.replace = lambda *a: os._exit(3)  # die after the fsynced temporary file, before the replacement\n"
+        "pr.ProjectRegistry(Path(sys.argv[1])).resolve(resolve_workspace_identity(Path(sys.argv[2])), create=True)\n"
+    )
+    killed = subprocess.run([sys.executable, "-c", script, str(config), str(repos["clone"])], timeout=120)
+
+    assert killed.returncode == 3
+    assert registry.path.read_bytes() == before
+    assert registry.resolve(resolve_workspace_identity(repos["origin"]), create=False).project_id == kept.project_id
+    assert registry.resolve(resolve_workspace_identity(repos["clone"]), create=True).created
+
+
+def test_the_first_registration_writes_the_marker_before_the_registry(tmp_path, repos):
+    registry = _registry(tmp_path)
+    registry.resolve(resolve_workspace_identity(repos["plain"]), create=True)
+
+    assert (tmp_path / "config" / project_registry.MARKER_FILE_NAME).is_file()

@@ -2,9 +2,12 @@
 so linked worktrees share it while clones and forks do not; a folder outside Git is registered by its canonical path.
 
 The registry is versioned JSON under the per-user config root, outside every workspace. A cross-process lock, an
-fsynced temporary file and an atomic replacement protect allocation. A corrupt registry is reported, never silently
-replaced, and a relocated project gets no automatic link: linking is a future authenticated host action. The project
-ID is grouping only; it never changes a workspace's trust identity, approvals or file permissions.
+fsynced temporary file and an atomic replacement protect allocation against concurrent writers and an interrupted
+process on every platform; power-loss durability of the replacement is POSIX-only (the directory is fsynced there, and
+a Windows rename is not written through). A marker written before the first registration tells first use apart from
+a lost registry: a corrupt or missing registry with prior state is reported, never silently reallocated, and only an
+explicit restore() writes it back. A relocated project gets no automatic link: linking is a future authenticated host
+action. The project ID is grouping only; it never changes a workspace's trust identity, approvals or file permissions.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from optimus.acp.trusted_paths import GitContextDisposition, WorkspaceIdentity
 
 REGISTRY_VERSION = 1
 REGISTRY_FILE_NAME = "project-registry.json"
+MARKER_FILE_NAME = "project-registry.initialized"
 _LOCK_FILE_NAME = "project-registry.lock"
 _LOCK_WAIT_SECONDS = 5.0
 _LOCK_POLL_SECONDS = 0.05
@@ -32,7 +36,8 @@ _CONTENTION_ERRNOS = frozenset({errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK, e
 
 
 class ProjectRegistryError(Exception):
-    """``code``: CORRUPT, UNAVAILABLE, LOCK_CONTENTION, LOCK_FAILED, WRITE_FAILED or NOT_REGISTERED; never content."""
+    """``code``: CORRUPT, RECOVERY_REQUIRED, UNAVAILABLE, LOCK_CONTENTION, LOCK_FAILED, WRITE_FAILED, WRITE_UNCERTAIN,
+    NOT_REGISTERED or RESTORE_REFUSED; it never carries registry content."""
 
     def __init__(self, code: str, detail: str) -> None:
         super().__init__(f"{code}: {detail}")
@@ -53,6 +58,7 @@ class ProjectRegistry:
     def __init__(self, config_root: Path, *, lock_wait_seconds: float = _LOCK_WAIT_SECONDS) -> None:
         self._root = config_root
         self._path = config_root / REGISTRY_FILE_NAME
+        self._marker = config_root / MARKER_FILE_NAME
         self._lock_wait_seconds = lock_wait_seconds
 
     @property
@@ -81,10 +87,23 @@ class ProjectRegistry:
         with self._lock():
             return self._load()
 
+    def restore(self, snapshot: dict[str, Any]) -> None:
+        """Write back an exported snapshot after the registry was lost; an existing registry is never overwritten."""
+        if not _well_formed(snapshot):
+            raise ProjectRegistryError("RESTORE_REFUSED", "the snapshot does not match the registry schema")
+        with self._lock():
+            if self._path.exists():
+                raise ProjectRegistryError("RESTORE_REFUSED", "a registry already exists; it is never overwritten")
+            self._store(snapshot)
+
     def _load(self) -> dict[str, Any]:
         try:
             raw = self._path.read_bytes()
         except FileNotFoundError:
+            if self._marker.exists():
+                raise ProjectRegistryError(
+                    "RECOVERY_REQUIRED", "the registry is missing although projects were registered; restore it"
+                ) from None
             return {"registry_version": REGISTRY_VERSION, "projects": {}}
         except OSError as exc:
             raise ProjectRegistryError("CORRUPT", f"the registry cannot be read (errno {exc.errno})") from None
@@ -100,16 +119,21 @@ class ProjectRegistry:
         payload = json.dumps(data, sort_keys=True, indent=2).encode("utf-8")
         temporary = self._path.with_name(f"{self._path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
         try:
-            with open(temporary, "wb") as handle:
-                handle.write(payload)
-                handle.flush()
-                os.fsync(handle.fileno())
+            if not self._marker.exists():  # before any registration exists, so its loss is always detectable
+                _write_durably(self._marker, json.dumps({"registry_version": REGISTRY_VERSION}).encode("utf-8"))
+                _fsync_directory(self._root)
+            _write_durably(temporary, payload)
             os.replace(temporary, self._path)
-            _fsync_directory(self._root)
         except OSError as exc:
             raise ProjectRegistryError("WRITE_FAILED", f"the registry was not changed (errno {exc.errno})") from None
         finally:
             temporary.unlink(missing_ok=True)
+        try:
+            _fsync_directory(self._root)
+        except OSError as exc:
+            raise ProjectRegistryError(
+                "WRITE_UNCERTAIN", f"the registry was replaced but may not be durable (errno {exc.errno}); reopen it"
+            ) from None
 
     @contextmanager
     def _lock(self) -> Iterator[None]:
@@ -184,9 +208,16 @@ def _well_formed(data: object) -> bool:
     return True
 
 
+def _write_durably(path: Path, payload: bytes) -> None:
+    with open(path, "wb") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
 def _fsync_directory(directory: Path) -> None:
     if sys.platform == "win32":
-        return  # NTFS cannot open a directory for fsync; os.replace is already durable there
+        return  # a directory cannot be opened for fsync on Windows; see the module docstring's durability limit
     fd = os.open(directory, os.O_RDONLY)
     try:
         os.fsync(fd)

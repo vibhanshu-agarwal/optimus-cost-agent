@@ -14,6 +14,7 @@ from optimus.agent.workspace_context import (
     assemble_workspace_context_for_prompt,
     gather_workspace_context_for_prompt,
 )
+from optimus.guardrails import file_policy
 from optimus.telemetry.jsonl import DEFAULT_TELEMETRY_DIRNAME
 
 
@@ -381,17 +382,17 @@ def test_runtime_tree_is_excluded_before_any_of_its_content_is_read(tmp_path, mo
     _runtime_tree(tmp_path)
     _source(tmp_path)
     read: list[Path] = []
-    original = Path.read_bytes
 
-    def recording_read_bytes(self: Path) -> bytes:
-        read.append(self)
-        return original(self)
+    def recording_open(file, *args, **kwargs):  # the file policy opens content only through this name
+        read.append(Path(file))
+        return open(file, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "read_bytes", recording_read_bytes)
+    monkeypatch.setattr(file_policy, "open", recording_open, raising=False)
     result = assemble_workspace_context_for_prompt(tmp_path, task="Explain src/app.py")
 
     assert SOURCE_SENTINEL in result.text and result.prioritized_paths == ("src/app.py",)
     _assert_runtime_absent(result)
+    assert any(path.name == "app.py" for path in read), "the recorder sees the policy's reads"
     assert not [path for path in read if ".optimus" in path.parts], "no runtime file is opened to decide eligibility"
 
 
@@ -777,3 +778,39 @@ def test_a_named_secret_file_reports_why_it_is_refused(tmp_path):
     assert result.blocking_message == (
         "Workspace reference 'config/.env.local' cannot be read safely: a secret or credential file."
     )
+
+
+# --- Codex round 82: a file that becomes unavailable after listing is never silently dropped ---
+
+
+def _vanish_before_packing(monkeypatch, path: Path) -> None:
+    original = workspace_context._pack_workspace_context
+
+    def packing(*args, **kwargs):
+        path.unlink()  # a real change between the listing and the read
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(workspace_context, "_pack_workspace_context", packing)
+
+
+def test_a_required_file_that_vanishes_before_packing_stops_preparation(tmp_path, monkeypatch):
+    target = _source(tmp_path, "app.py")
+    _source(tmp_path, "README.md")
+    _vanish_before_packing(monkeypatch, target)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Fix app.py")
+
+    assert result.text == "" and result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
+    assert result.blocking_message == "Workspace reference 'app.py' cannot be read safely: not a file."
+    assert result.excluded_counts.get("excluded.not_found") == 1
+
+
+def test_a_filler_file_that_vanishes_before_packing_is_counted(tmp_path, monkeypatch):
+    _source(tmp_path, "app.py")
+    gone = _source(tmp_path, "notes.md")
+    _vanish_before_packing(monkeypatch, gone)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Fix app.py")
+
+    assert result.blocking_stop_reason is None and "--- app.py ---" in result.text
+    assert result.excluded_counts == {"excluded.not_found": 1}

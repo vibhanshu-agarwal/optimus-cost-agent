@@ -19,23 +19,24 @@ Plan 12.x memory gives Optimus project context, durable cross-session memory and
 **One includable-files policy (`optimus.guardrails.file_policy`, delivered by Plan 12.6 Task 1).**
 - **One callable.** `FilePolicy.decide(relative_path, purpose=automatic|index|anchor)` serves every purpose. Automatic workspace context uses it now; the future index and anchor reads will too.
 - **Order of checks.**
-  - First, security denials, judged from path metadata before any content is opened: skipped tool folders; the `.optimus` runtime tree; secret files (`optimus.guardrails.secret_paths`, #385, including `.env.*`); an unresolvable target; a target outside the workspace. Both the spelling and the resolved target are judged.
-  - Then `.gitignore` and `.optimusignore`.
+  - First, security denials, judged from path metadata before any content is read: skipped tool folders (case-insensitively on Windows and macOS); the `.optimus` runtime tree; secret files (`optimus.guardrails.secret_paths`, #385, including `.env.*`); an unresolvable target; a target outside the workspace. The same rules apply to the spelling and to the workspace-relative real target.
+  - Then `.gitignore` and `.optimusignore`. An ignore file that exists but cannot be evaluated (an alias, which Git does not follow either; a denied target; not a regular file; unreadable; over 1 MiB) makes every decision it would judge unavailable (`deny.ignore_unavailable`), never more permissive.
   - Then empty and binary files, and files over a 1 MiB limit for indexing only.
 - **Ignore semantics.** Ignore files use Git wildmatch syntax, through `pathspec`'s `GitIgnoreSpec`.
   - Nested files apply below their folder, and a deeper file overrides a shallower one.
   - `.optimusignore` is read after `.gitignore` in each folder. The last match wins, so `.optimusignore` can re-include what Git ignores.
   - Nothing under an excluded folder is re-included.
-  - On Windows, matching is case-insensitive, as Git's `core.ignorecase` is there.
+  - On Windows and macOS, a file is ignored if either the exact rules or the case-folded rules ignore it. Git's `core.ignorecase` varies by repository there, so this never makes more files eligible than either reading would; it can exclude a few more.
   - **No ignore rule can negate a denial.**
-- **What a decision records.** A decision carries a rule id, never content. A policy revision binds it to the ignore files that judged it, by SHA-256. Reading rechecks the target's identity after the read. Automatic context reports its excluded files as counts by rule, and keeps its 16 KiB pack budget.
+- **How content is read.** Only the validated real target is opened. The opened handle's file identity (device and file index) must equal the one validated, or nothing is read; after the read, the alias must still resolve to the same target and the file must be unchanged (identity, size, modification time), or the bytes are discarded (`deny.identity_changed`).
+- **What a decision records.** A decision carries a rule id, never content. A policy revision binds it to the ignore files that judged it, by SHA-256. Automatic context reports its excluded files, including any refused at read time, as counts by rule, and keeps its 16 KiB pack budget. A required file refused at read time stops preparation with its reason.
 - **Explicit permissions.** Explicit model READ permissions stay authoritative and unchanged. The model-read guard keeps its own rule set, which shares the secret rule. It does not import this broader policy.
 - **Parser dependency.** `pathspec==1.1.1` (MPL-2.0, pure Python, unmodified) is now a direct dependency. It was already in the lock file as mypy's dependency.
 
 **Registered project identity (Plan 12.6 Task 2).**
 - **Grouping.** Each trusted canonical Git common directory gets one local UUID, so linked worktrees share it and clones and forks do not. A folder that is not a Git repository is registered by its canonical path.
-- **Storage.** The registry is versioned JSON under the per-user config root. A cross-process lock, an fsynced temporary file and an atomic replacement protect it.
-- **Failure handling.** A corrupt or missing registry is reported, never silently reallocated. Workspace trust approvals, file permissions and branch applicability stay separate from the project ID.
+- **Storage.** The registry is versioned JSON under the per-user config root. A cross-process lock, an fsynced temporary file and an atomic replacement protect it against concurrent writers and an interrupted process on every platform. Power-loss durability of the replacement is POSIX-only: the directory is fsynced there, and a Windows rename is not written through. A failure after the replacement is reported as uncertain (`WRITE_UNCERTAIN`), to be reconciled by reopening.
+- **Failure handling.** A marker written before the first registration tells first use apart from loss: a missing registry with prior state is `RECOVERY_REQUIRED`, and a corrupt one is `CORRUPT`. Neither is silently reallocated; only an explicit `restore()` of an exported snapshot writes a lost registry back, and it never overwrites an existing one. Unavailable Git evidence is refused rather than registered by folder. Workspace trust approvals, file permissions and branch applicability stay separate from the project ID.
 
 ## Options considered
 
@@ -51,7 +52,7 @@ Plan 12.x memory gives Optimus project context, durable cross-session memory and
   - A file alias whose target is outside the workspace is no longer packed.
   - A task that names an excluded file is refused with the rule that excluded it, for example "excluded by .optimusignore".
 - **Deliberately conservative.** `.env.example` counts as a secret file.
-- **Not covered.** Secret values inside ordinary files are not redacted, and hard links cannot be detected.
+- **Not covered.** Secret values inside ordinary files are not redacted, and hard links cannot be detected. If both the registry and its marker are deleted, the next registration starts afresh.
 - **Pinned parser.** Parser differences from Git are guarded by the native-Git comparison test. Upgrading `pathspec` is a deliberate change that must keep that test green.
 
 ## Decider and provenance

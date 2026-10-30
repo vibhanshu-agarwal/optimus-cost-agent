@@ -640,7 +640,7 @@ class _Opaque:
 
 def _workspace_result_shape():
     reference = SimpleNamespace(
-        reference="src/a.py", status=SimpleNamespace(value="resolved"), candidates=("src/a.py",)
+        reference="src/a.py", status=SimpleNamespace(value="resolved"), candidates=("src/a.py",), reason=None
     )
     return SimpleNamespace(
         max_total_bytes=4096,
@@ -649,6 +649,8 @@ def _workspace_result_shape():
         omitted_paths=("src/b.py", "src/c.py"),
         diagnostics=(reference,),
         blocking_stop_reason=None,
+        policy_revision="file-policy-v1:0123456789abcdef",
+        excluded_counts={"ignored.gitignore": 3},
     )
 
 
@@ -682,9 +684,11 @@ def test_log_workspace_context_result_preserves_fields_when_enabled(tmp_path):
         "prioritized_paths": ["src/a.py"],
         "omitted_count": 2,
         "references": [
-            {"reference": "src/a.py", "status": "resolved", "candidate_count": 1, "candidates": ["src/a.py"]}
+            {"reference": "src/a.py", "status": "resolved", "candidate_count": 1, "candidates": ["src/a.py"], "reason": None}
         ],
         "blocking_stop_reason": None,
+        "policy_revision": "file-policy-v1:0123456789abcdef",
+        "excluded_counts": {"ignored.gitignore": 3},
     }
 
 

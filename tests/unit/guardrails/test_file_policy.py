@@ -116,13 +116,12 @@ def test_denied_and_ignored_content_is_never_opened(tmp_path, monkeypatch):
         _write(tmp_path, relative, SENTINEL)
     _write(tmp_path, ".optimusignore", "private/\n")
     opened: list[Path] = []
-    original = Path.read_bytes
 
-    def recording(self: Path) -> bytes:
-        opened.append(self)
-        return original(self)
+    def recording(file, *args, **kwargs):  # the policy opens content only through this name
+        opened.append(Path(file))
+        return open(file, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "read_bytes", recording)
+    monkeypatch.setattr(file_policy, "open", recording, raising=False)
     reasons = _reasons(FilePolicy(tmp_path))
 
     assert reasons["src/app.py"] == "allowed"
@@ -211,3 +210,131 @@ def test_gitignore_semantics_match_native_git(tmp_path):
     assert decided == set(listed)
     assert {"a.log", "build/keep.txt", "root.tmp", "src/gen/x.py", "docs/a.md", "notes/todo.txt"} <= decided
     assert not {"keep.log", "sub/b.log", "nested/root.tmp", "docs/sub/b.md"} & decided
+
+
+# --- Codex round 82: identity-bound reads, alias targets, ignore-file safety, case negation ---
+
+
+def _recording_open(monkeypatch, before=None) -> list[Path]:
+    """Record every file the policy opens; ``before`` runs a real filesystem change just before the first open."""
+    opened: list[Path] = []
+
+    def recording(file, *args, **kwargs):
+        if before is not None and not opened:
+            before()
+        opened.append(Path(file))
+        return open(file, *args, **kwargs)
+
+    monkeypatch.setattr(file_policy, "open", recording, raising=False)
+    return opened
+
+
+def test_a_file_replaced_at_the_same_path_after_validation_is_refused_unread(tmp_path, monkeypatch):
+    target = _write(tmp_path, "src/app.py")
+    replacement = _write(tmp_path, "staging/app.py", SENTINEL)
+    _recording_open(monkeypatch, before=lambda: os.replace(replacement, target))
+
+    decision, data = FilePolicy(tmp_path).read("src/app.py", purpose=AUTO)
+
+    assert data is None and decision.reason == "deny.identity_changed"
+
+
+def test_an_unchanged_file_reads_through_the_validated_handle(tmp_path, monkeypatch):
+    source = _write(tmp_path, "src/app.py")
+    opened = _recording_open(monkeypatch)
+
+    decision, data = FilePolicy(tmp_path).read("src/app.py", purpose=AUTO)
+
+    assert decision.allowed and data == source.read_bytes()
+    assert [path.name for path in opened] == ["app.py"]
+
+
+@pytest.mark.skipif(not WINDOWS, reason="NTFS directory junctions are a Windows mechanism")
+def test_a_junction_swapped_to_a_secret_folder_during_the_read_is_refused(tmp_path, monkeypatch):
+    import _winapi
+
+    _write(tmp_path, "docs/a.md")
+    _write(tmp_path, "secrets/a.md", SENTINEL)
+    alias = tmp_path / "notes"
+    _winapi.CreateJunction(str(tmp_path / "docs"), str(alias))
+
+    def swap():
+        os.rmdir(alias)
+        _winapi.CreateJunction(str(tmp_path / "secrets"), str(alias))
+
+    opened = _recording_open(monkeypatch, before=swap)
+    try:
+        decision, data = FilePolicy(tmp_path).read("notes/a.md", purpose=AUTO)
+    finally:
+        os.rmdir(alias)
+
+    assert data is None and decision.reason == "deny.identity_changed"
+    assert all("secrets" not in path.parts for path in opened), "the secret folder's file is never opened"
+
+
+@pytest.mark.skipif(not WINDOWS, reason="NTFS directory junctions are a Windows mechanism")
+def test_aliases_into_skipped_folders_are_denied_unopened(tmp_path, monkeypatch):
+    import _winapi
+
+    _write(tmp_path, "node_modules/pkg/private.txt", SENTINEL)
+    _write(tmp_path, ".venv/lib/site.py", SENTINEL)
+    links = {tmp_path / "vendor": tmp_path / "node_modules" / "pkg", tmp_path / "env": tmp_path / ".venv" / "lib"}
+    for link, target in links.items():
+        _winapi.CreateJunction(str(target), str(link))
+    opened = _recording_open(monkeypatch)
+    try:
+        reasons = _reasons(FilePolicy(tmp_path))
+    finally:
+        for link in links:
+            os.rmdir(link)
+
+    assert reasons["vendor/private.txt"] == reasons["env/site.py"] == "deny.skipped_dir"
+    assert not opened
+
+
+@pytest.mark.skipif(not WINDOWS, reason="the casefolded compare is the Windows rule")
+def test_skipped_folder_names_follow_the_platform_case_rule(tmp_path):
+    _write(tmp_path, "Node_Modules/pkg/index.js")
+
+    assert FilePolicy(tmp_path).decide("Node_Modules/pkg/index.js", purpose=AUTO).reason == "deny.skipped_dir"
+
+
+def test_an_oversized_ignore_file_makes_what_it_judges_unavailable(tmp_path):
+    _write(tmp_path, "private/notes.md", SENTINEL)
+    _write(tmp_path, "src/app.py")
+    _write(tmp_path, "other/.gitignore", "*.tmp\n")
+    _write(tmp_path, "other/b.txt")
+    padding = "# padding\n" * (file_policy._MAX_IGNORE_FILE_BYTES // 10 + 1)
+    _write(tmp_path, "private/.optimusignore", "notes.md\n" + padding)
+
+    reasons = _reasons(FilePolicy(tmp_path))
+
+    assert reasons["private/notes.md"] == "deny.ignore_unavailable", "never more permissive than the lost rules"
+    assert reasons["src/app.py"] == reasons["other/b.txt"] == "allowed", "folders it does not judge are unaffected"
+
+
+def test_an_ignore_file_that_is_not_a_regular_file_is_unavailable(tmp_path):
+    _write(tmp_path, "src/app.py")
+    (tmp_path / "src" / ".gitignore").mkdir()
+
+    assert FilePolicy(tmp_path).decide("src/app.py", purpose=AUTO).reason == "deny.ignore_unavailable"
+
+
+def test_a_symlinked_ignore_file_is_never_followed(tmp_path, monkeypatch):
+    _write(tmp_path, "secrets/rules.txt", "app.py\n")
+    _write(tmp_path, "src/app.py")
+    try:
+        (tmp_path / "src" / ".gitignore").symlink_to(tmp_path / "secrets" / "rules.txt")
+    except OSError as exc:  # Windows without the symlink privilege: WinError 1314
+        pytest.skip(f"symlink creation is unavailable on this platform account: {exc}")
+    opened = _recording_open(monkeypatch)
+
+    assert FilePolicy(tmp_path).decide("src/app.py", purpose=AUTO).reason == "deny.ignore_unavailable"
+    assert not [path for path in opened if "secrets" in path.parts]
+
+
+def test_a_case_variant_negation_never_re_includes(tmp_path):
+    _write(tmp_path, "public.txt")
+    _write(tmp_path, ".gitignore", "*.txt\n!PUBLIC.TXT\n")
+
+    assert FilePolicy(tmp_path).decide("public.txt", purpose=AUTO).reason == "ignored.gitignore"

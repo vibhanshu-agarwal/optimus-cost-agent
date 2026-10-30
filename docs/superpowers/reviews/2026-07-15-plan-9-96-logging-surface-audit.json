@@ -4951,6 +4951,54 @@
       "sanitizer": "Ownership-only ContextVar/Event operation; no raw diagnostic persistence",
       "test_node": "tests/unit/acp/test_settlement_truth.py::test_flushed_response_handoff_does_not_wait_for_owned_worker",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.project_registry:ProjectRegistry._lock:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens only the per-user project-registry lock file under the config root to serialize registry operations (Plan 12.6); it writes nothing to the file and retains no diagnostic payload.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_project_registry.py::test_lock_contention_is_bounded_and_reported",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.project_registry:ProjectRegistry._store:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes only the versioned registry document (project ids, Git common-dir or folder keys, worktree paths) for its atomic replacement; no diagnostic, exception or file content is included.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_project_registry.py::test_linked_worktrees_share_one_id_and_clones_and_forks_do_not",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.project_registry:_write_durably:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens only the registry's sibling temporary file or its initialization marker under the config root, to write the schema-limited registry document durably; no diagnostic retention.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_project_registry.py::test_a_process_killed_at_the_commit_boundary_leaves_the_previous_registry",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.project_registry:_write_durably:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the serialized registry document or the version-only marker; no diagnostic, exception or workspace content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_project_registry.py::test_a_process_killed_at_the_commit_boundary_leaves_the_previous_registry",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.project_registry:_fsync_directory:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens the config-root directory read-only on POSIX solely to fsync the replacement; nothing is read or written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_project_registry.py::test_a_failure_after_the_replacement_is_reported_as_uncertain",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.guardrails.file_policy:_read_validated:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens, read-only, only a workspace file the includable-files policy has already validated (security denials and ignore rules), checking the handle's file identity before reading; the bytes go to automatic context, never to a log, and decisions carry rule ids, not content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/guardrails/test_file_policy.py::test_denied_and_ignored_content_is_never_opened",
+      "evidence_tier": "unit"
     }
   ]
 }

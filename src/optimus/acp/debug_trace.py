@@ -295,10 +295,13 @@ def log_workspace_context_result(request: AgentRunRequest, result: WorkspaceCont
                     "status": item.status.value,
                     "candidate_count": len(item.candidates),
                     "candidates": list(item.candidates),
+                    "reason": item.reason,
                 }
                 for item in result.diagnostics
             ],
             "blocking_stop_reason": result.blocking_stop_reason,
+            "policy_revision": result.policy_revision,
+            "excluded_counts": dict(result.excluded_counts),
         },
         hypothesis_id="P9.8-CONTEXT",
         run_id=run_id,

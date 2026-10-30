@@ -160,13 +160,33 @@ def assemble_workspace_context_for_prompt(
         )
 
     file_sha256s: dict[str, str] = {}
+    refused: dict[str, str] = {}
     text, used_bytes, omitted_paths, pack_blocking = _pack_workspace_context(
         policy,
         candidate_paths,
         max_total_bytes=max_total_bytes,
         priority_relative=tuple(prioritized_paths),
         file_sha256s=file_sha256s,
+        refused=refused,
     )
+    for reason in refused.values():
+        excluded_counts[reason] = excluded_counts.get(reason, 0) + 1
+    if any(relative in refused for relative in prioritized_paths):
+        # A required file that became unavailable after listing stops preparation; it is never silently dropped.
+        unavailable_diagnostics = _mark_resolved_refused(diagnostic_tuple, refused)
+        blocking_stop_reason, blocking_message = _blocking_from_diagnostics(unavailable_diagnostics)
+        return WorkspaceContextResult(
+            text="",
+            max_total_bytes=max_total_bytes,
+            used_bytes=0,
+            prioritized_paths=(),
+            omitted_paths=(),
+            diagnostics=unavailable_diagnostics,
+            blocking_stop_reason=blocking_stop_reason,
+            blocking_message=blocking_message,
+            policy_revision=policy.revision(),
+            excluded_counts=excluded_counts,
+        )
     if pack_blocking:
         too_large_diagnostics = _mark_first_resolved_too_large(diagnostic_tuple)
         blocking_stop_reason, blocking_message = _blocking_from_diagnostics(too_large_diagnostics)
@@ -367,6 +387,22 @@ def _resolve_basename_reference(
     )
 
 
+def _mark_resolved_refused(
+    diagnostics: tuple[WorkspaceReferenceDiagnostic, ...], refused: Mapping[str, str]
+) -> tuple[WorkspaceReferenceDiagnostic, ...]:
+    return tuple(
+        WorkspaceReferenceDiagnostic(
+            reference=diagnostic.reference,
+            status=WorkspaceReferenceStatus.NOT_READABLE,
+            candidates=(),
+            reason=refused[diagnostic.candidates[0]],
+        )
+        if diagnostic.status is WorkspaceReferenceStatus.RESOLVED and diagnostic.candidates[0] in refused
+        else diagnostic
+        for diagnostic in diagnostics
+    )
+
+
 def _mark_first_resolved_too_large(
     diagnostics: tuple[WorkspaceReferenceDiagnostic, ...],
 ) -> tuple[WorkspaceReferenceDiagnostic, ...]:
@@ -415,9 +451,11 @@ def _pack_workspace_context(
     max_total_bytes: int,
     priority_relative: tuple[str, ...],
     file_sha256s: dict[str, str],
+    refused: dict[str, str],
 ) -> tuple[str, int, tuple[str, ...], bool]:
     """``file_sha256s`` receives the digest of every file whose bytes the text shows (#407). Each file is read
-    through the policy, which rechecks its identity after reading; one that changed since listing is skipped."""
+    through the policy, which rechecks its identity; ``refused`` receives the rule for any file that became
+    unavailable since listing. A refused required file ends packing at once; the caller stops preparation."""
     if not candidate_paths and not priority_relative:
         return "", 0, (), False
     root = policy.root
@@ -439,9 +477,10 @@ def _pack_workspace_context(
     priority_bytes = 0
     for path in priority_paths:
         relative_posix = path.relative_to(root).as_posix()
-        _, data = policy.read(relative_posix, purpose=FilePurpose.AUTOMATIC)
+        decision, data = policy.read(relative_posix, purpose=FilePurpose.AUTOMATIC)
         if data is None:
-            continue
+            refused[relative_posix] = decision.reason
+            return "", 0, (), False
         block = f"--- {relative_posix} ---\n{data.decode('utf-8')}"
         if priority_blocks:
             priority_bytes += 1
@@ -459,8 +498,9 @@ def _pack_workspace_context(
 
     for index, path in enumerate(filler_paths):
         relative_posix = path.relative_to(root).as_posix()
-        _, data = policy.read(relative_posix, purpose=FilePurpose.AUTOMATIC)
+        decision, data = policy.read(relative_posix, purpose=FilePurpose.AUTOMATIC)
         if data is None:
+            refused[relative_posix] = decision.reason
             continue
 
         header = f"--- {relative_posix} ---"
