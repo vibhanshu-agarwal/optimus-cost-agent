@@ -1,6 +1,6 @@
 # ADR-031: Project memory architecture, one includable-files policy and registered project identity
 
-Status: Proposed. It awaits the operator's acceptance at Plan 12.6's checkpoint ([#390](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/390)). It records the architecture of the [Plan 12.x memory design v4](../superpowers/specs/2026-10-22-plan12-memory-design_v4.md), and the two foundations that [Plan 12.6](../superpowers/plans/2026-10-30-plan-12-6-memory-foundations-implementation_v4.md) builds. Drafted by Claude.
+Status: Accepted on 2026-10-30, through Codex's checkpoint acceptance under the operator's standing rule (see Decider and provenance). Delivered by Plan 12.6 ([#390](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/390), PR [#446](https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/446)). It records the architecture of the [Plan 12.x memory design v4](../superpowers/specs/2026-10-22-plan12-memory-design_v4.md), and the two foundations that [Plan 12.6](../superpowers/plans/2026-10-30-plan-12-6-memory-foundations-implementation_v4.md) builds. Drafted by Claude.
 
 ## Context
 
@@ -62,4 +62,5 @@ Plan 12.x memory gives Optimus project context, durable cross-session memory and
 - **#385 absorption:** the operator, 2026-10-30, in Claude's chat: "Please fix any issues blocking this plan. Absorb it into this plan please."
 - **Plan v4:** approved by the operator on 2026-10-30 ("Approve v4").
 - **Mechanisms:** designed and implemented by Claude. Codex reviews them at the plan's checkpoint.
-- **Acceptance of this ADR:** pending the operator.
+- **Codex review:** the round-82 checkpoint review (gpt-6.1-sol, high) rejected three times, correcting ADR statements alongside the code, then gave ACCEPT WITH CHANGES at `b4cc286`. Its conditions, including one ADR wording nit, were applied in `59ffede`.
+- **Acceptance of this ADR:** the operator's standing rule (2026-10-03, reaffirmed 2026-10-28) is that Codex's acceptance is the operator's. On 2026-10-30 the operator approved recording that acceptance ("Yes, open it").
