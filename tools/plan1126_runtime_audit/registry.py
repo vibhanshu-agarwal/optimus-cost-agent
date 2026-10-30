@@ -37,6 +37,7 @@ _GATE_PATHS = ("tools/plan1126_runtime_audit/measurement.py",)
 #: An entry that binds only the modules it is *about* leaves the rest of what it runs
 #: unbound, which is the same gap one level down.
 _H5_PROBE_EXECUTES = (
+    "src/optimus/acp/session_retention.py",
     "src/optimus/acp/admission.py",
     "src/optimus/acp/harness_runtime.py",
     "src/optimus/acp/local_infra.py",
@@ -212,6 +213,7 @@ def _s1_serving_custody(
 #: executed lies outside the binding. The list is therefore a floor that cannot be
 #: lowered silently: a new executing module fails the closure check until it is added.
 _S1_PROBE_EXECUTES = (
+    "src/optimus/acp/session_retention.py",
     "src/optimus/acp/admission.py",
     "src/context_engine/contracts.py",
     "src/optimus/acp/bootstrap.py",

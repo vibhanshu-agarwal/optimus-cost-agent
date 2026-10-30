@@ -4943,6 +4943,30 @@
       "sanitizer": "Ownership-only ContextVar/Event operation; no raw diagnostic persistence",
       "test_node": "tests/unit/acp/test_settlement_truth.py::test_flushed_response_handoff_does_not_wait_for_owned_worker",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.session_retention:SessionRetentionOwner._entry:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: this is asyncio.Event.set on the entry quiescence event, conservatively matched as a Redis .set sink; it exports no data. The owner diagnostic helper uses the already classified acp_debug_log shared sanitizer and only bounded lifecycle fields.",
+      "sanitizer": "in-process asyncio.Event.set; no diagnostic persistence or export",
+      "test_node": "tests/unit/acp/test_session_retention.py::test_factory_failure_consumes_no_slot",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.session_retention:SessionRetentionOwner._release_use:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: this is asyncio.Event.set on the entry quiescence event, conservatively matched as a Redis .set sink; it exports no data. The owner diagnostic helper uses the already classified acp_debug_log shared sanitizer and only bounded lifecycle fields.",
+      "sanitizer": "in-process asyncio.Event.set; no diagnostic persistence or export",
+      "test_node": "tests/unit/acp/test_session_retention.py::test_use_release_is_idempotent_and_drops_entry_reference",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:AcpDuplexAdapter.handle_client_request:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: request_session_uses.set establishes a ContextVar token for real session-use custody. It is not Redis and writes no diagnostic payload; the conservative .set matcher reports this in-process lifecycle operation.",
+      "sanitizer": "in-process ContextVar.set; no diagnostic persistence or export",
+      "test_node": "tests/unit/acp/test_session_retirement.py::test_queued_and_pre_registration_use_blocks_retirement",
+      "evidence_tier": "unit"
     }
   ]
 }

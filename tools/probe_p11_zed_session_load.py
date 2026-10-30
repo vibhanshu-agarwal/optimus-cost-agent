@@ -210,6 +210,7 @@ _LOWERCASE_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _LOWERCASE_HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
 _IN_REPO_MODULE_PREFIXES = ("optimus.", "optimus_security.", "tools.")
 ESTABLISHING_EXECUTION_GIT_PATHS = (
+    "src/optimus/acp/session_retention.py",
     "pyproject.toml",
     "src/optimus/__init__.py",
     "src/optimus/acp/__init__.py",

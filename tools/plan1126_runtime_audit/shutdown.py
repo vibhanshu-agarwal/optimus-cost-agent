@@ -78,7 +78,7 @@ H5_SOURCE_PATHS = (
 #: historical list above is bound to the historical baselines and must not gain paths
 #: those commits do not contain; the leaf bundle module exists only on current source,
 #: so the fresh `h5.shutdown_schedule` entry discovers from this list instead.
-H5_CURRENT_SOURCE_PATHS = (*H5_SOURCE_PATHS, "src/optimus/acp/harness_runtime.py", "src/optimus/acp/process_lifecycle.py", "src/optimus/acp/admission.py")
+H5_CURRENT_SOURCE_PATHS = (*H5_SOURCE_PATHS, "src/optimus/acp/harness_runtime.py", "src/optimus/acp/process_lifecycle.py", "src/optimus/acp/admission.py", "src/optimus/acp/session_retention.py")
 
 _CLOSE_DEFINITION_NAMES = {
     "close",

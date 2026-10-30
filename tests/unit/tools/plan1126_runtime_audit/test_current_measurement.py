@@ -83,6 +83,26 @@ def _tree(paths) -> SourceTree:
     return SourceTree({path: (ROOT / path).read_text(encoding="utf-8") for path in paths})
 
 
+@pytest.mark.parametrize('entry', ['h5.shutdown_schedule', 's1.serving_custody'])
+def test_current_retention_execution_is_bound_and_omission_is_refused(entry):
+    from dataclasses import replace
+
+    from optimus.acp.session_retention import SessionRetentionPolicy
+    from tools.plan1126_runtime_audit.measurement import ExecutionClosureRecorder, verify_execution_closure
+
+    plan, = default_measurement_plan(repository_root=ROOT, entries=(entry,))
+    binding = capture_environment_binding(measured=plan.source, identity=_tree(plan.spec.paths),
+        spec=plan.spec, cache_prefix=None)
+    with ExecutionClosureRecorder(ROOT) as executed:
+        assert SessionRetentionPolicy().max_sessions == 64
+    # The real constructor executed the new module. A merely declared path cannot pass this check.
+    verify_execution_closure(executed, binding)
+    path = 'src/optimus/acp/session_retention.py'
+    omitted = replace(binding, module_origins=tuple(origin for origin in binding.module_origins if origin[0] != path))
+    with pytest.raises(ExecutingSourceMismatch, match='session_retention'):
+        verify_execution_closure(executed, omitted)
+
+
 def _fabricated_binding() -> EnvironmentBinding:
     """Structurally valid, entirely invented. This is what once bought 65 probe calls."""
     return EnvironmentBinding(

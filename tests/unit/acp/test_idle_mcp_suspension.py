@@ -23,7 +23,7 @@ from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.mcp.client_config import ClientMcpConfigNormalizer
 from optimus.mcp.client_disposition import ClientMcpDisposition, ClientMcpRuntime
 from optimus.mcp.client_sdk import ClientMcpSdkAdapter
-from optimus.mcp.client_supervisor import MCPAsyncSupervisor
+from optimus.mcp.client_supervisor import MCPAsyncSupervisor, MCPSupervisorState
 from optimus.mcp.client_trust import ClientMcpDurableStore, ClientMcpLeaseAuthority
 from optimus.mcp.local_ipc import LocalIpcError, PendingClientMcpCandidateEndpoint
 from optimus.runtime.modes import ExecutionMode
@@ -43,8 +43,22 @@ class CompletedRunner:
                               tool_calls=(), total_cost_usd=Decimal("0"), mutation_count=0, provider_keys_resolvable=())
 
 
+_ASSERTED_SHUTDOWN_FAILURE: pytest.StashKey[BaseException] = pytest.StashKey()
+
+
+async def _close_composed_runtime(adapter, runtime, *, asserted=None):
+    try:
+        try:
+            await adapter.aclose()
+        except BaseException as exc:
+            if exc is not asserted:
+                raise
+    finally:
+        runtime.close()
+
+
 @pytest.fixture
-async def composed(tmp_path):
+async def composed(tmp_path, request):
     class ReadOnlyKeyring:
         def get_password(self, _service, _key):
             return None
@@ -74,8 +88,7 @@ async def composed(tmp_path):
     try:
         yield adapter, session, clock, outbound, runner
     finally:
-        await adapter.aclose()
-        runtime.close()
+        await _close_composed_runtime(adapter, runtime, asserted=request.node.stash.get(_ASSERTED_SHUTDOWN_FAILURE, None))
 
 
 async def prompt(adapter, session, request_id=1, *, defer_response=False):
@@ -173,7 +186,7 @@ async def test_second_shutdown_cancellation_keeps_worker_owned_until_release(com
     assert not adapter._mcp_close_tasks
 
 
-async def test_failed_owned_close_does_not_skip_other_session_hooks(composed):
+async def test_failed_owned_close_does_not_skip_other_session_hooks(composed, request):
     adapter, session, _, _, _ = composed
     release = asyncio.Event()
     failure = RuntimeError("controlled owned-close failure")
@@ -191,6 +204,57 @@ async def test_failed_owned_close_does_not_skip_other_session_hooks(composed):
         await closing
     assert caught.value is failure
     assert closed == ["peer"]
+    request.node.stash[_ASSERTED_SHUTDOWN_FAILURE] = caught.value
+
+
+@pytest.mark.parametrize('previous_failure', [False, True], ids=['unexpected-first', 'different-from-observed'])
+async def test_composed_teardown_rejects_unexpected_failure_and_closes_runtime(composed, monkeypatch, previous_failure, request):
+    adapter, _, _, _, _ = composed
+    runtime = adapter._client_mcp_runtime
+    if previous_failure:
+        failure = RuntimeError('previously observed failure')
+
+        async def failed_work():
+            raise failure
+
+        adapter._mcp_close_tasks.add(asyncio.create_task(failed_work()))
+        with pytest.raises(RuntimeError) as caught:
+            await adapter.aclose()
+        assert caught.value is failure
+        request.node.stash[_ASSERTED_SHUTDOWN_FAILURE] = caught.value
+    unexpected = RuntimeError('unexpected teardown failure')
+
+    async def fail_differently():
+        raise unexpected
+
+    with monkeypatch.context() as patch:
+        patch.setattr(adapter, 'aclose', fail_differently)
+        with pytest.raises(RuntimeError) as caught:
+            await _close_composed_runtime(adapter, runtime, asserted=request.node.stash.get(_ASSERTED_SHUTDOWN_FAILURE, None))
+        assert caught.value is unexpected
+        assert runtime.supervisor.state is MCPSupervisorState.DEAD
+
+
+async def test_composed_teardown_does_not_consume_unasserted_failed_shutdown(composed, request):
+    adapter, _, _, _, _ = composed
+    runtime = adapter._client_mcp_runtime
+    failure = RuntimeError('unasserted shutdown failure')
+
+    async def failed_work():
+        raise failure
+
+    adapter._mcp_close_tasks.add(asyncio.create_task(failed_work()))
+    shutdown = asyncio.create_task(adapter.aclose())
+    terminal = asyncio.Event()
+    shutdown.add_done_callback(lambda _: terminal.set())
+    await asyncio.wait_for(terminal.wait(), 1)
+    assert shutdown.done()
+    with pytest.raises(RuntimeError) as caught:
+        await _close_composed_runtime(adapter, runtime)
+    assert caught.value is failure
+    request.node.stash[_ASSERTED_SHUTDOWN_FAILURE] = caught.value
+    assert (await asyncio.gather(shutdown, return_exceptions=True)) == [failure]
+    assert runtime.supervisor.state is MCPSupervisorState.DEAD
 
 
 async def test_strategy_setter_during_renewal_applies_only_to_next_prompt(composed):
@@ -258,7 +322,7 @@ async def test_real_commit_marker_survives_prepare_failure_or_postcommit_cancell
     assert not closed
 
 
-async def test_pending_sdk_release_quarantines_and_blocks_future_prompts(composed, monkeypatch):
+async def test_pending_sdk_release_quarantines_and_blocks_future_prompts(composed, monkeypatch, request):
     adapter, session, clock, _, runner = composed
     session.client_mcp_state.register_close_hook(lambda: None, peer=True)
     envelope = await prompt(adapter, session, defer_response=True)
@@ -270,6 +334,117 @@ async def test_pending_sdk_release_quarantines_and_blocks_future_prompts(compose
     refusal = await prompt(adapter, session, 2)
     assert refusal.response["error"]["data"]["reason"] == "mcp_cleanup_uncertain"
     assert len(runner.requests) == 1
+    with pytest.raises(RuntimeError, match='session cleanup incomplete') as caught:
+        await adapter.aclose()
+    request.node.stash[_ASSERTED_SHUTDOWN_FAILURE] = caught.value
+
+
+@pytest.mark.parametrize('operation', ['remove', 'close_all', 'async'])
+@pytest.mark.parametrize('cause', ['hook_failure', 'timeout'])
+async def test_attached_retirement_keeps_completed_idle_quarantine(composed, request, operation, cause):
+    from optimus.acp.session_retention import RetirementReason, RetirementStatus, SessionCapacityError
+
+    adapter, session, clock, _, _ = composed
+    runtime = adapter._client_mcp_runtime
+    state = session.client_mcp_state
+    runtime.disposition.attach_runtime_resolver(state, sdk_adapter=runtime.sdk_adapter)
+    entered, release = threading.Event(), threading.Event()
+    closed = []
+    original = OSError('owned idle hook failure')
+    def close_peer():
+        closed.append('attempt')
+        entered.set()
+        if cause == 'timeout':
+            assert release.wait(2)
+        else:
+            raise original
+    state.register_close_hook(close_peer, peer=True)
+    live = adapter._sessions.create(cwd=session.cwd, conversation=adapter._new_conversation())
+    envelope = await prompt(adapter, session, defer_response=True)
+    flush(envelope.turn_control)
+    adapter.note_turn_delivered(envelope.turn_control)
+    runtime.sdk_adapter._operation_timeout_seconds = 0.02
+    jobs = ()
+    try:
+        clock[0] += 10
+        await adapter.sweep_idle_mcp_once()
+        assert entered.is_set() and closed == ['attempt']
+        idle = adapter._idle_mcp[session.session_id]
+        assert idle.phase == 'QUARANTINED' and runtime.disposition.close_failure_recorded
+        jobs = tuple(adapter._mcp_close_tasks)
+        if cause == 'timeout':
+            assert jobs and any(not job.done() for job in jobs)
+            assert adapter.retention._entries[session.session_id].uses == 1
+        release.set()
+        if jobs:
+            await asyncio.wait_for(asyncio.gather(*jobs), 1)
+        assert idle.phase == 'QUARANTINED' and not state._suspending
+        assert not runtime.sdk_adapter.has_pending_connections_for_session(session.session_id)
+        assert adapter.retention._entries[session.session_id].uses == 0
+        assert state._owned_close is None and not state._close_hooks
+
+        if operation == 'remove':
+            adapter._sessions.remove(session.session_id)
+        elif operation == 'close_all':
+            adapter._sessions.close_all()
+        else:
+            adapter.retention.request_retire(session.session_id, reason=RetirementReason.EXPLICIT_REMOVE)
+            await adapter.retention.wait_retired(session.session_id)
+        assert adapter._sessions.get(session.session_id) is session
+        first = await adapter.retention.wait_retired(session.session_id)
+        assert first.status is RetirementStatus.QUARANTINED and first.close.failures
+        expected_first = 'SESSION_CLOSE_FAILED' if cause == 'hook_failure' else 'CLEANUP_UNCERTAIN'
+        assert first.close.failures[0] == expected_first
+        assert adapter._idle_mcp[session.session_id] is idle
+        assert state.prepare_owned_close().result.result() == ()
+        assert state.prepare_owned_close().pending is False
+        assert closed == ['attempt'] and runtime.disposition.close_failure_recorded
+        adapter._sessions.remove(session.session_id)
+        assert await adapter.retention.wait_retired(session.session_id) is first
+        if operation != 'close_all':
+            assert adapter._sessions.get(live.session_id) is live
+            assert adapter.retention.retained_count == 2
+            assert 'result' in (await prompt(adapter, live, 2)).response
+            for _ in range(adapter.retention.policy.max_sessions - 2):
+                adapter._sessions.create(cwd=session.cwd)
+            with pytest.raises(SessionCapacityError):
+                adapter._sessions.create(cwd=session.cwd)
+        else:
+            assert adapter._sessions.get(live.session_id) is None
+            assert adapter.retention.retained_count == 1
+        with pytest.raises(RuntimeError, match='session cleanup incomplete') as caught:
+            await adapter.aclose()
+        request.node.stash[_ASSERTED_SHUTDOWN_FAILURE] = caught.value
+    finally:
+        release.set()
+        if jobs:
+            await asyncio.wait_for(asyncio.gather(*jobs, return_exceptions=True), 1)
+
+
+@pytest.mark.parametrize('operation', ['remove', 'close_all'])
+async def test_attached_clean_idle_suspension_can_retire_synchronously(composed, operation):
+    adapter, session, clock, _, _ = composed
+    closed = []
+    session.client_mcp_state.register_close_hook(lambda: closed.append('clean'), peer=True)
+    live = adapter._sessions.create(cwd=session.cwd, conversation=adapter._new_conversation())
+    envelope = await prompt(adapter, session, defer_response=True)
+    flush(envelope.turn_control)
+    adapter.note_turn_delivered(envelope.turn_control)
+    clock[0] += 10
+    await adapter.sweep_idle_mcp_once()
+    assert closed == ['clean'] and session.client_mcp_state.suspended
+    assert adapter._idle_mcp[session.session_id].phase == 'MCP_SUSPENDED'
+    if operation == 'remove':
+        adapter._sessions.remove(session.session_id)
+        assert adapter._sessions.get(live.session_id) is live
+        assert 'result' in (await prompt(adapter, live, 2)).response
+    else:
+        adapter._sessions.close_all()
+        assert adapter._sessions.get(live.session_id) is None
+    assert adapter._sessions.get(session.session_id) is None
+    assert session.session_id not in adapter.retention.session_ids
+    assert session.session_id not in adapter._idle_mcp
+    assert closed == ['clean'] and not adapter._client_mcp_runtime.disposition.close_failure_recorded
 
 
 async def test_unobservable_warning_preflight_keeps_peer_open_until_a_later_turn_rearms(composed, monkeypatch, caplog):
@@ -402,7 +577,7 @@ async def test_suspended_chat_stays_suspended_without_permission(composed):
 
 
 @pytest.mark.parametrize("uncertain_peer", [False, True])
-async def test_retained_shared_listener_does_not_quarantine_released_peers(composed, tmp_path, monkeypatch, uncertain_peer):
+async def test_retained_shared_listener_does_not_quarantine_released_peers(composed, tmp_path, monkeypatch, uncertain_peer, request):
     adapter, session, clock, outbound, runner = composed
     runtime = adapter._client_mcp_runtime
     endpoint = PendingClientMcpCandidateEndpoint(authkey=b"held-shared-permission-listener")
@@ -460,6 +635,10 @@ async def test_retained_shared_listener_does_not_quarantine_released_peers(compo
             await asyncio.to_thread(owner.join, 5)
         endpoint.close()
         assert owner is None or not owner.is_alive()
+    if uncertain_peer:
+        with pytest.raises(RuntimeError, match='session cleanup incomplete') as caught:
+            await adapter.aclose()
+        request.node.stash[_ASSERTED_SHUTDOWN_FAILURE] = caught.value
 
 
 async def test_slow_close_leaves_serving_loop_responsive(composed):
