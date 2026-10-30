@@ -225,6 +225,24 @@ class ObservedTrace(_Record):
         return self
 
 
+class GatewayRoute(_Record):
+    """One arm-D route: an exact registry model ID (a run input), the bound snapshot and its output cap."""
+
+    model_id: str = Field(min_length=1)
+    registry_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    output_cap: int = Field(ge=1)
+
+
+class GatewayReply(_Record):
+    """One Gateway reply as the harness sees it: text on success, an error code otherwise, and receipts."""
+
+    status: int
+    content: str | None
+    finish_reason: str | None
+    error_code: str | None
+    attempts: tuple[AttemptReceipt, ...]
+
+
 class LayerVerdict(_Record):
     status: Status
     reasons: tuple[str, ...]
