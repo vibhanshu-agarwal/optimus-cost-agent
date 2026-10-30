@@ -181,16 +181,17 @@ class FilePolicy:
         return f"{POLICY_VERSION}:{digest}"
 
     def _ignored(self, parts: tuple[str, ...]) -> str | None:
-        for depth in range(len(parts)):
-            if self._load(parts[:depth]) is None:
-                return "deny.ignore_unavailable"
         modes = (False, True) if _CASE_INSENSITIVE else (False,)
-        for folded in modes:
-            # Git: nothing under an excluded folder is re-included, so each ancestor folder is judged first.
-            for end in range(1, len(parts)):
+        # Git: nothing under an excluded folder is re-included. Each folder is judged by its ancestors' rules before
+        # its own ignore files are opened, so an excluded folder's ignore files are never read.
+        for end in range(len(parts)):
+            for folded in modes if end else ():
                 verdict = self._match(parts[:end], is_dir=True, folded=folded)
                 if verdict is not None:
                     return verdict
+            if self._load(parts[:end]) is None:
+                return "deny.ignore_unavailable"
+        for folded in modes:
             verdict = self._match(parts, is_dir=False, folded=folded)
             if verdict is not None:
                 return verdict
@@ -266,13 +267,21 @@ def _parts_denial(parts: tuple[str, ...]) -> str | None:
 
 
 def _read_validated(path: Path, target: Path, limit: int | None) -> tuple[str, bytes | None]:
-    """Read ``target`` only through a handle whose file identity equals the validated one, then recheck that the
-    alias still resolves there and the file was not replaced. ``limit``: the size cap, if any."""
+    """Read ``target`` only once the opened handle is proven to be the validated file: the operating system's real
+    path of the handle must be the validated target (so a folder swapped after validation is caught before any byte
+    is read) and its file identity must equal the one stat'd. After the read, the alias must still resolve there and
+    the file be unchanged. ``limit``: the size cap, if any.
+
+    shortcut: where the OS cannot report a handle's path (a filesystem without final-path support, a BSD), only the
+    file-identity checks apply; extend _handle_path when such a platform matters."""
     try:
         before = os.stat(target)
         if limit is not None and before.st_size > limit:
             return "excluded.too_large", None
         with open(target, "rb") as handle:
+            real = _handle_path(handle.fileno())
+            if real is not None and os.path.normcase(real) != os.path.normcase(target):
+                return "deny.identity_changed", None  # a folder on the way was swapped: nothing is read
             opened = os.fstat(handle.fileno())
             if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
                 return "deny.identity_changed", None  # replaced after validation: nothing is read
@@ -288,6 +297,35 @@ def _read_validated(path: Path, target: Path, limit: int | None) -> tuple[str, b
     if not unchanged or resolve_target(path) != target:
         return "deny.identity_changed", None
     return ALLOWED, data
+
+
+def _handle_path(fd: int) -> str | None:
+    """The real path of an open file as the operating system reports it, or None where it cannot."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            import msvcrt
+            from ctypes import wintypes
+
+            get_final_path = ctypes.windll.kernel32.GetFinalPathNameByHandleW
+            get_final_path.argtypes = [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD]
+            get_final_path.restype = wintypes.DWORD
+            buffer = ctypes.create_unicode_buffer(32768)
+            length = get_final_path(msvcrt.get_osfhandle(fd), buffer, len(buffer), 0)
+            if not 0 < length < len(buffer):
+                return None
+            text = buffer.value
+            if text.startswith("\\\\?\\UNC\\"):
+                return "\\\\" + text[8:]
+            return text[4:] if text.startswith("\\\\?\\") else text
+        if sys.platform == "darwin":
+            import fcntl
+
+            raw = fcntl.fcntl(fd, fcntl.F_GETPATH, bytes(1024))
+            return os.fsdecode(raw.split(b"\x00", 1)[0])
+        return os.readlink(f"/proc/self/fd/{fd}")
+    except (OSError, AttributeError, ValueError):
+        return None
 
 
 def _relative_parts(relative_path: str) -> tuple[str, ...] | None:

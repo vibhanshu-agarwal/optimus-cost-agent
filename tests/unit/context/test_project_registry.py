@@ -258,3 +258,40 @@ def test_the_first_registration_writes_the_marker_before_the_registry(tmp_path, 
     registry.resolve(resolve_workspace_identity(repos["plain"]), create=True)
 
     assert (tmp_path / "config" / project_registry.MARKER_FILE_NAME).is_file()
+
+
+def test_the_marker_exists_at_the_first_registry_replacement(tmp_path, repos, monkeypatch):
+    registry = _registry(tmp_path)
+    marker = tmp_path / "config" / project_registry.MARKER_FILE_NAME
+    seen: list[bool] = []
+
+    def observing(source, destination):
+        seen.append(marker.is_file())
+        raise OSError(5, "stop at the first publication")
+
+    monkeypatch.setattr(project_registry.os, "replace", observing)
+    with pytest.raises(ProjectRegistryError, match="WRITE_FAILED"):
+        registry.resolve(resolve_workspace_identity(repos["plain"]), create=True)
+
+    assert seen == [True], "the marker is durable before the registry is first published"
+
+
+def test_a_process_killed_at_first_initialization_requires_explicit_recovery(tmp_path, repos):
+    config = tmp_path / "config"
+    script = (
+        "import os, sys; from pathlib import Path\n"
+        "from optimus.acp.trusted_paths import resolve_workspace_identity\n"
+        "from optimus.context import project_registry as pr\n"
+        "pr.os.replace = lambda *a: os._exit(3)  # die at the first publication, after the marker\n"
+        "pr.ProjectRegistry(Path(sys.argv[1])).resolve(resolve_workspace_identity(Path(sys.argv[2])), create=True)\n"
+    )
+    killed = subprocess.run([sys.executable, "-c", script, str(config), str(repos["plain"])], timeout=120)
+    registry = ProjectRegistry(config)
+    identity = resolve_workspace_identity(repos["plain"])
+
+    assert killed.returncode == 3 and not registry.path.exists()
+    with pytest.raises(ProjectRegistryError, match="RECOVERY_REQUIRED"):
+        registry.resolve(identity, create=True)
+    assert not registry.path.exists(), "no identity is allocated before an explicit recovery"
+    registry.restore({"registry_version": project_registry.REGISTRY_VERSION, "projects": {}})
+    assert registry.resolve(identity, create=True).created

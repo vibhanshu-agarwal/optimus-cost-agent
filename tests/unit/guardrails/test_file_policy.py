@@ -338,3 +338,114 @@ def test_a_case_variant_negation_never_re_includes(tmp_path):
     _write(tmp_path, ".gitignore", "*.txt\n!PUBLIC.TXT\n")
 
     assert FilePolicy(tmp_path).decide("public.txt", purpose=AUTO).reason == "ignored.gitignore"
+
+
+# --- Codex round 82 follow-up 1: content is never consumed from a swapped folder; excluded folders stay closed ---
+
+
+class _ReadRecorder:
+    """Wraps a handle the policy opened and records every read of its content."""
+
+    def __init__(self, handle, path: Path, reads: list[Path]) -> None:
+        self._handle, self._path, self._reads = handle, path, reads
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return self._handle.__exit__(*exc_info)
+
+    def fileno(self) -> int:
+        return self._handle.fileno()
+
+    def read(self, *args):
+        self._reads.append(self._path)
+        return self._handle.read(*args)
+
+
+def _recording_reads(monkeypatch, before_open=None, after_open=None) -> list[Path]:
+    reads: list[Path] = []
+
+    def recording(file, *args, **kwargs):
+        if before_open is not None:
+            before_open()
+        handle = open(file, *args, **kwargs)
+        if after_open is not None:
+            after_open()
+        return _ReadRecorder(handle, Path(file), reads)
+
+    monkeypatch.setattr(file_policy, "open", recording, raising=False)
+    return reads
+
+
+def _link_folder(link: Path, target: Path) -> None:
+    if WINDOWS:
+        import _winapi  # CreateJunction needs no privilege, unlike a symlink
+
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+def _unlink_folder(link: Path) -> None:
+    os.rmdir(link) if WINDOWS else os.unlink(link)  # the link itself, never through it
+
+
+def test_the_read_observer_sees_an_ordinary_read(tmp_path, monkeypatch):
+    _write(tmp_path, "docs/a.md")
+    reads = _recording_reads(monkeypatch)
+
+    decision, data = FilePolicy(tmp_path).read("docs/a.md", purpose=AUTO)
+
+    assert decision.allowed and data is not None and [path.name for path in reads] == ["a.md"]
+
+
+def test_a_folder_swapped_after_validation_is_caught_before_any_byte_is_read(tmp_path, monkeypatch):
+    _write(tmp_path, "docs/a.md")
+    _write(tmp_path, "secrets/a.md", SENTINEL)
+    docs, parked, secrets = tmp_path / "docs", tmp_path / "docs-parked", tmp_path / "secrets"
+    validated_read = file_policy._read_validated
+
+    def swap_then_read(path, target, limit):  # after the policy validated docs/a.md, before its first stat
+        os.rename(docs, parked)
+        _link_folder(docs, secrets)
+        return validated_read(path, target, limit)
+
+    def restore():  # right after the open, so every later pathname check sees docs again
+        _unlink_folder(docs)
+        os.rename(parked, docs)
+
+    reads = _recording_reads(monkeypatch, after_open=restore)
+    monkeypatch.setattr(file_policy, "_read_validated", swap_then_read)
+
+    decision, data = FilePolicy(tmp_path).read("docs/a.md", purpose=AUTO)
+
+    assert data is None and decision.reason == "deny.identity_changed"
+    assert reads == [], "no byte of the swapped-in secret file is consumed"
+
+
+def test_a_file_replaced_after_validation_is_never_consumed(tmp_path, monkeypatch):
+    target = _write(tmp_path, "src/app.py")
+    replacement = _write(tmp_path, "staging/app.py", SENTINEL)
+    # between the identity baseline (stat) and the open: the handle then reaches a different file
+    reads = _recording_reads(monkeypatch, before_open=lambda: os.replace(replacement, target))
+
+    decision, data = FilePolicy(tmp_path).read("src/app.py", purpose=AUTO)
+
+    assert data is None and decision.reason == "deny.identity_changed" and reads == []
+
+
+def test_an_excluded_folders_ignore_file_is_never_opened(tmp_path, monkeypatch):
+    _write(tmp_path, ".gitignore", "private/\n")
+    _write(tmp_path, "private/.gitignore", "!notes.md\n")
+    _write(tmp_path, "private/notes.md", SENTINEL)
+    _write(tmp_path, "sub/.gitignore", "*.tmp\n")
+    _write(tmp_path, "sub/x.txt")
+    opened = _recording_open(monkeypatch)
+    policy = FilePolicy(tmp_path)
+
+    assert policy.decide("private/notes.md", purpose=AUTO).reason == "ignored.gitignore"
+    assert policy.decide("sub/x.txt", purpose=AUTO).allowed
+    names = {path.relative_to(tmp_path).as_posix() for path in opened}
+    assert "private/.gitignore" not in names and "private/notes.md" not in names
+    assert {".gitignore", "sub/.gitignore", "sub/x.txt"} <= names, "an eligible folder's ignore file is read"
