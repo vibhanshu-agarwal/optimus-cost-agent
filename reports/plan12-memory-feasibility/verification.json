@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "plan": {
+    "file": "docs/superpowers/plans/archive/2026-10-30-plan-12-7-memory-feasibility-implementation_v3.md",
+    "sha256": "hex:8b8d56447d95b23403b7c750c64e7384b88dc8d899ec65c29d274faa8c774540",
+    "executed_under": "v3 (operator-approved 2026-10-30)",
+    "governing_successor": {
+      "file": "docs/superpowers/plans/2026-10-30-plan-12-7-memory-feasibility-implementation_v4.md",
+      "sha256": "hex:9a47f01d120e94ebb63b78b8fa4685485ded9c868d08df798a3687363d4cb24e",
+      "change": "prerequisite-disposition wording only (Codex round 86)"
+    }
+  },
+  "full_suite": {
+    "source": {
+      "head": "hex:5f5a084389713e79ad98b6d84b8351da3ea2e54e",
+      "worktree_dirty": false,
+      "head_after_unchanged": true
+    },
+    "platform": "Windows 11, CPython 3.14.4, worktree .venv, PowerShell",
+    "command": "uv run --no-sync python tools/check_product_coverage.py --run-full-suite --groups tools/product-coverage-groups.json --report-json tmp/coverage/product-coverage-report.json --coverage-json tmp/coverage/coverage.json",
+    "run_context": "mode=active reason=default_selection run=20261030T203441-24992-dcf8b1 native=valid guard=pytest_process_guard protection=full records=COMPLETE exit=1",
+    "result": {
+      "failed": 5,
+      "passed": 11083,
+      "skipped": 54,
+      "deselected": 108,
+      "warnings": 2,
+      "seconds": 3447.65,
+      "exit": 1
+    },
+    "failures": {
+      "#447 (pre-existing, Windows)": [
+        "tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_contract_model_1000_seed_schedule",
+        "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_execution_emits_only_citations_for_behaviors_it_runs",
+        "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_literal_scenarios_are_coherent_primary_transitions",
+        "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_behavioral_mutations_change_or_invalidate_primary_observation"
+      ],
+      "this plan (fixed by plan v4, docs only)": [
+        "tests/unit/docs/test_open_work_pool_hygiene.py::test_post_amendment_plans_declare_prerequisites_with_required_columns"
+      ]
+    },
+    "coverage": {
+      "optimus": "91.0365% (floor 80, required) PASS",
+      "context_engine": "95.9243% (floor 80, required) PASS",
+      "optimus_model_policy": "94.7038% (floor 80, required) PASS",
+      "evidence_handoff": "68.4810% (floor 80, informational) BELOW",
+      "aggregate": "87.3747% (floor 80, informational) PASS"
+    },
+    "coverage_json_sha256": "hex:9adbfc33afe41ac17947d6c75cc08a7020737b8173c0bebc997660196212ed93",
+    "retained_log": "sandbox-review-kit/plan12-codex-cli/round-85-p127-checkpoint2/full-suite-5f5a084.log",
+    "log_sha256": "hex:e8211c8aa118b5a3f214d07953c3a2bdde528f785c08235dcde057784c39968c"
+  },
+  "coverage_validation": {
+    "source": {
+      "head": "hex:7b14d6eae405b8e774b98d72fbf9ac018a9abadc"
+    },
+    "command": "uv run --no-sync python -m tools.testing.coverage_products validate --coverage-json tmp/coverage/coverage.json --gate-report tmp/coverage/product-coverage-report.json",
+    "verdict": "full-run validity NOT established",
+    "exit": 3,
+    "reasons": [
+      "exit_status_differs: the suite's own exit status was 1",
+      "the run measured 5f5a084, not the current HEAD 7b14d6e",
+      "the backlog changed after the run started (the plan v4 registry-row edit)",
+      "the gate measured commit 5f5a084 / tree e4c648ad, not the current commit and tree"
+    ],
+    "disposition": "PENDING: an explicit operator disposition is required for closure (Codex round 85 follow-up 3); the export is not described as validated",
+    "retained_log": "sandbox-review-kit/plan12-codex-cli/round-85-p127-checkpoint2/coverage-validate-and-ruff.log",
+    "log_sha256": "hex:81a09c158672da19d5145873f0e10870fdb48ad9d76d680c650484098fa35ee7"
+  },
+  "focused_docs_repair": {
+    "source": {
+      "head": "hex:7b14d6eae405b8e774b98d72fbf9ac018a9abadc"
+    },
+    "command": ".venv/Scripts/python -m pytest --no-cov -q -p no:cacheprovider tests/unit/docs/",
+    "result": "133 passed, 1 skipped",
+    "retained_log": "UNKNOWN: seen in the Claude session only"
+  },
+  "ruff": {
+    "source": {
+      "head": "hex:7b14d6eae405b8e774b98d72fbf9ac018a9abadc"
+    },
+    "command": "uv run --no-sync ruff check .",
+    "result": "All checks passed!",
+    "exit": 0,
+    "retained_log": "sandbox-review-kit/plan12-codex-cli/round-85-p127-checkpoint2/coverage-validate-and-ruff.log"
+  },
+  "code_attribution": "No code changed after 5f5a084 (git diff 5f5a084 7b14d6e touches docs only).",
+  "next_platform_gate": "Linux PR CI"
+}

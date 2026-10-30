@@ -1,8 +1,14 @@
 {
   "schema_version": 1,
   "plan": {
-    "file": "docs/superpowers/plans/2026-10-30-plan-12-7-memory-feasibility-implementation_v3.md",
-    "sha256": "hex:8b8d56447d95b23403b7c750c64e7384b88dc8d899ec65c29d274faa8c774540"
+    "file": "docs/superpowers/plans/archive/2026-10-30-plan-12-7-memory-feasibility-implementation_v3.md",
+    "sha256": "hex:8b8d56447d95b23403b7c750c64e7384b88dc8d899ec65c29d274faa8c774540",
+    "executed_under": "v3 (operator-approved 2026-10-30)",
+    "governing_successor": {
+      "file": "docs/superpowers/plans/2026-10-30-plan-12-7-memory-feasibility-implementation_v4.md",
+      "sha256": "hex:9a47f01d120e94ebb63b78b8fa4685485ded9c868d08df798a3687363d4cb24e",
+      "change": "prerequisite-disposition wording only (Codex round 86)"
+    }
   },
   "rule": "Closed-with-handoff is not PASS. Each row names its owner, why it is open, what proof is still needed and the fallback that applies until then.",
   "P5": {

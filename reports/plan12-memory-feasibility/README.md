@@ -15,6 +15,7 @@ kept in the review kit; each names its original's SHA-256 in `rendered_from_sha2
 - `probe-config.json`: the predeclared config and Redis targets.
 - `qualification.json`: per-probe results, retained attempts, caveats and what is not proven.
 - `handoffs.json`: owners, reasons, next proofs and fallbacks.
+- `verification.json`: the final Windows full suite, coverage validation, focused docs repair and Ruff, with dispositions.
 - `execution-context.json`: the command, checkout, branch, exit status and retained-log digest of every run and selection control.
 - `manifest.json`: SHA-256 of every file here.
 - `attempts/`: one write-once record per attempt.
