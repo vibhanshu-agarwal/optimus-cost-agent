@@ -1,0 +1,228 @@
+{
+  "schema_version": 1,
+  "checkout": "C:/worktrees/optimus-cost-agent-worktrees/optimus-cost-agent-wt-claude-p127probe",
+  "branch": "agent/claude/plan12-7-memory-feasibility",
+  "platform": "Windows 11, CPython 3.14.4, uv 0.11.29",
+  "cwd": "the checkout root for every run",
+  "contained": "every --kind run went through probes.run_contained",
+  "retained_logs_root": "C:/worktrees/optimus-cost-agent-worktrees/optimus-handoff (archival provenance, not a dependency)",
+  "runs": [
+    {
+      "label": "P4 attempt 1",
+      "record": "attempts/postgres-2026-10-30-dd4834d6d5f642e6970b003654fa59ad.json",
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:1f324a05d22d4899e0aae061beffcebb92ca3491"
+      },
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:1f324a05d22d4899e0aae061beffcebb92ca3491"
+      },
+      "config_sha256": "hex:be675eb36ee3b3c425779e8431de8c1f5774d147380fb39f73d546d7b158b951",
+      "outcome": "PASS",
+      "command": ".venv/Scripts/python -m tools.plan12_memory.probes --kind postgres --config reports/plan12-memory-feasibility/probe-config.json",
+      "environment": [
+        "P127_PG_CREDENTIAL (a random synthetic credential, removed after the run)"
+      ],
+      "exit": 0,
+      "exit_basis": "observed in the Claude session",
+      "retained_log": "UNKNOWN: stdout was seen in the Claude session only; no log file was retained"
+    },
+    {
+      "label": "P3 attempt 1",
+      "record": "attempts/redis-2026-10-30-b59831ba59234321af31c0070e9a96ae.json",
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:1f324a05d22d4899e0aae061beffcebb92ca3491"
+      },
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:1f324a05d22d4899e0aae061beffcebb92ca3491"
+      },
+      "config_sha256": "hex:be675eb36ee3b3c425779e8431de8c1f5774d147380fb39f73d546d7b158b951",
+      "outcome": "ERROR",
+      "command": ".venv/Scripts/python -m pytest --no-cov -p no:cacheprovider -m requires_plan12_probe_redis tests/integration/tools/test_plan12_memory_redis_probe.py -q -rA",
+      "environment": [
+        "P127_REDIS_CREDENTIAL",
+        "OPTIMUS_PLAN12_PROBE_CONFIG=<checkout>/reports/plan12-memory-feasibility/probe-config.json"
+      ],
+      "exit": 1,
+      "retained_log": "sandbox-review-kit/plan12-codex-cli/round-84-p127-checkpoint1/p3-live-attempt-1.log",
+      "log_sha256": "hex:628999c9b6b0e9fa8e551fb5a0a24136d73cc321db330227c41f8939494d25e1"
+    },
+    {
+      "label": "P3 attempt 2",
+      "record": "attempts/redis-2026-10-30-f554f5991f2f49448725e2e18bc1cbd4.json",
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:e0cf30412743767de8e2488b4442bb66ad753001"
+      },
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:e0cf30412743767de8e2488b4442bb66ad753001"
+      },
+      "config_sha256": "hex:be675eb36ee3b3c425779e8431de8c1f5774d147380fb39f73d546d7b158b951",
+      "outcome": "PASS",
+      "command": ".venv/Scripts/python -m pytest --no-cov -p no:cacheprovider -m requires_plan12_probe_redis tests/integration/tools/test_plan12_memory_redis_probe.py -q -rA",
+      "environment": [
+        "P127_REDIS_CREDENTIAL",
+        "OPTIMUS_PLAN12_PROBE_CONFIG=<checkout>/reports/plan12-memory-feasibility/probe-config.json"
+      ],
+      "exit": 0,
+      "retained_log": "sandbox-review-kit/plan12-codex-cli/round-84-p127-checkpoint1/p3-live-attempt-2.log",
+      "log_sha256": "hex:b99f51310eb32c6103899963a12b207c1c6131c8c84085ac5328754e124b8316"
+    },
+    {
+      "label": "P1 attempt 1",
+      "record": "attempts/packages-2026-10-30-24629a76debf46ef857fa15b17ab8192.json",
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:e0cf30412743767de8e2488b4442bb66ad753001"
+      },
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:e0cf30412743767de8e2488b4442bb66ad753001"
+      },
+      "config_sha256": "hex:be675eb36ee3b3c425779e8431de8c1f5774d147380fb39f73d546d7b158b951",
+      "outcome": "FAIL",
+      "command": ".venv/Scripts/python -m tools.plan12_memory.probes --kind packages --config reports/plan12-memory-feasibility/probe-config.json",
+      "exit": 0,
+      "retained_log": "sandbox-review-kit/plan12-codex-cli/round-84-p127-checkpoint1/p1-live-attempt-1.log",
+      "log_sha256": "hex:2e42e1d83232c893c370f22b97493b6b4b3def6b229d74bbc5cb1f3d8db5312b"
+    },
+    {
+      "label": "P1 attempt 2",
+      "record": "attempts/packages-2026-10-30-5888e5d35c37424e806d846e9cc6c7bc.json",
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:d0819e5616f7240b83b2789cef5d379f8fbbff18"
+      },
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:d0819e5616f7240b83b2789cef5d379f8fbbff18"
+      },
+      "config_sha256": "hex:025e75328b24ab3e2757a2ee3096fff99acca8f391acb5209335ba4d7bb5c0be",
+      "outcome": "PASS",
+      "command": ".venv/Scripts/python -m tools.plan12_memory.probes --kind packages --config reports/plan12-memory-feasibility/probe-config.json",
+      "exit": 0,
+      "retained_log": "sandbox-review-kit/plan12-codex-cli/round-84-p127-checkpoint1/p1-live-attempt-2.log",
+      "log_sha256": "hex:479799b56be9835f8d16d03d22fb9cf972267fdbd82762fe0b38bd5bca92ed6e"
+    },
+    {
+      "label": "P1 attempt 3",
+      "record": "attempts/packages-2026-10-30-f1bdbc6b94c9416a88a4006e987b0f9c.json",
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:11cb84e7a0795043d8e6033f592d1abe9fd6a800"
+      },
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:11cb84e7a0795043d8e6033f592d1abe9fd6a800"
+      },
+      "config_sha256": "hex:0fc6ebe17d82cee8895182231ba6ec5018f7cd19dfbc9a24d7db1278f4099868",
+      "outcome": "PASS",
+      "command": ".venv/Scripts/python -m tools.plan12_memory.probes --kind packages --config reports/plan12-memory-feasibility/probe-config.json",
+      "exit": 0,
+      "retained_log": "sandbox-review-kit/plan12-codex-cli/p127-evidence/runs/p1-attempt-3.log",
+      "log_sha256": "hex:54d1d10e2e7294f776cf63f1560d717e9ab31d60956827d14c893aefc53d0719"
+    },
+    {
+      "label": "P2 attempt 1",
+      "record": "attempts/embedding-2026-10-30-2604347331134c61b5337e66b6d0051f.json",
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:d0819e5616f7240b83b2789cef5d379f8fbbff18"
+      },
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:d0819e5616f7240b83b2789cef5d379f8fbbff18"
+      },
+      "config_sha256": "hex:025e75328b24ab3e2757a2ee3096fff99acca8f391acb5209335ba4d7bb5c0be",
+      "outcome": "PASS",
+      "command": ".venv/Scripts/python -m tools.plan12_memory.probes --kind embedding --config reports/plan12-memory-feasibility/probe-config.json",
+      "exit": 0,
+      "retained_log": "sandbox-review-kit/plan12-codex-cli/round-84-p127-checkpoint1/p2-live-attempt-1.log",
+      "log_sha256": "hex:add4841563530ef1893f50b9f3ffd96566ff06a15495a795258a8cf889a486ce"
+    },
+    {
+      "label": "P5 attempt 1",
+      "record": "attempts/zed-2026-10-30-e837f3cb2f7642c4b34949554e012b32.json",
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:c3b033e4cd20d80f49486fa1055e9f2e32f81cbb"
+      },
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:c3b033e4cd20d80f49486fa1055e9f2e32f81cbb"
+      },
+      "config_sha256": "hex:025e75328b24ab3e2757a2ee3096fff99acca8f391acb5209335ba4d7bb5c0be",
+      "outcome": "UNRUN",
+      "command": ".venv/Scripts/python -m tools.plan12_memory.probes --kind zed --config reports/plan12-memory-feasibility/probe-config.json",
+      "exit": "UNKNOWN",
+      "exit_basis": "not echoed",
+      "retained_log": "UNKNOWN: stdout was seen in the Claude session only; no log file was retained"
+    },
+    {
+      "label": "P5 attempt 2",
+      "record": "attempts/zed-2026-10-30-25903c6622314e3f97b0b20857d93363.json",
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:bb262642473cf411363546b616777fadead1eea6"
+      },
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:bb262642473cf411363546b616777fadead1eea6"
+      },
+      "config_sha256": "hex:025e75328b24ab3e2757a2ee3096fff99acca8f391acb5209335ba4d7bb5c0be",
+      "outcome": "UNRUN",
+      "command": ".venv/Scripts/python -m tools.plan12_memory.probes --kind zed --config reports/plan12-memory-feasibility/probe-config.json",
+      "exit": "UNKNOWN",
+      "exit_basis": "not echoed",
+      "retained_log": "UNKNOWN: stdout was seen in the Claude session only; no log file was retained"
+    }
+  ],
+  "controls": [
+    {
+      "label": "default selection excludes the live tier",
+      "command": ".venv/Scripts/python -m pytest --no-cov -p no:cacheprovider --collect-only -q tests/integration/tools/test_plan12_memory_redis_probe.py",
+      "exit": 5,
+      "observed": "no tests collected (2 deselected)",
+      "retained_log": "sandbox-review-kit/plan12-codex-cli/p127-evidence/runs/control-default-collection.log",
+      "log_sha256": "hex:dd91482bdecbfe3eac7452f57b2ffef7057f24a50773475824aa6189fb05e551"
+    },
+    {
+      "label": "explicit selection without a config skips as UNRUN",
+      "command": "env -u OPTIMUS_PLAN12_PROBE_CONFIG .venv/Scripts/python -m pytest --no-cov -p no:cacheprovider -q -rs -m requires_plan12_probe_redis tests/integration/tools/test_plan12_memory_redis_probe.py",
+      "exit": 0,
+      "observed": "2 skipped, each 'UNRUN ... no client was constructed'",
+      "retained_log": "sandbox-review-kit/plan12-codex-cli/p127-evidence/runs/control-no-config-skip.log",
+      "log_sha256": "hex:4243d27e10df6e06f3ef97e37a98ec0bcc902ce6154a6ad6e48e4a93a12a0f4b"
+    },
+    {
+      "label": "the shared server is refused on databases 0, 15 and 1 and the localhost/::1 aliases",
+      "command": ".venv/Scripts/python -m pytest --no-cov -p no:cacheprovider -m requires_plan12_probe_redis tests/integration/tools/test_plan12_memory_redis_probe.py -q -rA",
+      "exit": 0,
+      "observed": "test_the_shared_server_is_refused_on_every_database PASSED in P3 attempt 2",
+      "retained_log": "sandbox-review-kit/plan12-codex-cli/round-84-p127-checkpoint1/p3-live-attempt-2.log",
+      "log_sha256": "hex:b99f51310eb32c6103899963a12b207c1c6131c8c84085ac5328754e124b8316"
+    }
+  ]
+}

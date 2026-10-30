@@ -6,7 +6,7 @@ kept in the review kit; each names its original's SHA-256 in `rendered_from_sha2
 
 | Probe | Outcome | Summary |
 |---|---|---|
-| P1 packages/parsers | PASS (attempt 1 refused, retained) | Ten distributions hash-bound and smoke-tested on Windows CPython 3.14.4 |
+| P1 packages/parsers | PASS (attempts 1 and 2 retained) | Ten distributions hash-bound and smoke-tested on Windows CPython 3.14.4 |
 | P2 embeddings/worker | PASS | bge-small-en-v1.5 offline; cancel/resume and owner-exit/restart reproduce the output hash |
 | P3 Redis K2 | PASS (attempt 1 ERROR, retained) | 18 of 18 predeclared bounds on a dedicated synthetic instance; topology provisional |
 | P4 Postgres | PASS | Driver readiness only; no ledger claim |
@@ -15,6 +15,7 @@ kept in the review kit; each names its original's SHA-256 in `rendered_from_sha2
 - `probe-config.json`: the predeclared config and Redis targets.
 - `qualification.json`: per-probe results, retained attempts, caveats and what is not proven.
 - `handoffs.json`: owners, reasons, next proofs and fallbacks.
+- `execution-context.json`: the command, checkout, branch, exit status and retained-log digest of every run and selection control.
 - `manifest.json`: SHA-256 of every file here.
 - `attempts/`: one write-once record per attempt.
 

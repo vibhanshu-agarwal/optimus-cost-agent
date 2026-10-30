@@ -10,7 +10,7 @@
   },
   "config": {
     "file": "probe-config.json",
-    "sha256": "hex:025e75328b24ab3e2757a2ee3096fff99acca8f391acb5209335ba4d7bb5c0be",
+    "sha256": "hex:0fc6ebe17d82cee8895182231ba6ec5018f7cd19dfbc9a24d7db1278f4099868",
     "note": "allowed_licenses gained MIT-0 after P1 attempt 1; the Redis targets are unchanged since Checkpoint 1."
   },
   "checkpoint_1": {
@@ -23,12 +23,12 @@
     {
       "id": "P1",
       "name": "packages and parsers",
-      "record": "attempts/packages-2026-10-30-5888e5d35c37424e806d846e9cc6c7bc.json",
-      "record_sha256": "hex:c0c7adc1d167f1df20bea255d4cfd7b2342285136beae1136080185f65c6ca8f",
+      "record": "attempts/packages-2026-10-30-f1bdbc6b94c9416a88a4006e987b0f9c.json",
+      "record_sha256": "hex:308d8addf9e5fcc67be573721fca456907d2aee711edc092c1915ff7eb242044",
       "outcome": "PASS",
       "disposition": "concluded",
-      "source_head": "hex:d0819e5616f7240b83b2789cef5d379f8fbbff18",
-      "started_utc": "2026-10-30T20:05:11.673+00:00",
+      "source_head": "hex:11cb84e7a0795043d8e6033f592d1abe9fd6a800",
+      "started_utc": "2026-10-30T20:27:11.543+00:00",
       "retained_attempts": [
         {
           "record": "attempts/packages-2026-10-30-24629a76debf46ef857fa15b17ab8192.json",
@@ -37,10 +37,18 @@
           "disposition": "concluded",
           "source_head": "hex:e0cf30412743767de8e2488b4442bb66ad753001",
           "started_utc": "2026-10-30T20:01:20.147+00:00"
+        },
+        {
+          "record": "attempts/packages-2026-10-30-5888e5d35c37424e806d846e9cc6c7bc.json",
+          "record_sha256": "hex:c0c7adc1d167f1df20bea255d4cfd7b2342285136beae1136080185f65c6ca8f",
+          "outcome": "PASS",
+          "disposition": "concluded",
+          "source_head": "hex:d0819e5616f7240b83b2789cef5d379f8fbbff18",
+          "started_utc": "2026-10-30T20:05:11.673+00:00"
         }
       ],
-      "observed": "Ten distributions installed by bound hash and smoke-tested on CPython 3.14.4 win_amd64: redisvl 0.29.0, tree-sitter 0.26.0 with tree-sitter-python 0.25.0 and tree-sitter-java 0.23.5, rustworkx 0.18.1, graspologic-native 1.3.1, fastembed 0.9.1, psutil 7.2.2, plus inputs pathspec 1.1.1 (Plan 12.6) and cryptography 49.0.0. 51 pins, 94.7 MB downloaded, 276 MB isolated venv.",
-      "attempt_note": "Attempt 1 was refused before install by the license gate (two metadata-parsing gaps, MIT-0 missing from the allowlist, and py-rust-stemmers publishing no license metadata); attempt 2 admitted py-rust-stemmers by its wheel's own verified MIT license file.",
+      "observed": "Ten distributions installed by bound hash and smoke-tested on CPython 3.14.4 win_amd64: redisvl 0.29.0, tree-sitter 0.26.0 with tree-sitter-python 0.25.0 and tree-sitter-java 0.23.5, rustworkx 0.18.1, graspologic-native 1.3.1, fastembed 0.9.1, psutil 7.2.2, plus inputs pathspec 1.1.1 (Plan 12.6) and cryptography 49.0.0. 51 pins, 94.5 MB downloaded, 276 MB isolated venv.",
+      "attempt_note": "Attempt 1 was refused before install by the license gate (two metadata-parsing gaps, MIT-0 missing from the allowlist, and py-rust-stemmers publishing no license metadata). Attempt 2 admitted py-rust-stemmers through a license-text heuristic that Codex round 85 rejected; it is retained but superseded. Attempt 3 admits it only by the recorded, digest-bound qualification in probe-config.json.",
       "scope": "Windows CPython 3.14 only; Linux wheels are not exercised here. No blanket compatibility claim."
     },
     {
