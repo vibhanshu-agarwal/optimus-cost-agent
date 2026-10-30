@@ -4,6 +4,8 @@
   "authorization": "Operator, Claude chat 2026-10-30: approved Plan 12.7 v3 at 8b8d56447d95b23403b7c750c64e7384b88dc8d899ec65c29d274faa8c774540 and released P3 dedicated Redis, P4 disposable Postgres, P1/P2 downloads and the P5 Zed + acpx session, each after Codex accepts Checkpoint 1 (#391 comment 6529787024).",
   "limits": {"timeout_seconds": 3600, "max_download_bytes": 1073741824},
   "allowed_hosts": ["pypi.org", "files.pythonhosted.org", "huggingface.co"],
+  "allowed_licenses": ["MIT", "MIT-CMU", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "0BSD", "ISC", "MPL-2.0", "PSF-2.0",
+                       "Python-2.0", "Unlicense", "Zlib", "CC0-1.0", "HPND"],
   "packages": {
     "index_url": "https://pypi.org/simple",
     "venv": "tmp/plan12-probe-venv",
@@ -14,6 +16,7 @@
     "venv": "tmp/plan12-probe-venv",
     "model": "BAAI/bge-small-en-v1.5",
     "cache_dir": "tmp/plan12-probe-models",
+    "max_model_bytes": 268435456,
     "work_dir": "tmp/plan12-probe-embedding",
     "items": 2000,
     "batch": 64,

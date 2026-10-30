@@ -184,7 +184,26 @@ def scan_sinks(roots: list[Path], needles: Mapping[str, str]) -> dict[str, Any]:
     return {"files_scanned": scanned, "found": found, "unreadable": unreadable, "opaque": opaque}
 
 
+_PHASES = ("visible_history", "close_reopen", "restart")
+
+
+def _shot(entry: Any) -> bool:
+    return isinstance(entry, dict) and isinstance(entry.get("screenshot_sha256"), str) and len(entry["screenshot_sha256"]) == 64
+
+
+def _observed(entry: Any, key: str) -> bool | None:
+    """A GUI observation counts only with its boolean and the hash of the screenshot it was read from."""
+    return entry[key] if _shot(entry) and isinstance(entry.get(key), bool) else None
+
+
 def run_zed(context: Any, result: Any, runner: Callable[..., Any] | None = None) -> None:
+    """P5. The stub log and the canary sink scan are machine evidence; GUI observations need a screenshot hash.
+
+    `gui_observations` JSON: {"P5-a": {"buffer_dirty": bool}, "P5-b": {"pre_prompt_text_visible": bool,
+    "screenshot_sha256": hex}, "P5-c": {"reference_card_rendered": bool, "screenshot_sha256": hex},
+    "P5-d": {"phases": {phase: {"canary_visible": bool, "screenshot_sha256": hex}} for visible_history,
+    close_reopen and restart}. Anything missing or malformed leaves its row UNRUN or INCONCLUSIVE.
+    """
     from tools.plan12_memory.probes import run_command
 
     runner = runner or run_command
@@ -198,52 +217,57 @@ def run_zed(context: Any, result: Any, runner: Callable[..., Any] | None = None)
     versions = {}
     for name, argv in (("zed", [section.get("zed_cli", "zed"), "--version"]), ("acpx", [section.get("acpx", "acpx"), "--version"])):
         try:
-            completed = runner(argv, 60, None)
-            versions[name] = " ".join(completed.stdout.split()[:3]) or completed.stderr.strip()[:200]
+            completed = runner(argv, context.timeout(60), None)
+            versions[name] = " ".join(completed.stdout.split()[:3]) if completed.returncode == 0 else "UNKNOWN"
         except OSError as error:
             versions[name] = f"unavailable: {type(error).__name__}"
     stub_log = Path(section.get("stub_log", "tmp/plan12-probe-zed/stub-observations.jsonl"))
     rows = [json.loads(line) for line in stub_log.read_text(encoding="utf-8").splitlines() if line.strip()] if stub_log.exists() else []
-    manual_path = Path(section.get("gui_observations", ""))
-    gui = json.loads(manual_path.read_text(encoding="utf-8")) if manual_path.is_file() else {}
+    gui_path = Path(section.get("gui_observations", ""))
+    gui = json.loads(gui_path.read_text(encoding="utf-8")) if gui_path.is_file() else {}
     init = next((row for row in rows if row.get("event") == "initialize"), None)
     reads = [row for row in rows if row.get("event") == "fs_read_result"]
     advertised = bool(((init or {}).get("clientCapabilities") or {}).get("fs", {}).get("readTextFile")) if init else None
-    sinks = scan_sinks([Path(root) for root in section.get("sink_roots", [])], needles)
+    pre_prompt_sent = any(row.get("event") == "session_new" for row in rows)
     p5: dict[str, Any] = {}
     p5["P5-a"] = {"status": ("UNRUN" if init is None else "UNSUPPORTED" if not advertised else
                              "PASS" if any(not row["matches_disk"] for row in reads) else
-                             "FAIL" if reads and (gui.get("P5-a") or {}).get("buffer_dirty") else "INCONCLUSIVE"),
+                             "FAIL" if reads and (gui.get("P5-a") or {}).get("buffer_dirty") is True else "INCONCLUSIVE"),
                   "fs_readTextFile_advertised": advertised, "reads": reads,
-                  "scope": "client-only: real Zed serving a synthetic unsaved buffer to the stub agent",
-                  "gui": gui.get("P5-a")}
-    p5["P5-b"] = {"status": (gui.get("P5-b") or {}).get("status", "UNRUN"),
-                  "pre_prompt_updates_sent": any(row.get("event") == "session_new" for row in rows),
-                  "scope": "client-only: whether Zed renders an update sent before the first prompt",
-                  "gui": gui.get("P5-b")}
-    p5["P5-c"] = {"status": (gui.get("P5-c") or {}).get("status", "UNRUN"),
-                  "reference_peer_card": (gui.get("P5-c") or {}).get("reference_peer"),
-                  "optimus_path": (gui.get("P5-c") or {}).get("optimus_path",
-                                                              {"status": "UNRUN", "owner": "M3",
-                                                               "reason": "no host-generated card path without a model turn"}),
-                  "model_or_provider_calls": 0,
-                  "scope": "reference-peer card is client-only; the Optimus outbound path is a separate row"}
+                  "scope": "client-only: real Zed serving a synthetic unsaved buffer to the stub agent"}
+    visible = _observed(gui.get("P5-b"), "pre_prompt_text_visible")
+    p5["P5-b"] = {"status": "UNRUN" if not pre_prompt_sent or visible is None else "PASS" if visible else "UNSUPPORTED",
+                  "pre_prompt_updates_sent": pre_prompt_sent, "gui": gui.get("P5-b"),
+                  "fallback": "first-response brief when unsolicited display is unsupported",
+                  "scope": "client-only: whether Zed renders an update sent before the first prompt"}
+    card = _observed(gui.get("P5-c"), "reference_card_rendered")
+    p5["P5-c"] = {"status": "UNRUN",
+                  "optimus_path": {"status": "UNRUN", "owner": "M3", "reason": "Optimus has no host-generated card path "
+                                   "without a model turn; no ad-hoc save mechanism is added here"},
+                  "provider_calls": "not established: no Optimus or Gateway process ran for P5-c",
+                  "reference_peer": {"status": "UNRUN" if not pre_prompt_sent or card is None else "PASS" if card else "FAIL",
+                                     "gui": gui.get("P5-c"), "scope": "client-only control: Zed rendering a stub card"}}
+    sinks = scan_sinks([Path(root) for root in section.get("sink_roots", [])], needles)
     persisted = {name: paths for name, paths in sinks["found"].items() if paths}
-    p5["P5-d"] = {"status": ("UNRUN" if not rows else "FAIL" if persisted else
-                             "INCONCLUSIVE" if sinks["unreadable"] or sinks["opaque"] or not gui.get("P5-d") else
-                             (gui.get("P5-d") or {}).get("status", "INCONCLUSIVE")),
-                  "canaries_persisted_in": persisted, "sink_scan": {k: v for k, v in sinks.items() if k != "found"},
+    phases = (gui.get("P5-d") or {}).get("phases") or {}
+    seen = {phase: _observed(phases.get(phase), "canary_visible") for phase in _PHASES}
+    complete = bool(section.get("sink_roots")) and sinks["files_scanned"] > 0 and not sinks["unreadable"] and not sinks["opaque"]
+    p5["P5-d"] = {"status": ("UNRUN" if not rows else
+                             "FAIL" if persisted or seen["close_reopen"] or seen["restart"] else
+                             "INCONCLUSIVE" if not complete or None in seen.values() else "PASS"),
+                  "canaries_persisted_in": persisted, "phases": seen,
+                  "sink_scan": {key: value for key, value in sinks.items() if key != "found"},
                   "canary_sha256": {name: hashlib.sha256(value.encode()).hexdigest() for name, value in needles.items()},
-                  "gui": gui.get("P5-d"),
-                  "consequence": "no confidential channel qualified: M3 uses the restricted-file fallback (spec 6.1.1) "
+                  "scope": "only the inspected sinks; a PASS is a candidate for M3 qualification, never a confidentiality proof",
+                  "consequence": "without an accepted M3 qualification, M3 uses the restricted-file fallback (spec 6.1.1) "
                                  "or keeps encryption/rotation unavailable"}
     result.observations.update({"versions": versions, "stub_events": len(rows), "P5": p5})
     statuses = [row["status"] for row in p5.values()]
-    result.outcome = ("UNRUN" if all(s == "UNRUN" for s in statuses) else
-                      "FAIL" if "FAIL" in statuses else "PASS" if all(s == "PASS" for s in statuses) else "INCONCLUSIVE")
+    result.outcome = ("UNRUN" if all(s == "UNRUN" for s in statuses) else "FAIL" if "FAIL" in statuses else
+                      "INCONCLUSIVE" if any(s in {"UNRUN", "INCONCLUSIVE"} for s in statuses) else "PASS")
     result.disposition = "handoff" if any(s in {"UNRUN", "INCONCLUSIVE"} for s in statuses) else "concluded"
     result.limitations.append("stub-agent evidence is client-only; it proves nothing about Optimus integration (M1/M3)")
-    result.follow_up = "M1 owns buffer integration; M3 owns brief/notice binding and qualifies the recovery-phrase channel"
+    result.follow_up = "M1 owns buffer integration; M3 owns brief/notice binding, the Optimus card path and the phrase channel"
 
 
 def main(argv: list[str]) -> int:

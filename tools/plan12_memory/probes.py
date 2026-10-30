@@ -8,7 +8,9 @@ RAM: a record that would contain one is refused. Nothing runs at import time.
     python -m tools.plan12_memory.probes --kind packages --config reports/plan12-memory-feasibility/probe-config.json
 
 The package, embedding and Postgres bodies live here; Redis is `redis_probe`, ACP/Zed is `client_probe`.
-Candidate packages run only in an isolated probe venv, through `probe_child`.
+Candidate packages and the embedding model run only in an isolated probe venv, through `probe_child`.
+Every native wait is bounded by the probe deadline, and files are created or removed only under the
+released `tmp/plan12-probe*` directories.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
@@ -45,6 +48,9 @@ PROTECTED_REDIS_PORTS = frozenset({6379})
 _SHARED_REDIS_ENV = ("OPTIMUS_REDIS_URL", "REDIS_URL")
 # The default PostgreSQL port; evidence-handoff and any local server keep it.
 PROTECTED_POSTGRES_PORTS = frozenset({5432})
+REPO_ROOT = Path(__file__).resolve().parents[2]
+RELEASED_ROOT = REPO_ROOT / "tmp"
+RELEASED_PREFIX = "plan12-probe"
 DEFAULT_OUT = Path("reports/plan12-memory-feasibility/attempts")
 _MAX_STRING = 2048
 _MIN_BODY = 16
@@ -55,13 +61,18 @@ _SECRET_PATTERNS = (
     ("credential-assignment", re.compile(r"(?i)\b(password|passwd|secret|token|api[_-]?key)\s*[=:]\s*\S+")),
     ("url-userinfo", re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://[^/@\s:]*:[^/@\s]+@")),
 )
-_TOP_KEYS = {"schema_version", "run_label", "authorization", "limits", "allowed_hosts", "redis", "postgres", "zed",
-             "packages", "embedding", "targets"}
+_TOP_KEYS = {"schema_version", "run_label", "authorization", "limits", "allowed_hosts", "allowed_licenses", "redis",
+             "postgres", "zed", "packages", "embedding", "targets"}
 _REDIS_KEYS = {"endpoint", "container", "image", "image_id", "volume", "username", "credential_env"}
 _POSTGRES_KEYS = {"host", "port", "container", "image_id", "volume", "user", "database", "credential_env"}
 REDIS_TARGETS = ("items", "vector_dimensions", "item_bytes", "concurrency", "maxmemory_bytes", "admission_reserve_bytes",
                  "physical_ram_bytes", "disk_bytes", "ack_latency_p95_ms", "projection_latency_p95_ms",
                  "restart_to_usable_seconds", "logical_purge_seconds", "physical_erasure_seconds")
+# Trove classifiers mapped to the SPDX identifiers the allowlist names.
+_CLASSIFIER_LICENSES = {"MIT License": "MIT", "Apache Software License": "Apache-2.0", "BSD License": "BSD-3-Clause",
+                        "Mozilla Public License 2.0 (MPL 2.0)": "MPL-2.0", "ISC License (ISCL)": "ISC",
+                        "Python Software Foundation License": "PSF-2.0", "The Unlicense (Unlicense)": "Unlicense",
+                        "zlib/libpng License": "Zlib", "Historical Permission Notice and Disclaimer (HPND)": "HPND"}
 
 
 class ConfigError(ValueError):
@@ -69,11 +80,15 @@ class ConfigError(ValueError):
 
 
 class AdmissionError(RuntimeError):
-    """An endpoint or resource was refused before any client was constructed."""
+    """An endpoint, resource, path or artifact was refused before it was used."""
 
 
 class PersistenceRefused(RuntimeError):
     """A record would have carried a RAM-only body; it was not written."""
+
+
+class MalformedEvidence(ValueError):
+    """Native evidence could not be validated; the result is INCONCLUSIVE, never a pass or a fail."""
 
 
 @dataclass(frozen=True)
@@ -94,6 +109,7 @@ class ProbeConfig:
     timeout_seconds: float
     max_download_bytes: int
     allowed_hosts: tuple[str, ...]
+    allowed_licenses: tuple[str, ...]
     sections: Mapping[str, Any]
     targets: Mapping[str, Mapping[str, float]]
     redis: RedisResource | None
@@ -126,9 +142,10 @@ class ProbeResult:
 
 @dataclass
 class ProbeContext:
-    """What a probe body receives: its config, a cancel signal, RAM-only bodies and a cleanup journal."""
+    """What a probe body receives: its config, a deadline and cancel signal, RAM-only bodies and a cleanup journal."""
 
     config: ProbeConfig
+    deadline: float = field(default_factory=lambda: time.monotonic() + 3600)
     cancelled: threading.Event = field(default_factory=threading.Event)
     ram_only: set[str] = field(default_factory=set)
     cleanups: list[tuple[str, Callable[[], object]]] = field(default_factory=list)
@@ -136,9 +153,17 @@ class ProbeContext:
     def on_cleanup(self, description: str, action: Callable[[], object]) -> None:
         self.cleanups.append((description, action))
 
+    def remaining(self) -> float:
+        return max(0.0, self.deadline - time.monotonic())
+
     def check(self) -> None:
-        if self.cancelled.is_set():
+        if self.cancelled.is_set() or self.remaining() <= 0:
             raise TimeoutError("probe cancelled at its deadline")
+
+    def timeout(self, cap: float) -> float:
+        """A native call's timeout: its own cap, never past the probe deadline."""
+        self.check()
+        return min(cap, self.remaining())
 
 
 def _utc() -> str:
@@ -161,6 +186,13 @@ def _section(data: Mapping[str, Any], name: str, keys: set[str], required: Seque
     return section
 
 
+def _strings(data: Mapping[str, Any], key: str) -> tuple[str, ...]:
+    values = data.get(key, [])
+    if not isinstance(values, list) or not all(isinstance(value, str) and value for value in values):
+        raise ConfigError(f"{key} must be a list of non-empty strings")
+    return tuple(values)
+
+
 def parse_config(raw: bytes) -> ProbeConfig:
     try:
         data = json.loads(raw)
@@ -177,9 +209,6 @@ def parse_config(raw: bytes) -> ProbeConfig:
     max_download = _require(limits, "max_download_bytes", int, "limits")
     if timeout <= 0 or max_download < 0:
         raise ConfigError("limits must be positive")
-    hosts = data.get("allowed_hosts", [])
-    if not isinstance(hosts, list) or not all(isinstance(host, str) and host for host in hosts):
-        raise ConfigError("allowed_hosts must be a list of host names")
     targets = data.get("targets", {})
     if not isinstance(targets, dict) or not all(
         isinstance(group, dict) and all(isinstance(v, int | float) and not isinstance(v, bool) for v in group.values())
@@ -197,7 +226,8 @@ def parse_config(raw: bytes) -> ProbeConfig:
         authorization=_require(data, "authorization", str, "config"),
         timeout_seconds=float(timeout),
         max_download_bytes=max_download,
-        allowed_hosts=tuple(host.lower() for host in hosts),
+        allowed_hosts=tuple(host.lower() for host in _strings(data, "allowed_hosts")),
+        allowed_licenses=_strings(data, "allowed_licenses"),
         sections={key: data[key] for key in ("postgres", "zed", "packages", "embedding") if key in data},
         targets=targets,
         redis=redis,
@@ -218,6 +248,28 @@ def config_from_environment(environ: Mapping[str, str] | None = None) -> ProbeCo
 def allowed_url(url: str, config: ProbeConfig) -> bool:
     parts = urlsplit(url)
     return parts.scheme == "https" and (parts.hostname or "").lower() in config.allowed_hosts
+
+
+def released_path(value: str | Path) -> Path:
+    """A path the probes may create or remove: under repo `tmp/plan12-probe*`, with no alias anywhere on the way."""
+    path = Path(value)
+    absolute = Path(os.path.normpath(path if path.is_absolute() else REPO_ROOT / path))
+    resolved = absolute.resolve()
+    if os.path.normcase(str(resolved)) != os.path.normcase(str(absolute)):
+        raise AdmissionError(f"{path.as_posix()} goes through a link or alias")
+    try:
+        relative = resolved.relative_to(RELEASED_ROOT.resolve())
+    except ValueError:
+        raise AdmissionError(f"{path.as_posix()} is outside the released tmp/{RELEASED_PREFIX}* directories") from None
+    if not relative.parts or not relative.parts[0].startswith(RELEASED_PREFIX):
+        raise AdmissionError(f"{path.as_posix()} is outside the released tmp/{RELEASED_PREFIX}* directories")
+    return resolved
+
+
+def remove_released(value: str | Path) -> None:
+    target = released_path(value)  # re-verified immediately before deletion
+    if target.exists():
+        shutil.rmtree(target)
 
 
 def _resolved(host: str) -> set[ipaddress.IPv4Address | ipaddress.IPv6Address]:
@@ -332,6 +384,9 @@ def sanitize(value: Any) -> tuple[Any, int]:
 
 
 def record_bytes(result: ProbeResult, ram_only: set[str]) -> bytes:
+    raw = json.dumps(asdict(result), ensure_ascii=True, default=repr)
+    if any(len(body) >= _MIN_BODY and json.dumps(body, ensure_ascii=True)[1:-1] in raw for body in ram_only):
+        raise PersistenceRefused("record would contain a RAM-only synthetic body")
     data, count = sanitize(asdict(result))
     data["redactions"] = result.redactions + count
     text = json.dumps(data, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
@@ -380,34 +435,65 @@ def _bodies() -> dict[str, ProbeBody]:
             "postgres": run_postgres, "zed": client_probe.run_zed}
 
 
+def _run_cleanups(context: ProbeContext, journal: list[dict[str, Any]]) -> None:
+    for description, action in reversed(context.cleanups):
+        try:
+            action()
+            journal.append({"action": description, "status": "done"})
+        except Exception as error:  # recorded; a cleanup failure never hides the probe result
+            journal.append({"action": description, "status": f"failed: {type(error).__name__}: {error}"})
+    context.cleanups.clear()
+
+
 def run_probe(kind: str, config: ProbeConfig, *, source: Mapping[str, Any] | None = None,
               bodies: Mapping[str, ProbeBody] | None = None, grace_seconds: float = 5.0) -> tuple[ProbeResult, ProbeContext]:
-    """Run one probe body under its deadline. Any failure becomes an attributable outcome, never an exception."""
+    """Run one probe body under its deadline. Any failure becomes an attributable outcome, never an exception.
+
+    Cleanups run only once the body has stopped, or as the last means of stopping it. A body that is
+    still running after that is abandoned: its result object is never returned or recorded.
+    """
     if kind not in KINDS:
         raise ConfigError(f"unknown probe kind {kind!r}")
-    result = ProbeResult(kind=kind, run_label=config.run_label, config_sha256=config.sha256,
-                         source=dict(source or {}), environment=_environment(), started_utc=_utc())
-    context = ProbeContext(config=config)
+    started = _utc()
+    working = ProbeResult(kind=kind, run_label=config.run_label, config_sha256=config.sha256,
+                          source=dict(source or {}), environment=_environment(), started_utc=started)
+    context = ProbeContext(config=config, deadline=time.monotonic() + config.timeout_seconds)
     body = (bodies if bodies is not None else _bodies())[kind]
     failure: list[Exception] = []
 
     def target() -> None:
         try:
-            body(context, result)
+            body(context, working)
         except Exception as error:
             failure.append(error)
 
     worker = threading.Thread(target=target, name=f"plan12-probe-{kind}", daemon=True)
     worker.start()
     worker.join(config.timeout_seconds)
+    cleanup: list[dict[str, Any]] = []
     if worker.is_alive():
         context.cancelled.set()
         worker.join(grace_seconds)
-        result.outcome = "INCONCLUSIVE"
-        result.limitations.append(f"timed out after {config.timeout_seconds}s; stopped after cancel: {not worker.is_alive()}")
+        if worker.is_alive():
+            _run_cleanups(context, cleanup)  # closing clients and killing children unblocks native waits
+            worker.join(grace_seconds)
+    stopped = not worker.is_alive()
+    if not stopped:
+        result = ProbeResult(kind=kind, run_label=config.run_label, config_sha256=config.sha256,
+                             attempt_id=working.attempt_id, source=dict(source or {}), environment=working.environment,
+                             started_utc=started, outcome="INCONCLUSIVE", disposition="open")
+        result.limitations.append(f"timed out after {config.timeout_seconds}s and did not stop; partial observations discarded")
+        result.cleanup = cleanup
+        result.ended_utc = _utc()
+        return result, context
+    result = working
+    if context.cancelled.is_set() or (failure and isinstance(failure[0], TimeoutError)):
+        result.outcome, result.disposition = "INCONCLUSIVE", "open"
+        result.limitations.append(f"timed out after {config.timeout_seconds}s; stopped after cancel")
     elif failure:
         error = failure[0]
-        result.outcome = "INCONCLUSIVE" if isinstance(error, TimeoutError) else "ERROR"
+        result.outcome = "INCONCLUSIVE" if isinstance(error, TimeoutError | MalformedEvidence) else "ERROR"
+        result.disposition = "open"
         result.limitations.append(f"{type(error).__name__}: {error}")
     elif result.outcome not in OUTCOMES or result.disposition not in DISPOSITIONS:
         result.limitations.append(f"malformed probe result: outcome {result.outcome!r}, disposition {result.disposition!r}")
@@ -415,29 +501,38 @@ def run_probe(kind: str, config: ProbeConfig, *, source: Mapping[str, Any] | Non
     if result.outcome == "PASS" and result.disposition == "handoff":
         result.limitations.append("a handed-off probe cannot be a PASS")
         result.outcome = "INCONCLUSIVE"
-    for description, action in reversed(context.cleanups):
-        try:
-            action()
-            result.cleanup.append({"action": description, "status": "done"})
-        except Exception as error:  # recorded; a cleanup failure never hides the probe result
-            result.cleanup.append({"action": description, "status": f"failed: {type(error).__name__}: {error}"})
+    _run_cleanups(context, cleanup)
+    result.cleanup = cleanup
     result.ended_utc = _utc()
     return result, context
+
+
+def verdict(checks: Mapping[str, bool | None]) -> str:
+    """FAIL if any check failed; INCONCLUSIVE if any could not be established; PASS only when every check held."""
+    values = list(checks.values())
+    return "FAIL" if False in values else "INCONCLUSIVE" if None in values or not values else "PASS"
 
 
 # --- native helpers (live probes only; unit tests inject doubles) ---
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
+Fetch = Callable[[str, float], Any]
 
 
 def run_command(argv: Sequence[str], timeout: float, env: Mapping[str, str] | None = None,
                 stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+    """subprocess.run kills the child when its timeout expires, so no owned child outlives its bound."""
     return subprocess.run(list(argv), input=stdin, capture_output=True, text=True, encoding="utf-8", errors="replace",
                           timeout=timeout, check=False, env=None if env is None else {**os.environ, **env})
 
 
-def docker_inspect(name: str, runner: Runner = run_command) -> dict[str, Any]:
-    completed = runner(["docker", "inspect", "--type", "container", name], 60, None)
+def fetch_json(url: str, timeout: float) -> Any:
+    with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310 - callers pass allowlisted https URLs
+        return json.loads(response.read(8 * 1024 * 1024))
+
+
+def docker_inspect(name: str, runner: Runner = run_command, timeout: float = 60) -> dict[str, Any]:
+    completed = runner(["docker", "inspect", "--type", "container", name], timeout, None)
     if completed.returncode:
         raise AdmissionError(f"container {name!r} cannot be inspected")
     return json.loads(completed.stdout)[0]
@@ -451,126 +546,264 @@ def _venv_python(venv: Path) -> Path:
     return venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
 
-def _child_json(completed: subprocess.CompletedProcess[str]) -> dict[str, Any]:
-    """The child prints one JSON object on its last stdout line; anything else is a malformed native result."""
+_HEX64 = re.compile(r"[0-9a-f]{64}")
+_TYPE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_.]{0,80}")
+
+
+def child_json(completed: subprocess.CompletedProcess[str], mode: str, names: Sequence[str] = ()) -> dict[str, Any]:
+    """Validate a probe_child result for its mode; anything else is malformed evidence."""
     lines = [line for line in completed.stdout.splitlines() if line.strip()]
     try:
         value = json.loads(lines[-1])
     except (IndexError, json.JSONDecodeError):
-        raise ValueError(f"malformed child result (exit {completed.returncode})") from None
-    if not isinstance(value, dict):
-        raise ValueError("malformed child result: not an object")
+        raise MalformedEvidence(f"{mode}: no JSON result (exit {completed.returncode})") from None
+    if completed.returncode or not isinstance(value, dict):
+        raise MalformedEvidence(f"{mode}: child exited {completed.returncode}")
+    if not value.get("ok"):
+        error = str(value.get("error", ""))
+        # Only a bare exception type crosses this boundary; free text could quote input bodies.
+        raise MalformedEvidence(f"{mode}: child reported {error if _TYPE_NAME.fullmatch(error) else 'an unprintable error'}")
+    if mode == "smoke":
+        rows = value.get("packages")
+        if not isinstance(rows, dict) or set(rows) != set(names) or not all(
+                isinstance(row, dict) and isinstance(row.get("ok"), bool) and (not row["ok"] or isinstance(row.get("version"), str))
+                for row in rows.values()):
+            raise MalformedEvidence("smoke: package rows are missing or malformed")
+    elif mode == "embed":
+        status = value.get("status")
+        if status == "complete":
+            if not _HEX64.fullmatch(str(value.get("output_sha256", ""))) or not isinstance(value.get("dimensions"), int):
+                raise MalformedEvidence("embed: a complete run needs an output hash and dimensions")
+        elif status != "stopped" or not isinstance(value.get("next_batch"), int):
+            raise MalformedEvidence("embed: status must be complete or stopped at a batch")
+    elif mode == "model-info":
+        if not isinstance(value.get("files"), list) or not value.get("revision") or not value.get("repo"):
+            raise MalformedEvidence("model-info: repo, revision and file list are required")
+    elif mode == "model-fetch":
+        if not isinstance(value.get("files"), dict) or not isinstance(value.get("bytes"), int):
+            raise MalformedEvidence("model-fetch: file digests and byte count are required")
     return value
+
+
+def license_ids(info: Mapping[str, Any]) -> set[str]:
+    """SPDX identifiers from PyPI metadata: License-Expression first, then trove classifiers, then a short License field."""
+    expression = str(info.get("license_expression") or "")
+    if expression:
+        return {part.strip("() ") for part in re.split(r"\s+(?:AND|OR|WITH)\s+", expression) if part.strip("() ")}
+    found = {_CLASSIFIER_LICENSES[name] for value in info.get("classifiers") or []
+             if value.startswith("License ::") and (name := value.split("::")[-1].strip()) in _CLASSIFIER_LICENSES}
+    text = str(info.get("license") or "").strip()
+    if not found and text and len(text) <= 40 and "\n" not in text:
+        found = {text.replace(" License", "").replace("Apache 2.0", "Apache-2.0").replace("Apache License 2.0", "Apache-2.0")}
+    return found
+
+
+def _compiled_pins(text: str) -> dict[str, dict[str, Any]]:
+    """`name==version` lines from uv pip compile, with any `--hash=sha256:` lines that follow them."""
+    pins: dict[str, dict[str, Any]] = {}
+    current = None
+    for line in text.splitlines():
+        if line and not line.startswith(("#", " ")) and "==" in line:
+            name, version = line.split()[0].split("==", 1)
+            current = pins.setdefault(name.lower(), {"version": version, "hashes": []})
+        elif current is not None and "--hash=sha256:" in line:
+            current["hashes"].append(line.split("--hash=sha256:", 1)[1].split()[0].strip("\\ "))
+    return pins
+
+
+def _compatible_wheel(files: list[Mapping[str, Any]], hashes: Sequence[str]) -> Mapping[str, Any] | None:
+    from packaging.tags import sys_tags
+    from packaging.utils import parse_wheel_filename
+
+    priority = {tag: rank for rank, tag in enumerate(sys_tags())}
+    best = None
+    for item in files:
+        name, digest = item.get("filename", ""), (item.get("digests") or {}).get("sha256")
+        if not name.endswith(".whl") or digest not in hashes:
+            continue
+        rank = min((priority[tag] for tag in parse_wheel_filename(name)[3] if tag in priority), default=None)
+        if rank is not None and (best is None or rank < best[0]):
+            best = (rank, item)
+    return None if best is None else best[1]
+
+
+def run_packages(context: ProbeContext, result: ProbeResult, runner: Runner = run_command,
+                 fetch: Fetch = fetch_json) -> None:
+    """P1 in two phases. Discovery resolves each candidate alone (wheels only) and gates every pin's license.
+    Admission binds one compatible wheel per pin by hash and size, refuses the set over the download
+    budget, and only then installs it, by hash, into the released isolated venv and smokes it there."""
+    config, section = context.config, context.config.sections.get("packages") or {}
+    index_url, candidates = section.get("index_url", ""), list(section.get("candidates", []))
+    if not allowed_url(index_url, config) or not candidates or not allowed_url("https://pypi.org/pypi", config):
+        result.outcome, result.disposition = "UNRUN", "open"
+        result.limitations.append("packages needs an allowed https index_url, pypi.org metadata access and candidates")
+        return
+    venv = released_path(section.get("venv", "tmp/plan12-probe-venv"))
+    inputs = dict(section.get("inputs") or {})
+    result.observations["inputs"] = inputs
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    common = ["--index-url", index_url, "--python-version", python_version, "--only-binary", ":all:", "--no-header",
+              "--no-annotate"]
+    metadata: dict[tuple[str, str], Mapping[str, Any]] = {}
+
+    def release(name: str, version: str) -> Mapping[str, Any]:
+        if (name, version) not in metadata:
+            metadata[name, version] = fetch(f"https://pypi.org/pypi/{name}/{version}/json", context.timeout(60))
+        return metadata[name, version]
+
+    approved = set(config.allowed_licenses)
+    matrix: dict[str, Any] = {}
+    admitted: list[str] = []
+    for name in candidates:
+        completed = runner(["uv", "pip", "compile", "-", *common], context.timeout(300), None, name + "\n")
+        pins = _compiled_pins(completed.stdout) if completed.returncode == 0 else {}
+        row: dict[str, Any] = {"resolved": completed.returncode == 0, "pins": {k: v["version"] for k, v in pins.items()}}
+        if completed.returncode:
+            row["error"] = completed.stderr.strip().splitlines()[-1:]
+        else:
+            licenses = {pin: sorted(license_ids(release(pin, data["version"]).get("info") or {})) for pin, data in pins.items()}
+            row["licenses"] = licenses
+            row["unapproved"] = sorted(pin for pin, ids in licenses.items() if not ids or not set(ids) <= approved)
+            if not row["unapproved"]:
+                admitted.append(name)
+        matrix[name] = row
+    result.observations["discovery"] = matrix
+    if not admitted:
+        result.outcome, result.disposition = "FAIL", "concluded"
+        result.limitations.append("no candidate resolved with approved licenses; nothing was installed")
+        return
+    joint = runner(["uv", "pip", "compile", "-", "--generate-hashes", *common], context.timeout(300), None,
+                   "\n".join(admitted + [f"{k}=={v}" for k, v in inputs.items()]) + "\n")
+    if joint.returncode:
+        result.outcome, result.disposition = "FAIL", "concluded"
+        result.limitations.append("the admitted candidates do not resolve together: " + joint.stderr.strip()[-400:])
+        return
+    artifacts, unbound = {}, []
+    for pin, data in _compiled_pins(joint.stdout).items():
+        wheel = _compatible_wheel(release(pin, data["version"]).get("urls") or [], data["hashes"])
+        if wheel is None:
+            unbound.append(pin)
+            continue
+        artifacts[pin] = {"version": data["version"], "filename": wheel["filename"], "sha256": wheel["digests"]["sha256"],
+                          "bytes": int(wheel.get("size") or 0)}
+    total = sum(item["bytes"] for item in artifacts.values())
+    result.observations["admission"] = {"artifacts": artifacts, "download_bytes": total,
+                                        "budget_bytes": config.max_download_bytes, "unbound": unbound}
+    if unbound or total > config.max_download_bytes or any(not item["bytes"] for item in artifacts.values()):
+        result.outcome, result.disposition = "FAIL", "concluded"
+        result.limitations.append("refused before install: an artifact is unbound, unsized or over the download budget")
+        return
+    requirements = released_path(venv.parent / (venv.name + "-requirements.txt"))
+    requirements.parent.mkdir(parents=True, exist_ok=True)
+    requirements.write_text("".join(f"{pin}=={item['version']} --hash=sha256:{item['sha256']}\n"
+                                    for pin, item in sorted(artifacts.items())), encoding="utf-8")
+    remove_released(venv)
+    for argv in (["uv", "venv", "--python", sys.executable, str(venv)],
+                 ["uv", "pip", "install", "--python", str(_venv_python(venv)), "--require-hashes", "--no-deps",
+                  "--index-url", index_url, "--only-binary", ":all:", "-r", str(requirements)]):
+        completed = runner(argv, context.timeout(900), None)
+        if completed.returncode:
+            result.outcome, result.disposition = "FAIL", "concluded"
+            result.limitations.append(f"{argv[1]} {argv[2]} failed: " + completed.stderr.strip()[-400:])
+            return
+    result.observations["venv_bytes"] = _tree_bytes(venv)
+    names = [*admitted, *inputs]
+    smoke = child_json(runner([str(_venv_python(venv)), str(_CHILD), "smoke", *names], context.timeout(600), None),
+                       "smoke", names)
+    result.observations["smoke"] = smoke
+    failed = sorted(name for name, row in smoke["packages"].items() if not row["ok"])
+    refused = sorted(set(candidates) - set(admitted))
+    result.outcome = "PASS" if not failed and not refused else "FAIL"
+    result.disposition = "concluded"
+    result.limitations.append("the index URL and PyPI metadata hosts are allowlisted; CDN redirects are not socket-enforced")
+    result.follow_up = "M1 re-runs any refused or failed combination before relying on it; M3 owns the encryption dependency"
 
 
 _CHILD = Path(__file__).with_name("probe_child.py")
 
 
-def run_packages(context: ProbeContext, result: ProbeResult, runner: Runner = run_command) -> None:
-    """P1: resolve each candidate alone (wheels only) for this interpreter, install the supported set by hash, smoke it."""
-    section = context.config.sections.get("packages") or {}
-    index_url, candidates = section.get("index_url", ""), list(section.get("candidates", []))
-    venv = Path(section.get("venv", "tmp/plan12-probe-venv"))
-    if not allowed_url(index_url, context.config) or not candidates:
-        result.outcome, result.disposition = "UNRUN", "open"
-        result.limitations.append("packages section needs an allowed https index_url and candidates")
-        return
-    result.observations["inputs"] = section.get("inputs", {})
-    python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
-    common = ["--index-url", index_url, "--python-version", python_version, "--only-binary", ":all:", "--no-header"]
-    matrix: dict[str, Any] = {}
-    supported: list[str] = []
-    for name in candidates:
-        context.check()
-        completed = runner(["uv", "pip", "compile", "-", *common], 300, None, name + "\n")
-        pins = [line.split()[0] for line in completed.stdout.splitlines() if "==" in line and not line.startswith(("#", " "))]
-        matrix[name] = {"resolved": completed.returncode == 0, "pins": pins,
-                        "error": "" if completed.returncode == 0 else completed.stderr.strip().splitlines()[-1:]}
-        if completed.returncode == 0:
-            supported.append(name)
-    result.observations["resolution"] = matrix
-    if not supported:
-        result.outcome, result.disposition = "FAIL", "concluded"
-        return
-    requirements = venv.with_name(venv.name + "-requirements.txt")
-    requirements.parent.mkdir(parents=True, exist_ok=True)
-    pinned = [f"{name}=={version}" for name, version in (section.get("inputs") or {}).items()]
-    compiled = runner(["uv", "pip", "compile", "-", "--generate-hashes", *common, "-o", str(requirements)], 300, None,
-                      "\n".join(supported + pinned) + "\n")
-    if compiled.returncode:
-        result.outcome, result.disposition = "FAIL", "concluded"
-        result.limitations.append("the supported candidates do not resolve together: " + compiled.stderr.strip()[-400:])
-        return
-    if venv.exists():
-        shutil.rmtree(venv)
-    for argv in (["uv", "venv", "--python", sys.executable, str(venv)],
-                 ["uv", "pip", "install", "--python", str(_venv_python(venv)), "--require-hashes", "--index-url",
-                  index_url, "--only-binary", ":all:", "-r", str(requirements)]):
-        context.check()
-        completed = runner(argv, 900, None)
-        if completed.returncode:
-            result.outcome, result.disposition = "FAIL", "concluded"
-            result.limitations.append(f"{argv[1]} failed: " + completed.stderr.strip()[-400:])
-            return
-    installed_bytes = _tree_bytes(venv)
-    result.observations["venv_bytes"] = installed_bytes
-    smoke = _child_json(runner([str(_venv_python(venv)), str(_CHILD), "smoke", *supported, *(section.get("inputs") or {})],
-                                  600, None))
-    result.observations["smoke"] = smoke
-    unsupported = [name for name in candidates if name not in supported]
-    failed = [name for name, row in smoke.get("packages", {}).items() if not row.get("ok")]
-    if installed_bytes > context.config.max_download_bytes:
-        result.limitations.append(f"isolated venv is {installed_bytes} bytes, over the {context.config.max_download_bytes} limit")
-    result.outcome = "PASS" if not unsupported and not failed and installed_bytes <= context.config.max_download_bytes else "FAIL"
-    result.disposition = "concluded"
-    result.follow_up = "M1 re-runs any unsupported combination before relying on it; M3 owns the encryption dependency"
-
-
 def run_embedding(context: ProbeContext, result: ProbeResult, runner: Runner = run_command) -> None:
-    """P2: embed a finite synthetic corpus in the isolated venv, then cancel/resume and owner-exit/restart its cursor."""
-    section = context.config.sections.get("embedding") or {}
-    venv = Path(section.get("venv", "tmp/plan12-probe-venv"))
+    """P2: gate the model on license, source host and size before download, bind its files by digest,
+    then embed a finite synthetic corpus offline and exercise cancel/resume and owner-exit/restart."""
+    from tools.plan12_memory import probe_child
+
+    config, section = context.config, context.config.sections.get("embedding") or {}
+    venv = released_path(section.get("venv", "tmp/plan12-probe-venv"))
     python = _venv_python(venv)
     if not python.exists() or not section.get("model"):
         result.outcome, result.disposition = "UNRUN", "open"
         result.limitations.append("needs the P1 isolated venv and an embedding model name")
         return
-    work = Path(section.get("work_dir", "tmp/plan12-probe-embedding")) / result.attempt_id[:12]
-    work.mkdir(parents=True, exist_ok=True)
-    base = [str(python), str(_CHILD), "embed", "--model", section["model"], "--cache", section.get("cache_dir", "tmp/plan12-probe-models"),
-            "--items", str(section.get("items", 2000)), "--batch", str(section.get("batch", 64))]
-    hf_env = {"HF_HUB_DISABLE_TELEMETRY": "1"}
-    full = _child_json(runner([*base, "--cursor", str(work / "full.json")], context.config.timeout_seconds, hf_env))
-    result.observations["full_run"] = full
-    if not full.get("ok"):
-        result.outcome, result.disposition = "FAIL", "concluded"
+    items = int(section.get("items", 2000))
+    context.ram_only.update(probe_child.corpus(items))  # the child's corpus, so no record can carry any of it
+    cache = released_path(section.get("cache_dir", "tmp/plan12-probe-models"))
+    budget = int(section.get("max_model_bytes", 0))
+    online = {"HF_HUB_DISABLE_TELEMETRY": "1", "HF_ENDPOINT": "https://huggingface.co"}
+    if not allowed_url(online["HF_ENDPOINT"], config):
+        result.outcome, result.disposition = "UNRUN", "open"
+        result.limitations.append("huggingface.co is not an allowed host")
         return
-    offline = {**hf_env, "HF_HUB_OFFLINE": "1"}
+    info = child_json(runner([str(python), str(_CHILD), "model-info", "--model", section["model"]], context.timeout(120), online),
+                      "model-info")
+    model_bytes = sum(int(item.get("size") or 0) for item in info["files"])
+    gate = {"repo": info["repo"], "revision": info["revision"], "license": info.get("license"), "bytes": model_bytes,
+            "budget_bytes": budget, "license_approved": str(info.get("license") or "").upper() in
+            {name.upper() for name in config.allowed_licenses}}
+    result.observations["model_gate"] = gate
+    if not gate["license_approved"] or not budget or model_bytes > budget or not all(item.get("sha256") for item in info["files"]):
+        result.outcome, result.disposition = "FAIL", "concluded"
+        result.limitations.append("model refused before download: license, size or file digests not established")
+        return
+    fetched = child_json(runner([str(python), str(_CHILD), "model-fetch", "--repo", info["repo"], "--revision", info["revision"],
+                                 "--cache", str(cache)], context.timeout(900), online), "model-fetch")
+    expected = {item["name"]: item["sha256"] for item in info["files"]}
+    matches = set(fetched["files"]) == set(expected) and all(expected[name] in fetched["files"][name] for name in expected)
+    bound = matches and fetched["bytes"] <= budget
+    result.observations["model_fetch"] = {"bytes": fetched["bytes"], "files_match_metadata": matches}
+    if not bound:
+        remove_released(cache)
+        result.outcome, result.disposition = "FAIL", "concluded"
+        result.limitations.append("downloaded model files did not match their published digests or the budget; cache removed")
+        return
+    work = released_path(Path(section.get("work_dir", "tmp/plan12-probe-embedding")) / result.attempt_id[:12])
+    work.mkdir(parents=True, exist_ok=True)
+    offline = {"HF_HUB_DISABLE_TELEMETRY": "1", "HF_HUB_OFFLINE": "1"}
+    base = [str(python), str(_CHILD), "embed", "--model", section["model"], "--cache", str(cache), "--items", str(items),
+            "--batch", str(section.get("batch", 64))]
+    limit = context.config.timeout_seconds
+
+    def embed(cursor: str, *extra: str) -> dict[str, Any]:
+        return child_json(runner([*base, "--cursor", str(work / cursor), *extra], context.timeout(limit), offline), "embed")
+
+    full = embed("full.json")
     stop_after = int(section.get("stop_after_batches", 5))
-    cancel = _child_json(runner([*base, "--cursor", str(work / "cancel.json"), "--stop-after", str(stop_after)],
-                                context.config.timeout_seconds, offline))
-    resumed = _child_json(runner([*base, "--cursor", str(work / "cancel.json")], context.config.timeout_seconds, offline))
-    killed = _owner_exit(base + ["--cursor", str(work / "killed.json")], work / "killed.json", stop_after, offline,
-                         context.config.timeout_seconds)
-    restarted = _child_json(runner([*base, "--cursor", str(work / "killed.json")], context.config.timeout_seconds, offline))
-    result.observations["cancel_resume"] = {"cancelled": cancel, "resumed": resumed,
-                                            "identical": resumed.get("output_sha256") == full.get("output_sha256")}
-    result.observations["owner_exit_restart"] = {"killed": killed, "restarted": restarted,
-                                                 "identical": restarted.get("output_sha256") == full.get("output_sha256")}
-    identical = result.observations["cancel_resume"]["identical"] and result.observations["owner_exit_restart"]["identical"]
-    result.outcome = "PASS" if identical and cancel.get("status") == "stopped" and killed.get("killed") else "FAIL"
-    result.disposition = "concluded"
+    cancelled = embed("cancel.json", "--stop-after", str(stop_after))
+    resumed = embed("cancel.json")
+    killed = _owner_exit([*base, "--cursor", str(work / "killed.json")], work / "killed.json", stop_after, offline, context)
+    restarted = embed("killed.json")
+    result.observations["full_run"] = full
+    result.observations["cancel_resume"] = {"cancelled": cancelled, "resumed": resumed}
+    result.observations["owner_exit_restart"] = {"killed": killed, "restarted": restarted}
+    checks = {"full_run_complete": full["status"] == "complete",
+              "cancel_stopped_at_batch": cancelled["status"] == "stopped" and cancelled["next_batch"] == stop_after,
+              "resume_identical": resumed["status"] == "complete" and resumed["output_sha256"] == full["output_sha256"],
+              "owner_killed_mid_run": killed["killed"],
+              "restart_identical": restarted["status"] == "complete" and restarted["output_sha256"] == full["output_sha256"]}
+    result.observations["checks"] = checks
+    result.outcome, result.disposition = verdict(checks), "concluded"
     result.limitations.append("a feasibility cursor, not the persisted-generation production indexer (M1)")
+    result.limitations.append("the Hugging Face endpoint is pinned; its CDN redirects are not socket-enforced")
     result.follow_up = "M1 qualifies the production worker and model choice on the real corpus"
 
 
-def _owner_exit(argv: list[str], cursor: Path, after: int, env: Mapping[str, str], timeout: float) -> dict[str, Any]:
+def _owner_exit(argv: list[str], cursor: Path, after: int, env: Mapping[str, str], context: ProbeContext) -> dict[str, Any]:
     """Start the worker, kill it once its cursor passes `after` batches: the owner exits without warning."""
     process = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env={**os.environ, **env})
-    deadline = time.monotonic() + timeout
+    context.on_cleanup("kill owner-exit worker", lambda: process.poll() is None and process.kill())
     seen = 0
     try:
-        while time.monotonic() < deadline and process.poll() is None:
+        while process.poll() is None:
+            context.check()
             try:
                 seen = json.loads(cursor.read_text(encoding="utf-8")).get("next_batch", 0)
             except (OSError, json.JSONDecodeError):
@@ -588,32 +821,32 @@ def _owner_exit(argv: list[str], cursor: Path, after: int, env: Mapping[str, str
 
 def run_postgres(context: ProbeContext, result: ProbeResult, runner: Runner = run_command,
                  connect: Callable[..., Any] | None = None) -> None:
-    """P4: native driver commit/readback, rollback, failure and disconnect/reconnect on the released disposable server."""
+    """P4: native driver commit/readback, rollback, constraint failure and restart/reconnect on the released server only."""
     section = context.config.sections.get("postgres")
     if not section:
         result.outcome, result.disposition = "UNRUN", "open"
         result.limitations.append("no released postgres section")
         return
-    identity = admit_postgres_resource(section, lambda name: docker_inspect(name, runner))
-    password = os.environ.get(section.get("credential_env", ""), "")
-    if not password:
-        raise AdmissionError("postgres password environment variable is not set")
-    context.ram_only.add(password)
+    identity = admit_postgres_resource(section, lambda name: docker_inspect(name, runner, context.timeout(60)))
+    credential = os.environ.get(section.get("credential_env", ""), "")
+    if not credential:
+        raise AdmissionError("the postgres credential environment variable is not set")
+    context.ram_only.add(credential)
     import psycopg
 
     connect = connect or psycopg.connect
-    params = {"host": section["host"], "port": section["port"], "user": section["user"], "password": password,
-              "dbname": section["database"], "connect_timeout": 10}
+    params = {"host": section["host"], "port": section["port"], "user": section["user"], "password": credential,
+              "dbname": section["database"]}
     observations: dict[str, Any] = {"identity": identity, "driver": {"psycopg": psycopg.__version__,
                                                                        "libpq": psycopg.pq.version()}}
-    checks: dict[str, bool] = {}
-    with connect(**params) as conn:
+    checks: dict[str, bool | None] = {}
+    token = uuid.uuid4().hex
+    with connect(**params, connect_timeout=int(context.timeout(10))) as conn:
         observations["server_version"] = conn.info.server_version
         with conn.cursor() as cur:
             cur.execute("CREATE SCHEMA IF NOT EXISTS p127probe")
             cur.execute("CREATE TABLE IF NOT EXISTS p127probe.rows (id text PRIMARY KEY, n int NOT NULL)")
         conn.commit()
-        token = uuid.uuid4().hex
         with conn.cursor() as cur:
             cur.execute("INSERT INTO p127probe.rows VALUES (%s, 1)", (f"commit-{token}",))
         conn.commit()
@@ -632,43 +865,67 @@ def run_postgres(context: ProbeContext, result: ProbeResult, runner: Runner = ru
         except psycopg.errors.UniqueViolation:
             checks["duplicate_rejected"] = True
             conn.rollback()
-    restarted = runner(["docker", "restart", "--time", "10", section["container"]], 120, None)
-    checks["server_restarted"] = restarted.returncode == 0
-    reconnect_started = time.monotonic()
-    reconnected = None
-    while time.monotonic() - reconnect_started < 60 and reconnected is None:
         try:
-            reconnected = connect(**params)
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1/0")
+            checks["statement_failure_leaves_connection_usable"] = False
+        except psycopg.errors.DivisionByZero:
+            conn.rollback()
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                checks["statement_failure_leaves_connection_usable"] = cur.fetchone()[0] == 1
+        held = connect(**params, connect_timeout=int(context.timeout(10)))
+        context.on_cleanup("close held postgres connection", held.close)
+    restart_started = time.monotonic()
+    restarted = runner(["docker", "restart", "--time", "10", section["container"]], context.timeout(120), None)
+    checks["server_restarted"] = restarted.returncode == 0
+    try:
+        held.execute("SELECT 1")
+        checks["held_connection_reports_loss"] = False
+    except psycopg.OperationalError:
+        checks["held_connection_reports_loss"] = True
+    reconnected = None
+    while reconnected is None and time.monotonic() - restart_started < 60:
+        context.check()
+        try:
+            reconnected = connect(**params, connect_timeout=int(context.timeout(5)))
         except psycopg.OperationalError:
             time.sleep(0.5)
-    observations["reconnect_seconds"] = round(time.monotonic() - reconnect_started, 3)
+    observations["reconnect_seconds"] = round(time.monotonic() - restart_started, 3)
+    checks["reconnected"] = reconnected is not None
     if reconnected is not None:
         with reconnected as conn, conn.cursor() as cur:
             cur.execute("SELECT count(*) FROM p127probe.rows WHERE id = %s", (f"commit-{token}",))
             checks["committed_row_survives_restart"] = cur.fetchone()[0] == 1
-    checks["reconnected"] = reconnected is not None
-    observations["admission_reidentified"] = admit_postgres_resource(section, lambda name: docker_inspect(name, runner))
-    try:
-        connect(**{**params, "port": section["port"] + 1, "connect_timeout": 3})
-        checks["closed_port_fails_fast"] = False
-    except psycopg.OperationalError:
-        checks["closed_port_fails_fast"] = True
+    else:
+        checks["committed_row_survives_restart"] = None
+    after = admit_postgres_resource(section, lambda name: docker_inspect(name, runner, context.timeout(60)))
+    checks["same_container_and_volume"] = (after["container_id"], after["volume"]) == (identity["container_id"], identity["volume"])
     observations["checks"] = checks
     result.observations.update(observations)
-    result.outcome = "PASS" if all(checks.values()) else "FAIL"
-    result.disposition = "concluded"
+    result.outcome, result.disposition = verdict(checks), "concluded"
     result.limitations.append("readiness only: no ledger, outbox, durability or completeness claim (M0b)")
     result.follow_up = "M0b builds the durable ledger on this driver/server pairing"
 
 
-def _source_identity() -> dict[str, Any]:
-    def git(*args: str) -> str:
-        return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout.strip()
+def source_identity(runner: Runner = run_command) -> dict[str, Any]:
+    """HEAD plus a digest of the uncommitted diff, so dirty-tree evidence is bound to its exact bytes."""
+    head = runner(["git", "rev-parse", "HEAD"], 60, None)
+    status = runner(["git", "status", "--porcelain", "--untracked-files=no"], 60, None)
+    diff = runner(["git", "diff", "HEAD", "--binary"], 120, None)
+    if head.returncode or status.returncode or diff.returncode:
+        return {"head": "UNKNOWN", "error": "git identity unavailable"}
+    return {"head": head.stdout.strip(), "dirty": bool(status.stdout.strip()),
+            "diff_sha256": hashlib.sha256(diff.stdout.encode("utf-8", "surrogateescape")).hexdigest()}
 
-    try:
-        return {"head": git("rev-parse", "HEAD"), "dirty": bool(git("status", "--porcelain"))}
-    except (OSError, subprocess.CalledProcessError) as error:
-        return {"head": "UNKNOWN", "error": type(error).__name__}
+
+def bind_source(result: ProbeResult, before: Mapping[str, Any], after: Mapping[str, Any]) -> None:
+    """The record names the source it ran on; a change during the run makes the result INCONCLUSIVE."""
+    result.source = {"before": dict(before), "after": dict(after)}
+    if before != after or before.get("head") == "UNKNOWN":
+        result.limitations.append("source identity changed or was unavailable during the run")
+        if result.outcome in {"PASS", "FAIL"}:
+            result.outcome = "INCONCLUSIVE"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -682,7 +939,9 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ConfigError) as error:
         print(f"config refused: {error}", file=sys.stderr)
         return 2
-    result, context = run_probe(args.kind, config, source=_source_identity())
+    before = source_identity()
+    result, context = run_probe(args.kind, config)
+    bind_source(result, before, source_identity())
     path = write_attempt(result, args.out, context.ram_only)
     print(f"{result.kind}: {result.outcome} ({result.disposition}) -> {path.as_posix()}")
     return 0 if result.outcome in {"PASS", "FAIL", "UNRUN", "UNAVAILABLE"} else 1

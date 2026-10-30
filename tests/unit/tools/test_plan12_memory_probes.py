@@ -13,6 +13,7 @@ import json
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 from compression import zstd
 from pathlib import Path
@@ -34,7 +35,8 @@ def _config(**overrides: Any) -> dict[str, Any]:
     data: dict[str, Any] = {
         "schema_version": 1, "run_label": "p127-test", "authorization": "unit test",
         "limits": {"timeout_seconds": 5, "max_download_bytes": 1000},
-        "allowed_hosts": ["pypi.org"],
+        "allowed_hosts": ["pypi.org", "huggingface.co"],
+        "allowed_licenses": ["MIT", "Apache-2.0"],
         "redis": {"endpoint": "redis://127.0.0.1:6390/0", "container": "p127-probe-redis", "image": "redis:8",
                   "image_id": _IMAGE, "volume": "p127-probe-redis-data"},
         "targets": {"redis": dict.fromkeys(probes.REDIS_TARGETS, 1)},
@@ -314,7 +316,7 @@ def test_a_body_past_its_deadline_is_cancelled_and_inconclusive() -> None:
             time.sleep(0.01)
 
     result = _run(body, limits={"timeout_seconds": 0.2, "max_download_bytes": 0})
-    assert result.outcome == "INCONCLUSIVE" and "stopped after cancel: True" in result.limitations[0]
+    assert result.outcome == "INCONCLUSIVE" and "stopped after cancel" in result.limitations[0]
 
 
 def test_an_exception_becomes_an_error_record() -> None:
@@ -384,7 +386,7 @@ def test_an_unresolvable_candidate_is_kept_in_a_partial_matrix() -> None:
     config = _parsed(packages={"index_url": "https://pypi.org/simple", "candidates": ["graspologic-native"]})
     result, _ = probes.run_probe("packages", config, bodies={
         "packages": lambda ctx, res: probes.run_packages(ctx, res, runner=runner)})
-    assert result.outcome == "FAIL" and result.observations["resolution"]["graspologic-native"]["resolved"] is False
+    assert result.outcome == "FAIL" and result.observations["discovery"]["graspologic-native"]["resolved"] is False
 
 
 # --- P1/P2 child helpers ---
@@ -397,7 +399,7 @@ def test_child_smoke_reports_each_distribution_without_crashing() -> None:
 
 
 def test_the_synthetic_corpus_is_deterministic() -> None:
-    assert probe_child._corpus(5) == probe_child._corpus(5) and len(set(probe_child._corpus(50))) == 50
+    assert probe_child.corpus(5) == probe_child.corpus(5) and len(set(probe_child.corpus(50))) == 50
 
 
 def test_the_cursor_is_replaced_atomically_and_holds_no_corpus_text(tmp_path: Path) -> None:
@@ -407,7 +409,7 @@ def test_the_cursor_is_replaced_atomically_and_holds_no_corpus_text(tmp_path: Pa
     probe_child._write_cursor(cursor, {**state, "next_batch": 2})
     assert json.loads(cursor.read_text(encoding="utf-8"))["next_batch"] == 2
     assert sorted(path.name for path in tmp_path.iterdir()) == ["cursor.json"]
-    assert not any(text in cursor.read_text(encoding="utf-8") for text in probe_child._corpus(5))
+    assert not any(text in cursor.read_text(encoding="utf-8") for text in probe_child.corpus(5))
 
 
 def test_main_refuses_a_bad_config_and_writes_nothing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -511,3 +513,316 @@ def test_the_live_file_carries_only_the_dedicated_marker() -> None:
     source = _LIVE.read_text(encoding="utf-8")
     for shared in ("live_redis_store", "live_redis_telemetry", "run_preflight", "OPTIMUS_REDIS_URL", "redis_support"):
         assert shared not in source
+
+
+# --- Checkpoint 1 findings (Codex round 84): each control fails on the defect it names ---
+
+def test_an_uncooperative_body_is_abandoned_and_its_late_writes_never_reach_the_record() -> None:
+    def body(ctx: probes.ProbeContext, res: probes.ProbeResult) -> None:
+        time.sleep(1.5)  # ignores the cancel signal
+        res.outcome, res.disposition = "PASS", "concluded"
+        res.observations["late"] = True
+
+    result = probes.run_probe("packages", _parsed(limits={"timeout_seconds": 0.1, "max_download_bytes": 0}),
+                              bodies={"packages": body}, grace_seconds=0.2)[0]
+    time.sleep(1.6)
+    assert result.outcome == "INCONCLUSIVE" and result.observations == {}
+    assert "did not stop" in result.limitations[0]
+
+
+def test_a_cleanup_unblocks_a_body_waiting_on_a_native_call() -> None:
+    released = threading.Event()
+
+    def body(ctx: probes.ProbeContext, res: probes.ProbeResult) -> None:
+        ctx.on_cleanup("close the blocking client", released.set)
+        released.wait(10)
+
+    result = probes.run_probe("packages", _parsed(limits={"timeout_seconds": 0.1, "max_download_bytes": 0}),
+                              bodies={"packages": body}, grace_seconds=0.2)[0]
+    assert result.outcome == "INCONCLUSIVE" and "stopped after cancel" in result.limitations[0]
+    assert [row["action"] for row in result.cleanup] == ["close the blocking client"]
+
+
+def test_a_native_timeout_never_runs_past_the_deadline() -> None:
+    context = probes.ProbeContext(config=_parsed(), deadline=time.monotonic() + 0.05)
+    assert context.timeout(600) <= 0.05
+    time.sleep(0.06)
+    with pytest.raises(TimeoutError):
+        context.timeout(600)
+
+
+@pytest.fixture
+def released_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setattr(probes, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(probes, "RELEASED_ROOT", tmp_path / "tmp")
+    (tmp_path / "tmp").mkdir()
+    return tmp_path
+
+
+def test_only_released_probe_directories_can_be_removed(released_root: Path) -> None:
+    venv = released_root / "tmp/plan12-probe-venv"
+    venv.mkdir()
+    (venv / "x").write_text("x", encoding="utf-8")
+    probes.remove_released("tmp/plan12-probe-venv")
+    assert not venv.exists()
+    (released_root / ".venv").mkdir()
+    for refused in (".", ".venv", "tmp", "tmp/other", "tmp/../.venv", "tmp/plan12-probe-venv/../../.venv", str(released_root)):
+        with pytest.raises(probes.AdmissionError):
+            probes.remove_released(refused)
+    assert (released_root / ".venv").exists()
+
+
+def test_a_link_inside_the_released_root_is_refused(released_root: Path) -> None:
+    target = released_root / "tmp/plan12-probe-real"  # inside the root, so only the alias check can refuse it
+    target.mkdir()
+    (target / "keep.txt").write_text("keep", encoding="utf-8")
+    link = released_root / "tmp/plan12-probe-link"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError:  # Windows without symlink rights: a junction is the same alias class
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    with pytest.raises(probes.AdmissionError):
+        probes.remove_released(link)
+    assert (target / "keep.txt").exists()
+
+
+_RELEASES = {
+    ("redisvl", "1.0"): {"info": {"license_expression": "MIT"}, "urls": [
+        {"filename": "redisvl-1.0-py3-none-any.whl", "digests": {"sha256": "a" * 64}, "size": 100}]},
+    ("gplthing", "2.0"): {"info": {"classifiers": ["License :: OSI Approved :: GNU General Public License v3 (GPLv3)"]},
+                          "urls": [{"filename": "gplthing-2.0-py3-none-any.whl", "digests": {"sha256": "b" * 64}, "size": 10}]},
+    ("big", "1.0"): {"info": {"license": "MIT"}, "urls": [
+        {"filename": "big-1.0-py3-none-any.whl", "digests": {"sha256": "b" * 64}, "size": 10**9}]},
+}
+
+
+def _uv(pins: dict[str, list[str]]) -> Any:
+    calls: list[list[str]] = []
+
+    def runner(argv: list[str], timeout: float, env: Any = None, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        if argv[:3] == ["uv", "pip", "compile"]:
+            wanted = [line.split("==")[0] for line in (stdin or "").split()]
+            lines = [f"{pin}==" + ("2.0" if pin == "gplthing" else "1.0") for name in wanted for pin in pins.get(name, [])]
+            if "--generate-hashes" in argv:
+                lines = [line + " \\\n    --hash=sha256:" + ("a" if line.startswith("redisvl") else "b") * 64 for line in lines]
+            return subprocess.CompletedProcess(argv, 0, "\n".join(lines) + "\n", "")
+        if argv[:2] in (["uv", "venv"], ["uv", "pip"]):
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        return subprocess.CompletedProcess(argv, 0, "no json at all", "")
+
+    runner.calls = calls  # type: ignore[attr-defined]
+    return runner
+
+
+def _packages(candidates: list[str], budget: int = 10**6) -> probes.ProbeConfig:
+    return _parsed(packages={"index_url": "https://pypi.org/simple", "candidates": candidates, "venv": "tmp/plan12-probe-venv"},
+                   limits={"timeout_seconds": 30, "max_download_bytes": budget})
+
+
+def _fetch(url: str, timeout: float) -> Any:
+    name, version = url.split("/pypi/")[1].split("/")[:2]
+    return _RELEASES[name, version]
+
+
+def test_a_candidate_with_an_unapproved_dependency_license_is_never_installed(released_root: Path) -> None:
+    runner = _uv({"redisvl": ["redisvl", "gplthing"]})
+    result, _ = probes.run_probe("packages", _packages(["redisvl"]), bodies={
+        "packages": lambda ctx, res: probes.run_packages(ctx, res, runner=runner, fetch=_fetch)})
+    assert result.outcome == "FAIL" and result.observations["discovery"]["redisvl"]["unapproved"] == ["gplthing"]
+    assert "approved licenses" in result.limitations[0]
+    assert not any("--generate-hashes" in call or call[:2] == ["uv", "venv"] for call in runner.calls)
+
+
+def test_an_artifact_set_over_the_download_budget_is_refused_before_install(released_root: Path) -> None:
+    runner = _uv({"big": ["big"]})
+    result, _ = probes.run_probe("packages", _packages(["big"], budget=1000), bodies={
+        "packages": lambda ctx, res: probes.run_packages(ctx, res, runner=runner, fetch=_fetch)})
+    assert result.outcome == "FAIL" and result.observations["admission"]["download_bytes"] == 10**9
+    assert not any(call[:2] == ["uv", "venv"] for call in runner.calls)
+
+
+def test_an_admitted_set_installs_by_bound_hash_and_a_malformed_smoke_is_inconclusive(released_root: Path) -> None:
+    runner = _uv({"redisvl": ["redisvl"]})
+    result, _ = probes.run_probe("packages", _packages(["redisvl"]), bodies={
+        "packages": lambda ctx, res: probes.run_packages(ctx, res, runner=runner, fetch=_fetch)})
+    assert result.outcome == "INCONCLUSIVE" and "MalformedEvidence" in result.limitations[0]
+    requirements = (released_root / "tmp/plan12-probe-venv-requirements.txt").read_text(encoding="utf-8")
+    assert requirements == f"redisvl==1.0 --hash=sha256:{'a' * 64}\n"
+    install = next(call for call in runner.calls if call[:3] == ["uv", "pip", "install"])
+    assert "--require-hashes" in install and "--no-deps" in install
+
+
+@pytest.mark.parametrize(
+    ("completed", "mode"),
+    [
+        (subprocess.CompletedProcess([], 1, '{"ok": true, "packages": {}}', ""), "smoke"),
+        (subprocess.CompletedProcess([], 0, '{"ok": false, "error": "ImportError"}', ""), "smoke"),
+        (subprocess.CompletedProcess([], 0, '{"ok": true}', ""), "smoke"),
+        (subprocess.CompletedProcess([], 0, '{"ok": true, "packages": {"a": {"ok": true}}}', ""), "smoke"),
+        (subprocess.CompletedProcess([], 0, '{"ok": true, "status": "complete", "dimensions": 384}', ""), "embed"),
+        (subprocess.CompletedProcess([], 0, '{"ok": true, "status": "stopped"}', ""), "embed"),
+        (subprocess.CompletedProcess([], 0, "[1, 2]", ""), "embed"),
+    ],
+)
+def test_malformed_child_results_are_rejected(completed: subprocess.CompletedProcess[str], mode: str) -> None:
+    with pytest.raises(probes.MalformedEvidence):
+        probes.child_json(completed, mode, ["a"])
+
+
+def test_a_valid_child_result_is_accepted() -> None:
+    good = subprocess.CompletedProcess([], 0, json.dumps({"ok": True, "packages": {"a": {"ok": True, "version": "1"}}}), "")
+    assert probes.child_json(good, "smoke", ["a"])["packages"]["a"]["version"] == "1"
+    complete = {"ok": True, "status": "complete", "output_sha256": "c" * 64, "dimensions": 384}
+    assert probes.child_json(subprocess.CompletedProcess([], 0, json.dumps(complete), ""), "embed")["dimensions"] == 384
+
+
+def _embedding(released_root: Path, licenses: list[str]) -> probes.ProbeConfig:
+    python = probes._venv_python(released_root / "tmp/plan12-probe-venv")
+    python.parent.mkdir(parents=True)
+    python.write_text("", encoding="utf-8")
+    return _parsed(embedding={"venv": "tmp/plan12-probe-venv", "model": "BAAI/bge-small-en-v1.5", "items": 50,
+                              "batch": 10, "max_model_bytes": 1000, "cache_dir": "tmp/plan12-probe-models",
+                              "work_dir": "tmp/plan12-probe-embedding"},
+                   allowed_licenses=licenses)
+
+
+def _model_runner(embed_output: dict[str, Any]) -> Any:
+    calls: list[str] = []
+    info = {"ok": True, "repo": "qdrant/bge", "revision": "r" * 40, "license": "mit",
+            "files": [{"name": "model.onnx", "size": 500, "sha256": "sha256:" + "d" * 64}]}
+    fetched = {"ok": True, "files": {"model.onnx": ["sha256:" + "d" * 64, "gitsha1:" + "e" * 40]}, "bytes": 500}
+
+    def runner(argv: list[str], timeout: float, env: Any = None, stdin: Any = None) -> subprocess.CompletedProcess[str]:
+        mode = argv[2]
+        calls.append(mode)
+        output = {"model-info": info, "model-fetch": fetched}.get(mode, embed_output)
+        return subprocess.CompletedProcess(argv, 0, json.dumps(output), "")
+
+    runner.calls = calls  # type: ignore[attr-defined]
+    return runner
+
+
+def test_a_model_with_an_unapproved_license_is_refused_before_download(released_root: Path) -> None:
+    runner = _model_runner({})
+    result, _ = probes.run_probe("embedding", _embedding(released_root, ["Apache-2.0"]), bodies={
+        "embedding": lambda ctx, res: probes.run_embedding(ctx, res, runner=runner)})
+    assert result.outcome == "FAIL" and result.observations["model_gate"]["license_approved"] is False
+    assert runner.calls == ["model-info"]
+
+
+def test_corpus_text_in_a_child_error_never_reaches_the_record(released_root: Path, tmp_path: Path) -> None:
+    leaked = probe_child.corpus(50)[7]
+    runner = _model_runner({"ok": False, "error": f"ValueError: bad input {leaked}"})
+    result, context = probes.run_probe("embedding", _embedding(released_root, ["MIT"]), bodies={
+        "embedding": lambda ctx, res: probes.run_embedding(ctx, res, runner=runner)})
+    assert runner.calls == ["model-info", "model-fetch", "embed"]
+    text = probes.write_attempt(result, tmp_path / "out", context.ram_only).read_text(encoding="ascii")
+    assert leaked[:40] not in text and json.loads(text)["outcome"] == "INCONCLUSIVE"
+    assert "an unprintable error" in json.loads(text)["limitations"][0]
+
+
+def test_a_body_cut_by_string_truncation_is_still_refused(tmp_path: Path) -> None:
+    body = "synthetic-body-" + "q" * 60
+    result = probes.ProbeResult(kind="embedding", run_label="r", config_sha256="c", started_utc="2026-10-31T00:00:00")
+    result.observations = {"stdout": "p" * 2030 + body}  # the 2048-character bound cuts the body in half
+    text = probes.write_attempt(result, tmp_path, {body}).read_text(encoding="ascii")
+    assert "synthetic-body-qq" not in text and json.loads(text)["outcome"] == "ERROR"
+
+
+def test_the_marker_scan_separates_present_absent_and_failed_inspection() -> None:
+    context = probes.ProbeContext(config=_parsed())
+
+    def runner_for(code: int, out: str, err: str = "") -> Any:
+        return lambda argv, timeout, env=None, stdin=None: subprocess.CompletedProcess(argv, code, out, err)
+
+    assert redis_probe.marker_state(runner_for(0, "/data/appendonly.aof\n"), context, "c", "m") == "present"
+    assert redis_probe.marker_state(runner_for(1, ""), context, "c", "m") == "absent"
+    assert redis_probe.marker_state(runner_for(1, "", "grep: /data: Permission denied"), context, "c", "m") == "error"
+    assert redis_probe.marker_state(runner_for(126, "", "OCI runtime exec failed"), context, "c", "m") == "error"
+    assert redis_probe.wait_marker(runner_for(126, ""), context, "c", "m", "absent", 0.6) == (None, True)
+
+
+def test_noeviction_refusals_are_recognised_by_the_installed_parser_type() -> None:
+    from redis._parsers.base import BaseParser
+    from redis.exceptions import ResponseError
+
+    refused = BaseParser.parse_error("OOM command not allowed when used memory > 'maxmemory'.")
+    assert redis_probe.is_oom_refusal(refused) and "OOM" not in str(refused)
+    assert not redis_probe.is_oom_refusal(ResponseError("ERR something else"))
+
+
+def test_a_failed_restart_command_never_qualifies() -> None:
+    context = probes.ProbeContext(config=_parsed())
+
+    def runner(argv: list[str], timeout: float, env: Any = None, stdin: Any = None) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 1, "", "no such container")
+
+    observations, client = redis_probe.restart_and_reconcile(
+        runner, context, _resource("redis://127.0.0.1:6390/0"), {"container_id": "c", "volume": "v"}, "old",
+        _forbidden_client, lambda conn: True, 1)
+    assert client is None and observations == {"command_succeeded": False, "usable_seconds": None}
+
+
+@pytest.mark.parametrize(
+    ("checks", "expected"),
+    [({"a": True, "b": True}, "PASS"), ({"a": True, "b": None}, "INCONCLUSIVE"), ({"a": False, "b": None}, "FAIL"),
+     ({}, "INCONCLUSIVE")],
+)
+def test_the_verdict_never_passes_an_unknown(checks: dict[str, bool | None], expected: str) -> None:
+    assert probes.verdict(checks) == expected
+
+
+def _zed(root: Path, gui: dict[str, Any], sink_text: str = "nothing") -> probes.ProbeResult:
+    root.mkdir()
+    log = root / "stub.jsonl"
+    log.write_text(json.dumps({"event": "initialize", "clientCapabilities": {"fs": {"readTextFile": False}}}) + "\n"
+                   + json.dumps({"event": "session_new"}) + "\n", encoding="utf-8")
+    sinks = root / "zed-state"
+    sinks.mkdir()
+    (sinks / "Zed.log").write_text(sink_text, encoding="utf-8")
+    (root / "gui.json").write_text(json.dumps(gui), encoding="utf-8")
+    config = _parsed(zed={"canary_seed": "seed", "stub_log": str(log), "sink_roots": [str(sinks)],
+                          "gui_observations": str(root / "gui.json")})
+
+    def runner(argv: list[str], timeout: float, env: Any = None, stdin: Any = None) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, "Zed 1.26.2 deadbeef", "")
+
+    return probes.run_probe("zed", config, bodies={"zed": lambda ctx, res: client_probe.run_zed(ctx, res, runner)})[0]
+
+
+def test_gui_claims_without_a_screenshot_hash_stay_unrun(tmp_path: Path) -> None:
+    result = _zed(tmp_path / "z", {"P5-b": {"pre_prompt_text_visible": True, "status": "PASS"},
+                                   "P5-c": {"reference_card_rendered": True, "status": "PASS"}})
+    p5 = result.observations["P5"]
+    assert p5["P5-b"]["status"] == "UNRUN" and p5["P5-c"]["reference_peer"]["status"] == "UNRUN"
+    assert p5["P5-c"]["status"] == "UNRUN" and "not established" in p5["P5-c"]["provider_calls"]
+
+
+def test_nonpersistence_needs_every_phase_and_a_complete_scan(tmp_path: Path) -> None:
+    shot = {"screenshot_sha256": "f" * 64}
+    partial = _zed(tmp_path / "partial", {"P5-d": {"phases": {"visible_history": {"canary_visible": True, **shot}}}})
+    assert partial.observations["P5"]["P5-d"]["status"] == "INCONCLUSIVE"
+    phases = {phase: {"canary_visible": phase == "visible_history", **shot}
+              for phase in ("visible_history", "close_reopen", "restart")}
+    clean = _zed(tmp_path / "clean", {"P5-b": {"pre_prompt_text_visible": False, **shot}, "P5-d": {"phases": phases}})
+    p5 = clean.observations["P5"]
+    assert p5["P5-d"]["status"] == "PASS" and p5["P5-b"]["status"] == "UNSUPPORTED"
+    assert clean.outcome == "INCONCLUSIVE" and clean.disposition == "handoff"
+    reopened = {**phases, "restart": {"canary_visible": True, **shot}}
+    assert _zed(tmp_path / "restart", {"P5-d": {"phases": reopened}}).observations["P5"]["P5-d"]["status"] == "FAIL"
+
+
+def test_source_identity_binds_head_and_diff_and_a_change_is_inconclusive() -> None:
+    outputs = {"rev-parse": "abc123\n", "status": " M tools/x.py\n", "diff": "diff --git a b\n"}
+
+    def runner(argv: list[str], timeout: float, env: Any = None, stdin: Any = None) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, outputs[argv[1]], "")
+
+    identity = probes.source_identity(runner)
+    assert identity["head"] == "abc123" and identity["dirty"] and len(identity["diff_sha256"]) == 64
+    result = probes.ProbeResult(kind="redis", run_label="r", config_sha256="c", outcome="PASS", disposition="concluded")
+    probes.bind_source(result, identity, {**identity, "diff_sha256": "0" * 64})
+    assert result.outcome == "INCONCLUSIVE" and result.source["before"] != result.source["after"]

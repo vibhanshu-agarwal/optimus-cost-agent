@@ -5145,19 +5145,19 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.plan12_memory.redis_probe:run_redis:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: AdmissionError messages name the container, the failed preflight check keys or the missing environment variable name; no endpoint credentials, payloads or values.",
-      "sanitizer": "fixed refusal text and check-key names",
-      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_a_refused_resource_never_constructs_a_client",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "tools.plan12_memory.redis_probe:run_redis:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: writes synthetic probe events, JSON projections, derived keys and one synthetic erasure marker only to the operator-released dedicated Redis, after endpoint and container admission and a read-only identity/empty-database check; the shared test Redis is refused before any client exists.",
       "sanitizer": "synthetic payloads on the admitted dedicated server only",
       "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_a_refused_resource_never_constructs_a_client",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.probes:run_packages:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the admitted requirements file under the released tmp/plan12-probe* directory: one name==version line per pin with the single bound wheel SHA-256 from PyPI metadata; no credentials or bodies.",
+      "sanitizer": "fixed requirement-line schema from validated pins and digests",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_an_admitted_set_installs_by_bound_hash_and_a_malformed_smoke_is_inconclusive",
       "evidence_tier": "unit"
     }
   ]

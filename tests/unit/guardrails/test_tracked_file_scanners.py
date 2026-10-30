@@ -145,6 +145,7 @@ ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
     "tools/plan12_memory/evaluate.py:validate_cases:glob:*.json": "Validates the one fixture directory the caller names, as it stands, so a new or edited case file is checked before it is committed; it does not recurse.",
     "tools/plan12_memory/client_probe.py:scan_sinks:rglob:*": "Scans the operator-released Zed state and log directories outside the repository for synthetic canaries; every file there is a candidate sink, tracked or not.",
     "tools/plan12_memory/probe_child.py:embed:rglob:*": "Sizes the embedding-model cache under the ignored probe directory outside source control; it reads file sizes only.",
+    "tools/plan12_memory/probe_child.py:model_fetch:rglob:*": "Digests and sizes the downloaded model snapshot under the ignored probe directory, to bind it to its published digests and budget.",
     "tools/plan12_memory/probes.py:_tree_bytes:rglob:*": "Sizes the isolated probe venv under the ignored probe directory to enforce the download limit; it reads file sizes only.",
     "tools/plan12_stage_c_schedule.py:verify_workspace:rglob:*": "Lists one generated Stage C run workspace outside the repository, to refuse any entry its fixture does not name before the first launch.",
     "tools/probe_p11_zed_session_load.py:throwaway_tree_digest:rglob:*": "Digests a newly created throwaway Zed tree.",

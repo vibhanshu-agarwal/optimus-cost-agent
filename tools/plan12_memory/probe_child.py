@@ -1,10 +1,13 @@
 """Plan 12.7 P1/P2 child: runs inside the isolated probe venv, never the project one, and imports nothing from the repository.
 
     <probe-venv-python> probe_child.py smoke <distribution>...
+    <probe-venv-python> probe_child.py model-info --model M
+    <probe-venv-python> probe_child.py model-fetch --repo R --revision SHA --cache DIR
     <probe-venv-python> probe_child.py embed --model M --cache DIR --items N --batch B --cursor FILE [--stop-after K]
 
 It prints one JSON object as its last stdout line. The synthetic corpus is generated in RAM from a
 fixed seed and is never written; the cursor holds only the next batch index and a running hash.
+Model and embedding failures export only the exception type, so no input text crosses this boundary.
 """
 
 from __future__ import annotations
@@ -138,7 +141,7 @@ def smoke(names: list[str]) -> dict:
     return {"python": sys.version.split()[0], "platform": sys.platform, "packages": rows}
 
 
-def _corpus(items: int) -> list[str]:
+def corpus(items: int) -> list[str]:
     rng = random.Random(1207)
     words = ["cache", "index", "memory", "redis", "vector", "parser", "module", "graph", "token", "budget", "session",
              "anchor", "project", "worker", "cursor", "embed", "query", "ledger", "notice", "policy"]
@@ -161,10 +164,10 @@ def embed(args: argparse.Namespace) -> dict:
     from fastembed import TextEmbedding
 
     started = time.perf_counter()
-    model = TextEmbedding(model_name=args.model, cache_dir=args.cache)
+    model = TextEmbedding(model_name=args.model, cache_dir=args.cache, local_files_only=True)
     loaded = time.perf_counter()
     catalogue = {row.get("model"): row for row in TextEmbedding.list_supported_models()}
-    texts = _corpus(args.items)
+    texts = corpus(args.items)
     cursor = Path(args.cursor)
     state = json.loads(cursor.read_text(encoding="utf-8")) if cursor.exists() else {
         "model": args.model, "items": args.items, "batch": args.batch, "next_batch": 0, "chain": hashlib.sha256().hexdigest()}
@@ -198,6 +201,54 @@ def embed(args: argparse.Namespace) -> dict:
             "model_cache_bytes": sum(f.stat().st_size for f in cache.rglob("*") if f.is_file()) if cache.exists() else 0}
 
 
+def _catalogue_entry(model: str) -> dict:
+    from fastembed import TextEmbedding
+
+    entry = next((row for row in TextEmbedding.list_supported_models() if row.get("model") == model), None)
+    if entry is None:
+        raise LookupError("model is not in the fastembed catalogue")
+    return entry
+
+
+def model_info(model: str) -> dict:
+    """Published metadata only, before any download: repo, commit, license and each file's size and digest."""
+    from huggingface_hub import HfApi
+
+    entry = _catalogue_entry(model)
+    repo = (entry.get("sources") or {}).get("hf")
+    if not repo:
+        raise LookupError("model has no Hugging Face source")
+    info = HfApi(endpoint="https://huggingface.co").model_info(repo, files_metadata=True)
+    files = [{"name": item.rfilename, "size": item.size,
+              "sha256": f"sha256:{item.lfs.sha256}" if item.lfs else f"gitsha1:{item.blob_id}" if item.blob_id else None}
+             for item in info.siblings or []]
+    card = getattr(info, "card_data", None)
+    return {"ok": True, "repo": repo, "revision": info.sha, "files": files,
+            "license": (card.get("license") if card else None) or entry.get("license"),
+            "catalogue_license": entry.get("license"), "dimensions": entry.get("dim")}
+
+
+def digests(data: bytes) -> list[str]:
+    """Both schemes Hugging Face publishes: LFS files by SHA-256, small Git files by their Git blob id."""
+    blob = hashlib.sha1(f"blob {len(data)}".encode() + bytes(1) + data).hexdigest()  # noqa: S324 - Git's blob id
+    return [f"sha256:{hashlib.sha256(data).hexdigest()}", f"gitsha1:{blob}"]
+
+
+def model_fetch(repo: str, revision: str, cache: str) -> dict:
+    """Download the repo's main ref and require it to be the gated commit; report every file's digest."""
+    from huggingface_hub import snapshot_download
+
+    snapshot = Path(snapshot_download(repo_id=repo, revision="main", cache_dir=cache))
+    if snapshot.name != revision:
+        return {"ok": False, "error": "the main ref moved after the metadata gate"}
+    files = {}
+    for path in sorted(p for p in snapshot.rglob("*") if p.is_file()):
+        name = path.relative_to(snapshot).as_posix()
+        files[name] = digests(path.read_bytes())
+    total = sum(p.stat().st_size for p in Path(cache).rglob("*") if p.is_file())
+    return {"ok": True, "snapshot": revision, "files": files, "bytes": total}
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="mode", required=True)
@@ -209,11 +260,23 @@ def main(argv: list[str]) -> int:
     embed_parser.add_argument("--items", type=int, required=True)
     embed_parser.add_argument("--batch", type=int, required=True)
     embed_parser.add_argument("--stop-after", type=int)
+    info_parser = sub.add_parser("model-info")
+    info_parser.add_argument("--model", required=True)
+    fetch_parser = sub.add_parser("model-fetch")
+    for name in ("--repo", "--revision", "--cache"):
+        fetch_parser.add_argument(name, required=True)
     args = parser.parse_args(argv)
     try:
-        output = smoke(args.names) if args.mode == "smoke" else embed(args)
-    except Exception as error:
-        output = {"ok": False, "error": f"{type(error).__name__}: {error}"[:400]}
+        if args.mode == "smoke":
+            output = smoke(args.names)
+        elif args.mode == "model-info":
+            output = model_info(args.model)
+        elif args.mode == "model-fetch":
+            output = model_fetch(args.repo, args.revision, args.cache)
+        else:
+            output = embed(args)
+    except Exception as error:  # the type only: a message could quote input text
+        output = {"ok": False, "error": type(error).__name__}
     print(json.dumps(output, ensure_ascii=True, sort_keys=True))
     return 0
 
