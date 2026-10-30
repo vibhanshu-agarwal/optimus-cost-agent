@@ -4097,8 +4097,16 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     secret_paths_committed = b"from optimus.guardrails.secret_paths import" in head_permissions
     if not secret_paths_committed:
         expected -= {secret_paths_path}
+    # Plan 12.6 adds the one includable-files policy automatic context imports (one path), keyed on HEAD's
+    # workspace context.
+    file_policy_path = "src/optimus/guardrails/file_policy.py"
+    head_workspace_context = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/agent/workspace_context.py")
+    file_policy_committed = b"from optimus.guardrails.file_policy import" in head_workspace_context
+    if not file_policy_committed:
+        expected -= {file_policy_path}
     assert (admission_path in closure) is admission_committed
     assert (secret_paths_path in closure) is secret_paths_committed
+    assert (file_policy_path in closure) is file_policy_committed
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
@@ -4125,7 +4133,7 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         2 if correction_committed else 0
     ) + tree_committed + composition_committed + stage_c_committed + (2 if ordinary_committed else 0) + runtime_tree_committed + failure_facts_committed + (
         2 if loop_committed else 0
-    ) + tree_moved + line_endings_committed + edits_committed + auto_committed + contract_committed + hybrid_committed + lifecycle_committed + admission_committed + secret_paths_committed
+    ) + tree_moved + line_endings_committed + edits_committed + auto_committed + contract_committed + hybrid_committed + lifecycle_committed + admission_committed + secret_paths_committed + file_policy_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

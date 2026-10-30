@@ -296,6 +296,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/guardrails/__init__.py",
     "src/optimus/guardrails/audit.py",
     "src/optimus/guardrails/command_safety.py",
+    "src/optimus/guardrails/file_policy.py",
     "src/optimus/guardrails/mcp_trust.py",
     "src/optimus/guardrails/network_safety.py",
     "src/optimus/guardrails/path_safety.py",

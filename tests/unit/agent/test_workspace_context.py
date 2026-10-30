@@ -737,3 +737,43 @@ def test_a_quoted_extensionless_secret_name_is_refused_with_a_visible_reason(tmp
 
     assert result.text == "" and result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
     _assert_secrets_absent(result)
+
+
+# --- Plan 12.6 Task 1: automatic context applies the shared includable-files policy ---
+
+
+def test_optimusignore_and_gitignore_keep_files_out_of_automatic_context(tmp_path):
+    _source(tmp_path, "app.py")
+    for relative in ("private/notes.md", "build/out.txt"):
+        (tmp_path / relative).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / relative).write_text(f"{SECRET_SENTINEL}\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("build/\n", encoding="utf-8")
+    (tmp_path / ".optimusignore").write_text("private/\n", encoding="utf-8")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Explain app.py")
+
+    assert SECRET_SENTINEL not in result.text and "--- app.py ---" in result.text
+    assert result.excluded_counts == {"ignored.gitignore": 1, "ignored.optimusignore": 1}
+    assert result.policy_revision.startswith("file-policy-v1:")
+
+
+def test_a_named_ignored_file_is_refused_with_the_rule_that_excluded_it(tmp_path):
+    _source(tmp_path, "app.py")
+    (tmp_path / "private").mkdir()
+    (tmp_path / "private" / "notes.md").write_text(f"{SECRET_SENTINEL}\n", encoding="utf-8")
+    (tmp_path / ".optimusignore").write_text("private/\n", encoding="utf-8")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Summarise private/notes.md")
+
+    assert result.text == "" and result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
+    assert result.blocking_message == "Workspace reference 'private/notes.md' cannot be read safely: excluded by .optimusignore."
+
+
+def test_a_named_secret_file_reports_why_it_is_refused(tmp_path):
+    _secret_workspace(tmp_path)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Fix app.py using config/.env.local")
+
+    assert result.blocking_message == (
+        "Workspace reference 'config/.env.local' cannot be read safely: a secret or credential file."
+    )

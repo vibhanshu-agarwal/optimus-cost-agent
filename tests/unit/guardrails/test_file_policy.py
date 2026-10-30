@@ -1,0 +1,213 @@
+"""Plan 12.6 Task 1: the one includable-files policy. Real files in temporary workspaces, a real Git for the ignore
+semantics comparison, and the real reader; denied content must never be opened."""
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from optimus.guardrails import file_policy
+from optimus.guardrails.file_policy import FilePolicy, FilePurpose
+
+SENTINEL = "DUMMY_PROOF_TOKEN=not-a-real-secret-0000"  # pragma: allowlist secret - a fake sentinel
+WINDOWS = sys.platform == "win32"
+AUTO = FilePurpose.AUTOMATIC
+
+
+def _write(root: Path, relative: str, text: str = "ordinary\n") -> Path:
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _reasons(policy: FilePolicy) -> dict[str, str]:
+    return {decision.relative_path: decision.reason for decision in policy.walk(purpose=AUTO)}
+
+
+@pytest.mark.parametrize(
+    ("relative", "reason"),
+    [
+        (".env", "deny.secret"),
+        ("config/.env.local", "deny.secret"),
+        (".ENV.Production", "deny.secret"),
+        ("certs/server.pem", "deny.secret"),
+        (".optimus/debug-acp.ndjson", "deny.runtime_tree"),
+        ("node_modules/pkg/index.js", "deny.skipped_dir"),
+        ("src/app.py", "allowed"),
+    ],
+)
+def test_security_denials_and_an_ordinary_control(tmp_path, relative, reason):
+    _write(tmp_path, relative, SENTINEL)
+
+    decision = FilePolicy(tmp_path).decide(relative, purpose=AUTO)
+
+    assert decision.reason == reason and decision.allowed is (reason == "allowed")
+    assert SENTINEL not in repr(decision), "a decision never carries file content"
+
+
+def test_an_ignore_file_can_never_negate_a_denial(tmp_path):
+    for relative in (".env", "config/.env.local", ".optimus/trace.ndjson", "src/app.py"):
+        _write(tmp_path, relative, SENTINEL)
+    _write(tmp_path, ".gitignore", "!.env\n!.optimus/\n")
+    _write(tmp_path, ".optimusignore", "!.env*\n!config/.env.local\n!**/.optimus/**\n")
+
+    reasons = _reasons(FilePolicy(tmp_path))
+
+    assert reasons[".env"] == reasons["config/.env.local"] == "deny.secret"
+    assert reasons[".optimus/trace.ndjson"] == "deny.runtime_tree"
+    assert reasons["src/app.py"] == "allowed"
+
+
+def test_gitignore_and_optimusignore_rules_with_negation_and_nesting(tmp_path):
+    for relative in ("a.log", "keep.log", "sub/b.log", "build/out.txt", "build/keep.txt", "private/notes.md",
+                     "docs/guide.md", "docs/keep.md", "src/app.py"):
+        _write(tmp_path, relative)
+    _write(tmp_path, ".gitignore", "*.log\n!keep.log\nbuild/\n!build/keep.txt\n")
+    _write(tmp_path, "sub/.gitignore", "!*.log\n")
+    _write(tmp_path, ".optimusignore", "private/\ndocs/*.md\n!docs/keep.md\n")
+
+    reasons = _reasons(FilePolicy(tmp_path))
+
+    assert reasons["a.log"] == "ignored.gitignore"
+    assert reasons["keep.log"] == "allowed", "a later negation re-includes"
+    assert reasons["sub/b.log"] == "allowed", "a deeper ignore file overrides a shallower one"
+    assert reasons["build/out.txt"] == reasons["build/keep.txt"] == "ignored.gitignore", "no re-include under an excluded folder"
+    assert reasons["private/notes.md"] == reasons["docs/guide.md"] == "ignored.optimusignore"
+    assert reasons["docs/keep.md"] == reasons["src/app.py"] == reasons[".gitignore"] == "allowed"
+
+
+def test_optimusignore_is_read_after_gitignore_so_it_can_re_include(tmp_path):
+    _write(tmp_path, "generated/api.md")
+    _write(tmp_path, ".gitignore", "generated/*\n")
+    _write(tmp_path, ".optimusignore", "!generated/api.md\n")
+
+    assert FilePolicy(tmp_path).decide("generated/api.md", purpose=AUTO).allowed
+
+
+@pytest.mark.skipif(not WINDOWS, reason="NTFS compares names case-insensitively, as Git's core.ignorecase there")
+def test_ignore_patterns_follow_the_platform_case_rule(tmp_path):
+    _write(tmp_path, "Private/Notes.md")
+    _write(tmp_path, ".optimusignore", "private/\n")
+
+    assert FilePolicy(tmp_path).decide("Private/Notes.md", purpose=AUTO).reason == "ignored.optimusignore"
+
+
+def test_empty_binary_and_oversized_files(tmp_path):
+    _write(tmp_path, "empty.txt", "")
+    (tmp_path / "image.bin").write_bytes(b"\x89PNG\x00\x01")
+    (tmp_path / "latin1.txt").write_bytes("caf\xe9".encode("latin-1"))
+    _write(tmp_path, "big.txt", "x" * 200)
+    policy = FilePolicy(tmp_path, max_index_file_bytes=100)
+
+    assert policy.decide("empty.txt", purpose=AUTO).reason == "excluded.empty"
+    assert policy.decide("image.bin", purpose=AUTO).reason == "excluded.binary"
+    assert policy.decide("latin1.txt", purpose=AUTO).reason == "excluded.binary"
+    assert policy.decide("big.txt", purpose=FilePurpose.INDEX).reason == "excluded.too_large"
+    assert policy.decide("big.txt", purpose=AUTO).allowed, "the indexing limit is not the automatic-context budget"
+    assert file_policy.DEFAULT_MAX_INDEX_FILE_BYTES == 1024 * 1024
+
+
+def test_denied_and_ignored_content_is_never_opened(tmp_path, monkeypatch):
+    for relative in (".env", "secrets/db.txt", ".optimus/trace.ndjson", "private/notes.md", "src/app.py"):
+        _write(tmp_path, relative, SENTINEL)
+    _write(tmp_path, ".optimusignore", "private/\n")
+    opened: list[Path] = []
+    original = Path.read_bytes
+
+    def recording(self: Path) -> bytes:
+        opened.append(self)
+        return original(self)
+
+    monkeypatch.setattr(Path, "read_bytes", recording)
+    reasons = _reasons(FilePolicy(tmp_path))
+
+    assert reasons["src/app.py"] == "allowed"
+    assert {path.relative_to(tmp_path).as_posix() for path in opened} == {"src/app.py", ".optimusignore"}
+
+
+def test_policy_revision_binds_the_ignore_files_that_judged_a_decision(tmp_path):
+    _write(tmp_path, "docs/a.md")
+    _write(tmp_path, "src/app.py")
+    _write(tmp_path, "docs/.optimusignore", "draft.md\n")
+    before = FilePolicy(tmp_path)
+    docs, src = before.decide("docs/a.md", purpose=AUTO), before.decide("src/app.py", purpose=AUTO)
+    _write(tmp_path, "docs/.optimusignore", "draft.md\nold.md\n")
+    after = FilePolicy(tmp_path).decide("docs/a.md", purpose=AUTO)
+
+    assert docs.policy_revision.startswith(file_policy.POLICY_VERSION + ":")
+    assert docs.policy_revision != src.policy_revision, "only docs/a.md is judged by docs/.optimusignore"
+    assert after.policy_revision != docs.policy_revision
+
+
+def test_read_rechecks_the_target_identity_after_reading(tmp_path, monkeypatch):
+    _write(tmp_path, "src/app.py")
+    _write(tmp_path, "src/other.py")
+    policy = FilePolicy(tmp_path)
+    original = file_policy.resolve_target
+    calls = {"count": 0}
+
+    def swapped(path: Path) -> Path | None:
+        calls["count"] += 1
+        return original(path) if calls["count"] == 1 else original(tmp_path / "src" / "other.py")
+
+    monkeypatch.setattr(file_policy, "resolve_target", swapped)
+    decision, data = policy.read("src/app.py", purpose=AUTO)
+
+    assert data is None and decision.reason == "deny.identity_changed"
+
+
+@pytest.mark.skipif(not WINDOWS, reason="NTFS directory junctions are a Windows mechanism")
+def test_junction_aliases_to_secret_or_outside_targets_are_denied(tmp_path):
+    import _winapi  # CreateJunction needs no privilege, unlike a symlink
+
+    root, outside = tmp_path / "ws", tmp_path / "outside"
+    _write(root, "secrets/db.txt", SENTINEL)
+    _write(root, "src/app.py")
+    _write(outside, "shared.txt")
+    links = {root / "notes": root / "secrets", root / "shared": outside, root / "src-alias": root / "src"}
+    for link, target in links.items():
+        _winapi.CreateJunction(str(target), str(link))
+    try:
+        reasons = _reasons(FilePolicy(root))
+    finally:
+        for link in links:
+            os.rmdir(link)  # remove the junction itself, never through it
+
+    assert reasons["notes/db.txt"] == "deny.secret"
+    assert reasons["shared/shared.txt"] == "deny.outside_workspace"
+    assert reasons["src-alias/app.py"] == "allowed"
+
+
+def test_invalid_paths_are_denied_without_touching_the_filesystem(tmp_path):
+    policy = FilePolicy(tmp_path)
+
+    for relative in ("", "/etc/passwd", "../escape.txt", "C:/Windows/win.ini", "a/../../b.txt"):
+        assert policy.path_denial(relative) == "deny.invalid_path"
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="needs a real Git to compare ignore semantics")
+def test_gitignore_semantics_match_native_git(tmp_path):
+    files = (
+        "a.log", "keep.log", "sub/b.log", "sub/deep/c.log", "build/out.txt", "build/keep.txt", "src/app.py",
+        "src/gen/x.py", "docs/a.md", "docs/sub/b.md", "notes/todo.txt", "root.tmp", "nested/root.tmp", "data/raw.csv",
+    )
+    for relative in files:
+        _write(tmp_path, relative)
+    _write(tmp_path, ".gitignore", "*.log\n!keep.log\nbuild/\n!build/keep.txt\n/root.tmp\nsrc/**/gen/\ndocs/*.md\ndata/\n")
+    _write(tmp_path, "sub/.gitignore", "!*.log\ndeep/\n")
+    _write(tmp_path, "notes/.gitignore", "*\n!.gitignore\n")
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    listed = subprocess.run(
+        ["git", "-C", str(tmp_path), "ls-files", "--others", "--ignored", "--exclude-standard"],
+        check=True, capture_output=True, text=True,
+    ).stdout.split()
+
+    decided = {path for path, reason in _reasons(FilePolicy(tmp_path)).items() if reason == "ignored.gitignore"}
+
+    assert decided == set(listed)
+    assert {"a.log", "build/keep.txt", "root.tmp", "src/gen/x.py", "docs/a.md", "notes/todo.txt"} <= decided
+    assert not {"keep.log", "sub/b.log", "nested/root.tmp", "docs/sub/b.md"} & decided
