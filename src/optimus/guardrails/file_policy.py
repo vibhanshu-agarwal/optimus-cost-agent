@@ -47,6 +47,7 @@ REASON_TEXT = {
     "deny.unresolvable": "its target cannot be resolved",
     "deny.outside_workspace": "its target is outside the workspace",
     "deny.identity_changed": "it changed while being read",
+    "deny.unverifiable": "the system cannot confirm which file was opened",
     "deny.ignore_unavailable": "an ignore file that applies to it cannot be evaluated",
     "ignored.gitignore": "excluded by .gitignore",
     "ignored.optimusignore": "excluded by .optimusignore",
@@ -270,17 +271,18 @@ def _read_validated(path: Path, target: Path, limit: int | None) -> tuple[str, b
     """Read ``target`` only once the opened handle is proven to be the validated file: the operating system's real
     path of the handle must be the validated target (so a folder swapped after validation is caught before any byte
     is read) and its file identity must equal the one stat'd. After the read, the alias must still resolve there and
-    the file be unchanged. ``limit``: the size cap, if any.
-
-    shortcut: where the OS cannot report a handle's path (a filesystem without final-path support, a BSD), only the
-    file-identity checks apply; extend _handle_path when such a platform matters."""
+    the file be unchanged. ``limit``: the size cap, if any. Where the OS cannot report the handle's path (a filesystem
+    without final-path support, a platform _handle_path does not cover), nothing is read: identity checks alone cannot
+    rule out a swapped folder."""
     try:
         before = os.stat(target)
         if limit is not None and before.st_size > limit:
             return "excluded.too_large", None
         with open(target, "rb") as handle:
             real = _handle_path(handle.fileno())
-            if real is not None and os.path.normcase(real) != os.path.normcase(target):
+            if real is None:
+                return "deny.unverifiable", None
+            if os.path.normcase(real) != os.path.normcase(target):
                 return "deny.identity_changed", None  # a folder on the way was swapped: nothing is read
             opened = os.fstat(handle.fileno())
             if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):

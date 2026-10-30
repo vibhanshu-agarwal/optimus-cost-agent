@@ -400,7 +400,14 @@ def test_the_read_observer_sees_an_ordinary_read(tmp_path, monkeypatch):
     assert decision.allowed and data is not None and [path.name for path in reads] == ["a.md"]
 
 
-def test_a_folder_swapped_after_validation_is_caught_before_any_byte_is_read(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    ("handle_path_available", "reason"), [(True, "deny.identity_changed"), (False, "deny.unverifiable")]
+)
+def test_a_folder_swapped_after_validation_is_caught_before_any_byte_is_read(
+    tmp_path, monkeypatch, handle_path_available, reason
+):
+    if not handle_path_available:  # e.g. a filesystem without final-path support: never the weaker read
+        monkeypatch.setattr(file_policy, "_handle_path", lambda fd: None)
     _write(tmp_path, "docs/a.md")
     _write(tmp_path, "secrets/a.md", SENTINEL)
     docs, parked, secrets = tmp_path / "docs", tmp_path / "docs-parked", tmp_path / "secrets"
@@ -420,8 +427,18 @@ def test_a_folder_swapped_after_validation_is_caught_before_any_byte_is_read(tmp
 
     decision, data = FilePolicy(tmp_path).read("docs/a.md", purpose=AUTO)
 
-    assert data is None and decision.reason == "deny.identity_changed"
+    assert data is None and decision.reason == reason
     assert reads == [], "no byte of the swapped-in secret file is consumed"
+
+
+def test_an_unverifiable_handle_is_never_read_even_for_an_ordinary_file(tmp_path, monkeypatch):
+    _write(tmp_path, "docs/a.md")
+    reads = _recording_reads(monkeypatch)
+    monkeypatch.setattr(file_policy, "_handle_path", lambda fd: None)
+
+    decision, data = FilePolicy(tmp_path).read("docs/a.md", purpose=AUTO)
+
+    assert data is None and decision.reason == "deny.unverifiable" and reads == []
 
 
 def test_a_file_replaced_after_validation_is_never_consumed(tmp_path, monkeypatch):
