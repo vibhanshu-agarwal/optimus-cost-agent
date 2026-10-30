@@ -702,3 +702,23 @@ def test_a_junction_into_a_secret_directory_is_never_packed(tmp_path):
         assert SOURCE_SENTINEL in result.text
     finally:
         os.rmdir(alias)  # remove the junction itself, never through it
+
+
+@pytest.mark.parametrize("reference", [".env", "config/.env", ".pypirc", "id_rsa", "deploy/id_rsa"])
+def test_a_secret_named_without_an_extension_is_refused_with_a_visible_reason(tmp_path, reference):
+    _secret_workspace(tmp_path)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Fix app.py using {reference}.")
+
+    assert result.text == "" and result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
+    assert f"'{reference}'" in (result.blocking_message or "")
+    _assert_secrets_absent(result)
+
+
+def test_secret_words_in_prose_are_not_references(tmp_path):
+    _secret_workspace(tmp_path)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Refresh the token, rotate secrets and fix app.py")
+
+    assert result.blocking_stop_reason is None and result.prioritized_paths == ("app.py",)
+    _assert_secrets_absent(result)

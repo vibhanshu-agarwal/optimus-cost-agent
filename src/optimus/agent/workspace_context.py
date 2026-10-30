@@ -21,6 +21,10 @@ _TRUNCATION_PREFIX = "--- omitted (size cap): "
 _FILE_REFERENCE_RE = re.compile(
     r"(?<![\w./\\-])(?:[A-Za-z0-9_.-]+[\\/])*[A-Za-z0-9_.-]+\.[A-Za-z0-9]+(?![\w/\\-])"
 )
+# Dotfiles, folder paths and key files the reference pattern misses (.env, config/.env, .pypirc, id_rsa): only secret
+# ones become references, so naming one is refused visibly (#385). A bare prose word such as "token" never is.
+_PATH_TOKEN_RE = re.compile(r"(?<![\w./\\-])[A-Za-z0-9_.\\/-]+(?![\w/\\-])")
+_KEY_FILE_NAMES = frozenset({"id_rsa", "id_ed25519"})
 
 
 class WorkspaceReferenceStatus(StrEnum):
@@ -211,6 +215,11 @@ def _extract_file_references(task: str) -> tuple[str, ...]:
         reference = match.group(0).replace("\\", "/")
         if reference not in references:
             references.append(reference)
+    for match in _PATH_TOKEN_RE.finditer(task):
+        token = match.group(0).replace("\\", "/").rstrip(".")
+        names_a_file = token.startswith(".") or "/" in token or token.lower() in _KEY_FILE_NAMES
+        if names_a_file and is_secret_path(token) and token not in references:
+            references.append(token)
     return tuple(references)
 
 

@@ -1,13 +1,18 @@
 """#385: one secret-path rule, shared by model-issued file access (the permission guard) and automatic workspace
 context. Model reads run through the real toolbox and guard here; the packing controls are in test_workspace_context."""
 
+import os
+import sys
 from pathlib import Path
 
 import pytest
 
+from optimus.agent.planning_loop import PlanningReadRequest
 from optimus.agent.tools import AgentToolbox
 from optimus.guardrails import path_safety, permissions, secret_paths
 from optimus.guardrails.path_safety import PathSafetyValidator
+from optimus.guardrails.pre_tool import PreToolGuard
+from optimus.loops.tools import GuardedLoopToolExecutor, LoopToolBlocked
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import AgentState, RuntimeContext
 
@@ -74,3 +79,45 @@ def test_a_model_read_of_an_env_variant_is_denied(tmp_path, relative):
     with pytest.raises(PermissionError, match="secret"):
         toolbox.read_file(target, requested=relative)
     assert toolbox.read_file(tmp_path / "app.py", requested="app.py")[0] == "print('ok')\n"
+
+
+def test_a_secret_requested_name_is_denied_even_when_its_target_is_ordinary(tmp_path):
+    validator = PathSafetyValidator(workspace_root=tmp_path)
+    ordinary = tmp_path / "config" / "db.txt"
+
+    assert validator.validate_read(ordinary, requested_relative_path=".env.local/db.txt").rule_id == "path.secret.read"
+    assert validator.validate_write(ordinary, requested_relative_path=".env.local/db.txt").rule_id == "path.secret.write"
+    assert validator.validate_read(ordinary, requested_relative_path="config/db.txt").rule_id == "path.read.allowed"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="NTFS directory junctions are a Windows mechanism")
+def test_a_secret_named_junction_is_denied_for_toolbox_and_ranged_reads(tmp_path):
+    import _winapi  # CreateJunction needs no privilege, unlike a symlink
+
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "db.txt").write_text("ordinary\n", encoding="utf-8")
+    alias = tmp_path / ".env.local"
+    _winapi.CreateJunction(str(config), str(alias))
+    try:
+        toolbox = _toolbox(tmp_path)
+        with pytest.raises(PermissionError, match="secret"):
+            toolbox.read_file(alias / "db.txt", requested=".env.local/db.txt")
+        assert toolbox.read_file(config / "db.txt", requested="config/db.txt")[0] == "ordinary\n"
+
+        tools = GuardedLoopToolExecutor(guard=PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=()))
+
+        def read(path: str):
+            return tools.read_file_range(
+                workspace_root=tmp_path,
+                run_id="run-1",
+                session_id=None,
+                execution_mode=ExecutionMode.AGENT,
+                request=PlanningReadRequest(path=path, start_byte=0, end_byte=8),
+            )
+
+        with pytest.raises(LoopToolBlocked):
+            read(".env.local/db.txt")
+        assert read("config/db.txt") is not None
+    finally:
+        os.rmdir(alias)  # remove the junction itself, never through it
