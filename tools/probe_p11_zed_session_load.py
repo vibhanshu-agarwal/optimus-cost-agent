@@ -303,6 +303,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/guardrails/pre_tool.py",
     "src/optimus/guardrails/prompt_injection.py",
     "src/optimus/guardrails/runtime_tree.py",
+    "src/optimus/guardrails/secret_paths.py",
     "src/optimus/guardrails/unicode_confusables.py",
     "src/optimus/guardrails/validation.py",
     "src/optimus/loops/__init__.py",

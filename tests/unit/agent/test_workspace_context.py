@@ -610,3 +610,95 @@ def test_the_reserved_name_matches_every_runtime_writer(tmp_path):
     assert reserved == paths.runtime_root.name == DEFAULT_TELEMETRY_DIRNAME == DEFAULT_DEBUG_LOG_RELATIVE_PATH.parts[0]
     assert paths.debug_log_path.parent == paths.gateway_log_path.parent == paths.runtime_root
     assert launch_audit._audit_path(paths.runtime_root).parent == paths.runtime_root
+
+
+# --- #385: secret files are never workspace context, as filler or when the task names them ---
+
+SECRET_SENTINEL = "DUMMY_PROOF_TOKEN=not-a-real-secret-0000"  # pragma: allowlist secret - a fake sentinel
+SECRET_FILES = (".env", ".env.production", "config/.env.local", "deploy/id_rsa", "certs/server.pem")
+
+
+def _secret_workspace(root: Path) -> None:
+    for relative in SECRET_FILES:
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{SECRET_SENTINEL}\n", encoding="utf-8")
+    (root / "README.md").write_text("# demo\n", encoding="utf-8")
+    _source(root, "app.py")
+
+
+def _assert_secrets_absent(result) -> None:
+    assert SECRET_SENTINEL not in result.text
+    listed = (*result.prioritized_paths, *result.omitted_paths)
+    assert not any(name in path for path in listed for name in (".env", "id_rsa", ".pem"))
+
+
+@pytest.mark.parametrize("task", ["", "Explain what this project does", "Fix the bug in app.py"])
+def test_secret_files_at_the_root_and_nested_are_never_packed(tmp_path, task):
+    _secret_workspace(tmp_path)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=task)
+
+    _assert_secrets_absent(result)
+    assert "--- app.py ---" in result.text and "--- README.md ---" in result.text
+    assert result.blocking_stop_reason is None
+
+
+def test_secret_files_never_appear_in_the_omitted_files_marker(tmp_path):
+    _secret_workspace(tmp_path)
+    for index in range(6):
+        _source(tmp_path, f"src/module_{index}.py")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="", max_total_bytes=200)
+
+    assert result.omitted_paths
+    _assert_secrets_absent(result)
+
+
+@pytest.mark.parametrize("reference", [".env.production", "config/.env.local", "certs/server.pem"])
+def test_a_secret_file_named_in_the_task_is_refused_with_a_visible_reason(tmp_path, reference):
+    _secret_workspace(tmp_path)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Fix app.py using {reference}")
+
+    assert result.text == "" and result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
+    assert reference in (result.blocking_message or "")
+    _assert_secrets_absent(result)
+
+
+def test_a_workspace_under_an_ancestor_named_like_a_secret_keeps_its_files(tmp_path):
+    root = tmp_path / "secrets" / "project"
+    _source(root)
+
+    result = assemble_workspace_context_for_prompt(root, task="Explain src/app.py")
+
+    assert SOURCE_SENTINEL in result.text and result.prioritized_paths == ("src/app.py",)
+
+
+def test_a_file_symlink_to_a_secret_file_is_never_packed(tmp_path):
+    _secret_workspace(tmp_path)
+    _symlink_or_skip(tmp_path / "notes.txt", tmp_path / ".env")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="")
+
+    _assert_secrets_absent(result)
+    assert "notes.txt" not in result.text and "--- app.py ---" in result.text
+
+
+@pytest.mark.skipif(not WINDOWS, reason="NTFS directory junctions are a Windows mechanism")
+def test_a_junction_into_a_secret_directory_is_never_packed(tmp_path):
+    import _winapi  # CreateJunction needs no privilege, unlike a symlink
+
+    secrets = tmp_path / "secrets"
+    secrets.mkdir()
+    (secrets / "db.txt").write_text(f"{SECRET_SENTINEL}\n", encoding="utf-8")
+    _source(tmp_path)
+    alias = tmp_path / "notes"
+    _winapi.CreateJunction(str(secrets), str(alias))
+    try:
+        result = assemble_workspace_context_for_prompt(tmp_path, task="")
+
+        assert SECRET_SENTINEL not in result.text and "notes/" not in result.text
+        assert SOURCE_SENTINEL in result.text
+    finally:
+        os.rmdir(alias)  # remove the junction itself, never through it

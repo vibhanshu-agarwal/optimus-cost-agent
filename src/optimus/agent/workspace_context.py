@@ -12,6 +12,7 @@ from pathlib import Path
 # shared with the guard on model-issued file access (Plan 12.2 READ + W); RUNTIME_DIR_NAME stays importable here.
 from optimus.guardrails.runtime_tree import RUNTIME_DIR_NAME as RUNTIME_DIR_NAME
 from optimus.guardrails.runtime_tree import has_runtime_component, resolve_target, target_reserved
+from optimus.guardrails.secret_paths import is_secret_path, target_secret
 
 DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES = 16 * 1024
 _SKIP_DIR_NAMES = frozenset({".git", "__pycache__", ".venv", "node_modules", ".idea"})
@@ -552,12 +553,18 @@ def _truncate_utf8(data: bytes, max_bytes: int) -> str:
 
 
 def _should_skip_relative_path(relative: Path) -> bool:
-    return any(part in _SKIP_DIR_NAMES for part in relative.parts) or has_runtime_component(relative.parts)
+    """Skipped folders, the runtime tree and secret files (#385, the rule model-issued reads use) are never packed;
+    a task reference to one is refused as not readable."""
+    return (
+        any(part in _SKIP_DIR_NAMES for part in relative.parts)
+        or has_runtime_component(relative.parts)
+        or is_secret_path(relative.as_posix())
+    )
 
 
 def _target_excluded(path: Path, root: Path) -> bool:
-    """Whether a candidate's real target lies in a runtime tree (`runtime_tree.target_reserved`), judged from path
-    metadata alone. A resolution error excludes the candidate, so it is never read; it has already passed
-    ``is_file()``, and resolution stays non-strict (`runtime_tree.resolve_target`)."""
+    """Whether a candidate's real target lies in a runtime tree (`runtime_tree.target_reserved`) or is a secret file
+    (`secret_paths.target_secret`), judged from path metadata alone. A resolution error excludes the candidate, so it
+    is never read; it has already passed ``is_file()``, and resolution stays non-strict (`runtime_tree.resolve_target`)."""
     target = resolve_target(path)
-    return target is None or target_reserved(target, root)
+    return target is None or target_reserved(target, root) or target_secret(target, root)

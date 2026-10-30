@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import PurePosixPath
 
+from optimus.guardrails.secret_paths import is_secret_path
 from optimus.runtime.modes import ExecutionMode, GenerationScope
 
 
@@ -152,7 +152,7 @@ def _user_deny_decision(request: PermissionRequest) -> PermissionDecision | None
     text = " ".join((*request.command, request.action)).lower()
     if _is_force_push_to_protected_branch(request.command, text):
         return _deny("deny.git.force_push_main", "force-push to main is denied", PermissionLayer.USER_DENY)
-    if request.target_path and _looks_like_secret_path(request.target_path):
+    if request.target_path and is_secret_path(request.target_path):
         return _deny("deny.path.secret", "secret or credential path access is denied", PermissionLayer.USER_DENY)
     if any(token in text for token in ("chmod 777", "icacls everyone:f", "set-acl")):
         return _deny("deny.permissions.world_writable", "broad permission changes are denied", PermissionLayer.USER_DENY)
@@ -233,12 +233,6 @@ def _project_allow_decision(request: PermissionRequest, impact: ImpactClass) -> 
 
 def _requires_human_hold(request: PermissionRequest, impact: ImpactClass) -> bool:
     return impact is ImpactClass.HIGH and not request.approval_granted
-
-
-def _looks_like_secret_path(path: str) -> bool:
-    normalized = PurePosixPath(path.replace("\\", "/")).as_posix().lower()
-    secret_names = (".env", ".pypirc", ".netrc", "id_rsa", "id_ed25519", "credentials", "token", "secrets")
-    return any(part in secret_names or part.endswith(".pem") or part.endswith(".key") for part in normalized.split("/"))
 
 
 def _deny(rule_id: str, reason: str, layer: PermissionLayer) -> PermissionDecision:

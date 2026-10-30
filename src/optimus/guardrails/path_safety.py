@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from optimus.guardrails.runtime_tree import has_runtime_component, resolve_target, target_reserved
+from optimus.guardrails.secret_paths import is_secret_path
 from optimus.guardrails.validation import ValidationResult, ValidationVerdict
 
 
@@ -16,7 +17,7 @@ class PathSafetyValidator:
         """The secret rule comes first, unchanged; then an unresolvable target and the reserved runtime tree are hard
         denials (Plan 12.2 READ), inside or outside the workspace; then the unchanged outside-workspace HOLD."""
         candidate = Path(path)
-        if _is_secret_path(candidate):
+        if is_secret_path(str(candidate)):
             return ValidationResult(ValidationVerdict.BLOCK, "path.secret.read", "secret path reads are denied")
         if target_unresolved:
             return ValidationResult(ValidationVerdict.BLOCK, "path.unresolved.read", "an unresolvable read target is denied")
@@ -31,7 +32,7 @@ class PathSafetyValidator:
     ) -> ValidationResult:
         """In the same order as a read (Plan 12.2 W), ahead of the unchanged workspace-escape denial."""
         candidate = Path(path)
-        if _is_secret_path(candidate):
+        if is_secret_path(str(candidate)):
             return ValidationResult(ValidationVerdict.BLOCK, "path.secret.write", "secret path writes are denied")
         if target_unresolved:
             return ValidationResult(ValidationVerdict.BLOCK, "path.unresolved.write", "an unresolvable write target is denied")
@@ -81,10 +82,3 @@ def _relative_parts(path: Path, root: Path) -> tuple[str, ...]:
     except ValueError:
         return ()
 
-
-def _is_secret_path(path: Path) -> bool:
-    parts = {part.lower() for part in path.parts}
-    secret_names = {".env", ".pypirc", ".netrc", "id_rsa", "id_ed25519", "credentials", "token", "secrets"}
-    if parts & secret_names:
-        return True
-    return any(part.endswith(".pem") or part.endswith(".key") for part in parts)
