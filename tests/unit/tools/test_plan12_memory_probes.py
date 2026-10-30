@@ -1065,6 +1065,29 @@ def test_a_qualified_pin_resolved_to_another_wheel_is_refused_before_install(rel
     assert result.outcome == "FAIL" and result.observations["admission"]["unapproved"] == ["stem==1.0"]
 
 
+def test_a_qualified_pin_whose_selected_wheel_is_another_one_is_refused(released_root: Path) -> None:
+    # The joint output lists both wheels; the platform-preferred unqualified one would be installed.
+    release = {"info": {"license": ""}, "urls": [
+        {"filename": "stem-1.0-py3-none-any.whl", "digests": {"sha256": "a" * 64}, "size": 10},
+        {"filename": "stem-1.0-cp314-cp314-win_amd64.whl", "digests": {"sha256": "c" * 64}, "size": 10},
+        {"filename": "stem-1.0-cp314-cp314-manylinux_2_17_x86_64.whl", "digests": {"sha256": "d" * 64}, "size": 10},
+        {"filename": "stem-1.0-cp314-cp314-macosx_11_0_arm64.whl", "digests": {"sha256": "e" * 64}, "size": 10}]}
+
+    def runner(argv: list[str], timeout: float, env: Any = None, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+        if "--generate-hashes" in argv:
+            hashes = "".join(f" \\\n    --hash=sha256:{c * 64}" for c in "acde")
+            return subprocess.CompletedProcess(argv, 0, f"stem==1.0{hashes}\n", "")
+        if argv[:3] == ["uv", "pip", "compile"]:
+            return subprocess.CompletedProcess(argv, 0, "stem==1.0\n", "")
+        raise AssertionError(f"nothing may be installed: {argv}")
+
+    result, _ = probes.run_probe("packages", _qualified("a" * 64), bodies={"packages": lambda ctx, res: probes.run_packages(
+        ctx, res, runner=runner, fetch=lambda url, timeout: release)})
+    selected = result.observations["admission"]["artifacts"]["stem"]["sha256"]
+    assert selected != "a" * 64, "the control needs an unqualified wheel to be the selected one"
+    assert result.outcome == "FAIL" and result.observations["admission"]["unapproved"] == ["stem==1.0"]
+
+
 def test_client_versions_resolve_programs_through_path_lookup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[str] = []
     monkeypatch.setattr(client_probe.shutil, "which", lambda program: f"C:/shims/{program}.cmd")

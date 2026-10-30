@@ -736,9 +736,11 @@ def run_packages(context: ProbeContext, result: ProbeResult, runner: Runner = ru
     for pin, data in _compiled_pins(joint.stdout).items():
         ids, source = licenses_of(pin, data["version"])
         bound = (qualifications.get(f"{pin}=={data['version']}") or {}).get("wheel_sha256", "").removeprefix("sha256:")
-        if not ids or not set(ids) <= approved or (source != "metadata" and bound not in data["hashes"]):
-            unapproved.append(f"{pin}=={data['version']}")
         wheel = _compatible_wheel(release(pin, data["version"]).get("urls") or [], data["hashes"])
+        # A qualification covers only its own wheel: the one selected for install must be exactly that one.
+        selected = (wheel or {}).get("digests", {}).get("sha256")
+        if not ids or not set(ids) <= approved or (source != "metadata" and selected != bound):
+            unapproved.append(f"{pin}=={data['version']}")
         if wheel is None:
             unbound.append(pin)
             continue
