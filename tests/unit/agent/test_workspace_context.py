@@ -524,9 +524,11 @@ def test_a_candidate_whose_target_cannot_be_resolved_is_not_read(tmp_path, monke
 
 
 @pytest.mark.skipif(not WINDOWS, reason="final-path resolution (GetFinalPathNameByHandle) is the Windows mechanism")
-def test_a_filesystem_without_final_path_support_keeps_ordinary_files_and_the_lexical_rule(tmp_path, monkeypatch):
-    """Fable review finding 2: a strict resolve would reject every file where the filesystem cannot report a
-    final path (ERROR_INVALID_FUNCTION), emptying workspace context. Ordinary files must stay; .optimus stays out."""
+def test_a_pathname_resolution_fallback_keeps_ordinary_files_and_the_lexical_rule(tmp_path, monkeypatch):
+    """Fable review finding 2 (Plan 12.2): a strict resolve would reject every file where pathname resolution cannot
+    report a final path (ERROR_INVALID_FUNCTION). Only that lookup fails here; the file policy can still verify each
+    opened handle, so ordinary files stay and .optimus stays out. A filesystem where handles cannot be verified either
+    is the unverifiable-handle case below (Plan 12.6, ADR-031)."""
     import ntpath
 
     _runtime_tree(tmp_path)
@@ -814,3 +816,21 @@ def test_a_filler_file_that_vanishes_before_packing_is_counted(tmp_path, monkeyp
 
     assert result.blocking_stop_reason is None and "--- app.py ---" in result.text
     assert result.excluded_counts == {"excluded.not_found": 1}
+
+
+def test_where_no_opened_handle_can_be_verified_automatic_context_is_empty_and_says_why(tmp_path, monkeypatch):
+    """Plan 12.6 (ADR-031): when the system cannot report an opened file's path, nothing is read rather than trusting
+    the weaker identity checks. Filler is excluded visibly, and a named required file stops preparation."""
+    _source(tmp_path, "app.py")
+    _source(tmp_path, "README.md")
+    monkeypatch.setattr(file_policy, "_handle_path", lambda fd: None)
+
+    filler = assemble_workspace_context_for_prompt(tmp_path, task="")
+    named = assemble_workspace_context_for_prompt(tmp_path, task="Fix app.py")
+
+    assert filler.text == "" and filler.blocking_stop_reason is None
+    assert filler.excluded_counts == {"deny.unverifiable": 2}
+    assert named.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
+    assert named.blocking_message == (
+        "Workspace reference 'app.py' cannot be read safely: the system cannot confirm which file was opened."
+    )

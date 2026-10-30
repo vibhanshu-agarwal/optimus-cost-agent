@@ -1472,7 +1472,9 @@ def test_a_case_variant_of_the_runtime_tree_is_denied_on_windows(tmp_path):
     assert "path.runtime.read" in _blocked(guard)
 
 
-def _without_final_path_support(monkeypatch) -> None:
+def _with_pathname_resolution_fallback(monkeypatch) -> None:
+    """Only pathname resolution falls back (strict final-path lookup fails); open handles stay verifiable, so this is
+    not a filesystem that lacks final-path support altogether."""
     import ntpath
 
     def unsupported(path):
@@ -1482,9 +1484,9 @@ def _without_final_path_support(monkeypatch) -> None:
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="final-path resolution (GetFinalPathNameByHandle) is the Windows mechanism")
-def test_without_final_path_support_ordinary_source_is_still_read(tmp_path, monkeypatch):
+def test_with_pathname_resolution_fallback_ordinary_source_is_still_read(tmp_path, monkeypatch):
     workspace = _runtime_workspace(tmp_path)
-    _without_final_path_support(monkeypatch)
+    _with_pathname_resolution_fallback(monkeypatch)
     runner, guard = _guarded_runner(workspace, FakeGatewayClient("READ src/a.py\nWRITE src/a.py\nx = 1\n"))
 
     result = runner.run(_agent("Read", workspace))
@@ -1494,9 +1496,9 @@ def test_without_final_path_support_ordinary_source_is_still_read(tmp_path, monk
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="final-path resolution (GetFinalPathNameByHandle) is the Windows mechanism")
-def test_without_final_path_support_the_runtime_name_is_still_denied(tmp_path, monkeypatch):
+def test_with_pathname_resolution_fallback_the_runtime_name_is_still_denied(tmp_path, monkeypatch):
     workspace = _runtime_workspace(tmp_path)
-    _without_final_path_support(monkeypatch)
+    _with_pathname_resolution_fallback(monkeypatch)
     gateway = FakeGatewayClient("READ .optimus/telemetry.ndjson\nWRITE src/a.py\nx = 1\n")
     runner, guard = _guarded_runner(workspace, gateway)
 
