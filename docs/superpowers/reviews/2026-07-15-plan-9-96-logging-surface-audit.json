@@ -5023,6 +5023,142 @@
       "sanitizer": "in-process ContextVar.set; no diagnostic persistence or export",
       "test_node": "tests/unit/acp/test_session_retirement.py::test_queued_and_pre_registration_use_blocks_retirement",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.client_probe:serve:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Plan 12.7 stub ACP agent appends its own JSONL journal under the operator-released probe directory; rows carry event names, protocol version, advertised client capabilities and SHA-256 digests of the buffer and disk text, never buffer content or the synthetic canaries.",
+      "sanitizer": "event/capability/digest fields only; buffer text is hashed in RAM",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_the_stub_serves_newline_delimited_json_and_journals",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.client_probe:serve:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the journal rows described for serve:file_open and the outgoing ACP JSON-RPC messages; journal rows hold digests and capability flags only.",
+      "sanitizer": "event/capability/digest fields only",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_the_stub_serves_newline_delimited_json_and_journals",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.client_probe:serve:text_write",
+      "policy": "protocol-only",
+      "rationale": "Inspection: writes ACP JSON-RPC responses and session updates to the stub's stdout for the client that launched it. The synthetic canaries in those updates are the P5-d probe itself; no real secret, buffer text or model output exists in the stub.",
+      "sanitizer": "ACP protocol messages built from fixed synthetic text",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_the_stub_agent_reads_the_buffer_only_when_advertised",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.probe_child:_write_cursor:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the P2 feasibility cursor holds the model name, item and batch counts, the next batch index and a running SHA-256 chain; the synthetic corpus is generated in RAM and never written.",
+      "sanitizer": "fixed cursor schema; no corpus text",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_the_cursor_is_replaced_atomically_and_holds_no_corpus_text",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.probe_child:_write_cursor:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the fixed cursor state described for _write_cursor:file_open.",
+      "sanitizer": "fixed cursor schema; no corpus text",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_the_cursor_is_replaced_atomically_and_holds_no_corpus_text",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.probe_child:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes one result object for the parent runner: distribution versions, licenses, wheel tags, smoke summaries, timings, counts and output digests; exception text is truncated to 400 characters and the parent re-sanitizes before persisting.",
+      "sanitizer": "parent probes.sanitize plus RAM-only body refusal before any record write",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_child_smoke_reports_each_distribution_without_crashing",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.probe_child:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints the result object described for main:json_serialization to the parent runner, which parses and sanitizes it before persistence.",
+      "sanitizer": "parent probes.sanitize plus RAM-only body refusal",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_child_smoke_reports_each_distribution_without_crashing",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.probes:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints a config refusal that names config fields and the error class, never field values or credentials (credentials are referenced by environment-variable name only).",
+      "sanitizer": "ConfigError messages name keys only",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_main_refuses_a_bad_config_and_writes_nothing",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.probes:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints the probe kind, outcome, disposition and the written record path.",
+      "sanitizer": "fixed status line",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_main_refuses_a_bad_config_and_writes_nothing",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.probes:record_bytes:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes a probe attempt record after probes.sanitize redacts secret patterns (provider keys, AWS keys, private keys, credential assignments, URL userinfo) and bounds strings; a record containing any RAM-only synthetic body or credential is refused and replaced by an observation-free ERROR record.",
+      "sanitizer": "probes.sanitize plus RAM-only body refusal",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_secrets_in_any_field_are_redacted",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.probes:run_probe:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. context.cancelled.set() sets a threading.Event at the probe deadline; it is not Redis and writes no data.",
+      "sanitizer": "in-process threading.Event.set; no persistence",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_a_body_past_its_deadline_is_cancelled_and_inconclusive",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.probes:write_attempt:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the sanitized record from record_bytes once, through an exclusive partial file and a hard link that fails if the final name exists, so no attempt is overwritten.",
+      "sanitizer": "probes.sanitize plus RAM-only body refusal",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_an_attempt_is_never_overwritten_and_leaves_no_partial",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.probes:write_attempt:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the bytes described for write_attempt:file_open.",
+      "sanitizer": "probes.sanitize plus RAM-only body refusal",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_an_attempt_is_never_overwritten_and_leaves_no_partial",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.redis_probe:_Sampler.__exit__:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. _stop.set() sets the RAM sampler's threading.Event; it is not Redis and writes no data.",
+      "sanitizer": "in-process threading.Event.set; no persistence",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_a_refused_resource_never_constructs_a_client",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.redis_probe:_info:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AST overmatch. client.info(section) is the Redis INFO command read from the admitted dedicated server, not a logger call; it exports nothing.",
+      "sanitizer": "Redis INFO read; no logging",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_a_refused_resource_never_constructs_a_client",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.redis_probe:run_redis:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: AdmissionError messages name the container, the failed preflight check keys or the missing environment variable name; no endpoint credentials, payloads or values.",
+      "sanitizer": "fixed refusal text and check-key names",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_a_refused_resource_never_constructs_a_client",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.redis_probe:run_redis:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes synthetic probe events, JSON projections, derived keys and one synthetic erasure marker only to the operator-released dedicated Redis, after endpoint and container admission and a read-only identity/empty-database check; the shared test Redis is refused before any client exists.",
+      "sanitizer": "synthetic payloads on the admitted dedicated server only",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_a_refused_resource_never_constructs_a_client",
+      "evidence_tier": "unit"
     }
   ]
 }

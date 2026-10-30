@@ -115,6 +115,7 @@ Live plans (each listed in the backlog's live plan registry):
 | [P11-FU-6 v2: bounded early POST rejection](superpowers/plans/2026-09-05-p11-fu6-bounded-early-post-rejection_v2.md) | Gateway early-rejection correction |
 | [Local-hook UTF-8 repair](superpowers/plans/2026-09-06-local-hook-utf8-repair.md) | Pre-commit hook decoding fix |
 | [Evidence collector](superpowers/plans/evidence-handoff-evidence-collector-implementation.md) | Evidence-handoff collector |
+| [Plan 12.7 v3: memory feasibility probes (M0a-3)](superpowers/plans/2026-10-30-plan-12-7-memory-feasibility-implementation_v3.md) | Package/parser/embedding/worker, dedicated-Redis K2, Postgres readiness and ACP/Zed probes, each observed or handed off |
 
 ## Current designs
 

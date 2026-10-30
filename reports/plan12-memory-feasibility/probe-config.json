@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "run_label": "plan12.7-m0a3-2026-10-31",
+  "authorization": "Operator, Claude chat 2026-10-30: approved Plan 12.7 v3 at 8b8d56447d95b23403b7c750c64e7384b88dc8d899ec65c29d274faa8c774540 and released P3 dedicated Redis, P4 disposable Postgres, P1/P2 downloads and the P5 Zed + acpx session, each after Codex accepts Checkpoint 1 (#391 comment 6529787024).",
+  "limits": {"timeout_seconds": 3600, "max_download_bytes": 1073741824},
+  "allowed_hosts": ["pypi.org", "files.pythonhosted.org", "huggingface.co"],
+  "packages": {
+    "index_url": "https://pypi.org/simple",
+    "venv": "tmp/plan12-probe-venv",
+    "candidates": ["redisvl", "tree-sitter", "tree-sitter-python", "tree-sitter-java", "rustworkx", "graspologic-native", "fastembed", "psutil"],
+    "inputs": {"pathspec": "1.1.1", "cryptography": "49.0.0"}
+  },
+  "embedding": {
+    "venv": "tmp/plan12-probe-venv",
+    "model": "BAAI/bge-small-en-v1.5",
+    "cache_dir": "tmp/plan12-probe-models",
+    "work_dir": "tmp/plan12-probe-embedding",
+    "items": 2000,
+    "batch": 64,
+    "stop_after_batches": 5
+  },
+  "redis": {
+    "endpoint": "redis://127.0.0.1:6390/0",
+    "container": "p127-probe-redis",
+    "image": "redis:8",
+    "image_id": "sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5",
+    "volume": "p127-probe-redis-data",
+    "username": "p127probe",
+    "credential_env": "P127_REDIS_CREDENTIAL"
+  },
+  "postgres": {
+    "host": "127.0.0.1",
+    "port": 5440,
+    "container": "p127-probe-pg",
+    "image_id": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+    "volume": "p127-probe-pg-data",
+    "user": "p127probe",
+    "database": "p127probe",
+    "credential_env": "P127_PG_CREDENTIAL"
+  },
+  "zed": {
+    "canary_seed": "plan12.7-synthetic-2026-10-31",
+    "stub_log": "tmp/plan12-probe-zed/stub-observations.jsonl",
+    "gui_observations": "tmp/plan12-probe-zed/gui-observations.json",
+    "sink_roots": ["tmp/plan12-probe-zed/user-data"]
+  },
+  "targets": {
+    "redis": {
+      "items": 20000,
+      "vector_dimensions": 384,
+      "item_bytes": 2048,
+      "concurrency": 4,
+      "maxmemory_bytes": 1073741824,
+      "admission_reserve_bytes": 268435456,
+      "physical_ram_bytes": 1610612736,
+      "disk_bytes": 2147483648,
+      "ack_latency_p95_ms": 1500,
+      "projection_latency_p95_ms": 250,
+      "restart_to_usable_seconds": 60,
+      "logical_purge_seconds": 1,
+      "physical_erasure_seconds": 120
+    }
+  }
+}
