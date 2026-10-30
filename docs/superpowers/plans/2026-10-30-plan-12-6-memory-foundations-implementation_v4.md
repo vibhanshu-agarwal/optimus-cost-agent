@@ -48,9 +48,9 @@ Filing happens in **this plan’s PR**: the plan, docs index, ADR-022 issue-only
 | Exact-revision release for Tasks 1–2 | no | Operator | Merely unauthorized; this successor needs approval. Task 0 has separate authority above. |
 | Dedicated contributor checkout and overlap inventory | yes | Claude | Supplied checkout/branch exists. Recheck status, source drift and overlap before execution; do not replace or mutate another lane. |
 | #390 filing, ADR number, indexes and agreed label assessment | no | Claude; operator authorizes GitHub writes | Merely unauthorized. File through this plan’s PR; recheck ADR-031 availability first. |
-| CPython 3.14+, uv/Git/Bash and frozen dev environment | unknown | Operator owns machine state; Claude inventories | Task 0 establishes versions and environment before dependent tests, distinguishing absent tooling from unauthorized setup. |
-| Windows filesystem/locking capabilities and Linux PR CI | unknown | Operator owns machine state; Claude verifies; CI executes Linux checks | Task 0 establishes availability. Required evidence cannot be silently waived. No separate WSL run unless a non-trivial CI failure warrants one. |
-| One isolated coverage writer and safe temporary roots | unknown | Operator owns schedule; Claude verifies | Establish in Task 0; no authority to stop another lane. |
+| CPython 3.14+, uv/Git/Bash and frozen dev environment | yes | Operator owns machine state; Claude inventories | Established in Task 0 (2026-10-30): CPython 3.14.4, uv 0.11.29, Git 2.56.0, worktree `.venv` from `uv sync --frozen --extra dev`. |
+| Windows filesystem/locking capabilities and Linux PR CI | no | Operator owns machine state; Claude verifies; CI executes Linux checks | Merely unauthorized: Windows junction, lock and replacement cases ran in Task 0–2 tests; Linux evidence comes from PR CI once the operator approves opening the PR. No separate WSL run unless a non-trivial CI failure warrants one. |
+| One isolated coverage writer and safe temporary roots | yes | Operator owns schedule; Claude verifies | Established in Task 0: a dedicated worktree with one coverage writer and pytest temporary roots; no authority to stop another lane. |
 | Native services, credentials, GUI/TTY interaction or paid calls | yes | None | None is required for this plan. Tests use synthetic temporary repositories and registries. |
 | Evaluation or feasibility results | yes | None | Neither Plan 12.5 nor #391 is a closure prerequisite. Task 1 qualifies its own parser dependency. |
 
