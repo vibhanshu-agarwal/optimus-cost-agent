@@ -851,7 +851,8 @@ class AcpDuplexAdapter:
     async def _close_retained_session(self, session: AcpSpecSession,
                                       states: tuple[ClientMcpSessionState, ...]) -> SessionCloseResult:
         runtime = self._client_mcp_runtime
-        lane = runtime.disposition if isinstance(runtime, ClientMcpRuntime) else None
+        disposition = runtime.disposition if isinstance(runtime, ClientMcpRuntime) else None
+        lane = disposition if isinstance(disposition, ClientMcpDisposition) else None
         primary: BaseException | None = None
         failures: list[str] = []
         pending = False

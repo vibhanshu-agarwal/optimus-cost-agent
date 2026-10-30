@@ -84,22 +84,34 @@ def _tree(paths) -> SourceTree:
 
 
 @pytest.mark.parametrize('entry', ['h5.shutdown_schedule', 's1.serving_custody'])
-def test_current_retention_execution_is_bound_and_omission_is_refused(entry):
+@pytest.mark.parametrize('path', ['src/optimus/acp/session_retention.py', 'src/optimus/acp/debug_trace.py'])
+async def test_current_retention_execution_is_bound_and_omission_is_refused(entry, path, tmp_path):
     from dataclasses import replace
+    from time import monotonic
 
-    from optimus.acp.session_retention import SessionRetentionPolicy
+    from optimus.acp.session_retention import SessionCloseResult, SessionRetentionOwner, SessionRetentionPolicy
+    from optimus.acp.spec import InMemoryAcpSpecSessionStore
     from tools.plan1126_runtime_audit.measurement import ExecutionClosureRecorder, verify_execution_closure
 
     plan, = default_measurement_plan(repository_root=ROOT, entries=(entry,))
     binding = capture_environment_binding(measured=plan.source, identity=_tree(plan.spec.paths),
         spec=plan.spec, cache_prefix=None)
+    store = InMemoryAcpSpecSessionStore()
+    async def close(_session, _states):
+        return SessionCloseResult((), False)
+    # Construct the real session before tracing: this control measures the owner
+    # and its diagnostic dependency, not the store's unrelated lazy imports.
+    session = store.create(cwd=tmp_path)
+    owner = SessionRetentionOwner(policy=SessionRetentionPolicy(), clock=monotonic,
+        close_session=close, detach_session=lambda _session: True)
     with ExecutionClosureRecorder(ROOT) as executed:
-        assert SessionRetentionPolicy().max_sessions == 64
-    # The real constructor executed the new module. A merely declared path cannot pass this check.
+        owner.create(lambda: session)
+        owner.remove_sync(session.session_id)
+    assert owner.retained_count == 0
+    # Real entry creation/retirement executes both owner and its diagnostic dependency.
     verify_execution_closure(executed, binding)
-    path = 'src/optimus/acp/session_retention.py'
     omitted = replace(binding, module_origins=tuple(origin for origin in binding.module_origins if origin[0] != path))
-    with pytest.raises(ExecutingSourceMismatch, match='session_retention'):
+    with pytest.raises(ExecutingSourceMismatch, match=path.rsplit('/', 1)[-1].removesuffix('.py')):
         verify_execution_closure(executed, omitted)
 
 

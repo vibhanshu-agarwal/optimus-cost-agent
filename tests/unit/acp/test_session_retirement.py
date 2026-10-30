@@ -265,6 +265,67 @@ async def test_shutdown_joins_existing_retirements_and_preserves_failures(tmp_pa
     assert calls == ['broken', 'live'] and adapter.retention.retained_count == 1
 
 
+@pytest.mark.parametrize('real_lane', [False, True], ids=['injected-no-lane', 'real-disposition'])
+@pytest.mark.parametrize('fails', [False, True], ids=['clean', 'failed-close'])
+async def test_owned_close_joins_off_loop_for_real_or_injected_runtime(tmp_path, runtime, monkeypatch, real_lane, fails):
+    loop_thread = threading.get_ident()
+    entered, release = threading.Event(), threading.Event()
+    calls, lanes = [], []
+    original = runtime.disposition.run_blocking
+    async def observe(operation):
+        lanes.append(operation)
+        return await original(operation)
+    monkeypatch.setattr(runtime.disposition, 'run_blocking', observe)
+    provided = runtime if real_lane else ClientMcpRuntime(disposition=object(),
+        sdk_adapter=runtime.sdk_adapter, supervisor=runtime.supervisor)
+    adapter, store, _ = make_adapter(tmp_path, client_mcp_runtime=provided)
+    session = store.create(cwd=tmp_path)
+    state = session.client_mcp_state = ClientMcpSessionState(session.session_id)
+    def physical_close():
+        calls.append(threading.get_ident())
+        entered.set()
+        assert release.wait(2)
+        if fails:
+            raise OSError('controlled owned close failure')
+    state.register_close_hook(physical_close)
+    adapter.retention.request_retire(session.session_id, reason=RetirementReason.EXPLICIT_REMOVE)
+    observer = asyncio.create_task(adapter.retention.wait_retired(session.session_id))
+    observed_shutdown_failure = None
+    try:
+        did_enter = await asyncio.to_thread(entered.wait, 1)
+        if not did_enter:
+            await observer  # Preserve the actual owner error rather than a barrier failure.
+        assert did_enter and len(calls) == 1 and calls[0] != loop_thread
+        assert store.get(session.session_id) is session and not observer.done()
+        assert len(lanes) == int(real_lane)
+        observer.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await observer
+        assert not state.prepare_owned_close().result.done()
+        assert store.get(session.session_id) is session
+        release.set()
+        result = await adapter.retention.wait_retired(session.session_id)
+        assert len(calls) == 1
+        if fails:
+            assert result.status is RetirementStatus.QUARANTINED
+            assert state.prepare_owned_close().result.result() == ('SESSION_CLOSE_FAILED',)
+            assert store.get(session.session_id) is session and adapter.retention.retained_count == 1
+            with pytest.raises(RuntimeError, match='session cleanup incomplete') as caught:
+                await adapter.aclose()
+            observed_shutdown_failure = caught.value
+        else:
+            assert result is None or result.status is RetirementStatus.RELEASED
+            assert state.prepare_owned_close().result.result() == ()
+            assert store.get(session.session_id) is None
+    finally:
+        release.set()
+        await asyncio.gather(observer, return_exceptions=True)
+        if observed_shutdown_failure is None:
+            await adapter.aclose()
+        else:
+            with pytest.raises(RuntimeError) as repeated:
+                await adapter.aclose()
+            assert repeated.value is observed_shutdown_failure
 @pytest.mark.parametrize('operation', ['config', 'renewal'])
 async def test_config_and_renewal_are_owned(tmp_path, runtime, operation):
     adapter, store, outbound = make_adapter(tmp_path, client_mcp_runtime=runtime)
