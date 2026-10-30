@@ -334,7 +334,7 @@ class StructuredIngress:
 
         # Reparse closed mapping to prove deterministic round-trip.
         remapped = json.loads(serialized)
-        rebuilt = SanitizedDraft(
+        return SanitizedDraft(
             kind=sanitized.kind,
             schema_id=str(remapped["schema_id"]),
             context_id=str(remapped["context_id"]),
@@ -362,7 +362,6 @@ class StructuredIngress:
             in_reply_to=remapped.get("in_reply_to"),
             rule_counts=counts,
         )
-        return rebuilt
 
 
 __all__ = [

@@ -423,7 +423,7 @@ def _resolve_candidate(
     """
     workspace_state = resolve_workspace_security_state(workspace_root)
 
-    candidate = resolve_launch_candidate(
+    return resolve_launch_candidate(
         snapshot=snapshot,
         workspace_state=workspace_state,
         operator_paths=operator_paths,
@@ -431,7 +431,6 @@ def _resolve_candidate(
         test_profile=test_profile,
         stage_c=stage_c,
     )
-    return candidate
 
 
 def _display_candidate(candidate: LaunchCandidate) -> None:

@@ -168,8 +168,7 @@ def load_verified_raw_bundle(
     digest = expected.pop("bundle_sha256", None)
     if digest != _payload_sha256(expected):
         raise ValueError("digest_mismatch")
-    batches = tuple(_batch_from_dict(item) for item in payload["batches"])
-    return batches
+    return tuple(_batch_from_dict(item) for item in payload["batches"])
 
 
 def validate_custody_roots(

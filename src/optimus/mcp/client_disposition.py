@@ -445,7 +445,8 @@ class ClientMcpDisposition:
         *,
         on_provisional_state: Callable[[ClientMcpSessionState], None] | None = None,
     ) -> ClientMcpSessionState:
-        workspace_root = cwd.resolve()
+        # Normalization also resolves paths synchronously; offloading needs a broader worker/cancellation/shutdown contract.
+        workspace_root = cwd.resolve()  # noqa: ASYNC240 - slow filesystems can still delay the serving loop
         state = ClientMcpSessionState(session_id=session_id, _workspace_root=workspace_root,
                                      _record_close_failure=self.record_session_close_failure)
         try:

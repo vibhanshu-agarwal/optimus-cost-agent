@@ -200,7 +200,8 @@ class ProcessLifecycle:
         # Finalization may only inspect retained state; even stderr may be blocked.
         self._consume_result()
 
-    async def observe(self, timeout: float = 10.0) -> ShutdownObservation:
+    # The budget starts with cleanup; expiry reports and returns an incomplete observation instead of raising.
+    async def observe(self, timeout: float = 10.0) -> ShutdownObservation:  # noqa: ASYNC109
         if not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("shutdown observation timeout must be positive and finite")
         if self._task is None:

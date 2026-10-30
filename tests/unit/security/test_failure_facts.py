@@ -6,10 +6,12 @@ from __future__ import annotations
 import errno
 import json
 import uuid
+from types import SimpleNamespace
 from urllib.error import URLError
 
 import pytest
 
+from optimus_security import failure_facts
 from optimus_security.failure_facts import (
     bounded,
     bounded_failure,
@@ -225,6 +227,25 @@ def test_final_sanitize_redacts_a_bare_credential_by_its_prefix_and_keeps_real_i
     cleaned = final_sanitize({"error": f"refused {BARE_KEY}", **real})
     assert BARE_KEY not in json.dumps(cleaned)
     assert {key: cleaned[key] for key in real} == real
+
+
+@pytest.mark.parametrize("raises", [False, True], ids=["non_mapping", "exception"])
+def test_final_sanitize_failure_keeps_ordered_keys_without_raw_values(monkeypatch, raises: bool) -> None:
+    def broken_sanitizer(*args, **kwargs):
+        if raises:
+            raise ValueError("sanitizer unavailable")
+        return SimpleNamespace(value=[CANARY])
+
+    monkeypatch.setattr(failure_facts, "sanitize_for_persistence", broken_sanitizer)
+    record = {"status": 502, "error": CANARY, "detail": {"raw": CANARY}}
+    cleaned = final_sanitize(record)
+
+    assert list(cleaned) == list(record)
+    assert all(value == failure_facts.UNRECOGNIZED for value in cleaned.values())
+    assert CANARY not in json.dumps(cleaned)
+    assert record["error"] == CANARY
+    cleaned["status"] = "changed"
+    assert record["status"] == 502
 
 
 @pytest.mark.parametrize("kind", ["attempt_deadline", "attempt_capacity", "request_budget"])

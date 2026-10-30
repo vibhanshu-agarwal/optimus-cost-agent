@@ -110,7 +110,7 @@ class NdjsonSubprocessSession:
                 # end of the pipe makes this close() redundant, not an error.
                 pass
 
-    def wait_for(
+    def wait_for(  # noqa: RET503 - terminal _fail_timeout/_fail_subprocess_exited helpers return Never
         self,
         *,
         deadline: float,

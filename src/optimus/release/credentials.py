@@ -67,7 +67,7 @@ def scan_local_credentials(
 ) -> CredentialScanResult:
     active_environ = dict(os.environ) if environ is None else environ
     allowed_present = tuple(sorted(key for key in ALLOWED_LOCAL_CREDENTIAL_NAMES if active_environ.get(key)))
-    provider_hits = set(key for key in PROVIDER_CREDENTIAL_NAMES if active_environ.get(key))
+    provider_hits = {key for key in PROVIDER_CREDENTIAL_NAMES if active_environ.get(key)}
     config_hits = _scan_config_files(config_paths)
     provider_hits.update(config_hits)
     return CredentialScanResult(

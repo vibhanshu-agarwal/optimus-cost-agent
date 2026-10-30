@@ -100,9 +100,9 @@ why = "Subprocess-heavy repository tooling tests: real pre-commit/uv/bash/ast-gr
 tier = "audit-current"
 nodes = [
   "tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_contract_model_1000_seed_schedule",
-  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_behavioral_mutations_change_or_invalidate_primary_observation",
-  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_execution_emits_only_citations_for_behaviors_it_runs",
-  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_literal_scenarios_are_coherent_primary_transitions",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_replay_refuses_missing_or_tampered_evidence_without_execution",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_replayed_citations_match_immutable_definitions",
+  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_sealed_scenarios_preserve_primary_transition_evidence",
   "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_transition_authority_rejects_immutable_byte_drift",
   "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_typing_allowance_rejects_every_unapproved_variant",
   "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_typing_allowance_preserves_historical_citations",
@@ -162,7 +162,7 @@ nodes = [
   "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_measured_revision_demonstrates_every_scenario",
   "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py::test_the_rollback_probe_records_the_product_disposition_before_fallback_cleanup",
 ]
-why = "Measure the current tree: read *_SOURCE_PATHS or current sources from the repository root, run current production transitions or S1 probes, or spawn measurement children (survey A1-A5)."
+why = "Measure the current tree: read *_SOURCE_PATHS or current sources from the repository root, run current production transitions or S1 probes, or spawn measurement children (survey A1-A5). The #447 H4 replay and negative-execution controls conservatively retain this explicit audit-current scheduling; they validate sealed evidence and must not be described as fresh production-transition measurements."
 
 [[rules]]
 tier = "audit-sealed"
@@ -855,10 +855,7 @@ slow_nodes = [
   "tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_inventory_has_one_phase_per_conceptual_site",
   "tests/unit/acp/test_plan1126_delivery_contract.py::test_delivery_scanner_recognizes_settled_write_by_following_owner_publication",
   "tests/unit/acp/test_plan1126_delivery_contract.py::test_evidence_template_pins_h4_seed_count_without_pinning_later_hypotheses",
-  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_behavioral_mutations_change_or_invalidate_primary_observation",
-  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_execution_emits_only_citations_for_behaviors_it_runs",
   "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_global_status_and_findings_retain_truthful_partial_lineage",
-  "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_literal_scenarios_are_coherent_primary_transitions",
   "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_model_and_schema_reject_duplicate_conceptual_sites",
   "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_model_schema_and_public_verify_fail_closed_on_cross_field_mutations",
   "tests/unit/acp/test_plan1126_delivery_contract.py::test_h4_model_schema_and_public_verify_reject_coverage_metadata_mutations",
