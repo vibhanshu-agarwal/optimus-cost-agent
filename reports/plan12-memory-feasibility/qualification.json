@@ -1,0 +1,164 @@
+{
+  "schema_version": 1,
+  "plan": {
+    "file": "docs/superpowers/plans/2026-10-30-plan-12-7-memory-feasibility-implementation_v3.md",
+    "sha256": "hex:8b8d56447d95b23403b7c750c64e7384b88dc8d899ec65c29d274faa8c774540"
+  },
+  "spec": {
+    "file": "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md",
+    "sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"
+  },
+  "config": {
+    "file": "probe-config.json",
+    "sha256": "hex:025e75328b24ab3e2757a2ee3096fff99acca8f391acb5209335ba4d7bb5c0be",
+    "note": "allowed_licenses gained MIT-0 after P1 attempt 1; the Redis targets are unchanged since Checkpoint 1."
+  },
+  "checkpoint_1": {
+    "reviewer": "Codex CLI gpt-6.1-sol high, session 01a18e18-f6b8-7201-bfd2-8c18a0941d8c",
+    "verdict": "ACCEPT",
+    "reviewed_head": "hex:1f324a05d22d4899e0aae061beffcebb92ca3491",
+    "rounds": "review plus three follow-ups; 12, then 5, then 2 blocking findings, all fixed"
+  },
+  "probes": [
+    {
+      "id": "P1",
+      "name": "packages and parsers",
+      "record": "attempts/packages-2026-10-30-5888e5d35c37424e806d846e9cc6c7bc.json",
+      "record_sha256": "hex:c0c7adc1d167f1df20bea255d4cfd7b2342285136beae1136080185f65c6ca8f",
+      "outcome": "PASS",
+      "disposition": "concluded",
+      "source_head": "hex:d0819e5616f7240b83b2789cef5d379f8fbbff18",
+      "started_utc": "2026-10-30T20:05:11.673+00:00",
+      "retained_attempts": [
+        {
+          "record": "attempts/packages-2026-10-30-24629a76debf46ef857fa15b17ab8192.json",
+          "record_sha256": "hex:41be396589823ffd04a970128ced488c050d03b7a8fb083e09b1545633db8c63",
+          "outcome": "FAIL",
+          "disposition": "concluded",
+          "source_head": "hex:e0cf30412743767de8e2488b4442bb66ad753001",
+          "started_utc": "2026-10-30T20:01:20.147+00:00"
+        }
+      ],
+      "observed": "Ten distributions installed by bound hash and smoke-tested on CPython 3.14.4 win_amd64: redisvl 0.29.0, tree-sitter 0.26.0 with tree-sitter-python 0.25.0 and tree-sitter-java 0.23.5, rustworkx 0.18.1, graspologic-native 1.3.1, fastembed 0.9.1, psutil 7.2.2, plus inputs pathspec 1.1.1 (Plan 12.6) and cryptography 49.0.0. 51 pins, 94.7 MB downloaded, 276 MB isolated venv.",
+      "attempt_note": "Attempt 1 was refused before install by the license gate (two metadata-parsing gaps, MIT-0 missing from the allowlist, and py-rust-stemmers publishing no license metadata); attempt 2 admitted py-rust-stemmers by its wheel's own verified MIT license file.",
+      "scope": "Windows CPython 3.14 only; Linux wheels are not exercised here. No blanket compatibility claim."
+    },
+    {
+      "id": "P2",
+      "name": "embeddings and worker",
+      "record": "attempts/embedding-2026-10-30-2604347331134c61b5337e66b6d0051f.json",
+      "record_sha256": "hex:26375b23725a8e7b3e9e659ae449e97336a51a7bcb53e70f42c429111937c21d",
+      "outcome": "PASS",
+      "disposition": "concluded",
+      "source_head": "hex:d0819e5616f7240b83b2789cef5d379f8fbbff18",
+      "started_utc": "2026-10-30T20:06:09.677+00:00",
+      "retained_attempts": [],
+      "observed": "BAAI/bge-small-en-v1.5 via fastembed (Qdrant/bge-small-en-v1.5-onnx-Q, MIT, 67.4 MB, gated commit aa8f8b06) embedded 2000 synthetic items offline: 384 dimensions, about 89-100 items/s on 12 CPUs, peak working set 453 MB. Cancel at batch 5 then resume, and owner kill at batch 5 then restart, both reproduce the full run's output hash.",
+      "scope": "A feasibility cursor, not the production persisted-generation indexer; no model selection is made."
+    },
+    {
+      "id": "P3",
+      "name": "synthetic real Redis K2",
+      "record": "attempts/redis-2026-10-30-f554f5991f2f49448725e2e18bc1cbd4.json",
+      "record_sha256": "hex:a09bd89b9304fa8b235212e4288777a1156f1924c825ca76c1c028d2fb86396b",
+      "outcome": "PASS",
+      "disposition": "concluded",
+      "source_head": "hex:e0cf30412743767de8e2488b4442bb66ad753001",
+      "started_utc": "2026-10-30T19:54:38.415+00:00",
+      "retained_attempts": [
+        {
+          "record": "attempts/redis-2026-10-30-b59831ba59234321af31c0070e9a96ae.json",
+          "record_sha256": "hex:cab6299c8d3e6cd5b163c28b66e571efad52fb4fcdf28e98c13d9ddc76a86505",
+          "outcome": "ERROR",
+          "disposition": "open",
+          "source_head": "hex:1f324a05d22d4899e0aae061beffcebb92ca3491",
+          "started_utc": "2026-10-30T19:22:31.714+00:00"
+        }
+      ],
+      "observed": "Dedicated redis:8 (8.10.1, Search/JSON/TimeSeries) on 127.0.0.1:6390, AOF everysec, noeviction, 1 GiB maxmemory: 18 of 18 predeclared checks held at 20000 items x 384 dims. Append+WAITAOF ack p95 1010 ms (400 writes, 0 unconfirmed), projection p95 14 ms, logical 203 MB, physical peak 265 MB, disk 131 MB, restart usable in 1.7 s with acknowledged writes intact, noeviction refused with no eviction, logical purge 1 ms, physical erasure of the purged payload 1.35 s.",
+      "attempt_note": "Attempt 1 ended ERROR after 27 min: the runner did not parse RESP3 FT.SEARCH/FT.INFO maps and its wait helper hid the error. A runner defect, fixed and retained, not a Redis observation.",
+      "caveats": [
+        "persistence.aof_rewrite_seconds (0.001) measures the wait remaining after 50 acknowledged writes, not the rewrite's own duration; no check depends on it.",
+        "observations.protocol reads null although replies were RESP3 maps (the client default).",
+        "With appendfsync everysec a confirmed save costs about one second; M3's notice latency should assume it."
+      ],
+      "scope": "Synthetic, single instance; topology provisional. The shared optimus-redis was never contacted."
+    },
+    {
+      "id": "P4",
+      "name": "isolated Postgres readiness",
+      "record": "attempts/postgres-2026-10-30-dd4834d6d5f642e6970b003654fa59ad.json",
+      "record_sha256": "hex:115801c9ab7f73c1f4bd849c5c1dfc80f979062a63ebcc04b260ca2ad523f8a3",
+      "outcome": "PASS",
+      "disposition": "concluded",
+      "source_head": "hex:1f324a05d22d4899e0aae061beffcebb92ca3491",
+      "started_utc": "2026-10-30T19:21:37.608+00:00",
+      "retained_attempts": [],
+      "observed": "Disposable postgres:16-alpine (16.15) on 127.0.0.1:5440 with psycopg 3.3.4 / libpq 18.3: commit readback, rollback, duplicate-key and statement-failure handling, loss reported on a held connection across restart, reconnect in 0.58 s, committed row survived, same container and volume.",
+      "scope": "Readiness only; no ledger, outbox, durability or completeness claim."
+    },
+    {
+      "id": "P5",
+      "name": "version-bound ACP/Zed capabilities",
+      "record": "attempts/zed-2026-10-30-25903c6622314e3f97b0b20857d93363.json",
+      "record_sha256": "hex:7b8da70c5d84b22bb0370be449224dfee6cdd3463b1db150dcf69875b516944f",
+      "outcome": "UNRUN",
+      "disposition": "handoff",
+      "source_head": "hex:bb262642473cf411363546b616777fadead1eea6",
+      "started_utc": "2026-10-30T20:16:58.556+00:00",
+      "retained_attempts": [
+        {
+          "record": "attempts/zed-2026-10-30-e837f3cb2f7642c4b34949554e012b32.json",
+          "record_sha256": "hex:f9297888bf389dcf46276d498311f68bf3eb7a42f8b3af8250537b6a1896cd11",
+          "outcome": "UNRUN",
+          "disposition": "handoff",
+          "source_head": "hex:c3b033e4cd20d80f49486fa1055e9f2e32f81cbb",
+          "started_utc": "2026-10-30T20:15:44.672+00:00"
+        }
+      ],
+      "observed": "Zed 1.26.2 (c4273271) and acpx 0.12.0 are installed. The operator declined the computer-use grant for Zed on 2026-10-31, so no Zed session ran: the stub agent never connected and no GUI observation exists.",
+      "attempt_note": "Attempt 1 misreported acpx as unavailable (npm .cmd shim not resolved); fixed with PATH lookup.",
+      "subrows": {
+        "P5-a": {
+          "status": "UNRUN",
+          "handoff": "handoffs.json#P5-a"
+        },
+        "P5-b": {
+          "status": "UNRUN",
+          "handoff": "handoffs.json#P5-b"
+        },
+        "P5-c": {
+          "status": "UNRUN",
+          "handoff": "handoffs.json#P5-c"
+        },
+        "P5-d": {
+          "status": "UNRUN",
+          "handoff": "handoffs.json#P5-d"
+        }
+      }
+    }
+  ],
+  "redis_admission": {
+    "marker": "requires_plan12_probe_redis",
+    "default_selection": "excluded (2 deselected)",
+    "without_config": "2 skipped as UNRUN, no client constructed",
+    "shared_endpoint": "refused on databases 0, 1 and 15 and the localhost/::1 aliases (live test)"
+  },
+  "not_proven": [
+    "Production K1-K6 subsets: no Gate, notice, ledger, indexer, retrieval or erasure workflow exists yet.",
+    "Real-corpus K2 capacity and the two-instance fallback (M1).",
+    "Any Linux result beyond what PR CI's offline tests cover.",
+    "Every P5 client capability (handoffs.json)."
+  ],
+  "former_task7": {
+    "executed": false,
+    "owners": {
+      "Initializr probe": "start of M5a",
+      "bounded G1'/G0 graph probe": "start of M7",
+      "L2 runtime probe": "start of M5b"
+    },
+    "note": "Acceptance content preserved per spec v4 section 8.1; none was required here."
+  },
+  "paid_calls": 0,
+  "closure": "Administrative closure with P1-P4 observed and P5 in accepted custody is not an all-probes PASS."
+}
