@@ -115,6 +115,7 @@ Live plans (each listed in the backlog's live plan registry):
 | [Local-hook UTF-8 repair](superpowers/plans/2026-09-06-local-hook-utf8-repair.md) | Pre-commit hook decoding fix |
 | [Evidence collector](superpowers/plans/evidence-handoff-evidence-collector-implementation.md) | Evidence-handoff collector |
 | [Plan 12.5 v3: memory evaluation contract (M0a-2)](superpowers/plans/2026-10-22-plan-12-5-memory-evaluation-implementation_v3.md) | Case contract, 24 memory trajectories, localization seeds, offline grader, pinned generic harness |
+| [Plan 12.6 v4: memory foundations (M0a-1)](superpowers/plans/2026-10-30-plan-12-6-memory-foundations-implementation_v4.md) | #385 secret-file fix, shared includable-files policy with `.optimusignore`, ADR-031, registered project identity |
 
 ## Current designs
 
