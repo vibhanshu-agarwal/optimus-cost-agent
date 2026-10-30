@@ -718,7 +718,22 @@ def test_a_secret_named_without_an_extension_is_refused_with_a_visible_reason(tm
 def test_secret_words_in_prose_are_not_references(tmp_path):
     _secret_workspace(tmp_path)
 
+    for name in ("credentials", "token", "secrets"):
+        (tmp_path / name).write_text(SECRET_SENTINEL, encoding="utf-8")
+
     result = assemble_workspace_context_for_prompt(tmp_path, task="Refresh the token, rotate secrets and fix app.py")
 
     assert result.blocking_stop_reason is None and result.prioritized_paths == ("app.py",)
+    _assert_secrets_absent(result)
+
+
+@pytest.mark.parametrize("task", ["Read `credentials`.", "Fix app.py with 'token'", 'Use "secrets" in app.py'])
+def test_a_quoted_extensionless_secret_name_is_refused_with_a_visible_reason(tmp_path, task):
+    _secret_workspace(tmp_path)
+    for name in ("credentials", "token", "secrets"):
+        (tmp_path / name).write_text(f"{SECRET_SENTINEL}\n", encoding="utf-8")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=task)
+
+    assert result.text == "" and result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
     _assert_secrets_absent(result)
