@@ -25,7 +25,7 @@ Id = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$"), Afte
 Status = Literal["PASS", "FAIL", "INCONCLUSIVE", "UNRUN"]
 Layer = Literal["authority", "retrieval", "answer", "cost"]
 Oracle = Literal["K1", "K2", "K3", "K4", "K5", "K6"]
-Trust = Literal["user-authored", "agent-derived", "legacy-import", "off"]
+Trust = Literal["user-authored", "agent-derived", "legacy-import"]  # origin class; switching off never erases it
 MemoryStatus = Literal["active", "reverify", "conflicted", "superseded", "withdrawn", "purged", "archived"]
 
 
@@ -44,24 +44,41 @@ class Provenance(_Record):
     source: str = Field(min_length=1)
 
 
+class ExpectedSavings(_Record):
+    """The savings claim the report must make, computed by the case author from the declared reference."""
+
+    label: Literal["estimated", "measured"]
+    basis: Literal["same_tokens_repriced", "matched_run"]
+    amount_usd: Decimal
+    reference_price_snapshot_id: Id
+
+
 class ExpectedCost(_Record):
     known_usd: Decimal
     complete: bool | None
-    savings_usd: Decimal | None  # None: the report must carry no savings figure
+    savings: ExpectedSavings | None  # None: the report must carry no savings claim
 
 
 class ExpectedMemory(_Record):
-    """The memory item's final state; ``absent`` means it must not exist at all."""
+    """One version of a memory item in its final state; ``absent`` means no version may exist at all.
+
+    ``off`` is the switch state and keeps the origin in ``trust``; ``supersedes`` names the
+    version of the same key that this one replaced, so supersession keeps its history.
+    """
 
     key: Id
     project_id: Id
+    version: int | None = Field(ge=1)
     trust: Trust | Literal["absent"]
     status: MemoryStatus | None
+    off: bool
+    supersedes: int | None = Field(ge=1)
 
     @model_validator(mode="after")
-    def _absent_has_no_status(self) -> ExpectedMemory:
-        if (self.trust == "absent") != (self.status is None):
-            raise ValueError("status is null exactly when trust is absent")
+    def _absent_has_no_state(self) -> ExpectedMemory:
+        absent = self.trust == "absent"
+        if absent != (self.status is None) or absent != (self.version is None) or (absent and (self.off or self.supersedes)):
+            raise ValueError("an absent item has no version, status, switch state or supersession; a present one has version and status")
         return self
 
 
@@ -77,6 +94,19 @@ class AttemptReceipt(_Record):
     reasoning_tokens: int | None = Field(ge=0)
     price_snapshot_id: Id | None
     cost_usd: Decimal | None
+
+
+class RouteProvenance(_Record):
+    """Which route supplied one receipt, as the Gateway reported it; every unreported fact stays null."""
+
+    attempt_id: Id
+    provider: str | None
+    requested_model: str | None
+    resolved_provider: str | None
+    resolved_model: str | None
+    model_version: str | None
+    cache_hit: bool | None
+    billing_units: int | None = Field(ge=0)
 
 
 class CaseInput(_Record):
@@ -120,6 +150,7 @@ class GoldenCase(_Record):
     required_events: tuple[Id, ...]
     prohibited_events: tuple[Id, ...]
     expected_memory: tuple[ExpectedMemory, ...]
+    expected_rank: tuple[Id, ...]  # memory keys in their required relative order within served_memory
     expected_cost: ExpectedCost | None
     verification: str = Field(min_length=1)
     provenance: Provenance
@@ -129,30 +160,42 @@ class GoldenCase(_Record):
         seqs = [item.seq for item in self.inputs]
         if seqs != sorted(set(seqs)):
             raise ValueError("input seq values must be strictly increasing")
-        keys = [(item.key, item.project_id) for item in self.expected_memory]
+        keys = [(item.key, item.project_id, item.version) for item in self.expected_memory]
         if len(keys) != len(set(keys)):
-            raise ValueError("expected_memory repeats a key")
+            raise ValueError("expected_memory repeats a key version")
+        if len(self.expected_rank) != len(set(self.expected_rank)):
+            raise ValueError("expected_rank repeats a key")
         if set(self.required_facts) & set(self.prohibited_claims) or set(self.required_events) & set(self.prohibited_events):
             raise ValueError("an id is both required and prohibited")
         if self.expected_action == "abstain" and self.required_facts:
             raise ValueError("an abstention cannot require facts")
         asserts = (self.required_facts, self.required_evidence, self.prohibited_claims, self.required_events,
-                   self.prohibited_events, self.expected_memory)
+                   self.prohibited_events, self.expected_memory, self.expected_rank)
         if not any(asserts) and self.expected_cost is None and self.expected_action == "answer":
             raise ValueError("the case asserts nothing beyond answering")
         return self
 
 
 class MemoryStateObservation(_Record):
+    """One version of an item as the host's authoritative state reports it."""
+
     key: Id
     project_id: Id
+    version: int = Field(ge=1)
     trust: Trust
     status: MemoryStatus
+    off: bool
+    supersedes: int | None = Field(ge=1)
 
 
 class TraceEvent(_Record):
+    """One host event. Memory events name the item version they concern; others leave those null."""
+
     seq: int = Field(ge=0)
     type: Id
+    memory_key: Id | None
+    project_id: Id | None
+    version: int | None = Field(ge=1)
 
 
 class ObservedEvidence(_Record):
@@ -170,6 +213,8 @@ class ObservedEvidence(_Record):
 
 
 class MemoryRef(_Record):
+    """One served item in rank order; ``memory_id`` is the item key used in ``memory_state``."""
+
     memory_id: Id
     version: int = Field(ge=1)
     project_id: Id
@@ -187,6 +232,7 @@ class AnswerObservation(_Record):
     action: Literal["answer", "abstain"]
     claims: tuple[Id, ...]
     supported_by: tuple[MemoryCitation, ...]
+    support_extracted: bool  # an extractor or judge produced supported_by; False leaves citation support undecided
     citations: tuple[MemoryCitation, ...]
     judge_status: Literal["ok", "error", "uncertain"]
 
@@ -219,6 +265,7 @@ class ObservedTrace(_Record):
     memory_state: tuple[MemoryStateObservation, ...]
     answer: AnswerObservation
     attempts: tuple[AttemptReceipt, ...]
+    provenance: tuple[RouteProvenance, ...]  # exactly one per distinct receipt identity
     reported_cost: ReportedCost
     coverage_complete: bool | None
     missing_coverage: tuple[str, ...]
@@ -226,9 +273,12 @@ class ObservedTrace(_Record):
 
     @model_validator(mode="after")
     def _one_state_per_memory(self) -> ObservedTrace:
-        keys = [(item.key, item.project_id) for item in self.memory_state]
+        keys = [(item.key, item.project_id, item.version) for item in self.memory_state]
         if len(keys) != len(set(keys)):
-            raise ValueError("memory_state repeats a key")
+            raise ValueError("memory_state repeats a key version")
+        routes = [item.attempt_id for item in self.provenance]
+        if len(routes) != len(set(routes)) or set(routes) != {attempt.attempt_id for attempt in self.attempts}:
+            raise ValueError("provenance needs exactly one record per receipt identity")
         return self
 
 
@@ -248,6 +298,7 @@ class GatewayReply(_Record):
     finish_reason: str | None
     error_code: str | None
     attempts: tuple[AttemptReceipt, ...]
+    provenance: tuple[RouteProvenance, ...]
 
 
 class LayerVerdict(_Record):

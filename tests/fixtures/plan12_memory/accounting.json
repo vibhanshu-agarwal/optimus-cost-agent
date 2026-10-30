@@ -63,10 +63,11 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": {
     "known_usd": "0.004",
     "complete": true,
-    "savings_usd": null
+    "savings": null
    },
    "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
    "provenance": {
@@ -137,10 +138,11 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": {
     "known_usd": "0.002",
     "complete": true,
-    "savings_usd": null
+    "savings": null
    },
    "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
    "provenance": {
@@ -211,10 +213,11 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": {
     "known_usd": "0",
     "complete": false,
-    "savings_usd": null
+    "savings": null
    },
    "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
    "provenance": {
@@ -285,10 +288,11 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": {
     "known_usd": "0.002",
     "complete": false,
-    "savings_usd": null
+    "savings": null
    },
    "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
    "provenance": {
@@ -375,10 +379,11 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": {
     "known_usd": "0.004",
     "complete": false,
-    "savings_usd": null
+    "savings": null
    },
    "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
    "provenance": {
@@ -449,10 +454,11 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": {
     "known_usd": "0.002",
     "complete": false,
-    "savings_usd": null
+    "savings": null
    },
    "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
    "provenance": {
@@ -513,10 +519,16 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": {
     "known_usd": "0.010",
     "complete": true,
-    "savings_usd": "-0.004"
+    "savings": {
+     "label": "estimated",
+     "basis": "same_tokens_repriced",
+     "amount_usd": "-0.004",
+     "reference_price_snapshot_id": "price-ref-2026-10-01"
+    }
    },
    "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
    "provenance": {
@@ -577,10 +589,11 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": {
     "known_usd": "0.002",
     "complete": true,
-    "savings_usd": null
+    "savings": null
    },
    "verification": "the reported known cost, completeness and savings figure match the receipts and the gold",
    "provenance": {

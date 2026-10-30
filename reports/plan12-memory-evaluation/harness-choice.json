@@ -89,13 +89,15 @@
     {
       "id": "S7",
       "finding": "The harness saves the whole trajectory, including command output and raw replies (agents/default.py:159-190), so it holds repository source text.",
-      "resolution": "Trajectories stay in the run's own scratch under #248 custody. Evaluation artifacts keep only the ID-only trace contract (B1)."
+      "resolution": "No trajectory is written (B1: source bodies and raw tool output stay in RAM). Arm D never uses the mini CLI, whose run/mini.py defaults an output file; it builds DefaultAgent directly with output_path=None, so save() writes nothing (agents/default.py:182-190). Observations are extracted in memory into the ID-only trace contract; R10 proves no persistent sink receives source text."
     }
   ],
   "configuration": {
     "base_config": "src/minisweagent/config/mini_textbased.yaml at the pinned commit; the overrides below are merged after it (run/mini.py:72-92)",
+    "entrypoint": "DefaultAgent constructed by the arm-D runner, never the mini CLI (run/mini.py defaults an output file)",
     "agent": {
       "agent_class": "default",
+      "output_path": null,
       "step_limit": 100,
       "cost_limit": 0,
       "wall_time_limit_seconds": 1800,
@@ -124,7 +126,7 @@
     "authentication": "the Gateway's bearer shared secret only; no provider credential reaches the harness or Optimus",
     "request": "harness.build_request: one user message holding the role-tagged transcript and a version-1 route_binding (registry hash, request id, output cap)",
     "admission": "every request binds the approved registry snapshot; the model must be an exact registry ID eligible in it, and the route's approved reasoning level applies (src/optimus_model_policy/binding.py RouteBinding; src/optimus_gateway/model_policy.py admit_request)",
-    "reply": "harness.parse_reply: the text and finish_reason, and one receipt per attempt that may have reached a model; unbilled attempts carry no charge, uncertain ones stay unknown",
+    "reply": "harness.parse_reply: the text and finish_reason, one receipt per attempt that may have reached a model, and one route-provenance record per receipt (provider, requested and resolved model, model version, cache status, billing units; null when unreported). Unbilled attempts carry no charge; uncertain ones stay unknown. The receipts and their provenance go into the trace, which requires exactly one provenance record per receipt identity",
     "wait": "the HTTP timeout is at least HOST_GATEWAY_TIMEOUT_SECONDS (src/optimus_model_policy/binding.py:233), so a billed reply is never abandoned (R9)",
     "reference_models": {
       "labels": ["Sonnet 5.5", "Opus 5.5", "GPT 6.1 Sol"],
@@ -159,7 +161,7 @@
     {"id": "R7", "point": "Each model follows the role-tagged single-message transcript.", "acceptance_check": "a reviewed pilot sample shows no model treating its own earlier turns as user instructions; otherwise a versioned replacement decision", "status": "UNRUN"},
     {"id": "R8", "point": "Receipts reconcile with the Gateway's records.", "acceptance_check": "every gateway_request_id in route_attempts appears in the Gateway usage log; the grader reports cost completeness", "status": "UNRUN"},
     {"id": "R9", "point": "The wait covers the Gateway's own budget.", "acceptance_check": "the arm-D model class's HTTP timeout is read from HOST_GATEWAY_TIMEOUT_SECONDS", "status": "UNRUN"},
-    {"id": "R10", "point": "Trajectories stay out of evaluation artifacts (B1).", "acceptance_check": "output paths sit in the run's scratch; reports contain only ID-only trace records", "status": "UNRUN"}
+    {"id": "R10", "point": "No source text reaches a persistent sink (B1).", "acceptance_check": "canary: a case action prints a unique marker read from a source file; afterwards a scan of every persistent sink (run directories, container and Gateway logs, the trace store), excluding only the original canary source file, finds no marker. A positive control first writes the marker to one sink and must be detected. A sink that cannot be fully inspected makes the check INCONCLUSIVE, never PASS", "status": "UNRUN"}
   ],
   "replacement_rule": "If any runtime obligation fails, a reviewer-approved replacement is chosen and versioned before benchmark execution. Evidence recorded here is not relabelled."
 }

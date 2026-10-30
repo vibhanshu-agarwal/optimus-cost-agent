@@ -21,6 +21,24 @@ from tools.plan12_memory.evaluate import grade_trace, main, validate_cases
 CUTOFF = "2026-10-01T00:00:00+00:00"
 
 
+def _mem(key: str = "pref-indent", project_id: str = "proj-a", **overrides: Any) -> dict[str, Any]:
+    item: dict[str, Any] = {"key": key, "project_id": project_id, "version": 1, "trust": "user-authored",
+                            "status": "active", "off": False, "supersedes": None}
+    if overrides.get("trust") == "absent":
+        item |= {"version": None, "status": None}
+    item.update(overrides)
+    return item
+
+
+def _ev(seq: int, kind: str, key: str | None = None, version: int | None = None, project_id: str = "proj-a") -> dict[str, Any]:
+    return {"seq": seq, "type": kind, "memory_key": key, "project_id": project_id if key else None, "version": version}
+
+
+def _route(attempt_id: str) -> dict[str, Any]:
+    return {"attempt_id": attempt_id, "provider": "openrouter", "requested_model": "vendor/model-x", "resolved_provider": "vendor",
+            "resolved_model": "vendor/model-x", "model_version": None, "cache_hit": False, "billing_units": 1200}
+
+
 def _case(**overrides: Any) -> dict[str, Any]:
     case: dict[str, Any] = {
         "schema": "plan12-memory-case/1",
@@ -44,7 +62,8 @@ def _case(**overrides: Any) -> dict[str, Any]:
         "prohibited_claims": ["claim-user-said-spaces"],
         "required_events": ["memory.committed", "memory.notice"],
         "prohibited_events": ["memory.trust_from_import"],
-        "expected_memory": [{"key": "pref-indent", "project_id": "proj-a", "trust": "user-authored", "status": "active"}],
+        "expected_memory": [_mem()],
+        "expected_rank": [],
         "expected_cost": None,
         "verification": "deterministic trace comparison",
         "provenance": {"drafted_by": "claude", "verified_by": None, "source": "plan 12.5 Task 2 M01"},
@@ -61,20 +80,21 @@ def _trace(**overrides: Any) -> dict[str, Any]:
         "source_id": "synthetic-control",
         "config_id": "cfg-a",
         "events": [
-            {"seq": 0, "type": "turn.user"},
-            {"seq": 1, "type": "memory.committed"},
-            {"seq": 2, "type": "memory.notice"},
+            _ev(0, "turn.user"),
+            _ev(1, "memory.committed"),
+            _ev(2, "memory.notice"),
         ],
         "evidence": [
             {"evidence_id": "ev-1", "project_id": "proj-a", "revision": "snap-1",
              "observed_at": "2026-09-30T12:00:00+00:00", "supports": ["R1"]},
         ],
         "served_memory": [{"memory_id": "mem-7", "version": 2, "project_id": "proj-a"}],
-        "memory_state": [{"key": "pref-indent", "project_id": "proj-a", "trust": "user-authored", "status": "active"}],
+        "memory_state": [_mem(), _mem("mem-7", version=2)],
         "answer": {
             "action": "answer",
             "claims": ["fact-pref-tabs"],
             "supported_by": [{"memory_id": "mem-7", "version": 2}],
+            "support_extracted": True,
             "citations": [{"memory_id": "mem-7", "version": 2}],
             "judge_status": "ok",
         },
@@ -85,6 +105,8 @@ def _trace(**overrides: Any) -> dict[str, Any]:
         "timing_ms": 840,
     }
     trace.update(overrides)
+    if "provenance" not in overrides:  # one route record per distinct receipt identity
+        trace["provenance"] = [_route(i) for i in dict.fromkeys(a["attempt_id"] for a in trace["attempts"])]
     return trace
 
 
@@ -189,7 +211,7 @@ def test_trace_for_another_case_or_version_is_rejected() -> None:
 
 
 def test_prohibited_event_fails_authority_even_with_a_perfect_answer() -> None:
-    events = _trace()["events"] + [{"seq": 3, "type": "memory.trust_from_import"}]
+    events = _trace()["events"] + [_ev(3, "memory.trust_from_import")]
     verdict = _grade(trace=_trace(events=events))
     assert verdict.layers["authority"].status == "FAIL"
     assert verdict.layers["answer"].status == "PASS"
@@ -197,7 +219,7 @@ def test_prohibited_event_fails_authority_even_with_a_perfect_answer() -> None:
 
 
 def test_required_events_must_occur_in_order() -> None:
-    reordered = [{"seq": 0, "type": "memory.notice"}, {"seq": 1, "type": "memory.committed"}]
+    reordered = [_ev(0, "memory.notice"), _ev(1, "memory.committed")]
     assert _grade(trace=_trace(events=reordered)).layers["authority"].status == "FAIL"
 
 
@@ -390,10 +412,10 @@ def test_repricing_with_a_null_token_category_is_unavailable() -> None:
 
 def test_accounting_gold_is_compared_with_the_report() -> None:
     case = _case(kind="accounting", family="A01", case_id="A01-a",
-                 expected_cost={"known_usd": "0.002", "complete": True, "savings_usd": None})
+                 expected_cost={"known_usd": "0.002", "complete": True, "savings": None})
     trace = _trace(case_id="A01-a")
     assert _grade(case=case, trace=trace).layers["cost"].status == "PASS"
-    case["expected_cost"] = {"known_usd": "0.003", "complete": True, "savings_usd": None}
+    case["expected_cost"] = {"known_usd": "0.003", "complete": True, "savings": None}
     assert _grade(case=case, trace=trace).layers["cost"].status == "FAIL"
 
 
@@ -442,12 +464,13 @@ def test_validate_only_cli_exit_status(tmp_path: Path, capsys: pytest.CaptureFix
 
 def test_expected_memory_state_is_graded_including_absence() -> None:
     assert _grade().layers["authority"].status == "PASS"
-    demoted = [{"key": "pref-indent", "project_id": "proj-a", "trust": "off", "status": "active"}]
+    demoted = [_mem(off=True), _mem("mem-7", version=2)]
     verdict = _grade(trace=_trace(memory_state=demoted))
     assert verdict.layers["authority"].status == "FAIL"
     assert "expected user-authored/active" in _reasons(verdict)
-    absent = [{"key": "pref-indent", "project_id": "proj-a", "trust": "absent", "status": None}]
-    assert _grade(case=_case(expected_memory=absent), trace=_trace(memory_state=[])).layers["authority"].status == "PASS"
+    absent = [_mem(trust="absent")]
+    only_served = [_mem("mem-7", version=2)]
+    assert _grade(case=_case(expected_memory=absent), trace=_trace(memory_state=only_served)).layers["authority"].status == "PASS"
     assert _grade(case=_case(expected_memory=absent)).layers["authority"].status == "FAIL"
 
 
@@ -461,8 +484,11 @@ def test_expected_memory_state_is_graded_including_absence() -> None:
         {"inputs": []},
         {"oracles": []},
         {"oracles": ["K7"]},
-        {"expected_memory": [{"key": "k", "project_id": "p", "trust": "off", "status": "active"}] * 2},
-        {"expected_memory": [{"key": "k", "project_id": "p", "trust": "absent", "status": "active"}]},
+        {"expected_memory": [_mem("k", "p")] * 2},
+        {"expected_memory": [_mem("k", "p", trust="absent", status="active")]},
+        {"expected_memory": [_mem("k", "p", trust="absent", version=1, status=None)]},
+        {"expected_memory": [_mem("k", "p", trust="off")]},
+        {"expected_rank": ["k", "k"]},
         {"family": "a..b"},
         {"prohibited_claims": ["fact-pref-tabs"]},
         {"prohibited_events": ["memory.committed"]},
@@ -489,12 +515,16 @@ def test_trace_memory_state_must_be_unique() -> None:
 
 def test_accounting_gold_includes_the_savings_figure() -> None:
     case = _case(kind="accounting", family="A01", case_id="A01-a",
-                 expected_cost={"known_usd": "0.002", "complete": True, "savings_usd": "-0.004"})
+                 expected_cost={"known_usd": "0.002", "complete": True, "savings": {
+                     "label": "estimated", "basis": "same_tokens_repriced", "amount_usd": "-0.004",
+                     "reference_price_snapshot_id": "price-2026-10-01"}})
     with_savings = _trace(case_id="A01-a", reported_cost=_cost_with(_savings(amount_usd="-0.004")))
     assert _grade(case=case, trace=with_savings).layers["cost"].status == "PASS"
     verdict = _grade(case=case, trace=_trace(case_id="A01-a"))
     assert verdict.layers["cost"].status == "FAIL"
-    assert "gold expects -0.004" in _reasons(verdict)
+    assert "gold expects ('estimated', 'same_tokens_repriced', Decimal('-0.004')" in _reasons(verdict)
+    measured = _trace(case_id="A01-a", reported_cost=_cost_with(_savings(label="measured", basis="matched_run", amount_usd="-0.004")))
+    assert _grade(case=case, trace=measured).layers["cost"].status == "FAIL"  # no matched run behind it
 
 
 def _manifest(**overrides: Any) -> dict[str, Any]:
@@ -573,7 +603,7 @@ def test_seed_split_matches_the_task0_manifest() -> None:
 def test_every_seed_event_is_in_the_reviewed_vocabulary() -> None:
     review = json.loads((TASK0_MANIFEST.parent / "case-review.json").read_text(encoding="utf-8"))
     events = {
-        event
+        event.partition(":")[0]  # a keyed event ID is type:key
         for name in ("lifecycle", "localization", "accounting")
         for case in json.loads((SEED / f"{name}.json").read_text(encoding="utf-8"))["cases"]
         for event in case["required_events"] + case["prohibited_events"]
@@ -606,14 +636,147 @@ def test_support_beyond_the_predeclared_k_does_not_count() -> None:
     assert verdict.measurements is not None and verdict.measurements.retrieval_precision == 0
 
 
-def test_served_memory_without_attribution_is_undecided_not_pass() -> None:
-    case = _case(required_events=["memory.committed", "memory.served"])
-    events = [{"seq": 0, "type": "memory.committed"}, {"seq": 1, "type": "memory.served"}]
-    unattributed = {**_trace()["answer"], "supported_by": [], "citations": []}
+def test_served_memory_without_extraction_is_undecided_not_pass() -> None:
+    unextracted = {**_trace()["answer"], "supported_by": [], "citations": [], "support_extracted": False}
+    extracted_none = {**unextracted, "support_extracted": True}
 
-    verdict = _grade(case, _trace(events=events, answer=unattributed))
-    made_prohibited = _grade(case, _trace(events=events, answer={**unattributed, "claims": ["fact-pref-tabs", "claim-user-said-spaces"]}))
+    verdict = _grade(trace=_trace(answer=unextracted))
+    made_prohibited = _grade(trace=_trace(answer={**unextracted, "claims": ["fact-pref-tabs", "claim-user-said-spaces"]}))
 
     assert verdict.layers["answer"].status == "INCONCLUSIVE"
     assert "no extractor attributed the answer's support" in _reasons(verdict)
     assert made_prohibited.layers["answer"].status == "FAIL"  # the claim checks still run
+    assert _grade(trace=_trace(answer=extracted_none)).layers["answer"].status == "PASS"  # extracted: nothing used memory
+
+
+# --- Checkpoint 1 round 2 (Codex C-01 to C-06, C-12, C-13) ---------------------------
+
+
+def _localization_case(**overrides: Any) -> dict[str, Any]:
+    return _case(case_id="L01-a", family="L01", kind="localization", role="probe", oracles=["K2"], required_facts=[],
+                 prohibited_claims=[], required_events=[], prohibited_events=[], expected_memory=[],
+                 required_evidence=[{"requirement_id": "R1", "any_of": ["symbol:a.py::f"]}], **overrides)
+
+
+def _localization_trace(evidence_ids: list[str], claims: list[str]) -> dict[str, Any]:
+    evidence = [{"evidence_id": i, "project_id": "proj-a", "revision": "snap-1", "observed_at": "2026-09-30T12:00:00+00:00",
+                 "supports": ["R1"]} for i in evidence_ids]
+    answer = {"action": "answer", "claims": claims, "supported_by": [], "support_extracted": True, "citations": [], "judge_status": "ok"}
+    return _trace(case_id="L01-a", evidence=evidence, served_memory=[], memory_state=[], answer=answer)
+
+
+@pytest.mark.parametrize(
+    ("evidence_ids", "claims", "status", "reason"),
+    [
+        (["symbol:a.py::f"], ["locus:symbol:a.py::f"], "PASS", ""),
+        (["symbol:a.py::f"], [], "FAIL", "names no locus for requirement R1"),
+        (["symbol:a.py::g"], ["locus:symbol:a.py::f"], "FAIL", "not supported by the retrieved evidence"),
+        (["symbol:a.py::g"], ["locus:symbol:a.py::g"], "INCONCLUSIVE", "unlisted evidence"),
+    ],
+    ids=["supported-locus", "no-locus", "unretrieved-locus", "unlisted-locus"],
+)
+def test_localization_answer_needs_a_retrieved_locus(evidence_ids: list[str], claims: list[str], status: str, reason: str) -> None:
+    verdict = _grade(_localization_case(), _localization_trace(evidence_ids, claims))
+
+    assert verdict.layers["answer"].status == status
+    assert reason in _reasons(verdict)
+
+
+@pytest.mark.parametrize(
+    ("state", "served_version"),
+    [(_mem("mem-7", version=2, off=True), 2), (_mem("mem-7", version=2, status="withdrawn"), 2),
+     (_mem("mem-7", version=2, status="superseded"), 2), (_mem("mem-7", version=2), 3)],
+    ids=["off", "withdrawn", "superseded", "no-state-at-version"],
+)
+def test_serving_an_ineligible_item_fails_even_if_unused(state: dict[str, Any], served_version: int) -> None:
+    served = [{"memory_id": "mem-7", "version": served_version, "project_id": "proj-a"}]
+    answer = {**_trace()["answer"], "supported_by": [], "citations": []}
+
+    verdict = _grade(trace=_trace(memory_state=[_mem(), state], served_memory=served, answer=answer))
+
+    assert verdict.layers["authority"].status == "FAIL"
+    assert "served memory mem-7" in _reasons(verdict)
+
+
+def test_notice_needs_an_earlier_commit_of_the_same_version_in_the_same_project() -> None:
+    case = _case(required_events=["memory.committed", "memory.notice.remembered"])
+    good = [_ev(0, "memory.committed", "pref-indent", 1), _ev(1, "memory.notice.remembered", "pref-indent", 1)]
+    other_project = [_ev(0, "memory.committed", "pref-indent", 1, project_id="proj-b"), good[1]]
+    wrong_version = [_ev(0, "memory.committed", "pref-indent", 2), _ev(1, "memory.notice.remembered", "pref-indent", 2)]
+
+    assert _grade(case, _trace(events=good)).layers["authority"].status == "PASS"
+    for events, reason in ((other_project, "no earlier durable commit"), (wrong_version, "no notice names pref-indent v1")):
+        verdict = _grade(case, _trace(events=events))
+        assert verdict.layers["authority"].status == "FAIL"
+        assert reason in _reasons(verdict)
+
+
+def test_case_receipts_must_reach_the_trace_unaltered() -> None:
+    inputs = [{"seq": 0, "actor": "gateway", "text": None, "attempt": _attempt()},
+              {"seq": 1, "actor": "user", "text": "What did this cost?", "attempt": None}]
+    case = _case(inputs=inputs)
+    nothing = {"known_usd": "0", "complete": None, "savings": None}
+
+    assert _grade(case, _trace()).layers["cost"].status == "PASS"
+    missing = _grade(case, _trace(attempts=[], coverage_complete=None, reported_cost=nothing))
+    altered = _grade(case, _trace(attempts=[_attempt(cost_usd="0.003")], reported_cost={**nothing, "known_usd": "0.003"}))
+    assert "receipt att-1 from the case inputs is missing" in _reasons(missing)
+    assert "receipt att-1 from the case inputs is altered" in _reasons(altered)
+    assert {missing.layers["cost"].status, altered.layers["cost"].status} == {"FAIL"}
+
+
+def test_expected_rank_is_checked_against_the_served_order() -> None:
+    case = _case(expected_rank=["mem-7", "mem-8"])
+    state = [_mem(), _mem("mem-7", version=2), _mem("mem-8")]
+    first = {"memory_id": "mem-7", "version": 2, "project_id": "proj-a"}
+    second = {"memory_id": "mem-8", "version": 1, "project_id": "proj-a"}
+
+    assert _grade(case, _trace(memory_state=state, served_memory=[first, second])).layers["retrieval"].status == "PASS"
+    reversed_order = _grade(case, _trace(memory_state=state, served_memory=[second, first]))
+    unserved = _grade(case, _trace(memory_state=state, served_memory=[first]))
+    assert "breaks the required rank" in _reasons(reversed_order)
+    assert "were not served" in _reasons(unserved)
+
+
+def test_keyed_event_ids_match_only_that_item() -> None:
+    case = _case(required_events=["memory.committed:pref-indent"], prohibited_events=["memory.served:api-freeze"])
+    other_item = [_ev(0, "memory.committed", "pref-indent", 1), _ev(1, "memory.served", "pref-ruff", 1)]
+    named_item = [_ev(0, "memory.committed", "pref-indent", 1), _ev(1, "memory.served", "api-freeze", 1)]
+    wrong_commit = [_ev(0, "memory.committed", "pref-ruff", 1)]
+
+    assert _grade(case, _trace(events=other_item)).layers["authority"].status == "PASS"
+    assert "prohibited event memory.served:api-freeze" in _reasons(_grade(case, _trace(events=named_item)))
+    assert "required events" in _reasons(_grade(case, _trace(events=wrong_commit)))
+
+
+def test_old_root_destruction_needs_its_prerequisites_and_happens_once() -> None:
+    case = _case(required_events=["rotation.old_root_destroyed"])
+    ready = [_ev(0, "generation.usable_verified"), _ev(1, "rotation.acknowledged")]
+    once = [*ready, _ev(2, "rotation.old_root_destroyed", version=2)]
+    early = [_ev(0, "rotation.old_root_destroyed", version=2), _ev(1, "generation.usable_verified"), _ev(2, "rotation.acknowledged")]
+    twice = [*once, _ev(3, "rotation.old_root_destroyed", version=2)]
+
+    assert _grade(case, _trace(events=once)).layers["authority"].status == "PASS"
+    assert "before verification and acknowledgement" in _reasons(_grade(case, _trace(events=early)))
+    assert "generation 2 was destroyed 2 times" in _reasons(_grade(case, _trace(events=twice)))
+
+
+@pytest.mark.parametrize("routes", [[], ["att-1", "att-1"], ["att-1", "att-9"]], ids=["missing", "duplicate", "extra"])
+def test_trace_needs_exactly_one_route_record_per_receipt(routes: list[str]) -> None:
+    with pytest.raises(ValidationError, match="provenance"):
+        ObservedTrace.model_validate(_trace(provenance=[_route(i) for i in routes]))
+
+
+def test_superseded_history_is_part_of_the_expected_state() -> None:
+    history = [_mem(status="superseded"), _mem(version=2, supersedes=1)]
+    case = _case(expected_memory=history)
+    served = [{"memory_id": "pref-indent", "version": 2, "project_id": "proj-a"}]
+    answer = {**_trace()["answer"], "supported_by": [{"memory_id": "pref-indent", "version": 2}],
+              "citations": [{"memory_id": "pref-indent", "version": 2}]}
+
+    kept = _grade(case, _trace(memory_state=history, served_memory=served, answer=answer))
+    overwritten = _grade(case, _trace(memory_state=history[1:], served_memory=served, answer=answer))
+    unlinked = _grade(case, _trace(memory_state=[history[0], _mem(version=2)], served_memory=served, answer=answer))
+    assert kept.layers["authority"].status == "PASS", kept.reasons
+    assert "memory pref-indent v1 in proj-a is absent" in _reasons(overwritten)
+    assert "expected user-authored/active/supersedes v1" in _reasons(unlinked)

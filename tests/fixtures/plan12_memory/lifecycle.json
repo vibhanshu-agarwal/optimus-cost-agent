@@ -50,10 +50,14 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "the answer cites the served pref-indent memory by id and version; the notice follows the durable commit",
    "provenance": {
@@ -113,6 +117,7 @@
     "memory.served"
    ],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -167,10 +172,14 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": null,
      "trust": "absent",
-     "status": null
+     "status": null,
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -237,10 +246,14 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -288,6 +301,7 @@
     "memory.committed"
    ],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -335,6 +349,7 @@
     "memory.committed"
    ],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -382,6 +397,7 @@
     "memory.committed"
    ],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -432,10 +448,14 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -488,19 +508,32 @@
    ],
    "required_events": [
     "memory.committed",
-    "memory.superseded"
+    "memory.superseded:pref-indent"
    ],
    "prohibited_events": [],
    "expected_memory": [
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "superseded",
+     "off": false,
+     "supersedes": null
+    },
+    {
+     "key": "pref-indent",
+     "project_id": "proj-alpha",
+     "version": 2,
+     "trust": "user-authored",
+     "status": "active",
+     "off": false,
+     "supersedes": 1
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
-   "verification": "deterministic trace comparison against the listed events, memory state and claims",
+   "verification": "version 2 supersedes version 1 of the same key; version 1 is kept with its provenance, unserved",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -557,10 +590,14 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "withdrawn"
+     "status": "withdrawn",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -608,6 +645,7 @@
     "memory.committed"
    ],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "best-effort classification; a miss is recorded as the measured short-paste residual",
    "provenance": {
@@ -664,10 +702,14 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -723,6 +765,7 @@
     "memory.trust_promoted"
    ],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -780,10 +823,14 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -844,6 +891,7 @@
     "memory.trust_promoted"
    ],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -894,10 +942,14 @@
     {
      "key": "lesson-failing-test",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "agent-derived",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -958,10 +1010,14 @@
     {
      "key": "rule-tests-before-push",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -1014,6 +1070,7 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "simple factual lookup: the answer is grounded in the README evidence",
    "provenance": {
@@ -1066,10 +1123,14 @@
     {
      "key": "lesson-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "agent-derived",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -1126,16 +1187,23 @@
     {
      "key": "lesson-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "agent-derived",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     },
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -1196,16 +1264,23 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     },
     {
      "key": "lesson-indent-spaces",
      "project_id": "proj-alpha",
-     "trust": "off",
-     "status": "conflicted"
+     "version": 1,
+     "trust": "agent-derived",
+     "status": "conflicted",
+     "off": true,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -1260,10 +1335,14 @@
     {
      "key": "lesson-ruff-first",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "agent-derived",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -1316,10 +1395,14 @@
     {
      "key": "secret-deploy-token",
      "project_id": "proj-alpha",
+     "version": null,
      "trust": "absent",
-     "status": null
+     "status": null,
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -1369,6 +1452,7 @@
     "memory.body_persisted"
    ],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "B1: only a pointer and hash may persist; the body is read from disk at answer time",
    "provenance": {
@@ -1419,10 +1503,14 @@
     {
      "key": "fact-deploy-target",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -1457,6 +1545,12 @@
     },
     {
      "seq": 2,
+     "actor": "host",
+     "text": "A new session starts; the earlier conversation is not in context.",
+     "attempt": null
+    },
+    {
+     "seq": 3,
      "actor": "user",
      "text": "What indentation rule have I set?",
      "attempt": null
@@ -1482,10 +1576,14 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": null,
      "trust": "absent",
-     "status": null
+     "status": null,
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -1542,10 +1640,14 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -1602,22 +1704,32 @@
     {
      "key": "n-alpha-1",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "legacy-import",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     },
     {
      "key": "n-beta-1",
      "project_id": "proj-alpha",
+     "version": null,
      "trust": "absent",
-     "status": null
+     "status": null,
+     "off": false,
+     "supersedes": null
     },
     {
      "key": "n-unknown-1",
      "project_id": "proj-alpha",
+     "version": null,
      "trust": "absent",
-     "status": null
+     "status": null,
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "only the mapped proj-alpha note is served, as optional context; served memory from another project fails",
    "provenance": {
@@ -1668,12 +1780,116 @@
     {
      "key": "n-alpha-2",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "legacy-import",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 2 row M13"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "M13-c",
+   "version": 1,
+   "family": "M13",
+   "split": "held_out",
+   "kind": "lifecycle",
+   "role": "probe",
+   "oracles": [
+    "K1",
+    "K5"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "import",
+     "text": "Codex note n-alpha-4 (project proj-alpha, mapped): squash before merging.",
+     "attempt": null
+    },
+    {
+     "seq": 1,
+     "actor": "host",
+     "text": "Agent lesson lesson-squash (agent-derived: squash before merging) exists for proj-alpha.",
+     "attempt": null
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "/memory switch-off n-alpha-4",
+     "attempt": null
+    },
+    {
+     "seq": 3,
+     "actor": "user",
+     "text": "/memory switch-off lesson-squash",
+     "attempt": null
+    },
+    {
+     "seq": 4,
+     "actor": "user",
+     "text": "/memory export",
+     "attempt": null
+    },
+    {
+     "seq": 5,
+     "actor": "host",
+     "text": "The export is re-imported into proj-alpha; its metadata claims trust=user-authored for both items.",
+     "attempt": null
+    },
+    {
+     "seq": 6,
+     "actor": "user",
+     "text": "Should I squash before merging?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "abstain",
+   "required_facts": [],
+   "required_evidence": [],
+   "prohibited_claims": [
+    "claim-squash-required"
+   ],
+   "required_events": [],
+   "prohibited_events": [
+    "memory.trust_from_import",
+    "memory.trust_promoted",
+    "memory.served"
+   ],
+   "expected_memory": [
+    {
+     "key": "n-alpha-4",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "legacy-import",
+     "status": "active",
+     "off": true,
+     "supersedes": null
+    },
+    {
+     "key": "lesson-squash",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "agent-derived",
+     "status": "active",
+     "off": true,
+     "supersedes": null
+    }
+   ],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "the export carries both items switched off with their origins; re-import keeps them off as legacy-import and agent-derived, and imported metadata cannot assert user trust",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -1735,10 +1951,14 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -1796,10 +2016,14 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha-clone",
+     "version": null,
      "trust": "absent",
-     "status": null
+     "status": null,
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -1862,24 +2086,101 @@
     {
      "key": "n-alpha-3",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "legacy-import",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     },
     {
      "key": "n-beta-3",
      "project_id": "proj-alpha",
+     "version": null,
      "trust": "absent",
-     "status": null
+     "status": null,
+     "off": false,
+     "supersedes": null
     },
     {
      "key": "n-unknown-3",
      "project_id": "proj-alpha",
-     "trust": "off",
-     "status": "active"
+     "version": 1,
+     "trust": "legacy-import",
+     "status": "active",
+     "off": true,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "only the mapped proj-alpha note is served, as optional context; the proj-beta note never enters proj-alpha and the unknown-attribution note stays off and unserved",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 2 row M18"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "M18-d",
+   "version": 1,
+   "family": "M18",
+   "split": "held_out",
+   "kind": "lifecycle",
+   "role": "probe",
+   "oracles": [
+    "K1",
+    "K5"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "On the release-1 branch only: the public API is frozen.",
+     "attempt": null
+    },
+    {
+     "seq": 1,
+     "actor": "host",
+     "text": "The session is in proj-alpha on branch feature-x.",
+     "attempt": null
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "Can I change the public API here?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [
+    "fact-no-freeze-on-feature-x"
+   ],
+   "required_evidence": [],
+   "prohibited_claims": [
+    "claim-api-frozen-here"
+   ],
+   "required_events": [],
+   "prohibited_events": [
+    "memory.served:api-freeze"
+   ],
+   "expected_memory": [
+    {
+     "key": "api-freeze",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "active",
+     "off": false,
+     "supersedes": null
+    }
+   ],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "the item scoped to release-1 stays active but is never served on feature-x",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -1935,10 +2236,14 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -1968,7 +2273,7 @@
     {
      "seq": 1,
      "actor": "host",
-     "text": "Off candidate pref-indent from that session remains as pointer and title only.",
+     "text": "Off candidate pref-indent (origin: the user's hedged remark) from that session remains as pointer and title only.",
      "attempt": null
     },
     {
@@ -2003,10 +2308,14 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
-     "trust": "off",
-     "status": "active"
+     "version": 1,
+     "trust": "user-authored",
+     "status": "active",
+     "off": true,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -2042,7 +2351,7 @@
     {
      "seq": 2,
      "actor": "tool",
-     "text": "A new off candidate arrives.",
+     "text": "A new off candidate cand-201 (agent-derived) arrives.",
      "attempt": null
     },
     {
@@ -2062,7 +2371,7 @@
    "required_evidence": [],
    "prohibited_claims": [],
    "required_events": [
-    "memory.archived_overflow"
+    "memory.archived_overflow:cand-201"
    ],
    "prohibited_events": [
     "memory.purged"
@@ -2071,10 +2380,23 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
+    },
+    {
+     "key": "cand-201",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "agent-derived",
+     "status": "archived",
+     "off": true,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -2136,10 +2458,14 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -2206,10 +2532,14 @@
     {
      "key": "pin-parse-config",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "reverify"
+     "status": "reverify",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -2264,10 +2594,14 @@
     {
      "key": "pin-parse-config",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -2296,14 +2630,20 @@
     },
     {
      "seq": 1,
-     "actor": "clock",
-     "text": "120 days pass with no use of this memory.",
+     "actor": "user",
+     "text": "Run ruff before committing in this project.",
      "attempt": null
     },
     {
      "seq": 2,
+     "actor": "clock",
+     "text": "120 days pass; the ruff memory is used daily and the indentation memory is never used.",
+     "attempt": null
+    },
+    {
+     "seq": 3,
      "actor": "user",
-     "text": "What indentation rule have I set?",
+     "text": "What are my rules for this project?",
      "attempt": null
     }
    ],
@@ -2312,11 +2652,14 @@
    "cutoff": "2026-10-01T00:00:00+00:00",
    "expected_action": "answer",
    "required_facts": [
-    "fact-indent-tabs"
+    "fact-indent-tabs",
+    "fact-ruff-first"
    ],
    "required_evidence": [],
    "prohibited_claims": [],
-   "required_events": [],
+   "required_events": [
+    "memory.strength_faded:pref-indent"
+   ],
    "prohibited_events": [
     "memory.expired",
     "memory.trust_changed"
@@ -2325,12 +2668,28 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
+    },
+    {
+     "key": "pref-ruff",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [
+    "pref-ruff",
+    "pref-indent"
+   ],
    "expected_cost": null,
-   "verification": "inactivity lowers ranking strength only; it never expires accepted memory or changes trust",
+   "verification": "inactivity lowers pref-indent's ranking strength below pref-ruff; it never expires accepted memory or changes trust",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -2357,14 +2716,20 @@
     },
     {
      "seq": 1,
-     "actor": "clock",
-     "text": "One day passes.",
+     "actor": "user",
+     "text": "Run ruff before committing in this project.",
      "attempt": null
     },
     {
      "seq": 2,
+     "actor": "clock",
+     "text": "One day passes; the indentation memory is used five times.",
+     "attempt": null
+    },
+    {
+     "seq": 3,
      "actor": "user",
-     "text": "What indentation rule have I set?",
+     "text": "What are my rules for this project?",
      "attempt": null
     }
    ],
@@ -2373,22 +2738,44 @@
    "cutoff": "2026-10-01T00:00:00+00:00",
    "expected_action": "answer",
    "required_facts": [
-    "fact-indent-tabs"
+    "fact-indent-tabs",
+    "fact-ruff-first"
    ],
    "required_evidence": [],
    "prohibited_claims": [],
-   "required_events": [],
-   "prohibited_events": [],
+   "required_events": [
+    "memory.strength_raised:pref-indent"
+   ],
+   "prohibited_events": [
+    "memory.expired",
+    "memory.trust_changed"
+   ],
    "expected_memory": [
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
+    },
+    {
+     "key": "pref-ruff",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [
+    "pref-indent",
+    "pref-ruff"
+   ],
    "expected_cost": null,
-   "verification": "deterministic trace comparison against the listed events, memory state and claims",
+   "verification": "use reinforces pref-indent above pref-ruff without changing trust",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -2410,24 +2797,30 @@
    "inputs": [
     {
      "seq": 0,
+     "actor": "host",
+     "text": "Automatic brief display is enabled (break threshold 7 days).",
+     "attempt": null
+    },
+    {
+     "seq": 1,
      "actor": "user",
      "text": "Let's finish the retry refactor next.",
      "attempt": null
     },
     {
-     "seq": 1,
+     "seq": 2,
      "actor": "host",
      "text": "The operator approved running the live suite once.",
      "attempt": null
     },
     {
-     "seq": 2,
+     "seq": 3,
      "actor": "clock",
      "text": "Eight days pass.",
      "attempt": null
     },
     {
-     "seq": 3,
+     "seq": 4,
      "actor": "user",
      "text": "Hi, I'm back.",
      "attempt": null
@@ -2449,6 +2842,7 @@
    ],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -2471,24 +2865,30 @@
    "inputs": [
     {
      "seq": 0,
+     "actor": "host",
+     "text": "Automatic brief display is enabled (break threshold 7 days).",
+     "attempt": null
+    },
+    {
+     "seq": 1,
      "actor": "user",
      "text": "Let's finish the retry refactor next.",
      "attempt": null
     },
     {
-     "seq": 1,
+     "seq": 2,
      "actor": "clock",
      "text": "Three days pass.",
      "attempt": null
     },
     {
-     "seq": 2,
+     "seq": 3,
      "actor": "user",
      "text": "Hi, I'm back.",
      "attempt": null
     },
     {
-     "seq": 3,
+     "seq": 4,
      "actor": "user",
      "text": "/welcome",
      "attempt": null
@@ -2510,6 +2910,7 @@
     "brief.shown.first_response"
    ],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -2571,6 +2972,7 @@
    ],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -2626,6 +3028,7 @@
    ],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -2649,7 +3052,7 @@
     {
      "seq": 0,
      "actor": "host",
-     "text": "A backup from registry R1 (project u-alpha-old) is restored into registry R2.",
+     "text": "A backup from registry R1 (project u-alpha-old) is restored into registry R2. Its inventory lists pref-indent (user-authored: use tabs; anchored to .editorconfig in u-alpha-old) and pref-old.",
      "attempt": null
     },
     {
@@ -2661,7 +3064,7 @@
     {
      "seq": 2,
      "actor": "host",
-     "text": "The backup's deletion journal tombstones item pref-old.",
+     "text": "The backup's deletion journal names pref-old as purged; the current verified deletion high-watermark covers this journal.",
      "attempt": null
     },
     {
@@ -2682,6 +3085,7 @@
    "prohibited_claims": [],
    "required_events": [
     "restore.rekey_mapped",
+    "restore.anchor_mapped:pref-indent",
     "restore.tombstones_applied"
    ],
    "prohibited_events": [
@@ -2691,16 +3095,23 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     },
     {
      "key": "pref-old",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "purged"
+     "status": "purged",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -2755,6 +3166,7 @@
     "memory.served"
    ],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -2803,8 +3215,153 @@
     "memory.served"
    ],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 2 row M21"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "M21-d",
+   "version": 1,
+   "family": "M21",
+   "split": "held_out",
+   "kind": "lifecycle",
+   "role": "probe",
+   "oracles": [
+    "K5"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "host",
+     "text": "A backup from registry R1 (project u-alpha-old) is restored into registry R2. Its inventory lists pref-indent (user-authored: use tabs).",
+     "attempt": null
+    },
+    {
+     "seq": 1,
+     "actor": "user",
+     "text": "Map u-alpha-old to proj-alpha.",
+     "attempt": null
+    },
+    {
+     "seq": 2,
+     "actor": "host",
+     "text": "After the backup was taken, pref-indent was withdrawn in proj-alpha; the current verified deletion high-watermark records it.",
+     "attempt": null
+    },
+    {
+     "seq": 3,
+     "actor": "user",
+     "text": "What indentation rule have I set?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "abstain",
+   "required_facts": [],
+   "required_evidence": [],
+   "prohibited_claims": [
+    "claim-indent-tabs-rule"
+   ],
+   "required_events": [
+    "restore.rekey_mapped"
+   ],
+   "prohibited_events": [
+    "memory.served"
+   ],
+   "expected_memory": [
+    {
+     "key": "pref-indent",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "withdrawn",
+     "off": false,
+     "supersedes": null
+    }
+   ],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "the freshest deletion state wins: the restored item stays withdrawn and unserved",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 2 row M21"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "M21-e",
+   "version": 1,
+   "family": "M21",
+   "split": "held_out",
+   "kind": "lifecycle",
+   "role": "probe",
+   "oracles": [
+    "K5"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "host",
+     "text": "A backup from registry R1 (project u-alpha-old) is restored into registry R2. Its inventory lists pref-indent (user-authored: use tabs).",
+     "attempt": null
+    },
+    {
+     "seq": 1,
+     "actor": "user",
+     "text": "Map u-alpha-old to proj-alpha.",
+     "attempt": null
+    },
+    {
+     "seq": 2,
+     "actor": "host",
+     "text": "After the backup was taken, pref-indent was purged in proj-alpha; the current verified deletion high-watermark records it.",
+     "attempt": null
+    },
+    {
+     "seq": 3,
+     "actor": "user",
+     "text": "What indentation rule have I set?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "abstain",
+   "required_facts": [],
+   "required_evidence": [],
+   "prohibited_claims": [
+    "claim-indent-tabs-rule"
+   ],
+   "required_events": [
+    "restore.rekey_mapped"
+   ],
+   "prohibited_events": [
+    "memory.served"
+   ],
+   "expected_memory": [
+    {
+     "key": "pref-indent",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "purged",
+     "off": false,
+     "supersedes": null
+    }
+   ],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "the freshest deletion state wins: the restored item stays purged and unserved",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -2861,10 +3418,14 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -2899,6 +3460,12 @@
     },
     {
      "seq": 2,
+     "actor": "host",
+     "text": "A same-drive plaintext recovery export from yesterday exists and its manifest verifies.",
+     "attempt": null
+    },
+    {
+     "seq": 3,
      "actor": "user",
      "text": "Can you recover my memory?",
      "attempt": null
@@ -2921,6 +3488,7 @@
     "secret.phrase_emitted"
    ],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -2976,6 +3544,176 @@
     "export.written"
    ],
    "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "deterministic trace comparison against the listed events, memory state and claims",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 2 row M22"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "M22-d",
+   "version": 1,
+   "family": "M22",
+   "split": "held_out",
+   "kind": "lifecycle",
+   "role": "probe",
+   "oracles": [
+    "K5"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Use tabs for indentation in this project.",
+     "attempt": null
+    },
+    {
+     "seq": 1,
+     "actor": "host",
+     "text": "Both the keystore master and the recovery phrase are lost, and no recovery export survives.",
+     "attempt": null
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "Can you recover my memory?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [
+    "fact-encrypted-recovery-unavailable",
+    "fact-no-recovery-copy"
+   ],
+   "required_evidence": [],
+   "prohibited_claims": [
+    "fact-plaintext-export-available"
+   ],
+   "required_events": [
+    "recovery.encrypted_unavailable"
+   ],
+   "prohibited_events": [
+    "secret.phrase_emitted"
+   ],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "deterministic trace comparison against the listed events, memory state and claims",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 2 row M22"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "M22-e",
+   "version": 1,
+   "family": "M22",
+   "split": "held_out",
+   "kind": "lifecycle",
+   "role": "control",
+   "oracles": [
+    "K5",
+    "K6"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "host",
+     "text": "A new recovery phrase must reach the user; the restricted phrase-file channel is qualified.",
+     "attempt": null
+    },
+    {
+     "seq": 1,
+     "actor": "host",
+     "text": "The user acknowledges saving the phrase.",
+     "attempt": null
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "Is the phrase file still on disk?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [
+    "fact-phrase-file-deleted-after-ack"
+   ],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [
+    "recovery.phrase_file_written",
+    "recovery.phrase_file_deleted"
+   ],
+   "prohibited_events": [
+    "secret.phrase_emitted"
+   ],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "deterministic trace comparison against the listed events, memory state and claims",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 2 row M22"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "M22-f",
+   "version": 1,
+   "family": "M22",
+   "split": "held_out",
+   "kind": "lifecycle",
+   "role": "probe",
+   "oracles": [
+    "K5",
+    "K6"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "host",
+     "text": "A new recovery phrase must reach the user; the only available channel is the chat transcript.",
+     "attempt": null
+    },
+    {
+     "seq": 1,
+     "actor": "user",
+     "text": "Just paste the phrase here.",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [
+    "fact-unqualified-channel-refused"
+   ],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [
+    "recovery.channel_refused"
+   ],
+   "prohibited_events": [
+    "secret.phrase_emitted",
+    "recovery.phrase_file_written"
+   ],
+   "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -3034,6 +3772,12 @@
     },
     {
      "seq": 6,
+     "actor": "host",
+     "text": "A plaintext recovery export and a temporary phrase handoff file existed before the rotation.",
+     "attempt": null
+    },
+    {
+     "seq": 7,
      "actor": "user",
      "text": "Is the purge fully erased?",
      "attempt": null
@@ -3044,7 +3788,8 @@
    "cutoff": "2026-10-01T00:00:00+00:00",
    "expected_action": "answer",
    "required_facts": [
-    "fact-erasure-unbounded-old-phrase"
+    "fact-erasure-unbounded-old-phrase",
+    "fact-export-and-handoff-limits"
    ],
    "required_evidence": [],
    "prohibited_claims": [
@@ -3052,6 +3797,8 @@
    ],
    "required_events": [
     "rotation.committed",
+    "rotation.fresh_keys_verified",
+    "rotation.purged_key_absent",
     "generation.old_rejected"
    ],
    "prohibited_events": [
@@ -3062,22 +3809,32 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     },
     {
      "key": "fact-deploy-target",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "purged"
+     "status": "purged",
+     "off": false,
+     "supersedes": null
     },
     {
      "key": "fact-release-day",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "purged"
+     "status": "purged",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -3131,7 +3888,7 @@
     {
      "seq": 5,
      "actor": "user",
-     "text": "I attest that I destroyed all old phrases, copied keys and other recovery material.",
+     "text": "I attest, for rotation batch b-7 (generation 3), that I destroyed all old phrases, copied keys and other recovery material.",
      "attempt": null
     },
     {
@@ -3142,6 +3899,12 @@
     },
     {
      "seq": 7,
+     "actor": "host",
+     "text": "A plaintext recovery export and a temporary phrase handoff file existed before the rotation.",
+     "attempt": null
+    },
+    {
+     "seq": 8,
      "actor": "user",
      "text": "Is the purge fully erased?",
      "attempt": null
@@ -3152,12 +3915,17 @@
    "cutoff": "2026-10-01T00:00:00+00:00",
    "expected_action": "answer",
    "required_facts": [
-    "fact-erasure-completed-attested"
+    "fact-erasure-attested-scoped-to-generation",
+    "fact-export-and-handoff-limits"
    ],
    "required_evidence": [],
-   "prohibited_claims": [],
+   "prohibited_claims": [
+    "claim-fully-erased"
+   ],
    "required_events": [
     "rotation.committed",
+    "rotation.fresh_keys_verified",
+    "rotation.purged_key_absent",
     "erasure.completed_attested"
    ],
    "prohibited_events": [
@@ -3167,22 +3935,32 @@
     {
      "key": "pref-indent",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "active"
+     "status": "active",
+     "off": false,
+     "supersedes": null
     },
     {
      "key": "fact-deploy-target",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "purged"
+     "status": "purged",
+     "off": false,
+     "supersedes": null
     },
     {
      "key": "fact-release-day",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "purged"
+     "status": "purged",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -3206,29 +3984,35 @@
     {
      "seq": 0,
      "actor": "user",
-     "text": "Remember that the deploy target is staging-eu.",
+     "text": "Use tabs for indentation in this project.",
      "attempt": null
     },
     {
      "seq": 1,
      "actor": "user",
-     "text": "Purge the deploy target and rotate the keys now.",
+     "text": "Remember that the deploy target is staging-eu.",
      "attempt": null
     },
     {
      "seq": 2,
-     "actor": "host",
-     "text": "The process crashed after rotation prepare and before verification.",
+     "actor": "user",
+     "text": "Purge the deploy target and rotate the keys now.",
      "attempt": null
     },
     {
      "seq": 3,
      "actor": "host",
-     "text": "Optimus restarted.",
+     "text": "The process crashed after rotation prepare and before verification.",
      "attempt": null
     },
     {
      "seq": 4,
+     "actor": "host",
+     "text": "Optimus restarted.",
+     "attempt": null
+    },
+    {
+     "seq": 5,
      "actor": "user",
      "text": "Is the rotation done?",
      "attempt": null
@@ -3244,7 +4028,8 @@
    "required_evidence": [],
    "prohibited_claims": [],
    "required_events": [
-    "rotation.resumed_or_aborted"
+    "rotation.resumed_or_aborted",
+    "generation.usable_verified"
    ],
    "prohibited_events": [
     "rotation.old_root_destroyed",
@@ -3253,12 +4038,25 @@
    ],
    "expected_memory": [
     {
+     "key": "pref-indent",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "active",
+     "off": false,
+     "supersedes": null
+    },
+    {
      "key": "fact-deploy-target",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "purged"
+     "status": "purged",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -3282,29 +4080,35 @@
     {
      "seq": 0,
      "actor": "user",
-     "text": "Remember that the deploy target is staging-eu.",
+     "text": "Use tabs for indentation in this project.",
      "attempt": null
     },
     {
      "seq": 1,
      "actor": "user",
-     "text": "Purge the deploy target and rotate the keys now.",
+     "text": "Remember that the deploy target is staging-eu.",
      "attempt": null
     },
     {
      "seq": 2,
-     "actor": "host",
-     "text": "The process crashed after the generation pointer commit and before old-root cleanup.",
+     "actor": "user",
+     "text": "Purge the deploy target and rotate the keys now.",
      "attempt": null
     },
     {
      "seq": 3,
      "actor": "host",
-     "text": "Optimus restarted.",
+     "text": "The process crashed after the generation pointer commit and before old-root cleanup.",
      "attempt": null
     },
     {
      "seq": 4,
+     "actor": "host",
+     "text": "Optimus restarted.",
+     "attempt": null
+    },
+    {
+     "seq": 5,
      "actor": "user",
      "text": "Is the rotation done?",
      "attempt": null
@@ -3320,6 +4124,7 @@
    "required_evidence": [],
    "prohibited_claims": [],
    "required_events": [
+    "generation.usable_verified",
     "rotation.cleanup_resumed"
    ],
    "prohibited_events": [
@@ -3328,12 +4133,25 @@
    ],
    "expected_memory": [
     {
+     "key": "pref-indent",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "active",
+     "off": false,
+     "supersedes": null
+    },
+    {
      "key": "fact-deploy-target",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "purged"
+     "status": "purged",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
    "provenance": {
@@ -3411,18 +4229,415 @@
     {
      "key": "fact-deploy-target",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "purged"
+     "status": "purged",
+     "off": false,
+     "supersedes": null
     },
     {
      "key": "fact-release-day",
      "project_id": "proj-alpha",
+     "version": 1,
      "trust": "user-authored",
-     "status": "purged"
+     "status": "purged",
+     "off": false,
+     "supersedes": null
     }
    ],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "deterministic trace comparison against the listed events, memory state and claims",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 2 row M24"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "M24-d",
+   "version": 1,
+   "family": "M24",
+   "split": "train",
+   "kind": "lifecycle",
+   "role": "probe",
+   "oracles": [
+    "K5"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Use tabs for indentation in this project.",
+     "attempt": null
+    },
+    {
+     "seq": 1,
+     "actor": "user",
+     "text": "Remember that the deploy target is staging-eu.",
+     "attempt": null
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "Purge the deploy target and rotate the keys now.",
+     "attempt": null
+    },
+    {
+     "seq": 3,
+     "actor": "host",
+     "text": "The process crashed after verification and before the new phrase was acknowledged.",
+     "attempt": null
+    },
+    {
+     "seq": 4,
+     "actor": "host",
+     "text": "Optimus restarted.",
+     "attempt": null
+    },
+    {
+     "seq": 5,
+     "actor": "user",
+     "text": "Is the rotation done?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [
+    "fact-awaiting-acknowledgement"
+   ],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [
+    "generation.usable_verified"
+   ],
+   "prohibited_events": [
+    "rotation.old_root_destroyed",
+    "erasure.completed_attested",
+    "erasure.completed_verified"
+   ],
+   "expected_memory": [
+    {
+     "key": "pref-indent",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "active",
+     "off": false,
+     "supersedes": null
+    },
+    {
+     "key": "fact-deploy-target",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "purged",
+     "off": false,
+     "supersedes": null
+    }
+   ],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "deterministic trace comparison against the listed events, memory state and claims",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 2 row M24"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "M24-e",
+   "version": 1,
+   "family": "M24",
+   "split": "train",
+   "kind": "lifecycle",
+   "role": "probe",
+   "oracles": [
+    "K5"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Use tabs for indentation in this project.",
+     "attempt": null
+    },
+    {
+     "seq": 1,
+     "actor": "user",
+     "text": "Remember that the deploy target is staging-eu.",
+     "attempt": null
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "Purge the deploy target and rotate the keys now.",
+     "attempt": null
+    },
+    {
+     "seq": 3,
+     "actor": "host",
+     "text": "The process crashed after acknowledgement and before the generation pointer commit.",
+     "attempt": null
+    },
+    {
+     "seq": 4,
+     "actor": "host",
+     "text": "Optimus restarted.",
+     "attempt": null
+    },
+    {
+     "seq": 5,
+     "actor": "user",
+     "text": "Is the rotation done?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [
+    "fact-rotation-pending"
+   ],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [
+    "generation.usable_verified",
+    "rotation.resumed_or_aborted"
+   ],
+   "prohibited_events": [
+    "rotation.old_root_destroyed",
+    "erasure.completed_attested",
+    "erasure.completed_verified"
+   ],
+   "expected_memory": [
+    {
+     "key": "pref-indent",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "active",
+     "off": false,
+     "supersedes": null
+    },
+    {
+     "key": "fact-deploy-target",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "purged",
+     "off": false,
+     "supersedes": null
+    }
+   ],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "deterministic trace comparison against the listed events, memory state and claims",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 2 row M24"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "M24-f",
+   "version": 1,
+   "family": "M24",
+   "split": "train",
+   "kind": "lifecycle",
+   "role": "probe",
+   "oracles": [
+    "K5",
+    "K6"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Use tabs for indentation in this project.",
+     "attempt": null
+    },
+    {
+     "seq": 1,
+     "actor": "user",
+     "text": "Remember that the deploy target is staging-eu.",
+     "attempt": null
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "Purge the deploy target and rotate the keys now.",
+     "attempt": null
+    },
+    {
+     "seq": 3,
+     "actor": "host",
+     "text": "The process crashed while writing the restricted phrase handoff file, before acknowledgement.",
+     "attempt": null
+    },
+    {
+     "seq": 4,
+     "actor": "host",
+     "text": "Optimus restarted.",
+     "attempt": null
+    },
+    {
+     "seq": 5,
+     "actor": "host",
+     "text": "On the retry the handoff file is written, acknowledged and then deleted.",
+     "attempt": null
+    },
+    {
+     "seq": 6,
+     "actor": "user",
+     "text": "Is the handoff file gone?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [
+    "fact-handoff-file-deleted"
+   ],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [
+    "generation.usable_verified",
+    "recovery.phrase_file_deleted"
+   ],
+   "prohibited_events": [
+    "secret.phrase_emitted",
+    "erasure.completed_attested",
+    "erasure.completed_verified"
+   ],
+   "expected_memory": [
+    {
+     "key": "pref-indent",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "active",
+     "off": false,
+     "supersedes": null
+    },
+    {
+     "key": "fact-deploy-target",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "purged",
+     "off": false,
+     "supersedes": null
+    }
+   ],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "deterministic trace comparison against the listed events, memory state and claims",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 2 row M24"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "M24-g",
+   "version": 1,
+   "family": "M24",
+   "split": "train",
+   "kind": "lifecycle",
+   "role": "control",
+   "oracles": [
+    "K5"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Use tabs for indentation in this project.",
+     "attempt": null
+    },
+    {
+     "seq": 1,
+     "actor": "user",
+     "text": "Remember that the deploy target is staging-eu.",
+     "attempt": null
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "Purge the deploy target and rotate the keys now.",
+     "attempt": null
+    },
+    {
+     "seq": 3,
+     "actor": "host",
+     "text": "Verification and acknowledgement completed; the process crashed during old-root cleanup, twice.",
+     "attempt": null
+    },
+    {
+     "seq": 4,
+     "actor": "host",
+     "text": "Optimus restarted after each crash.",
+     "attempt": null
+    },
+    {
+     "seq": 5,
+     "actor": "user",
+     "text": "Is the old root gone?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [
+    "fact-old-root-destroyed-once"
+   ],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [
+    "generation.usable_verified",
+    "rotation.acknowledged",
+    "rotation.cleanup_resumed",
+    "rotation.old_root_destroyed"
+   ],
+   "prohibited_events": [
+    "erasure.completed_verified"
+   ],
+   "expected_memory": [
+    {
+     "key": "pref-indent",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "active",
+     "off": false,
+     "supersedes": null
+    },
+    {
+     "key": "fact-deploy-target",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "purged",
+     "off": false,
+     "supersedes": null
+    }
+   ],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "cleanup is idempotent: at most one destruction per old generation, only after verification and acknowledgement",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,

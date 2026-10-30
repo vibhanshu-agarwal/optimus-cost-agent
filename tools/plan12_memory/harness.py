@@ -13,7 +13,7 @@ from collections.abc import Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from tools.plan12_memory.contracts import AttemptReceipt, GatewayReply, GatewayRoute
+from tools.plan12_memory.contracts import AttemptReceipt, GatewayReply, GatewayRoute, RouteProvenance
 
 ROUTE_BINDING_VERSION = 1  # optimus_model_policy.binding; the tests parse the output with its real from_wire
 _ROLES = frozenset({"system", "user", "assistant"})
@@ -21,6 +21,9 @@ _UNBILLED = frozenset({"not_sent", "rejected"})  # no model ran (optimus_model_p
 _POSSIBLY_BILLED = frozenset({"completed", "uncertain"})
 _TOKENS = {"input_tokens": "input_tokens", "output_tokens": "output_tokens", "cache_tokens": "cached_tokens",
            "reasoning_tokens": "reasoning_tokens"}
+_PROVENANCE = {"provider": "provider", "requested_model": "model", "resolved_provider": "resolved_provider",
+               "resolved_model": "resolved_model", "model_version": "model_version", "cache_hit": "cache_hit",
+               "billing_units": "billing_units"}
 
 
 def encode_transcript(messages: Sequence[Mapping[str, Any]]) -> str:
@@ -55,7 +58,8 @@ def parse_reply(status: int, body: Mapping[str, Any], *, route: GatewayRoute) ->
 
     A completed attempt is settled from ``gateway_usage``. An uncertain one, or a completed one
     without matching usage, stays intent-only with every token and cost unknown. Unbilled
-    attempts carry no charge and no receipt. A malformed body raises ValueError.
+    attempts carry no charge and no receipt. Each receipt keeps the route the Gateway reported
+    for it, null where unreported. A malformed body raises ValueError.
     """
     attempts = body.get("route_attempts")
     if attempts is None and status != 200:
@@ -64,9 +68,10 @@ def parse_reply(status: int, body: Mapping[str, Any], *, route: GatewayRoute) ->
         raise ValueError("route_attempts must be a list")
     usage = body.get("gateway_usage")
     receipts = [receipt for record in attempts if (receipt := _receipt(record, usage, route)) is not None]
+    provenance = tuple(_provenance(receipt, usage) for receipt in receipts)
     if status != 200:
         code = body.get("code")
-        return GatewayReply(status=status, content=None, finish_reason=None, attempts=tuple(receipts),
+        return GatewayReply(status=status, content=None, finish_reason=None, attempts=tuple(receipts), provenance=provenance,
                             error_code=code if isinstance(code, str) else f"HTTP_{status}")
     try:
         choice = body["choices"][0]
@@ -76,7 +81,7 @@ def parse_reply(status: int, body: Mapping[str, Any], *, route: GatewayRoute) ->
     if not isinstance(content, str) or not (finish_reason is None or isinstance(finish_reason, str)):
         raise ValueError("message.content must be text and finish_reason text or null")
     return GatewayReply(status=status, content=content, finish_reason=finish_reason, error_code=None,
-                        attempts=tuple(receipts))
+                        attempts=tuple(receipts), provenance=provenance)
 
 
 def _receipt(record: object, usage: object, route: GatewayRoute) -> AttemptReceipt | None:
@@ -95,6 +100,13 @@ def _receipt(record: object, usage: object, route: GatewayRoute) -> AttemptRecei
                    "cost_usd": _decimal(usage.get("cost_usd"))}
     # strict: a token count given as text or a boolean is malformed, never coerced
     return AttemptReceipt.model_validate(fields, strict=True)
+
+
+def _provenance(receipt: AttemptReceipt, usage: object) -> RouteProvenance:
+    facts: dict[str, object] = dict.fromkeys(_PROVENANCE)
+    if receipt.state == "settled" and isinstance(usage, Mapping):  # settled only from matching usage
+        facts = {key: usage.get(name) for key, name in _PROVENANCE.items()}
+    return RouteProvenance.model_validate({"attempt_id": receipt.attempt_id, **facts}, strict=True)
 
 
 def _decimal(value: object) -> Decimal | None:

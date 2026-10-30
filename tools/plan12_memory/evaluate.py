@@ -21,13 +21,17 @@ from pydantic import ValidationError
 from tools.plan12_memory.contracts import (
     AttemptReceipt,
     CaseVerdict,
+    ExpectedMemory,
     GoldenCase,
     Layer,
     LayerVerdict,
     Measurements,
+    MemoryStateObservation,
+    ObservedEvidence,
     ObservedTrace,
     SplitManifest,
     Status,
+    TraceEvent,
     ValidationReport,
 )
 
@@ -37,33 +41,78 @@ _SEVERITY: dict[Status, int] = {"PASS": 0, "INCONCLUSIVE": 1, "FAIL": 2, "UNRUN"
 RETRIEVAL_K = 5  # predeclared in reports/plan12-memory-evaluation/case-review.json metrics
 
 
+_UNSERVABLE = frozenset({"withdrawn", "purged", "archived", "superseded"})
+_DESTRUCTION_PREREQUISITES = frozenset({"generation.usable_verified", "rotation.acknowledged"})
+
+
 def _layer(fails: list[str], doubts: list[str], notes: Sequence[str] = ()) -> LayerVerdict:
     status: Status = "FAIL" if fails else "INCONCLUSIVE" if doubts else "PASS"
     return LayerVerdict(status=status, reasons=(*fails, *doubts, *notes))
 
 
+def _matches(name: str, event: TraceEvent) -> bool:
+    """An event ID is ``type`` or ``type:key``; the keyed form matches only that item's events."""
+    kind, _, key = name.partition(":")
+    return event.type == kind and (not key or event.memory_key == key)
+
+
+def _describe(item: ExpectedMemory | MemoryStateObservation) -> str:
+    supersedes = f"/supersedes v{item.supersedes}" if item.supersedes else ""
+    return f"{item.trust}/{item.status}{'/off' if item.off else ''}{supersedes}"
+
+
 def _authority(case: GoldenCase, trace: ObservedTrace) -> LayerVerdict:
-    types = [event.type for event in sorted(trace.events, key=lambda event: event.seq)]
-    fails = [f"prohibited event {name} occurred" for name in case.prohibited_events if name in types]
-    remaining = iter(types)
-    if not all(name in remaining for name in case.required_events):
+    events = sorted(trace.events, key=lambda event: event.seq)
+    fails = [f"prohibited event {name} occurred" for name in case.prohibited_events if any(_matches(name, e) for e in events)]
+    remaining = iter(events)
+    if not all(any(_matches(name, event) for event in remaining) for name in case.required_events):
         fails.append(f"required events {list(case.required_events)} are missing or out of order")
-    fails += [
-        f"served memory {memory.memory_id} belongs to project {memory.project_id}, not {case.project_id}"
-        for memory in trace.served_memory
-        if memory.project_id != case.project_id
-    ]
-    state = {(item.key, item.project_id): item for item in trace.memory_state}
+    state: dict[tuple[str, str, int | None], MemoryStateObservation] = {
+        (item.key, item.project_id, item.version): item for item in trace.memory_state
+    }
+    for memory in trace.served_memory:
+        if memory.project_id != case.project_id:
+            fails.append(f"served memory {memory.memory_id} belongs to project {memory.project_id}, not {case.project_id}")
+            continue
+        observed = state.get((memory.memory_id, memory.project_id, memory.version))
+        if observed is None:
+            fails.append(f"served memory {memory.memory_id} v{memory.version} has no observed state at that version")
+        elif observed.off or observed.status in _UNSERVABLE:
+            fails.append(f"served memory {memory.memory_id} v{memory.version} is {_describe(observed)} and may not be served")
+    for index, event in enumerate(events):
+        ref = (event.memory_key, event.project_id, event.version)
+        if event.type == "memory.notice.remembered" and (None in ref or not any(
+                earlier.type == "memory.committed" and (earlier.memory_key, earlier.project_id, earlier.version) == ref
+                for earlier in events[:index])):
+            fails.append(f"notice at seq {event.seq} has no earlier durable commit of the same item version in this project")
+    if any(name.partition(":")[0] == "memory.notice.remembered" for name in case.required_events):
+        noticed = {(e.memory_key, e.project_id, e.version) for e in events if e.type == "memory.notice.remembered"}
+        fails += [
+            f"no notice names {expected.key} v{expected.version}, the committed version"
+            for expected in case.expected_memory
+            if expected.status == "active" and not expected.off and (expected.key, expected.project_id, expected.version) not in noticed
+        ]
+    destroyed = [event for event in events if event.type == "rotation.old_root_destroyed"]
+    fails += [f"old root generation {generation} was destroyed {count} times"
+              for generation, count in Counter(event.version for event in destroyed).items() if count > 1]
+    fails += [f"old root destroyed at seq {event.seq} before verification and acknowledgement" for event in destroyed
+              if not _DESTRUCTION_PREREQUISITES <= {earlier.type for earlier in events if earlier.seq < event.seq}]
     for expected in case.expected_memory:
-        observed = state.get((expected.key, expected.project_id))
-        found = "absent" if observed is None else f"{observed.trust}/{observed.status}"
-        wanted = "absent" if expected.trust == "absent" else f"{expected.trust}/{expected.status}"
+        if expected.trust == "absent":
+            if any((item.key, item.project_id) == (expected.key, expected.project_id) for item in trace.memory_state):
+                fails.append(f"memory {expected.key} in {expected.project_id} exists, expected absent")
+            continue
+        observed = state.get((expected.key, expected.project_id, expected.version))
+        found = "absent" if observed is None else _describe(observed)
+        wanted = _describe(expected)
         if found != wanted:
-            fails.append(f"memory {expected.key} in {expected.project_id} is {found}, expected {wanted}")
+            fails.append(f"memory {expected.key} v{expected.version} in {expected.project_id} is {found}, expected {wanted}")
     return _layer(fails, [])
 
 
-def _retrieval(case: GoldenCase, trace: ObservedTrace) -> tuple[LayerVerdict, list[str], Decimal | None, Decimal | None]:
+def _retrieval(
+    case: GoldenCase, trace: ObservedTrace,
+) -> tuple[LayerVerdict, list[str], Decimal | None, Decimal | None, list[ObservedEvidence]]:
     fails: list[str] = []
     doubts: list[str] = []
     valid = {}
@@ -93,13 +142,40 @@ def _retrieval(case: GoldenCase, trace: ObservedTrace) -> tuple[LayerVerdict, li
             )
         else:
             fails.append(f"requirement {requirement.requirement_id} has no supporting evidence in the first {RETRIEVAL_K}")
+    served_order = [memory.memory_id for memory in trace.served_memory]
+    unserved = [key for key in case.expected_rank if key not in served_order]
+    positions = [served_order.index(key) for key in case.expected_rank if key in served_order]
+    if unserved:
+        fails.append(f"ranked memories {unserved} were not served")
+    elif positions != sorted(positions):
+        fails.append(f"served order {served_order} breaks the required rank {list(case.expected_rank)}")
     gold = {evidence_id for requirement in case.required_evidence for evidence_id in requirement.any_of}
     recall = Decimal(satisfied) / len(case.required_evidence) if case.required_evidence else None
     precision = Decimal(len(top_ids & gold)) / len(ranked) if ranked else None
-    return _layer(fails, doubts), list(valid), recall, precision
+    return _layer(fails, doubts), list(valid), recall, precision, top
 
 
-def _answer(case: GoldenCase, trace: ObservedTrace) -> LayerVerdict:
+def _loci(case: GoldenCase, claims: Sequence[str], top: list[ObservedEvidence]) -> tuple[list[str], list[str]]:
+    """Each localization requirement needs an answered locus that is itself retrieved within the first k."""
+    answered = {claim.removeprefix("locus:") for claim in claims if claim.startswith("locus:")}
+    fails: list[str] = []
+    doubts: list[str] = []
+    for requirement in case.required_evidence:
+        accepted = set(requirement.any_of)
+        if answered & accepted & {item.evidence_id for item in top}:
+            continue
+        unlisted = [item.evidence_id for item in top
+                    if item.evidence_id in answered - accepted and requirement.requirement_id in item.supports]
+        if unlisted:
+            doubts.append(f"the answer's locus for {requirement.requirement_id} is unlisted evidence {unlisted}; a reviewer may accept it")
+        elif answered & accepted:
+            fails.append(f"the answer's locus for {requirement.requirement_id} is not supported by the retrieved evidence")
+        else:
+            fails.append(f"the answer names no locus for requirement {requirement.requirement_id}")
+    return fails, doubts
+
+
+def _answer(case: GoldenCase, trace: ObservedTrace, top: list[ObservedEvidence]) -> LayerVerdict:
     answer = trace.answer
     fails: list[str] = []
     doubts: list[str] = []
@@ -117,14 +193,17 @@ def _answer(case: GoldenCase, trace: ObservedTrace) -> LayerVerdict:
         for used in answer.supported_by
         if (used.memory_id, used.version) not in cited
     ]
+    if trace.served_memory and not answer.support_extracted:
+        doubts.append("memory was served but no extractor attributed the answer's support; citation support is undecided")
     if answer.judge_status != "ok":
         doubts.append(f"claim judge reported {answer.judge_status}; claim checks are undecided")
     else:
         fails += [f"prohibited claim {claim} was made" for claim in case.prohibited_claims if claim in answer.claims]
         fails += [f"required fact {fact} is missing" for fact in case.required_facts if fact not in answer.claims]
-        if "memory.served" in case.required_events and case.required_facts and not answer.supported_by:
-            # The fact may come from memory or from the same conversation; without attribution the citation rule cannot apply.
-            doubts.append("memory was served but no extractor attributed the answer's support; citation support is undecided")
+        if case.kind == "localization":
+            locus_fails, locus_doubts = _loci(case, answer.claims, top)
+            fails += locus_fails
+            doubts += locus_doubts
     return _layer(fails, doubts)
 
 
@@ -173,6 +252,10 @@ def _cost(case: GoldenCase, trace: ObservedTrace) -> tuple[LayerVerdict, Decimal
     fails: list[str] = []
     notes: list[str] = []
     counted, known, complete = _counted_attempts(trace, notes)
+    for receipt in (item.attempt for item in case.inputs if item.attempt is not None):
+        if receipt not in trace.attempts:
+            seen = any(attempt.attempt_id == receipt.attempt_id for attempt in trace.attempts)
+            fails.append(f"receipt {receipt.attempt_id} from the case inputs is {'altered' if seen else 'missing'} in the trace")
     reported = trace.reported_cost
     if reported.complete is True and not complete:
         fails.append("reported complete, but the receipts are not complete")
@@ -197,9 +280,11 @@ def _cost(case: GoldenCase, trace: ObservedTrace) -> tuple[LayerVerdict, Decimal
             fails.append(f"receipts give known cost {known}, gold expects {expected.known_usd}")
         if expected.complete is not None and expected.complete != complete:
             fails.append(f"receipts give completeness {complete}, gold expects {expected.complete}")
-        reported_savings = savings.amount_usd if savings else None
-        if reported_savings != expected.savings_usd:
-            fails.append(f"reported savings {reported_savings}, gold expects {expected.savings_usd}")
+        claimed = None if savings is None else (savings.label, savings.basis, savings.amount_usd, savings.reference_price_snapshot_id)
+        gold = expected.savings
+        wanted = None if gold is None else (gold.label, gold.basis, gold.amount_usd, gold.reference_price_snapshot_id)
+        if claimed != wanted:
+            fails.append(f"reported savings {claimed}, gold expects {wanted}")
     return _layer(fails, [], notes), known, complete
 
 
@@ -214,10 +299,10 @@ def grade_trace(case: GoldenCase, trace: ObservedTrace | None) -> CaseVerdict:
         raise ValueError(f"trace case_id {trace.case_id} does not match case {case.case_id}")
     if trace.case_version != case.version:
         raise ValueError(f"trace case version {trace.case_version} does not match case version {case.version}")
-    retrieval, evidence_ids, recall, precision = _retrieval(case, trace)
+    retrieval, evidence_ids, recall, precision, top = _retrieval(case, trace)
     cost, known, complete = _cost(case, trace)
     layers: dict[Layer, LayerVerdict] = {
-        "authority": _authority(case, trace), "retrieval": retrieval, "answer": _answer(case, trace), "cost": cost,
+        "authority": _authority(case, trace), "retrieval": retrieval, "answer": _answer(case, trace, top), "cost": cost,
     }
     if trace.missing_coverage:
         gap = f"trace is missing coverage for {list(trace.missing_coverage)}; no layer can pass"

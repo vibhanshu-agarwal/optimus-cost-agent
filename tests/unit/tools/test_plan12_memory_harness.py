@@ -105,6 +105,18 @@ def test_success_settles_the_completed_attempt_and_skips_the_unbilled_one() -> N
     assert receipt.reasoning_tokens is None  # unreported stays unknown, never zero
     assert receipt.cost_usd == Decimal("0.0123")
     assert receipt.price_snapshot_id == f"registry:{ROUTE.registry_hash}"
+    [route] = reply.provenance
+    assert (route.attempt_id, route.provider, route.requested_model, route.resolved_provider, route.resolved_model) == (
+        receipt.attempt_id, "openrouter", ROUTE.model_id, "vendor", ROUTE.model_id)
+    assert (route.model_version, route.cache_hit, route.billing_units) == (None, False, 1280)
+
+
+def test_uncertain_or_unmatched_attempts_keep_no_route() -> None:
+    failed = parse_reply(502, _double_reply("uncertain", status=502, code="UPSTREAM_ATTEMPT_UNCERTAIN"), route=ROUTE)
+
+    [route] = failed.provenance
+    assert route.attempt_id == failed.attempts[0].attempt_id
+    assert (route.provider, route.resolved_model, route.cache_hit, route.billing_units) == (None, None, None, None)
 
 
 def test_uncertain_or_unmatched_attempts_stay_unknown() -> None:

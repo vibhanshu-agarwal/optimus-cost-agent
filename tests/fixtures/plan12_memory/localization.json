@@ -4,7 +4,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L01-a",
-   "version": 2,
+   "version": 3,
    "family": "L01",
    "split": "train",
    "kind": "localization",
@@ -16,7 +16,7 @@
     {
      "seq": 0,
      "actor": "user",
-     "text": "Sending to, or closing stdin of, an ACP agent child that has already exited raises a raw BrokenPipeError instead of a clean exited result. Where does that happen?",
+     "text": "Sending to, or closing stdin of, an ACP agent child that has already exited raises a raw broken-pipe exception instead of a clean exited result. Where does that happen?",
      "attempt": null
     }
    ],
@@ -39,8 +39,9 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -50,7 +51,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L02-a",
-   "version": 2,
+   "version": 3,
    "family": "L02",
    "split": "train",
    "kind": "localization",
@@ -83,8 +84,9 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -94,7 +96,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L03-a",
-   "version": 2,
+   "version": 3,
    "family": "L03",
    "split": "train",
    "kind": "localization",
@@ -140,8 +142,9 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -151,7 +154,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L04-a",
-   "version": 2,
+   "version": 3,
    "family": "L04",
    "split": "train",
    "kind": "localization",
@@ -184,8 +187,9 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -195,7 +199,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L05-a",
-   "version": 2,
+   "version": 3,
    "family": "L05",
    "split": "development",
    "kind": "localization",
@@ -237,8 +241,9 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -248,7 +253,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L06-a",
-   "version": 2,
+   "version": 3,
    "family": "L06",
    "split": "development",
    "kind": "localization",
@@ -281,8 +286,9 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -292,7 +298,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L07-a",
-   "version": 2,
+   "version": 3,
    "family": "L07",
    "split": "development",
    "kind": "localization",
@@ -343,8 +349,9 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -354,7 +361,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L08-a",
-   "version": 2,
+   "version": 3,
    "family": "L08",
    "split": "development",
    "kind": "localization",
@@ -391,6 +398,7 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
    "verification": "capability limit: the answer says no model selector exists and cites the config-options code",
    "provenance": {
@@ -402,7 +410,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L09-a",
-   "version": 2,
+   "version": 3,
    "family": "L09",
    "split": "held_out",
    "kind": "localization",
@@ -442,8 +450,9 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -453,7 +462,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L10-a",
-   "version": 2,
+   "version": 3,
    "family": "L10",
    "split": "held_out",
    "kind": "localization",
@@ -500,8 +509,9 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -511,7 +521,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L11-a",
-   "version": 2,
+   "version": 3,
    "family": "L11",
    "split": "held_out",
    "kind": "localization",
@@ -562,8 +572,9 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -573,7 +584,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L12-a",
-   "version": 2,
+   "version": 3,
    "family": "L12",
    "split": "held_out",
    "kind": "localization",
@@ -632,8 +643,9 @@
    "required_events": [],
    "prohibited_events": [],
    "expected_memory": [],
+   "expected_rank": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
