@@ -912,3 +912,51 @@ def test_a_canary_that_was_never_displayed_cannot_qualify_nonpersistence(tmp_pat
 def test_a_non_hex_screenshot_hash_is_not_evidence(tmp_path: Path) -> None:
     p5 = _zed(tmp_path / "hex", {"P5-b": {"pre_prompt_text_visible": True, "screenshot_sha256": "z" * 64}}).observations["P5"]
     assert p5["P5-b"]["status"] == "UNRUN"
+
+
+# --- Checkpoint 1 follow-up 2: interruption and native acquisition timeouts ---
+
+def test_an_interrupted_contained_run_still_stops_its_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run = probes.RELEASED_ROOT / f"plan12-probe-selftest-{uuid.uuid4().hex[:8]}"
+    run.mkdir(parents=True)
+    tick = run / "tick.txt"
+    config = tmp_path / "probe-config.json"
+    config.write_text(json.dumps(_config(limits={"timeout_seconds": 60, "grace_seconds": 0.2, "max_download_bytes": 0},
+                                         selftest={"tick_file": str(tick)})), encoding="utf-8")
+    original = subprocess.Popen.communicate
+
+    def interrupted(self: subprocess.Popen[str], *args: Any, **kwargs: Any) -> Any:
+        if kwargs.get("timeout", 0) > 30:  # only the runner's long wait on the probe child
+            deadline = time.monotonic() + 20
+            while not (tick.exists() and "g" in tick.read_text(encoding="ascii")) and time.monotonic() < deadline:
+                time.sleep(0.05)
+            raise KeyboardInterrupt
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess.Popen, "communicate", interrupted)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            probes.run_contained(probes.SELFTEST, config, tmp_path / "out")
+        written = tick.read_text(encoding="ascii")
+        time.sleep(1.0)
+        assert "c" in written and "g" in written and tick.read_text(encoding="ascii") == written
+    finally:
+        probes.remove_released(run)
+
+
+def test_a_native_timeout_during_model_acquisition_removes_the_cache(released_root: Path) -> None:
+    cache = released_root / "tmp/plan12-probe-models"
+    info = {"ok": True, "repo": "qdrant/bge", "revision": "r" * 40, "license": "mit",
+            "files": [{"name": "model.onnx", "size": 500, "sha256": "sha256:" + "d" * 64}]}
+
+    def runner(argv: list[str], timeout: float, env: Any = None, stdin: Any = None) -> subprocess.CompletedProcess[str]:
+        if argv[2] == "model-info":
+            return subprocess.CompletedProcess(argv, 0, json.dumps(info), "")
+        cache.mkdir(parents=True)
+        (cache / "partial.onnx").write_bytes(b"x")  # a stalled download leaves a partial file
+        raise subprocess.TimeoutExpired(argv, timeout)
+
+    result, _ = probes.run_probe("embedding", _embedding(released_root, ["MIT"]), bodies={
+        "embedding": lambda ctx, res: probes.run_embedding(ctx, res, runner=runner)})
+    assert result.outcome == "INCONCLUSIVE" and "timed out" in result.limitations[0]
+    assert not cache.exists()

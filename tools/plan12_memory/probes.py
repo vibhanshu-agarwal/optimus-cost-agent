@@ -496,12 +496,13 @@ def run_probe(kind: str, config: ProbeConfig, *, source: Mapping[str, Any] | Non
         result.ended_utc = _utc()
         return result, context
     result = working
-    if context.cancelled.is_set() or (failure and isinstance(failure[0], TimeoutError)):
+    if context.cancelled.is_set() or (failure and isinstance(failure[0], TimeoutError | subprocess.TimeoutExpired)):
         result.outcome, result.disposition = "INCONCLUSIVE", "open"
         result.limitations.append(f"timed out after {config.timeout_seconds}s; stopped after cancel")
     elif failure:
         error = failure[0]
-        result.outcome = "INCONCLUSIVE" if isinstance(error, TimeoutError | MalformedEvidence) else "ERROR"
+        result.outcome = ("INCONCLUSIVE" if isinstance(error, TimeoutError | subprocess.TimeoutExpired | MalformedEvidence)
+                          else "ERROR")
         result.disposition = "open"
         result.limitations.append(f"{type(error).__name__}: {error}")
     elif result.outcome not in OUTCOMES or result.disposition not in DISPOSITIONS:
@@ -773,7 +774,7 @@ def run_embedding(context: ProbeContext, result: ProbeResult, runner: Runner = r
     try:
         fetched = child_json(runner([str(python), str(_CHILD), "model-fetch", "--repo", info["repo"], "--revision",
                                      info["revision"], "--cache", str(cache)], context.timeout(900), online), "model-fetch")
-    except (MalformedEvidence, TimeoutError):
+    except (MalformedEvidence, TimeoutError, subprocess.TimeoutExpired):
         remove_released(cache)  # a failed acquisition leaves nothing unverified behind
         raise
     expected = {item["name"]: item["sha256"] for item in info["files"]}
@@ -961,6 +962,21 @@ def run_selftest(context: ProbeContext, result: ProbeResult) -> None:
 
 
 _CHILD_MARGIN_SECONDS = 30.0
+_STOP_SECONDS = 30.0
+
+
+def _stop_tree(process_tree: Any, process: subprocess.Popen[str]) -> None:
+    """Kill the whole job, confirm no member runs, then reap the root; raise if the tree outlives the bound."""
+    process_tree.kill_tree(process)
+    deadline = time.monotonic() + _STOP_SECONDS
+    while not process_tree._tree_stopped(process):  # noqa: SLF001 - the module's own confirmation, not a reimplementation
+        if time.monotonic() > deadline:
+            raise RuntimeError("the probe's process tree did not stop; resources may still be in use")
+        time.sleep(0.05)
+    try:
+        process.communicate(timeout=10)
+    except (ValueError, OSError, subprocess.TimeoutExpired):
+        pass  # pipes already drained or closed; the tree is confirmed stopped
 
 
 def run_contained(kind: str, config_path: Path, out_dir: Path = DEFAULT_OUT, *, python: str = sys.executable) -> dict[str, Any]:
@@ -974,19 +990,18 @@ def run_contained(kind: str, config_path: Path, out_dir: Path = DEFAULT_OUT, *, 
             "--in-process"]
     process = process_tree.popen(argv, cwd=REPO_ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                  stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
+    out, err, timed_out = "", "", False
     try:
         out, err = process.communicate(timeout=bound)
-        timed_out = False
     except subprocess.TimeoutExpired:
-        out, err, timed_out = "", "", True
-    process_tree.kill_tree(process)  # orphans that redirected their pipes elsewhere die with the job too
-    stop_deadline = time.monotonic() + 30
-    while not process_tree._tree_stopped(process):  # noqa: SLF001 - the module's own confirmation, not a reimplementation
-        if time.monotonic() > stop_deadline:
-            raise RuntimeError("the probe's process tree did not stop; resources may still be in use")
-        time.sleep(0.05)
-    if timed_out:
-        process.communicate(timeout=10)
+        timed_out = True
+    except BaseException as interrupted:  # KeyboardInterrupt included: stop the tree, then let it propagate
+        try:
+            _stop_tree(process_tree, process)
+        except Exception as stop_error:
+            interrupted.add_note(f"stopping the probe tree also failed: {stop_error}")
+        raise
+    _stop_tree(process_tree, process)  # orphans that redirected their pipes elsewhere die with the job too
     record = next((line.split(" -> ", 1)[1].strip() for line in out.splitlines() if " -> " in line), None)
     if timed_out or record is None:
         result = ProbeResult(kind=kind, run_label=config.run_label, config_sha256=config.sha256, outcome="INCONCLUSIVE",
