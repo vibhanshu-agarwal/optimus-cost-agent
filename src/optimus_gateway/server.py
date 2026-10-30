@@ -253,5 +253,4 @@ def serve_gateway(
     _BoundHandler.upstream_client = client
     _BoundHandler.tool_dependencies = resolved_tool_dependencies
     _BoundHandler.trace_exporter = resolved_trace_exporter
-    server = ThreadingHTTPServer((config.bind_host, config.bind_port), _BoundHandler)
-    return server
+    return ThreadingHTTPServer((config.bind_host, config.bind_port), _BoundHandler)

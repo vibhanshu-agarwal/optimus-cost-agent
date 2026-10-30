@@ -454,7 +454,8 @@ class RedisRuntime:
         record.completed.result()
         return record
 
-    async def close_async(self, *, timeout: float | None = None) -> TeardownRecord:
+    # The default budget and typed incomplete outcome cover completion and physical teardown exit under one deadline.
+    async def close_async(self, *, timeout: float | None = None) -> TeardownRecord:  # noqa: ASYNC109
         """Observe this runtime's single teardown from a running event loop.
 
         Seam 2, checkpoint B. The serving loop must never block on a thread join, so the

@@ -165,18 +165,16 @@ def _write_json_private(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _serialize_enrollments(enrollments: dict[Any, Any]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for enrollment in enrollments.values():
-        rows.append(
-            {
-                "principal_id": enrollment.principal_id,
-                "agent_id": enrollment.agent_id,
-                "caller_role": enrollment.caller_role,
-                "scopes": sorted(enrollment.scopes),
-                "instance_id": enrollment.instance_id,
-            }
-        )
-    return rows
+    return [
+        {
+            "principal_id": enrollment.principal_id,
+            "agent_id": enrollment.agent_id,
+            "caller_role": enrollment.caller_role,
+            "scopes": sorted(enrollment.scopes),
+            "instance_id": enrollment.instance_id,
+        }
+        for enrollment in enrollments.values()
+    ]
 
 
 class LedgerService:
@@ -501,15 +499,17 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
                 client_fields["message"] = message
             if message_text is not None:
                 client_fields["message_text"] = message_text
-            for key, value in (
-                ("agent_id", agent_id),
-                ("caller_role", caller_role),
-                ("authority", authority),
-                ("principal_id", principal_id),
-                ("attestation", attestation),
-            ):
-                if value is not None:
-                    client_fields[key] = value
+            client_fields.update({
+                key: value
+                for key, value in (
+                    ("agent_id", agent_id),
+                    ("caller_role", caller_role),
+                    ("authority", authority),
+                    ("principal_id", principal_id),
+                    ("attestation", attestation),
+                )
+                if value is not None
+            })
             credential = header[7:].strip() if header.lower().startswith("bearer ") else header
             try:
                 result = attempt_review_ruling_append(

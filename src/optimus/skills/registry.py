@@ -163,9 +163,10 @@ def _match_reasons(manifest: SkillManifest, *, task_text: str, changed_paths: tu
     description_terms = [term for term in (*manifest.keywords, *manifest.description.lower().replace("-", " ").split()) if len(term) >= 5]
     if sum(1 for term in set(description_terms) if term in task_lower) >= 2:
         reasons.append("description")
-    for pattern in manifest.globs:
-        if any(PurePosixPath(path.replace("\\", "/")).full_match(pattern) for path in changed_paths):
-            reasons.append(f"glob:{pattern}")
+    reasons.extend(
+        f"glob:{pattern}" for pattern in manifest.globs
+        if any(PurePosixPath(path.replace("\\", "/")).full_match(pattern) for path in changed_paths)
+    )
     return tuple(reasons)
 
 

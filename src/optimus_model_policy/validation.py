@@ -251,9 +251,10 @@ def validate_registry(snapshot: RegistrySnapshot) -> tuple[ValidationIssue, ...]
 
     for tier in sorted({entry.tier for entry in policy.models.values()}):
         origins = {entry.origin for entry in policy.models.values() if entry.tier is tier}
-        for origin in (Origin.CHINA, Origin.NON_CHINA):
-            if origin not in origins:
-                issues.append(ValidationIssue("ORIGIN_INVENTORY", f"tier {tier.value} has no {origin.value} model"))
+        issues.extend(
+            ValidationIssue("ORIGIN_INVENTORY", f"tier {tier.value} has no {origin.value} model")
+            for origin in (Origin.CHINA, Origin.NON_CHINA) if origin not in origins
+        )
 
     return tuple(sorted(issues, key=_sort_key))
 

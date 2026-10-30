@@ -196,13 +196,13 @@ def _build_path_aliases(
             alias=_ALIAS_QUARANTINE,
         ),
     ]
-    for root in context.user_data_roots:
-        rules.append(
-            PathAliasRule(
-                source_root=str(root.resolve()),
-                alias=_ALIAS_USER_DATA,
-            )
+    rules.extend(
+        PathAliasRule(
+            source_root=str(root.resolve()),
+            alias=_ALIAS_USER_DATA,
         )
+        for root in context.user_data_roots
+    )
     # Longest-root-first for sanitizer matching.
     rules.sort(key=lambda rule: len(Path(rule.source_root).as_posix()), reverse=True)
     return tuple(rules)

@@ -53,26 +53,25 @@ class DeliveryView:
 
 def build_delivery_views(*, store: Any) -> tuple[DeliveryView, ...]:
     integrity = dict(store.global_integrity_fact() or {})
-    views: list[DeliveryView] = []
-    for row in store.list_delivery_facts() or ():
-        views.append(
-            DeliveryView(
-                agent_id=str(row["agent_id"]),
-                principal_id=str(row["principal_id"]),
-                principal_status=str(row.get("principal_status") or "active"),
-                confirmed_sequence=int(row.get("confirmed_sequence") or 0),
-                last_confirmed_at=row.get("last_confirmed_at"),
-                visible_unread_count=int(row.get("visible_unread_count") or 0),
-                last_authenticated_request_at=row.get("last_authenticated_request_at"),
-                last_acknowledgement_sequence=row.get("last_acknowledgement_sequence"),
-                last_acknowledgement_at=row.get("last_acknowledgement_at"),
-                capability_reported_at=row.get("capability_reported_at"),
-                capability_fresh=bool(row.get("capability_fresh")),
-                activation_blocked=bool(row.get("activation_blocked")),
-                warning_delivery=str(row.get("warning_delivery") or "not_yet_requested"),
-                integrity=integrity,
-            )
+    views = [
+        DeliveryView(
+            agent_id=str(row["agent_id"]),
+            principal_id=str(row["principal_id"]),
+            principal_status=str(row.get("principal_status") or "active"),
+            confirmed_sequence=int(row.get("confirmed_sequence") or 0),
+            last_confirmed_at=row.get("last_confirmed_at"),
+            visible_unread_count=int(row.get("visible_unread_count") or 0),
+            last_authenticated_request_at=row.get("last_authenticated_request_at"),
+            last_acknowledgement_sequence=row.get("last_acknowledgement_sequence"),
+            last_acknowledgement_at=row.get("last_acknowledgement_at"),
+            capability_reported_at=row.get("capability_reported_at"),
+            capability_fresh=bool(row.get("capability_fresh")),
+            activation_blocked=bool(row.get("activation_blocked")),
+            warning_delivery=str(row.get("warning_delivery") or "not_yet_requested"),
+            integrity=integrity,
         )
+        for row in store.list_delivery_facts() or ()
+    ]
     return tuple(views)
 
 

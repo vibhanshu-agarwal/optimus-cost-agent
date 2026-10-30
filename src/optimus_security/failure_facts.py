@@ -240,5 +240,5 @@ def final_sanitize(record: dict[str, Any]) -> dict[str, Any]:
     try:
         cleaned = sanitize_for_persistence(record, policy=DIAGNOSTICS_SANITIZATION_POLICY).value
     except Exception:  # noqa: BLE001 - a diagnostic never fails the request it describes
-        return {key: UNRECOGNIZED for key in record}
-    return cleaned if isinstance(cleaned, dict) else {key: UNRECOGNIZED for key in record}
+        return dict.fromkeys(record, UNRECOGNIZED)
+    return cleaned if isinstance(cleaned, dict) else dict.fromkeys(record, UNRECOGNIZED)

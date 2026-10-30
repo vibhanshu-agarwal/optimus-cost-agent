@@ -6,11 +6,10 @@ import ast
 import copy
 import hashlib
 import importlib
-import importlib.util
 import json
 import re
 from collections import Counter
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -468,26 +467,17 @@ def test_h4_model_and_schema_reject_duplicate_conceptual_sites() -> None:
 
 
 def test_delivery_contract_model_1000_seed_schedule() -> None:
-    module_name = "tools.plan1126_runtime_audit.delivery"
-    delivery_module = importlib.import_module(module_name) if importlib.util.find_spec(module_name) else None
-    assert delivery_module is not None, "delivery schedule model does not exist"
-    execute = getattr(delivery_module, "delivery_schedule_observations", None)
-    assert execute is not None, "delivery schedule model does not exist"
-
+    """Legacy artifact-bound node: validate sealed schedule replay, not a fresh execution."""
+    delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
+    merged, overlay = _baseline(_MERGED), _overlay_baseline()
     frozen = literal_seeds()
-    discovered = inventory_module.discover_delivery_sites(_baseline(_MERGED), overlay=_overlay_baseline())
-    observations = execute(
-        anchor_commit=_MERGED,
-        literal=frozen,
-        derived_count=1_000,
-        discovered_sites=discovered,
-        vocabulary=delivery_module.derive_delivery_vocabulary(
-            _baseline(_MERGED), _overlay_baseline()
-        ),
-        transition_authority=_historical_transition_authority(
-            _baseline(_MERGED), _overlay_baseline()
-        ),
+    artifact = delivery_module.build_h4_audit_artifact(
+        replay=_sealed_replay(), merged=merged, overlay=overlay,
+        merged_commit=_MERGED, overlay_commit=_OVERLAY,
     )
+    record = artifact.evidence_records[0]
+    discovered = record.discovered_sites
+    observations = record.schedule_observations.observations
     assert len(observations) == len(frozen) + 1_000
     assert [item.seed for item in observations[: len(frozen)]] == list(frozen)
     assert_no_offending_rows(observations[: len(frozen)], lambda item: not (item.seed_source == "frozen-literal"), 'must hold for all: item.seed_source == "frozen-literal"')
@@ -512,11 +502,8 @@ def test_delivery_contract_model_1000_seed_schedule() -> None:
     assert_some_row(discovered, lambda site: site.classification is Classification.CONTRADICTORY, 'must hold for some: site.classification is Classification.CONTRADICTORY')
     assert_no_offending_rows(observations, lambda item: item.classification is not Classification.CANONICAL, 'must hold for all: item.classification is Classification.CANONICAL')
     assert_no_offending_rows(observations, lambda item: item.contradiction is not None, 'must hold for all: item.contradiction is None')
-    executed_citations = _historical_transition_authority(
-        _baseline(_MERGED), _overlay_baseline()
-    ).executed_definition_citations
     assert_no_offending_rows(observations, lambda item: not (len(item.site_citations) == len(DeliveryPhase)), 'must hold for all: len(item.site_citations) == len(DeliveryPhase)')
-    assert_no_offending_rows(observations, lambda item: not (set(item.site_citations) <= executed_citations), 'must hold for all: set(item.site_citations) <= executed_citations')
+    assert_no_offending_rows(observations, lambda item: item.site_citations != tuple(operation.citation for operation in item.operations), 'recorded site citations must match the ordered operations')
     assert_no_offending_rows(observations, lambda item: not (item.send_state == item.send_outcome), 'must hold for all: item.send_state == item.send_outcome')
     assert_no_offending_rows(observations, lambda item: not (item.conversation_commit != "committed" or item.send_outcome == "flushed"), 'must hold for all: item.conversation_commit != "committed" or item.send_outcome == "flushed"')
     assert_no_offending_rows(observations, lambda item: not (item.send_outcome == "flushed" or item.conversation_commit == "not_committed"), 'must hold for all: item.send_outcome == "flushed" or item.conversation_commit == "not_committed"')
@@ -906,28 +893,79 @@ def test_h4_persists_source_derived_transition_records_not_a_seed_formatter() ->
         and item["effect_state"] in independent_vocabulary["EffectState"].values()), 'must hold for all: item["send_state"] in independent_vocabulary["SendState"].values() and item["send_outcome"] in independent_vocabulary["SendOutcome"].values() and item["settlement"] in independent_vocabulary["Settlement"].values() and item["final_delivery"] in independent_vocabulary["FinalDelivery"].values() and item["rpc_response_delivery"] in independent_vocabulary["RpcResponseDelivery"].values() and item["conversation_commit"] in independent_vocabulary["ConversationCommit"].values() and item["effect_state"] in independent_vocabulary["EffectState"].values()')
 
 
-def test_h4_execution_emits_only_citations_for_behaviors_it_runs() -> None:
+def test_h4_replayed_citations_match_immutable_definitions() -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     merged = _baseline(_MERGED)
     overlay = _overlay_baseline()
-    authority = _historical_transition_authority(merged, overlay)
-    execution = authority.execute(literal_seeds()[0])
-    assert execution.operations
-    assert {
-        operation.citation for operation in execution.operations
-    } <= authority.executed_definition_citations
-
     payload = delivery_module.build_h4_audit_artifact(replay=_sealed_replay(),
         merged=merged, overlay=overlay, merged_commit=_MERGED, overlay_commit=_OVERLAY,
     ).to_dict()
     observations = payload["evidence_records"][0]["schedule_observations"]["observations"]
     assert len({tuple(item["schedule"]) for item in observations}) >= 6
     assert len({tuple(operation["operation"] for operation in item["operations"]) for item in observations}) >= 8
-    assert_no_offending_rows(observations, lambda item: not (set(item["site_citations"]) <= authority.executed_definition_citations), 'must hold for all: set(item["site_citations"]) <= authority.executed_definition_citations')
+    # The retained harness's record() callsites declare these primary authorities; this is not an execution claim.
+    primary_definitions = {
+        ("src/optimus/acp/lifecycle.py", "TurnControl.current_settlement_fields"),
+        ("src/optimus/acp/lifecycle.py", "TurnControl.complete_directive"),
+        ("src/optimus/acp/lifecycle.py", "TurnControl.request_session_cancel"),
+        ("src/optimus/acp/lifecycle.py", "TurnControl.seal_final_delivery"),
+        ("src/optimus/acp/lifecycle.py", "TurnControl.publish_authoritative"),
+        ("src/optimus/acp/lifecycle.py", "TurnControl.request_transport_teardown"),
+        ("src/optimus/acp/outbound_writer.py", "DedicatedOutboundWriter.submit"),
+        ("src/optimus/acp/outbound_writer.py", "DedicatedOutboundWriter._process_item"),
+        ("src/optimus/acp/conversation.py", "ConversationState.prepare_commit"),
+        ("src/optimus/acp/conversation.py", "ConversationState.commit_after_final_flush"),
+    }
+
+    def authenticate(citation: str) -> None:
+        match = re.fullmatch(r"(src/optimus/acp/[a-z_]+\.py):(\d+):([\w.]+)#sha256:([0-9a-f]{64})", citation)
+        assert match, "historical definition citation has an invalid format"
+        path, line, symbol, digest = match.groups()
+        for source in (merged, overlay):
+            assert path in source.paths(), "historical definition citation names an unknown path"
+            text = source.read_text(path)
+            body = ast.parse(text, filename=path).body
+            for name in symbol.split("."):
+                matches = [node for node in body if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name]
+                assert len(matches) == 1, "historical definition citation names an unknown symbol"
+                node = matches[0]
+                body = node.body
+            if source is merged:
+                assert node.lineno == int(line), "historical definition citation has the wrong source line"
+            segment = ast.get_source_segment(text, node).encode("utf-8")
+            assert hashlib.sha256(segment).hexdigest() == digest, "historical definition citation has the wrong source digest"
+        assert (path, symbol) in primary_definitions, "historical definition citation is outside declared primary authority"
+
+    citations = {
+        citation for item in observations
+        for citation in (*item["site_citations"], *(operation["citation"] for operation in item["operations"]))
+    }
+    assert citations
+    for citation in citations:
+        authenticate(citation)
+    sample = sorted(citations)[0]
+    path, line, definition = sample.split(":", 2)
+    symbol, digest = definition.split("#sha256:")
+    for changed, reason in (
+        (f"src/optimus/acp/unknown.py:{line}:{definition}", "names an unknown path"),
+        (f"{path}:{int(line) + 1}:{definition}", "has the wrong source line"),
+        (f"{path}:{line}:UnknownSymbol#sha256:{digest}", "names an unknown symbol"),
+        (f"{path}:{line}:{symbol}#sha256:{'0' * 64}", "has the wrong source digest"),
+    ):
+        with pytest.raises(AssertionError, match=f"(?m)^{re.escape('historical definition citation ' + reason)}$"):
+            authenticate(changed)
+    path = "src/optimus/acp/lifecycle.py"
+    text = merged.read_text(path)
+    turn = next(node for node in ast.parse(text).body if isinstance(node, ast.ClassDef) and node.name == "TurnControl")
+    unrelated = next(node for node in turn.body if isinstance(node, ast.FunctionDef) and node.name == "__init__")
+    digest = hashlib.sha256(ast.get_source_segment(text, unrelated).encode("utf-8")).hexdigest()
+    with pytest.raises(AssertionError, match="(?m)^historical definition citation is outside declared primary authority$"):
+        authenticate(f"{path}:{unrelated.lineno}:TurnControl.__init__#sha256:{digest}")
 
 
-def test_h4_literal_scenarios_are_coherent_primary_transitions() -> None:
-    authority = _historical_transition_authority(_baseline(_MERGED), _overlay_baseline())
+def test_h4_sealed_scenarios_preserve_primary_transition_evidence() -> None:
+    observations = _sealed_replay().delivery
+    assert [item.seed for item in observations[:len(literal_seeds())]] == list(literal_seeds())
     expected = {
         0: ("success-known-effect", True, True, "flushed", "after-publication", "accepted", "committed", 1),
         1: ("success-unknown-effect", True, True, "flushed", "after-publication", "accepted", "committed", 1),
@@ -939,8 +977,9 @@ def test_h4_literal_scenarios_are_coherent_primary_transitions() -> None:
         7: ("transport-teardown", False, False, "suppressed", "before-write", "not_attempted", "not_committed", 0),
     }
 
-    for seed, wanted in expected.items():
-        execution = authority.execute(seed)
+    assert {item.seed % 8 for item in observations} == set(expected)
+    for execution in observations:
+        wanted = expected[execution.seed % 8]
         actual = (
             execution.scenario,
             execution.write_attempted,
@@ -971,31 +1010,65 @@ def test_h4_literal_scenarios_are_coherent_primary_transitions() -> None:
         )
 
 
-def test_h4_behavioral_mutations_change_or_invalidate_primary_observation() -> None:
-    authority = _historical_transition_authority(_baseline(_MERGED), _overlay_baseline())
-    baseline = authority.execute(0)
+def test_h4_replay_refuses_missing_or_tampered_evidence_without_execution(monkeypatch, tmp_path: Path) -> None:
+    from optimus.acp.conversation import ConversationState
+    from optimus.acp.lifecycle import TurnControl
+    from optimus.acp.outbound_writer import DedicatedOutboundWriter
+    from optimus.acp.spec import AcpDuplexAdapter
+    from tools.plan1126_runtime_audit.replay import MissingSealedEvidence, replayed_family
 
-    class PreparationFailureWriter(authority.dedicated_outbound_writer):
-        def _process_item(self, item) -> None:
-            item.prepare_error = RuntimeError("content-free injected preparation failure")
-            super()._process_item(item)
+    delivery = importlib.import_module("tools.plan1126_runtime_audit.delivery")
+    characterization = importlib.import_module("tools.plan1126_runtime_audit.delivery_characterization")
+    cli = importlib.import_module("tools.run_plan1126_runtime_audit")
 
-    writer_mutation = replace(authority, dedicated_outbound_writer=PreparationFailureWriter).execute(0)
-    assert (
-        writer_mutation.send_outcome,
-        writer_mutation.write_attempted,
-        writer_mutation.flush_attempted,
-    ) != (baseline.send_outcome, baseline.write_attempted, baseline.flush_attempted)
+    def refused(*_args, **_kwargs):
+        pytest.fail("historical H4 replay attempted current execution")
 
-    class NonCommittingConversation(authority.conversation_state):
-        def commit_after_final_flush(self, decision) -> None:
-            del decision
+    for module in (delivery, characterization):
+        monkeypatch.setattr(module, "derive_transition_authority", refused)
+        monkeypatch.setattr(module, "delivery_schedule_observations", refused)
+    monkeypatch.setattr(characterization, "_sealed_writer_types", refused)
+    monkeypatch.setattr(characterization._TransitionAuthority, "execute", refused)
+    monkeypatch.setattr(TurnControl, "__init__", refused)
+    monkeypatch.setattr(DedicatedOutboundWriter, "__init__", refused)
+    monkeypatch.setattr(ConversationState, "__init__", refused)
+    monkeypatch.setattr(AcpDuplexAdapter, "__init__", refused)
 
-    conversation_mutation = replace(
-        authority, conversation_state=NonCommittingConversation,
-    ).execute(0)
-    assert conversation_mutation.conversation_commit == "not_committed"
-    assert conversation_mutation.primary_conversation_record_count == 0
+    artifact = delivery.build_h4_audit_artifact(
+        replay=_sealed_replay(), merged=_baseline(_MERGED), overlay=_overlay_baseline(),
+        merged_commit=_MERGED, overlay_commit=_OVERLAY,
+    )
+    path = tmp_path / "h4-replay.json"
+    payload = artifact.to_dict()
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    verified = cli._verify_artifact(str(path))
+    assert len(verified.evidence_records[0].schedule_observations.observations) == 1_004
+    assert verified.to_dict() == payload
+
+    missing = {"evidence_records": []}
+    with pytest.raises(MissingSealedEvidence, match="exactly one H4 record to replay 'delivery'"):
+        replayed_family(missing, "delivery")
+    empty = copy.deepcopy(payload)
+    empty["evidence_records"][0]["schedule_observations"]["observations"] = []
+    with pytest.raises(MissingSealedEvidence, match="sealed H4 record carries no 'delivery' observations"):
+        replayed_family(empty, "delivery")
+
+    tampered = copy.deepcopy(payload)
+    record = tampered["evidence_records"][0]
+    summary = record["schedule_observations"]
+    row = summary["observations"][0]
+    citation = row["site_citations"][0].split("#sha256:")[0] + "#sha256:" + "0" * 64
+    row["site_citations"][0] = row["operations"][0]["citation"] = citation
+    summary["digest"] = hashlib.sha256(json.dumps(
+        summary["observations"], sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+    ).encode("utf-8")).hexdigest()
+    for evidence in record["content_free_evidence"]:
+        if evidence["evidence_id"] == "H4-SCHEDULE-OBSERVATIONS":
+            evidence["digest"] = summary["digest"]
+    AuditArtifact.from_dict(tampered)
+    path.write_text(json.dumps(tampered), encoding="utf-8")
+    with pytest.raises(ValueError, match="H4 evidence record does not match immutable-source rebuild"):
+        cli._verify_artifact(str(path))
 
 
 def test_h4_persists_primary_scenario_coherence_and_rejects_tamper(tmp_path: Path) -> None:
@@ -1038,9 +1111,12 @@ def test_h4_persists_primary_scenario_coherence_and_rejects_tamper(tmp_path: Pat
         cli._verify_artifact(str(path))
 
 
-def test_h4_transition_authority_rejects_immutable_byte_drift() -> None:
+def test_h4_transition_authority_rejects_immutable_byte_drift(tmp_path: Path) -> None:
+    module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     merged = _baseline(_MERGED)
     overlay = _overlay_baseline()
+    _typing_authority_repository(tmp_path)
+    module.derive_transition_authority(merged, overlay, repository=tmp_path)
 
     mutations = (
         (
@@ -1065,8 +1141,8 @@ def test_h4_transition_authority_rejects_immutable_byte_drift() -> None:
             )
             for source_path in merged.paths()
         })
-        with pytest.raises(ValueError, match="transition authority bytes drifted"):
-            _historical_transition_authority(changed, overlay)
+        with pytest.raises(ValueError, match=f"^production transition authority bytes drifted for {re.escape(path)}$"):
+            module.derive_transition_authority(changed, overlay, repository=tmp_path)
 
 
 def test_h4_model_schema_and_public_verify_fail_closed_on_cross_field_mutations(

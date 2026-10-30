@@ -76,8 +76,7 @@ class MCPServerManifest:
         parts = [self.server_id, " ".join((*self.command, *self.launch_args))]
         if self.cwd:
             parts.append(f"cwd={self.cwd}")
-        for key in sorted(self.env):
-            parts.append(f"env:{key}=<redacted:{_secret_digest(self.env[key])}>")
+        parts.extend(f"env:{key}=<redacted:{_secret_digest(self.env[key])}>" for key in sorted(self.env))
         for tool in self.tools:
             parts.append(tool.name)
             parts.append(tool.description)

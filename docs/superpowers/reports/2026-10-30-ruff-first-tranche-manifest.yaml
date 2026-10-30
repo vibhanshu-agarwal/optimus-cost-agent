@@ -1,0 +1,320 @@
+base_commit: e346e7ac75f2f24ec4699ab2b46e5441507085cd  # pragma: allowlist secret - reviewed Git commit/tree SHA
+base_tree: b3c1df5499717ce8d17d7fcdc88358aca87fd7e7  # pragma: allowlist secret - reviewed Git commit/tree SHA
+claim: Provisional uncommitted Windows evidence; original 685-test source retained separately from later AST-equivalent comments/formatting and documentation delta; no exact-commit/full-suite/coverage acceptance
+source_files:
+  src/evidence_handoff/collector/bundles.py: e120e3e43b588d9ce43c1fa06d0908299eda8836eff9f93cbd13291b0e73f2bb  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/evidence_handoff/collector/classification.py: 82581901dbfc8f8b5954c3af2c8d288e6947ff313bd37a2ea949b09686ceae01  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/evidence_handoff/redaction/ingress.py: 034c32e6daccb3423834cdb5dad3b8a00e7e5e2e666c5bdf30c3f4b65ee3c794  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/evidence_handoff_runtime/observability.py: db441270d082e377f7cbe4ceeefd32f4d6aff72324eac2f8e86cf860b2c45668  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/evidence_handoff_runtime/service.py: 416fd71a02ba33cee580912fc2f88ec58c09541fff1e22c666c68b0c7eda30f0  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/acp/auto_hybrid.py: 730fe9b13bd7fd8dfbb5caff351d539c2bbaeca62f2dfdf9f14ee98180ad48b6  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/acp/evidence_redaction_adapter.py: e2cd2dd219131af504bd719ca303af88f5c41c914b9fa77b3ad2d9cc5eb442de  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/acp/launch_approval_cli.py: 899bdfb32b346a7885d7306b0029c1d5ebbbd7f481271dcbbf6e1c56c41276f2  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/acp/ndjson_subprocess_session.py: 35ef904e71b2e0ac68a4125df82d41f4937305bc1ea1c95730f8970e72fe266d  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/acp/operator_verify.py: f2b9bed19259e2df3edff00e7c2f7da2c2d9447ce58ece04f7939446dc0ac42f  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/acp/process_lifecycle.py: 804261411135f6eec46bddb372195fc3486e926136d9b5fdfc41b6626065203e  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/acp/spec.py: 7240d15787232dd1871e804044a5ab4acb26184743dcb9a9680cbdc9b48ca352  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/guardrails/mcp_trust.py: 3905ee70c66a88553ec1e3a96933e8adc987435275f64c400cbfa251aab55394  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/mcp/client_disposition.py: 98b7e4e12b0c19e9bc234e08031145909c7206c5b0c961cfc9ec8c85016e891c  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/redis/runtime.py: d97705364ee9bfcaa4d1a52e5e3ed4264b91a06934fc97e840543a3519924d58  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/release/credentials.py: b92d5a57fedda65cf2a6e1a533ee7f75523b443268945ef9a55cfbe7105f0ed3  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/skills/registry.py: 9bee3f38b72711927b38fe4aa5797a35fab602c1b644c9c8be9d43e625ab7f17  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus_gateway/server.py: e28d7ead92258853838c8a7ab67754d6d034e0d5833f893b03cf645021b7c03e  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus_gateway/tool_state.py: 38a84b1bb863e33af9fa117f2073b5fa180867c9d6534c794145342fb7cfa801  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus_model_policy/validation.py: ce3c4de0ebce4ac24ab0664c554ce8278fd74ec44152d6b914d843f46d38eecb  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus_security/failure_facts.py: d56bb1a93f4d3172ea4e9a814805f2485ebaa0e0f9940bfa21e06cca19758981  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus_security/sanitization.py: 9975b0131e77573296a762086f14d6c4bce78b118bb862a999558441fde49257  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  tests/unit/security/test_failure_facts.py: 845bbeadee9df865dd1927e3d120e954611b6d4d6bafd5767ac7c8e80d54a485  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/ruff.toml: fd5b593d51fca0ba1f99a3c36d78186aeda0ae945e50953bd2132aaf18bcc919  # pragma: allowlist secret - reviewed source/evidence SHA-256
+raw_artifacts:
+  characterization-before/after.json: 74852f05846d8d54482b3e48fe664aadb0e1419ee5ca782c78e94af25e188d4c  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  characterization-before/before.json: 22e00ddbc2735abe09e09dc5d08b26c50777c0255613f3099c2563bc43f82e2d  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  characterization-before/command.json: f8416d04a277a711bb99b5d53ee97e2c4808ba7b17bac2e5bdf881e6e85b8078  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  characterization-before/exit-code.txt: 4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  characterization-before/terminal.log: 91746aaca25aedba039d0fda026be9d254c6cf2d9d587a9e31ed9ee37c7a0933  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  characterization-before-native/20261030T144708-19640-2c6c71/nodes.jsonl: 97d62a34b79a9cfcf82ae9792cde7c452c3cf05042f7ba000816683c02f32839  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  characterization-before-native/20261030T144708-19640-2c6c71/phases.jsonl: 7ee60e5630910e492e9a2272e6c7b500d943f09546d886ffde9c248cb6fc78f7  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  characterization-before-native/20261030T144708-19640-2c6c71/run.json: d388943f54e570367bccbf735b15c7166218464940559184135de05060e6ba96  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  characterization-before-native/20261030T144708-19640-2c6c71/samples.jsonl: 5f3b344b8f65cdfa40e28527d8641111cfcc6f6c572e1d3d70cce5acf6a6b77c  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  characterization-before-native/after.json: 7e81f65c434748140dfb22a894e4b984c03f346816a812519a9edd302fccf542  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  characterization-before-native/before.json: 225d1dd3eb92b712f1a9f91cb60e06b081d57aaa881c1bec8ff64b4d2256cc5f  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  characterization-before-native/command.json: f8416d04a277a711bb99b5d53ee97e2c4808ba7b17bac2e5bdf881e6e85b8078  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  characterization-before-native/exit-code.txt: 5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  characterization-before-native/terminal.log: e03ceafdb10cf4b6b65258a14276ca1bf724f92cb2fd536709fee32f239212c2  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  context-and-source-validity.json: 6827d351968db4d76cc03cf2a04aca691aec472921148fe5d08d23820952040f  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  focused-final-1/20261030T144943-41848-22e1a1/nodes.jsonl: 3f544d346b5b42f9c599c67d1e249ca9b150b6d68e4b3a05cb7b7abe0fb757ce  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  focused-final-1/20261030T144943-41848-22e1a1/phases.jsonl: 9eadecebd3f3220474545f37c7386bbe9edff09aee52b016e6609545e2baebdb  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  focused-final-1/20261030T144943-41848-22e1a1/run.json: 727e80f96579b0c6d9a1b518049ba1d81c226412008d3cdf31466403edffbde5  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  focused-final-1/20261030T144943-41848-22e1a1/samples.jsonl: 1016a5bad1e6bdc35d1562930712ad8a9815ecff8e2090972b74897ee5af9001  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  focused-final-1/after.json: dcaf6bd383d34c40b76c162f5dbb8da8cfceb219563da96c17f4e6d7a1d3876a  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  focused-final-1/before.json: c6c459d0d412bf93aee66df248a54c42db7afa858a54a9308e86565b4b2ff96b  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  focused-final-1/command.json: de4e8bc73462ef7796af9719b91e531d395ebb958922472f39a3a5e74c9511f1  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  focused-final-1/exit-code.txt: 5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  focused-final-1/terminal.log: fde44948789a080cc9efcf0e16dd25f1a90e772e5ef6e4e566664f44b5eda72d  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  gate-probes/after.json: 9d900b1a78134acf0a26c7472c94c37aa1b7bd03170ca0588876f8eae7a51d51  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  gate-probes/before.json: d8196d022e6ba364bf3bd6f0d58a011229572e8239269989c4068c92a95d4221  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  gate-probes/command.json: f919cf775b6553f3c8a3dd4a7ce63acd7d53339b6bb2d4bcfedd9c5013435716  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  gate-probes/exit-code.txt: 6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  gate-probes/terminal.log: cdef635ae31ab8c0ab8a32cd9936fe8cba97a37f615934b1a2c6da5b85785b10  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  gate-probes-corrected/after.json: 0ebb22e02eee23a0d16bbf29aaf47332d269873e706d171e08cecbbb58e50b14  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  gate-probes-corrected/before.json: 4238ca81c16f6fecec156f682aa90d3869c0ee29b1eca76468a3dab3ec9fed45  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  gate-probes-corrected/command.json: f919cf775b6553f3c8a3dd4a7ce63acd7d53339b6bb2d4bcfedd9c5013435716  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  gate-probes-corrected/exit-code.txt: 5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  gate-probes-corrected/terminal.log: 7e2847a7d5dbc2c022ac7e377088ef0c326c6ddc048fac81e94ab31c97f100ee  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  gate-probes.json: 3d84b3227ea02530b5ef37f27a582c3368efad870622687f14097cde6f970a6c  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  ruff-after-tranche.json: 4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  ruff-before-direct.json: 1cfecbd61fb862e204d1ba2d373b9d934d6714ab89dfffe66585182ad6ced27b  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  ruff-normal-final/after.json: f7798894b34be784e7444c6113cd92816de1f6ba7caf8d08bc8ed9a6b2c1dcbb  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  ruff-normal-final/before.json: cd41da4ad9964c4041c883e548331e7534357832a750cbd89d6915ac1dfd5466  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  ruff-normal-final/command.json: 721e5bc29adf89ac257103ed5aa19300016e9b5918427e2e4209040f31e2c53d  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  ruff-normal-final/exit-code.txt: 5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  ruff-normal-final/terminal.log: a4443afdcfb6d7363adb285762515ccf7cf50473b1a05c20c1a50f6bed4d26b0  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  ruff-tranche-final/after.json: 0bc26c73e53bcceafc6e0229e6e5301328449ae6cc1beeedc55944c19b4d4212  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  ruff-tranche-final/before.json: d3fc431943951b924637ef23db228da75dae4f8963a322f07f2e7377cb91bb16  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  ruff-tranche-final/command.json: 23f014e397446ec16ad114fa31726f5e23acc0e529f5ad3a6211fa54cc50188b  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  ruff-tranche-final/exit-code.txt: 5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  ruff-tranche-final/terminal.log: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  setup-1.log: 321eab852ffe1c3f9a64a7f2bdede3415c32c73c7802188cffea1169713214ab  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  setup-2.log: 75de52e105bbd8b9c6bacd559bbf619e20af55be1f83adb1323fd9c35cc52e70  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  source.diff: e448221f02796bc9481930446ba2a4f30adc2f9884cf0626c646d6497e42122d  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-red/20261030T150052-28568-66fb6b/nodes.jsonl: d400f19ede95855953dfcafb2784d9cdb96fad1c3a56f90997a970609a8e0046  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-red/20261030T150052-28568-66fb6b/phases.jsonl: 27d964ba76663427386fa1fd079f6b2b3f8c12162ce0b6da5b80047b5ab05918  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-red/20261030T150052-28568-66fb6b/run.json: 855d66a24b8bac9a2b7126caa72c4d1b051de24795c3d51ee3674ae946e52baa  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-red/20261030T150052-28568-66fb6b/samples.jsonl: 19f92140585deaac9c4bd007cac225a1ef06145542fe3eab4430cd3d26fbe8c1  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-red/after.json: 5e8a45b471ce882fd32e5e866f3bee31bcd4423643b48ca83f1451abca2be576  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-red/before.json: e887756984f2279105f80989f21085eb6486aad37a090689b5c285bad80e2fc4  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-red/command.json: c9f86af36d0ca5919cef4f57435bb435daa64bae02754336fa98822aee223f92  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-red/exit-code.txt: 6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-red/terminal.log: fc15067a897b2f269308d7813fc077d03f2ae015e5d502891b47bae2804b739f  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-green/20261030T150144-10040-4d1073/nodes.jsonl: 96d7409e50c94e2eadf0a36606d8c751ad31e5224d0b547886caa89dc83eef2e  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-green/20261030T150144-10040-4d1073/phases.jsonl: 06fb59690d2b692b0f74a938f8929b156bf46ab025b03f4d01dbf55bf561b356  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-green/20261030T150144-10040-4d1073/run.json: e880a34339ee448edf4be63efec24317ee51545390e703821fc81178985e456a  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-green/20261030T150144-10040-4d1073/samples.jsonl: 2fa09c41a1e2ae384189b566857b77fb3a96eb1754130f0651ca541169d8eca4  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-green/after.json: e9372c637bb90d5c8c552ebd48710ae46f4f064b6c67f633b07c4894f896706b  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-green/before.json: 5549194182d4bc3e33abbfc334e0aa14b8d68b7edcfc7d3aadeed6551531be60  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-green/command.json: de37583badb5ad10e8a4db87df324781045517cb246014a1c737c8d2b04a1d9c  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-green/exit-code.txt: 5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  docs-index-green/terminal.log: 4aca07db5bc94aa144ac98a0f12c0bb3deaf401e97a8288697c2ed8a8f2831f3  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  review-fix-ruff/after.json: d653f104779825035610998e58d3612a0e693773fb622e58452160619db54b27  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  review-fix-ruff/before.json: a71d2f06c609e41d1040ed08c1c58a8d60f10753a0c713913085544cd29e2799  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  review-fix-ruff/command.json: 721e5bc29adf89ac257103ed5aa19300016e9b5918427e2e4209040f31e2c53d  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  review-fix-ruff/exit-code.txt: 5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  review-fix-ruff/terminal.log: a4443afdcfb6d7363adb285762515ccf7cf50473b1a05c20c1a50f6bed4d26b0  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  review-fix-tranche/after.json: 14d4cd827a532157e7cb5bd62cfe86676745b8b35c3d6c3221e68ea1f78cc835  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  review-fix-tranche/before.json: bfeacb9a3174bb221ca69d083177d8b8038091e1b8695fa1eab5d29417db40fd  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  review-fix-tranche/command.json: 6e2465cf0483c1b64478ee64cea6516bfa35814b7d350db4f8576b4efcdd93d4  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  review-fix-tranche/exit-code.txt: 5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  review-fix-tranche/terminal.log: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  pre-review-fixes-v1/.superpowers/sdd/ruff-first-tranche/source.diff: e448221f02796bc9481930446ba2a4f30adc2f9884cf0626c646d6497e42122d  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  pre-review-fixes-v1/.superpowers/sdd/ruff-first-tranche/task-1-report.md: 88815624b5daddf6362a0e1f0741c158265236db7194f81f0e48260a3b42c42c  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  pre-review-fixes-v1/docs/README.md: 3ae468832cce27c71faf6db5fa3248ac6aa23697f0f8f876b134fa37fc140126  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  pre-review-fixes-v1/docs/superpowers/reports/2026-10-30-ruff-first-tranche-manifest.json: 908ef6093cf0bba051245f26ef6ea14448e4447f399187cd75fba6b86002b1f1  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  pre-review-fixes-v1/docs/superpowers/reports/2026-10-30-ruff-first-tranche.md: 4bbbc21d3aac1d1a01cee68beda3a43535967d808320a5038122d02788f4e238  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  pre-review-fixes-v1/preserved-hashes.json: 4c3280da4772311e73009c82504555d91779b7db4cb831471b2373c5f24a8354  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  pre-review-fixes-v1/src/optimus/acp/process_lifecycle.py: db859f1f22c346d32c39c6f077810f8a6c65fc03ae03baa3147c3b29f35f096a  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  pre-review-fixes-v1/src/optimus/acp/spec.py: 1b56255a932e78bf157fd5b8d26ccb8ffb6bf986e112c7d45b93bc5604557dde  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  pre-review-fixes-v1/src/optimus/mcp/client_disposition.py: 88906233fdb8de586e36124c231b9dbb4ce06c2a36c904be85be0acdb05bc18f  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  pre-review-fixes-v1/src/optimus/redis/runtime.py: 806fed53474a2cd2abf1f2cfbeedc12833b5b061aeb10676fa9d855f2a73332c  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  review-fix-validity.json: c9c52118d1c931c5ad780e545ee521b81ede957cd83b0e0b693bb04019bd2183  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  source-after-review.diff: 04b6a6011ebb11d750b8d0a1010d3371b1ea67e053660a500905b0da057db46e  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  ruff-after-review-fix.json: 4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  claude-review-1-disposition.txt: 081607336e3dca5d722a2ee793e3c86f8f43137db56309955749702af040c204  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  claude-review-1.exit.txt: f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  claude-review-1.json: 7f574303f3b9b845115abd9f4b9391a1071df9a567434ee91e685bdf67e0b0b7  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  claude-review-1.stderr.txt: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  claude-review-2.exit.txt: 13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  claude-review-2.json: 2da60b8bafa01ae19e302294b22799f053a9ab41ba1056c78a8d4566f349b686  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  claude-review-2.md: 413e4c5874d7a14aec623a6fb4c8b96f92e6c2c0541bf710b355055b99fa49fe  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  claude-review-2.stderr.txt: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  claude-review-3.exit.txt: 13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  claude-review-3.json: dfe9aaf7204d2c83d5aa34104761a8ec782ac2485787480b98dd64eca186582c  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  claude-review-3.md: 9bfd8cd32d42d2c91ad13f4740bcf912775343d0c14a9c55ae4f0b4bd46be012  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  claude-review-3.stderr.txt: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  claude-review-prompt.txt: 607396e78738722554a688c888b14f55869b2855db71a3f0a2457d10c45d1181  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  sandbox-register-final-observed.md: 9c0f5a8f08e12158a822b2ac29950a0b356a8085f18a0334050fd10979c7452d  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  sandbox-register-intake-hash-reconstructed.md: 2cbfe94babcb85d22d68ba882d88864a376d851bdee0913dcb1d3d3b793e0ebd  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  final-handoff-source-before.json: 47828bed5336295c1c0613a6d37014f4589dd104c10afdcec50d28e8635d62f5  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  final-handoff-diff-check.log: b1b852ec3ee43eb4a68f2b4b7d0df80138d5b188256073850f81af6356055995  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  task-1-report.md: 39e6123af05ef43d1e5db0ff4b25a525852c68f71444a5a1d0d0036e81fb23cd  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  publication-commit-1.log: 35fdd9d0541d3bd595816095efeb381f1fd3212d51cb42d80b44b80347d85331  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  publication-attempt-1-retained/hashes.json: dd126ca94501fe81a6d6bbd7a2760b06a68aae3b33d482aa2cdaea803a3b759d  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  publication-h4-diagnostic.json: c64a7208e0924b574c3026b93fd52c18d3b07ce2ab7b7d8b842ffa66a4daaf41  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  publication-base-ci-extract.txt: ae6a3ac77eacc5a5c52af190a8de819e5e52fbd70be79ec672c124fb8a964d00  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  publication-json-manifest-original.json: 103bbffdb100c31af270f3815a84af626e148ce6c1946a9db5c9213f80edac37  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  publication-yaml-candidate-proof.json: 243778e61024371778a0a2e93a7e8b1f779e90e257547b31fc3a1a1af8e0ef7d  # pragma: allowlist secret - reviewed source/evidence SHA-256
+original_tested_source_files:
+  src/evidence_handoff/collector/bundles.py: e120e3e43b588d9ce43c1fa06d0908299eda8836eff9f93cbd13291b0e73f2bb  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/evidence_handoff/collector/classification.py: 82581901dbfc8f8b5954c3af2c8d288e6947ff313bd37a2ea949b09686ceae01  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/evidence_handoff/redaction/ingress.py: 034c32e6daccb3423834cdb5dad3b8a00e7e5e2e666c5bdf30c3f4b65ee3c794  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/evidence_handoff_runtime/observability.py: db441270d082e377f7cbe4ceeefd32f4d6aff72324eac2f8e86cf860b2c45668  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/evidence_handoff_runtime/service.py: 416fd71a02ba33cee580912fc2f88ec58c09541fff1e22c666c68b0c7eda30f0  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/acp/auto_hybrid.py: 730fe9b13bd7fd8dfbb5caff351d539c2bbaeca62f2dfdf9f14ee98180ad48b6  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/acp/evidence_redaction_adapter.py: e2cd2dd219131af504bd719ca303af88f5c41c914b9fa77b3ad2d9cc5eb442de  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/acp/launch_approval_cli.py: 899bdfb32b346a7885d7306b0029c1d5ebbbd7f481271dcbbf6e1c56c41276f2  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/acp/ndjson_subprocess_session.py: 35ef904e71b2e0ac68a4125df82d41f4937305bc1ea1c95730f8970e72fe266d  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/acp/operator_verify.py: f2b9bed19259e2df3edff00e7c2f7da2c2d9447ce58ece04f7939446dc0ac42f  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/acp/process_lifecycle.py: db859f1f22c346d32c39c6f077810f8a6c65fc03ae03baa3147c3b29f35f096a  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/acp/spec.py: 1b56255a932e78bf157fd5b8d26ccb8ffb6bf986e112c7d45b93bc5604557dde  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/guardrails/mcp_trust.py: 3905ee70c66a88553ec1e3a96933e8adc987435275f64c400cbfa251aab55394  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/mcp/client_disposition.py: 88906233fdb8de586e36124c231b9dbb4ce06c2a36c904be85be0acdb05bc18f  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/redis/runtime.py: 806fed53474a2cd2abf1f2cfbeedc12833b5b061aeb10676fa9d855f2a73332c  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/release/credentials.py: b92d5a57fedda65cf2a6e1a533ee7f75523b443268945ef9a55cfbe7105f0ed3  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus/skills/registry.py: 9bee3f38b72711927b38fe4aa5797a35fab602c1b644c9c8be9d43e625ab7f17  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus_gateway/server.py: e28d7ead92258853838c8a7ab67754d6d034e0d5833f893b03cf645021b7c03e  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus_gateway/tool_state.py: 38a84b1bb863e33af9fa117f2073b5fa180867c9d6534c794145342fb7cfa801  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus_model_policy/validation.py: ce3c4de0ebce4ac24ab0664c554ce8278fd74ec44152d6b914d843f46d38eecb  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus_security/failure_facts.py: d56bb1a93f4d3172ea4e9a814805f2485ebaa0e0f9940bfa21e06cca19758981  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/optimus_security/sanitization.py: 9975b0131e77573296a762086f14d6c4bce78b118bb862a999558441fde49257  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  tests/unit/security/test_failure_facts.py: 845bbeadee9df865dd1927e3d120e954611b6d4d6bafd5767ac7c8e80d54a485  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  src/ruff.toml: fd5b593d51fca0ba1f99a3c36d78186aeda0ae945e50953bd2132aaf18bcc919  # pragma: allowlist secret - reviewed source/evidence SHA-256
+review_delta:
+  original_runtime_run_id: 20261030T144943-41848-22e1a1
+  original_runtime_result: 685 passed, 6 skipped; NOT rerun after review fixes
+  production_delta:
+    src/optimus/acp/process_lifecycle.py:
+      original_tested_sha256: db859f1f22c346d32c39c6f077810f8a6c65fc03ae03baa3147c3b29f35f096a  # pragma: allowlist secret - reviewed source/evidence SHA-256
+      current_sha256: 804261411135f6eec46bddb372195fc3486e926136d9b5fdfc41b6626065203e  # pragma: allowlist secret - reviewed source/evidence SHA-256
+      ast_equal_without_location_attributes: true
+    src/optimus/redis/runtime.py:
+      original_tested_sha256: 806fed53474a2cd2abf1f2cfbeedc12833b5b061aeb10676fa9d855f2a73332c  # pragma: allowlist secret - reviewed source/evidence SHA-256
+      current_sha256: d97705364ee9bfcaa4d1a52e5e3ed4264b91a06934fc97e840543a3519924d58  # pragma: allowlist secret - reviewed source/evidence SHA-256
+      ast_equal_without_location_attributes: true
+    src/optimus/acp/spec.py:
+      original_tested_sha256: 1b56255a932e78bf157fd5b8d26ccb8ffb6bf986e112c7d45b93bc5604557dde  # pragma: allowlist secret - reviewed source/evidence SHA-256
+      current_sha256: 7240d15787232dd1871e804044a5ab4acb26184743dcb9a9680cbdc9b48ca352  # pragma: allowlist secret - reviewed source/evidence SHA-256
+      ast_equal_without_location_attributes: true
+    src/optimus/mcp/client_disposition.py:
+      original_tested_sha256: 88906233fdb8de586e36124c231b9dbb4ce06c2a36c904be85be0acdb05bc18f  # pragma: allowlist secret - reviewed source/evidence SHA-256
+      current_sha256: 98b7e4e12b0c19e9bc234e08031145909c7206c5b0c961cfc9ec8c85016e891c  # pragma: allowlist secret - reviewed source/evidence SHA-256
+      ast_equal_without_location_attributes: true
+  targeted_docs_runs:
+  - name: docs-index-red
+    run_id: 20261030T150052-28568-66fb6b
+    exit_status: 1
+    selected: 1
+    completeness: COMPLETE
+    mode: active
+    reason: default_selection
+    native_valid: true
+    protection: full
+    parent_run:
+      method: validated_process_ancestry
+      reason: access_denied
+      status: UNKNOWN
+    stream_counts:
+      nodes: 1
+      phases: 3
+      samples: 2
+  - name: docs-index-green
+    run_id: 20261030T150144-10040-4d1073
+    exit_status: 0
+    selected: 7
+    completeness: COMPLETE
+    mode: active
+    reason: default_selection
+    native_valid: true
+    protection: full
+    parent_run:
+      method: validated_process_ancestry
+      reason: access_denied
+      status: UNKNOWN
+    stream_counts:
+      nodes: 7
+      phases: 21
+      samples: 2
+  documents:
+    docs/README.md: 6aa130d452610d777cc07bb3230d567633f29e9603888f25b44f878c372e1901  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    docs/superpowers/reports/2026-10-30-ruff-first-tranche.md: 70830552b9430f36c0d88a189daacdc4bd039a95626b852e0c159ba10d453a04  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  original_manifest_sha256: 908ef6093cf0bba051245f26ef6ea14448e4447f399187cd75fba6b86002b1f1  # pragma: allowlist secret - reviewed source/evidence SHA-256
+final_handoff:
+  date: '2026-10-30'
+  review_session: f78f4d4e-946f-42fb-aa3a-a898b3677c69
+  review_result: SPEC PASS / QUALITY PASS; nothing remains to fix
+  failed_initial_review_session: 4bb27c7a-d075-4d45-bbd5-a2fe7d1142c0
+  failed_initial_review_result: ENOTFOUND; no verdict
+  network_retry_disposition: automatic approval review blocked disclosure; user subsequently explicitly authorized Claude API review
+  github_review_publication: not authorized; not performed
+  base_main_ci:
+    run: '41072576397'
+    result: completed success including pytest-coverage and coverage validity
+    scope: base main e346e7ac75f2f24ec4699ab2b46e5441507085cd only; not new tranche CI
+    evidence_owner: architect GitHub connector observation
+  sandbox_register:
+    intake_sha256: 2cbfe94babcb85d22d68ba882d88864a376d851bdee0913dcb1d3d3b793e0ebd  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    final_observed_sha256: 9c0f5a8f08e12158a822b2ac29950a0b356a8085f18a0334050fd10979c7452d  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    change: external CI-status clause change; original file not mutated by task
+    intake_copy: reconstructed to exact original hash, not original capture
+  source_test_gate_changes: []
+  test_reruns: []
+  diff_check: pass, exit 0
+publication_normalization:
+  src/evidence_handoff_runtime/observability.py:
+    measured_working_sha256: db441270d082e377f7cbe4ceeefd32f4d6aff72324eac2f8e86cf860b2c45668  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    staged_sha256: 2fbf7fb678507633da31d9e1d9e7319f5c8cf5c370528ed1a5b5b5b3b72fef0e  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    logical_equal: true
+    normalization: CRLF to LF under existing .gitattributes; no other byte change
+  src/evidence_handoff_runtime/service.py:
+    measured_working_sha256: 416fd71a02ba33cee580912fc2f88ec58c09541fff1e22c666c68b0c7eda30f0  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    staged_sha256: 36c3877cc0cc5efd194e30dd2f5acb43ddc9af22a425eed95d4ca2656a2728eb  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    logical_equal: true
+    normalization: CRLF to LF under existing .gitattributes; no other byte change
+integration:
+  base_commit: 18093a78961172ec3478b6e40dbc5fc2c64fd6f8  # pragma: allowlist secret - reviewed Git commit/tree SHA
+  accepted_repair_base: 76848d0dd02cb5db569099418e7a5990ccc1d697  # pragma: allowlist secret - reviewed Git commit/tree SHA
+  accepted_repair_patch_sha256: 46e22794dd693eb79f5b265e35d4ef500c47abee534da0be5d94a73a5c7a0cde  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  accepted_repair_report_sha256: 2ceccaf0f182c269d8199a2f52134366f7c2de0b81f09a0a8864262a898b48fd  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  original_ruff_source_maps: unchanged; original source_files/original_tested_source_files and prior document snapshot hashes remain historical, not relabelled
+  current_working_files_sha256:
+    docs/README.md: 47f80e96fa198d9ab44ab5a27bafce39ca039e5b65b4e9d773de90e1dc550735  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    docs/superpowers/reports/2026-10-30-h4-historical-replay-test-contract-repair.md: 2ceccaf0f182c269d8199a2f52134366f7c2de0b81f09a0a8864262a898b48fd  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    docs/superpowers/reports/2026-10-30-ruff-first-tranche.md: 38b87fd113cd56102e334fdb9b1e00d165c453f7e3a9123ca07c8a457d4021aa  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/evidence_handoff/collector/bundles.py: e120e3e43b588d9ce43c1fa06d0908299eda8836eff9f93cbd13291b0e73f2bb  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/evidence_handoff/collector/classification.py: 82581901dbfc8f8b5954c3af2c8d288e6947ff313bd37a2ea949b09686ceae01  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/evidence_handoff/redaction/ingress.py: 034c32e6daccb3423834cdb5dad3b8a00e7e5e2e666c5bdf30c3f4b65ee3c794  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/evidence_handoff_runtime/observability.py: db441270d082e377f7cbe4ceeefd32f4d6aff72324eac2f8e86cf860b2c45668  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/evidence_handoff_runtime/service.py: 416fd71a02ba33cee580912fc2f88ec58c09541fff1e22c666c68b0c7eda30f0  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus/acp/auto_hybrid.py: 730fe9b13bd7fd8dfbb5caff351d539c2bbaeca62f2dfdf9f14ee98180ad48b6  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus/acp/evidence_redaction_adapter.py: e2cd2dd219131af504bd719ca303af88f5c41c914b9fa77b3ad2d9cc5eb442de  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus/acp/launch_approval_cli.py: 899bdfb32b346a7885d7306b0029c1d5ebbbd7f481271dcbbf6e1c56c41276f2  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus/acp/ndjson_subprocess_session.py: 35ef904e71b2e0ac68a4125df82d41f4937305bc1ea1c95730f8970e72fe266d  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus/acp/operator_verify.py: f2b9bed19259e2df3edff00e7c2f7da2c2d9447ce58ece04f7939446dc0ac42f  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus/acp/process_lifecycle.py: 804261411135f6eec46bddb372195fc3486e926136d9b5fdfc41b6626065203e  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus/acp/spec.py: 7240d15787232dd1871e804044a5ab4acb26184743dcb9a9680cbdc9b48ca352  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus/guardrails/mcp_trust.py: 3905ee70c66a88553ec1e3a96933e8adc987435275f64c400cbfa251aab55394  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus/mcp/client_disposition.py: 98b7e4e12b0c19e9bc234e08031145909c7206c5b0c961cfc9ec8c85016e891c  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus/redis/runtime.py: d97705364ee9bfcaa4d1a52e5e3ed4264b91a06934fc97e840543a3519924d58  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus/release/credentials.py: b92d5a57fedda65cf2a6e1a533ee7f75523b443268945ef9a55cfbe7105f0ed3  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus/skills/registry.py: 9bee3f38b72711927b38fe4aa5797a35fab602c1b644c9c8be9d43e625ab7f17  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus_gateway/server.py: e28d7ead92258853838c8a7ab67754d6d034e0d5833f893b03cf645021b7c03e  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus_gateway/tool_state.py: 38a84b1bb863e33af9fa117f2073b5fa180867c9d6534c794145342fb7cfa801  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus_model_policy/validation.py: ce3c4de0ebce4ac24ab0664c554ce8278fd74ec44152d6b914d843f46d38eecb  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus_security/failure_facts.py: d56bb1a93f4d3172ea4e9a814805f2485ebaa0e0f9940bfa21e06cca19758981  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/optimus_security/sanitization.py: 9975b0131e77573296a762086f14d6c4bce78b118bb862a999558441fde49257  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    src/ruff.toml: fd5b593d51fca0ba1f99a3c36d78186aeda0ae945e50953bd2132aaf18bcc919  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    tests/plan1126_unrun_binding.json: 54f50d0a13f75f0305adb24cf534c4f1c5a2fef8de9200b85920d796d44aebc1  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    tests/profiles.toml: bb72cfeb4a0fd419d5e43c974e47ce27a7742f2a6279a05078f702c58c2e1377  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    tests/unit/acp/test_plan1126_delivery_contract.py: 6133dd2f395711888cb155e95fca34d2792eb73c73d1b741ba077db25519b5c4  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    tests/unit/security/test_failure_facts.py: 845bbeadee9df865dd1927e3d120e954611b6d4d6bafd5767ac7c8e80d54a485  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  dependency_sha256:
+    pyproject.toml: 4fb612a222ae15681a5dceec946c7637e7722cd0ec0e7eb5028e737fb98631f6  # pragma: allowlist secret - reviewed source/evidence SHA-256
+    uv.lock: 5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2  # pragma: allowlist secret - reviewed source/evidence SHA-256
+  narrow_checks:
+    frozen_environment: own uv sync --frozen --extra dev passed
+    ruff: 0.15.20 root check passed, zero source/new-main findings; snapshot-only failures retained then intact archive relocated
+    docs_index:
+      run_id: 20261030T175226-63092-eb8c24
+      passed: 7
+      skipped: 0
+      mode: active/default_selection
+      native: valid/full
+      records: COMPLETE
+      parent: UNKNOWN/access_denied
+    staged_diff_check: passed
+    pinned_scan: configured pinned scan over combined31 passed; baseline unchanged
+  repair_evidence_qualifications:
+    pre_review: 61 passed at earlier bytes
+    later_fix: 22 passed and1 failed at earlier regex bytes
+    latest_python_delta: two exact reason-line regex flags only; citation node1passed; other22not rerun
+    runtime_claim: sealed replay validation, no fresh historical execution or integrated product acceptance
+  combined_deliverable_count: 31
+  final_combined_review_and_normal_hook: pending; no delivery commit or push
