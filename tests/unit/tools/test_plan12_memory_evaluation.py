@@ -30,8 +30,10 @@ def _mem(key: str = "pref-indent", project_id: str = "proj-a", **overrides: Any)
     return item
 
 
-def _ev(seq: int, kind: str, key: str | None = None, version: int | None = None, project_id: str = "proj-a") -> dict[str, Any]:
-    return {"seq": seq, "type": kind, "memory_key": key, "project_id": project_id if key else None, "version": version}
+def _ev(seq: int, kind: str, key: str | None = None, version: int | None = None, project_id: str = "proj-a",
+        rotation_id: str | None = None) -> dict[str, Any]:
+    return {"seq": seq, "type": kind, "memory_key": key, "project_id": project_id if key else None, "version": version,
+            "rotation_id": rotation_id}
 
 
 def _route(attempt_id: str) -> dict[str, Any]:
@@ -83,6 +85,7 @@ def _trace(**overrides: Any) -> dict[str, Any]:
             _ev(0, "turn.user"),
             _ev(1, "memory.committed"),
             _ev(2, "memory.notice"),
+            _ev(3, "memory.served", "mem-7", 2),
         ],
         "evidence": [
             {"evidence_id": "ev-1", "project_id": "proj-a", "revision": "snap-1",
@@ -698,15 +701,21 @@ def test_serving_an_ineligible_item_fails_even_if_unused(state: dict[str, Any], 
     assert "served memory mem-7" in _reasons(verdict)
 
 
+def _quiet(**overrides: Any) -> dict[str, Any]:
+    """A trace that serves no memory, for tests about events alone."""
+    answer = {**_trace()["answer"], "supported_by": [], "citations": []}
+    return _trace(served_memory=[], answer=answer, **overrides)
+
+
 def test_notice_needs_an_earlier_commit_of_the_same_version_in_the_same_project() -> None:
     case = _case(required_events=["memory.committed", "memory.notice.remembered"])
     good = [_ev(0, "memory.committed", "pref-indent", 1), _ev(1, "memory.notice.remembered", "pref-indent", 1)]
     other_project = [_ev(0, "memory.committed", "pref-indent", 1, project_id="proj-b"), good[1]]
     wrong_version = [_ev(0, "memory.committed", "pref-indent", 2), _ev(1, "memory.notice.remembered", "pref-indent", 2)]
 
-    assert _grade(case, _trace(events=good)).layers["authority"].status == "PASS"
+    assert _grade(case, _quiet(events=good)).layers["authority"].status == "PASS"
     for events, reason in ((other_project, "no earlier durable commit"), (wrong_version, "no notice names pref-indent v1")):
-        verdict = _grade(case, _trace(events=events))
+        verdict = _grade(case, _quiet(events=events))
         assert verdict.layers["authority"].status == "FAIL"
         assert reason in _reasons(verdict)
 
@@ -738,27 +747,89 @@ def test_expected_rank_is_checked_against_the_served_order() -> None:
     assert "were not served" in _reasons(unserved)
 
 
-def test_keyed_event_ids_match_only_that_item() -> None:
-    case = _case(required_events=["memory.committed:pref-indent"], prohibited_events=["memory.served:api-freeze"])
-    other_item = [_ev(0, "memory.committed", "pref-indent", 1), _ev(1, "memory.served", "pref-ruff", 1)]
-    named_item = [_ev(0, "memory.committed", "pref-indent", 1), _ev(1, "memory.served", "api-freeze", 1)]
-    wrong_commit = [_ev(0, "memory.committed", "pref-ruff", 1)]
+def test_keyed_event_ids_match_only_that_item_in_this_project_at_its_version() -> None:
+    case = _case(required_events=["memory.committed:pref-indent"], prohibited_events=["memory.strength_faded:api-freeze"])
+    other_item = [_ev(0, "memory.committed", "pref-indent", 1), _ev(1, "memory.strength_faded", "pref-ruff", 1)]
+    named_item = [_ev(0, "memory.committed", "pref-indent", 1), _ev(1, "memory.strength_faded", "api-freeze", 1)]
 
-    assert _grade(case, _trace(events=other_item)).layers["authority"].status == "PASS"
-    assert "prohibited event memory.served:api-freeze" in _reasons(_grade(case, _trace(events=named_item)))
-    assert "required events" in _reasons(_grade(case, _trace(events=wrong_commit)))
+    assert _grade(case, _quiet(events=other_item)).layers["authority"].status == "PASS"
+    assert "prohibited event memory.strength_faded:api-freeze" in _reasons(_grade(case, _quiet(events=named_item)))
+    for wrong in (_ev(0, "memory.committed", "pref-ruff", 1), _ev(0, "memory.committed", "pref-indent", 1, project_id="proj-b"),
+                  _ev(0, "memory.committed", "pref-indent", 2)):
+        assert "required events" in _reasons(_grade(case, _quiet(events=[wrong]))), wrong
 
 
-def test_old_root_destruction_needs_its_prerequisites_and_happens_once() -> None:
+def test_serving_events_and_served_memory_must_agree() -> None:
+    case = _case(prohibited_events=["memory.served:api-freeze"])
+    state = [_mem(), _mem("mem-7", version=2), _mem("api-freeze")]
+    hidden = [*_trace()["served_memory"], {"memory_id": "api-freeze", "version": 1, "project_id": "proj-a"}]
+    phantom = [*_trace()["events"], _ev(4, "memory.served", "mem-9", 1)]
+
+    assert _grade(case, _trace(memory_state=state)).layers["authority"].status == "PASS"
+    unannounced = _grade(case, _trace(memory_state=state, served_memory=hidden))
+    assert "served memory api-freeze v1 has no serving event" in _reasons(unannounced)
+    assert "prohibited serving memory.served:api-freeze appears in served_memory" in _reasons(unannounced)
+    assert "names no served item version" in _reasons(_grade(case, _trace(events=phantom)))
+
+
+def _rotation(*kinds: str, rotation_id: str = "rot-1", new: int = 2, start: int = 0) -> list[dict[str, Any]]:
+    return [_ev(start + n, kind, version=new, rotation_id=rotation_id) for n, kind in enumerate(kinds)]
+
+
+def test_old_root_destruction_is_bound_to_its_rotation_and_happens_once() -> None:
     case = _case(required_events=["rotation.old_root_destroyed"])
-    ready = [_ev(0, "generation.usable_verified"), _ev(1, "rotation.acknowledged")]
-    once = [*ready, _ev(2, "rotation.old_root_destroyed", version=2)]
-    early = [_ev(0, "rotation.old_root_destroyed", version=2), _ev(1, "generation.usable_verified"), _ev(2, "rotation.acknowledged")]
-    twice = [*once, _ev(3, "rotation.old_root_destroyed", version=2)]
+    ready = _rotation("generation.usable_verified", "rotation.acknowledged", "rotation.committed")
+    destroy = _ev(3, "rotation.old_root_destroyed", version=1, rotation_id="rot-1")
+    cases = {
+        "before commit": [*ready[:2], _ev(2, "rotation.old_root_destroyed", version=1, rotation_id="rot-1"), _ev(3, "rotation.committed", version=2, rotation_id="rot-1")],
+        "unrelated rotation": [*_rotation("generation.usable_verified", "rotation.acknowledged", "rotation.committed", rotation_id="rot-0"), destroy],
+        "commit before verify": [*_rotation("rotation.committed", "generation.usable_verified", "rotation.acknowledged"), destroy],
+        "no rotation id": [*ready, _ev(3, "rotation.old_root_destroyed", version=1)],
+        "same generation": [*_rotation("generation.usable_verified", "rotation.acknowledged", "rotation.committed", new=1), destroy],
+    }
+    unnamed = [*ready, _ev(3, "rotation.old_root_destroyed", rotation_id="rot-1")]
 
-    assert _grade(case, _trace(events=once)).layers["authority"].status == "PASS"
-    assert "before verification and acknowledgement" in _reasons(_grade(case, _trace(events=early)))
-    assert "generation 2 was destroyed 2 times" in _reasons(_grade(case, _trace(events=twice)))
+    assert _grade(case, _quiet(events=[*ready, destroy])).layers["authority"].status == "PASS"
+    for name, events in cases.items():
+        assert _grade(case, _quiet(events=events)).layers["authority"].status == "FAIL", name
+    assert "names no rotation or old generation" in _reasons(_grade(case, _quiet(events=unnamed)))
+    twice = [*ready, destroy, _ev(4, "rotation.old_root_destroyed", version=1, rotation_id="rot-1")]
+    assert "generation 1 was destroyed 2 times" in _reasons(_grade(case, _quiet(events=twice)))
+
+
+def _fixture_case(case_id: str) -> dict[str, Any]:
+    cases = json.loads((SEED / "lifecycle.json").read_text(encoding="utf-8"))["cases"]
+    return next(case for case in cases if case["case_id"] == case_id)
+
+
+def _fixture_trace(case: dict[str, Any], events: list[dict[str, Any]]) -> dict[str, Any]:
+    state = [{key: item[key] for key in ("key", "project_id", "version", "trust", "status", "off", "supersedes")}
+             for item in case["expected_memory"] if item["trust"] != "absent"]
+    answer = {"action": case["expected_action"], "claims": case["required_facts"], "supported_by": [], "support_extracted": True,
+              "citations": [], "judge_status": "ok"}
+    return _trace(case_id=case["case_id"], case_version=case["version"], events=events, evidence=[], served_memory=[],
+                  memory_state=state, answer=answer)
+
+
+def test_m23_requires_verification_before_the_pointer_commit() -> None:
+    case = _fixture_case("M23-a")
+    in_order = _rotation("rotation.fresh_keys_verified", "rotation.purged_key_absent", "rotation.acknowledged",
+                         "rotation.committed", "generation.old_rejected")
+    premature = _rotation("rotation.committed", "rotation.fresh_keys_verified", "rotation.purged_key_absent",
+                          "rotation.acknowledged", "generation.old_rejected")
+
+    assert _grade(case, _fixture_trace(case, in_order)).execution_status == "PASS"
+    assert "required events" in _reasons(_grade(case, _fixture_trace(case, premature)))
+
+
+def test_m24g_destroys_once_and_reports_no_completion_without_attestation() -> None:
+    case = _fixture_case("M24-g")
+    cleanup = [*_rotation("generation.usable_verified", "rotation.acknowledged", "rotation.committed", "rotation.cleanup_resumed"),
+               _ev(4, "rotation.old_root_destroyed", version=1, rotation_id="rot-1")]
+
+    assert _grade(case, _fixture_trace(case, cleanup)).execution_status == "PASS"
+    claimed = _grade(case, _fixture_trace(case, [*cleanup, _ev(5, "erasure.completed_attested")]))
+    assert "prohibited event erasure.completed_attested occurred" in _reasons(claimed)
 
 
 @pytest.mark.parametrize("routes", [[], ["att-1", "att-1"], ["att-1", "att-9"]], ids=["missing", "duplicate", "extra"])
@@ -774,9 +845,10 @@ def test_superseded_history_is_part_of_the_expected_state() -> None:
     answer = {**_trace()["answer"], "supported_by": [{"memory_id": "pref-indent", "version": 2}],
               "citations": [{"memory_id": "pref-indent", "version": 2}]}
 
-    kept = _grade(case, _trace(memory_state=history, served_memory=served, answer=answer))
-    overwritten = _grade(case, _trace(memory_state=history[1:], served_memory=served, answer=answer))
-    unlinked = _grade(case, _trace(memory_state=[history[0], _mem(version=2)], served_memory=served, answer=answer))
+    events = [_ev(0, "memory.committed"), _ev(1, "memory.notice"), _ev(2, "memory.served", "pref-indent", 2)]
+    kept = _grade(case, _trace(events=events, memory_state=history, served_memory=served, answer=answer))
+    overwritten = _grade(case, _trace(events=events, memory_state=history[1:], served_memory=served, answer=answer))
+    unlinked = _grade(case, _trace(events=events, memory_state=[history[0], _mem(version=2)], served_memory=served, answer=answer))
     assert kept.layers["authority"].status == "PASS", kept.reasons
     assert "memory pref-indent v1 in proj-a is absent" in _reasons(overwritten)
     assert "expected user-authored/active/supersedes v1" in _reasons(unlinked)

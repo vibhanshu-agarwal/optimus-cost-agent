@@ -42,7 +42,7 @@ RETRIEVAL_K = 5  # predeclared in reports/plan12-memory-evaluation/case-review.j
 
 
 _UNSERVABLE = frozenset({"withdrawn", "purged", "archived", "superseded"})
-_DESTRUCTION_PREREQUISITES = frozenset({"generation.usable_verified", "rotation.acknowledged"})
+_DESTRUCTION_PREREQUISITES = ("generation.usable_verified", "rotation.acknowledged", "rotation.committed")
 
 
 def _layer(fails: list[str], doubts: list[str], notes: Sequence[str] = ()) -> LayerVerdict:
@@ -50,10 +50,17 @@ def _layer(fails: list[str], doubts: list[str], notes: Sequence[str] = ()) -> La
     return LayerVerdict(status=status, reasons=(*fails, *doubts, *notes))
 
 
-def _matches(name: str, event: TraceEvent) -> bool:
-    """An event ID is ``type`` or ``type:key``; the keyed form matches only that item's events."""
+def _matches(name: str, event: TraceEvent, case: GoldenCase) -> bool:
+    """An event ID is ``type`` or ``type:key``. The keyed form matches only that item's events in the case's
+    project, and at its expected version when the case expects exactly one present version of the item."""
     kind, _, key = name.partition(":")
-    return event.type == kind and (not key or event.memory_key == key)
+    if event.type != kind:
+        return False
+    if not key:
+        return True
+    versions = {item.version for item in case.expected_memory if item.key == key and item.trust != "absent"}
+    return (event.memory_key == key and event.project_id == case.project_id
+            and (len(versions) != 1 or event.version in versions))
 
 
 def _describe(item: ExpectedMemory | MemoryStateObservation) -> str:
@@ -63,9 +70,9 @@ def _describe(item: ExpectedMemory | MemoryStateObservation) -> str:
 
 def _authority(case: GoldenCase, trace: ObservedTrace) -> LayerVerdict:
     events = sorted(trace.events, key=lambda event: event.seq)
-    fails = [f"prohibited event {name} occurred" for name in case.prohibited_events if any(_matches(name, e) for e in events)]
+    fails = [f"prohibited event {name} occurred" for name in case.prohibited_events if any(_matches(name, e, case) for e in events)]
     remaining = iter(events)
-    if not all(any(_matches(name, event) for event in remaining) for name in case.required_events):
+    if not all(any(_matches(name, event, case) for event in remaining) for name in case.required_events):
         fails.append(f"required events {list(case.required_events)} are missing or out of order")
     state: dict[tuple[str, str, int | None], MemoryStateObservation] = {
         (item.key, item.project_id, item.version): item for item in trace.memory_state
@@ -79,6 +86,16 @@ def _authority(case: GoldenCase, trace: ObservedTrace) -> LayerVerdict:
             fails.append(f"served memory {memory.memory_id} v{memory.version} has no observed state at that version")
         elif observed.off or observed.status in _UNSERVABLE:
             fails.append(f"served memory {memory.memory_id} v{memory.version} is {_describe(observed)} and may not be served")
+    served_refs = {(memory.memory_id, memory.project_id, memory.version) for memory in trace.served_memory}
+    serving_events = [event for event in events if event.type == "memory.served"]
+    fails += [f"serving event at seq {event.seq} names no served item version" for event in serving_events
+              if (event.memory_key, event.project_id, event.version) not in served_refs]
+    announced = {(event.memory_key, event.project_id, event.version) for event in serving_events}
+    fails += [f"served memory {key} v{version} has no serving event" for key, _, version in sorted(served_refs - announced, key=str)]
+    for name in case.prohibited_events:
+        kind, _, key = name.partition(":")
+        if kind == "memory.served" and any(not key or memory.memory_id == key for memory in trace.served_memory):
+            fails.append(f"prohibited serving {name} appears in served_memory")
     for index, event in enumerate(events):
         ref = (event.memory_key, event.project_id, event.version)
         if event.type == "memory.notice.remembered" and (None in ref or not any(
@@ -95,8 +112,16 @@ def _authority(case: GoldenCase, trace: ObservedTrace) -> LayerVerdict:
     destroyed = [event for event in events if event.type == "rotation.old_root_destroyed"]
     fails += [f"old root generation {generation} was destroyed {count} times"
               for generation, count in Counter(event.version for event in destroyed).items() if count > 1]
-    fails += [f"old root destroyed at seq {event.seq} before verification and acknowledgement" for event in destroyed
-              if not _DESTRUCTION_PREREQUISITES <= {earlier.type for earlier in events if earlier.seq < event.seq}]
+    for event in destroyed:
+        if event.rotation_id is None or event.version is None:
+            fails.append(f"old root destroyed at seq {event.seq} names no rotation or old generation")
+            continue
+        old = event.version
+        steps = iter(earlier.type for earlier in events if earlier.seq < event.seq and earlier.rotation_id == event.rotation_id
+                     and earlier.version is not None and earlier.version > old)
+        if not all(step in steps for step in _DESTRUCTION_PREREQUISITES):
+            fails.append(f"old root generation {old} destroyed at seq {event.seq} before its rotation verified, "
+                         "acknowledged and committed a newer generation")
     for expected in case.expected_memory:
         if expected.trust == "absent":
             if any((item.key, item.project_id) == (expected.key, expected.project_id) for item in trace.memory_state):

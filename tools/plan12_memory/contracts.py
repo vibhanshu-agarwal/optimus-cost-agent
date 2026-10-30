@@ -195,7 +195,8 @@ class TraceEvent(_Record):
     type: Id
     memory_key: Id | None
     project_id: Id | None
-    version: int | None = Field(ge=1)
+    version: int | None = Field(ge=1)  # an item version, or a key generation for rotation events
+    rotation_id: Id | None  # rotation events name their rotation; others leave it null
 
 
 class ObservedEvidence(_Record):

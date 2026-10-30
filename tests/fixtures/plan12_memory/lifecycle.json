@@ -3796,9 +3796,10 @@
     "claim-fully-erased"
    ],
    "required_events": [
-    "rotation.committed",
     "rotation.fresh_keys_verified",
     "rotation.purged_key_absent",
+    "rotation.acknowledged",
+    "rotation.committed",
     "generation.old_rejected"
    ],
    "prohibited_events": [
@@ -3923,9 +3924,10 @@
     "claim-fully-erased"
    ],
    "required_events": [
-    "rotation.committed",
     "rotation.fresh_keys_verified",
     "rotation.purged_key_absent",
+    "rotation.acknowledged",
+    "rotation.committed",
     "erasure.completed_attested"
    ],
    "prohibited_events": [
@@ -4581,7 +4583,7 @@
     {
      "seq": 3,
      "actor": "host",
-     "text": "Verification and acknowledgement completed; the process crashed during old-root cleanup, twice.",
+     "text": "Verification, acknowledgement and the generation pointer commit completed; the process crashed during old-root cleanup, twice.",
      "attempt": null
     },
     {
@@ -4592,6 +4594,12 @@
     },
     {
      "seq": 5,
+     "actor": "host",
+     "text": "No external destruction attestation was supplied.",
+     "attempt": null
+    },
+    {
+     "seq": 6,
      "actor": "user",
      "text": "Is the old root gone?",
      "attempt": null
@@ -4609,10 +4617,12 @@
    "required_events": [
     "generation.usable_verified",
     "rotation.acknowledged",
+    "rotation.committed",
     "rotation.cleanup_resumed",
     "rotation.old_root_destroyed"
    ],
    "prohibited_events": [
+    "erasure.completed_attested",
     "erasure.completed_verified"
    ],
    "expected_memory": [
@@ -4637,7 +4647,200 @@
    ],
    "expected_rank": [],
    "expected_cost": null,
-   "verification": "cleanup is idempotent: at most one destruction per old generation, only after verification and acknowledgement",
+   "verification": "cleanup is idempotent: at most one destruction per old generation, only after its rotation verified, acknowledged and committed a newer generation; no attestation means no completion",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 2 row M24"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "M24-h",
+   "version": 1,
+   "family": "M24",
+   "split": "train",
+   "kind": "lifecycle",
+   "role": "probe",
+   "oracles": [
+    "K5"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Use tabs for indentation in this project.",
+     "attempt": null
+    },
+    {
+     "seq": 1,
+     "actor": "user",
+     "text": "Remember that the deploy target is staging-eu.",
+     "attempt": null
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "Purge the deploy target and rotate the keys now.",
+     "attempt": null
+    },
+    {
+     "seq": 3,
+     "actor": "host",
+     "text": "The process crashed before rotation prepare began.",
+     "attempt": null
+    },
+    {
+     "seq": 4,
+     "actor": "host",
+     "text": "Optimus restarted.",
+     "attempt": null
+    },
+    {
+     "seq": 5,
+     "actor": "user",
+     "text": "Is the rotation done?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [
+    "fact-rotation-not-started"
+   ],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [
+    "generation.usable_verified",
+    "rotation.resumed_or_aborted"
+   ],
+   "prohibited_events": [
+    "rotation.old_root_destroyed",
+    "erasure.completed_attested",
+    "erasure.completed_verified"
+   ],
+   "expected_memory": [
+    {
+     "key": "pref-indent",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "active",
+     "off": false,
+     "supersedes": null
+    },
+    {
+     "key": "fact-deploy-target",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "purged",
+     "off": false,
+     "supersedes": null
+    }
+   ],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "deterministic trace comparison against the listed events, memory state and claims",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 2 row M24"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "M24-i",
+   "version": 1,
+   "family": "M24",
+   "split": "train",
+   "kind": "lifecycle",
+   "role": "probe",
+   "oracles": [
+    "K5",
+    "K6"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Use tabs for indentation in this project.",
+     "attempt": null
+    },
+    {
+     "seq": 1,
+     "actor": "user",
+     "text": "Remember that the deploy target is staging-eu.",
+     "attempt": null
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "Purge the deploy target and rotate the keys now.",
+     "attempt": null
+    },
+    {
+     "seq": 3,
+     "actor": "host",
+     "text": "The new phrase was acknowledged; the process crashed while deleting the restricted phrase handoff file.",
+     "attempt": null
+    },
+    {
+     "seq": 4,
+     "actor": "host",
+     "text": "Optimus restarted.",
+     "attempt": null
+    },
+    {
+     "seq": 5,
+     "actor": "user",
+     "text": "Is the handoff file gone?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [
+    "fact-handoff-file-deleted"
+   ],
+   "required_evidence": [],
+   "prohibited_claims": [],
+   "required_events": [
+    "generation.usable_verified",
+    "recovery.phrase_file_deleted"
+   ],
+   "prohibited_events": [
+    "secret.phrase_emitted",
+    "erasure.completed_attested",
+    "erasure.completed_verified"
+   ],
+   "expected_memory": [
+    {
+     "key": "pref-indent",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "active",
+     "off": false,
+     "supersedes": null
+    },
+    {
+     "key": "fact-deploy-target",
+     "project_id": "proj-alpha",
+     "version": 1,
+     "trust": "user-authored",
+     "status": "purged",
+     "off": false,
+     "supersedes": null
+    }
+   ],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "deletion resumes after restart; the purge stays excluded and nothing reports completion",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
