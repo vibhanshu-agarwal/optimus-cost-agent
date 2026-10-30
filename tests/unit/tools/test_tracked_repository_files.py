@@ -132,6 +132,7 @@ _INDEX_LISTINGS = {
     "tools/probe_p11_zed_session_load.py": "a manually run probe digests its own checkout; no test run executes that listing",
     "tools/measure_context_engine_limits.py": "a manually run Plan 12 measurement tool; its in-suite uses list tracked file names to sample sizes and to build its measurement report, so the index it lists changes the sample or report, never a verdict about the commit",
     "tests/unit/guardrails/test_ci_parity.py": "its listing programs run in per-test fixture repositories, never the repository being committed",
+    "tests/unit/guardrails/test_file_policy.py": "lists a per-test temporary repository's ignored files to compare with the policy, never the repository being committed",
     "tests/unit/tools/test_probe_p11_zed_session_load.py": "a stand-in for git that the probe's isolated copies must never call",
     "tests/unit/tools/test_run_profile.py": "lists a per-test fixture repository's default index, which is the subject",
 }
