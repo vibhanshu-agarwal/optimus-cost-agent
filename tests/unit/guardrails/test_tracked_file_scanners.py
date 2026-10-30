@@ -141,6 +141,7 @@ ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
     "tests/unit/tools/test_qualification_assess.py:_seal:rglob:*": "Seals the scripted run folder this test created in its tmp_path.",
     "tests/unit/tools/test_qualification_assess.py:_snapshot:rglob:*": "Snapshots a test-created sealed run folder to prove assess never writes to it.",
     "tools/evaluate_context_summarizer.py:verify_run:rglob:*": "Lists one operator-named sealed evidence folder outside the repository, to refuse any file its manifest does not seal.",
+    "tools/plan12_memory/evaluate.py:validate_cases:glob:*.json": "Validates the one fixture directory the caller names, as it stands, so a new or edited case file is checked before it is committed; it does not recurse.",
     "tools/plan12_stage_c_schedule.py:verify_workspace:rglob:*": "Lists one generated Stage C run workspace outside the repository, to refuse any entry its fixture does not name before the first launch.",
     "tools/probe_p11_zed_session_load.py:throwaway_tree_digest:rglob:*": "Digests a newly created throwaway Zed tree.",
     "tools/plan1126_runtime_audit/measurement.py:current_bytecode_cache:rglob:*.pyc": "Inspects the executing interpreter's private bytecode cache (PYTHONPYCACHEPREFIX) for generated .pyc files; a fresh measurement refuses a cache any earlier compilation could have populated. Generated cache files are deliberately outside repository-truth inventory.",
