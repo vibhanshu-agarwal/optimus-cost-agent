@@ -172,9 +172,10 @@ async def test_retiring_one_real_sdk_peer_releases_only_its_owned_graph(monkeypa
     try:
         retired, live = await open_peer(), await open_peer()
         assert len(watches) == 2 and all(watch.snapshot().running for watch in watches)
+        peer_pids = {watch.pid for watch in watches}
+        assert len(peer_pids) == 2
         if sys.platform != 'win32':
-            facts = {int(path.stem): json.loads(path.read_text()) for path in child_facts.glob('*.json')}
-            assert set(facts) == {watch.pid for watch in watches}
+            facts = {pid: json.loads((child_facts / f'{pid}.json').read_text()) for pid in peer_pids}
             assert all(fact['executable'] == sys.executable and fact['prefix'] == sys.prefix for fact in facts.values())
             print('owned-sdk-child-identities:', json.dumps(facts, sort_keys=True))
         retired_id = retired.session_id

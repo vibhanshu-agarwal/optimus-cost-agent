@@ -1,0 +1,176 @@
+{
+  "schema": "plan12-memory-case-review/1",
+  "task": "Task 2",
+  "recorded": "2026-10-30",
+  "revised": "2026-10-30, Checkpoint 1: Fable F-01 and F-05 to F-09, then Codex round-1 C-01 to C-15 as agreed in round 2, then round-3 R3-01 to R3-07 (see case_custody.corrections)",
+  "plan": "docs/superpowers/plans/2026-10-22-plan-12-5-memory-evaluation-implementation_v3.md",
+  "fixtures": {
+    "tests/fixtures/plan12_memory/lifecycle.json": "sha256:a62b6a97d27f10ce0dc750ef8c7a95fa0ca59c7c1cd6b5dbcbe9149d921d514a",
+    "tests/fixtures/plan12_memory/accounting.json": "sha256:b4b2b0e4e15b50413578ad670cb5c3cbf90f075d08df10275b5e94d9ab60c3ce",
+    "tests/fixtures/plan12_memory/localization.json": "sha256:07cc94c9b94d2d9ae5a09b6072cdc66f527bbd2767617b0e26230e07be1998dc",
+    "tests/fixtures/plan12_memory/splits.json": "sha256:fc1e33c72113a18f5629032c5592c9c4e31633784211b05a988931c39dbd613a"
+  },
+  "builders": {
+    "note": "Kept in the review kit (optimus-handoff/sandbox-review-kit/plan12-codex-cli/plan12-5-rework/task2/), not in the product. A fixture edit is made in the builder and rebuilt, or versioned in place with a reason.",
+    "build_seed.py": "sha256:78d1f88183cc31f7545032d67a540ed862006e37a823c0c8a16cd84574eeabec",
+    "build_seed.v3.py": "sha256:b6d559801f1eb93413fff76f7f61b465fdfd4661a0efb61d2cb16fb02952e97e",
+    "build_seed.v2.py": "sha256:5291d18a1a0bf02bb4d4cf5df178f8a3f5c7e86d25e4ee94005440018389af17",
+    "build_seed.v1.py": "sha256:bca40896fc203c48965381a9db0ee6ae2c7e5b831815788984327904e59e271d",
+    "extract_locations.py": "sha256:ccc346fc7a4bbdc5cc07264b2c567d413b191d5dbb351b6d1d4bbbc08198156b",
+    "locations.json": "sha256:5f57701b3f856308740c278f71a3b6c840a02917b7fabba396d05bddf810b297"
+  },
+  "counts": {
+    "families": {"lifecycle": 24, "localization": 12, "accounting": 8},
+    "cases": {"lifecycle": 68, "localization": 12, "accounting": 8},
+    "cases_by_split": {"train": 40, "development": 18, "held_out": 30}
+  },
+  "validation": "python -m tools.plan12_memory.evaluate --validate-only tests/fixtures/plan12_memory: 88 cases, 0 errors. It checks the schema, the split manifest (family assignment, 24/12/8 cardinalities, chronological localization), a control case in every lifecycle family, no family across splits, and oracle consistency (nothing both required and prohibited; abstentions require no facts; every case asserts something).",
+  "case_custody": {
+    "drafted_by": "claude, all 88 cases",
+    "verified_by": "Codex CLI round 1 (session 01a18b6b-aba3-7891-8c4f-e70aa455c8ec) verified 75 case definitions, listing the correct ones and corrections for the rest; the corrections below were agreed in round 2 and re-verification of the corrected and new cases is round 3",
+    "operator_sample": "approved: the operator reviewed the 30 held-out cases under Q29 at Checkpoint 1 and approved them without corrections (Claude's chat, 2026-10-30)",
+    "corrections": [
+      "Every correction keeps the old version (build_seed.v1.py rebuilds it) and its reason; none is tuned to let a candidate pass.",
+      "L01-L12 v1 -> v2 (Fable F-01): a requirement with changed symbols now accepts only those symbols, so a filename alone is unlisted evidence (INCONCLUSIVE), never a PASS; a module-level change keeps its path.",
+      "L10 v2 (Fable F-06): the query no longer names the agent_run event; it describes the run-outcome telemetry event instead. Gold unchanged.",
+      "M18-c added, v1, held out (Fable F-05): an imported store with the target project, another project and an unknown-attribution note, which the M18 row and the Task 2 bullet require. The family count stays 24.",
+      "Codex round 2 (agreed changes; build_seed.v2.py rebuilds the previous set): every expected item states version, switch state (off keeps its origin) and supersession; cases state expected_rank; the expected savings claim is complete (label, basis, amount, reference).",
+      "L01-L12 v2 -> v3 (C-01): the answer must name each requirement's locus as locus:<id>, and that item must be retrieved within the first k. L01's query names no exception class (C-15).",
+      "M03-a (C-12): one key with version 1 superseded and version 2 active, linked. M11-a (C-10): the question is asked in a fresh session. M15-a: the archived overflow candidate cand-201 is named. M17-a/b (C-11 setting): automatic brief display enabled with a 7-day threshold, as frozen v12 lines 2248 and 2492 require. M20-a/b: observed strength change and ranking against a second item. M21-a (C-08): backup inventory, purge journal and verified high-watermark stated; anchor re-mapping asserted. M22-b (C-09): a surviving verified export is stated. M23-a/b: fresh keys, purged-key absence, export and handoff limits; M23-b's attestation names its batch and generation and an unrestricted erasure claim is prohibited. M24-a/b: a retained live item and a verified usable generation.",
+      "New cases (C-08, C-09, C-12): M13-c export/off/re-import, M18-d out-of-scope branch, M21-d later withdrawal, M21-e later purge, M22-d no surviving export, M22-e phrase-file handoff, M22-f unqualified channel refused, M24-d before acknowledgement, M24-e after acknowledgement before commit, M24-f phrase-file interruption, M24-g interrupted cleanup. The family count stays 24.",
+      "Codex round 3 (build_seed.v3.py rebuilds the previous set): M23-a/b require verification, purged-key absence and acknowledgement before the pointer commit (R3-01). M24-g states that no attestation was supplied, prohibits both completions and requires the commit before cleanup (R3-05). New M24-h (before prepare) and M24-i (during phrase-file deletion) (R3-06). Grader: keyed events bind project and version, serving events must agree with served_memory, and old-root destruction is bound to its rotation and generation (R3-02 to R3-04)."
+    ]
+  },
+  "coverage": {
+    "simple_factual_lookup": ["M06-b"],
+    "multi_evidence_synthesis": ["L03", "L05", "L07", "L09", "L10", "L11", "L12"],
+    "causal_error_localization": ["L01", "L02", "L03", "L04", "L05", "L06", "L07", "L09", "L10", "L11", "L12"],
+    "capability_limit": ["L08"],
+    "out_of_scope_note": "Customer billing escalation is outside this coding agent's scope (Q28); L08 is the Optimus capability-limit case instead."
+  },
+  "localization_method": {
+    "source": "this repository's history; see reports/plan12-memory-evaluation/manifest.json (Task 0)",
+    "selection": "11 merged fix PRs touching product code under src/, spread over July to October 2026 (#65, #164, #165, #198, #219, #358, #377, #405, #414, #422, #435), plus the L08 capability-limit case.",
+    "cutoff": "the first parent of each fix's merge commit; its committer time is the case cutoff",
+    "gold": "one requirement per changed src/ Python file, met by any enclosing function, method or class of a changed line in the cutoff tree (AST over the old side of the diff); only a module-level change gives a path requirement. The answer must name the locus as locus:<id>, and that item must be among the first k retrieved items; an answered unlisted item that supports the requirement is INCONCLUSIVE pending review.",
+    "queries": "symptom statements written from each PR's description; no query names a file, function, class or event identifier",
+    "split": "chronological 4/4/4 by cutoff; L08 falls between L07 and L09",
+    "L08": "at git:dbdfaa32 the session configOptions are mode and context strategy only, and src/optimus/acp/session_config.py says outright that no model selector is advertised; the correct answer is that the capability does not exist"
+  },
+  "event_vocabulary": {
+    "memory.committed": "host durable commit of an accepted item (append confirmed by WAITAOF)",
+    "memory.notice.remembered": "host notice card after an fsync-confirmed commit",
+    "memory.notice.unconfirmed": "host notice that a write is unconfirmed and can be retried",
+    "memory.notice.backlogged": "an undelivered notice held for the next update or /memory",
+    "memory.served": "an accepted item was served into context",
+    "memory.candidate.off": "a candidate was held off",
+    "memory.conflict.off": "an agent-origin item conflicting with a user constraint went off without prompting",
+    "memory.prompt_user": "the user was prompted about a conflict",
+    "memory.superseded": "a newer user statement superseded an older one, keeping history",
+    "memory.withdrawn": "an item was withdrawn (/forget or retraction)",
+    "memory.purged": "an item's payload was purged",
+    "memory.reverify": "an anchored item needs a current applicability check",
+    "memory.switched_on": "a user switch-on re-extracted the exact source",
+    "memory.switch_on_unavailable": "switch-on refused because the source is no longer available",
+    "memory.archived_overflow": "off metadata beyond the cap was archived unserved",
+    "memory.expired": "an item expired (never allowed for accepted memory)",
+    "memory.trust_changed": "an item's trust changed",
+    "memory.trust_promoted": "origin or trust was raised by repetition, usage, tests or a type tag",
+    "memory.trust_from_import": "imported metadata asserted user trust",
+    "memory.import.optional": "imported notes were admitted as optional context only",
+    "memory.extracted_from_summary": "memory was extracted from a compaction summary",
+    "memory.secret_refused": "a candidate was refused by the secret policy", "memory.secret_refused_pin": "# pragma: allowlist secret - an event name, not a secret",
+    "memory.pointer_only": "only a pointer and hash were persisted (B1)",
+    "memory.body_persisted": "a source body was persisted (B1 violation)",
+    "memory.blocked_untrusted_workspace": "memory mutation refused in an untrusted workspace",
+    "brief.shown.first_response": "the continuity brief was shown with the first response after a 7-day break",
+    "brief.shown.on_request": "the brief was shown on /welcome",
+    "checkpoint.written": "a turn-settlement continuation checkpoint was written",
+    "continuation.resumed": "a session resumed from its checkpoint",
+    "continuation.baseline_rewritten": "the checkpoint's baseline was reported missing or rewritten",
+    "restore.rekey_mapped": "restore re-keyed projects through an explicit validated mapping",
+    "restore.rekey_unmapped": "restore re-keyed without a validated mapping",
+    "restore.tombstones_applied": "restore applied tombstones under the mapped scope",
+    "restore.mapping_rejected": "an ambiguous or colliding mapping was rejected before publication",
+    "restore.held_unserved": "restored memory held out of serving (deletion continuity unknown)",
+    "restore.published": "restored memory was published for serving",
+    "recovery.phrase_used": "recovery used the saved recovery phrase",
+    "recovery.encrypted_unavailable": "encrypted recovery reported unavailable",
+    "secret.phrase_emitted": "a recovery phrase reached ACP, a model, a tool result or diagnostics",
+    "export.sync_warning": "the export target is a known sync root; opt-in required before the first write",
+    "export.written": "a recovery export was written",
+    "rotation.committed": "the new key generation pointer was committed",
+    "generation.old_rejected": "old generations were rejected with current credentials",
+    "rotation.resumed_or_aborted": "an interrupted rotation resumed or aborted with the old root usable",
+    "rotation.cleanup_resumed": "old-root cleanup resumed idempotently after a crash",
+    "rotation.old_root_destroyed": "an old root was destroyed",
+    "rotation.purge_deferred_to_next": "a purge after the cutover watermark was deferred to the next rotation",
+    "rotation.manifest_amended": "an acknowledged rotation manifest was amended",
+    "erasure.completed_attested": "erasure reported completed-attested",
+    "erasure.completed_verified": "erasure reported completed-within-declared-boundary",
+    "memory.strength_faded": "an item's ranking strength fell (keyed by item)",
+    "memory.strength_raised": "an item's ranking strength rose with use (keyed by item)",
+    "restore.anchor_mapped": "a restored item's anchor was re-scoped through the validated project mapping (keyed by item)",
+    "recovery.phrase_file_written": "a recovery phrase was written to the restricted handoff file",
+    "recovery.phrase_file_deleted": "the restricted handoff file was deleted after acknowledgement",
+    "recovery.channel_refused": "a phrase handoff was refused because the channel is not qualified",
+    "rotation.fresh_keys_verified": "retained items were re-encrypted under fresh data keys and verified",
+    "rotation.purged_key_absent": "the purged items' data keys are absent after rotation",
+    "generation.usable_verified": "a usable key generation was verified after restart or rotation",
+    "rotation.acknowledged": "the user acknowledged saving the new recovery phrase"
+  },
+  "metrics": {
+    "retrieval": "recall and precision at a predeclared k=5 over the evidence each requirement accepts",
+    "answer": "required-fact coverage; correctness as no prohibited claim; abstention correctness",
+    "citations": "deterministic: every memory supporting the answer is cited at its served id and version; no fabricated citation",
+    "authority": "count of lifecycle and authority violations (prohibited events, wrong memory state, cross-project serving)",
+    "completion": "task completion as pre-registered per arm",
+    "latency": "p50 and p95 timing over traces that record it",
+    "cost": "fully loaded known cost with completeness; unknown stays unknown",
+    "localization_validity": "the answer names each requirement's locus and that locus is itself retrieved within the first k; a filename alone is unlisted evidence; independent tests or reviewed supporting evidence may accept an unlisted locus",
+    "ranking": "expected_rank keys must all be served, in that relative order"
+  },
+  "run_protocol": {
+    "status": "frozen design; nothing runs in this plan",
+    "arms": {
+      "A": "cheap ordinary-tools baseline",
+      "B": "A plus context assembly",
+      "C": "B plus accepted memory",
+      "D": "one pinned open generic harness (selected in Task 3) running Sonnet 5.5, Opus 5.5 and GPT 6.1 Sol, without Optimus assembly, memory or Auto",
+      "D0": "the Sonnet 5.5 Optimus-everything-off diagnostic per v12 section 12.5",
+      "E": "generic vendor arms, diagnostic and optional"
+    },
+    "labelling": "arms with differing tool sets are labelled as such in every result"
+  },
+  "pre_registration": {
+    "before_any_later_run": [
+      "acceptance margins, approved by the operator after the pilot"
+    ],
+    "completion": {
+      "lifecycle": "every applicable layer (authority, retrieval, answer, cost) is PASS",
+      "localization": "every applicable layer is PASS, which includes a supported locus for every requirement",
+      "accounting": "the cost layer is PASS",
+      "otherwise": "INCONCLUSIVE, FAIL and UNRUN are incomplete and reported, never dropped or retried to green"
+    },
+    "arms": {
+      "shared": "arms A, B, C and D0 run one frozen Optimus commit and one registry snapshot, both recorded by hash in the run manifest before the pilot; any later change is a versioned revision of this record",
+      "model": "A, B and C use default_agent_model(registry) in src/optimus/agent/defaults.py for the frozen registry snapshot (its first eligible medium model, else its first eligible easy model), with Auto off; the exact resolved model ID is recorded in the run manifest. D0 uses Sonnet 5.5; D uses the three reference models (harness-choice.json)",
+      "mode": "lifecycle cases run in Chat mode; localization cases run in Agent mode with no approval granted, so READ is the only effective directive (WRITE, EDIT, TEST and MCP are refused)",
+      "tools": "A: the mode's ordinary tools; B: A plus context assembly; C: B plus accepted memory; D0: A with every Optimus addition off; D: one bash action per turn in a no-network container",
+      "effort_and_stops": "the registry route's approved reasoning level and output cap; the loop-control limits shipped at the frozen commit; D's limits are in harness-choice.json"
+    },
+    "overhead": "every Gateway receipt in a case's window, including failed extraction and retries, is charged to that case and arm; indexing and maintenance are charged to the arm that needs them. The fixed line and the per-case amortized figure (fixed total divided by the campaign's case count) are two presentations of the same receipts, never added together.",
+    "reporting": "quality is reported separately from token repricing; savings stay labelled estimated (same tokens, repriced) or measured (matched runs)",
+    "judging": "secondary judging is human-calibrated; disagreements are kept; judge uncertainty is INCONCLUSIVE",
+    "held_out": "held-out size and acceptance thresholds are approved after the pilot and before acceptance runs; this seed set does not prove non-inferiority"
+  },
+  "limits": [
+    "All gold is readable in the repository, including by the implementing agent; the #248 campaign needs a fresh sealed held-out set (Task 0 manifest).",
+    "M07 short-paste classification is best-effort; a miss is a measured residual, not a contract change.",
+    "Fixtures do not verify keystore, persistence, crash or backend deletion behaviour; M3 executes K5-R1/R2.",
+    "Every runtime K1-K6, model and harness result is UNRUN.",
+    "Cross-split locus overlap: L03 (train) shares client_catalog.py, client_disposition.py and ClientMcpSessionService with L07 (development), and spec.py with L06 (development). They are different fixes, so the same-issue rule holds, but a train case shows where MCP fixes land.",
+    "The fixture builders live in the review kit, so the seed set is rebuilt from there, not from this repository; the hashes above pin them.",
+    "M22-M24 assert host-reported events, state and claims only. Real key, ciphertext, crash and backend verification is M3 (K5-R1/R2), as spec 6.2 states."
+  ]
+}
