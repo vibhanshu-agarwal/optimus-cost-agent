@@ -589,6 +589,30 @@
    "disposition": "census",
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Runs the Stage C rehearsal's inert ACP double, packed by distlib as optimus-agent.exe on this venv's Python; it answers one JSON-RPC request from stdin and records to the test's temporary file. Ordinary child of an inherited environment; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/context/test_project_registry.py::_git#1": {
+   "mechanism": "indirect",
+   "disposition": "non_python",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Launches git to build the temporary repositories, worktrees and clones the registry tests group."
+  },
+  "tests/unit/context/test_project_registry.py::test_concurrent_processes_allocate_exactly_one_id#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited environment that resolves one project through the real registry under the test's temporary config root; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/context/test_project_registry.py::test_a_process_killed_at_the_commit_boundary_leaves_the_previous_registry#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited environment that resolves one project through the real registry under the test's temporary config root; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/context/test_project_registry.py::test_a_process_killed_at_first_initialization_requires_explicit_recovery#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited environment that resolves one project through the real registry under the test's temporary config root; proven by the census at the acceptance candidate."
   }
  }
 }

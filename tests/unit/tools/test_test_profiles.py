@@ -511,6 +511,7 @@ _REVIEWED_CHEAP_LAUNCHERS = {
     "tests/unit/acp/test_plan1126_queue_policy.py": _MIXED,
     "tests/unit/acp/test_server_reader_ownership.py": _MIXED,
     "tests/unit/acp/test_stdio_ndjson.py": "its launch sites are runner-only plants, skipped in an ordinary run",
+    "tests/unit/context/test_project_registry.py": "a git helper builds fixture repositories; three registry child sites (concurrent allocators, one killed at the commit boundary, one at first initialization); the other nodes run in-process",
     "tests/unit/context_engine/test_boundaries.py": _MIXED,
     "tests/unit/guardrails/test_ci_parity.py": _MIXED,
     "tests/unit/guardrails/test_local_secret_scan_encoding.py": _MIXED,

@@ -14,6 +14,7 @@ from optimus.agent.workspace_context import (
     assemble_workspace_context_for_prompt,
     gather_workspace_context_for_prompt,
 )
+from optimus.guardrails import file_policy
 from optimus.telemetry.jsonl import DEFAULT_TELEMETRY_DIRNAME
 
 
@@ -381,17 +382,17 @@ def test_runtime_tree_is_excluded_before_any_of_its_content_is_read(tmp_path, mo
     _runtime_tree(tmp_path)
     _source(tmp_path)
     read: list[Path] = []
-    original = Path.read_bytes
 
-    def recording_read_bytes(self: Path) -> bytes:
-        read.append(self)
-        return original(self)
+    def recording_open(file, *args, **kwargs):  # the file policy opens content only through this name
+        read.append(Path(file))
+        return open(file, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "read_bytes", recording_read_bytes)
+    monkeypatch.setattr(file_policy, "open", recording_open, raising=False)
     result = assemble_workspace_context_for_prompt(tmp_path, task="Explain src/app.py")
 
     assert SOURCE_SENTINEL in result.text and result.prioritized_paths == ("src/app.py",)
     _assert_runtime_absent(result)
+    assert any(path.name == "app.py" for path in read), "the recorder sees the policy's reads"
     assert not [path for path in read if ".optimus" in path.parts], "no runtime file is opened to decide eligibility"
 
 
@@ -523,9 +524,11 @@ def test_a_candidate_whose_target_cannot_be_resolved_is_not_read(tmp_path, monke
 
 
 @pytest.mark.skipif(not WINDOWS, reason="final-path resolution (GetFinalPathNameByHandle) is the Windows mechanism")
-def test_a_filesystem_without_final_path_support_keeps_ordinary_files_and_the_lexical_rule(tmp_path, monkeypatch):
-    """Fable review finding 2: a strict resolve would reject every file where the filesystem cannot report a
-    final path (ERROR_INVALID_FUNCTION), emptying workspace context. Ordinary files must stay; .optimus stays out."""
+def test_a_pathname_resolution_fallback_keeps_ordinary_files_and_the_lexical_rule(tmp_path, monkeypatch):
+    """Fable review finding 2 (Plan 12.2): a strict resolve would reject every file where pathname resolution cannot
+    report a final path (ERROR_INVALID_FUNCTION). Only that lookup fails here; the file policy can still verify each
+    opened handle, so ordinary files stay and .optimus stays out. A filesystem where handles cannot be verified either
+    is the unverifiable-handle case below (Plan 12.6, ADR-031)."""
     import ntpath
 
     _runtime_tree(tmp_path)
@@ -610,3 +613,224 @@ def test_the_reserved_name_matches_every_runtime_writer(tmp_path):
     assert reserved == paths.runtime_root.name == DEFAULT_TELEMETRY_DIRNAME == DEFAULT_DEBUG_LOG_RELATIVE_PATH.parts[0]
     assert paths.debug_log_path.parent == paths.gateway_log_path.parent == paths.runtime_root
     assert launch_audit._audit_path(paths.runtime_root).parent == paths.runtime_root
+
+
+# --- #385: secret files are never workspace context, as filler or when the task names them ---
+
+SECRET_SENTINEL = "DUMMY_PROOF_TOKEN=not-a-real-secret-0000"  # pragma: allowlist secret - a fake sentinel
+SECRET_FILES = (".env", ".env.production", "config/.env.local", "deploy/id_rsa", "certs/server.pem")
+
+
+def _secret_workspace(root: Path) -> None:
+    for relative in SECRET_FILES:
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{SECRET_SENTINEL}\n", encoding="utf-8")
+    (root / "README.md").write_text("# demo\n", encoding="utf-8")
+    _source(root, "app.py")
+
+
+def _assert_secrets_absent(result) -> None:
+    assert SECRET_SENTINEL not in result.text
+    listed = (*result.prioritized_paths, *result.omitted_paths)
+    assert not any(name in path for path in listed for name in (".env", "id_rsa", ".pem"))
+
+
+@pytest.mark.parametrize("task", ["", "Explain what this project does", "Fix the bug in app.py"])
+def test_secret_files_at_the_root_and_nested_are_never_packed(tmp_path, task):
+    _secret_workspace(tmp_path)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=task)
+
+    _assert_secrets_absent(result)
+    assert "--- app.py ---" in result.text and "--- README.md ---" in result.text
+    assert result.blocking_stop_reason is None
+
+
+def test_secret_files_never_appear_in_the_omitted_files_marker(tmp_path):
+    _secret_workspace(tmp_path)
+    for index in range(6):
+        _source(tmp_path, f"src/module_{index}.py")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="", max_total_bytes=200)
+
+    assert result.omitted_paths
+    _assert_secrets_absent(result)
+
+
+@pytest.mark.parametrize("reference", [".env.production", "config/.env.local", "certs/server.pem"])
+def test_a_secret_file_named_in_the_task_is_refused_with_a_visible_reason(tmp_path, reference):
+    _secret_workspace(tmp_path)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Fix app.py using {reference}")
+
+    assert result.text == "" and result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
+    assert reference in (result.blocking_message or "")
+    _assert_secrets_absent(result)
+
+
+def test_a_workspace_under_an_ancestor_named_like_a_secret_keeps_its_files(tmp_path):
+    root = tmp_path / "secrets" / "project"
+    _source(root)
+
+    result = assemble_workspace_context_for_prompt(root, task="Explain src/app.py")
+
+    assert SOURCE_SENTINEL in result.text and result.prioritized_paths == ("src/app.py",)
+
+
+def test_a_file_symlink_to_a_secret_file_is_never_packed(tmp_path):
+    _secret_workspace(tmp_path)
+    _symlink_or_skip(tmp_path / "notes.txt", tmp_path / ".env")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="")
+
+    _assert_secrets_absent(result)
+    assert "notes.txt" not in result.text and "--- app.py ---" in result.text
+
+
+@pytest.mark.skipif(not WINDOWS, reason="NTFS directory junctions are a Windows mechanism")
+def test_a_junction_into_a_secret_directory_is_never_packed(tmp_path):
+    import _winapi  # CreateJunction needs no privilege, unlike a symlink
+
+    secrets = tmp_path / "secrets"
+    secrets.mkdir()
+    (secrets / "db.txt").write_text(f"{SECRET_SENTINEL}\n", encoding="utf-8")
+    _source(tmp_path)
+    alias = tmp_path / "notes"
+    _winapi.CreateJunction(str(secrets), str(alias))
+    try:
+        result = assemble_workspace_context_for_prompt(tmp_path, task="")
+
+        assert SECRET_SENTINEL not in result.text and "notes/" not in result.text
+        assert SOURCE_SENTINEL in result.text
+    finally:
+        os.rmdir(alias)  # remove the junction itself, never through it
+
+
+@pytest.mark.parametrize("reference", [".env", "config/.env", ".pypirc", "id_rsa", "deploy/id_rsa"])
+def test_a_secret_named_without_an_extension_is_refused_with_a_visible_reason(tmp_path, reference):
+    _secret_workspace(tmp_path)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Fix app.py using {reference}.")
+
+    assert result.text == "" and result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
+    assert f"'{reference}'" in (result.blocking_message or "")
+    _assert_secrets_absent(result)
+
+
+def test_secret_words_in_prose_are_not_references(tmp_path):
+    _secret_workspace(tmp_path)
+
+    for name in ("credentials", "token", "secrets"):
+        (tmp_path / name).write_text(SECRET_SENTINEL, encoding="utf-8")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Refresh the token, rotate secrets and fix app.py")
+
+    assert result.blocking_stop_reason is None and result.prioritized_paths == ("app.py",)
+    _assert_secrets_absent(result)
+
+
+@pytest.mark.parametrize("task", ["Read `credentials`.", "Fix app.py with 'token'", 'Use "secrets" in app.py'])
+def test_a_quoted_extensionless_secret_name_is_refused_with_a_visible_reason(tmp_path, task):
+    _secret_workspace(tmp_path)
+    for name in ("credentials", "token", "secrets"):
+        (tmp_path / name).write_text(f"{SECRET_SENTINEL}\n", encoding="utf-8")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=task)
+
+    assert result.text == "" and result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
+    _assert_secrets_absent(result)
+
+
+# --- Plan 12.6 Task 1: automatic context applies the shared includable-files policy ---
+
+
+def test_optimusignore_and_gitignore_keep_files_out_of_automatic_context(tmp_path):
+    _source(tmp_path, "app.py")
+    for relative in ("private/notes.md", "build/out.txt"):
+        (tmp_path / relative).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / relative).write_text(f"{SECRET_SENTINEL}\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("build/\n", encoding="utf-8")
+    (tmp_path / ".optimusignore").write_text("private/\n", encoding="utf-8")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Explain app.py")
+
+    assert SECRET_SENTINEL not in result.text and "--- app.py ---" in result.text
+    assert result.excluded_counts == {"ignored.gitignore": 1, "ignored.optimusignore": 1}
+    assert result.policy_revision.startswith("file-policy-v1:")
+
+
+def test_a_named_ignored_file_is_refused_with_the_rule_that_excluded_it(tmp_path):
+    _source(tmp_path, "app.py")
+    (tmp_path / "private").mkdir()
+    (tmp_path / "private" / "notes.md").write_text(f"{SECRET_SENTINEL}\n", encoding="utf-8")
+    (tmp_path / ".optimusignore").write_text("private/\n", encoding="utf-8")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Summarise private/notes.md")
+
+    assert result.text == "" and result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
+    assert result.blocking_message == "Workspace reference 'private/notes.md' cannot be read safely: excluded by .optimusignore."
+
+
+def test_a_named_secret_file_reports_why_it_is_refused(tmp_path):
+    _secret_workspace(tmp_path)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Fix app.py using config/.env.local")
+
+    assert result.blocking_message == (
+        "Workspace reference 'config/.env.local' cannot be read safely: a secret or credential file."
+    )
+
+
+# --- Codex round 82: a file that becomes unavailable after listing is never silently dropped ---
+
+
+def _vanish_before_packing(monkeypatch, path: Path) -> None:
+    original = workspace_context._pack_workspace_context
+
+    def packing(*args, **kwargs):
+        path.unlink()  # a real change between the listing and the read
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(workspace_context, "_pack_workspace_context", packing)
+
+
+def test_a_required_file_that_vanishes_before_packing_stops_preparation(tmp_path, monkeypatch):
+    target = _source(tmp_path, "app.py")
+    _source(tmp_path, "README.md")
+    _vanish_before_packing(monkeypatch, target)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Fix app.py")
+
+    assert result.text == "" and result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
+    assert result.blocking_message == "Workspace reference 'app.py' cannot be read safely: not a file."
+    assert result.excluded_counts.get("excluded.not_found") == 1
+
+
+def test_a_filler_file_that_vanishes_before_packing_is_counted(tmp_path, monkeypatch):
+    _source(tmp_path, "app.py")
+    gone = _source(tmp_path, "notes.md")
+    _vanish_before_packing(monkeypatch, gone)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Fix app.py")
+
+    assert result.blocking_stop_reason is None and "--- app.py ---" in result.text
+    assert result.excluded_counts == {"excluded.not_found": 1}
+
+
+def test_where_no_opened_handle_can_be_verified_automatic_context_is_empty_and_says_why(tmp_path, monkeypatch):
+    """Plan 12.6 (ADR-031): when the system cannot report an opened file's path, nothing is read rather than trusting
+    the weaker identity checks. Filler is excluded visibly, and a named required file stops preparation."""
+    _source(tmp_path, "app.py")
+    _source(tmp_path, "README.md")
+    monkeypatch.setattr(file_policy, "_handle_path", lambda fd: None)
+
+    filler = assemble_workspace_context_for_prompt(tmp_path, task="")
+    named = assemble_workspace_context_for_prompt(tmp_path, task="Fix app.py")
+
+    assert filler.text == "" and filler.blocking_stop_reason is None
+    assert filler.excluded_counts == {"deny.unverifiable": 2}
+    assert named.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
+    assert named.blocking_message == (
+        "Workspace reference 'app.py' cannot be read safely: the system cannot confirm which file was opened."
+    )

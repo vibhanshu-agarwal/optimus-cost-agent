@@ -7,19 +7,25 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-# The runtime tree every launch writes under its workspace (debug trace, launch audit, Gateway log, telemetry) is
-# never workspace context, at any depth, nor through a file alias or junction whose target lies in one. The rule is
-# shared with the guard on model-issued file access (Plan 12.2 READ + W); RUNTIME_DIR_NAME stays importable here.
+# Which files may be packed is the one includable-files policy (Plan 12.6, ADR-031): skipped folders, the runtime
+# tree, secret files (#385) and aliases to any of them are denied before content is opened, then .gitignore and
+# .optimusignore apply. RUNTIME_DIR_NAME stays importable here.
+from optimus.guardrails.file_policy import FilePolicy, FilePurpose, describe
 from optimus.guardrails.runtime_tree import RUNTIME_DIR_NAME as RUNTIME_DIR_NAME
-from optimus.guardrails.runtime_tree import has_runtime_component, resolve_target, target_reserved
+from optimus.guardrails.secret_paths import is_secret_path
 
 DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES = 16 * 1024
-_SKIP_DIR_NAMES = frozenset({".git", "__pycache__", ".venv", "node_modules", ".idea"})
 _TRUNCATION_PREFIX = "--- omitted (size cap): "
 
 _FILE_REFERENCE_RE = re.compile(
     r"(?<![\w./\\-])(?:[A-Za-z0-9_.-]+[\\/])*[A-Za-z0-9_.-]+\.[A-Za-z0-9]+(?![\w/\\-])"
 )
+# Dotfiles, folder paths and key files the reference pattern misses (.env, config/.env, .pypirc, id_rsa): only secret
+# ones become references, so naming one is refused visibly (#385). A bare prose word such as "token" never is, but a
+# quoted or backticked one ("`credentials`") is marked as a file name.
+_PATH_TOKEN_RE = re.compile(r"(?<![\w./\\-])[A-Za-z0-9_.\\/-]+(?![\w/\\-])")
+_QUOTED_TOKEN_RE = re.compile(r"([`'\"])([A-Za-z0-9_.\\/-]+)\1")
+_KEY_FILE_NAMES = frozenset({"id_rsa", "id_ed25519"})
 
 
 class WorkspaceReferenceStatus(StrEnum):
@@ -35,6 +41,7 @@ class WorkspaceReferenceDiagnostic:
     reference: str
     status: WorkspaceReferenceStatus
     candidates: tuple[str, ...] = ()
+    reason: str | None = None  # the file policy's rule id for a refused reference
 
 
 @dataclass(frozen=True)
@@ -49,6 +56,9 @@ class WorkspaceContextResult:
     blocking_message: str | None = None
     # Path -> sha256 of the bytes each shown file had when it was read, whole or truncated (#407).
     file_sha256s: Mapping[str, str] = field(default_factory=dict)
+    # Coverage: the file policy revision, and how many workspace files each rule excluded (never their content).
+    policy_revision: str = ""
+    excluded_counts: Mapping[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -108,14 +118,20 @@ def assemble_workspace_context_for_prompt(
         return empty
 
     references = _extract_file_references(task)
-    candidate_paths = _list_includable_files(root)
+    policy = FilePolicy(root)
+    decisions = list(policy.walk(purpose=FilePurpose.AUTOMATIC))
+    candidate_paths = [root / decision.relative_path for decision in decisions if decision.allowed]
+    excluded_counts: dict[str, int] = {}
+    for decision in decisions:
+        if not decision.allowed:
+            excluded_counts[decision.reason] = excluded_counts.get(decision.reason, 0) + 1
     index = _build_eligible_file_index(candidate_paths, root)
     diagnostics: list[WorkspaceReferenceDiagnostic] = []
     prioritized_paths: list[str] = []
     seen_resolved: set[str] = set()
 
     for reference in references:
-        diagnostic = _resolve_reference(reference, root, index)
+        diagnostic = _resolve_reference(reference, policy, index)
         if diagnostic is None:
             continue
         diagnostics.append(diagnostic)
@@ -139,16 +155,38 @@ def assemble_workspace_context_for_prompt(
             diagnostics=diagnostic_tuple,
             blocking_stop_reason=blocking_stop_reason,
             blocking_message=blocking_message,
+            policy_revision=policy.revision(),
+            excluded_counts=excluded_counts,
         )
 
     file_sha256s: dict[str, str] = {}
+    refused: dict[str, str] = {}
     text, used_bytes, omitted_paths, pack_blocking = _pack_workspace_context(
-        root,
+        policy,
         candidate_paths,
         max_total_bytes=max_total_bytes,
         priority_relative=tuple(prioritized_paths),
         file_sha256s=file_sha256s,
+        refused=refused,
     )
+    for reason in refused.values():
+        excluded_counts[reason] = excluded_counts.get(reason, 0) + 1
+    if any(relative in refused for relative in prioritized_paths):
+        # A required file that became unavailable after listing stops preparation; it is never silently dropped.
+        unavailable_diagnostics = _mark_resolved_refused(diagnostic_tuple, refused)
+        blocking_stop_reason, blocking_message = _blocking_from_diagnostics(unavailable_diagnostics)
+        return WorkspaceContextResult(
+            text="",
+            max_total_bytes=max_total_bytes,
+            used_bytes=0,
+            prioritized_paths=(),
+            omitted_paths=(),
+            diagnostics=unavailable_diagnostics,
+            blocking_stop_reason=blocking_stop_reason,
+            blocking_message=blocking_message,
+            policy_revision=policy.revision(),
+            excluded_counts=excluded_counts,
+        )
     if pack_blocking:
         too_large_diagnostics = _mark_first_resolved_too_large(diagnostic_tuple)
         blocking_stop_reason, blocking_message = _blocking_from_diagnostics(too_large_diagnostics)
@@ -161,6 +199,8 @@ def assemble_workspace_context_for_prompt(
             diagnostics=too_large_diagnostics,
             blocking_stop_reason=blocking_stop_reason,
             blocking_message=blocking_message,
+            policy_revision=policy.revision(),
+            excluded_counts=excluded_counts,
         )
     return WorkspaceContextResult(
         text=text,
@@ -170,6 +210,8 @@ def assemble_workspace_context_for_prompt(
         omitted_paths=omitted_paths,
         diagnostics=tuple(diagnostics),
         file_sha256s=file_sha256s,
+        policy_revision=policy.revision(),
+        excluded_counts=excluded_counts,
     )
 
 
@@ -188,9 +230,10 @@ def _blocking_from_diagnostics(
             )
     for diagnostic in diagnostics:
         if diagnostic.status is WorkspaceReferenceStatus.NOT_READABLE:
+            because = f": {describe(diagnostic.reason)}" if diagnostic.reason else ""
             return (
                 "WORKSPACE_REFERENCE_NOT_READABLE",
-                f"Workspace reference '{diagnostic.reference}' cannot be read safely.",
+                f"Workspace reference '{diagnostic.reference}' cannot be read safely{because}.",
             )
     for diagnostic in diagnostics:
         if diagnostic.status is WorkspaceReferenceStatus.TOO_LARGE:
@@ -210,6 +253,15 @@ def _extract_file_references(task: str) -> tuple[str, ...]:
         reference = match.group(0).replace("\\", "/")
         if reference not in references:
             references.append(reference)
+    for match in _PATH_TOKEN_RE.finditer(task):
+        token = match.group(0).replace("\\", "/").rstrip(".")
+        names_a_file = token.startswith(".") or "/" in token or token.lower() in _KEY_FILE_NAMES
+        if names_a_file and is_secret_path(token) and token not in references:
+            references.append(token)
+    for match in _QUOTED_TOKEN_RE.finditer(task):
+        token = match.group(2).replace("\\", "/")
+        if is_secret_path(token) and token not in references:
+            references.append(token)
     return tuple(references)
 
 
@@ -239,7 +291,7 @@ def _build_eligible_file_index(candidate_paths: list[Path], root: Path) -> _Elig
 
 def _resolve_reference(
     reference: str,
-    root: Path,
+    policy: FilePolicy,
     index: _EligibleFileIndex,
 ) -> WorkspaceReferenceDiagnostic | None:
     safe = _safe_relative_reference(reference)
@@ -249,23 +301,25 @@ def _resolve_reference(
     normalized = Path(*safe.parts)
     relative_posix = normalized.as_posix()
 
-    if _should_skip_relative_path(normalized):
+    denial = policy.path_denial(relative_posix)
+    if denial is not None:
         return WorkspaceReferenceDiagnostic(
             reference=reference,
             status=WorkspaceReferenceStatus.NOT_READABLE,
             candidates=(),
+            reason=denial,
         )
 
     if "/" in reference.replace("\\", "/"):
-        return _resolve_relative_path_reference(reference, relative_posix, root, index)
+        return _resolve_relative_path_reference(reference, relative_posix, policy, index)
 
-    return _resolve_basename_reference(reference, root, index)
+    return _resolve_basename_reference(reference, policy, index)
 
 
 def _resolve_relative_path_reference(
     reference: str,
     relative_posix: str,
-    root: Path,
+    policy: FilePolicy,
     index: _EligibleFileIndex,
 ) -> WorkspaceReferenceDiagnostic:
     if relative_posix in index.by_relative:
@@ -275,7 +329,7 @@ def _resolve_relative_path_reference(
             candidates=(relative_posix,),
         )
 
-    candidate_path = root / relative_posix
+    candidate_path = policy.root / relative_posix
     if candidate_path.is_dir():
         return WorkspaceReferenceDiagnostic(
             reference=reference,
@@ -287,6 +341,7 @@ def _resolve_relative_path_reference(
             reference=reference,
             status=WorkspaceReferenceStatus.NOT_READABLE,
             candidates=(),
+            reason=policy.decide(relative_posix, purpose=FilePurpose.AUTOMATIC).reason,
         )
 
     return WorkspaceReferenceDiagnostic(
@@ -298,7 +353,7 @@ def _resolve_relative_path_reference(
 
 def _resolve_basename_reference(
     reference: str,
-    root: Path,
+    policy: FilePolicy,
     index: _EligibleFileIndex,
 ) -> WorkspaceReferenceDiagnostic:
     matches = index.by_basename.get(reference, ())
@@ -315,18 +370,36 @@ def _resolve_basename_reference(
             candidates=matches,
         )
 
-    candidate_path = root / reference
+    candidate_path = policy.root / reference
     if candidate_path.is_dir() or candidate_path.is_file():
+        reason = policy.decide(reference, purpose=FilePurpose.AUTOMATIC).reason if candidate_path.is_file() else None
         return WorkspaceReferenceDiagnostic(
             reference=reference,
             status=WorkspaceReferenceStatus.NOT_READABLE,
             candidates=(),
+            reason=reason,
         )
 
     return WorkspaceReferenceDiagnostic(
         reference=reference,
         status=WorkspaceReferenceStatus.NOT_FOUND,
         candidates=(),
+    )
+
+
+def _mark_resolved_refused(
+    diagnostics: tuple[WorkspaceReferenceDiagnostic, ...], refused: Mapping[str, str]
+) -> tuple[WorkspaceReferenceDiagnostic, ...]:
+    return tuple(
+        WorkspaceReferenceDiagnostic(
+            reference=diagnostic.reference,
+            status=WorkspaceReferenceStatus.NOT_READABLE,
+            candidates=(),
+            reason=refused[diagnostic.candidates[0]],
+        )
+        if diagnostic.status is WorkspaceReferenceStatus.RESOLVED and diagnostic.candidates[0] in refused
+        else diagnostic
+        for diagnostic in diagnostics
     )
 
 
@@ -350,12 +423,6 @@ def _mark_first_resolved_too_large(
     return tuple(updated)
 
 
-def _file_block(root: Path, path: Path) -> tuple[str, int, str]:
-    relative = path.relative_to(root).as_posix()
-    data = path.read_bytes()
-    block = f"--- {relative} ---\n{data.decode('utf-8')}"
-    return block, len(block.encode("utf-8")), hashlib.sha256(data).hexdigest()
-
 
 def _truncation_line_fitting_budget(
     used_bytes: int,
@@ -378,16 +445,20 @@ def _truncation_line_fitting_budget(
 
 
 def _pack_workspace_context(
-    root: Path,
+    policy: FilePolicy,
     candidate_paths: list[Path],
     *,
     max_total_bytes: int,
     priority_relative: tuple[str, ...],
     file_sha256s: dict[str, str],
+    refused: dict[str, str],
 ) -> tuple[str, int, tuple[str, ...], bool]:
-    """``file_sha256s`` receives the digest of every file whose bytes the text shows (#407)."""
+    """``file_sha256s`` receives the digest of every file whose bytes the text shows (#407). Each file is read
+    through the policy, which rechecks its identity; ``refused`` receives the rule for any file that became
+    unavailable since listing. A refused required file ends packing at once; the caller stops preparation."""
     if not candidate_paths and not priority_relative:
         return "", 0, (), False
+    root = policy.root
 
     path_by_relative = {path.relative_to(root).as_posix(): path for path in candidate_paths}
     priority_set = set(priority_relative)
@@ -404,13 +475,18 @@ def _pack_workspace_context(
 
     priority_blocks: list[str] = []
     priority_bytes = 0
-    for index, path in enumerate(priority_paths):
-        block, block_bytes, digest = _file_block(root, path)
-        if index > 0:
+    for path in priority_paths:
+        relative_posix = path.relative_to(root).as_posix()
+        decision, data = policy.read(relative_posix, purpose=FilePurpose.AUTOMATIC)
+        if data is None:
+            refused[relative_posix] = decision.reason
+            return "", 0, (), False
+        block = f"--- {relative_posix} ---\n{data.decode('utf-8')}"
+        if priority_blocks:
             priority_bytes += 1
-        priority_bytes += block_bytes
+        priority_bytes += len(block.encode("utf-8"))
         priority_blocks.append(block)
-        file_sha256s[path.relative_to(root).as_posix()] = digest
+        file_sha256s[relative_posix] = hashlib.sha256(data).hexdigest()
 
     if priority_bytes > max_total_bytes:
         return "", 0, (), True
@@ -422,9 +498,9 @@ def _pack_workspace_context(
 
     for index, path in enumerate(filler_paths):
         relative_posix = path.relative_to(root).as_posix()
-        try:
-            data = path.read_bytes()
-        except OSError:
+        decision, data = policy.read(relative_posix, purpose=FilePurpose.AUTOMATIC)
+        if data is None:
+            refused[relative_posix] = decision.reason
             continue
 
         header = f"--- {relative_posix} ---"
@@ -504,30 +580,6 @@ def _pack_workspace_context(
     return text, len(text.encode("utf-8")), tuple(omitted), False
 
 
-def _list_includable_files(root: Path) -> list[Path]:
-    paths: list[Path] = []
-    for path in sorted(root.rglob("*")):
-        if not path.is_file():
-            continue
-        try:
-            relative = path.relative_to(root)
-        except ValueError:
-            continue
-        if _should_skip_relative_path(relative) or _target_excluded(path, root):
-            continue
-        try:
-            data = path.read_bytes()
-        except OSError:
-            continue
-        if not data or b"\x00" in data:
-            continue
-        try:
-            data.decode("utf-8")
-        except UnicodeDecodeError:
-            continue
-        paths.append(path)
-    return paths
-
 
 def _reserve_bytes(truncation_line: str) -> int:
     if not truncation_line:
@@ -551,13 +603,3 @@ def _truncate_utf8(data: bytes, max_bytes: int) -> str:
         return truncated.decode("utf-8", errors="ignore")
 
 
-def _should_skip_relative_path(relative: Path) -> bool:
-    return any(part in _SKIP_DIR_NAMES for part in relative.parts) or has_runtime_component(relative.parts)
-
-
-def _target_excluded(path: Path, root: Path) -> bool:
-    """Whether a candidate's real target lies in a runtime tree (`runtime_tree.target_reserved`), judged from path
-    metadata alone. A resolution error excludes the candidate, so it is never read; it has already passed
-    ``is_file()``, and resolution stays non-strict (`runtime_tree.resolve_target`)."""
-    target = resolve_target(path)
-    return target is None or target_reserved(target, root)

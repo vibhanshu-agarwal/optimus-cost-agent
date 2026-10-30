@@ -124,6 +124,7 @@ ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
     "tests/unit/evidence_handoff/test_auth.py:test_no_token_persisted_under_control_root:rglob:*": "Checks a tmp_path control root for leaked tokens.",
     "tests/unit/evidence_handoff/test_signing_key_custody_resolve.py:test_r4_durable_key_lives_in_keyring_not_chmod_file:rglob:*": "Checks a tmp_path custody root for key files.",
     "tests/unit/gates/test_mutation_flow.py:apply_candidate:rglob:*": "Applies mutations to a temporary candidate tree.",
+    "tests/unit/guardrails/test_file_policy.py:_reasons:walk:<none>": "Walks a tmp_path workspace each test creates, through the file policy under test.",
     "tests/unit/tools/plan1126_runtime_audit/test_checkpoints.py:test_checkpoint_write_failure_preserves_prior_file_and_removes_temp:glob:<dynamic>": "Checks a tmp_path checkpoint directory for temporary files.",
     "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py:test_a_later_stage_failure_leaves_earlier_evidence_verifiable:glob:*.evidence.json": "Finds the evidence sidecars generated in this test's tmp_path to prove a later stage failure preserves earlier, still-verifiable evidence.",
     "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py:test_an_identical_result_reseals_idempotently:glob:*.evidence.json": "Counts the evidence sidecars generated in this test's tmp_path to establish that an identical result reseals idempotently to one file.",
