@@ -28,7 +28,7 @@
   "case_custody": {
     "drafted_by": "claude, all 88 cases",
     "verified_by": "Codex CLI round 1 (session 01a18b6b-aba3-7891-8c4f-e70aa455c8ec) verified 75 case definitions, listing the correct ones and corrections for the rest; the corrections below were agreed in round 2 and re-verification of the corrected and new cases is round 3",
-    "operator_sample": "pending: sampled review of the 30 held-out cases under Q29 at Checkpoint 1",
+    "operator_sample": "approved: the operator reviewed the 30 held-out cases under Q29 at Checkpoint 1 and approved them without corrections (Claude's chat, 2026-10-30)",
     "corrections": [
       "Every correction keeps the old version (build_seed.v1.py rebuilds it) and its reason; none is tuned to let a candidate pass.",
       "L01-L12 v1 -> v2 (Fable F-01): a requirement with changed symbols now accepts only those symbols, so a filename alone is unlisted evidence (INCONCLUSIVE), never a PASS; a module-level change keeps its path.",
