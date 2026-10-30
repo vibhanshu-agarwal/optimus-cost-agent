@@ -960,3 +960,37 @@ def test_a_native_timeout_during_model_acquisition_removes_the_cache(released_ro
         "embedding": lambda ctx, res: probes.run_embedding(ctx, res, runner=runner)})
     assert result.outcome == "INCONCLUSIVE" and "timed out" in result.limitations[0]
     assert not cache.exists()
+
+
+# --- P3 live attempt 1 (ERROR, KeyError): reply shapes and error propagation ---
+
+def test_search_and_info_replies_parse_under_resp3_and_resp2() -> None:
+    resp3 = {"attributes": [], "format": "STRING", "results": [{"id": "p127:item:5", "values": []}], "total_results": 1}
+    assert redis_probe.search_total(resp3) == 1 and redis_probe.search_total([0]) == 0
+    assert redis_probe.ft_info({"percent_indexed": 1.0, "num_docs": 3})["num_docs"] == 3
+    assert redis_probe.ft_info(["percent_indexed", "1", "num_docs", "3"]) == {"percent_indexed": "1", "num_docs": "3"}
+
+
+def test_a_wait_propagates_probe_defects_but_waits_out_a_restarting_server() -> None:
+    from redis.exceptions import BusyLoadingError
+
+    context = probes.ProbeContext(config=_parsed())
+    with pytest.raises(KeyError):
+        redis_probe._wait(lambda: {}["missing"], 5, context)
+    calls = iter([BusyLoadingError("loading"), OSError("reset"), True])
+
+    def flaky() -> bool:
+        value = next(calls)
+        if isinstance(value, BaseException):
+            raise value
+        return value
+
+    assert redis_probe._wait(flaky, 5, context) is not None
+
+
+def test_records_render_bare_digests_tagged(tmp_path: Path) -> None:
+    result = probes.ProbeResult(kind="postgres", run_label="r", config_sha256="a" * 64, started_utc="2026-10-31T00:00:00")
+    result.observations = {"container_id": "b" * 64, "short": "abc123", "nested": ["c" * 40]}
+    data = json.loads(probes.write_attempt(result, tmp_path).read_text(encoding="ascii"))
+    assert data["config_sha256"] == "hex:" + "a" * 64 and data["attempt_id"] == "hex:" + result.attempt_id
+    assert data["observations"] == {"container_id": "hex:" + "b" * 64, "short": "abc123", "nested": ["hex:" + "c" * 40]}

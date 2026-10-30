@@ -5175,6 +5175,14 @@
       "sanitizer": "fixed one-character ticks to a released path",
       "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_a_contained_probe_stops_its_body_and_an_orphaned_grandchild",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.redis_probe:_wait:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _wait reads a Redis ResponseError's text only to recognise a loading server, then re-raises the original error unchanged; it exports and persists nothing.",
+      "sanitizer": "in-process classification; the error is re-raised, not written",
+      "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_a_wait_propagates_probe_defects_but_waits_out_a_restarting_server",
+      "evidence_tier": "unit"
     }
   ]
 }

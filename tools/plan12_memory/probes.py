@@ -390,13 +390,28 @@ def sanitize(value: Any) -> tuple[Any, int]:
     return sanitize(repr(value))
 
 
+_BARE_HEX = re.compile(r"[0-9a-f]{32,}")
+
+
+def tag_digests(value: Any) -> Any:
+    """Render each bare hex digest (SHA-256, Git and container ids) as `hex:<digest>`: still exact, self-describing,
+    and not mistaken by the secret scan for key material, so records need no baseline exception."""
+    if isinstance(value, str):
+        return f"hex:{value}" if _BARE_HEX.fullmatch(value) else value
+    if isinstance(value, dict):
+        return {key: tag_digests(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [tag_digests(item) for item in value]
+    return value
+
+
 def record_bytes(result: ProbeResult, ram_only: set[str]) -> bytes:
     raw = json.dumps(asdict(result), ensure_ascii=True, default=repr)
     if any(len(body) >= _MIN_BODY and json.dumps(body, ensure_ascii=True)[1:-1] in raw for body in ram_only):
         raise PersistenceRefused("record would contain a RAM-only synthetic body")
     data, count = sanitize(asdict(result))
     data["redactions"] = result.redactions + count
-    text = json.dumps(data, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
+    text = json.dumps(tag_digests(data), ensure_ascii=True, indent=2, sort_keys=True) + "\n"
     for body in ram_only:
         if len(body) >= _MIN_BODY and (body in text or json.dumps(body, ensure_ascii=True)[1:-1] in text):
             raise PersistenceRefused("record would contain a RAM-only synthetic body")

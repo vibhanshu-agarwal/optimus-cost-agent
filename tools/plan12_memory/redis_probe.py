@@ -56,17 +56,30 @@ def _info(client: Any, section: str) -> dict[str, Any]:
 
 
 def _wait(predicate: Callable[[], bool], timeout: float, context: ProbeContext) -> float | None:
-    """Seconds until the predicate held, or None if it did not hold within its bound."""
+    """Seconds until the predicate held, or None if it did not hold within its bound. Only Redis connection,
+    timeout and loading errors are waited out; any other error is a probe defect and propagates at once."""
+    from redis.exceptions import BusyLoadingError, ConnectionError, ResponseError, TimeoutError
+
     started = time.monotonic()
     while time.monotonic() - started < timeout:
         context.check()
         try:
             if predicate():
                 return round(time.monotonic() - started, 3)
-        except Exception:  # a server still loading answers with errors; keep waiting until the bound
-            pass
+        except (BusyLoadingError, ConnectionError, TimeoutError, OSError):
+            pass  # a restarting or loading server
+        except ResponseError as error:
+            if "loading" not in str(error).lower():
+                raise
         time.sleep(0.05)
     return None
+
+
+def search_total(reply: Any) -> int:
+    """FT.SEARCH's total under RESP3 (a map) or RESP2 (a list headed by the count)."""
+    if isinstance(reply, dict):
+        return int(reply["total_results"])
+    return int(reply[0])
 
 
 def _within(value: float | None, bound: float) -> bool | None:
@@ -215,7 +228,9 @@ def run_redis(context: ProbeContext, result: ProbeResult, runner: Runner = run_c
             return client
 
     client = client_factory()
-    obs: dict[str, Any] = {"identity": identity}
+    obs: dict[str, Any] = result.observations  # filled as it goes, so an error keeps what was observed
+    obs["identity"] = identity
+    obs["protocol"] = getattr(client, "connection_pool", None) and client.connection_pool.connection_kwargs.get("protocol")
     server = _info(client, "server")
     version = tuple(int(part) for part in str(server.get("redis_version", "0.0")).split(".")[:2])
     if server.get("run_id") != _container_run_id(runner, context, resource.container, resource.username, credential):
@@ -231,7 +246,6 @@ def run_redis(context: ProbeContext, result: ProbeResult, runner: Runner = run_c
                  "database_empty": client.dbsize() == 0}
     obs["preflight"] = preflight
     if not all(preflight.values()):
-        result.observations.update(obs)
         raise AdmissionError(f"released server does not match the probe config: {[k for k, v in preflight.items() if not v]}")
 
     items, dims, item_bytes = int(targets["items"]), int(targets["vector_dimensions"]), int(targets["item_bytes"])
@@ -246,7 +260,7 @@ def run_redis(context: ProbeContext, result: ProbeResult, runner: Runner = run_c
         return {"id": str(index), "kind": "memory", "text": text, "vector": [round(rng.random(), 6) for _ in range(dims)]}
 
     def found(conn: Any, index: int) -> bool:
-        return int(conn.execute_command("FT.SEARCH", INDEX, f"@id:{{{index}}}", "NOCONTENT")[0]) == 1
+        return search_total(conn.execute_command("FT.SEARCH", INDEX, f"@id:{{{index}}}", "NOCONTENT")) == 1
 
     def fully_indexed(conn: Any) -> bool:
         info = _ft_info(conn)
@@ -379,8 +393,7 @@ def run_redis(context: ProbeContext, result: ProbeResult, runner: Runner = run_c
         restart["documents_survived"] = int(_ft_info(client).get("num_docs", 0)) >= items
     obs["restart"] = restart
     if client is None or restart.get("usable_seconds") is None:
-        result.observations.update(obs)
-        result.observations["checks"] = {"restart_within": False}
+        obs["checks"] = {"restart_within": False}
         result.outcome, result.disposition = "FAIL", "concluded"
         result.limitations.append("the server did not come back usable after restart; purge and erasure were not run")
         return
@@ -431,7 +444,6 @@ def run_redis(context: ProbeContext, result: ProbeResult, runner: Runner = run_c
     }
     obs["checks"] = checks
     obs["targets"] = dict(targets)
-    result.observations.update(obs)
     result.outcome, result.disposition = verdict(checks), "concluded"
     result.limitations += ["synthetic single-instance result; topology is provisional until M1 repeats K2 on the real corpus",
                            "a prototype append is not the production Gate, notice or erasure workflow (M3)"]
@@ -439,6 +451,12 @@ def run_redis(context: ProbeContext, result: ProbeResult, runner: Runner = run_c
                         "single instance did not meet its bounds: the two-instance fallback needs its own released run in M1")
 
 
+def ft_info(reply: Any) -> dict[str, Any]:
+    """FT.INFO under RESP3 (a map) or RESP2 (a flat key/value list)."""
+    if isinstance(reply, dict):
+        return {str(key): value for key, value in reply.items()}
+    return {str(key): value for key, value in zip(reply[::2], reply[1::2], strict=False)}
+
+
 def _ft_info(client: Any) -> dict[str, Any]:
-    raw = client.execute_command("FT.INFO", INDEX)
-    return {str(key): value for key, value in zip(raw[::2], raw[1::2], strict=False)}
+    return ft_info(client.execute_command("FT.INFO", INDEX))
