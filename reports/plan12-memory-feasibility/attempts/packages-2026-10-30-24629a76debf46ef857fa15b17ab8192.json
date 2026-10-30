@@ -1,0 +1,489 @@
+{
+  "attempt_id": "hex:24629a76debf46ef857fa15b17ab8192",
+  "cleanup": [],
+  "config_sha256": "hex:be675eb36ee3b3c425779e8431de8c1f5774d147380fb39f73d546d7b158b951",
+  "disposition": "concluded",
+  "ended_utc": "2026-10-30T20:01:41.382+00:00",
+  "environment": {
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "python": "3.14.4",
+    "release": "11",
+    "system": "Windows"
+  },
+  "follow_up": "",
+  "kind": "packages",
+  "limitations": [
+    "refused before install: an artifact is unlicensed, unbound, unsized or over budget"
+  ],
+  "observations": {
+    "admission": {
+      "artifacts": {
+        "annotated-types": {
+          "bytes": 13427,
+          "filename": "annotated_types-0.8.0-py3-none-any.whl",
+          "sha256": "hex:f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0",
+          "version": "0.8.0"
+        },
+        "cffi": {
+          "bytes": 187949,
+          "filename": "cffi-2.1.1-cp314-cp314-win_amd64.whl",
+          "sha256": "hex:3222ba5d678f80a030e6afbcc33dc1ae5cb45facabb61cee2c7016b8432fde48",
+          "version": "2.1.1"
+        },
+        "cryptography": {
+          "bytes": 3810026,
+          "filename": "cryptography-49.0.0-cp311-abi3-win_amd64.whl",
+          "sha256": "hex:e5dfc1e64de5677cec922ffa8da89c546d0415bf6efdf081842e5d44c84e1f0e",
+          "version": "49.0.0"
+        },
+        "graspologic-native": {
+          "bytes": 260864,
+          "filename": "graspologic_native-1.3.1-cp39-abi3-win_amd64.whl",
+          "sha256": "hex:85dfb19cedd7b9ca627b3d1f283d3270af0a3c2e8378c9e61fe1f56d09a2a1a0",
+          "version": "1.3.1"
+        },
+        "jsonpath-ng": {
+          "bytes": 84764,
+          "filename": "jsonpath_ng-1.15.0-py3-none-any.whl",
+          "sha256": "hex:a079a4d1d3e9ecb452437f26c18ec6854bd1beab36f5d5bafc121ea7330ad1b7",
+          "version": "1.15.0"
+        },
+        "ml-dtypes": {
+          "bytes": 457224,
+          "filename": "ml_dtypes-0.6.0-cp314-cp314-win_amd64.whl",
+          "sha256": "hex:d574c2b28921dc72e869df248f1a278f6eee176a1f237c8642e1a71eb15f3977",
+          "version": "0.6.0"
+        },
+        "numpy": {
+          "bytes": 12703552,
+          "filename": "numpy-2.5.4-cp314-cp314-win_amd64.whl",
+          "sha256": "hex:2ca144f15135b6212a5c47b1e2aeca6e412f102f95a2d5d88d8aec77eb255de3",
+          "version": "2.5.4"
+        },
+        "pathspec": {
+          "bytes": 57328,
+          "filename": "pathspec-1.1.1-py3-none-any.whl",
+          "sha256": "hex:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189",
+          "version": "1.1.1"
+        },
+        "psutil": {
+          "bytes": 137737,
+          "filename": "psutil-7.2.2-cp37-abi3-win_amd64.whl",
+          "sha256": "hex:eb7e81434c8d223ec4a219b5fc1c47d0417b12be7ea866e24fb5ad6e84b3d988",
+          "version": "7.2.2"
+        },
+        "pycparser": {
+          "bytes": 62600,
+          "filename": "pycparser-3.12-py3-none-any.whl",
+          "sha256": "hex:a076f3f489b39b43ed13563a1dafe42447445bec2e294154ec5c57fcdda4c85e",
+          "version": "3.12"
+        },
+        "pydantic": {
+          "bytes": 490403,
+          "filename": "pydantic-2.14.2-py3-none-any.whl",
+          "sha256": "hex:7efbf7507b937931cd32a5755acb00ea1cf5ccb1d4e8067a5850d5069e382118",
+          "version": "2.14.2"
+        },
+        "pydantic-core": {
+          "bytes": 2253407,
+          "filename": "pydantic_core-2.50.2-cp314-cp314-win_amd64.whl",
+          "sha256": "hex:b62c89545d21d930c333208fd548e7b4f262228ba3a322fd75c987a75ab11f31",
+          "version": "2.50.2"
+        },
+        "python-ulid": {
+          "bytes": 14638,
+          "filename": "python_ulid-4.1.0-py3-none-any.whl",
+          "sha256": "hex:46992012f74638f286fcaff33904ba2510e51d9018b73af8c3f9b65014d52c1b",
+          "version": "4.1.0"
+        },
+        "pyyaml": {
+          "bytes": 156429,
+          "filename": "pyyaml-6.0.3-cp314-cp314-win_amd64.whl",
+          "sha256": "hex:4a2e8cebe2ff6ab7d1050ecd59c25d4c8bd7e6f400f5f82b96557ac0abafd0ac",
+          "version": "6.0.3"
+        },
+        "redis": {
+          "bytes": 560618,
+          "filename": "redis-8.1.0-py3-none-any.whl",
+          "sha256": "hex:a4fe1aac3d3b3cc791d4b3d5931c5a956045dc951ee74d1c913ee3ac4d2ee9fb",
+          "version": "8.1.0"
+        },
+        "redisvl": {
+          "bytes": 441569,
+          "filename": "redisvl-0.29.0-py3-none-any.whl",
+          "sha256": "hex:bbd62fe482075410580055f0bd5edcedebba35cd77bc75e1f2512b0b7fbc9445",
+          "version": "0.29.0"
+        },
+        "rustworkx": {
+          "bytes": 2283143,
+          "filename": "rustworkx-0.18.1-cp310-abi3-win_amd64.whl",
+          "sha256": "hex:91feb30971df6ac53d51503970e4aac67e4d9bc7834535f2b7cd3674645003ac",
+          "version": "0.18.1"
+        },
+        "scipy": {
+          "bytes": 37362755,
+          "filename": "scipy-1.18.1-cp314-cp314-win_amd64.whl",
+          "sha256": "hex:78a0d7c918e74a232394117160e7e3db503377572a45bcef8826e4ab8a35feba",
+          "version": "1.18.1"
+        },
+        "tenacity": {
+          "bytes": 32310,
+          "filename": "tenacity-9.2.1-py3-none-any.whl",
+          "sha256": "hex:9e56f17539296baab7beabb08b92f6ee3d7be92d8be72d763360677c2ad6580e",
+          "version": "9.2.1"
+        },
+        "tree-sitter": {
+          "bytes": 132688,
+          "filename": "tree_sitter-0.26.0-cp314-cp314-win_amd64.whl",
+          "sha256": "hex:a4033fecc8f606c7f2e8b8014d0057b74668a7f0152763606f7bc25c5f9ec64c",
+          "version": "0.26.0"
+        },
+        "tree-sitter-java": {
+          "bytes": 60650,
+          "filename": "tree_sitter_java-0.23.5-cp39-abi3-win_amd64.whl",
+          "sha256": "hex:1ee45e790f8d31d416bc84a09dac2e2c6bc343e89b8a2e1d550513498eedfde7",
+          "version": "0.23.5"
+        },
+        "tree-sitter-python": {
+          "bytes": 76073,
+          "filename": "tree_sitter_python-0.25.0-cp310-abi3-win_amd64.whl",
+          "sha256": "hex:9bcde33f18792de54ee579b00e1b4fe186b7926825444766f849bf7181793a76",
+          "version": "0.25.0"
+        },
+        "typing-extensions": {
+          "bytes": 45571,
+          "filename": "typing_extensions-4.16.0-py3-none-any.whl",
+          "sha256": "hex:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+          "version": "4.16.0"
+        },
+        "typing-inspection": {
+          "bytes": 14750,
+          "filename": "typing_inspection-0.4.4-py3-none-any.whl",
+          "sha256": "hex:65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147",
+          "version": "0.4.4"
+        }
+      },
+      "budget_bytes": 1073741824,
+      "download_bytes": 61700475,
+      "unapproved": [
+        "cffi==2.1.1"
+      ],
+      "unbound": []
+    },
+    "discovery": {
+      "fastembed": {
+        "licenses": {
+          "anyio": [
+            "MIT"
+          ],
+          "certifi": [
+            "MPL-2.0"
+          ],
+          "charset-normalizer": [
+            "MIT"
+          ],
+          "click": [
+            "BSD-3-Clause"
+          ],
+          "colorama": [
+            "BSD-3-Clause"
+          ],
+          "fastembed": [
+            "Apache-2.0"
+          ],
+          "filelock": [
+            "MIT"
+          ],
+          "flatbuffers": [
+            "Apache-2.0"
+          ],
+          "fsspec": [
+            "BSD-3-Clause"
+          ],
+          "h11": [
+            "MIT"
+          ],
+          "hf-xet": [
+            "Apache-2.0"
+          ],
+          "httpcore": [
+            "BSD-3-Clause"
+          ],
+          "httpx": [
+            "BSD-3-Clause"
+          ],
+          "huggingface-hub": [
+            "Apache-2.0"
+          ],
+          "idna": [
+            "BSD-3-Clause"
+          ],
+          "loguru": [
+            "MIT"
+          ],
+          "mmh3": [
+            "MIT"
+          ],
+          "numpy": [
+            "0BSD",
+            "BSD-3-Clause",
+            "CC0-1.0",
+            "MIT",
+            "Zlib"
+          ],
+          "onnxruntime": [
+            "MIT"
+          ],
+          "packaging": [
+            "Apache-2.0",
+            "BSD-2-Clause"
+          ],
+          "pillow": [
+            "MIT-CMU"
+          ],
+          "protobuf": [
+            "3-Clause BSD"
+          ],
+          "py-rust-stemmers": [],
+          "pyyaml": [
+            "MIT"
+          ],
+          "requests": [
+            "Apache-2.0"
+          ],
+          "tokenizers": [
+            "Apache-2.0"
+          ],
+          "tqdm": [
+            "MPL-2.0 AND MIT"
+          ],
+          "typing-extensions": [
+            "PSF-2.0"
+          ],
+          "urllib3": [
+            "MIT"
+          ],
+          "win32-setctime": [
+            "MIT"
+          ]
+        },
+        "pins": {
+          "anyio": "4.15.1",
+          "certifi": "2026.10.23",
+          "charset-normalizer": "3.5.2",
+          "click": "8.5.0",
+          "colorama": "0.4.6",
+          "fastembed": "0.9.1",
+          "filelock": "4.2.5",
+          "flatbuffers": "25.12.19",
+          "fsspec": "2026.9.0",
+          "h11": "0.16.0",
+          "hf-xet": "1.8.0",
+          "httpcore": "1.0.9",
+          "httpx": "0.28.1",
+          "huggingface-hub": "1.33.0",
+          "idna": "3.20",
+          "loguru": "0.7.3",
+          "mmh3": "5.3.1",
+          "numpy": "2.5.4",
+          "onnxruntime": "1.31.1",
+          "packaging": "26.3",
+          "pillow": "13.0.0",
+          "protobuf": "7.36.2",
+          "py-rust-stemmers": "0.1.8",
+          "pyyaml": "6.0.3",
+          "requests": "2.34.2",
+          "tokenizers": "0.23.3",
+          "tqdm": "4.70.1",
+          "typing-extensions": "4.16.0",
+          "urllib3": "2.8.0",
+          "win32-setctime": "1.2.1"
+        },
+        "resolved": true,
+        "unapproved": [
+          "protobuf",
+          "py-rust-stemmers",
+          "tqdm"
+        ]
+      },
+      "graspologic-native": {
+        "licenses": {
+          "graspologic-native": [
+            "MIT"
+          ],
+          "numpy": [
+            "0BSD",
+            "BSD-3-Clause",
+            "CC0-1.0",
+            "MIT",
+            "Zlib"
+          ],
+          "scipy": [
+            "BSD-3-Clause"
+          ]
+        },
+        "pins": {
+          "graspologic-native": "1.3.1",
+          "numpy": "2.5.4",
+          "scipy": "1.18.1"
+        },
+        "resolved": true,
+        "unapproved": []
+      },
+      "psutil": {
+        "licenses": {
+          "psutil": [
+            "BSD-3-Clause"
+          ]
+        },
+        "pins": {
+          "psutil": "7.2.2"
+        },
+        "resolved": true,
+        "unapproved": []
+      },
+      "redisvl": {
+        "licenses": {
+          "annotated-types": [
+            "MIT"
+          ],
+          "jsonpath-ng": [
+            "Apache-2.0"
+          ],
+          "ml-dtypes": [
+            "Apache-2.0"
+          ],
+          "numpy": [
+            "0BSD",
+            "BSD-3-Clause",
+            "CC0-1.0",
+            "MIT",
+            "Zlib"
+          ],
+          "pydantic": [
+            "MIT"
+          ],
+          "pydantic-core": [
+            "MIT"
+          ],
+          "python-ulid": [
+            "MIT"
+          ],
+          "pyyaml": [
+            "MIT"
+          ],
+          "redis": [
+            "MIT"
+          ],
+          "redisvl": [
+            "MIT"
+          ],
+          "tenacity": [
+            "Apache-2.0"
+          ],
+          "typing-extensions": [
+            "PSF-2.0"
+          ],
+          "typing-inspection": [
+            "MIT"
+          ]
+        },
+        "pins": {
+          "annotated-types": "0.8.0",
+          "jsonpath-ng": "1.15.0",
+          "ml-dtypes": "0.6.0",
+          "numpy": "2.5.4",
+          "pydantic": "2.14.2",
+          "pydantic-core": "2.50.2",
+          "python-ulid": "4.1.0",
+          "pyyaml": "6.0.3",
+          "redis": "8.1.0",
+          "redisvl": "0.29.0",
+          "tenacity": "9.2.1",
+          "typing-extensions": "4.16.0",
+          "typing-inspection": "0.4.4"
+        },
+        "resolved": true,
+        "unapproved": []
+      },
+      "rustworkx": {
+        "licenses": {
+          "numpy": [
+            "0BSD",
+            "BSD-3-Clause",
+            "CC0-1.0",
+            "MIT",
+            "Zlib"
+          ],
+          "rustworkx": [
+            "Apache-2.0"
+          ]
+        },
+        "pins": {
+          "numpy": "2.5.4",
+          "rustworkx": "0.18.1"
+        },
+        "resolved": true,
+        "unapproved": []
+      },
+      "tree-sitter": {
+        "licenses": {
+          "tree-sitter": [
+            "MIT"
+          ]
+        },
+        "pins": {
+          "tree-sitter": "0.26.0"
+        },
+        "resolved": true,
+        "unapproved": []
+      },
+      "tree-sitter-java": {
+        "licenses": {
+          "tree-sitter-java": [
+            "MIT"
+          ]
+        },
+        "pins": {
+          "tree-sitter-java": "0.23.5"
+        },
+        "resolved": true,
+        "unapproved": []
+      },
+      "tree-sitter-python": {
+        "licenses": {
+          "tree-sitter-python": [
+            "MIT"
+          ]
+        },
+        "pins": {
+          "tree-sitter-python": "0.25.0"
+        },
+        "resolved": true,
+        "unapproved": []
+      }
+    },
+    "inputs": {
+      "cryptography": "49.0.0",
+      "pathspec": "1.1.1"
+    }
+  },
+  "outcome": "FAIL",
+  "owner": "claude",
+  "redactions": 0,
+  "run_label": "plan12.7-m0a3-2026-10-31",
+  "source": {
+    "after": {
+      "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dirty": false,
+      "head": "hex:e0cf30412743767de8e2488b4442bb66ad753001"
+    },
+    "before": {
+      "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dirty": false,
+      "head": "hex:e0cf30412743767de8e2488b4442bb66ad753001"
+    }
+  },
+  "started_utc": "2026-10-30T20:01:20.147+00:00"
+}

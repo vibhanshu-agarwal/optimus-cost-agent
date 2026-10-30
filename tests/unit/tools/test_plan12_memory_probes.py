@@ -994,3 +994,64 @@ def test_records_render_bare_digests_tagged(tmp_path: Path) -> None:
     data = json.loads(probes.write_attempt(result, tmp_path).read_text(encoding="ascii"))
     assert data["config_sha256"] == "hex:" + "a" * 64 and data["attempt_id"] == "hex:" + result.attempt_id
     assert data["observations"] == {"container_id": "hex:" + "b" * 64, "short": "abc123", "nested": ["hex:" + "c" * 40]}
+
+
+# --- P1 live attempt 1 (refused before install): license metadata shapes and the wheel's own license file ---
+
+@pytest.mark.parametrize(
+    ("info", "expected"),
+    [
+        ({"license": "3-Clause BSD License"}, {"BSD-3-Clause"}),
+        ({"license": "MPL-2.0 AND MIT"}, {"MPL-2.0", "MIT"}),
+        ({"license_expression": "MIT-0"}, {"MIT-0"}),
+        ({"license": ""}, set()),
+        ({"license": "Copyright (c) someone, all rights reserved"}, set()),
+        ({"classifiers": ["License :: OSI Approved :: MIT License"]}, {"MIT"}),
+    ],
+)
+def test_license_metadata_shapes_are_read_exactly(info: dict[str, Any], expected: set[str]) -> None:
+    assert probes.license_ids(info) == expected
+
+
+def _wheel(files: dict[str, str]) -> bytes:
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, text in files.items():
+            archive.writestr(name, text)
+    return buffer.getvalue()
+
+
+_MIT = "MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy"
+
+
+def test_a_wheel_license_file_is_identified_only_when_its_text_is_recognised() -> None:
+    assert probes.wheel_license_ids(_wheel({"stem-0.1.dist-info/licenses/LICENSE": _MIT})) == {"MIT"}
+    assert probes.wheel_license_ids(_wheel({"stem-0.1.dist-info/LICENSE.txt": "All rights reserved."})) == set()
+    assert probes.wheel_license_ids(_wheel({"stem/LICENSE": _MIT})) == set()  # not the distribution's license file
+
+
+def _stem_release(data: bytes, digest: str) -> dict[str, Any]:
+    return {"info": {"license": ""}, "urls": [{"filename": "stem-0.1-py3-none-any.whl", "url": "https://pypi.org/stem.whl",
+                                              "digests": {"sha256": digest}, "size": len(data)}]}
+
+
+def test_a_pin_without_license_metadata_is_admitted_by_its_verified_wheel_license(released_root: Path) -> None:
+    wheel = _wheel({"stem-0.1.dist-info/licenses/LICENSE": _MIT})
+    digest = __import__("hashlib").sha256(wheel).hexdigest()
+    releases = {("stem", "1.0"): _stem_release(wheel, digest)}
+    runner = _uv({"stem": ["stem"]})
+    result, _ = probes.run_probe("packages", _packages(["stem"]), bodies={"packages": lambda ctx, res: probes.run_packages(
+        ctx, res, runner=runner, fetch=lambda url, timeout: releases["stem", "1.0"], download=lambda url, timeout, limit: wheel)})
+    discovery = result.observations["discovery"]["stem"]
+    assert discovery["unapproved"] == [] and discovery["license_sources"]["stem"].startswith("license file in")
+
+
+def test_a_wheel_that_does_not_match_its_digest_leaves_the_pin_refused(released_root: Path) -> None:
+    wheel = _wheel({"stem-0.1.dist-info/licenses/LICENSE": _MIT})
+    releases = {("stem", "1.0"): _stem_release(wheel, "0" * 64)}
+    runner = _uv({"stem": ["stem"]})
+    result, _ = probes.run_probe("packages", _packages(["stem"]), bodies={"packages": lambda ctx, res: probes.run_packages(
+        ctx, res, runner=runner, fetch=lambda url, timeout: releases["stem", "1.0"], download=lambda url, timeout, limit: wheel)})
+    assert result.outcome == "FAIL" and result.observations["discovery"]["stem"]["unapproved"] == ["stem"]

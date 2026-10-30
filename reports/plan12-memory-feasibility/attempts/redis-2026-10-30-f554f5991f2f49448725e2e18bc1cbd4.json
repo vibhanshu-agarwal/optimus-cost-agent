@@ -1,0 +1,187 @@
+{
+  "attempt_id": "hex:f554f5991f2f49448725e2e18bc1cbd4",
+  "cleanup": [
+    {
+      "action": "close a redis client",
+      "status": "done"
+    },
+    {
+      "action": "close a redis client",
+      "status": "done"
+    },
+    {
+      "action": "close a redis client",
+      "status": "done"
+    },
+    {
+      "action": "close a redis client",
+      "status": "done"
+    },
+    {
+      "action": "close a redis client",
+      "status": "done"
+    },
+    {
+      "action": "close a redis client",
+      "status": "done"
+    }
+  ],
+  "config_sha256": "hex:be675eb36ee3b3c425779e8431de8c1f5774d147380fb39f73d546d7b158b951",
+  "disposition": "concluded",
+  "ended_utc": "2026-10-30T19:57:55.832+00:00",
+  "environment": {
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "python": "3.14.4",
+    "release": "11",
+    "system": "Windows"
+  },
+  "follow_up": "M1 repeats K2 on the real corpus with production adapters",
+  "kind": "redis",
+  "limitations": [
+    "synthetic single-instance result; topology is provisional until M1 repeats K2 on the real corpus",
+    "a prototype append is not the production Gate, notice or erasure workflow (M3)"
+  ],
+  "observations": {
+    "acknowledged_writes": {
+      "ack_p50_ms": 1003.317,
+      "ack_p95_ms": 1010.281,
+      "appendfsync": "everysec",
+      "count": 400,
+      "projection_p95_ms": 14.213,
+      "unconfirmed": 0,
+      "unprojected": 0
+    },
+    "bulk_load_seconds": 38.96,
+    "checks": {
+      "ack_p95_within": true,
+      "acknowledged_writes_survive_restart": true,
+      "all_acknowledged_writes_projected": true,
+      "disk_within": true,
+      "index_ready": true,
+      "logical_memory_below_reserve": true,
+      "logical_purge_within": true,
+      "marker_reached_disk": true,
+      "no_unconfirmed_acknowledgements": true,
+      "noeviction_refuses_write": true,
+      "persistence_ok": true,
+      "physical_erasure_within": true,
+      "physical_ram_within": true,
+      "projection_p95_within": true,
+      "restart_command_succeeded": true,
+      "restart_new_run_id": true,
+      "restart_same_container_and_volume": true,
+      "restart_within": true
+    },
+    "derived_growth": {
+      "bytes_per_derived_key": 701.8,
+      "derived_keys": 20000,
+      "logical_after": 217005800,
+      "logical_before": 202969304,
+      "no_keys_evicted": true,
+      "noeviction_refuses_write": true,
+      "reserve_ceiling": 805306368,
+      "write_error": "OutOfMemoryError"
+    },
+    "identity": {
+      "container": "p127-probe-redis",
+      "container_id": "hex:508dc98f316846b72cb6ffae0798fcfcbe25206702f4c7953d6a03377644c160",
+      "host_port": 6390,
+      "image_id": "sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5",
+      "volume": "p127-probe-redis-data"
+    },
+    "index_ready_seconds": 0.001,
+    "memory_after_load": {
+      "logical_bytes": 202969304,
+      "mem_not_counted_for_evict": 8,
+      "num_docs": 20000,
+      "used_memory": 202969312
+    },
+    "persistence": {
+      "ack_during_rewrite_p95_ms": 1012.311,
+      "aof_last_bgrewrite_status": "ok",
+      "aof_rewrite_seconds": 0.001,
+      "disk_bytes": 130761751,
+      "physical_peak_bytes": 264975155,
+      "ram_sample_failures": 0,
+      "rdb_last_bgsave_status": "ok",
+      "rdb_save_seconds": 0.519
+    },
+    "preflight": {
+      "aof_on": true,
+      "database_empty": true,
+      "maxmemory_matches_target": true,
+      "noeviction": true,
+      "search_json_timeseries": true,
+      "version_at_least_8_4": true
+    },
+    "protocol": null,
+    "purge": {
+      "inspection_failed": false,
+      "logical_purge_seconds": 0.001,
+      "marker_reached_disk_seconds": 0.282,
+      "marker_sha256": "hex:51fb3f55ad12d21f1e33e04979c12a5ebddc333a98fdf2cee95cc0bee8fc7076",
+      "physical_erasure_seconds": 1.351
+    },
+    "rebuild_ready_seconds": 0.636,
+    "rebuild_wall_seconds": 0.637,
+    "restart": {
+      "acknowledged_events_survived": true,
+      "command_succeeded": true,
+      "documents_survived": true,
+      "run_id_changed": true,
+      "same_container_and_volume": true,
+      "usable_seconds": 1.678
+    },
+    "server": {
+      "config": {
+        "appendfsync": "everysec",
+        "appendonly": "yes",
+        "maxmemory": "1073741824",
+        "maxmemory-policy": "noeviction"
+      },
+      "modules": [
+        "ReJSON",
+        "bf",
+        "search",
+        "timeseries",
+        "vectorset"
+      ],
+      "redis_py": "8.0.1",
+      "redis_version": "8.10.1"
+    },
+    "targets": {
+      "ack_latency_p95_ms": 1500,
+      "admission_reserve_bytes": 268435456,
+      "concurrency": 4,
+      "disk_bytes": 2147483648,
+      "item_bytes": 2048,
+      "items": 20000,
+      "logical_purge_seconds": 1,
+      "maxmemory_bytes": 1073741824,
+      "physical_erasure_seconds": 120,
+      "physical_ram_bytes": 1610612736,
+      "projection_latency_p95_ms": 250,
+      "restart_to_usable_seconds": 60,
+      "vector_dimensions": 384
+    },
+    "unconfirmed_total": 0
+  },
+  "outcome": "PASS",
+  "owner": "claude",
+  "redactions": 0,
+  "run_label": "plan12.7-m0a3-2026-10-31",
+  "source": {
+    "after": {
+      "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dirty": false,
+      "head": "hex:e0cf30412743767de8e2488b4442bb66ad753001"
+    },
+    "before": {
+      "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dirty": false,
+      "head": "hex:e0cf30412743767de8e2488b4442bb66ad753001"
+    }
+  },
+  "started_utc": "2026-10-30T19:54:38.415+00:00"
+}
