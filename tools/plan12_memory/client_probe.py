@@ -19,6 +19,7 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
 import sqlite3
 import sys
 import time
@@ -217,7 +218,9 @@ def run_zed(context: Any, result: Any, runner: Callable[..., Any] | None = None)
     needles = canaries(section["canary_seed"])
     context.ram_only.update(needles.values())
     versions = {}
-    for name, argv in (("zed", [section.get("zed_cli", "zed"), "--version"]), ("acpx", [section.get("acpx", "acpx"), "--version"])):
+    for name, program in (("zed", section.get("zed_cli", "zed")), ("acpx", section.get("acpx", "acpx"))):
+        # which() honours PATHEXT, so an npm .cmd shim such as acpx resolves on Windows too
+        argv = [shutil.which(program) or program, "--version"]
         try:
             completed = runner(argv, context.timeout(60), None)
             versions[name] = " ".join(completed.stdout.split()[:3]) if completed.returncode == 0 else "UNKNOWN"

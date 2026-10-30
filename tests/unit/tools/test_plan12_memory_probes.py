@@ -1055,3 +1055,16 @@ def test_a_wheel_that_does_not_match_its_digest_leaves_the_pin_refused(released_
     result, _ = probes.run_probe("packages", _packages(["stem"]), bodies={"packages": lambda ctx, res: probes.run_packages(
         ctx, res, runner=runner, fetch=lambda url, timeout: releases["stem", "1.0"], download=lambda url, timeout, limit: wheel)})
     assert result.outcome == "FAIL" and result.observations["discovery"]["stem"]["unapproved"] == ["stem"]
+
+
+def test_client_versions_resolve_programs_through_path_lookup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str] = []
+    monkeypatch.setattr(client_probe.shutil, "which", lambda program: f"C:/shims/{program}.cmd")
+
+    def runner(argv: list[str], timeout: float, env: Any = None, stdin: Any = None) -> subprocess.CompletedProcess[str]:
+        seen.append(argv[0])
+        return subprocess.CompletedProcess(argv, 0, "x 1.0", "")
+
+    config = _parsed(zed={"canary_seed": "seed", "stub_log": str(tmp_path / "none.jsonl")})
+    result = probes.run_probe("zed", config, bodies={"zed": lambda ctx, res: client_probe.run_zed(ctx, res, runner)})[0]
+    assert seen == ["C:/shims/zed.cmd", "C:/shims/acpx.cmd"] and result.observations["versions"]["acpx"] == "x 1.0"
