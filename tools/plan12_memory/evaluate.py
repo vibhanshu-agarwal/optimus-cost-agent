@@ -68,6 +68,17 @@ def _describe(item: ExpectedMemory | MemoryStateObservation) -> str:
     return f"{item.trust}/{item.status}{'/off' if item.off else ''}{supersedes}"
 
 
+def _replaced(events: list[TraceEvent], destroyed: TraceEvent) -> bool:
+    """Whether one newer generation of the same rotation was verified, acknowledged and committed, in order, first."""
+    old = destroyed.version or 0
+    earlier = [event for event in events if event.seq < destroyed.seq and event.rotation_id == destroyed.rotation_id]
+    for new in {event.version for event in earlier if event.version is not None and event.version > old}:
+        steps = iter(event.type for event in earlier if event.version == new)
+        if all(step in steps for step in _DESTRUCTION_PREREQUISITES):
+            return True
+    return False
+
+
 def _authority(case: GoldenCase, trace: ObservedTrace) -> LayerVerdict:
     events = sorted(trace.events, key=lambda event: event.seq)
     fails = [f"prohibited event {name} occurred" for name in case.prohibited_events if any(_matches(name, e, case) for e in events)]
@@ -116,12 +127,9 @@ def _authority(case: GoldenCase, trace: ObservedTrace) -> LayerVerdict:
         if event.rotation_id is None or event.version is None:
             fails.append(f"old root destroyed at seq {event.seq} names no rotation or old generation")
             continue
-        old = event.version
-        steps = iter(earlier.type for earlier in events if earlier.seq < event.seq and earlier.rotation_id == event.rotation_id
-                     and earlier.version is not None and earlier.version > old)
-        if not all(step in steps for step in _DESTRUCTION_PREREQUISITES):
-            fails.append(f"old root generation {old} destroyed at seq {event.seq} before its rotation verified, "
-                         "acknowledged and committed a newer generation")
+        if not _replaced(events, event):
+            fails.append(f"old root generation {event.version} destroyed at seq {event.seq} before its rotation verified, "
+                         "acknowledged and committed one newer generation")
     for expected in case.expected_memory:
         if expected.trust == "absent":
             if any((item.key, item.project_id) == (expected.key, expected.project_id) for item in trace.memory_state):

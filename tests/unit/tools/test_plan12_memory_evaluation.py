@@ -786,6 +786,9 @@ def test_old_root_destruction_is_bound_to_its_rotation_and_happens_once() -> Non
         "commit before verify": [*_rotation("rotation.committed", "generation.usable_verified", "rotation.acknowledged"), destroy],
         "no rotation id": [*ready, _ev(3, "rotation.old_root_destroyed", version=1)],
         "same generation": [*_rotation("generation.usable_verified", "rotation.acknowledged", "rotation.committed", new=1), destroy],
+        "mixed generations": [_ev(0, "generation.usable_verified", version=2, rotation_id="rot-1"),
+                              _ev(1, "rotation.acknowledged", version=3, rotation_id="rot-1"),
+                              _ev(2, "rotation.committed", version=4, rotation_id="rot-1"), destroy],
     }
     unnamed = [*ready, _ev(3, "rotation.old_root_destroyed", rotation_id="rot-1")]
 
