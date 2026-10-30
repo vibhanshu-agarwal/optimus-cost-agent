@@ -10,7 +10,17 @@
     "index_url": "https://pypi.org/simple",
     "venv": "tmp/plan12-probe-venv",
     "candidates": ["redisvl", "tree-sitter", "tree-sitter-python", "tree-sitter-java", "rustworkx", "graspologic-native", "fastembed", "psutil"],
-    "inputs": {"pathspec": "1.1.1", "cryptography": "49.0.0"}
+    "inputs": {"pathspec": "1.1.1", "cryptography": "49.0.0"},
+    "license_qualifications": {
+      "py-rust-stemmers==0.1.8": {
+        "license": "MIT",
+        "wheel": "py_rust_stemmers-0.1.8-cp314-cp314-win_amd64.whl",
+        "wheel_sha256": "sha256:931d13570962b093417e5443a9d1bd63d73fa239ebb81e5b1d346663571403e4",
+        "license_file": "py_rust_stemmers-0.1.8.dist-info/licenses/LICENSE",
+        "license_file_sha256": "sha256:9449057776c984e88e29ea1ee135caeba2347756d0c74480f7afc4f16f636f68",
+        "basis": "Claude read the complete file on 2026-10-31: the unmodified MIT License text (Copyright (c) 2024 qdrant), the wheel's only license file. PyPI metadata names no license. Codex round 85 asked for a recorded, digest-bound qualification instead of text heuristics."
+      }
+    }
   },
   "embedding": {
     "venv": "tmp/plan12-probe-venv",

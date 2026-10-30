@@ -1013,48 +1013,56 @@ def test_license_metadata_shapes_are_read_exactly(info: dict[str, Any], expected
     assert probes.license_ids(info) == expected
 
 
-def _wheel(files: dict[str, str]) -> bytes:
-    import zipfile
-
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w") as archive:
-        for name, text in files.items():
-            archive.writestr(name, text)
-    return buffer.getvalue()
+def _stem_release(digest: str) -> dict[str, Any]:
+    return {"info": {"license": ""}, "urls": [{"filename": "stem-1.0-py3-none-any.whl", "url": "https://pypi.org/stem.whl",
+                                              "digests": {"sha256": digest}, "size": 10}]}
 
 
-_MIT = "MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy"
+def _qualified(digest: str) -> probes.ProbeConfig:
+    return _parsed(packages={"index_url": "https://pypi.org/simple", "candidates": ["stem"], "venv": "tmp/plan12-probe-venv",
+                             "license_qualifications": {"stem==1.0": {"license": "MIT", "wheel": "stem-1.0-py3-none-any.whl",
+                                                                      "wheel_sha256": f"sha256:{digest}"}}},
+                   limits={"timeout_seconds": 30, "max_download_bytes": 10**6})
 
 
-def test_a_wheel_license_file_is_identified_only_when_its_text_is_recognised() -> None:
-    assert probes.wheel_license_ids(_wheel({"stem-0.1.dist-info/licenses/LICENSE": _MIT})) == {"MIT"}
-    assert probes.wheel_license_ids(_wheel({"stem-0.1.dist-info/LICENSE.txt": "All rights reserved."})) == set()
-    assert probes.wheel_license_ids(_wheel({"stem/LICENSE": _MIT})) == set()  # not the distribution's license file
+def _stem_runner(joint_digest: str) -> Any:
+    def runner(argv: list[str], timeout: float, env: Any = None, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+        if "--generate-hashes" in argv:
+            return subprocess.CompletedProcess(argv, 0, f"stem==1.0 \\\n    --hash=sha256:{joint_digest}\n", "")
+        if argv[:3] == ["uv", "pip", "compile"]:
+            return subprocess.CompletedProcess(argv, 0, "stem==1.0\n", "")
+        return subprocess.CompletedProcess(argv, 0, "no json at all", "")
+
+    return runner
 
 
-def _stem_release(data: bytes, digest: str) -> dict[str, Any]:
-    return {"info": {"license": ""}, "urls": [{"filename": "stem-0.1-py3-none-any.whl", "url": "https://pypi.org/stem.whl",
-                                              "digests": {"sha256": digest}, "size": len(data)}]}
-
-
-def test_a_pin_without_license_metadata_is_admitted_by_its_verified_wheel_license(released_root: Path) -> None:
-    wheel = _wheel({"stem-0.1.dist-info/licenses/LICENSE": _MIT})
-    digest = __import__("hashlib").sha256(wheel).hexdigest()
-    releases = {("stem", "1.0"): _stem_release(wheel, digest)}
-    runner = _uv({"stem": ["stem"]})
-    result, _ = probes.run_probe("packages", _packages(["stem"]), bodies={"packages": lambda ctx, res: probes.run_packages(
-        ctx, res, runner=runner, fetch=lambda url, timeout: releases["stem", "1.0"], download=lambda url, timeout, limit: wheel)})
-    discovery = result.observations["discovery"]["stem"]
-    assert discovery["unapproved"] == [] and discovery["license_sources"]["stem"].startswith("license file in")
-
-
-def test_a_wheel_that_does_not_match_its_digest_leaves_the_pin_refused(released_root: Path) -> None:
-    wheel = _wheel({"stem-0.1.dist-info/licenses/LICENSE": _MIT})
-    releases = {("stem", "1.0"): _stem_release(wheel, "0" * 64)}
-    runner = _uv({"stem": ["stem"]})
-    result, _ = probes.run_probe("packages", _packages(["stem"]), bodies={"packages": lambda ctx, res: probes.run_packages(
-        ctx, res, runner=runner, fetch=lambda url, timeout: releases["stem", "1.0"], download=lambda url, timeout, limit: wheel)})
+def test_a_pin_without_license_metadata_needs_a_recorded_qualification(released_root: Path) -> None:
+    release = _stem_release("a" * 64)
+    unqualified = _parsed(packages={"index_url": "https://pypi.org/simple", "candidates": ["stem"]},
+                          limits={"timeout_seconds": 30, "max_download_bytes": 10**6})
+    result, _ = probes.run_probe("packages", unqualified, bodies={"packages": lambda ctx, res: probes.run_packages(
+        ctx, res, runner=_stem_runner("a" * 64), fetch=lambda url, timeout: release)})
     assert result.outcome == "FAIL" and result.observations["discovery"]["stem"]["unapproved"] == ["stem"]
+
+
+def test_a_qualification_admits_only_its_own_published_wheel(released_root: Path) -> None:
+    release = _stem_release("a" * 64)
+    admitted, _ = probes.run_probe("packages", _qualified("a" * 64), bodies={"packages": lambda ctx, res: probes.run_packages(
+        ctx, res, runner=_stem_runner("a" * 64), fetch=lambda url, timeout: release)})
+    assert admitted.observations["discovery"]["stem"]["unapproved"] == []
+    assert admitted.observations["discovery"]["stem"]["license_sources"]["stem"].startswith("recorded qualification")
+    other, _ = probes.run_probe("packages", _qualified("b" * 64), bodies={"packages": lambda ctx, res: probes.run_packages(
+        ctx, res, runner=_stem_runner("a" * 64), fetch=lambda url, timeout: release)})
+    assert other.outcome == "FAIL" and other.observations["discovery"]["stem"]["unapproved"] == ["stem"]
+
+
+def test_a_qualified_pin_resolved_to_another_wheel_is_refused_before_install(released_root: Path) -> None:
+    release = {"info": {"license": ""}, "urls": [
+        {"filename": "stem-1.0-py3-none-any.whl", "digests": {"sha256": "a" * 64}, "size": 10},
+        {"filename": "stem-1.0-py2.py3-none-any.whl", "digests": {"sha256": "c" * 64}, "size": 10}]}
+    result, _ = probes.run_probe("packages", _qualified("a" * 64), bodies={"packages": lambda ctx, res: probes.run_packages(
+        ctx, res, runner=_stem_runner("c" * 64), fetch=lambda url, timeout: release)})
+    assert result.outcome == "FAIL" and result.observations["admission"]["unapproved"] == ["stem==1.0"]
 
 
 def test_client_versions_resolve_programs_through_path_lookup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

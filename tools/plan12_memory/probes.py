@@ -30,11 +30,9 @@ import threading
 import time
 import urllib.request
 import uuid
-import zipfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from io import BytesIO
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -617,11 +615,6 @@ _SPDX_EXPRESSION = re.compile(r"[A-Za-z0-9.+-]+(?:\s+(?:AND|OR)\s+[A-Za-z0-9.+-]
 _TEXT_LICENSES = {"MIT License": "MIT", "3-Clause BSD License": "BSD-3-Clause", "BSD 3-Clause": "BSD-3-Clause",
                   "BSD-3-Clause License": "BSD-3-Clause", "Apache 2.0": "Apache-2.0", "Apache License 2.0": "Apache-2.0",
                   "Apache License, Version 2.0": "Apache-2.0", "Apache Software License": "Apache-2.0"}
-# Phrases that identify a license file's text; anything else stays unidentified and refused.
-_LICENSE_TEXTS = (("MIT", ("permission is hereby granted, free of charge",)),
-                  ("Apache-2.0", ("apache license", "version 2.0")),
-                  ("BSD-3-Clause", ("redistribution and use in source and binary forms", "neither the name")),
-                  ("BSD-2-Clause", ("redistribution and use in source and binary forms",)))
 
 
 def license_ids(info: Mapping[str, Any]) -> set[str]:
@@ -639,27 +632,6 @@ def license_ids(info: Mapping[str, Any]) -> set[str]:
         elif _SPDX_EXPRESSION.fullmatch(text):
             found = set(re.split(r"\s+(?:AND|OR)\s+", text))
     return found
-
-
-def license_from_text(text: str) -> str | None:
-    normalized = " ".join(text.lower().split())
-    return next((spdx for spdx, phrases in _LICENSE_TEXTS if all(phrase in normalized for phrase in phrases)), None)
-
-
-def wheel_license_ids(data: bytes) -> set[str]:
-    """Licenses identified from the license files a wheel ships in its .dist-info, for metadata that names none."""
-    with zipfile.ZipFile(BytesIO(data)) as wheel:
-        names = [name for name in wheel.namelist() if ".dist-info/" in name and (
-            "/licenses/" in name or name.rsplit("/", 1)[-1].upper().startswith(("LICENSE", "LICENCE", "COPYING")))]
-        return {found for name in names if (found := license_from_text(wheel.read(name)[:200_000].decode("utf-8", "replace")))}
-
-
-def download_bytes(url: str, timeout: float, limit: int) -> bytes:
-    with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310 - callers pass allowlisted https URLs
-        data = response.read(limit + 1)
-    if len(data) > limit:
-        raise AdmissionError("download exceeded its size limit")
-    return data
 
 
 def _compiled_pins(text: str) -> dict[str, dict[str, Any]]:
@@ -691,11 +663,8 @@ def _compatible_wheel(files: list[Mapping[str, Any]], hashes: Sequence[str]) -> 
     return None if best is None else best[1]
 
 
-_LICENSE_WHEEL_LIMIT = 20 * 1024 * 1024
-
-
 def run_packages(context: ProbeContext, result: ProbeResult, runner: Runner = run_command,
-                 fetch: Fetch = fetch_json, download: Callable[[str, float, int], bytes] = download_bytes) -> None:
+                 fetch: Fetch = fetch_json) -> None:
     """P1 in two phases. Discovery resolves each candidate alone (wheels only) and gates every pin's license.
     Admission binds one compatible wheel per pin by hash and size, refuses the set over the download
     budget, and only then installs it, by hash, into the released isolated venv and smokes it there."""
@@ -719,29 +688,21 @@ def run_packages(context: ProbeContext, result: ProbeResult, runner: Runner = ru
         return metadata[name, version]
 
     approved = set(config.allowed_licenses)
-    license_cache: dict[tuple[str, str], tuple[list[str], str]] = {}
-    inspected_bytes = 0
+    qualifications = dict(section.get("license_qualifications") or {})
 
     def licenses_of(pin: str, version: str) -> tuple[list[str], str]:
-        """Metadata first; with none, the wheel's own license file, its digest checked against PyPI."""
-        nonlocal inspected_bytes
-        if (pin, version) in license_cache:
-            return license_cache[pin, version]
+        """Metadata first. A pin whose metadata names no license is admitted only by a recorded qualification
+        for that exact version and wheel digest (a human reading of its license file), never by heuristics."""
         data = release(pin, version)
-        ids, source = sorted(license_ids(data.get("info") or {})), "metadata"
-        if not ids:
-            files = data.get("urls") or []
-            wheel = _compatible_wheel(files, [(item.get("digests") or {}).get("sha256") for item in files])
-            source = "no license metadata and no compatible wheel to inspect"
-            if wheel is not None and allowed_url(str(wheel.get("url", "")), config) and int(wheel.get("size") or 0) <= _LICENSE_WHEEL_LIMIT:
-                body = download(str(wheel["url"]), context.timeout(120), _LICENSE_WHEEL_LIMIT)
-                inspected_bytes += len(body)
-                if hashlib.sha256(body).hexdigest() == wheel["digests"]["sha256"]:
-                    ids, source = sorted(wheel_license_ids(body)), f"license file in {wheel['filename']}"
-                else:
-                    source = f"{wheel['filename']} did not match its published digest"
-        license_cache[pin, version] = (ids, source)
-        return ids, source
+        ids = sorted(license_ids(data.get("info") or {}))
+        if ids:
+            return ids, "metadata"
+        qualified = qualifications.get(f"{pin}=={version}") or {}
+        digest = str(qualified.get("wheel_sha256", "")).removeprefix("sha256:")
+        published = {(item.get("digests") or {}).get("sha256") for item in data.get("urls") or []}
+        if qualified.get("license") and digest and digest in published:
+            return [str(qualified["license"])], f"recorded qualification of wheel sha256:{digest}"
+        return [], "no license metadata and no recorded qualification for a published wheel"
 
     matrix: dict[str, Any] = {}
     admitted: list[str] = []
@@ -773,8 +734,9 @@ def run_packages(context: ProbeContext, result: ProbeResult, runner: Runner = ru
         return
     artifacts, unbound, unapproved = {}, [], []
     for pin, data in _compiled_pins(joint.stdout).items():
-        ids = set(licenses_of(pin, data["version"])[0])
-        if not ids or not ids <= approved:
+        ids, source = licenses_of(pin, data["version"])
+        bound = (qualifications.get(f"{pin}=={data['version']}") or {}).get("wheel_sha256", "").removeprefix("sha256:")
+        if not ids or not set(ids) <= approved or (source != "metadata" and bound not in data["hashes"]):
             unapproved.append(f"{pin}=={data['version']}")
         wheel = _compatible_wheel(release(pin, data["version"]).get("urls") or [], data["hashes"])
         if wheel is None:
@@ -782,9 +744,8 @@ def run_packages(context: ProbeContext, result: ProbeResult, runner: Runner = ru
             continue
         artifacts[pin] = {"version": data["version"], "filename": wheel["filename"], "sha256": wheel["digests"]["sha256"],
                           "bytes": int(wheel.get("size") or 0)}
-    total = sum(item["bytes"] for item in artifacts.values()) + inspected_bytes
+    total = sum(item["bytes"] for item in artifacts.values())
     result.observations["admission"] = {"artifacts": artifacts, "download_bytes": total, "unapproved": unapproved,
-                                        "license_inspection_bytes": inspected_bytes,
                                         "budget_bytes": config.max_download_bytes, "unbound": unbound}
     if unapproved or unbound or total > config.max_download_bytes or any(not item["bytes"] for item in artifacts.values()):
         result.outcome, result.disposition = "FAIL", "concluded"
