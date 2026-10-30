@@ -21,7 +21,8 @@
     "tests/fixtures/plan12_memory/localization.json": "sha256:07cc94c9b94d2d9ae5a09b6072cdc66f527bbd2767617b0e26230e07be1998dc",
     "tests/fixtures/plan12_memory/accounting.json": "sha256:b4b2b0e4e15b50413578ad670cb5c3cbf90f075d08df10275b5e94d9ab60c3ce",
     "tests/fixtures/plan12_memory/splits.json": "sha256:fc1e33c72113a18f5629032c5592c9c4e31633784211b05a988931c39dbd613a",
-    "case-review.json": "updated in this commit: operator_sample only"
+    "case-review.json": "updated with this record: operator_sample only",
+    "README.md": "the sanitized Markdown report for this checkpoint"
   },
   "environment": "Windows 11, CPython 3.14.4, uv 0.11.29, the worktree's own .venv (uv sync --frozen --extra dev)",
   "checks": [
@@ -58,10 +59,12 @@
     {
       "id": "post-run-focused-proof",
       "command": "python -m pytest --no-cov tests/unit/guardrails/test_tracked_file_scanners.py tests/unit/tools/test_debug_trace_message_rule.py tests/unit/tools/test_plan12_memory_evaluation.py tests/unit/tools/test_plan12_memory_harness.py",
-      "head": "2ba2f0b (contents committed unchanged)",
+      "head": "d8fef6c plus an uncommitted working-tree delta: the one walker rationale, committed unchanged afterwards as 2ba2f0b",
+      "tested_delta": "git diff d8fef6c 2ba2f0b, retained as optimus-handoff/sandbox-review-kit/plan12-codex-cli/plan12-5-rework/checkpoint1/focused-run-delta-d8fef6c-2ba2f0b.patch sha256:0320b1624575dcdeb4eb6e4ea81d049ff4b9b6bfba44ffdb6e094d7c9238cac4",
       "run_id": "20261030T083449-58276-73cf85",
       "status": "PASS",
       "result": "173 passed, including every test that failed or errored in the full run",
+      "retained_output": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/plan12-5-rework/checkpoint1/focused-run-20261030T083449/: run.json sha256:4de6b2b6a04bb48e7e99ca4dcd18da9a123b3888c12f604f161ebc69d2bf7849, nodes.jsonl sha256:1bee7d9e02052d3fcf3ada6124872a98ebaf8c61fd7a9926afefd8ec557cbd5d",
       "note": "Under the 2026-10-29 rule, a fix covered by targeted tests gets no full-suite rerun; PR CI is the second full run."
     },
     {
@@ -90,7 +93,7 @@
     {"reviewer": "Fable", "verdict": "findings F-01..F-06, all applied in 2d65c0e", "comment": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389#issuecomment-6516212393", "sha256": "sha256:7a0ae7565562d624a19a6e75c8d81a1ecd67c9277190c166020261b85b7941be"},
     {"reviewer": "Claude disposition of the Fable review", "comment": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389#issuecomment-6516216450", "sha256": "sha256:88e66d101af3f9fd3248c36f15b1fff87e77dfbf68033264e90406518d7561bc"},
     {"reviewer": "Codex CLI round 1", "verdict": "REWORK", "comment": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389#issuecomment-6516439980", "sha256": "sha256:41e43109e36a47e7509372ddde2027b0e5612a66aeae673572edb22842973154"},
-    {"reviewer": "Codex CLI round 2", "verdict": "REWORK; agreed changes applied in 6af30b8", "comment": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389#issuecomment-6516780058", "sha256": "sha256:acb464a1a8471a3b9816b17d3f65fb908e628655c5edcc7a4fa66431b46cb3a4"},
+    {"reviewer": "Codex CLI round 2", "verdict": "AGREE WITH CHANGES; the agreed changes were applied in 6af30b8", "comment": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389#issuecomment-6516780058", "sha256": "sha256:acb464a1a8471a3b9816b17d3f65fb908e628655c5edcc7a4fa66431b46cb3a4"},
     {"reviewer": "Codex CLI round 3", "verdict": "REWORK; applied in 93f7151", "comment": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389#issuecomment-6517159679", "sha256": "sha256:84138c8edb1243634a450763849638b5cbb4fdc0c5d72664311833ff8ac88138"},
     {"reviewer": "Codex CLI round 4", "verdict": "REWORK (R4-01); applied in d8fef6c", "comment": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389#issuecomment-6517289895", "sha256": "sha256:599743db2713c671b02d42396b55997c6fe06d70257c7eec56312af266bff9e3"},
     {"reviewer": "Codex CLI round 5", "verdict": "APPROVE (code and fixture review; Codex could not run Python, so tests were reviewed by inspection)", "comment": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389#issuecomment-6517317977", "sha256": "sha256:8daae0150e12f03ba95fc48aeff16ea896d8f72f6647b9a5eacde2b3ed66618b"}
