@@ -2,30 +2,37 @@
   "schema": "plan12-memory-case-review/1",
   "task": "Task 2",
   "recorded": "2026-10-30",
+  "revised": "2026-10-30, Checkpoint 1: Fable F-01 and F-05 to F-09 applied (see case_custody.corrections)",
   "plan": "docs/superpowers/plans/2026-10-22-plan-12-5-memory-evaluation-implementation_v3.md",
   "fixtures": {
-    "tests/fixtures/plan12_memory/lifecycle.json": "sha256:be3e210c13cc64988a555d366b4faae289b6454e4dffd6f162523bb0e004f74f",
+    "tests/fixtures/plan12_memory/lifecycle.json": "sha256:8d5d809ae76a43317206faccd16828278d6261c067c0d269c1ab3d3cf52d54f2",
     "tests/fixtures/plan12_memory/accounting.json": "sha256:d33382b307b932cd51046a175ce55a7f664331076a273b931550ba5700124ce8",
-    "tests/fixtures/plan12_memory/localization.json": "sha256:9dee0cbc32399732fd1c6e196307faba15ea3880552ea133f1f74712144d5399",
+    "tests/fixtures/plan12_memory/localization.json": "sha256:b03804a2e873331e9f9f909666a9582ecd503a1a08f075b7f947e76096196b4d",
     "tests/fixtures/plan12_memory/splits.json": "sha256:fc1e33c72113a18f5629032c5592c9c4e31633784211b05a988931c39dbd613a"
   },
   "builders": {
     "note": "Kept in the review kit (optimus-handoff/sandbox-review-kit/plan12-codex-cli/plan12-5-rework/task2/), not in the product. A fixture edit is made in the builder and rebuilt, or versioned in place with a reason.",
-    "build_seed.py": "sha256:bca40896fc203c48965381a9db0ee6ae2c7e5b831815788984327904e59e271d",
+    "build_seed.py": "sha256:5291d18a1a0bf02bb4d4cf5df178f8a3f5c7e86d25e4ee94005440018389af17",
+    "build_seed.v1.py": "sha256:bca40896fc203c48965381a9db0ee6ae2c7e5b831815788984327904e59e271d",
     "extract_locations.py": "sha256:ccc346fc7a4bbdc5cc07264b2c567d413b191d5dbb351b6d1d4bbbc08198156b",
     "locations.json": "sha256:5f57701b3f856308740c278f71a3b6c840a02917b7fabba396d05bddf810b297"
   },
   "counts": {
     "families": {"lifecycle": 24, "localization": 12, "accounting": 8},
-    "cases": {"lifecycle": 54, "localization": 12, "accounting": 8},
-    "cases_by_split": {"train": 34, "development": 18, "held_out": 22}
+    "cases": {"lifecycle": 55, "localization": 12, "accounting": 8},
+    "cases_by_split": {"train": 34, "development": 18, "held_out": 23}
   },
-  "validation": "python -m tools.plan12_memory.evaluate --validate-only tests/fixtures/plan12_memory: 74 cases, 0 errors. It checks the schema, the split manifest (family assignment, 24/12/8 cardinalities, chronological localization), a control case in every lifecycle family, no family across splits, and oracle consistency (nothing both required and prohibited; abstentions require no facts; every case asserts something).",
+  "validation": "python -m tools.plan12_memory.evaluate --validate-only tests/fixtures/plan12_memory: 75 cases, 0 errors. It checks the schema, the split manifest (family assignment, 24/12/8 cardinalities, chronological localization), a control case in every lifecycle family, no family across splits, and oracle consistency (nothing both required and prohibited; abstentions require no facts; every case asserts something).",
   "case_custody": {
-    "drafted_by": "claude, all 74 cases",
+    "drafted_by": "claude, all 75 cases",
     "verified_by": "pending: Codex at Checkpoint 1",
-    "operator_sample": "pending: sampled review of the 22 held-out cases under Q29 at Checkpoint 1",
-    "corrections": "None yet. A correction keeps the old version and its reason; corrections are never tuned to let a candidate pass."
+    "operator_sample": "pending: sampled review of the 23 held-out cases under Q29 at Checkpoint 1",
+    "corrections": [
+      "Every correction keeps the old version (build_seed.v1.py rebuilds it) and its reason; none is tuned to let a candidate pass.",
+      "L01-L12 v1 -> v2 (Fable F-01): a requirement with changed symbols now accepts only those symbols, so a filename alone is unlisted evidence (INCONCLUSIVE), never a PASS; a module-level change keeps its path.",
+      "L10 v2 (Fable F-06): the query no longer names the agent_run event; it describes the run-outcome telemetry event instead. Gold unchanged.",
+      "M18-c added, v1, held out (Fable F-05): an imported store with the target project, another project and an unknown-attribution note, which the M18 row and the Task 2 bullet require. The family count stays 24."
+    ]
   },
   "coverage": {
     "simple_factual_lookup": ["M06-b"],
@@ -38,8 +45,8 @@
     "source": "this repository's history; see reports/plan12-memory-evaluation/manifest.json (Task 0)",
     "selection": "11 merged fix PRs touching product code under src/, spread over July to October 2026 (#65, #164, #165, #198, #219, #358, #377, #405, #414, #422, #435), plus the L08 capability-limit case.",
     "cutoff": "the first parent of each fix's merge commit; its committer time is the case cutoff",
-    "gold": "one requirement per changed src/ Python file: the path, or any enclosing function, method or class of a changed line in the cutoff tree (AST over the old side of the diff). Module-level changes give a path-only requirement.",
-    "queries": "symptom statements written from each PR's description; no query names a file or symbol",
+    "gold": "one requirement per changed src/ Python file, met by any enclosing function, method or class of a changed line in the cutoff tree (AST over the old side of the diff). Only a module-level change gives a path requirement.",
+    "queries": "symptom statements written from each PR's description; no query names a file, function, class or event identifier",
     "split": "chronological 4/4/4 by cutoff; L08 falls between L07 and L09",
     "L08": "at git:dbdfaa32 the session configOptions are mode and context strategy only, and src/optimus/acp/session_config.py says outright that no model selector is advertised; the correct answer is that the capability does not exist"
   },
@@ -132,6 +139,8 @@
     "All gold is readable in the repository, including by the implementing agent; the #248 campaign needs a fresh sealed held-out set (Task 0 manifest).",
     "M07 short-paste classification is best-effort; a miss is a measured residual, not a contract change.",
     "Fixtures do not verify keystore, persistence, crash or backend deletion behaviour; M3 executes K5-R1/R2.",
-    "Every runtime K1-K6, model and harness result is UNRUN."
+    "Every runtime K1-K6, model and harness result is UNRUN.",
+    "Cross-split locus overlap: L03 (train) shares client_catalog.py, client_disposition.py and ClientMcpSessionService with L07 (development), and spec.py with L06 (development). They are different fixes, so the same-issue rule holds, but a train case shows where MCP fixes land.",
+    "The fixture builders live in the review kit, so the seed set is rebuilt from there, not from this repository; the hashes above pin them."
   ]
 }

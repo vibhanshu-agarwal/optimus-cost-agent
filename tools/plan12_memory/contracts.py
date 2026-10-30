@@ -156,6 +156,12 @@ class TraceEvent(_Record):
 
 
 class ObservedEvidence(_Record):
+    """One retrieved item, in rank order within the trace.
+
+    ``observed_at`` is when the item was current inside the case's world (its revision's commit
+    time, or a synthetic memory's write time), never the clock time a run read it.
+    """
+
     evidence_id: Id
     project_id: Id
     revision: Id
@@ -175,7 +181,8 @@ class MemoryCitation(_Record):
 
 
 class AnswerObservation(_Record):
-    """Structured answer facts; ``claims`` come from a deterministic extractor or a judge."""
+    """Structured answer facts. ``claims`` and ``supported_by`` come from a deterministic extractor or
+    a judge, never from the system under test describing its own answer."""
 
     action: Literal["answer", "abstain"]
     claims: tuple[Id, ...]

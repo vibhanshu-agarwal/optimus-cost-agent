@@ -4,7 +4,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L01-a",
-   "version": 1,
+   "version": 2,
    "family": "L01",
    "split": "train",
    "kind": "localization",
@@ -29,7 +29,6 @@
     {
      "requirement_id": "R1",
      "any_of": [
-      "path:src/optimus/acp/ndjson_subprocess_session.py",
       "symbol:src/optimus/acp/ndjson_subprocess_session.py::NdjsonSubprocessSession._fail_subprocess_exited",
       "symbol:src/optimus/acp/ndjson_subprocess_session.py::NdjsonSubprocessSession.close_stdin",
       "symbol:src/optimus/acp/ndjson_subprocess_session.py::NdjsonSubprocessSession.send"
@@ -41,7 +40,7 @@
    "prohibited_events": [],
    "expected_memory": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by its path or one of its changed symbols in the cutoff tree; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -51,7 +50,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L02-a",
-   "version": 1,
+   "version": 2,
    "family": "L02",
    "split": "train",
    "kind": "localization",
@@ -76,7 +75,6 @@
     {
      "requirement_id": "R1",
      "any_of": [
-      "path:src/optimus_gateway/observability.py",
       "symbol:src/optimus_gateway/observability.py::_RetryTrackingSpanExporter.export"
      ]
     }
@@ -86,7 +84,7 @@
    "prohibited_events": [],
    "expected_memory": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by its path or one of its changed symbols in the cutoff tree; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -96,7 +94,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L03-a",
-   "version": 1,
+   "version": 2,
    "family": "L03",
    "split": "train",
    "kind": "localization",
@@ -121,14 +119,12 @@
     {
      "requirement_id": "R1",
      "any_of": [
-      "path:src/optimus/acp/spec.py",
       "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._mcp_permission_broker_for._issue"
      ]
     },
     {
      "requirement_id": "R2",
      "any_of": [
-      "path:src/optimus/mcp/client_catalog.py",
       "symbol:src/optimus/mcp/client_catalog.py::ClientMcpSessionService",
       "symbol:src/optimus/mcp/client_catalog.py::ClientMcpToolService"
      ]
@@ -136,7 +132,6 @@
     {
      "requirement_id": "R3",
      "any_of": [
-      "path:src/optimus/mcp/client_disposition.py",
       "symbol:src/optimus/mcp/client_disposition.py::ClientMcpDisposition"
      ]
     }
@@ -146,7 +141,7 @@
    "prohibited_events": [],
    "expected_memory": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by its path or one of its changed symbols in the cutoff tree; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -156,7 +151,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L04-a",
-   "version": 1,
+   "version": 2,
    "family": "L04",
    "split": "train",
    "kind": "localization",
@@ -181,7 +176,6 @@
     {
      "requirement_id": "R1",
      "any_of": [
-      "path:src/optimus/acp/server.py",
       "symbol:src/optimus/acp/server.py::AcpStreamServer.serve_ndjson"
      ]
     }
@@ -191,7 +185,7 @@
    "prohibited_events": [],
    "expected_memory": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by its path or one of its changed symbols in the cutoff tree; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -201,7 +195,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L05-a",
-   "version": 1,
+   "version": 2,
    "family": "L05",
    "split": "development",
    "kind": "localization",
@@ -226,7 +220,6 @@
     {
      "requirement_id": "R1",
      "any_of": [
-      "path:src/optimus/redis/async_bridge.py",
       "symbol:src/optimus/redis/async_bridge.py::RedisLoopOwner.__init__",
       "symbol:src/optimus/redis/async_bridge.py::RedisLoopOwner._observe_finalization"
      ]
@@ -234,7 +227,6 @@
     {
      "requirement_id": "R2",
      "any_of": [
-      "path:src/optimus/redis/runtime.py",
       "symbol:src/optimus/redis/runtime.py::RedisRuntime.close",
       "symbol:src/optimus/redis/runtime.py::RedisRuntime.close_async",
       "symbol:src/optimus/redis/runtime.py::_RuntimeLifecycle"
@@ -246,7 +238,7 @@
    "prohibited_events": [],
    "expected_memory": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by its path or one of its changed symbols in the cutoff tree; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -256,7 +248,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L06-a",
-   "version": 1,
+   "version": 2,
    "family": "L06",
    "split": "development",
    "kind": "localization",
@@ -281,7 +273,6 @@
     {
      "requirement_id": "R1",
      "any_of": [
-      "path:src/optimus/acp/spec.py",
       "symbol:src/optimus/acp/spec.py::InMemoryAcpSpecSessionStore.remove"
      ]
     }
@@ -291,7 +282,7 @@
    "prohibited_events": [],
    "expected_memory": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by its path or one of its changed symbols in the cutoff tree; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -301,7 +292,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L07-a",
-   "version": 1,
+   "version": 2,
    "family": "L07",
    "split": "development",
    "kind": "localization",
@@ -326,7 +317,6 @@
     {
      "requirement_id": "R1",
      "any_of": [
-      "path:src/optimus/mcp/client_catalog.py",
       "symbol:src/optimus/mcp/client_catalog.py::ClientMcpDescriptorExposureAdapter.build",
       "symbol:src/optimus/mcp/client_catalog.py::ClientMcpSessionService.__init__",
       "symbol:src/optimus/mcp/client_catalog.py::ClientMcpSessionService.list_tools",
@@ -336,7 +326,6 @@
     {
      "requirement_id": "R2",
      "any_of": [
-      "path:src/optimus/mcp/client_disposition.py",
       "symbol:src/optimus/mcp/client_disposition.py::ClientMcpDisposition._resolve_server",
       "symbol:src/optimus/mcp/client_disposition.py::ClientMcpDisposition.materialize_tool_service"
      ]
@@ -344,7 +333,6 @@
     {
      "requirement_id": "R3",
      "any_of": [
-      "path:src/optimus/mcp/client_sdk.py",
       "symbol:src/optimus/mcp/client_sdk.py::ClientMcpSdkAdapter._call_async",
       "symbol:src/optimus/mcp/client_sdk.py::ClientMcpSdkAdapter._discover_async",
       "symbol:src/optimus/mcp/client_sdk.py::ClientMcpSdkAdapter.call"
@@ -356,7 +344,7 @@
    "prohibited_events": [],
    "expected_memory": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by its path or one of its changed symbols in the cutoff tree; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -366,7 +354,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L08-a",
-   "version": 1,
+   "version": 2,
    "family": "L08",
    "split": "development",
    "kind": "localization",
@@ -393,7 +381,6 @@
     {
      "requirement_id": "R1",
      "any_of": [
-      "path:src/optimus/acp/session_config.py",
       "symbol:src/optimus/acp/session_config.py::build_session_config_options"
      ]
     }
@@ -415,7 +402,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L09-a",
-   "version": 1,
+   "version": 2,
    "family": "L09",
    "split": "held_out",
    "kind": "localization",
@@ -440,7 +427,6 @@
     {
      "requirement_id": "R1",
      "any_of": [
-      "path:src/optimus/agent/planning_loop.py",
       "symbol:src/optimus/agent/planning_loop.py::_PlanningIterationRunner.__init__",
       "symbol:src/optimus/agent/planning_loop.py::_PlanningIterationRunner.run_iteration.build"
      ]
@@ -448,7 +434,6 @@
     {
      "requirement_id": "R2",
      "any_of": [
-      "path:src/optimus/agent/prompts.py",
       "symbol:src/optimus/agent/prompts.py::build_multi_turn_planner_input"
      ]
     }
@@ -458,7 +443,7 @@
    "prohibited_events": [],
    "expected_memory": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by its path or one of its changed symbols in the cutoff tree; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -468,7 +453,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L10-a",
-   "version": 1,
+   "version": 2,
    "family": "L10",
    "split": "held_out",
    "kind": "localization",
@@ -480,7 +465,7 @@
     {
      "seq": 0,
      "actor": "user",
-     "text": "When an EDIT cannot be applied, the run's specific closed failure code never reaches the always-on agent_run telemetry event. Where is the run result built and emitted?",
+     "text": "When an EDIT cannot be applied, the run's specific closed failure code never reaches the always-on telemetry event that reports how a run ended. Where is the run result built and emitted?",
      "attempt": null
     }
    ],
@@ -493,14 +478,12 @@
     {
      "requirement_id": "R1",
      "any_of": [
-      "path:src/optimus/agent/models.py",
       "symbol:src/optimus/agent/models.py::AgentRunResult"
      ]
     },
     {
      "requirement_id": "R2",
      "any_of": [
-      "path:src/optimus/agent/runner.py",
       "symbol:src/optimus/agent/runner.py::AgentRunner._build_result",
       "symbol:src/optimus/agent/runner.py::AgentRunner._edit_failure_result",
       "symbol:src/optimus/agent/runner.py::AgentRunner._emit_agent_run"
@@ -509,7 +492,6 @@
     {
      "requirement_id": "R3",
      "any_of": [
-      "path:src/optimus/telemetry/events.py",
       "symbol:src/optimus/telemetry/events.py::TelemetryEvent.agent_run"
      ]
     }
@@ -519,7 +501,7 @@
    "prohibited_events": [],
    "expected_memory": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by its path or one of its changed symbols in the cutoff tree; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -529,7 +511,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L11-a",
-   "version": 1,
+   "version": 2,
    "family": "L11",
    "split": "held_out",
    "kind": "localization",
@@ -554,14 +536,12 @@
     {
      "requirement_id": "R1",
      "any_of": [
-      "path:src/optimus_gateway/model_policy.py",
       "symbol:src/optimus_gateway/model_policy.py::check_experimental_reply"
      ]
     },
     {
      "requirement_id": "R2",
      "any_of": [
-      "path:src/optimus_gateway/upstream_client.py",
       "symbol:src/optimus_gateway/upstream_client.py::ProviderMessageResult"
      ]
     },
@@ -583,7 +563,7 @@
    "prohibited_events": [],
    "expected_memory": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by its path or one of its changed symbols in the cutoff tree; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,
@@ -593,7 +573,7 @@
   {
    "schema": "plan12-memory-case/1",
    "case_id": "L12-a",
-   "version": 1,
+   "version": 2,
    "family": "L12",
    "split": "held_out",
    "kind": "localization",
@@ -618,7 +598,6 @@
     {
      "requirement_id": "R1",
      "any_of": [
-      "path:src/optimus/acp/__main__.py",
       "symbol:src/optimus/acp/__main__.py::_authorize_or_exit",
       "symbol:src/optimus/acp/__main__.py::main.run_authorized"
      ]
@@ -626,7 +605,6 @@
     {
      "requirement_id": "R2",
      "any_of": [
-      "path:src/optimus/acp/launch_approval_cli.py",
       "symbol:src/optimus/acp/launch_approval_cli.py::_cmd_approve",
       "symbol:src/optimus/acp/launch_approval_cli.py::_cmd_run_gateway"
      ]
@@ -634,7 +612,6 @@
     {
      "requirement_id": "R3",
      "any_of": [
-      "path:src/optimus/acp/launch_approvals.py",
       "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore._ensure_hmac_key",
       "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore._exclusive_workspace_lock",
       "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore._workspace_lock_path",
@@ -656,7 +633,7 @@
    "prohibited_events": [],
    "expected_memory": [],
    "expected_cost": null,
-   "verification": "causal error localization: each requirement is met by its path or one of its changed symbols in the cutoff tree; recall and precision at k=5 are recorded",
+   "verification": "causal error localization: each requirement is met by one of its changed symbols in the cutoff tree (by its path only for a module-level change); a filename alone is unlisted evidence; recall and precision at k=5 are recorded",
    "provenance": {
     "drafted_by": "claude",
     "verified_by": null,

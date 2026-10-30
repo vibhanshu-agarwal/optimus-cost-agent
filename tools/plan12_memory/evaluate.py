@@ -34,6 +34,7 @@ from tools.plan12_memory.contracts import (
 FIXTURE_SCHEMA = "plan12-memory-fixtures/1"
 SPLITS_SCHEMA = "plan12-memory-splits/1"
 _SEVERITY: dict[Status, int] = {"PASS": 0, "INCONCLUSIVE": 1, "FAIL": 2, "UNRUN": 3}
+RETRIEVAL_K = 5  # predeclared in reports/plan12-memory-evaluation/case-review.json metrics
 
 
 def _layer(fails: list[str], doubts: list[str], notes: Sequence[str] = ()) -> LayerVerdict:
@@ -75,22 +76,26 @@ def _retrieval(case: GoldenCase, trace: ObservedTrace) -> tuple[LayerVerdict, li
             fails.append(f"evidence {evidence.evidence_id} is stale (revision {evidence.revision}, snapshot {case.snapshot})")
         else:
             valid[evidence.evidence_id] = evidence
+    # Leakage, scope and staleness are checked over every item; support counts only within the first k.
+    ranked = trace.evidence[:RETRIEVAL_K]
+    top = [item for item in ranked if item.evidence_id in valid]
+    top_ids = {item.evidence_id for item in top}
     satisfied = 0
     for requirement in case.required_evidence:
-        if valid.keys() & set(requirement.any_of):
+        if top_ids & set(requirement.any_of):
             satisfied += 1
             continue
-        offered = [item.evidence_id for item in valid.values() if requirement.requirement_id in item.supports]
+        offered = [item.evidence_id for item in top if requirement.requirement_id in item.supports]
         if offered:
             doubts.append(
                 f"requirement {requirement.requirement_id} is supported only by unlisted evidence {offered}; "
                 "a reviewer may add it as an acceptable alternative"
             )
         else:
-            fails.append(f"requirement {requirement.requirement_id} has no supporting evidence")
+            fails.append(f"requirement {requirement.requirement_id} has no supporting evidence in the first {RETRIEVAL_K}")
     gold = {evidence_id for requirement in case.required_evidence for evidence_id in requirement.any_of}
     recall = Decimal(satisfied) / len(case.required_evidence) if case.required_evidence else None
-    precision = Decimal(len(valid.keys() & gold)) / len(trace.evidence) if trace.evidence else None
+    precision = Decimal(len(top_ids & gold)) / len(ranked) if ranked else None
     return _layer(fails, doubts), list(valid), recall, precision
 
 
@@ -117,6 +122,9 @@ def _answer(case: GoldenCase, trace: ObservedTrace) -> LayerVerdict:
     else:
         fails += [f"prohibited claim {claim} was made" for claim in case.prohibited_claims if claim in answer.claims]
         fails += [f"required fact {fact} is missing" for fact in case.required_facts if fact not in answer.claims]
+        if "memory.served" in case.required_events and case.required_facts and not answer.supported_by:
+            # The fact may come from memory or from the same conversation; without attribution the citation rule cannot apply.
+            doubts.append("memory was served but no extractor attributed the answer's support; citation support is undecided")
     return _layer(fails, doubts)
 
 

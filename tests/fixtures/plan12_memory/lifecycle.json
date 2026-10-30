@@ -1810,6 +1810,84 @@
   },
   {
    "schema": "plan12-memory-case/1",
+   "case_id": "M18-c",
+   "version": 1,
+   "family": "M18",
+   "split": "held_out",
+   "kind": "lifecycle",
+   "role": "probe",
+   "oracles": [
+    "K1",
+    "K5"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "import",
+     "text": "Imported note store: n-alpha-3 (project proj-alpha, mapped): run the tests with pytest -q; n-beta-3 (project proj-beta): run the tests with tox; n-unknown-3 (project attribution unknown): run the tests with nox.",
+     "attempt": null
+    },
+    {
+     "seq": 1,
+     "actor": "host",
+     "text": "The session is in linked worktree wt-2 of proj-alpha, on branch feature-x.",
+     "attempt": null
+    },
+    {
+     "seq": 2,
+     "actor": "user",
+     "text": "How do I run the tests here?",
+     "attempt": null
+    }
+   ],
+   "project_id": "proj-alpha",
+   "snapshot": "syn-snap-1",
+   "cutoff": "2026-10-01T00:00:00+00:00",
+   "expected_action": "answer",
+   "required_facts": [
+    "fact-tests-pytest"
+   ],
+   "required_evidence": [],
+   "prohibited_claims": [
+    "claim-tests-tox",
+    "claim-tests-nox"
+   ],
+   "required_events": [
+    "memory.import.optional"
+   ],
+   "prohibited_events": [
+    "memory.trust_from_import"
+   ],
+   "expected_memory": [
+    {
+     "key": "n-alpha-3",
+     "project_id": "proj-alpha",
+     "trust": "legacy-import",
+     "status": "active"
+    },
+    {
+     "key": "n-beta-3",
+     "project_id": "proj-alpha",
+     "trust": "absent",
+     "status": null
+    },
+    {
+     "key": "n-unknown-3",
+     "project_id": "proj-alpha",
+     "trust": "off",
+     "status": "active"
+    }
+   ],
+   "expected_cost": null,
+   "verification": "only the mapped proj-alpha note is served, as optional context; the proj-beta note never enters proj-alpha and the unknown-attribution note stays off and unserved",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "Plan 12.5 v3 Task 2 row M18"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
    "case_id": "M14-a",
    "version": 1,
    "family": "M14",

@@ -578,4 +578,42 @@ def test_every_seed_event_is_in_the_reviewed_vocabulary() -> None:
         for case in json.loads((SEED / f"{name}.json").read_text(encoding="utf-8"))["cases"]
         for event in case["required_events"] + case["prohibited_events"]
     }
-    assert events <= set(review["event_vocabulary"]), sorted(events - set(review["event_vocabulary"]))
+    vocabulary = {name for name in review["event_vocabulary"] if not name.endswith("_pin")}  # pins are scan pragmas
+    assert events <= vocabulary, sorted(events - vocabulary)
+
+
+def test_localization_gold_needs_a_symbol_wherever_one_changed() -> None:
+    cases = json.loads((SEED / "localization.json").read_text(encoding="utf-8"))["cases"]
+    for case in cases:
+        for requirement in case["required_evidence"]:
+            ids = requirement["any_of"]
+            assert all(i.startswith("symbol:") for i in ids) or (len(ids) == 1 and ids[0].startswith("path:")), case["case_id"]
+
+
+# --- Checkpoint 1 corrections (Fable F-03, F-04) ------------------------------------
+
+
+def test_support_beyond_the_predeclared_k_does_not_count() -> None:
+    filler = [{"evidence_id": f"ev-x{n}", "project_id": "proj-a", "revision": "snap-1",
+               "observed_at": "2026-09-30T12:00:00+00:00", "supports": []} for n in range(5)]
+    late = {"evidence_id": "ev-1", "project_id": "proj-a", "revision": "snap-1",
+            "observed_at": "2026-09-30T12:00:00+00:00", "supports": ["R1"]}
+
+    verdict = _grade(trace=_trace(evidence=[*filler, late]))
+
+    assert verdict.layers["retrieval"].status == "FAIL"
+    assert "requirement R1 has no supporting evidence in the first 5" in _reasons(verdict)
+    assert verdict.measurements is not None and verdict.measurements.retrieval_precision == 0
+
+
+def test_served_memory_without_attribution_is_undecided_not_pass() -> None:
+    case = _case(required_events=["memory.committed", "memory.served"])
+    events = [{"seq": 0, "type": "memory.committed"}, {"seq": 1, "type": "memory.served"}]
+    unattributed = {**_trace()["answer"], "supported_by": [], "citations": []}
+
+    verdict = _grade(case, _trace(events=events, answer=unattributed))
+    made_prohibited = _grade(case, _trace(events=events, answer={**unattributed, "claims": ["fact-pref-tabs", "claim-user-said-spaces"]}))
+
+    assert verdict.layers["answer"].status == "INCONCLUSIVE"
+    assert "no extractor attributed the answer's support" in _reasons(verdict)
+    assert made_prohibited.layers["answer"].status == "FAIL"  # the claim checks still run
