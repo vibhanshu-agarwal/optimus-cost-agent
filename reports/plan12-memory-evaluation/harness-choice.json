@@ -1,0 +1,167 @@
+{
+  "schema": "plan12-memory-harness-choice/1",
+  "task": "Task 3",
+  "recorded": "2026-10-30",
+  "plan": "docs/superpowers/plans/2026-10-22-plan-12-5-memory-evaluation-implementation_v3.md",
+  "status": {
+    "selected_for_implementation": "mini-SWE-agent v2.4.6 at the commit below, configured and transported as recorded here",
+    "native_compatibility": "UNRUN",
+    "basis": "static review of an authorized source snapshot read through the GitHub API at the pinned commit; nothing was downloaded as a package, installed or run, and no model was called"
+  },
+  "selected": {
+    "repository": "https://github.com/SWE-agent/mini-swe-agent",
+    "release": "v2.4.6, published 2026-07-23: the latest release on 2026-10-30 (main is 3 commits ahead, touching 2 files)",
+    "commit": "git:a83fcae82d2a08f0ee0c688f9d137b3566c097f8",
+    "tree": "git:665df42f5761252b83d9a30e1b82f76f1f17f828",
+    "package_version": "2.4.6 (src/minisweagent/__init__.py)",
+    "readme_note": "The plan's earlier-inspected README blob git:7db1d82dfa92eaa00adeb10c8681677a9e6ec639 is the README at this commit. It is a blob, not a runtime commit; the commit above is the pin."
+  },
+  "license": {
+    "spdx": "MIT",
+    "file": "LICENSE.md",
+    "blob": "git:503821c9dbe06f13a48e54088eb6cd203adb407f",
+    "holders": "Kilian A. Lieret and Carlos E. Jimenez, 2025",
+    "use": "MIT permits use and modification with the notice kept. Optimus vendors no harness code and imports nothing from it; the harness runs in its own environment."
+  },
+  "reviewed_source": {
+    "note": "Git blob IDs at the pinned commit, each recomputed locally from the fetched bytes.",
+    "pyproject.toml": "git:0bd3e1329252af4399805959d78d5984f2bbf2b0",
+    "src/minisweagent/__init__.py": "git:8dbc904c36c3ed31b3c7d9697e44dbf0cf6c0e87",
+    "src/minisweagent/agents/__init__.py": "git:e625b5d4b3485835fe9592079ddc1fcfea71f20e",
+    "src/minisweagent/agents/default.py": "git:ca310e37d7c61888c576f73f5e1790ac769407b1",
+    "src/minisweagent/config/__init__.py": "git:4aaf73391dda4dc4678dee42d289e80166b7a160",
+    "src/minisweagent/config/default.yaml": "git:7753df3e42e7c9e792da9d063311221b299ba4d6",
+    "src/minisweagent/config/mini.yaml": "git:8b72f71f8092ae805ec43221dbeaeefc2340cd3e",
+    "src/minisweagent/config/mini_textbased.yaml": "git:f4e5acb179b6951c4711aa1328662c7598f58165",
+    "src/minisweagent/config/benchmarks/swebench.yaml": "git:106decd160e72e5164e29d15d23da354c29c309d",
+    "src/minisweagent/environments/__init__.py": "git:08ae2c65c061c086360ea8949f4a92d2bf38bcb6",
+    "src/minisweagent/environments/docker.py": "git:42e65e35a9af9e126d7e6846060922f8c95b2d5a",
+    "src/minisweagent/environments/local.py": "git:2b12d33ec90c8db7bb8a36002ba09706be6e7f45",
+    "src/minisweagent/exceptions.py": "git:b11e404c98f62ace8c5c75b9a683105d49984a6c",
+    "src/minisweagent/models/__init__.py": "git:408dbf531ce7e1e1cf1b950fccf30b496ab67c05",
+    "src/minisweagent/models/litellm_model.py": "git:84b5d548df0e10cbe820862399379bbde69a6fa8",
+    "src/minisweagent/models/litellm_textbased_model.py": "git:db7e042a9ad146321d4d3e7d5864e6a149f65b36",
+    "src/minisweagent/models/utils/actions_text.py": "git:3129a1db46afc26b5ebd3d2af8170c57d1821fcd",
+    "src/minisweagent/models/utils/actions_toolcall.py": "git:8209113c4a1663d34468be6106b5661ec9e0be62",
+    "src/minisweagent/models/utils/cache_control.py": "git:9c50ee0ca8e57035fc85c2cba080f8770891c5bc",
+    "src/minisweagent/models/utils/retry.py": "git:055d4b6fd4f57c1420dfa7622a8fe24148354548",
+    "src/minisweagent/run/mini.py": "git:ed1ecee4df04cf5b95ea7f65d7058bceb726c9f9"
+  },
+  "dependencies": {
+    "python": "requires-python >=3.10; the classifiers list only 3.10, so CPython 3.14 is unverified (R2)",
+    "runtime": ["pyyaml", "requests", "jinja2", "pydantic>=2.0", "litellm>=1.75.5,!=1.82.7,!=1.82.8", "tenacity", "rich", "python-dotenv", "typer", "platformdirs", "textual", "prompt_toolkit", "datasets", "openai!=1.100.0,!=1.100.1"],
+    "litellm": "Installed with the package although arm D never calls it. The pin already skips the compromised 1.82.7 and 1.82.8; the lock records the exact version and hash.",
+    "extras": "none: full, modal, dev and contree are not needed",
+    "isolation": "its own locked environment (uv, hashes recorded), never Optimus's .venv",
+    "lock": "UNRUN: produced at #248 preflight (R2)"
+  },
+  "static_findings": [
+    {
+      "id": "S1",
+      "finding": "The default model class sends a bash tool schema and requires native tool calls (models/litellm_model.py:64-71, models/utils/actions_toolcall.py:40-52). The Gateway's chat route returns message text only (src/optimus_gateway/chat_completions.py:48-65), so every turn would be a format error and the run would end RepeatedFormatError after three (agents/default.py:100-112).",
+      "resolution": "Use the candidate's own text-based action format: config/mini_textbased.yaml with actions_text.parse_regex_actions, exactly one mswea_bash_command block per turn (models/litellm_textbased_model.py:7-37). No replacement harness is needed."
+    },
+    {
+      "id": "S2",
+      "finding": "The Gateway joins message texts without their roles (src/optimus_gateway/models.py:169-188) and the enforced route sends the provider one user message (src/optimus_gateway/model_policy.py, admit_request).",
+      "resolution": "The adapter writes each role into the text (tools/plan12_memory/harness.py, encode_transcript). The same single-message transport applies to all three models and is labelled in every arm-D result."
+    },
+    {
+      "id": "S3",
+      "finding": "The LiteLLM model class prices each reply with LiteLLM from the provider's usage field and raises when it cannot (models/litellm_model.py:108-126). The Gateway reports gateway_usage and no usage field.",
+      "resolution": "The arm-D model class does not use LiteLLM. Cost comes only from Gateway receipts through parse_reply; the harness's own cost_limit is 0 (off) because it cannot price Gateway replies."
+    },
+    {
+      "id": "S4",
+      "finding": "query() retries a failed call up to ten times with backoff (models/litellm_model.py:81-84, models/utils/retry.py:9-25). The Gateway already makes every safe resend, never re-sends a possibly billed attempt and marks each failure non-retryable (src/optimus_gateway/responses.py:150-160).",
+      "resolution": "The arm-D model class sends each request once. A non-200 reply ends the run with exit status GatewayError and keeps its receipts."
+    },
+    {
+      "id": "S5",
+      "finding": "The local environment runs commands with shell=True, which is cmd.exe on Windows, and kills process groups only on POSIX (environments/local.py:72-92). The action format is bash.",
+      "resolution": "Run each case in the Docker environment with a bash interpreter (environments/docker.py:15-43) on a Linux container image pinned by digest."
+    },
+    {
+      "id": "S6",
+      "finding": "get_model adds Anthropic cache-control markers by model name, and only LiteLLM model classes apply them (models/__init__.py:55-60, models/utils/cache_control.py).",
+      "resolution": "The arm-D model class sends no markers. Provider caching can still differ by model; cache tokens are recorded and stay null when unreported."
+    },
+    {
+      "id": "S7",
+      "finding": "The harness saves the whole trajectory, including command output and raw replies (agents/default.py:159-190), so it holds repository source text.",
+      "resolution": "No trajectory is written (B1: source bodies and raw tool output stay in RAM). Arm D never uses the mini CLI, whose run/mini.py defaults an output file; it builds DefaultAgent directly with output_path=None, so save() writes nothing (agents/default.py:182-190). Observations are extracted in memory into the ID-only trace contract; R10 proves no persistent sink receives source text."
+    }
+  ],
+  "configuration": {
+    "base_config": "src/minisweagent/config/mini_textbased.yaml at the pinned commit; the overrides below are merged after it (run/mini.py:72-92)",
+    "entrypoint": "DefaultAgent constructed by the arm-D runner, never the mini CLI (run/mini.py defaults an output file)",
+    "agent": {
+      "agent_class": "default",
+      "output_path": null,
+      "step_limit": 100,
+      "cost_limit": 0,
+      "wall_time_limit_seconds": 1800,
+      "max_consecutive_format_errors": 3,
+      "note": "The base config's mode: confirm belongs to the interactive agent; DefaultAgent ignores it and asks nothing."
+    },
+    "model": {
+      "model_class": "the arm-D model class (R1), given as a full import path",
+      "model_name": "a run input: an exact registry model ID",
+      "action_regex": "```mswea_bash_command\\s*\\n(.*?)\\n```",
+      "templates": "observation_template and format_error_template from the base config, unchanged"
+    },
+    "environment": {
+      "environment_class": "docker",
+      "image": "a Linux image with bash, coreutils, grep, find and sed, pinned by digest at preflight (R3)",
+      "cwd": "/work",
+      "timeout": 60,
+      "interpreter": ["bash", "-lc"],
+      "run_args": ["--rm", "--network=none"],
+      "forward_env": [],
+      "workspace": "the case snapshot at its cutoff, exported with git archive: no .git directory and no later history (R4)"
+    }
+  },
+  "transport": {
+    "endpoint": "POST /v1/chat/completions on an enforced Optimus Gateway (src/optimus_gateway/chat_completions.py)",
+    "authentication": "the Gateway's bearer shared secret only; no provider credential reaches the harness or Optimus",
+    "request": "harness.build_request: one user message holding the role-tagged transcript and a version-1 route_binding (registry hash, request id, output cap)",
+    "admission": "every request binds the approved registry snapshot; the model must be an exact registry ID eligible in it, and the route's approved reasoning level applies (src/optimus_model_policy/binding.py RouteBinding; src/optimus_gateway/model_policy.py admit_request)",
+    "reply": "harness.parse_reply: the text and finish_reason, one receipt per attempt that may have reached a model, and one route-provenance record per receipt (provider, requested and resolved model, model version, cache status, billing units; null when unreported). Unbilled attempts carry no charge; uncertain ones stay unknown. The receipts and their provenance go into the trace, which requires exactly one provenance record per receipt identity",
+    "wait": "the HTTP timeout is at least HOST_GATEWAY_TIMEOUT_SECONDS (src/optimus_model_policy/binding.py:233), so a billed reply is never abandoned (R9)",
+    "reference_models": {
+      "labels": ["Sonnet 5.5", "Opus 5.5", "GPT 6.1 Sol"],
+      "ids": "run inputs: exact registry model IDs, recorded per run and never fixed in code",
+      "parity": "one registry snapshot, configuration, image and transport for all three"
+    }
+  },
+  "tools": "one bash action per turn in the case container. No network, web, MCP, Optimus assembly, memory or Auto. Arm-D results are labelled with this tool set.",
+  "effort_and_stopping": {
+    "effort": "the registry route's approved reasoning level and the bound output cap; the harness sets no effort of its own",
+    "stops": "Submitted, LimitsExceeded (100 model calls), TimeExceeded (1800 s), RepeatedFormatError (3 in a row) or GatewayError",
+    "pre_registration": "These values join the other arms' rules before any run (case-review.json pre_registration). Changing them is a versioned revision of this record."
+  },
+  "task_completion": {
+    "equivalence": "the same case query and the same answer schema as the other arms, graded by tools/plan12_memory/evaluate.py grade_trace",
+    "completed": "exit status Submitted: the first output line is COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT with return code 0 (environments/docker.py:140-150); the rest of the output is the answer",
+    "not_completed": "every other exit status counts as incomplete and is reported, never dropped or retried to green"
+  },
+  "adapter": {
+    "module": "tools/plan12_memory/harness.py",
+    "records": "GatewayRoute and GatewayReply in tools/plan12_memory/contracts.py",
+    "tests": "tests/unit/tools/test_plan12_memory_harness.py",
+    "scope": "Requests are checked with the Gateway's real envelope validator, flattening and RouteBinding.from_wire. Replies are a labelled double built by the Gateway's own reply builders. This proves adapter behaviour only, never native transport or model compatibility."
+  },
+  "runtime_obligations": [
+    {"id": "R1", "point": "The arm-D model class: it implements the pinned Model protocol (src/minisweagent/__init__.py), calls build_request and parse_reply, parses one action with parse_regex_actions, keeps receipts on a FormatError, sends each request once and ends the run on a non-200 reply.", "acceptance_check": "offline tests against the installed pinned package with a Gateway double, plus a revert check", "status": "UNRUN"},
+    {"id": "R2", "point": "Installation: a locked environment from the pinned commit on CPython 3.14, or a recorded older interpreter if 3.14 fails.", "acceptance_check": "a hash-locked install succeeds and minisweagent.__version__ is 2.4.6", "status": "UNRUN"},
+    {"id": "R3", "point": "Docker on the Windows host: Linux containers, the pinned image and --network=none.", "acceptance_check": "a trivial action returns code 0 and a network request from the container fails", "status": "UNRUN"},
+    {"id": "R4", "point": "No future leakage from the workspace.", "acceptance_check": "per case: no .git directory, the tree equals the cutoff commit's tree and the prompt names no withheld gold location", "status": "UNRUN"},
+    {"id": "R5", "point": "Gateway admission for all three reference models.", "acceptance_check": "each model is an exact eligible registry ID in the approved snapshot with its output cap inside the verified maximum; paid smoke calls only under the #248 budget", "status": "UNRUN"},
+    {"id": "R6", "point": "Each model keeps the text action format.", "acceptance_check": "the pilot reports the format-error rate per model; RepeatedFormatError counts as incomplete", "status": "UNRUN"},
+    {"id": "R7", "point": "Each model follows the role-tagged single-message transcript.", "acceptance_check": "a reviewed pilot sample shows no model treating its own earlier turns as user instructions; otherwise a versioned replacement decision", "status": "UNRUN"},
+    {"id": "R8", "point": "Receipts reconcile with the Gateway's records.", "acceptance_check": "every gateway_request_id in route_attempts appears in the Gateway usage log; the grader reports cost completeness", "status": "UNRUN"},
+    {"id": "R9", "point": "The wait covers the Gateway's own budget.", "acceptance_check": "the arm-D model class's HTTP timeout is read from HOST_GATEWAY_TIMEOUT_SECONDS", "status": "UNRUN"},
+    {"id": "R10", "point": "No source text reaches a persistent sink (B1).", "acceptance_check": "canary: a case action prints a unique marker read from a source file; afterwards a scan of every persistent sink (run directories, container and Gateway logs, the trace store), excluding only the original canary source file, finds no marker. A positive control first writes the marker to one sink and must be detected. A sink that cannot be fully inspected makes the check INCONCLUSIVE, never PASS", "status": "UNRUN"}
+  ],
+  "replacement_rule": "If any runtime obligation fails, a reviewer-approved replacement is chosen and versioned before benchmark execution. Evidence recorded here is not relabelled."
+}

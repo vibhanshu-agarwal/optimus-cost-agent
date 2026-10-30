@@ -3065,6 +3065,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_memory.evaluate:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.plan12_memory.evaluate:main:stdout_export prints only case, file and error counts plus validation errors that name fixture files, case positions and field locations; fixture values and source bodies are never echoed.",
+      "sanitizer": "schema-limited functional path; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_evaluation.py::test_validate_only_cli_exit_status",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.probe_p11_zed_session_load:classify_indeterminate_context:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: serializes the supplied evidence only in memory to classify bounded Redis-unreachable text; it neither persists nor exports that intermediate string.",

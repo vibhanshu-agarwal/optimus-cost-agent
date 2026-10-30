@@ -1,0 +1,656 @@
+{
+ "schema": "plan12-memory-fixtures/1",
+ "cases": [
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "L01-a",
+   "version": 3,
+   "family": "L01",
+   "split": "train",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Sending to, or closing stdin of, an ACP agent child that has already exited raises a raw broken-pipe exception instead of a clean exited result. Where does that happen?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:efabbbe9a5d1d689bbe18293724fae68b2859f35",
+   "cutoff": "2026-07-22T20:24:58+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/ndjson_subprocess_session.py::NdjsonSubprocessSession._fail_subprocess_exited",
+      "symbol:src/optimus/acp/ndjson_subprocess_session.py::NdjsonSubprocessSession.close_stdin",
+      "symbol:src/optimus/acp/ndjson_subprocess_session.py::NdjsonSubprocessSession.send"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "merged fix PR #65; gold = its changed src paths and symbols"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "L02-a",
+   "version": 3,
+   "family": "L02",
+   "split": "train",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "When the Gateway's OTLP span exporter returns a failure result, the delivery is reported as failed rather than queued for retry. Where is the export result classified?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:f40aa301c465aa6af207d8bceb3064bf83e39c98",
+   "cutoff": "2026-08-18T00:14:29+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus_gateway/observability.py::_RetryTrackingSpanExporter.export"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "merged fix PR #164; gold = its changed src paths and symbols"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "L03-a",
+   "version": 3,
+   "family": "L03",
+   "split": "train",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Client MCP tool calls are not authorized through a per-server call authorizer after the catalog is materialized lazily, and do not fail closed when none is registered. Where should that issuance happen?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:f6767176afed221b828e1e50b38e93c15b6909d1",
+   "cutoff": "2026-08-18T08:33:36+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._mcp_permission_broker_for._issue"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/mcp/client_catalog.py::ClientMcpSessionService",
+      "symbol:src/optimus/mcp/client_catalog.py::ClientMcpToolService"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus/mcp/client_disposition.py::ClientMcpDisposition"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "merged fix PR #165; gold = its changed src paths and symbols"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "L04-a",
+   "version": 3,
+   "family": "L04",
+   "split": "train",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "During ACP coroutine teardown after a cancellation or an exception, the server can wait forever for another input line or EOF. Where is the reader awaited?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:60d938e8ebe595d09c1dd6650ee7489abfb34c2c",
+   "cutoff": "2026-09-07T17:41:28+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/server.py::AcpStreamServer.serve_ndjson"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "merged fix PR #198; gold = its changed src paths and symbols"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "L05-a",
+   "version": 3,
+   "family": "L05",
+   "split": "development",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "On Windows, Redis runtime shutdown sometimes returns before its own teardown thread has exited, and the loop owner's finalizer has the same problem. Where is shutdown completed?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:e9d6be0c5318b52dbb2efbf7424e29a2afddbc18",
+   "cutoff": "2026-10-02T16:35:20+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/redis/async_bridge.py::RedisLoopOwner.__init__",
+      "symbol:src/optimus/redis/async_bridge.py::RedisLoopOwner._observe_finalization"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/redis/runtime.py::RedisRuntime.close",
+      "symbol:src/optimus/redis/runtime.py::RedisRuntime.close_async",
+      "symbol:src/optimus/redis/runtime.py::_RuntimeLifecycle"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "merged fix PR #219; gold = its changed src paths and symbols"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "L06-a",
+   "version": 3,
+   "family": "L06",
+   "split": "development",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "When an MCP-bearing session/new request fails, its removed session ID stays in the close-once marker set. Where are sessions removed?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:9e7626df3eff9e9a643650dd7af406ba723c120d",
+   "cutoff": "2026-10-14T17:42:49+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/spec.py::InMemoryAcpSpecSessionStore.remove"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "merged fix PR #358; gold = its changed src paths and symbols"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "L07-a",
+   "version": 3,
+   "family": "L07",
+   "split": "development",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Client MCP discovery does not turn real SDK list-tools results into catalog pages and ignores pagination. Where is discovery performed and normalized?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:8c4bfb65494df73b0ef0259edd162561f68ecb86",
+   "cutoff": "2026-10-20T00:42:54+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/mcp/client_catalog.py::ClientMcpDescriptorExposureAdapter.build",
+      "symbol:src/optimus/mcp/client_catalog.py::ClientMcpSessionService.__init__",
+      "symbol:src/optimus/mcp/client_catalog.py::ClientMcpSessionService.list_tools",
+      "symbol:src/optimus/mcp/client_catalog.py::ClientMcpSessionService.register"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/mcp/client_disposition.py::ClientMcpDisposition._resolve_server",
+      "symbol:src/optimus/mcp/client_disposition.py::ClientMcpDisposition.materialize_tool_service"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus/mcp/client_sdk.py::ClientMcpSdkAdapter._call_async",
+      "symbol:src/optimus/mcp/client_sdk.py::ClientMcpSdkAdapter._discover_async",
+      "symbol:src/optimus/mcp/client_sdk.py::ClientMcpSdkAdapter.call"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "merged fix PR #377; gold = its changed src paths and symbols"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "L08-a",
+   "version": 3,
+   "family": "L08",
+   "split": "development",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Where in Optimus can a user choose which model runs a turn from Zed's session settings?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:dbdfaa3210b329c9fae6de2fb80811174e361786",
+   "cutoff": "2026-10-22T17:55:44+05:30",
+   "expected_action": "answer",
+   "required_facts": [
+    "fact-no-model-selector"
+   ],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/session_config.py::build_session_config_options"
+     ]
+    }
+   ],
+   "prohibited_claims": [
+    "claim-model-selector-exists"
+   ],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "capability limit: the answer says no model selector exists and cites the config-options code",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "capability-limit case: no model selector exists at this snapshot (session_config.py docstring)"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "L09-a",
+   "version": 3,
+   "family": "L09",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "After a planning turn's reply cannot be parsed, the next turn receives no corrective notice, so the run hits the repeat limit. Where is the next turn's planner input built?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:dc42eb60ea5c1ed0109f66508a65d18f367c101a",
+   "cutoff": "2026-10-24T02:14:10+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/agent/planning_loop.py::_PlanningIterationRunner.__init__",
+      "symbol:src/optimus/agent/planning_loop.py::_PlanningIterationRunner.run_iteration.build"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/agent/prompts.py::build_multi_turn_planner_input"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "merged fix PR #405; gold = its changed src paths and symbols"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "L10-a",
+   "version": 3,
+   "family": "L10",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "When an EDIT cannot be applied, the run's specific closed failure code never reaches the always-on telemetry event that reports how a run ended. Where is the run result built and emitted?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:159a712b31eda0eb023cb9ede4d44eb5a8a60d2a",
+   "cutoff": "2026-10-24T18:15:18+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/agent/models.py::AgentRunResult"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/agent/runner.py::AgentRunner._build_result",
+      "symbol:src/optimus/agent/runner.py::AgentRunner._edit_failure_result",
+      "symbol:src/optimus/agent/runner.py::AgentRunner._emit_agent_run"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus/telemetry/events.py::TelemetryEvent.agent_run"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "merged fix PR #414; gold = its changed src paths and symbols"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "L11-a",
+   "version": 3,
+   "family": "L11",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "An exception route refuses a billed reply whose router pipeline has exactly one unflagged guardrail stage with every other guardrail fact missing. Where is that reply checked?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:733d6858834c53d3e4d9dd4d524fb419ed558e75",
+   "cutoff": "2026-10-26T11:39:09+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus_gateway/model_policy.py::check_experimental_reply"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus_gateway/upstream_client.py::ProviderMessageResult"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "path:src/optimus_model_policy/experimental.py"
+     ]
+    },
+    {
+     "requirement_id": "R4",
+     "any_of": [
+      "path:src/optimus_security/failure_facts.py"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "merged fix PR #422; gold = its changed src paths and symbols"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "L12-a",
+   "version": 3,
+   "family": "L12",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "On Windows, a launch approval record of about 1,300 to 1,800 characters passes the size check and then crashes in the credential store write. Where are approval records stored?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:35263daa97524f28dad98e11d2fef21a332652ee",
+   "cutoff": "2026-10-28T16:25:53+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/__main__.py::_authorize_or_exit",
+      "symbol:src/optimus/acp/__main__.py::main.run_authorized"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/acp/launch_approval_cli.py::_cmd_approve",
+      "symbol:src/optimus/acp/launch_approval_cli.py::_cmd_run_gateway"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore._ensure_hmac_key",
+      "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore._exclusive_workspace_lock",
+      "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore._workspace_lock_path",
+      "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore.consume_diagnostic_grant",
+      "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore.consume_one_shot",
+      "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore.lookup_durable",
+      "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore.promote_legacy_durable",
+      "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore.read_durable",
+      "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore.revoke_workspace",
+      "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore.rotate_hmac_key",
+      "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore.write_diagnostic_grant",
+      "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore.write_durable",
+      "symbol:src/optimus/acp/launch_approvals.py::KeyringApprovalStore.write_one_shot"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "causal error localization: for each requirement the answer names, as locus:<id>, one of its changed symbols in the cutoff tree (its path only for a module-level change), and that item is retrieved within the first k=5; a filename alone is unlisted evidence",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "merged fix PR #435; gold = its changed src paths and symbols"
+   }
+  }
+ ]
+}

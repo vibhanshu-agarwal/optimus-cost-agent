@@ -1,0 +1,118 @@
+{
+  "schema": "plan12-memory-evaluation-qualification/1",
+  "checkpoint": "Checkpoint 1",
+  "recorded": "2026-10-30",
+  "issue": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389",
+  "reviewed_documents": {
+    "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md": "sha256:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9",
+    "docs/superpowers/plans/2026-10-22-plan-12-5-memory-evaluation-implementation_v3.md": "sha256:c63bdbf26678be9d5d19f13d1270cf31b8e14427cd0308cff1ffa601d163a468"
+  },
+  "checkout": {
+    "branch": "agent/claude/plan12-5-memory-eval",
+    "base": "main a643253 (see manifest.json)",
+    "full_suite_head": "d8fef6c",
+    "code_head": "2ba2f0b",
+    "delta_after_full_suite": "2ba2f0b adds one reviewed rationale to ALLOWED_NON_REPOSITORY_WALKERS in tests/unit/guardrails/test_tracked_file_scanners.py; no product or plan code changed. This record and the operator_sample field of case-review.json follow as a docs-only commit."
+  },
+  "artifacts": {
+    "reports/plan12-memory-evaluation/manifest.json": "sha256:04d58a6695a60f9b878df8e9384a1610876927d45f87e39dbcc95935c8eaeb00",
+    "reports/plan12-memory-evaluation/harness-choice.json": "sha256:b7bad6fbf1f153c185337286e8fa0cdf9b66e04341b89b4786239fcc180af9bd",
+    "tests/fixtures/plan12_memory/lifecycle.json": "sha256:a62b6a97d27f10ce0dc750ef8c7a95fa0ca59c7c1cd6b5dbcbe9149d921d514a",
+    "tests/fixtures/plan12_memory/localization.json": "sha256:07cc94c9b94d2d9ae5a09b6072cdc66f527bbd2767617b0e26230e07be1998dc",
+    "tests/fixtures/plan12_memory/accounting.json": "sha256:b4b2b0e4e15b50413578ad670cb5c3cbf90f075d08df10275b5e94d9ab60c3ce",
+    "tests/fixtures/plan12_memory/splits.json": "sha256:fc1e33c72113a18f5629032c5592c9c4e31633784211b05a988931c39dbd613a",
+    "case-review.json": "updated with this record: operator_sample only",
+    "README.md": "the sanitized Markdown report for this checkpoint"
+  },
+  "environment": "Windows 11, CPython 3.14.4, uv 0.11.29, the worktree's own .venv (uv sync --frozen --extra dev)",
+  "checks": [
+    {
+      "id": "full-suite",
+      "command": "uv run --no-sync python tools/check_product_coverage.py --run-full-suite --groups tools/product-coverage-groups.json --report-json tmp/coverage/product-coverage-report.json --coverage-json tmp/coverage/coverage.json",
+      "head": "d8fef6c, worktree clean before and after",
+      "run_id": "20261030T072455-21604-0b1314",
+      "status": "FAIL (exit 1), resolved",
+      "result": "10559 passed, 2 failed, 52 skipped, 106 deselected, 36 errors in 1:06:08; run context valid, records COMPLETE",
+      "failures": [
+        "test_every_filesystem_walker_is_migrated_or_has_a_reviewed_non_repository_reason: validate_cases' fixture-directory glob had no reviewed rationale. Fixed in 2ba2f0b.",
+        "test_debug_trace_message_rule.py (1 failure, 36 setup errors): two shared pre-commit cache entries had lost their top-level files, so the ast-grep hook environment was unhealthy. Environmental, not branch code. Both entries were set aside and reprovisioned; nodeenv's latest-version lookup currently fails on nodejs.org's v27.0.0-alpha.0.0.0 index entry, so the reinstall pinned node 26.12.1, the version of the old entry."
+      ],
+      "retained_output": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/plan12-5-rework/checkpoint1/full-suite-d8fef6c.log sha256:d760e2b012bc547f23527140a469feb7339f34a5b8961ae5e68529e6947a6056"
+    },
+    {
+      "id": "coverage-floors",
+      "status": "PASS",
+      "result": "optimus 90.2749% (floor 80, required), context_engine 95.9243% (required), optimus_model_policy 94.7038% (required), evidence_handoff 68.4810% (informational, BELOW), aggregate 86.5627% (informational)"
+    },
+    {
+      "id": "coverage-validity",
+      "command": "uv run --no-sync python -m tools.testing.coverage_products validate --coverage-json tmp/coverage/coverage.json --gate-report tmp/coverage/product-coverage-report.json",
+      "status": "FAIL (exit 3), follows full-suite",
+      "result": "full-run validity NOT established: exit_status_differs (the suite exited 1)"
+    },
+    {
+      "id": "ruff",
+      "command": "uv run --no-sync ruff check .",
+      "status": "PASS",
+      "result": "All checks passed"
+    },
+    {
+      "id": "post-run-focused-proof",
+      "command": "python -m pytest --no-cov tests/unit/guardrails/test_tracked_file_scanners.py tests/unit/tools/test_debug_trace_message_rule.py tests/unit/tools/test_plan12_memory_evaluation.py tests/unit/tools/test_plan12_memory_harness.py",
+      "head": "d8fef6c plus an uncommitted working-tree delta: the one walker rationale, committed unchanged afterwards as 2ba2f0b",
+      "tested_delta": "git diff d8fef6c 2ba2f0b, retained as optimus-handoff/sandbox-review-kit/plan12-codex-cli/plan12-5-rework/checkpoint1/focused-run-delta-d8fef6c-2ba2f0b.patch sha256:0320b1624575dcdeb4eb6e4ea81d049ff4b9b6bfba44ffdb6e094d7c9238cac4",
+      "run_id": "20261030T083449-58276-73cf85",
+      "status": "PASS",
+      "result": "173 passed, including every test that failed or errored in the full run",
+      "retained_output": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/plan12-5-rework/checkpoint1/focused-run-20261030T083449/: run.json sha256:4de6b2b6a04bb48e7e99ca4dcd18da9a123b3888c12f604f161ebc69d2bf7849, nodes.jsonl sha256:1bee7d9e02052d3fcf3ada6124872a98ebaf8c61fd7a9926afefd8ec557cbd5d",
+      "note": "Under the 2026-10-29 rule, a fix covered by targeted tests gets no full-suite rerun; PR CI is the second full run."
+    },
+    {
+      "id": "revert-checks",
+      "status": "PASS",
+      "result": "35 of 35 Checkpoint 1 rule mutants, 21 Task 1 grader mutants and 17 Task 3 adapter mutants killed; the walker guardrail's own failure on d8fef6c is its revert proof"
+    },
+    {
+      "id": "pre-commit-hooks",
+      "status": "PASS",
+      "result": "ruff, bandit, ast-grep, config-trust-scan, secret-scan and mypy passed on every commit; the coverage hook was skipped by the one-full-run rule"
+    }
+  ],
+  "requirements": [
+    {"requirement": "Schema and contracts (Task 1)", "checks": ["test_malformed_ids_are_rejected", "test_missing_case_fields_are_rejected", "test_missing_trace_authority_and_coverage_fields_are_rejected", "test_unsupported_schema_and_naive_cutoff_are_rejected", "test_case_extension_constraints", "test_trace_memory_state_must_be_unique", "test_trace_needs_exactly_one_route_record_per_receipt"]},
+    {"requirement": "24 trajectories, 12 localization seeds and accounting cases validate", "checks": ["test_seed_set_validates_with_its_cardinalities", "test_every_seed_event_is_in_the_reviewed_vocabulary", "test_localization_gold_needs_a_symbol_wherever_one_changed", "test_lifecycle_family_without_a_control_is_reported"]},
+    {"requirement": "Split and cutoff rules", "checks": ["test_seed_split_matches_the_task0_manifest", "test_split_manifest_accepts_a_matching_seed", "test_split_manifest_mismatches_are_reported", "test_chronological_split_rejects_a_later_train_cutoff"]},
+    {"requirement": "Known-bad controls fail deterministically", "checks": ["test_prohibited_event_fails_authority_even_with_a_perfect_answer", "test_required_events_must_occur_in_order", "test_cross_project_served_memory_is_a_deterministic_failure", "test_serving_an_ineligible_item_fails_even_if_unused", "test_notice_needs_an_earlier_commit_of_the_same_version_in_the_same_project", "test_keyed_event_ids_match_only_that_item_in_this_project_at_its_version", "test_serving_events_and_served_memory_must_agree", "test_old_root_destruction_is_bound_to_its_rotation_and_happens_once", "test_m23_requires_verification_before_the_pointer_commit", "test_m24g_destroys_once_and_reports_no_completion_without_attestation", "test_future_wrong_scope_and_stale_evidence_fail", "test_missing_fabricated_and_mismatched_citations_fail", "test_contradictory_duplicate_is_never_a_new_charge", "test_case_receipts_must_reach_the_trace_unaltered"]},
+    {"requirement": "No trace is UNRUN; incomplete evidence is INCONCLUSIVE", "checks": ["test_absent_trace_is_unrun_not_pass", "test_honestly_incomplete_trace_is_inconclusive_not_pass", "test_unlisted_equivalent_evidence_is_inconclusive_not_fail", "test_served_memory_without_extraction_is_undecided_not_pass", "test_judge_error_is_inconclusive_but_structural_failures_still_fail", "test_incomplete_accounting_stays_unknown"]},
+    {"requirement": "Retrieval, answer and localization grading", "checks": ["test_support_beyond_the_predeclared_k_does_not_count", "test_expected_rank_is_checked_against_the_served_order", "test_localization_answer_needs_a_retrieved_locus", "test_expected_memory_state_is_graded_including_absence", "test_superseded_history_is_part_of_the_expected_state"]},
+    {"requirement": "Cost accounting", "checks": ["test_replayed_receipt_is_counted_once", "test_shared_gateway_request_id_across_attempts_is_a_conflict", "test_late_receipt_counts_but_breaks_completeness", "test_negative_estimated_savings_stay_visible", "test_savings_label_price_and_counterfactual_rules", "test_repricing_with_a_null_token_category_is_unavailable", "test_accounting_gold_is_compared_with_the_report", "test_accounting_gold_includes_the_savings_figure"]},
+    {"requirement": "One pinned generic-harness choice, runtime obligations unrun (Task 3)", "checks": ["test_harness_choice_pins_one_candidate_and_claims_no_run", "test_request_passes_the_real_gateway_envelope_and_binding", "test_roles_survive_the_gateway_flattening", "test_attempt_outcomes_match_the_gateway", "test_malformed_replies_raise"]},
+    {"requirement": "Cross-agent verification and sampled operator held-out approval (Q29)", "checks": ["case-review.json case_custody", "reviews below", "operator_approval below"]}
+  ],
+  "reviews": [
+    {"reviewer": "Fable", "verdict": "findings F-01..F-06, all applied in 2d65c0e", "comment": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389#issuecomment-6516212393", "sha256": "sha256:7a0ae7565562d624a19a6e75c8d81a1ecd67c9277190c166020261b85b7941be"},
+    {"reviewer": "Claude disposition of the Fable review", "comment": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389#issuecomment-6516216450", "sha256": "sha256:88e66d101af3f9fd3248c36f15b1fff87e77dfbf68033264e90406518d7561bc"},
+    {"reviewer": "Codex CLI round 1", "verdict": "REWORK", "comment": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389#issuecomment-6516439980", "sha256": "sha256:41e43109e36a47e7509372ddde2027b0e5612a66aeae673572edb22842973154"},
+    {"reviewer": "Codex CLI round 2", "verdict": "AGREE WITH CHANGES; the agreed changes were applied in 6af30b8", "comment": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389#issuecomment-6516780058", "sha256": "sha256:acb464a1a8471a3b9816b17d3f65fb908e628655c5edcc7a4fa66431b46cb3a4"},
+    {"reviewer": "Codex CLI round 3", "verdict": "REWORK; applied in 93f7151", "comment": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389#issuecomment-6517159679", "sha256": "sha256:84138c8edb1243634a450763849638b5cbb4fdc0c5d72664311833ff8ac88138"},
+    {"reviewer": "Codex CLI round 4", "verdict": "REWORK (R4-01); applied in d8fef6c", "comment": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389#issuecomment-6517289895", "sha256": "sha256:599743db2713c671b02d42396b55997c6fe06d70257c7eec56312af266bff9e3"},
+    {"reviewer": "Codex CLI round 5", "verdict": "APPROVE (code and fixture review; Codex could not run Python, so tests were reviewed by inspection)", "comment": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389#issuecomment-6517317977", "sha256": "sha256:8daae0150e12f03ba95fc48aeff16ea896d8f72f6647b9a5eacde2b3ed66618b"}
+  ],
+  "operator_approval": {
+    "scope": "Sampled review of the 30 held-out cases under Q29",
+    "sheet": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/plan12-5-rework/checkpoint1/heldout-sample.md sha256:be22bd29d44fe535a7d541ca2301ca3c8b4134c6924fa359e69c9c855a78ecec",
+    "decision": "approved, no corrections",
+    "where": "Operator, in Claude's chat, 2026-10-30"
+  },
+  "unrun": [
+    "Runtime K1-K6 on any real memory, ledger, index or service",
+    "Harness runtime obligations R1-R10 in harness-choice.json",
+    "Model compatibility of the pinned harness with any configured model",
+    "Benchmark quality, statistical acceptance and performance"
+  ],
+  "handoff": {
+    "contracts": "tools/plan12_memory/contracts.py (case, trace, receipt and verdict records), evaluate.py (offline grader, validate CLI) and harness.py (Gateway adapter)",
+    "consumers": "M0b and M1/M3 take the record contracts; #248 runs the native harness and model campaign with its own setup, budget and Q29 approval. No policy, registry or probe integration is required."
+  },
+  "exceptions": "As in the plan's 'Explicit exceptions and custody' table; nothing added."
+}

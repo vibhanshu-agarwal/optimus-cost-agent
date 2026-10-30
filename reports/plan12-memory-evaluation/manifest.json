@@ -1,0 +1,100 @@
+{
+  "schema": "plan12-memory-evaluation-manifest/1",
+  "plan": {
+    "path": "docs/superpowers/plans/2026-10-22-plan-12-5-memory-evaluation-implementation_v3.md",
+    "sha256": "c63bdbf26678be9d5d19f13d1270cf31b8e14427cd0308cff1ffa601d163a468", "sha256_pin": "# pragma: allowlist secret - SHA-256 of the approved plan, not a secret",
+    "issue": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/389"
+  },
+  "task": "Task 0",
+  "recorded": "2026-10-30",
+  "execution_release": "Operator, in Claude's chat on 2026-10-30, after the plan and spec hashes were approved and PR #392 merged; recorded on #389.",
+  "checkout": {
+    "worktree": "optimus-cost-agent-wt-claude-p125mem",
+    "branch": "agent/claude/plan12-5-memory-eval",
+    "base_commit": "a643253e3c4ec20274307d68f4642f184a7ad608", "base_commit_pin": "# pragma: allowlist secret - git commit id, not a secret",
+    "base_tree": "e96c758da80e5f7e3979874d652e210fe1704998", "base_tree_pin": "# pragma: allowlist secret - git tree id, not a secret"
+  },
+  "environment": {
+    "platform": "Windows 11",
+    "python": "3.14.4",
+    "uv": "0.11.29 (901092ee1 2026-07-15)",
+    "git": "2.56.0.windows.1",
+    "setup": "uv sync --frozen --extra dev succeeded in the worktree's own .venv"
+  },
+  "source_recheck": {
+    "absent_on_main": [
+      "tools/plan12_memory",
+      "tests/fixtures/plan12_memory",
+      "tests/unit/tools/test_plan12_memory_evaluation.py",
+      "reports/plan12-memory-evaluation (before this manifest)"
+    ],
+    "related_not_overlapping": "src/optimus/golden/tasks.py is the Phase 1 end-to-end regression evaluator over tests/fixtures/golden_tasks. It is a different domain; Task 1 reuses only its idiom of frozen pydantic models over versioned JSON.",
+    "docs_tests_on_main": "tests/unit/docs: 133 passed, 1 skipped at a643253"
+  },
+  "git_metadata_source": {
+    "repository": "https://github.com/vibhanshu-agarwal/optimus-cost-agent",
+    "visibility": "public",
+    "authority": "The operator's own repository; plan v3's prerequisites name this repository's local history as the available source.",
+    "snapshot_commit": "a643253e3c4ec20274307d68f4642f184a7ad608", "snapshot_commit_pin": "# pragma: allowlist secret - git commit id, not a secret",
+    "snapshot_committed_at": "2026-10-30T00:38:39+05:30",
+    "history": "291 first-parent commits on main since 2026-07-01",
+    "candidate_pool": "32 PRs merged to main whose titles mark a fix: 2026-07: 2, 2026-08: 7, 2026-09: 10, 2026-10: 13",
+    "persisted": "Repository, commit, path and symbol identifiers and hashes only. No source bodies, diffs or raw tool output (B1)."
+  },
+  "cutoff_rule": {
+    "per_case_cutoff": "The first parent of the fix's merge commit. Candidate evidence is limited to that tree.",
+    "expected_locations": "The paths and symbols the fix changes. They are withheld labels, never context shown to the candidate.",
+    "upper_bound": "Every case cutoff precedes the snapshot commit and this branch, so a candidate working at a cutoff tree cannot see these fixtures.",
+    "grouping": "Fixes that share an issue, or a fix and its follow-up PR, stay in one split.",
+    "unavailable_source": "A case whose source is unavailable is reported as such, never filled with later code."
+  },
+  "split": {
+    "unit": "family groups for the lifecycle trajectories; chronological blocks for localization",
+    "lifecycle_groups": {
+      "A notice and citation": ["M01", "M12"],
+      "B speech act": ["M02", "M03", "M07"],
+      "C origin laundering": ["M04", "M05", "M06", "M08"],
+      "D conflict, secrets and untrusted workspace": ["M09", "M10", "M11"],
+      "E project isolation": ["M13", "M18"],
+      "F switch on and off": ["M14", "M15"],
+      "G applicability and strength": ["M16", "M20"],
+      "H continuity": ["M17", "M19"],
+      "I1 restore and backup": ["M21", "M22"],
+      "I2 key rotation": ["M23", "M24"]
+    },
+    "lifecycle_assignment": {
+      "train": ["A", "C", "F", "H", "I2"],
+      "development": ["D", "G"],
+      "held_out": ["B", "E", "I1"]
+    },
+    "lifecycle_counts": {"train": 12, "development": 5, "held_out": 7},
+    "lifecycle_rationale": "Related families never cross a split. Each held-out group has a sibling of the same kind outside it: B against C (origin), E against D (scope and trust), I1 against I2 (recovery).",
+    "localization_assignment": "12 seeds ordered by cutoff date: the earliest 4 train, the next 4 development, the latest 4 held out.",
+    "accounting_assignment": "Synthetic accounting cases are train and development only. Their oracles are deterministic arithmetic and labels, so withholding them adds no tuning protection.",
+    "status": "Draft by Claude. Codex verifies it at Checkpoint 1; the operator approves held-out content by sampled review under Q29. A change after that approval is versioned with its reason."
+  },
+  "label_access": {
+    "store": "All gold, including held-out, is versioned in the repository under tests/fixtures/plan12_memory. It is synthetic content or pointers only.",
+    "readers": "Anyone with repository access, including the implementing agent.",
+    "limitation": "Claude drafts these cases and is the planned implementer of M1 and M3, so this held-out split guards against fixture tuning inside this plan only. The #248 acceptance campaign needs a fresh sealed held-out set that the implementer has not seen, as the Plan 12.4 pilot's round 2 used a fresh sealed split.",
+    "limitation_owner": "#248 evaluation campaign"
+  },
+  "prerequisites": [
+    {"requirement": "Exact-revision approval, execution release and isolated contributor checkout", "status": "satisfied", "evidence": "hashes approved and PR #392 merged as a643253; execution released 2026-10-30; this worktree and branch"},
+    {"requirement": "CPython 3.14+, uv/Git and frozen dev/test environment", "status": "satisfied", "evidence": "environment block above"},
+    {"requirement": "Frozen K1-K6 definitions and post-freeze rotation obligations", "status": "satisfied", "evidence": "spec v4 section 8 and section 6.2; frozen discovery v12 in the handoff folder"},
+    {"requirement": "Readable candidate harness source", "status": "satisfied for metadata", "evidence": "GitHub metadata read 2026-10-30: SWE-agent/mini-swe-agent, MIT, default branch main, not archived, last push 2026-10-26. Selecting the exact commit, dependency inventory and configuration is Task 3."},
+    {"requirement": "Cross-agent case verification and sampled operator approval of the held-out set", "status": "open", "owner": "Claude drafts; Codex verifies at Checkpoint 1; operator samples under Q29"},
+    {"requirement": "Real repository Git history for 12 pointer seeds", "status": "satisfied", "evidence": "git_metadata_source above"},
+    {"requirement": "Independence from M0a-1, #385, M0a-3 and live services", "status": "satisfied", "evidence": "nothing in this plan imports or waits on them"},
+    {"requirement": "No provider credentials or budget needed", "status": "satisfied", "evidence": "zero paid calls planned"}
+  ],
+  "obligations": [
+    {"what": "Codex verification of the split, cases and grader", "owner": "Claude (owner) via Codex CLI", "when": "Checkpoint 1"},
+    {"what": "Fable review before Codex", "owner": "Claude", "when": "Checkpoint 1"},
+    {"what": "Sampled operator approval of held-out content", "owner": "Operator", "when": "Checkpoint 1"},
+    {"what": "Exact harness commit, licence and dependency inventory, configuration", "owner": "Claude", "when": "Task 3"},
+    {"what": "Fresh sealed held-out set for acceptance runs", "owner": "#248", "when": "before acceptance runs"}
+  ],
+  "unrun": "Every implementation, test, harness and K1-K6 result is UNRUN at Task 0. No service, GUI or provider operation was performed."
+}
