@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import stat
 import subprocess
 import sys
 import threading
@@ -23,7 +24,7 @@ def _fail_next_fsync(monkeypatch, count: int = 1) -> dict:
     state = {"left": count, "calls": 0}
 
     def fsync(fd):
-        if state["left"]:
+        if state["left"] and stat.S_ISREG(ob.os.fstat(fd).st_mode):  # record writes, never POSIX directory syncs
             state["left"] -= 1
             state["calls"] += 1
             raise OSError(5, "simulated")
@@ -165,6 +166,27 @@ def test_an_orphans_withheld_gap_still_retracts_what_it_names(tmp_path, monkeypa
 
     assert [r.payload.get("n") for r in scan.records] == [1]
     assert scan.unverified_tail is not None and scan.unverified_tail.payload["kind"] == ob.GAP_KIND
+
+
+def test_an_orphan_whose_gap_segment_never_opened_still_withholds_the_unconfirmed_record(tmp_path, monkeypatch):
+    dead = _writer(tmp_path)
+    dead.append({"kind": "k", "n": 1})
+    _fail_next_fsync(monkeypatch)
+    with pytest.raises(ob.OutboxError):
+        dead.append({"kind": "k", "n": 2})
+
+    def no_directory_sync(directory):
+        raise OSError(5, "simulated")
+
+    monkeypatch.setattr(ob, "_fsync_directory", no_directory_sync)
+    with pytest.raises(ob.OutboxError):
+        dead.append({"kind": "k", "n": 3})  # the gap's successor segment cannot be made durable; then death
+    dead._lock_handle.close()  # type: ignore[union-attr]
+
+    scan = ob.scan_stream(dead.directory, orphan=True)
+
+    assert [r.payload.get("n") for r in scan.records] == [1]
+    assert scan.unverified_tail is not None and scan.unverified_tail.payload.get("n") == 2
 
 
 def test_a_missing_segment_ends_the_stream_at_the_discontinuity(tmp_path):
