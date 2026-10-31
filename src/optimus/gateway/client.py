@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import math
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Protocol
@@ -23,12 +27,39 @@ from optimus.gateway.models import (
 )
 from optimus_model_policy.binding import HOST_GATEWAY_TIMEOUT_SECONDS
 from optimus_security.failure_facts import exception_fact
+from optimus_security.usage_capture_contract import CAPTURE_REQUEST_HEADER, CAPTURE_REQUEST_ID
 
 if TYPE_CHECKING:
     from optimus_model_policy.binding import RouteBinding
 
 # Shared upstream-dispatch budget plus processing slack; delivery depends on responsive Gateway processing and storage.
 DEFAULT_GATEWAY_TIMEOUT_SECONDS = HOST_GATEWAY_TIMEOUT_SECONDS
+
+
+@dataclass(frozen=True)
+class CaptureIntent:
+    """The durable-capture identity of one host request (Plan 12.8): the turn it serves, the host request ID its receipts
+    are numbered from (their `attempt_id` is this ID or this ID plus `:<attempt>`), its stage and optional purpose."""
+
+    turn_id: str
+    host_request_id: str
+    stage: str
+    purpose: str | None = None
+    requested_model: str | None = None
+
+
+CaptureHook = Callable[[CaptureIntent], bool]
+_CURRENT_INTENT: ContextVar[CaptureIntent | None] = ContextVar("optimus_capture_intent", default=None)
+
+
+@contextmanager
+def capturing(intent: CaptureIntent) -> Iterator[None]:
+    """Model requests sent in this block carry ``intent``: the Gateway client records it before it sends."""
+    token = _CURRENT_INTENT.set(intent)
+    try:
+        yield
+    finally:
+        _CURRENT_INTENT.reset(token)
 
 
 def validate_gateway_timeout_seconds(value: object) -> float:
@@ -127,10 +158,12 @@ class GatewayClient:
         settings: OptimusGatewaySettings,
         transport: GatewayTransport | None = None,
         timeout_seconds: float = DEFAULT_GATEWAY_TIMEOUT_SECONDS,
+        capture: CaptureHook | None = None,
     ) -> None:
         self._settings = settings
         self._transport = transport or UrllibGatewayTransport()
         self._timeout_seconds = validate_gateway_timeout_seconds(timeout_seconds)
+        self._capture = capture
 
     def create_response(
         self,
@@ -141,13 +174,14 @@ class GatewayClient:
         route_binding: RouteBinding | None = None,
     ) -> GatewayResponse:
         """``route_binding`` binds the trusted model registry, request identity, output cap and any
-        Contributor disclosure (Plan 12.2 Task 5); it is sent only once registry enforcement is active."""
+        Contributor disclosure (Plan 12.2 Task 5); it is sent only once registry enforcement is active.
+        Inside :func:`capturing`, the request's durable pre-dispatch intent is recorded first (Plan 12.8)."""
         self._settings.validate_trusted_gateway()
         body = self._transport.post_json(
             GatewayRequest(
                 method="POST",
                 url=self._url("/v1/responses"),
-                headers=self._json_headers(),
+                headers=self._dispatch_headers(),
                 payload=build_responses_payload(
                     model=model, input_text=input_text, metadata=metadata, route_binding=route_binding
                 ),
@@ -166,7 +200,7 @@ class GatewayClient:
             GatewayRequest(
                 method="POST",
                 url=self._url("/v1/decisions"),
-                headers=self._json_headers(),
+                headers=self._dispatch_headers(),
                 payload={"model": model, "state": state, "questions": questions, "route_binding": route_binding.to_wire()},
                 timeout_seconds=self._timeout_seconds,
             )
@@ -203,6 +237,20 @@ class GatewayClient:
 
     def _url(self, path: str) -> str:
         return f"{self._settings.gateway_url.rstrip('/')}{path}"
+
+    def _dispatch_headers(self) -> dict[str, str]:
+        """The model request's headers, after its pre-dispatch intent is recorded. Capture never refuses or fails a
+        send: a missing hook, a malformed identity or a hook failure leaves the intent unrecorded and the request
+        unchanged except for the header it would have carried."""
+        headers = self._json_headers()
+        intent = _CURRENT_INTENT.get()
+        if intent is None or not CAPTURE_REQUEST_ID.fullmatch(intent.host_request_id):
+            return headers
+        if self._capture is not None:
+            with contextlib.suppress(Exception):  # capture is best effort here; its own records show the gap
+                self._capture(intent)
+        headers[CAPTURE_REQUEST_HEADER] = intent.host_request_id
+        return headers
 
     def _json_headers(self) -> dict[str, str]:
         headers = self._settings.auth_headers()

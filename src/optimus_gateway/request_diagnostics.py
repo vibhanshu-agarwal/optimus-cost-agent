@@ -8,7 +8,6 @@ cleared once the reply is sent. Nothing here is merged into a response body.
 
 from __future__ import annotations
 
-import contextlib
 import json
 import sys
 import threading
@@ -42,12 +41,35 @@ def noted() -> dict[str, Any]:
     return dict(getattr(_STATE, "facts", None) or {})
 
 
+_copy: Any = None  # the per-user diagnostic copy (Plan 12.8), set by the Gateway's accounting composition
+_stderr_failures = 0
+
+
+def configure_copy(copy: Any) -> None:
+    """Install (or, with None, remove) the per-user diagnostic copy that every log line is also offered to."""
+    global _copy
+    _copy = copy
+
+
+def stderr_failures() -> int:
+    """Log lines the Gateway's stderr refused this process, counted apart from the copy's own failures."""
+    return _stderr_failures
+
+
 def write_log_line(line: str) -> None:
     """One locked write to the Gateway's log (its stderr, persisted as ``local-gateway.log``): concurrent lines never
-    interleave, and a failed or closed stream never stops the request it describes."""
-    with _LOG_LOCK, contextlib.suppress(OSError, ValueError):
-        sys.stderr.write(line + "\n")
-        sys.stderr.flush()
+    interleave, and a failed or closed stream never stops the request it describes. The line is offered to the
+    per-user copy independently, so either failing never affects the other."""
+    global _stderr_failures
+    with _LOG_LOCK:
+        try:
+            sys.stderr.write(line + "\n")
+            sys.stderr.flush()
+        except (OSError, ValueError):
+            _stderr_failures += 1
+    copy = _copy
+    if copy is not None:
+        copy.write(line)  # never blocks and never raises
 
 
 _CLASSIFICATIONS = frozenset({"transient", "permanent"})

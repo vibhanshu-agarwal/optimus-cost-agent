@@ -1,0 +1,35 @@
+{
+  "branch": "agent/claude/plan12-8-memory-durable-capture",
+  "checkout": "C:/worktrees/optimus-cost-agent-worktrees/optimus-cost-agent-wt-claude-p128m0b",
+  "environment": [
+    "P128_CAPTURE_K3_CONFIG (nonsecret released-container configuration)",
+    "P128_CAPTURE_K3_PASSWORD (live DB-tier runs only; never retained, redacted from every log)",
+    "P128_CAPTURE_K3_ACCOUNTING_ROOT / P128_CAPTURE_K3_RUN_ID (boundary run only; no password)"
+  ],
+  "platform": "Windows 11 (10.0.26300), CPython 3.14.4",
+  "postgres": {
+    "admitted_identity": {
+      "container": "optimus-p128-k3",
+      "container_id": "69808a0a4ff33c098bd3dc1276795eed67ebe8e8646d809ab96ca241350180e3",
+      "host_port": 56217,
+      "image_id": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+      "volume": "optimus-p128-k3-data"
+    },
+    "migration": "migrations/optimus_usage/001_durable_capture.sql",
+    "migration_sha256": "hex:90b54892de149c8e6b73bfbdd5ea6f59cd0523c22e0b7c8f79c446e557cded77",
+    "server_version": "16.15"
+  },
+  "psycopg": "3.3.4, libpq 180003",
+  "recorder": {
+    "file": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-90-p128-checkpoint-c/record_evidence.py",
+    "sha256": "hex:40e8c2a1c99e2cf69318c18b492011850823ec5461f67b936b4389f0b4d65987"
+  },
+  "schema_version": 1,
+  "source": {
+    "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "dirty": false,
+    "excluded": "reports/plan12-memory-durable-capture",
+    "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+    "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
+  }
+}

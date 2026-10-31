@@ -1,0 +1,172 @@
+{
+  "adr": null,
+  "claim": "Immutable receipts, atomic cursors and safe compaction",
+  "plan": {
+    "file": "docs/superpowers/plans/2026-10-31-plan-12-8-memory-durable-capture-implementation.md",
+    "sha256": "hex:58d59e21b68e0973f78bd88452f2991536de4034b7ad9c74df01950889172619"
+  },
+  "qualifications": [
+    "The credential-boundary case skips in this run by design (it runs only without the password); see credential-boundary.json."
+  ],
+  "runs": [
+    {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA --junitxml=<junit> -m requires_plan12_capture_postgres tests/integration/usage/test_durable_capture_postgres.py",
+      "exit": 0,
+      "label": "live",
+      "log": "runs/postgres-k3-live.log",
+      "log_sha256": "hex:1c4fbb06e51bc228e0b29f8effbabfff385ce276e9765e441480a1560d72cb0b",
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
+      },
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
+      },
+      "started_utc": "2026-10-31T15:50:44.835347+00:00",
+      "summary": "31 passed, 1 skipped in 33.06s",
+      "tests": [
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_batch_commits_atomically_and_reads_back_from_a_new_connection",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_contradictory_duplicate_is_evidence_and_an_identical_alias_is_linked",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_held_stream_lock_makes_ingest_retryable_within_its_bound",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[before_ack]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[before_commit]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[before_compaction]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[flushed]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[torn]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_late_integrity_failure_from_production_settlement_downgrades_a_certified_epoch",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_late_receipt_or_a_ledger_conflict_downgrades_a_certified_epoch",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_lost_acknowledgement_replays_idempotently",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_receipt_with_no_recorded_intent_is_never_certified",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_sender_ahead_of_the_ledger_starts_with_an_unavailable_span_and_a_different_overlap_is_refused",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_stale_certification_waits_for_the_epoch_and_never_erases_a_downgrade",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_an_alias_reserves_its_attempt_identity_sequentially_and_concurrently",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_an_outage_before_dispatch_grows_a_warned_backlog_that_catches_up_beside_a_later_complete_epoch",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_an_outage_is_retryable_and_committed_rows_survive_a_restart",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_concurrent_drains_of_one_batch_commit_it_once",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_each_host_request_is_answered_by_its_own_gateway_request[False]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_each_host_request_is_answered_by_its_own_gateway_request[True]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_facts_are_immutable_in_the_database[DELETE FROM optimus_usage.capture_event WHERE stream_id = %s]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_facts_are_immutable_in_the_database[TRUNCATE optimus_usage.capture_event CASCADE]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_facts_are_immutable_in_the_database[UPDATE optimus_usage.capture_event SET kind = 'x' WHERE stream_id = %s]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_host_delivery_through_the_real_route_commits_acknowledges_and_compacts",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_migrations_are_pinned_and_the_ledger_instance_is_stable",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes0-False-reasons0]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes1-False-reasons1]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes2-True-reasons2]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes3-False-reasons3]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes4-False-reasons4]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes5-False-reasons5]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_the_host_delivers_over_http_to_a_gateway_process_that_alone_holds_the_ledger_credential",
+          "outcome": "skipped: UNRUN: the credential-boundary case runs only without the ledger password in the pytest environment"
+        }
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "source_head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+  "spec": {
+    "file": "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md",
+    "sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"
+  }
+}

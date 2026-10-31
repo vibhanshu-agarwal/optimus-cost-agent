@@ -6,7 +6,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from optimus_gateway import request_diagnostics
+from optimus_gateway import request_diagnostics, usage_capture
 from optimus_gateway.model_mapping import resolve_model_id
 from optimus_gateway.model_policy import (
     AdmittedRequest,
@@ -123,6 +123,7 @@ def run_model_completion(
     # Minted before the upstream call so every attempt line and the outcome line share it (C9).
     gateway_request_id = f"gw-{uuid.uuid4().hex}"
     request_diagnostics.note(gateway_request_id=gateway_request_id)
+    usage_capture.set_request(gateway_request_id)  # its internal retries are physical attempts of this one request
     try:
         provider_result = upstream_client.create_message(model=provider_model, input_text=input_text)
     except RuntimeError as exc:
@@ -179,15 +180,18 @@ def _run_enforced_completion(
         # Bounded by the recovery rule below: only ``number < MAX_ROUTE_ATTEMPTS`` sends another.
         number += 1
         attempt_id = f"gw-{uuid.uuid4().hex}"
+        usage_capture.set_request(attempt_id)
         if guard is not None:
             try:
                 admission = guard.admit(attempt_id=attempt_id, request_id=admitted.request_id, reserve_usd=_attempt_reservation(policy, admitted))
             except StageCRefusal as exc:
                 status, body = policy_refusal(ModelPolicyRefusal(exc.code, exc.detail, status=503))
                 return status, {**body, **correlation}
+        usage_capture.prepare_attempt()  # Plan 12.8: the capture intent, before the dispatch-time budget check
         if not request_budget_admits(UPSTREAM_ATTEMPT_TIMEOUT_SECONDS):
             # Checked at dispatch, after any admission and recovery delay: nothing is sent that could still be running
             # once the host stops waiting, so this attempt certainly reached no model.
+            usage_capture.abandon_attempt()
             if admission is not None and guard is not None:
                 guard.settle_unbilled(admission, ATTEMPT_NOT_SENT)
             attempts.append(_attempt_record(number, attempt_id, ATTEMPT_NOT_SENT, failure=dict(_REQUEST_BUDGET_FAILURE)))

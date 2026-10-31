@@ -8,6 +8,7 @@ from pathlib import Path
 
 import keyring as _keyring_module
 
+from optimus_gateway import usage_capture
 from optimus_gateway.model_policy import GatewayModelPolicy
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.server import serve_gateway
@@ -22,6 +23,8 @@ from optimus_model_policy.binding import (
 )
 from optimus_model_policy.stage_c import StageCGuard, StageCLedgerError, compose_stage_c_envelope, require_stage_c_profile
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES, compose_test_profile_snapshot
+from optimus_security.accounting_config import AccountingConfigError, accounting_literal
+from optimus_security.accounting_config import read as read_accounting_config
 from optimus_security.launch_manifest import (
     LaunchManifestError,
     read_manifest_hmac_key,
@@ -103,6 +106,14 @@ def main(argv: list[str] | None = None) -> int:
             "registry override, here independently; the signed manifest must bind its exact effective hash."
         ),
     )
+    parser.add_argument(
+        "--accounting-root",
+        default=None,
+        help=(
+            "The accounting root under the trusted config root (Plan 12.8, ADR-032): this Gateway's capture stream and any "
+            "approved accounting configuration. The literal is composed here; the signed manifest must bind it."
+        ),
+    )
     args = parser.parse_args(argv)
     if args.plan12_stage_c_ledger is not None and args.plan12_test_profile is None:
         parser.error("--plan12-stage-c-ledger needs --plan12-test-profile")
@@ -163,6 +174,18 @@ def main(argv: list[str] | None = None) -> int:
             print(f"optimus-local-gateway: Stage C envelope is not usable ({exc.code}); refusing to start.", file=sys.stderr)
             return 2
 
+    # Plan 12.8: compose the accounting literal from the actual root and the configuration bytes found there; the signed
+    # manifest must bind exactly it, so an unapproved or swapped configuration refuses to start.
+    accounting_dir = None if args.accounting_root is None else Path(args.accounting_root)
+    accounting_bound = accounting_config = accounting_refusal = None
+    if accounting_dir is not None:
+        try:
+            captured_literal, accounting_config, accounting_refusal = read_accounting_config(accounting_dir)
+            accounting_bound = accounting_literal(accounting_dir, captured_literal)
+        except AccountingConfigError as exc:
+            print(f"optimus-local-gateway: accounting configuration is not usable ({exc.code}); refusing to start.", file=sys.stderr)
+            return 2
+
     try:
         hmac_key = read_manifest_hmac_key(_keyring_module)
         verify_gateway_child_manifest(
@@ -176,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
             bind_port=config.bind_port,
             model_registry=None if registry is None else approval_literal(registry),
             stage_c_envelope=None if envelope is None else envelope.literal,
+            accounting=accounting_bound,
         )
     except LaunchManifestError as exc:
         print(f"optimus-local-gateway: manifest validation failed ({exc.code}); refusing to start.", file=sys.stderr)
@@ -199,6 +223,14 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         config = replace(config, stage_c_guard=guard)
 
+    accounting = None
+    if accounting_dir is not None:
+        accounting = usage_capture.start_accounting(
+            accounting_dir, accounting_config, refusal=accounting_refusal, keyring_backend=_keyring_module,
+            log=lambda line: print(line, file=sys.stderr),
+        )  # the configuration verified above, never a second read
+        config = replace(config, usage_store=accounting.store)
+
     try:
         server = serve_gateway(config=config)
         host = str(server.server_address[0])
@@ -216,6 +248,8 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         if guard is not None:
             guard.close()
+        if accounting is not None:
+            accounting.stop()
     return 0
 
 

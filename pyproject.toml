@@ -56,7 +56,7 @@ addopts = [
   "--strict-markers",
   "--import-mode=importlib",
   "-m",
-  "not requires_redis and not requires_gateway and not requires_mcp_http and not requires_mcp_stdio and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring and not requires_os_keyring_write and not requires_acpx and not requires_zed and not requires_windows_desktop and not evidence_investigation and not requires_evidence_handoff_postgres and not requires_evidence_handoff_service and not requires_real_agents and not requires_plan12_probe_redis",
+  "not requires_redis and not requires_gateway and not requires_mcp_http and not requires_mcp_stdio and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring and not requires_os_keyring_write and not requires_acpx and not requires_zed and not requires_windows_desktop and not evidence_investigation and not requires_evidence_handoff_postgres and not requires_evidence_handoff_service and not requires_real_agents and not requires_plan12_probe_redis and not requires_plan12_capture_postgres",
 ]
 markers = [
   "requires_redis: integration test that needs a live TimeSeries-capable Redis server",
@@ -76,6 +76,7 @@ markers = [
   "requires_evidence_handoff_service: integration test that needs real Docker Desktop PostgreSQL on loopback plus a real evidence-handoff Streamable HTTP service subprocess",
   "requires_real_agents: end-to-end evidence that needs real native Claude Code, Codex, and Cursor clients with distinct credentials",
   "requires_plan12_probe_redis: Plan 12.7 synthetic K2 load on a released dedicated Redis named by OPTIMUS_PLAN12_PROBE_CONFIG; never the shared test Redis",
+  "requires_plan12_capture_postgres: Plan 12.8 K3 on a released disposable Postgres named by P128_CAPTURE_K3_CONFIG; never another plan's database",
 ]
 
 [tool.coverage.run]

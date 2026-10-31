@@ -1,0 +1,84 @@
+{
+  "adr": null,
+  "claim": "Tests cannot create operator accounting data",
+  "plan": {
+    "file": "docs/superpowers/plans/2026-10-31-plan-12-8-memory-durable-capture-implementation.md",
+    "sha256": "hex:58d59e21b68e0973f78bd88452f2991536de4034b7ad9c74df01950889172619"
+  },
+  "qualifications": [
+    "Both controls skip unless the pytest-process guard protects the Windows per-user root; the default-suite protection result is recorded with the final full suite in qualification.json."
+  ],
+  "runs": [
+    {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA --junitxml=<junit> tests/unit/usage/test_durable_capture.py::test_capture_aimed_at_the_real_config_root_is_refused_visibly_and_creates_nothing tests/unit/optimus_gateway/test_diagnostic_segments.py::test_the_gateway_copy_aimed_at_the_real_config_root_is_refused_and_creates_nothing tests/unit/usage/test_capture_provisioner.py",
+      "exit": 0,
+      "label": "unit",
+      "log": "runs/test-root-isolation-unit.log",
+      "log_sha256": "hex:1c6d441ce10aa612890b2d1d6604a9106f0d38305b894b72df5e2633e2039189",
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
+      },
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
+      },
+      "started_utc": "2026-10-31T15:52:21.148466+00:00",
+      "summary": "10 passed in 1.27s",
+      "tests": [
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_the_gateway_copy_aimed_at_the_real_config_root_is_refused_and_creates_nothing",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_provisioner.py::test_a_matching_root_is_bound",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_provisioner.py::test_a_root_holding_anything_else_is_refused",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_provisioner.py::test_a_root_naming_another_target_or_credential_is_refused[changes0]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_provisioner.py::test_a_root_naming_another_target_or_credential_is_refused[changes1]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_provisioner.py::test_a_root_naming_another_target_or_credential_is_refused[changes2]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_provisioner.py::test_a_root_naming_another_target_or_credential_is_refused[changes3]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_provisioner.py::test_a_root_naming_another_target_or_credential_is_refused[changes4]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_provisioner.py::test_the_bound_root_names_the_admitted_resource_and_the_run",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_capture_aimed_at_the_real_config_root_is_refused_visibly_and_creates_nothing",
+          "outcome": "passed"
+        }
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "source_head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+  "spec": {
+    "file": "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md",
+    "sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"
+  }
+}

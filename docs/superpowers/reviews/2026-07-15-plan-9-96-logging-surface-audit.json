@@ -4723,7 +4723,7 @@
     {
       "key": "optimus_gateway.request_diagnostics:write_log_line:text_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: the Gateway log's one writer (moved from OptimusGatewayHandler._finish): writes an already allowlisted, projected and finally sanitized model_request or model_attempt line and a newline to stderr in one locked write, contained against OSError and ValueError (a closed stream), which the auto-started local Gateway persists as the workspace's .optimus/local-gateway.log. No request body, prompt, reply or secret is written.",
+      "rationale": "Inspection: the Gateway log's one writer (moved from OptimusGatewayHandler._finish): writes an already allowlisted, projected and finally sanitized model_request or model_attempt line and a newline to stderr in one locked write, contained against OSError and ValueError (a closed stream), which the auto-started local Gateway persists as the workspace's .optimus/local-gateway.log. No request body, prompt, reply or secret is written. Plan 12.8: the same line is then offered to the per-user diagnostic copy (non-blocking, never raising), and a refused stderr write is counted instead of silently dropped.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_closed_log_stream_never_breaks_the_reply",
       "evidence_tier": "unit"
@@ -4785,7 +4785,7 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.__main__:run_authorized:stderr_export",
+      "key": "optimus.acp.__main__:_run_authorized:stderr_export",
       "policy": "safe-by-construction",
       "rationale": "Emits only fixed shutdown stage/count fields or the preserved typed startup/configuration messages; no raw exception or client content is added.",
       "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
@@ -5182,6 +5182,246 @@
       "rationale": "Inspection: _wait reads a Redis ResponseError's text only to recognise a loading server, then re-raises the original error unchanged; it exports and persists nothing.",
       "sanitizer": "in-process classification; the error is re-raised, not written",
       "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_a_wait_propagates_probe_defects_but_waits_out_a_restarting_server",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:StreamWriter._roll:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): opens a new outbox segment exclusively under the injected per-user accounting root; it holds only framed allowlisted capture records.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_segments_roll_at_the_size_boundary_and_the_stream_spans_them",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:StreamWriter._write:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): appends one framed, checksummed record whose payload the capture contract allowlists (identity, stage, outcome, usage, cost, coverage references); no prompt, reply, exception text or credential.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_records_round_trip_in_order_with_a_digest_chain",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:StreamWriter.append:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): AST overmatch: append() builds the gap record's integer fields and delegates the write to _write; it writes nothing itself.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_a_failed_fsync_retracts_the_record_through_a_gap_in_a_successor_segment",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:Ticket._resolve:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): AST overmatch: sets two in-memory attributes on a ticket and an Event; no Redis, file or diagnostic sink.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_the_owned_writer_confirms_records_and_rejects_when_full_or_closed",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:_append_durably:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): opens the stream's ack.log under the per-user accounting root to append one acknowledgement (ledger instance, sequence, digest).",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_acknowledgements_bind_to_a_held_record_and_only_advance",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:_append_durably:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): appends one framed acknowledgement (ledger instance, sequence, digest) and fsyncs it; no payload or diagnostic.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_acknowledgements_bind_to_a_held_record_and_only_advance",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:_canonical:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): canonical ASCII JSON of an outbox record frame (stream, sequence, event id, schema, previous digest, allowlisted payload) for its digest and line.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_records_round_trip_in_order_with_a_digest_chain",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:_fsync_directory:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): opens a directory read-only on POSIX solely to fsync its entries; reads and writes nothing.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_records_round_trip_in_order_with_a_digest_chain",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:claim:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): opens the stream's empty lock file to hold or test its lock; nothing is written to it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_a_live_writer_holds_its_stream_and_a_closed_one_can_be_claimed",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:scan_stream:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): AST overmatch: records a fixed verification reason (torn, checksum, malformed, schema) from the module's own ValueError; no external exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_a_damaged_tail_yields_its_verified_prefix",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.usage_capture_contract:build_batch:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): serializes one upload batch: writer, stream id, committed-prefix cursor and the stream's already framed allowlisted records; sent only to the configured Gateway.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_contract.py::test_a_batch_round_trips_and_reverifies_every_line",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.usage.capture_events:digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): canonical JSON of a receipt's replay fingerprint, hashed in memory to a hex: digest; only the digest is persisted, never the serialized facts.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_durable_capture.py::test_equal_receipts_digest_equally_under_both_replay_contracts",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.usage.capture_events:identity_parts:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.8, ADR-032): json.dumps of one attempt identity only to measure its escaped length when sizing continuation parts; the result is discarded, nothing is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_durable_capture.py::test_maximal_identities_split_into_parts_that_each_fit_the_record_cap",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.gateway.client:capturing:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.8, ADR-032): ContextVar.set/reset of the in-memory capture intent for the duration of one request; no Redis, file or diagnostic sink.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_wiring.py::test_the_client_records_the_intent_before_it_sends_and_carries_the_host_request",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.outbox_drain:OutboxDrain.nudge:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.8): sets an in-memory threading.Event to wake the delivery thread; no Redis, file or diagnostic sink.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_delivery.py::test_the_live_stream_is_delivered_to_its_confirmed_sequence_and_acknowledged",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.outbox_drain:OutboxDrain.stop:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.8): sets in-memory threading.Events to stop the delivery thread; no Redis, file or diagnostic sink.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_delivery.py::test_the_live_stream_is_delivered_to_its_confirmed_sequence_and_acknowledged",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.outbox_drain:batches:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.8): json.dumps of one already framed, allowlisted outbox line only to measure its escaped size for batching; the result is discarded.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_delivery.py::test_batches_respect_the_record_count_and_body_limits",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.usage_store:UsageStore._ingest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): serializes one verified record's allowlisted payload (validated by the contract's per-kind schema) into the Gateway-owned ledger's JSONB column; no prompt, reply, exception text or credential.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_contract.py::test_a_record_outside_its_kinds_schema_is_refused",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.usage_store:_identities_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.8): canonical JSON of attempt identities hashed in memory to verify a close's identity digest; only the comparison result is used.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_durable_capture.py::test_large_identity_sets_continue_in_ordered_parts_bound_by_the_close",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.accounting_config:accounting_literal:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): canonical JSON of the accounting root path and the approved configuration's digest literal, signed into the Gateway manifest; no credential.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/security/test_accounting_launch.py::test_an_accounting_manifest_is_its_version_plus_three_and_signs_the_literal",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.server:OptimusGatewayHandler._handle_capture:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8): one fixed reply_undeliverable diagnostic line naming the capture route and status when the bounded reply write times out; no request content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_usage_capture.py::test_a_withheld_capture_body_times_out_instead_of_holding_the_handler",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.usage_capture_contract:_fingerprint:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.8): canonical JSON of a receipt's allowlisted facts hashed in memory to its fingerprint; only the digest is kept.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_contract.py::test_the_ledger_recomputes_receipt_fingerprints_and_enforces_receipt_rules",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments._append:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): appends one copy record under the directory lock to a segment beneath the injected per-user accounting root: a sequence, the UTC time and an allowlisted Gateway diagnostic event (model_request, model_attempt, reply_undeliverable) re-passed through final_sanitize; the record was already projected and sanitized by its producer. Unlisted or unparsable lines are refused and counted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_refused_lines_are_counted_leave_sequence_gaps_and_copied_lines_are_sanitized_again",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments._newest_retained:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): reads the tail of the newest retained copy segment to continue the sequence after a restart; nothing is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_a_restart_continues_the_sequence_in_a_new_segment_after_a_torn_tail",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments.status:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): reads the first line of the oldest retained copy segment to report the retained sequence range; nothing is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_the_total_cap_removes_the_oldest_closed_segments_and_never_the_active_one",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.usage_capture:GatewayAccounting.stop:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): the diagnostic copy's final status line on the Gateway log: integer counters, segment count, retained bytes, UTC date/sequence ranges, a closed flag and a fixed failure code; no request, reply, path or credential.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_gateway_accounting_owns_the_copy_under_its_root_and_closes_it",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments._append:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032; Codex Checkpoint C finding 1): under the directory lock, opens the chosen copy segment to append (or creates a new one exclusively) beneath the injected per-user accounting root, writes one sanitized allowlisted copy record and closes it; no handle is held between lines.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_two_gateway_processes_share_one_sequence_rollover_and_cap",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments._append:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): serializes the copy wrapper (sequence, UTC time) around an allowlisted event after final_sanitize; an oversized record is refused, never split.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_refused_lines_are_counted_leave_sequence_gaps_and_copied_lines_are_sanitized_again",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments._target:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): reads the size and last byte of the day's newest copy segment to decide whether the next line may be appended (never after a torn line); nothing is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_a_restart_continues_the_sequence_in_a_new_segment_after_a_torn_tail",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:_directory_lock:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032; Codex Checkpoint C finding 1): opens the copy directory's empty lock file to serialize the per-user Gateways' appends; nothing is written to it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_two_gateway_processes_share_one_sequence_rollover_and_cap",
       "evidence_tier": "unit"
     }
   ]

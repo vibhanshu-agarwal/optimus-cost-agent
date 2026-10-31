@@ -25,6 +25,7 @@ from urllib.request import (
     build_opener,
 )
 
+from optimus_gateway import usage_capture
 from optimus_model_policy.binding import (
     ATTEMPT_NOT_SENT,
     ATTEMPT_REJECTED,
@@ -284,13 +285,21 @@ def call_with_upstream_retry(
     on_attempt_failure: Callable[[int, str, float, Literal["retry", "terminal"], dict[str, Any] | None], None] | None = None,
     backoff_seconds: tuple[float, ...] = _DEFAULT_BACKOFF_SECONDS,
     attempt_timeout_seconds: float = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
+    before_dispatch: Callable[[], None] | None = None,
+    not_dispatched: Callable[[], None] | None = None,
 ) -> T:
     """Retry only transient upstream faults; reraise the final failure as RuntimeError. ``on_attempt_failure`` also
     gets each failed attempt's bounded cause (correction plan v4, C9). No attempt is dispatched that could outlast the
     host request's budget, at ``attempt_timeout_seconds`` each, checked after any backoff: a first attempt raises
-    :class:`UpstreamBudgetExhausted`, and after a failure that failure is final."""
+    :class:`UpstreamBudgetExhausted`, and after a failure that failure is final. ``before_dispatch`` runs before each
+    dispatch-time budget check (Plan 12.8: the capture's pre-dispatch intent, so its wait never eats the margin the check
+    approved), and ``not_dispatched`` when that check then refuses the attempt."""
     sleeper = sleep or time.sleep
+    if before_dispatch is not None:
+        before_dispatch()
     if not request_budget_admits(attempt_timeout_seconds):
+        if not_dispatched is not None:
+            not_dispatched()
         raise UpstreamBudgetExhausted("no upstream attempt fits in the host request's remaining budget")
 
     def report(failed: tuple[int, str, float, dict[str, Any] | None], disposition: Literal["retry", "terminal"]) -> None:
@@ -318,9 +327,13 @@ def call_with_upstream_retry(
             retrying = retryable and attempt < max_attempts and request_budget_admits(delay + attempt_timeout_seconds)
             if retrying:
                 sleeper(delay)
+                if before_dispatch is not None:
+                    before_dispatch()
                 # Rechecked at dispatch, after the backoff (Codex round 1): if the next attempt no longer fits, this
                 # failure is final rather than a claim that nothing was sent.
                 retrying = request_budget_admits(attempt_timeout_seconds)
+                if not retrying and not_dispatched is not None:
+                    not_dispatched()
             if retrying:
                 retried = failed
                 attempt += 1
@@ -377,9 +390,10 @@ class UrllibOpenAICompatibleClient:
 
         def call() -> ProviderMessageResult:
             try:
-                body, headers = AttemptDeadline(self._timeout_seconds).run(
-                    lambda: _urlopen_json(request, timeout_seconds=self._timeout_seconds, label="upstream")
-                )
+                with usage_capture.physical_attempt():
+                    body, headers = AttemptDeadline(self._timeout_seconds).run(
+                        lambda: _urlopen_json(request, timeout_seconds=self._timeout_seconds, label="upstream")
+                    )
             except AttemptDeadlineExpired as exc:
                 raise _with_failure(RetryableUpstreamError("upstream attempt abandoned"), {"kind": exc.failure_kind}) from exc
             return parse_openai_chat_completion(body, headers, requested_model=model)
@@ -408,6 +422,8 @@ class UrllibOpenAICompatibleClient:
             sleep=self._sleep,
             on_attempt_failure=report_failure,
             attempt_timeout_seconds=self._timeout_seconds,
+            before_dispatch=usage_capture.prepare_attempt,
+            not_dispatched=usage_capture.abandon_attempt,
         )
 
     def create_message_once(
@@ -442,7 +458,8 @@ class UrllibOpenAICompatibleClient:
         opener = self._attempt_opener
         deadline = AttemptDeadline(self._timeout_seconds)
         try:
-            raw, headers = deadline.run(lambda: _read_reply(opener, request, self._timeout_seconds))
+            with usage_capture.physical_attempt():
+                raw, headers = deadline.run(lambda: _read_reply(opener, request, self._timeout_seconds))
         except AttemptDeadlineExpired as exc:
             # Sent only if a connection was accepted before the deadline; a later one is refused before any byte leaves.
             raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN if deadline.accepted else ATTEMPT_NOT_SENT, failure={"kind": exc.failure_kind}) from exc
@@ -495,7 +512,8 @@ class UrllibOpenAICompatibleClient:
         opener = self._attempt_opener
         deadline = AttemptDeadline(self._timeout_seconds)
         try:
-            raw, _headers = deadline.run(lambda: _read_reply(opener, request, self._timeout_seconds))
+            with usage_capture.physical_attempt():
+                raw, _headers = deadline.run(lambda: _read_reply(opener, request, self._timeout_seconds))
         except AttemptDeadlineExpired as exc:
             raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN if deadline.accepted else ATTEMPT_NOT_SENT, failure={"kind": exc.failure_kind}) from exc
         except HTTPError as exc:

@@ -1,0 +1,65 @@
+{
+  "approved": {
+    "approval": "Operator, \"Approve and file\", 2026-10-31, on #454",
+    "plan_sha256": "hex:58d59e21b68e0973f78bd88452f2991536de4034b7ad9c74df01950889172619"
+  },
+  "artifacts": {
+    "reports/plan12-memory-durable-capture/coverage-epochs.json": "hex:fa42e6e70260d1e788ebee98bd3bf44488ad9909b077c360cffff61586970e6a",
+    "reports/plan12-memory-durable-capture/credential-boundary.json": "hex:46a2f5856778fa3892ee4c851b529d500d4870baa712190ae741567e4059e15f",
+    "reports/plan12-memory-durable-capture/diagnostic-retention.json": "hex:d8a01c29c45a4de7c88ab96c2637d33494c02fc8071bce9fa6de631492d877e7",
+    "reports/plan12-memory-durable-capture/execution-context.json": "hex:d064026d75422b68e951e3b4ce17e80c9e08a63add69b1350f53d73c85b9706e",
+    "reports/plan12-memory-durable-capture/outbox-recovery.json": "hex:b5b398cbe492f649134cf22dffe19c85b08204fdc2f6bc517953a2814c80cadd",
+    "reports/plan12-memory-durable-capture/postgres-k3.json": "hex:2f0246322b9f3832004ffd6052730ebf80832cda3668870b3468d47c5d9ee07a",
+    "reports/plan12-memory-durable-capture/qualification.json": "hex:cf379a36e6d05b34cb501fa2ff6115ea135e030b50c460d0064636d1f26acbe2",
+    "reports/plan12-memory-durable-capture/settlement-extension.json": "hex:80b6fbf7e19ca908ba2a436769fe6267912d5eef9c2f03ce30661491ff7e2a58",
+    "reports/plan12-memory-durable-capture/test-root-isolation.json": "hex:c6af397c1f00089bf3c3621a079a386a89a7707385c91c7ee1d2eea3188f0ea4"
+  },
+  "branch": "agent/claude/plan12-8-memory-durable-capture",
+  "code_head": "fa39499 (later commits are docs-only evidence)",
+  "documents": {
+    "docs/decisions/ADR-032-durable-usage-capture-and-gateway-drain.md": "hex:db62df5eeb20694bc61d586d0ef46394e8fa5d42e8f1af446ff399b0870b3667",
+    "docs/superpowers/plans/2026-10-31-plan-12-8-memory-durable-capture-implementation.md": "hex:58d59e21b68e0973f78bd88452f2991536de4034b7ad9c74df01950889172619",
+    "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"
+  },
+  "issue": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/454",
+  "retained_outside_repository": {
+    "files": {
+      "claim-runs-fa39499/coverage-epochs-live.log": "hex:3549e1f0574064be82134c41b5e92eebb7ccbf218c6d7b244c292e0ca3f8c0c0",
+      "claim-runs-fa39499/coverage-epochs-unit.log": "hex:9bccc60b23b83615da4b4665b2fcd5e96a40823c83664a091d031a663ec31801",
+      "claim-runs-fa39499/credential-boundary-boundary.log": "hex:aa3cd8571badc02a22e35e4d5067ae045d5858f2edc4d78cb28b12ca9bfe33c6",
+      "claim-runs-fa39499/credential-boundary-unit.log": "hex:25fdb755238298380904821ba926b3b8c16a92019ff0afeeaf303780884e2ea9",
+      "claim-runs-fa39499/diagnostic-retention-unit.log": "hex:26583a7452594fb6e34fb25e80ae62c96977227fa422d515491d9021577d3fe5",
+      "claim-runs-fa39499/outbox-recovery-live.log": "hex:acba1375ff2cc996c211ec61748f002638fd42bd96ab94c5f4fed02713bc82bc",
+      "claim-runs-fa39499/outbox-recovery-unit.log": "hex:3c10bfb58ed063622159cb98fb3d27ef35207fba8041cb33172edb56a19f518b",
+      "claim-runs-fa39499/postgres-k3-live.log": "hex:1c4fbb06e51bc228e0b29f8effbabfff385ce276e9765e441480a1560d72cb0b",
+      "claim-runs-fa39499/settlement-extension-unit.log": "hex:2ea3f663e45f657d26630c2df0c210fe1c45a1458369cf4d5b3a4d3114a75b2c",
+      "claim-runs-fa39499/test-root-isolation-unit.log": "hex:1c6d441ce10aa612890b2d1d6604a9106f0d38305b894b72df5e2633e2039189",
+      "full-suite-236d7e3.log": "hex:b9a949d50454c90f33ba36a6cc7a8dd68ca4bcecbaf8b3dbb28ff8b366ff9ac3",
+      "full-suite-3c55e2d.log": "hex:1db4456e2fb15046116ccf357f6beb49b78fd5a52501475c14d196505f07b070",
+      "full-suite-dbce019.log": "hex:e168ae7afd115559aa9cd85cdeeaae793c65c437105dd6d33f5975dd20abe0eb",
+      "full-suite-dcd9601.log": "hex:a9fcac0763f0cd0080b7fef0c6b86e575441d91d20e73d14e54d94e9614ba600",
+      "full-suite-wsl-fa39499.log": "hex:081c7b873a7ed3d3323f1943351944368a0e4f01de2b1f70db00608f7a021228",
+      "mutants-c-bounds.log": "hex:d63a567642df9603fb38206a96ea64c1cf694924c073bb9fa3e9187732d959f0",
+      "mutants-c-bounds2.log": "hex:db2494f27cbb0b07798e458adc500e1dda712919b98efae8ab06cc78255b4810",
+      "mutants-c-bounds3.log": "hex:db2494f27cbb0b07798e458adc500e1dda712919b98efae8ab06cc78255b4810",
+      "mutants-c.log": "hex:2c6a4b40e7d9d88b8ef959204a65301139e88bc7defac3f149bf3be33df25b17",
+      "mutants-c2.log": "hex:72e597789f6214201360d7ba6f1a01bcc1c48d7f078eabf9e88679e55adf0096",
+      "mutants-c3.log": "hex:72e597789f6214201360d7ba6f1a01bcc1c48d7f078eabf9e88679e55adf0096",
+      "mutants-c4-prefix.log": "hex:af9939806221cece9434ffb628c2f8449ef4e870752f956c4ee6a90737a1fcc4",
+      "mutants-c4.log": "hex:2749f60a51c61fd8571b7025b938aee986434bc101f8422d73da69a72d0c6f29",
+      "mutants-t4-part2.log": "hex:bb8d2a3fd5e64f8469858d57c88e62b166d66ff06776f9c9ddf432c419da7b98",
+      "mutants-t4.log": "hex:f751f294ed0300c5a2b3cc8474a655cacd96c3801f1a92184cbfb977fe5d4e66",
+      "record_evidence.py": "hex:40e8c2a1c99e2cf69318c18b492011850823ec5461f67b936b4389f0b4d65987",
+      "review-pass1.md": "hex:808a9959590425a7cefd23906acb45e1f5eca0c9b27bc07c9264eb0251521fc0",
+      "review-pass2.md": "hex:ddb9cd138e8fc7eacca38fb9ac91df8a5f60a6911aa5c2182b5c79910738fd58",
+      "review-pass3.md": "hex:a505031ab11a9ba500ce37ab3e42228ea6f61346985fa0965ec040e168f6b41a",
+      "review-pass4.md": "hex:5048f4456cf1e685abca3371307846a13285ce38f9c5fffd74c68faccde30332",
+      "review-pass5.md": "hex:1d2150cbbaa3da0360767156abca8f06c5c083c91515250acb9934b20b93b991",
+      "write_manifest.py": "hex:c102241f0f8c2fd2d66db4bfd0825979cace6d0ffa09d298f03728c23dbd9b38"
+    },
+    "location": "optimus-handoff / sandbox-review-kit / plan12-codex-cli / round-90-p128-checkpoint-c",
+    "note": "Review-kit records on the operator's workstation, not published: full-suite logs, Checkpoint C reviews, revert-check logs, the claim run logs (gitignored under runs/) and the two recorder tools."
+  },
+  "schema": "plan12-memory-durable-capture-manifest/1",
+  "written_at_head": "hex:8462836db023c5069a9ab622cbc391e417f5a358"
+}

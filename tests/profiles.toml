@@ -680,6 +680,7 @@ paths = [
   "tests/unit/mcp/test_client_supervisor.py",
   "tests/unit/mcp/test_local_ipc.py",
   "tests/unit/optimus_gateway/test_server.py",
+  "tests/unit/security/test_accounting_launch.py",
   "tests/unit/security/test_sanitization.py",
   "tests/unit/support/test_concurrency_diagnostics.py",
   "tests/unit/tools/test_bounded_command.py",
@@ -1111,6 +1112,7 @@ serial = [
   "tests/unit/context_engine/test_boundaries.py",
   "tests/unit/guardrails/test_ci_parity.py",
   "tests/unit/guardrails/test_local_secret_scan_encoding.py",
+  "tests/unit/optimus_gateway/test_diagnostic_segments.py",
   "tests/unit/optimus_gateway/test_request_body_rejection.py",
   "tests/unit/support/test_concurrency_diagnostics.py",
   "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py",
@@ -1123,6 +1125,7 @@ serial = [
   "tests/unit/tools/test_run_plan996_acpx_security_evidence.py",
   "tests/unit/tools/test_test_profiles.py",
   "tests/unit/tools/test_verify_plan99_noneditable_install.py",
+  "tests/unit/usage/test_outbox.py",
 ]
 why = "Core tests are in-process product and tool tests with no child process, gate, audit or timing domain; each xdist worker is its own interpreter with its own temporary folders, so they share no in-process state. Listed nodes stay serial: they share a cross-process resource, or (the xdist serial probe) are the runner's serial-remainder control."
 

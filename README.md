@@ -199,6 +199,17 @@ local default, and provider credentials stay Gateway-side and are never
 required locally. Trace export carries no allocated or amortized per-request charge,
 and LangSmith is not a dependency.
 
+Durable usage capture (Plan 12.8, [ADR-032](docs/decisions/ADR-032-durable-usage-capture-and-gateway-drain.md))
+extends the per-session turn settlement without calculating another debit. Every intent, receipt and per-turn
+coverage epoch is appended to an fsynced outbox under `<per-user config root>/accounting/outbox/` and delivered
+through the existing Gateway URL and key to `POST /v1/observability/usage-capture`. Only the Gateway holds the
+ledger's Postgres credential, in its own OS-keyring namespace, named by the nonsecret, launch-approved
+`accounting/gateway-accounting.json`. Without that configuration, or while Postgres is down, model work continues
+and capture accumulates locally. Each delivery pass reports the pending backlog, warning once at 256 MiB or 24 hours
+pending; nothing unacknowledged is deleted. The Gateway also keeps a bounded per-user copy of its diagnostic lines
+under `accounting/gateway-diagnostics/`: 64 MiB or UTC-day segments, kept 30 days within 256 MiB. The workspace's
+`.optimus/local-gateway.log` is unchanged.
+
 ### Phase 1 Retry, Fitness Gates, Golden Tasks, and Release Gate
 
 Plan 8 adds the Sprint 1 validation and release skeleton. `RetryController`

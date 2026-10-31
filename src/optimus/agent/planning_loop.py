@@ -44,6 +44,7 @@ from optimus.gateway.attempts import (
     is_preflight_refusal,
     stops_experimental_route,
 )
+from optimus.gateway.client import CaptureIntent, capturing
 from optimus.gateway.errors import GatewayError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
@@ -1686,10 +1687,12 @@ class _PlanningIterationRunner:
             if bound is not None:
                 metadata["request_id"] = bound.request_id
                 binding["route_binding"] = bound.binding
+            intent = CaptureIntent(self._run_id, f"{self._run_id}:planning:{planning_turn}:{wire_attempt}", "planning", requested_model=self._model)
             try:
-                response = self._gateway_client.create_response(
-                    model=self._model, input_text=prompt, metadata=metadata, **binding
-                )
+                with capturing(intent):
+                    response = self._gateway_client.create_response(
+                        model=self._model, input_text=prompt, metadata=metadata, **binding
+                    )
             except GatewayError as exc:
                 # One classifier for every stage (Codex CP3 ruling R3): each provider attempt is
                 # reported, a proven preflight refusal costs nothing, and anything without settled

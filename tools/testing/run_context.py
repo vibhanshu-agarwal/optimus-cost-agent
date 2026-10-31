@@ -40,7 +40,7 @@ EXCLUDED_BY_DEFAULT = (
     "requires_redis", "requires_gateway", "requires_mcp_http", "requires_mcp_stdio", "e2e", "requires_live_gateway",
     "requires_phoenix", "requires_os_keyring", "requires_os_keyring_write", "requires_acpx", "requires_zed",
     "requires_windows_desktop", "evidence_investigation", "requires_evidence_handoff_postgres",
-    "requires_evidence_handoff_service", "requires_real_agents", "requires_plan12_probe_redis",
+    "requires_evidence_handoff_service", "requires_real_agents", "requires_plan12_probe_redis", "requires_plan12_capture_postgres",
 )
 APPROVED_DEFAULT_MARKER_EXPRESSION = " and ".join(f"not {name}" for name in EXCLUDED_BY_DEFAULT)
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]

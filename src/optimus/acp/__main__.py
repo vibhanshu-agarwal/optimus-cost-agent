@@ -67,6 +67,7 @@ from optimus.redis.runtime import RedisRuntime, RedisRuntimeShutdownIncomplete
 from optimus_model_policy import RegistryError, binding
 from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, COMPOSITION_LITERAL_NAME, BindingError
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES
+from optimus_security.accounting_config import SECURITY_LITERAL_NAME as ACCOUNTING_LITERAL_NAME
 
 _OWNED_READER_TYPES = (StdioByteReader, StdioNdjsonLineReader)
 _FRAMED_WRITER_TYPE = StdioByteWriter
@@ -74,6 +75,7 @@ _FRAMED_WRITER_TYPE = StdioByteWriter
 if TYPE_CHECKING:
     from optimus.acp.stage_c import StageCLaunch
     from optimus.acp.test_composition import TestComposition
+    from optimus.usage.durable_capture import DurableCapture
 
 
 class _BuildServerKwargs(TypedDict):
@@ -86,6 +88,7 @@ class _BuildServerKwargs(TypedDict):
     test_composition: NotRequired[TestComposition]
     stage_c: NotRequired[StageCLaunch]
     auto_composition: NotRequired[AutoComposition]
+    durable_capture: NotRequired[DurableCapture]
 
 
 
@@ -883,6 +886,8 @@ def main(argv: list[str] | None = None) -> int:
             auto_composition=auto_composition is not None,
             stage_c_envelope=None if stage_c_launch is None else stage_c_launch.envelope.literal,
             stage_c_ledger=None if stage_c_launch is None else stage_c_launch.ledger,
+            usage_accounting=True,  # Plan 12.8
+            approved_accounting_config=candidate.security_literals.get(ACCOUNTING_LITERAL_NAME),
         )
 
     lifecycle = ProcessLifecycle(report=_report_shutdown)
@@ -890,6 +895,36 @@ def main(argv: list[str] | None = None) -> int:
     startup_control = False
 
     def run_authorized() -> int:
+        # Plan 12.8 (ADR-032): durable usage capture under the authorized per-user config root. Nothing is written until
+        # the first model call, and a capture failure never stops one.
+        from optimus.usage.durable_capture import DurableCapture
+
+        durable_capture = DurableCapture.at(candidate.operator_paths.config_root)
+        delivery = None if args.check_config else _capture_delivery(durable_capture)
+        try:
+            return _run_authorized(durable_capture)
+        finally:
+            if delivery is not None:
+                delivery.stop()
+            durable_capture.stop()
+
+    def _capture_delivery(durable_capture: DurableCapture) -> Any:
+        """Drain capture to the Gateway-owned ledger through the existing Gateway URL and key, on its own thread. A
+        Gateway not up yet only makes early passes retry; delivery never delays startup or a model call."""
+        from optimus.config.gateway import OptimusGatewaySettings
+        from optimus.gateway.client import GatewayClient
+        from optimus.usage.capture_delivery import CaptureDelivery
+
+        try:
+            delivery = CaptureDelivery(
+                durable_capture, GatewayClient(settings=OptimusGatewaySettings.from_env(agent_environ)), warn=_print_log
+            )
+        except Exception:  # noqa: BLE001 - without delivery, capture stays in the outbox for a later launch
+            return None
+        delivery.start()
+        return delivery
+
+    def _run_authorized(durable_capture: DurableCapture) -> int:
         nonlocal configured_server, startup_control
         startup_failure: BaseException | None = None
         if args.check_config:
@@ -911,6 +946,7 @@ def main(argv: list[str] | None = None) -> int:
                         strict=args.strict,
                         require_timeseries=True,
                         cli_model=args.model,
+                        durable_capture=durable_capture,
                     )
                 except PreflightFailure as exc:
                     print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
@@ -964,6 +1000,7 @@ def main(argv: list[str] | None = None) -> int:
                     "ephemeral_hmac": resolve_ephemeral_hmac_flag(snapshot.values),
                     "workspace_root": workspace_root,
                     "model": args.model,
+                    "durable_capture": durable_capture,
                 }
                 if args.gateway_timeout_seconds is not None:
                     build_server_kwargs["gateway_timeout_seconds"] = args.gateway_timeout_seconds

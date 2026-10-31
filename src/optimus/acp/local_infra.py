@@ -20,6 +20,7 @@ from optimus.acp.process_lifecycle import cleanup_failure, raise_preserving_fail
 from optimus.agent.defaults import default_agent_model
 from optimus.config.gateway import _LOOPBACK_HOSTS, LOCAL_PROVIDER_KEY_NAMES
 from optimus_model_policy.binding import operator_override, trusted_snapshot
+from optimus_security.accounting_config import AccountingConfigError, accounting_literal, accounting_root, config_literal
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 
 # _LOOPBACK_HOSTS reused from optimus.config.gateway (agent-side package, already imported
@@ -467,6 +468,8 @@ def ensure_local_gateway(
     stage_c_envelope: str | None = None,
     stage_c_ledger: Path | None = None,
     auto_composition: bool = False,
+    usage_accounting: bool = False,
+    approved_accounting_config: str | None = None,
 ) -> LocalGatewayProcess | None:
     """Start the local Gateway child using ALREADY-RESOLVED credentials.
 
@@ -528,6 +531,20 @@ def ensure_local_gateway(
         if value:
             child_env[key] = value
 
+    # Plan 12.8 (ADR-032): the Gateway's accounting root under the authorized config root, and the configuration found
+    # there (approved by the launch gate). The Gateway composes the same literal itself; the manifest must bind it.
+    accounting_dir = accounting_root(config_root) if usage_accounting and config_root is not None else None
+    accounting = None
+    if accounting_dir is not None:
+        try:
+            current = config_literal(accounting_dir)
+        except AccountingConfigError as exc:
+            current = f"unusable:{exc.code}"
+        if current != approved_accounting_config:
+            log("optimus-agent: the accounting configuration is not the approved one; the Gateway starts without accounting.")
+            accounting_dir = None
+        else:
+            accounting = accounting_literal(accounting_dir, current)
     manifest = build_gateway_child_manifest(
         workspace_digest=workspace_digest,
         security_snapshot_digest=security_snapshot_digest,
@@ -541,6 +558,7 @@ def ensure_local_gateway(
         policy_version=policy_version,
         model_registry=model_registry,
         stage_c_envelope=stage_c_envelope,
+        accounting=accounting,
     )
     serialized_manifest = serialize_gateway_child_manifest(manifest)
 
@@ -573,6 +591,8 @@ def ensure_local_gateway(
             # that hash, so a Gateway composing anything else refuses to start.
             if auto_composition:
                 profile_argv.append("--auto-composition")
+            if accounting_dir is not None:
+                profile_argv += ["--accounting-root", str(accounting_dir)]
             process = subprocess.Popen(
                 [
                     sys.executable,

@@ -1,0 +1,293 @@
+{
+  "adr": null,
+  "claim": "Coverage remains honest across outage/restart",
+  "plan": {
+    "file": "docs/superpowers/plans/2026-10-31-plan-12-8-memory-durable-capture-implementation.md",
+    "sha256": "hex:58d59e21b68e0973f78bd88452f2991536de4034b7ad9c74df01950889172619"
+  },
+  "qualifications": [
+    "Without a ledger (no configuration, a refused one, or no credential) the Gateway's drain still measures and warns on its backlog and acknowledges nothing (Codex Checkpoint C pass 1, finding 2; tests/unit/optimus_gateway/test_usage_capture.py)."
+  ],
+  "runs": [
+    {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA --junitxml=<junit> tests/unit/usage/test_durable_capture.py tests/unit/optimus_gateway/test_usage_capture.py",
+      "exit": 0,
+      "label": "unit",
+      "log": "runs/coverage-epochs-unit.log",
+      "log_sha256": "hex:9bccc60b23b83615da4b4665b2fcd5e96a40823c83664a091d031a663ec31801",
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
+      },
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
+      },
+      "started_utc": "2026-10-31T15:51:20.763147+00:00",
+      "summary": "37 passed in 7.17s",
+      "tests": [
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_a_malformed_host_request_header_is_never_recorded",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_a_transport_loss_is_uncertain_and_still_propagates",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_a_withheld_capture_body_times_out_instead_of_holding_the_handler",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_an_enforced_decision_attempt_is_recorded_through_the_real_client",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_an_enforced_model_attempt_is_recorded_through_the_real_client",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_an_intent_durable_only_after_the_wait_is_recorded_unconfirmed",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_each_enforced_attempt_id_numbers_from_one",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_legacy_internal_retries_are_each_recorded_under_the_one_request",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_no_request_id_means_no_record",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_the_capture_route_refuses_bad_framing_and_strangers_before_reading_a_body[Authorization: Bearer http-test-secret\\r\\nContent-Length: 1048577\\r\\n-413]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_the_capture_route_refuses_bad_framing_and_strangers_before_reading_a_body[Authorization: Bearer http-test-secret\\r\\nContent-Length: 2\\r\\nContent-Length: 2\\r\\n-400]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_the_capture_route_refuses_bad_framing_and_strangers_before_reading_a_body[Authorization: Bearer http-test-secret\\r\\nTransfer-Encoding: chunked\\r\\n-501]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_the_capture_route_refuses_bad_framing_and_strangers_before_reading_a_body[Authorization: Bearer wrong\\r\\nContent-Length: 100\\r\\n-401]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_the_intent_precedes_the_dispatch_budget_check_and_a_refused_dispatch_is_not_sent",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_the_server_reads_the_host_request_header_for_the_routes_physical_attempt",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_unconfigured_capture_is_a_no_op",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_without_a_ledger_the_gateway_drain_still_measures_and_warns[False-None-not_configured]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_without_a_ledger_the_gateway_drain_still_measures_and_warns[False-digest_mismatch-refused]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_usage_capture.py::test_without_a_ledger_the_gateway_drain_still_measures_and_warns[True-None-credential_absent]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_a_begin_that_never_persisted_cannot_close_complete",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_a_clean_turn_records_begin_intent_receipt_and_a_complete_close_in_order",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_a_late_receipt_after_a_written_close_is_appended_and_the_close_is_not_rewritten",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_a_queued_close_whose_write_fails_reopens_the_epoch",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_a_refused_close_leaves_the_epoch_open_for_a_later_close",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_a_refused_record_keeps_the_epoch_incomplete_and_model_work_proceeds",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_a_terminal_state_with_a_running_worker_snapshots_and_closes_after_settlement",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_an_incomplete_settlement_summary_never_closes_complete",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_an_intent_not_durable_within_the_wait_is_unconfirmed_even_if_written_later",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_capture_aimed_at_the_real_config_root_is_refused_visibly_and_creates_nothing",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_decimals_persist_exactly_beyond_the_context_precision_and_digest_distinctly",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_equal_receipts_digest_equally_under_both_replay_contracts",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_large_identity_sets_continue_in_ordered_parts_bound_by_the_close",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_maximal_identities_split_into_parts_that_each_fit_the_record_cap",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_purposes_default_by_stage_and_memory_is_summarization_only[answer-None-agent.answer]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_purposes_default_by_stage_and_memory_is_summarization_only[summarization-memory.extract-memory.extract]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_stop_records_the_open_epochs_without_closing_them",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_the_receipt_record_is_allowlisted_and_keeps_unknowns_and_presence",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA --junitxml=<junit> -m requires_plan12_capture_postgres tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification tests/integration/usage/test_durable_capture_postgres.py::test_each_host_request_is_answered_by_its_own_gateway_request tests/integration/usage/test_durable_capture_postgres.py::test_a_late_integrity_failure_from_production_settlement_downgrades_a_certified_epoch tests/integration/usage/test_durable_capture_postgres.py::test_a_stale_certification_waits_for_the_epoch_and_never_erases_a_downgrade tests/integration/usage/test_durable_capture_postgres.py::test_a_late_receipt_or_a_ledger_conflict_downgrades_a_certified_epoch tests/integration/usage/test_durable_capture_postgres.py::test_a_receipt_with_no_recorded_intent_is_never_certified tests/integration/usage/test_durable_capture_postgres.py::test_a_sender_ahead_of_the_ledger_starts_with_an_unavailable_span_and_a_different_overlap_is_refused tests/integration/usage/test_durable_capture_postgres.py::test_an_outage_before_dispatch_grows_a_warned_backlog_that_catches_up_beside_a_later_complete_epoch tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows",
+      "exit": 0,
+      "label": "live",
+      "log": "runs/coverage-epochs-live.log",
+      "log_sha256": "hex:3549e1f0574064be82134c41b5e92eebb7ccbf218c6d7b244c292e0ca3f8c0c0",
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
+      },
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
+      },
+      "started_utc": "2026-10-31T15:51:30.935363+00:00",
+      "summary": "19 passed in 26.53s",
+      "tests": [
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[before_ack]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[before_commit]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[before_compaction]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[flushed]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[torn]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_late_integrity_failure_from_production_settlement_downgrades_a_certified_epoch",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_late_receipt_or_a_ledger_conflict_downgrades_a_certified_epoch",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_receipt_with_no_recorded_intent_is_never_certified",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_sender_ahead_of_the_ledger_starts_with_an_unavailable_span_and_a_different_overlap_is_refused",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_stale_certification_waits_for_the_epoch_and_never_erases_a_downgrade",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_an_outage_before_dispatch_grows_a_warned_backlog_that_catches_up_beside_a_later_complete_epoch",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_each_host_request_is_answered_by_its_own_gateway_request[False]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_each_host_request_is_answered_by_its_own_gateway_request[True]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes0-False-reasons0]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes1-False-reasons1]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes2-True-reasons2]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes3-False-reasons3]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes4-False-reasons4]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes5-False-reasons5]",
+          "outcome": "passed"
+        }
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "source_head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+  "spec": {
+    "file": "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md",
+    "sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"
+  }
+}
