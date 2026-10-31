@@ -455,8 +455,7 @@ def _protected_spans(text: str) -> tuple[tuple[int, int], ...]:
             re.compile(rf'(?i)(?:{labels})":\s*String\("({value_pat})"\)'),
         )
         for pattern in patterns:
-            for match in pattern.finditer(text):
-                spans.append((match.start(1), match.end(1)))
+            spans.extend((match.start(1), match.end(1)) for match in pattern.finditer(text))
     spans.sort()
     return tuple(spans)
 

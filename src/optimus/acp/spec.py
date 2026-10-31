@@ -1462,7 +1462,8 @@ class AcpDuplexAdapter:
         params = request.get("params")
         if not isinstance(params, dict) or not isinstance(params.get("cwd"), str):
             return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
-        cwd = Path(params["cwd"]).resolve()
+        # The store also resolves paths synchronously; offloading needs a broader worker/cancellation/shutdown contract.
+        cwd = Path(params["cwd"]).resolve()  # noqa: ASYNC240
         if not cwd.is_relative_to(self._workspace_root):
             return error_response(
                 request.get("id"),
@@ -3253,10 +3254,11 @@ def _permission_approved(permission_result: dict[str, Any]) -> bool:
 
 
 def _text_from_content_blocks(blocks: list[Any]) -> str:
-    texts: list[str] = []
-    for block in blocks:
-        if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str):
-            texts.append(block["text"])
+    texts = [
+        block["text"]
+        for block in blocks
+        if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str)
+    ]
     return "\n".join(texts).strip()
 
 

@@ -88,9 +88,9 @@ _PATH = re.compile(r"[\w./\\-]+\.(?:py|js|ts|tsx|jsx|java|go|rs|rb|cs|cpp|c|h|kt
 
 def rule_score(state: dict[str, Any]) -> float:
     text = state["prompt"]
-    score = 2.0 * min(len(set(m.lower() for m in _COMPLEX.findall(text))), 2)
-    score += 1.0 * min(len(set(m.lower() for m in _MEDIUM.findall(text))), 2)
-    score -= 1.0 * min(len(set(m.lower() for m in _EASY.findall(text))), 2)
+    score = 2.0 * min(len({m.lower() for m in _COMPLEX.findall(text)}), 2)
+    score += 1.0 * min(len({m.lower() for m in _MEDIUM.findall(text)}), 2)
+    score -= 1.0 * min(len({m.lower() for m in _EASY.findall(text)}), 2)
     paths = {m.lower() for m in _PATH.findall(text)}
     files = len(paths) + state["attachments"]["count"]
     score += 1.0 if files >= 3 else 0.0

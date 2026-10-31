@@ -74,8 +74,7 @@ class InMemoryGatewayToolStateStore:
         with self._lock:
             bucket = self._search_results.setdefault(run_id, set())
             bucket.update(source_urls)
-            search_id = f"search-{next(self._search_id_counter)}"
-        return search_id
+            return f"search-{next(self._search_id_counter)}"
 
     def search_result_urls(self, *, run_id: str) -> frozenset[str]:
         with self._lock:

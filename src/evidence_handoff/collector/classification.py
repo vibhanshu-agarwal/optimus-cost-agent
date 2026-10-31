@@ -103,9 +103,7 @@ def classify(
     # Anything that is not cleanly "crash strictly after render" is contradictory —
     # the exact complement of precedence-2's own ordering check.
     for render in renders:
-        for crash in crashes:
-            if not crash.starts_at_ns > render.ends_at_ns:
-                reason_codes.append("contradictory_claims")
+        reason_codes.extend("contradictory_claims" for crash in crashes if not crash.starts_at_ns > render.ends_at_ns)
 
     if reason_codes:
         return _result(

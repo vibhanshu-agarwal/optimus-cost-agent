@@ -486,11 +486,7 @@ def snapshot_workspace_text_files(workspace: Path) -> dict[str, str]:
 
 
 def changed_workspace_files(before: Mapping[str, str], after: Mapping[str, str]) -> list[str]:
-    changed: list[str] = []
-    for key in sorted(set(before) | set(after)):
-        if before.get(key) != after.get(key):
-            changed.append(key)
-    return changed
+    return [key for key in sorted(set(before) | set(after)) if before.get(key) != after.get(key)]
 
 
 def tool_trajectory_from_transcript(transcript: E2eAcpTranscriptWriter) -> list[str]:

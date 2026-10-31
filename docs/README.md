@@ -139,6 +139,9 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Document | What it is |
 |---|---|
+| [Ruff first-tranche disposition and verification](superpowers/reports/2026-10-30-ruff-first-tranche.md) | All 27 original C4/PERF/RET/ASYNC findings, src-only gate, exact-line contracts and provisional Windows evidence under issue #324 |
+| [Ruff first-tranche source and evidence manifest](superpowers/reports/2026-10-30-ruff-first-tranche-manifest.yaml) | Original tested hashes, review-fix delta and retained evidence hashes for the bounded Ruff tranche |
+| [H4 historical replay test-contract repair](superpowers/reports/2026-10-30-h4-historical-replay-test-contract-repair.md) | #447: test-only migration to sealed replay, exact node mappings, retained drift guards and source-bound focused evidence |
 | [Plan 12.2 offline delivery merge record](superpowers/reviews/2026-10-08-plan-12-2-offline-merge-record.md) | PR #276 merged as c509fc8 on 2026-10-08, with Package A (#216 marked merged); offline merge gate complete, not a full CP4 pass; three live obligations remain deferred |
 | [Plan 12.2 CP4 offline delivery disposition](superpowers/reviews/2026-10-08-plan-12-2-cp4-offline-delivery-disposition.md) | Operator decision, 2026-10-08: offline delivery through 2068366 is complete; Luna qualification, the summary-quality receipt and real-editor Task 13 are deferred as UNRUN obligations; not a full CP4 pass |
 | [Plan 12.2 CP4 offline review disposition](superpowers/reviews/2026-10-04-plan-12-2-cp4-offline-review-disposition.md) | Codex accepts the offline batch at cf9bb9d with declared scope; five rulings; full CP4 remains open |
