@@ -4124,9 +4124,24 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     file_policy_committed = b"from optimus.guardrails.file_policy import" in head_workspace_context
     if not file_policy_committed:
         expected -= {file_policy_path}
+    # Plan 12.8 adds durable capture (five paths): the capture writer and its records, which the session store and
+    # the entrypoint import, the operation epochs the dispatcher and preflight import, and the neutral outbox and
+    # contract they share; keyed on HEAD's spec module.
+    capture_paths = {
+        "src/optimus/usage/capture_events.py",
+        "src/optimus/usage/durable_capture.py",
+        "src/optimus/usage/operation_capture.py",
+        "src/optimus_security/durable_outbox.py",
+        "src/optimus_security/usage_capture_contract.py",
+    }
+    head_spec = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/acp/spec.py")
+    capture_committed = b"from optimus.usage.durable_capture import" in head_spec
+    if not capture_committed:
+        expected -= capture_paths
     assert (admission_path in closure) is admission_committed
     assert (secret_paths_path in closure) is secret_paths_committed
     assert (file_policy_path in closure) is file_policy_committed
+    assert (capture_paths <= closure) is capture_committed
     assert (retention_path in closure) is retention_committed
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
@@ -4154,7 +4169,9 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         2 if correction_committed else 0
     ) + tree_committed + composition_committed + stage_c_committed + (2 if ordinary_committed else 0) + runtime_tree_committed + failure_facts_committed + (
         2 if loop_committed else 0
-    ) + tree_moved + line_endings_committed + edits_committed + auto_committed + contract_committed + hybrid_committed + lifecycle_committed + admission_committed + retention_committed + secret_paths_committed + file_policy_committed
+    ) + tree_moved + line_endings_committed + edits_committed + auto_committed + contract_committed + hybrid_committed + lifecycle_committed + admission_committed + retention_committed + secret_paths_committed + file_policy_committed + (
+        5 if capture_committed else 0
+    )
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base
