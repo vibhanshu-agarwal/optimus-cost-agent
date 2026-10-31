@@ -1,0 +1,108 @@
+{
+  "schema": "plan12-memory-durable-capture-qualification/1",
+  "recorded": "2026-10-31",
+  "issue": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/454",
+  "claim": "Regression, coverage and delivery gates",
+  "checkout": {
+    "branch": "agent/claude/plan12-8-memory-durable-capture",
+    "base": "main c839dec",
+    "windows_full_suite_head": "3c55e2d",
+    "code_head": "fa39499",
+    "delta_after_windows_full_suite": "fa39499 adds tests/unit/optimus_gateway/test_diagnostic_segments.py to _REVIEWED_CHEAP_LAUNCHERS in tests/unit/tools/test_test_profiles.py and to the [parallel] serial list in tests/profiles.toml, fixing the Windows run's two failures. Test inventory only; no product code changed. 588cae5 re-records the eight claim files at fa39499 (docs only); this record and manifest.json follow as a docs-only commit."
+  },
+  "full_runs": [
+    {
+      "id": "windows-dcd9601",
+      "platform": "Windows 11 (10.0.26300), CPython 3.14.4",
+      "head": "dcd9601, clean before and after",
+      "run_id": "20261031T103926-43300-2cd507",
+      "run_context": "mode=active reason=default_selection native=valid guard=pytest_process_guard protection=full records=COMPLETE",
+      "status": "FAIL (exit 1), resolved in dbce019",
+      "result": "11245 passed, 2 failed, 54 skipped, 140 deselected in 1:03:01",
+      "failures": [
+        "tests/unit/acp/test_launch_policy.py::TestRegistryInventory::test_every_literal_optimus_source_name_has_one_policy: the OPTIMUS_ACCOUNTING_CONFIG security literal was not a launch-policy environment name. Renamed _accounting_config, like binding's _model_registry.",
+        "tests/unit/optimus_gateway/test_upstream_retry.py::test_stalled_attempts_hold_at_most_their_slots_and_later_ones_fail_at_once: pre-existing on main; the stubs called the real resolver, which took about 11 s on this host's VPN DNS. The stubs now raise socket.gaierror after their sleep."
+      ],
+      "coverage": "optimus 90.2124%, context_engine 95.9243%, optimus_model_policy 94.6816% (required, PASS); evidence_handoff 68.5347% (informational, BELOW); aggregate 86.9273%",
+      "validator": "exit 3, exit_status_differs (follows the suite's exit 1)",
+      "retained_output": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-90-p128-checkpoint-c/full-suite-dcd9601.log hex:a9fcac0763f0cd0080b7fef0c6b86e575441d91d20e73d14e54d94e9614ba600"
+    },
+    {
+      "id": "windows-dbce019",
+      "platform": "Windows 11 (10.0.26300), CPython 3.14.4",
+      "head": "dbce019, clean before and after",
+      "run_id": "20261031T115447-55468-15d267",
+      "run_context": "mode=active reason=default_selection native=valid guard=pytest_process_guard protection=full records=COMPLETE",
+      "status": "PASS (exit 0)",
+      "result": "11247 passed, 54 skipped, 140 deselected in 1:02:39",
+      "coverage": "optimus 90.2124%, context_engine 95.9243%, optimus_model_policy 94.6816% (required, PASS); evidence_handoff 68.5347% (informational, BELOW); aggregate 86.9273%",
+      "validator": "The script first invoked the wrong validator module (exit 1). The correct invocation, python -m tools.testing.coverage_products validate, was appended to the same log: exit 0, full-run validity established.",
+      "accepted_by": "Codex Checkpoint C pass 1 (#454 comment 6543744451), which confirmed the run and noted that its live-tested production delta was confined to the security-literal rename.",
+      "retained_output": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-90-p128-checkpoint-c/full-suite-dbce019.log hex:e168ae7afd115559aa9cd85cdeeaae793c65c437105dd6d33f5975dd20abe0eb"
+    },
+    {
+      "id": "windows-236d7e3",
+      "head": "236d7e3",
+      "status": "ABANDONED",
+      "result": "Started 13:57:39Z and stopped at 14:02:20Z, when Codex Checkpoint C pass 2 (#454 comment 6544366479) required a production change after 236d7e3. It certifies nothing.",
+      "retained_output": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-90-p128-checkpoint-c/full-suite-236d7e3.log hex:b9a949d50454c90f33ba36a6cc7a8dd68ca4bcecbaf8b3dbb28ff8b366ff9ac3"
+    },
+    {
+      "id": "windows-3c55e2d",
+      "platform": "Windows 11 (10.0.26300), CPython 3.14.4",
+      "head": "3c55e2d, clean before and after",
+      "run_id": "20261031T140822-36964-182565",
+      "run_context": "mode=active reason=default_selection native=valid guard=pytest_process_guard protection=full records=COMPLETE",
+      "status": "FAIL (exit 1), resolved in fa39499",
+      "result": "11253 passed, 2 failed, 54 skipped, 140 deselected in 1:04:03",
+      "failures": [
+        "tests/unit/tools/test_test_profiles.py::test_every_file_that_launches_a_child_has_a_reviewed_tier and ::test_no_core_file_that_launches_a_child_runs_on_xdist_workers: the two-Gateway diagnostic copy test added in 236d7e3 launches two writer children, so its file became a launching file with core nodes that was neither reviewed nor kept off the xdist workers. The pre-commit checks ran the child-site census but not test_test_profiles.py, which reads it."
+      ],
+      "coverage": "optimus 90.2279%, context_engine 95.9243%, optimus_model_policy 94.6816% (required, PASS); evidence_handoff 68.5347% (informational, BELOW); aggregate 86.9414%",
+      "coverage_json_sha256": "hex:b070c14e76d83a5a570ab8cdeb26f1756df539eb2e7287a35c615fc61b23d37d",
+      "validator": "exit 3, exit_status_differs (follows the suite's exit 1); full-run validity NOT established. The last established validity is the dbce019 run.",
+      "ruff": "exit 0",
+      "real_root_controls": "Both real-root controls (test_durable_capture.py::test_capture_aimed_at_the_real_config_root_is_refused_visibly_and_creates_nothing and test_diagnostic_segments.py::test_the_gateway_copy_aimed_at_the_real_config_root_is_refused_and_creates_nothing) passed in their call phase, not skipped, under protection=full (tmp/test-runs/20261031T140822-36964-182565/phases.jsonl).",
+      "retained_output": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-90-p128-checkpoint-c/full-suite-3c55e2d.log hex:1db4456e2fb15046116ccf357f6beb49b78fd5a52501475c14d196505f07b070"
+    },
+    {
+      "id": "wsl-fa39499",
+      "platform": "WSL2 Ubuntu 24.04, Linux 6.18.54.1-microsoft-standard-WSL2; native clone /root/p128-wsl, its own uv sync --frozen --extra dev --offline",
+      "head": "fa39499, clean before and after",
+      "run_id": "20261031T151625-422-0f7b38",
+      "run_context": "mode=active reason=default_selection native=unsupported guard=unsupported_platform records=COMPLETE: no native process protection on this platform, and the Windows-only real-root controls skip",
+      "status": "PASS (exit 0)",
+      "result": "11028 passed, 281 skipped, 140 deselected in 0:28:53 (no coverage)",
+      "ruff": "exit 0",
+      "retained_output": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-90-p128-checkpoint-c/full-suite-wsl-fa39499.log hex:081c7b873a7ed3d3323f1943351944368a0e4f01de2b1f70db00608f7a021228"
+    }
+  ],
+  "full_run_disposition": {"decision": "Accept, no rerun", "by": "Operator, in Claude's chat on 2026-10-31", "scope": "fa39499 is accepted on the 3c55e2d Windows full run (every product test passed and every required coverage floor passed; its two failures are fixed by fa39499 and rerun green), the WSL full suite at fa39499 and Linux PR CI, with no further Windows full run. This also disposes of the earlier reruns after product changes (dbce019, the abandoned 236d7e3, 3c55e2d), which Codex Checkpoint C pass 1 asked to have recorded. Coverage validity was last established on dbce019; at 3c55e2d it is not established only because that run exited 1."},
+  "focused_checks": [
+    {"head": "3c55e2d", "result": "tests/unit/optimus_gateway/test_diagnostic_segments.py 19 passed; optimus_gateway and usage units with the walker and child-site inventories 1143 passed; logging-surface verifier passes; Ruff clean"},
+    {"head": "fa39499", "result": "test_test_profiles.py launcher-tier checks and the whole-selection manifest check: 3 passed (run 20261031T151417-20192-61b64e). The 3c55e2d full run is their revert check: it failed exactly these two."}
+  ],
+  "revert_checks": {
+    "tool": "a review-kit mutation script: each mutant must make its selection fail; the file is restored after every case",
+    "final": "At 3c55e2d: 13/13 finding checks killed (mutants-c4.log, mutants-c4-prefix.log), 4/4 boundary checks killed (mutants-c-bounds3.log).",
+    "corrections": [
+      "First pass (mutants-c.log, 10/12): the target-removal and C-4 mutants survived because the tests did not reach those paths. The tests were strengthened (failed-deletion test blocks only the target's neighbour; blocked-writer test made deterministic, asserting thread end and closed handles).",
+      "First boundary pass (mutants-c-bounds.log, 3/4): 'room made one record early' survived; the cap test now asserts the at-cap state before the next line.",
+      "mutants-c4.log 12/13: the 'whole pre-fix copy' case restored HEAD, which already held the fix, so it was a false survivor. Rerun with the pre-fix copy taken from dbce019 (mutants-c4-prefix.log): killed."
+    ],
+    "retained": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-90-p128-checkpoint-c/mutants-*.log"
+  },
+  "inventory_checks": "Logging-surface manifest (verify_plan996_logging_surfaces), tracked-file walkers, child-site census and test profiles: run at 3c55e2d in the full suite and at fa39499 for the two corrected checks.",
+  "checkpoints": [
+    {"checkpoint": "A", "round": 88, "verdict": "ACCEPT at 1a5a54e", "reviews": ["#454 comment 6539910544 (REJECT)", "#454 comment 6539910792 (REJECT)", "#454 comment 6539911014 (ACCEPT)"]},
+    {"checkpoint": "B", "round": 89, "verdict": "ACCEPT at a6d9619", "reviews": ["#454 comment 6539911248 (REJECT)", "#454 comment 6539921372 (REJECT)", "#454 comment 6540081634 (REJECT)", "#454 comment 6540104314 (ACCEPT)"]},
+    {"checkpoint": "C", "round": 90, "verdict": "Source ACCEPTED at 3c55e2d with no findings; final acceptance pending this evidence", "reviews": ["#454 comment 6543744451 (REJECT, 4 findings)", "#454 comment 6544366479 (REJECT, 1 P2)", "#454 comment 6544473316 (ACCEPT source)"]}
+  ],
+  "limitations": [
+    "A dead writer's committed tail can stay local: the ledger holds it, the drain counts it as pending with its damaged bytes and warns on its age, and no probe runs on every orphan pass (Codex Checkpoint C pass 1 ruling; ADR-032).",
+    "Diagnostic copy clock skew: a segment dated in the future by a clock that runs ahead stays selected until the date catches up; it is still rolled at 64 MiB and every record keeps its own time (Codex Checkpoint C pass 3).",
+    "The diagnostic copy is best effort and flushed, not fsynced; it is not an accounting boundary.",
+    "No claim of hardware power-loss survival, provider billing correctness or a generally working Phase 1 agent."
+  ],
+  "linux_ci": "PENDING: the PR's CI run is recorded here after it completes."
+}
