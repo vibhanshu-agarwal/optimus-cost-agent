@@ -25,7 +25,7 @@
     "probe-config.json": "hex:0fc6ebe17d82cee8895182231ba6ec5018f7cd19dfbc9a24d7db1278f4099868",
     "qualification.json": "hex:8ba770effc582e877e5b99fdfcad878d21407bcde61a806fd6da55e030e20cc0",
     "README.md": "hex:4731df0f0fb3d4f273a3a66dae035c4f02d6a0820a33a104c4da31eb4e026323",
-    "verification.json": "hex:2315467c640dade32ed29473818cedc81f2b57964f40de425f087741c98678fb"
+    "verification.json": "hex:c14140689ff20312c57f37710d50bc1e21710193e0b69e76b9b79c7031aa9c72"
   },
   "kit_originals": {
     "attempts-raw/postgres-2026-10-30-dd4834d6d5f642e6970b003654fa59ad.json": "hex:53b414b5c93201542cc32ba367798d0fd573d5cf097114b2213edddb81e25cbf",

@@ -63,7 +63,7 @@
       "the backlog changed after the run started (the plan v4 registry-row edit)",
       "the gate measured commit 5f5a084 / tree e4c648ad, not the current commit and tree"
     ],
-    "disposition": "PENDING: an explicit operator disposition is required for closure (Codex round 85 follow-up 3); the export is not described as validated",
+    "disposition": "ACCEPTED FOR CLOSURE by the operator in Claude's chat on 2026-10-31, choosing 'Accept for closure': the required floors are met and every reason above is kept; the export is not described as validated, and Linux PR CI remains the next gate",
     "retained_log": "sandbox-review-kit/plan12-codex-cli/round-85-p127-checkpoint2/coverage-validate-and-ruff.log",
     "log_sha256": "hex:81a09c158672da19d5145873f0e10870fdb48ad9d76d680c650484098fa35ee7"
   },
