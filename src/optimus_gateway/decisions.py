@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Final
 
-from optimus_gateway import request_diagnostics
+from optimus_gateway import request_diagnostics, usage_capture
 from optimus_gateway.model_policy import ModelPolicyRefusal, admit_decision, check_decision_reply, parse_route_binding
 from optimus_gateway.models import GatewayServiceConfig, authorize_bearer
 from optimus_gateway.responses import (
@@ -87,6 +87,7 @@ def handle_decision_request(
     correlation = {"route_request_id": admitted.request_id, "route_attempts": attempts, "retryable": False}
     attempt_id = f"gw-{uuid.uuid4().hex}"
     request_diagnostics.note(gateway_request_id=attempt_id)
+    usage_capture.set_request(attempt_id)
     if not request_budget_admits(UPSTREAM_ATTEMPT_TIMEOUT_SECONDS):
         # As for a model attempt: nothing is dispatched that could still be running once the host stops waiting.
         attempts.append(_attempt_record(1, attempt_id, ATTEMPT_NOT_SENT, failure=dict(_REQUEST_BUDGET_FAILURE)))

@@ -31,6 +31,9 @@ MAX_BODY_BYTES = 1024 * 1024
 MAX_STRING = 512
 MAX_LIST = 256  # identity lists beyond this continue in further `epoch.identities` parts
 PATH = "/v1/observability/usage-capture"
+# The host request a model call serves, sent by the host and read by the Gateway; never forwarded to a provider.
+CAPTURE_REQUEST_HEADER = "X-Optimus-Capture-Request"
+CAPTURE_REQUEST_ID = re.compile(r"[A-Za-z0-9:._-]{1,512}")
 
 STREAM_START = "stream.start"
 STREAM_END = STREAM_END_KIND

@@ -25,6 +25,7 @@ from urllib.request import (
     build_opener,
 )
 
+from optimus_gateway import usage_capture
 from optimus_model_policy.binding import (
     ATTEMPT_NOT_SENT,
     ATTEMPT_REJECTED,
@@ -377,9 +378,10 @@ class UrllibOpenAICompatibleClient:
 
         def call() -> ProviderMessageResult:
             try:
-                body, headers = AttemptDeadline(self._timeout_seconds).run(
-                    lambda: _urlopen_json(request, timeout_seconds=self._timeout_seconds, label="upstream")
-                )
+                with usage_capture.physical_attempt():
+                    body, headers = AttemptDeadline(self._timeout_seconds).run(
+                        lambda: _urlopen_json(request, timeout_seconds=self._timeout_seconds, label="upstream")
+                    )
             except AttemptDeadlineExpired as exc:
                 raise _with_failure(RetryableUpstreamError("upstream attempt abandoned"), {"kind": exc.failure_kind}) from exc
             return parse_openai_chat_completion(body, headers, requested_model=model)
@@ -442,7 +444,8 @@ class UrllibOpenAICompatibleClient:
         opener = self._attempt_opener
         deadline = AttemptDeadline(self._timeout_seconds)
         try:
-            raw, headers = deadline.run(lambda: _read_reply(opener, request, self._timeout_seconds))
+            with usage_capture.physical_attempt():
+                raw, headers = deadline.run(lambda: _read_reply(opener, request, self._timeout_seconds))
         except AttemptDeadlineExpired as exc:
             # Sent only if a connection was accepted before the deadline; a later one is refused before any byte leaves.
             raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN if deadline.accepted else ATTEMPT_NOT_SENT, failure={"kind": exc.failure_kind}) from exc
@@ -495,7 +498,8 @@ class UrllibOpenAICompatibleClient:
         opener = self._attempt_opener
         deadline = AttemptDeadline(self._timeout_seconds)
         try:
-            raw, _headers = deadline.run(lambda: _read_reply(opener, request, self._timeout_seconds))
+            with usage_capture.physical_attempt():
+                raw, _headers = deadline.run(lambda: _read_reply(opener, request, self._timeout_seconds))
         except AttemptDeadlineExpired as exc:
             raise UpstreamAttemptFailure(ATTEMPT_UNCERTAIN if deadline.accepted else ATTEMPT_NOT_SENT, failure={"kind": exc.failure_kind}) from exc
         except HTTPError as exc:

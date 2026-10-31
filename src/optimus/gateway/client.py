@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 import json
 import math
-import re
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -28,16 +27,13 @@ from optimus.gateway.models import (
 )
 from optimus_model_policy.binding import HOST_GATEWAY_TIMEOUT_SECONDS
 from optimus_security.failure_facts import exception_fact
+from optimus_security.usage_capture_contract import CAPTURE_REQUEST_HEADER, CAPTURE_REQUEST_ID
 
 if TYPE_CHECKING:
     from optimus_model_policy.binding import RouteBinding
 
 # Shared upstream-dispatch budget plus processing slack; delivery depends on responsive Gateway processing and storage.
 DEFAULT_GATEWAY_TIMEOUT_SECONDS = HOST_GATEWAY_TIMEOUT_SECONDS
-# Plan 12.8 (ADR-032): the host request a call serves, for the Gateway's own capture stream. Local to Optimus: the Gateway
-# never forwards it to a provider.
-CAPTURE_REQUEST_HEADER = "X-Optimus-Capture-Request"
-_CAPTURE_REQUEST_ID = re.compile(r"[A-Za-z0-9:._-]{1,512}")
 
 
 @dataclass(frozen=True)
@@ -248,7 +244,7 @@ class GatewayClient:
         unchanged except for the header it would have carried."""
         headers = self._json_headers()
         intent = _CURRENT_INTENT.get()
-        if intent is None or not _CAPTURE_REQUEST_ID.fullmatch(intent.host_request_id):
+        if intent is None or not CAPTURE_REQUEST_ID.fullmatch(intent.host_request_id):
             return headers
         if self._capture is not None:
             with contextlib.suppress(Exception):  # capture is best effort here; its own records show the gap

@@ -7,7 +7,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from optimus_gateway import request_diagnostics
+from optimus_gateway import request_diagnostics, usage_capture
 from optimus_gateway.chat_completions import handle_chat_completions_request
 from optimus_gateway.decisions import DECISIONS_PATH, handle_decision_request
 from optimus_gateway.models import GatewayServiceConfig
@@ -20,6 +20,7 @@ from optimus_gateway.providers import build_tool_dependencies, build_upstream_cl
 from optimus_gateway.responses import handle_responses_request, model_request_log_line
 from optimus_gateway.tool_handlers import TOOL_ROUTE_PATHS, GatewayToolDependencies, handle_tool_request
 from optimus_gateway.upstream_client import UpstreamClient, begin_request_budget, end_request_budget
+from optimus_security.usage_capture_contract import CAPTURE_REQUEST_HEADER
 
 # P11-FU-6: limits for POSTs to routes this handler rejects with 404 (unknown routes and tool routes
 # without configured dependencies). The early 404 used to be written, and the connection closed,
@@ -115,11 +116,14 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
         # Correction plan v4, C9: one request-scoped diagnostic context per model request, read by `_finish` into the
         # log line and cleared once the reply is sent. Never part of a response.
         request_diagnostics.begin()
+        # Plan 12.8: the host request this call serves, for the Gateway's capture stream; local, never forwarded.
+        usage_capture.begin(self.headers.get(CAPTURE_REQUEST_HEADER))
         begin_request_budget()
         try:
             self._handle_post(path, tool_dependencies)
         finally:
             end_request_budget()
+            usage_capture.end()
             request_diagnostics.end()
 
     def _handle_post(self, path: str, tool_dependencies: GatewayToolDependencies | None) -> None:
