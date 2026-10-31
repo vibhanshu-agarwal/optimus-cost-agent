@@ -5279,6 +5279,14 @@
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/usage/test_durable_capture.py::test_equal_receipts_digest_equally_under_both_replay_contracts",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.usage.capture_events:identity_parts:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.8, ADR-032): json.dumps of one attempt identity only to measure its escaped length when sizing continuation parts; the result is discarded, nothing is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_durable_capture.py::test_maximal_identities_split_into_parts_that_each_fit_the_record_cap",
+      "evidence_tier": "unit"
     }
   ]
 }

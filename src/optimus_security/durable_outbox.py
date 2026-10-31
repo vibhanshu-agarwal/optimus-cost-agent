@@ -218,7 +218,9 @@ def scan_stream(stream_dir: Path, *, orphan: bool = False) -> StreamScan:
             placed = []
     tail: tuple[str, Record] | None = None
     if orphan and placed and placed[-1][1].payload.get("kind") != STREAM_END_KIND:
-        tail = placed.pop()
+        last = placed[-1][1]
+        if ack is None or (last.sequence, last.digest) != (ack.sequence, ack.digest):
+            tail = placed.pop()  # an acknowledged last record was committed, so it is settled
     return _scan(stream_id, names, placed, damage, tail)
 
 
@@ -477,6 +479,8 @@ def write_ack(stream_dir: Path, scan: StreamScan, *, ledger_instance: str, seque
     with that record's digest; one that does not advance past the stored acknowledgement is not written (False)."""
     if not (_HEX32.fullmatch(ledger_instance) and _HEX64.fullmatch(digest)) or type(sequence) is not int:
         raise OutboxError("INVALID", "an acknowledgement has a malformed field")
+    if not _scan_of(stream_dir, scan):
+        raise OutboxError("INVALID", "an acknowledgement needs this stream's own scan")
     if not any(record.sequence == sequence and record.digest == digest for record in scan.records):
         raise OutboxError("INVALID", "an acknowledgement names no record this stream holds")
     stored = read_ack(stream_dir)
@@ -494,6 +498,8 @@ def compact(stream_dir: Path, scan: StreamScan, *, ledger_instance: str, active_
     """Delete closed segments whose every verified record lies within the stored acknowledgement of
     ``ledger_instance``; never the active segment, never a damaged one, never anything without that authority.
     Returns the deleted names."""
+    if not _scan_of(stream_dir, scan):
+        return []  # another stream's scan authorizes nothing here
     ack = read_ack(stream_dir)
     if ack is None or ack.ledger_instance != ledger_instance:
         return []
@@ -513,6 +519,12 @@ def compact(stream_dir: Path, scan: StreamScan, *, ledger_instance: str, active_
     if deleted:
         _fsync_directory(stream_dir)
     return deleted
+
+
+def _scan_of(stream_dir: Path, scan: StreamScan) -> bool:
+    """Whether ``scan`` is this stream's: its own identity and every record it holds."""
+    records = (*scan.records, *((scan.unverified_tail,) if scan.unverified_tail else ()))
+    return scan.stream_id == stream_dir.name and all(record.stream_id == stream_dir.name for record in records)
 
 
 def stream_dirs(root: Path) -> Iterator[Path]:

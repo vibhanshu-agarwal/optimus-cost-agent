@@ -417,3 +417,46 @@ def test_a_killed_writer_leaves_a_claimable_stream_with_its_verified_prefix(tmp_
     assert [r.payload["n"] for r in scan.records] == [0, 1]
     assert scan.unverified_tail is not None and scan.unverified_tail.payload["n"] == 2
     assert [d.reason for d in scan.damage] == ["torn"]
+
+
+def test_another_streams_scan_authorizes_no_acknowledgement_or_deletion(tmp_path):
+    a, b = _writer(tmp_path, segment_bytes=200), _writer(tmp_path, segment_bytes=200)
+    for writer in (a, b):
+        for n in range(6):
+            writer.append({"kind": "k", "pad": "w" * 60, "n": n})
+        writer.close()
+    scan_b = ob.scan_stream(b.directory)
+    record_b = scan_b.records[3]
+    before = {p.name: p.read_bytes() for p in a.directory.iterdir()}
+
+    with pytest.raises(ob.OutboxError) as refused:
+        ob.write_ack(a.directory, scan_b, ledger_instance=_LEDGER, sequence=record_b.sequence, digest=record_b.digest)
+    forged = {"ledger_instance": _LEDGER, "stream_id": a.stream_id, "sequence": record_b.sequence, "digest": record_b.digest}
+    (a.directory / "ack.log").write_bytes(ob.frame(a.stream_id, 1, ob.GENESIS, forged).line)  # labelled A, naming B's record
+
+    assert refused.value.code == "INVALID"
+    assert ob.read_ack(a.directory) is not None
+    assert ob.compact(a.directory, scan_b, ledger_instance=_LEDGER, active_segment=None) == [], "B's scan authorizes nothing in A"
+    assert ob.compact(a.directory, ob.scan_stream(a.directory), ledger_instance=_LEDGER, active_segment=None) == [], (
+        "A's own scan holds no record with that digest"
+    )
+    assert {p.name: p.read_bytes() for p in a.directory.iterdir() if p.name != "ack.log"} == {
+        k: v for k, v in before.items() if k != "ack.log"
+    }
+
+
+def test_an_acknowledged_last_record_of_an_orphan_is_kept_and_compaction_proceeds(tmp_path):
+    writer = _writer(tmp_path, segment_bytes=200)
+    for n in range(5):
+        writer.append({"kind": "k", "pad": "v" * 60, "n": n})
+    close = writer.append({"kind": "epoch.close"})
+    writer._abandon_segment()  # dies before stream.end: the process's handles go with it
+    writer._lock_handle.close()  # type: ignore[union-attr]
+    live = ob.scan_stream(writer.directory)
+    ob.write_ack(writer.directory, live, ledger_instance=_LEDGER, sequence=close.sequence, digest=close.digest)
+
+    scan = ob.scan_stream(writer.directory, orphan=True)
+    deleted = ob.compact(writer.directory, scan, ledger_instance=_LEDGER, active_segment=None)
+
+    assert scan.unverified_tail is None and scan.records[-1].digest == close.digest
+    assert deleted == [s.name for s in scan.segments], "every segment is acknowledged and closed"

@@ -349,3 +349,37 @@ def test_capture_aimed_at_the_real_config_root_is_refused_visibly_and_creates_no
     assert run_context_guard.denials() > before, "the guard refused the write"
     assert accounting.exists() == existed and not capture.writer.directory.exists()
     assert json.dumps(capture.writer.stats().__dict__)  # stats stay reportable
+
+
+def test_decimals_persist_exactly_beyond_the_context_precision_and_digest_distinctly():
+    from decimal import localcontext
+
+    first, second = "0.12345678901234567890123456781", "0.12345678901234567890123456782"
+    with localcontext() as context:
+        context.prec = 5
+        texts = [ev.decimal_text(Decimal(v)) for v in (first, second, "0.250", "1E+1", "0E-8")]
+        digests = {ev.digest(_receipt(cost=v).facts()) for v in (first, second)}
+
+    assert texts == [first, second, "0.25", "10", "0"]
+    assert len(digests) == 2, "a contradictory replay can never look identical"
+
+
+def test_maximal_identities_split_into_parts_that_each_fit_the_record_cap(tmp_path):
+    capture = _capture(tmp_path)
+    capture.invocation_opened("s:1")
+    settled = tuple(f"s:{n:04d}:" + "x" * (uc.MAX_STRING - 7) for n in range(50))
+    unknown = settled[:20] + tuple(f"u{n:03d}" + "é" * (uc.MAX_STRING - 4) for n in range(100))  # under MAX_LIST, over the byte cap
+    summary = TurnCostSummary(turn_id="s:1", known_subtotal_usd=Decimal("0"), unknown_attempt_ids=unknown, receipt_ids=settled)
+    assert capture.close(summary)
+    capture.stop()
+
+    lines = {r.digest: r.line for r in ob.scan_stream(capture.writer.directory).records}
+    records = _records(capture)
+    parts = [r for r in records if r["kind"] == uc.EPOCH_IDENTITIES]
+    close = next(r for r in records if r["kind"] == uc.EPOCH_CLOSE)
+
+    assert all(len(line) <= ob.MAX_RECORD_BYTES for line in lines.values())
+    assert [p["part"] for p in parts] == list(range(1, len(parts) + 1)) and close["identity_parts"] == len(parts) >= 2
+    assert tuple(sum((p["settled_attempt_ids"] for p in parts), [])) == settled
+    assert tuple(sum((p["unknown_attempt_ids"] for p in parts), [])) == unknown
+    assert close["identities_digest"] == ev.identity_parts(close["epoch_id"], summary)[1]

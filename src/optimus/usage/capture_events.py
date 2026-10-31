@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from optimus.gateway.models import GatewayUsage
 from optimus.usage.turn_settlement import StageReceipt, TurnCostSummary
+from optimus_security.durable_outbox import MAX_RECORD_BYTES
 from optimus_security.usage_capture_contract import (
     ATTEMPT_RECEIPT,
     EPOCH_IDENTITIES,
@@ -96,10 +97,14 @@ def purpose_for(stage: str, purpose: str | None = None) -> str:
 
 
 def decimal_text(value: Decimal) -> str:
-    """A plain decimal string (never exponent notation); equal decimals give equal text."""
-    if value == 0:
-        return "0"
-    return format(value.normalize(), "f")
+    """The exact plain decimal string (never exponent notation, never rounded by the active context); only
+    insignificant trailing zeros are dropped, so equal decimals give equal text and unequal ones never collide."""
+    if not value.is_finite():
+        raise ValueError("a persisted decimal is finite")
+    text = format(value, "f")  # exact: formatting without a precision applies no context
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return "0" if text in {"", "-0"} else text
 
 
 def _canonical_value(value: Any) -> Any:
@@ -158,20 +163,34 @@ def receipt_payload(receipt: StageReceipt, *, epoch_id: str, late: bool, purpose
     return payload
 
 
+# Room left in each continuation record for its frame and fixed fields.
+_PART_BUDGET = MAX_RECORD_BYTES - 4096
+
+
 def identity_parts(epoch_id: str, summary: TurnCostSummary) -> tuple[list[dict[str, Any]], str]:
-    """The close's ordered continuation records (each list at most `MAX_LIST` IDs; at least one part) and the digest
-    binding all of them, so no identity is silently omitted."""
+    """The close's ordered continuation records and the digest binding all of them, so no identity is silently
+    omitted. Each part holds at most `MAX_LIST` IDs per list and fits the per-record cap by its encoded (escaped)
+    size; there is always at least one part. Settled IDs fill parts first, then unknown IDs, in order."""
     settled, unknown = list(summary.receipt_ids), list(summary.unknown_attempt_ids)
-    count = max(1, -(-max(len(settled), len(unknown)) // MAX_LIST))
+    chunks: list[tuple[list[str], list[str]]] = [([], [])]
+    size = 0
+    for which, identity in [(0, item) for item in settled] + [(1, item) for item in unknown]:
+        cost = len(json.dumps(identity, ensure_ascii=True)) + 1
+        current = chunks[-1]
+        if len(current[which]) >= MAX_LIST or size + cost > _PART_BUDGET:
+            chunks.append(([], []))
+            current, size = chunks[-1], 0
+        current[which].append(identity)
+        size += cost
     parts = [
         {
             "kind": EPOCH_IDENTITIES,
             "epoch_id": epoch_id,
             "part": index + 1,
-            "parts": count,
-            "settled_attempt_ids": settled[index * MAX_LIST : (index + 1) * MAX_LIST],
-            "unknown_attempt_ids": unknown[index * MAX_LIST : (index + 1) * MAX_LIST],
+            "parts": len(chunks),
+            "settled_attempt_ids": settled_ids,
+            "unknown_attempt_ids": unknown_ids,
         }
-        for index in range(count)
+        for index, (settled_ids, unknown_ids) in enumerate(chunks)
     ]
     return parts, digest((epoch_id, tuple(settled), tuple(unknown)))
