@@ -71,6 +71,4 @@ def _looks_like_process_env(mapping: Mapping[object, object]) -> bool:
     keys = {str(key) for key in mapping}
     if keys & _SENSITIVE_ENV_KEY_NAMES:
         return True
-    if "PATH" in keys and ("HOME" in keys or "USERPROFILE" in keys or "SystemRoot" in keys):
-        return True
-    return False
+    return "PATH" in keys and ("HOME" in keys or "USERPROFILE" in keys or "SystemRoot" in keys)

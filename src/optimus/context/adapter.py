@@ -53,9 +53,7 @@ def approval_fact_from_permission(
     """The fact a `session/request_permission` result establishes, decided exactly as the ACP session
     decides whether to apply the plan (`spec._permission_approved`, then the halt check)."""
     outcome = permission_result.get("outcome")
-    if halted:
-        decision = ApprovalDecision.CANCELLED
-    elif isinstance(outcome, Mapping) and outcome.get("outcome") == "cancelled":
+    if halted or (isinstance(outcome, Mapping) and outcome.get("outcome") == "cancelled"):
         decision = ApprovalDecision.CANCELLED
     elif isinstance(outcome, Mapping) and outcome.get("outcome") == "selected" and outcome.get("optionId") == "approve":
         decision = ApprovalDecision.GRANTED
