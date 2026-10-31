@@ -128,13 +128,16 @@ def test_the_literal_follows_the_exact_bytes_and_an_oversized_file_is_refused(tm
 # Launch gate ----------------------------------------------------------------------------------------------------------
 
 @pytest.mark.usefixtures("isolated_windows_known_folders")
-def test_the_launch_gate_binds_the_configuration_and_a_change_needs_reapproval(tmp_path):
+def test_the_launch_gate_binds_the_configuration_and_a_change_needs_reapproval(tmp_path, monkeypatch):
     from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
     from optimus.acp.operator_paths import resolve_authorized_operator_paths
     from tests.unit.acp.conftest import FakeKeyring
     from tests.unit.acp.test_stage_c_launch import _candidate
     from tests.unit.acp.test_test_composition import _ENV
 
+    # POSIX resolves the config root from XDG_CONFIG_HOME / HOME (the Windows fixture does not reach it): keep it temporary.
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     paths = resolve_authorized_operator_paths(workspace_root=tmp_path, snapshot_values=LaunchEnvironmentSnapshot.capture(_ENV).values, platform_name=sys.platform)
     keyring = FakeKeyring()
     without, _ = _candidate(tmp_path, keyring, test_profile=None, stage_c_flag=False)
