@@ -653,11 +653,9 @@ def test_a_handshake_that_finishes_after_the_deadline_still_sends_nothing():
 
 def test_a_slow_name_lookup_cannot_outlast_the_deadline(monkeypatch):
     """Codex round 2: resolution precedes any socket, so only waiting no longer than the deadline bounds it."""
-    real = socket.getaddrinfo
-
     def slow_getaddrinfo(*args, **kwargs):
         time.sleep(3)
-        return real(*args, **kwargs)
+        raise socket.gaierror(11001, "getaddrinfo failed")  # never the host's resolver: it can take 11 s to fail a name
 
     monkeypatch.setattr(socket, "getaddrinfo", slow_getaddrinfo)
     started = time.monotonic()
@@ -721,11 +719,9 @@ def test_stalled_attempts_hold_at_most_their_slots_and_later_ones_fail_at_once(m
     for earlier in [t for t in threading.enumerate() if t.name == "optimus-upstream-attempt"]:
         earlier.join(10)  # workers abandoned by earlier tests, so the count below is this test's own
     monkeypatch.setattr(upstream_module, "_ATTEMPT_SLOTS", threading.BoundedSemaphore(2))
-    real = socket.getaddrinfo
-
     def stalled_getaddrinfo(*args, **kwargs):
         time.sleep(2)
-        return real(*args, **kwargs)
+        raise socket.gaierror(11001, "getaddrinfo failed")  # a real lookup could outlive the joins below
 
     monkeypatch.setattr(socket, "getaddrinfo", stalled_getaddrinfo)
 

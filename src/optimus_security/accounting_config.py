@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 CONFIG_NAME = "gateway-accounting.json"
-SECURITY_LITERAL_NAME = "OPTIMUS_ACCOUNTING_CONFIG"
+SECURITY_LITERAL_NAME = "_accounting_config"  # not an environment variable, like binding's "_model_registry"
 KEYRING_SERVICE = "optimus-gateway-accounting"  # the Gateway's own namespace, apart from approvals and credentials
 _MAX_BYTES = 16 * 1024
 _KEYS = frozenset({"schema_version", "host", "port", "database", "user", "credential_name", "connect_timeout_seconds"})

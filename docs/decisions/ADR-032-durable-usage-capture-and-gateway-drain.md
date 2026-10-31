@@ -45,7 +45,7 @@ Two existing facts constrain where things live:
 
 **Configuration and launch binding.**
 - The ledger's connection facts live in `<config_root>/accounting/gateway-accounting.json`: endpoint, database, role, connect timeout and the name of the password's entry in the Gateway's keyring namespace (`optimus-gateway-accounting`). Exactly that shape is accepted, so a password can never be read from it.
-- The launch gate binds the file's exact bytes as the security literal `OPTIMUS_ACCOUNTING_CONFIG`, so the operator approves it and any change needs re-approval. Without the file there is no literal, and existing approvals are unchanged.
+- The launch gate binds the file's exact bytes as the security literal `_accounting_config` (named like the other non-environment literals, such as `_model_registry`), so the operator approves it and any change needs re-approval. Without the file there is no literal, and existing approvals are unchanged.
 - The signed Gateway manifest carries an optional accounting literal: the accounting root and the approved configuration literal. A manifest with it has its own version plus 3; manifests without it keep their versions and bytes. The parent passes the root only when the file still matches the approved literal.
 - The Gateway composes the same literal itself and refuses to start unless the manifest binds exactly it. It opens the ledger lazily, with no connection at startup.
 - Both processes drain their streams with one neutral drain (`optimus_security.outbox_drain`): the host over HTTP, the Gateway by committing directly.
