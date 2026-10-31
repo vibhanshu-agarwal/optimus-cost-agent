@@ -10,7 +10,7 @@
     "reports/plan12-memory-durable-capture/execution-context.json": "hex:d064026d75422b68e951e3b4ce17e80c9e08a63add69b1350f53d73c85b9706e",
     "reports/plan12-memory-durable-capture/outbox-recovery.json": "hex:b5b398cbe492f649134cf22dffe19c85b08204fdc2f6bc517953a2814c80cadd",
     "reports/plan12-memory-durable-capture/postgres-k3.json": "hex:2f0246322b9f3832004ffd6052730ebf80832cda3668870b3468d47c5d9ee07a",
-    "reports/plan12-memory-durable-capture/qualification.json": "hex:7389c62e1feff6d6aeadfe09a403e78d9abc265d16c6a9d3cb8339cba564fa45",
+    "reports/plan12-memory-durable-capture/qualification.json": "hex:e84d025575d5038184c137d13994cc36f99478a2118172cddfdfa0d5957abba6",
     "reports/plan12-memory-durable-capture/settlement-extension.json": "hex:80b6fbf7e19ca908ba2a436769fe6267912d5eef9c2f03ce30661491ff7e2a58",
     "reports/plan12-memory-durable-capture/test-root-isolation.json": "hex:c6af397c1f00089bf3c3621a079a386a89a7707385c91c7ee1d2eea3188f0ea4"
   },
@@ -53,11 +53,12 @@
       "review-pass1.md": "hex:808a9959590425a7cefd23906acb45e1f5eca0c9b27bc07c9264eb0251521fc0",
       "review-pass2.md": "hex:ddb9cd138e8fc7eacca38fb9ac91df8a5f60a6911aa5c2182b5c79910738fd58",
       "review-pass3.md": "hex:a505031ab11a9ba500ce37ab3e42228ea6f61346985fa0965ec040e168f6b41a",
+      "review-pass4.md": "hex:5048f4456cf1e685abca3371307846a13285ce38f9c5fffd74c68faccde30332",
       "write_manifest.py": "hex:c102241f0f8c2fd2d66db4bfd0825979cace6d0ffa09d298f03728c23dbd9b38"
     },
     "location": "optimus-handoff / sandbox-review-kit / plan12-codex-cli / round-90-p128-checkpoint-c",
     "note": "Review-kit records on the operator's workstation, not published: full-suite logs, Checkpoint C reviews, revert-check logs, the claim run logs (gitignored under runs/) and the two recorder tools."
   },
   "schema": "plan12-memory-durable-capture-manifest/1",
-  "written_at_head": "hex:588cae5a588b6e8ab308fcce6d3fcf3b3a9884b3"
+  "written_at_head": "hex:64db3c5b4b4186f5a24ce1b87a6461fb189235a3"
 }
