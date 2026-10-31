@@ -38,6 +38,7 @@ DEFAULT_PURPOSES = {
     "answer": "agent.answer",
     "summarization": "context.summary",
     "classification": "auto.classify",
+    "operation": "operation.call",
 }
 DIGEST_VERSION = "capture-facts-v1"
 _USAGE_FIELDS = (

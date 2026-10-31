@@ -46,7 +46,7 @@ INTEGRITY_FAILURE = "integrity.failure"
 GATEWAY_ATTEMPT_INTENT = "gateway.attempt.intent"
 GATEWAY_ATTEMPT_OUTCOME = "gateway.attempt.outcome"
 
-STAGES = frozenset({"planning", "answer", "summarization", "classification"})
+STAGES = frozenset({"planning", "answer", "summarization", "classification", "operation"})
 OUTCOMES = frozenset({"completed", "failed", "not_sent", "rejected", "uncertain", "unattributed"})
 
 _HEX32 = re.compile(r"[0-9a-f]{32}")

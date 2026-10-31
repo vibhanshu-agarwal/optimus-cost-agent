@@ -4785,7 +4785,7 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.__main__:run_authorized:stderr_export",
+      "key": "optimus.acp.__main__:_run_authorized:stderr_export",
       "policy": "safe-by-construction",
       "rationale": "Emits only fixed shutdown stage/count fields or the preserved typed startup/configuration messages; no raw exception or client content is added.",
       "sanitizer": "fixed fields or AST overmatch; no raw diagnostic retention",
@@ -5286,6 +5286,14 @@
       "rationale": "AST overmatch (Plan 12.8, ADR-032): json.dumps of one attempt identity only to measure its escaped length when sizing continuation parts; the result is discarded, nothing is written.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/usage/test_durable_capture.py::test_maximal_identities_split_into_parts_that_each_fit_the_record_cap",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.gateway.client:capturing:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.8, ADR-032): ContextVar.set/reset of the in-memory capture intent for the duration of one request; no Redis, file or diagnostic sink.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_wiring.py::test_the_client_records_the_intent_before_it_sends_and_carries_the_host_request",
       "evidence_tier": "unit"
     }
   ]

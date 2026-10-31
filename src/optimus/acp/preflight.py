@@ -4,11 +4,15 @@ import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from optimus.acp.local_infra import DEFAULT_REDIS_URL
 from optimus.agent.state_store import validate_redis_url
 from optimus.redis.runtime import RedisRuntime, RedisRuntimeShutdownIncomplete
 from optimus_model_policy.binding import RouteBinding
+
+if TYPE_CHECKING:
+    from optimus.usage.durable_capture import DurableCapture
 
 DEFAULT_REDIS_URL_HINT = DEFAULT_REDIS_URL
 _LOCAL_STARTUP_RUNBOOK = (
@@ -33,9 +37,11 @@ def run_preflight(
     strict: bool = False,
     require_timeseries: bool = False,
     cli_model: str | None = None,
+    durable_capture: DurableCapture | None = None,
 ) -> str:
     """Validate operator environment. Returns the validated Redis URL on success. ``cli_model`` is the launch's
-    own ``--model``, which the strict auth probe resolves exactly as the launch does."""
+    own ``--model``, which the strict auth probe resolves exactly as the launch does. ``durable_capture`` gives the
+    strict probe's model call its own coverage epoch (Plan 12.8)."""
     env = os.environ if environ is None else environ
     _require_gateway_credentials(env)
     redis_url = _require_redis_url(env)
@@ -51,7 +57,7 @@ def run_preflight(
         if require_timeseries:
             _require_redis_timeseries(runtime)
         if strict:
-            _require_gateway_auth(env, cli_model=cli_model)
+            _require_gateway_auth(env, cli_model=cli_model, durable_capture=durable_capture)
         if workspace_root is not None:
             _require_workspace_root(workspace_root)
     except BaseException as exc:
@@ -176,7 +182,7 @@ def _probe_route_binding(model_id: str, shared_secret: str, *, auto: bool = Fals
     return bound.binding
 
 
-def _require_gateway_auth(environ: Mapping[str, str], *, cli_model: str | None = None) -> None:
+def _require_gateway_auth(environ: Mapping[str, str], *, cli_model: str | None = None, durable_capture: DurableCapture | None = None) -> None:
     """
     Validates the authentication credentials for the Optimus gateway using preflight checks. This function attempts to
     initiate a request to the gateway with provided environment configurations to ensure that the credentials are valid.
@@ -201,7 +207,7 @@ def _require_gateway_auth(environ: Mapping[str, str], *, cli_model: str | None =
     from optimus_model_policy.binding import auto_snapshot
 
     settings = OptimusGatewaySettings.from_env(environ)
-    client = GatewayClient(settings=settings)
+    client = GatewayClient(settings=settings) if durable_capture is None else GatewayClient(settings=settings, capture=durable_capture.hook)
     gateway_url = environ.get("OPTIMUS_GATEWAY_URL", "").strip()
     try:
         # The probe uses the launch's own model (its --model, else the environment, else the default), and an
@@ -213,11 +219,15 @@ def _require_gateway_auth(environ: Mapping[str, str], *, cli_model: str | None =
     except (AgentModelError, RouteIdentityError) as exc:
         raise PreflightFailure(exit_code=2, user_message=f"AGENT_MODEL_INVALID: {exc}") from exc
     try:
-        client.create_response(
-            model=probe_model,
-            input_text="preflight",
-            metadata={"purpose": "preflight_auth_probe"},
-            route_binding=route_binding,
+        from optimus.usage.operation_capture import captured_operation
+
+        captured_operation(
+            durable_capture,
+            kind="preflight_probe",
+            requested_model=probe_model,
+            call=lambda: client.create_response(
+                model=probe_model, input_text="preflight", metadata={"purpose": "preflight_auth_probe"}, route_binding=route_binding
+            ),
         )
     except GatewayHttpError as exc:
         if exc.status_code in {401, 403}:

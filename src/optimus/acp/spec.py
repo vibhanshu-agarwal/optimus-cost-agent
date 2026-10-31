@@ -135,6 +135,7 @@ if TYPE_CHECKING:
     from optimus.context.assembly import DispatchReading
     from optimus.gateway.route_binding import RequestReading, RoutePolicy, TurnRouteBinder
     from optimus.telemetry.jsonl import JsonlTelemetryWriter
+    from optimus.usage.durable_capture import DurableCapture
 
 
 def _operator_line(line: str) -> None:
@@ -443,7 +444,8 @@ class AcpPromptTurn:
 
 
 class InMemoryAcpSpecSessionStore:
-    def __init__(self) -> None:
+    def __init__(self, *, capture: DurableCapture | None = None) -> None:
+        self._capture = capture  # Plan 12.8: shared by every session's settlement; None captures nothing
         self._sessions: dict[str, AcpSpecSession] = {}
         self._closed_state_ids: set[str] = set()
         self._retention: SessionRetentionOwner | None = None
@@ -462,10 +464,12 @@ class InMemoryAcpSpecSessionStore:
         return self._create_unchecked(cwd=cwd, conversation=conversation)
 
     def _create_unchecked(self, *, cwd: Path, conversation: ConversationState | None = None) -> AcpSpecSession:
+        session_id = f"session-{uuid.uuid4().hex}"
         session = AcpSpecSession(
-            session_id=f"session-{uuid.uuid4().hex}",
+            session_id=session_id,
             cwd=cwd.resolve(),
             conversation=conversation,
+            cost_settlement=TurnSettlement(capture=self._capture, session_id=session_id),
         )
         self._sessions[session.session_id] = session
         return session
@@ -2066,6 +2070,8 @@ class AcpDuplexAdapter:
                 # Every exit projects what this turn's receipts settled; the projection is idempotent and
                 # later receipts keep updating it (Plan 12.2 Task 11; Codex CP3 ruling R2).
                 self._apply_settled_cost(session, turn)
+                # Plan 12.8: the turn's terminal state closes its coverage epoch once every worker has settled.
+                session.cost_settlement.finalize_turn(turn.run_id)
                 self._report_context_faults(turn)
                 # Recompute after any cancellation so settlement telemetry is exact even for a turn that
                 # ends without a commit (Plan 12.2 Task 2). After transport teardown this is a no-op.

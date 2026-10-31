@@ -41,7 +41,7 @@ from optimus.gateway.attempts import (
     is_preflight_refusal,
     stops_experimental_route,
 )
-from optimus.gateway.client import GatewayClient
+from optimus.gateway.client import CaptureIntent, GatewayClient, capturing
 from optimus.gateway.models import GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.guardrails.runtime_tree import has_runtime_component, resolve_target, target_reserved
@@ -540,15 +540,16 @@ class AgentRunner:
             # Release supplement V1: the request meter reads the bound route's capacity.
             scope.route.record_dispatch(planner_input)
         try:
-            response = self._gateway_client.create_response(
-                model=scope.model,
-                input_text=planner_input,
-                metadata=_with_request_id(
-                    {"run_id": request.run_id, "session_id": request.session_id, "purpose": "agent_plan", "task": request.task},
-                    bound,
-                ),
-                **_binding_kwargs(bound),
-            )
+            with capturing(CaptureIntent(request.run_id, f"{request.run_id}:planning:1:1", "planning", requested_model=scope.model)):
+                response = self._gateway_client.create_response(
+                    model=scope.model,
+                    input_text=planner_input,
+                    metadata=_with_request_id(
+                        {"run_id": request.run_id, "session_id": request.session_id, "purpose": "agent_plan", "task": request.task},
+                        bound,
+                    ),
+                    **_binding_kwargs(bound),
+                )
         except Exception as exc:
             # Every attempt is accounted for, known or not, before the failure propagates as it always
             # has (an accounting-integrity error propagates instead).
@@ -1841,20 +1842,21 @@ class AgentRunner:
             scope.route.record_dispatch(chat_input)
         identity = _identity(bound)
         try:
-            response = self._gateway_client.create_response(
-                model=scope.model,
-                input_text=chat_input,
-                metadata=_with_request_id(
-                    {
-                        "run_id": request.run_id,
-                        "session_id": request.session_id,
-                        "purpose": "advisory_answer",
-                        "task": request.task,
-                    },
-                    bound,
-                ),
-                **_binding_kwargs(bound),
-            )
+            with capturing(CaptureIntent(request.run_id, f"{request.run_id}:answer:1:1", "answer", requested_model=scope.model)):
+                response = self._gateway_client.create_response(
+                    model=scope.model,
+                    input_text=chat_input,
+                    metadata=_with_request_id(
+                        {
+                            "run_id": request.run_id,
+                            "session_id": request.session_id,
+                            "purpose": "advisory_answer",
+                            "task": request.task,
+                        },
+                        bound,
+                    ),
+                    **_binding_kwargs(bound),
+                )
         except Exception as exc:
             # One classifier for every stage (Codex CP3 ruling R3): a proven preflight refusal cost
             # nothing; transport loss or any failure without settled usage stays unknown. An

@@ -38,6 +38,7 @@ from optimus.gateway.attempts import (
     attempts_from_failure,
     stops_experimental_route,
 )
+from optimus.gateway.client import CaptureIntent, capturing
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
 from optimus.gateway.models import GatewayDecision
 from optimus.gateway.route_binding import registry_route_identity
@@ -221,7 +222,8 @@ class HybridClassifier:
         attempts: tuple[ProviderAttempt, ...] | None = None
         try:
             try:
-                decision = self._client.create_decision(model=self._model, state=state, questions=QUESTIONS, route_binding=binding)
+                with capturing(CaptureIntent(call.run_id, base, "classification", requested_model=self._model)):
+                    decision = self._client.create_decision(model=self._model, state=state, questions=QUESTIONS, route_binding=binding)
             except Exception as exc:  # noqa: BLE001 - every failure is classified; transport loss stays unknown
                 failure = exc
             attempts = self._account(call, base, None, decision=decision, failure=failure)

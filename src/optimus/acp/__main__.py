@@ -74,6 +74,7 @@ _FRAMED_WRITER_TYPE = StdioByteWriter
 if TYPE_CHECKING:
     from optimus.acp.stage_c import StageCLaunch
     from optimus.acp.test_composition import TestComposition
+    from optimus.usage.durable_capture import DurableCapture
 
 
 class _BuildServerKwargs(TypedDict):
@@ -86,6 +87,7 @@ class _BuildServerKwargs(TypedDict):
     test_composition: NotRequired[TestComposition]
     stage_c: NotRequired[StageCLaunch]
     auto_composition: NotRequired[AutoComposition]
+    durable_capture: NotRequired[DurableCapture]
 
 
 
@@ -890,6 +892,17 @@ def main(argv: list[str] | None = None) -> int:
     startup_control = False
 
     def run_authorized() -> int:
+        # Plan 12.8 (ADR-032): durable usage capture under the authorized per-user config root. Nothing is written until
+        # the first model call, and a capture failure never stops one.
+        from optimus.usage.durable_capture import DurableCapture
+
+        durable_capture = DurableCapture.at(candidate.operator_paths.config_root)
+        try:
+            return _run_authorized(durable_capture)
+        finally:
+            durable_capture.stop()
+
+    def _run_authorized(durable_capture: DurableCapture) -> int:
         nonlocal configured_server, startup_control
         startup_failure: BaseException | None = None
         if args.check_config:
@@ -911,6 +924,7 @@ def main(argv: list[str] | None = None) -> int:
                         strict=args.strict,
                         require_timeseries=True,
                         cli_model=args.model,
+                        durable_capture=durable_capture,
                     )
                 except PreflightFailure as exc:
                     print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
@@ -964,6 +978,7 @@ def main(argv: list[str] | None = None) -> int:
                     "ephemeral_hmac": resolve_ephemeral_hmac_flag(snapshot.values),
                     "workspace_root": workspace_root,
                     "model": args.model,
+                    "durable_capture": durable_capture,
                 }
                 if args.gateway_timeout_seconds is not None:
                     build_server_kwargs["gateway_timeout_seconds"] = args.gateway_timeout_seconds

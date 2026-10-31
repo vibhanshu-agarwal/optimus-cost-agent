@@ -696,8 +696,10 @@ class AcpStreamServer:
         monotonic_clock: Callable[[], float] = monotonic,
         admission_limits: AdmissionLimits = DEFAULT_LIMITS,
         session_retention_policy: SessionRetentionPolicy = DEFAULT_SESSION_RETENTION_POLICY,
+        durable_capture: Any | None = None,
     ) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
+        self._durable_capture = durable_capture  # Plan 12.8: each session's settlement appends to it
         self._admission_limits = admission_limits
         self._session_retention_policy = session_retention_policy
         self._ignored_notifications = 0
@@ -1018,7 +1020,7 @@ class AcpStreamServer:
         self._serving_dedicated = dedicated
         self._serving_dedicated_owned = owned_dedicated and join_dedicated_writer
         outbound = NdjsonOutboundChannel(writer, dedicated_writer=dedicated)
-        sessions = InMemoryAcpSpecSessionStore()
+        sessions = InMemoryAcpSpecSessionStore(capture=self._durable_capture)
         adapter = AcpDuplexAdapter(
             runner=agent_runner,
             workspace_root=workspace_root,

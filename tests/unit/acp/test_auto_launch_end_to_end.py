@@ -123,7 +123,7 @@ def launch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setattr("optimus.acp.preflight.run_preflight", lambda environ, **kwargs: "redis://localhost:6379/0")
     monkeypatch.setattr("optimus.acp.bootstrap.RedisRuntime.from_url", lambda url: FakeRedisRuntime())
     monkeypatch.setattr("optimus.acp.bootstrap.build_client_mcp_runtime", lambda **kwargs: _fake_client_runtime())
-    monkeypatch.setattr(bootstrap_module, "_build_gateway_client", lambda *, settings, timeout_seconds: GatewayClient(settings=settings, transport=gateway))
+    monkeypatch.setattr(bootstrap_module, "_build_gateway_client", lambda *, settings, timeout_seconds, durable_capture=None: GatewayClient(settings=settings, transport=gateway))
     monkeypatch.setattr(TelemetryFanout, "__call__", lambda self, event: events.append(event))
     monkeypatch.setattr(acp_server, "AcpDuplexAdapter", lambda **kwargs: adapters.append(AcpDuplexAdapter(**kwargs)) or adapters[-1])
     environ = {"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765", "OPTIMUS_API_KEY": SHARED_SECRET, "OPTIMUS_REDIS_URL": "redis://localhost:6379/0"}

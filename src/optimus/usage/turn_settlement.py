@@ -18,6 +18,12 @@ incomplete until it ends, because its attempt may still be billed.
 Known receipts keep the Gateway's original normalized usage, so the existing usage ledger can record
 them exactly (`UsageLedgerAdapter`); an unknown attempt is a correlation fact, never a fake zero-cost
 `ProviderUsage`. Completing the shared telemetry schema remains `P11.26-CAND-2-TELEMETRY-CONTRACT`.
+
+Plan 12.8 (ADR-032): with a `DurableCapture`, the same store also appends its facts to the durable outbox, in the
+order it accepts them and under its lock: each invocation, each newly accepted receipt (a replay adds nothing), each
+integrity failure, and the turn's terminal state once `finalize_turn` marks it and every worker has settled. Each
+request's pre-dispatch intent is recorded by the Gateway client just before it sends (`CaptureIntent`). Capture is an
+extension of this one settlement, never a second debit, and it never blocks model work.
 """
 
 from __future__ import annotations
@@ -34,9 +40,12 @@ from optimus.gateway.models import GatewayUsage
 if TYPE_CHECKING:
     from optimus.context.maintenance import MaintenanceReceipt
     from optimus.usage.accounting import UsageAccountingService
+    from optimus.usage.durable_capture import DurableCapture
 
-STAGES = frozenset({"planning", "answer", "summarization", "classification"})
+STAGES = frozenset({"planning", "answer", "summarization", "classification", "operation"})
 # `classification`: Auto's per-turn classifier call, settled as its own stage (Plan 12.4 v7; ADR-007).
+# `operation`: a model call outside any turn (the strict preflight probe, the JSON-RPC pass-through), settled in its own
+# one-call coverage epoch (Plan 12.8).
 # `unattributed`: usage the Gateway reported but did not attribute to a single completed attempt. Its
 # reported cost is known and counts once; its turn is never complete (Codex CP3 correction ruling C1/C2).
 OUTCOMES = frozenset({"completed", "failed", "not_sent", "rejected", "uncertain", "unattributed"})
@@ -162,6 +171,7 @@ class Invocation:
         self._settlement = settlement
         self.turn_id = turn_id
         self.state = "open"
+        self.capture_id: str | None = None
 
     def start(self) -> bool:
         return self._settlement._transition(self, "open", "started")
@@ -177,9 +187,12 @@ class TurnSettlement:
     """The exactly-once receipt store for one session's turns. Thread-safe: receipts arrive from
     worker threads."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, capture: DurableCapture | None = None, session_id: str | None = None) -> None:
         # Reentrant: a subscriber may read a summary while one is being published.
         self._lock = threading.RLock()
+        self._capture = capture
+        self._session_id = session_id
+        self._finalized: set[str] = set()
         self._receipts: dict[str, StageReceipt] = {}
         self._attempt_for_gateway: dict[str, str] = {}
         self._pending: dict[str, int] = {}
@@ -195,6 +208,8 @@ class TurnSettlement:
     def open_invocation(self, turn_id: str) -> Invocation:
         with self._lock:
             invocation = Invocation(self, turn_id)
+            if self._capture is not None:
+                invocation.capture_id = self._capture.invocation_opened(turn_id, self._session_id)
             self._pending[turn_id] = self._pending.get(turn_id, 0) + 1
             self._publish(turn_id)
             return invocation
@@ -210,7 +225,11 @@ class TurnSettlement:
                     self._pending[invocation.turn_id] = remaining
                 else:
                     del self._pending[invocation.turn_id]
+                if self._capture is not None and invocation.capture_id is not None:
+                    self._capture.invocation_ended(invocation.turn_id, invocation.capture_id, new)
                 self._publish(invocation.turn_id)
+                if not remaining:
+                    self._close_if_final(invocation.turn_id)
             return True
 
     def record_attempt(self, receipt: StageReceipt) -> None:
@@ -218,7 +237,7 @@ class TurnSettlement:
             existing = self._receipts.get(receipt.attempt_id)
             if existing is not None:
                 if existing.facts() != receipt.facts():
-                    self.record_integrity_failure(receipt.turn_id)
+                    self._refuse(receipt.turn_id, "receipt_conflict")
                     raise ReceiptConflictError(f"attempt {receipt.attempt_id} was already recorded differently")
                 return
             gateway_id = receipt.gateway_request_id
@@ -228,21 +247,39 @@ class TurnSettlement:
                 # one charge. Different facts for one Gateway request are an integrity error (Fable
                 # CP3 review MINOR-7; mirrors ProviderUsageLedger).
                 if self._receipts[owner].settled_facts() != receipt.settled_facts():
-                    self.record_integrity_failure(receipt.turn_id)
+                    self._refuse(receipt.turn_id, "receipt_conflict")
                     raise ReceiptConflictError(f"Gateway request {gateway_id} was already settled differently")
                 return
             self._receipts[receipt.attempt_id] = receipt
             if gateway_id is not None:
                 self._attempt_for_gateway[gateway_id] = receipt.attempt_id
+            if self._capture is not None:
+                self._capture.receipt(receipt)
             self._publish(receipt.turn_id)
 
     def record_integrity_failure(self, turn_id: str) -> None:
         """The turn's accounting failed: a conflicting receipt this store refused, or a charge another
         sink (the existing ledger) refused. It can never read as complete; what was already settled
         keeps counting, and nothing is charged twice (Fable CP3 correction-2 review MINOR-1)."""
+        self._refuse(turn_id, "ledger_refused")
+
+    def _refuse(self, turn_id: str, reason: str) -> None:
         with self._lock:
             self._refused[turn_id] = self._refused.get(turn_id, 0) + 1
+            if self._capture is not None:
+                self._capture.integrity_failure(turn_id, reason)
             self._publish(turn_id)
+
+    def finalize_turn(self, turn_id: str) -> None:
+        """The turn reached its terminal state: close its coverage epoch now, or, while a worker still runs, record a
+        terminal snapshot and close once the last worker settles. Idempotent."""
+        with self._lock:
+            self._finalized.add(turn_id)
+            self._close_if_final(turn_id, terminal=True)
+
+    def _close_if_final(self, turn_id: str, *, terminal: bool = False) -> None:
+        if self._capture is not None and turn_id in self._finalized and (terminal or not self._pending.get(turn_id)):
+            self._capture.close(self.settle_turn(turn_id))
 
     def project(self, turn_id: str, subscriber: CostSubscriber) -> None:
         """Publish one turn's current summary to `subscriber` alone, ordered with every other

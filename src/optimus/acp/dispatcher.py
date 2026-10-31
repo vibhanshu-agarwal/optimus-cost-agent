@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
@@ -44,6 +44,9 @@ from optimus.gateway.tool_models import (
 from optimus.guardrails.audit import ToolInvocationAuditEvent
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.runtime.modes import ExecutionMode
+
+if TYPE_CHECKING:
+    from optimus.usage.durable_capture import DurableCapture
 from optimus.runtime.mutation import MutationForbidden
 from optimus.runtime.state import AgentState, RuntimeContext
 from optimus.tools.mutation_tools import write_file
@@ -63,8 +66,10 @@ class JsonRpcDispatcher:
         pre_tool_guard: PreToolGuard | None = None,
         workspace_root: str | Path | None = None,
         allowed_network_hosts: tuple[str, ...] = (),
+        durable_capture: DurableCapture | None = None,
     ) -> None:
         self._request_ids = request_ids or RequestIdTracker()
+        self._durable_capture = durable_capture  # Plan 12.8: the pass-through's one-call coverage epochs
         self._runtime_context = runtime_context or RuntimeContext(
             execution_mode=ExecutionMode.PLAN,
             state=AgentState.CHAT_ONLY,
@@ -166,10 +171,14 @@ class JsonRpcDispatcher:
                         request_id=request_id,
                         error=JsonRpcError(code=INVALID_REQUEST, message="invalid request"),
                     )
-                gateway_response = self._gateway_client.create_response(
-                    model=params["model"],
-                    input_text=params["input"],
-                    metadata=metadata,
+                from optimus.usage.operation_capture import captured_operation
+
+                gateway_client, model, input_text = self._gateway_client, params["model"], params["input"]
+                gateway_response = captured_operation(
+                    self._durable_capture,
+                    kind="gateway_passthrough",
+                    requested_model=model,
+                    call=lambda: gateway_client.create_response(model=model, input_text=input_text, metadata=metadata),
                 )
                 return success_response(
                     request_id=request_id,

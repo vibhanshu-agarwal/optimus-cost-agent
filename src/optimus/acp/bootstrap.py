@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from optimus.acp.auto_composition import AutoComposition
     from optimus.acp.stage_c import StageCLaunch
     from optimus.acp.test_composition import TestComposition
+    from optimus.usage.durable_capture import DurableCapture
 
 
 @dataclass(frozen=True)
@@ -62,10 +63,11 @@ def resolve_ephemeral_hmac_flag(environ: Mapping[str, str]) -> bool:
     return bool(environ.get(_EPHEMERAL_HMAC_FLAG, ""))
 
 
-def _build_gateway_client(*, settings, timeout_seconds):
+def _build_gateway_client(*, settings, timeout_seconds, durable_capture=None):
+    kwargs = {} if durable_capture is None else {"capture": durable_capture.hook}  # Plan 12.8: pre-dispatch intents
     if timeout_seconds is None:
-        return GatewayClient(settings=settings)
-    return GatewayClient(settings=settings, timeout_seconds=timeout_seconds)
+        return GatewayClient(settings=settings, **kwargs)
+    return GatewayClient(settings=settings, timeout_seconds=timeout_seconds, **kwargs)
 
 
 def _rollback_redis_runtime(redis_runtime: RedisRuntime, failure: BaseException) -> None:
@@ -89,6 +91,7 @@ def build_agent_harness_runtime(
     gateway_timeout_seconds: float | None = None,
     test_composition: TestComposition | None = None,
     auto_composition: AutoComposition | None = None,
+    durable_capture: DurableCapture | None = None,
 ) -> AgentHarnessRuntime:
     """
     Builds an AgentRunner and the Redis runtime it runs on, as ONE owned lifetime.
@@ -128,7 +131,7 @@ def build_agent_harness_runtime(
         settings = OptimusGatewaySettings.from_env(environ)
         resolved_workspace = workspace_root.resolve()
         guard = PreToolGuard.for_workspace(workspace_root=resolved_workspace, allowed_network_hosts=())
-        gateway_client = _build_gateway_client(settings=settings, timeout_seconds=gateway_timeout_seconds)
+        gateway_client = _build_gateway_client(settings=settings, timeout_seconds=gateway_timeout_seconds, durable_capture=durable_capture)
         state_store = redis_runtime.sync_state_store()
         # Plan 11.5, Task 5: one fanout writes every telemetry event to the local
         # append-only JSONL log and the existing Redis sink unconditionally, and
@@ -186,6 +189,7 @@ def build_configured_server(
     test_composition: TestComposition | None = None,
     stage_c: StageCLaunch | None = None,
     auto_composition: AutoComposition | None = None,
+    durable_capture: DurableCapture | None = None,
 ) -> AcpStreamServer:
     """
     Builds and configures an `AcpStreamServer` instance with the specified environment
@@ -228,18 +232,20 @@ def build_configured_server(
         gateway_timeout_seconds=gateway_timeout_seconds,
         test_composition=test_composition,
         auto_composition=auto_composition,
+        durable_capture=durable_capture,
     )
     client_mcp_runtime = None
     try:
         resolved_workspace = Path(workspace_root or ".").resolve()
         settings = OptimusGatewaySettings.from_env(environ)
-        gateway_client = _build_gateway_client(settings=settings, timeout_seconds=gateway_timeout_seconds)
+        gateway_client = _build_gateway_client(settings=settings, timeout_seconds=gateway_timeout_seconds, durable_capture=durable_capture)
         guard = PreToolGuard.for_workspace(workspace_root=resolved_workspace, allowed_network_hosts=())
         dispatcher = JsonRpcDispatcher(
             gateway_client=gateway_client,
             agent_runner=harness.agent_runner,
             pre_tool_guard=guard,
             workspace_root=resolved_workspace,
+            durable_capture=durable_capture,
         )
         # Plan 9.96, Task 5 Step 2: resolved once here from the (already
         # authorized/sanitized) agent environ passed into this function, rather
@@ -333,6 +339,7 @@ def build_configured_server(
             session_seeder=session_seeder,
             failure_telemetry=harness.telemetry_writer,
             auto_router=auto,
+            durable_capture=durable_capture,
         )
     except BaseException as exc:
         # Composition failed after the harness (and possibly the client-MCP runtime)

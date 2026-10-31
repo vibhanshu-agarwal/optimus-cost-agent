@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from optimus.gateway.client import CaptureIntent
 from optimus.usage import capture_events as ev
 from optimus.usage.turn_settlement import StageReceipt, TurnCostSummary
 from optimus_security import usage_capture_contract as uc
@@ -153,6 +154,12 @@ class DurableCapture:
             with self._lock:
                 epoch.unconfirmed_intents += 1
         return confirmed
+
+    def hook(self, intent: CaptureIntent) -> bool:
+        """The Gateway client's capture hook: records the intent its request carries (`capturing`)."""
+        return self.intent(
+            intent.turn_id, intent.host_request_id, stage=intent.stage, requested_model=intent.requested_model, purpose=intent.purpose
+        )
 
     def receipt(self, receipt: StageReceipt, *, purpose: str | None = None) -> None:
         with self._lock:

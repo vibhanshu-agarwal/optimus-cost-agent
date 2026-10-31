@@ -43,6 +43,7 @@ from optimus.gateway.attempts import (
     first_error,
     stops_experimental_route,
 )
+from optimus.gateway.client import CaptureIntent, capturing
 from optimus.gateway.models import GatewayUsage
 from optimus_model_policy.binding import RouteBinding
 
@@ -278,10 +279,12 @@ class GatewaySummarizerCall:
         attempt_observer: Callable[..., None] | None = None,
         experimental: bool = False,
         model_stops: Any | None = None,
+        turn_id: str | None = None,
     ) -> None:
         self._client = gateway_client
         self._model_id = model_id
         self._session_id = session_id
+        self._turn_id = turn_id  # the turn its receipts settle into (Plan 12.8 capture); None captures nothing
         self._request_ids = request_ids
         self._bind = bind
         self._attempt_observer = attempt_observer
@@ -305,9 +308,11 @@ class GatewaySummarizerCall:
                 return self._observed(request_id, (), response, reason="summary_disclosure_undelivered")
         metadata = {"session_id": self._session_id, "purpose": "context_summary", "request_id": request_id}
         try:
-            response = self._client.create_response(
-                model=self._model_id, input_text=prompt, metadata=metadata, route_binding=binding
-            )
+            if self._turn_id is None:
+                response = self._client.create_response(model=self._model_id, input_text=prompt, metadata=metadata, route_binding=binding)
+            else:
+                with capturing(CaptureIntent(self._turn_id, request_id, "summarization", requested_model=self._model_id)):
+                    response = self._client.create_response(model=self._model_id, input_text=prompt, metadata=metadata, route_binding=binding)
         except Exception as exc:  # noqa: BLE001 - every failure is classified; transport loss stays unknown
             # Evaluated first, so the integrity branch below records a proven stop too (Plan 12.4 Task 4).
             stopped = stops_experimental_route(exc, experimental=self._experimental)
@@ -446,6 +451,7 @@ def gateway_summarizer_factory(
             attempt_observer=attempt_observer,
             experimental=experimental,
             model_stops=model_stops,
+            turn_id=f"{identity.session_id}:{identity.turn_seq}",
         )
 
     return bind_turn
