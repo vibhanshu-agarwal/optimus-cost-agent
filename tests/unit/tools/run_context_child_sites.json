@@ -613,6 +613,12 @@
    "disposition": "census",
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Ordinary child of an inherited environment that resolves one project through the real registry under the test's temporary config root; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/usage/test_outbox.py::test_a_killed_writer_leaves_a_claimable_stream_with_its_verified_prefix#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited environment that appends to a real outbox stream under the test's temporary root and dies holding its lock; it never resolves a config root; proven by the census at the acceptance candidate."
   }
  }
 }

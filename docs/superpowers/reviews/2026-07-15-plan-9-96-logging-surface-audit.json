@@ -5183,6 +5183,94 @@
       "sanitizer": "in-process classification; the error is re-raised, not written",
       "test_node": "tests/unit/tools/test_plan12_memory_probes.py::test_a_wait_propagates_probe_defects_but_waits_out_a_restarting_server",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:StreamWriter._roll:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): opens a new outbox segment exclusively under the injected per-user accounting root; it holds only framed allowlisted capture records.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_segments_roll_at_the_size_boundary_and_the_stream_spans_them",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:StreamWriter._write:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): appends one framed, checksummed record whose payload the capture contract allowlists (identity, stage, outcome, usage, cost, coverage references); no prompt, reply, exception text or credential.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_records_round_trip_in_order_with_a_digest_chain",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:StreamWriter.append:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): AST overmatch: append() builds the gap record's integer fields and delegates the write to _write; it writes nothing itself.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_a_failed_fsync_retracts_the_record_through_a_gap_in_a_successor_segment",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:Ticket._resolve:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): AST overmatch: sets two in-memory attributes on a ticket and an Event; no Redis, file or diagnostic sink.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_the_owned_writer_confirms_records_and_rejects_when_full_or_closed",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:_append_durably:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): opens the stream's ack.log under the per-user accounting root to append one acknowledgement (ledger instance, sequence, digest).",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_the_last_verified_acknowledgement_wins_and_a_torn_one_is_ignored",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:_append_durably:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): appends one framed acknowledgement (ledger instance, sequence, digest) and fsyncs it; no payload or diagnostic.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_the_last_verified_acknowledgement_wins_and_a_torn_one_is_ignored",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:_canonical:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): canonical ASCII JSON of an outbox record frame (stream, sequence, event id, schema, previous digest, allowlisted payload) for its digest and line.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_records_round_trip_in_order_with_a_digest_chain",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:_fsync_directory:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): opens a directory read-only on POSIX solely to fsync its entries; reads and writes nothing.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_records_round_trip_in_order_with_a_digest_chain",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:claim:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): opens the stream's empty lock file to hold or test its lock; nothing is written to it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_a_live_writer_holds_its_stream_and_a_closed_one_can_be_claimed",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.durable_outbox:scan_stream:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): AST overmatch: records a fixed verification reason (torn, checksum, malformed, schema) from the module's own ValueError; no external exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_outbox.py::test_a_damaged_tail_yields_its_verified_prefix",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.usage_capture_contract:build_batch:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): serializes one upload batch: writer, stream id, committed-prefix cursor and the stream's already framed allowlisted records; sent only to the configured Gateway.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_contract.py::test_a_batch_round_trips_and_reverifies_every_line",
+      "evidence_tier": "unit"
     }
   ]
 }

@@ -69,6 +69,7 @@ relevant records before proposing a change in their area.
 | [ADR-029: Accepts ADR-009's rung 2, one escalation](decisions/ADR-029-accepts-adr-009-rung-2-one-escalation.md) | An Auto turn whose nudge did not help moves once to the escalation model, with a notice and price line, before its check-in; operator choice (a), automatic (source S16; #397) |
 | [ADR-030: Approval records in bounded keyring parts](decisions/ADR-030-approval-records-in-bounded-keyring-parts.md) | Keeps the 1,800-byte approval policy; stores a record over one Windows credential blob as two authenticated parts; one service-wide approvals lock (#433) |
 | [ADR-031: Project memory, file policy and project identity](decisions/ADR-031-project-memory-and-evidence.md) | Plan 12.x memory architecture; one includable-files policy with `.optimusignore`; registered project identity (Plan 12.6, #390); accepted |
+| [ADR-032: Durable usage capture and Gateway drain](decisions/ADR-032-durable-usage-capture-and-gateway-drain.md) | Fsynced host outbox uploaded through the Gateway; only the Gateway holds the Postgres credential; database-immutable ledger and per-turn coverage epochs (Plan 12.8, #454); proposed |
 | [Ordering/lifecycle/signals and queue decision](decisions/2026-10-27-ordering-lifecycle-signals-queue-contract.md) | Exact operator authority, accepted proposals, alternatives and scoped ADR-027 supersession |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 

@@ -529,6 +529,7 @@ _REVIEWED_CHEAP_LAUNCHERS = {
     "tests/unit/tools/test_run_plan996_acpx_security_evidence.py": _MIXED,
     "tests/unit/tools/test_test_profiles.py": "existing launching nodes have proc/gates rules; the six H5 core nodes launch seven owned two-node synthetic passive pytest children through one inventoried helper, never the H5 probe; remaining core nodes run in-process",
     "tests/unit/tools/test_verify_plan99_noneditable_install.py": _MIXED,
+    "tests/unit/usage/test_outbox.py": "one outbox writer child killed mid-record; the other nodes run in-process on temporary files",
 }
 
 
