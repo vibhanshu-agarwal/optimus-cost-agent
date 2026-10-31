@@ -1112,6 +1112,7 @@ serial = [
   "tests/unit/context_engine/test_boundaries.py",
   "tests/unit/guardrails/test_ci_parity.py",
   "tests/unit/guardrails/test_local_secret_scan_encoding.py",
+  "tests/unit/optimus_gateway/test_diagnostic_segments.py",
   "tests/unit/optimus_gateway/test_request_body_rejection.py",
   "tests/unit/support/test_concurrency_diagnostics.py",
   "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py",
