@@ -128,23 +128,29 @@ def test_the_literal_follows_the_exact_bytes_and_an_oversized_file_is_refused(tm
 # Launch gate ----------------------------------------------------------------------------------------------------------
 
 @pytest.mark.usefixtures("isolated_windows_known_folders")
-def test_the_launch_gate_binds_the_configuration_and_a_change_needs_reapproval(tmp_path, monkeypatch):
+def test_the_launch_gate_binds_the_configuration_and_a_change_needs_reapproval(tmp_path, tmp_path_factory):
+    from optimus.acp.launch_approvals import KeyringApprovalStore
+    from optimus.acp.launch_gate import resolve_launch_candidate
     from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
     from optimus.acp.operator_paths import resolve_authorized_operator_paths
+    from optimus.acp.trusted_paths import resolve_workspace_security_state
     from tests.unit.acp.conftest import FakeKeyring
-    from tests.unit.acp.test_stage_c_launch import _candidate
     from tests.unit.acp.test_test_composition import _ENV
 
-    # POSIX resolves the config root from XDG_CONFIG_HOME / HOME (the Windows fixture does not reach it): keep it temporary.
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    paths = resolve_authorized_operator_paths(workspace_root=tmp_path, snapshot_values=LaunchEnvironmentSnapshot.capture(_ENV).values, platform_name=sys.platform)
-    keyring = FakeKeyring()
-    without, _ = _candidate(tmp_path, keyring, test_profile=None, stage_c_flag=False)
+    # The operator's supported override keeps the config root temporary on every platform (outside the workspace).
+    snapshot = LaunchEnvironmentSnapshot.capture({**_ENV, "OPTIMUS_CONFIG_ROOT": str(tmp_path_factory.mktemp("config-root"))})
+    paths = resolve_authorized_operator_paths(workspace_root=tmp_path, snapshot_values=snapshot.values, platform_name=sys.platform)
+    store = KeyringApprovalStore(keyring_backend=FakeKeyring(), runtime_root=tmp_path / ".optimus-runtime")
+
+    def candidate():
+        return resolve_launch_candidate(snapshot=snapshot, workspace_state=resolve_workspace_security_state(tmp_path), operator_paths=paths,
+                                        hmac_key=store.hmac_key, test_profile=None, stage_c=False)
+
+    without = candidate()
     _write_config(ac.accounting_root(paths.config_root))
-    bound, _ = _candidate(tmp_path, keyring, test_profile=None, stage_c_flag=False)
+    bound = candidate()
     _write_config(ac.accounting_root(paths.config_root), {**_CONFIG, "port": 55433})
-    changed, _ = _candidate(tmp_path, keyring, test_profile=None, stage_c_flag=False)
+    changed = candidate()
 
     assert ac.SECURITY_LITERAL_NAME not in without.security_literals
     assert bound.security_literals[ac.SECURITY_LITERAL_NAME].startswith("accounting-config:sha256:")
