@@ -198,3 +198,106 @@ def test_an_enforced_model_attempt_is_recorded_through_the_real_client(capture, 
         (uc.GATEWAY_ATTEMPT_INTENT, "gw-attempt-1"), (uc.GATEWAY_ATTEMPT_OUTCOME, "gw-attempt-1"),
     ]
     assert records[1]["outcome"] == "completed"
+
+
+def test_an_intent_durable_only_after_the_wait_is_recorded_unconfirmed(tmp_path):
+    import threading
+
+    writer = ob.OutboxWriter(tmp_path / "accounting" / "outbox" / "gateway")
+    usage_capture.configure(writer, ack_wait=0.05)
+    gate = threading.Event()
+    original = writer._writer.append
+
+    def slow(payload, *, event_id=None):
+        if payload.get("kind") == uc.GATEWAY_ATTEMPT_INTENT:
+            gate.wait(5.0)
+        return original(payload, event_id=event_id)
+
+    writer._writer.append = slow  # type: ignore[method-assign]
+    try:
+        usage_capture.begin("s:1:planning:1:1")
+        usage_capture.set_request("gw-slow")
+        with usage_capture.physical_attempt():
+            pass
+        gate.set()
+    finally:
+        usage_capture.configure(None)
+        usage_capture.end()
+
+    records = _records(writer)
+    assert [r["kind"] for r in records] == [uc.GATEWAY_ATTEMPT_INTENT, uc.GATEWAY_ATTEMPT_OUTCOME]
+    assert records[1]["intent_confirmed"] is False and records[1]["outcome"] == "completed"
+
+
+def test_the_intent_precedes_the_dispatch_budget_check_and_a_refused_dispatch_is_not_sent(capture, monkeypatch):
+    import optimus_gateway.upstream_client as upstream_module
+
+    checks: list[int] = []
+
+    def budget(_seconds: float) -> bool:
+        checks.append(capture.stats().pending + capture.stats().confirmed_sequence)  # the intent is already queued or written
+        return False
+
+    monkeypatch.setattr(upstream_module, "request_budget_admits", budget)
+    client = UrllibOpenAICompatibleClient(api_key="or-test", base_url="https://openrouter.ai/api/v1", sleep=lambda _s: None)  # pragma: allowlist secret
+    usage_capture.begin("s:1:planning:1:1")
+    usage_capture.set_request("gw-refused")
+
+    with pytest.raises(upstream_module.UpstreamBudgetExhausted):
+        client.create_message(model="anthropic/claude-haiku-4.5", input_text="hi")
+
+    records = _records(capture)
+    assert checks and checks[0] >= 1, "the intent was recorded before the budget check ran"
+    assert [(r["kind"], r.get("outcome")) for r in records] == [(uc.GATEWAY_ATTEMPT_INTENT, None), (uc.GATEWAY_ATTEMPT_OUTCOME, "not_sent")]
+    assert records[1]["intent_confirmed"] is True
+
+
+def _raw_capture(host: str, port: int, head: bytes, body: bytes = b"", *, timeout: float = 5.0) -> tuple[int, float]:
+    import socket
+    import time as _time
+
+    started = _time.monotonic()
+    with socket.create_connection((host, port), timeout=timeout) as connection:
+        connection.sendall(head + body)
+        reply = b""
+        while b"\r\n" not in reply:
+            chunk = connection.recv(4096)
+            if not chunk:
+                break
+            reply += chunk
+    return int(reply.split(b" ", 2)[1]), _time.monotonic() - started
+
+
+@pytest.mark.parametrize(("headers", "status"), [
+    (b"Authorization: Bearer http-test-secret\r\nTransfer-Encoding: chunked\r\n", 501),
+    (b"Authorization: Bearer http-test-secret\r\nContent-Length: 2\r\nContent-Length: 2\r\n", 400),
+    (b"Authorization: Bearer http-test-secret\r\nContent-Length: %d\r\n" % (uc.MAX_BODY_BYTES + 1), 413),
+    (b"Authorization: Bearer wrong\r\nContent-Length: 100\r\n", 401),
+])
+def test_the_capture_route_refuses_bad_framing_and_strangers_before_reading_a_body(headers, status):
+    from tests.unit.optimus_gateway.test_server import _start_server
+
+    server, thread, host, port = _start_server()
+    try:
+        code, _ = _raw_capture(host, port, b"POST " + uc.PATH.encode() + b" HTTP/1.1\r\nHost: x\r\n" + headers + b"\r\n")
+    finally:
+        server.shutdown()
+        thread.join(5)
+
+    assert code == status
+
+
+def test_a_withheld_capture_body_times_out_instead_of_holding_the_handler(monkeypatch):
+    import optimus_gateway.server as server_module
+    from tests.unit.optimus_gateway.test_server import _start_server
+
+    monkeypatch.setattr(server_module, "_CAPTURE_BODY_SECONDS", 0.5)
+    server, thread, host, port = _start_server()
+    try:
+        head = b"POST " + uc.PATH.encode() + b" HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer http-test-secret\r\nContent-Length: 100\r\n\r\n"
+        code, elapsed = _raw_capture(host, port, head, b'{"partial":')  # 11 of the 100 declared bytes, then silence
+    finally:
+        server.shutdown()
+        thread.join(5)
+
+    assert code == 408 and elapsed < 4.0

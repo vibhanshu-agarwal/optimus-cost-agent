@@ -139,3 +139,35 @@ def test_the_ledger_ordering_check_accepts_only_the_next_record_or_an_explaining
     retracting = ob.frame(first.stream_id, 4, first.digest, {"kind": ob.GAP_KIND, "unconfirmed_from": 2, "unconfirmed_to": 3})
     assert ob.follows(gap, 2, second.digest) == ""
     assert ob.follows(retracting, 2, second.digest) == "sequence", "a gap never retracts a committed record"
+
+
+def _receipt_payload(cost: str = "0.25", usage_cost: str | None = None) -> dict:
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from optimus.gateway.models import GatewayUsage
+    from optimus.usage.capture_events import receipt_payload
+    from optimus.usage.turn_settlement import StageReceipt
+
+    usage = GatewayUsage(gateway_request_id="gw-1", provider="openrouter", billing_units=3, cost_usd=Decimal(cost))
+    receipt = StageReceipt(session_id="s", turn_id="s:1", stage="planning", attempt_id="s:1:planning:1:1", gateway_request_id="gw-1",
+                           outcome="completed", reported_cost_usd=Decimal(cost), recorded_at=datetime(2026, 10, 31, tzinfo=UTC), gateway_usage=usage)
+    payload = receipt_payload(receipt, epoch_id=_EPOCH, late=False)
+    payload["at"] = _AT
+    if usage_cost is not None:
+        payload["usage"]["cost_usd"] = usage_cost
+    return payload
+
+
+def test_the_ledger_recomputes_receipt_fingerprints_and_enforces_receipt_rules(tmp_path):
+    good = _receipt_payload()
+    tampered = {**good, "reported_cost_usd": "9.99", "usage": {**good["usage"], "cost_usd": "9.99"}}  # old fingerprints kept
+    contradicting = _receipt_payload(usage_cost="0.30")  # usage disagrees with the receipt's cost
+    uncertain_with_cost = {**good, "outcome": "uncertain", "usage": None}
+
+    assert uc.validate_payload(good, writer="host") == uc.ATTEMPT_RECEIPT
+    for bad in (tampered, contradicting, uncertain_with_cost):
+        with pytest.raises(uc.ContractError) as refused:
+            uc.validate_payload(bad, writer="host")
+        assert refused.value.code == "receipt"
+    assert uc.receipt_fingerprints(_receipt_payload("0.25")) == uc.receipt_fingerprints(_receipt_payload("0.250"))

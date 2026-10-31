@@ -88,8 +88,10 @@ def handle_decision_request(
     attempt_id = f"gw-{uuid.uuid4().hex}"
     request_diagnostics.note(gateway_request_id=attempt_id)
     usage_capture.set_request(attempt_id)
+    usage_capture.prepare_attempt()  # Plan 12.8: the capture intent, before the dispatch-time budget check
     if not request_budget_admits(UPSTREAM_ATTEMPT_TIMEOUT_SECONDS):
         # As for a model attempt: nothing is dispatched that could still be running once the host stops waiting.
+        usage_capture.abandon_attempt()
         attempts.append(_attempt_record(1, attempt_id, ATTEMPT_NOT_SENT, failure=dict(_REQUEST_BUDGET_FAILURE)))
         return 502, {"error": sanitize_error_message("upstream attempt failed (UPSTREAM_ATTEMPT_NOT_SENT)"), "code": "UPSTREAM_ATTEMPT_NOT_SENT", **correlation}
     try:

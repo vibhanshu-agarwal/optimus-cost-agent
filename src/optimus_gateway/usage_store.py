@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,10 @@ MIGRATIONS_ROOT = REPO_ROOT / "migrations" / "optimus_usage"
 _PINNED: tuple[tuple[str, str], ...] = (
     ("001_durable_capture.sql", "90b54892de149c8e6b73bfbdd5ea6f59cd0523c22e0b7c8f79c446e557cded77"),  # pragma: allowlist secret - SQL migration integrity hash, not a credential
 )
+
+
+# A lost connection, an expired lock wait or a cancelled statement: retryable, never acknowledged.
+_UNAVAILABLE = (psycopg.OperationalError, psycopg.errors.LockNotAvailable, psycopg.errors.QueryCanceled)
 
 
 class StoreError(Exception):
@@ -70,9 +75,11 @@ def verify_migrations() -> None:
 class UsageStore:
     """One ledger instance in one database. Each operation opens its own connection (as the evidence store does)."""
 
-    def __init__(self, conninfo: str, *, connect_timeout: int = 5) -> None:
+    def __init__(self, conninfo: str, *, connect_timeout: int = 5, lock_timeout_ms: int = 5000, statement_timeout_ms: int = 30000) -> None:
         self._conninfo = conninfo
         self._connect_timeout = connect_timeout
+        self.lock_timeout_ms = lock_timeout_ms  # agent-selected
+        self.statement_timeout_ms = statement_timeout_ms  # agent-selected
         self.ledger_instance: str | None = None
 
     @classmethod
@@ -93,6 +100,7 @@ class UsageStore:
         verify_migrations()
         try:
             with self._connect() as conn:
+                self._bound(conn)
                 conn.execute(
                     "CREATE TABLE IF NOT EXISTS optimus_usage_schema_migrations ("
                     "filename TEXT PRIMARY KEY, sha256 TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"
@@ -112,7 +120,7 @@ class UsageStore:
                 else:
                     instance = row[0]
                 conn.commit()
-        except psycopg.OperationalError:
+        except _UNAVAILABLE:
             raise StoreError("unavailable") from None
         self.ledger_instance = instance
         return instance
@@ -122,11 +130,17 @@ class UsageStore:
         instance = self.ledger_instance or self.migrate()
         try:
             with self._connect() as conn:
+                self._bound(conn)
                 result = self._ingest(conn, instance, batch)
                 conn.commit()
                 return result
-        except psycopg.OperationalError:
+        except _UNAVAILABLE:
             raise StoreError("unavailable") from None
+
+    def _bound(self, conn: psycopg.Connection[Any]) -> None:
+        """Bound this transaction's lock waits and statements; expiry rolls it back and is retryable, never acknowledged."""
+        conn.execute(f"SET LOCAL lock_timeout = '{int(self.lock_timeout_ms)}ms'")
+        conn.execute(f"SET LOCAL statement_timeout = '{int(self.statement_timeout_ms)}ms'")
 
     def _ingest(self, conn: psycopg.Connection[Any], instance: str, batch: uc.CaptureBatch) -> IngestResult:
         stream = batch.stream_id
@@ -194,7 +208,13 @@ class UsageStore:
         payload = record.payload
         kind = payload["kind"]
         if kind == uc.ATTEMPT_RECEIPT:
-            return self._project_receipt(conn, stream, record)
+            conflicts = self._project_receipt(conn, stream, record)
+            self._certify(conn, payload["epoch_id"])  # a late or conflicting receipt downgrades a certified epoch
+            return conflicts
+        if kind in {uc.GATEWAY_ATTEMPT_INTENT, uc.GATEWAY_ATTEMPT_OUTCOME}:
+            host_request_id = payload.get("host_request_id") if kind == uc.GATEWAY_ATTEMPT_INTENT else self._host_request_of(conn, payload)
+            self._recertify_for(conn, [host_request_id] if host_request_id else [])
+            return 0
         if kind == uc.EPOCH_BEGIN:
             conn.execute(
                 "INSERT INTO optimus_usage.coverage_epoch (epoch_id, stream_id, turn_id, begin_sequence, state) "
@@ -211,8 +231,31 @@ class UsageStore:
             )
         return 0
 
+    def _host_request_of(self, conn: psycopg.Connection[Any], outcome: Mapping[str, Any]) -> str | None:
+        row = conn.execute(
+            "SELECT payload->>'host_request_id' FROM optimus_usage.capture_event WHERE writer = 'gateway' AND kind = %s "
+            "AND payload->>'gateway_request_id' = %s AND (payload->>'attempt')::int = %s LIMIT 1",
+            (uc.GATEWAY_ATTEMPT_INTENT, outcome["gateway_request_id"], outcome["attempt"]),
+        ).fetchone()
+        return row[0] if row else None
+
     def _project_receipt(self, conn: psycopg.Connection[Any], stream: str, record: Record) -> int:
+        """One identity namespace: an attempt ID is either one canonical receipt or one alias of one, never both, and a
+        Gateway request settles at most one canonical receipt. Projections of the same attempt or request from any stream
+        are serialized by transaction-scoped advisory locks on both keys, taken in a fixed order."""
         p = record.payload
+        keys = sorted({f"attempt:{p['attempt_id']}"} | ({f"request:{p['gateway_request_id']}"} if p["gateway_request_id"] else set()))
+        for key in keys:
+            conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 1))", (key,))
+        aliased = conn.execute(
+            "SELECT a.canonical_attempt_id, r.gateway_request_id, r.settled_digest FROM optimus_usage.receipt_alias a "
+            "JOIN optimus_usage.attempt_receipt r ON r.attempt_id = a.canonical_attempt_id WHERE a.attempt_id = %s",
+            (p["attempt_id"],),
+        ).fetchone()
+        if aliased is not None:
+            if (aliased[1], aliased[2]) == (p["gateway_request_id"], p["settled_digest"]):
+                return 0  # the alias replayed: nothing new
+            return self._conflict(conn, stream, record, aliased[0], "attempt_facts_differ")
         values = (p["attempt_id"], p["gateway_request_id"], p["epoch_id"], p["turn_id"], p["stage"], p["purpose"], p["outcome"],
                   p["reported_cost_usd"], p["facts_digest"], p["settled_digest"], p["late"], stream, record.sequence)
         inserted = conn.execute(
@@ -237,10 +280,9 @@ class UsageStore:
             raise StoreError("order")
         if owner[1] == p["settled_digest"]:
             conn.execute(
-                "INSERT INTO optimus_usage.receipt_alias (attempt_id, canonical_attempt_id, stream_id, sequence) VALUES (%s, %s, %s, %s) "
-                "ON CONFLICT (attempt_id) DO NOTHING",
+                "INSERT INTO optimus_usage.receipt_alias (attempt_id, canonical_attempt_id, stream_id, sequence) VALUES (%s, %s, %s, %s)",
                 (p["attempt_id"], owner[0], stream, record.sequence),
-            )
+            )  # no alias exists for it (checked above under the locks), so no mapping is silently ignored
             return 0
         return self._conflict(conn, stream, record, owner[0], "gateway_request_settled_differently")
 
@@ -249,45 +291,160 @@ class UsageStore:
             "INSERT INTO optimus_usage.receipt_conflict (stream_id, sequence, attempt_id, existing_attempt_id, reason) VALUES (%s, %s, %s, %s, %s)",
             (stream, record.sequence, record.payload["attempt_id"], existing, reason),
         )
+        owner = conn.execute("SELECT epoch_id FROM optimus_usage.attempt_receipt WHERE attempt_id = %s", (existing,)).fetchone()
+        if owner is not None and owner[0]:
+            self._certify(conn, owner[0])  # the original's epoch is downgraded too, whichever stream it came from
         return 1
 
     def _project_close(self, conn: psycopg.Connection[Any], stream: str, record: Record) -> None:
         p = record.payload
-        reasons: list[str] = []
-        epoch = conn.execute(
-            "SELECT begin_sequence, state FROM optimus_usage.coverage_epoch WHERE epoch_id = %s", (p["epoch_id"],)
+        conn.execute(
+            "INSERT INTO optimus_usage.coverage_epoch (epoch_id, stream_id, turn_id, close_sequence, state) VALUES (%s, %s, %s, %s, 'open') "
+            "ON CONFLICT (epoch_id) DO UPDATE SET close_sequence = EXCLUDED.close_sequence, updated_at = NOW()",
+            (p["epoch_id"], stream, p["turn_id"], record.sequence),
+        )
+        self._certify(conn, p["epoch_id"])
+
+    def _certify(self, conn: psycopg.Connection[Any], epoch_id: str) -> None:
+        """Recompute one epoch's coverage from persisted evidence alone (Checkpoint B finding 1); never from the host's flag
+        by itself. Complete requires: a begin and a written close with `host_complete` and no pending invocation; every
+        invocation that opened, ended; the close's identity parts bound by its digest; no stream gap inside the epoch; every
+        persisted intent answered by a persisted receipt or alias; the settled identities equal to the persisted receipts,
+        none of them in conflict and no late receipt; and, for every intent, Gateway physical attempts each with an outcome,
+        a confirmed intent and no uncertain outcome. Anything missing keeps it incomplete with its reasons; evidence that
+        arrives later re-certifies it."""
+        row = conn.execute(
+            "SELECT stream_id, begin_sequence, close_sequence FROM optimus_usage.coverage_epoch WHERE epoch_id = %s", (epoch_id,)
         ).fetchone()
-        if epoch is None or epoch[0] is None:
+        if row is None or row[2] is None:
+            return  # not closed: it stays open
+        stream, begin, close_seq = row
+        reasons: list[str] = []
+        close = self._event(conn, stream, close_seq)
+        if begin is None:
             reasons.append("begin_missing")
-        if not p["host_complete"]:
+        if not close["host_complete"]:
             reasons.append("host_incomplete")
-        parts = conn.execute(
+        if close["pending_invocations"]:
+            reasons.append("pending_invocations")
+        opened = self._count(conn, stream, uc.INVOCATION_OPEN, epoch_id)
+        if opened != self._count(conn, stream, uc.INVOCATION_END, epoch_id):
+            reasons.append("invocation_not_ended")
+        settled, unknown, parts = self._identities(conn, stream, epoch_id, close_seq, close["identity_parts"])
+        if parts != close["identity_parts"] or _identities_digest(epoch_id, settled, unknown) != close["identities_digest"]:
+            reasons.append("identity_parts_incomplete")
+        if begin is not None and conn.execute(
+            "SELECT 1 FROM optimus_usage.capture_event WHERE stream_id = %s AND kind = %s AND sequence > %s AND sequence < %s LIMIT 1",
+            (stream, GAP_KIND, begin, close_seq),
+        ).fetchone():
+            reasons.append("stream_gap")
+        receipts = self._values(conn, stream, uc.ATTEMPT_RECEIPT, epoch_id, "attempt_id", late=False)
+        if self._values(conn, stream, uc.ATTEMPT_RECEIPT, epoch_id, "attempt_id", late=True):
+            reasons.append("late_receipt")
+        if sorted(receipts) != sorted(settled):
+            reasons.append("settled_identities_differ")
+        persisted = {
+            r[0]
+            for r in conn.execute(
+                "SELECT attempt_id FROM optimus_usage.attempt_receipt WHERE attempt_id = ANY(%s) "
+                "UNION SELECT attempt_id FROM optimus_usage.receipt_alias WHERE attempt_id = ANY(%s)",
+                (receipts, receipts),
+            ).fetchall()
+        }
+        if set(receipts) - persisted:
+            reasons.append("receipt_not_persisted")
+        if receipts and conn.execute(
+            "SELECT 1 FROM optimus_usage.receipt_conflict WHERE attempt_id = ANY(%s) OR existing_attempt_id = ANY(%s) LIMIT 1",
+            (receipts, receipts),
+        ).fetchone():
+            reasons.append("receipt_conflict")
+        intents = self._values(conn, stream, uc.ATTEMPT_INTENT, epoch_id, "host_request_id")
+        if any(not any(r == h or r.startswith(h + ":") for r in receipts) for h in intents):
+            reasons.append("intent_without_receipt")
+        if any(not any(r == h or r.startswith(h + ":") for h in intents) for r in receipts):
+            reasons.append("receipt_without_intent")
+        reasons += self._physical(conn, intents)
+        conn.execute(
+            "UPDATE optimus_usage.coverage_epoch SET state = %s, reasons = %s, updated_at = NOW() WHERE epoch_id = %s",
+            ("incomplete" if reasons else "complete", sorted(set(reasons)), epoch_id),
+        )
+
+    def _physical(self, conn: psycopg.Connection[Any], intents: list[str]) -> list[str]:
+        reasons: list[str] = []
+        for host_request_id in intents:
+            attempts = conn.execute(
+                "SELECT payload->>'gateway_request_id', (payload->>'attempt')::int FROM optimus_usage.capture_event "
+                "WHERE writer = 'gateway' AND kind = %s AND payload->>'host_request_id' = %s",
+                (uc.GATEWAY_ATTEMPT_INTENT, host_request_id),
+            ).fetchall()
+            if not attempts:
+                reasons.append("physical_evidence_missing")
+            for gateway_request_id, number in attempts:
+                outcome = conn.execute(
+                    "SELECT payload FROM optimus_usage.capture_event WHERE writer = 'gateway' AND kind = %s "
+                    "AND payload->>'gateway_request_id' = %s AND (payload->>'attempt')::int = %s LIMIT 1",
+                    (uc.GATEWAY_ATTEMPT_OUTCOME, gateway_request_id, number),
+                ).fetchone()
+                if outcome is None:
+                    reasons.append("physical_outcome_missing")
+                    continue
+                if outcome[0].get("intent_confirmed") is not True:  # absent (an older writer) is never confirmed
+                    reasons.append("physical_intent_unconfirmed")
+                if outcome[0]["outcome"] == "uncertain":
+                    reasons.append("physical_attempt_uncertain")
+        return reasons
+
+    def _recertify_for(self, conn: psycopg.Connection[Any], host_request_ids: list[str]) -> None:
+        """Re-certify closed epochs whose intents these Gateway records answer."""
+        if not host_request_ids:
+            return
+        for (epoch_id,) in conn.execute(
+            "SELECT DISTINCT payload->>'epoch_id' FROM optimus_usage.capture_event WHERE writer = 'host' AND kind = %s "
+            "AND payload->>'host_request_id' = ANY(%s)",
+            (uc.ATTEMPT_INTENT, host_request_ids),
+        ).fetchall():
+            self._certify(conn, epoch_id)
+
+    def _event(self, conn: psycopg.Connection[Any], stream: str, sequence: int) -> dict[str, Any]:
+        row = conn.execute(
+            "SELECT payload FROM optimus_usage.capture_event WHERE stream_id = %s AND sequence = %s", (stream, sequence)
+        ).fetchone()
+        return dict(row[0]) if row else {}
+
+    def _count(self, conn: psycopg.Connection[Any], stream: str, kind: str, epoch_id: str) -> int:
+        row = conn.execute(
+            "SELECT count(*) FROM optimus_usage.capture_event WHERE stream_id = %s AND kind = %s AND payload->>'epoch_id' = %s",
+            (stream, kind, epoch_id),
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def _values(self, conn: psycopg.Connection[Any], stream: str, kind: str, epoch_id: str, field: str, *, late: bool | None = None) -> list[str]:
+        if late is None:
+            rows = conn.execute(
+                "SELECT payload->>%s FROM optimus_usage.capture_event WHERE stream_id = %s AND kind = %s AND payload->>'epoch_id' = %s",
+                (field, stream, kind, epoch_id),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT payload->>%s FROM optimus_usage.capture_event WHERE stream_id = %s AND kind = %s AND payload->>'epoch_id' = %s "
+                "AND (payload->>'late')::boolean = %s",
+                (field, stream, kind, epoch_id, late),
+            ).fetchall()
+        return [r[0] for r in rows]
+
+    def _identities(self, conn: psycopg.Connection[Any], stream: str, epoch_id: str, close_seq: int, expected: int) -> tuple[list[str], list[str], int]:
+        """The last full set of identity parts before the close (a re-close after a refused close repeats them)."""
+        rows = conn.execute(
             "SELECT payload FROM optimus_usage.capture_event WHERE stream_id = %s AND kind = %s AND payload->>'epoch_id' = %s "
             "AND sequence < %s ORDER BY sequence DESC LIMIT %s",
-            (stream, uc.EPOCH_IDENTITIES, p["epoch_id"], record.sequence, p["identity_parts"]),
+            (stream, uc.EPOCH_IDENTITIES, epoch_id, close_seq, expected),
         ).fetchall()
         settled: list[str] = []
         unknown: list[str] = []
-        for (part,) in sorted(parts, key=lambda row: row[0]["part"]):
+        for (part,) in sorted(rows, key=lambda r: r[0]["part"]):
             settled += part["settled_attempt_ids"]
             unknown += part["unknown_attempt_ids"]
-        if len(parts) != p["identity_parts"] or _identities_digest(p["epoch_id"], settled, unknown) != p["identities_digest"]:
-            reasons.append("identity_parts_incomplete")
-        if epoch is not None and epoch[0] is not None:
-            gap = conn.execute(
-                "SELECT 1 FROM optimus_usage.capture_event WHERE stream_id = %s AND kind = %s AND sequence > %s AND sequence < %s LIMIT 1",
-                (stream, GAP_KIND, epoch[0], record.sequence),
-            ).fetchone()
-            if gap is not None:
-                reasons.append("stream_gap")
-            if epoch[1] == "incomplete":
-                reasons.append("incomplete_before_close")
-        conn.execute(
-            "INSERT INTO optimus_usage.coverage_epoch (epoch_id, stream_id, turn_id, close_sequence, state, reasons) "
-            "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (epoch_id) DO UPDATE SET close_sequence = EXCLUDED.close_sequence, "
-            "state = EXCLUDED.state, reasons = optimus_usage.coverage_epoch.reasons || EXCLUDED.reasons, updated_at = NOW()",
-            (p["epoch_id"], stream, p["turn_id"], record.sequence, "incomplete" if reasons else "complete", reasons),
-        )
+        return settled, unknown, len(rows)
 
 
 def _identities_digest(epoch_id: str, settled: list[str], unknown: list[str]) -> str:

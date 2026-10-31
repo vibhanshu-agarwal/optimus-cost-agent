@@ -17,10 +17,12 @@ are agent-selected; any one record fits in a batch (`durable_outbox.MAX_RECORD_B
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 from optimus_security.durable_outbox import GAP_KIND, GENESIS, STREAM_END_KIND, Record, parse_line
@@ -156,7 +158,7 @@ SCHEMAS: dict[str, dict[str, Check]] = {
     GATEWAY_ATTEMPT_INTENT: {"kind": _S, "at": _AT, "gateway_request_id": _S, "host_request_id": _S_, "attempt": _N, "route": _S_},
     GATEWAY_ATTEMPT_OUTCOME: {
         "kind": _S, "at": _AT, "gateway_request_id": _S, "attempt": _N, "outcome": _one_of(OUTCOMES), "http_status": _N_,
-        "cost_usd": _USD_, "billing_units": _N_,
+        "cost_usd": _USD_, "billing_units": _N_, "intent_confirmed": _B,
     },
 }
 _SHARED_KINDS = frozenset({STREAM_START, STREAM_END, GAP_KIND})
@@ -195,6 +197,8 @@ def validate_payload(payload: object, *, writer: str) -> str:
         raise ContractError("kind")
     if not _conforms(payload, SCHEMAS[kind]):
         raise ContractError("payload")
+    if kind == ATTEMPT_RECEIPT:
+        validate_receipt(payload)  # type: ignore[arg-type]
     return kind
 
 
@@ -294,3 +298,46 @@ def parse_ack(document: object, *, stream_id: str) -> CaptureAck:
     if not (_count(sequence) and sequence >= 1 and isinstance(digest, str) and _HEX64.fullmatch(digest) and _count(conflicts)):
         raise ContractError("malformed")
     return CaptureAck(ledger, stream, sequence, digest, conflicts)
+
+
+# Receipt fingerprints (Plan 12.8 Checkpoint B finding 4): computed by the host when it writes a receipt and recomputed by
+# the ledger from the admitted facts, never trusted. `facts` is every persisted receipt fact except arrival bookkeeping
+# and coverage references; `settled` additionally leaves out the host attempt's own identity (as the replay rules do).
+RECEIPT_DIGEST_VERSION = "capture-receipt-v1"
+_RECEIPT_NOT_FACTS = frozenset({"kind", "at", "recorded_at", "post_teardown", "late", "epoch_id", "facts_digest", "settled_digest"})
+_USAGE_ECHOES = ("provider", "resolved_provider", "resolved_model", "input_tokens", "output_tokens", "cached_tokens", "provider_request_id")
+
+
+def receipt_fingerprints(payload: Mapping[str, Any]) -> tuple[str, str]:
+    facts = {key: value for key, value in payload.items() if key not in _RECEIPT_NOT_FACTS}
+    settled = {key: value for key, value in facts.items() if key != "attempt_id"}
+    return _fingerprint(facts), _fingerprint(settled)
+
+
+def _fingerprint(facts: Mapping[str, Any]) -> str:
+    body = json.dumps([RECEIPT_DIGEST_VERSION, facts], sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return "hex:" + hashlib.sha256(body.encode("ascii")).hexdigest()
+
+
+def _same_decimal(left: object, right: object) -> bool:
+    return isinstance(left, str) and isinstance(right, str) and Decimal(left) == Decimal(right)
+
+
+def validate_receipt(payload: Mapping[str, Any]) -> None:
+    """`StageReceipt`'s cross-field rules and the recomputed fingerprints, on an already schema-valid receipt payload."""
+    outcome, cost, usage = payload["outcome"], payload["reported_cost_usd"], payload["usage"]
+    if outcome == "uncertain" and cost is not None:
+        raise ContractError("receipt")
+    if outcome in {"not_sent", "rejected"} and not (cost is not None and Decimal(cost) == 0):
+        raise ContractError("receipt")
+    if outcome == "unattributed" and usage is None:
+        raise ContractError("receipt")
+    if usage is not None:
+        if outcome not in {"completed", "unattributed"} or not _same_decimal(cost, usage["cost_usd"]):
+            raise ContractError("receipt")
+        if payload["gateway_request_id"] != usage["gateway_request_id"]:
+            raise ContractError("receipt")
+        if any(payload[key] != usage.get(key) for key in _USAGE_ECHOES if key in usage and usage.get(key) is not None):
+            raise ContractError("receipt")
+    if receipt_fingerprints(payload) != (payload["facts_digest"], payload["settled_digest"]):
+        raise ContractError("receipt")

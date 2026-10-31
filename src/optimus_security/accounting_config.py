@@ -61,7 +61,23 @@ def _config_bytes(root: Path) -> bytes | None:
 def config_literal(root: Path) -> str | None:
     """The approval literal of the configuration's exact bytes, or None when there is none."""
     data = _config_bytes(root)
-    return None if data is None else "accounting-config:sha256:" + hashlib.sha256(data).hexdigest()
+    return None if data is None else _literal(data)
+
+
+def _literal(data: bytes) -> str:
+    return "accounting-config:sha256:" + hashlib.sha256(data).hexdigest()
+
+
+def read(root: Path) -> tuple[str | None, AccountingConfig | None, str | None]:
+    """One captured read: the literal and the parsed configuration of the same bytes, so what is verified is what is
+    used (Checkpoint B finding 2). Returns (literal, config, refusal code); all None when there is no file."""
+    data = _config_bytes(root)
+    if data is None:
+        return None, None, None
+    try:
+        return _literal(data), _parse(data), None
+    except AccountingConfigError as exc:
+        return _literal(data), None, exc.code
 
 
 def accounting_literal(root: Path, config: str | None) -> str:
@@ -73,8 +89,10 @@ def load(root: Path) -> AccountingConfig | None:
     """The validated configuration, or None when there is none. Anything that is not exactly the documented non-secret
     shape is refused, so a password can never be read from it."""
     data = _config_bytes(root)
-    if data is None:
-        return None
+    return None if data is None else _parse(data)
+
+
+def _parse(data: bytes) -> AccountingConfig:
     try:
         document = json.loads(data)
     except (ValueError, UnicodeDecodeError):

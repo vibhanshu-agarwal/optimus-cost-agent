@@ -285,13 +285,21 @@ def call_with_upstream_retry(
     on_attempt_failure: Callable[[int, str, float, Literal["retry", "terminal"], dict[str, Any] | None], None] | None = None,
     backoff_seconds: tuple[float, ...] = _DEFAULT_BACKOFF_SECONDS,
     attempt_timeout_seconds: float = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
+    before_dispatch: Callable[[], None] | None = None,
+    not_dispatched: Callable[[], None] | None = None,
 ) -> T:
     """Retry only transient upstream faults; reraise the final failure as RuntimeError. ``on_attempt_failure`` also
     gets each failed attempt's bounded cause (correction plan v4, C9). No attempt is dispatched that could outlast the
     host request's budget, at ``attempt_timeout_seconds`` each, checked after any backoff: a first attempt raises
-    :class:`UpstreamBudgetExhausted`, and after a failure that failure is final."""
+    :class:`UpstreamBudgetExhausted`, and after a failure that failure is final. ``before_dispatch`` runs before each
+    dispatch-time budget check (Plan 12.8: the capture's pre-dispatch intent, so its wait never eats the margin the check
+    approved), and ``not_dispatched`` when that check then refuses the attempt."""
     sleeper = sleep or time.sleep
+    if before_dispatch is not None:
+        before_dispatch()
     if not request_budget_admits(attempt_timeout_seconds):
+        if not_dispatched is not None:
+            not_dispatched()
         raise UpstreamBudgetExhausted("no upstream attempt fits in the host request's remaining budget")
 
     def report(failed: tuple[int, str, float, dict[str, Any] | None], disposition: Literal["retry", "terminal"]) -> None:
@@ -319,9 +327,13 @@ def call_with_upstream_retry(
             retrying = retryable and attempt < max_attempts and request_budget_admits(delay + attempt_timeout_seconds)
             if retrying:
                 sleeper(delay)
+                if before_dispatch is not None:
+                    before_dispatch()
                 # Rechecked at dispatch, after the backoff (Codex round 1): if the next attempt no longer fits, this
                 # failure is final rather than a claim that nothing was sent.
                 retrying = request_budget_admits(attempt_timeout_seconds)
+                if not retrying and not_dispatched is not None:
+                    not_dispatched()
             if retrying:
                 retried = failed
                 attempt += 1
@@ -410,6 +422,8 @@ class UrllibOpenAICompatibleClient:
             sleep=self._sleep,
             on_attempt_failure=report_failure,
             attempt_timeout_seconds=self._timeout_seconds,
+            before_dispatch=usage_capture.prepare_attempt,
+            not_dispatched=usage_capture.abandon_attempt,
         )
 
     def create_message_once(

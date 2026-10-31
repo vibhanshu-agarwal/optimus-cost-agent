@@ -30,6 +30,7 @@ from optimus_security.usage_capture_contract import (
     EPOCH_IDENTITIES,
     MAX_LIST,
     PURPOSE,
+    receipt_fingerprints,
 )
 
 # The purpose each stage's ordinary call serves; a memory call names its own `memory.*` purpose (design v4 section 7).
@@ -157,10 +158,9 @@ def receipt_payload(receipt: StageReceipt, *, epoch_id: str, late: bool, purpose
         reported_cost_usd=_jsonable(receipt.reported_cost_usd),
         recorded_at=receipt.recorded_at.isoformat(),
         usage=usage_payload(receipt.gateway_usage) if receipt.gateway_usage is not None else None,
-        facts_digest=digest(receipt.facts()),
-        settled_digest=digest(receipt.settled_facts()),
         late=late,
     )
+    payload["facts_digest"], payload["settled_digest"] = receipt_fingerprints(payload)
     return payload
 
 

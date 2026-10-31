@@ -5343,6 +5343,22 @@
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/security/test_accounting_launch.py::test_an_accounting_manifest_is_its_version_plus_three_and_signs_the_literal",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.server:OptimusGatewayHandler._handle_capture:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8): one fixed reply_undeliverable diagnostic line naming the capture route and status when the bounded reply write times out; no request content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_usage_capture.py::test_a_withheld_capture_body_times_out_instead_of_holding_the_handler",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.usage_capture_contract:_fingerprint:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.8): canonical JSON of a receipt's allowlisted facts hashed in memory to its fingerprint; only the digest is kept.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_contract.py::test_the_ledger_recomputes_receipt_fingerprints_and_enforces_receipt_rules",
+      "evidence_tier": "unit"
     }
   ]
 }

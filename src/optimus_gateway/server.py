@@ -10,7 +10,7 @@ from typing import Any
 from optimus_gateway import request_diagnostics, usage_capture
 from optimus_gateway.chat_completions import handle_chat_completions_request
 from optimus_gateway.decisions import DECISIONS_PATH, handle_decision_request
-from optimus_gateway.models import GatewayServiceConfig
+from optimus_gateway.models import GatewayServiceConfig, authorize_bearer
 from optimus_gateway.observability import (
     OpenTelemetryTraceExporter,
     TraceExporter,
@@ -37,6 +37,9 @@ _REJECTED_POST_BODY_SECONDS = 2.0
 _REJECTED_POST_WRITE_SECONDS = 2.0
 _REJECTED_POST_READ_CHUNK = 8192
 _MAX_LENGTH_DIGITS = len(str(_REJECTED_POST_MAX_BYTES))
+# Plan 12.8: the capture route's own bounds (agent-selected): strict framing, one total body deadline and a write deadline.
+_CAPTURE_BODY_SECONDS = 10.0
+_CAPTURE_WRITE_SECONDS = 10.0
 _monotonic = time.monotonic
 _CORE_ROUTES = frozenset({"/v1/responses", "/v1/chat/completions", DECISIONS_PATH, "/v1/observability/traces", CAPTURE_PATH})
 
@@ -50,8 +53,9 @@ class _RejectedPostError(Exception):
         self.error = error
 
 
-def _rejected_post_length(headers: Any) -> int:
-    """Classify request framing for a rejected route and return the declared body length (may be 0)."""
+def _rejected_post_length(headers: Any, max_bytes: int = _REJECTED_POST_MAX_BYTES) -> int:
+    """Classify request framing strictly and return the declared body length (may be 0): one Content-Length, no
+    Transfer-Encoding, no Expect, at most ``max_bytes``."""
     lengths = headers.get_all("Content-Length", [])
     encodings = headers.get_all("Transfer-Encoding", [])
     if lengths and encodings:
@@ -70,16 +74,17 @@ def _rejected_post_length(headers: Any) -> int:
         raise _RejectedPostError(HTTPStatus.EXPECTATION_FAILED, "expectation failed")
     if not significant:
         return 0
-    if len(significant) > _MAX_LENGTH_DIGITS:
+    if len(significant) > len(str(max_bytes)):
         raise _RejectedPostError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request body too large")
     length = int(significant)
-    if length > _REJECTED_POST_MAX_BYTES:
+    if length > max_bytes:
         raise _RejectedPostError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request body too large")
     return length
 
 
-def _discard_rejected_post_body(stream: Any, connection: Any, length: int, deadline: float) -> None:
-    """Consume exactly ``length`` bytes from the buffered stream under one total monotonic deadline."""
+def _discard_rejected_post_body(stream: Any, connection: Any, length: int, deadline: float, kept: list[bytes] | None = None) -> None:
+    """Consume exactly ``length`` bytes from the buffered stream under one total monotonic deadline (keeping them in
+    ``kept`` when given)."""
     remaining = length
     while remaining:
         budget = deadline - _monotonic()
@@ -92,6 +97,8 @@ def _discard_rejected_post_body(stream: Any, connection: Any, length: int, deadl
             raise _RejectedPostError(HTTPStatus.REQUEST_TIMEOUT, "request body timeout") from None
         if not chunk:
             raise _RejectedPostError(HTTPStatus.BAD_REQUEST, "incomplete request body")
+        if kept is not None:
+            kept.append(chunk)
         remaining -= len(chunk)
         if _monotonic() >= deadline:
             raise _RejectedPostError(HTTPStatus.REQUEST_TIMEOUT, "request body timeout")
@@ -130,23 +137,15 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
             request_diagnostics.end()
 
     def _handle_post(self, path: str, tool_dependencies: GatewayToolDependencies | None) -> None:
+        if path == CAPTURE_PATH:
+            self._handle_capture()
+            return
         declared = self.headers.get("Content-Length", "0").strip()
         if not (declared.isascii() and declared.isdigit()):
             # C7: a negative or non-integer length is a logged 400, never `read(-1)` or an unhandled error.
             self._finish(path, HTTPStatus.BAD_REQUEST, {"error": "invalid content length"})
             return
         content_length = int(declared)
-        if path == CAPTURE_PATH:
-            # Plan 12.8: capture batches are bounded before any byte is read, and validated from their raw bytes.
-            if content_length > MAX_CAPTURE_BODY_BYTES:
-                self.close_connection = True
-                self._finish(path, HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"status": "rejected", "code": "CAPTURE_TOO_LARGE"})
-                return
-            status, body = handle_usage_capture_request(
-                authorization_header=self.headers.get("Authorization"), raw_body=self.rfile.read(content_length), config=self.config
-            )
-            self._finish(path, HTTPStatus(status), body)
-            return
         raw_body = self.rfile.read(content_length) if content_length else b"{}"
         try:
             request_body = json.loads(raw_body.decode("utf-8"))
@@ -203,6 +202,31 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
             with contextlib.suppress(Exception):  # noqa: BLE001 - a diagnostic never stops the reply it describes
                 request_diagnostics.write_log_line(model_request_log_line(path, int(status), body, policy=self.config.model_policy))
         self._send_json(status, body)
+
+    def _handle_capture(self) -> None:
+        """Plan 12.8 `POST /v1/observability/usage-capture`: authenticated before any body byte is read; strict framing
+        (one Content-Length within the contract limit, no Transfer-Encoding, no Expect); one total body deadline; a write
+        deadline; the connection closes after the reply. Only a committed batch is acknowledged."""
+        self.close_connection = True
+        deadline = _monotonic() + _CAPTURE_BODY_SECONDS
+        try:
+            if not authorize_bearer(authorization_header=self.headers.get("Authorization"), shared_secret=self.config.shared_secret):
+                raise _RejectedPostError(HTTPStatus.UNAUTHORIZED, "unauthorized")
+            length = _rejected_post_length(self.headers, MAX_CAPTURE_BODY_BYTES)
+            if not length:
+                raise _RejectedPostError(HTTPStatus.BAD_REQUEST, "empty capture batch")
+            kept: list[bytes] = []
+            _discard_rejected_post_body(self.rfile, self.connection, length, deadline, kept)
+        except _RejectedPostError as rejection:
+            status, body = int(rejection.status), {"status": "rejected", "error": rejection.error}
+        else:
+            status, body = handle_usage_capture_request(
+                authorization_header=self.headers.get("Authorization"), raw_body=b"".join(kept), config=self.config
+            )
+        try:
+            self._send_json(status, body, write_deadline=_monotonic() + _CAPTURE_WRITE_SECONDS)
+        except TimeoutError:
+            request_diagnostics.write_log_line(json.dumps({"event": "reply_undeliverable", "path": CAPTURE_PATH, "status": status}))
 
     def _reject_unhandled_post(self) -> None:
         """Terminal handling for the early-404 branch: consume a bounded, well-framed body first."""

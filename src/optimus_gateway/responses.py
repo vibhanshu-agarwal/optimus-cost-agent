@@ -187,9 +187,11 @@ def _run_enforced_completion(
             except StageCRefusal as exc:
                 status, body = policy_refusal(ModelPolicyRefusal(exc.code, exc.detail, status=503))
                 return status, {**body, **correlation}
+        usage_capture.prepare_attempt()  # Plan 12.8: the capture intent, before the dispatch-time budget check
         if not request_budget_admits(UPSTREAM_ATTEMPT_TIMEOUT_SECONDS):
             # Checked at dispatch, after any admission and recovery delay: nothing is sent that could still be running
             # once the host stops waiting, so this attempt certainly reached no model.
+            usage_capture.abandon_attempt()
             if admission is not None and guard is not None:
                 guard.settle_unbilled(admission, ATTEMPT_NOT_SENT)
             attempts.append(_attempt_record(number, attempt_id, ATTEMPT_NOT_SENT, failure=dict(_REQUEST_BUDGET_FAILURE)))

@@ -68,16 +68,32 @@ def _receipt(turn: str, attempt: str, *, cost: str = "0.25", gw: str | None = No
 
 
 def _turn(capture: DurableCapture, turn: str, receipts: list[StageReceipt]) -> None:
+    """A turn as the production call sites produce it: each receipt follows its host request's pre-dispatch intent."""
     settlement = TurnSettlement(capture=capture, session_id="s")
     invocation = settlement.open_invocation(turn)
     invocation.start()
     for receipt in receipts:
+        capture.intent(turn, receipt.attempt_id, stage="planning")
         try:
             settlement.record_attempt(receipt)
         except Exception:  # noqa: BLE001 - a conflicting receipt is the case under test
             pass
     invocation.end()
     settlement.finalize_turn(turn)
+
+
+def _gateway_evidence(store: UsageStore, tmp_path: Path, host_request_ids: list[str], *, outcome: str = "completed") -> None:
+    """The Gateway's physical-attempt records for these host requests, committed to the ledger as its drain would."""
+    writer = ob.OutboxWriter(tmp_path / "gateway-outbox")
+    for host_request_id in host_request_ids:
+        gateway_request_id = f"gw-{uuid.uuid4().hex}"
+        writer.submit({"kind": uc.GATEWAY_ATTEMPT_INTENT, "at": _AT.isoformat(), "gateway_request_id": gateway_request_id,
+                       "host_request_id": host_request_id, "attempt": 1, "route": None})
+        writer.submit({"kind": uc.GATEWAY_ATTEMPT_OUTCOME, "at": _AT.isoformat(), "gateway_request_id": gateway_request_id, "attempt": 1,
+                       "outcome": outcome, "http_status": None, "cost_usd": None, "billing_units": None, "intent_confirmed": True})
+    writer.close()
+    scan = ob.scan_stream(writer.directory)
+    store.ingest(uc.parse_batch(uc.build_batch("gateway", scan.stream_id, None, 0, ob.GENESIS, list(scan.records))))
 
 
 def _batch(capture: DurableCapture, after: tuple[int, str] = (0, ob.GENESIS), ledger: str | None = None) -> uc.CaptureBatch:
@@ -100,8 +116,9 @@ def test_migrations_are_pinned_and_the_ledger_instance_is_stable(released, store
 
 
 def test_a_batch_commits_atomically_and_reads_back_from_a_new_connection(released, store, tmp_path):
+    attempt = f"{uuid.uuid4().hex}:planning:1:1"
     capture = _capture(tmp_path)
-    _turn(capture, "s:1", [_receipt("s:1", "s:1:planning:1:1")])
+    _turn(capture, "s:1", [_receipt("s:1", attempt)])
     batch = _batch(capture)
 
     result = store.ingest(batch)
@@ -109,9 +126,12 @@ def test_a_batch_commits_atomically_and_reads_back_from_a_new_connection(release
     assert result.ack.sequence == batch.records[-1].sequence and result.ack.digest == batch.records[-1].digest
     events = _rows(released, "SELECT count(*) FROM optimus_usage.capture_event WHERE stream_id = %s", batch.stream_id)
     assert events == [(len(batch.records),)]
-    assert _rows(released, "SELECT reported_cost_usd FROM optimus_usage.attempt_receipt WHERE attempt_id = %s", "s:1:planning:1:1") == [(Decimal("0.25"),)]
+    assert _rows(released, "SELECT reported_cost_usd FROM optimus_usage.attempt_receipt WHERE attempt_id = %s", attempt) == [(Decimal("0.25"),)]
     epoch = _rows(released, "SELECT state, reasons FROM optimus_usage.coverage_epoch WHERE stream_id = %s AND turn_id = %s", batch.stream_id, "s:1")
-    assert epoch == [("complete", [])]
+    assert epoch == [("incomplete", ["physical_evidence_missing"])], "a host request alone cannot prove its physical attempts"
+    _gateway_evidence(store, tmp_path, [attempt])
+    epoch = _rows(released, "SELECT state, reasons FROM optimus_usage.coverage_epoch WHERE stream_id = %s AND turn_id = %s", batch.stream_id, "s:1")
+    assert epoch == [("complete", [])], "the Gateway's evidence arriving later certifies it"
     cursor = _rows(released, "SELECT sequence, record_digest FROM optimus_usage.drain_cursor WHERE stream_id = %s", batch.stream_id)
     assert cursor == [(result.ack.sequence, result.ack.digest)]
 
@@ -260,47 +280,206 @@ def test_host_delivery_through_the_real_route_commits_acknowledges_and_compacts(
     ack = ob.read_ack(capture.writer.directory)
     assert report.failures == [] and ack is not None and ack.ledger_instance == store.ledger_instance
     assert report.compacted >= 1
-    assert _rows(released, "SELECT count(*) FROM optimus_usage.coverage_epoch WHERE stream_id = %s AND state = 'complete'", capture.writer.stream_id) == [(4,)]
+    epochs = _rows(released, "SELECT state, reasons FROM optimus_usage.coverage_epoch WHERE stream_id = %s AND close_sequence IS NOT NULL", capture.writer.stream_id)
+    assert epochs == [("incomplete", ["physical_evidence_missing"])] * 4, "all four closed; only the Gateway's evidence is missing"
     capture.stop()
 
 
-@pytest.mark.requires_os_keyring_write
-def test_the_gateway_reads_its_ledger_credential_only_from_its_keyring_namespace_and_drains(released, store, tmp_path):
-    """The K3 credential path: a run-specific entry in the real OS keyring under the Gateway's own namespace, read by the
-    production `start_accounting`; the host never sees it. The entry is deleted afterwards."""
-    import keyring
+BOUNDARY_ENV = "P128_CAPTURE_K3_ACCOUNTING_ROOT"
+_GATEWAY_CHILD = """
+import json, sys
+from pathlib import Path
+import keyring
+from optimus_gateway import usage_capture
+from optimus_gateway.models import GatewayServiceConfig
+from optimus_gateway.server import serve_gateway
+from optimus_security import accounting_config as ac
+root = Path(sys.argv[1])
+literal, config, refusal = ac.read(root)
+accounting = usage_capture.start_accounting(root, config, refusal=refusal, keyring_backend=keyring, log=lambda line: print(line, file=sys.stderr, flush=True))
+service = GatewayServiceConfig(bind_host="127.0.0.1", bind_port=0, shared_secret=sys.argv[2], provider="openrouter",
+                               provider_api_key="unused-in-this-case", base_url="https://openrouter.ai/api/v1", usage_store=accounting.store)  # pragma: allowlist secret - a placeholder key for a provider never called here
+server = serve_gateway(config=service)
+print(json.dumps({"port": server.server_address[1], "store": accounting.store is not None}), flush=True)
+try:
+    server.serve_forever()
+finally:
+    accounting.stop()
+"""
 
-    from optimus_gateway import usage_capture
-    from optimus_security import accounting_config as ac
 
-    section = released["section"]
-    name = f"k3-{uuid.uuid4().hex}"
-    root = tmp_path / "accounting"
-    root.mkdir()
-    (root / ac.CONFIG_NAME).write_bytes(json.dumps({
-        "schema_version": 1, "host": section["host"], "port": section["port"], "database": section["database"],
-        "user": section["user"], "credential_name": name, "connect_timeout_seconds": 5,
-    }).encode())
-    keyring.set_password(ac.KEYRING_SERVICE, name, os.environ[PASSWORD_ENV])
-    accounting = None
+@pytest.fixture(scope="module")
+def boundary() -> tuple[dict[str, Any], Path]:
+    if os.environ.get(PASSWORD_ENV):
+        pytest.skip("UNRUN: the credential-boundary case runs only without the ledger password in the pytest environment")
+    path, root = os.environ.get(CONFIG_ENV, ""), os.environ.get(BOUNDARY_ENV, "")
+    if not path or not root:
+        pytest.skip(f"UNRUN: {CONFIG_ENV} or {BOUNDARY_ENV} names no provisioned accounting root; no process was started")
+    from tools.plan12_memory import probes
+
+    section = json.loads(Path(path).read_text(encoding="utf-8"))
+    probes.admit_postgres_resource(section, probes.docker_inspect)
+    return section, Path(root)
+
+
+def _psql(section: dict[str, Any], sql: str) -> list[str]:
+    """Readback inside the container's own local socket: the pytest process never holds the ledger password."""
+    completed = subprocess.run(
+        ["docker", "exec", section["container"], "psql", "-U", section["user"], "-d", section["database"], "-tAc", sql],
+        check=True, capture_output=True, text=True, timeout=60,
+    )
+    return [line for line in completed.stdout.splitlines() if line]
+
+
+@pytest.mark.requires_os_keyring
+def test_the_host_delivers_over_http_to_a_gateway_process_that_alone_holds_the_ledger_credential(boundary, tmp_path):
+    """Checkpoint B finding 7: the provisioner placed the credential in the Gateway's keyring namespace outside pytest; a
+    separate Gateway process resolves it through the production `start_accounting`; the host side holds only the Gateway
+    URL and key and delivers through the production urllib transport."""
+    import secrets as secrets_module
+    import sys
+
+    from optimus.config.gateway import OptimusGatewaySettings
+    from optimus.gateway.client import GatewayClient
+    from optimus.usage.capture_delivery import CaptureDelivery
+
+    section, root = boundary
+    key = secrets_module.token_hex(16)
+    environ = {k: v for k, v in os.environ.items() if k != PASSWORD_ENV}
+    child = subprocess.Popen([sys.executable, "-c", _GATEWAY_CHILD, str(root), key], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             text=True, env=environ)
     try:
-        accounting = usage_capture.start_accounting(root, keyring_backend=keyring, log=lambda _line: None)
-        assert accounting.store is not None and accounting.drain is not None
-        usage_capture.begin("s:1:planning:1:1")
-        usage_capture.set_request("gw-k3-credential")
-        with usage_capture.physical_attempt():
-            pass
+        ready = json.loads(child.stdout.readline())  # type: ignore[union-attr]
+        assert ready["store"] is True, "the Gateway process resolved its own credential"
+        capture = _capture(tmp_path)
+        for n in range(3):
+            _turn(capture, f"s:{n}", [_receipt(f"s:{n}", f"{uuid.uuid4().hex}:planning:1:1")])
         deadline = time.monotonic() + 10
-        while accounting.writer.stats().pending and time.monotonic() < deadline:
+        while capture.writer.stats().pending and time.monotonic() < deadline:
             time.sleep(0.01)
-        report = accounting.drain.drain_once()
+        client = GatewayClient(settings=OptimusGatewaySettings(gateway_url=f"http://127.0.0.1:{ready['port']}", optimus_api_key=key))
+        report = CaptureDelivery(capture, client).drain_once()
+        stream, confirmed = capture.writer.stream_id, capture.writer.stats().confirmed_sequence
+        capture.stop()
     finally:
-        usage_capture.end()
-        if accounting is not None:
-            accounting.stop()
-        keyring.delete_password(ac.KEYRING_SERVICE, name)
+        child.terminate()
+        child.wait(30)
 
-    assert report.failures == [] and report.committed == 2
-    rows = _rows(released, "SELECT writer, sequence FROM optimus_usage.drain_cursor WHERE stream_id = %s", accounting.writer.stream_id)
-    assert rows == [("gateway", 2)]
-    assert keyring.get_password(ac.KEYRING_SERVICE, name) is None, "the run-specific entry is gone"
+    assert os.environ.get(PASSWORD_ENV) is None
+    assert report.failures == [] and report.committed == confirmed
+    assert _psql(section, f"SELECT count(*) FROM optimus_usage.capture_event WHERE stream_id = '{stream}'") == [str(confirmed)]
+    assert _psql(section, f"SELECT writer, sequence FROM optimus_usage.drain_cursor WHERE stream_id = '{stream}'") == [f"host|{confirmed}"]
+
+
+def _epoch_state(released, stream_id: str) -> list[tuple[Any, ...]]:
+    return _rows(released, "SELECT state, reasons FROM optimus_usage.coverage_epoch WHERE stream_id = %s AND close_sequence IS NOT NULL", stream_id)
+
+
+@pytest.mark.parametrize(("outcome", "reason"), [("uncertain", "physical_attempt_uncertain"), ("completed", None)])
+def test_physical_evidence_decides_certification(released, store, tmp_path, outcome, reason):
+    attempt = f"{uuid.uuid4().hex}:planning:1:1"
+    capture = _capture(tmp_path)
+    _turn(capture, "s:1", [_receipt("s:1", attempt)])
+    batch = _batch(capture)
+    store.ingest(batch)
+
+    _gateway_evidence(store, tmp_path, [attempt], outcome=outcome)
+
+    assert _epoch_state(released, batch.stream_id) == [("incomplete", [reason])] if reason else [("complete", [])]
+
+
+def test_a_late_receipt_or_a_ledger_conflict_downgrades_a_certified_epoch(released, store, tmp_path):
+    attempt = f"{uuid.uuid4().hex}:planning:1:1"
+    capture = _capture(tmp_path / "a")
+    _turn(capture, "s:1", [_receipt("s:1", attempt)])
+    capture.receipt(_receipt("s:1", f"{attempt}:late"))  # after the close: appended late
+    batch = _batch(capture)
+    store.ingest(batch)
+    _gateway_evidence(store, tmp_path / "g", [attempt, f"{attempt}:late"])
+
+    assert ("late_receipt" in _epoch_state(released, batch.stream_id)[0][1])
+
+    other = f"{uuid.uuid4().hex}:planning:1:1"
+    clean = _capture(tmp_path / "b")
+    _turn(clean, "s:2", [_receipt("s:2", other, gw="gw-shared-" + other)])
+    clean_batch = _batch(clean)
+    store.ingest(clean_batch)
+    _gateway_evidence(store, tmp_path / "h", [other])
+    assert _epoch_state(released, clean_batch.stream_id) == [("complete", [])]
+    rival = _capture(tmp_path / "c")  # another stream settles the same Gateway request differently
+    _turn(rival, "s:3", [_receipt("s:3", other, cost="0.99", gw="gw-shared-" + other)])
+    store.ingest(_batch(rival))
+
+    assert "receipt_conflict" in _epoch_state(released, clean_batch.stream_id)[0][1]
+
+
+def test_an_alias_reserves_its_attempt_identity_sequentially_and_concurrently(released, store, tmp_path):
+    attempt, gw = f"{uuid.uuid4().hex}:planning:1:1", f"gw-{uuid.uuid4().hex}"
+    first = _capture(tmp_path / "a")
+    _turn(first, "s:1", [_receipt("s:1", attempt, gw=gw)])
+    store.ingest(_batch(first))
+    alias = _capture(tmp_path / "b")
+    _turn(alias, "s:2", [_receipt("s:1", attempt + "-alias", gw=gw)])
+    store.ingest(_batch(alias))
+    reuse = _capture(tmp_path / "c")  # the alias's ID reused for a different Gateway request
+    _turn(reuse, "s:3", [_receipt("s:1", attempt + "-alias", gw=f"gw-{uuid.uuid4().hex}")])
+
+    result = store.ingest(_batch(reuse))
+
+    assert result.ack.conflicts == 1
+    assert _rows(released, "SELECT count(*) FROM optimus_usage.attempt_receipt WHERE attempt_id = %s", attempt + "-alias") == [(0,)]
+
+    shared_attempt, shared_gw = f"{uuid.uuid4().hex}:planning:1:1", f"gw-{uuid.uuid4().hex}"
+    batches = []
+    for n in range(4):  # four streams race to settle one attempt under different requests
+        racer = _capture(tmp_path / f"r{n}")
+        _turn(racer, f"s:{n}", [_receipt("s:1", shared_attempt, gw=shared_gw if n == 0 else f"gw-{uuid.uuid4().hex}")])
+        batches.append(_batch(racer))
+    barrier = threading.Barrier(4)
+
+    def drain(batch: uc.CaptureBatch) -> None:
+        barrier.wait(10)
+        UsageStore(released["conninfo"]).ingest(batch)
+
+    workers = [threading.Thread(target=drain, args=(b,)) for b in batches]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(60)
+
+    canonical = _rows(released, "SELECT count(*) FROM optimus_usage.attempt_receipt WHERE attempt_id = %s", shared_attempt)
+    conflicts = _rows(released, "SELECT count(*) FROM optimus_usage.receipt_conflict WHERE attempt_id = %s", shared_attempt)
+    assert canonical == [(1,)] and conflicts == [(3,)]
+
+
+def test_a_held_stream_lock_makes_ingest_retryable_within_its_bound(released, store, tmp_path):
+    capture = _capture(tmp_path)
+    _turn(capture, "s:1", [])
+    batch = _batch(capture)
+    with psycopg.connect(released["conninfo"]) as holder:
+        holder.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (batch.stream_id,))  # held until rollback
+        bounded = UsageStore(released["conninfo"], lock_timeout_ms=500)
+        started = time.monotonic()
+        with pytest.raises(StoreError) as waited:
+            bounded.ingest(batch)
+        elapsed = time.monotonic() - started
+        holder.rollback()
+
+    assert waited.value.code == "unavailable" and elapsed < 5
+    assert _rows(released, "SELECT count(*) FROM optimus_usage.capture_event WHERE stream_id = %s", batch.stream_id) == [(0,)]
+    assert store.ingest(batch).inserted == len(batch.records), "after the holder lets go, the same batch commits"
+
+
+def test_a_receipt_with_no_recorded_intent_is_never_certified(released, store, tmp_path):
+    capture = _capture(tmp_path)
+    settlement = TurnSettlement(capture=capture, session_id="s")
+    invocation = settlement.open_invocation("s:1")
+    invocation.start()
+    settlement.record_attempt(_receipt("s:1", f"{uuid.uuid4().hex}:planning:1:1"))  # sent without a pre-dispatch intent
+    invocation.end()
+    settlement.finalize_turn("s:1")
+    batch = _batch(capture)
+
+    store.ingest(batch)
+
+    assert _epoch_state(released, batch.stream_id) == [("incomplete", ["receipt_without_intent"])]

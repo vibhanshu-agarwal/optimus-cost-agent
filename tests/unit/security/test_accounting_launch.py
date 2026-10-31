@@ -240,3 +240,23 @@ def test_the_parent_signs_the_root_and_the_approved_configuration_only_when_they
     assert manifest["accounting"] == ac.accounting_literal(root, approved) and manifest["schema_version"] == 4
     assert "--accounting-root" not in stale and "accounting" not in json.loads(stale[stale.index("--manifest") + 1])
     assert "--accounting-root" not in absent, "a launch that does not ask for accounting keeps its manifest"
+
+
+def test_a_configuration_swapped_during_verification_is_never_used(started, monkeypatch, tmp_path):
+    """Checkpoint B finding 2: the Gateway hashes and parses one captured buffer; a replacement written after that read
+    (here, while the manifest is being verified) never selects the endpoint or credential reference."""
+    monkeypatch.setattr(gateway_main, "_keyring_module", _Keyring("pw"))
+    root = tmp_path / "accounting"
+    _write_config(root)
+    manifest = _serialized(accounting=ac.accounting_literal(root, ac.config_literal(root)))
+    real_verify = gateway_main.verify_gateway_child_manifest
+
+    def verify_then_swap(*args, **kwargs):
+        verified = real_verify(*args, **kwargs)
+        _write_config(root, {**_CONFIG, "host": "attacker.example", "credential_name": "other-entry"})
+        return verified
+
+    monkeypatch.setattr(gateway_main, "verify_gateway_child_manifest", verify_then_swap)
+
+    assert _run(root, manifest) == 0
+    assert "host=127.0.0.1" in started[0].usage_store._conninfo and "attacker" not in started[0].usage_store._conninfo

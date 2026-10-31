@@ -23,7 +23,8 @@ from optimus_model_policy.binding import (
 )
 from optimus_model_policy.stage_c import StageCGuard, StageCLedgerError, compose_stage_c_envelope, require_stage_c_profile
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES, compose_test_profile_snapshot
-from optimus_security.accounting_config import AccountingConfigError, accounting_literal, config_literal
+from optimus_security.accounting_config import AccountingConfigError, accounting_literal
+from optimus_security.accounting_config import read as read_accounting_config
 from optimus_security.launch_manifest import (
     LaunchManifestError,
     read_manifest_hmac_key,
@@ -176,10 +177,11 @@ def main(argv: list[str] | None = None) -> int:
     # Plan 12.8: compose the accounting literal from the actual root and the configuration bytes found there; the signed
     # manifest must bind exactly it, so an unapproved or swapped configuration refuses to start.
     accounting_dir = None if args.accounting_root is None else Path(args.accounting_root)
-    accounting_bound = None
+    accounting_bound = accounting_config = accounting_refusal = None
     if accounting_dir is not None:
         try:
-            accounting_bound = accounting_literal(accounting_dir, config_literal(accounting_dir))
+            captured_literal, accounting_config, accounting_refusal = read_accounting_config(accounting_dir)
+            accounting_bound = accounting_literal(accounting_dir, captured_literal)
         except AccountingConfigError as exc:
             print(f"optimus-local-gateway: accounting configuration is not usable ({exc.code}); refusing to start.", file=sys.stderr)
             return 2
@@ -223,7 +225,10 @@ def main(argv: list[str] | None = None) -> int:
 
     accounting = None
     if accounting_dir is not None:
-        accounting = usage_capture.start_accounting(accounting_dir, keyring_backend=_keyring_module, log=lambda line: print(line, file=sys.stderr))
+        accounting = usage_capture.start_accounting(
+            accounting_dir, accounting_config, refusal=accounting_refusal, keyring_backend=_keyring_module,
+            log=lambda line: print(line, file=sys.stderr),
+        )  # the configuration verified above, never a second read
         config = replace(config, usage_store=accounting.store)
 
     try:

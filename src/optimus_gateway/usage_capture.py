@@ -45,10 +45,11 @@ def begin(host_request_id: str | None) -> None:
     _STATE.host_request_id = host_request_id if host_request_id and uc.CAPTURE_REQUEST_ID.fullmatch(host_request_id) else None
     _STATE.gateway_request_id = None
     _STATE.ordinals = {}
+    _STATE.pending = None
 
 
 def end() -> None:
-    _STATE.host_request_id = _STATE.gateway_request_id = None
+    _STATE.host_request_id = _STATE.gateway_request_id = _STATE.pending = None
     _STATE.ordinals = {}
 
 
@@ -70,22 +71,52 @@ def _http_status(exc: BaseException) -> int | None:
     return status if type(status) is int else None
 
 
-@contextmanager
-def physical_attempt() -> Iterator[None]:
-    """Record one physical upstream attempt around its I/O: completed, failed with its HTTP status, or uncertain."""
+def prepare_attempt() -> None:
+    """Record the next physical attempt's intent now, before the dispatch-time budget check, so the capture's wait never
+    consumes the margin that check approves. Whether the intent was durable in time travels with its outcome."""
     writer = _writer
     gateway_request_id = getattr(_STATE, "gateway_request_id", None)
     if writer is None or gateway_request_id is None:
-        yield
+        _STATE.pending = None
         return
     ordinals: dict[str, Any] = getattr(_STATE, "ordinals", None) or {}
     _STATE.ordinals = ordinals
-    counter = ordinals.setdefault(gateway_request_id, itertools.count(1))
-    number = next(counter)
-    writer.submit(
+    number = next(ordinals.setdefault(gateway_request_id, itertools.count(1)))
+    confirmed = writer.submit(
         {"kind": uc.GATEWAY_ATTEMPT_INTENT, "at": _now(), "gateway_request_id": gateway_request_id,
          "host_request_id": getattr(_STATE, "host_request_id", None), "attempt": number, "route": None}
     ).wait(_ack_wait)
+    _STATE.pending = (gateway_request_id, number, confirmed)
+
+
+def abandon_attempt() -> None:
+    """The prepared attempt was refused at dispatch: it is closed as not sent."""
+    pending = getattr(_STATE, "pending", None)
+    _STATE.pending = None
+    if pending is not None and _writer is not None:
+        _outcome(_writer, pending, "not_sent", None)
+
+
+def _outcome(writer: OutboxWriter, pending: tuple[str, int, bool], outcome: str, status: int | None) -> None:
+    gateway_request_id, number, confirmed = pending
+    writer.submit(
+        {"kind": uc.GATEWAY_ATTEMPT_OUTCOME, "at": _now(), "gateway_request_id": gateway_request_id, "attempt": number,
+         "outcome": outcome, "http_status": status, "cost_usd": None, "billing_units": None, "intent_confirmed": confirmed}
+    )
+
+
+@contextmanager
+def physical_attempt() -> Iterator[None]:
+    """Record one physical upstream attempt's outcome around its I/O: completed, failed with its HTTP status, or
+    uncertain. It answers the intent `prepare_attempt` recorded before the budget check (or records one now)."""
+    if getattr(_STATE, "pending", None) is None:
+        prepare_attempt()
+    pending = getattr(_STATE, "pending", None)
+    _STATE.pending = None
+    writer = _writer
+    if writer is None or pending is None:
+        yield
+        return
     outcome, status = "uncertain", None
     try:
         yield
@@ -95,10 +126,7 @@ def physical_attempt() -> Iterator[None]:
         outcome = "failed" if status is not None else "uncertain"
         raise
     finally:
-        writer.submit(
-            {"kind": uc.GATEWAY_ATTEMPT_OUTCOME, "at": _now(), "gateway_request_id": gateway_request_id, "attempt": number,
-             "outcome": outcome, "http_status": status, "cost_usd": None, "billing_units": None}
-        )
+        _outcome(writer, pending, outcome, status)
 
 
 def handle_usage_capture_request(*, authorization_header: str | None, raw_body: bytes, config: GatewayServiceConfig) -> tuple[int, dict[str, Any]]:
@@ -145,18 +173,18 @@ class GatewayAccounting:
         self.writer.close()
 
 
-def start_accounting(root: Path, *, keyring_backend: Any, log: Callable[[str], None]) -> GatewayAccounting:
-    """Open the Gateway's accounting under its verified root. The ledger's password is read only from the Gateway-owned
-    keyring namespace; without an approved configuration or that credential, capture still accumulates locally."""
+def start_accounting(root: Path, config: accounting_config.AccountingConfig | None, *, refusal: str | None = None,
+                     keyring_backend: Any, log: Callable[[str], None]) -> GatewayAccounting:
+    """Open the Gateway's accounting under its verified root with the configuration verified against the manifest (never
+    re-read here). The ledger's password is read only from the Gateway-owned keyring namespace; without an approved
+    configuration or that credential, capture still accumulates locally."""
     from optimus_gateway.usage_store import UsageStore
 
     writer = OutboxWriter(root / "outbox" / "gateway")
     configure(writer)
     accounting = GatewayAccounting(writer)
-    try:
-        config = accounting_config.load(root)
-    except accounting_config.AccountingConfigError as exc:
-        log(f"optimus-local-gateway: accounting configuration refused ({exc.code}); capture stays local.")
+    if refusal is not None:
+        log(f"optimus-local-gateway: accounting configuration refused ({refusal}); capture stays local.")
         return accounting
     if config is None:
         return accounting
