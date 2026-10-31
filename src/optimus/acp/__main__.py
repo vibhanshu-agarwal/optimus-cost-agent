@@ -67,6 +67,7 @@ from optimus.redis.runtime import RedisRuntime, RedisRuntimeShutdownIncomplete
 from optimus_model_policy import RegistryError, binding
 from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, COMPOSITION_LITERAL_NAME, BindingError
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES
+from optimus_security.accounting_config import SECURITY_LITERAL_NAME as ACCOUNTING_LITERAL_NAME
 
 _OWNED_READER_TYPES = (StdioByteReader, StdioNdjsonLineReader)
 _FRAMED_WRITER_TYPE = StdioByteWriter
@@ -885,6 +886,8 @@ def main(argv: list[str] | None = None) -> int:
             auto_composition=auto_composition is not None,
             stage_c_envelope=None if stage_c_launch is None else stage_c_launch.envelope.literal,
             stage_c_ledger=None if stage_c_launch is None else stage_c_launch.ledger,
+            usage_accounting=True,  # Plan 12.8
+            approved_accounting_config=candidate.security_literals.get(ACCOUNTING_LITERAL_NAME),
         )
 
     lifecycle = ProcessLifecycle(report=_report_shutdown)
@@ -897,10 +900,27 @@ def main(argv: list[str] | None = None) -> int:
         from optimus.usage.durable_capture import DurableCapture
 
         durable_capture = DurableCapture.at(candidate.operator_paths.config_root)
+        delivery = None if args.check_config else _capture_delivery(durable_capture)
         try:
             return _run_authorized(durable_capture)
         finally:
+            if delivery is not None:
+                delivery.stop()
             durable_capture.stop()
+
+    def _capture_delivery(durable_capture: DurableCapture) -> Any:
+        """Drain capture to the Gateway-owned ledger through the existing Gateway URL and key, on its own thread. A
+        Gateway not up yet only makes early passes retry; delivery never delays startup or a model call."""
+        from optimus.config.gateway import OptimusGatewaySettings
+        from optimus.gateway.client import GatewayClient
+        from optimus.usage.capture_delivery import CaptureDelivery
+
+        try:
+            delivery = CaptureDelivery(durable_capture, GatewayClient(settings=OptimusGatewaySettings.from_env(agent_environ)))
+        except Exception:  # noqa: BLE001 - without delivery, capture stays in the outbox for a later launch
+            return None
+        delivery.start()
+        return delivery
 
     def _run_authorized(durable_capture: DurableCapture) -> int:
         nonlocal configured_server, startup_control

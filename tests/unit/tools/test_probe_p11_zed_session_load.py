@@ -4124,10 +4124,13 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     file_policy_committed = b"from optimus.guardrails.file_policy import" in head_workspace_context
     if not file_policy_committed:
         expected -= {file_policy_path}
-    # Plan 12.8 adds durable capture (five paths): the capture writer and its records, which the session store and
-    # the entrypoint import, the operation epochs the dispatcher and preflight import, and the neutral outbox and
-    # contract they share; keyed on HEAD's spec module.
+    # Plan 12.8 adds durable capture (eight paths): the capture writer, its records and its delivery, which the session
+    # store and the entrypoint import, the operation epochs the dispatcher and preflight import, the accounting
+    # configuration the launch gate binds, and the neutral outbox, drain and contract they share; keyed on HEAD's spec.
     capture_paths = {
+        "src/optimus/usage/capture_delivery.py",
+        "src/optimus_security/accounting_config.py",
+        "src/optimus_security/outbox_drain.py",
         "src/optimus/usage/capture_events.py",
         "src/optimus/usage/durable_capture.py",
         "src/optimus/usage/operation_capture.py",
@@ -4170,7 +4173,7 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     ) + tree_committed + composition_committed + stage_c_committed + (2 if ordinary_committed else 0) + runtime_tree_committed + failure_facts_committed + (
         2 if loop_committed else 0
     ) + tree_moved + line_endings_committed + edits_committed + auto_committed + contract_committed + hybrid_committed + lifecycle_committed + admission_committed + retention_committed + secret_paths_committed + file_policy_committed + (
-        5 if capture_committed else 0
+        8 if capture_committed else 0
     )
 
 

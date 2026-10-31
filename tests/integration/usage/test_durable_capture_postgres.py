@@ -262,3 +262,45 @@ def test_host_delivery_through_the_real_route_commits_acknowledges_and_compacts(
     assert report.compacted >= 1
     assert _rows(released, "SELECT count(*) FROM optimus_usage.coverage_epoch WHERE stream_id = %s AND state = 'complete'", capture.writer.stream_id) == [(4,)]
     capture.stop()
+
+
+@pytest.mark.requires_os_keyring_write
+def test_the_gateway_reads_its_ledger_credential_only_from_its_keyring_namespace_and_drains(released, store, tmp_path):
+    """The K3 credential path: a run-specific entry in the real OS keyring under the Gateway's own namespace, read by the
+    production `start_accounting`; the host never sees it. The entry is deleted afterwards."""
+    import keyring
+
+    from optimus_gateway import usage_capture
+    from optimus_security import accounting_config as ac
+
+    section = released["section"]
+    name = f"k3-{uuid.uuid4().hex}"
+    root = tmp_path / "accounting"
+    root.mkdir()
+    (root / ac.CONFIG_NAME).write_bytes(json.dumps({
+        "schema_version": 1, "host": section["host"], "port": section["port"], "database": section["database"],
+        "user": section["user"], "credential_name": name, "connect_timeout_seconds": 5,
+    }).encode())
+    keyring.set_password(ac.KEYRING_SERVICE, name, os.environ[PASSWORD_ENV])
+    accounting = None
+    try:
+        accounting = usage_capture.start_accounting(root, keyring_backend=keyring, log=lambda _line: None)
+        assert accounting.store is not None and accounting.drain is not None
+        usage_capture.begin("s:1:planning:1:1")
+        usage_capture.set_request("gw-k3-credential")
+        with usage_capture.physical_attempt():
+            pass
+        deadline = time.monotonic() + 10
+        while accounting.writer.stats().pending and time.monotonic() < deadline:
+            time.sleep(0.01)
+        report = accounting.drain.drain_once()
+    finally:
+        usage_capture.end()
+        if accounting is not None:
+            accounting.stop()
+        keyring.delete_password(ac.KEYRING_SERVICE, name)
+
+    assert report.failures == [] and report.committed == 2
+    rows = _rows(released, "SELECT writer, sequence FROM optimus_usage.drain_cursor WHERE stream_id = %s", accounting.writer.stream_id)
+    assert rows == [("gateway", 2)]
+    assert keyring.get_password(ac.KEYRING_SERVICE, name) is None, "the run-specific entry is gone"

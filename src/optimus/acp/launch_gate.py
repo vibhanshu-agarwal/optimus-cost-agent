@@ -80,6 +80,8 @@ from optimus_model_policy.stage_c import (
     stage_c_ledger_path,
 )
 from optimus_model_policy.test_profiles import TEST_PROFILE_LITERAL_NAME, compose_test_profile_snapshot
+from optimus_security.accounting_config import SECURITY_LITERAL_NAME as ACCOUNTING_LITERAL_NAME
+from optimus_security.accounting_config import AccountingConfigError, accounting_root, config_literal
 from optimus_security.sanitization import canonicalize_credential_uri, validate_secret_length
 
 # Plan 9.96, Task 5 Batch 3 Step 5: the reviewed default each monotonic-tier
@@ -745,6 +747,16 @@ def resolve_launch_candidate(
         )
         security_literals[STAGE_C_LITERAL_NAME] = stage_c_literal
 
+    # 2f. Plan 12.8 (ADR-032): bind the Gateway's accounting configuration (endpoint, database, role and keyring
+    # reference; never a credential) by its exact bytes, so the operator approves it and any change requires
+    # re-approval. Without the file there is no literal and existing approvals stay valid.
+    try:
+        accounting_literal = config_literal(accounting_root(operator_paths.config_root))
+    except AccountingConfigError as exc:
+        raise LaunchGateError(code="ACCOUNTING_CONFIG_INVALID", detail=exc.code) from exc
+    if accounting_literal is not None:
+        security_literals[ACCOUNTING_LITERAL_NAME] = accounting_literal
+
     # 3. Compute security snapshot digest using the SINGLE shared function
     # also used by build_approval_record(). This is required — using two
     # independent hash computations (even with equivalent inputs) produces
@@ -775,6 +787,16 @@ def resolve_launch_candidate(
                     else "auto-composition" if auto_launch else "trusted-composition"
                 ),
                 display_value=registry_literal,
+                decision="requires exact approval",
+            )
+        )
+    if accounting_literal is not None:
+        display_rows.append(
+            LaunchDisplayRow(
+                name=ACCOUNTING_LITERAL_NAME,
+                tier=LaunchVariableTier.SECURITY,
+                source_class="accounting-configuration",
+                display_value=accounting_literal,
                 decision="requires exact approval",
             )
         )

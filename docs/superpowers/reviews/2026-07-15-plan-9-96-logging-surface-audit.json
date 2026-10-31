@@ -5297,7 +5297,7 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.usage.capture_delivery:CaptureDelivery.nudge:redis_hash_write",
+      "key": "optimus_security.outbox_drain:OutboxDrain.nudge:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "AST overmatch (Plan 12.8): sets an in-memory threading.Event to wake the delivery thread; no Redis, file or diagnostic sink.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
@@ -5305,7 +5305,7 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.usage.capture_delivery:CaptureDelivery.stop:redis_hash_write",
+      "key": "optimus_security.outbox_drain:OutboxDrain.stop:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "AST overmatch (Plan 12.8): sets in-memory threading.Events to stop the delivery thread; no Redis, file or diagnostic sink.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
@@ -5313,7 +5313,7 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.usage.capture_delivery:_batches:json_serialization",
+      "key": "optimus_security.outbox_drain:batches:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "AST overmatch (Plan 12.8): json.dumps of one already framed, allowlisted outbox line only to measure its escaped size for batching; the result is discarded.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
@@ -5334,6 +5334,14 @@
       "rationale": "AST overmatch (Plan 12.8): canonical JSON of attempt identities hashed in memory to verify a close's identity digest; only the comparison result is used.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/usage/test_durable_capture.py::test_large_identity_sets_continue_in_ordered_parts_bound_by_the_close",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.accounting_config:accounting_literal:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): canonical JSON of the accounting root path and the approved configuration's digest literal, signed into the Gateway manifest; no credential.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/security/test_accounting_launch.py::test_an_accounting_manifest_is_its_version_plus_three_and_signs_the_literal",
       "evidence_tier": "unit"
     }
   ]

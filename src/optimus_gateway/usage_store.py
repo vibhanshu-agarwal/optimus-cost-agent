@@ -23,8 +23,10 @@ from pathlib import Path
 from typing import Any
 
 import psycopg
+from psycopg.conninfo import make_conninfo
 
 from optimus_security import usage_capture_contract as uc
+from optimus_security.accounting_config import AccountingConfig
 from optimus_security.durable_outbox import GAP_KIND, GENESIS, Record, follows
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -72,6 +74,13 @@ class UsageStore:
         self._conninfo = conninfo
         self._connect_timeout = connect_timeout
         self.ledger_instance: str | None = None
+
+    @classmethod
+    def from_config(cls, config: AccountingConfig, password: str) -> UsageStore:
+        """A store for the approved configuration, with the password the Gateway resolved from its own keyring namespace.
+        The password is only ever in this process's connection string, never logged or persisted."""
+        conninfo = make_conninfo(host=config.host, port=config.port, dbname=config.database, user=config.user, password=password)
+        return cls(conninfo, connect_timeout=config.connect_timeout_seconds)
 
     def _connect(self) -> psycopg.Connection[Any]:
         try:

@@ -13,17 +13,22 @@ from __future__ import annotations
 
 import itertools
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError
 
+from optimus_security import accounting_config
 from optimus_security import usage_capture_contract as uc
-from optimus_security.durable_outbox import ACK_WAIT_SECONDS, OutboxWriter
+from optimus_security.durable_outbox import ACK_WAIT_SECONDS, OutboxWriter, Record
+from optimus_security.outbox_drain import DrainStop, OutboxDrain
 
 if TYPE_CHECKING:
     from optimus_gateway.models import GatewayServiceConfig
+    from optimus_gateway.usage_store import UsageStore
 
 _STATE = threading.local()
 _writer: OutboxWriter | None = None
@@ -122,3 +127,62 @@ def handle_usage_capture_request(*, authorization_header: str | None, raw_body: 
             body.update(ledger_instance=store.ledger_instance, sequence=exc.committed[0], digest=exc.committed[1])
         return (409 if exc.code == "cursor_mismatch" else 400), body
     return 200, uc.build_ack(result.ack)
+
+
+@dataclass
+class GatewayAccounting:
+    """What a launch with an accounting root runs: the capture writer, the ledger when an approved configuration and its
+    credential are present, and the drain of the Gateway's own streams into that ledger."""
+
+    writer: OutboxWriter
+    store: UsageStore | None = None
+    drain: OutboxDrain | None = None
+
+    def stop(self) -> None:
+        if self.drain is not None:
+            self.drain.stop()
+        configure(None)
+        self.writer.close()
+
+
+def start_accounting(root: Path, *, keyring_backend: Any, log: Callable[[str], None]) -> GatewayAccounting:
+    """Open the Gateway's accounting under its verified root. The ledger's password is read only from the Gateway-owned
+    keyring namespace; without an approved configuration or that credential, capture still accumulates locally."""
+    from optimus_gateway.usage_store import UsageStore
+
+    writer = OutboxWriter(root / "outbox" / "gateway")
+    configure(writer)
+    accounting = GatewayAccounting(writer)
+    try:
+        config = accounting_config.load(root)
+    except accounting_config.AccountingConfigError as exc:
+        log(f"optimus-local-gateway: accounting configuration refused ({exc.code}); capture stays local.")
+        return accounting
+    if config is None:
+        return accounting
+    try:
+        password = keyring_backend.get_password(accounting_config.KEYRING_SERVICE, config.credential_name)
+    except Exception:  # noqa: BLE001 - an unavailable keyring leaves accounting off, never the Gateway
+        password = None
+    if not password:
+        log("optimus-local-gateway: the accounting credential is not in the Gateway keyring namespace; capture stays local.")
+        return accounting
+    accounting.store = UsageStore.from_config(config, password)
+    accounting.drain = OutboxDrain(writer, _direct_send(accounting.store), name="gateway-capture-drain")
+    accounting.drain.start()
+    return accounting
+
+
+def _direct_send(store: UsageStore) -> Callable[[str, str | None, tuple[int, str], list[Record]], uc.CaptureAck]:
+    from optimus_gateway.usage_store import StoreError
+
+    def send(stream_id: str, ledger: str | None, after: tuple[int, str], batch: list[Record]) -> uc.CaptureAck:
+        try:
+            parsed = uc.parse_batch(uc.build_batch("gateway", stream_id, ledger, after[0], after[1], batch))
+            return store.ingest(parsed).ack
+        except uc.ContractError as exc:
+            raise DrainStop(f"invalid:{exc.code}") from None
+        except StoreError as exc:
+            raise DrainStop(exc.code, transient=exc.code == "unavailable") from None
+
+    return send

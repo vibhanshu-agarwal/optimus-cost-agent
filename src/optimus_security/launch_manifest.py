@@ -38,6 +38,10 @@ MANIFEST_REGISTRY_SCHEMA_VERSION = 2
 # Plan 12.2 Task 13 (Stage C): a manifest that also binds the shared test envelope is version 3 and signs
 # its literal beside the registry's. Version 1 and 2 manifests keep their exact bytes.
 MANIFEST_STAGE_C_SCHEMA_VERSION = 3
+# Plan 12.8 (ADR-032): a manifest that also binds the Gateway's accounting literal (its accounting root and the approved
+# accounting configuration's digest) is its version plus 3 (4, 5 or 6) and signs that literal too. Manifests without it
+# keep their exact version and bytes.
+MANIFEST_ACCOUNTING_VERSION_OFFSET = 3
 MANIFEST_MAX_AGE_SECONDS = 60
 
 # Plan 9.96, Task 5 Batch 3 (review finding): the SINGLE shared source for
@@ -109,12 +113,14 @@ class GatewayChildManifest:
     signature: str
     model_registry: str | None = None
     stage_c_envelope: str | None = None
+    accounting: str | None = None
 
 
-def _schema_version(model_registry: str | None, stage_c_envelope: str | None) -> int:
+def _schema_version(model_registry: str | None, stage_c_envelope: str | None, accounting: str | None = None) -> int:
+    offset = 0 if accounting is None else MANIFEST_ACCOUNTING_VERSION_OFFSET
     if stage_c_envelope is not None:
-        return MANIFEST_STAGE_C_SCHEMA_VERSION
-    return MANIFEST_SCHEMA_VERSION if model_registry is None else MANIFEST_REGISTRY_SCHEMA_VERSION
+        return MANIFEST_STAGE_C_SCHEMA_VERSION + offset
+    return (MANIFEST_SCHEMA_VERSION if model_registry is None else MANIFEST_REGISTRY_SCHEMA_VERSION) + offset
 
 
 def read_manifest_hmac_key(keyring_backend: Any) -> bytes:
@@ -155,6 +161,7 @@ def _canonical_fields(
     nonce: str,
     model_registry: str | None = None,
     stage_c_envelope: str | None = None,
+    accounting: str | None = None,
 ) -> dict[str, Any]:
     """Canonical field mapping used for BOTH signing and serialization.
 
@@ -185,6 +192,8 @@ def _canonical_fields(
         fields["model_registry"] = model_registry
     if stage_c_envelope is not None:
         fields["stage_c_envelope"] = stage_c_envelope
+    if accounting is not None:
+        fields["accounting"] = accounting
     return fields
 
 
@@ -208,6 +217,7 @@ def build_gateway_child_manifest(
     policy_version: str,
     model_registry: str | None = None,
     stage_c_envelope: str | None = None,
+    accounting: str | None = None,
 ) -> GatewayChildManifest:
     """Build a signed manifest. issued_at/expires_at are exactly
     MANIFEST_MAX_AGE_SECONDS apart. ``model_registry`` is the trusted registry's approval literal
@@ -225,7 +235,7 @@ def build_gateway_child_manifest(
     provider_fp = _fingerprint_credential(provider_api_key, field_name="provider_api_key", hmac_key=hmac_key)
     shared_fp = _fingerprint_credential(shared_secret, field_name="shared_secret", hmac_key=hmac_key)
 
-    schema_version = _schema_version(model_registry, stage_c_envelope)
+    schema_version = _schema_version(model_registry, stage_c_envelope, accounting)
     fields = _canonical_fields(
         schema_version=schema_version,
         policy_version=policy_version,
@@ -242,6 +252,7 @@ def build_gateway_child_manifest(
         nonce=nonce,
         model_registry=model_registry,
         stage_c_envelope=stage_c_envelope,
+        accounting=accounting,
     )
     signature = _compute_signature(fields, hmac_key=hmac_key)
 
@@ -262,6 +273,7 @@ def build_gateway_child_manifest(
         signature=signature,
         model_registry=model_registry,
         stage_c_envelope=stage_c_envelope,
+        accounting=accounting,
     )
 
 
@@ -287,6 +299,8 @@ def serialize_gateway_child_manifest(manifest: GatewayChildManifest) -> str:
         data["model_registry"] = manifest.model_registry
     if manifest.stage_c_envelope is not None:
         data["stage_c_envelope"] = manifest.stage_c_envelope
+    if manifest.accounting is not None:
+        data["accounting"] = manifest.accounting
     return json.dumps(data, sort_keys=True, separators=(",", ":"))
 
 
@@ -302,6 +316,7 @@ def verify_gateway_child_manifest(
     bind_port: int,
     model_registry: str | None = None,
     stage_c_envelope: str | None = None,
+    accounting: str | None = None,
 ) -> GatewayChildManifest:
     """Verify a serialized manifest against the Gateway's actual construction
     inputs. Rejects missing, expired, mismatched, or invalid manifests.
@@ -324,6 +339,9 @@ def verify_gateway_child_manifest(
     ``stage_c_envelope`` is the literal of the Stage C envelope this Gateway composed itself from its
     actual ledger argument (Plan 12.2 Task 13), or None when it guards none; the manifest must bind
     exactly that value the same way.
+
+    ``accounting`` is the accounting literal this Gateway composed itself from its accounting root and the configuration
+    it found there (Plan 12.8), or None without one; the manifest must bind exactly that value too.
     """
     try:
         data = json.loads(serialized)
@@ -347,6 +365,7 @@ def verify_gateway_child_manifest(
             nonce=data["nonce"],
             model_registry=data.get("model_registry"),
             stage_c_envelope=data.get("stage_c_envelope"),
+            accounting=data.get("accounting"),
         )
         signature = data["signature"]
     except (KeyError, TypeError, AttributeError) as exc:
@@ -360,7 +379,10 @@ def verify_gateway_child_manifest(
         raise LaunchManifestError(code="MANIFEST_CORRUPT", detail="stage_c_envelope must be a string")
     if signed_envelope is not None and signed_registry is None:
         raise LaunchManifestError(code="MANIFEST_CORRUPT", detail="a Stage C envelope needs a registry")
-    if fields["schema_version"] != _schema_version(signed_registry, signed_envelope):
+    signed_accounting = fields.get("accounting")
+    if signed_accounting is not None and not isinstance(signed_accounting, str):
+        raise LaunchManifestError(code="MANIFEST_CORRUPT", detail="accounting must be a string")
+    if fields["schema_version"] != _schema_version(signed_registry, signed_envelope, signed_accounting):
         raise LaunchManifestError(code="MANIFEST_CORRUPT", detail="schema version and signed literals disagree")
 
     expected_signature = _compute_signature(fields, hmac_key=hmac_key)
@@ -409,6 +431,9 @@ def verify_gateway_child_manifest(
     if signed_envelope != stage_c_envelope:
         raise LaunchManifestError(code="MANIFEST_STAGE_C_ENVELOPE_MISMATCH")
 
+    if signed_accounting != accounting:
+        raise LaunchManifestError(code="MANIFEST_ACCOUNTING_MISMATCH")
+
     return GatewayChildManifest(
         schema_version=data["schema_version"],
         policy_version=data["policy_version"],
@@ -426,4 +451,5 @@ def verify_gateway_child_manifest(
         signature=signature,
         model_registry=signed_registry,
         stage_c_envelope=signed_envelope,
+        accounting=signed_accounting,
     )
