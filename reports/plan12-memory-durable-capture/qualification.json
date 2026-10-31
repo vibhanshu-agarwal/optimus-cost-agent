@@ -105,5 +105,15 @@
     "The diagnostic copy is best effort and flushed, not fsynced; it is not an accounting boundary.",
     "No claim of hardware power-loss survival, provider billing correctness or a generally working Phase 1 agent."
   ],
-  "linux_ci": "PENDING: the PR's CI run is recorded here after it completes."
+  "linux_ci": {
+    "pr": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/456",
+    "head": "8462836 (code identical to fa39499; later commits are docs and evidence only)",
+    "workflow": "guardrails, run 41218703516, success, 2026-10-31T16:14:19Z to 16:40:40Z",
+    "checks": "clean-environment-recheck pass (26m18s), page-fixtures pass, verify pass",
+    "platform": "GitHub ubuntu-26.04 runner image 20261025.179, CPython 3.14.10",
+    "run_context": "run 20261031T161536-3005-ca1441, mode=active reason=default_selection, guard=unsupported_platform, records=COMPLETE, exit 0",
+    "result": "11021 passed, 318 skipped, 140 deselected in 0:24:34",
+    "coverage": "optimus 89.7136%, context_engine 95.9243%, optimus_model_policy 94.4017% (required, PASS); evidence_handoff 66.8335% (informational, BELOW); aggregate 86.2498%",
+    "validator": "full-run validity established (the Windows 3c55e2d run's validity is not established; this Linux run establishes it for the final code)"
+  }
 }
