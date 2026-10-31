@@ -1,6 +1,6 @@
 # ADR-032: Durable usage capture with a host outbox and a Gateway-owned Postgres drain
 
-Status: Proposed. The operator accepted the credential boundary below on 2026-10-31 as part of approving Plan 12.8 at its exact hash; Codex accepted the mechanisms at Checkpoints A and B, and Checkpoint C (final K3 and release review) is pending. Delivered by Plan 12.8 ([#454](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/454)). Drafted by Claude.
+Status: Proposed. The operator accepted the credential boundary below on 2026-10-31 as part of approving Plan 12.8 at its exact hash; Codex accepted the mechanisms at Checkpoints A, B and C (final K3 and release review, accepted at `b12cac3`). Operator acceptance of this record is separate. Delivered by Plan 12.8 ([#454](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/454)). Drafted by Claude.
 
 ## Context
 

@@ -17,7 +17,7 @@
   "branch": "agent/claude/plan12-8-memory-durable-capture",
   "code_head": "fa39499 (later commits are docs-only evidence)",
   "documents": {
-    "docs/decisions/ADR-032-durable-usage-capture-and-gateway-drain.md": "hex:22fb76fbee2fecb60a4e3784136042652fbbaff51fd8b7b585723636e592f749",
+    "docs/decisions/ADR-032-durable-usage-capture-and-gateway-drain.md": "hex:db62df5eeb20694bc61d586d0ef46394e8fa5d42e8f1af446ff399b0870b3667",
     "docs/superpowers/plans/2026-10-31-plan-12-8-memory-durable-capture-implementation.md": "hex:58d59e21b68e0973f78bd88452f2991536de4034b7ad9c74df01950889172619",
     "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"
   },
@@ -54,11 +54,12 @@
       "review-pass2.md": "hex:ddb9cd138e8fc7eacca38fb9ac91df8a5f60a6911aa5c2182b5c79910738fd58",
       "review-pass3.md": "hex:a505031ab11a9ba500ce37ab3e42228ea6f61346985fa0965ec040e168f6b41a",
       "review-pass4.md": "hex:5048f4456cf1e685abca3371307846a13285ce38f9c5fffd74c68faccde30332",
+      "review-pass5.md": "hex:1d2150cbbaa3da0360767156abca8f06c5c083c91515250acb9934b20b93b991",
       "write_manifest.py": "hex:c102241f0f8c2fd2d66db4bfd0825979cace6d0ffa09d298f03728c23dbd9b38"
     },
     "location": "optimus-handoff / sandbox-review-kit / plan12-codex-cli / round-90-p128-checkpoint-c",
     "note": "Review-kit records on the operator's workstation, not published: full-suite logs, Checkpoint C reviews, revert-check logs, the claim run logs (gitignored under runs/) and the two recorder tools."
   },
   "schema": "plan12-memory-durable-capture-manifest/1",
-  "written_at_head": "hex:64db3c5b4b4186f5a24ce1b87a6461fb189235a3"
+  "written_at_head": "hex:b12cac3ccfeb8511a0d8bb473caae9afa161f30e"
 }
