@@ -1,0 +1,59 @@
+{
+  "attempt_id": "hex:b59831ba59234321af31c0070e9a96ae",
+  "cleanup": [
+    {
+      "action": "close a redis client",
+      "status": "done"
+    },
+    {
+      "action": "close a redis client",
+      "status": "done"
+    },
+    {
+      "action": "close a redis client",
+      "status": "done"
+    },
+    {
+      "action": "close a redis client",
+      "status": "done"
+    },
+    {
+      "action": "close a redis client",
+      "status": "done"
+    }
+  ],
+  "config_sha256": "hex:be675eb36ee3b3c425779e8431de8c1f5774d147380fb39f73d546d7b158b951",
+  "disposition": "open",
+  "ended_utc": "2026-10-30T19:50:07.616+00:00",
+  "environment": {
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "python": "3.14.4",
+    "release": "11",
+    "system": "Windows"
+  },
+  "follow_up": "",
+  "kind": "redis",
+  "limitations": [
+    "KeyError: slice(None, None, 2)"
+  ],
+  "observations": {},
+  "outcome": "ERROR",
+  "owner": "claude",
+  "redactions": 0,
+  "rendered_from_sha256": "hex:9fe8dd1a833bb97e2ff6c9b8acfde1b43f4ad04c9b8469968d60649447e87932",
+  "run_label": "plan12.7-m0a3-2026-10-31",
+  "source": {
+    "after": {
+      "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dirty": false,
+      "head": "hex:1f324a05d22d4899e0aae061beffcebb92ca3491"
+    },
+    "before": {
+      "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dirty": false,
+      "head": "hex:1f324a05d22d4899e0aae061beffcebb92ca3491"
+    }
+  },
+  "started_utc": "2026-10-30T19:22:31.714+00:00"
+}

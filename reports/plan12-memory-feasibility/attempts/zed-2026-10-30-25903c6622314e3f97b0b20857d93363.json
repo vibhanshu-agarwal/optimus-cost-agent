@@ -1,0 +1,92 @@
+{
+  "attempt_id": "hex:25903c6622314e3f97b0b20857d93363",
+  "cleanup": [],
+  "config_sha256": "hex:025e75328b24ab3e2757a2ee3096fff99acca8f391acb5209335ba4d7bb5c0be",
+  "disposition": "handoff",
+  "ended_utc": "2026-10-30T20:16:59.057+00:00",
+  "environment": {
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "python": "3.14.4",
+    "release": "11",
+    "system": "Windows"
+  },
+  "follow_up": "M1 owns buffer integration; M3 owns brief/notice binding, the Optimus card path and the phrase channel",
+  "kind": "zed",
+  "limitations": [
+    "stub-agent evidence is client-only; it proves nothing about Optimus integration (M1/M3)"
+  ],
+  "observations": {
+    "P5": {
+      "P5-a": {
+        "fs_readTextFile_advertised": null,
+        "reads": [],
+        "scope": "client-only: real Zed serving a synthetic unsaved buffer to the stub agent",
+        "status": "UNRUN"
+      },
+      "P5-b": {
+        "fallback": "first-response brief when unsolicited display is unsupported",
+        "gui": null,
+        "pre_prompt_updates_sent": false,
+        "scope": "client-only: whether Zed renders an update sent before the first prompt",
+        "status": "UNRUN"
+      },
+      "P5-c": {
+        "optimus_path": {
+          "owner": "M3",
+          "reason": "Optimus has no host-generated card path without a model turn; no ad-hoc save mechanism is added here",
+          "status": "UNRUN"
+        },
+        "provider_calls": "not established: no Optimus or Gateway process ran for P5-c",
+        "reference_peer": {
+          "gui": null,
+          "scope": "client-only control: Zed rendering a stub card",
+          "status": "UNRUN"
+        },
+        "status": "UNRUN"
+      },
+      "P5-d": {
+        "canaries_persisted_in": {},
+        "canary_sha256": {
+          "card": "hex:228ca3daa619e747d86308546459dd8fb2208e2538cccc86a16c5bdfdf778899",
+          "message": "hex:27af72df1818d2a192c5340a6dae49e8ca950a390c86a151c9d7fa2b5018794e"
+        },
+        "consequence": "without an accepted M3 qualification, M3 uses the restricted-file fallback (spec 6.1.1) or keeps encryption/rotation unavailable",
+        "phases": {
+          "close_reopen": null,
+          "restart": null,
+          "visible_history": null
+        },
+        "scope": "only the inspected sinks; a PASS is a candidate for M3 qualification, never a confidentiality proof",
+        "sink_scan": {
+          "files_scanned": 1,
+          "opaque": [],
+          "unreadable": []
+        },
+        "status": "UNRUN"
+      }
+    },
+    "stub_events": 0,
+    "versions": {
+      "acpx": "0.12.0",
+      "zed": "Zed 1.26.2 c4273271092b0287f7d181f616bd5171e0a2f70c"
+    }
+  },
+  "outcome": "UNRUN",
+  "owner": "claude",
+  "redactions": 0,
+  "run_label": "plan12.7-m0a3-2026-10-31",
+  "source": {
+    "after": {
+      "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dirty": false,
+      "head": "hex:bb262642473cf411363546b616777fadead1eea6"
+    },
+    "before": {
+      "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dirty": false,
+      "head": "hex:bb262642473cf411363546b616777fadead1eea6"
+    }
+  },
+  "started_utc": "2026-10-30T20:16:58.556+00:00"
+}

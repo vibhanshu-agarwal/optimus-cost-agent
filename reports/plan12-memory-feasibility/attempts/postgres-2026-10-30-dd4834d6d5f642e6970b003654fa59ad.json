@@ -1,0 +1,68 @@
+{
+  "attempt_id": "hex:dd4834d6d5f642e6970b003654fa59ad",
+  "cleanup": [
+    {
+      "action": "close held postgres connection",
+      "status": "done"
+    }
+  ],
+  "config_sha256": "hex:be675eb36ee3b3c425779e8431de8c1f5774d147380fb39f73d546d7b158b951",
+  "disposition": "concluded",
+  "ended_utc": "2026-10-30T19:21:39.036+00:00",
+  "environment": {
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "python": "3.14.4",
+    "release": "11",
+    "system": "Windows"
+  },
+  "follow_up": "M0b builds the durable ledger on this driver/server pairing",
+  "kind": "postgres",
+  "limitations": [
+    "readiness only: no ledger, outbox, durability or completeness claim (M0b)"
+  ],
+  "observations": {
+    "checks": {
+      "commit_readback": true,
+      "committed_row_survives_restart": true,
+      "duplicate_rejected": true,
+      "held_connection_reports_loss": true,
+      "reconnected": true,
+      "rollback_discards": true,
+      "same_container_and_volume": true,
+      "server_restarted": true,
+      "statement_failure_leaves_connection_usable": true
+    },
+    "driver": {
+      "libpq": 180003,
+      "psycopg": "3.3.4"
+    },
+    "identity": {
+      "container": "p127-probe-pg",
+      "container_id": "hex:a284b45ae9dd174d0014b3d007095cd826fe3a9b600acd77f7798e1499076a8d",
+      "host_port": 5440,
+      "image_id": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+      "volume": "p127-probe-pg-data"
+    },
+    "reconnect_seconds": 0.58,
+    "server_version": 160015
+  },
+  "outcome": "PASS",
+  "owner": "claude",
+  "redactions": 0,
+  "rendered_from_sha256": "hex:53b414b5c93201542cc32ba367798d0fd573d5cf097114b2213edddb81e25cbf",
+  "run_label": "plan12.7-m0a3-2026-10-31",
+  "source": {
+    "after": {
+      "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dirty": false,
+      "head": "hex:1f324a05d22d4899e0aae061beffcebb92ca3491"
+    },
+    "before": {
+      "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dirty": false,
+      "head": "hex:1f324a05d22d4899e0aae061beffcebb92ca3491"
+    }
+  },
+  "started_utc": "2026-10-30T19:21:37.608+00:00"
+}
