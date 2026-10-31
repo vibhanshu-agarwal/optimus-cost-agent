@@ -171,3 +171,21 @@ def test_the_ledger_recomputes_receipt_fingerprints_and_enforces_receipt_rules(t
             uc.validate_payload(bad, writer="host")
         assert refused.value.code == "receipt"
     assert uc.receipt_fingerprints(_receipt_payload("0.25")) == uc.receipt_fingerprints(_receipt_payload("0.250"))
+
+
+def test_cache_presence_does_not_change_the_fingerprint_and_a_null_echo_contradiction_is_refused():
+    absent = _receipt_payload()
+    explicit = _receipt_payload()
+    explicit["usage"]["cache_hit"] = False
+
+    assert "cache_hit" not in absent["usage"]
+    assert uc.receipt_fingerprints(absent) == uc.receipt_fingerprints(explicit), "equal under StageReceipt.facts()"
+    explicit["facts_digest"], explicit["settled_digest"] = uc.receipt_fingerprints(explicit)
+    assert uc.validate_payload(explicit, writer="host") == uc.ATTEMPT_RECEIPT
+
+    contradicting = _receipt_payload()
+    contradicting["provider_request_id"] = "different"  # the usage carries null
+    contradicting["facts_digest"], contradicting["settled_digest"] = uc.receipt_fingerprints(contradicting)
+    with pytest.raises(uc.ContractError) as refused:
+        uc.validate_payload(contradicting, writer="host")
+    assert refused.value.code == "receipt"

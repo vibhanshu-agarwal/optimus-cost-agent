@@ -211,6 +211,10 @@ class UsageStore:
             conflicts = self._project_receipt(conn, stream, record)
             self._certify(conn, payload["epoch_id"])  # a late or conflicting receipt downgrades a certified epoch
             return conflicts
+        if kind == uc.INTEGRITY_FAILURE:
+            if payload["epoch_id"]:
+                self._certify(conn, payload["epoch_id"])  # also after the close: a certified epoch is downgraded
+            return 0
         if kind in {uc.GATEWAY_ATTEMPT_INTENT, uc.GATEWAY_ATTEMPT_OUTCOME}:
             host_request_id = payload.get("host_request_id") if kind == uc.GATEWAY_ATTEMPT_INTENT else self._host_request_of(conn, payload)
             self._recertify_for(conn, [host_request_id] if host_request_id else [])
@@ -312,7 +316,10 @@ class UsageStore:
         persisted intent answered by a persisted receipt or alias; the settled identities equal to the persisted receipts,
         none of them in conflict and no late receipt; and, for every intent, Gateway physical attempts each with an outcome,
         a confirmed intent and no uncertain outcome. Anything missing keeps it incomplete with its reasons; evidence that
-        arrives later re-certifies it."""
+        arrives later re-certifies it. Serialized per epoch from before the first evidence read (a transaction-scoped
+        lock; READ COMMITTED reads after it see every certification committed before it), so a stale evaluation never
+        overwrites a newer downgrade."""
+        conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 2))", (f"epoch:{epoch_id}",))
         row = conn.execute(
             "SELECT stream_id, begin_sequence, close_sequence FROM optimus_usage.coverage_epoch WHERE epoch_id = %s", (epoch_id,)
         ).fetchone()
@@ -330,6 +337,8 @@ class UsageStore:
         opened = self._count(conn, stream, uc.INVOCATION_OPEN, epoch_id)
         if opened != self._count(conn, stream, uc.INVOCATION_END, epoch_id):
             reasons.append("invocation_not_ended")
+        if self._count(conn, stream, uc.INTEGRITY_FAILURE, epoch_id):
+            reasons.append("integrity_failure")
         settled, unknown, parts = self._identities(conn, stream, epoch_id, close_seq, close["identity_parts"])
         if parts != close["identity_parts"] or _identities_digest(epoch_id, settled, unknown) != close["identities_digest"]:
             reasons.append("identity_parts_incomplete")
@@ -363,35 +372,82 @@ class UsageStore:
             reasons.append("intent_without_receipt")
         if any(not any(r == h or r.startswith(h + ":") for h in intents) for r in receipts):
             reasons.append("receipt_without_intent")
-        reasons += self._physical(conn, intents)
+        answered = {
+            gateway_request_id: outcome
+            for gateway_request_id, outcome in conn.execute(
+                "SELECT payload->>'gateway_request_id', payload->>'outcome' FROM optimus_usage.capture_event WHERE stream_id = %s "
+                "AND kind = %s AND payload->>'epoch_id' = %s AND NOT (payload->>'late')::boolean",
+                (stream, uc.ATTEMPT_RECEIPT, epoch_id),
+            ).fetchall()
+            if gateway_request_id
+        }
+        reasons += self._physical(conn, intents, answered)
         conn.execute(
             "UPDATE optimus_usage.coverage_epoch SET state = %s, reasons = %s, updated_at = NOW() WHERE epoch_id = %s",
             ("incomplete" if reasons else "complete", sorted(set(reasons)), epoch_id),
         )
 
-    def _physical(self, conn: psycopg.Connection[Any], intents: list[str]) -> list[str]:
+    def _physical(self, conn: psycopg.Connection[Any], intents: list[str], answered: Mapping[str, str]) -> list[str]:
+        """Gateway physical evidence for the epoch's host requests, joined to its receipts by Gateway request ID (`answered`:
+        Gateway request ID -> the receipt's outcome). Each Gateway request's attempts must be numbered 1..n in one stream
+        with no gap among their records, each with an outcome, a confirmed intent and nothing uncertain. A request that was
+        sent needs a receipt; the receipt settles only the request's last attempt (a completed receipt needs a completed
+        last attempt), so an earlier sent attempt with no recorded cost (a legacy retry after a 503) stays unresolved.
+        Every receipt's Gateway request needs physical evidence."""
         reasons: list[str] = []
+        seen: set[str] = set()
         for host_request_id in intents:
-            attempts = conn.execute(
-                "SELECT payload->>'gateway_request_id', (payload->>'attempt')::int FROM optimus_usage.capture_event "
-                "WHERE writer = 'gateway' AND kind = %s AND payload->>'host_request_id' = %s",
+            requests: dict[str, list[tuple[str, int, int]]] = {}
+            for gateway_request_id, number, stream, sequence in conn.execute(
+                "SELECT payload->>'gateway_request_id', (payload->>'attempt')::int, stream_id, sequence FROM optimus_usage.capture_event "
+                "WHERE writer = 'gateway' AND kind = %s AND payload->>'host_request_id' = %s ORDER BY 1, 2",
                 (uc.GATEWAY_ATTEMPT_INTENT, host_request_id),
-            ).fetchall()
-            if not attempts:
+            ).fetchall():
+                requests.setdefault(gateway_request_id, []).append((stream, number, sequence))
+            if not requests:
                 reasons.append("physical_evidence_missing")
-            for gateway_request_id, number in attempts:
-                outcome = conn.execute(
-                    "SELECT payload FROM optimus_usage.capture_event WHERE writer = 'gateway' AND kind = %s "
-                    "AND payload->>'gateway_request_id' = %s AND (payload->>'attempt')::int = %s LIMIT 1",
-                    (uc.GATEWAY_ATTEMPT_OUTCOME, gateway_request_id, number),
-                ).fetchone()
-                if outcome is None:
-                    reasons.append("physical_outcome_missing")
+            for gateway_request_id, attempts in requests.items():
+                seen.add(gateway_request_id)
+                streams = {stream for stream, _, _ in attempts}
+                if [number for _, number, _ in attempts] != list(range(1, len(attempts) + 1)) or len(streams) != 1:
+                    reasons.append("physical_attempt_missing")
                     continue
-                if outcome[0].get("intent_confirmed") is not True:  # absent (an older writer) is never confirmed
-                    reasons.append("physical_intent_unconfirmed")
-                if outcome[0]["outcome"] == "uncertain":
-                    reasons.append("physical_attempt_uncertain")
+                (stream,) = streams
+                outcomes: list[Mapping[str, Any]] = []
+                last_sequence = attempts[-1][2]
+                for _, number, _ in attempts:
+                    outcome = conn.execute(
+                        "SELECT payload, sequence FROM optimus_usage.capture_event WHERE stream_id = %s AND kind = %s "
+                        "AND payload->>'gateway_request_id' = %s AND (payload->>'attempt')::int = %s LIMIT 1",
+                        (stream, uc.GATEWAY_ATTEMPT_OUTCOME, gateway_request_id, number),
+                    ).fetchone()
+                    if outcome is None:
+                        reasons.append("physical_outcome_missing")
+                        continue
+                    outcomes.append(outcome[0])
+                    last_sequence = max(last_sequence, outcome[1])
+                    if outcome[0].get("intent_confirmed") is not True:  # absent (an older writer) is never confirmed
+                        reasons.append("physical_intent_unconfirmed")
+                    if outcome[0]["outcome"] == "uncertain":
+                        reasons.append("physical_attempt_uncertain")
+                if conn.execute(
+                    "SELECT 1 FROM optimus_usage.capture_event WHERE stream_id = %s AND kind = %s AND sequence > %s AND sequence < %s LIMIT 1",
+                    (stream, GAP_KIND, attempts[0][2], last_sequence),
+                ).fetchone():
+                    reasons.append("physical_stream_gap")
+                if len(outcomes) != len(attempts):
+                    continue
+                sent = [o for o in outcomes if o["outcome"] != "not_sent"]
+                if gateway_request_id not in answered:
+                    if sent:
+                        reasons.append("physical_receipt_unmatched")
+                    continue
+                if answered[gateway_request_id] == "completed" and outcomes[-1]["outcome"] in {"failed", "not_sent"}:
+                    reasons.append("physical_attempt_missing")
+                if any(o["cost_usd"] is None for o in sent if o is not outcomes[-1]):
+                    reasons.append("physical_cost_unresolved")
+        if set(answered) - seen:
+            reasons.append("receipt_without_physical")
         return reasons
 
     def _recertify_for(self, conn: psycopg.Connection[Any], host_request_ids: list[str]) -> None:

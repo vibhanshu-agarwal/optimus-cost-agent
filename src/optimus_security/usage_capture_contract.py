@@ -309,7 +309,12 @@ _USAGE_ECHOES = ("provider", "resolved_provider", "resolved_model", "input_token
 
 
 def receipt_fingerprints(payload: Mapping[str, Any]) -> tuple[str, str]:
+    """Fingerprints that keep the existing replay equality: the usage's `cache_hit` is fingerprinted by value (absent reads
+    as the model default, False), as `StageReceipt.facts()` compares it; its presence stays in the persisted payload."""
     facts = {key: value for key, value in payload.items() if key not in _RECEIPT_NOT_FACTS}
+    usage = facts.get("usage")
+    if isinstance(usage, Mapping):
+        facts["usage"] = {**usage, "cache_hit": usage.get("cache_hit", False)}
     settled = {key: value for key, value in facts.items() if key != "attempt_id"}
     return _fingerprint(facts), _fingerprint(settled)
 
@@ -337,7 +342,7 @@ def validate_receipt(payload: Mapping[str, Any]) -> None:
             raise ContractError("receipt")
         if payload["gateway_request_id"] != usage["gateway_request_id"]:
             raise ContractError("receipt")
-        if any(payload[key] != usage.get(key) for key in _USAGE_ECHOES if key in usage and usage.get(key) is not None):
+        if any(payload[key] != usage[key] for key in _USAGE_ECHOES):  # as StageReceipt: echoes repeat the usage, nulls included
             raise ContractError("receipt")
     if receipt_fingerprints(payload) != (payload["facts_digest"], payload["settled_digest"]):
         raise ContractError("receipt")

@@ -8,6 +8,7 @@ its own volume, the released image) before any connection. Without them every ca
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import subprocess
@@ -24,7 +25,7 @@ import pytest
 
 from optimus.gateway.models import GatewayUsage
 from optimus.usage.durable_capture import DurableCapture, host_outbox_root
-from optimus.usage.turn_settlement import StageReceipt, TurnSettlement
+from optimus.usage.turn_settlement import ReceiptConflictError, StageReceipt, TurnSettlement
 from optimus_gateway.usage_store import StoreError, UsageStore
 from optimus_security import durable_outbox as ob
 from optimus_security import usage_capture_contract as uc
@@ -82,15 +83,19 @@ def _turn(capture: DurableCapture, turn: str, receipts: list[StageReceipt]) -> N
     settlement.finalize_turn(turn)
 
 
-def _gateway_evidence(store: UsageStore, tmp_path: Path, host_request_ids: list[str], *, outcome: str = "completed") -> None:
-    """The Gateway's physical-attempt records for these host requests, committed to the ledger as its drain would."""
+def _gateway_evidence(store: UsageStore, tmp_path: Path, receipts: list[StageReceipt], *, outcomes: tuple[str, ...] = ("completed",),
+                      gateway_request_id: str | None = None) -> None:
+    """The Gateway's physical-attempt records (attempts 1..n with these outcomes) for each receipt's host request, under the
+    receipt's own Gateway request unless another is named, committed to the ledger as its drain would."""
     writer = ob.OutboxWriter(tmp_path / "gateway-outbox")
-    for host_request_id in host_request_ids:
-        gateway_request_id = f"gw-{uuid.uuid4().hex}"
-        writer.submit({"kind": uc.GATEWAY_ATTEMPT_INTENT, "at": _AT.isoformat(), "gateway_request_id": gateway_request_id,
-                       "host_request_id": host_request_id, "attempt": 1, "route": None})
-        writer.submit({"kind": uc.GATEWAY_ATTEMPT_OUTCOME, "at": _AT.isoformat(), "gateway_request_id": gateway_request_id, "attempt": 1,
-                       "outcome": outcome, "http_status": None, "cost_usd": None, "billing_units": None, "intent_confirmed": True})
+    for receipt in receipts:
+        gw = gateway_request_id or receipt.gateway_request_id
+        for number, outcome in enumerate(outcomes, start=1):
+            writer.submit({"kind": uc.GATEWAY_ATTEMPT_INTENT, "at": _AT.isoformat(), "gateway_request_id": gw,
+                           "host_request_id": receipt.attempt_id, "attempt": number, "route": None})
+            writer.submit({"kind": uc.GATEWAY_ATTEMPT_OUTCOME, "at": _AT.isoformat(), "gateway_request_id": gw, "attempt": number,
+                           "outcome": outcome, "http_status": 503 if outcome == "failed" else None, "cost_usd": None,
+                           "billing_units": None, "intent_confirmed": True})
     writer.close()
     scan = ob.scan_stream(writer.directory)
     store.ingest(uc.parse_batch(uc.build_batch("gateway", scan.stream_id, None, 0, ob.GENESIS, list(scan.records))))
@@ -117,8 +122,9 @@ def test_migrations_are_pinned_and_the_ledger_instance_is_stable(released, store
 
 def test_a_batch_commits_atomically_and_reads_back_from_a_new_connection(released, store, tmp_path):
     attempt = f"{uuid.uuid4().hex}:planning:1:1"
+    receipt = _receipt("s:1", attempt)
     capture = _capture(tmp_path)
-    _turn(capture, "s:1", [_receipt("s:1", attempt)])
+    _turn(capture, "s:1", [receipt])
     batch = _batch(capture)
 
     result = store.ingest(batch)
@@ -128,8 +134,8 @@ def test_a_batch_commits_atomically_and_reads_back_from_a_new_connection(release
     assert events == [(len(batch.records),)]
     assert _rows(released, "SELECT reported_cost_usd FROM optimus_usage.attempt_receipt WHERE attempt_id = %s", attempt) == [(Decimal("0.25"),)]
     epoch = _rows(released, "SELECT state, reasons FROM optimus_usage.coverage_epoch WHERE stream_id = %s AND turn_id = %s", batch.stream_id, "s:1")
-    assert epoch == [("incomplete", ["physical_evidence_missing"])], "a host request alone cannot prove its physical attempts"
-    _gateway_evidence(store, tmp_path, [attempt])
+    assert epoch == [("incomplete", ["physical_evidence_missing", "receipt_without_physical"])], "a host request alone cannot prove its physical attempts"
+    _gateway_evidence(store, tmp_path, [receipt])
     epoch = _rows(released, "SELECT state, reasons FROM optimus_usage.coverage_epoch WHERE stream_id = %s AND turn_id = %s", batch.stream_id, "s:1")
     assert epoch == [("complete", [])], "the Gateway's evidence arriving later certifies it"
     cursor = _rows(released, "SELECT sequence, record_digest FROM optimus_usage.drain_cursor WHERE stream_id = %s", batch.stream_id)
@@ -281,11 +287,13 @@ def test_host_delivery_through_the_real_route_commits_acknowledges_and_compacts(
     assert report.failures == [] and ack is not None and ack.ledger_instance == store.ledger_instance
     assert report.compacted >= 1
     epochs = _rows(released, "SELECT state, reasons FROM optimus_usage.coverage_epoch WHERE stream_id = %s AND close_sequence IS NOT NULL", capture.writer.stream_id)
-    assert epochs == [("incomplete", ["physical_evidence_missing"])] * 4, "all four closed; only the Gateway's evidence is missing"
+    assert epochs == [("incomplete", ["physical_evidence_missing", "receipt_without_physical"])] * 4, "all four closed; only the Gateway's evidence is missing"
     capture.stop()
 
 
 BOUNDARY_ENV = "P128_CAPTURE_K3_ACCOUNTING_ROOT"
+RUN_ENV = "P128_CAPTURE_K3_RUN_ID"
+_READY_SECONDS = 60
 _GATEWAY_CHILD = """
 import json, sys
 from pathlib import Path
@@ -293,10 +301,12 @@ import keyring
 from optimus_gateway import usage_capture
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.server import serve_gateway
-from optimus_security import accounting_config as ac
-root = Path(sys.argv[1])
-literal, config, refusal = ac.read(root)
-accounting = usage_capture.start_accounting(root, config, refusal=refusal, keyring_backend=keyring, log=lambda line: print(line, file=sys.stderr, flush=True))
+from tests.support.plan12_capture_provisioner import bound_accounting
+section, root, run_id, approved = json.loads(sys.argv[3]), Path(sys.argv[1]), sys.argv[4], sys.argv[5]
+literal, config = bound_accounting(section, root, run_id)  # verified again here, before the keyring read
+if literal != approved:
+    raise SystemExit("accounting_config_changed_after_admission")
+accounting = usage_capture.start_accounting(root, config, keyring_backend=keyring, log=lambda line: print(line, file=sys.stderr, flush=True))
 service = GatewayServiceConfig(bind_host="127.0.0.1", bind_port=0, shared_secret=sys.argv[2], provider="openrouter",
                                provider_api_key="unused-in-this-case", base_url="https://openrouter.ai/api/v1", usage_store=accounting.store)  # pragma: allowlist secret - a placeholder key for a provider never called here
 server = serve_gateway(config=service)
@@ -309,17 +319,37 @@ finally:
 
 
 @pytest.fixture(scope="module")
-def boundary() -> tuple[dict[str, Any], Path]:
+def boundary() -> tuple[dict[str, Any], Path, str, str]:
+    """Admission before any child launch or secret access: the released container, then the provisioned root bound to it
+    and to this run's role and keyring entry. A provisioned root that names anything else fails the case."""
     if os.environ.get(PASSWORD_ENV):
         pytest.skip("UNRUN: the credential-boundary case runs only without the ledger password in the pytest environment")
-    path, root = os.environ.get(CONFIG_ENV, ""), os.environ.get(BOUNDARY_ENV, "")
-    if not path or not root:
-        pytest.skip(f"UNRUN: {CONFIG_ENV} or {BOUNDARY_ENV} names no provisioned accounting root; no process was started")
+    path, root, run_id = os.environ.get(CONFIG_ENV, ""), os.environ.get(BOUNDARY_ENV, ""), os.environ.get(RUN_ENV, "")
+    if not path or not root or not run_id:
+        pytest.skip(f"UNRUN: {CONFIG_ENV}, {BOUNDARY_ENV} or {RUN_ENV} names no provisioned run; no process was started")
+    from tests.support.plan12_capture_provisioner import bound_accounting
     from tools.plan12_memory import probes
 
     section = json.loads(Path(path).read_text(encoding="utf-8"))
     probes.admit_postgres_resource(section, probes.docker_inspect)
-    return section, Path(root)
+    literal, _ = bound_accounting(section, Path(root), run_id)
+    return section, Path(root), run_id, literal
+
+
+def _ready_line(child: subprocess.Popen[str]) -> str:
+    """The child's readiness line within a deadline; on timeout the child is terminated and reaped and the case fails
+    with its sanitized stderr."""
+    from tools.plan12_memory import probes
+
+    lines: list[str] = []
+    reader = threading.Thread(target=lambda: lines.append(child.stdout.readline()), daemon=True)  # type: ignore[union-attr]
+    reader.start()
+    reader.join(_READY_SECONDS)
+    if lines and lines[0]:
+        return lines[0]
+    child.kill()
+    _, stderr = child.communicate(timeout=30)
+    pytest.fail(f"the Gateway child was not ready within {_READY_SECONDS}s: {probes.sanitize(stderr[-2000:])[0]}")
 
 
 def _psql(section: dict[str, Any], sql: str) -> list[str]:
@@ -343,13 +373,13 @@ def test_the_host_delivers_over_http_to_a_gateway_process_that_alone_holds_the_l
     from optimus.gateway.client import GatewayClient
     from optimus.usage.capture_delivery import CaptureDelivery
 
-    section, root = boundary
+    section, root, run_id, literal = boundary
     key = secrets_module.token_hex(16)
     environ = {k: v for k, v in os.environ.items() if k != PASSWORD_ENV}
-    child = subprocess.Popen([sys.executable, "-c", _GATEWAY_CHILD, str(root), key], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             text=True, env=environ)
+    child = subprocess.Popen([sys.executable, "-c", _GATEWAY_CHILD, str(root), key, json.dumps(section), run_id, literal],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=environ)
     try:
-        ready = json.loads(child.stdout.readline())  # type: ignore[union-attr]
+        ready = json.loads(_ready_line(child))
         assert ready["store"] is True, "the Gateway process resolved its own credential"
         capture = _capture(tmp_path)
         for n in range(3):
@@ -363,7 +393,11 @@ def test_the_host_delivers_over_http_to_a_gateway_process_that_alone_holds_the_l
         capture.stop()
     finally:
         child.terminate()
-        child.wait(30)
+        try:
+            child.wait(30)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait(30)
 
     assert os.environ.get(PASSWORD_ENV) is None
     assert report.failures == [] and report.committed == confirmed
@@ -375,36 +409,121 @@ def _epoch_state(released, stream_id: str) -> list[tuple[Any, ...]]:
     return _rows(released, "SELECT state, reasons FROM optimus_usage.coverage_epoch WHERE stream_id = %s AND close_sequence IS NOT NULL", stream_id)
 
 
-@pytest.mark.parametrize(("outcome", "reason"), [("uncertain", "physical_attempt_uncertain"), ("completed", None)])
-def test_physical_evidence_decides_certification(released, store, tmp_path, outcome, reason):
+@pytest.mark.parametrize(
+    ("outcomes", "other_request", "reasons"),
+    [
+        (("completed",), False, []),
+        (("uncertain",), False, ["physical_attempt_uncertain"]),
+        (("completed",), True, ["physical_receipt_unmatched", "receipt_without_physical"]),  # unrelated Gateway IDs prove nothing
+        (("failed", "failed", "completed"), False, ["physical_cost_unresolved"]),  # legacy 503 retries: earlier costs unknown
+        (("not_sent", "completed"), False, []),  # a refused dispatch reached no model
+        (("failed",), False, ["physical_attempt_missing"]),  # a completed receipt, but no completed attempt recorded
+    ],
+)
+def test_physical_evidence_decides_certification(released, store, tmp_path, outcomes, other_request, reasons):
     attempt = f"{uuid.uuid4().hex}:planning:1:1"
+    receipt = _receipt("s:1", attempt)
     capture = _capture(tmp_path)
-    _turn(capture, "s:1", [_receipt("s:1", attempt)])
+    _turn(capture, "s:1", [receipt])
     batch = _batch(capture)
     store.ingest(batch)
 
-    _gateway_evidence(store, tmp_path, [attempt], outcome=outcome)
+    _gateway_evidence(store, tmp_path, [receipt], outcomes=outcomes, gateway_request_id=f"gw-{uuid.uuid4().hex}" if other_request else None)
 
-    assert _epoch_state(released, batch.stream_id) == [("incomplete", [reason])] if reason else [("complete", [])]
+    expected = [("incomplete", reasons)] if reasons else [("complete", [])]
+    assert _epoch_state(released, batch.stream_id) == expected
+
+
+def test_a_late_integrity_failure_from_production_settlement_downgrades_a_certified_epoch(released, store, tmp_path):
+    attempt = f"{uuid.uuid4().hex}:planning:1:1"
+    receipt = _receipt("s:1", attempt)
+    capture = _capture(tmp_path)
+    settlement = TurnSettlement(capture=capture, session_id="s")
+    invocation = settlement.open_invocation("s:1")
+    invocation.start()
+    capture.intent("s:1", attempt, stage="planning")
+    settlement.record_attempt(receipt)
+    invocation.end()
+    settlement.finalize_turn("s:1")
+    deadline = time.monotonic() + 10
+    while capture.writer.stats().pending and time.monotonic() < deadline:
+        time.sleep(0.01)
+    first = ob.scan_stream(capture.writer.directory)
+    store.ingest(uc.parse_batch(uc.build_batch("host", first.stream_id, None, 0, ob.GENESIS, list(first.records))))
+    _gateway_evidence(store, tmp_path, [receipt])
+    assert _epoch_state(released, first.stream_id) == [("complete", [])]
+
+    with pytest.raises(ReceiptConflictError):  # the same attempt reported again with other facts, after the close
+        settlement.record_attempt(_receipt("s:1", attempt, cost="0.99", gw=receipt.gateway_request_id))
+    last = first.records[-1]
+    store.ingest(_batch(capture, after=(last.sequence, last.digest), ledger=store.ledger_instance))
+
+    assert _epoch_state(released, first.stream_id) == [("incomplete", ["integrity_failure"])]
+
+
+def test_a_stale_certification_waits_for_the_epoch_and_never_erases_a_downgrade(released, store, tmp_path, monkeypatch):
+    """Two connections, deterministically interleaved: the Gateway drain's certification has read its evidence and is
+    held there; a late receipt on the host stream must wait for the epoch rather than commit a downgrade the held
+    certification would then overwrite."""
+    attempt = f"{uuid.uuid4().hex}:planning:1:1"
+    receipt = _receipt("s:1", attempt)
+    capture = _capture(tmp_path)
+    _turn(capture, "s:1", [receipt])
+    capture.receipt(_receipt("s:1", f"{attempt}:late"))  # appended after the close, delivered in a second batch
+    batch = _batch(capture)
+    split = next(n for n, r in enumerate(batch.records) if r.payload["kind"] == uc.ATTEMPT_RECEIPT and r.payload["late"])
+    store.ingest(dataclasses.replace(batch, records=batch.records[:split]))
+    held, release = threading.Event(), threading.Event()
+    gateway_store = UsageStore(released["conninfo"])
+    original = UsageStore._physical
+
+    def paused(self, conn, intents, answered):
+        reasons = original(self, conn, intents, answered)
+        if self is gateway_store:
+            held.set()
+            release.wait(30)
+        return reasons
+
+    monkeypatch.setattr(UsageStore, "_physical", paused)
+    gateway = threading.Thread(target=_gateway_evidence, args=(gateway_store, tmp_path, [receipt]))
+    gateway.start()
+    assert held.wait(30), "the Gateway's certification read its evidence"
+    prior = batch.records[split - 1]
+    results: list[Any] = []
+    rest = dataclasses.replace(batch, after_sequence=prior.sequence, after_digest=prior.digest, ledger_instance=store.ledger_instance,
+                               records=batch.records[split:])
+    late = threading.Thread(target=lambda: results.append(UsageStore(released["conninfo"]).ingest(rest)))
+    late.start()
+    late.join(2)
+    waiting = late.is_alive()
+    release.set()
+    gateway.join(30)
+    late.join(30)
+
+    assert waiting, "the late receipt's certification waited for the epoch"
+    assert len(results) == 1 and results[0].inserted == len(rest.records)
+    assert "late_receipt" in _epoch_state(released, batch.stream_id)[0][1]
 
 
 def test_a_late_receipt_or_a_ledger_conflict_downgrades_a_certified_epoch(released, store, tmp_path):
     attempt = f"{uuid.uuid4().hex}:planning:1:1"
+    receipt, late = _receipt("s:1", attempt), _receipt("s:1", f"{attempt}:late")
     capture = _capture(tmp_path / "a")
-    _turn(capture, "s:1", [_receipt("s:1", attempt)])
-    capture.receipt(_receipt("s:1", f"{attempt}:late"))  # after the close: appended late
+    _turn(capture, "s:1", [receipt])
+    capture.receipt(late)  # after the close: appended late
     batch = _batch(capture)
     store.ingest(batch)
-    _gateway_evidence(store, tmp_path / "g", [attempt, f"{attempt}:late"])
+    _gateway_evidence(store, tmp_path / "g", [receipt, late])
 
     assert ("late_receipt" in _epoch_state(released, batch.stream_id)[0][1])
 
     other = f"{uuid.uuid4().hex}:planning:1:1"
+    clean_receipt = _receipt("s:2", other, gw="gw-shared-" + other)
     clean = _capture(tmp_path / "b")
-    _turn(clean, "s:2", [_receipt("s:2", other, gw="gw-shared-" + other)])
+    _turn(clean, "s:2", [clean_receipt])
     clean_batch = _batch(clean)
     store.ingest(clean_batch)
-    _gateway_evidence(store, tmp_path / "h", [other])
+    _gateway_evidence(store, tmp_path / "h", [clean_receipt])
     assert _epoch_state(released, clean_batch.stream_id) == [("complete", [])]
     rival = _capture(tmp_path / "c")  # another stream settles the same Gateway request differently
     _turn(rival, "s:3", [_receipt("s:3", other, cost="0.99", gw="gw-shared-" + other)])
@@ -482,4 +601,4 @@ def test_a_receipt_with_no_recorded_intent_is_never_certified(released, store, t
 
     store.ingest(batch)
 
-    assert _epoch_state(released, batch.stream_id) == [("incomplete", ["receipt_without_intent"])]
+    assert _epoch_state(released, batch.stream_id) == [("incomplete", ["receipt_without_intent", "receipt_without_physical"])]
