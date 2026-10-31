@@ -11,7 +11,9 @@ never refuses or delays an attempt beyond the outbox's short acknowledgement wai
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
+import json
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -21,6 +23,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError
 
+from optimus_gateway import request_diagnostics
+from optimus_gateway.diagnostic_segments import DiagnosticSegments
 from optimus_security import accounting_config
 from optimus_security import usage_capture_contract as uc
 from optimus_security.durable_outbox import ACK_WAIT_SECONDS, OutboxWriter, Record
@@ -159,10 +163,11 @@ def handle_usage_capture_request(*, authorization_header: str | None, raw_body: 
 
 @dataclass
 class GatewayAccounting:
-    """What a launch with an accounting root runs: the capture writer, the ledger when an approved configuration and its
-    credential are present, and the drain of the Gateway's own streams into that ledger."""
+    """What a launch with an accounting root runs: the capture writer, the per-user diagnostic copy, the ledger when an
+    approved configuration and its credential are present, and the drain of the Gateway's own streams into that ledger."""
 
     writer: OutboxWriter
+    diagnostics: DiagnosticSegments | None = None
     store: UsageStore | None = None
     drain: OutboxDrain | None = None
 
@@ -171,6 +176,14 @@ class GatewayAccounting:
             self.drain.stop()
         configure(None)
         self.writer.close()
+        if self.diagnostics is not None:
+            request_diagnostics.configure_copy(None)
+            closed = self.diagnostics.close()
+            request_diagnostics.write_log_line(json.dumps(  # the copy's final account, on the stderr log
+                {"event": "diagnostic_copy_status", "closed": closed, **dataclasses.asdict(self.diagnostics.status()),
+                 "stderr_failures": request_diagnostics.stderr_failures()},
+                separators=(",", ":"), sort_keys=True,
+            ))
 
 
 def start_accounting(root: Path, config: accounting_config.AccountingConfig | None, *, refusal: str | None = None,
@@ -182,7 +195,9 @@ def start_accounting(root: Path, config: accounting_config.AccountingConfig | No
 
     writer = OutboxWriter(root / "outbox" / "gateway")
     configure(writer)
-    accounting = GatewayAccounting(writer)
+    diagnostics = DiagnosticSegments(root / "gateway-diagnostics", report=log)  # nothing is created before the first line
+    request_diagnostics.configure_copy(diagnostics)
+    accounting = GatewayAccounting(writer, diagnostics)
     if refusal is not None:
         log(f"optimus-local-gateway: accounting configuration refused ({refusal}); capture stays local.")
         return accounting
@@ -196,7 +211,7 @@ def start_accounting(root: Path, config: accounting_config.AccountingConfig | No
         log("optimus-local-gateway: the accounting credential is not in the Gateway keyring namespace; capture stays local.")
         return accounting
     accounting.store = UsageStore.from_config(config, password)
-    accounting.drain = OutboxDrain(writer, _direct_send(accounting.store), name="gateway-capture-drain")
+    accounting.drain = OutboxDrain(writer, _direct_send(accounting.store), name="gateway-capture-drain", warn=log)
     accounting.drain.start()
     return accounting
 

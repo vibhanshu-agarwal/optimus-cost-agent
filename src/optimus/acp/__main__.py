@@ -916,7 +916,9 @@ def main(argv: list[str] | None = None) -> int:
         from optimus.usage.capture_delivery import CaptureDelivery
 
         try:
-            delivery = CaptureDelivery(durable_capture, GatewayClient(settings=OptimusGatewaySettings.from_env(agent_environ)))
+            delivery = CaptureDelivery(
+                durable_capture, GatewayClient(settings=OptimusGatewaySettings.from_env(agent_environ)), warn=_print_log
+            )
         except Exception:  # noqa: BLE001 - without delivery, capture stays in the outbox for a later launch
             return None
         delivery.start()

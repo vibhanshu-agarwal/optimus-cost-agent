@@ -481,12 +481,14 @@ def read_ack(stream_dir: Path) -> Ack | None:
 
 def write_ack(stream_dir: Path, scan: StreamScan, *, ledger_instance: str, sequence: int, digest: str) -> bool:
     """Durably append one acknowledgement before any compaction relies on it. It must name a record this stream holds,
-    with that record's digest; one that does not advance past the stored acknowledgement is not written (False)."""
+    with that record's digest (a dead writer's withheld tail included: the ledger committed it before the writer died);
+    one that does not advance past the stored acknowledgement is not written (False)."""
     if not (_HEX32.fullmatch(ledger_instance) and _HEX64.fullmatch(digest)) or type(sequence) is not int:
         raise OutboxError("INVALID", "an acknowledgement has a malformed field")
     if not _scan_of(stream_dir, scan):
         raise OutboxError("INVALID", "an acknowledgement needs this stream's own scan")
-    if not any(record.sequence == sequence and record.digest == digest for record in scan.records):
+    held = (*scan.records, *((scan.unverified_tail,) if scan.unverified_tail else ()))
+    if not any(record.sequence == sequence and record.digest == digest for record in held):
         raise OutboxError("INVALID", "an acknowledgement names no record this stream holds")
     stored = read_ack(stream_dir)
     if stored is not None and sequence <= stored.sequence:

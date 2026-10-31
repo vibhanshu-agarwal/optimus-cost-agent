@@ -12,10 +12,10 @@ import dataclasses
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 import uuid
-from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -23,18 +23,20 @@ from typing import Any
 import psycopg
 import pytest
 
-from optimus.gateway.models import GatewayUsage
 from optimus.usage.durable_capture import DurableCapture, host_outbox_root
 from optimus.usage.turn_settlement import ReceiptConflictError, StageReceipt, TurnSettlement
 from optimus_gateway.usage_store import StoreError, UsageStore
 from optimus_security import durable_outbox as ob
 from optimus_security import usage_capture_contract as uc
+from tests.support.plan12_capture_k3 import AT as _AT
+from tests.support.plan12_capture_k3 import receipt as _receipt
+from tests.support.plan12_capture_k3 import route_client
+from tests.support.plan12_capture_k3 import turn as _turn
 
 pytestmark = [pytest.mark.requires_plan12_capture_postgres]
 
 CONFIG_ENV = "P128_CAPTURE_K3_CONFIG"
 PASSWORD_ENV = "P128_CAPTURE_K3_PASSWORD"  # pragma: allowlist secret - an environment variable name, not a credential
-_AT = datetime(2026, 10, 31, tzinfo=UTC)
 
 
 @pytest.fixture(scope="module")
@@ -59,28 +61,6 @@ def store(released) -> UsageStore:
 
 def _capture(tmp_path: Path) -> DurableCapture:
     return DurableCapture(ob.OutboxWriter(host_outbox_root(tmp_path / "config")), ack_wait=5.0, clock=lambda: _AT)
-
-
-def _receipt(turn: str, attempt: str, *, cost: str = "0.25", gw: str | None = None) -> StageReceipt:
-    gw = gw or f"gw-{uuid.uuid4().hex}"
-    usage = GatewayUsage(gateway_request_id=gw, provider="openrouter", billing_units=3, cost_usd=Decimal(cost))
-    return StageReceipt(session_id="s", turn_id=turn, stage="planning", attempt_id=attempt, gateway_request_id=gw, outcome="completed",
-                        reported_cost_usd=Decimal(cost), recorded_at=_AT, gateway_usage=usage)
-
-
-def _turn(capture: DurableCapture, turn: str, receipts: list[StageReceipt]) -> None:
-    """A turn as the production call sites produce it: each receipt follows its host request's pre-dispatch intent."""
-    settlement = TurnSettlement(capture=capture, session_id="s")
-    invocation = settlement.open_invocation(turn)
-    invocation.start()
-    for receipt in receipts:
-        capture.intent(turn, receipt.attempt_id, stage="planning")
-        try:
-            settlement.record_attempt(receipt)
-        except Exception:  # noqa: BLE001 - a conflicting receipt is the case under test
-            pass
-    invocation.end()
-    settlement.finalize_turn(turn)
 
 
 def _gateway_evidence(store: UsageStore, tmp_path: Path, receipts: list[StageReceipt], *, outcomes: tuple[str, ...] = ("completed",),
@@ -253,25 +233,7 @@ def test_an_outage_is_retryable_and_committed_rows_survive_a_restart(released, s
 
 
 def test_host_delivery_through_the_real_route_commits_acknowledges_and_compacts(released, store, tmp_path):
-    from optimus.config.gateway import OptimusGatewaySettings
-    from optimus.gateway.client import GatewayClient, GatewayRequest
-    from optimus.gateway.errors import GatewayHttpError
     from optimus.usage.capture_delivery import CaptureDelivery
-    from optimus_gateway.models import GatewayServiceConfig
-    from optimus_gateway.usage_capture import handle_usage_capture_request
-
-    secret = "k3-route-secret"  # pragma: allowlist secret
-    config = GatewayServiceConfig(bind_host="127.0.0.1", bind_port=0, shared_secret=secret, provider="openrouter",
-                                  provider_api_key="or-test", base_url="https://openrouter.ai/api/v1", usage_store=store)  # pragma: allowlist secret
-
-    class Route:
-        def post_json(self, request: GatewayRequest) -> dict[str, Any]:
-            status, body = handle_usage_capture_request(
-                authorization_header=request.headers.get("Authorization"), raw_body=json.dumps(request.payload).encode(), config=config
-            )
-            if status != 200:
-                raise GatewayHttpError(status, json.dumps(body))
-            return body
 
     capture = DurableCapture(ob.OutboxWriter(host_outbox_root(tmp_path / "config"), segment_bytes=700), ack_wait=5.0, clock=lambda: _AT)
     for n in range(4):
@@ -279,7 +241,7 @@ def test_host_delivery_through_the_real_route_commits_acknowledges_and_compacts(
     deadline = time.monotonic() + 10
     while capture.writer.stats().pending and time.monotonic() < deadline:
         time.sleep(0.01)  # delivery sends only what the writer has confirmed
-    delivery = CaptureDelivery(capture, GatewayClient(settings=OptimusGatewaySettings(gateway_url="http://127.0.0.1:1", optimus_api_key=secret), transport=Route()))
+    delivery = CaptureDelivery(capture, route_client(store))
 
     report = delivery.drain_once()
 
@@ -349,7 +311,7 @@ def _ready_line(child: subprocess.Popen[str]) -> str:
         return lines[0]
     child.kill()
     _, stderr = child.communicate(timeout=30)
-    pytest.fail(f"the Gateway child was not ready within {_READY_SECONDS}s: {probes.sanitize(stderr[-2000:])[0]}")
+    pytest.fail(f"the child process was not ready within {_READY_SECONDS}s: {probes.sanitize(stderr[-2000:])[0]}")
 
 
 def _psql(section: dict[str, Any], sql: str) -> list[str]:
@@ -621,3 +583,186 @@ def test_a_receipt_with_no_recorded_intent_is_never_certified(released, store, t
     store.ingest(batch)
 
     assert _epoch_state(released, batch.stream_id) == [("incomplete", ["receipt_without_intent", "receipt_without_physical"])]
+
+
+def _confirmed(capture: DurableCapture) -> int:
+    deadline = time.monotonic() + 10
+    while capture.writer.stats().pending and time.monotonic() < deadline:
+        time.sleep(0.01)  # delivery sends only what the writer has confirmed
+    return capture.writer.stats().confirmed_sequence
+
+
+def _until_accepting(released) -> None:
+    deadline = time.monotonic() + 60
+    while True:
+        try:
+            psycopg.connect(released["conninfo"], connect_timeout=2).close()
+            return
+        except psycopg.OperationalError:
+            if time.monotonic() > deadline:
+                raise
+            time.sleep(1)
+
+
+def _epochs(released, stream_id: str) -> list[tuple[Any, ...]]:
+    return _rows(released, "SELECT turn_id, state, reasons, close_sequence IS NOT NULL FROM optimus_usage.coverage_epoch "
+                           "WHERE stream_id = %s ORDER BY begin_sequence", stream_id)
+
+
+def _costs(released, stream_id: str) -> list[tuple[Any, ...]]:
+    return _rows(released, "SELECT outcome, reported_cost_usd FROM optimus_usage.attempt_receipt WHERE stream_id = %s ORDER BY sequence",
+                 stream_id)
+
+
+_MISSING = ["physical_evidence_missing", "receipt_without_physical"]
+
+
+def test_an_outage_before_dispatch_grows_a_warned_backlog_that_catches_up_beside_a_later_complete_epoch(released, store, tmp_path):
+    """Plan 12.8 Task 4: the ledger is down before the first dispatch and through a second turn. Both turns settle as
+    before, the backlog grows and is warned once, nothing pending is deleted, and after recovery delivery catches up: the
+    earlier epoch stays incomplete beside the later one, which the Gateway's evidence completes."""
+    from optimus.usage.capture_delivery import CaptureDelivery
+
+    container = released["section"]["container"]
+    capture = _capture(tmp_path)
+    warnings: list[str] = []
+    delivery = CaptureDelivery(capture, route_client(UsageStore(released["conninfo"], connect_timeout=2)), warn=warnings.append,
+                               clock=lambda: _AT, warn_bytes=1)
+    first = _receipt("s:1", f"{uuid.uuid4().hex}:planning:1:1")
+    second = _receipt("s:2", f"{uuid.uuid4().hex}:planning:1:1", cost="0.50")
+
+    subprocess.run(["docker", "stop", "--time", "10", container], check=True, capture_output=True, timeout=120)
+    try:
+        _turn(capture, "s:1", [first])
+        early_confirmed = _confirmed(capture)
+        early = delivery.drain_once()
+        _turn(capture, "s:2", [second])
+        grown_confirmed = _confirmed(capture)
+        grown = delivery.drain_once()
+        held = len(ob.scan_stream(capture.writer.directory).records)
+    finally:
+        subprocess.run(["docker", "start", container], check=True, capture_output=True, timeout=120)
+    _until_accepting(released)
+    _gateway_evidence(store, tmp_path, [second])
+    caught_up = delivery.drain_once()
+    stream = capture.writer.stream_id
+    capture.stop()
+
+    assert capture.writer.stats().write_failures == 0, "the outage never touched local capture"
+    assert early.failures == grown.failures == ["ledger_unavailable"]
+    assert (early.backlog.pending_events, grown.backlog.pending_events, held) == (early_confirmed, grown_confirmed, grown_confirmed)
+    assert early.backlog.pending_bytes < grown.backlog.pending_bytes and grown.backlog.oldest_pending_at == _AT
+    assert early.backlog.warnings == grown.backlog.warnings == ("pending_bytes",)
+    assert caught_up.failures == [] and caught_up.committed == grown_confirmed
+    assert (caught_up.backlog.pending_events, caught_up.backlog.warnings, caught_up.backlog.committed_watermark) == (0, (), grown_confirmed)
+    assert len(warnings) == 2 and "above its pending_bytes" in warnings[0] and "back below its pending_bytes" in warnings[1]
+    assert _costs(released, stream) == [("completed", Decimal("0.25")), ("completed", Decimal("0.50"))]
+    assert _epochs(released, stream) == [("s:1", "incomplete", _MISSING, True), ("s:2", "complete", [], True)]
+
+
+_CRASH_CHILD = r"""
+import json, sys, time, uuid
+from pathlib import Path
+from optimus.usage.capture_delivery import CaptureDelivery
+from optimus.usage.durable_capture import DurableCapture, host_outbox_root
+from optimus_gateway.usage_store import UsageStore
+from optimus_security import durable_outbox as ob
+from optimus_security import usage_capture_contract as uc
+from tests.support.plan12_capture_k3 import AT, RouteTransport, receipt, route_client, turn
+config_root, point = Path(sys.argv[1]), sys.argv[2]
+conninfo = sys.stdin.readline().rstrip("\n")  # never on the command line
+capture = DurableCapture(ob.OutboxWriter(host_outbox_root(config_root), segment_bytes=700), ack_wait=2.0, clock=lambda: AT)
+
+def stop_here(*_args, **_kwargs):
+    print(json.dumps({"point": point, "stream": capture.writer.stream_id}), flush=True)
+    time.sleep(3600)  # the parent kills this process here
+
+if point in ("torn", "flushed"):
+    original, closes = ob.StreamWriter._write, []
+    def write(self, payload, event_id, *, force_roll):
+        if payload.get("kind") == uc.EPOCH_CLOSE:
+            closes.append(1)
+        if len(closes) < 2:
+            return original(self, payload, event_id, force_roll=force_roll)
+        record = ob.frame(self.stream_id, self._next_seq, self._prev, payload, event_id=event_id)
+        if force_roll or self._segment is None or (self._segment_size and self._segment_size + len(record.line) > self._segment_bytes):
+            self._roll()
+        self._segment.write(record.line if point == "flushed" else record.line[: len(record.line) // 2])
+        self._segment.flush()  # handed to the operating system, never fsynced or confirmed
+        stop_here()
+    ob.StreamWriter._write = write
+turn(capture, "s:1", [receipt("s:1", uuid.uuid4().hex + ":planning:1:1", cost="0.25")])
+turn(capture, "s:2", [receipt("s:2", uuid.uuid4().hex + ":planning:1:1", cost="0.50")])
+if point not in ("torn", "flushed"):
+    while capture.writer.stats().pending:
+        time.sleep(0.01)
+    if point == "before_commit":
+        RouteTransport.post_json = stop_here
+    elif point == "before_ack":
+        ob.write_ack = stop_here
+    elif point == "before_compaction":
+        ob.compact = stop_here
+    CaptureDelivery(capture, route_client(UsageStore(conninfo))).drain_once()
+    print(json.dumps({"point": "finished"}), flush=True)  # a crash point that was never reached fails the case
+time.sleep(3600)
+"""
+
+
+@pytest.mark.parametrize("point", ["torn", "flushed", "before_commit", "before_ack", "before_compaction"])
+def test_a_killed_writer_recovers_through_production_delivery_with_exact_rows(released, store, tmp_path, point):
+    """Plan 12.8 Task 4: a real writer process is killed mid-frame, after a flush that was never fsynced, before the
+    ledger commit, after the commit but before the local acknowledgement, and after the acknowledgement but before
+    compaction. A new process recovers through production delivery (orphan claim, withheld tail, replay). The ledger then
+    holds exactly the committed and recovered records with their identities unchanged, both receipts' costs, the cursor
+    at the last of them, and each epoch closed only if its close was committed; the damaged or withheld segment is kept."""
+    from optimus.usage.capture_delivery import CaptureDelivery
+
+    config_root = tmp_path / "config"
+    child = subprocess.Popen([sys.executable, "-c", _CRASH_CHILD, str(config_root), point], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True)
+    try:
+        child.stdin.write(released["conninfo"] + "\n")  # type: ignore[union-attr]
+        child.stdin.flush()  # type: ignore[union-attr]
+        marker = json.loads(_ready_line(child))
+    finally:
+        child.kill()
+        child.communicate(timeout=30)
+    assert marker["point"] == point
+    stream, dead = marker["stream"], host_outbox_root(config_root) / marker["stream"]
+    events = "SELECT sequence, event_id, record_digest FROM optimus_usage.capture_event WHERE stream_id = %s ORDER BY sequence"
+    before = _rows(released, events, stream)
+    held = ob.scan_stream(dead, orphan=True)
+    segments_before = {p.name for p in dead.glob("seg-*.log")}
+
+    deadline = time.monotonic() + 30
+    while (handle := ob.claim(dead)) is None:  # the operating system releases a killed process's lock
+        assert time.monotonic() < deadline, "the dead writer's stream lock was never released"
+        time.sleep(0.1)
+    ob.release(handle)
+    recovery = DurableCapture(ob.OutboxWriter(host_outbox_root(config_root)), ack_wait=5.0, clock=lambda: _AT)
+    delivery = CaptureDelivery(recovery, route_client(store))
+    report = delivery.drain_once()
+    settled = ob.scan_stream(dead, orphan=True)  # after recovery: an acknowledged tail is settled, no longer withheld
+    following = delivery.drain_once()
+    recovery.stop()
+
+    after = _rows(released, events, stream)
+    committed_by_the_dead = point in {"before_ack", "before_compaction"}
+    expected = sorted({*before, *((r.sequence, r.event_id, r.digest) for r in held.records)})
+    assert report.failures == following.failures == []
+    assert (before != []) is committed_by_the_dead and after[: len(before)] == before, "committed rows are never rewritten"
+    assert after == expected
+    if held.unverified_tail is not None and not committed_by_the_dead:
+        assert held.unverified_tail.sequence not in {row[0] for row in after}, "an unverified tail is never committed"
+    assert _rows(released, "SELECT sequence FROM optimus_usage.drain_cursor WHERE stream_id = %s", stream) == [(after[-1][0],)]
+    ack = ob.read_ack(dead)
+    assert ack is not None and (ack.sequence, ack.digest) == (after[-1][0], after[-1][2]), "the local acknowledgement matches the cursor"
+    assert _costs(released, stream) == [("completed", Decimal("0.25")), ("completed", Decimal("0.50"))]
+    assert _epochs(released, stream) == [("s:1", "incomplete", _MISSING, True)] + (
+        [("s:2", "incomplete", _MISSING, True)] if committed_by_the_dead else [("s:2", "open", [], False)]
+    )
+    kept = {d.segment for d in settled.damage} | ({settled.tail_segment} if settled.tail_segment else set())
+    assert (settled.unverified_tail is None) is committed_by_the_dead, "only a tail the ledger committed is settled"
+    assert {p.name for p in dead.glob("seg-*.log")} == kept and segments_before > kept, "compaction kept only the unsettled"
+    if point == "torn":
+        assert held.damage, "the torn frame is damage, never a record"

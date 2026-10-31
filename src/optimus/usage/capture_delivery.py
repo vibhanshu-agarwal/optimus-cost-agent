@@ -6,7 +6,7 @@ credential. Passes run on one owned background thread, never inside settlement a
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from optimus.gateway.errors import GatewayError, GatewayHttpError
 from optimus_security import durable_outbox as ob
@@ -21,7 +21,7 @@ DeliveryReport = DrainReport
 
 
 class CaptureDelivery(OutboxDrain):
-    def __init__(self, capture: DurableCapture, client: GatewayClient, **kwargs: float) -> None:
+    def __init__(self, capture: DurableCapture, client: GatewayClient, **kwargs: Any) -> None:
         self._client = client
         super().__init__(capture.writer, self._post, name="capture-delivery", **kwargs)
 

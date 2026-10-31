@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -109,6 +109,50 @@ def test_an_unavailable_ledger_keeps_every_record_and_the_next_pass_delivers(tmp
     capture.stop()
 
 
+def test_backlog_age_is_warned_once_at_its_boundary_during_an_outage_and_clears_after_catch_up(tmp_path):
+    capture = _capture(tmp_path)
+    _fill(capture, 3)
+    confirmed = capture.writer.stats().confirmed_sequence
+    on_disk = sum(len(r.line) + 1 for r in ob.scan_stream(capture.writer.directory).records)
+    store = _AckingStore()
+    store.down = True
+    clock = [_AT + timedelta(hours=24) - timedelta(microseconds=1)]
+    warnings: list[str] = []
+    delivery = CaptureDelivery(capture, _client(_RouteTransport(store)), warn=warnings.append, clock=lambda: clock[0], warn_bytes=10**9)
+
+    below = delivery.drain_once().backlog
+    clock[0] += timedelta(microseconds=1)
+    crossed = delivery.drain_once().backlog
+    again = delivery.drain_once().backlog
+    store.down = False
+    caught_up = delivery.drain_once().backlog
+
+    assert (below.pending_events, below.pending_bytes, below.oldest_pending_at) == (confirmed, on_disk, _AT)
+    assert (below.local_watermark, below.committed_watermark, below.last_failure) == (confirmed, 0, "ledger_unavailable")
+    assert below.warnings == () and crossed.warnings == again.warnings == ("pending_age",)
+    assert crossed.pending_events == again.pending_events == confirmed, "nothing pending is deleted during the outage"
+    assert (caught_up.pending_events, caught_up.pending_bytes, caught_up.warnings) == (0, 0, ())
+    assert caught_up.committed_watermark == confirmed and caught_up.last_failure == "ledger_unavailable"
+    assert len(warnings) == 2 and "above its pending_age threshold" in warnings[0] and "back below its pending_age" in warnings[1]
+    capture.stop()
+
+
+def test_backlog_bytes_are_warned_from_exactly_their_threshold(tmp_path):
+    capture = _capture(tmp_path)
+    _fill(capture, 2)
+    on_disk = sum(len(r.line) + 1 for r in ob.scan_stream(capture.writer.directory).records)
+    store = _AckingStore()
+    store.down = True
+    at = lambda: _AT  # noqa: E731
+
+    under = CaptureDelivery(capture, _client(_RouteTransport(store)), clock=at, warn_bytes=on_disk + 1).drain_once().backlog
+    exact = CaptureDelivery(capture, _client(_RouteTransport(store)), clock=at, warn_bytes=on_disk).drain_once().backlog
+
+    assert under.warnings == () and exact.warnings == ("pending_bytes",)
+    assert exact.free_bytes is not None and exact.free_bytes > 0
+    capture.stop()
+
+
 def test_without_an_accounting_ledger_the_route_refuses_retryably_and_nothing_is_lost(tmp_path):
     capture = _capture(tmp_path)
     _fill(capture, 1)
@@ -141,6 +185,38 @@ def test_orphan_streams_are_claimed_and_their_unverified_tail_is_withheld(tmp_pa
     assert delivered[dead.stream_id] == [1, 2], "the last record of a dead writer is withheld"
     assert delivered[orderly.stream_id] == [1, 2], "an orderly end is delivered whole"
     capture.stop()
+
+
+def test_a_dead_writers_tail_is_settled_only_by_an_acknowledgement_naming_its_exact_bytes(tmp_path):
+    """The writer died after the ledger committed its last record but before storing the acknowledgement: the replayed
+    prefix is answered with that record, which settles the withheld tail. An acknowledgement ahead with any other digest
+    is refused and stores nothing."""
+    from optimus_gateway.usage_store import IngestResult
+
+    root = host_outbox_root(tmp_path / "config")
+    dead = ob.StreamWriter(root)
+    records = [dead.append({"kind": uc.STREAM_START, "at": _AT.isoformat()}) for _ in range(3)]
+    dead._abandon_segment()
+    dead._lock_handle.close()  # type: ignore[union-attr]
+    reports = []
+    for named in ("f" * 64, records[2].digest):
+
+        class LedgerAhead(_AckingStore):
+            digest = named
+
+            def ingest(self, batch: uc.CaptureBatch) -> Any:
+                super().ingest(batch)
+                return IngestResult(uc.CaptureAck(_LEDGER, batch.stream_id, 3, self.digest), 0, len(batch.records))
+
+        capture = DurableCapture(ob.OutboxWriter(root), clock=lambda: _AT)
+        reports.append(CaptureDelivery(capture, _client(_RouteTransport(LedgerAhead()))).drain_once())
+        capture.stop()
+        if named != records[2].digest:
+            assert reports[-1].failures == ["ack_mismatch"] and ob.read_ack(dead.directory) is None
+
+    ack = ob.read_ack(dead.directory)
+    assert reports[-1].failures == [] and ack is not None and (ack.sequence, ack.digest) == (3, records[2].digest)
+    assert ob.scan_stream(dead.directory, orphan=True).unverified_tail is None, "an acknowledged tail is settled"
 
 
 def test_a_live_foreign_stream_is_left_to_its_own_process(tmp_path):

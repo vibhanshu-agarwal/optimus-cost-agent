@@ -4723,7 +4723,7 @@
     {
       "key": "optimus_gateway.request_diagnostics:write_log_line:text_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: the Gateway log's one writer (moved from OptimusGatewayHandler._finish): writes an already allowlisted, projected and finally sanitized model_request or model_attempt line and a newline to stderr in one locked write, contained against OSError and ValueError (a closed stream), which the auto-started local Gateway persists as the workspace's .optimus/local-gateway.log. No request body, prompt, reply or secret is written.",
+      "rationale": "Inspection: the Gateway log's one writer (moved from OptimusGatewayHandler._finish): writes an already allowlisted, projected and finally sanitized model_request or model_attempt line and a newline to stderr in one locked write, contained against OSError and ValueError (a closed stream), which the auto-started local Gateway persists as the workspace's .optimus/local-gateway.log. No request body, prompt, reply or secret is written. Plan 12.8: the same line is then offered to the per-user diagnostic copy (non-blocking, never raising), and a refused stderr write is counted instead of silently dropped.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_closed_log_stream_never_breaks_the_reply",
       "evidence_tier": "unit"
@@ -5358,6 +5358,54 @@
       "rationale": "AST overmatch (Plan 12.8): canonical JSON of a receipt's allowlisted facts hashed in memory to its fingerprint; only the digest is kept.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/usage/test_capture_contract.py::test_the_ledger_recomputes_receipt_fingerprints_and_enforces_receipt_rules",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments._append:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): appends one copy record to the active segment under the injected per-user accounting root: a sequence, the UTC time and an allowlisted Gateway diagnostic event (model_request, model_attempt, reply_undeliverable) re-passed through final_sanitize; the record was already projected and sanitized by its producer. Unlisted or unparsable lines are refused and counted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_refused_lines_are_counted_leave_sequence_gaps_and_copied_lines_are_sanitized_again",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments._newest_retained:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): reads the tail of the newest retained copy segment to continue the sequence after a restart; nothing is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_a_restart_continues_the_sequence_in_a_new_segment_after_a_torn_tail",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments._record:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): serializes the copy wrapper (sequence, UTC time) around an allowlisted event after final_sanitize; an oversized record is refused, never split.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_refused_lines_are_counted_leave_sequence_gaps_and_copied_lines_are_sanitized_again",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments._roll:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): creates a new copy segment exclusively (never reopening one) under the injected per-user accounting root; it holds only sanitized allowlisted copy records.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_a_segment_rolls_before_it_would_exceed_its_size_and_may_end_exactly_at_it",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments.status:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): reads the first line of the oldest retained copy segment to report the retained sequence range; nothing is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_the_total_cap_removes_the_oldest_closed_segments_and_never_the_active_one",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.usage_capture:GatewayAccounting.stop:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): the diagnostic copy's final status line on the Gateway log: integer counters, segment count, retained bytes, UTC date/sequence ranges, a closed flag and a fixed failure code; no request, reply, path or credential.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_gateway_accounting_owns_the_copy_under_its_root_and_closes_it",
       "evidence_tier": "unit"
     }
   ]
