@@ -20,7 +20,10 @@ from optimus_gateway.providers import build_tool_dependencies, build_upstream_cl
 from optimus_gateway.responses import handle_responses_request, model_request_log_line
 from optimus_gateway.tool_handlers import TOOL_ROUTE_PATHS, GatewayToolDependencies, handle_tool_request
 from optimus_gateway.upstream_client import UpstreamClient, begin_request_budget, end_request_budget
+from optimus_gateway.usage_capture import handle_usage_capture_request
 from optimus_security.usage_capture_contract import CAPTURE_REQUEST_HEADER
+from optimus_security.usage_capture_contract import MAX_BODY_BYTES as MAX_CAPTURE_BODY_BYTES
+from optimus_security.usage_capture_contract import PATH as CAPTURE_PATH
 
 # P11-FU-6: limits for POSTs to routes this handler rejects with 404 (unknown routes and tool routes
 # without configured dependencies). The early 404 used to be written, and the connection closed,
@@ -35,7 +38,7 @@ _REJECTED_POST_WRITE_SECONDS = 2.0
 _REJECTED_POST_READ_CHUNK = 8192
 _MAX_LENGTH_DIGITS = len(str(_REJECTED_POST_MAX_BYTES))
 _monotonic = time.monotonic
-_CORE_ROUTES = frozenset({"/v1/responses", "/v1/chat/completions", DECISIONS_PATH, "/v1/observability/traces"})
+_CORE_ROUTES = frozenset({"/v1/responses", "/v1/chat/completions", DECISIONS_PATH, "/v1/observability/traces", CAPTURE_PATH})
 
 
 class _RejectedPostError(Exception):
@@ -133,6 +136,17 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
             self._finish(path, HTTPStatus.BAD_REQUEST, {"error": "invalid content length"})
             return
         content_length = int(declared)
+        if path == CAPTURE_PATH:
+            # Plan 12.8: capture batches are bounded before any byte is read, and validated from their raw bytes.
+            if content_length > MAX_CAPTURE_BODY_BYTES:
+                self.close_connection = True
+                self._finish(path, HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"status": "rejected", "code": "CAPTURE_TOO_LARGE"})
+                return
+            status, body = handle_usage_capture_request(
+                authorization_header=self.headers.get("Authorization"), raw_body=self.rfile.read(content_length), config=self.config
+            )
+            self._finish(path, HTTPStatus(status), body)
+            return
         raw_body = self.rfile.read(content_length) if content_length else b"{}"
         try:
             request_body = json.loads(raw_body.decode("utf-8"))

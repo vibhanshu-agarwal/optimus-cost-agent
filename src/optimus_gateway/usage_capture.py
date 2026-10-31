@@ -16,11 +16,14 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError
 
 from optimus_security import usage_capture_contract as uc
 from optimus_security.durable_outbox import ACK_WAIT_SECONDS, OutboxWriter
+
+if TYPE_CHECKING:
+    from optimus_gateway.models import GatewayServiceConfig
 
 _STATE = threading.local()
 _writer: OutboxWriter | None = None
@@ -91,3 +94,31 @@ def physical_attempt() -> Iterator[None]:
             {"kind": uc.GATEWAY_ATTEMPT_OUTCOME, "at": _now(), "gateway_request_id": gateway_request_id, "attempt": number,
              "outcome": outcome, "http_status": status, "cost_usd": None, "billing_units": None}
         )
+
+
+def handle_usage_capture_request(*, authorization_header: str | None, raw_body: bytes, config: GatewayServiceConfig) -> tuple[int, dict[str, Any]]:
+    """`POST /v1/observability/usage-capture`: a strictly validated batch committed by the Gateway-owned ledger. Only a
+    committed batch is acknowledged; anything else leaves the sender's outbox untouched. Bodies over the contract's
+    limit are refused by the server before they are read."""
+    from optimus_gateway.models import authorize_bearer
+    from optimus_gateway.usage_store import StoreError
+
+    if not authorize_bearer(authorization_header=authorization_header, shared_secret=config.shared_secret):
+        return 401, {"error": "unauthorized"}
+    try:
+        batch = uc.parse_batch(raw_body)
+    except uc.ContractError as exc:
+        return 400, {"status": "rejected", "code": f"CAPTURE_{exc.code.upper()}"}
+    store = config.usage_store
+    if store is None:
+        return 503, {"status": "unavailable", "code": "ACCOUNTING_NOT_CONFIGURED", "retryable": True}
+    try:
+        result = store.ingest(batch)
+    except StoreError as exc:
+        if exc.code == "unavailable":
+            return 503, {"status": "unavailable", "code": "LEDGER_UNAVAILABLE", "retryable": True}
+        body: dict[str, Any] = {"status": "rejected", "code": f"CAPTURE_{exc.code.upper()}"}
+        if exc.committed is not None:
+            body.update(ledger_instance=store.ledger_instance, sequence=exc.committed[0], digest=exc.committed[1])
+        return (409 if exc.code == "cursor_mismatch" else 400), body
+    return 200, uc.build_ack(result.ack)

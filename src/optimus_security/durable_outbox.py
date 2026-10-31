@@ -375,6 +375,11 @@ class StreamWriter:
     def confirmed_sequence(self) -> int:
         return self._confirmed
 
+    @property
+    def active_segment(self) -> str | None:
+        """The segment this writer may still append to; never compacted while the writer lives."""
+        return f"{_SEGMENT_PREFIX}{self._segment_index:06d}{_SEGMENT_SUFFIX}" if self._segment_index else None
+
     def _open(self) -> None:
         """Create and lock this writer's own directory. Retryable: the name is this writer's alone, so an earlier
         attempt that created the directory but failed to fsync or lock it is simply completed."""
@@ -592,6 +597,10 @@ class OutboxWriter:
     @property
     def directory(self) -> Path:
         return self._writer.directory
+
+    @property
+    def active_segment(self) -> str | None:
+        return self._writer.active_segment
 
     def stats(self) -> WriterStats:
         with self._lock:

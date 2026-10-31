@@ -5295,6 +5295,46 @@
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/usage/test_capture_wiring.py::test_the_client_records_the_intent_before_it_sends_and_carries_the_host_request",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.usage.capture_delivery:CaptureDelivery.nudge:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.8): sets an in-memory threading.Event to wake the delivery thread; no Redis, file or diagnostic sink.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_delivery.py::test_the_live_stream_is_delivered_to_its_confirmed_sequence_and_acknowledged",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.usage.capture_delivery:CaptureDelivery.stop:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.8): sets in-memory threading.Events to stop the delivery thread; no Redis, file or diagnostic sink.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_delivery.py::test_the_live_stream_is_delivered_to_its_confirmed_sequence_and_acknowledged",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.usage.capture_delivery:_batches:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.8): json.dumps of one already framed, allowlisted outbox line only to measure its escaped size for batching; the result is discarded.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_delivery.py::test_batches_respect_the_record_count_and_body_limits",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.usage_store:UsageStore._ingest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): serializes one verified record's allowlisted payload (validated by the contract's per-kind schema) into the Gateway-owned ledger's JSONB column; no prompt, reply, exception text or credential.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_contract.py::test_a_record_outside_its_kinds_schema_is_refused",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.usage_store:_identities_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.8): canonical JSON of attempt identities hashed in memory to verify a close's identity digest; only the comparison result is used.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_durable_capture.py::test_large_identity_sets_continue_in_ordered_parts_bound_by_the_close",
+      "evidence_tier": "unit"
     }
   ]
 }

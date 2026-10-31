@@ -10,6 +10,7 @@ from optimus_security.launch_manifest import resolve_effective_base_url
 
 if TYPE_CHECKING:
     from optimus_gateway.model_policy import GatewayModelPolicy
+    from optimus_gateway.usage_store import UsageStore
     from optimus_model_policy.stage_c import StageCGuard
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -42,6 +43,9 @@ class GatewayServiceConfig:
     # Plan 12.2 Task 13 (Stage C): the shared test envelope's durable dispatch guard, opened at startup only
     # for a test profile with a verified envelope; None (no envelope) otherwise.
     stage_c_guard: StageCGuard | None = field(default=None, repr=False)
+    # Plan 12.8 (ADR-032): the Gateway-owned usage ledger, opened at startup only with an approved accounting
+    # configuration; None (capture batches are refused as retryable and stay in their outboxes) otherwise.
+    usage_store: UsageStore | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if self.bind_host.lower() not in _LOOPBACK_HOSTS:
