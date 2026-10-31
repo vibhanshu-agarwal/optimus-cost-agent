@@ -305,3 +305,34 @@ def test_gateway_accounting_owns_the_copy_under_its_root_and_closes_it(tmp_path,
     final = json.loads(capsys.readouterr().err.splitlines()[-1])
     assert final["event"] == "diagnostic_copy_status" and final["closed"] is True and final["written"] == 1
     assert "stderr_failures" in final
+
+
+def test_the_gateway_copy_aimed_at_the_real_config_root_is_refused_and_creates_nothing(monkeypatch):
+    """The accounting-root control with the Gateway composition wired: in the guarded pytest process, the diagnostic
+    copy and the Gateway outbox under the real per-user root are refused, the log line still reaches stderr and the
+    refusal is counted and reported."""
+    from tools.testing import run_context_guard
+
+    if run_context_guard.mode() != "pytest_process_guard":
+        pytest.skip("the pytest-process guard is not installed in this run")
+    monkeypatch.setattr(ds, "MAX_RECORD_BYTES", 64 * 1024)
+    config_root = next((Path(root) for root in run_context_guard.protected_roots() if root.endswith("\\roaming\\optimus-cost-agent")), None)
+    if config_root is None:
+        pytest.skip("this platform's guard protects no Windows per-user config root")
+    accounting = config_root / "accounting"
+    existed = (accounting / "gateway-diagnostics").exists()
+    before = run_context_guard.denials()
+    reports: list[str] = []
+    started = usage_capture.start_accounting(accounting, None, keyring_backend=None, log=reports.append)
+    try:
+        request_diagnostics.write_log_line(_line(1))
+        assert started.diagnostics is not None
+        assert started.diagnostics.close()
+        status = started.diagnostics.status()
+    finally:
+        started.stop()
+
+    assert status.written == 0 and status.write_failures == 1
+    assert run_context_guard.denials() > before, "the guard refused the write"
+    assert (accounting / "gateway-diagnostics").exists() == existed
+    assert any("write failures" in r for r in reports)
