@@ -147,7 +147,7 @@ def test_a_contradictory_duplicate_is_evidence_and_an_identical_alias_is_linked(
 @pytest.mark.parametrize("statement", [
     "UPDATE optimus_usage.capture_event SET kind = 'x' WHERE stream_id = %s",
     "DELETE FROM optimus_usage.capture_event WHERE stream_id = %s",
-    "TRUNCATE optimus_usage.capture_event",
+    "TRUNCATE optimus_usage.capture_event CASCADE",  # a plain TRUNCATE is refused by the foreign keys already
 ])
 def test_facts_are_immutable_in_the_database(released, store, tmp_path, statement):
     capture = _capture(tmp_path)
@@ -250,6 +250,9 @@ def test_host_delivery_through_the_real_route_commits_acknowledges_and_compacts(
     capture = DurableCapture(ob.OutboxWriter(host_outbox_root(tmp_path / "config"), segment_bytes=700), ack_wait=5.0, clock=lambda: _AT)
     for n in range(4):
         _turn(capture, f"s:{n}", [_receipt(f"s:{n}", f"{uuid.uuid4().hex}:planning:1:1")])
+    deadline = time.monotonic() + 10
+    while capture.writer.stats().pending and time.monotonic() < deadline:
+        time.sleep(0.01)  # delivery sends only what the writer has confirmed
     delivery = CaptureDelivery(capture, GatewayClient(settings=OptimusGatewaySettings(gateway_url="http://127.0.0.1:1", optimus_api_key=secret), transport=Route()))
 
     report = delivery.drain_once()
