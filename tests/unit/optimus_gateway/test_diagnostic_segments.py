@@ -98,6 +98,37 @@ def test_the_utc_day_change_rolls_the_segment(tmp_path):
     assert segments["gateway-diagnostics-20261101-000001.log"][0]["at"] == "2026-11-01T00:00:00+00:00"
 
 
+def _written(sink: DiagnosticSegments, count: int) -> None:
+    deadline = time.monotonic() + 5
+    while sink.status().written < count and time.monotonic() < deadline:
+        time.sleep(0.005)
+    assert sink.status().written == count
+
+
+def test_a_line_queued_before_midnight_and_written_after_another_gateways_new_day_keeps_the_sequence_unique(tmp_path):
+    """Codex Checkpoint C pass 2: A writes before midnight, B writes the new day, A then writes a line it admitted before
+    midnight, then a new-day line. The late line goes into the new day's segment with its own time, never back into the
+    old one, so no sequence repeats and the newest segment holds the highest."""
+    root = tmp_path / "copy"
+    before, after = Clock(datetime(2026, 10, 31, 23, 59, 59, tzinfo=UTC)), Clock(datetime(2026, 11, 1, tzinfo=UTC))
+    a, b = _sink(root, before), _sink(root, after)
+    a.write(_line(1))
+    _written(a, 1)
+    b.write(_line(2))
+    _written(b, 1)
+    a.write(_line(3))  # admitted at 23:59:59, written after B's new-day line
+    _written(a, 2)
+    before.at = after.at
+    a.write(_line(4))
+    assert a.close() and b.close()
+
+    segments = _records(root)
+    assert {name: [r["seq"] for r in records] for name, records in segments.items()} == {
+        "gateway-diagnostics-20261031-000001.log": [1], "gateway-diagnostics-20261101-000001.log": [2, 3, 4]}
+    late = segments["gateway-diagnostics-20261101-000001.log"][1]
+    assert (late["record"]["n"], late["at"]) == (3, "2026-10-31T23:59:59+00:00"), "the late line keeps its own time"
+
+
 @pytest.mark.parametrize(("age_days", "kept"), [(30, True), (31, False)])
 def test_closed_segments_are_retained_for_thirty_days(tmp_path, age_days, kept):
     root = tmp_path / "copy"

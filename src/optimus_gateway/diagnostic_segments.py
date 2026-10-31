@@ -7,8 +7,9 @@ that was dropped, refused or failed leaves a gap; a restarted Gateway continues 
 
 The directory is per user, so every Gateway of that user shares it (Codex Checkpoint C, finding 1): each line is
 appended under the directory's lock file, which serializes the Gateways' sequence, rollover, retention and capacity
-decisions on what is on disk then, and no segment is held open between lines. A line goes to the current UTC day's
-newest segment unless it would exceed 64 MiB there or that segment ends in a torn line; otherwise a new segment starts.
+decisions on what is on disk then, and no segment is held open between lines. A line goes to its UTC day's newest
+segment (or to a newer day's, never an older one) unless it would exceed 64 MiB there or that segment ends in a torn
+line; otherwise a new segment starts.
 Closed segments are retained for 30 days within a 256 MiB total, oldest removed first; the segment being appended to
 is never removed or truncated, and when space cannot be made the line is refused and counted.
 Writes go through one bounded queue on one owned thread, so a blocked disk or a held lock never stalls a request; a full
@@ -149,10 +150,15 @@ class DiagnosticSegments:
             self._failed("refused_malformed", "malformed")
             return
         sanitized = final_sanitize(parsed)
-        day = at.strftime("%Y%m%d")
         self._root.mkdir(parents=True, exist_ok=True)
         with _directory_lock(self._root / LOCK_NAME):
             segments = self._segments()
+            # Never into a segment older than the newest (Codex Checkpoint C pass 2): a line queued before midnight but
+            # written after another Gateway started the new day goes into that day's segment with its own time, so the
+            # newest segment always holds the highest sequence.
+            day = at.strftime("%Y%m%d")
+            if segments and segments[-1][0] > day:
+                day = segments[-1][0]
             # After the newest retained line, whichever Gateway wrote it, leaving a gap for each of this process's
             # lines offered since its last written one.
             seq = self._newest_retained(segments) + offered - self._written_offered
