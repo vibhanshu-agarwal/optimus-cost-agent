@@ -1,0 +1,670 @@
+{
+  "adr": null,
+  "claim": "Existing settlement extended without another debit",
+  "plan": {
+    "file": "docs/superpowers/plans/2026-10-31-plan-12-8-memory-durable-capture-implementation.md",
+    "sha256": "hex:58d59e21b68e0973f78bd88452f2991536de4034b7ad9c74df01950889172619"
+  },
+  "qualifications": [
+    "Synthetic receipt values establish capture semantics, not provider billing correctness."
+  ],
+  "runs": [
+    {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA --junitxml=<junit> tests/unit/usage/test_turn_settlement.py tests/unit/usage/test_capture_wiring.py tests/unit/usage/test_durable_capture.py tests/unit/usage/test_summary_ledger.py tests/unit/acp/test_settlement.py tests/unit/acp/test_late_receipts.py",
+      "exit": 0,
+      "label": "unit",
+      "log": "runs/settlement-extension-unit.log",
+      "log_sha256": "hex:ee3e510d24b6f0b34c1eac13f856f74236cd98a2f90f728a4679da37809fca29",
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+      },
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+      },
+      "started_utc": "2026-10-31T10:27:42.885131+00:00",
+      "summary": "157 passed in 4.79s",
+      "tests": [
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_fault_only_ever_carries_its_bounded_vocabulary",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_healthy_turn_leaves_no_fault_line",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_repack_fault_is_recorded_with_its_phase_and_category",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_replayed_receipt_and_a_repeated_projection_never_debit_twice",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_runner_that_reports_no_receipts_keeps_its_reported_total",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_running_worker_keeps_its_turn_incomplete_until_it_ends",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_subscribed_projection_follows_each_late_receipt_on_its_own[known]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_subscribed_projection_follows_each_late_receipt_on_its_own[unknown]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_view_fault_leaves_one_content_free_operator_line[engine-raises]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_view_fault_leaves_one_content_free_operator_line[maintenance-raises]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_view_fault_leaves_one_content_free_operator_line[summarizer-identity-refused]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_view_fault_leaves_one_content_free_operator_line[summary-truncated]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_view_fault_leaves_one_content_free_operator_line[unlisted-reason]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_worker_left_behind_by_teardown_still_settles_and_nothing_live_is_sent[known]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_worker_left_behind_by_teardown_still_settles_and_nothing_live_is_sent[unknown]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_a_worker_that_never_started_can_never_start_later",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_an_exception_after_a_paid_attempt_alerts_once_and_keeps_the_cost",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_an_outbound_failure_exit_still_alerts_in_its_turn",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_an_unconfirmed_notice_times_out_sends_nothing_and_is_never_counted_late",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_approval_and_application_never_debit_the_plan_twice",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_concurrent_receipts_leave_the_projection_equal_to_the_settlement",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_known_costs_before_and_after_an_unknown_all_count",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_late_receipts.py::test_receipts_after_an_empty_finalization_still_reach_the_projection",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_directive_and_evidence_row_counts",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_effect_algebra_all_succeeded_is_complete",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_effect_algebra_any_failed_effect_unknown_is_indeterminate",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_effect_algebra_empty_is_none",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_effect_algebra_failed_no_effect_and_suppressed_only_is_none",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_effect_algebra_named_write_succeeded_test_suppressed_is_partial",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_exactly_nine_send_rows",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_execution_expands_read_and_write_test_vocabularies",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_gateway_full_vocabularies",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_notice_behavior_is_best_effort",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_permission_eligibility",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_plan_persistence_full_vocabularies",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_planning_iteration_is_halt_only_without_registered_lifecycle",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_planning_read_full_vocabularies",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_protocol_response_mutates_only_rpc_response_delivery",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_provisional_history_consequences",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_read_gateway_and_plan_persistence_never_enter_e",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_registry_has_exactly_fifteen_rows_with_eight_fields",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_send_outcome_to_final_delivery_mapping",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_send_outcome_to_rpc_response_delivery_mapping",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_send_owners_gates_and_start_operations",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_send_rows_share_common_lifecycle_and_terminal_sets",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_settlement_telemetry_has_no_owner_start_lifecycle_or_terminal",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_terminal_set_and_fallback_mutate_only_final_delivery",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_turn_settlement_snapshot_is_frozen",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/acp/test_settlement.py::test_unknown_class_outcome_raises_invariant",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_wiring.py::test_a_clean_turn_closes_complete_and_the_known_subtotal_is_settlements_own",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_wiring.py::test_a_failed_operation_call_propagates_and_its_epoch_stays_incomplete",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_wiring.py::test_a_failing_hook_or_malformed_identity_never_stops_the_send",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_wiring.py::test_a_real_spec_turn_begins_receipts_and_closes_its_epoch",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_wiring.py::test_a_receipt_after_the_close_is_appended_late_and_a_later_epoch_cannot_repair_it",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_wiring.py::test_an_operation_call_gets_its_own_complete_epoch",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_wiring.py::test_each_session_of_a_capturing_store_settles_into_the_one_capture",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_wiring.py::test_persistence_failing_from_the_start_never_stops_settlement_or_model_work",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_wiring.py::test_settlement_appends_invocations_new_receipts_integrity_and_the_close",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_wiring.py::test_settlement_without_capture_is_unchanged_and_writes_nothing",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_wiring.py::test_the_client_records_the_intent_before_it_sends_and_carries_the_host_request",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_wiring.py::test_without_capture_an_operation_is_just_the_call",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_a_begin_that_never_persisted_cannot_close_complete",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_a_clean_turn_records_begin_intent_receipt_and_a_complete_close_in_order",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_a_late_receipt_after_a_written_close_is_appended_and_the_close_is_not_rewritten",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_a_queued_close_whose_write_fails_reopens_the_epoch",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_a_refused_close_leaves_the_epoch_open_for_a_later_close",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_a_refused_record_keeps_the_epoch_incomplete_and_model_work_proceeds",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_a_terminal_state_with_a_running_worker_snapshots_and_closes_after_settlement",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_an_incomplete_settlement_summary_never_closes_complete",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_an_intent_not_durable_within_the_wait_is_unconfirmed_even_if_written_later",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_capture_aimed_at_the_real_config_root_is_refused_visibly_and_creates_nothing",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_decimals_persist_exactly_beyond_the_context_precision_and_digest_distinctly",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_equal_receipts_digest_equally_under_both_replay_contracts",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_large_identity_sets_continue_in_ordered_parts_bound_by_the_close",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_maximal_identities_split_into_parts_that_each_fit_the_record_cap",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_purposes_default_by_stage_and_memory_is_summarization_only[answer-None-agent.answer]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_purposes_default_by_stage_and_memory_is_summarization_only[summarization-memory.extract-memory.extract]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_stop_records_the_open_epochs_without_closing_them",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_durable_capture.py::test_the_receipt_record_is_allowlisted_and_keeps_unknowns_and_presence",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_a_captured_identity_that_is_not_the_bound_route_is_refused_before_any_request[model_id-model-b]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_a_captured_identity_that_is_not_the_bound_route_is_refused_before_any_request[quantizations-value4]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_a_captured_identity_that_is_not_the_bound_route_is_refused_before_any_request[reasoning-high]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_a_captured_identity_that_is_not_the_bound_route_is_refused_before_any_request[role-medium]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_a_captured_identity_that_is_not_the_bound_route_is_refused_before_any_request[route-value2]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_a_divergent_same_request_record_is_refused_by_the_ledgers_own_rule",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_a_known_summary_attempt_reaches_the_shared_ledger_exactly_once[cancelled-after-the-call]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_a_known_summary_attempt_reaches_the_shared_ledger_exactly_once[discarded-summary]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_a_known_summary_attempt_reaches_the_shared_ledger_exactly_once[paid-failure]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_a_known_summary_attempt_reaches_the_shared_ledger_exactly_once[success]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_a_registry_identity_other_than_the_trusted_snapshot_is_refused",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_a_route_that_is_not_the_trusted_registrys_is_refused_at_configuration",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_an_attached_turns_summaries_and_answers_reconcile_with_the_ledger",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_an_uncertain_summary_attempt_never_becomes_ledger_usage",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_missing_reported_tokens_stay_missing",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_the_adapter_records_summaries_only",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_the_ledger_records_concurrent_summaries_and_answers_without_losing_one",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_summary_ledger.py::test_the_summary_receipt_keeps_the_original_usage_and_the_bound_identity",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_chat_answer_reports_its_attempt",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_configured_alert_is_shown_once_and_refuses_nothing",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_conflicting_duplicate_is_an_integrity_error[conflict0]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_conflicting_duplicate_is_an_integrity_error[conflict1]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_conflicting_duplicate_is_an_integrity_error[conflict2]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_conflicting_duplicate_is_an_integrity_error[conflict3]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_daily_alert_policy_is_refused_by_a_host_without_a_reconciled_ledger",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_discarded_or_failed_summary_still_costs_what_it_cost",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_duplicate_that_changes_one_fact_is_an_integrity_error[gateway_usage]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_duplicate_that_changes_one_fact_is_an_integrity_error[http_status]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_duplicate_that_changes_one_fact_is_an_integrity_error[quantizations]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_duplicate_that_changes_one_fact_is_an_integrity_error[reasoning]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_duplicate_that_changes_one_fact_is_an_integrity_error[registry_hash]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_duplicate_that_changes_one_fact_is_an_integrity_error[requested_model]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_duplicate_that_changes_one_fact_is_an_integrity_error[revision_digest]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_duplicate_that_changes_one_fact_is_an_integrity_error[role]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_duplicate_that_changes_one_fact_is_an_integrity_error[route]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_duplicate_that_changes_one_fact_is_an_integrity_error[session_id]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_duplicate_that_changes_one_fact_is_an_integrity_error[stage]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_duplicate_that_changes_one_fact_is_an_integrity_error[strategy]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_duplicate_that_changes_one_fact_is_an_integrity_error[turn_id]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_flattened_fact_cannot_contradict_the_usage_it_carries[cached_tokens]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_flattened_fact_cannot_contradict_the_usage_it_carries[input_tokens]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_flattened_fact_cannot_contradict_the_usage_it_carries[output_tokens]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_flattened_fact_cannot_contradict_the_usage_it_carries[provider]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_flattened_fact_cannot_contradict_the_usage_it_carries[provider_request_id]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_flattened_fact_cannot_contradict_the_usage_it_carries[resolved_model]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_flattened_fact_cannot_contradict_the_usage_it_carries[resolved_provider]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_receipt_outside_the_contract_is_refused[completed--1]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_receipt_outside_the_contract_is_refused[completed-NaN]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_receipt_outside_the_contract_is_refused[not_sent-0.001]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_runner_exception_still_applies_what_the_turn_settled",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_session_settles_summarization_and_planning_once",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_a_summarization_receipt_keeps_the_exact_route_and_resolved_provider",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_an_approval_denial_still_settles_its_planning_cost",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_an_identical_gateway_replay_on_another_host_attempt_is_charged_once",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_an_identical_replay_counts_once_even_when_it_arrives_later",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_an_unknown_attempt_settled_after_teardown_is_flagged",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_an_unknown_chat_attempt_is_reported_unknown",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_an_unknown_cost_is_never_zero",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_another_attempt_settling_the_same_gateway_request_with_one_fact_changed_is_refused[gateway_usage]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_another_attempt_settling_the_same_gateway_request_with_one_fact_changed_is_refused[http_status]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_another_attempt_settling_the_same_gateway_request_with_one_fact_changed_is_refused[quantizations]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_another_attempt_settling_the_same_gateway_request_with_one_fact_changed_is_refused[reasoning]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_another_attempt_settling_the_same_gateway_request_with_one_fact_changed_is_refused[registry_hash]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_another_attempt_settling_the_same_gateway_request_with_one_fact_changed_is_refused[requested_model]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_another_attempt_settling_the_same_gateway_request_with_one_fact_changed_is_refused[revision_digest]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_another_attempt_settling_the_same_gateway_request_with_one_fact_changed_is_refused[role]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_another_attempt_settling_the_same_gateway_request_with_one_fact_changed_is_refused[route]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_another_attempt_settling_the_same_gateway_request_with_one_fact_changed_is_refused[strategy]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_applying_a_stored_plan_reports_no_planning_attempt",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_arrival_bookkeeping_differs_idempotently_and_the_first_arrival_is_kept",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_every_fact_but_arrival_bookkeeping_is_authoritative",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_known_costs_before_and_after_an_unknown_attempt_stay_in_the_subtotal",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_known_session_cost_keeps_accumulating_after_an_unknown_turn",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_planning_reports_a_known_attempt_then_an_unknown_one",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_receipts_from_other_threads_are_recorded_once",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_summaries_paid_for_on_a_turn_that_sends_nothing_still_settle[cancelled]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_summaries_paid_for_on_a_turn_that_sends_nothing_still_settle[refused_above_floor]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_turn_settlement.py::test_turns_settle_independently_and_an_unrecorded_turn_is_empty",
+          "outcome": "passed"
+        }
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "source_head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+  "spec": {
+    "file": "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md",
+    "sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"
+  }
+}

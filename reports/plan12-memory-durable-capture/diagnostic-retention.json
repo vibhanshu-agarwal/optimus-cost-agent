@@ -1,0 +1,338 @@
+{
+  "adr": null,
+  "claim": "Exact diagnostic ownership/retention",
+  "plan": {
+    "file": "docs/superpowers/plans/2026-10-31-plan-12-8-memory-durable-capture-implementation.md",
+    "sha256": "hex:58d59e21b68e0973f78bd88452f2991536de4034b7ad9c74df01950889172619"
+  },
+  "qualifications": [
+    "The copy is best effort and flushed per line, not an fsynced accounting boundary (memory design v4 section 7)."
+  ],
+  "runs": [
+    {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA --junitxml=<junit> tests/unit/optimus_gateway/test_diagnostic_segments.py tests/unit/optimus_gateway/test_correction_diagnostics.py tests/unit/optimus_gateway/test_failure_diagnostics.py",
+      "exit": 0,
+      "label": "unit",
+      "log": "runs/diagnostic-retention-unit.log",
+      "log_sha256": "hex:d1d33d7f8f4a654965c2ae2ebaa71c168cb403830287b619f0893cf693955560",
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+      },
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+      },
+      "started_utc": "2026-10-31T10:29:13.101520+00:00",
+      "summary": "74 passed in 15.57s",
+      "tests": [
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_bare_credential_as_the_reply_id_never_reaches_the_log",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_bare_credential_in_a_refusal_text_is_redacted_from_the_log",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_closed_log_stream_never_breaks_the_reply",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_failed_halt_append_after_an_existing_halt_reason_keeps_both_facts_in_the_log",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_legacy_unsupported_model_is_logged_as_fixed_text",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_prose_binding_request_id_is_projected_in_the_log",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_prose_finish_status_is_projected_in_the_log_and_unchanged_on_the_wire",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_prose_provider_is_projected_in_the_log_and_unchanged_on_the_wire",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_registry_provider_keeps_its_slug_in_the_mismatch_log",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_settlement_write_failure_is_logged_on_its_own_request_and_every_later_halt",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_concurrent_legacy_requests_keep_their_own_request_ids",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_failed_legacy_attempt_is_logged_with_its_cause_and_the_request_id[503-then-ok]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_failed_legacy_attempt_is_logged_with_its_cause_and_the_request_id[invalid-json]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_failed_legacy_attempt_is_logged_with_its_cause_and_the_request_id[invalid-utf8]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_failed_legacy_attempt_is_logged_with_its_cause_and_the_request_id[schema]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_failed_legacy_attempt_is_logged_with_its_cause_and_the_request_id[timeout-then-ok]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_failed_legacy_attempt_is_logged_with_its_cause_and_the_request_id[transport-then-ok]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_interpolated_refusal_text_is_reviewed_or_projected_for_the_log",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_every_upstream_and_usage_contract_reason_slugs_to_a_reason",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_malformed_framing_is_a_logged_400_on_both_model_routes[invalid-utf8-/v1/chat/completions]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_malformed_framing_is_a_logged_400_on_both_model_routes[invalid-utf8-/v1/responses]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_malformed_framing_is_a_logged_400_on_both_model_routes[negative-length-/v1/chat/completions]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_malformed_framing_is_a_logged_400_on_both_model_routes[negative-length-/v1/responses]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_malformed_framing_is_a_logged_400_on_both_model_routes[non-integer-length-/v1/chat/completions]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_malformed_framing_is_a_logged_400_on_both_model_routes[non-integer-length-/v1/responses]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_real_ids_and_recognized_metadata_survive_in_the_log",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_the_refusal_text_control_fails_an_unreviewed_change[a-keyword-message-argument]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_the_refusal_text_control_fails_an_unreviewed_change[a-nested-format-field]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_the_refusal_text_control_fails_an_unreviewed_change[a-new-interpolation-at-a-reviewed-site]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_the_refusal_text_control_fails_an_unreviewed_change[a-parameter-assigned-on-one-path]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_the_refusal_text_control_fails_an_unreviewed_change[a-second-refusal-call-in-a-reviewed-function]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_the_refusal_text_control_fails_an_unreviewed_change[an-annotated-rebinding]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_the_refusal_text_control_fails_an_unreviewed_change[an-assignment-in-a-nested-scope]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_the_refusal_text_control_fails_an_unreviewed_change[an-augmented-assignment]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_the_refusal_text_control_fails_an_unreviewed_change[an-unresolved-argument]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_the_request_context_is_cleared_when_the_request_ends",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_the_wire_bodies_match_the_72947dba_baseline",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_a_blocked_writer_never_blocks_the_caller_and_drops_are_counted",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_a_failed_deletion_is_counted_and_the_line_is_refused_rather_than_truncating",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_a_restart_continues_the_sequence_in_a_new_segment_after_a_torn_tail",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_a_segment_rolls_before_it_would_exceed_its_size_and_may_end_exactly_at_it",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_closed_segments_are_retained_for_thirty_days[30-True]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_closed_segments_are_retained_for_thirty_days[31-False]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_gateway_accounting_owns_the_copy_under_its_root_and_closes_it",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_nothing_is_created_before_the_first_line",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_refused_lines_are_counted_leave_sequence_gaps_and_copied_lines_are_sanitized_again",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_stderr_and_the_copy_fail_independently",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_the_gateway_copy_aimed_at_the_real_config_root_is_refused_and_creates_nothing",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_the_gateway_producers_are_copied",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_the_total_cap_removes_the_oldest_closed_segments_and_never_the_active_one",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_the_utc_day_change_rolls_the_segment",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_unavailable_storage_is_counted_reported_once_and_recovers",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_a_binding_with_unknown_fields_counts_them_and_never_echoes_their_names",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_a_connect_failure_keeps_its_class_and_errno_never_its_text",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_a_failure_while_sending_keeps_its_class_and_errno",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_a_log_write_failure_never_breaks_the_reply",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_a_lost_reply_names_its_class",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_a_malformed_request_on_a_model_route_is_logged_too[array]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_a_malformed_request_on_a_model_route_is_logged_too[invalid]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_a_reply_without_a_guardrail_stage_has_no_guardrail_facts",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_a_schema_failure_names_the_module_reason_and_never_the_reply",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_an_attempt_without_a_guardrail_stage_keeps_its_record_unchanged",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_an_unknown_router_stage_type_is_recorded_as_unrecognized_and_still_refused",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_an_unreadable_reply_names_why[invalid-json]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_an_unreadable_reply_names_why[invalid-utf8]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_an_unreadable_reply_names_why[not-an-object]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_an_unverifiable_usage_keeps_its_reason_and_the_reply_ids",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_an_upstream_failure_cause_reaches_the_attempt_record_and_the_log_line",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_an_upstream_http_error_keeps_its_status_and_never_reads_the_error_body",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_guardrail_facts_reach_the_attempt_record_and_the_log_line_and_the_route_still_refuses",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_only_guardrail_stages_yield_closed_facts_and_never_their_text",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_the_legacy_path_names_the_transport_class",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_the_log_line_is_redacted_as_a_whole_before_it_is_written",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_failure_diagnostics.py::test_the_log_line_re_bounds_guardrail_facts",
+          "outcome": "passed"
+        }
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "source_head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+  "spec": {
+    "file": "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md",
+    "sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"
+  }
+}

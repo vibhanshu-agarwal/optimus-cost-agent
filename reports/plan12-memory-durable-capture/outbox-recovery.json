@@ -1,0 +1,239 @@
+{
+  "adr": null,
+  "claim": "Local durable append and truthful crash recovery",
+  "plan": {
+    "file": "docs/superpowers/plans/2026-10-31-plan-12-8-memory-durable-capture-implementation.md",
+    "sha256": "hex:58d59e21b68e0973f78bd88452f2991536de4034b7ad9c74df01950889172619"
+  },
+  "qualifications": [
+    "Writers are killed by process termination after a flush, not by power loss: no claim of hardware power-loss survival.",
+    "Windows does not fsync directories (durable_outbox module docstring); the POSIX path is exercised by the WSL run recorded at Task 5.",
+    "Residual: when a dead writer's final committed batch was its withheld tail alone, recovery has nothing to resend, so that tail's segment stays locally; the ledger holds the record and nothing is lost."
+  ],
+  "runs": [
+    {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA --junitxml=<junit> tests/unit/usage/test_outbox.py tests/unit/usage/test_capture_delivery.py",
+      "exit": 0,
+      "label": "unit",
+      "log": "runs/outbox-recovery-unit.log",
+      "log_sha256": "hex:e998b15992c95665720082d1c17c8b83de9e6dbf8126aa9e8d726ad2e4c44a8a",
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+      },
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+      },
+      "started_utc": "2026-10-31T10:27:27.938892+00:00",
+      "summary": "37 passed in 2.41s",
+      "tests": [
+        {
+          "node": "tests/unit/usage/test_capture_delivery.py::test_a_dead_writers_tail_is_settled_only_by_an_acknowledgement_naming_its_exact_bytes",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_delivery.py::test_a_live_foreign_stream_is_left_to_its_own_process",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_delivery.py::test_an_acknowledgement_that_names_another_record_is_never_stored",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_delivery.py::test_an_unavailable_ledger_keeps_every_record_and_the_next_pass_delivers",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_delivery.py::test_backlog_age_is_warned_once_at_its_boundary_during_an_outage_and_clears_after_catch_up",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_delivery.py::test_backlog_bytes_are_warned_from_exactly_their_threshold",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_delivery.py::test_batches_respect_the_record_count_and_body_limits",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_delivery.py::test_orphan_streams_are_claimed_and_their_unverified_tail_is_withheld",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_delivery.py::test_the_ledger_recomputes_the_hosts_identity_digest_exactly",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_delivery.py::test_the_live_stream_is_delivered_to_its_confirmed_sequence_and_acknowledged",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_delivery.py::test_the_route_refuses_bad_credentials_and_malformed_batches_before_the_ledger",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_delivery.py::test_without_an_accounting_ledger_the_route_refuses_retryably_and_nothing_is_lost",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_a_compacted_stream_keeps_a_gap_that_retracts_a_compacted_record",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_a_damaged_tail_yields_its_verified_prefix[flip-checksum]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_a_damaged_tail_yields_its_verified_prefix[torn-torn]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_a_failed_fsync_retracts_the_record_through_a_gap_in_a_successor_segment",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_a_frame_with_an_extra_field_does_not_verify",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_a_killed_writer_leaves_a_claimable_stream_with_its_verified_prefix",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_a_live_writer_holds_its_stream_and_a_closed_one_can_be_claimed",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_a_missing_segment_ends_the_stream_at_the_discontinuity",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_a_record_over_the_limit_is_refused_without_consuming_a_sequence",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_a_timed_out_close_still_writes_what_was_admitted_and_releases_the_stream",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_acknowledgements_bind_to_a_held_record_and_only_advance",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_an_acknowledged_last_record_of_an_orphan_is_kept_and_compaction_proceeds",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_an_anchor_that_contradicts_the_stream_yields_nothing",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_an_invalid_gap_leaves_the_verified_prefix_intact",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_an_orphan_whose_gap_segment_never_opened_still_withholds_the_unconfirmed_record",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_an_orphans_last_record_is_withheld_unless_it_is_the_orderly_end",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_an_orphans_withheld_gap_still_retracts_what_it_names",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_another_streams_scan_authorizes_no_acknowledgement_or_deletion",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_compaction_keeps_a_damaged_segment_and_an_orphans_tail",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_compaction_needs_a_stored_acknowledgement_from_the_expected_ledger",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_nothing_touches_the_filesystem_until_the_first_record",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_open_is_retryable_after_a_failed_directory_sync",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_records_round_trip_in_order_with_a_digest_chain",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_segments_roll_at_the_size_boundary_and_the_stream_spans_them",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_outbox.py::test_the_owned_writer_confirms_records_and_rejects_when_full_or_closed",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA --junitxml=<junit> -m requires_plan12_capture_postgres tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows tests/integration/usage/test_durable_capture_postgres.py::test_a_lost_acknowledgement_replays_idempotently",
+      "exit": 0,
+      "label": "live",
+      "log": "runs/outbox-recovery-live.log",
+      "log_sha256": "hex:f6833964f3151d2734ef237393bcdd29bfe229db1c89c9c4fa76589b6c9543f3",
+      "source_after": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+      },
+      "source_before": {
+        "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "dirty": false,
+        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+      },
+      "started_utc": "2026-10-31T10:27:33.089274+00:00",
+      "summary": "6 passed in 7.03s",
+      "tests": [
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[before_ack]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[before_commit]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[before_compaction]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[flushed]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[torn]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_lost_acknowledgement_replays_idempotently",
+          "outcome": "passed"
+        }
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "source_head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+  "spec": {
+    "file": "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md",
+    "sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"
+  }
+}
