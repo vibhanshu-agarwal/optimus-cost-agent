@@ -1,4 +1,4 @@
-"""Plan 12.8 Task 1: the usage-capture upload contract and the ledger's ordering check."""
+"""Plan 12.8 Task 1: the usage-capture contract (per-kind schemas, batches, acknowledgements) and the ordering check."""
 
 from __future__ import annotations
 
@@ -9,21 +9,37 @@ import pytest
 from optimus_security import durable_outbox as ob
 from optimus_security import usage_capture_contract as uc
 
+_AT = "2026-10-31T00:00:00+00:00"
+_EPOCH = "e" * 32
+_LEDGER = "a" * 32
 
-def _stream(tmp_path, kinds=("stream.start", "epoch.begin", "attempt.intent")) -> list[ob.Record]:
+
+def _payloads() -> list[dict]:
+    return [
+        {"kind": uc.STREAM_START, "at": _AT},
+        {"kind": uc.EPOCH_BEGIN, "at": _AT, "epoch_id": _EPOCH, "turn_id": "s:1", "session_id": "s"},
+        {"kind": uc.ATTEMPT_INTENT, "at": _AT, "epoch_id": _EPOCH, "host_request_id": "s:1:planning:1:1", "stage": "planning",
+         "purpose": "agent.plan", "requested_model": None},
+    ]
+
+
+def _stream(tmp_path, payloads=None) -> list[ob.Record]:
     writer = ob.StreamWriter(tmp_path / "outbox")
-    records = [writer.append({"kind": kind}) for kind in kinds]
+    records = [writer.append(payload) for payload in (payloads or _payloads())]
     writer.close()
     return records
 
 
+def _batch(records, *, writer="host", ledger=None) -> bytes:
+    return uc.build_batch(writer, records[0].stream_id, ledger, 0, ob.GENESIS, records)
+
+
 def test_a_batch_round_trips_and_reverifies_every_line(tmp_path):
     records = _stream(tmp_path)
-    body = uc.build_batch("host", records[0].stream_id, 0, ob.GENESIS, records)
 
-    batch = uc.parse_batch(body)
+    batch = uc.parse_batch(_batch(records, ledger=_LEDGER))
 
-    assert batch.writer == "host" and batch.after_sequence == 0
+    assert batch.writer == "host" and batch.after_sequence == 0 and batch.ledger_instance == _LEDGER
     assert [r.digest for r in batch.records] == [r.digest for r in records]
 
 
@@ -31,18 +47,25 @@ def test_a_batch_round_trips_and_reverifies_every_line(tmp_path):
     ("mutate", "code"),
     [
         (lambda d: d.update(extra=1), "unknown_field"),
+        (lambda d: d.pop("ledger_instance"), "malformed"),
         (lambda d: d.update(schema_version=2), "schema"),
         (lambda d: d.update(writer="admin"), "writer"),
+        (lambda d: d.update(writer=[]), "writer"),
         (lambda d: d.update(stream_id="../x"), "stream"),
+        (lambda d: d.update(ledger_instance="not-hex"), "stream"),
         (lambda d: d.update(records=[]), "limit"),
+        (lambda d: d.update(records={}), "limit"),
         (lambda d: d["after"].update(sequence=-1), "malformed"),
+        (lambda d: d["after"].update(sequence=3), "malformed"),
+        (lambda d: d.update(after=[]), "malformed"),
         (lambda d: d.update(records=[d["records"][0].replace('"stream.start"', '"stream.stArt"')]), "record"),
+        (lambda d: d.update(records=[1]), "record"),
         (lambda d: d.update(records=list(reversed(d["records"]))), "order"),
     ],
 )
 def test_a_malformed_batch_is_refused_before_any_ledger_work(tmp_path, mutate, code):
     records = _stream(tmp_path)
-    document = json.loads(uc.build_batch("host", records[0].stream_id, 0, ob.GENESIS, records))
+    document = json.loads(_batch(records))
     mutate(document)
 
     with pytest.raises(uc.ContractError) as refused:
@@ -51,32 +74,56 @@ def test_a_malformed_batch_is_refused_before_any_ledger_work(tmp_path, mutate, c
     assert refused.value.code == code
 
 
-def test_a_writer_may_send_only_its_own_kinds(tmp_path):
-    records = _stream(tmp_path, kinds=("attempt.receipt",))
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"kind": uc.ATTEMPT_RECEIPT, "prompt": "leaked prompt text"},
+        {**_payloads()[1], "prompt": "leaked prompt text"},
+        {**_payloads()[1], "session_id": 7},
+        {k: v for k, v in _payloads()[1].items() if k != "turn_id"},
+        {**_payloads()[2], "stage": "exfiltrate"},
+        {**_payloads()[2], "purpose": "Not A Purpose"},
+        {**_payloads()[1], "turn_id": "x" * (uc.MAX_STRING + 1)},
+    ],
+)
+def test_a_record_outside_its_kinds_schema_is_refused(tmp_path, payload):
+    records = _stream(tmp_path, [payload])
 
     with pytest.raises(uc.ContractError) as refused:
-        uc.parse_batch(uc.build_batch("gateway", records[0].stream_id, 0, ob.GENESIS, records))
+        uc.parse_batch(_batch(records))
+
+    assert refused.value.code == "payload"
+
+
+def test_a_writer_may_send_only_its_own_kinds(tmp_path):
+    records = _stream(tmp_path, [_payloads()[1]])
+
+    with pytest.raises(uc.ContractError) as refused:
+        uc.parse_batch(_batch(records, writer="gateway"))
 
     assert refused.value.code == "kind"
 
 
 def test_a_line_from_another_stream_and_an_oversized_body_are_refused(tmp_path):
     records = _stream(tmp_path)
-    other = "f" * 32
     with pytest.raises(uc.ContractError) as wrong:
-        uc.parse_batch(uc.build_batch("host", other, 0, ob.GENESIS, records))
+        uc.parse_batch(uc.build_batch("host", "f" * 32, None, 0, ob.GENESIS, records))
     with pytest.raises(uc.ContractError) as big:
         uc.parse_batch(b" " * (uc.MAX_BODY_BYTES + 1))
 
     assert wrong.value.code == "stream" and big.value.code == "too_large"
 
 
-def test_only_a_committed_ack_for_the_same_stream_parses(tmp_path):
+def test_a_maximal_record_fits_in_a_batch():
+    assert ob.MAX_RECORD_BYTES * 2 < uc.MAX_BODY_BYTES, "any one record is always drainable"
+
+
+def test_only_a_committed_ack_for_the_same_stream_parses():
     ack = uc.CaptureAck("a" * 32, "b" * 32, 3, "c" * 64)
     document = uc.build_ack(ack)
 
     assert uc.parse_ack(document, stream_id="b" * 32) == ack
-    for bad in ({**document, "status": "accepted"}, {**document, "stream_id": "d" * 32}, {**document, "sequence": 0}, {**document, "x": 1}):
+    for bad in ({**document, "status": "accepted"}, {**document, "stream_id": "d" * 32}, {**document, "sequence": 0}, {**document, "x": 1}, []):
         with pytest.raises(uc.ContractError):
             uc.parse_ack(bad, stream_id="b" * 32)
 

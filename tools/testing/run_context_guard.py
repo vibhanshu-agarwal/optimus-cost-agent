@@ -40,6 +40,7 @@ _enabled = False
 _hook_added = False
 _protected_names: tuple[str, ...] = ()
 _redirected_modules: tuple[object, ...] = ()
+_denials = 0
 
 
 def mode() -> str:
@@ -50,6 +51,12 @@ def mode() -> str:
 def protected_roots() -> tuple[str, ...]:
     """The normalised real folders this guard denies writes to. Empty unless installed."""
     return _protected_names
+
+
+def denials() -> int:
+    """How many writes the guard has refused in this process: a refusal the code under test caught and swallowed is
+    still visible to a test through this count."""
+    return _denials
 
 
 def protection() -> str:
@@ -109,6 +116,8 @@ def _audit(event: str, args: tuple[object, ...]) -> None:
             if args[1] & _WINAPI_WRITE_ACCESS or args[3] in {1, 2, 4, 5}:
                 paths = args[:1]
     if any(_is_protected(path) for path in paths):
+        global _denials
+        _denials += 1
         raise PermissionError(WRITE_REFUSAL)
 
 

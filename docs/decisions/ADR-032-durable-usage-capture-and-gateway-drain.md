@@ -21,16 +21,20 @@ Two existing facts constrain where things live:
 - One owned writer thread per process, with bounded admission (1,024 queued records). Each writer lifetime starts a new stream directory under `<config_root>/accounting/outbox/host/`, locked for that lifetime.
 - Records are checksummed, hash-chained JSON lines. A record is confirmed only after flush and fsync. Segments roll at 16 MiB.
 - After a failed write, the segment is abandoned as it is. The next record opens a successor segment with a gap record naming the unconfirmed sequences, so a reader retracts bytes that landed without a confirmed fsync. Readers stop at any unexplained discontinuity.
-- Acknowledgements are appended to an `ack.log`, never renamed into place, because Windows does not write a rename through. Only closed segments wholly inside a committed acknowledgement are deleted.
+- Only a stream's last record can have landed without a confirmed fsync. So, for an orphaned stream (its writer died), that record is withheld as an unverified tail unless it is the orderly `stream.end`.
+- Acknowledgements are appended to an `ack.log`, never renamed into place, because Windows does not write a rename through. An acknowledgement must name a record the stream holds, with its digest. It also anchors a compacted stream's first record.
+- Compaction deletes only closed, undamaged segments wholly inside the stored acknowledgement of the expected ledger instance. One record is at most 256 KiB, so it always fits in one upload batch.
 
 **Coverage epochs.**
 - One epoch per turn, driven by `TurnSettlement`:
   - The turn's first worker invocation begins it, before any dispatch.
   - Each host request appends an intent before it is sent. The intent waits at most 250 ms; a later write never counts as pre-dispatch.
   - Accepted receipts are appended as accepted.
-  - The close follows terminal finalization once no invocation is running.
+  - At terminal finalization with a worker still running, a terminal snapshot records the pending invocations, and the epoch stays open.
+  - The close follows once every worker has settled. Ordered identity parts precede it, each with at most 256 IDs, and the close binds them by count and digest.
 - `host_complete` requires a confirmed begin, every intent confirmed, no refused record, and a complete settlement summary.
-- Nothing infers a clean close. A late receipt is appended `late=True`, and the close is never rewritten.
+- Nothing infers a clean close. A close the queue refused leaves the epoch open. A queued close whose write failed reopens it. A receipt after a written close is appended `late=True`, and the close is never rewritten.
+- Receipt fingerprints use a versioned canonical serialization that preserves the existing replay equality: equal decimals digest equally.
 
 **Gateway.**
 - **Ledger owner.** The Gateway owns the Postgres connection and the drain transaction. Migrations live under `migrations/optimus_usage/`, in their own schema, digest-pinned.
@@ -38,7 +42,7 @@ Two existing facts constrain where things live:
 - **Commit.** One transaction verifies the batch against the committed prefix, inserts events, accepts receipts or records replay and conflict dispositions, updates coverage and advances the cursor. The acknowledgement names the ledger instance, stream, sequence and digest.
 - **Gateway stream.** The Gateway keeps a minimal intent-and-outcome stream for physical attempts the host cannot see: legacy internal retries, lost responses, and host death mid-call. It is evidence, never a second receipt store or debit.
 
-**Contract.** The neutral modules `optimus_security.durable_outbox` (mechanics) and `optimus_security.usage_capture_contract` (kinds, limits, request and acknowledgement shapes) serve both processes. The Gateway imports no `optimus.*` module.
+**Contract.** The neutral modules `optimus_security.durable_outbox` (mechanics) and `optimus_security.usage_capture_contract` serve both processes. The contract module pins each record kind's exact schema, the limits, and the request (including the sender's believed ledger instance) and acknowledgement shapes. The Gateway imports no `optimus.*` module.
 
 ## Options considered
 

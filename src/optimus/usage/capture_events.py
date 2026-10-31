@@ -1,56 +1,35 @@
-"""The durable-capture event contract, version 1 (Plan 12.8 Task 1; memory design v4 section 7; ADR-032).
+"""Host-side builders for the durable-capture records (Plan 12.8 Task 1; memory design v4 section 7; ADR-032). The kinds
+and each kind's exact schema live in the neutral `optimus_security.usage_capture_contract`; this module turns host
+facts into those payloads.
 
-Every record the host or the Gateway appends to its outbox stream is one of these payloads, framed by
-`optimus_security.durable_outbox`. Only allowlisted fields persist: identity and correlation, stage and purpose,
-outcome, requested and resolved route, reported usage and cost, model and version, price snapshot, arrival
-bookkeeping and coverage references. No prompt, reply, router payload, exception text or credential is admitted.
+Only allowlisted fields persist: identity and correlation, stage and purpose, outcome, requested and resolved route,
+reported usage and cost, model and version, price snapshot, arrival bookkeeping and coverage references. A field the
+Gateway did not report stays null: a missing cost is unknown, never zero, and `cache_hit` is recorded only when the
+wire carried it, so an absent cache fact is never persisted as an observed miss. Costs are plain decimal strings.
 
-A field the Gateway did not report stays absent or null: a missing cost is unknown, never zero, and `cache_hit` is
-recorded only when the wire carried it, so an absent cache fact is never persisted as an observed miss. Costs are
-decimal strings. The receipt keeps both replay contracts' digests: `facts_digest` over `StageReceipt.facts()` and
-`settled_digest` over `StageReceipt.settled_facts()`.
+The receipt keeps both replay contracts' digests, `facts_digest` over `StageReceipt.facts()` and `settled_digest` over
+`StageReceipt.settled_facts()`, through a versioned canonical serialization that preserves their equality: equal
+decimals (``0.25`` and ``0.250``) digest equally, and models are serialized field by field, never through ``repr``.
 """
 
 from __future__ import annotations
 
 import hashlib
-import re
+import json
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from optimus.gateway.models import GatewayUsage
-from optimus.usage.turn_settlement import StageReceipt
-from optimus_security.usage_capture_contract import (
-    ATTEMPT_INTENT,
-    ATTEMPT_RECEIPT,
-    EPOCH_BEGIN,
-    EPOCH_CLOSE,
-    GATEWAY_ATTEMPT_INTENT,
-    GATEWAY_ATTEMPT_OUTCOME,
-    INTEGRITY_FAILURE,
-    INVOCATION_END,
-    INVOCATION_OPEN,
-    STREAM_END,
-    STREAM_START,
-)
+from pydantic import BaseModel
 
-__all__ = [
-    "ATTEMPT_INTENT",
-    "ATTEMPT_RECEIPT",
-    "EPOCH_BEGIN",
-    "EPOCH_CLOSE",
-    "GATEWAY_ATTEMPT_INTENT",
-    "GATEWAY_ATTEMPT_OUTCOME",
-    "INTEGRITY_FAILURE",
-    "INVOCATION_END",
-    "INVOCATION_OPEN",
-    "STREAM_END",
-    "STREAM_START",
-    "purpose_for",
-    "receipt_payload",
-    "usage_payload",
-]
+from optimus.gateway.models import GatewayUsage
+from optimus.usage.turn_settlement import StageReceipt, TurnCostSummary
+from optimus_security.usage_capture_contract import (
+    ATTEMPT_RECEIPT,
+    EPOCH_IDENTITIES,
+    MAX_LIST,
+    PURPOSE,
+)
 
 # The purpose each stage's ordinary call serves; a memory call names its own `memory.*` purpose (design v4 section 7).
 DEFAULT_PURPOSES = {
@@ -59,7 +38,7 @@ DEFAULT_PURPOSES = {
     "summarization": "context.summary",
     "classification": "auto.classify",
 }
-_PURPOSE = re.compile(r"[a-z][a-z0-9_]*(\.[a-z0-9_]+)+")
+DIGEST_VERSION = "capture-facts-v1"
 _USAGE_FIELDS = (
     "gateway_request_id",
     "provider",
@@ -111,24 +90,46 @@ def purpose_for(stage: str, purpose: str | None = None) -> str:
     """The persisted purpose: the stage's ordinary one, or an explicit well-formed one (a memory call's `memory.*`)."""
     if purpose is None:
         return DEFAULT_PURPOSES[stage]
-    if not _PURPOSE.fullmatch(purpose) or (stage != "summarization" and purpose.startswith("memory.")):
+    if not PURPOSE.fullmatch(purpose) or (stage != "summarization" and purpose.startswith("memory.")):
         raise ValueError("a purpose is a dotted lowercase name, and only summarization serves memory")
     return purpose
 
 
+def decimal_text(value: Decimal) -> str:
+    """A plain decimal string (never exponent notation); equal decimals give equal text."""
+    if value == 0:
+        return "0"
+    return format(value.normalize(), "f")
+
+
+def _canonical_value(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return {"decimal": decimal_text(value)}
+    if isinstance(value, datetime):
+        return {"datetime": value.isoformat()}
+    if isinstance(value, BaseModel):
+        return {"model": type(value).__name__, "fields": {name: _canonical_value(getattr(value, name)) for name in sorted(type(value).model_fields)}}
+    if isinstance(value, tuple | list):
+        return [_canonical_value(item) for item in value]
+    if value is None or isinstance(value, bool | int | str):
+        return value
+    raise TypeError(f"no canonical form for {type(value).__name__}")
+
+
+def digest(values: tuple[object, ...]) -> str:
+    """A versioned digest of a replay fingerprint, rendered `hex:` so evidence never looks like a bare secret."""
+    body = json.dumps([DIGEST_VERSION, _canonical_value(values)], sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return "hex:" + hashlib.sha256(body.encode("ascii")).hexdigest()
+
+
 def _jsonable(value: Any) -> Any:
     if isinstance(value, Decimal):
-        return str(value)
+        return decimal_text(value)
     if isinstance(value, datetime):
         return value.isoformat()
     if isinstance(value, tuple):
         return [_jsonable(item) for item in value]
     return value
-
-
-def digest(values: tuple[object, ...]) -> str:
-    """A stable digest of a replay fingerprint, rendered `hex:` so evidence never looks like a bare secret."""
-    return "hex:" + hashlib.sha256(repr(tuple(_jsonable(value) for value in values)).encode("utf-8")).hexdigest()
 
 
 def usage_payload(usage: GatewayUsage) -> dict[str, Any]:
@@ -139,7 +140,7 @@ def usage_payload(usage: GatewayUsage) -> dict[str, Any]:
 
 
 def receipt_payload(receipt: StageReceipt, *, epoch_id: str, late: bool, purpose: str | None = None) -> dict[str, Any]:
-    """One accepted receipt, exactly as settlement accepted it; never enriched later."""
+    """One accepted receipt, exactly as settlement accepted it; never enriched later. The writer adds `at`."""
     payload: dict[str, Any] = {name: _jsonable(getattr(receipt, name)) for name in _RECEIPT_FIELDS}
     payload.update(
         kind=ATTEMPT_RECEIPT,
@@ -155,3 +156,22 @@ def receipt_payload(receipt: StageReceipt, *, epoch_id: str, late: bool, purpose
         late=late,
     )
     return payload
+
+
+def identity_parts(epoch_id: str, summary: TurnCostSummary) -> tuple[list[dict[str, Any]], str]:
+    """The close's ordered continuation records (each list at most `MAX_LIST` IDs; at least one part) and the digest
+    binding all of them, so no identity is silently omitted."""
+    settled, unknown = list(summary.receipt_ids), list(summary.unknown_attempt_ids)
+    count = max(1, -(-max(len(settled), len(unknown)) // MAX_LIST))
+    parts = [
+        {
+            "kind": EPOCH_IDENTITIES,
+            "epoch_id": epoch_id,
+            "part": index + 1,
+            "parts": count,
+            "settled_attempt_ids": settled[index * MAX_LIST : (index + 1) * MAX_LIST],
+            "unknown_attempt_ids": unknown[index * MAX_LIST : (index + 1) * MAX_LIST],
+        }
+        for index in range(count)
+    ]
+    return parts, digest((epoch_id, tuple(settled), tuple(unknown)))

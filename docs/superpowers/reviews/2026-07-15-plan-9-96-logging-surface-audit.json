@@ -5221,7 +5221,7 @@
       "policy": "safe-by-construction",
       "rationale": "Inspection (Plan 12.8, ADR-032): opens the stream's ack.log under the per-user accounting root to append one acknowledgement (ledger instance, sequence, digest).",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/usage/test_outbox.py::test_the_last_verified_acknowledgement_wins_and_a_torn_one_is_ignored",
+      "test_node": "tests/unit/usage/test_outbox.py::test_acknowledgements_bind_to_a_held_record_and_only_advance",
       "evidence_tier": "unit"
     },
     {
@@ -5229,7 +5229,7 @@
       "policy": "safe-by-construction",
       "rationale": "Inspection (Plan 12.8, ADR-032): appends one framed acknowledgement (ledger instance, sequence, digest) and fsyncs it; no payload or diagnostic.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/usage/test_outbox.py::test_the_last_verified_acknowledgement_wins_and_a_torn_one_is_ignored",
+      "test_node": "tests/unit/usage/test_outbox.py::test_acknowledgements_bind_to_a_held_record_and_only_advance",
       "evidence_tier": "unit"
     },
     {
@@ -5270,6 +5270,14 @@
       "rationale": "Inspection (Plan 12.8, ADR-032): serializes one upload batch: writer, stream id, committed-prefix cursor and the stream's already framed allowlisted records; sent only to the configured Gateway.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/usage/test_capture_contract.py::test_a_batch_round_trips_and_reverifies_every_line",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.usage.capture_events:digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): canonical JSON of a receipt's replay fingerprint, hashed in memory to a hex: digest; only the digest is persisted, never the serialized facts.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_durable_capture.py::test_equal_receipts_digest_equally_under_both_replay_contracts",
       "evidence_tier": "unit"
     }
   ]
