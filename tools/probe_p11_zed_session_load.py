@@ -369,6 +369,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/usage/errors.py",
     "src/optimus/usage/ledger.py",
     "src/optimus/usage/models.py",
+    "src/optimus/usage/operation_capture.py",
     "src/optimus/usage/turn_settlement.py",
     "src/optimus_security/__init__.py",
     "src/optimus_security/durable_outbox.py",
