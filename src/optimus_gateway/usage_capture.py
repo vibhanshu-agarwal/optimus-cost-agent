@@ -164,7 +164,8 @@ def handle_usage_capture_request(*, authorization_header: str | None, raw_body: 
 @dataclass
 class GatewayAccounting:
     """What a launch with an accounting root runs: the capture writer, the per-user diagnostic copy, the ledger when an
-    approved configuration and its credential are present, and the drain of the Gateway's own streams into that ledger."""
+    approved configuration and its credential are present, and the drain of the Gateway's own streams into that ledger
+    (without one, the drain only measures and warns about the backlog)."""
 
     writer: OutboxWriter
     diagnostics: DiagnosticSegments | None = None
@@ -200,18 +201,30 @@ def start_accounting(root: Path, config: accounting_config.AccountingConfig | No
     accounting = GatewayAccounting(writer, diagnostics)
     if refusal is not None:
         log(f"optimus-local-gateway: accounting configuration refused ({refusal}); capture stays local.")
-        return accounting
+        return _observing(accounting, "refused", log)
     if config is None:
-        return accounting
+        return _observing(accounting, "not_configured", log)
     try:
         password = keyring_backend.get_password(accounting_config.KEYRING_SERVICE, config.credential_name)
     except Exception:  # noqa: BLE001 - an unavailable keyring leaves accounting off, never the Gateway
         password = None
     if not password:
         log("optimus-local-gateway: the accounting credential is not in the Gateway keyring namespace; capture stays local.")
-        return accounting
+        return _observing(accounting, "credential_absent", log)
     accounting.store = UsageStore.from_config(config, password)
     accounting.drain = OutboxDrain(writer, _direct_send(accounting.store), name="gateway-capture-drain", warn=log)
+    accounting.drain.start()
+    return accounting
+
+
+def _observing(accounting: GatewayAccounting, reason: str, log: Callable[[str], None]) -> GatewayAccounting:
+    """Without a ledger the drain still measures the growing backlog and warns at its thresholds (Codex Checkpoint C,
+    finding 2). Every pending batch is refused, so nothing is acknowledged or compacted."""
+
+    def send(stream_id: str, ledger: str | None, after: tuple[int, str], batch: list[Record]) -> uc.CaptureAck:
+        raise DrainStop(f"accounting_off:{reason}")
+
+    accounting.drain = OutboxDrain(accounting.writer, send, name="gateway-capture-drain", warn=log)
     accounting.drain.start()
     return accounting
 

@@ -9,8 +9,9 @@ record is stored, and only a stored acknowledgement of the same ledger instance 
 failed batch leaves every record in place; the next pass resends. Passes run on one owned background thread, at most
 three transient attempts per trigger.
 
-Each pass also reports the backlog it leaves: unacknowledged events and bytes, the oldest pending record's time, this
-process's local and committed watermarks, the last delivery failure and the free disk space. Crossing 256 MiB pending
+Each pass also reports the backlog it leaves: unacknowledged events and bytes (a dead writer's withheld tail included,
+so a stream that cannot settle never reads as caught up), retained bytes that did not verify, the oldest pending record's
+time, this process's local and committed watermarks, the last delivery failure and the free disk space. Crossing 256 MiB pending
 or 24 hours oldest pending is reported once through ``warn``, and so is falling back below. These are visibility
 thresholds only: nothing unacknowledged is ever deleted, and no model call waits on them.
 """
@@ -52,6 +53,7 @@ class DrainStop(Exception):
 class Backlog:
     pending_events: int = 0  # records on disk not yet acknowledged by the ledger
     pending_bytes: int = 0
+    damaged_bytes: int = 0  # retained from where verification stopped to the end of that segment; never sent or deleted
     oldest_pending_at: datetime | None = None
     local_watermark: int = 0  # this process's stream: its writer's confirmed sequence
     committed_watermark: int = 0  # and its stored acknowledgement
@@ -114,7 +116,10 @@ class OutboxDrain:
     def _count(self, stream_dir: Path, scan: ob.StreamScan, backlog: Backlog) -> None:
         ack = ob.read_ack(stream_dir)
         acknowledged = ack.sequence if ack is not None else 0
-        for record in scan.records:
+        for damage in scan.damage:
+            with contextlib.suppress(OSError):
+                backlog.damaged_bytes += max(0, (stream_dir / damage.segment).stat().st_size - damage.offset)
+        for record in (*scan.records, *((scan.unverified_tail,) if scan.unverified_tail else ())):
             if record.sequence <= acknowledged:
                 continue
             backlog.pending_events += 1
@@ -142,7 +147,7 @@ class OutboxDrain:
             crossed.add("pending_age")
         backlog.warnings = tuple(sorted(crossed))
         if self._warn is not None:  # only a change is reported: newly crossed, then back below
-            facts = (f"events={backlog.pending_events} bytes={backlog.pending_bytes} "
+            facts = (f"events={backlog.pending_events} bytes={backlog.pending_bytes} damaged={backlog.damaged_bytes} "
                      f"oldest={None if backlog.oldest_pending_at is None else backlog.oldest_pending_at.isoformat()} "
                      f"last_failure={backlog.last_failure}")
             for name in sorted(crossed - self._crossed):

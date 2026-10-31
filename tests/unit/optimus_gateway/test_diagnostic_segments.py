@@ -1,10 +1,12 @@
 """Plan 12.8: the per-user Gateway diagnostic copy. Real files under a temporary root: size and UTC-day rollover at their
 exact boundaries, 30-day and total-cap retention, restart continuity, refused lines leaving sequence gaps, unavailable
-storage, a blocked writer, a failed deletion, and stderr and the copy failing independently of each other."""
+storage, a blocked writer, a failed deletion, two Gateway processes sharing the directory, and stderr and the copy
+failing independently of each other."""
 
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import threading
 import time
@@ -46,8 +48,12 @@ def _sink(root: Path, clock: Clock | None = None, **kwargs: Any) -> DiagnosticSe
     return DiagnosticSegments(root, clock=clock or Clock(), **kwargs)
 
 
+def _segments(root: Path) -> list[Path]:
+    return sorted(p for p in root.iterdir() if ds._NAME.fullmatch(p.name))
+
+
 def _records(root: Path) -> dict[str, list[dict[str, Any]]]:
-    return {p.name: [json.loads(line) for line in p.read_bytes().splitlines()] for p in sorted(root.glob("gateway-diagnostics-*.log"))}
+    return {p.name: [json.loads(line) for line in p.read_bytes().splitlines()] for p in _segments(root)}
 
 
 def _record_size(tmp_path: Path) -> int:
@@ -72,7 +78,7 @@ def test_a_segment_rolls_before_it_would_exceed_its_size_and_may_end_exactly_at_
 
     segments = _records(root)
     assert [len(records) for records in segments.values()] == [3, 3, 1]
-    assert [p.stat().st_size for p in sorted(root.iterdir())] == [3 * size, 3 * size, size]
+    assert [p.stat().st_size for p in _segments(root)] == [3 * size, 3 * size, size]
     assert [r["seq"] for records in segments.values() for r in records] == list(range(1, 8))
 
 
@@ -113,14 +119,18 @@ def test_the_total_cap_removes_the_oldest_closed_segments_and_never_the_active_o
     size = _record_size(tmp_path)  # every record below has this size: one-digit sequences and values
     root = tmp_path / "copy"
     sink = _sink(root, segment_bytes=2 * size, cap_bytes=3 * size)
-    for n in range(6):
+    for n in range(5):
         sink.write(_line(n))
+    assert sink.close()
+    assert [r["seq"] for records in _records(root).values() for r in records] == [3, 4, 5], "exactly at the cap, all is kept"
+    sink = _sink(root, segment_bytes=2 * size, cap_bytes=3 * size)
+    sink.write(_line(5))
     assert sink.close()
 
     status = sink.status()
-    # The sixth line would make 4 records within a 3-record cap: the oldest closed segment (3, 4) goes, never the
-    # active one, even though it leaves room to spare.
-    assert status.retained_bytes == 2 * size and status.written == 6 and status.refused_no_space == 0
+    # The sixth line (from a restarted Gateway, appended to the active segment) would make 4 records within a 3-record
+    # cap: the oldest closed segment (3, 4) goes, never the active one, even though it leaves room to spare.
+    assert status.retained_bytes == 2 * size and status.written == 1 and status.refused_no_space == 0
     assert [r["seq"] for records in _records(root).values() for r in records] == [5, 6], "oldest first"
     assert status.first == (f"{_DAY:%Y%m%d}", 5) and status.last == (f"{_DAY:%Y%m%d}", 6)
 
@@ -131,7 +141,7 @@ def test_a_restart_continues_the_sequence_in_a_new_segment_after_a_torn_tail(tmp
     for n in range(3):
         first.write(_line(n))
     assert first.close()
-    (segment,) = root.iterdir()
+    (segment,) = _segments(root)
     with open(segment, "ab") as handle:
         handle.write(b'{"seq":99,"at"')  # a crash mid-line
 
@@ -140,13 +150,22 @@ def test_a_restart_continues_the_sequence_in_a_new_segment_after_a_torn_tail(tmp
     assert second.close()
 
     segments = _records_tolerant(root)
-    assert segments[segment.name][:3] == [1, 2, 3], "the earlier segment is never reopened"
+    assert segments[segment.name][:3] == [1, 2, 3], "a segment ending in a torn line is never appended to"
     assert segments["gateway-diagnostics-20261031-000002.log"] == [4]
+
+
+def test_a_restart_appends_to_the_days_newest_whole_segment(tmp_path):
+    root = tmp_path / "copy"
+    for n in range(2):
+        sink = _sink(root)
+        sink.write(_line(n))
+        assert sink.close()
+    assert [[r["seq"] for r in records] for records in _records(root).values()] == [[1, 2]]
 
 
 def _records_tolerant(root: Path) -> dict[str, list[int]]:
     found: dict[str, list[int]] = {}
-    for path in sorted(root.iterdir()):
+    for path in _segments(root):
         found[path.name] = []
         for line in path.read_bytes().splitlines():
             try:
@@ -193,18 +212,23 @@ def test_unavailable_storage_is_counted_reported_once_and_recovers(tmp_path):
 
 
 def test_a_blocked_writer_never_blocks_the_caller_and_drops_are_counted(tmp_path, monkeypatch):
-    release = threading.Event()
+    release, entered = threading.Event(), threading.Event()
     real_open = open
+    opened: list[Any] = []
 
     def blocking_open(*args: Any, **kwargs: Any) -> Any:
+        entered.set()
         release.wait(30)
-        return real_open(*args, **kwargs)
+        opened.append(real_open(*args, **kwargs))
+        return opened[-1]
 
     monkeypatch.setattr(ds, "open", blocking_open, raising=False)
     sink = _sink(tmp_path / "copy", queue_lines=2)
     started = time.monotonic()
-    for n in range(50):
-        sink.write(_line(n))
+    sink.write(_line(0))
+    assert entered.wait(5), "the writer holds the first line, blocked"
+    for n in range(1, 50):
+        sink.write(_line(n))  # two queue, the rest are dropped: the queue is full when close() offers its stop item
     elapsed = time.monotonic() - started
 
     try:
@@ -216,7 +240,12 @@ def test_a_blocked_writer_never_blocks_the_caller_and_drops_are_counted(tmp_path
     while (status := sink.status()).written + status.dropped_queue_full < 50 and time.monotonic() < deadline:
         time.sleep(0.005)
     assert status.written + status.dropped_queue_full == 50, "every offered line is written or counted"
-    assert status.written <= 3, "at most one in the writer and two queued"
+    assert (status.written, status.dropped_queue_full) == (3, 47), "one in the writer and two queued"
+    # Codex Checkpoint C finding 4: the stop item never fit the full queue, yet the writer ends once it is drained.
+    assert sink._thread is not None
+    sink._thread.join(10)
+    assert not sink._thread.is_alive(), "the writer ended after close although its stop item was refused"
+    assert opened and all(handle.closed for handle in opened), "no segment or lock handle is left open"
 
 
 def test_a_failed_deletion_is_counted_and_the_line_is_refused_rather_than_truncating(tmp_path, monkeypatch):
@@ -226,7 +255,7 @@ def test_a_failed_deletion_is_counted_and_the_line_is_refused_rather_than_trunca
     real_unlink = Path.unlink
 
     def stuck_unlink(self: Path, *args: Any, **kwargs: Any) -> None:
-        if self.parent == root:
+        if self.parent == root and self.name.endswith("-000001.log"):  # only the oldest; the active one could go
             raise PermissionError("held open elsewhere")
         real_unlink(self, *args, **kwargs)
 
@@ -240,6 +269,54 @@ def test_a_failed_deletion_is_counted_and_the_line_is_refused_rather_than_trunca
     assert status.written == 3 and status.refused_no_space == 2 and status.deletion_failures >= 1
     assert status.retained_bytes == 3 * size, "the cap holds; nothing was truncated"
     assert any("deletion failures" in r for r in reports) and any("refused no space" in r for r in reports)
+
+
+_GATEWAY_COPY = """
+import json, sys
+from datetime import UTC, datetime
+from pathlib import Path
+from optimus_gateway import diagnostic_segments as ds
+
+root, start, lines, segment_bytes, cap_bytes = Path(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
+ds.MAX_RECORD_BYTES = 160
+sink = ds.DiagnosticSegments(root, segment_bytes=segment_bytes, cap_bytes=cap_bytes, queue_lines=lines + 1,
+                             clock=lambda: datetime(2026, 10, 31, 12, tzinfo=UTC))
+while not start.exists():
+    pass
+for n in range(lines):
+    sink.write(json.dumps({"event": "model_request", "n": n}))
+assert sink.close(60)
+status = sink.status()
+print(json.dumps({"written": status.written, "refused": status.refused_no_space, "failures": status.write_failures}))
+"""
+
+
+@pytest.mark.parametrize("capped", [False, True])
+def test_two_gateway_processes_share_one_sequence_rollover_and_cap(tmp_path, capped):
+    """Codex Checkpoint C finding 1: two Gateways of the same user write the same directory at once. Every line lands
+    whole, in one strictly increasing sequence; no segment exceeds its size; under a tight cap the total never exceeds
+    it and nothing is refused, because each Gateway sees the other's segments when it makes room."""
+    size = _record_size(tmp_path) + 2  # two-digit offers and up to three-digit sequences
+    root, start, lines = tmp_path / "copy", tmp_path / "start", 60
+    segment_bytes, cap_bytes = 4 * size, (12 * size if capped else 1000 * size)
+    children = [subprocess.Popen([sys.executable, "-c", _GATEWAY_COPY, str(root), str(start), str(lines), str(segment_bytes), str(cap_bytes)],
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for _ in range(2)]
+    start.write_bytes(b"")
+    reports = []
+    for child in children:
+        out, err = child.communicate(timeout=120)
+        assert child.returncode == 0, err
+        reports.append(json.loads(out))
+
+    assert all(report == {"written": lines, "refused": 0, "failures": 0} for report in reports)
+    sequences = [r["seq"] for records in _records(root).values() for r in records]
+    assert sequences == sorted(set(sequences)), "one strictly increasing sequence across both Gateways"
+    assert all(p.stat().st_size <= segment_bytes for p in _segments(root))
+    retained = sum(p.stat().st_size for p in _segments(root))
+    if capped:
+        assert retained <= cap_bytes and sequences[-1] == 2 * lines
+    else:
+        assert sequences == list(range(1, 2 * lines + 1)), "nothing lost or duplicated"
 
 
 class _BrokenStream:

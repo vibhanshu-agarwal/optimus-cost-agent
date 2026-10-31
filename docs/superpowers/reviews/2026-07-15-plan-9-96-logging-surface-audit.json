@@ -5363,7 +5363,7 @@
     {
       "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments._append:text_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection (Plan 12.8, ADR-032): appends one copy record to the active segment under the injected per-user accounting root: a sequence, the UTC time and an allowlisted Gateway diagnostic event (model_request, model_attempt, reply_undeliverable) re-passed through final_sanitize; the record was already projected and sanitized by its producer. Unlisted or unparsable lines are refused and counted.",
+      "rationale": "Inspection (Plan 12.8, ADR-032): appends one copy record under the directory lock to a segment beneath the injected per-user accounting root: a sequence, the UTC time and an allowlisted Gateway diagnostic event (model_request, model_attempt, reply_undeliverable) re-passed through final_sanitize; the record was already projected and sanitized by its producer. Unlisted or unparsable lines are refused and counted.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_refused_lines_are_counted_leave_sequence_gaps_and_copied_lines_are_sanitized_again",
       "evidence_tier": "unit"
@@ -5374,22 +5374,6 @@
       "rationale": "Inspection (Plan 12.8, ADR-032): reads the tail of the newest retained copy segment to continue the sequence after a restart; nothing is written.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_a_restart_continues_the_sequence_in_a_new_segment_after_a_torn_tail",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments._record:json_serialization",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection (Plan 12.8, ADR-032): serializes the copy wrapper (sequence, UTC time) around an allowlisted event after final_sanitize; an oversized record is refused, never split.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_refused_lines_are_counted_leave_sequence_gaps_and_copied_lines_are_sanitized_again",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments._roll:file_open",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection (Plan 12.8, ADR-032): creates a new copy segment exclusively (never reopening one) under the injected per-user accounting root; it holds only sanitized allowlisted copy records.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_a_segment_rolls_before_it_would_exceed_its_size_and_may_end_exactly_at_it",
       "evidence_tier": "unit"
     },
     {
@@ -5406,6 +5390,38 @@
       "rationale": "Inspection (Plan 12.8, ADR-032): the diagnostic copy's final status line on the Gateway log: integer counters, segment count, retained bytes, UTC date/sequence ranges, a closed flag and a fixed failure code; no request, reply, path or credential.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_gateway_accounting_owns_the_copy_under_its_root_and_closes_it",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments._append:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032; Codex Checkpoint C finding 1): under the directory lock, opens the chosen copy segment to append (or creates a new one exclusively) beneath the injected per-user accounting root, writes one sanitized allowlisted copy record and closes it; no handle is held between lines.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_two_gateway_processes_share_one_sequence_rollover_and_cap",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments._append:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): serializes the copy wrapper (sequence, UTC time) around an allowlisted event after final_sanitize; an oversized record is refused, never split.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_refused_lines_are_counted_leave_sequence_gaps_and_copied_lines_are_sanitized_again",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:DiagnosticSegments._target:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032): reads the size and last byte of the day's newest copy segment to decide whether the next line may be appended (never after a torn line); nothing is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_a_restart_continues_the_sequence_in_a_new_segment_after_a_torn_tail",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.diagnostic_segments:_directory_lock:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.8, ADR-032; Codex Checkpoint C finding 1): opens the copy directory's empty lock file to serialize the per-user Gateways' appends; nothing is written to it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_two_gateway_processes_share_one_sequence_rollover_and_cap",
       "evidence_tier": "unit"
     }
   ]

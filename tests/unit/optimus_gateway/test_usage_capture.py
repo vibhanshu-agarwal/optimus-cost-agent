@@ -5,13 +5,16 @@ contract schema."""
 from __future__ import annotations
 
 import io
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.error import HTTPError
 
 import pytest
 
 from optimus_gateway import usage_capture
 from optimus_gateway.upstream_client import UrllibOpenAICompatibleClient
+from optimus_security import accounting_config as ac
 from optimus_security import durable_outbox as ob
 from optimus_security import usage_capture_contract as uc
 
@@ -67,6 +70,34 @@ def test_unconfigured_capture_is_a_no_op(tmp_path):
     usage_capture.end()
 
     assert not (tmp_path / "accounting").exists()
+
+
+@pytest.mark.parametrize(("configured", "refusal", "reason"), [
+    (False, None, "not_configured"),
+    (False, "digest_mismatch", "refused"),
+    (True, None, "credential_absent"),
+])
+def test_without_a_ledger_the_gateway_drain_still_measures_and_warns(tmp_path, configured, refusal, reason):
+    """Codex Checkpoint C finding 2: with no approved configuration, a refused one, or no credential in the Gateway's
+    keyring namespace, the production composition still runs the drain; it refuses every batch, so nothing is
+    acknowledged or compacted, and the backlog is measured and warned about at the production thresholds."""
+    config = ac.AccountingConfig("127.0.0.1", 5432, "optimus", "capture", "p128-absent", 5) if configured else None
+    logs: list[str] = []
+    accounting = usage_capture.start_accounting(tmp_path / "accounting", config, refusal=refusal,
+                                                keyring_backend=SimpleNamespace(get_password=lambda _service, _name: None), log=logs.append)
+    try:
+        assert accounting.store is None and accounting.drain is not None
+        accounting.drain.stop()  # the passes below are this test's own
+        stale = (datetime.now(tz=UTC) - timedelta(hours=25)).isoformat()
+        assert accounting.writer.submit({"kind": uc.GATEWAY_ATTEMPT_INTENT, "at": stale}).wait(5)
+        reports = [accounting.drain.drain_once() for _ in range(2)]
+    finally:
+        accounting.stop()
+
+    assert all(r.failures == [f"accounting_off:{reason}"] and r.committed == 0 for r in reports)
+    assert reports[-1].backlog.pending_events == 1 and reports[-1].backlog.warnings == ("pending_age",)
+    assert ob.read_ack(accounting.writer.directory) is None
+    assert sum("above its pending_age threshold" in line for line in logs) == 1
 
 
 def test_legacy_internal_retries_are_each_recorded_under_the_one_request(capture, monkeypatch):

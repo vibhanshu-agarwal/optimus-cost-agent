@@ -619,6 +619,12 @@
    "disposition": "census",
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Ordinary child of an inherited environment that appends to a real outbox stream under the test's temporary root and dies holding its lock; it never resolves a config root; proven by the census at the acceptance candidate."
+  },
+  "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_two_gateway_processes_share_one_sequence_rollover_and_cap#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Ordinary child of an inherited environment that writes Gateway diagnostic copy lines to a segment directory under the test's temporary root, beside a sibling child, and exits; it never resolves a config root; proven by the census at the acceptance candidate."
   }
  }
 }

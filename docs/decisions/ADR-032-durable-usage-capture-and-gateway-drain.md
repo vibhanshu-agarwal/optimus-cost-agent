@@ -48,7 +48,7 @@ Two existing facts constrain where things live:
 - The launch gate binds the file's exact bytes as the security literal `_accounting_config` (named like the other non-environment literals, such as `_model_registry`), so the operator approves it and any change needs re-approval. Without the file there is no literal, and existing approvals are unchanged.
 - The signed Gateway manifest carries an optional accounting literal: the accounting root and the approved configuration literal. A manifest with it has its own version plus 3; manifests without it keep their versions and bytes. The parent passes the root only when the file still matches the approved literal.
 - The Gateway composes the same literal itself and refuses to start unless the manifest binds exactly it. It opens the ledger lazily, with no connection at startup.
-- Both processes drain their streams with one neutral drain (`optimus_security.outbox_drain`): the host over HTTP, the Gateway by committing directly.
+- Both processes drain their streams with one neutral drain (`optimus_security.outbox_drain`): the host over HTTP, the Gateway by committing directly. Without a ledger (no configuration, a refused one, or no credential), the Gateway's drain still measures its backlog and warns, and acknowledges nothing.
 
 **Contract.** The neutral modules `optimus_security.durable_outbox` (mechanics) and `optimus_security.usage_capture_contract` serve both processes. The contract module pins each record kind's exact schema, the limits, and the request (including the sender's believed ledger instance) and acknowledgement shapes. The Gateway imports no `optimus.*` module.
 
@@ -65,6 +65,8 @@ Two existing facts constrain where things live:
 - **Durability.** The outbox proves what the platform's fsync proves. On Windows a new file's directory entry is not separately flushed. No hardware power-loss guarantee is made.
 - **Outages.** A Postgres outage leaves records accumulating locally. Pending bytes and the oldest pending age are visible, with warnings at 256 MiB or 24 hours. No cap deletes unacknowledged records. Disk exhaustion degrades capture visibly and never stops model work.
 - **Prospective only.** History before M0b remains qualified. Surviving logs cannot prove billing completeness.
+- **A dead writer's committed tail can stay local.** A writer may die after the ledger committed its last record but before it stored the acknowledgement. If that record was alone in its final batch, recovery has nothing to resend, so it stays on disk and is never compacted. The ledger holds it, so nothing is lost. It stays counted as pending, with its age warned, so the stream never reads as caught up. There is deliberately no probe on every orphan pass (Codex Checkpoint C ruling, #454).
+- **Diagnostic copy.** Every Gateway of a user shares the per-user copy. Each line is written under the directory's lock file, so one sequence, the rollover, retention and the 256 MiB cap hold across processes. It is best effort and flushed, not fsynced.
 
 ## Decider and provenance
 

@@ -219,6 +219,33 @@ def test_a_dead_writers_tail_is_settled_only_by_an_acknowledgement_naming_its_ex
     assert ob.scan_stream(dead.directory, orphan=True).unverified_tail is None, "an acknowledged tail is settled"
 
 
+def test_a_dead_writers_withheld_tail_and_its_damaged_bytes_stay_visible_in_the_backlog(tmp_path):
+    """Codex Checkpoint C finding 3: once the verified prefix is acknowledged, the withheld tail is still pending (its
+    age warns; nothing reads as caught up) and the torn bytes after it are reported apart, on every pass."""
+    root = host_outbox_root(tmp_path / "config")
+    dead = ob.StreamWriter(root)
+    records = [dead.append({"kind": uc.STREAM_START, "at": _AT.isoformat()}) for _ in range(3)]
+    dead._abandon_segment()
+    dead._lock_handle.close()  # type: ignore[union-attr]
+    (segment,) = [p for p in dead.directory.iterdir() if p.name.startswith(ob._SEGMENT_PREFIX)]
+    torn = b"f" * 64 + b' {"stream"'
+    with open(segment, "ab") as handle:
+        handle.write(torn)
+    capture = DurableCapture(ob.OutboxWriter(root), clock=lambda: _AT)
+    warnings: list[str] = []
+    delivery = CaptureDelivery(capture, _client(_RouteTransport(_AckingStore())), warn=warnings.append, clock=lambda: _AT + timedelta(hours=24))
+
+    passes = [delivery.drain_once().backlog for _ in range(2)]
+    capture.stop()
+
+    ack = ob.read_ack(dead.directory)
+    assert ack is not None and ack.sequence == 2, "the verified prefix is acknowledged; the tail is withheld"
+    for backlog in passes:
+        assert (backlog.pending_events, backlog.pending_bytes, backlog.oldest_pending_at) == (1, len(records[2].line) + 1, _AT)
+        assert backlog.damaged_bytes == len(torn) and backlog.warnings == ("pending_age",)
+    assert len(warnings) == 1 and "damaged=" in warnings[0]
+
+
 def test_a_live_foreign_stream_is_left_to_its_own_process(tmp_path):
     root = host_outbox_root(tmp_path / "config")
     foreign = ob.StreamWriter(root)
