@@ -6,7 +6,9 @@
     "sha256": "hex:58d59e21b68e0973f78bd88452f2991536de4034b7ad9c74df01950889172619"
   },
   "qualifications": [
-    "The copy is best effort and flushed per line, not an fsynced accounting boundary (memory design v4 section 7)."
+    "The copy is best effort and flushed per line, not an fsynced accounting boundary (memory design v4 section 7).",
+    "Every Gateway of a user shares the directory: each line is appended under one lock file, which serializes sequence, rollover, retention and cap decisions on what is on disk (Codex Checkpoint C pass 1, finding 1); two real Gateway processes are exercised.",
+    "Clock skew (Codex Checkpoint C pass 3): a line goes to its UTC day's newest segment or a newer day's, never an older one, so a segment dated in the future by a clock that runs ahead stays selected until the date catches up; it is still rolled at 64 MiB, and every record keeps its own time."
   ],
   "runs": [
     {
@@ -14,21 +16,23 @@
       "exit": 0,
       "label": "unit",
       "log": "runs/diagnostic-retention-unit.log",
-      "log_sha256": "hex:d1d33d7f8f4a654965c2ae2ebaa71c168cb403830287b619f0893cf693955560",
+      "log_sha256": "hex:26583a7452594fb6e34fb25e80ae62c96977227fa422d515491d9021577d3fe5",
       "source_after": {
         "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "dirty": false,
-        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
-        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
       },
       "source_before": {
         "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "dirty": false,
-        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
-        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
       },
-      "started_utc": "2026-10-31T10:29:13.101520+00:00",
-      "summary": "74 passed in 15.57s",
+      "started_utc": "2026-10-31T15:52:00.124888+00:00",
+      "summary": "78 passed in 18.16s",
       "tests": [
         {
           "node": "tests/unit/optimus_gateway/test_correction_diagnostics.py::test_a_bare_credential_as_the_reply_id_never_reaches_the_log",
@@ -187,6 +191,14 @@
           "outcome": "passed"
         },
         {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_a_line_queued_before_midnight_and_written_after_another_gateways_new_day_keeps_the_sequence_unique",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_a_restart_appends_to_the_days_newest_whole_segment",
+          "outcome": "passed"
+        },
+        {
           "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_a_restart_continues_the_sequence_in_a_new_segment_after_a_torn_tail",
           "outcome": "passed"
         },
@@ -232,6 +244,14 @@
         },
         {
           "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_the_utc_day_change_rolls_the_segment",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_two_gateway_processes_share_one_sequence_rollover_and_cap[False]",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_two_gateway_processes_share_one_sequence_rollover_and_cap[True]",
           "outcome": "passed"
         },
         {
@@ -330,7 +350,7 @@
     }
   ],
   "schema_version": 1,
-  "source_head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+  "source_head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
   "spec": {
     "file": "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md",
     "sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"

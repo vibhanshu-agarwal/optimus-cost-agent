@@ -22,13 +22,14 @@
   "psycopg": "3.3.4, libpq 180003",
   "recorder": {
     "file": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-90-p128-checkpoint-c/record_evidence.py",
-    "sha256": "hex:df7c39caa597e0195e27e07aa59525c5b5c8447a1115d2c0aa44902f73e39cb4"
+    "sha256": "hex:40e8c2a1c99e2cf69318c18b492011850823ec5461f67b936b4389f0b4d65987"
   },
   "schema_version": 1,
   "source": {
     "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "dirty": false,
-    "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
-    "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+    "excluded": "reports/plan12-memory-durable-capture",
+    "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+    "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
   }
 }

@@ -6,7 +6,7 @@
     "sha256": "hex:58d59e21b68e0973f78bd88452f2991536de4034b7ad9c74df01950889172619"
   },
   "qualifications": [
-    "Both controls skip unless the pytest-process guard protects the Windows per-user root; the default-suite protection result is recorded with the Task 5 full suite."
+    "Both controls skip unless the pytest-process guard protects the Windows per-user root; the default-suite protection result is recorded with the final full suite in qualification.json."
   ],
   "runs": [
     {
@@ -14,21 +14,23 @@
       "exit": 0,
       "label": "unit",
       "log": "runs/test-root-isolation-unit.log",
-      "log_sha256": "hex:adf47c63c35751b086e4ba4493a85bbdc4bc8728f99732c1966a7faea704505d",
+      "log_sha256": "hex:1c6d441ce10aa612890b2d1d6604a9106f0d38305b894b72df5e2633e2039189",
       "source_after": {
         "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "dirty": false,
-        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
-        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
       },
       "source_before": {
         "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "dirty": false,
-        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
-        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
       },
-      "started_utc": "2026-10-31T10:29:32.015732+00:00",
-      "summary": "10 passed in 1.25s",
+      "started_utc": "2026-10-31T15:52:21.148466+00:00",
+      "summary": "10 passed in 1.27s",
       "tests": [
         {
           "node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_the_gateway_copy_aimed_at_the_real_config_root_is_refused_and_creates_nothing",
@@ -74,7 +76,7 @@
     }
   ],
   "schema_version": 1,
-  "source_head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+  "source_head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
   "spec": {
     "file": "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md",
     "sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"

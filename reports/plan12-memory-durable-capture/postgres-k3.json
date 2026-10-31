@@ -14,21 +14,23 @@
       "exit": 0,
       "label": "live",
       "log": "runs/postgres-k3-live.log",
-      "log_sha256": "hex:0252d4c5efa75982209d6985b79d34c56f492eafa0c56bfe499a30002bc38042",
+      "log_sha256": "hex:1c4fbb06e51bc228e0b29f8effbabfff385ce276e9765e441480a1560d72cb0b",
       "source_after": {
         "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "dirty": false,
-        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
-        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
       },
       "source_before": {
         "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "dirty": false,
-        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
-        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
       },
-      "started_utc": "2026-10-31T10:28:04.147823+00:00",
-      "summary": "31 passed, 1 skipped in 32.68s",
+      "started_utc": "2026-10-31T15:50:44.835347+00:00",
+      "summary": "31 passed, 1 skipped in 33.06s",
       "tests": [
         {
           "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_batch_commits_atomically_and_reads_back_from_a_new_connection",
@@ -162,7 +164,7 @@
     }
   ],
   "schema_version": 1,
-  "source_head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+  "source_head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
   "spec": {
     "file": "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md",
     "sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"

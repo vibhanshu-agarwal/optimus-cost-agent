@@ -14,21 +14,23 @@
       "exit": 0,
       "label": "unit",
       "log": "runs/settlement-extension-unit.log",
-      "log_sha256": "hex:ee3e510d24b6f0b34c1eac13f856f74236cd98a2f90f728a4679da37809fca29",
+      "log_sha256": "hex:2ea3f663e45f657d26630c2df0c210fe1c45a1458369cf4d5b3a4d3114a75b2c",
       "source_after": {
         "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "dirty": false,
-        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
-        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
       },
       "source_before": {
         "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "dirty": false,
-        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
-        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
       },
-      "started_utc": "2026-10-31T10:27:42.885131+00:00",
-      "summary": "157 passed in 4.79s",
+      "started_utc": "2026-10-31T15:50:23.453910+00:00",
+      "summary": "157 passed in 4.39s",
       "tests": [
         {
           "node": "tests/unit/acp/test_late_receipts.py::test_a_fault_only_ever_carries_its_bounded_vocabulary",
@@ -662,7 +664,7 @@
     }
   ],
   "schema_version": 1,
-  "source_head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+  "source_head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
   "spec": {
     "file": "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md",
     "sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"

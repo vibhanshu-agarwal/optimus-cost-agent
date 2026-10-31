@@ -7,8 +7,8 @@
   },
   "qualifications": [
     "Writers are killed by process termination after a flush, not by power loss: no claim of hardware power-loss survival.",
-    "Windows does not fsync directories (durable_outbox module docstring); the POSIX path is exercised by the WSL run recorded at Task 5.",
-    "Residual: when a dead writer's final committed batch was its withheld tail alone, recovery has nothing to resend, so that tail's segment stays locally; the ledger holds the record and nothing is lost."
+    "Windows does not fsync directories (durable_outbox module docstring); the POSIX path is exercised by the WSL full suite at the final head (qualification.json).",
+    "Residual, accepted by Codex Checkpoint C pass 1 (#454 comment 6543744451): when a dead writer's final committed batch was its withheld tail alone, recovery has nothing to resend, so that tail's segment stays locally; the ledger holds the record and nothing is lost. The drain counts that tail as pending and its damaged bytes separately, and warns on its age; it does not imply catch-up, and no ledger probe runs on every orphan pass."
   ],
   "runs": [
     {
@@ -16,24 +16,30 @@
       "exit": 0,
       "label": "unit",
       "log": "runs/outbox-recovery-unit.log",
-      "log_sha256": "hex:e998b15992c95665720082d1c17c8b83de9e6dbf8126aa9e8d726ad2e4c44a8a",
+      "log_sha256": "hex:3c10bfb58ed063622159cb98fb3d27ef35207fba8041cb33172edb56a19f518b",
       "source_after": {
         "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "dirty": false,
-        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
-        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
       },
       "source_before": {
         "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "dirty": false,
-        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
-        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
       },
-      "started_utc": "2026-10-31T10:27:27.938892+00:00",
-      "summary": "37 passed in 2.41s",
+      "started_utc": "2026-10-31T15:50:08.493651+00:00",
+      "summary": "38 passed in 2.43s",
       "tests": [
         {
           "node": "tests/unit/usage/test_capture_delivery.py::test_a_dead_writers_tail_is_settled_only_by_an_acknowledgement_naming_its_exact_bytes",
+          "outcome": "passed"
+        },
+        {
+          "node": "tests/unit/usage/test_capture_delivery.py::test_a_dead_writers_withheld_tail_and_its_damaged_bytes_stay_visible_in_the_backlog",
           "outcome": "passed"
         },
         {
@@ -187,21 +193,23 @@
       "exit": 0,
       "label": "live",
       "log": "runs/outbox-recovery-live.log",
-      "log_sha256": "hex:f6833964f3151d2734ef237393bcdd29bfe229db1c89c9c4fa76589b6c9543f3",
+      "log_sha256": "hex:acba1375ff2cc996c211ec61748f002638fd42bd96ab94c5f4fed02713bc82bc",
       "source_after": {
         "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "dirty": false,
-        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
-        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
       },
       "source_before": {
         "diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "dirty": false,
-        "head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
-        "tree": "hex:41432a101be833855e65cc7bfd6bf7e4ad727352"
+        "excluded": "reports/plan12-memory-durable-capture",
+        "head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
+        "tree": "hex:6769e0e04f16249860e98e8779a8b63482596fb2"
       },
-      "started_utc": "2026-10-31T10:27:33.089274+00:00",
-      "summary": "6 passed in 7.03s",
+      "started_utc": "2026-10-31T15:50:13.984319+00:00",
+      "summary": "6 passed in 6.93s",
       "tests": [
         {
           "node": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[before_ack]",
@@ -231,7 +239,7 @@
     }
   ],
   "schema_version": 1,
-  "source_head": "hex:e5f5e20eaf788e8c4a2d31456140de1c5aaace3d",
+  "source_head": "hex:fa39499fcbb1d294f46a056359837990085396a1",
   "spec": {
     "file": "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md",
     "sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"
