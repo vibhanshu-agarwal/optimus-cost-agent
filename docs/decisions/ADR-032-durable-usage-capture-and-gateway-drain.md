@@ -28,11 +28,12 @@ Two existing facts constrain where things live:
 **Coverage epochs.**
 - One epoch per turn, driven by `TurnSettlement`:
   - The turn's first worker invocation begins it, before any dispatch.
-  - Each host request appends an intent before it is sent. The intent waits at most 250 ms; a later write never counts as pre-dispatch.
+  - Each host request's intent is recorded by the Gateway client just before it sends, from the identity the call site sets (`capturing`): the turn and the host request ID its receipts are numbered from. The intent waits at most 250 ms; a later write never counts as pre-dispatch. The ID travels in `X-Optimus-Capture-Request`, which the Gateway never forwards.
   - Accepted receipts are appended as accepted.
   - At terminal finalization with a worker still running, a terminal snapshot records the pending invocations, and the epoch stays open.
   - The close follows once every worker has settled. Ordered identity parts precede it, each with at most 256 IDs, and the close binds them by count and digest.
 - `host_complete` requires a confirmed begin, every intent confirmed, no refused record, and a complete settlement summary.
+- Model calls outside any turn (the JSON-RPC Gateway pass-through and the strict preflight probe) get one-call operation epochs of their own. `GatewayCompletionEvaluator` is constructed nowhere in production (the goal loop is retired), so it is reported unreachable rather than wired.
 - Nothing infers a clean close. A close the queue refused leaves the epoch open. A queued close whose write failed reopens it. A receipt after a written close is appended `late=True`, and the close is never rewritten.
 - Receipt fingerprints use a versioned canonical serialization that preserves the existing replay equality: equal decimals digest equally.
 
@@ -41,6 +42,13 @@ Two existing facts constrain where things live:
 - **Immutability.** The database itself refuses changes to append-only facts, through row and TRUNCATE triggers.
 - **Commit.** One transaction verifies the batch against the committed prefix, inserts events, accepts receipts or records replay and conflict dispositions, updates coverage and advances the cursor. The acknowledgement names the ledger instance, stream, sequence and digest.
 - **Gateway stream.** The Gateway keeps a minimal intent-and-outcome stream for physical attempts the host cannot see: legacy internal retries, lost responses, and host death mid-call. It is evidence, never a second receipt store or debit.
+
+**Configuration and launch binding.**
+- The ledger's connection facts live in `<config_root>/accounting/gateway-accounting.json`: endpoint, database, role, connect timeout and the name of the password's entry in the Gateway's keyring namespace (`optimus-gateway-accounting`). Exactly that shape is accepted, so a password can never be read from it.
+- The launch gate binds the file's exact bytes as the security literal `OPTIMUS_ACCOUNTING_CONFIG`, so the operator approves it and any change needs re-approval. Without the file there is no literal, and existing approvals are unchanged.
+- The signed Gateway manifest carries an optional accounting literal: the accounting root and the approved configuration literal. A manifest with it has its own version plus 3; manifests without it keep their versions and bytes. The parent passes the root only when the file still matches the approved literal.
+- The Gateway composes the same literal itself and refuses to start unless the manifest binds exactly it. It opens the ledger lazily, with no connection at startup.
+- Both processes drain their streams with one neutral drain (`optimus_security.outbox_drain`): the host over HTTP, the Gateway by committing directly.
 
 **Contract.** The neutral modules `optimus_security.durable_outbox` (mechanics) and `optimus_security.usage_capture_contract` serve both processes. The contract module pins each record kind's exact schema, the limits, and the request (including the sender's believed ledger instance) and acknowledgement shapes. The Gateway imports no `optimus.*` module.
 
