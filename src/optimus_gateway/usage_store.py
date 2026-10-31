@@ -373,9 +373,10 @@ class UsageStore:
         if any(not any(r == h or r.startswith(h + ":") for h in intents) for r in receipts):
             reasons.append("receipt_without_intent")
         answered = {
-            gateway_request_id: outcome
-            for gateway_request_id, outcome in conn.execute(
-                "SELECT payload->>'gateway_request_id', payload->>'outcome' FROM optimus_usage.capture_event WHERE stream_id = %s "
+            gateway_request_id: (outcome, attempt_id)
+            for gateway_request_id, outcome, attempt_id in conn.execute(
+                "SELECT payload->>'gateway_request_id', payload->>'outcome', payload->>'attempt_id' FROM optimus_usage.capture_event "
+                "WHERE stream_id = %s "
                 "AND kind = %s AND payload->>'epoch_id' = %s AND NOT (payload->>'late')::boolean",
                 (stream, uc.ATTEMPT_RECEIPT, epoch_id),
             ).fetchall()
@@ -387,9 +388,10 @@ class UsageStore:
             ("incomplete" if reasons else "complete", sorted(set(reasons)), epoch_id),
         )
 
-    def _physical(self, conn: psycopg.Connection[Any], intents: list[str], answered: Mapping[str, str]) -> list[str]:
-        """Gateway physical evidence for the epoch's host requests, joined to its receipts by Gateway request ID (`answered`:
-        Gateway request ID -> the receipt's outcome). Each Gateway request's attempts must be numbered 1..n in one stream
+    def _physical(self, conn: psycopg.Connection[Any], intents: list[str], answered: Mapping[str, tuple[str, str]]) -> list[str]:
+        """Gateway physical evidence for the epoch's host requests, joined to its receipts pair by pair (`answered`: Gateway
+        request ID -> the receipt's outcome and attempt ID): a Gateway request recorded for a host request is answered only
+        by a receipt of that same host request. Each Gateway request's attempts must be numbered 1..n in one stream
         with no gap among their records, each with an outcome, a confirmed intent and nothing uncertain. A request that was
         sent needs a receipt; the receipt settles only the request's last attempt (a completed receipt needs a completed
         last attempt), so an earlier sent attempt with no recorded cost (a legacy retry after a 503) stays unresolved.
@@ -438,11 +440,12 @@ class UsageStore:
                 if len(outcomes) != len(attempts):
                     continue
                 sent = [o for o in outcomes if o["outcome"] != "not_sent"]
-                if gateway_request_id not in answered:
+                receipt = answered.get(gateway_request_id)
+                if receipt is None or not (receipt[1] == host_request_id or receipt[1].startswith(host_request_id + ":")):
                     if sent:
-                        reasons.append("physical_receipt_unmatched")
+                        reasons.append("physical_receipt_unmatched")  # no receipt, or another host request's receipt
                     continue
-                if answered[gateway_request_id] == "completed" and outcomes[-1]["outcome"] in {"failed", "not_sent"}:
+                if receipt[0] == "completed" and outcomes[-1]["outcome"] in {"failed", "not_sent"}:
                     reasons.append("physical_attempt_missing")
                 if any(o["cost_usd"] is None for o in sent if o is not outcomes[-1]):
                     reasons.append("physical_cost_unresolved")

@@ -434,6 +434,25 @@ def test_physical_evidence_decides_certification(released, store, tmp_path, outc
     assert _epoch_state(released, batch.stream_id) == expected
 
 
+@pytest.mark.parametrize("swapped", [False, True])
+def test_each_host_request_is_answered_by_its_own_gateway_request(released, store, tmp_path, swapped):
+    """Two intents in one epoch: Gateway evidence that records each host request under the other's Gateway request is
+    contradictory correlation, never coverage; the matched pairing is the positive control."""
+    first, second = _receipt("s:1", f"{uuid.uuid4().hex}:planning:1:1"), _receipt("s:1", f"{uuid.uuid4().hex}:planning:1:2")
+    capture = _capture(tmp_path)
+    _turn(capture, "s:1", [first, second])
+    batch = _batch(capture)
+    store.ingest(batch)
+
+    if swapped:
+        _gateway_evidence(store, tmp_path / "a", [first], gateway_request_id=second.gateway_request_id)
+        _gateway_evidence(store, tmp_path / "b", [second], gateway_request_id=first.gateway_request_id)
+    else:
+        _gateway_evidence(store, tmp_path / "a", [first, second])
+
+    assert _epoch_state(released, batch.stream_id) == ([("incomplete", ["physical_receipt_unmatched"])] if swapped else [("complete", [])])
+
+
 def test_a_late_integrity_failure_from_production_settlement_downgrades_a_certified_epoch(released, store, tmp_path):
     attempt = f"{uuid.uuid4().hex}:planning:1:1"
     receipt = _receipt("s:1", attempt)
