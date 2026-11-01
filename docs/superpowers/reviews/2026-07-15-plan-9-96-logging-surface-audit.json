@@ -5353,6 +5353,94 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.server:OptimusGatewayHandler._handle_report:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.9): one fixed reply_undeliverable diagnostic line naming the usage-report route and status when the bounded reply write times out; no request or ledger content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_server.py::test_the_report_route_refuses_a_bad_key_before_reading_any_body_byte",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.usage_price_snapshots:record_references:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.9, ADR-034): submits each adopted reference's contract-validated snapshot payload (dated list prices, source locator) to the Gateway's own capture outbox; no request, prompt or credential.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_usage_price_snapshots.py::test_each_adopted_reference_is_captured_once",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.usage_price_snapshots:registry_snapshot_id:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.9, ADR-034): submits the effective registry's contract-validated snapshot (hash, model IDs, tiers, roles, list prices) to the Gateway's own capture outbox; no request content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_usage_price_snapshots.py::test_the_snapshot_id_is_stamped_once_durable_and_its_snapshot_written_once",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.usage_report:_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.9): canonical JSON of allowlisted report facts hashed in memory to the report revision; only the digest is kept.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_usage_report.py::test_pages_walk_the_reference_groups_then_the_detail_rows_with_whole_scope_totals",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.usage_report:handle_usage_report_request:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.9): the response body is serialized in memory only to measure it against the 1 MiB bound; nothing is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_usage_report.py::test_a_page_is_served_and_an_altered_cursor_never_reaches_the_ledger",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.usage_store:UsageStore._project:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.9, ADR-034): serializes a contract-validated price snapshot's body into the Gateway-owned ledger's JSONB column; no prompt, reply, exception text or credential.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_contract.py::test_report_kinds_outside_their_schema_are_refused",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.savings_references:Reference.snapshot_id:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.9): canonical JSON of one validated reference hashed in memory to its snapshot ID; only the digest is kept.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_usage_price_snapshots.py::test_a_reference_snapshot_keeps_the_reference_id_and_the_contract_recomputes_it",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_model_policy.savings_references:ReferenceSet.digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.9): canonical JSON of the validated reference set hashed in memory to bind report revisions; only the digest is kept.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_usage_report.py::test_a_cursor_answers_changed_for_different_facts_ledger_or_request",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.usage_capture_contract:snapshot_id:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.9): canonical JSON of a snapshot payload's allowlisted body hashed in memory to its content-derived ID; only the digest is kept.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_capture_contract.py::test_the_report_kinds_validate_for_their_own_writer_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.usage_report_contract:build_request:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.9): serializes a schema-limited report request (session and turn identity, reference IDs, page size, opaque cursor) as the HTTP body to the Gateway; never logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_usage_report.py::test_capabilities_are_answered_without_any_ledger",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.usage_report_contract:seal_cursor:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.9): serializes the cursor's allowlisted position fields, base64-encoded and HMAC-sealed under a Gateway-only key; returned to the host only as an opaque token.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_usage_report.py::test_an_altered_cursor_answers_changed",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_security.usage_capture_contract:_fingerprint:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "AST overmatch (Plan 12.8): canonical JSON of a receipt's allowlisted facts hashed in memory to its fingerprint; only the digest is kept.",

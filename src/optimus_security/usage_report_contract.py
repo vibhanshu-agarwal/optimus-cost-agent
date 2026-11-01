@@ -56,7 +56,7 @@ ERROR_CODES: Mapping[str, int] = {
 # Coverage reason codes: why a scope's totals are not definitive.
 COVERAGE_REASONS = frozenset({
     "epoch_missing", "epoch_open", "epoch_incomplete", "turn_not_captured", "unknown_cost", "receipt_conflict",
-    "late_receipt", "delivery_pending", "scope_too_large", "attribution_unavailable",
+    "late_receipt", "delivery_pending", "scope_too_large", "attribution_unavailable", "expected_turns_unknown",
 })
 # Why an attempt could not be repriced for a reference.
 UNPRICED_REASONS = frozenset({
@@ -244,7 +244,8 @@ def open_cursor(key: bytes, cursor: str) -> dict[str, Any]:
 # --- Responses -------------------------------------------------------------------------------------
 
 _TOTALS: dict[str, Check] = {
-    "known_usd": _USD, "attempts": _N, "unknown_attempts": _N, "conflicts": _N, "late": _N, "turns": _N,
+    "known_usd": _USD_,  # null only for a scope over the bounds (`scope_too_large`): unavailable, never truncated
+    "attempts": _N, "unknown_attempts": _N, "conflicts": _N, "late": _N, "turns": _N,
     "definitive": _B, "reasons": _list_of(_one_of(COVERAGE_REASONS), len(COVERAGE_REASONS)),
 }
 _UNPRICED: dict[str, Check] = {"reason": _one_of(UNPRICED_REASONS), "attempts": _N, "tokens": _N_}

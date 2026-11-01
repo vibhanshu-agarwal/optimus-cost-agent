@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError
 
-from optimus_gateway import request_diagnostics
+from optimus_gateway import request_diagnostics, usage_price_snapshots
 from optimus_gateway.diagnostic_segments import DiagnosticSegments
 from optimus_security import accounting_config
 from optimus_security import usage_capture_contract as uc
@@ -176,6 +176,7 @@ class GatewayAccounting:
         if self.drain is not None:
             self.drain.stop()
         configure(None)
+        usage_price_snapshots.configure(None)
         self.writer.close()
         if self.diagnostics is not None:
             request_diagnostics.configure_copy(None)
@@ -196,6 +197,8 @@ def start_accounting(root: Path, config: accounting_config.AccountingConfig | No
 
     writer = OutboxWriter(root / "outbox" / "gateway")
     configure(writer)
+    usage_price_snapshots.configure(writer)
+    usage_price_snapshots.record_references(usage_price_snapshots.configured_references())
     diagnostics = DiagnosticSegments(root / "gateway-diagnostics", report=log)  # nothing is created before the first line
     request_diagnostics.configure_copy(diagnostics)
     accounting = GatewayAccounting(writer, diagnostics)

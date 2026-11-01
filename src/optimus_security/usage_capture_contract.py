@@ -238,7 +238,22 @@ def validate_payload(payload: object, *, writer: str) -> str:
         raise ContractError("payload")
     if kind == ATTEMPT_RECEIPT:
         validate_receipt(payload)  # type: ignore[arg-type]
+    if kind in SNAPSHOT_VERSIONS and payload["snapshot_id"] != snapshot_id(kind, payload):  # type: ignore[index, arg-type]
+        raise ContractError("payload")
     return kind
+
+
+# Snapshot IDs are derived from content alone (not `at`), so the same configuration captured again is the same snapshot.
+# The reference version and body match `optimus_model_policy.savings_references.Reference.snapshot_id`.
+SNAPSHOT_VERSIONS: Mapping[str, str] = {REGISTRY_SNAPSHOT: "registry-snapshot-v1", REFERENCE_SNAPSHOT: "savings-reference-v1"}
+_REGISTRY_BODY = ("registry_hash", "price_as_of", "entries")
+
+
+def snapshot_id(kind: str, payload: Mapping[str, Any]) -> str:
+    """The content-derived ID of a registry or reference snapshot payload."""
+    body = payload["reference"] if kind == REFERENCE_SNAPSHOT else {key: payload[key] for key in _REGISTRY_BODY}
+    text = json.dumps([SNAPSHOT_VERSIONS[kind], body], sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return "hex:" + hashlib.sha256(text.encode("ascii")).hexdigest()
 
 
 @dataclass(frozen=True)

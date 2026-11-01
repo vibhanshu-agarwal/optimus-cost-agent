@@ -20,6 +20,7 @@ import json
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +36,10 @@ MIGRATIONS_ROOT = REPO_ROOT / "migrations" / "optimus_usage"
 # Digests are pinned to LF-normalized SQL bytes; changing a migration requires a new file.
 _PINNED: tuple[tuple[str, str], ...] = (
     ("001_durable_capture.sql", "90b54892de149c8e6b73bfbdd5ea6f59cd0523c22e0b7c8f79c446e557cded77"),  # pragma: allowlist secret - SQL migration integrity hash, not a credential
+    ("002_savings_report.sql", "3186ff75eb04a0bef1d00e746ff57f167cb0c3badffbfedf78f081c09ae2ff38"),  # pragma: allowlist secret - SQL migration integrity hash, not a credential
 )
+# Plan 12.9 (ADR-034): a report's whole database budget, connection to last statement (agent-selected).
+REPORT_BUDGET_MS = 5000
 
 
 # A lost connection, an expired lock wait or a cancelled statement: retryable, never acknowledged.
@@ -59,6 +63,20 @@ class IngestResult:
     replayed: int
 
 
+@dataclass(frozen=True)
+class ReportFacts:
+    """One report scope as of one snapshot: each canonical receipt's event payload with its late and conflict flags,
+    each turn's epoch states (None: an epoch with no coverage row) and its Auto/fixed selections. ``too_large``: a bound
+    was exceeded, and nothing else is returned."""
+
+    ledger_instance: str
+    as_of: datetime
+    receipts: tuple[tuple[dict[str, Any], bool, bool], ...]
+    epochs: Mapping[str, tuple[str | None, ...]]
+    selections: Mapping[str, tuple[str, ...]]
+    too_large: bool = False
+
+
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")).hexdigest()
 
@@ -80,6 +98,7 @@ class UsageStore:
         self._connect_timeout = connect_timeout
         self.lock_timeout_ms = lock_timeout_ms  # agent-selected
         self.statement_timeout_ms = statement_timeout_ms  # agent-selected
+        self.report_budget_ms = REPORT_BUDGET_MS
         self.ledger_instance: str | None = None
 
     @classmethod
@@ -136,6 +155,69 @@ class UsageStore:
                 return result
         except _UNAVAILABLE:
             raise StoreError("unavailable") from None
+
+    def report_facts(self, session_id: str, turn_id: str | None, *, max_attempts: int, max_turns: int) -> ReportFacts:
+        """One session's (or one turn's) facts for the usage report, from one read-only repeatable-read transaction within
+        `REPORT_BUDGET_MS`. Writes nothing and never migrates: a ledger without every pinned migration is unavailable.
+        ``StoreError``: ``timeout`` (a lock or statement wait expired) or ``unavailable``."""
+        budget = int(self.report_budget_ms)
+        try:
+            with psycopg.connect(self._conninfo, connect_timeout=max(1, min(self._connect_timeout, budget // 1000))) as conn:
+                conn.isolation_level = psycopg.IsolationLevel.REPEATABLE_READ
+                conn.read_only = True
+                conn.execute(f"SET LOCAL lock_timeout = '{budget}ms'")
+                conn.execute(f"SET LOCAL statement_timeout = '{budget}ms'")
+                return self._report_facts(conn, session_id, turn_id, max_attempts, max_turns)
+        except (psycopg.errors.QueryCanceled, psycopg.errors.LockNotAvailable):
+            raise StoreError("timeout") from None
+        except psycopg.Error:
+            raise StoreError("unavailable") from None
+
+    def _report_facts(self, conn: psycopg.Connection[Any], session_id: str, turn_id: str | None, max_attempts: int,
+                      max_turns: int) -> ReportFacts:
+        applied = dict(conn.execute("SELECT filename, sha256 FROM optimus_usage_schema_migrations").fetchall())
+        if any(applied.get(filename) != pinned for filename, pinned in _PINNED):
+            raise StoreError("unavailable")
+        instance_row = conn.execute("SELECT ledger_instance_id FROM optimus_usage.ledger_instance ORDER BY created_at LIMIT 1").fetchone()
+        as_of_row = conn.execute("SELECT now()").fetchone()
+        if instance_row is None or as_of_row is None:
+            raise StoreError("unavailable")
+        scope = (session_id, turn_id, turn_id)
+        receipts = conn.execute(
+            "SELECT e.payload, r.late, EXISTS (SELECT 1 FROM optimus_usage.receipt_conflict c "
+            "WHERE c.attempt_id = r.attempt_id OR c.existing_attempt_id = r.attempt_id) "
+            "FROM optimus_usage.capture_event e JOIN optimus_usage.attempt_receipt r ON r.stream_id = e.stream_id AND r.sequence = e.sequence "
+            "WHERE e.kind = %s AND e.payload->>'session_id' = %s AND (%s::text IS NULL OR r.turn_id = %s) "
+            "ORDER BY r.turn_id, r.attempt_id LIMIT %s",
+            (uc.ATTEMPT_RECEIPT, *scope, max_attempts + 1),
+        ).fetchall()
+        events = conn.execute(
+            "SELECT kind, payload->>'turn_id', payload->>'epoch_id', payload->>'selection' FROM optimus_usage.capture_event "
+            "WHERE kind IN (%s, %s) AND payload->>'session_id' = %s AND (%s::text IS NULL OR payload->>'turn_id' = %s) LIMIT %s",
+            (uc.EPOCH_BEGIN, uc.TURN_REPORT_CONTEXT, *scope, 4 * max_turns + 1),
+        ).fetchall()
+        epochs: dict[str, set[str]] = {}
+        selections: dict[str, set[str]] = {}
+        for _, turn, epoch_id, _ in events:
+            epochs.setdefault(turn, set()).add(epoch_id)
+        for kind, turn, _, selection in events:
+            if kind == uc.TURN_REPORT_CONTEXT:
+                selections.setdefault(turn, set()).add(selection)
+        for payload, _, _ in receipts:
+            epochs.setdefault(payload["turn_id"], set()).add(payload["epoch_id"])
+        instance, as_of = instance_row[0], as_of_row[0].astimezone(UTC)
+        if len(receipts) > max_attempts or len(events) > 4 * max_turns or len(epochs) > max_turns:
+            return ReportFacts(instance, as_of, (), {}, {}, too_large=True)
+        states = dict(conn.execute(
+            "SELECT epoch_id, state FROM optimus_usage.coverage_epoch WHERE epoch_id = ANY(%s)",
+            (sorted({epoch for ids in epochs.values() for epoch in ids}),),
+        ).fetchall())
+        return ReportFacts(
+            instance, as_of,
+            tuple((dict(payload), late, conflict) for payload, late, conflict in receipts),
+            {turn: tuple(sorted((states.get(epoch) for epoch in ids), key=str)) for turn, ids in epochs.items()},
+            {turn: tuple(sorted(values)) for turn, values in selections.items()},
+        )
 
     def _bound(self, conn: psycopg.Connection[Any]) -> None:
         """Bound this transaction's lock waits and statements; expiry rolls it back and is retryable, never acknowledged."""
@@ -214,6 +296,14 @@ class UsageStore:
         if kind == uc.INTEGRITY_FAILURE:
             if payload["epoch_id"]:
                 self._certify(conn, payload["epoch_id"])  # also after the close: a certified epoch is downgraded
+            return 0
+        if kind in uc.SNAPSHOT_VERSIONS:  # the contract verified the content-derived ID; a repeat keeps the first capture
+            body = {key: value for key, value in payload.items() if key not in {"kind", "at", "snapshot_id"}}
+            conn.execute(
+                "INSERT INTO optimus_usage.price_snapshot (snapshot_id, kind, body, captured_at, stream_id, sequence) "
+                "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (snapshot_id) DO NOTHING",
+                (payload["snapshot_id"], kind, json.dumps(body), payload["at"], stream, record.sequence),
+            )
             return 0
         if kind in {uc.GATEWAY_ATTEMPT_INTENT, uc.GATEWAY_ATTEMPT_OUTCOME}:
             host_request_id = payload.get("host_request_id") if kind == uc.GATEWAY_ATTEMPT_INTENT else self._host_request_of(conn, payload)
@@ -512,4 +602,4 @@ def _identities_digest(epoch_id: str, settled: list[str], unknown: list[str]) ->
     return "hex:" + hashlib.sha256(body.encode("ascii")).hexdigest()
 
 
-__all__ = ["GENESIS", "IngestResult", "StoreError", "UsageStore", "verify_migrations"]
+__all__ = ["GENESIS", "IngestResult", "ReportFacts", "StoreError", "UsageStore", "verify_migrations"]

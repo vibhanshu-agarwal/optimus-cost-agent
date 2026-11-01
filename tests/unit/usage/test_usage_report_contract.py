@@ -104,7 +104,7 @@ def test_a_report_response_validates():
         lambda r: r["b3"].update(state="measured"),
         lambda r: r.update(b1_plus_b2="1"),  # nothing combines B1 and B2
         lambda r: r["comparisons"].update(columns=[_column(f"ref-{i}") for i in range(ur.REFERENCE_GROUP + 1)]),
-        lambda r: r["session"].update(known_usd=None),  # a known total is a number; unknowns are counted
+        lambda r: r["session"].update(known_usd="-1"),  # a known total is non-negative; unknowns are counted
         lambda r: r["session"].update(reasons=["looks_fine"]),
         lambda r: r["comparisons"]["columns"][0].update(unpriced=[{"reason": "guessed", "attempts": 1, "tokens": 1}]),
         lambda r: r.update(raw_payload={}),

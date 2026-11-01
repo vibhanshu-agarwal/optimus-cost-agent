@@ -195,9 +195,10 @@ def test_cache_presence_does_not_change_the_fingerprint_and_a_null_echo_contradi
 
 _CONTEXT = {"kind": uc.TURN_REPORT_CONTEXT, "at": _AT, "epoch_id": _EPOCH, "session_id": "s", "turn_id": "s:1",
             "selection": "auto", "registry_hash": "hex:" + "2" * 64, "strategy": None}
-_REGISTRY = {"kind": uc.REGISTRY_SNAPSHOT, "at": _AT, "snapshot_id": "hex:" + "3" * 64, "registry_hash": "hex:" + "2" * 64,
+_REGISTRY = {"kind": uc.REGISTRY_SNAPSHOT, "at": _AT, "registry_hash": "hex:" + "2" * 64,
              "price_as_of": None, "entries": [{"model": "m-1", "tier": "cheap", "roles": ["easy"],
                                                "input_usd_per_million": "0.1", "output_usd_per_million": "0.5"}]}
+_REGISTRY["snapshot_id"] = uc.snapshot_id(uc.REGISTRY_SNAPSHOT, _REGISTRY)
 
 
 def test_the_report_kinds_validate_for_their_own_writer_only():
@@ -215,6 +216,8 @@ def test_the_report_kinds_validate_for_their_own_writer_only():
         {**_CONTEXT, "selection": "unknown"},  # attribution is explicit: Auto or fixed, never inferred
         {**_CONTEXT, "prompt": "hello"},  # content-free
         {**_REGISTRY, "entries": [{**_REGISTRY["entries"][0], "prices": "0.1"}]},
+        {**_REGISTRY, "entries": [{**_REGISTRY["entries"][0], "input_usd_per_million": "0.2"}]},  # the ID no longer fits its content
+        {**_REGISTRY, "snapshot_id": "hex:" + "3" * 64},
     ],
 )
 def test_report_kinds_outside_their_schema_are_refused(payload):

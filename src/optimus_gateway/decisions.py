@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Final
 
-from optimus_gateway import request_diagnostics, usage_capture
+from optimus_gateway import request_diagnostics, usage_capture, usage_price_snapshots
 from optimus_gateway.model_policy import ModelPolicyRefusal, admit_decision, check_decision_reply, parse_route_binding
 from optimus_gateway.models import GatewayServiceConfig, authorize_bearer
 from optimus_gateway.responses import (
@@ -127,7 +127,7 @@ def handle_decision_request(
 
 def _decision_usage(*, config: GatewayServiceConfig, model: str, result: DecisionResult, gateway_request_id: str) -> dict[str, Any]:
     """The same usage fields a model reply carries; a decision has no cache, reasoning or finish facts."""
-    return {
+    return usage_price_snapshots.stamp({
         "gateway_request_id": gateway_request_id,
         "provider": config.provider,
         "provider_request_id": result.decision_id,
@@ -144,4 +144,4 @@ def _decision_usage(*, config: GatewayServiceConfig, model: str, result: Decisio
         "reasoning_tokens": None,
         "cached_tokens": None,
         "cache_age_seconds": None,
-    }
+    }, config.model_policy)
