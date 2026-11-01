@@ -223,3 +223,16 @@ def test_direct_anthropic_adapter_is_absent() -> None:
     assert not hasattr(upstream_client, "UrllibAnthropicClient")
     assert not hasattr(upstream_client, "parse_anthropic_message")
     assert not hasattr(upstream_client, "_extract_anthropic_output_text")
+
+
+def test_token_details_stay_breakdowns_of_their_parent_counts() -> None:
+    # OpenRouter usage accounting (fetched 2026-11-01, Plan 12.9 Task 0): cached tokens are a breakdown of prompt tokens
+    # and reasoning tokens of completion tokens, so total = prompt + completion. The report's B1 arithmetic relies on it.
+    body = _openrouter_body()
+    body["usage"] = {"prompt_tokens": 194, "completion_tokens": 30, "total_tokens": 224, "cost": "0.001",
+                     "prompt_tokens_details": {"cached_tokens": 100}, "completion_tokens_details": {"reasoning_tokens": 12}}
+
+    result = parse_openai_chat_completion(body, _openrouter_headers(), requested_model="claude-haiku")
+
+    assert (result.input_tokens, result.cached_tokens, result.output_tokens, result.reasoning_tokens) == (194, 100, 30, 12)
+    assert result.total_tokens == result.input_tokens + result.output_tokens

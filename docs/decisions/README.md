@@ -214,6 +214,21 @@ by this folder.
      - Claude checked, read-only, that the quoted decision appears verbatim in a human user turn of the export's main
        transcript (`2026-11-01T07:08:54.254Z`). A full app export, not an excerpt. Raw S17 is archival provenance,
        never an operating, test or release dependency; S1–S16 retain their existing meanings.
+   - **Source S18.** The operator's answers of 2026-11-01 in the Claude session for Plan 12.9 (#248), for ADR-034:
+     the plan number, "Plan 12.9 (Recommended)"; D1, "/savings in Zed (Recommended)"; D2, "Current session
+     (Recommended)"; D3, "I recollect showing a tabular view that means showing cost savings against various options for
+     e.g. against Claude Sonnet 5.5 , Opus 5.5 - it does not have to be models included in Optimus (vs comparison)"; the
+     plan approvals, "Approve and file (Recommended)" (v1) and "Approve v2 and file (Recommended)" (v2).
+
+     The source record:
+     - External transcript export: `optimus-handoff\decisions-sources\2026-11-01-claude-session-p129-adr034-export.zip`,
+       produced by the app's session Export, 2,728,877 bytes.
+     - SHA-256: `67AA38D34E6B6DE1BCFAA90B11A3AD03B7B841DDB827E2C68EA4415EADFC7C51`.
+     - Claude checked, read-only, that each quoted answer appears verbatim in a human user turn (the AskUserQuestion
+       answers) of the export's main transcript: `2026-11-01T07:56:08.017Z` (plan number), `2026-11-01T09:05:11.882Z`
+       (v1 approval, D1–D3) and `2026-11-01T10:29:04.909Z` (v2 approval). The questions and each option's description,
+       as shown to the operator, are in the assistant turns that asked them. A full app export, not an excerpt. Raw S18
+       is archival provenance, never an operating, test or release dependency; S1–S17 retain their existing meanings.
 2. **Label the decider.** Each record says who decided: the operator, an agent (Claude or Codex), or an
    agent proposal still awaiting the operator. A value an agent chose must never read as an operator
    requirement.
@@ -303,6 +318,7 @@ by this folder.
 | [031](ADR-031-project-memory-and-evidence.md) | Plan 12.x memory architecture as designed in v4; one includable-files policy for automatic context, indexing and anchor reads (security denials including #385's secret rule first, then `.gitignore`/`.optimusignore` via a pinned `pathspec`, no negation of a denial); registered project identity per Git common directory (Plan 12.6, #390) | Accepted | Operator (product decisions, source S10; #385 absorption and plan approval 2026-10-30); mechanisms by Claude, reviewed by Codex | 2026-10-30 |
 | [032](ADR-032-durable-usage-capture-and-gateway-drain.md) | Durable usage capture (memory design v4 section 7): an fsynced host outbox uploaded with the existing Gateway URL and key; only the Gateway holds the Postgres credential and drains into an Optimus-owned, database-immutable ledger with committed cursors and per-turn coverage epochs (Plan 12.8, #454) | Accepted by [ADR-033](ADR-033-accepts-adr-032-durable-usage-capture.md) | Operator (credential boundary, 2026-10-31, with the Plan 12.8 plan-hash approval); mechanisms by Claude, reviewed by Codex | 2026-10-31 |
 | [033](ADR-033-accepts-adr-032-durable-usage-capture.md) | Accepts [ADR-032](ADR-032-durable-usage-capture-and-gateway-drain.md) as merged: its decision, options and consequences and limits, unchanged (Plan 12.8, #454) | Accepted | Operator (source S17), through Codex's acceptance under the standing rule (round 91); drafted by Claude | 2026-11-01 |
+| [034](ADR-034-cost-savings-report-read-and-presentation.md) | The cost-savings report (#248, ADR-012): an authenticated Gateway read route over the M0b ledger, one dated B1 column per configured reference model (registry or not), explicit Auto attribution and `/savings` in Zed; B2/B3 shown unavailable (Plan 12.9) | Proposed | Operator (D1–D4, source S18); mechanisms by Claude, reviewed by Codex | 2026-11-01 |
 | [Ordering/lifecycle/signals and queue contract](2026-10-27-ordering-lifecycle-signals-queue-contract.md) | Progress admission, owned stop and later finite queues; supersedes only ADR-027 secondary chaining | Operator-approved mechanisms; checkpoint review pending; unpublished draft | Operator; Codex developer, actual Claude reviewer | 2026-10-27 |
 
 **Package A delivery:** [local accepted implementation and evidence](../superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md);

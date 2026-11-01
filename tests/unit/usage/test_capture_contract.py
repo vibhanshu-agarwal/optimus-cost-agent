@@ -189,3 +189,34 @@ def test_cache_presence_does_not_change_the_fingerprint_and_a_null_echo_contradi
     with pytest.raises(uc.ContractError) as refused:
         uc.validate_payload(contradicting, writer="host")
     assert refused.value.code == "receipt"
+
+
+# Plan 12.9 Task 1: the report's capture kinds. A host emits turn.report_context only to a Gateway that lists the feature.
+
+_CONTEXT = {"kind": uc.TURN_REPORT_CONTEXT, "at": _AT, "epoch_id": _EPOCH, "session_id": "s", "turn_id": "s:1",
+            "selection": "auto", "registry_hash": "hex:" + "2" * 64, "strategy": None}
+_REGISTRY = {"kind": uc.REGISTRY_SNAPSHOT, "at": _AT, "snapshot_id": "hex:" + "3" * 64, "registry_hash": "hex:" + "2" * 64,
+             "price_as_of": None, "entries": [{"model": "m-1", "tier": "cheap", "roles": ["easy"],
+                                               "input_usd_per_million": "0.1", "output_usd_per_million": "0.5"}]}
+
+
+def test_the_report_kinds_validate_for_their_own_writer_only():
+    assert uc.validate_payload(_CONTEXT, writer="host") == uc.TURN_REPORT_CONTEXT
+    assert uc.validate_payload(_REGISTRY, writer="gateway") == uc.REGISTRY_SNAPSHOT
+    with pytest.raises(uc.ContractError):
+        uc.validate_payload(_CONTEXT, writer="gateway")
+    with pytest.raises(uc.ContractError):
+        uc.validate_payload(_REGISTRY, writer="host")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {**_CONTEXT, "selection": "unknown"},  # attribution is explicit: Auto or fixed, never inferred
+        {**_CONTEXT, "prompt": "hello"},  # content-free
+        {**_REGISTRY, "entries": [{**_REGISTRY["entries"][0], "prices": "0.1"}]},
+    ],
+)
+def test_report_kinds_outside_their_schema_are_refused(payload):
+    with pytest.raises(uc.ContractError):
+        uc.validate_payload(payload, writer="host" if payload["kind"] == uc.TURN_REPORT_CONTEXT else "gateway")

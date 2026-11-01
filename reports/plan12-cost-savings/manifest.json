@@ -128,7 +128,7 @@
     "head_at_task0": "hex:3dddbafaa0cb879fcb838cd83cc950eefbd7ace7",
     "sha256": "hex:aede5628ec2f8e41a6457e48f199b3151e89157240d874f1470a163d0dc4159e",
     "superseded_v1": {
-      "file": "docs/superpowers/plans/2026-11-01-plan-12-9-cost-savings-report-implementation.md",
+      "file": "docs/superpowers/plans/archive/2026-11-01-plan-12-9-cost-savings-report-implementation.md",
       "sha256": "hex:357932b6462fc183246f205839a8765963c4ab6cc6afb5f44c1ac875b6b7bdae"
     },
     "tree_at_task0": "hex:5301e90594ff435a72b4eec3a993b038c8a79f82"

@@ -1,0 +1,45 @@
+# Savings-report reference columns (Plan 12.9; ADR-034). Configuration, never code: each entry is dated list-price
+# evidence for one comparison model, which need not be an Optimus model (operator, 2026-11-01, D3). An operator
+# override file replaces this one whole.
+#
+# Source: the public OpenRouter model list, https://openrouter.ai/api/v1/models, fetched 2026-11-01 (raw copy
+# SHA-256 afe0a9ef18916f9e888a17e5145c07fe3be3081b20dec9f77fdc2c49e7652f6f, Plan 12.9 Task 0 manifest). Its prices are
+# USD per token; they are written here per million tokens. "prompt" is input, "completion" output, "input_cache_read"
+# cached_input; a "min_prompt_tokens" override is a tier. None of these entries lists an "internal_reasoning" price,
+# which 30 of the list's 452 models do, so their reasoning tokens are billed as completion. Cache-write prices are not
+# carried: Optimus does not capture cache-write tokens, so the report states that portion is not included.
+version: 1
+references:
+  - id: claude-sonnet-5.5
+    display: Claude Sonnet 5.5
+    provider: Anthropic via OpenRouter
+    unit: usd_per_million_tokens
+    prices: {input: "2.00", output: "10.00", cached_input: "0.10"}
+    reasoning_billed_as_output: true
+    source: {url: "https://openrouter.ai/api/v1/models", revision: anthropic/claude-sonnet-5.5, price_as_of: "2026-11-01"}
+  - id: claude-opus-5.5
+    display: Claude Opus 5.5
+    provider: Anthropic via OpenRouter
+    unit: usd_per_million_tokens
+    prices: {input: "4.00", output: "20.00", cached_input: "0.20"}
+    reasoning_billed_as_output: true
+    source: {url: "https://openrouter.ai/api/v1/models", revision: anthropic/claude-opus-5.5, price_as_of: "2026-11-01"}
+  - id: gpt-6.1-sol
+    display: GPT 6.1 Sol
+    provider: OpenAI via OpenRouter
+    unit: usd_per_million_tokens
+    prices: {input: "2.00", output: "10.00", cached_input: "0.10"}
+    tiers:
+      - min_input_tokens: 272000
+        prices: {input: "4.00", output: "15.00", cached_input: "0.20"}
+    reasoning_billed_as_output: true
+    source: {url: "https://openrouter.ai/api/v1/models", revision: openai/gpt-6.1-sol, price_as_of: "2026-11-01"}
+benchmark:
+  text: >-
+    External coding-capability results for the tier models are summarized in the 2026-09-30 industry evidence file,
+    section D. Auto's own 2026-10-26 pilot (ADR-028) routed at USD 10.64 per 1,000 nominal turns against USD 11.25 for
+    always-complex, on 150 held-out requests.
+  limitations: >-
+    Different tasks, harnesses and model lists from your sessions; the pilot is internal, nominal and pre-production.
+    Context only: neither is a measured saving of yours, nor a matched Auto-off comparison.
+  source: {evidence: docs/decisions/2026-09-30-industry-context-cost-and-model-evidence.md, price_as_of: "2026-09-30"}
