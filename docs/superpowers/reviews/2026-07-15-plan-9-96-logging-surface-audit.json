@@ -5385,11 +5385,11 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus_gateway.usage_report:handle_usage_report_request:json_serialization",
+      "key": "optimus_gateway.usage_report:wire_size:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "AST overmatch (Plan 12.9): the response body is serialized in memory only to measure it against the 1 MiB bound; nothing is written.",
+      "rationale": "AST overmatch (Plan 12.9): a page or row is serialized in memory only to measure it against the 1 MiB response bound while detail rows are paged; nothing is written.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_usage_report.py::test_a_page_is_served_and_an_altered_cursor_never_reaches_the_ledger",
+      "test_node": "tests/unit/optimus_gateway/test_usage_report.py::test_detail_pages_by_serialized_bytes_and_every_page_fits_the_response_bound",
       "evidence_tier": "unit"
     },
     {

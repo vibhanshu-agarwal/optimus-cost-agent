@@ -244,7 +244,14 @@
       "note": "Reference identities and prices become configuration in Task 1 (savings_references.yaml); none is named in code or tests.",
       "raw_copy": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/p129-task0/openrouter-models-2026-11-01/models.json (outside the repository)",
       "raw_sha256": "hex:afe0a9ef18916f9e888a17e5145c07fe3be3081b20dec9f77fdc2c49e7652f6f",
-      "source": "https://openrouter.ai/api/v1/models (public, unauthenticated GET; no model call)"
+      "source": "https://openrouter.ai/api/v1/models (public, unauthenticated GET; no model call)",
+      "reasoning_billing": {
+        "added": "2026-11-01, Checkpoint A round 93 finding 3",
+        "statement": "Reasoning tokens are considered output tokens and charged accordingly.",
+        "source": "https://openrouter.ai/docs/use-cases/reasoning-tokens",
+        "fetched_on": "2026-11-01",
+        "use": "each reference's reasoning_source; without such a source reasoning_billed_as_output must be null and reasoning tokens stay unpriced"
+      }
     }
   }
 }

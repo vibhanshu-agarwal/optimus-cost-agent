@@ -139,6 +139,9 @@ _DATE_ = _optional(_matches(_DATE))
 # A registry snapshot: the actual side's tiers, roles and list prices, for provenance and tier attribution only.
 _REGISTRY_ENTRY: dict[str, Check] = {
     "model": _S, "tier": _S_, "roles": _strings, "input_usd_per_million": _USD_, "output_usd_per_million": _USD_,
+    # The approved route: its endpoints' providers and quantizations, in order, and its routing switches.
+    "route": _object({"providers": _strings, "quantizations": _optional_strings, "allow_fallbacks": _B,
+                      "require_parameters": _B}),
 }
 # A reference snapshot: `optimus_model_policy.savings_references.Reference` as canonical JSON. The ledger recomputes its ID.
 _CATEGORY_PRICES: dict[str, Check] = {"input": _USD_, "output": _USD_, "cached_input": _USD_}
@@ -147,6 +150,7 @@ _REFERENCE: dict[str, Check] = {
     "prices": _object(_CATEGORY_PRICES),
     "tiers": _objects({"min_input_tokens": _N, "prices": _object(_CATEGORY_PRICES)}),
     "reasoning_billed_as_output": _optional(_B),
+    "reasoning_source": _optional(_object({"url": _S, "quote": _S, "fetched_on": _matches(_DATE)})),
     "source": _object({"url": _S_, "evidence": _S_, "revision": _S_, "price_as_of": _DATE_}),
 }
 

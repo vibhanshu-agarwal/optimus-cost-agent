@@ -33,6 +33,7 @@ from optimus_security.outbox_drain import DrainStop, OutboxDrain
 if TYPE_CHECKING:
     from optimus_gateway.models import GatewayServiceConfig
     from optimus_gateway.usage_store import UsageStore
+    from optimus_model_policy.savings_references import ReferenceSet
 
 _STATE = threading.local()
 _writer: OutboxWriter | None = None
@@ -189,7 +190,8 @@ class GatewayAccounting:
 
 
 def start_accounting(root: Path, config: accounting_config.AccountingConfig | None, *, refusal: str | None = None,
-                     keyring_backend: Any, log: Callable[[str], None]) -> GatewayAccounting:
+                     keyring_backend: Any, log: Callable[[str], None],
+                     references: ReferenceSet | None = None) -> GatewayAccounting:
     """Open the Gateway's accounting under its verified root with the configuration verified against the manifest (never
     re-read here). The ledger's password is read only from the Gateway-owned keyring namespace; without an approved
     configuration or that credential, capture still accumulates locally."""
@@ -197,7 +199,7 @@ def start_accounting(root: Path, config: accounting_config.AccountingConfig | No
 
     writer = OutboxWriter(root / "outbox" / "gateway")
     configure(writer)
-    usage_price_snapshots.configure(writer)
+    usage_price_snapshots.configure(writer, references=references)  # None: the packaged reference prices
     usage_price_snapshots.record_references(usage_price_snapshots.configured_references())
     diagnostics = DiagnosticSegments(root / "gateway-diagnostics", report=log)  # nothing is created before the first line
     request_diagnostics.configure_copy(diagnostics)

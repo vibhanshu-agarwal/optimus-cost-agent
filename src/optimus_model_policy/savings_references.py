@@ -6,8 +6,9 @@ and no reference price ever feeds registry price ordering, selection or settled 
 
 Strict YAML (the registry's loader), a frozen schema with unknown fields refused, and one content-derived snapshot ID
 per reference, so formatting alone (``0.10`` or ``0.1``) never changes it. An operator override replaces the packaged
-file whole. A missing source date or category price is allowed here: it makes the affected comparison unavailable,
-which is the report's job to say.
+file whole. A missing source, source date or category price is allowed here: it makes that reference's comparison
+unavailable, which is the report's job to say, and leaves every other column usable. A billing assertion
+(``reasoning_billed_as_output``) needs its own dated source quote, or it stays unknown.
 
 Neutral: imports nothing from ``optimus``, ``optimus_gateway`` or ``optimus_security``.
 """
@@ -32,9 +33,11 @@ from optimus_model_policy.registry import (
     StrictFlag,
     _decimal_text,
     _load_yaml,
+    _parse_yaml,
 )
 
-__all__ = ["Benchmark", "CategoryPrices", "Reference", "ReferenceSet", "Source", "load_references", "packaged_references"]
+__all__ = ["Benchmark", "CategoryPrices", "Reference", "ReferenceSet", "RuleSource", "Source", "load_references",
+           "packaged_references", "parse_references"]
 
 SNAPSHOT_VERSION = "savings-reference-v1"
 TOKENS_PER_PRICE_UNIT = Decimal(1_000_000)  # the one supported unit: USD per million tokens
@@ -43,7 +46,8 @@ TOKENS_PER_PRICE_UNIT = Decimal(1_000_000)  # the one supported unit: USD per mi
 _ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 _PRINTABLE = re.compile(r"^[^\x00-\x1f\x7f]+$")
 Display = Annotated[str, Field(min_length=1, max_length=120, pattern=_PRINTABLE.pattern)]
-LongText = Annotated[str, Field(min_length=1, max_length=600, pattern=_PRINTABLE.pattern)]
+LongText = Annotated[str, Field(min_length=1, max_length=512, pattern=_PRINTABLE.pattern)]  # the report's string bound
+Url = Annotated[str, Field(max_length=300, pattern=r"^https://[^\s]+$")]
 Price = NonNegativeDecimal | None
 
 
@@ -74,16 +78,30 @@ class Tier(BaseModel):
 class Source(BaseModel):
     model_config = _FROZEN
 
-    url: Annotated[str, Field(max_length=300, pattern=r"^https://[^\s]+$")] | None = None
+    url: Url | None = None
     evidence: Display | None = None
     revision: Display | None = None
     price_as_of: date | None
 
     @model_validator(mode="after")
     def one_locator(self) -> Source:
-        if (self.url is None) == (self.evidence is None):
-            raise ValueError("a source names exactly one of url or evidence")
+        if self.url is not None and self.evidence is not None:
+            raise ValueError("a source names at most one of url or evidence")  # neither: that column is unavailable
         return self
+
+    @property
+    def locator(self) -> str | None:
+        return self.url or self.evidence
+
+
+class RuleSource(BaseModel):
+    """The dated source of one billing assertion: where it is stated and the statement itself."""
+
+    model_config = _FROZEN
+
+    url: Url
+    quote: Display
+    fetched_on: date
 
 
 class Reference(BaseModel):
@@ -97,7 +115,14 @@ class Reference(BaseModel):
     tiers: tuple[Tier, ...] = ()
     # True: the schedule bills reasoning tokens as output. None: unknown, so reasoning tokens are unpriced.
     reasoning_billed_as_output: StrictFlag | None
+    reasoning_source: RuleSource | None = None
     source: Source
+
+    @model_validator(mode="after")
+    def sourced_billing_rule(self) -> Reference:
+        if self.reasoning_billed_as_output is not None and self.reasoning_source is None:
+            raise ValueError("reasoning_billed_as_output needs its reasoning_source, or must be null (unknown)")
+        return self
 
     @field_validator("tiers")
     @classmethod
@@ -157,7 +182,16 @@ def packaged_references() -> Path:
 def load_references(path: Path) -> ReferenceSet:
     """The validated reference set in ``path``, or `RegistryError` (``YAML_REJECTED`` / ``REFERENCES_INVALID``)."""
     data, _raw = _load_yaml(path)
+    return _validated(data, path.name)
+
+
+def parse_references(raw: bytes, name: str) -> ReferenceSet:
+    """The validated reference set in ``raw``: an override is parsed from exactly the bytes its launch approved."""
+    return _validated(_parse_yaml(raw, name), name)
+
+
+def _validated(data: dict[str, Any], name: str) -> ReferenceSet:
     try:
         return ReferenceSet.model_validate(data)
     except ValidationError as exc:
-        raise RegistryError("REFERENCES_INVALID", f"{path.name}: {exc.error_count()} error(s)") from None
+        raise RegistryError("REFERENCES_INVALID", f"{name}: {exc.error_count()} error(s)") from None

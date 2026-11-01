@@ -14,7 +14,7 @@ from optimus_gateway.decisions import _decision_usage
 from optimus_gateway.responses import _gateway_usage
 from optimus_gateway.upstream_client import DecisionResult, ProviderMessageResult
 from optimus_model_policy.binding import compose_trusted_snapshot, packaged_defaults
-from optimus_model_policy.savings_references import CategoryPrices, Reference, ReferenceSet, Source
+from optimus_model_policy.savings_references import CategoryPrices, Reference, ReferenceSet, RuleSource, Source
 from optimus_security import durable_outbox as ob
 from optimus_security import usage_capture_contract as uc
 
@@ -36,6 +36,7 @@ def policy():
 def _reference(ref_id="ref-a"):
     return Reference(id=ref_id, display=ref_id, unit="usd_per_million_tokens",
                      prices=CategoryPrices(input="1", output="4", cached_input="0.1"), reasoning_billed_as_output=True,
+                     reasoning_source=RuleSource(url="https://example.test/billing", quote="Reasoning is output.", fetched_on=date(2026, 11, 1)),
                      source=Source(url="https://example.test/p", price_as_of=date(2026, 11, 1)))
 
 
@@ -55,6 +56,11 @@ def test_a_registry_snapshot_is_a_valid_content_derived_record_of_tiers_roles_an
     assert [e["model"] for e in first["entries"]] == sorted(models)
     assert all(Decimal(e["input_usd_per_million"]) == models[e["model"]].prices.input_usd_per_million for e in first["entries"])
     assert any(e["roles"] for e in first["entries"])
+    routes = {model_id: entry.route for model_id, entry in models.items()}
+    assert all(e["route"] == {"providers": list(routes[e["model"]].providers),
+                              "quantizations": [p.quantization for p in routes[e["model"]].endpoints],
+                              "allow_fallbacks": routes[e["model"]].allow_fallbacks,
+                              "require_parameters": routes[e["model"]].require_parameters} for e in first["entries"])
 
 
 def test_a_reference_snapshot_keeps_the_reference_id_and_the_contract_recomputes_it():
@@ -143,3 +149,13 @@ def test_completion_and_decision_envelopes_carry_the_durable_snapshot_id(writer,
     expected = snapshots.registry_payload(policy.snapshot)["snapshot_id"]
     assert _gateway_usage(config=config, model="m-1", provider_result=completion, gateway_request_id="gw-1")["price_snapshot_id"] == expected
     assert _decision_usage(config=config, model="m-1", result=decision, gateway_request_id="gw-2")["price_snapshot_id"] == expected
+
+
+def test_an_approved_override_replaces_the_packaged_references_until_reconfigured(tmp_path):
+    override = ReferenceSet(version=1, references=(_reference("ref-override"),))
+    snapshots.configure(ob.OutboxWriter(tmp_path / "o"), references=override)
+    try:
+        assert snapshots.configured_references() is override
+    finally:
+        snapshots.configure(None)
+    assert snapshots.configured_references() == snapshots._packaged()

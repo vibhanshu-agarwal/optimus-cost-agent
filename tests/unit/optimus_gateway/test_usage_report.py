@@ -15,7 +15,7 @@ from optimus_gateway import usage_price_snapshots
 from optimus_gateway import usage_report as report
 from optimus_gateway.usage_report import AttemptFact, TurnFact, auto_scope, compare, price_attempt, totals
 from optimus_gateway.usage_store import ReportFacts, StoreError
-from optimus_model_policy.savings_references import CategoryPrices, Reference, ReferenceSet, Source, Tier
+from optimus_model_policy.savings_references import CategoryPrices, Reference, ReferenceSet, RuleSource, Source, Tier
 from optimus_security import usage_report_contract as urc
 
 D = Decimal
@@ -25,7 +25,8 @@ def _reference(ref_id="ref-a", *, input="1", output="4", cached="0.1", reasoning
     return Reference(
         id=ref_id, display=ref_id, unit="usd_per_million_tokens",
         prices=CategoryPrices(input=input, output=output, cached_input=cached), tiers=tiers,
-        reasoning_billed_as_output=reasoning, source=Source(url="https://example.test/p", price_as_of=as_of),
+        reasoning_billed_as_output=reasoning, reasoning_source=None if reasoning is None else RuleSource(url="https://example.test/billing", quote="Reasoning is output.", fetched_on=date(2026, 11, 1)),
+        source=Source(url="https://example.test/p", price_as_of=as_of),
     )
 
 
@@ -191,7 +192,7 @@ def _payload(attempt_id, turn, *, cost="0.002", inp=1000, out=200, cached=0, rea
             "usage": {"reasoning_tokens": reasoning}, "requested_model": "m-1", "resolved_model": "m-1", "provider": "p-1"}
 
 
-def _facts(receipts=None, *, epochs=None, selections=None, ledger=_LEDGER, too_large=False):
+def _facts(receipts=None, *, epochs=None, selections=None, ledger=_LEDGER, too_large=False, uncommitted=0, gaps=0):
     receipts = receipts if receipts is not None else [
         (_payload("a1", "t1"), False, False),
         (_payload("c1", "t1", cost="0.0001", stage="classification", inp=100, out=0), False, False),
@@ -199,11 +200,13 @@ def _facts(receipts=None, *, epochs=None, selections=None, ledger=_LEDGER, too_l
     ]
     return ReportFacts(ledger, datetime(2026, 11, 1, 12, tzinfo=UTC), tuple(receipts),
                        epochs if epochs is not None else {"t1": ("complete",), "t2": ("complete",)},
-                       selections if selections is not None else {"t1": ("auto",), "t2": ("fixed",)}, too_large)
+                       selections if selections is not None else {"t1": ("auto",), "t2": ("fixed",)}, too_large,
+                       uncommitted_streams=uncommitted, stream_gaps=gaps)
 
 
 def _request(**changes):
-    fields = {"session_id": "s", "turn_id": None, "reference_ids": None, "page_size": 100, "cursor": None, "expected_turns": 2}
+    fields = {"session_id": "s", "turn_id": None, "reference_ids": None, "page_size": 100, "cursor": None, "expected_turns": 2,
+              "frontier": (("f" * 32, 9),)}
     return urc.ReportRequest(**{**fields, **changes})
 
 
@@ -300,7 +303,7 @@ def test_unattributed_or_uncaptured_turns_keep_the_auto_comparison_incomplete():
 def test_without_the_hosts_turn_count_no_scope_is_definitive():
     body = _page(_facts(), _request(expected_turns=None), _references())
 
-    assert body["session"]["reasons"] == body["auto"]["reasons"] == ["expected_turns_unknown"]
+    assert body["session"]["reasons"] == body["auto"]["reasons"] == ["expected_turns_unknown"]  # nothing else is missing
     assert all(c["savings_usd"] is None for c in body["comparisons"]["columns"])
 
 
@@ -313,7 +316,7 @@ class _Store:
     def __init__(self, result=None, *, gate=None):
         self.result, self.gate, self.calls = result, gate, 0
 
-    def report_facts(self, session_id, turn_id, *, max_attempts, max_turns):
+    def report_facts(self, session_id, turn_id, *, frontier, deadline, max_attempts, max_turns):
         self.calls += 1
         if self.gate is not None:
             self.gate.wait(10)
@@ -368,7 +371,7 @@ def test_a_page_is_served_and_an_altered_cursor_never_reaches_the_ledger(synthet
 
 
 def test_an_expired_worker_keeps_its_slot_until_it_exits_and_further_requests_are_busy(synthetic_references, monkeypatch):
-    monkeypatch.setattr(report, "DATABASE_SECONDS", 0.05)
+    monkeypatch.setattr(report, "REPORT_SECONDS", 0.05)
     gate = threading.Event()
     slow = _Store(_facts(), gate=gate)
     try:
@@ -381,3 +384,89 @@ def test_an_expired_worker_keeps_its_slot_until_it_exits_and_further_requests_ar
     while (served := _handle(_Store(_facts())))[0] != 200 and time.monotonic() < deadline:
         time.sleep(0.01)  # the released workers exit and return their slots
     assert served[0] == 200
+
+
+# --- Plan 12.9 Checkpoint A (round 93) ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("outcome", "expected"), [
+    ("completed", "tokens_unreported"),  # free, but its reference-token cost is unknown
+    ("unattributed", "tokens_unreported"),
+    ("not_sent", D(0)),  # never executed
+    ("rejected", D(0)),
+])
+def test_only_a_request_never_executed_reprices_to_zero_without_tokens(outcome, expected):
+    attempt = _attempt(cost="0", outcome=outcome, inp=None, out=None, cached=None, reasoning=None)
+
+    assert price_attempt(attempt, _reference()) == expected
+
+
+def test_a_reference_without_a_source_is_unavailable_and_its_neighbour_is_not():
+    bare = Reference(id="ref-bare", display="bare", unit="usd_per_million_tokens",
+                     prices=CategoryPrices(input="1", output="4", cached_input="0.1"), reasoning_billed_as_output=None,
+                     source=Source(price_as_of=date(2026, 11, 1)))
+    attempts = [_attempt()]
+    actual = totals(attempts, _COMPLETE)
+
+    assert compare(attempts, actual, bare).reasons == ("source_missing",)
+    assert compare(attempts, actual, _reference()).complete
+    body = _page(_facts(), _request(), ReferenceSet(version=1, references=(_reference(), bare)))
+    assert [c["source"] for c in body["comparisons"]["columns"]] == ["https://example.test/p", None]
+
+
+@pytest.mark.parametrize(("facts", "request_changes", "reason"), [
+    (lambda: _facts(uncommitted=None), {"frontier": None}, "frontier_unknown"),
+    (lambda: _facts(uncommitted=1), {}, "delivery_pending"),  # a receipt of a recorded turn has not arrived
+    (lambda: _facts(gaps=1), {}, "stream_gap"),
+])
+def test_delivery_that_is_not_proven_withholds_every_definitive_total(facts, request_changes, reason):
+    body = _page(facts(), _request(**request_changes), _references())
+
+    assert reason in body["session"]["reasons"] and reason in body["auto"]["reasons"]
+    assert all(c["savings_usd"] is None for c in body["comparisons"]["columns"])
+
+
+def test_a_committed_frontier_changes_the_revision():
+    pending = _page(_facts(uncommitted=1), _request(), _references(5))
+
+    with pytest.raises(report.Changed):
+        _page(_facts(uncommitted=0), _request(cursor=pending["next_cursor"]), _references(5))
+
+
+def test_any_number_of_maximum_length_references_continues_by_cursor():
+    references = ReferenceSet(version=1, references=tuple(_reference(f"r{n:02d}" + "x" * 61) for n in range(urc.MAX_REFERENCE_IDS)))
+    pages, cursor = [], None
+    while True:
+        pages.append(_page(_facts(), _request(cursor=cursor), references))
+        cursor = pages[-1]["next_cursor"]
+        if cursor is None:
+            break
+
+    assert sum(len(p["comparisons"]["columns"]) for p in pages) == urc.MAX_REFERENCE_IDS
+    assert max(len(p["next_cursor"] or "") for p in pages) < 1024
+
+
+def test_detail_pages_by_serialized_bytes_and_every_page_fits_the_response_bound():
+    wide = "\u2603" * 512  # six bytes a character once escaped; five such fields per row, as the capture contract allows
+    turn = "t" + wide[1:]
+    ids = [f"a{n:03d}" + wide[4:] for n in range(100)]
+    receipts = [({**_payload(attempt_id, turn), "requested_model": wide, "resolved_model": wide, "provider": wide}, False, False)
+                for attempt_id in ids]
+    facts = _facts(receipts, epochs={turn: ("complete",)}, selections={turn: ("auto",)})
+    pages, cursor = [], None
+    while True:
+        pages.append(_page(facts, _request(cursor=cursor, expected_turns=1, reference_ids=("ref-0",)), _references()))
+        cursor = pages[-1]["next_cursor"]
+        if cursor is None:
+            break
+
+    assert len(pages) > 1 and all(report.wire_size(p) <= urc.MAX_RESPONSE_BYTES for p in pages)
+    assert [row["attempt_id"] for p in pages for row in p["detail"]] == ids
+
+
+def test_the_deadline_bounds_the_arithmetic_too(synthetic_references, monkeypatch):
+    monkeypatch.setattr(report, "REPORT_SECONDS", 0.2)
+    real = report.report_body
+    monkeypatch.setattr(report, "report_body", lambda *a, **k: (time.sleep(0.5), real(*a, **k))[1])
+
+    assert _handle(_Store(_facts())) == urc.error_body("REPORT_TIMEOUT")

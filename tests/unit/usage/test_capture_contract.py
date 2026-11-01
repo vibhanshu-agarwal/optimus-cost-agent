@@ -197,7 +197,9 @@ _CONTEXT = {"kind": uc.TURN_REPORT_CONTEXT, "at": _AT, "epoch_id": _EPOCH, "sess
             "selection": "auto", "registry_hash": "hex:" + "2" * 64, "strategy": None}
 _REGISTRY = {"kind": uc.REGISTRY_SNAPSHOT, "at": _AT, "registry_hash": "hex:" + "2" * 64,
              "price_as_of": None, "entries": [{"model": "m-1", "tier": "cheap", "roles": ["easy"],
-                                               "input_usd_per_million": "0.1", "output_usd_per_million": "0.5"}]}
+                                               "input_usd_per_million": "0.1", "output_usd_per_million": "0.5",
+                                               "route": {"providers": ["p-1"], "quantizations": [None], "allow_fallbacks": False,
+                                                         "require_parameters": True}}]}
 _REGISTRY["snapshot_id"] = uc.snapshot_id(uc.REGISTRY_SNAPSHOT, _REGISTRY)
 
 

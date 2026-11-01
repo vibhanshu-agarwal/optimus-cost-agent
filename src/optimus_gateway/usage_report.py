@@ -22,6 +22,7 @@ import hmac
 import json
 import secrets
 import threading
+import time
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -36,6 +37,7 @@ if TYPE_CHECKING:
     from optimus_gateway.usage_store import ReportFacts
 
 _PERCENT_STEP = Decimal("0.1")
+_NOT_EXECUTED = frozenset({"not_sent", "rejected"})  # the capture contract requires their cost to be exactly 0
 
 
 @dataclass(frozen=True)
@@ -167,9 +169,9 @@ def _output_cost(attempt: AttemptFact, prices: CategoryPrices, reasoning_billed_
 def price_attempt(attempt: AttemptFact, reference: Reference) -> Decimal | str:
     """The attempt's reported tokens at ``reference``'s prices, or the reason it cannot be priced."""
     if attempt.input_tokens is None or attempt.output_tokens is None:
-        # Nothing reported and nothing billed (a request never sent or refused before dispatch) reprices to zero.
-        return Decimal(0) if attempt.cost_usd == 0 and attempt.input_tokens is None and attempt.output_tokens is None \
-            else "tokens_unreported"
+        # Only a request that was never executed (not sent, or refused before dispatch) reprices to zero; a completed
+        # call that reported no tokens is unpriced even when it was free.
+        return Decimal(0) if attempt.outcome in _NOT_EXECUTED else "tokens_unreported"
     prices = reference.prices_for(attempt.input_tokens)
     input_cost = _input_cost(attempt, prices)
     if isinstance(input_cost, str):
@@ -197,6 +199,8 @@ def compare(attempts: Sequence[AttemptFact], actual: Totals, reference: Referenc
             baseline += result
             priced += 1
     reasons = set()
+    if reference.source.locator is None:
+        reasons.add("source_missing")
     if reference.source.price_as_of is None:
         reasons.add("source_date_missing")
     if unpriced:
@@ -262,14 +266,10 @@ def _totals_body(t: Totals) -> dict[str, Any]:
             "conflicts": t.conflicts, "late": t.late, "turns": t.turns, "definitive": t.definitive, "reasons": list(t.reasons)}
 
 
-def _source(source: Any) -> str:
-    return source.url or source.evidence
-
-
 def _column_body(column: Column, reference: Reference) -> dict[str, Any]:
     return {
         "reference_id": column.reference_id, "display": reference.display, "snapshot_id": column.snapshot_id,
-        "source": _source(reference.source), "price_as_of": column.price_as_of,
+        "source": reference.source.locator, "price_as_of": column.price_as_of,
         "baseline_known_usd": _money(column.baseline_known_usd), "priced_attempts": column.priced_attempts,
         "unpriced": [{"reason": r, "attempts": n, "tokens": tokens} for r, n, tokens in column.unpriced],
         "complete": column.complete, "reasons": list(column.reasons), "savings_usd": _money(column.savings_usd),
@@ -302,9 +302,10 @@ def _digest(value: object) -> str:
     return "hex:" + hashlib.sha256(text.encode("ascii")).hexdigest()
 
 
-def cursor_scope(request: urc.ReportRequest, selected: Sequence[Reference], principal: str) -> dict[str, Any]:
-    return {"principal": principal, "session_id": request.session_id, "turn_id": request.turn_id,
-            "reference_ids": [r.id for r in selected], "page_size": request.page_size, "expected_turns": request.expected_turns}
+def cursor_scope(request: urc.ReportRequest, selected: Sequence[Reference], principal: str) -> str:
+    """A bounded digest of everything a continuation must repeat: any number of references fits in a cursor."""
+    return _digest([principal, request.session_id, request.turn_id, [r.id for r in selected], request.page_size,
+                    request.expected_turns, None if request.frontier is None else [list(f) for f in request.frontier]])
 
 
 def open_position(request: urc.ReportRequest, references: ReferenceSet, *, key: bytes, principal: str) -> dict[str, Any] | None:
@@ -331,7 +332,7 @@ def report_body(facts: ReportFacts, request: urc.ReportRequest, references: Refe
         "b2": {"state": "unavailable"}, "b3": {"state": "unavailable"},
         "benchmark": None if references.benchmark is None else {
             "text": references.benchmark.text, "limitations": references.benchmark.limitations,
-            "source": _source(references.benchmark.source),
+            "source": references.benchmark.source.locator,
             "as_of": None if references.benchmark.source.price_as_of is None else references.benchmark.source.price_as_of.isoformat(),
         },
     }
@@ -347,49 +348,71 @@ def report_body(facts: ReportFacts, request: urc.ReportRequest, references: Refe
     attempts = [_attempt(*receipt) for receipt in facts.receipts]
     turns = [_turn(turn_id, facts.epochs[turn_id], facts.selections.get(turn_id, ())) for turn_id in sorted(facts.epochs)]
     revision = _digest([facts.ledger_instance, scope, references.digest, [dataclasses.astuple(a) for a in attempts],
-                        [dataclasses.astuple(t) for t in turns]])
+                        [dataclasses.astuple(t) for t in turns], facts.uncommitted_streams, facts.stream_gaps])
     if position is not None and (position.get("ledger_instance"), position.get("revision")) != (facts.ledger_instance, revision):
         raise Changed
     unattributed = sum(turn.selection is None for turn in turns)
     uncaptured = max(0, (request.expected_turns or 0) - len(turns))  # a turn the ledger never received may be Auto
-    # Without the host's count of its own turns, no scope can be shown complete: a turn may not have reached the ledger.
-    unknown = ("expected_turns_unknown",) if request.expected_turns is None else ()
-    session = _with(totals(attempts, turns, expected_turns=request.expected_turns), unknown)
+    # Delivery: without the host's turn count and capture frontier no scope is shown complete, since a turn or a receipt
+    # may not have reached the ledger; nor while a frontier is uncommitted or a stream of the scope has a gap.
+    delivery = ["expected_turns_unknown"] if request.expected_turns is None else []
+    delivery += ["frontier_unknown"] if facts.uncommitted_streams is None else ["delivery_pending"] if facts.uncommitted_streams else []
+    delivery += ["stream_gap"] if facts.stream_gaps else []
+    session = _with(totals(attempts, turns, expected_turns=request.expected_turns), delivery)
     auto_attempts, auto_turns = auto_scope(attempts, turns)
-    auto = _with(totals(auto_attempts, auto_turns, unattributed_turns=unattributed + uncaptured), unknown)
+    auto = _with(totals(auto_attempts, auto_turns, unattributed_turns=unattributed + uncaptured), delivery)
 
     offset, after = (0, None) if position is None else (position["offset"], position["after"])
     group = selected[offset:offset + urc.REFERENCE_GROUP]
     selection = {turn.turn_id: turn.selection for turn in turns}
-    detail: list[dict[str, Any]] = []
-    following: tuple[int, list[str] | None] | None = None
-    if offset + urc.REFERENCE_GROUP < len(selected):
-        following = (offset + urc.REFERENCE_GROUP, None)
-    else:
-        ordered = sorted(zip((receipt[0] for receipt in facts.receipts), attempts, strict=True),
-                         key=lambda pair: (pair[1].turn_id, pair[1].attempt_id))  # Python's order, not the database collation's
-        rows = [(payload, fact) for payload, fact in ordered if after is None or [fact.turn_id, fact.attempt_id] > after]
-        detail = [_row(payload, fact, selection.get(fact.turn_id)) for payload, fact in rows[:request.page_size]]
-        if len(rows) > request.page_size:
-            following = (len(selected), [detail[-1]["turn_id"], detail[-1]["attempt_id"]])
-    next_cursor = None if following is None else urc.seal_cursor(key, {
-        "scope": scope, "ledger_instance": facts.ledger_instance, "revision": revision, "offset": following[0], "after": following[1],
-    })
-    return {
+    page: dict[str, Any] = {
         **body, "revision": revision, "session": _totals_body(session), "auto": _totals_body(auto),
         "attribution": {"auto_turns": len(auto_turns), "fixed_turns": sum(t.selection == "fixed" for t in turns),
                         "unattributed_turns": unattributed},
         "comparisons": {"offset": offset, "total": len(selected),
                         "columns": [_column_body(compare(auto_attempts, auto, r), r) for r in group]},
-        "detail": detail, "next_cursor": next_cursor,
+        "detail": [], "next_cursor": _LONGEST_CURSOR,
     }
+    detail: list[dict[str, Any]] = page["detail"]
+    following: tuple[int, int | None] | None = None
+    if offset + urc.REFERENCE_GROUP < len(selected):
+        following = (offset + urc.REFERENCE_GROUP, None)
+    else:
+        ordered = sorted(zip((receipt[0] for receipt in facts.receipts), attempts, strict=True),
+                         key=lambda pair: (pair[1].turn_id, pair[1].attempt_id))  # Python's order, not the database collation's
+        # ``after`` counts the rows already shown: the revision binds exactly these facts in this order, so an offset is
+        # as safe as a key and stays bounded however long the identifiers are.
+        rows = ordered[after or 0:]
+        # Rows are bounded by count and by the page's own serialized size, measured with the longest cursor (escaped
+        # text can take six bytes a character); a page always carries at least one row.
+        room = urc.MAX_RESPONSE_BYTES - wire_size(page)
+        for payload, fact in rows[:request.page_size]:
+            row = _row(payload, fact, selection.get(fact.turn_id))
+            room -= wire_size(row) + 1
+            if detail and room < 0:
+                break
+            detail.append(row)
+        if len(detail) < len(rows):
+            following = (len(selected), (after or 0) + len(detail))
+    page["next_cursor"] = None if following is None else urc.seal_cursor(key, {
+        "scope": scope, "ledger_instance": facts.ledger_instance, "revision": revision, "offset": following[0], "after": following[1],
+    })
+    return page
+
+
+_LONGEST_CURSOR = "x" * (2048 + 1 + 64)  # `usage_report_contract._CURSOR`'s bound, held in place while a page is measured
+
+
+def wire_size(value: object) -> int:
+    """Bytes as `server._send_json` writes them."""
+    return len(json.dumps(value, separators=(",", ":"), sort_keys=True).encode("utf-8"))
 
 
 # --- The Gateway route (`server.py` authenticates and frames before calling it) ---------------------
 
 _CURSOR_KEY = secrets.token_bytes(32)  # per process: a restarted Gateway answers every earlier cursor REPORT_CHANGED
 _WORKERS = threading.BoundedSemaphore(2)  # outstanding database reads (agent-selected)
-DATABASE_SECONDS = 5.0  # a worker's deadline; the store bounds its own waits within it
+REPORT_SECONDS = 5.0  # one report's whole deadline: its database read, the arithmetic and serialization
 
 
 def _principal(shared_secret: str) -> str:
@@ -420,31 +443,25 @@ def handle_usage_report_request(*, raw_body: bytes, config: GatewayServiceConfig
         return urc.error_body("REQUEST_INVALID")
     if not _WORKERS.acquire(blocking=False):
         return urc.error_body("REPORT_BUSY")
-    outcome: list[Any] = []
+    deadline = time.monotonic() + REPORT_SECONDS
+    outcome: list[tuple[int, dict[str, Any]]] = []
 
-    def read() -> None:
+    def report() -> None:
         try:
-            outcome.append(store.report_facts(request.session_id, request.turn_id, max_attempts=urc.MAX_ATTEMPTS,
-                                              max_turns=urc.MAX_TURNS))
+            facts = store.report_facts(request.session_id, request.turn_id, frontier=request.frontier, deadline=deadline,
+                                       max_attempts=urc.MAX_ATTEMPTS, max_turns=urc.MAX_TURNS)
+            outcome.append((200, report_body(facts, request, references, key=_CURSOR_KEY, principal=principal,
+                                             position=position)))
         except StoreError as exc:
-            outcome.append(exc)
+            outcome.append(urc.error_body("REPORT_TIMEOUT" if exc.code == "timeout" else "LEDGER_UNAVAILABLE"))
+        except Changed:
+            outcome.append(urc.error_body("REPORT_CHANGED"))
+        except urc.ContractError:
+            outcome.append(urc.error_body("REQUEST_INVALID"))
         finally:
             _WORKERS.release()
 
-    worker = threading.Thread(target=read, name="usage-report", daemon=True)
+    worker = threading.Thread(target=report, name="usage-report", daemon=True)
     worker.start()
-    worker.join(DATABASE_SECONDS)
-    if not outcome:
-        return urc.error_body("REPORT_TIMEOUT")
-    facts = outcome[0]
-    if isinstance(facts, StoreError):
-        return urc.error_body("REPORT_TIMEOUT" if facts.code == "timeout" else "LEDGER_UNAVAILABLE")
-    try:
-        body = report_body(facts, request, references, key=_CURSOR_KEY, principal=principal, position=position)
-    except Changed:
-        return urc.error_body("REPORT_CHANGED")
-    except urc.ContractError:
-        return urc.error_body("REQUEST_INVALID")
-    if len(json.dumps(body, separators=(",", ":"))) > urc.MAX_RESPONSE_BYTES:  # unreachable within the field bounds
-        return urc.error_body("LEDGER_UNAVAILABLE")
-    return 200, body
+    worker.join(max(0.0, deadline - time.monotonic()))
+    return outcome[0] if outcome and time.monotonic() <= deadline else urc.error_body("REPORT_TIMEOUT")

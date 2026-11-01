@@ -33,7 +33,7 @@ from optimus_gateway import usage_price_snapshots, usage_store
 from optimus_gateway.usage_report import handle_usage_report_request
 from optimus_gateway.usage_store import StoreError, UsageStore
 from optimus_model_policy.binding import compose_trusted_snapshot, packaged_defaults
-from optimus_model_policy.savings_references import CategoryPrices, Reference, ReferenceSet, Source
+from optimus_model_policy.savings_references import CategoryPrices, Reference, ReferenceSet, RuleSource, Source
 from optimus_security import durable_outbox as ob
 from optimus_security import usage_capture_contract as uc
 from optimus_security import usage_report_contract as urc
@@ -50,6 +50,7 @@ SECRET = "p129-report-secret"  # pragma: allowlist secret - a synthetic Gateway 
 REFERENCES = ReferenceSet(version=1, references=tuple(
     Reference(id=f"ref-{n}", display=f"Reference {n}", unit="usd_per_million_tokens",
               prices=CategoryPrices(input="1", output="4", cached_input="0.1"), reasoning_billed_as_output=True,
+              reasoning_source=RuleSource(url="https://example.test/billing", quote="Reasoning is output.", fetched_on=date(2026, 11, 1)),
               source=Source(url="https://example.test/prices", price_as_of=date(2026, 11, 1)))
     for n in range(5)
 ))
@@ -121,15 +122,19 @@ def _capture(directory: Path) -> DurableCapture:
     return DurableCapture(ob.OutboxWriter(host_outbox_root(directory)), ack_wait=5.0, clock=lambda: AT)
 
 
-def _ingest(ledger: UsageStore, capture: DurableCapture) -> dict[str, str]:
-    """Commit the capture's stream; returns each turn's epoch ID."""
+Frontier = tuple[str, int]  # a host stream and the last record its writer confirmed
+
+
+def _ingest(ledger: UsageStore, capture: DurableCapture) -> tuple[dict[str, str], Frontier]:
+    """Commit the capture's stream; returns each turn's epoch ID and the stream's frontier."""
     capture.stop()
     scan = ob.scan_stream(capture.writer.directory)
     ledger.ingest(uc.parse_batch(uc.build_batch("host", scan.stream_id, None, 0, ob.GENESIS, list(scan.records))))
-    return {r.payload["turn_id"]: r.payload["epoch_id"] for r in scan.records if r.payload["kind"] == uc.EPOCH_BEGIN}
+    epochs = {r.payload["turn_id"]: r.payload["epoch_id"] for r in scan.records if r.payload["kind"] == uc.EPOCH_BEGIN}
+    return epochs, (scan.stream_id, scan.records[-1].sequence)
 
 
-def _stream(ledger: UsageStore, directory: Path, writer: str, payloads: list[dict[str, Any]]) -> None:
+def _stream(ledger: UsageStore, directory: Path, writer: str, payloads: list[dict[str, Any]]) -> Frontier:
     """One more stream of ``writer`` records, committed as its drain would."""
     outbox = ob.OutboxWriter(directory)
     for payload in payloads:
@@ -137,11 +142,12 @@ def _stream(ledger: UsageStore, directory: Path, writer: str, payloads: list[dic
     outbox.close()
     scan = ob.scan_stream(outbox.directory)
     ledger.ingest(uc.parse_batch(uc.build_batch(writer, scan.stream_id, None, 0, ob.GENESIS, list(scan.records))))
+    return scan.stream_id, scan.records[-1].sequence
 
 
-def _contexts(ledger: UsageStore, directory: Path, session: str, selections: dict[str, tuple[str, str]]) -> None:
+def _contexts(ledger: UsageStore, directory: Path, session: str, selections: dict[str, tuple[str, str]]) -> Frontier:
     """Each turn's Auto/fixed context, as the host records it in the turn's own epoch: turn -> (epoch ID, selection)."""
-    _stream(ledger, directory, "host", [
+    return _stream(ledger, directory, "host", [
         {"kind": uc.TURN_REPORT_CONTEXT, "at": AT.isoformat(), "epoch_id": epoch_id, "session_id": session,
          "turn_id": turn, "selection": selection, "registry_hash": None, "strategy": None}
         for turn, (epoch_id, selection) in selections.items()
@@ -169,14 +175,14 @@ def _session() -> str:
 
 
 def _complete_turn(ledger: UsageStore, directory: Path, session: str, turn: str, *, selection: str = "auto",
-                   cost: str = "0.0012") -> StageReceipt:
+                   cost: str = "0.0012") -> tuple[Frontier, ...]:
+    """A certified turn; returns the host frontiers that delivered it (its turn stream and its context stream)."""
     receipt = _receipt(session, turn, f"{uuid.uuid4().hex}:planning:1:1", cost=cost)
     capture = _capture(directory / "host")
     _turn(capture, session, turn, [receipt])
-    epochs = _ingest(ledger, capture)
+    epochs, host = _ingest(ledger, capture)
     _gateway_evidence(ledger, directory / "gateway", [receipt])
-    _contexts(ledger, directory / "context", session, {turn: (epochs[turn], selection)})
-    return receipt
+    return host, _contexts(ledger, directory / "context", session, {turn: (epochs[turn], selection)})
 
 
 def test_migration_002_upgrades_a_001_ledger_in_place_and_a_reader_never_migrates(scratch_database, tmp_path, monkeypatch):
@@ -190,7 +196,8 @@ def test_migration_002_upgrades_a_001_ledger_in_place_and_a_reader_never_migrate
         _ingest(old, capture)
 
     with pytest.raises(StoreError) as before:
-        UsageStore(scratch_database).report_facts(session, None, max_attempts=10, max_turns=10)
+        UsageStore(scratch_database).report_facts(session, None, frontier=None, deadline=time.monotonic() + 5,
+                                                  max_attempts=10, max_turns=10)
     upgraded = UsageStore(scratch_database)
     instance = upgraded.migrate()
 
@@ -228,6 +235,9 @@ def test_snapshots_read_back_independently_keep_their_first_capture_and_are_immu
         rows = conn.execute("SELECT snapshot_id, kind, body FROM optimus_usage.price_snapshot WHERE snapshot_id = ANY(%s)",
                             (sorted(expected),)).fetchall()
         assert ids[0] == ids[1] and {row[0] for row in rows} == expected and len(rows) == len(expected)
+        registry = next(row[2] for row in rows if row[1] == uc.REGISTRY_SNAPSHOT)
+        routes = {m: e.route for m, e in policy.snapshot.policy.models.items()}
+        assert all(e["route"]["providers"] == list(routes[e["model"]].providers) for e in registry["entries"])
         assert {row[2]["reference"]["id"] for row in rows if row[1] == uc.REFERENCE_SNAPSHOT} == {r.id for r in REFERENCES.references}
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             conn.execute(statement, () if "TRUNCATE" in statement else (ids[0],))
@@ -255,13 +265,13 @@ def test_the_report_charges_each_canonical_receipt_once_and_shows_aliases_and_co
 
 def test_a_complete_auto_turn_is_definitive_and_a_late_receipt_downgrades_it(store, tmp_path):
     session = _session()
-    _complete_turn(store, tmp_path / "t1", session, "t1")
+    frontier = _complete_turn(store, tmp_path / "t1", session, "t1")
 
-    status, body = _report(store, session, expected_turns=1)
+    status, body = _report(store, session, expected_turns=1, frontier=frontier)
     # 600 x 1/M + 400 x 0.1/M + 200 x 4/M = 0.00144 against 0.0012 actual
     assert status == 200 and body["session"]["definitive"] and body["auto"]["definitive"]
     assert [c["savings_usd"] for c in body["comparisons"]["columns"]] == ["0.00024"] * 3
-    assert _report(store, session)[1]["session"]["reasons"] == ["expected_turns_unknown"]
+    assert _report(store, session)[1]["session"]["reasons"] == ["expected_turns_unknown", "frontier_unknown"]
 
     late_session = _session()
     receipt = _receipt(late_session, "t1", f"{uuid.uuid4().hex}:planning:1:1")
@@ -269,10 +279,10 @@ def test_a_complete_auto_turn_is_definitive_and_a_late_receipt_downgrades_it(sto
     capture = _capture(tmp_path / "late")
     _turn(capture, late_session, "t1", [receipt])
     capture.receipt(late)  # after the close: appended late
-    epochs = _ingest(store, capture)
+    epochs, host = _ingest(store, capture)
     _gateway_evidence(store, tmp_path / "late-gateway", [receipt, late])
-    _contexts(store, tmp_path / "late-context", late_session, {"t1": (epochs["t1"], "auto")})
-    status, body = _report(store, late_session, expected_turns=1)
+    context = _contexts(store, tmp_path / "late-context", late_session, {"t1": (epochs["t1"], "auto")})
+    status, body = _report(store, late_session, expected_turns=1, frontier=(host, context))
 
     assert status == 200 and body["session"]["late"] == 1 and not body["session"]["definitive"]
     assert {"late_receipt", "epoch_incomplete"} <= set(body["session"]["reasons"])
@@ -371,14 +381,14 @@ def test_the_host_reads_a_report_over_real_http_through_the_production_transport
     from optimus_gateway.server import serve_gateway
 
     session = _session()
-    _complete_turn(store, tmp_path, session, "t1")
+    frontier = _complete_turn(store, tmp_path, session, "t1")
     config = GatewayServiceConfig(bind_host="127.0.0.1", bind_port=0, shared_secret=SECRET, provider="openrouter",
                                   provider_api_key="or-test", base_url="https://openrouter.ai/api/v1", usage_store=store)  # pragma: allowlist secret
     server = serve_gateway(config=config)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     url = f"http://127.0.0.1:{server.server_address[1]}"
-    payload = json.loads(urc.build_request(urc.ReportRequest(session, None, None, 100, None, 1)))
+    payload = json.loads(urc.build_request(urc.ReportRequest(session, None, None, 100, None, 1, frontier)))
     try:
         body = GatewayClient(settings=OptimusGatewaySettings(gateway_url=url, optimus_api_key=SECRET)).post_observability_json(
             path=urc.PATH, payload=payload)
@@ -442,3 +452,75 @@ def test_the_host_reads_a_report_from_a_gateway_process_that_alone_holds_the_led
     assert os.environ.get(PASSWORD_ENV) is None and ready["store"] is True
     assert urc.FEATURE_REPORT_CONTEXT in capabilities
     assert urc.validate_report(body)["session"]["attempts"] == 0
+
+
+# --- Plan 12.9 Checkpoint A (round 93): delivery completeness and the cumulative deadline -------------------------------
+
+
+def test_a_turn_count_alone_never_proves_a_receipt_was_delivered(store, tmp_path):
+    session = _session()
+    host, context = _complete_turn(store, tmp_path, session, "t1")
+    ahead = (host[0], host[1] + 1)  # the host confirmed one more record than the ledger committed
+
+    status, pending = _report(store, session, expected_turns=1, frontier=(ahead, context))
+    unknown_stream = _report(store, session, expected_turns=1, frontier=(host, context, (uuid.uuid4().hex, 1)))[1]
+    delivered = _report(store, session, expected_turns=1, frontier=(host, context))[1]
+
+    assert status == 200 and not pending["session"]["definitive"] and "delivery_pending" in pending["session"]["reasons"]
+    assert "delivery_pending" in unknown_stream["session"]["reasons"]
+    assert delivered["session"]["definitive"] and pending["revision"] != delivered["revision"]
+
+
+def test_a_gap_in_a_scope_stream_withholds_the_definitive_total(store, tmp_path):
+    session = _session()
+    receipt = _receipt(session, "t1", f"{uuid.uuid4().hex}:planning:1:1")
+    capture = _capture(tmp_path / "host")
+    _turn(capture, session, "t1", [receipt])
+    capture.stop()
+    scan = ob.scan_stream(capture.writer.directory)
+    head, tail = scan.records[:1], scan.records[1:]  # this ledger never received the stream's first record
+    store.ingest(uc.parse_batch(uc.build_batch("host", scan.stream_id, "f" * 32, head[-1].sequence, head[-1].digest, tail)))
+    _gateway_evidence(store, tmp_path / "gateway", [receipt])
+    epoch = next(r.payload["epoch_id"] for r in tail if r.payload["kind"] == uc.EPOCH_BEGIN)
+    context = _contexts(store, tmp_path / "context", session, {"t1": (epoch, "auto")})
+
+    status, body = _report(store, session, expected_turns=1, frontier=((scan.stream_id, tail[-1].sequence), context))
+
+    assert status == 200 and "stream_gap" in body["session"]["reasons"] and not body["session"]["definitive"]
+
+
+class _Slowed:
+    """A report connection whose statements each wait ``pause`` seconds in the database first."""
+
+    def __init__(self, conn: Any, pause: float, once: bool = False) -> None:
+        self.conn, self.pause, self.once, self.used = conn, pause, once, False
+
+    def execute(self, sql: Any, *args: Any) -> Any:
+        if not (self.once and self.used):
+            self.used = True
+            self.conn.execute(f"SELECT pg_sleep({self.pause})")
+        return self.conn.execute(sql, *args)
+
+
+@pytest.mark.parametrize(("pause", "once"), [
+    (0.9, False),  # every statement is shorter than the budget; together they outrun it
+    (30, True),  # one statement would outrun it alone
+])
+def test_the_whole_read_ends_within_the_report_budget(store, tmp_path, monkeypatch, pause, once):
+    session = _session()
+    _complete_turn(store, tmp_path, session, "t1")
+    store.report_budget_ms = 1000
+    original = UsageStore._report_facts
+
+    with monkeypatch.context() as slowed:
+        slowed.setattr(UsageStore, "_report_facts", lambda self, conn, *a: original(self, _Slowed(conn, pause, once), *a))
+        started = time.monotonic()
+        refused = _report(store, session)
+        elapsed = time.monotonic() - started
+
+    assert refused == urc.error_body("REPORT_TIMEOUT") and elapsed < 1.5  # cancelled at the deadline, not after
+    with psycopg.connect(store._conninfo) as conn:  # nothing of the expired read keeps running in the database
+        deadline = time.monotonic() + 5
+        while conn.execute("SELECT count(*) FROM pg_stat_activity WHERE query LIKE 'SELECT pg_sleep%%' AND pid <> pg_backend_pid()").fetchone()[0]:
+            assert time.monotonic() < deadline, "an expired report statement is still running"
+            time.sleep(0.1)

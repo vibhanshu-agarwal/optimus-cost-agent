@@ -8,7 +8,7 @@ from decimal import Decimal
 import pytest
 
 from optimus_model_policy.registry import RegistryError
-from optimus_model_policy.savings_references import load_references, packaged_references
+from optimus_model_policy.savings_references import load_references, packaged_references, parse_references
 from optimus_security import usage_capture_contract as uc
 
 _ENTRY = """\
@@ -17,6 +17,7 @@ _ENTRY = """\
     unit: usd_per_million_tokens
     prices: {input: "1.00", output: "4.00", cached_input: "0.10"}
     reasoning_billed_as_output: true
+    reasoning_source: {url: "https://example.test/billing", quote: "Reasoning is output.", fetched_on: "2026-11-01"}
     source: {url: "https://example.test/prices", price_as_of: "2026-11-01"}
 """
 
@@ -68,7 +69,6 @@ def test_a_missing_date_or_price_loads_and_is_left_for_the_report_to_call_unavai
         lambda e: e.replace("id: ref-a", "id: Ref A"),
         lambda e: e.replace("usd_per_million_tokens", "usd_per_token"),
         lambda e: e.replace('url: "https://example.test/prices"', "evidence: docs/x.md, url: \"https://example.test/p\""),
-        lambda e: e.replace('url: "https://example.test/prices", ', ""),
         lambda e: e.replace("reasoning_billed_as_output: true", "reasoning_billed_as_output: \"yes\""),
     ],
 )
@@ -81,18 +81,18 @@ def test_malformed_references_are_refused(tmp_path, mutate):
 def test_duplicate_ids_and_unordered_tiers_are_refused(tmp_path):
     with pytest.raises(RegistryError):
         load_references(_write(tmp_path, "version: 1\nreferences:\n" + _ENTRY + _ENTRY, "dup.yaml"))
-    tiers = _ENTRY.replace("    reasoning", "    tiers:\n"
+    tiers = _ENTRY.replace("    reasoning_billed", "    tiers:\n"
                            "      - {min_input_tokens: 200, prices: {input: \"2\", output: \"8\", cached_input: \"0.2\"}}\n"
                            "      - {min_input_tokens: 100, prices: {input: \"3\", output: \"9\", cached_input: \"0.3\"}}\n"
-                           "    reasoning")
+                           "    reasoning_billed")
     with pytest.raises(RegistryError):
         load_references(_write(tmp_path, "version: 1\nreferences:\n" + tiers, "tiers.yaml"))
 
 
 def test_a_long_context_tier_applies_from_its_threshold(tmp_path):
-    body = _ENTRY.replace("    reasoning", "    tiers:\n"
+    body = _ENTRY.replace("    reasoning_billed", "    tiers:\n"
                           "      - {min_input_tokens: 1000, prices: {input: \"2\", output: \"8\", cached_input: \"0.2\"}}\n"
-                          "    reasoning")
+                          "    reasoning_billed")
     (reference,) = load_references(_write(tmp_path, "version: 1\nreferences:\n" + body)).references
 
     assert reference.prices_for(999).input == Decimal("1.00")
@@ -109,3 +109,43 @@ def test_every_packaged_reference_is_a_valid_reference_snapshot_record():
 def test_display_text_refuses_control_characters(tmp_path):
     with pytest.raises(RegistryError):
         load_references(_write(tmp_path, "version: 1\nreferences:\n" + _ENTRY.replace("display: Reference A", 'display: "A\u0007B"')))
+
+
+# --- Plan 12.9 Checkpoint A (round 93) ---------------------------------------------------------------------------
+
+
+def test_a_billing_rule_needs_its_own_dated_source_or_stays_unknown(tmp_path):
+    unsourced = _ENTRY.replace(
+        '    reasoning_source: {url: "https://example.test/billing", quote: "Reasoning is output.", fetched_on: "2026-11-01"}\n', "")
+    unknown = unsourced.replace("reasoning_billed_as_output: true", "reasoning_billed_as_output: null")
+
+    with pytest.raises(RegistryError):
+        load_references(_write(tmp_path, "version: 1\nreferences:\n" + unsourced))
+    assert load_references(_write(tmp_path, "version: 1\nreferences:\n" + unknown, "u.yaml")).references[0].reasoning_source is None
+    assert all(r.reasoning_source is not None for r in load_references(packaged_references()).references
+               if r.reasoning_billed_as_output is not None)
+
+
+def test_a_reference_without_any_source_loads_beside_a_sourced_one(tmp_path):
+    bare = _ENTRY.replace("ref-a", "ref-b").replace('    source: {url: "https://example.test/prices", price_as_of: "2026-11-01"}',
+                                                    '    source: {price_as_of: "2026-11-01"}')
+
+    references = load_references(_write(tmp_path, "version: 1\nreferences:\n" + _ENTRY + bare))
+
+    assert [r.source.locator for r in references.references] == ["https://example.test/prices", None]
+
+
+def test_an_override_parses_from_the_exact_bytes_its_launch_verified(tmp_path):
+    raw = ("version: 1\nreferences:\n" + _ENTRY).encode("utf-8")
+
+    assert parse_references(raw, "savings-references.yaml") == load_references(_write(tmp_path, raw.decode("utf-8")))
+    with pytest.raises(RegistryError):
+        parse_references(b"version: 1\nreferences: [{id: x}]\n", "savings-references.yaml")
+
+
+def test_long_text_fits_the_reports_string_bound(tmp_path):
+    body = ("version: 1\nreferences:\n" + _ENTRY + "benchmark:\n  text: " + "x" * 513 +
+            "\n  limitations: l\n  source: {evidence: e, price_as_of: null}\n")
+
+    with pytest.raises(RegistryError):
+        load_references(_write(tmp_path, body))

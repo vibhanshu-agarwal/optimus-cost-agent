@@ -5,8 +5,8 @@
 # Source: the public OpenRouter model list, https://openrouter.ai/api/v1/models, fetched 2026-11-01 (raw copy
 # SHA-256 afe0a9ef18916f9e888a17e5145c07fe3be3081b20dec9f77fdc2c49e7652f6f, Plan 12.9 Task 0 manifest). Its prices are
 # USD per token; they are written here per million tokens. "prompt" is input, "completion" output, "input_cache_read"
-# cached_input; a "min_prompt_tokens" override is a tier. None of these entries lists an "internal_reasoning" price,
-# which 30 of the list's 452 models do, so their reasoning tokens are billed as completion. Cache-write prices are not
+# cached_input; a "min_prompt_tokens" override is a tier. Reasoning tokens are billed as output on OpenRouter, as its
+# reasoning-tokens documentation states (each entry's reasoning_source, fetched 2026-11-01). Cache-write prices are not
 # carried: Optimus does not capture cache-write tokens, so the report states that portion is not included.
 version: 1
 references:
@@ -16,6 +16,7 @@ references:
     unit: usd_per_million_tokens
     prices: {input: "2.00", output: "10.00", cached_input: "0.10"}
     reasoning_billed_as_output: true
+    reasoning_source: {url: "https://openrouter.ai/docs/use-cases/reasoning-tokens", quote: "Reasoning tokens are considered output tokens and charged accordingly.", fetched_on: "2026-11-01"}
     source: {url: "https://openrouter.ai/api/v1/models", revision: anthropic/claude-sonnet-5.5, price_as_of: "2026-11-01"}
   - id: claude-opus-5.5
     display: Claude Opus 5.5
@@ -23,6 +24,7 @@ references:
     unit: usd_per_million_tokens
     prices: {input: "4.00", output: "20.00", cached_input: "0.20"}
     reasoning_billed_as_output: true
+    reasoning_source: {url: "https://openrouter.ai/docs/use-cases/reasoning-tokens", quote: "Reasoning tokens are considered output tokens and charged accordingly.", fetched_on: "2026-11-01"}
     source: {url: "https://openrouter.ai/api/v1/models", revision: anthropic/claude-opus-5.5, price_as_of: "2026-11-01"}
   - id: gpt-6.1-sol
     display: GPT 6.1 Sol
@@ -33,6 +35,7 @@ references:
       - min_input_tokens: 272000
         prices: {input: "4.00", output: "15.00", cached_input: "0.20"}
     reasoning_billed_as_output: true
+    reasoning_source: {url: "https://openrouter.ai/docs/use-cases/reasoning-tokens", quote: "Reasoning tokens are considered output tokens and charged accordingly.", fetched_on: "2026-11-01"}
     source: {url: "https://openrouter.ai/api/v1/models", revision: openai/gpt-6.1-sol, price_as_of: "2026-11-01"}
 benchmark:
   text: >-

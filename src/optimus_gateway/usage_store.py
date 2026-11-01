@@ -15,10 +15,14 @@ schema; this module never opens the evidence-handoff store or its database.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import math
+import threading
+import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -75,6 +79,8 @@ class ReportFacts:
     epochs: Mapping[str, tuple[str | None, ...]]
     selections: Mapping[str, tuple[str, ...]]
     too_large: bool = False
+    uncommitted_streams: int | None = None  # host frontiers not yet committed here; None: the host supplied none
+    stream_gaps: int = 0
 
 
 def _digest(path: Path) -> str:
@@ -156,25 +162,36 @@ class UsageStore:
         except _UNAVAILABLE:
             raise StoreError("unavailable") from None
 
-    def report_facts(self, session_id: str, turn_id: str | None, *, max_attempts: int, max_turns: int) -> ReportFacts:
-        """One session's (or one turn's) facts for the usage report, from one read-only repeatable-read transaction within
-        `REPORT_BUDGET_MS`. Writes nothing and never migrates: a ledger without every pinned migration is unavailable.
-        ``StoreError``: ``timeout`` (a lock or statement wait expired) or ``unavailable``."""
-        budget = int(self.report_budget_ms)
+    def report_facts(self, session_id: str, turn_id: str | None, *, frontier: Sequence[tuple[str, int]] | None,
+                     deadline: float, max_attempts: int, max_turns: int) -> ReportFacts:
+        """One session's (or one turn's) facts for the usage report, from one read-only repeatable-read transaction that
+        ends by ``deadline`` (`time.monotonic`): every statement is capped at the time left, none starts after it, and a
+        statement still running at it is cancelled. Writes nothing and never migrates: a ledger without every pinned
+        migration is unavailable. ``frontier`` is the host's confirmed records per stream (None: not supplied).
+        ``StoreError``: ``timeout`` (the deadline, or a lock or statement wait, expired) or ``unavailable``."""
+        deadline = min(deadline, time.monotonic() + self.report_budget_ms / 1000)
         try:
-            with psycopg.connect(self._conninfo, connect_timeout=max(1, min(self._connect_timeout, budget // 1000))) as conn:
+            # libpq's connect_timeout has a two-second floor; an expired connection attempt's result is discarded.
+            with psycopg.connect(self._conninfo, connect_timeout=max(2, min(self._connect_timeout, math.ceil(_left(deadline))))) as conn:
                 conn.isolation_level = psycopg.IsolationLevel.REPEATABLE_READ
                 conn.read_only = True
-                conn.execute(f"SET LOCAL lock_timeout = '{budget}ms'")
-                conn.execute(f"SET LOCAL statement_timeout = '{budget}ms'")
-                return self._report_facts(conn, session_id, turn_id, max_attempts, max_turns)
+                canceller = threading.Timer(_left(deadline), lambda: _quietly(conn.cancel_safe))
+                canceller.daemon = True
+                canceller.start()
+                try:
+                    bounded = _Deadlined(conn, deadline)
+                    bounded.execute(f"SET LOCAL lock_timeout = '{_left_ms(deadline)}ms'")
+                    bounded.execute(f"SET LOCAL statement_timeout = '{_left_ms(deadline)}ms'")
+                    return self._report_facts(bounded, session_id, turn_id, frontier, max_attempts, max_turns)  # type: ignore[arg-type]
+                finally:
+                    canceller.cancel()
         except (psycopg.errors.QueryCanceled, psycopg.errors.LockNotAvailable):
             raise StoreError("timeout") from None
         except psycopg.Error:
-            raise StoreError("unavailable") from None
+            raise StoreError("timeout" if _left(deadline) <= 0 else "unavailable") from None
 
-    def _report_facts(self, conn: psycopg.Connection[Any], session_id: str, turn_id: str | None, max_attempts: int,
-                      max_turns: int) -> ReportFacts:
+    def _report_facts(self, conn: psycopg.Connection[Any], session_id: str, turn_id: str | None,
+                      frontier: Sequence[tuple[str, int]] | None, max_attempts: int, max_turns: int) -> ReportFacts:
         applied = dict(conn.execute("SELECT filename, sha256 FROM optimus_usage_schema_migrations").fetchall())
         if any(applied.get(filename) != pinned for filename, pinned in _PINNED):
             raise StoreError("unavailable")
@@ -185,38 +202,54 @@ class UsageStore:
         scope = (session_id, turn_id, turn_id)
         receipts = conn.execute(
             "SELECT e.payload, r.late, EXISTS (SELECT 1 FROM optimus_usage.receipt_conflict c "
-            "WHERE c.attempt_id = r.attempt_id OR c.existing_attempt_id = r.attempt_id) "
+            "WHERE c.attempt_id = r.attempt_id OR c.existing_attempt_id = r.attempt_id), e.stream_id "
             "FROM optimus_usage.capture_event e JOIN optimus_usage.attempt_receipt r ON r.stream_id = e.stream_id AND r.sequence = e.sequence "
             "WHERE e.kind = %s AND e.payload->>'session_id' = %s AND (%s::text IS NULL OR r.turn_id = %s) "
             "ORDER BY r.turn_id, r.attempt_id LIMIT %s",
             (uc.ATTEMPT_RECEIPT, *scope, max_attempts + 1),
         ).fetchall()
         events = conn.execute(
-            "SELECT kind, payload->>'turn_id', payload->>'epoch_id', payload->>'selection' FROM optimus_usage.capture_event "
+            "SELECT kind, payload->>'turn_id', payload->>'epoch_id', payload->>'selection', stream_id FROM optimus_usage.capture_event "
             "WHERE kind IN (%s, %s) AND payload->>'session_id' = %s AND (%s::text IS NULL OR payload->>'turn_id' = %s) LIMIT %s",
             (uc.EPOCH_BEGIN, uc.TURN_REPORT_CONTEXT, *scope, 4 * max_turns + 1),
         ).fetchall()
         epochs: dict[str, set[str]] = {}
         selections: dict[str, set[str]] = {}
-        for _, turn, epoch_id, _ in events:
+        for _, turn, epoch_id, _, _ in events:
             epochs.setdefault(turn, set()).add(epoch_id)
-        for kind, turn, _, selection in events:
+        for kind, turn, _, selection, _ in events:
             if kind == uc.TURN_REPORT_CONTEXT:
                 selections.setdefault(turn, set()).add(selection)
-        for payload, _, _ in receipts:
+        for payload, _, _, _ in receipts:
             epochs.setdefault(payload["turn_id"], set()).add(payload["epoch_id"])
         instance, as_of = instance_row[0], as_of_row[0].astimezone(UTC)
         if len(receipts) > max_attempts or len(events) > 4 * max_turns or len(epochs) > max_turns:
             return ReportFacts(instance, as_of, (), {}, {}, too_large=True)
+        # Delivery: how many of the host's confirmed frontiers this ledger has not committed, and the gaps (retracted spans
+        # and spans a replaced ledger never received) in every stream the scope's facts or frontiers name.
+        uncommitted = None
+        if frontier is not None:
+            committed = dict(conn.execute(
+                "SELECT stream_id, sequence FROM optimus_usage.drain_cursor WHERE ledger_instance_id = %s AND stream_id = ANY(%s)",
+                (instance_row[0], [stream for stream, _ in frontier]),
+            ).fetchall())
+            uncommitted = sum(committed.get(stream, 0) < sequence for stream, sequence in frontier)
+        streams = sorted({r[3] for r in receipts} | {e[4] for e in events} | {stream for stream, _ in frontier or ()})
+        gaps_row = conn.execute(
+            "SELECT (SELECT count(*) FROM optimus_usage.capture_event WHERE stream_id = ANY(%s) AND kind = %s) + "
+            "(SELECT count(*) FROM optimus_usage.coverage_epoch WHERE stream_id = ANY(%s) AND epoch_id LIKE 'unavailable:%%')",
+            (streams, GAP_KIND, streams),
+        ).fetchone()
         states = dict(conn.execute(
             "SELECT epoch_id, state FROM optimus_usage.coverage_epoch WHERE epoch_id = ANY(%s)",
             (sorted({epoch for ids in epochs.values() for epoch in ids}),),
         ).fetchall())
         return ReportFacts(
             instance, as_of,
-            tuple((dict(payload), late, conflict) for payload, late, conflict in receipts),
+            tuple((dict(payload), late, conflict) for payload, late, conflict, _ in receipts),
             {turn: tuple(sorted((states.get(epoch) for epoch in ids), key=str)) for turn, ids in epochs.items()},
             {turn: tuple(sorted(values)) for turn, values in selections.items()},
+            uncommitted_streams=uncommitted, stream_gaps=int(gaps_row[0]) if gaps_row else 0,
         )
 
     def _bound(self, conn: psycopg.Connection[Any]) -> None:
@@ -594,6 +627,31 @@ class UsageStore:
             settled += part["settled_attempt_ids"]
             unknown += part["unknown_attempt_ids"]
         return settled, unknown, len(rows)
+
+
+def _left(deadline: float) -> float:
+    return deadline - time.monotonic()
+
+
+def _left_ms(deadline: float) -> int:
+    return max(1, int(_left(deadline) * 1000))
+
+
+def _quietly(action: Callable[[], object]) -> None:
+    with contextlib.suppress(Exception):  # a failed cancel leaves the statement to its own timeout
+        action()
+
+
+class _Deadlined:
+    """A report connection whose statements never start after the report's deadline."""
+
+    def __init__(self, conn: psycopg.Connection[Any], deadline: float) -> None:
+        self._conn, self._deadline = conn, deadline
+
+    def execute(self, query: Any, params: Any = None) -> Any:
+        if _left(self._deadline) <= 0:
+            raise StoreError("timeout")
+        return self._conn.execute(query, params)
 
 
 def _identities_digest(epoch_id: str, settled: list[str], unknown: list[str]) -> str:

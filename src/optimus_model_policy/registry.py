@@ -175,6 +175,11 @@ class _StrictLoader(yaml.SafeLoader):
 
 def _load_yaml(path: Path) -> tuple[dict[str, Any], bytes]:
     raw = path.read_bytes()
+    return _parse_yaml(raw, path.name), raw
+
+
+def _parse_yaml(raw: bytes, name: str) -> dict[str, Any]:
+    """The strict loader on bytes already read (a launch-bound override is parsed from exactly the bytes it verified)."""
     try:
         loader = _StrictLoader(raw.decode("utf-8"))
         try:
@@ -184,12 +189,12 @@ def _load_yaml(path: Path) -> tuple[dict[str, Any], bytes]:
     except RegistryError:
         raise
     except (yaml.YAMLError, UnicodeDecodeError) as exc:
-        raise RegistryError("YAML_REJECTED", f"{path.name}: {exc}") from exc
+        raise RegistryError("YAML_REJECTED", f"{name}: {exc}") from exc
     if data is None:
         data = {}
     if not isinstance(data, dict):
-        raise RegistryError("YAML_REJECTED", f"{path.name}: the document must be a mapping")
-    return data, raw
+        raise RegistryError("YAML_REJECTED", f"{name}: the document must be a mapping")
+    return data
 
 
 def _combine(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[str, Any]:

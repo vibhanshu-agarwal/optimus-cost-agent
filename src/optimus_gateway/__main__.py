@@ -21,10 +21,11 @@ from optimus_model_policy.binding import (
     trusted_snapshot,
     use_operator_override,
 )
+from optimus_model_policy.savings_references import parse_references
 from optimus_model_policy.stage_c import StageCGuard, StageCLedgerError, compose_stage_c_envelope, require_stage_c_profile
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES, compose_test_profile_snapshot
-from optimus_security.accounting_config import AccountingConfigError, accounting_literal
-from optimus_security.accounting_config import read as read_accounting_config
+from optimus_security.accounting_config import REFERENCES_NAME, AccountingConfigError, accounting_literal
+from optimus_security.accounting_config import read_with_references as read_accounting_config
 from optimus_security.launch_manifest import (
     LaunchManifestError,
     read_manifest_hmac_key,
@@ -177,10 +178,10 @@ def main(argv: list[str] | None = None) -> int:
     # Plan 12.8: compose the accounting literal from the actual root and the configuration bytes found there; the signed
     # manifest must bind exactly it, so an unapproved or swapped configuration refuses to start.
     accounting_dir = None if args.accounting_root is None else Path(args.accounting_root)
-    accounting_bound = accounting_config = accounting_refusal = None
+    accounting_bound = accounting_config = accounting_refusal = references_bytes = None
     if accounting_dir is not None:
         try:
-            captured_literal, accounting_config, accounting_refusal = read_accounting_config(accounting_dir)
+            captured_literal, accounting_config, accounting_refusal, references_bytes = read_accounting_config(accounting_dir)
             accounting_bound = accounting_literal(accounting_dir, captured_literal)
         except AccountingConfigError as exc:
             print(f"optimus-local-gateway: accounting configuration is not usable ({exc.code}); refusing to start.", file=sys.stderr)
@@ -223,11 +224,19 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         config = replace(config, stage_c_guard=guard)
 
+    references = None
+    if references_bytes is not None:  # Plan 12.9: the approved override, parsed from the bytes the manifest bound
+        try:
+            references = parse_references(references_bytes, REFERENCES_NAME)
+        except RegistryError as exc:
+            print(f"optimus-local-gateway: savings references are not usable ({exc.code}); refusing to start.", file=sys.stderr)
+            return 2
+
     accounting = None
     if accounting_dir is not None:
         accounting = usage_capture.start_accounting(
             accounting_dir, accounting_config, refusal=accounting_refusal, keyring_backend=_keyring_module,
-            log=lambda line: print(line, file=sys.stderr),
+            log=lambda line: print(line, file=sys.stderr), references=references,
         )  # the configuration verified above, never a second read
         config = replace(config, usage_store=accounting.store)
 

@@ -1,7 +1,7 @@
 """Immutable price snapshots through the Gateway's capture outbox (Plan 12.9; ADR-034).
 
-A registry snapshot records the actual side: the effective registry's hash, and each model's tier, roles and list
-prices, for provenance and tier attribution only (settled cost stays the provider's reported charge). A reference
+A registry snapshot records the actual side: the effective registry's hash, and each model's tier, roles, list prices
+and approved route (its endpoints' providers and quantizations and its routing switches), for provenance and tier attribution only (settled cost stays the provider's reported charge). A reference
 snapshot records one dated reference price schedule (`optimus_model_policy.savings_references`); references are never
 looked up in the registry. Both IDs are derived from content, so the same configuration is the same snapshot.
 
@@ -27,21 +27,26 @@ if TYPE_CHECKING:
 
 _lock = threading.Lock()
 _writer: OutboxWriter | None = None
+_references: ReferenceSet | None = None  # an approved operator override; None: the packaged file
 _payloads: dict[str, dict[str, Any] | None] = {}  # effective hash -> its snapshot payload (None: not representable)
 _tickets: dict[str, Ticket] = {}  # snapshot ID -> its write
 
 
-def configure(writer: OutboxWriter | None) -> None:
-    global _writer
+def configure(writer: OutboxWriter | None, *, references: ReferenceSet | None = None) -> None:
+    global _writer, _references
     with _lock:
-        _writer = writer
+        _writer, _references = writer, references
         _tickets.clear()
 
 
-@functools.cache
 def configured_references() -> ReferenceSet:
-    """The packaged dated reference prices (validated by their tests; the file ships with the package)."""
-    return load_references(packaged_references())
+    """The launch-approved override when there is one, else the packaged dated reference prices."""
+    return _references if _references is not None else _packaged()
+
+
+@functools.cache
+def _packaged() -> ReferenceSet:
+    return load_references(packaged_references())  # validated by its tests; the file ships with the package
 
 
 def _now() -> str:
@@ -69,7 +74,10 @@ def registry_payload(snapshot: RegistrySnapshot) -> dict[str, Any] | None:
         "entries": [
             {"model": model_id, "tier": str(entry.tier), "roles": sorted(roles.get(model_id, [])),
              "input_usd_per_million": canonical_decimal(entry.prices.input_usd_per_million),
-             "output_usd_per_million": canonical_decimal(entry.prices.output_usd_per_million)}
+             "output_usd_per_million": canonical_decimal(entry.prices.output_usd_per_million),
+             "route": {"providers": [e.provider for e in entry.route.endpoints],
+                       "quantizations": [e.quantization for e in entry.route.endpoints],
+                       "allow_fallbacks": entry.route.allow_fallbacks, "require_parameters": entry.route.require_parameters}}
             for model_id, entry in sorted(policy.models.items())
         ],
     }

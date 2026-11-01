@@ -269,3 +269,68 @@ def test_a_configuration_swapped_during_verification_is_never_used(started, monk
 
     assert _run(root, manifest) == 0
     assert "host=127.0.0.1" in started[0].usage_store._conninfo and "attacker" not in started[0].usage_store._conninfo
+
+
+# Plan 12.9 (ADR-034; Checkpoint A round 93): the savings-report reference override is bound by the same literal ------
+
+_OVERRIDE = b"""version: 1
+references:
+  - id: ref-override
+    display: Override
+    unit: usd_per_million_tokens
+    prices: {input: "1", output: "4", cached_input: "0.1"}
+    reasoning_billed_as_output: null
+    source: {url: "https://example.test/prices", price_as_of: "2026-11-01"}
+"""
+
+
+def test_without_an_override_the_literal_is_unchanged_and_with_one_it_binds_its_exact_bytes(tmp_path):
+    import hashlib
+
+    _write_config(tmp_path)
+    plain = ac.config_literal(tmp_path)
+    (tmp_path / ac.REFERENCES_NAME).write_bytes(_OVERRIDE)
+    bound = ac.config_literal(tmp_path)
+    (tmp_path / ac.REFERENCES_NAME).write_bytes(_OVERRIDE + b"# changed\n")
+
+    assert plain == "accounting-config:sha256:" + hashlib.sha256((tmp_path / ac.CONFIG_NAME).read_bytes()).hexdigest()
+    assert bound == plain + "+savings-references:sha256:" + hashlib.sha256(_OVERRIDE).hexdigest()
+    assert ac.config_literal(tmp_path) not in {plain, bound}
+    assert ac.read_with_references(tmp_path)[3] == _OVERRIDE + b"# changed\n"
+    assert ac.read_with_references(tmp_path / "absent") == (None, None, None, None)
+
+
+def test_an_override_changed_after_approval_refuses_to_start(started, monkeypatch, tmp_path):
+    monkeypatch.setattr(gateway_main, "_keyring_module", _Keyring("pw"))
+    root = tmp_path / "accounting"
+    _write_config(root)
+    (root / ac.REFERENCES_NAME).write_bytes(_OVERRIDE)
+    approved = ac.accounting_literal(root, ac.config_literal(root))
+    (root / ac.REFERENCES_NAME).write_bytes(_OVERRIDE.replace(b'input: "1"', b'input: "0.01"'))
+
+    assert _run(root, _serialized(accounting=approved)) == 2 and started == []
+
+
+@pytest.mark.parametrize("override", [None, _OVERRIDE])
+def test_the_gateway_reports_against_the_approved_override_or_the_packaged_file(started, monkeypatch, tmp_path, override):
+    monkeypatch.setattr(gateway_main, "_keyring_module", _Keyring("pw"))
+    captured: list[object] = []
+    real = usage_capture.start_accounting
+    monkeypatch.setattr(usage_capture, "start_accounting", lambda *a, **k: (captured.append(k["references"]), real(*a, **k))[1])
+    root = tmp_path / "accounting"
+    _write_config(root)
+    if override is not None:
+        (root / ac.REFERENCES_NAME).write_bytes(override)
+
+    assert _run(root, _serialized(accounting=ac.accounting_literal(root, ac.config_literal(root)))) == 0
+    assert (None if captured[0] is None else [r.id for r in captured[0].references]) == (None if override is None else ["ref-override"])
+
+
+def test_an_approved_override_that_is_not_a_valid_reference_set_refuses_to_start(started, monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(gateway_main, "_keyring_module", _Keyring("pw"))
+    root = tmp_path / "accounting"
+    _write_config(root)
+    (root / ac.REFERENCES_NAME).write_bytes(b"version: 1\nreferences: [{id: ref-x}]\n")
+
+    assert _run(root, _serialized(accounting=ac.accounting_literal(root, ac.config_literal(root)))) == 2
+    assert "savings references are not usable (REFERENCES_INVALID)" in capsys.readouterr().err and started == []

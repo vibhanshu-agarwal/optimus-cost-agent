@@ -7,9 +7,11 @@ Requests:
   emits a capture kind added after Plan 12.8 (`FEATURE_REPORT_CONTEXT`) only to a Gateway that lists it, because an
   older Gateway refuses an unknown kind and that stops the stream's delivery.
 - ``{"schema_version": 1, "operation": "report", "session_id": str, "turn_id": str|null, "reference_ids":
-  [id]|null, "page_size": 1..100, "cursor": str|null, "expected_turns": int|null}``: one session (D2), optionally one
-  turn. ``expected_turns`` is how many turns the host itself ran in the session, so a turn the ledger never received
-  keeps the scope incomplete. A cursor continues exactly the request that produced it.
+  [id]|null, "page_size": 1..100, "cursor": str|null, "expected_turns": int|null, "frontier": [{"stream_id": <32 hex>,
+  "sequence": int}]|null}``: one session (D2), optionally one turn. ``expected_turns`` is how many turns the host itself
+  ran in the session, so a turn the ledger never received keeps the scope incomplete. ``frontier`` is, per host capture
+  stream, the last record the host confirmed: a scope is definitive only once the ledger has committed every one of
+  them. A cursor continues exactly the request that produced it.
 
 Money is decimal text; a null is unknown, never zero. Error bodies are ``{"schema_version": 1, "status": "error",
 "code": <ERROR_CODES>}`` and never carry exception text, SQL, paths or credentials. Limits are agent-selected.
@@ -36,6 +38,7 @@ MAX_ATTEMPTS = 10_000  # per selected scope; above it the totals are unavailable
 MAX_TURNS = 10_000
 REFERENCE_GROUP = 3  # comparison columns per page: a transport bound, not a product rule
 MAX_REFERENCE_IDS = 64
+MAX_FRONTIER = 16  # host capture streams one session can span (one per host process lifetime)
 MAX_STRING = 512
 
 FEATURE_REPORT = "usage-report-v1"
@@ -57,6 +60,7 @@ ERROR_CODES: Mapping[str, int] = {
 COVERAGE_REASONS = frozenset({
     "epoch_missing", "epoch_open", "epoch_incomplete", "turn_not_captured", "unknown_cost", "receipt_conflict",
     "late_receipt", "delivery_pending", "scope_too_large", "attribution_unavailable", "expected_turns_unknown",
+    "frontier_unknown", "stream_gap",
 })
 # Why an attempt could not be repriced for a reference.
 UNPRICED_REASONS = frozenset({
@@ -64,7 +68,7 @@ UNPRICED_REASONS = frozenset({
     "price_missing_input", "price_missing_cached_input", "price_missing_output",
 })
 # Why a comparison column is not complete, besides its unpriced attempts.
-COLUMN_REASONS = frozenset({"source_date_missing", "unpriced_attempts", "actual_incomplete", "no_attempts"})
+COLUMN_REASONS = frozenset({"source_missing", "source_date_missing", "unpriced_attempts", "actual_incomplete", "no_attempts"})
 
 # Exact user-facing labels (plan v2, design 5). The renderer uses these and nothing looser.
 LABELS: Mapping[str, str] = {
@@ -157,6 +161,7 @@ class ReportRequest:
     page_size: int
     cursor: str | None
     expected_turns: int | None
+    frontier: tuple[tuple[str, int], ...] | None = None
 
 
 _CAPABILITIES_KEYS = frozenset({"schema_version", "operation"})
@@ -165,6 +170,7 @@ _REPORT_SCHEMA: dict[str, Check] = {
     "turn_id": _S_, "reference_ids": _optional(_list_of(_matches(_REFERENCE_ID), MAX_REFERENCE_IDS)),
     "page_size": lambda v: type(v) is int and 1 <= v <= MAX_PAGE, "cursor": _optional(_matches(_CURSOR)),
     "expected_turns": _N_,
+    "frontier": _optional(_list_of(_object({"stream_id": _matches(_ID32), "sequence": _N}), MAX_FRONTIER)),
 }
 
 
@@ -178,6 +184,8 @@ def build_request(request: ReportRequest | None) -> bytes:
             "turn_id": request.turn_id,
             "reference_ids": None if request.reference_ids is None else list(request.reference_ids),
             "page_size": request.page_size, "cursor": request.cursor, "expected_turns": request.expected_turns,
+            "frontier": None if request.frontier is None else [
+                {"stream_id": stream, "sequence": sequence} for stream, sequence in request.frontier],
         }
     return json.dumps(document, separators=(",", ":"), ensure_ascii=True).encode("ascii")
 
@@ -198,11 +206,14 @@ def parse_request(body: bytes) -> ReportRequest | None:
         return None
     if not _conforms(document, _REPORT_SCHEMA):
         raise ContractError("schema")
-    ids = document["reference_ids"]
+    ids, frontier = document["reference_ids"], document["frontier"]
     if ids is not None and len(ids) != len(set(ids)):
         raise ContractError("schema")
+    if frontier is not None and len({entry["stream_id"] for entry in frontier}) != len(frontier):
+        raise ContractError("schema")
     return ReportRequest(document["session_id"], document["turn_id"], None if ids is None else tuple(ids),
-                         document["page_size"], document["cursor"], document["expected_turns"])
+                         document["page_size"], document["cursor"], document["expected_turns"],
+                         None if frontier is None else tuple((e["stream_id"], e["sequence"]) for e in frontier))
 
 
 def error_body(code: str) -> tuple[int, dict[str, Any]]:
@@ -250,7 +261,7 @@ _TOTALS: dict[str, Check] = {
 }
 _UNPRICED: dict[str, Check] = {"reason": _one_of(UNPRICED_REASONS), "attempts": _N, "tokens": _N_}
 _COLUMN: dict[str, Check] = {
-    "reference_id": _matches(_REFERENCE_ID), "display": _S, "snapshot_id": _matches(_DIGEST), "source": _S,
+    "reference_id": _matches(_REFERENCE_ID), "display": _S, "snapshot_id": _matches(_DIGEST), "source": _S_,
     "price_as_of": _optional(_matches(_DATE)), "baseline_known_usd": _USD, "priced_attempts": _N,
     "unpriced": _list_of(_object(_UNPRICED), len(UNPRICED_REASONS)), "complete": _B,
     "reasons": _list_of(_one_of(COLUMN_REASONS), len(COLUMN_REASONS)), "savings_usd": _SIGNED_,
