@@ -5,7 +5,9 @@ from __future__ import annotations
 import copy
 import os
 import pickle
+import re
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -13,9 +15,16 @@ import pytest
 from optimus.mcp.client_config import (
     ClientMcpConfigError,
     ClientMcpConfigNormalizer,
+    ClientMcpSafeView,
 )
 
 HMAC_KEY = b"p11-fu-9-client-mcp-test-hmac-key-32b"
+ENV_VALUES = ("ISSUE370_ENV_VALUE_ALPHA", "ISSUE370_ENV_VALUE_BRAVO")
+
+
+def _assert_env_values_redacted(view: ClientMcpSafeView) -> None:
+    for value in ENV_VALUES:
+        assert value not in repr(view)
 
 
 def _normalizer() -> ClientMcpConfigNormalizer:
@@ -167,14 +176,17 @@ def test_platform_aware_duplicate_env_names_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX env names are case-sensitive")
-def test_posix_case_distinct_env_names_are_not_duplicates(tmp_path: Path) -> None:
+@pytest.mark.parametrize("command_name", [None, "standalone", "twofold"], ids=["interpreter", "standalone", "twofold"])
+def test_posix_case_distinct_env_names_are_not_duplicates(tmp_path: Path, command_name: str | None) -> None:
+    command = sys.executable if command_name is None else str(_make_bin(tmp_path, command_name) / command_name)
     caps = _normalize(
         [
             _stdio_entry(
+                command=command,
                 env=[
-                    {"name": "Token", "value": "one"},
-                    {"name": "TOKEN", "value": "two"},
-                ]
+                    {"name": "Token", "value": ENV_VALUES[0]},
+                    {"name": "TOKEN", "value": ENV_VALUES[1]},
+                ],
             )
         ],
         workspace_root=tmp_path,
@@ -182,8 +194,23 @@ def test_posix_case_distinct_env_names_are_not_duplicates(tmp_path: Path) -> Non
     )
     assert len(caps) == 1
     view = caps[0].safe_view()
-    assert "one" not in repr(view)
-    assert "two" not in repr(view)
+    assert view.canonical_target == str(Path(command).resolve())
+    _assert_env_values_redacted(view)
+
+
+@pytest.mark.parametrize("value_index", [0, 1], ids=["alpha", "bravo"])
+def test_env_redaction_assertion_detects_leaked_values(tmp_path: Path, value_index: int) -> None:
+    capability = _normalize(
+        [_stdio_entry(env=[{"name": "FIRST_VALUE", "value": ENV_VALUES[0]}, {"name": "SECOND_VALUE", "value": ENV_VALUES[1]}])],
+        workspace_root=tmp_path,
+        controlled_path=str(tmp_path),
+    )[0]
+    view = capability.safe_view()
+    _assert_env_values_redacted(view)
+    value = ENV_VALUES[value_index]
+    leaked_view = replace(view, arguments=(*view.arguments, value))
+    with pytest.raises(AssertionError, match=re.escape(value)):
+        _assert_env_values_redacted(leaked_view)
 
 
 def test_meta_is_ignored_and_never_enters_identity(tmp_path: Path) -> None:
