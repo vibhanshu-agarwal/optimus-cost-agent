@@ -4148,11 +4148,17 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     report_contract_committed = b"from optimus_security import usage_report_contract" in head_delivery
     if not report_contract_committed:
         expected -= {report_contract_path}
+    # Plan 12.9 Task 4 adds the host's `/savings` report module (one path), which the spec imports; keyed on HEAD's spec.
+    savings_path = "src/optimus/usage/savings_report.py"
+    savings_committed = b"from optimus.usage.savings_report import" in head_spec
+    if not savings_committed:
+        expected -= {savings_path}
     assert (admission_path in closure) is admission_committed
     assert (secret_paths_path in closure) is secret_paths_committed
     assert (file_policy_path in closure) is file_policy_committed
     assert (capture_paths <= closure) is capture_committed
     assert (report_contract_path in closure) is report_contract_committed
+    assert (savings_path in closure) is savings_committed
     assert (retention_path in closure) is retention_committed
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
@@ -4182,7 +4188,7 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         2 if loop_committed else 0
     ) + tree_moved + line_endings_committed + edits_committed + auto_committed + contract_committed + hybrid_committed + lifecycle_committed + admission_committed + retention_committed + secret_paths_committed + file_policy_committed + (
         8 if capture_committed else 0
-    ) + report_contract_committed
+    ) + report_contract_committed + savings_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

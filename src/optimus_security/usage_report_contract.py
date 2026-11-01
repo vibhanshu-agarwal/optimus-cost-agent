@@ -230,6 +230,11 @@ def capabilities_body() -> dict[str, Any]:
 # reference offset and last detail key) under a key only it holds; any change answers REPORT_CHANGED.
 
 
+def is_cursor(value: str) -> bool:
+    """Whether ``value`` has a cursor's form (the host checks a typed continuation before sending it)."""
+    return _CURSOR.fullmatch(value) is not None
+
+
 def seal_cursor(key: bytes, fields: Mapping[str, Any]) -> str:
     body = base64.urlsafe_b64encode(json.dumps(dict(fields), sort_keys=True, separators=(",", ":"),
                                                ensure_ascii=True).encode("ascii")).rstrip(b"=").decode("ascii")

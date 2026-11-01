@@ -1,0 +1,1293 @@
+{
+  "schema_version": 2,
+  "plan": "Plan 12.9 v2, Checkpoint B (Tasks 3-4), round 94; cumulative with Checkpoint A's runs",
+  "recorder": {
+    "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/run_and_record.py",
+    "revert_checks": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/revert_check.py",
+    "publisher": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/publish_evidence.py",
+    "sha256": {
+      "run_and_record.py": "hex:434dd374f96de7f5f767b47c9034feb7da70750a97d146ddbc194e4797a022d1",
+      "revert_check.py": "hex:7c6f4d745eb868f9abbf5429eec1513555b658e742136f9fb815a859a0d29362",
+      "publish_evidence.py": "hex:0f3cb046b29045f38299d7e89308baf1aefbb01b3ee9cfd50d16b28c126d56dc"
+    }
+  },
+  "validity": {
+    "tested_bytes": "source_before.head plus the diff named by tested_diff_sha256 (git diff HEAD --binary); untracked files are listed",
+    "context": "run_context is the test-run-context plugin's own line: records=COMPLETE marks a complete process record",
+    "redaction": "the ledger password is replaced in every log before its digest is taken; it is never in a command"
+  },
+  "runs": [
+    {
+      "run_id": "hex:1a602cdbf2c94a99b0c2983011db4e7e",
+      "label": "revert-unit-r2",
+      "command": [
+        "python",
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-handoff\\sandbox-review-kit\\plan12-codex-cli\\round-93-p129-checkpoint-a\\revert_check.py",
+        "unit"
+      ],
+      "environment": null,
+      "started": "2026-11-01T14:44:39.990641+00:00",
+      "ended": "2026-11-01T14:54:34.764875+00:00",
+      "source_before": {
+        "head": "hex:1c6d6ba4a20932431b8df5abeee114e93552561f",
+        "tested_diff_sha256": "hex:f5012006e8778f7b8964497129a0af7e086b96ca0a25bd5a49af2c8388dc61ef",
+        "status_sha256": null,
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:1c6d6ba4a20932431b8df5abeee114e93552561f",
+        "tested_diff_sha256": "hex:f5012006e8778f7b8964497129a0af7e086b96ca0a25bd5a49af2c8388dc61ef",
+        "status_sha256": null,
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "stamped-while-unavailable: KILLED ['3 failed, 192 passed in 26.05s']",
+        "stamped-before-durable: KILLED ['2 failed, 193 passed in 26.36s']",
+        "failed-write-never-retried: KILLED ['1 failed, 194 passed in 25.92s']",
+        "snapshot-id-unchecked: KILLED ['3 failed, 192 passed in 26.07s']",
+        "revision-unchecked: KILLED ['4 failed, 191 passed in 26.12s']",
+        "principal-unbound: KILLED ['1 failed, 194 passed in 25.46s']",
+        "uncaptured-not-auto-risk: KILLED ['1 failed, 194 passed in 25.00s']",
+        "unknown-expected-turns-definitive: KILLED ['1 failed, 194 passed in 25.48s']",
+        "database-order-trusted: KILLED ['1 failed, 194 passed in 25.48s']",
+        "worker-slot-leaked: KILLED ['3 failed, 192 passed in 26.16s']",
+        "body-read-before-auth: KILLED ['1 failed, 194 passed in 30.75s']",
+        "frontier-ignored: KILLED ['2 failed, 193 passed in 25.97s']",
+        "gap-ignored: KILLED ['1 failed, 194 passed in 25.54s']",
+        "free-completed-call-priced-at-zero: KILLED ['2 failed, 193 passed in 26.08s']",
+        "source-missing-ignored: KILLED ['1 failed, 194 passed in 26.63s']",
+        "byte-bound-ignored: KILLED ['1 failed, 194 passed in 27.78s']",
+        "arithmetic-outside-the-deadline: KILLED ['2 failed, 193 passed in 36.97s']",
+        "unsourced-billing-rule: KILLED ['1 failed, 194 passed in 26.56s']",
+        "override-unbound: KILLED ['2 failed, 193 passed in 27.24s']",
+        "override-ignored: KILLED ['1 failed, 194 passed in 26.44s']"
+      ],
+      "run_context": null,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/1a602cdbf2c94a99b0c2983011db4e7e.log",
+      "log_sha256": "hex:4a84d38b9e29ef854bb6446d7fdc439d93cf790c851767cafaf70d1630d43138"
+    },
+    {
+      "run_id": "hex:9ed6649d5f2947dcb27040cbb0c20ecf",
+      "label": "db-tier-r2",
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        "-rs",
+        "-m",
+        "requires_plan12_capture_postgres",
+        "tests/integration/usage/test_savings_report_postgres.py",
+        "tests/integration/usage/test_durable_capture_postgres.py"
+      ],
+      "environment": null,
+      "started": "2026-11-01T14:54:46.792485+00:00",
+      "ended": "2026-11-01T14:55:37.406820+00:00",
+      "source_before": {
+        "head": "hex:1c6d6ba4a20932431b8df5abeee114e93552561f",
+        "tested_diff_sha256": "hex:f5012006e8778f7b8964497129a0af7e086b96ca0a25bd5a49af2c8388dc61ef",
+        "status_sha256": null,
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:1c6d6ba4a20932431b8df5abeee114e93552561f",
+        "tested_diff_sha256": "hex:f5012006e8778f7b8964497129a0af7e086b96ca0a25bd5a49af2c8388dc61ef",
+        "status_sha256": null,
+        "untracked": []
+      },
+      "exit_status": 1,
+      "summary": [
+        "6 failed, 41 passed, 2 skipped in 45.72s"
+      ],
+      "run_context": null,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/9ed6649d5f2947dcb27040cbb0c20ecf.log",
+      "log_sha256": "hex:478fc29c8b4c40c0650c384b76b2a7d7ee647502f7b7259cef6e6d2132004083"
+    },
+    {
+      "run_id": "hex:8669edac3cc64cd7824be6b349cb6937",
+      "label": "db-tier-r2b",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        "-rs",
+        "-m",
+        "requires_plan12_capture_postgres",
+        "tests/integration/usage/test_savings_report_postgres.py",
+        "tests/integration/usage/test_durable_capture_postgres.py"
+      ],
+      "environment": null,
+      "started": "2026-11-01T14:56:03.506737+00:00",
+      "ended": "2026-11-01T14:56:57.807318+00:00",
+      "source_before": {
+        "head": "hex:1c6d6ba4a20932431b8df5abeee114e93552561f",
+        "tested_diff_sha256": "hex:f5012006e8778f7b8964497129a0af7e086b96ca0a25bd5a49af2c8388dc61ef",
+        "status_sha256": null,
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:1c6d6ba4a20932431b8df5abeee114e93552561f",
+        "tested_diff_sha256": "hex:f5012006e8778f7b8964497129a0af7e086b96ca0a25bd5a49af2c8388dc61ef",
+        "status_sha256": null,
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "47 passed, 2 skipped in 51.23s"
+      ],
+      "run_context": null,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/8669edac3cc64cd7824be6b349cb6937.log",
+      "log_sha256": "hex:5a575c4bf03b9541b5a185b5bc8f37177c49a9317592d920b2ffb47f1af1162f"
+    },
+    {
+      "run_id": "hex:8ee1320cc463474ab1a34da1c7510b60",
+      "label": "boundary-capture-r2",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-v",
+        "-rs",
+        "-m",
+        "requires_plan12_capture_postgres",
+        "tests/integration/usage/test_durable_capture_postgres.py::test_the_host_delivers_over_http_to_a_gateway_process_that_alone_holds_the_ledger_credential"
+      ],
+      "environment": null,
+      "started": "2026-11-01T14:57:13.935106+00:00",
+      "ended": "2026-11-01T14:57:21.158767+00:00",
+      "source_before": {
+        "head": "hex:1c6d6ba4a20932431b8df5abeee114e93552561f",
+        "tested_diff_sha256": "hex:f5012006e8778f7b8964497129a0af7e086b96ca0a25bd5a49af2c8388dc61ef",
+        "status_sha256": null,
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:1c6d6ba4a20932431b8df5abeee114e93552561f",
+        "tested_diff_sha256": "hex:f5012006e8778f7b8964497129a0af7e086b96ca0a25bd5a49af2c8388dc61ef",
+        "status_sha256": null,
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "============================== 1 passed in 4.36s =============================="
+      ],
+      "run_context": null,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/8ee1320cc463474ab1a34da1c7510b60.log",
+      "log_sha256": "hex:0ba2ff81159f1c20b4e65ed088af0dd7ec3c9ad7d1045cbe19812767677e7004"
+    },
+    {
+      "run_id": "hex:e92d36559cbe45139f19e5769413f866",
+      "label": "boundary-report-r2",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-v",
+        "-rs",
+        "-m",
+        "requires_plan12_capture_postgres",
+        "tests/integration/usage/test_savings_report_postgres.py::test_the_host_reads_a_report_from_a_gateway_process_that_alone_holds_the_ledger_credential"
+      ],
+      "environment": null,
+      "started": "2026-11-01T14:57:23.924908+00:00",
+      "ended": "2026-11-01T14:57:30.255072+00:00",
+      "source_before": {
+        "head": "hex:1c6d6ba4a20932431b8df5abeee114e93552561f",
+        "tested_diff_sha256": "hex:f5012006e8778f7b8964497129a0af7e086b96ca0a25bd5a49af2c8388dc61ef",
+        "status_sha256": null,
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:1c6d6ba4a20932431b8df5abeee114e93552561f",
+        "tested_diff_sha256": "hex:f5012006e8778f7b8964497129a0af7e086b96ca0a25bd5a49af2c8388dc61ef",
+        "status_sha256": null,
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "============================== 1 passed in 3.84s =============================="
+      ],
+      "run_context": null,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/e92d36559cbe45139f19e5769413f866.log",
+      "log_sha256": "hex:b5e93dcdab771d22052b632ccbd5f5d04cd869d6fd0c2a5d02f5a8b9241f08c5"
+    },
+    {
+      "run_id": "hex:cf915dee198547e3999d1555f42b5f93",
+      "label": "revert-postgres-r2",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-handoff\\sandbox-review-kit\\plan12-codex-cli\\round-93-p129-checkpoint-a\\revert_check.py",
+        "postgres"
+      ],
+      "environment": null,
+      "started": "2026-11-01T14:57:42.700398+00:00",
+      "ended": "2026-11-01T15:00:03.577216+00:00",
+      "source_before": {
+        "head": "hex:1c6d6ba4a20932431b8df5abeee114e93552561f",
+        "tested_diff_sha256": "hex:f5012006e8778f7b8964497129a0af7e086b96ca0a25bd5a49af2c8388dc61ef",
+        "status_sha256": null,
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:1c6d6ba4a20932431b8df5abeee114e93552561f",
+        "tested_diff_sha256": "hex:f5012006e8778f7b8964497129a0af7e086b96ca0a25bd5a49af2c8388dc61ef",
+        "status_sha256": null,
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "reader-migrates-or-ignores-pins: KILLED ['1 failed, 15 passed, 1 skipped in 15.31s']",
+        "conflicts-hidden: KILLED ['1 failed, 15 passed, 1 skipped in 16.29s']",
+        "aliases-charged: KILLED ['1 failed, 15 passed, 1 skipped, 1 warning in 16.10s']",
+        "not-one-snapshot: KILLED ['1 failed, 15 passed, 1 skipped in 16.36s']",
+        "frontier-unread: KILLED ['1 failed, 15 passed, 1 skipped in 17.28s']",
+        "gaps-unread: KILLED ['1 failed, 15 passed, 1 skipped in 21.70s']",
+        "no-cancel-at-deadline: KILLED ['1 failed, 15 passed, 1 skipped in 17.40s']"
+      ],
+      "run_context": null,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/cf915dee198547e3999d1555f42b5f93.log",
+      "log_sha256": "hex:c85c6696c8a69f0c25904b06376af39350711b19463466f69d45bc7d58bc269b"
+    },
+    {
+      "run_id": "hex:45aee11d444047698c5b162dfa843743",
+      "label": "unit-and-inventory-r2",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        "tests/unit/optimus_gateway",
+        "tests/unit/usage",
+        "tests/unit/model_policy",
+        "tests/unit/security",
+        "tests/unit/gateway",
+        "tests/unit/guardrails",
+        "tests/unit/tools/test_verify_plan996_logging_surfaces.py",
+        "tests/unit/tools/test_run_context_child_sites.py",
+        "tests/unit/tools/test_run_context_reviewed_programs.py",
+        "tests/unit/tools/test_test_profiles.py",
+        "tests/unit/tools/test_probe_p11_zed_session_load.py",
+        "tests/unit/acp/test_local_infra_model_registry.py"
+      ],
+      "environment": null,
+      "started": "2026-11-01T15:00:43.131226+00:00",
+      "ended": "2026-11-01T15:13:14.271908+00:00",
+      "source_before": {
+        "head": "hex:1c6d6ba4a20932431b8df5abeee114e93552561f",
+        "tested_diff_sha256": "hex:1b614be6ed3d76bcefd8d61b315f8f5b24b863b6e1e59455df3642f221ccf50a",
+        "status_sha256": null,
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:1c6d6ba4a20932431b8df5abeee114e93552561f",
+        "tested_diff_sha256": "hex:0dfe0d746e1fcbcc78f1f7cc4a24542d286268edab66ed1a4f3159c685138bd1",
+        "status_sha256": null,
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "2574 passed, 2 skipped in 747.52s (0:12:27)"
+      ],
+      "run_context": null,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/45aee11d444047698c5b162dfa843743.log",
+      "log_sha256": "hex:665a9c33ed7c70546f80921dfd7ed2c6b3668aa0c457cb39e5f020ea1cedc70b"
+    },
+    {
+      "run_id": "hex:8d0ff0312138443a9765e62f36f71f98",
+      "label": "revert-unit-r3",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-handoff\\sandbox-review-kit\\plan12-codex-cli\\round-93-p129-checkpoint-a\\revert_check.py",
+        "unit"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T15:35:38.452197+00:00",
+      "ended": "2026-11-01T15:46:31.897374+00:00",
+      "source_before": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:3b959a0840b389a99e5ad8f6664e15732cd9860fc0a94e9286823d1a5bdbec5c",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:3b959a0840b389a99e5ad8f6664e15732cd9860fc0a94e9286823d1a5bdbec5c",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "stamped-while-unavailable: KILLED ['3 failed, 194 passed in 30.45s']",
+        "stamped-before-durable: KILLED ['2 failed, 195 passed in 25.86s']",
+        "failed-write-never-retried: KILLED ['1 failed, 196 passed in 26.55s']",
+        "snapshot-id-unchecked: KILLED ['3 failed, 194 passed in 26.61s']",
+        "revision-unchecked: KILLED ['4 failed, 193 passed in 26.31s']",
+        "principal-unbound: KILLED ['1 failed, 196 passed in 26.13s']",
+        "uncaptured-not-auto-risk: KILLED ['1 failed, 196 passed in 25.95s']",
+        "unknown-expected-turns-definitive: KILLED ['1 failed, 196 passed in 25.97s']",
+        "database-order-trusted: KILLED ['1 failed, 196 passed in 25.50s']",
+        "worker-slot-leaked: KILLED ['3 failed, 194 passed in 25.17s']",
+        "body-read-before-auth: KILLED ['1 failed, 196 passed in 30.75s']",
+        "frontier-ignored: KILLED ['1 failed, 196 passed in 26.10s']",
+        "uncovered-streams-ignored: KILLED ['1 failed, 196 passed in 25.96s']",
+        "unsourced-benchmark-shown: KILLED ['1 failed, 196 passed in 26.00s']",
+        "gap-ignored: KILLED ['1 failed, 196 passed in 26.14s']",
+        "free-completed-call-priced-at-zero: KILLED ['2 failed, 195 passed in 26.31s']",
+        "source-missing-ignored: KILLED ['1 failed, 196 passed in 26.20s']",
+        "byte-bound-ignored: KILLED ['1 failed, 196 passed in 26.66s']",
+        "arithmetic-outside-the-deadline: KILLED ['2 failed, 195 passed in 36.22s']",
+        "unsourced-billing-rule: KILLED ['1 failed, 196 passed in 25.87s']",
+        "override-unbound: KILLED ['2 failed, 195 passed in 26.15s']",
+        "override-ignored: KILLED ['1 failed, 196 passed in 25.39s']"
+      ],
+      "run_context": [],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/8d0ff0312138443a9765e62f36f71f98.log",
+      "log_sha256": "hex:c92d09aaf4b18b39b76346d4f74f05745d2fe74fec713fd61ecb82ac9686d0d1"
+    },
+    {
+      "run_id": "hex:1e5d2716fcd1471daa38eeecbd597f58",
+      "label": "db-tier-r3",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        "-rs",
+        "-m",
+        "requires_plan12_capture_postgres",
+        "tests/integration/usage/test_savings_report_postgres.py",
+        "tests/integration/usage/test_durable_capture_postgres.py"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T15:46:48.101647+00:00",
+      "ended": "2026-11-01T15:47:40.211455+00:00",
+      "source_before": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:3b959a0840b389a99e5ad8f6664e15732cd9860fc0a94e9286823d1a5bdbec5c",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:3b959a0840b389a99e5ad8f6664e15732cd9860fc0a94e9286823d1a5bdbec5c",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "50 passed, 2 skipped in 49.79s"
+      ],
+      "run_context": [
+        "test-run-context: mode=passive reason=non_default_selection run=20261101T154650-23428-a0edb8 native=not_enrolled parent=not_found guard=not_installed records=COMPLETE phases=154 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/1e5d2716fcd1471daa38eeecbd597f58.log",
+      "log_sha256": "hex:25ae39ba37b35e9db7bb3364c68472f30bc14935764b1cc7a48bae0425bb8c78"
+    },
+    {
+      "run_id": "hex:39bc3489be964c5c999741217a342955",
+      "label": "revert-postgres-r3",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-handoff\\sandbox-review-kit\\plan12-codex-cli\\round-93-p129-checkpoint-a\\revert_check.py",
+        "postgres"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T15:47:41.687024+00:00",
+      "ended": "2026-11-01T15:50:17.439420+00:00",
+      "source_before": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:3b959a0840b389a99e5ad8f6664e15732cd9860fc0a94e9286823d1a5bdbec5c",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:3b959a0840b389a99e5ad8f6664e15732cd9860fc0a94e9286823d1a5bdbec5c",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "exit_status": 1,
+      "summary": [
+        "reader-migrates-or-ignores-pins: KILLED ['1 failed, 18 passed, 1 skipped in 17.09s']",
+        "conflicts-hidden: KILLED ['1 failed, 18 passed, 1 skipped in 16.46s']",
+        "aliases-charged: KILLED ['1 failed, 18 passed, 1 skipped, 1 warning in 17.48s']",
+        "not-one-snapshot: KILLED ['1 failed, 18 passed, 1 skipped in 17.07s']",
+        "frontier-unread: KILLED ['2 failed, 17 passed, 1 skipped in 17.12s']",
+        "unknown-stream-at-zero-committed: KILLED ['1 failed, 18 passed, 1 skipped in 16.61s']",
+        "empty-frontier-trusted: SURVIVED ['19 passed, 1 skipped in 16.72s']",
+        "uncovered-unread: KILLED ['1 failed, 18 passed, 1 skipped in 17.45s']"
+      ],
+      "run_context": [],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/39bc3489be964c5c999741217a342955.log",
+      "log_sha256": "hex:c76726db90bebc023e88496087287ed3ed8841fc5981b16418e91f24e9d21f3b"
+    },
+    {
+      "run_id": "hex:a09b33448850476b8732c7ac94ad1907",
+      "label": "boundary-report-r3",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-v",
+        "-rs",
+        "-m",
+        "requires_plan12_capture_postgres",
+        "tests/integration/usage/test_savings_report_postgres.py::test_the_host_reads_a_report_from_a_gateway_process_that_alone_holds_the_ledger_credential"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T15:50:20.345928+00:00",
+      "ended": "2026-11-01T15:50:26.198956+00:00",
+      "source_before": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:3b959a0840b389a99e5ad8f6664e15732cd9860fc0a94e9286823d1a5bdbec5c",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:3b959a0840b389a99e5ad8f6664e15732cd9860fc0a94e9286823d1a5bdbec5c",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "============================== 1 passed in 3.57s =============================="
+      ],
+      "run_context": [
+        "test-run-context: mode=passive reason=non_default_selection run=20261101T155022-9280-0d8cf7 native=not_enrolled parent=not_found guard=not_installed records=COMPLETE phases=3 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/a09b33448850476b8732c7ac94ad1907.log",
+      "log_sha256": "hex:3bbae601ac907325fb0f60476bcd9a97c12accace9843b328feb611dcc9a0137"
+    },
+    {
+      "run_id": "hex:7ea2d503365a49c3a041768b5646dc38",
+      "label": "boundary-capture-r3",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-v",
+        "-rs",
+        "-m",
+        "requires_plan12_capture_postgres",
+        "tests/integration/usage/test_durable_capture_postgres.py::test_the_host_delivers_over_http_to_a_gateway_process_that_alone_holds_the_ledger_credential"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T15:50:29.991661+00:00",
+      "ended": "2026-11-01T15:50:36.781672+00:00",
+      "source_before": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:3b959a0840b389a99e5ad8f6664e15732cd9860fc0a94e9286823d1a5bdbec5c",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:3b959a0840b389a99e5ad8f6664e15732cd9860fc0a94e9286823d1a5bdbec5c",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "============================== 1 passed in 4.31s =============================="
+      ],
+      "run_context": [
+        "test-run-context: mode=passive reason=non_default_selection run=20261101T155032-43132-a29fe0 native=not_enrolled parent=not_found guard=not_installed records=COMPLETE phases=3 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/7ea2d503365a49c3a041768b5646dc38.log",
+      "log_sha256": "hex:4efba87ad2f4e8ffb59c73fcb06cacb869de6967c5d410b1decddcaa43e3dacb"
+    },
+    {
+      "run_id": "hex:59339273f462447ab7a1957d0772747c",
+      "label": "db-tier-r3b",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        "-rs",
+        "-m",
+        "requires_plan12_capture_postgres",
+        "tests/integration/usage/test_savings_report_postgres.py",
+        "tests/integration/usage/test_durable_capture_postgres.py"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T15:51:02.445182+00:00",
+      "ended": "2026-11-01T15:51:55.781839+00:00",
+      "source_before": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:bfb81ee9e4b7e5b0abad9728399e176ca80ad42cdf256d95b4c58c69ba3a59cc",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:bfb81ee9e4b7e5b0abad9728399e176ca80ad42cdf256d95b4c58c69ba3a59cc",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "51 passed, 2 skipped in 50.94s"
+      ],
+      "run_context": [
+        "test-run-context: mode=passive reason=non_default_selection run=20261101T155104-35288-e692a4 native=not_enrolled parent=not_found guard=not_installed records=COMPLETE phases=157 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/59339273f462447ab7a1957d0772747c.log",
+      "log_sha256": "hex:ce0ff25ccc8bc1259eddfd3d2cf2bc320e41c71d0a7c37b5c4cec6a07b0af129"
+    },
+    {
+      "run_id": "hex:a466f9226ba242b7aa192bd51ae64422",
+      "label": "revert-postgres-r3b",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-handoff\\sandbox-review-kit\\plan12-codex-cli\\round-93-p129-checkpoint-a\\revert_check.py",
+        "postgres"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T15:51:57.530096+00:00",
+      "ended": "2026-11-01T15:54:33.519704+00:00",
+      "source_before": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:bfb81ee9e4b7e5b0abad9728399e176ca80ad42cdf256d95b4c58c69ba3a59cc",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:bfb81ee9e4b7e5b0abad9728399e176ca80ad42cdf256d95b4c58c69ba3a59cc",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "exit_status": 1,
+      "summary": [
+        "reader-migrates-or-ignores-pins: KILLED ['1 failed, 19 passed, 1 skipped in 16.59s']",
+        "conflicts-hidden: KILLED ['1 failed, 19 passed, 1 skipped in 16.84s']",
+        "aliases-charged: KILLED ['1 failed, 19 passed, 1 skipped, 1 warning in 16.88s']",
+        "not-one-snapshot: KILLED ['1 failed, 19 passed, 1 skipped in 16.57s']",
+        "frontier-unread: KILLED ['2 failed, 18 passed, 1 skipped in 17.12s']",
+        "unknown-stream-at-zero-committed: KILLED ['1 failed, 19 passed, 1 skipped in 16.82s']",
+        "empty-frontier-trusted: KILLED ['1 failed, 19 passed, 1 skipped in 17.44s']",
+        "uncovered-unread: KILLED ['1 failed, 19 passed, 1 skipped in 17.29s']"
+      ],
+      "run_context": [],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/a466f9226ba242b7aa192bd51ae64422.log",
+      "log_sha256": "hex:faffb1712b55e0c26c9da10158eb3afc4956ebfa314e6a358a11357285956974"
+    },
+    {
+      "run_id": "hex:8046932c718d48748c1fd8695cd68412",
+      "label": "revert-postgres-r3c",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-handoff\\sandbox-review-kit\\plan12-codex-cli\\round-93-p129-checkpoint-a\\revert_check.py",
+        "postgres"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T15:55:01.435609+00:00",
+      "ended": "2026-11-01T15:58:17.053728+00:00",
+      "source_before": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:bfb81ee9e4b7e5b0abad9728399e176ca80ad42cdf256d95b4c58c69ba3a59cc",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:bfb81ee9e4b7e5b0abad9728399e176ca80ad42cdf256d95b4c58c69ba3a59cc",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "reader-migrates-or-ignores-pins: KILLED ['1 failed, 19 passed, 1 skipped in 16.69s']",
+        "conflicts-hidden: KILLED ['1 failed, 19 passed, 1 skipped in 16.70s']",
+        "aliases-charged: KILLED ['1 failed, 19 passed, 1 skipped, 1 warning in 17.33s']",
+        "not-one-snapshot: KILLED ['1 failed, 19 passed, 1 skipped in 16.94s']",
+        "frontier-unread: KILLED ['2 failed, 18 passed, 1 skipped in 17.72s']",
+        "unknown-stream-at-zero-committed: KILLED ['1 failed, 19 passed, 1 skipped in 17.07s']",
+        "empty-frontier-trusted: KILLED ['1 failed, 19 passed, 1 skipped in 16.92s']",
+        "uncovered-unread: KILLED ['1 failed, 19 passed, 1 skipped in 16.86s']",
+        "gaps-unread: KILLED ['1 failed, 19 passed, 1 skipped in 17.08s']",
+        "no-cancel-at-deadline: KILLED ['1 failed, 19 passed, 1 skipped in 17.80s']"
+      ],
+      "run_context": [],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/8046932c718d48748c1fd8695cd68412.log",
+      "log_sha256": "hex:8a32254ebf448dad6e59b296498bdc5d6ae9da42eeec9ff7441376656fcf4555"
+    },
+    {
+      "run_id": "hex:537d91d682074b3eb7bc4d232129b1fb",
+      "label": "unit-and-inventory-r3",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        "tests/unit/optimus_gateway",
+        "tests/unit/usage",
+        "tests/unit/model_policy",
+        "tests/unit/security",
+        "tests/unit/gateway",
+        "tests/unit/guardrails",
+        "tests/unit/tools/test_verify_plan996_logging_surfaces.py",
+        "tests/unit/tools/test_run_context_child_sites.py",
+        "tests/unit/tools/test_run_context_reviewed_programs.py",
+        "tests/unit/tools/test_test_profiles.py",
+        "tests/unit/tools/test_probe_p11_zed_session_load.py",
+        "tests/unit/acp/test_local_infra_model_registry.py"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T15:58:38.533666+00:00",
+      "ended": "2026-11-01T16:11:39.475803+00:00",
+      "source_before": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:bfb81ee9e4b7e5b0abad9728399e176ca80ad42cdf256d95b4c58c69ba3a59cc",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:7d9c609b64be5ef466917159fa2af462db44db2b",
+        "tested_diff_sha256": "hex:bfb81ee9e4b7e5b0abad9728399e176ca80ad42cdf256d95b4c58c69ba3a59cc",
+        "status_sha256": "hex:998a37687fcdf3fc9518113de9297fb38c6847671af97a9313e0860594df9c0a",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "2576 passed, 2 skipped in 777.51s (0:12:57)"
+      ],
+      "run_context": [
+        "test-run-context: mode=active reason=default_selection run=20261101T155840-41972-d3813c native=valid job=optimus-test-run-20261101T155840-41972-d3813c processes=6236 parent=not_found guard=pytest_process_guard protection=full records=COMPLETE phases=7733 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/537d91d682074b3eb7bc4d232129b1fb.log",
+      "log_sha256": "hex:1c570f0c995d6d68b3c7664ba2d9a2ed26574ad4edb49f5111a36754ff6548fd"
+    },
+    {
+      "run_id": "hex:4d07fc0b024b48dc9aaa6800345d87dd",
+      "label": "task3-unit-acp",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        "tests/unit/usage",
+        "tests/unit/acp",
+        "tests/unit/optimus_gateway",
+        "tests/unit/gateway",
+        "tests/unit/guardrails",
+        "tests/unit/tools/test_verify_plan996_logging_surfaces.py",
+        "tests/unit/tools/test_run_context_child_sites.py",
+        "tests/unit/tools/test_test_profiles.py",
+        "tests/unit/tools/test_probe_p11_zed_session_load.py"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T16:26:49.793215+00:00",
+      "ended": "2026-11-01T16:58:58.819724+00:00",
+      "source_before": {
+        "head": "hex:b4d26218313f75e6d585ad0c8604d461666c55ba",
+        "tested_diff_sha256": "hex:c4e66390eba91d61b54aa9341b909bdb8a4031e44577033e6f013f85ce82e72b",
+        "status_sha256": "hex:f75e9d4cc235d67740ce324e4a67c9edd393534c921c4f0b92a1262f8f572949",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:b4d26218313f75e6d585ad0c8604d461666c55ba",
+        "tested_diff_sha256": "hex:c4e66390eba91d61b54aa9341b909bdb8a4031e44577033e6f013f85ce82e72b",
+        "status_sha256": "hex:f75e9d4cc235d67740ce324e4a67c9edd393534c921c4f0b92a1262f8f572949",
+        "untracked": []
+      },
+      "exit_status": 1,
+      "summary": [
+        "1 failed, 4291 passed, 32 skipped, 1 warning in 1925.50s (0:32:05)"
+      ],
+      "run_context": [
+        "test-run-context: mode=active reason=default_selection run=20261101T162651-28244-edfdbf native=valid job=optimus-test-run-20261101T162651-28244-edfdbf processes=9323 parent=not_found guard=pytest_process_guard protection=full records=COMPLETE phases=12958 exit=1"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/4d07fc0b024b48dc9aaa6800345d87dd.log",
+      "log_sha256": "hex:5cb99ad96fddd27918562e702114909179c4bc83377dbeb50f5d8697846728ac"
+    },
+    {
+      "run_id": "hex:932e5b7049bf43a3bc7e56fec00a3680",
+      "label": "revert-unit-t3",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-handoff\\sandbox-review-kit\\plan12-codex-cli\\round-93-p129-checkpoint-a\\revert_check.py",
+        "unit"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T17:05:32.297919+00:00",
+      "ended": "2026-11-01T17:20:12.989866+00:00",
+      "source_before": {
+        "head": "hex:b4d26218313f75e6d585ad0c8604d461666c55ba",
+        "tested_diff_sha256": "hex:684dba615987a2b3dbccfac4746d217d20f54c59ea6ba5bf641b7b839e9d6969",
+        "status_sha256": "hex:a9fc233113919a8d3cb41b4dbb3b4628cd86bfc16d3d95d5a993d08d3fe613a8",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:b4d26218313f75e6d585ad0c8604d461666c55ba",
+        "tested_diff_sha256": "hex:684dba615987a2b3dbccfac4746d217d20f54c59ea6ba5bf641b7b839e9d6969",
+        "status_sha256": "hex:a9fc233113919a8d3cb41b4dbb3b4628cd86bfc16d3d95d5a993d08d3fe613a8",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "stamped-while-unavailable: KILLED ['3 failed, 212 passed in 26.02s']",
+        "stamped-before-durable: KILLED ['2 failed, 213 passed in 27.31s']",
+        "failed-write-never-retried: KILLED ['1 failed, 214 passed in 26.53s']",
+        "snapshot-id-unchecked: KILLED ['3 failed, 212 passed in 26.69s']",
+        "revision-unchecked: KILLED ['4 failed, 211 passed in 26.62s']",
+        "principal-unbound: KILLED ['1 failed, 214 passed in 26.59s']",
+        "uncaptured-not-auto-risk: KILLED ['1 failed, 214 passed in 26.54s']",
+        "unknown-expected-turns-definitive: KILLED ['1 failed, 214 passed in 26.59s']",
+        "database-order-trusted: KILLED ['1 failed, 214 passed in 26.63s']",
+        "worker-slot-leaked: KILLED ['3 failed, 212 passed in 26.27s']",
+        "body-read-before-auth: KILLED ['1 failed, 214 passed in 31.30s']",
+        "frontier-ignored: KILLED ['1 failed, 214 passed in 26.63s']",
+        "uncovered-streams-ignored: KILLED ['1 failed, 214 passed in 26.68s']",
+        "unsourced-benchmark-shown: KILLED ['1 failed, 214 passed in 26.52s']",
+        "gap-ignored: KILLED ['1 failed, 214 passed in 26.62s']",
+        "free-completed-call-priced-at-zero: KILLED ['2 failed, 213 passed in 26.56s']",
+        "source-missing-ignored: KILLED ['1 failed, 214 passed in 26.58s']",
+        "byte-bound-ignored: KILLED ['1 failed, 214 passed in 26.51s']",
+        "arithmetic-outside-the-deadline: KILLED ['2 failed, 213 passed in 36.35s']",
+        "unsourced-billing-rule: KILLED ['1 failed, 214 passed in 26.68s']",
+        "override-unbound: KILLED ['2 failed, 213 passed in 26.82s']",
+        "override-ignored: KILLED ['1 failed, 214 passed in 26.58s']",
+        "auto-marker-dropped: KILLED ['5 failed, 210 passed in 26.65s']",
+        "context-never-emitted: KILLED ['6 failed, 209 passed in 26.71s']",
+        "context-without-negotiation: KILLED ['3 failed, 212 passed in 26.65s']",
+        "negotiation-never-enables: KILLED ['3 failed, 212 passed in 25.86s']",
+        "unreachable-gateway-read-as-old: KILLED ['1 failed, 214 passed in 26.54s']",
+        "turn-uncounted-without-feature: KILLED ['1 failed, 214 passed in 26.66s']",
+        "frontier-ignores-pending: KILLED ['2 failed, 213 passed in 26.51s']",
+        "unallocated-hidden: KILLED ['1 failed, 214 passed in 26.59s']"
+      ],
+      "run_context": [],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/932e5b7049bf43a3bc7e56fec00a3680.log",
+      "log_sha256": "hex:e32dbb9b12abf18d47fac32d44ceadd766ddf2e37941105db935a23703aa7163"
+    },
+    {
+      "run_id": "hex:d50d128745514b5d90bf349a45f2794e",
+      "label": "task4-unit-acp",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        "tests/unit/usage",
+        "tests/unit/acp",
+        "tests/unit/optimus_gateway",
+        "tests/unit/gateway",
+        "tests/unit/guardrails",
+        "tests/unit/tools/test_verify_plan996_logging_surfaces.py",
+        "tests/unit/tools/test_run_context_child_sites.py",
+        "tests/unit/tools/test_test_profiles.py",
+        "tests/unit/tools/test_probe_p11_zed_session_load.py"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T17:29:47.380333+00:00",
+      "ended": "2026-11-01T18:03:12.052225+00:00",
+      "source_before": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:6c28ed6aaa20d05ab9bb807f1fd67f31770ef181c792f396de3c90744b7f7adf",
+        "status_sha256": "hex:b3257006849494ce2cc5f2e6e0bfa738c5ea3d07c54c218f0952638002d5b812",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:6c28ed6aaa20d05ab9bb807f1fd67f31770ef181c792f396de3c90744b7f7adf",
+        "status_sha256": "hex:b3257006849494ce2cc5f2e6e0bfa738c5ea3d07c54c218f0952638002d5b812",
+        "untracked": []
+      },
+      "exit_status": 1,
+      "summary": [
+        "1 failed, 4338 passed, 32 skipped, 1 warning in 2000.88s (0:33:20)"
+      ],
+      "run_context": [
+        "test-run-context: mode=active reason=default_selection run=20261101T172949-41392-761de2 native=valid job=optimus-test-run-20261101T172949-41392-761de2 processes=9327 parent=not_found guard=pytest_process_guard protection=full records=COMPLETE phases=13099 exit=1"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/d50d128745514b5d90bf349a45f2794e.log",
+      "log_sha256": "hex:f54232dbbdcc944368f5c1ed04eb72f54ede8e552a9242988b4487561c860862"
+    },
+    {
+      "run_id": "hex:7c3683adeae34e88be639285ffb6e93d",
+      "label": "revert-unit-t4",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-handoff\\sandbox-review-kit\\plan12-codex-cli\\round-93-p129-checkpoint-a\\revert_check.py",
+        "unit"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T18:03:13.759537+00:00",
+      "ended": "2026-11-01T18:23:26.998405+00:00",
+      "source_before": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:6c28ed6aaa20d05ab9bb807f1fd67f31770ef181c792f396de3c90744b7f7adf",
+        "status_sha256": "hex:b3257006849494ce2cc5f2e6e0bfa738c5ea3d07c54c218f0952638002d5b812",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:6c28ed6aaa20d05ab9bb807f1fd67f31770ef181c792f396de3c90744b7f7adf",
+        "status_sha256": "hex:b3257006849494ce2cc5f2e6e0bfa738c5ea3d07c54c218f0952638002d5b812",
+        "untracked": []
+      },
+      "exit_status": 1,
+      "summary": [
+        "stamped-while-unavailable: KILLED ['3 failed, 258 passed in 32.01s']",
+        "stamped-before-durable: KILLED ['2 failed, 259 passed in 31.79s']",
+        "failed-write-never-retried: KILLED ['1 failed, 260 passed in 37.75s']",
+        "snapshot-id-unchecked: KILLED ['3 failed, 258 passed in 31.51s']",
+        "revision-unchecked: KILLED ['4 failed, 257 passed in 31.64s']",
+        "principal-unbound: KILLED ['1 failed, 260 passed in 31.59s']",
+        "uncaptured-not-auto-risk: KILLED ['1 failed, 260 passed in 31.54s']",
+        "unknown-expected-turns-definitive: KILLED ['2 failed, 259 passed in 31.76s']",
+        "database-order-trusted: KILLED ['1 failed, 260 passed in 31.36s']"
+      ],
+      "run_context": [],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/7c3683adeae34e88be639285ffb6e93d.log",
+      "log_sha256": "hex:7b2f638154e024f6e38a1f26c4f2cd8fe26b3ee6b6efbec8e439dba543969f35"
+    },
+    {
+      "run_id": "hex:635b70fcc7bd488790914e0a7d1e15d1",
+      "label": "revert-unit-t4b",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-handoff\\sandbox-review-kit\\plan12-codex-cli\\round-93-p129-checkpoint-a\\revert_check.py",
+        "unit"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T18:25:14.625071+00:00",
+      "ended": "2026-11-01T18:49:26.462554+00:00",
+      "source_before": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:34a3e7d4a80a974bf480504960762710a8c623fa7646a2b192b6edcb75adb125",
+        "status_sha256": "hex:2756ee3a3db9bd0862739662aac674f6858b70bbf054011b9e1e1bcb98b6ddcc",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:34a3e7d4a80a974bf480504960762710a8c623fa7646a2b192b6edcb75adb125",
+        "status_sha256": "hex:2756ee3a3db9bd0862739662aac674f6858b70bbf054011b9e1e1bcb98b6ddcc",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "body-read-before-auth: KILLED ['1 failed, 260 passed in 36.10s']",
+        "frontier-ignored: KILLED ['2 failed, 259 passed in 31.70s']",
+        "uncovered-streams-ignored: KILLED ['1 failed, 260 passed in 31.41s']",
+        "unsourced-benchmark-shown: KILLED ['1 failed, 260 passed in 31.64s']",
+        "gap-ignored: KILLED ['1 failed, 260 passed in 32.21s']",
+        "free-completed-call-priced-at-zero: KILLED ['2 failed, 259 passed in 31.53s']",
+        "source-missing-ignored: KILLED ['1 failed, 260 passed in 31.77s']",
+        "byte-bound-ignored: KILLED ['1 failed, 260 passed in 31.60s']",
+        "arithmetic-outside-the-deadline: KILLED ['2 failed, 259 passed in 42.18s']",
+        "unsourced-billing-rule: KILLED ['1 failed, 260 passed in 31.59s']",
+        "override-unbound: KILLED ['2 failed, 259 passed in 31.73s']",
+        "override-ignored: KILLED ['1 failed, 260 passed in 32.05s']",
+        "auto-marker-dropped: KILLED ['5 failed, 256 passed in 31.66s']",
+        "context-never-emitted: KILLED ['6 failed, 255 passed in 31.40s']",
+        "context-without-negotiation: KILLED ['3 failed, 258 passed in 31.50s']",
+        "negotiation-never-enables: KILLED ['3 failed, 258 passed in 31.52s']",
+        "unreachable-gateway-read-as-old: KILLED ['1 failed, 260 passed in 31.94s']",
+        "turn-uncounted-without-feature: KILLED ['1 failed, 260 passed in 31.82s']",
+        "frontier-ignores-pending: KILLED ['2 failed, 259 passed in 31.67s']",
+        "unallocated-hidden: KILLED ['2 failed, 259 passed in 31.73s']",
+        "savings-not-intercepted: KILLED ['14 failed, 247 passed in 79.17s (0:01:19)']",
+        "advertised-without-the-server-hook: KILLED ['1 failed, 260 passed in 33.28s']",
+        "report-holds-no-prompt-slot: KILLED ['1 failed, 260 passed in 31.51s']",
+        "cancel-ignored: KILLED ['1 failed, 260 passed in 36.70s']",
+        "late-output-after-close: KILLED ['1 failed, 260 passed in 31.51s']",
+        "attachments-accepted: KILLED ['2 failed, 259 passed in 31.70s']",
+        "identifiers-unescaped: KILLED ['1 failed, 260 passed in 31.70s']",
+        "dripping-reply-unbounded: KILLED ['1 failed, 260 passed in 36.60s']",
+        "turn-report-expects-session-count: KILLED ['1 failed, 260 passed in 32.02s']",
+        "bad-reply-shown: KILLED ['1 failed, 260 passed in 31.72s']"
+      ],
+      "run_context": [],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/635b70fcc7bd488790914e0a7d1e15d1.log",
+      "log_sha256": "hex:7d9c1daafc1ce77a6ddee3d343225871fbe8ef41d775bc137f3df8c58c4321f1"
+    },
+    {
+      "run_id": "hex:8f2b429f1ed949ee8ab14b82e9bb0ce7",
+      "label": "task4-targeted",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        "tests/unit/acp/test_savings_command.py",
+        "tests/unit/usage",
+        "tests/unit/tools/test_verify_plan996_logging_surfaces.py",
+        "tests/unit/tools/test_probe_p11_zed_session_load.py",
+        "tests/unit/guardrails/test_tracked_file_scanners.py"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T18:49:28.135991+00:00",
+      "ended": "2026-11-01T18:52:19.128545+00:00",
+      "source_before": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:34a3e7d4a80a974bf480504960762710a8c623fa7646a2b192b6edcb75adb125",
+        "status_sha256": "hex:2756ee3a3db9bd0862739662aac674f6858b70bbf054011b9e1e1bcb98b6ddcc",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:34a3e7d4a80a974bf480504960762710a8c623fa7646a2b192b6edcb75adb125",
+        "status_sha256": "hex:2756ee3a3db9bd0862739662aac674f6858b70bbf054011b9e1e1bcb98b6ddcc",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "496 passed in 168.34s (0:02:48)"
+      ],
+      "run_context": [
+        "test-run-context: mode=active reason=default_selection run=20261101T184930-45508-746fce native=valid job=optimus-test-run-20261101T184930-45508-746fce processes=3376 parent=not_found guard=pytest_process_guard protection=full records=COMPLETE phases=1488 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/8f2b429f1ed949ee8ab14b82e9bb0ce7.log",
+      "log_sha256": "hex:d190a5e93ba0bfa458c19ee1b16ede33f9025c25b42ba21e0df6be0d3d87bc3f"
+    },
+    {
+      "run_id": "hex:95a57b1a116d4befb77f4fe93d02de0c",
+      "label": "db-tier-t4",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        "-rs",
+        "-m",
+        "requires_plan12_capture_postgres",
+        "tests/integration/usage/test_savings_report_postgres.py",
+        "tests/integration/usage/test_durable_capture_postgres.py"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T18:52:20.689103+00:00",
+      "ended": "2026-11-01T18:53:10.994179+00:00",
+      "source_before": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:34a3e7d4a80a974bf480504960762710a8c623fa7646a2b192b6edcb75adb125",
+        "status_sha256": "hex:2756ee3a3db9bd0862739662aac674f6858b70bbf054011b9e1e1bcb98b6ddcc",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:34a3e7d4a80a974bf480504960762710a8c623fa7646a2b192b6edcb75adb125",
+        "status_sha256": "hex:2756ee3a3db9bd0862739662aac674f6858b70bbf054011b9e1e1bcb98b6ddcc",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "54 passed, 2 skipped in 48.26s"
+      ],
+      "run_context": [
+        "test-run-context: mode=passive reason=non_default_selection run=20261101T185222-17492-1a9045 native=not_enrolled parent=not_found guard=not_installed records=COMPLETE phases=166 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/95a57b1a116d4befb77f4fe93d02de0c.log",
+      "log_sha256": "hex:17e187ff42212490d5e0c326ef6246ab0b5b6ab2b5de1e2010efb3676224f8c2"
+    },
+    {
+      "run_id": "hex:664cd27dae364202949f70988732453b",
+      "label": "revert-postgres-t4",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-handoff\\sandbox-review-kit\\plan12-codex-cli\\round-93-p129-checkpoint-a\\revert_check.py",
+        "postgres"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T18:53:12.460966+00:00",
+      "ended": "2026-11-01T18:56:47.204788+00:00",
+      "source_before": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:34a3e7d4a80a974bf480504960762710a8c623fa7646a2b192b6edcb75adb125",
+        "status_sha256": "hex:2756ee3a3db9bd0862739662aac674f6858b70bbf054011b9e1e1bcb98b6ddcc",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:34a3e7d4a80a974bf480504960762710a8c623fa7646a2b192b6edcb75adb125",
+        "status_sha256": "hex:2756ee3a3db9bd0862739662aac674f6858b70bbf054011b9e1e1bcb98b6ddcc",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "reader-migrates-or-ignores-pins: KILLED ['1 failed, 22 passed, 1 skipped in 16.89s']",
+        "conflicts-hidden: KILLED ['1 failed, 22 passed, 1 skipped in 17.90s']",
+        "aliases-charged: KILLED ['1 failed, 22 passed, 1 skipped, 1 warning in 17.05s']",
+        "not-one-snapshot: KILLED ['1 failed, 22 passed, 1 skipped in 16.94s']",
+        "frontier-unread: KILLED ['2 failed, 21 passed, 1 skipped in 17.25s']",
+        "unknown-stream-at-zero-committed: KILLED ['1 failed, 22 passed, 1 skipped in 17.41s']",
+        "empty-frontier-trusted: KILLED ['1 failed, 22 passed, 1 skipped in 17.27s']",
+        "uncovered-unread: KILLED ['1 failed, 22 passed, 1 skipped in 17.68s']",
+        "gaps-unread: KILLED ['1 failed, 22 passed, 1 skipped in 17.69s']",
+        "no-cancel-at-deadline: KILLED ['1 failed, 22 passed, 1 skipped in 18.19s']",
+        "unallocated-unread: KILLED ['1 failed, 22 passed, 1 skipped in 17.37s']"
+      ],
+      "run_context": [],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/664cd27dae364202949f70988732453b.log",
+      "log_sha256": "hex:4ee0cdd0fca9a9a74fd110343fe7fd090013379037961d657f21685e1e376a4e"
+    },
+    {
+      "run_id": "hex:e0693230fe5b41d28e32655345d88b10",
+      "label": "boundary-report-t4",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-v",
+        "-rs",
+        "-m",
+        "requires_plan12_capture_postgres",
+        "tests/integration/usage/test_savings_report_postgres.py::test_the_host_reads_a_report_from_a_gateway_process_that_alone_holds_the_ledger_credential"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T18:56:49.565542+00:00",
+      "ended": "2026-11-01T18:56:54.117104+00:00",
+      "source_before": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:34a3e7d4a80a974bf480504960762710a8c623fa7646a2b192b6edcb75adb125",
+        "status_sha256": "hex:2756ee3a3db9bd0862739662aac674f6858b70bbf054011b9e1e1bcb98b6ddcc",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:34a3e7d4a80a974bf480504960762710a8c623fa7646a2b192b6edcb75adb125",
+        "status_sha256": "hex:2756ee3a3db9bd0862739662aac674f6858b70bbf054011b9e1e1bcb98b6ddcc",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "============================== 1 passed in 2.62s =============================="
+      ],
+      "run_context": [
+        "test-run-context: mode=passive reason=non_default_selection run=20261101T185651-51324-b04a7f native=not_enrolled parent=not_found guard=not_installed records=COMPLETE phases=3 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/e0693230fe5b41d28e32655345d88b10.log",
+      "log_sha256": "hex:37f17ce95b0e15a9f1a390b75244113c9d507a3bff320ba3d3e7c85ac33c140c"
+    },
+    {
+      "run_id": "hex:3788d6b004c64ff1af64b7ca457d9d6e",
+      "label": "boundary-capture-t4",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-v",
+        "-rs",
+        "-m",
+        "requires_plan12_capture_postgres",
+        "tests/integration/usage/test_durable_capture_postgres.py::test_the_host_delivers_over_http_to_a_gateway_process_that_alone_holds_the_ledger_credential"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T18:56:57.415102+00:00",
+      "ended": "2026-11-01T18:57:02.629209+00:00",
+      "source_before": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:34a3e7d4a80a974bf480504960762710a8c623fa7646a2b192b6edcb75adb125",
+        "status_sha256": "hex:2756ee3a3db9bd0862739662aac674f6858b70bbf054011b9e1e1bcb98b6ddcc",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:69eef5f54b62bcba6dfe6ef1ed329c0b36f2de6d",
+        "tested_diff_sha256": "hex:34a3e7d4a80a974bf480504960762710a8c623fa7646a2b192b6edcb75adb125",
+        "status_sha256": "hex:2756ee3a3db9bd0862739662aac674f6858b70bbf054011b9e1e1bcb98b6ddcc",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "============================== 1 passed in 3.20s =============================="
+      ],
+      "run_context": [
+        "test-run-context: mode=passive reason=non_default_selection run=20261101T185659-11368-34fc0f native=not_enrolled parent=not_found guard=not_installed records=COMPLETE phases=3 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/3788d6b004c64ff1af64b7ca457d9d6e.log",
+      "log_sha256": "hex:bcaa535396cabd475f4b43a000232d573ee341b30379ffcc3bc3658173070076"
+    }
+  ],
+  "notes": [
+    "db-tier-r2 (exit 1) is kept: the recorder's bare 'python' resolved to the base interpreter on Windows, so test children imported another checkout. The recorder now uses sys.executable; db-tier-r2b reran the command.",
+    "Pass-2 runs (r2, r2b) predate status_sha256, environment and run_context in the recorder; those fields are null for them.",
+    "After the r2 runs, usage_store._quietly's try/except/pass became contextlib.suppress(Exception) for bandit B110 (same behaviour); the r3 runs test the bytes with that change.",
+    "revert-postgres-r3 (exit 1) recorded one survivor, empty-frontier-trusted, then stopped at a stale anchor for gaps-unread. The new case test_an_empty_frontier_never_certifies_an_empty_scope kills the survivor; revert-postgres-r3b stopped at the same anchor, and revert-postgres-r3c ran all ten mutants with the anchor fixed.",
+    "boundary-*-r3 ran before that empty-scope case was added; it does not touch either boundary case.",
+    "task3-unit-acp (exit 1): the probe's import-closure test failed on the new usage-report contract import; the closure lists were keyed on HEAD's importer in Task 3's commit 69eef5f.",
+    "task4-unit-acp (exit 1): the logging-surface audit failed on two new surfaces (an asyncio.Event set and a transport error's fixed code); both were registered, and task4-targeted reran the touched suites.",
+    "revert-unit-t4 (exit 1): mutant worker-slot-leaked made a lifecycle test wait on an Agent-mode approval with no timeout until the 900 s limit; those tests now use Chat mode and bounded waits, and revert-unit-t4b ran all 40."
+  ],
+  "task2_logs_before_the_recorder": {
+    "folder": "task2-runs, beside recorder.script",
+    "sha256": {
+      "boundary-1.log": "hex:a7c2a4c4dfd7c7b1873195b8f39099d6811b67f1d371be04cc648e7a5015d463",
+      "boundary-2.log": "hex:470f7f7169fc4b34e3a2177e726fa9e511d9005ad385d5a6dd622bd0ea811c6a",
+      "db-tier-1.log": "hex:d1df996ab8c72a0aecedf29c546b3400acb92385c2f4cad969875c6d92142df6",
+      "db-tier-1.utf8.log": "hex:d1df996ab8c72a0aecedf29c546b3400acb92385c2f4cad969875c6d92142df6",
+      "db-tier-2.log": "hex:d26416242521793eac204ee1affabe7fb675ff1b0fe5b8c68623192ea2a67b96",
+      "k3-config.json": "hex:0188e16196f163648d771445451b2b114bc6b74d9309912ed4d17529130b8808",
+      "revert-postgres.log": "hex:51e620a7326a98de47bc5b4a8fc4cd91e6df4d031f8f10b2057b9e874aeb9830",
+      "revert-unit.log": "hex:536e14937625f8dc1e98273c4f8edeba54f1ef94d46522de0f345f3828c38418",
+      "revert_check_task2.py": "hex:dad1964a50d45caf9848c0dc2ddbc2ee750cc87e004cd9e9ced72a330e968289"
+    },
+    "attribution": "only by the checkpoint log: they predate the recorder"
+  }
+}

@@ -5361,6 +5361,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.spec:AcpDuplexAdapter.handle_client_notification:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.9): `report.set()` is an asyncio.Event set when session/cancel arrives during a `/savings` report; no Redis or other write.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_savings_command.py::test_a_cancel_ends_the_wait_and_nothing_late_is_sent",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.usage.savings_report:SavingsReports.markdown:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection (Plan 12.9): `str(exc)` of ReportTransportError only selects one of fixed user messages (its codes are unreachable, timeout, too_large, malformed); the exception text is never shown, logged or persisted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/usage/test_savings_report.py::test_every_failure_is_stated_and_nothing_from_a_bad_reply_is_shown",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.usage_price_snapshots:record_references:text_write",
       "policy": "safe-by-construction",
       "rationale": "AST overmatch (Plan 12.9, ADR-034): submits each adopted reference's contract-validated snapshot payload (dated list prices, source locator) to the Gateway's own capture outbox; no request, prompt or credential.",

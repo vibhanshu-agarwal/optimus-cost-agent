@@ -697,9 +697,11 @@ class AcpStreamServer:
         admission_limits: AdmissionLimits = DEFAULT_LIMITS,
         session_retention_policy: SessionRetentionPolicy = DEFAULT_SESSION_RETENTION_POLICY,
         durable_capture: Any | None = None,
+        usage_reports: Any | None = None,
     ) -> None:
         self._dispatcher = dispatcher or JsonRpcDispatcher()
         self._durable_capture = durable_capture  # Plan 12.8: each session's settlement appends to it
+        self._usage_reports = usage_reports  # Plan 12.9: the `/savings` source; None leaves it unadvertised
         self._admission_limits = admission_limits
         self._session_retention_policy = session_retention_policy
         self._ignored_notifications = 0
@@ -1040,6 +1042,7 @@ class AcpStreamServer:
             mcp_idle_seconds=self._mcp_idle_seconds,
             monotonic_clock=self._monotonic_clock,
             session_retention_policy=self._session_retention_policy,
+            usage_reports=self._usage_reports,
         )
         limits = self._admission_limits
         message_queue: asyncio.Queue[tuple[dict[str, Any], Reservation, SessionUseLease | None]] = asyncio.Queue(maxsize=limits.pending_items)
@@ -1439,6 +1442,8 @@ class AcpStreamServer:
                 delivered = await deliver_envelope(envelope, ownership_slot)
                 if isinstance(envelope, TurnResponseEnvelope):
                     adapter.note_turn_delivered(envelope.turn_control, cancelled=not delivered)
+                elif delivered and isinstance(method, str) and hasattr(adapter, "after_response"):
+                    await adapter.after_response(method, wire)  # Plan 12.9: notifications that must follow the response
             except asyncio.CancelledError:
                 if ownership_slot.turn_control is not None:
                     ownership_slot.turn_control.request_transport_teardown()

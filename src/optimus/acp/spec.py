@@ -38,6 +38,7 @@ from optimus.acp.debug_trace import (
     log_prompt_refusal,
 )
 from optimus.acp.errors import (
+    INTERNAL_ERROR,
     INVALID_REQUEST,
     MCP_REOPEN_REFUSED,
     METHOD_NOT_FOUND,
@@ -127,6 +128,11 @@ from optimus.mcp.client_disposition import (
 from optimus.runtime.modes import ExecutionMode
 from optimus.tools.line_endings import WRITE_LINE_ENDINGS_MIXED
 from optimus.usage.cost_alerts import AlertPolicy, AlertTracker, CostScopeSummary
+from optimus.usage.savings_report import COMMAND as SAVINGS_COMMAND
+from optimus.usage.savings_report import COMMAND_DESCRIPTION as SAVINGS_DESCRIPTION
+from optimus.usage.savings_report import COMMAND_HINT as SAVINGS_HINT
+from optimus.usage.savings_report import SavingsCommand, SavingsReports
+from optimus.usage.savings_report import parse_command as parse_savings_command
 from optimus.usage.turn_settlement import TurnCostSummary, TurnSettlement, receipt_from_maintenance
 from optimus_security.failure_facts import host_route_id, host_session_id
 
@@ -252,6 +258,8 @@ CONTEXT_PLAN_TOO_LARGE_TEXT = (
 )
 _CONTEXT_CANCELLED_TEXT = "Cancelled before the model was asked."
 # Plan 12.4 Task 4: an Auto turn refused before any answer call; the thread stays open.
+SAVINGS_WAIT_SECONDS = 25.0  # Plan 12.9: a `/savings` report's whole wait (the host read's own deadline is 20 s)
+
 _AUTO_REFUSAL_TEXT = {
     "AUTO_NO_ROUTABLE_MODEL": (
         "Auto has no model left to route this turn to: every eligible model has stopped for this launch. Nothing was "
@@ -761,7 +769,11 @@ class AcpDuplexAdapter:
         mcp_idle_seconds: int | None = None,
         monotonic_clock: Callable[[], float] = monotonic,
         session_retention_policy: SessionRetentionPolicy = DEFAULT_SESSION_RETENTION_POLICY,
+        usage_reports: SavingsReports | None = None,
     ) -> None:
+        # Plan 12.9 (ADR-034, D1): the `/savings` source; None leaves the command unadvertised and `/savings` an ordinary prompt.
+        self._usage_reports = usage_reports
+        self._report_cancels: dict[str, asyncio.Event] = {}  # a report in progress, by session: it holds the prompt slot
         if mcp_idle_seconds is not None and (type(mcp_idle_seconds) is not int or not 1 <= mcp_idle_seconds <= 2592000):
             raise ValueError("invalid MCP idle seconds")
         self._mcp_idle_seconds = mcp_idle_seconds
@@ -1283,6 +1295,55 @@ class AcpDuplexAdapter:
             ownership_slot,
         )
 
+    async def _handle_savings(self, request: dict[str, Any], session_id: str, command: SavingsCommand | str,
+                              ownership_slot: ResponseOwnershipSlot | None) -> ResponseEnvelope:
+        """Plan 12.9 `/savings`: answered locally, before admission or classification. It enters no conversation,
+        creates no accounting epoch, calls no model or tool and changes no mode or strategy. It holds the session's
+        prompt slot while it runs; a cancel, a retired session or the server's close ends the wait and nothing late is
+        sent. The request's own session lease (`handle_client_request`) keeps the session while it runs."""
+        reports = self._usage_reports
+        assert reports is not None
+        cancel = self._report_cancels[session_id] = asyncio.Event()
+        try:
+            if isinstance(command, str):
+                text = command
+            else:
+                fetch = asyncio.create_task(asyncio.to_thread(reports.markdown, session_id, command))
+                stopped = asyncio.create_task(cancel.wait())
+                try:
+                    await asyncio.wait({fetch, stopped}, timeout=SAVINGS_WAIT_SECONDS, return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    stopped.cancel()
+                if not fetch.done() or cancel.is_set() or self._closed or self._sessions.get(session_id) is None:
+                    fetch.cancel()  # the thread finishes on its own; its result is dropped
+                    return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
+                text = fetch.result()
+            try:
+                await self._outbound.notify("session/update", build_agent_message_chunk_notification(session_id=session_id, text=text))
+            except Exception:  # noqa: BLE001 - an undeliverable report is this request's failure only
+                return self._non_turn(error_response(request.get("id"), JsonRpcError(
+                    code=INTERNAL_ERROR, message="the usage report could not be delivered")), ownership_slot)
+            return self._non_turn(success_response(request.get("id"), {"stopReason": "end_turn"}), ownership_slot)
+        finally:
+            if self._report_cancels.get(session_id) is cancel:
+                del self._report_cancels[session_id]
+
+    async def after_response(self, method: str, response: dict[str, Any]) -> None:
+        """Called by the transport once a response is written. After a successful `session/new`, advertise `/savings`:
+        Zed drops commands sent before the session's own response (zed-industries/zed#60199)."""
+        if method != "session/new" or self._usage_reports is None:
+            return
+        result = response.get("result")
+        session_id = result.get("sessionId") if isinstance(result, dict) else None
+        if not isinstance(session_id, str) or self._sessions.get(session_id) is None:
+            return
+        with contextlib.suppress(Exception):  # an unadvertised command still works when typed
+            await self._outbound.notify("session/update", {"sessionId": session_id, "update": {
+                "sessionUpdate": "available_commands_update",
+                "availableCommands": [{"name": SAVINGS_COMMAND, "description": SAVINGS_DESCRIPTION,
+                                       "input": {"hint": SAVINGS_HINT}}],
+            }})
+
     def close_all(self) -> None:
         """Cancel outstanding ACP permission work, then close session states exactly once."""
         if self._sessions._retention is not None:
@@ -1313,6 +1374,9 @@ class AcpDuplexAdapter:
         if reservation is not None:
             self._reopen_cancelled.add(session_id)
             reservation.cancel()
+        report = self._report_cancels.get(session_id)
+        if report is not None:
+            report.set()
         turn = self._active_turns.get(session_id)
         if turn is None:
             return
@@ -1565,7 +1629,7 @@ class AcpDuplexAdapter:
                 ownership_slot,
             )
 
-        if session_id in self._active_turns:
+        if session_id in self._active_turns or session_id in self._report_cancels:
             self._pre_run_refused(request, session_id, "turn_in_progress")
             return self._non_turn(
                 error_response(
@@ -1574,6 +1638,12 @@ class AcpDuplexAdapter:
                 ),
                 ownership_slot,
             )
+
+        if self._usage_reports is not None:
+            command = parse_savings_command(task, attachments=any(
+                not (isinstance(block, dict) and block.get("type") == "text") for block in prompt))
+            if command is not None:
+                return await self._handle_savings(request, session_id, command, ownership_slot)
 
         idle = self._idle_mcp.get(session_id)
         if self._closed or (idle is not None and idle.phase == "MCP_CLOSING"):
