@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import importlib.machinery
 import importlib.util
+import logging
+import runpy
 import sys
 import types
 from pathlib import Path
@@ -39,7 +42,36 @@ SPEC = importlib.util.spec_from_file_location("validate_publication", MODULE_PAT
 assert SPEC is not None and SPEC.loader is not None
 validate_publication = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = validate_publication
-SPEC.loader.exec_module(validate_publication)
+_previous_logging_threshold = logging.root.manager.disable
+try:
+    SPEC.loader.exec_module(validate_publication)
+finally:
+    logging.disable(_previous_logging_threshold)
+
+
+@pytest.mark.parametrize("threshold", [logging.NOTSET, logging.ERROR], ids=["enabled", "muted"])
+@pytest.mark.parametrize("import_fails", [False, True], ids=["success", "failure"])
+def test_validator_import_preserves_logging_threshold(threshold: int, import_fails: bool, monkeypatch: pytest.MonkeyPatch) -> None:
+    previous_threshold = logging.root.manager.disable
+    monkeypatch.setitem(sys.modules, SPEC.name, sys.modules[SPEC.name])
+    real_exec = importlib.machinery.SourceFileLoader.exec_module
+
+    def execute_then_fail(loader: importlib.machinery.SourceFileLoader, module: types.ModuleType) -> None:
+        real_exec(loader, module)
+        if Path(loader.path).resolve() == MODULE_PATH.resolve():
+            raise RuntimeError("injected validator import failure")
+
+    try:
+        logging.disable(threshold)
+        if import_fails:
+            monkeypatch.setattr(importlib.machinery.SourceFileLoader, "exec_module", execute_then_fail)
+            with pytest.raises(RuntimeError, match="injected validator import failure"):
+                runpy.run_path(__file__)
+        else:
+            runpy.run_path(__file__)
+        assert logging.root.manager.disable == threshold
+    finally:
+        logging.disable(previous_threshold)
 
 
 def test_inventory_diff_reports_missing_and_added_markers() -> None:
