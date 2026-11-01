@@ -438,6 +438,52 @@ def test_refusal_roles_and_finalization_before_writer() -> None:
     assert notices.live_response_count() == 0
 
 
+@pytest.mark.parametrize(
+    ("write_started", "expected_state", "expected_delivery"),
+    [
+        (False, SendState.SUPPRESSED, RpcResponseDelivery.NOT_ATTEMPTED),
+        (True, SendState.AMBIGUOUS, RpcResponseDelivery.AMBIGUOUS),
+    ],
+    ids=["queued-finalize-first", "write-started-token-first"],
+)
+def test_in_flight_response_abandonment_freezes_result_until_retirement(
+    write_started: bool, expected_state: SendState, expected_delivery: RpcResponseDelivery
+) -> None:
+    notices = NoticeControl()
+    handle = notices.allocate_response_handle(ResponseKind.ORDINARY)
+    ticket = handle.start_non_turn_response_send()
+    assert isinstance(ticket.send_key, ResponseSendKey)
+    assert ticket.writer_token is not None
+    if write_started:
+        assert handle.mark_write_started(ticket.send_key)
+    slot = handle._slots[ticket.send_key]  # noqa: SLF001
+    assert slot.authoritative is (SendState.WRITE_STARTED if write_started else SendState.QUEUED)
+
+    notices.mark_transport_abandoned()
+    assert slot.authoritative is expected_state
+    assert handle.rpc_response_delivery is expected_delivery
+    assert handle._closed_roles == {ResponsePart.RESPONSE}  # noqa: SLF001
+    assert notices.lookup_response(handle.response_id) is handle
+
+    handle.publish_diagnostic(ticket.send_key, SendOutcome.FLUSHED)
+    assert slot.diagnostic is SendOutcome.FLUSHED
+    assert slot.authoritative is expected_state
+    assert handle.rpc_response_delivery is expected_delivery
+
+    if write_started:
+        ticket.writer_token.release()
+    else:
+        handle.finalize_once("done")
+    assert notices.lookup_response(handle.response_id) is handle
+    assert notices.live_response_count() == 1
+    if write_started:
+        handle.finalize_once("done")
+    else:
+        ticket.writer_token.release()
+    assert notices.lookup_response(handle.response_id) == "unknown_or_retired"
+    assert notices.live_response_count() == 0
+
+
 def test_direct_suppressed_after_abandonment_and_double_start_invariant() -> None:
     notices = NoticeControl()
     notices.mark_transport_abandoned()
