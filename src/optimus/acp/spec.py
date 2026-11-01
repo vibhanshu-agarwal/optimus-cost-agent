@@ -264,11 +264,14 @@ SAVINGS_TIMEOUT_TEXT = "The usage report took too long and was stopped. Try agai
 
 class _SavingsSendOwner:
     """The send owner (`outbound_writer.SendOwner`) of one `/savings` report's single chunk: queued until its write
-    begins, suppressible until then, and it remembers whether the write began."""
+    begins, suppressible until then, and it remembers whether the write began. The writer claims it immediately before
+    the physical write; the claim asks ``wanted`` then, so a report whose request was cancelled, whose server is closing
+    or whose session began retiring is never written, however long it waited in the queue."""
 
-    def __init__(self) -> None:
+    def __init__(self, wanted: Callable[[], bool]) -> None:
         self.key = ("savings", uuid.uuid4().hex)
         self.started = False
+        self._wanted = wanted
         self._state = SendState.QUEUED
         self._lock = threading.Lock()
 
@@ -280,7 +283,10 @@ class _SavingsSendOwner:
     def claim_write_started(self, send_key: Any) -> SendState:
         with self._lock:
             if self._state is SendState.QUEUED:
-                self._state, self.started = SendState.WRITE_STARTED, True
+                if self._wanted():
+                    self._state, self.started = SendState.WRITE_STARTED, True
+                else:
+                    self._state = SendState.SUPPRESSED
             return self._state
 
     def publish_authoritative(self, send_key: Any, outcome: Any) -> None:
@@ -805,6 +811,7 @@ class AcpDuplexAdapter:
         # Plan 12.9 (ADR-034, D1): the `/savings` source; None leaves the command unadvertised and `/savings` an ordinary prompt.
         self._usage_reports = usage_reports
         self._report_cancels: dict[str, asyncio.Event] = {}  # a report in progress, by session: it holds the prompt slot
+        self._report_sends: set[asyncio.Task[Any]] = set()  # torn-down reports' sends, held until they complete
         if mcp_idle_seconds is not None and (type(mcp_idle_seconds) is not int or not 1 <= mcp_idle_seconds <= 2592000):
             raise ValueError("invalid MCP idle seconds")
         self._mcp_idle_seconds = mcp_idle_seconds
@@ -1336,8 +1343,12 @@ class AcpDuplexAdapter:
         assert reports is not None
         cancel = self._report_cancels[session_id] = asyncio.Event()
 
+        abandoned = False  # the request task itself was cancelled (server teardown)
+
         def gone() -> bool:
-            return cancel.is_set() or self._closed or self._sessions.get(session_id) is None
+            # Retirement begins while this request's own lease still holds the entry, so presence is not enough.
+            return (abandoned or cancel.is_set() or self._closed or self._sessions.get(session_id) is None
+                    or not self.retention.is_active(session_id))
 
         try:
             if isinstance(command, str):
@@ -1345,12 +1356,13 @@ class AcpDuplexAdapter:
             else:
                 # The transport ends by its own deadline (`savings_report.READ_SECONDS`), so its thread exits by then.
                 fetch = asyncio.create_task(asyncio.to_thread(reports.markdown, session_id, command))
-                if not await self._until_cancelled(fetch, cancel, SAVINGS_WAIT_SECONDS) or gone():
+                if not await self._until_cancelled(fetch, cancel, SAVINGS_WAIT_SECONDS):
                     return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
                 text = fetch.result() if fetch.done() else SAVINGS_TIMEOUT_TEXT
-            # One send of its own: a cancel before its write begins suppresses it; a write already begun is
-            # authoritative. Success needs a confirmed flush (a suppressed or ambiguous send raises).
-            owner = _SavingsSendOwner()
+            # One send of its own, decided where the writer claims it: a cancel, a retiring session, a closing server
+            # or a torn-down request before its write begins suppresses it (`_SavingsSendOwner`); a write already begun
+            # is authoritative. Success needs a confirmed flush (a suppressed or ambiguous send raises).
+            owner = _SavingsSendOwner(lambda: not gone())
             submission = ProgressSubmission(control=owner, send_key=owner.key, admission=ProgressAdmission(),  # type: ignore[arg-type]
                                             admission_class=AdmissionClass.REQUIRED)
             token = progress_submission.set(submission)
@@ -1359,10 +1371,16 @@ class AcpDuplexAdapter:
                     "session/update", build_agent_message_chunk_notification(session_id=session_id, text=text), require_flushed=True))
             finally:
                 progress_submission.reset(token)
-            if not await self._until_cancelled(send, cancel, None):
-                owner.suppress(owner.key)  # no effect once the write began
             try:
                 await asyncio.shield(send)
+            except asyncio.CancelledError:
+                # The request itself is torn down: an unwritten report never starts, and the send stays in custody
+                # until it physically completes, so its outcome is still observed.
+                abandoned = True
+                owner.suppress(owner.key)
+                self._report_sends.add(send)
+                send.add_done_callback(self._report_send_done)
+                raise
             except Exception:  # noqa: BLE001 - an undelivered report is this request's outcome only
                 if not owner.started and gone():
                     return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
@@ -1374,6 +1392,11 @@ class AcpDuplexAdapter:
         finally:
             if self._report_cancels.get(session_id) is cancel:
                 del self._report_cancels[session_id]
+
+    def _report_send_done(self, send: asyncio.Task[Any]) -> None:
+        self._report_sends.discard(send)
+        if not send.cancelled():
+            send.exception()  # observed: a torn-down report's send outcome is never an unretrieved task error
 
     @staticmethod
     async def _until_cancelled(work: asyncio.Task[Any], cancel: asyncio.Event, limit: float | None) -> bool:

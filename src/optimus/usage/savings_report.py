@@ -12,10 +12,10 @@ Untrusted identifiers are escaped and shortened. The exact labels are the contra
 
 from __future__ import annotations
 
-import http.client
 import json
 import re
 import socket
+import ssl
 import threading
 import time
 from collections import OrderedDict
@@ -105,61 +105,101 @@ Post = Callable[[bytes], tuple[int, Any]]
 def gateway_post(settings: OptimusGatewaySettings, *, timeout: float = READ_SECONDS) -> Post:
     """POST to the report route with the host's Gateway URL and key, reading at most the contract's response bound.
 
-    One deadline covers the whole exchange: the connection is attempted within it, and a watchdog shuts the socket at
-    it, so slow headers or a body that drips in end there and the calling thread returns (`ReportTransportError`)."""
+    One deadline covers the whole exchange, enforced on the socket this function owns: the connection, the send and
+    every receive each get exactly the time left, so slow headers, late headers then a stalled body, or a body that
+    drips in all end at the deadline and the calling thread returns (`ReportTransportError`). A watchdog cannot give
+    that bound: shutting a socket down from another thread does not wake a receive already blocked on it everywhere.
+    The request asks the Gateway to close the connection, and its reply carries a Content-Length."""
     settings.validate_trusted_gateway()
     parts = urlsplit(settings.gateway_url.rstrip("/") + urc.PATH)
-    connection_class = http.client.HTTPSConnection if parts.scheme == "https" else http.client.HTTPConnection
+    host, port = parts.hostname or "", parts.port or (443 if parts.scheme == "https" else 80)
 
     def post(body: bytes) -> tuple[int, Any]:
-        headers = {**settings.auth_headers(), "Content-Type": "application/json", "Accept": "application/json"}
         deadline = time.monotonic() + timeout
-        connection = connection_class(parts.hostname or "", parts.port, timeout=timeout)
-        watchdog = threading.Timer(timeout, _shut, args=(connection,))
-        watchdog.daemon = True
-        watchdog.start()
+
+        def left() -> float:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ReportTransportError("timeout")
+            return remaining
+
+        headers = {**settings.auth_headers(), "Host": f"{host}:{port}", "Content-Type": "application/json",
+                   "Accept": "application/json", "Content-Length": str(len(body)), "Connection": "close"}
+        head = f"POST {parts.path} HTTP/1.1\r\n" + "".join(f"{k}: {v}\r\n" for k, v in headers.items()) + "\r\n"
         try:
-            connection.request("POST", parts.path, body=body, headers=headers)
-            response = connection.getresponse()
-            return response.status, _bounded_json(response, deadline)
-        except ReportTransportError:
-            raise
-        except (OSError, http.client.HTTPException):
-            raise ReportTransportError("timeout" if time.monotonic() >= deadline - 0.05 else "unreachable") from None
+            sock = socket.create_connection((host, port), timeout=left())
+        except TimeoutError:
+            raise ReportTransportError("timeout") from None
+        except OSError:
+            raise ReportTransportError("unreachable") from None
+        try:
+            if parts.scheme == "https":
+                sock.settimeout(left())
+                sock = ssl.create_default_context().wrap_socket(sock, server_hostname=host)
+            sock.settimeout(left())
+            sock.sendall(head.encode("latin-1") + body)
+            return _bounded_reply(sock, left)
+        except TimeoutError:
+            raise ReportTransportError("timeout") from None
+        except OSError:
+            raise ReportTransportError("unreachable") from None
         finally:
-            watchdog.cancel()
-            connection.close()
+            sock.close()
 
     return post
 
 
-def _shut(connection: http.client.HTTPConnection) -> None:
-    """The deadline: unblock any read in progress (a shutdown wakes a blocked receive; a close alone may not)."""
-    sock = connection.sock
-    if sock is not None:
-        try:
-            sock.shutdown(socket.SHUT_RDWR)
-        except OSError:
-            pass
-    connection.close()
+_HEAD_BYTES = 64 * 1024  # status line and headers
 
 
-def _bounded_json(stream: Any, deadline: float) -> Any:
-    """At most the contract's response bound, by the exchange's deadline (enforced by its watchdog)."""
+def _bounded_reply(sock: socket.socket, left: Callable[[], float]) -> tuple[int, Any]:
+    """The reply's status and JSON body, read within the deadline and the contract's response bound."""
     raw = bytearray()
-    while len(raw) <= urc.MAX_RESPONSE_BYTES:
-        if time.monotonic() > deadline:
-            raise ReportTransportError("timeout")
-        chunk = stream.read1(64 * 1024)
+    length: int | None = None
+    body_start = -1
+    while True:
+        sock.settimeout(left())
+        chunk = sock.recv(64 * 1024)
         if not chunk:
             break
         raw += chunk
-    if len(raw) > urc.MAX_RESPONSE_BYTES:
-        raise ReportTransportError("too_large")
+        if body_start < 0:
+            body_start = raw.find(b"\r\n\r\n")
+            if body_start < 0:
+                if len(raw) > _HEAD_BYTES:
+                    raise ReportTransportError("malformed")
+                continue
+            body_start += 4
+            status, length = _head(bytes(raw[:body_start]))
+        if len(raw) - body_start > urc.MAX_RESPONSE_BYTES:
+            raise ReportTransportError("too_large")
+        if length is not None and len(raw) - body_start >= length:
+            break
+    if body_start < 0:
+        raise ReportTransportError("malformed")
+    payload = bytes(raw[body_start:]) if length is None else bytes(raw[body_start:body_start + length])
+    if length is not None and len(payload) < length:
+        raise ReportTransportError("malformed")  # the connection closed before the declared body arrived
     try:
-        return json.loads(bytes(raw))
+        return status, json.loads(payload)
     except (ValueError, UnicodeDecodeError):
         raise ReportTransportError("malformed") from None
+
+
+def _head(head: bytes) -> tuple[int, int | None]:
+    lines = head.decode("latin-1").split("\r\n")
+    words = lines[0].split(" ", 2)
+    if len(words) < 2 or not words[0].startswith("HTTP/1.") or not words[1].isdigit():
+        raise ReportTransportError("malformed")
+    fields = {name.strip().lower(): value.strip() for name, _, value in (line.partition(":") for line in lines[1:] if line)}
+    if "chunked" in fields.get("transfer-encoding", "").lower():
+        raise ReportTransportError("malformed")  # the Gateway always sends a Content-Length
+    declared = fields.get("content-length")
+    if declared is not None and not declared.isdigit():
+        raise ReportTransportError("malformed")
+    if declared is not None and int(declared) > urc.MAX_RESPONSE_BYTES:
+        raise ReportTransportError("too_large")
+    return int(words[1]), None if declared is None else int(declared)
 
 
 Scope = Callable[[str], tuple[int, tuple[tuple[str, int], ...]]]

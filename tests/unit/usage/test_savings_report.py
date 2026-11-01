@@ -227,3 +227,42 @@ def test_unknown_unallocated_charges_are_stated_not_hidden():
     markdown = sr.render_savings_report(_page(_facts(unallocated=(None,)), _request(), _references()))
 
     assert "known USD 0 across 1 requests, 1 of them with unknown cost." in markdown
+
+
+
+@pytest.mark.parametrize("protocol", ["HTTP/1.0", "HTTP/1.1"])
+def test_a_closing_response_with_late_headers_and_a_stalled_body_stops_at_the_total_deadline(protocol):
+    """Checkpoint B pass 2 finding 1: a closing response (HTTP/1.0, or HTTP/1.1 with Connection: close) takes the socket
+    over from the connection; the watchdog still holds it, so a body stalled after headers that arrived near the
+    deadline ends at the deadline, not one socket timeout later."""
+
+    class Late(BaseHTTPRequestHandler):
+        protocol_version = protocol
+
+        def log_message(self, *args):
+            return
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers["Content-Length"]))
+            time.sleep(0.7)  # headers arrive late, inside the 1 s deadline
+            self.send_response(200)
+            self.send_header("Content-Length", "100")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(b"{")
+            self.wfile.flush()
+            time.sleep(3)  # then the body stalls
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Late)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    settings = OptimusGatewaySettings(gateway_url=f"http://127.0.0.1:{server.server_address[1]}", optimus_api_key="opt_live_k")  # pragma: allowlist secret
+    try:
+        started = time.monotonic()
+        with pytest.raises(sr.ReportTransportError, match="timeout"):
+            sr.gateway_post(settings, timeout=1.0)(b"{}")
+        elapsed = time.monotonic() - started
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert elapsed < 1.35, f"the read ran {elapsed:.2f}s against a 1 s deadline"

@@ -5377,6 +5377,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.spec:AcpDuplexAdapter._report_send_done:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.9): `send.exception()` only retrieves a torn-down report send's outcome so asyncio never reports it as unretrieved; nothing is logged, exported or persisted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_savings_command.py::test_a_cancelled_request_never_writes_its_queued_report_and_keeps_custody_of_the_send",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.usage.savings_report:SavingsReports.markdown:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection (Plan 12.9): `str(exc)` of ReportTransportError only selects one of fixed user messages (its codes are unreachable, timeout, too_large, malformed); the exception text is never shown, logged or persisted.",

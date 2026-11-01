@@ -392,3 +392,128 @@ async def test_a_report_succeeds_only_on_a_confirmed_flush(tmp_path):
     await prompt(case.adapter, case.outbound, session_id, "/savings", "s1")
 
     assert case.outbound.required == [True], "a suppressed or ambiguous send raises on the real channel"
+
+
+
+async def test_a_report_never_reaches_a_session_whose_retirement_began(tmp_path):
+    """Checkpoint B pass 2 finding 3: the report's own lease keeps the entry while retirement is pending, so retirement is
+    read from the retention state, and the session retires once the report's custody is released."""
+    from optimus.acp.session_retention import RetirementReason
+
+    case, session_id, task, gate = await _slow(tmp_path)
+
+    case.adapter.retention.request_retire(session_id, reason=RetirementReason.EXPLICIT_REMOVE)
+    gate.set()
+    response = await task
+    for _ in range(100):
+        if case.adapter._sessions.get(session_id) is None:  # noqa: SLF001
+            break
+        await asyncio.sleep(0.01)
+
+    assert response["result"]["stopReason"] == "cancelled" and texts(case.outbound) == []
+    assert not case.adapter.retention.is_active(session_id) and case.adapter._sessions.get(session_id) is None  # noqa: SLF001
+
+
+async def test_after_the_client_hangs_up_a_queued_report_is_never_written(tmp_path):
+    """Checkpoint B pass 2 finding 2, on the real stream server and its dedicated writer: the report's chunk waits behind
+    a blocked write, the client hangs up (EOF), teardown cancels the request, and the writer is then released. The
+    report's chunk is never written."""
+    import json as json_module
+
+    from optimus.acp.admission import AdmissionLimits
+    from optimus.acp.outbound_writer import DedicatedOutboundWriter
+    from optimus.acp.server import AcpStreamServer
+    from tests.integration.acp.test_server_stream import InteractiveLineReader, MemoryLineWriter, configured_test_agent_server
+    from tests.unit.acp.test_outbound_writer import ControllableTransport
+
+    fetched = threading.Event()
+
+    def post(body: bytes):
+        status, reply = _gateway_post(_Store())(body)
+        fetched.set()
+        return status, reply
+
+    configured = configured_test_agent_server(tmp_path, output_text="ok")
+    server = AcpStreamServer(dispatcher=configured.server._dispatcher,  # noqa: SLF001
+                             usage_reports=sr.SavingsReports(post, lambda s: (0, ())))
+    transport = ControllableTransport()
+    writer = DedicatedOutboundWriter(transport, limits=AdmissionLimits())
+    writer.start()
+    reader = InteractiveLineReader()
+    serving = asyncio.create_task(server.serve_ndjson(reader, MemoryLineWriter(), dedicated_writer=writer, join_dedicated_writer=False))
+
+    def written() -> list[dict]:
+        return [json_module.loads(line) for chunk in list(transport.writes) for line in chunk.decode("utf-8").splitlines() if line]
+
+    async def until(predicate) -> None:
+        for _ in range(500):
+            if predicate():
+                return
+            await asyncio.sleep(0.01)
+        raise AssertionError("timed out")
+
+    try:
+        await reader.send({"jsonrpc": "2.0", "id": "init", "method": "initialize", "params": {"protocolVersion": 1}})
+        await reader.send({"jsonrpc": "2.0", "id": "new", "method": "session/new", "params": {"cwd": str(tmp_path), "mcpServers": []}})
+        await until(lambda: any(m.get("id") == "new" for m in written()))
+        session_id = next(m for m in written() if m.get("id") == "new")["result"]["sessionId"]
+        await until(lambda: any(m.get("params", {}).get("update", {}).get("sessionUpdate") == "available_commands_update" for m in written()))
+
+        transport.allow_write.clear()  # the next physical write blocks, and everything after it queues
+        transport.write_entered.clear()
+        await reader.send({"jsonrpc": "2.0", "id": "mode", "method": "session/set_mode", "params": {"sessionId": session_id, "modeId": "chat"}})
+        await asyncio.to_thread(transport.write_entered.wait, 5)
+        await reader.send({"jsonrpc": "2.0", "id": "s1", "method": "session/prompt",
+                           "params": {"sessionId": session_id, "prompt": [{"type": "text", "text": "/savings"}]}})
+        assert await asyncio.to_thread(fetched.wait, 5)
+        await asyncio.sleep(0.2)  # the report's chunk is now queued behind the blocked write
+
+        reader.close()  # the client hangs up
+        await asyncio.wait_for(serving, 10)
+    finally:
+        transport.allow_write.set()
+        await asyncio.sleep(0.3)  # the writer drains what is still queued
+        writer.close_and_join()
+
+    chunks = [m for m in written() if m.get("params", {}).get("update", {}).get("sessionUpdate") == "agent_message_chunk"]
+    assert not any("Usage and savings" in c["params"]["update"]["content"]["text"] for c in chunks), "nothing late"
+
+
+
+async def test_a_queued_report_is_not_written_once_its_session_starts_retiring(tmp_path):
+    """The writer asks the report's send owner at the moment of writing: a session that began retiring while the chunk
+    waited in the queue gets nothing, with no cancel involved."""
+    from optimus.acp.session_retention import RetirementReason
+
+    case = _adapter(tmp_path, outbound=_Parked(started=False))
+    session_id = await new_session(case.adapter, tmp_path, mode="chat")
+    task = asyncio.create_task(asyncio.wait_for(rpc(case.adapter, prompt_request(session_id, "/savings", "s1")), 15))
+    await asyncio.wait_for(case.outbound.parked.wait(), 5)
+
+    case.adapter.retention.request_retire(session_id, reason=RetirementReason.EXPLICIT_REMOVE)
+    case.outbound.release.set()
+    response = await task
+
+    assert response["result"]["stopReason"] == "cancelled" and texts(case.outbound) == []
+
+
+
+async def test_a_cancelled_request_never_writes_its_queued_report_and_keeps_custody_of_the_send(tmp_path):
+    """The request task itself is cancelled (no session/cancel, no server close) while its chunk is queued: the unwritten
+    report is suppressed, and its send stays in the adapter's custody until it completes."""
+    case = _adapter(tmp_path, outbound=_Parked(started=False))
+    session_id = await new_session(case.adapter, tmp_path, mode="chat")
+    task = asyncio.create_task(rpc(case.adapter, prompt_request(session_id, "/savings", "s1")))
+    await asyncio.wait_for(case.outbound.parked.wait(), 5)
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert len(case.adapter._report_sends) == 1, "held until the send completes"  # noqa: SLF001
+    case.outbound.release.set()
+    for _ in range(100):
+        if not case.adapter._report_sends:  # noqa: SLF001
+            break
+        await asyncio.sleep(0.01)
+
+    assert texts(case.outbound) == [] and not case.adapter._report_sends  # noqa: SLF001
