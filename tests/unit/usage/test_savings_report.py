@@ -6,6 +6,7 @@ actually sends. Synthetic identities only; no model is named."""
 from __future__ import annotations
 
 import json
+import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -346,4 +347,36 @@ def test_malformed_numeric_fields_stay_inside_the_transport_error_boundary(gatew
     with pytest.raises(sr.ReportTransportError, match="malformed"):
         sr.gateway_post(settings)(b"{}")
     assert "too large or not in the expected form" in sr.SavingsReports(sr.gateway_post(settings), lambda s: (0, ())).markdown(
+        "s", sr.SavingsCommand())
+
+
+# --- Checkpoint B round 94 pass 4 -----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("creatable", [{socket.AF_INET}, set()])
+def test_a_socket_that_cannot_be_created_is_an_unreachable_gateway(monkeypatch, creatable):
+    """IPv4 refuses and IPv6 is unavailable, or no socket can be allocated at all: the transport error, never `OSError`."""
+    closed: list[int] = []
+
+    class Refusing:
+        def __init__(self, family, kind):
+            if family not in creatable:
+                raise OSError("address family not supported")
+
+        def settimeout(self, value):
+            return
+
+        def connect(self, address):
+            raise ConnectionRefusedError("refused")
+
+        def close(self):
+            closed.append(1)
+
+    monkeypatch.setattr(sr, "_new_socket", Refusing)
+    settings = OptimusGatewaySettings(gateway_url="http://localhost:8765", optimus_api_key="opt_live_k")  # pragma: allowlist secret
+
+    with pytest.raises(sr.ReportTransportError, match="unreachable"):
+        sr.gateway_post(settings, timeout=1)(b"{}")
+    assert len(closed) == len(creatable), "only sockets that were created are closed"
+    assert "could not be reached" in sr.SavingsReports(sr.gateway_post(settings, timeout=1), lambda s: (0, ())).markdown(
         "s", sr.SavingsCommand())

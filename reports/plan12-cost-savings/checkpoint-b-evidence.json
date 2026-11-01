@@ -7,8 +7,8 @@
     "publisher": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/publish_evidence.py",
     "sha256": {
       "run_and_record.py": "hex:434dd374f96de7f5f767b47c9034feb7da70750a97d146ddbc194e4797a022d1",
-      "revert_check.py": "hex:041397cc0fd21882e9efee9c75bdb8e1b216811f16a16927096bbccf2666fd07",
-      "publish_evidence.py": "hex:848c4c54a6835e3eebe339e8228dc3fe5ebf020c2847628c7670167510e091ca"
+      "revert_check.py": "hex:f6740c2cc6b4d804ae6b7426830bee4411b2065f45ca387b12c77aff36902724",
+      "publish_evidence.py": "hex:6a4cf6e3de39d57a069b28531df46994893b51aee73c2f1ab0fbfcd4df58b96b"
     }
   },
   "validity": {
@@ -2004,6 +2004,92 @@
       "run_context": [],
       "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/7fd4af9011cf4c70b7219202a37e627c.log",
       "log_sha256": "hex:3605b6853ac9abafc57efc82bb04fd436826b101d034628e66b966c5a3e6c17b"
+    },
+    {
+      "run_id": "hex:a3bcd63bd9da4a9ebe1eb4c643dc8f4b",
+      "label": "targeted-cpb5",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        "tests/unit/usage",
+        "tests/unit/acp/test_savings_command.py",
+        "tests/unit/acp/test_savings_escalation_capture.py",
+        "tests/unit/tools/test_verify_plan996_logging_surfaces.py",
+        "tests/unit/tools/test_probe_p11_zed_session_load.py"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T23:55:19.552394+00:00",
+      "ended": "2026-11-01T23:58:12.466346+00:00",
+      "source_before": {
+        "head": "hex:23978b5ed97dc7370ee6458c65bf16fad2012a08",
+        "tested_diff_sha256": "hex:b4c6f12fbf3a51e266ea6729985be8a72e4d950bac46d284fa5bde8ac690c605",
+        "status_sha256": "hex:f5f677c4344a31f296a5d29c07d67592de294cb1561fa0a1cb07648f88e9504d",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:23978b5ed97dc7370ee6458c65bf16fad2012a08",
+        "tested_diff_sha256": "hex:b4c6f12fbf3a51e266ea6729985be8a72e4d950bac46d284fa5bde8ac690c605",
+        "status_sha256": "hex:f5f677c4344a31f296a5d29c07d67592de294cb1561fa0a1cb07648f88e9504d",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "523 passed in 170.54s (0:02:50)"
+      ],
+      "run_context": [
+        "test-run-context: mode=active reason=default_selection run=20261101T235521-1436-d765d6 native=valid job=optimus-test-run-20261101T235521-1436-d765d6 processes=3384 parent=not_found guard=pytest_process_guard protection=full records=COMPLETE phases=1569 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/a3bcd63bd9da4a9ebe1eb4c643dc8f4b.log",
+      "log_sha256": "hex:c7ab401a5439f3af6ec57e9720c1827086a8bcd693a9769a87ad0efc526480b3"
+    },
+    {
+      "run_id": "hex:d7c2f216fdc34507942ac23d57fd2c49",
+      "label": "revert-unit-cpb5",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-handoff\\sandbox-review-kit\\plan12-codex-cli\\round-93-p129-checkpoint-a\\revert_check.py",
+        "unit",
+        "socket-creation-unbounded"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T23:58:13.854017+00:00",
+      "ended": "2026-11-01T23:59:04.598218+00:00",
+      "source_before": {
+        "head": "hex:23978b5ed97dc7370ee6458c65bf16fad2012a08",
+        "tested_diff_sha256": "hex:b4c6f12fbf3a51e266ea6729985be8a72e4d950bac46d284fa5bde8ac690c605",
+        "status_sha256": "hex:f5f677c4344a31f296a5d29c07d67592de294cb1561fa0a1cb07648f88e9504d",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:23978b5ed97dc7370ee6458c65bf16fad2012a08",
+        "tested_diff_sha256": "hex:b4c6f12fbf3a51e266ea6729985be8a72e4d950bac46d284fa5bde8ac690c605",
+        "status_sha256": "hex:f5f677c4344a31f296a5d29c07d67592de294cb1561fa0a1cb07648f88e9504d",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "socket-creation-unbounded: KILLED ['2 failed, 288 passed in 48.27s']"
+      ],
+      "run_context": [],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/d7c2f216fdc34507942ac23d57fd2c49.log",
+      "log_sha256": "hex:2e5c850e129e966b1accee474d8ee65bc5e1a1e687ece8e9f2958bd53cfd6f8c"
     }
   ],
   "notes": [
@@ -2017,7 +2103,8 @@
     "revert-unit-t4 (exit 1): mutant worker-slot-leaked made a lifecycle test wait on an Agent-mode approval with no timeout until the 900 s limit; those tests now use Chat mode and bounded waits, and revert-unit-t4b ran all 40.",
     "revert-unit-cpb3 (exit 1): two mutants survived, late-output-after-close and unwritten-report-not-suppressed. Both removed steps (a liveness check after the fetch, and a suppression on session/cancel) had become redundant with the send owner's decision at claim time, which covers both cases; they were deleted rather than kept untestable, and revert-unit-cpb3b ran the remaining 49 on the final bytes (targeted-cpb3b covers that change).",
     "Round 94 pass 3 used no container: git diff 8c810ef is empty for src/optimus_gateway, src/optimus_security, src/optimus_model_policy, migrations and tests/integration, so db-tier-cpb2, revert-postgres-cpb2 and boundary-*-cpb2 still cover those bytes.",
-    "revert-unit-cpb4 (exit 1): deadline-never-expires survived. Its earlier kills depended on a reply chunk landing just past the deadline. The new case test_a_spent_deadline_is_a_timeout_before_any_socket_operation kills it deterministically, and revert-unit-cpb4b reran that mutant alone (revert_check.py now takes optional mutant names). Only that test changed after revert-unit-cpb4, so its other 52 results stand; targeted-cpb4b covers the final bytes. Pass 4 also used no container: the paths above are unchanged since 8c810ef."
+    "revert-unit-cpb4 (exit 1): deadline-never-expires survived. Its earlier kills depended on a reply chunk landing just past the deadline. The new case test_a_spent_deadline_is_a_timeout_before_any_socket_operation kills it deterministically, and revert-unit-cpb4b reran that mutant alone (revert_check.py now takes optional mutant names). Only that test changed after revert-unit-cpb4, so its other 52 results stand; targeted-cpb4b covers the final bytes. Pass 4 also used no container: the paths above are unchanged since 8c810ef.",
+    "Round 94 pass 5: socket construction joined _connect's error boundary (savings_report.py only). revert-unit-cpb5 ran the one new mutant, socket-creation-unbounded; the other mutants' anchors are unchanged and their source lines untouched. targeted-cpb5 covers the final bytes; no container was used."
   ],
   "task2_logs_before_the_recorder": {
     "folder": "task2-runs, beside recorder.script",

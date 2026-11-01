@@ -161,7 +161,10 @@ def _connect(host: str, port: int, left: Callable[[], float]) -> socket.socket:
         raise ReportTransportError("unreachable")
     failure = "unreachable"
     for family, address in addresses:
-        sock = _new_socket(family, socket.SOCK_STREAM)
+        try:
+            sock = _new_socket(family, socket.SOCK_STREAM)
+        except OSError:
+            continue  # this family is unavailable, or no socket could be allocated: try the next address
         try:
             sock.settimeout(left())
             sock.connect((address, port))
