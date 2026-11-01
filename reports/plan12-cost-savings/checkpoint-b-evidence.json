@@ -1,14 +1,14 @@
 {
   "schema_version": 2,
-  "plan": "Plan 12.9 v2, Checkpoint B (Tasks 3-4), round 94; cumulative with Checkpoint A's runs",
+  "plan": "Plan 12.9 v2, Checkpoint B (Tasks 3-4), round 94",
   "recorder": {
     "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/run_and_record.py",
     "revert_checks": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/revert_check.py",
     "publisher": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/publish_evidence.py",
     "sha256": {
       "run_and_record.py": "hex:434dd374f96de7f5f767b47c9034feb7da70750a97d146ddbc194e4797a022d1",
-      "revert_check.py": "hex:d510ddeac7a9d3f8973e6767354ab4044fbca0eeff29cea91ba3932300c1d778",
-      "publish_evidence.py": "hex:1f42ec1cd82dbc19007ed7983e937d09413f1cd94db38ec2aa23770d6b32128d"
+      "revert_check.py": "hex:041397cc0fd21882e9efee9c75bdb8e1b216811f16a16927096bbccf2666fd07",
+      "publish_evidence.py": "hex:848c4c54a6835e3eebe339e8228dc3fe5ebf020c2847628c7670167510e091ca"
     }
   },
   "validity": {
@@ -1804,6 +1804,206 @@
       "run_context": [],
       "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/1f70909f5b0c4916b354f26826322ed0.log",
       "log_sha256": "hex:c25b2592e5103db4a2d76ad14074b774500e2e221987f522736268546a246858"
+    },
+    {
+      "run_id": "hex:0eddcc692bda476ea435cb09da7356e6",
+      "label": "targeted-cpb4",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        "tests/unit/usage",
+        "tests/unit/acp/test_savings_command.py",
+        "tests/unit/acp/test_savings_escalation_capture.py",
+        "tests/unit/tools/test_verify_plan996_logging_surfaces.py",
+        "tests/unit/tools/test_probe_p11_zed_session_load.py"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T22:56:17.599651+00:00",
+      "ended": "2026-11-01T22:59:10.645130+00:00",
+      "source_before": {
+        "head": "hex:e2704db867ea7520eee77fe1bc5ea9bf629573a9",
+        "tested_diff_sha256": "hex:289636f17d91922417cec868f3bfa9f5148e45b1b20c9bbdc84dd30bacf5c6f5",
+        "status_sha256": "hex:f5f677c4344a31f296a5d29c07d67592de294cb1561fa0a1cb07648f88e9504d",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:e2704db867ea7520eee77fe1bc5ea9bf629573a9",
+        "tested_diff_sha256": "hex:289636f17d91922417cec868f3bfa9f5148e45b1b20c9bbdc84dd30bacf5c6f5",
+        "status_sha256": "hex:f5f677c4344a31f296a5d29c07d67592de294cb1561fa0a1cb07648f88e9504d",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "520 passed in 170.67s (0:02:50)"
+      ],
+      "run_context": [
+        "test-run-context: mode=active reason=default_selection run=20261101T225619-36572-0ff442 native=valid job=optimus-test-run-20261101T225619-36572-0ff442 processes=3408 parent=not_found guard=pytest_process_guard protection=full records=COMPLETE phases=1560 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/0eddcc692bda476ea435cb09da7356e6.log",
+      "log_sha256": "hex:b8784f0791b7c1b8ce515cc56ee281452943c90e4528b00af66fac20b2abbb8c"
+    },
+    {
+      "run_id": "hex:cb5930f6036e47c4903a3bd5f8ebb2d8",
+      "label": "revert-unit-cpb4",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-handoff\\sandbox-review-kit\\plan12-codex-cli\\round-93-p129-checkpoint-a\\revert_check.py",
+        "unit"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T22:59:12.091523+00:00",
+      "ended": "2026-11-01T23:44:22.012803+00:00",
+      "source_before": {
+        "head": "hex:e2704db867ea7520eee77fe1bc5ea9bf629573a9",
+        "tested_diff_sha256": "hex:289636f17d91922417cec868f3bfa9f5148e45b1b20c9bbdc84dd30bacf5c6f5",
+        "status_sha256": "hex:f5f677c4344a31f296a5d29c07d67592de294cb1561fa0a1cb07648f88e9504d",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:e2704db867ea7520eee77fe1bc5ea9bf629573a9",
+        "tested_diff_sha256": "hex:289636f17d91922417cec868f3bfa9f5148e45b1b20c9bbdc84dd30bacf5c6f5",
+        "status_sha256": "hex:f5f677c4344a31f296a5d29c07d67592de294cb1561fa0a1cb07648f88e9504d",
+        "untracked": []
+      },
+      "exit_status": 1,
+      "summary": [
+        "context-never-emitted: KILLED ['7 failed, 280 passed in 46.20s']",
+        "context-without-negotiation: KILLED ['3 failed, 284 passed in 47.86s']",
+        "negotiation-never-enables: KILLED ['4 failed, 283 passed in 46.60s']",
+        "unreachable-gateway-read-as-old: KILLED ['3 failed, 284 passed in 46.71s']",
+        "turn-uncounted-without-feature: KILLED ['1 failed, 286 passed in 47.89s']",
+        "frontier-ignores-pending: KILLED ['2 failed, 285 passed in 48.21s']",
+        "unallocated-hidden: KILLED ['3 failed, 284 passed in 47.21s']",
+        "savings-not-intercepted: KILLED ['23 failed, 264 passed in 94.57s (0:01:34)']",
+        "advertised-without-the-server-hook: KILLED ['2 failed, 285 passed in 51.20s']",
+        "report-holds-no-prompt-slot: KILLED ['1 failed, 286 passed in 47.32s']",
+        "cancel-ignored: KILLED ['2 failed, 285 passed in 52.78s']",
+        "attachments-accepted: KILLED ['2 failed, 285 passed in 46.79s']",
+        "identifiers-unescaped: KILLED ['1 failed, 286 passed in 47.81s']",
+        "deadline-never-expires: SURVIVED ['287 passed in 46.61s']",
+        "turn-report-expects-session-count: KILLED ['1 failed, 286 passed in 47.24s']",
+        "per-receive-deadline-ignored: KILLED ['4 failed, 283 passed in 56.39s']",
+        "negotiation-uncontained: KILLED ['1 failed, 286 passed in 46.78s']",
+        "continuation-forgets-scope: KILLED ['2 failed, 285 passed in 46.30s']",
+        "dropped-send-reads-as-delivered: KILLED ['4 failed, 283 passed in 46.25s']",
+        "flush-unconfirmed: KILLED ['1 failed, 286 passed in 46.26s']",
+        "timeout-unstated: KILLED ['1 failed, 286 passed in 46.90s']",
+        "unknown-unallocated-hidden: KILLED ['1 failed, 286 passed in 46.25s']",
+        "claim-ignores-wanted: KILLED ['4 failed, 283 passed in 47.28s']",
+        "retirement-unread: KILLED ['2 failed, 285 passed in 47.69s']",
+        "teardown-unsuppressed: KILLED ['1 failed, 286 passed in 46.66s']",
+        "connect-budget-reset: KILLED ['1 failed, 286 passed in 47.59s']",
+        "head-cap-only-before-delimiter: KILLED ['1 failed, 286 passed in 47.21s']",
+        "status-digits-unvalidated: KILLED ['2 failed, 285 passed in 47.66s']",
+        "length-digits-unvalidated: KILLED ['2 failed, 285 passed in 47.63s']",
+        "auto-registry-hash-dropped: KILLED ['5 failed, 282 passed in 47.28s']"
+      ],
+      "run_context": [],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/cb5930f6036e47c4903a3bd5f8ebb2d8.log",
+      "log_sha256": "hex:b36de847da49475e24c8591e3563929478f4f278d95a4931ef52b98828b49688"
+    },
+    {
+      "run_id": "hex:d6d426fc05c74593be21e359a42cd54e",
+      "label": "targeted-cpb4b",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "--no-cov",
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        "tests/unit/usage",
+        "tests/unit/acp/test_savings_command.py",
+        "tests/unit/acp/test_savings_escalation_capture.py",
+        "tests/unit/tools/test_verify_plan996_logging_surfaces.py",
+        "tests/unit/tools/test_probe_p11_zed_session_load.py"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T23:46:21.335650+00:00",
+      "ended": "2026-11-01T23:49:09.745553+00:00",
+      "source_before": {
+        "head": "hex:e2704db867ea7520eee77fe1bc5ea9bf629573a9",
+        "tested_diff_sha256": "hex:7467595298b46884778a4eb57a0f5c577080dcc938e30e294897f048d3f7a545",
+        "status_sha256": "hex:f5f677c4344a31f296a5d29c07d67592de294cb1561fa0a1cb07648f88e9504d",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:e2704db867ea7520eee77fe1bc5ea9bf629573a9",
+        "tested_diff_sha256": "hex:7467595298b46884778a4eb57a0f5c577080dcc938e30e294897f048d3f7a545",
+        "status_sha256": "hex:f5f677c4344a31f296a5d29c07d67592de294cb1561fa0a1cb07648f88e9504d",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "521 passed in 165.98s (0:02:45)"
+      ],
+      "run_context": [
+        "test-run-context: mode=active reason=default_selection run=20261101T234623-61344-f5792a native=valid job=optimus-test-run-20261101T234623-61344-f5792a processes=3320 parent=not_found guard=pytest_process_guard protection=full records=COMPLETE phases=1563 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/d6d426fc05c74593be21e359a42cd54e.log",
+      "log_sha256": "hex:9d176587eda417b27357c0015749680c8a687ae8011d20354de8cf3ae394b7b4"
+    },
+    {
+      "run_id": "hex:7fd4af9011cf4c70b7219202a37e627c",
+      "label": "revert-unit-cpb4b",
+      "command": [
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p129sav\\.venv\\Scripts\\python.exe",
+        "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-handoff\\sandbox-review-kit\\plan12-codex-cli\\round-93-p129-checkpoint-a\\revert_check.py",
+        "unit",
+        "deadline-never-expires"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-01T23:49:11.181415+00:00",
+      "ended": "2026-11-01T23:50:01.926697+00:00",
+      "source_before": {
+        "head": "hex:e2704db867ea7520eee77fe1bc5ea9bf629573a9",
+        "tested_diff_sha256": "hex:7467595298b46884778a4eb57a0f5c577080dcc938e30e294897f048d3f7a545",
+        "status_sha256": "hex:f5f677c4344a31f296a5d29c07d67592de294cb1561fa0a1cb07648f88e9504d",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:e2704db867ea7520eee77fe1bc5ea9bf629573a9",
+        "tested_diff_sha256": "hex:7467595298b46884778a4eb57a0f5c577080dcc938e30e294897f048d3f7a545",
+        "status_sha256": "hex:f5f677c4344a31f296a5d29c07d67592de294cb1561fa0a1cb07648f88e9504d",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "deadline-never-expires: KILLED ['2 failed, 286 passed in 48.22s']"
+      ],
+      "run_context": [],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/7fd4af9011cf4c70b7219202a37e627c.log",
+      "log_sha256": "hex:3605b6853ac9abafc57efc82bb04fd436826b101d034628e66b966c5a3e6c17b"
     }
   ],
   "notes": [
@@ -1816,7 +2016,8 @@
     "task4-unit-acp (exit 1): the logging-surface audit failed on two new surfaces (an asyncio.Event set and a transport error's fixed code); both were registered, and task4-targeted reran the touched suites.",
     "revert-unit-t4 (exit 1): mutant worker-slot-leaked made a lifecycle test wait on an Agent-mode approval with no timeout until the 900 s limit; those tests now use Chat mode and bounded waits, and revert-unit-t4b ran all 40.",
     "revert-unit-cpb3 (exit 1): two mutants survived, late-output-after-close and unwritten-report-not-suppressed. Both removed steps (a liveness check after the fetch, and a suppression on session/cancel) had become redundant with the send owner's decision at claim time, which covers both cases; they were deleted rather than kept untestable, and revert-unit-cpb3b ran the remaining 49 on the final bytes (targeted-cpb3b covers that change).",
-    "Round 94 pass 3 used no container: git diff 8c810ef is empty for src/optimus_gateway, src/optimus_security, src/optimus_model_policy, migrations and tests/integration, so db-tier-cpb2, revert-postgres-cpb2 and boundary-*-cpb2 still cover those bytes."
+    "Round 94 pass 3 used no container: git diff 8c810ef is empty for src/optimus_gateway, src/optimus_security, src/optimus_model_policy, migrations and tests/integration, so db-tier-cpb2, revert-postgres-cpb2 and boundary-*-cpb2 still cover those bytes.",
+    "revert-unit-cpb4 (exit 1): deadline-never-expires survived. Its earlier kills depended on a reply chunk landing just past the deadline. The new case test_a_spent_deadline_is_a_timeout_before_any_socket_operation kills it deterministically, and revert-unit-cpb4b reran that mutant alone (revert_check.py now takes optional mutant names). Only that test changed after revert-unit-cpb4, so its other 52 results stand; targeted-cpb4b covers the final bytes. Pass 4 also used no container: the paths above are unchanged since 8c810ef."
   ],
   "task2_logs_before_the_recorder": {
     "folder": "task2-runs, beside recorder.script",

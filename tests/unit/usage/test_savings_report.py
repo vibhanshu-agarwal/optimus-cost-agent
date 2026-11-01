@@ -135,6 +135,12 @@ def gateway():
         def do_POST(self):
             self.rfile.read(int(self.headers["Content-Length"]))
             behaviour["auth"] = self.headers.get("Authorization")
+            if behaviour.get("raw"):  # exact reply bytes, each chunk then a pause
+                for chunk, pause in behaviour["raw"]:
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+                    time.sleep(pause)
+                return
             if behaviour.get("drip_headers"):  # a status line, then header lines each well inside the socket timeout
                 self.wfile.write(b"HTTP/1.1 200 OK" + bytes([13, 10]))
                 for n in range(20):
@@ -209,6 +215,15 @@ def test_headers_that_drip_in_stop_at_the_total_deadline(gateway):
     assert time.monotonic() - started < 1.5, "the watchdog ends the exchange at its deadline"
 
 
+def test_a_spent_deadline_is_a_timeout_before_any_socket_operation(gateway):
+    """No time left must read as `timeout`: a negative socket timeout is a `ValueError`, a zero one non-blocking."""
+    settings, behaviour = gateway
+    behaviour["reply"] = (200, [b"{}"], 0)
+
+    with pytest.raises(sr.ReportTransportError, match="timeout"):
+        sr.gateway_post(settings, timeout=0)(b"{}")
+
+
 def test_a_read_stalled_near_the_deadline_stops_at_it(gateway):
     settings, behaviour = gateway
     behaviour["reply"] = (200, [b'{"a": ', b"1}"], 3)  # half the body, then a stall far past the deadline
@@ -266,3 +281,69 @@ def test_a_closing_response_with_late_headers_and_a_stalled_body_stops_at_the_to
         server.server_close()
 
     assert elapsed < 1.35, f"the read ran {elapsed:.2f}s against a 1 s deadline"
+
+
+
+# --- Checkpoint B round 94 pass 3 -----------------------------------------------------------------------------------
+
+
+def test_every_connection_attempt_shares_the_one_remaining_budget(monkeypatch):
+    """`localhost` is two numeric addresses: a first attempt that stalls then fails leaves the second only what is left,
+    so connecting never takes two full timeouts."""
+    timeouts: list[float] = []
+
+    class Stalling:
+        def __init__(self, family, kind):
+            self.timeout = None
+
+        def settimeout(self, value):
+            self.timeout = value
+            timeouts.append(value)
+
+        def connect(self, address):
+            if len(timeouts) == 1:
+                time.sleep(0.4)
+                raise ConnectionRefusedError("first address refused, late")
+            time.sleep(min(self.timeout, 1.0))  # a mutant that resets the budget would wait a full second here
+            raise TimeoutError
+
+        def close(self):
+            return
+
+    monkeypatch.setattr(sr, "_new_socket", Stalling)
+    settings = OptimusGatewaySettings(gateway_url="http://localhost:8765", optimus_api_key="opt_live_k")  # pragma: allowlist secret
+
+    started = time.monotonic()
+    with pytest.raises(sr.ReportTransportError, match="timeout"):
+        sr.gateway_post(settings, timeout=0.6)(b"{}")
+    elapsed = time.monotonic() - started
+
+    assert len(timeouts) == 2 and timeouts[0] <= 0.6 and timeouts[1] <= 0.25, timeouts
+    assert elapsed < 0.85, f"connecting took {elapsed:.2f}s against a 0.6 s budget"
+
+
+def test_an_oversized_head_is_refused_even_when_its_end_arrives_in_a_later_receive(gateway):
+    settings, behaviour = gateway
+    padding = b"X-Pad: " + b"a" * 90_000 + bytes([13, 10])
+    body = json.dumps(_report()).encode()
+    head = b"HTTP/1.1 200 OK" + bytes([13, 10]) + b"Content-Length: " + str(len(body)).encode() + bytes([13, 10])
+    behaviour["raw"] = [(head + padding[:64_000], 0.2), (padding[64_000:] + bytes([13, 10]) + body, 0)]
+
+    with pytest.raises(sr.ReportTransportError, match="malformed"):
+        sr.gateway_post(settings)(b"{}")
+
+
+@pytest.mark.parametrize("head", [
+    b"HTTP/1.1 2x0 OK",  # a status that is not three ASCII digits
+    b"HTTP/1.1 \xb2\xb2\xb2 OK",  # Latin-1 superscript digits: isdigit() accepts them, int() does not
+    b"HTTP/1.1 200 OK\r\nContent-Length: \xb2",
+    b"HTTP/1.1 200 OK\r\nContent-Length: " + b"9" * 40,  # too long to be a length
+])
+def test_malformed_numeric_fields_stay_inside_the_transport_error_boundary(gateway, head):
+    settings, behaviour = gateway
+    behaviour["raw"] = [(head + b"\r\n\r\n{}", 0)]
+
+    with pytest.raises(sr.ReportTransportError, match="malformed"):
+        sr.gateway_post(settings)(b"{}")
+    assert "too large or not in the expected form" in sr.SavingsReports(sr.gateway_post(settings), lambda s: (0, ())).markdown(
+        "s", sr.SavingsCommand())

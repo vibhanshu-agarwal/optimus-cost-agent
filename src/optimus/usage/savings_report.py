@@ -126,12 +126,7 @@ def gateway_post(settings: OptimusGatewaySettings, *, timeout: float = READ_SECO
         headers = {**settings.auth_headers(), "Host": f"{host}:{port}", "Content-Type": "application/json",
                    "Accept": "application/json", "Content-Length": str(len(body)), "Connection": "close"}
         head = f"POST {parts.path} HTTP/1.1\r\n" + "".join(f"{k}: {v}\r\n" for k, v in headers.items()) + "\r\n"
-        try:
-            sock = socket.create_connection((host, port), timeout=left())
-        except TimeoutError:
-            raise ReportTransportError("timeout") from None
-        except OSError:
-            raise ReportTransportError("unreachable") from None
+        sock = _connect(host, port, left)
         try:
             if parts.scheme == "https":
                 sock.settimeout(left())
@@ -147,6 +142,39 @@ def gateway_post(settings: OptimusGatewaySettings, *, timeout: float = READ_SECO
             sock.close()
 
     return post
+
+
+# The only hosts a trusted Gateway URL may name (`config.gateway._validate_loopback_gateway_url`), as numeric
+# addresses: nothing is resolved, so no resolver can spend the deadline.
+_LOOPBACK_ADDRESSES: Mapping[str, tuple[tuple[socket.AddressFamily, str], ...]] = {
+    "127.0.0.1": ((socket.AF_INET, "127.0.0.1"),),
+    "::1": ((socket.AF_INET6, "::1"),),
+    "localhost": ((socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")),
+}
+_new_socket = socket.socket  # a seam for the connection-budget test
+
+
+def _connect(host: str, port: int, left: Callable[[], float]) -> socket.socket:
+    """A connection to the first loopback address that accepts, every attempt sharing the one remaining budget."""
+    addresses = _LOOPBACK_ADDRESSES.get(host.lower())
+    if addresses is None:
+        raise ReportTransportError("unreachable")
+    failure = "unreachable"
+    for family, address in addresses:
+        sock = _new_socket(family, socket.SOCK_STREAM)
+        try:
+            sock.settimeout(left())
+            sock.connect((address, port))
+            return sock
+        except TimeoutError:
+            sock.close()
+            failure = "timeout"
+        except OSError:
+            sock.close()
+        except BaseException:
+            sock.close()
+            raise
+    raise ReportTransportError(failure)
 
 
 _HEAD_BYTES = 64 * 1024  # status line and headers
@@ -170,6 +198,8 @@ def _bounded_reply(sock: socket.socket, left: Callable[[], float]) -> tuple[int,
                     raise ReportTransportError("malformed")
                 continue
             body_start += 4
+            if body_start > _HEAD_BYTES:
+                raise ReportTransportError("malformed")  # the cap holds however the head was split across receives
             status, length = _head(bytes(raw[:body_start]))
         if len(raw) - body_start > urc.MAX_RESPONSE_BYTES:
             raise ReportTransportError("too_large")
@@ -186,20 +216,25 @@ def _bounded_reply(sock: socket.socket, left: Callable[[], float]) -> tuple[int,
         raise ReportTransportError("malformed") from None
 
 
+_STATUS = re.compile(r"HTTP/1\.[01] ([0-9]{3})(?: .*)?")
+_LENGTH = re.compile(r"[0-9]{1,10}")
+
+
 def _head(head: bytes) -> tuple[int, int | None]:
+    """The status and declared length, from ASCII digits only (`str.isdigit` also admits digits `int` refuses)."""
     lines = head.decode("latin-1").split("\r\n")
-    words = lines[0].split(" ", 2)
-    if len(words) < 2 or not words[0].startswith("HTTP/1.") or not words[1].isdigit():
+    status = _STATUS.fullmatch(lines[0])
+    if status is None:
         raise ReportTransportError("malformed")
     fields = {name.strip().lower(): value.strip() for name, _, value in (line.partition(":") for line in lines[1:] if line)}
     if "chunked" in fields.get("transfer-encoding", "").lower():
         raise ReportTransportError("malformed")  # the Gateway always sends a Content-Length
     declared = fields.get("content-length")
-    if declared is not None and not declared.isdigit():
+    if declared is not None and _LENGTH.fullmatch(declared) is None:
         raise ReportTransportError("malformed")
     if declared is not None and int(declared) > urc.MAX_RESPONSE_BYTES:
         raise ReportTransportError("too_large")
-    return int(words[1]), None if declared is None else int(declared)
+    return int(status.group(1)), None if declared is None else int(declared)
 
 
 Scope = Callable[[str], tuple[int, tuple[tuple[str, int], ...]]]
