@@ -204,6 +204,16 @@ by this folder.
        question and each option's description, as shown to the operator, are in the assistant turn that asked it
        (`2026-10-27T18:38:35.950Z`). A full app export, not an excerpt. Raw S16 is archival provenance, never an
        operating, test or release dependency; S1–S15 retain their existing meanings.
+   - **Source S17.** One operator message of 2026-11-01 in the Claude session for Plan 12.8 (#454), for ADR-033:
+     "If the reviewer is happy to change it, then please change the status of ADR-032".
+
+     The source record:
+     - External transcript export: `optimus-handoff\decisions-sources\2026-11-01-claude-session-p128-adr033-export.zip`,
+       produced by the app's session Export, 12,045,291 bytes.
+     - SHA-256: `1C2FECA704902E5F2E61FA0392BE2C7BBAC2D792EB73A3808BDBD8909BB328B0`.
+     - Claude checked, read-only, that the quoted decision appears verbatim in a human user turn of the export's main
+       transcript (`2026-11-01T07:08:54.254Z`). A full app export, not an excerpt. Raw S17 is archival provenance,
+       never an operating, test or release dependency; S1–S16 retain their existing meanings.
 2. **Label the decider.** Each record says who decided: the operator, an agent (Claude or Codex), or an
    agent proposal still awaiting the operator. A value an agent chose must never read as an operator
    requirement.
@@ -291,7 +301,8 @@ by this folder.
 | [029](ADR-029-accepts-adr-009-rung-2-one-escalation.md) | Accepts [ADR-009](ADR-009-loop-control-without-stopping-the-user.md)'s rung 2 and settles its open item 4: in an interactive Auto session, once a recovery episode's nudge has not helped, the turn moves once to the escalation role's first routable model, with a live notice and price line, before the Continue/Stop check-in; the exception to the turn binding that [ADR-007](ADR-007-auto-mode-tier-routing.md) anticipates (#397) | Accepted; a real model stuck enough to escalate is still owed in #397 (scripted evidence stands in) | Operator (E1 option (a) and the priority, source S16); mechanism by Claude, reviewed by Codex (round 75 and follow-ups) | 2026-10-27 |
 | [030](ADR-030-approval-records-in-bounded-keyring-parts.md) | Approval records larger than one Windows credential blob (2,560 UTF-16-LE bytes) are stored as at most two authenticated, generation-specific parts; the 1,800-byte policy and its rejection stay; one service-wide lock serializes the approvals keyring service (#433) | Accepted | Operator (2026-10-28, AskUserQuestion in the Plan 12.4 session); recommended by Codex (rounds 76 and 78); drafted by Claude | 2026-10-28 |
 | [031](ADR-031-project-memory-and-evidence.md) | Plan 12.x memory architecture as designed in v4; one includable-files policy for automatic context, indexing and anchor reads (security denials including #385's secret rule first, then `.gitignore`/`.optimusignore` via a pinned `pathspec`, no negation of a denial); registered project identity per Git common directory (Plan 12.6, #390) | Accepted | Operator (product decisions, source S10; #385 absorption and plan approval 2026-10-30); mechanisms by Claude, reviewed by Codex | 2026-10-30 |
-| [032](ADR-032-durable-usage-capture-and-gateway-drain.md) | Durable usage capture (memory design v4 section 7): an fsynced host outbox uploaded with the existing Gateway URL and key; only the Gateway holds the Postgres credential and drains into an Optimus-owned, database-immutable ledger with committed cursors and per-turn coverage epochs (Plan 12.8, #454) | Proposed | Operator (credential boundary, 2026-10-31, with the Plan 12.8 plan-hash approval); mechanisms by Claude, reviewed by Codex | 2026-10-31 |
+| [032](ADR-032-durable-usage-capture-and-gateway-drain.md) | Durable usage capture (memory design v4 section 7): an fsynced host outbox uploaded with the existing Gateway URL and key; only the Gateway holds the Postgres credential and drains into an Optimus-owned, database-immutable ledger with committed cursors and per-turn coverage epochs (Plan 12.8, #454) | Accepted by [ADR-033](ADR-033-accepts-adr-032-durable-usage-capture.md) | Operator (credential boundary, 2026-10-31, with the Plan 12.8 plan-hash approval); mechanisms by Claude, reviewed by Codex | 2026-10-31 |
+| [033](ADR-033-accepts-adr-032-durable-usage-capture.md) | Accepts [ADR-032](ADR-032-durable-usage-capture-and-gateway-drain.md) as merged: its decision, options and consequences and limits, unchanged (Plan 12.8, #454) | Accepted | Operator (source S17), through Codex's acceptance under the standing rule (round 91); drafted by Claude | 2026-11-01 |
 | [Ordering/lifecycle/signals and queue contract](2026-10-27-ordering-lifecycle-signals-queue-contract.md) | Progress admission, owned stop and later finite queues; supersedes only ADR-027 secondary chaining | Operator-approved mechanisms; checkpoint review pending; unpublished draft | Operator; Codex developer, actual Claude reviewer | 2026-10-27 |
 
 **Package A delivery:** [local accepted implementation and evidence](../superpowers/reviews/2026-10-02-plan-12-2-package-a-delivery.md);
