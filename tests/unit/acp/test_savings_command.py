@@ -271,3 +271,124 @@ async def test_on_the_wire_the_advertisement_follows_the_session_new_response(tm
     order = [i for i, m in enumerate(writer.messages)
              if m is response or m.get("params", {}).get("update", {}).get("sessionUpdate") == "available_commands_update"]
     assert len(order) == 2 and writer.messages[order[0]] is response, "the response is written first"
+
+
+
+# --- Checkpoint B round 94 ------------------------------------------------------------------------------------------
+
+
+class _TurnStore(_Store):
+    """A ledger holding one turn with ``rows`` requests."""
+
+    def __init__(self, rows: int) -> None:
+        super().__init__()
+        self.rows = rows
+
+    def report_facts(self, session_id, turn_id, *, frontier, deadline, max_attempts, max_turns):
+        from tests.unit.optimus_gateway.test_usage_report import _payload
+
+        self.calls += 1
+        receipts = [(_payload(f"a{n:03d}", "t1"), False, False) for n in range(self.rows)]
+        return _facts(receipts, epochs={"t1": ("complete",)}, selections={"t1": ("auto",)})
+
+
+@pytest.mark.parametrize(("rows", "pages"), [(1, 2), (30, 3)])  # reference groups, then detail rows past one page
+async def test_a_turn_report_continues_as_a_turn_report(tmp_path, rows, pages):
+    case = _adapter(tmp_path, store=_TurnStore(rows))
+    session_id = await new_session(case.adapter, tmp_path, mode="chat")
+
+    await prompt(case.adapter, case.outbound, session_id, "/savings turn t1", "s1")
+    for n in range(pages - 1):
+        cursor = texts(case.outbound)[-1].split("`/savings next ")[1].split("`")[0]
+        await prompt(case.adapter, case.outbound, session_id, f"/savings next {cursor}", f"s{n + 2}")
+
+    reports = texts(case.outbound)
+    assert len(reports) == pages and all(r.startswith("## Usage and savings for turn t1") for r in reports), reports[-1][:200]
+    assert "/savings next" not in reports[-1]
+    shown = [line for r in reports for line in r.splitlines() if line.startswith("| t1 |")]
+    assert len(shown) == rows
+
+
+class _Parked(RecordingOutboundChannel):
+    """A writer that parks the report's chunk, before (queued) or after (already writing) its write begins."""
+
+    def __init__(self, *, started: bool) -> None:
+        super().__init__()
+        self.started, self.parked, self.release = started, asyncio.Event(), asyncio.Event()
+
+    async def notify(self, method, params, *, require_flushed=False):
+        if params.get("update", {}).get("sessionUpdate") != "agent_message_chunk":
+            return await super().notify(method, params, require_flushed=require_flushed)
+        if self.started:
+            await super().notify(method, params, require_flushed=require_flushed)  # the write begins and lands
+        self.parked.set()
+        await self.release.wait()
+        if not self.started:
+            await super().notify(method, params, require_flushed=require_flushed)  # the queued write, reached later
+
+
+@pytest.mark.parametrize(("started", "stop_reason", "shown"), [
+    (False, "cancelled", 0),  # queued behind a blocked writer: the cancel suppresses it
+    (True, "end_turn", 1),  # already being written: the write is authoritative
+])
+async def test_a_cancel_during_delivery_suppresses_an_unwritten_report_only(tmp_path, started, stop_reason, shown):
+    case = _adapter(tmp_path, outbound=_Parked(started=started))
+    session_id = await new_session(case.adapter, tmp_path, mode="chat")
+    task = asyncio.create_task(asyncio.wait_for(rpc(case.adapter, prompt_request(session_id, "/savings", "s1")), 15))
+    await asyncio.wait_for(case.outbound.parked.wait(), 5)
+
+    await case.adapter.handle_client_notification({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": session_id}})
+    await asyncio.sleep(0.05)
+    case.outbound.release.set()
+    response = await task
+
+    assert response["result"]["stopReason"] == stop_reason and len(texts(case.outbound)) == shown
+
+
+async def test_an_ambiguous_send_on_the_real_channel_is_never_a_successful_report(tmp_path):
+    from optimus.acp.server import NdjsonOutboundChannel
+
+    class Breaks:
+        async def write_line(self, message):
+            if message.get("params", {}).get("update", {}).get("sessionUpdate") == "agent_message_chunk":
+                raise ConnectionResetError("the pipe broke mid-write")
+
+    case = _adapter(tmp_path, outbound=NdjsonOutboundChannel(Breaks()))
+    session_id = await new_session(case.adapter, tmp_path, mode="chat")
+
+    response = await asyncio.wait_for(rpc(case.adapter, prompt_request(session_id, "/savings", "s1")), 5)
+
+    assert response["error"]["message"] == "the usage report could not be delivered"
+
+
+async def test_a_report_that_cannot_finish_in_time_says_so(tmp_path, monkeypatch):
+    from optimus.acp import spec as spec_module
+
+    monkeypatch.setattr(spec_module, "SAVINGS_WAIT_SECONDS", 0.2)
+    gate = threading.Event()
+    case = _adapter(tmp_path, store=_Store(gate))
+    session_id = await new_session(case.adapter, tmp_path, mode="chat")
+    try:
+        response = await asyncio.wait_for(rpc(case.adapter, prompt_request(session_id, "/savings", "s1")), 5)
+    finally:
+        gate.set()
+
+    assert response["result"]["stopReason"] == "end_turn" and texts(case.outbound) == [spec_module.SAVINGS_TIMEOUT_TEXT]
+
+
+
+async def test_a_report_succeeds_only_on_a_confirmed_flush(tmp_path):
+    class Records(RecordingOutboundChannel):
+        required: list[bool] = []
+
+        async def notify(self, method, params, *, require_flushed=False):
+            if params.get("update", {}).get("sessionUpdate") == "agent_message_chunk":
+                self.required.append(require_flushed)
+            await super().notify(method, params, require_flushed=require_flushed)
+
+    case = _adapter(tmp_path, outbound=Records())
+    session_id = await new_session(case.adapter, tmp_path, mode="chat")
+
+    await prompt(case.adapter, case.outbound, session_id, "/savings", "s1")
+
+    assert case.outbound.required == [True], "a suppressed or ambiguous send raises on the real channel"

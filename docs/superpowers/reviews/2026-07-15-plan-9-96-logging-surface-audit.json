@@ -5369,6 +5369,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.spec:AcpDuplexAdapter._handle_savings:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.9): `progress_submission.set(...)` sets a ContextVar so the report's one chunk goes out under its own suppressible send owner; no Redis or other write.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_savings_command.py::test_a_cancel_during_delivery_suppresses_an_unwritten_report_only",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.usage.savings_report:SavingsReports.markdown:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection (Plan 12.9): `str(exc)` of ReportTransportError only selects one of fixed user messages (its codes are unreachable, timeout, too_large, malformed); the exception text is never shown, logged or persisted.",

@@ -258,7 +258,38 @@ CONTEXT_PLAN_TOO_LARGE_TEXT = (
 )
 _CONTEXT_CANCELLED_TEXT = "Cancelled before the model was asked."
 # Plan 12.4 Task 4: an Auto turn refused before any answer call; the thread stays open.
-SAVINGS_WAIT_SECONDS = 25.0  # Plan 12.9: a `/savings` report's whole wait (the host read's own deadline is 20 s)
+SAVINGS_WAIT_SECONDS = 17.0  # Plan 12.9: a `/savings` report's wait; the host transport's own deadline is 15 s
+SAVINGS_TIMEOUT_TEXT = "The usage report took too long and was stopped. Try again, or ask for one turn with `/savings turn <run-id>`."
+
+
+class _SavingsSendOwner:
+    """The send owner (`outbound_writer.SendOwner`) of one `/savings` report's single chunk: queued until its write
+    begins, suppressible until then, and it remembers whether the write began."""
+
+    def __init__(self) -> None:
+        self.key = ("savings", uuid.uuid4().hex)
+        self.started = False
+        self._state = SendState.QUEUED
+        self._lock = threading.Lock()
+
+    def suppress(self, send_key: Any) -> None:
+        with self._lock:
+            if self._state is SendState.QUEUED:
+                self._state = SendState.SUPPRESSED
+
+    def claim_write_started(self, send_key: Any) -> SendState:
+        with self._lock:
+            if self._state is SendState.QUEUED:
+                self._state, self.started = SendState.WRITE_STARTED, True
+            return self._state
+
+    def publish_authoritative(self, send_key: Any, outcome: Any) -> None:
+        with self._lock:
+            if self._state is SendState.WRITE_STARTED:
+                self._state = SendState(outcome.value)
+
+    def publish_diagnostic(self, send_key: Any, outcome: Any) -> None:
+        return
 
 _AUTO_REFUSAL_TEXT = {
     "AUTO_NO_ROUTABLE_MODEL": (
@@ -1304,29 +1335,55 @@ class AcpDuplexAdapter:
         reports = self._usage_reports
         assert reports is not None
         cancel = self._report_cancels[session_id] = asyncio.Event()
+
+        def gone() -> bool:
+            return cancel.is_set() or self._closed or self._sessions.get(session_id) is None
+
         try:
             if isinstance(command, str):
                 text = command
             else:
+                # The transport ends by its own deadline (`savings_report.READ_SECONDS`), so its thread exits by then.
                 fetch = asyncio.create_task(asyncio.to_thread(reports.markdown, session_id, command))
-                stopped = asyncio.create_task(cancel.wait())
-                try:
-                    await asyncio.wait({fetch, stopped}, timeout=SAVINGS_WAIT_SECONDS, return_when=asyncio.FIRST_COMPLETED)
-                finally:
-                    stopped.cancel()
-                if not fetch.done() or cancel.is_set() or self._closed or self._sessions.get(session_id) is None:
-                    fetch.cancel()  # the thread finishes on its own; its result is dropped
+                if not await self._until_cancelled(fetch, cancel, SAVINGS_WAIT_SECONDS) or gone():
                     return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
-                text = fetch.result()
+                text = fetch.result() if fetch.done() else SAVINGS_TIMEOUT_TEXT
+            # One send of its own: a cancel before its write begins suppresses it; a write already begun is
+            # authoritative. Success needs a confirmed flush (a suppressed or ambiguous send raises).
+            owner = _SavingsSendOwner()
+            submission = ProgressSubmission(control=owner, send_key=owner.key, admission=ProgressAdmission(),  # type: ignore[arg-type]
+                                            admission_class=AdmissionClass.REQUIRED)
+            token = progress_submission.set(submission)
             try:
-                await self._outbound.notify("session/update", build_agent_message_chunk_notification(session_id=session_id, text=text))
-            except Exception:  # noqa: BLE001 - an undeliverable report is this request's failure only
+                send = asyncio.create_task(self._outbound.notify(
+                    "session/update", build_agent_message_chunk_notification(session_id=session_id, text=text), require_flushed=True))
+            finally:
+                progress_submission.reset(token)
+            if not await self._until_cancelled(send, cancel, None):
+                owner.suppress(owner.key)  # no effect once the write began
+            try:
+                await asyncio.shield(send)
+            except Exception:  # noqa: BLE001 - an undelivered report is this request's outcome only
+                if not owner.started and gone():
+                    return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
                 return self._non_turn(error_response(request.get("id"), JsonRpcError(
                     code=INTERNAL_ERROR, message="the usage report could not be delivered")), ownership_slot)
+            if not owner.started:  # a channel that dropped the suppressed send without raising
+                return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
             return self._non_turn(success_response(request.get("id"), {"stopReason": "end_turn"}), ownership_slot)
         finally:
             if self._report_cancels.get(session_id) is cancel:
                 del self._report_cancels[session_id]
+
+    @staticmethod
+    async def _until_cancelled(work: asyncio.Task[Any], cancel: asyncio.Event, limit: float | None) -> bool:
+        """Wait for ``work`` until ``cancel`` or ``limit`` seconds; False if cancelled first. ``work`` keeps running."""
+        stopped = asyncio.create_task(cancel.wait())
+        try:
+            await asyncio.wait({work, stopped}, timeout=limit, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            stopped.cancel()
+        return not (cancel.is_set() and not work.done())
 
     async def after_response(self, method: str, response: dict[str, Any]) -> None:
         """Called by the transport once a response is written. After a successful `session/new`, advertise `/savings`:
@@ -1789,7 +1846,8 @@ class AcpDuplexAdapter:
         session.cost_settlement.report_context(
             run_id,
             selection="auto" if self._auto_router is not None else "fixed",
-            registry_hash=None if self._route_policy is None else self._route_policy.registry_hash,
+            registry_hash=(self._auto_router.snapshot.effective_hash if self._auto_router is not None
+                           else None if self._route_policy is None else self._route_policy.registry_hash),
             strategy=attached_turn.strategy if attached_turn is not None else None,
         )
         try:

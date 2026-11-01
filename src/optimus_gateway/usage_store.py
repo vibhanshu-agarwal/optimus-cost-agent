@@ -244,7 +244,7 @@ class UsageStore:
             "SELECT r.reported_cost_usd::text FROM optimus_usage.attempt_receipt r JOIN optimus_usage.capture_event e "
             "ON e.stream_id = r.stream_id AND e.sequence = r.sequence "
             "WHERE r.stream_id = ANY(%s) AND e.kind = %s AND e.payload->>'session_id' IS NULL LIMIT %s",
-            (sorted(fact_streams), uc.ATTEMPT_RECEIPT, max_attempts + 1),
+            (streams, uc.ATTEMPT_RECEIPT, max_attempts + 1),  # the frontier's streams too: overhead before any turn
         ).fetchall()
         if len(unallocated) > max_attempts:
             return ReportFacts(instance, as_of, (), {}, {}, too_large=True)

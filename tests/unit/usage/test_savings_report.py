@@ -135,6 +135,13 @@ def gateway():
         def do_POST(self):
             self.rfile.read(int(self.headers["Content-Length"]))
             behaviour["auth"] = self.headers.get("Authorization")
+            if behaviour.get("drip_headers"):  # a status line, then header lines each well inside the socket timeout
+                self.wfile.write(b"HTTP/1.1 200 OK" + bytes([13, 10]))
+                for n in range(20):
+                    self.wfile.write(b"X-Drip-%d: 1" % n + bytes([13, 10]))
+                    self.wfile.flush()
+                    time.sleep(0.2)
+                return
             status, chunks, pause = behaviour["reply"]
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
@@ -185,4 +192,38 @@ def test_an_unreachable_gateway_is_a_transport_error():
     settings = OptimusGatewaySettings(gateway_url="http://127.0.0.1:9", optimus_api_key="opt_live_k")  # pragma: allowlist secret
 
     with pytest.raises(sr.ReportTransportError, match="unreachable"):
-        sr.gateway_post(settings, timeout=2)(b"{}")
+        sr.gateway_post(settings, timeout=10)(b"{}")  # a refused connection, well inside the deadline
+
+
+
+# --- Checkpoint B round 94 ------------------------------------------------------------------------------------------
+
+
+def test_headers_that_drip_in_stop_at_the_total_deadline(gateway):
+    settings, behaviour = gateway
+    behaviour["drip_headers"] = True
+
+    started = time.monotonic()
+    with pytest.raises(sr.ReportTransportError, match="timeout"):
+        sr.gateway_post(settings, timeout=0.6)(b"{}")
+    assert time.monotonic() - started < 1.5, "the watchdog ends the exchange at its deadline"
+
+
+def test_a_read_stalled_near_the_deadline_stops_at_it(gateway):
+    settings, behaviour = gateway
+    behaviour["reply"] = (200, [b'{"a": ', b"1}"], 3)  # half the body, then a stall far past the deadline
+
+    started = time.monotonic()
+    with pytest.raises(sr.ReportTransportError, match="timeout"):
+        sr.gateway_post(settings, timeout=0.5)(b"{}")
+    assert time.monotonic() - started < 1.5
+
+
+def test_the_transport_budget_is_the_plans_fifteen_seconds():
+    assert sr.READ_SECONDS == 15.0 and sr.CAPABILITIES_SECONDS <= 5.0
+
+
+def test_unknown_unallocated_charges_are_stated_not_hidden():
+    markdown = sr.render_savings_report(_page(_facts(unallocated=(None,)), _request(), _references()))
+
+    assert "known USD 0 across 1 requests, 1 of them with unknown cost." in markdown

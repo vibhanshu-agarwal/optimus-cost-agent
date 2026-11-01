@@ -4,6 +4,7 @@ stream's frontier). Synthetic identities only; no model is named."""
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -13,10 +14,10 @@ import pytest
 
 from optimus.acp.auto_composition import ClassifierHalted, ClassifierOutcome
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
-from optimus.gateway.errors import GatewayError, GatewayHttpError
 from optimus.gateway.models import GatewayUsage
 from optimus.usage.capture_delivery import CaptureDelivery
 from optimus.usage.durable_capture import DurableCapture, host_outbox_root
+from optimus.usage.savings_report import ReportTransportError
 from optimus.usage.turn_settlement import StageReceipt
 from optimus_security import durable_outbox as ob
 from optimus_security import usage_capture_contract as uc
@@ -101,34 +102,38 @@ def test_the_report_scope_counts_each_sessions_turns_and_claims_every_record_not
 # --- Negotiation -----------------------------------------------------------------------------------------------------
 
 
-class _Client:
-    def __init__(self, *answers: Any) -> None:
-        self.answers, self.paths = list(answers), []
+class _Capabilities:
+    """The bounded report-route POST (`savings_report.gateway_post`) as the Gateway answers it."""
 
-    def post_observability_json(self, *, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        self.paths.append(path)
-        answer = self.answers.pop(0) if path == urc.PATH else {}
+    def __init__(self, *answers: Any) -> None:
+        self.answers, self.asked = list(answers), 0
+
+    def __call__(self, body: bytes) -> tuple[int, Any]:
+        self.asked += 1
+        assert json.loads(body) == {"schema_version": 1, "operation": "capabilities"}
+        answer = self.answers.pop(0)
         if isinstance(answer, Exception):
             raise answer
         return answer
 
 
 @pytest.mark.parametrize(("answers", "enabled", "asked"), [
-    ([urc.capabilities_body()], True, 1),
-    ([GatewayHttpError(404, "not found")], False, 1),  # an older Gateway: never asked again, never sent a context
-    ([{"status": "ok"}], False, 1),  # an answer this contract does not know
-    ([GatewayHttpError(0, "refused"), GatewayHttpError(503, "starting"), urc.capabilities_body()], True, 3),
-    ([GatewayError("down"), urc.capabilities_body()], True, 2),
+    ([(200, urc.capabilities_body())], True, 1),
+    ([(404, {"error": "not found"})], False, 1),  # an older Gateway: never asked again, never sent a context
+    ([(200, {"status": "ok"})], False, 1),  # an answer this contract does not know
+    ([ReportTransportError("unreachable"), (503, urc.error_body("LEDGER_UNAVAILABLE")[1]), (200, urc.capabilities_body())], True, 3),
+    ([ReportTransportError("timeout"), (200, urc.capabilities_body())], True, 2),  # a stalled answer, cut at its bound
+    ([RuntimeError("unexpected"), (200, urc.capabilities_body())], True, 2),  # contained, asked again
 ])
 def test_delivery_enables_contexts_only_for_a_gateway_that_lists_the_feature(tmp_path, answers, enabled, asked):
     capture = _capture(tmp_path, enabled=False)
-    client = _Client(*answers)
-    delivery = CaptureDelivery(capture, client)  # type: ignore[arg-type]
+    capabilities = _Capabilities(*answers)
+    delivery = CaptureDelivery(capture, object(), capabilities=capabilities)  # type: ignore[arg-type]
 
     for _ in range(4):
         delivery.drain_once()
 
-    assert client.paths.count(urc.PATH) == asked and delivery.report_context is enabled
+    assert capabilities.asked == asked and delivery.report_context is enabled
     assert capture.report_context("s:1", "s", selection="auto", registry_hash=None, strategy=None) is enabled
     capture.stop()
 
@@ -186,6 +191,8 @@ async def test_every_admitted_turn_records_its_selection_once_before_classificat
 
     contexts = [r for r in own if r["kind"] == uc.TURN_REPORT_CONTEXT]
     assert [c["selection"] for c in contexts] == [selection] and contexts[0]["session_id"] == turn.rsplit(":", 1)[0]
+    if selection == "auto":  # the Auto router's trusted snapshot, the launch's provenance
+        assert contexts[0]["registry_hash"] == _router(Classifier([])).snapshot.effective_hash
     assert kinds[0] == uc.EPOCH_BEGIN and kinds[1] == uc.TURN_REPORT_CONTEXT, "before any invocation or classification"
     assert kinds.count(uc.EPOCH_CLOSE) == 1, "the turn's epoch still closes"
     assert all(r["turn_id"] == turn for r in own if r["kind"] == uc.ATTEMPT_RECEIPT)
@@ -229,3 +236,63 @@ def test_records_still_being_written_put_the_frontier_beyond_anything_the_ledger
     capture = DurableCapture(writer, ack_wait=0.0, clock=lambda: _AT)  # type: ignore[arg-type]
 
     assert capture.report_scope("s") == (0, (("f" * 32, 7),))
+
+
+
+class _AckingClient:
+    """A Gateway capture route that commits every batch it is sent."""
+
+    def __init__(self) -> None:
+        self.batches = 0
+
+    def post_observability_json(self, *, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        assert path == uc.PATH
+        self.batches += 1
+        last = ob.parse_line(payload["records"][-1].encode("ascii"))
+        return {"status": "committed", "ledger_instance": "a" * 32, "stream_id": payload["stream_id"],
+                "sequence": last.sequence, "digest": last.digest, "conflicts": 0}
+
+
+def test_a_stalled_capabilities_endpoint_never_holds_up_ordinary_receipt_delivery(tmp_path):
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from optimus.config.gateway import OptimusGatewaySettings
+    from optimus.usage.savings_report import gateway_post
+
+    class Stalls(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            return
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers["Content-Length"]))
+            self.send_response(200)
+            self.send_header("Content-Length", "100")
+            self.end_headers()
+            self.wfile.write(b"{")
+            self.wfile.flush()
+            time.sleep(5)  # the capabilities answer never completes in time
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Stalls)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    settings = OptimusGatewaySettings(gateway_url=f"http://127.0.0.1:{server.server_address[1]}", optimus_api_key="opt_live_k")  # pragma: allowlist secret
+    capture = _capture(tmp_path, enabled=False)
+    capture.invocation_opened("s:1", "s")
+    for _ in range(100):
+        if capture.writer.stats().confirmed_sequence >= 3 and not capture.writer.stats().pending:
+            break
+        time.sleep(0.01)
+    client = _AckingClient()
+    delivery = CaptureDelivery(capture, client, capabilities=gateway_post(settings, timeout=0.5))  # type: ignore[arg-type]
+    try:
+        started = time.monotonic()
+        report = delivery.drain_once()
+        elapsed = time.monotonic() - started
+    finally:
+        server.shutdown()
+        server.server_close()
+        capture.stop()
+
+    assert report.failures == [] and report.committed >= 3 and client.batches >= 1, "the capture pass still ran"
+    assert delivery.report_context is None and elapsed < 2, "asked again next pass; this one was bounded"

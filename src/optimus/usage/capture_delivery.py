@@ -9,7 +9,9 @@ response this contract does not know) keeps them off for the process, so a recor
 
 from __future__ import annotations
 
+import contextlib
 import json
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from optimus.gateway.errors import GatewayError, GatewayHttpError
@@ -26,31 +28,34 @@ DeliveryReport = DrainReport
 
 
 class CaptureDelivery(OutboxDrain):
-    def __init__(self, capture: DurableCapture, client: GatewayClient, **kwargs: Any) -> None:
+    def __init__(self, capture: DurableCapture, client: GatewayClient, *,
+                 capabilities: Callable[[bytes], tuple[int, Any]] | None = None, **kwargs: Any) -> None:
         self._client = client
         self._capture = capture
+        # Plan 12.9: a bounded POST to the report route (`savings_report.gateway_post`); None never negotiates.
+        self._capabilities = capabilities
         self.report_context: bool | None = None  # None until the Gateway has answered the capabilities request
         super().__init__(capture.writer, self._post, name="capture-delivery", **kwargs)
 
     def drain_once(self) -> DeliveryReport:
-        if self.report_context is None:
-            self._negotiate()
+        if self.report_context is None and self._capabilities is not None:
+            with contextlib.suppress(Exception):  # negotiation never stops this pass's ordinary delivery
+                self._negotiate(self._capabilities)
         return super().drain_once()
 
-    def _negotiate(self) -> None:
+    def _negotiate(self, capabilities: Callable[[bytes], tuple[int, Any]]) -> None:
+        from optimus.usage.savings_report import ReportTransportError
+
         try:
-            reply = self._client.post_observability_json(path=urc.PATH, payload=json.loads(urc.build_request(None)))
-        except GatewayHttpError as exc:
-            if exc.status_code in {0, 503}:
-                return  # not answering yet (status 0 is the transport's own failure): ask again next pass
-            self.report_context = False  # it answered and does not support the feature (an older Gateway: 404)
-            return
-        except GatewayError:
+            status, reply = capabilities(urc.build_request(None))
+        except ReportTransportError:
+            return  # not answering, or not within its bound: ask again next pass
+        if status == 503:
             return
         try:
-            self.report_context = urc.FEATURE_REPORT_CONTEXT in urc.validate_capabilities(reply)
+            self.report_context = status == 200 and urc.FEATURE_REPORT_CONTEXT in urc.validate_capabilities(reply)
         except urc.ContractError:
-            self.report_context = False
+            self.report_context = False  # it answered, and not with these capabilities (an older Gateway: 404)
         if self.report_context:
             self._capture.enable_report_context()
 

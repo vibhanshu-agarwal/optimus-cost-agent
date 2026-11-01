@@ -914,11 +914,14 @@ def main(argv: list[str] | None = None) -> int:
         from optimus.config.gateway import OptimusGatewaySettings
         from optimus.gateway.client import GatewayClient
         from optimus.usage.capture_delivery import CaptureDelivery
+        from optimus.usage.savings_report import CAPABILITIES_SECONDS, gateway_post
 
         try:
-            delivery = CaptureDelivery(
-                durable_capture, GatewayClient(settings=OptimusGatewaySettings.from_env(agent_environ)), warn=_print_log
-            )
+            settings = OptimusGatewaySettings.from_env(agent_environ)
+            # Plan 12.9: the turn-context feature is negotiated through the report route's own bounded POST, so a
+            # stalled answer costs a pass at most `CAPABILITIES_SECONDS` and never blocks ordinary delivery.
+            delivery = CaptureDelivery(durable_capture, GatewayClient(settings=settings), warn=_print_log,
+                                       capabilities=gateway_post(settings, timeout=CAPABILITIES_SECONDS))
         except Exception:  # noqa: BLE001 - without delivery, capture stays in the outbox for a later launch
             return None
         delivery.start()

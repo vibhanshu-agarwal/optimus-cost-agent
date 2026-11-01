@@ -594,3 +594,20 @@ def test_session_less_overhead_on_the_hosts_stream_is_unallocated_not_charged_to
 
     assert status == 200 and body["unallocated"] == {"known_usd": "0.0005", "attempts": 1, "unknown_attempts": 0}
     assert body["session"]["known_usd"] == "0.0012" and body["session"]["attempts"] == 1
+
+
+
+def test_overhead_before_a_sessions_first_turn_is_still_shown_unallocated(store, tmp_path):
+    """Checkpoint B finding 6: right after startup a session has no facts, so only its frontier names the stream that
+    holds the startup check's receipt."""
+    session = _session()
+    probe = dataclasses.replace(_receipt(session, "startup:1", f"{uuid.uuid4().hex}:planning:1:1", cost="0.0007"), session_id=None)
+    capture = _capture(tmp_path / "host")
+    capture.receipt(probe)
+    expected_turns, frontier = capture.report_scope(session)
+    _ingest(store, capture)
+
+    status, body = _report(store, session, expected_turns=expected_turns, frontier=frontier)
+
+    assert status == 200 and expected_turns == 0 and body["session"]["attempts"] == 0
+    assert body["unallocated"] == {"known_usd": "0.0007", "attempts": 1, "unknown_attempts": 0}

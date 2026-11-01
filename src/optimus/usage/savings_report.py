@@ -12,20 +12,24 @@ Untrusted identifiers are escaped and shortened. The exact labels are the contra
 
 from __future__ import annotations
 
+import http.client
 import json
 import re
+import socket
+import threading
 import time
+from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus_security import usage_report_contract as urc
 
 PAGE_SIZE = 25  # detail rows per rendered page (agent-selected); the Gateway bounds it again
-READ_SECONDS = 20.0  # the Gateway's own deadlines total 15 s
+READ_SECONDS = 15.0  # the host transport's whole budget (plan v2 design 2), connection to last body byte
+CAPABILITIES_SECONDS = 5.0  # capture delivery's negotiation (agent-selected): it must never hold a delivery pass long
 _IDENTIFIER_CHARS = 64
 
 COMMAND = "savings"
@@ -99,35 +103,54 @@ Post = Callable[[bytes], tuple[int, Any]]
 
 
 def gateway_post(settings: OptimusGatewaySettings, *, timeout: float = READ_SECONDS) -> Post:
-    """POST to the report route with the host's Gateway URL and key, reading at most the contract's response bound."""
+    """POST to the report route with the host's Gateway URL and key, reading at most the contract's response bound.
+
+    One deadline covers the whole exchange: the connection is attempted within it, and a watchdog shuts the socket at
+    it, so slow headers or a body that drips in end there and the calling thread returns (`ReportTransportError`)."""
     settings.validate_trusted_gateway()
-    url = settings.gateway_url.rstrip("/") + urc.PATH
+    parts = urlsplit(settings.gateway_url.rstrip("/") + urc.PATH)
+    connection_class = http.client.HTTPSConnection if parts.scheme == "https" else http.client.HTTPConnection
 
     def post(body: bytes) -> tuple[int, Any]:
         headers = {**settings.auth_headers(), "Content-Type": "application/json", "Accept": "application/json"}
         deadline = time.monotonic() + timeout
+        connection = connection_class(parts.hostname or "", parts.port, timeout=timeout)
+        watchdog = threading.Timer(timeout, _shut, args=(connection,))
+        watchdog.daemon = True
+        watchdog.start()
         try:
-            with urlopen(Request(url, data=body, headers=headers, method="POST"), timeout=timeout) as response:
-                return response.status, _bounded_json(response, deadline)
-        except HTTPError as exc:
-            with exc:
-                return exc.code, _bounded_json(exc, deadline)
-        except TimeoutError:
-            raise ReportTransportError("timeout") from None
-        except (URLError, OSError):
-            raise ReportTransportError("unreachable") from None
+            connection.request("POST", parts.path, body=body, headers=headers)
+            response = connection.getresponse()
+            return response.status, _bounded_json(response, deadline)
+        except ReportTransportError:
+            raise
+        except (OSError, http.client.HTTPException):
+            raise ReportTransportError("timeout" if time.monotonic() >= deadline - 0.05 else "unreachable") from None
+        finally:
+            watchdog.cancel()
+            connection.close()
 
     return post
 
 
+def _shut(connection: http.client.HTTPConnection) -> None:
+    """The deadline: unblock any read in progress (a shutdown wakes a blocked receive; a close alone may not)."""
+    sock = connection.sock
+    if sock is not None:
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+    connection.close()
+
+
 def _bounded_json(stream: Any, deadline: float) -> Any:
-    """At most the contract's response bound, by a total deadline: a reply that drips in stops at it (each read waits
-    at most the socket timeout, so the read ends within the deadline plus one timeout)."""
+    """At most the contract's response bound, by the exchange's deadline (enforced by its watchdog)."""
     raw = bytearray()
     while len(raw) <= urc.MAX_RESPONSE_BYTES:
         if time.monotonic() > deadline:
             raise ReportTransportError("timeout")
-        chunk = stream.read1(64 * 1024) if hasattr(stream, "read1") else stream.read(64 * 1024)
+        chunk = stream.read1(64 * 1024)
         if not chunk:
             break
         raw += chunk
@@ -145,14 +168,23 @@ Scope = Callable[[str], tuple[int, tuple[tuple[str, int], ...]]]
 class SavingsReports:
     """One host's `/savings` source: the Gateway route and this host's own capture scope."""
 
+    _CONTINUATIONS = 256  # remembered continuations (agent-selected); a forgotten one continues as a session report
+
     def __init__(self, post: Post, scope: Scope) -> None:
         self._post, self._scope = post, scope
+        self._lock = threading.Lock()
+        self._continued: OrderedDict[tuple[str, str], str | None] = OrderedDict()  # (session, cursor) -> its turn scope
 
     def markdown(self, session_id: str, command: SavingsCommand) -> str:
-        """The rendered report or its stated failure; never raises for a Gateway or ledger state."""
+        """The rendered report or its stated failure; never raises for a Gateway or ledger state. A continuation repeats
+        the scope of the report that offered it (the cursor binds it, so a different scope answers REPORT_CHANGED)."""
+        turn_id = command.turn_id
+        if command.cursor is not None:
+            with self._lock:
+                turn_id = self._continued.get((session_id, command.cursor))
         expected_turns, frontier = self._scope(session_id)
-        request = urc.ReportRequest(session_id, command.turn_id, None, PAGE_SIZE, command.cursor,
-                                    1 if command.turn_id is not None else expected_turns, frontier or None)
+        request = urc.ReportRequest(session_id, turn_id, None, PAGE_SIZE, command.cursor,
+                                    1 if turn_id is not None else expected_turns, frontier or None)
         try:
             status, body = self._post(urc.build_request(request))
         except ReportTransportError as exc:
@@ -163,9 +195,15 @@ class SavingsReports:
             code = body.get("code") if isinstance(body, Mapping) else None
             return _FAILURES.get(code, _NOT_PREPARED) if isinstance(code, str) else _NOT_PREPARED
         try:
-            return render_savings_report(urc.validate_report(body))
+            report = urc.validate_report(body)
         except urc.ContractError:
             return _MALFORMED
+        if report["next_cursor"] is not None:
+            with self._lock:
+                self._continued[(session_id, report["next_cursor"])] = turn_id
+                while len(self._continued) > self._CONTINUATIONS:
+                    self._continued.popitem(last=False)
+        return render_savings_report(report)
 
 
 def _text(value: object, limit: int = _IDENTIFIER_CHARS) -> str:
@@ -206,8 +244,10 @@ def render_savings_report(report: Mapping[str, Any]) -> str:
                  f"{attribution['unattributed_turns']} not recorded either way.")
     unallocated = report["unallocated"]
     if unallocated["attempts"]:
-        lines.append(f"- **Not part of any session** (startup checks and probes in this process): "
-                     f"{_usd(unallocated['known_usd'])} across {unallocated['attempts']} requests.")
+        unknown = unallocated["unknown_attempts"]
+        lines.append(f"- **Not part of any session** (startup checks and probes in this process): known "
+                     f"{_usd(unallocated['known_usd'])} across {unallocated['attempts']} requests"
+                     + (f", {unknown} of them with unknown cost." if unknown else "."))
     lines += ["", urc.LABELS["history"]]
 
     comparisons = report["comparisons"]
