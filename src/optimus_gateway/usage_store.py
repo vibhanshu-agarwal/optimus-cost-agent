@@ -80,6 +80,7 @@ class ReportFacts:
     selections: Mapping[str, tuple[str, ...]]
     too_large: bool = False
     uncommitted_streams: int | None = None  # host frontiers not yet committed here; None: the host supplied none
+    uncovered_streams: int = 0  # host streams behind the scope's facts that no supplied frontier covers
     stream_gaps: int = 0
 
 
@@ -225,16 +226,19 @@ class UsageStore:
         instance, as_of = instance_row[0], as_of_row[0].astimezone(UTC)
         if len(receipts) > max_attempts or len(events) > 4 * max_turns or len(epochs) > max_turns:
             return ReportFacts(instance, as_of, (), {}, {}, too_large=True)
-        # Delivery: how many of the host's confirmed frontiers this ledger has not committed, and the gaps (retracted spans
-        # and spans a replaced ledger never received) in every stream the scope's facts or frontiers name.
+        # Delivery: how many of the host's confirmed frontiers this ledger has not committed (a stream it has no cursor for
+        # is uncommitted, whatever the sequence), how many host streams behind the scope's facts no frontier covers, and
+        # the gaps (retracted spans and spans a replaced ledger never received) in every stream either names.
+        fact_streams = {r[3] for r in receipts} | {e[4] for e in events}
         uncommitted = None
-        if frontier is not None:
+        if frontier:  # an empty frontier proves nothing, like an absent one
             committed = dict(conn.execute(
                 "SELECT stream_id, sequence FROM optimus_usage.drain_cursor WHERE ledger_instance_id = %s AND stream_id = ANY(%s)",
                 (instance_row[0], [stream for stream, _ in frontier]),
             ).fetchall())
-            uncommitted = sum(committed.get(stream, 0) < sequence for stream, sequence in frontier)
-        streams = sorted({r[3] for r in receipts} | {e[4] for e in events} | {stream for stream, _ in frontier or ()})
+            uncommitted = sum(stream not in committed or committed[stream] < sequence for stream, sequence in frontier)
+        uncovered = len(fact_streams - {stream for stream, _ in frontier or ()})
+        streams = sorted(fact_streams | {stream for stream, _ in frontier or ()})
         gaps_row = conn.execute(
             "SELECT (SELECT count(*) FROM optimus_usage.capture_event WHERE stream_id = ANY(%s) AND kind = %s) + "
             "(SELECT count(*) FROM optimus_usage.coverage_epoch WHERE stream_id = ANY(%s) AND epoch_id LIKE 'unavailable:%%')",
@@ -249,7 +253,7 @@ class UsageStore:
             tuple((dict(payload), late, conflict) for payload, late, conflict, _ in receipts),
             {turn: tuple(sorted((states.get(epoch) for epoch in ids), key=str)) for turn, ids in epochs.items()},
             {turn: tuple(sorted(values)) for turn, values in selections.items()},
-            uncommitted_streams=uncommitted, stream_gaps=int(gaps_row[0]) if gaps_row else 0,
+            uncommitted_streams=uncommitted, uncovered_streams=uncovered, stream_gaps=int(gaps_row[0]) if gaps_row else 0,
         )
 
     def _bound(self, conn: psycopg.Connection[Any]) -> None:

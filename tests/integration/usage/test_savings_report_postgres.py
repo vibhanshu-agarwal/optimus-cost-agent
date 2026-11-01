@@ -524,3 +524,27 @@ def test_the_whole_read_ends_within_the_report_budget(store, tmp_path, monkeypat
         while conn.execute("SELECT count(*) FROM pg_stat_activity WHERE query LIKE 'SELECT pg_sleep%%' AND pid <> pg_backend_pid()").fetchone()[0]:
             assert time.monotonic() < deadline, "an expired report statement is still running"
             time.sleep(0.1)
+
+
+@pytest.mark.parametrize("frontier", [
+    lambda host, context: (),  # empty: proves nothing
+    lambda host, context: (context,),  # the receipt's own stream is not covered
+    lambda host, context: (host, context, (uuid.uuid4().hex, 0)),  # a stream this ledger never saw, at sequence zero
+])
+def test_a_frontier_that_does_not_cover_the_scope_is_never_definitive(store, tmp_path, frontier):
+    session = _session()
+    host, context = _complete_turn(store, tmp_path, session, "t1")
+
+    status, body = _report(store, session, expected_turns=1, frontier=frontier(host, context))
+
+    assert status == 200 and not body["session"]["definitive"] and not body["auto"]["definitive"]
+    assert {"frontier_unknown", "delivery_pending"} & set(body["session"]["reasons"])
+    assert all(c["savings_usd"] is None and c["savings_percent"] is None for c in body["comparisons"]["columns"])
+
+
+def test_an_empty_frontier_never_certifies_an_empty_scope(store):
+    """With no facts there is nothing for coverage to miss, so only the frontier can say whether the host recorded any."""
+    status, body = _report(store, _session(), expected_turns=0, frontier=())
+
+    assert status == 200 and body["session"]["attempts"] == 0
+    assert body["session"]["reasons"] == ["frontier_unknown"] and not body["session"]["definitive"]

@@ -330,7 +330,8 @@ def report_body(facts: ReportFacts, request: urc.ReportRequest, references: Refe
         "schema_version": urc.SCHEMA_VERSION, "status": "ok", "ledger_instance": facts.ledger_instance,
         "as_of": facts.as_of.isoformat(), "scope": {"session_id": request.session_id, "turn_id": request.turn_id},
         "b2": {"state": "unavailable"}, "b3": {"state": "unavailable"},
-        "benchmark": None if references.benchmark is None else {
+        # B4 needs its provenance: a benchmark without a source locator is not shown at all.
+        "benchmark": None if references.benchmark is None or references.benchmark.source.locator is None else {
             "text": references.benchmark.text, "limitations": references.benchmark.limitations,
             "source": references.benchmark.source.locator,
             "as_of": None if references.benchmark.source.price_as_of is None else references.benchmark.source.price_as_of.isoformat(),
@@ -348,7 +349,8 @@ def report_body(facts: ReportFacts, request: urc.ReportRequest, references: Refe
     attempts = [_attempt(*receipt) for receipt in facts.receipts]
     turns = [_turn(turn_id, facts.epochs[turn_id], facts.selections.get(turn_id, ())) for turn_id in sorted(facts.epochs)]
     revision = _digest([facts.ledger_instance, scope, references.digest, [dataclasses.astuple(a) for a in attempts],
-                        [dataclasses.astuple(t) for t in turns], facts.uncommitted_streams, facts.stream_gaps])
+                        [dataclasses.astuple(t) for t in turns], facts.uncommitted_streams, facts.uncovered_streams,
+                        facts.stream_gaps])
     if position is not None and (position.get("ledger_instance"), position.get("revision")) != (facts.ledger_instance, revision):
         raise Changed
     unattributed = sum(turn.selection is None for turn in turns)
@@ -356,7 +358,8 @@ def report_body(facts: ReportFacts, request: urc.ReportRequest, references: Refe
     # Delivery: without the host's turn count and capture frontier no scope is shown complete, since a turn or a receipt
     # may not have reached the ledger; nor while a frontier is uncommitted or a stream of the scope has a gap.
     delivery = ["expected_turns_unknown"] if request.expected_turns is None else []
-    delivery += ["frontier_unknown"] if facts.uncommitted_streams is None else ["delivery_pending"] if facts.uncommitted_streams else []
+    delivery += ["frontier_unknown"] if facts.uncommitted_streams is None or facts.uncovered_streams else []
+    delivery += ["delivery_pending"] if facts.uncommitted_streams else []
     delivery += ["stream_gap"] if facts.stream_gaps else []
     session = _with(totals(attempts, turns, expected_turns=request.expected_turns), delivery)
     auto_attempts, auto_turns = auto_scope(attempts, turns)

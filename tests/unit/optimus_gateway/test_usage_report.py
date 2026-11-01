@@ -192,7 +192,7 @@ def _payload(attempt_id, turn, *, cost="0.002", inp=1000, out=200, cached=0, rea
             "usage": {"reasoning_tokens": reasoning}, "requested_model": "m-1", "resolved_model": "m-1", "provider": "p-1"}
 
 
-def _facts(receipts=None, *, epochs=None, selections=None, ledger=_LEDGER, too_large=False, uncommitted=0, gaps=0):
+def _facts(receipts=None, *, epochs=None, selections=None, ledger=_LEDGER, too_large=False, uncommitted=0, uncovered=0, gaps=0):
     receipts = receipts if receipts is not None else [
         (_payload("a1", "t1"), False, False),
         (_payload("c1", "t1", cost="0.0001", stage="classification", inp=100, out=0), False, False),
@@ -201,7 +201,7 @@ def _facts(receipts=None, *, epochs=None, selections=None, ledger=_LEDGER, too_l
     return ReportFacts(ledger, datetime(2026, 11, 1, 12, tzinfo=UTC), tuple(receipts),
                        epochs if epochs is not None else {"t1": ("complete",), "t2": ("complete",)},
                        selections if selections is not None else {"t1": ("auto",), "t2": ("fixed",)}, too_large,
-                       uncommitted_streams=uncommitted, stream_gaps=gaps)
+                       uncommitted_streams=uncommitted, uncovered_streams=uncovered, stream_gaps=gaps)
 
 
 def _request(**changes):
@@ -418,6 +418,7 @@ def test_a_reference_without_a_source_is_unavailable_and_its_neighbour_is_not():
     (lambda: _facts(uncommitted=None), {"frontier": None}, "frontier_unknown"),
     (lambda: _facts(uncommitted=1), {}, "delivery_pending"),  # a receipt of a recorded turn has not arrived
     (lambda: _facts(gaps=1), {}, "stream_gap"),
+    (lambda: _facts(uncovered=1), {}, "frontier_unknown"),  # a host stream behind the facts has no frontier
 ])
 def test_delivery_that_is_not_proven_withholds_every_definitive_total(facts, request_changes, reason):
     body = _page(facts(), _request(**request_changes), _references())
@@ -470,3 +471,12 @@ def test_the_deadline_bounds_the_arithmetic_too(synthetic_references, monkeypatc
     monkeypatch.setattr(report, "report_body", lambda *a, **k: (time.sleep(0.5), real(*a, **k))[1])
 
     assert _handle(_Store(_facts())) == urc.error_body("REPORT_TIMEOUT")
+
+
+def test_a_benchmark_without_provenance_is_omitted_and_the_report_stays_valid():
+    unsourced = ReferenceSet(version=1, references=(_reference(),),
+                             benchmark={"text": "t", "limitations": "l", "source": {"price_as_of": None}})
+
+    body = _page(_facts(), _request(), unsourced)  # _page validates the whole response
+
+    assert body["benchmark"] is None and body["comparisons"]["columns"][0]["complete"]
