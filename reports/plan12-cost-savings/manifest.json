@@ -1,0 +1,250 @@
+{
+  "adr": {
+    "allocated": "ADR-034",
+    "drafted_in": "Task 1",
+    "free_on_main_at": "hex:9e87d67f575e390966ba1c82e6004fda5a1b097a",
+    "planned_file": "docs/decisions/ADR-034-cost-savings-report-read-and-presentation.md"
+  },
+  "decisions": {
+    "D1": {
+      "answer": "/savings in Zed (Recommended)",
+      "date": "2026-11-01",
+      "source": "operator, AskUserQuestion in Claude's Plan 12.9 chat"
+    },
+    "D2": {
+      "answer": "Current session (Recommended)",
+      "date": "2026-11-01",
+      "source": "operator, AskUserQuestion in Claude's Plan 12.9 chat"
+    },
+    "D3": {
+      "answer": "I recollect showing a tabular view that means showing cost savings against various options for e.g. against Claude Sonnet 5.5 , Opus 5.5 - it does not have to be models included in Optimus (vs comparison)",
+      "date": "2026-11-01",
+      "source": "operator, AskUserQuestion in Claude's Plan 12.9 chat"
+    },
+    "D4": {
+      "answer": "zero paid calls, recorded with the v1 approval",
+      "date": "2026-11-01",
+      "source": "operator, AskUserQuestion in Claude's Plan 12.9 chat"
+    },
+    "plan_approvals": [
+      {
+        "answer": "Approve and file (Recommended)",
+        "sha256": "hex:357932b6462fc183246f205839a8765963c4ab6cc6afb5f44c1ac875b6b7bdae",
+        "version": "v1 (superseded)"
+      },
+      {
+        "answer": "Approve v2 and file (Recommended)",
+        "sha256": "hex:aede5628ec2f8e41a6457e48f199b3151e89157240d874f1470a163d0dc4159e",
+        "version": "v2 (authority)"
+      }
+    ]
+  },
+  "environment": {
+    "acpx": "0.12.0",
+    "codex_cli": "0.163.0",
+    "docker": {
+      "client": "29.9.2",
+      "daemon_reachable_2026_11_01": true,
+      "postgres_images_cached": [
+        "postgres:16-alpine 721873c34ceb",
+        "postgres:16.14-alpine 57c72fd2a128",
+        "postgres:18.4 a02db8cac496"
+      ],
+      "release": "not granted; each container needs its own operator release"
+    },
+    "keyring": {
+      "backend": "WinVaultKeyring",
+      "version": "25.7.0"
+    },
+    "platform": "Windows-11-10.0.26300-SP0",
+    "psycopg": {
+      "libpq": "180003",
+      "version": "3.3.4"
+    },
+    "python": "3.14.4 (worktree .venv, uv sync --frozen --extra dev)",
+    "uv": "0.11.29",
+    "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2",
+    "wsl_distributions": [
+      "Ubuntu-24.04",
+      "eb-runner",
+      "docker-desktop"
+    ],
+    "zed": {
+      "path": "C:\\Users\\pc\\AppData\\Local\\Programs\\Zed\\Zed.exe",
+      "version": "1.26.2+stable.384.c4273271092b0287f7d181f616bd5171e0a2f70c"
+    }
+  },
+  "findings_for_later_tasks": [
+    {
+      "finding": "Token-category inclusion is untested: upstream_client.py:831-856 maps cached_tokens from prompt_tokens_details and reasoning_tokens from completion_tokens_details, but no test or document pins cached as a subset of input or reasoning as a subset of output. Under plan v2 design 5, B1 treats the overlap as unavailable until a test pins it from a cited source.",
+      "id": "F1",
+      "task": "Task 1"
+    },
+    {
+      "finding": "No capture feature negotiation exists. An older Gateway answers a new record kind with 400 CAPTURE_KIND (usage_capture.py:148); the host maps it to a non-transient DrainStop('refused:400') (capture_delivery.py:35), which stalls the whole stream. Emitting turn.report_context needs a capability check first.",
+      "id": "F2",
+      "task": "Task 3"
+    },
+    {
+      "finding": "Cache-write tokens are not captured anywhere (ProviderMessageResult, capture contract). Reference prices for cache writes (5m and 1h) cannot be applied; the report must state that portion as unavailable, never priced at zero or at the input price.",
+      "id": "F3",
+      "task": "Task 1"
+    },
+    {
+      "finding": "Reference price schedules have long-context tiers (overrides keyed by min_prompt_tokens) and per-request web_search prices in the dated source. The reference schema needs per-request tier selection by reported input tokens; a tier the schema cannot express makes the affected requests unavailable.",
+      "id": "F4",
+      "task": "Task 1"
+    },
+    {
+      "finding": "No post-setup notification hook exists: notifications sent inside _handle_session_new go out before the response. available_commands_update must be sent after server.py deliver_envelope (:1439) for a successful session/new (zed-industries/zed#60199). session/load is not implemented, so only session/new needs it.",
+      "id": "F5",
+      "task": "Task 4"
+    },
+    {
+      "finding": "_handle_post reads and parses the body before authenticating (server.py:143-157). The new report route needs the capture route's pre-body auth branch (server.py:140, _handle_capture :206-229).",
+      "id": "F6",
+      "task": "Task 2"
+    },
+    {
+      "finding": "The zero-paid Zed path reuses the #397 scripted stub (optimus-handoff/p397-stub/stub_provider.py, sha256 hex:23f10cd865db15951483fb493acae5fa1f226cd8b57cdf4a8573da43f6f494ad; contract S2 in its plan r6), which returns fixed usage with cost 0. The savings UI cases need scenario-driven synthetic usage (nonzero cost, cached tokens) labelled synthetic. Normal launch runs non-strict preflight (bootstrap.py:126) with no model call; strict preflight (preflight.py:228) bills and stays off.",
+      "id": "F7",
+      "task": "Task 5"
+    },
+    {
+      "finding": "Current HLD v2.23, LLD v2.46 and Test Strategy v1.9 have no conflict with the plan but are stale or silent: the Gateway ledger is described as Redis (HLD p11/p14, LLD p39), the closed route list lacks the new route (LLD p2/p4/p6), there is no ACP command section and no Postgres test tier (TS p3). Delivery needs a governed documentation successor (ADR-005 consequence), drafted by Codex.",
+      "id": "F8",
+      "task": "Task 6"
+    },
+    {
+      "finding": "Constraints to carry: price snapshots are diagnostic only and never overwrite provider-reported cost (LLD p38-40); non-registry reference prices must never feed registry price ordering or eligibility (HLD p18); test profiles do not read operator overrides (HLD p18); a deselected Postgres or Zed tier is UNRUN, not a pass (TS p16).",
+      "id": "F9",
+      "task": "Task 1"
+    }
+  ],
+  "plan": {
+    "base": "hex:9e87d67f575e390966ba1c82e6004fda5a1b097a",
+    "branch": "agent/claude/plan12-9-cost-savings-report",
+    "file": "docs/superpowers/plans/2026-11-01-plan-12-9-cost-savings-report-implementation_v2.md",
+    "head_at_task0": "hex:3dddbafaa0cb879fcb838cd83cc950eefbd7ace7",
+    "sha256": "hex:aede5628ec2f8e41a6457e48f199b3151e89157240d874f1470a163d0dc4159e",
+    "superseded_v1": {
+      "file": "docs/superpowers/plans/2026-11-01-plan-12-9-cost-savings-report-implementation.md",
+      "sha256": "hex:357932b6462fc183246f205839a8765963c4ab6cc6afb5f44c1ac875b6b7bdae"
+    },
+    "tree_at_task0": "hex:5301e90594ff435a72b4eec3a993b038c8a79f82"
+  },
+  "prerequisites": [
+    {
+      "evidence": "HEAD 3dddbaf is main 9e87d67 plus the plan commit; 0 commits behind origin/main on 2026-11-01; no open PRs.",
+      "requirement": "Worktree/branch at the authoring base",
+      "status": "yes"
+    },
+    {
+      "evidence": "decisions.plan_approvals",
+      "requirement": "Operator decisions D1-D4 and exact v2 approval",
+      "status": "yes"
+    },
+    {
+      "evidence": "#248 OPEN status:active estimate:5d; #303 #396 #398 #423 #442 #257 OPEN status:open, none updated since 2026-10-29; none blocks Task 1.",
+      "requirement": "Current #248 and adjacent-issue state",
+      "status": "yes"
+    },
+    {
+      "evidence": "environment",
+      "requirement": "Worktree-local frozen environment and tool versions",
+      "status": "yes"
+    },
+    {
+      "evidence": "Daemon reachable and postgres:16-alpine cached; capability is not release.",
+      "requirement": "Docker daemon, cached image and disposable Postgres resources",
+      "status": "yes (capability)"
+    },
+    {
+      "disposition": "merely unauthorized: requested at Task 2 with container, image, port, volume and operations named.",
+      "requirement": "Docker and each container's lifecycle release",
+      "status": "no"
+    },
+    {
+      "evidence": "WinVaultKeyring available; tests/support/plan12_capture_provisioner.py provisions a run-scoped role, keyring entry and gateway-accounting.json under a release.",
+      "requirement": "Native Gateway keyring and authorized accounting configuration",
+      "status": "yes (capability)"
+    },
+    {
+      "evidence": "Zed 1.26.2 installed; zero-paid path per F7; screenshot via computer-use under the Zed-session release.",
+      "requirement": "Installed Zed, isolated workspace, zero-paid launch path, screenshot access",
+      "status": "yes (capability)"
+    },
+    {
+      "disposition": "merely unauthorized: requested at Task 5.",
+      "requirement": "Each Zed session and supporting service operation",
+      "status": "no"
+    },
+    {
+      "evidence": "sources.reference_prices and sources.benchmark; category gaps per F3 and F4 stay unavailable.",
+      "requirement": "Qualified dated reference and benchmark inputs",
+      "status": "yes (inputs located)"
+    },
+    {
+      "disposition": "genuinely absent: outside this delivery; OC-4 follow-up at closure.",
+      "requirement": "B2/B3 evidence and producers",
+      "status": "no"
+    },
+    {
+      "disposition": "merely unauthorized: D4 permits zero paid calls.",
+      "requirement": "Paid-call authority",
+      "status": "no"
+    },
+    {
+      "evidence": "WSL Ubuntu-24.04 present; used only for platform-shaped CI failures.",
+      "requirement": "Alternate-OS focused reproduction",
+      "status": "yes (capability)"
+    },
+    {
+      "disposition": "merely unauthorized: per-operation operator OK.",
+      "requirement": "GitHub writes other than review posts, push, PR, merge",
+      "status": "no"
+    }
+  ],
+  "services_started_by_inventory": [],
+  "sources": {
+    "adr_005": "hex:27f7024aa8c43ba64ca834907e88ae4a7166e4c1f9d8f6e60f9e1d32432b00ee",
+    "adr_012": "hex:aab39e3abdc92c6e150892c121820f7db1fedec1e41cf8aa2bfee779bb55f584",
+    "adr_025": "hex:22ae60068919e148ab06298c283a7b355c2fae8f476a2fa9c97dc73951260e96",
+    "adr_028": "hex:66e79530793349bc5ec032940c1ea9957dbfff1adfc0ff10a20e6b22d3918284",
+    "adr_029": "hex:708879347bd7ae734ed1f5c6f17b52c488ecbb80eb3dbb0dff1e8eb17eeae9ac",
+    "adr_032": "hex:db62df5eeb20694bc61d586d0ef46394e8fa5d42e8f1af446ff399b0870b3667",
+    "adr_033": "hex:5d499c937251b3a62652f095b005d8943c5e536de989dacfcff2808587e0e3b6",
+    "backlog_p12_fu_2": "hex:4f529b8355b6fe3822732e7728b68c64398d7a820b8175ddd93d4b1b05fe90f1",
+    "benchmark": {
+      "candidate": "docs/decisions/2026-09-30-industry-context-cost-and-model-evidence.md section D (coding capability of the tier models, 2026-09-30)",
+      "note": "B4 context only; ADR-028's pilot figures may be linked as internal pilot context, never as production savings.",
+      "sha256": "hex:7f73c5e17e12e5109712a09f2051ee6cf5df041715b49ab523946bf61d43ed70"
+    },
+    "governing_docs": [
+      "docs/Optimus-Cost-Agent-Architecture-v2.23.pdf",
+      "docs/Optimus-Cost-Agent-LLD-v2.46.pdf",
+      "docs/Optimus-Cost-Agent-Test-Strategy-v1.9.pdf",
+      "docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf"
+    ],
+    "memory_design_v4": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9",
+    "reference_prices": {
+      "captured": "2026-11-01",
+      "categories_absent": [
+        "reasoning (no separate price; billing as completion is not stated by the source)"
+      ],
+      "categories_present": [
+        "prompt",
+        "completion",
+        "input_cache_read",
+        "input_cache_write",
+        "input_cache_write_1h (some entries)",
+        "web_search",
+        "overrides by min_prompt_tokens (some entries)"
+      ],
+      "note": "Reference identities and prices become configuration in Task 1 (savings_references.yaml); none is named in code or tests.",
+      "raw_copy": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/p129-task0/openrouter-models-2026-11-01/models.json (outside the repository)",
+      "raw_sha256": "hex:afe0a9ef18916f9e888a17e5145c07fe3be3081b20dec9f77fdc2c49e7652f6f",
+      "source": "https://openrouter.ai/api/v1/models (public, unauthenticated GET; no model call)"
+    }
+  }
+}
