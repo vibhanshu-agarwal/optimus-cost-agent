@@ -12,6 +12,11 @@ never persisted leaves the epoch's `host_complete` false; a write failure leaves
 here infers a clean close: a close the queue refused leaves the epoch open for a later close, a queued close whose
 write then failed reopens it, and only a close that was written settles it. A receipt that arrives after a written
 close is appended with `late=True`; the close is never rewritten.
+
+Plan 12.9 (ADR-034): each admitted turn's `turn.report_context` (Auto or fixed) is written into its epoch, beginning it,
+before classification, but only once `enable_report_context` was called for a Gateway that lists the feature: an older
+Gateway refuses the kind, which would stop this stream's delivery. Until then turns stay visibly unattributed.
+`report_scope` is what the host knows of one session for a usage report: how many turns it ran, and its stream's frontier.
 """
 
 from __future__ import annotations
@@ -61,6 +66,8 @@ class DurableCapture:
         self._epochs: dict[str, _Epoch] = {}  # open or closing, by turn
         self._closed: dict[str, str] = {}  # shortcut: kept for the process lifetime; bound it if sessions grow huge
         self._started = False
+        self._report_context = False
+        self._session_turns: dict[str, set[str]] = {}  # every turn whose capture began, by session
 
     @classmethod
     def at(cls, config_root: Path) -> DurableCapture:
@@ -106,10 +113,43 @@ class DurableCapture:
         if closed_id is not None:
             raise _Closed(closed_id)
         epoch_id = uuid.uuid4().hex
+        if session_id is not None:
+            self._session_turns.setdefault(session_id, set()).add(turn_id)
         ticket = self._submit(uc.EPOCH_BEGIN, None, epoch_id=epoch_id, turn_id=turn_id, session_id=session_id)
         epoch = _Epoch(epoch_id, turn_id, ticket, rejected=1 if ticket.failure is not None else 0)
         self._epochs[turn_id] = epoch
         return epoch
+
+    def enable_report_context(self) -> None:
+        """The Gateway lists `usage_report_contract.FEATURE_REPORT_CONTEXT`: turn contexts may be written from now on."""
+        with self._lock:
+            self._report_context = True
+
+    def report_context(self, turn_id: str, session_id: str, *, selection: str, registry_hash: str | None,
+                       strategy: str | None) -> bool:
+        """Record the turn's explicit Auto/fixed selection in its epoch, beginning it; False when the feature is not
+        negotiated or the turn's epoch already closed (its turn then stays unattributed)."""
+        with self._lock:
+            self._session_turns.setdefault(session_id, set()).add(turn_id)
+            if not self._report_context:
+                return False
+            try:
+                epoch = self._epoch(turn_id, session_id)
+            except _Closed:
+                return False
+            ticket = self._submit(uc.TURN_REPORT_CONTEXT, epoch, epoch_id=epoch.epoch_id, session_id=session_id,
+                                  turn_id=turn_id, selection=selection, registry_hash=registry_hash, strategy=strategy)
+            return ticket.failure is None
+
+    def report_scope(self, session_id: str) -> tuple[int, tuple[tuple[str, int], ...]]:
+        """The session's turn count as this host ran them, and this stream's frontier: its last confirmed record plus
+        every record still being written, so a report cannot be complete before they are delivered. No record yet: no
+        frontier."""
+        with self._lock:
+            turns = len(self._session_turns.get(session_id, ()))
+        stats = self._writer.stats()
+        sequence = stats.confirmed_sequence + stats.pending
+        return turns, (((self._writer.stream_id, sequence),) if sequence else ())
 
     def invocation_opened(self, turn_id: str, session_id: str | None = None) -> str:
         """Begin the turn's epoch if this is its first invocation, then record the invocation; returns its ID."""

@@ -1714,6 +1714,14 @@ class AcpDuplexAdapter:
             turn.route_binder = self._route_policy.capture(
                 session_id=session_id, turn_seq=turn_seq, deliver_notice=self._blocking_notice(session_id, asyncio.get_running_loop())
             )
+        # Plan 12.9 (ADR-034): the admitted turn's explicit Auto/fixed selection, before classification, so the usage
+        # report attributes its every receipt (classification, retries, escalation, maintenance) by turn, never by model.
+        session.cost_settlement.report_context(
+            run_id,
+            selection="auto" if self._auto_router is not None else "fixed",
+            registry_hash=None if self._route_policy is None else self._route_policy.registry_hash,
+            strategy=attached_turn.strategy if attached_turn is not None else None,
+        )
         try:
             if self._auto_router is not None:
                 try:

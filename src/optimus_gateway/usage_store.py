@@ -82,6 +82,7 @@ class ReportFacts:
     uncommitted_streams: int | None = None  # host frontiers not yet committed here; None: the host supplied none
     uncovered_streams: int = 0  # host streams behind the scope's facts that no supplied frontier covers
     stream_gaps: int = 0
+    unallocated_costs: tuple[str | None, ...] = ()  # session-less receipts on the scope's streams; None: unknown cost
 
 
 def _digest(path: Path) -> str:
@@ -239,6 +240,14 @@ class UsageStore:
             uncommitted = sum(stream not in committed or committed[stream] < sequence for stream, sequence in frontier)
         uncovered = len(fact_streams - {stream for stream, _ in frontier or ()})
         streams = sorted(fact_streams | {stream for stream, _ in frontier or ()})
+        unallocated = conn.execute(  # canonical receipts only, as the session's are: an alias or replay adds nothing
+            "SELECT r.reported_cost_usd::text FROM optimus_usage.attempt_receipt r JOIN optimus_usage.capture_event e "
+            "ON e.stream_id = r.stream_id AND e.sequence = r.sequence "
+            "WHERE r.stream_id = ANY(%s) AND e.kind = %s AND e.payload->>'session_id' IS NULL LIMIT %s",
+            (sorted(fact_streams), uc.ATTEMPT_RECEIPT, max_attempts + 1),
+        ).fetchall()
+        if len(unallocated) > max_attempts:
+            return ReportFacts(instance, as_of, (), {}, {}, too_large=True)
         gaps_row = conn.execute(
             "SELECT (SELECT count(*) FROM optimus_usage.capture_event WHERE stream_id = ANY(%s) AND kind = %s) + "
             "(SELECT count(*) FROM optimus_usage.coverage_epoch WHERE stream_id = ANY(%s) AND epoch_id LIKE 'unavailable:%%')",
@@ -254,6 +263,7 @@ class UsageStore:
             {turn: tuple(sorted((states.get(epoch) for epoch in ids), key=str)) for turn, ids in epochs.items()},
             {turn: tuple(sorted(values)) for turn, values in selections.items()},
             uncommitted_streams=uncommitted, uncovered_streams=uncovered, stream_gaps=int(gaps_row[0]) if gaps_row else 0,
+            unallocated_costs=tuple(row[0] for row in unallocated),
         )
 
     def _bound(self, conn: psycopg.Connection[Any]) -> None:

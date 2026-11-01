@@ -10,6 +10,7 @@ resource every case skips as UNRUN. References are synthetic; no model is named.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import subprocess
@@ -548,3 +549,48 @@ def test_an_empty_frontier_never_certifies_an_empty_scope(store):
 
     assert status == 200 and body["session"]["attempts"] == 0
     assert body["session"]["reasons"] == ["frontier_unknown"] and not body["session"]["definitive"]
+
+
+# --- Plan 12.9 Task 3: the host's own context and report scope ------------------------------------------------------
+
+
+@pytest.mark.parametrize("selection", ["fixed", "auto"])
+def test_the_hosts_own_context_and_report_scope_make_a_delivered_turn_definitive(store, tmp_path, selection):
+    session = _session()
+    receipt = _receipt(session, f"{session}:1", f"{uuid.uuid4().hex}:planning:1:1")
+    capture = _capture(tmp_path / "host")
+    capture.enable_report_context()  # the Gateway listed the feature
+    capture.report_context(receipt.turn_id, session, selection=selection, registry_hash=None, strategy=None)
+    _turn(capture, session, receipt.turn_id, [receipt])
+    expected_turns, frontier = capture.report_scope(session)
+    _ingest(store, capture)
+    _gateway_evidence(store, tmp_path / "gateway", [receipt])
+
+    status, body = _report(store, session, expected_turns=expected_turns, frontier=frontier)
+
+    assert status == 200 and expected_turns == 1 and body["session"]["definitive"], body["session"]["reasons"]
+    assert body["attribution"] == {"auto_turns": int(selection == "auto"), "fixed_turns": int(selection == "fixed"),
+                                   "unattributed_turns": 0}
+    assert body["auto"]["definitive"] and body["auto"]["attempts"] == int(selection == "auto")
+    columns = body["comparisons"]["columns"]
+    assert all(c["complete"] is (selection == "auto") for c in columns), "only an Auto turn is compared"
+
+
+def test_session_less_overhead_on_the_hosts_stream_is_unallocated_not_charged_to_the_session(store, tmp_path):
+    session = _session()
+    receipt = _receipt(session, f"{session}:1", f"{uuid.uuid4().hex}:planning:1:1")
+    probe = _receipt(session, "startup:1", f"{uuid.uuid4().hex}:planning:1:1", cost="0.0005")
+    probe = dataclasses.replace(probe, session_id=None)
+    capture = _capture(tmp_path / "host")
+    capture.enable_report_context()
+    capture.report_context(receipt.turn_id, session, selection="auto", registry_hash=None, strategy=None)
+    _turn(capture, session, receipt.turn_id, [receipt])
+    capture.receipt(probe)  # a startup check: no session
+    expected_turns, frontier = capture.report_scope(session)
+    _ingest(store, capture)
+    _gateway_evidence(store, tmp_path / "gateway", [receipt])
+
+    status, body = _report(store, session, expected_turns=expected_turns, frontier=frontier)
+
+    assert status == 200 and body["unallocated"] == {"known_usd": "0.0005", "attempts": 1, "unknown_attempts": 0}
+    assert body["session"]["known_usd"] == "0.0012" and body["session"]["attempts"] == 1

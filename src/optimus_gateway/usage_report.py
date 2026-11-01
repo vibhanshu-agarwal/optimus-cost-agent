@@ -345,12 +345,13 @@ def report_body(facts: ReportFacts, request: urc.ReportRequest, references: Refe
             raise Changed
         return {**body, "revision": revision, "session": unavailable, "auto": unavailable,
                 "attribution": {"auto_turns": 0, "fixed_turns": 0, "unattributed_turns": 0},
+                "unallocated": {"known_usd": "0", "attempts": 0, "unknown_attempts": 0},
                 "comparisons": {"offset": 0, "total": len(selected), "columns": []}, "detail": [], "next_cursor": None}
     attempts = [_attempt(*receipt) for receipt in facts.receipts]
     turns = [_turn(turn_id, facts.epochs[turn_id], facts.selections.get(turn_id, ())) for turn_id in sorted(facts.epochs)]
     revision = _digest([facts.ledger_instance, scope, references.digest, [dataclasses.astuple(a) for a in attempts],
                         [dataclasses.astuple(t) for t in turns], facts.uncommitted_streams, facts.uncovered_streams,
-                        facts.stream_gaps])
+                        facts.stream_gaps, list(facts.unallocated_costs)])
     if position is not None and (position.get("ledger_instance"), position.get("revision")) != (facts.ledger_instance, revision):
         raise Changed
     unattributed = sum(turn.selection is None for turn in turns)
@@ -372,6 +373,9 @@ def report_body(facts: ReportFacts, request: urc.ReportRequest, references: Refe
         **body, "revision": revision, "session": _totals_body(session), "auto": _totals_body(auto),
         "attribution": {"auto_turns": len(auto_turns), "fixed_turns": sum(t.selection == "fixed" for t in turns),
                         "unattributed_turns": unattributed},
+        "unallocated": {"known_usd": _money(sum((Decimal(c) for c in facts.unallocated_costs if c is not None), Decimal(0))),
+                        "attempts": len(facts.unallocated_costs),
+                        "unknown_attempts": sum(c is None for c in facts.unallocated_costs)},
         "comparisons": {"offset": offset, "total": len(selected),
                         "columns": [_column_body(compare(auto_attempts, auto, r), r) for r in group]},
         "detail": [], "next_cursor": _LONGEST_CURSOR,

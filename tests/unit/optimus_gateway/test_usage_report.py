@@ -192,7 +192,8 @@ def _payload(attempt_id, turn, *, cost="0.002", inp=1000, out=200, cached=0, rea
             "usage": {"reasoning_tokens": reasoning}, "requested_model": "m-1", "resolved_model": "m-1", "provider": "p-1"}
 
 
-def _facts(receipts=None, *, epochs=None, selections=None, ledger=_LEDGER, too_large=False, uncommitted=0, uncovered=0, gaps=0):
+def _facts(receipts=None, *, epochs=None, selections=None, ledger=_LEDGER, too_large=False, uncommitted=0, uncovered=0, gaps=0,
+           unallocated=()):
     receipts = receipts if receipts is not None else [
         (_payload("a1", "t1"), False, False),
         (_payload("c1", "t1", cost="0.0001", stage="classification", inp=100, out=0), False, False),
@@ -201,7 +202,8 @@ def _facts(receipts=None, *, epochs=None, selections=None, ledger=_LEDGER, too_l
     return ReportFacts(ledger, datetime(2026, 11, 1, 12, tzinfo=UTC), tuple(receipts),
                        epochs if epochs is not None else {"t1": ("complete",), "t2": ("complete",)},
                        selections if selections is not None else {"t1": ("auto",), "t2": ("fixed",)}, too_large,
-                       uncommitted_streams=uncommitted, uncovered_streams=uncovered, stream_gaps=gaps)
+                       uncommitted_streams=uncommitted, uncovered_streams=uncovered, stream_gaps=gaps,
+                       unallocated_costs=tuple(unallocated))
 
 
 def _request(**changes):
@@ -480,3 +482,16 @@ def test_a_benchmark_without_provenance_is_omitted_and_the_report_stays_valid():
     body = _page(_facts(), _request(), unsourced)  # _page validates the whole response
 
     assert body["benchmark"] is None and body["comparisons"]["columns"][0]["complete"]
+
+
+# --- Plan 12.9 Task 3: unallocated overhead -------------------------------------------------------------------------
+
+
+def test_session_less_overhead_is_shown_apart_and_never_added_to_the_session():
+    plain = _page(_facts(), _request(), _references())
+    with_overhead = _page(_facts(unallocated=("0.01", None)), _request(), _references())
+
+    assert with_overhead["unallocated"] == {"known_usd": "0.01", "attempts": 2, "unknown_attempts": 1}
+    assert plain["unallocated"] == {"known_usd": "0", "attempts": 0, "unknown_attempts": 0}
+    assert with_overhead["session"] == plain["session"] and with_overhead["auto"] == plain["auto"]
+    assert with_overhead["revision"] != plain["revision"]

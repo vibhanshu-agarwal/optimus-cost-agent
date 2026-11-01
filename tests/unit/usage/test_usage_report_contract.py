@@ -36,6 +36,7 @@ def _report() -> dict:
         "schema_version": 1, "status": "ok", "ledger_instance": "a" * 32, "as_of": "2026-11-01T00:00:00+00:00",
         "revision": "hex:" + "1" * 64, "scope": {"session_id": "s", "turn_id": None}, "session": _totals(),
         "auto": _totals(), "attribution": {"auto_turns": 1, "fixed_turns": 0, "unattributed_turns": 0},
+        "unallocated": {"known_usd": "0", "attempts": 0, "unknown_attempts": 0},
         "comparisons": {"offset": 0, "total": 1, "columns": [_column()]}, "detail": [], "next_cursor": None,
         "b2": {"state": "unavailable"}, "b3": {"state": "unavailable"}, "benchmark": None,
     }

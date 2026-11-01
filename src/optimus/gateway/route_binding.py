@@ -105,6 +105,11 @@ class RoutePolicy:
         self.identity = registry_route_identity(snapshot, model_id=model_id, role=role)
         self.output_cap = output_cap
 
+    @property
+    def registry_hash(self) -> str:
+        """The trusted registry's effective hash, as every binding of this policy carries it."""
+        return self._snapshot.effective_hash
+
     def capture(self, *, session_id: str, turn_seq: int, deliver_notice: Callable[[str], bool]) -> TurnRouteBinder:
         """This turn's binder; call it before any await."""
         disclosure = ContributorDisclosure(snapshot=self._snapshot, key=self._key, deliver_notice=deliver_notice)

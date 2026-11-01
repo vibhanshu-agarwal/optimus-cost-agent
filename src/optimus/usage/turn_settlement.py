@@ -28,6 +28,7 @@ extension of this one settlement, never a second debit, and it never blocks mode
 
 from __future__ import annotations
 
+import contextlib
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, fields
@@ -204,6 +205,14 @@ class TurnSettlement:
         subscriber must be quick and must not wait on another thread."""
         with self._lock:
             self._subscribers.append(subscriber)
+
+    def report_context(self, turn_id: str, *, selection: str, registry_hash: str | None, strategy: str | None) -> None:
+        """Plan 12.9: the turn's explicit Auto/fixed selection, for the usage report; capture is best effort here."""
+        if self._capture is None or self._session_id is None:
+            return
+        with contextlib.suppress(Exception):
+            self._capture.report_context(turn_id, self._session_id, selection=selection, registry_hash=registry_hash,
+                                         strategy=strategy)
 
     def open_invocation(self, turn_id: str) -> Invocation:
         with self._lock:

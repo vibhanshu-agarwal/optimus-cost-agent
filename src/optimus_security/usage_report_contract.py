@@ -279,6 +279,9 @@ _REPORT_RESPONSE: dict[str, Check] = {
     "scope": _object({"session_id": _S, "turn_id": _S_}),
     "session": _object(_TOTALS), "auto": _object(_TOTALS),
     "attribution": _object({"auto_turns": _N, "fixed_turns": _N, "unattributed_turns": _N}),
+    # Receipts with no session on the scope's own host streams (startup checks, probes): this process's overhead, shown
+    # apart and never added to the session's totals.
+    "unallocated": _object({"known_usd": _USD, "attempts": _N, "unknown_attempts": _N}),
     "comparisons": _object({"offset": _N, "total": _N, "columns": _list_of(_object(_COLUMN), REFERENCE_GROUP)}),
     "detail": _list_of(_object(_ROW), MAX_PAGE), "next_cursor": _optional(_matches(_CURSOR)),
     "b2": _object({"state": lambda v: v == "unavailable"}), "b3": _object({"state": lambda v: v == "unavailable"}),
