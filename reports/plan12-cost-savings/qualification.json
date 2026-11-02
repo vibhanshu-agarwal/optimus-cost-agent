@@ -3,12 +3,17 @@
   "recorded": "2026-11-02",
   "issue": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/248",
   "claim": "Regression, coverage and delivery gates",
-  "status": "NOT YET QUALIFIED: the one Windows full suite failed, its coverage validation refused it, and the operator's disposition of the fix is pending.",
+  "status": "NOT YET QUALIFIED: the one Windows full suite failed, its coverage validation refused it, and the operator's disposition of the changed bytes after it is pending.",
   "checkout": {
     "branch": "agent/claude/plan12-9-cost-savings-report",
     "windows_full_suite_head": "f1cb559",
-    "code_head": "9a0c5a1",
-    "delta_after_windows_full_suite": "9a0c5a1 changes one line in tests/unit/tools/test_plan12_memory_harness.py: the config double gains model_policy=None. No source changed; src, migrations, tools, pyproject.toml and uv.lock are unchanged since 7cce51c."
+    "code_head": "6124a90",
+    "delta_after_windows_full_suite": [
+      "9a0c5a1 changes one line in tests/unit/tools/test_plan12_memory_harness.py: the config double gains model_policy=None. No source changed.",
+      "70c809e is a product change, Codex Checkpoint C pass 1 finding 1. SavingsReports.answer no longer moves the session's plain /savings next when a report is read; AcpDuplexAdapter._handle_savings calls SavingsReports.delivered after a confirmed flush. Before it, a cancelled or undelivered page was skipped, and an abandoned read could overwrite what the session had since received. Focused and revert checks ran; it was not run in Zed or a Windows full suite.",
+      "6124a90 renames that method's logging-surface manifest key, which the rename in 70c809e left stale; focused-c1 caught it (kept, exit 1).",
+      "Apart from these two source files, src, migrations, tools, pyproject.toml and uv.lock are unchanged since 7cce51c."
+    ]
   },
   "windows_full_run": {
     "label": "full-suite-final",
@@ -39,8 +44,8 @@
       "tests/unit/tools/test_plan12_memory_harness.py::test_uncertain_or_unmatched_attempts_stay_unknown"
     ],
     "root_cause": "Task 2 (1c6d6ba) made optimus_gateway.responses._gateway_usage read config.model_policy. This Plan 12.5 test builds its replies through that function with a config double that had only a provider, so every test using usage_for raised AttributeError. The real config (GatewayServiceConfig) always has the field, defaulting to None, so production is not affected. tools/plan12_memory/harness.py reads usage fields by name and is not affected by the added price_snapshot_id.",
-    "why_focused_runs_missed_it": "focused-final selected the test files the branch changed, and this file was not one. A search for callers of _gateway_usage in tests when Task 2 changed it would have found it. The search has now been run: its only other test caller already sets model_policy.",
-    "skips_and_deselections": "54 skipped and 165 deselected, by the run's default selection. The log does not list skip reasons. The real-Postgres tier runs only with its released container and is recorded separately as db-tier-final."
+    "why_focused_runs_missed_it": "focused-final selected the test files the branch changed, and this file was not one. A search for callers of _gateway_usage in tests when Task 2 changed it would have found it.",
+    "skips_and_deselections": "54 skipped and 165 deselected: test-exclusions.json lists every one and how its reason is known."
   },
   "coverage": {
     "source": "the gate's report for the full run at f1cb559",
@@ -97,7 +102,72 @@
       "log_sha256": "hex:e40f0719f40f1382f2ac60462b1d8f8cdb1b22978d2ca6f3c633ce9e7c41c497"
     },
     "reading": "Every required floor and the 80% aggregate are met as measured, but the gate and its validator refuse a run that failed. The measured numbers are not a validated coverage result. The 14 failed tests stopped inside the test double. evidence_handoff is below 80% and informational; this plan changed no file in it.",
-    "safety_critical": "No failed test is in a safety path. The coverage groups name no safety-critical list, so this is a reading of the failures, not a per-file baseline comparison."
+    "safety_critical": {
+      "scope": "the seven SAFETY_MODULES in tools/testing/coverage_products.py, the list AGENTS.md's rule is checked against",
+      "source": "no change to any of them between the merge base 9e87d67 and 6124a90",
+      "baseline": "Plan 12.8's Windows full run at 3c55e2d, coverage.json in its worktree. Its head is an ancestor of this branch's merge base; it too exited 1 and is unproven.",
+      "base_coverage_json_sha256": "hex:b070c14e76d83a5a570ab8cdeb26f1756df539eb2e7287a35c615fc61b23d37d",
+      "rows": {
+        "src/optimus/tools/registry.py": {
+          "covered_lines": 45,
+          "num_statements": 46,
+          "missing_lines": 1,
+          "covered_branches": 5,
+          "num_branches": 6,
+          "missing_branches": 1
+        },
+        "src/optimus/runtime/mutation.py": {
+          "covered_lines": 24,
+          "num_statements": 25,
+          "missing_lines": 1,
+          "covered_branches": 7,
+          "num_branches": 8,
+          "missing_branches": 1
+        },
+        "src/optimus/gateway/models.py": {
+          "covered_lines": 163,
+          "num_statements": 168,
+          "missing_lines": 5,
+          "covered_branches": 47,
+          "num_branches": 54,
+          "missing_branches": 7
+        },
+        "src/optimus/evidence/ledger.py": {
+          "covered_lines": 63,
+          "num_statements": 63,
+          "missing_lines": 0,
+          "covered_branches": 10,
+          "num_branches": 10,
+          "missing_branches": 0
+        },
+        "src/optimus/acp/framing.py": {
+          "covered_lines": 52,
+          "num_statements": 54,
+          "missing_lines": 2,
+          "covered_branches": 20,
+          "num_branches": 22,
+          "missing_branches": 2
+        },
+        "src/optimus/retry/policy.py": {
+          "covered_lines": 123,
+          "num_statements": 125,
+          "missing_lines": 2,
+          "covered_branches": 25,
+          "num_branches": 26,
+          "missing_branches": 1
+        },
+        "src/optimus/tools/policy.py": {
+          "covered_lines": 86,
+          "num_statements": 89,
+          "missing_lines": 3,
+          "covered_branches": 22,
+          "num_branches": 24,
+          "missing_branches": 2
+        }
+      },
+      "reading": "Every row's statements, branches and misses equal the baseline's, by compare_safety_rows and by exact row comparison.",
+      "not_established": "The formal `coverage_products compare` proves both sides from uploaded records and refuses a side that exited 1, so neither run here qualifies. It remains a Task 6 gate: PR CI's artifact against main's, once PR CI passes."
+    }
   },
   "ruff": {
     "label": "ruff-final",
@@ -171,6 +241,30 @@
       "exit_status": 0,
       "result": "113 passed in 2.13s",
       "log_sha256": "hex:5eb2ce7a3aaeba9ccf23f53b9b741092c861b66420aef4a5d8476db50d1d0c36"
+    },
+    {
+      "label": "focused-c1b",
+      "run_id": "hex:e363b702d3b649e590cec7cf0da018ec",
+      "head": "6124a90",
+      "exit_status": 0,
+      "result": "668 passed in 297.71s (0:04:57)",
+      "log_sha256": "hex:0c81eb03bcbffef9557ab5ea9a75ee059cdf9bf236f02143584ab246bb92c084"
+    },
+    {
+      "label": "inventories-c1",
+      "run_id": "hex:8a5f40f5780642269f509181461afb00",
+      "head": "6124a90",
+      "exit_status": 0,
+      "result": "499 passed in 283.66s (0:04:43)",
+      "log_sha256": "hex:a33190510fc3966d72327ae0c0c1fd1ede53d22046f543d4340e53ac18a5257d"
+    },
+    {
+      "label": "collect-all-markers",
+      "run_id": "hex:507e6e957f434d129da33fb0b770b3c9",
+      "head": "70c809e",
+      "exit_status": 0,
+      "result": "tests/unit/tools/test_coverage_products.py::test_a_passed_flag_never_substitutes_for_a_proven_full_session[record5-candidate: the run had 1 collection errors]",
+      "log_sha256": "hex:b155275bb8738942a65782c9560ada9aa8ff86be5fba336b4f3818550c5ad76d"
     }
   ],
   "revert_checks": [
@@ -203,9 +297,19 @@
       "log_sha256": "hex:f48ddc6c63b177d4d9a7f7439d720210e875b203a425a44b99af95f1d66314c3",
       "killed": 1,
       "survived": 0
+    },
+    {
+      "label": "revert-c1c",
+      "run_id": "hex:c5ed1031f8314607a08c415999f187ab",
+      "head": "6124a90",
+      "exit_status": 0,
+      "result": "a-stated-failure-clears-latest: KILLED ['1 failed, 303 passed in 53.13s']",
+      "log_sha256": "hex:4860f843a7fd4031fd4c2301507a52dd24fb3ec1a12822b7d73f81d0ab3461df",
+      "killed": 7,
+      "survived": 0
     }
   ],
-  "class_check": "All test and tool callers of _gateway_usage: two, the fixed double and test_usage_price_snapshots.py, which already sets model_policy. All other new attribute reads ran in the full suite without failure.",
+  "class_check": "test-exclusions.json holds the sweep's scope and method. The search and reading found no other stale double; the deselected tests outside the Postgres tier were not executed.",
   "known_gaps_in_the_named_evidence_found_late": [
     "The four files accounting.json, gateway-read.json, snapshots-auto.json and comparisons.json were generated in Task 5 (f1cb559); earlier checkpoints did not ask for them.",
     "Task 1's all-stage fixture was added in Task 5 (5d22846), at the reducer level; real-Postgres cases use planning only."
@@ -236,8 +340,20 @@
   ],
   "full_run_disposition": {
     "decision": "PENDING",
-    "by": "Operator, as Plan 12.9 v2 Checkpoint C requires before another full run or acceptance of changed bytes"
+    "by": "Operator, as Plan 12.9 v2 Checkpoint C requires before another full run or acceptance of changed bytes",
+    "covers": [
+      "9a0c5a1 (test only)",
+      "70c809e (product)",
+      "the safety-critical comparison's unproven state"
+    ]
   },
+  "open_items": [
+    {
+      "item": "A launch whose approval binds one upstream can silently attach to a Gateway another launch started with a different upstream; this caused the paid-call incident.",
+      "custody": "#248, until an approved follow-up owns it",
+      "record": "zed-ui.json zero_paid.breach"
+    }
+  ],
   "linux_ci": {
     "status": "UNRUN",
     "reason": "Task 6 opens the PR. guardrails.yml runs the full suite and the same coverage validation on Linux."
