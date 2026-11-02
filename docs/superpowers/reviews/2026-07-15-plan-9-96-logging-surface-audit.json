@@ -5385,7 +5385,7 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.usage.savings_report:SavingsReports.markdown:exception_export",
+      "key": "optimus.usage.savings_report:SavingsReports.answer:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection (Plan 12.9): `str(exc)` of ReportTransportError only selects one of fixed user messages (its codes are unreachable, timeout, too_large, malformed); the exception text is never shown, logged or persisted.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
