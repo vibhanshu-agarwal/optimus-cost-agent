@@ -11,10 +11,12 @@ import asyncio
 import collections.abc
 import dataclasses
 import enum
+import os
 import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -272,6 +274,108 @@ def test_a_watched_process_is_pinned_and_reports_its_exit(tmp_path):
     )
     with pytest.raises(ValueError, match="closed"):
         watch.snapshot()
+
+
+@pytest.mark.parametrize(
+    ("comm", "state", "threads", "expected"),
+    [
+        (b"child", b"Z", b"1", True),
+        (b"x) Z 1 (y", b"S", b"1", False),
+        (b"x) Z 1 (y", b"Z", b"1", True),
+        (b"\xff", b"Z", b"1", True),
+        (b"child", b"Z", b"2", False),
+        (b"child", b"X", b"1", False),
+        (b"child", b"Z", b"unknown", False),
+    ],
+)
+def test_proc_stat_requires_positive_single_thread_zombie_evidence(comm, state, threads, expected):
+    import tools.concurrency_capture as capture
+
+    fields = [state, *([b"0"] * 16), threads]
+    stat = b"4242 (" + comm + b") " + b" ".join(fields)
+    assert capture._stat_is_single_thread_zombie(4242, stat) is expected
+
+
+@pytest.mark.parametrize("stat", [b"", b"4242 (child", b"4242 (child)", b"4242 (child) Z", b"wrong (child) Z"])
+def test_malformed_proc_stat_is_not_exit_evidence(stat):
+    import tools.concurrency_capture as capture
+
+    assert not capture._stat_is_single_thread_zombie(4242, stat)
+
+
+def test_proc_stat_for_another_pid_is_not_exit_evidence():
+    import tools.concurrency_capture as capture
+
+    stat = b"4243 (child) Z " + b"0 " * 16 + b"1"
+    assert not capture._stat_is_single_thread_zombie(4242, stat)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux non-pidfd fallback")
+def test_fallback_watch_reports_live_zombie_and_reaped_child(monkeypatch, tmp_path):
+    monkeypatch.delattr(os, "pidfd_open", raising=False)
+    process = _announcing_child(tmp_path, "child", "import time; time.sleep(30)")
+    watch = ProcessWatch(process.pid)
+    try:
+        assert watch.snapshot().running
+        process.kill()
+        os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOWAIT)
+        fields = Path(f"/proc/{process.pid}/stat").read_bytes().rpartition(b")")[2].split()
+        assert fields[0] == b"Z" and fields[17] == b"1"
+        snapshot = watch.snapshot()
+        assert not snapshot.running
+        assert snapshot.returncode is None
+        process.wait(10)
+        assert not watch.snapshot().running
+        with pytest.raises(ProcessLookupError):
+            os.kill(process.pid, 0)
+    finally:
+        watch.close()
+        if process.poll() is None:
+            process.kill()
+        process.wait(10)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux non-pidfd fallback")
+@pytest.mark.parametrize("error", [FileNotFoundError, PermissionError, ProcessLookupError, OSError])
+def test_proc_read_failure_does_not_report_an_exit(monkeypatch, error):
+    monkeypatch.delattr(os, "pidfd_open", raising=False)
+    watch = ProcessWatch(os.getpid())
+    reads = []
+
+    def fail_read(_path):
+        reads.append(_path)
+        raise error("injected proc read failure")
+
+    monkeypatch.setattr(Path, "read_bytes", fail_read)
+    try:
+        assert watch.snapshot().running
+        assert reads == [Path(f"/proc/{os.getpid()}/stat")]
+    finally:
+        watch.close()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux non-pidfd fallback")
+@pytest.mark.parametrize("error", [ProcessLookupError, PermissionError, OSError])
+def test_fallback_signal_errors_keep_existing_meaning(monkeypatch, error):
+    monkeypatch.delattr(os, "pidfd_open", raising=False)
+    watch = ProcessWatch(os.getpid())
+
+    def fail_probe(_pid, _signal):
+        raise error("injected signal probe failure")
+
+    def unexpected_read(_path):
+        pytest.fail("signal-probe errors must not consult proc")
+
+    monkeypatch.setattr(os, "kill", fail_probe)
+    monkeypatch.setattr(Path, "read_bytes", unexpected_read)
+    try:
+        if error is OSError:
+            with pytest.raises(OSError, match="injected signal"):
+                watch.snapshot()
+        else:
+            assert watch.snapshot().running is (error is PermissionError)
+    finally:
+        watch.close()
 
 
 def test_offending_rows_are_printed_with_their_index_and_chosen_fields():
