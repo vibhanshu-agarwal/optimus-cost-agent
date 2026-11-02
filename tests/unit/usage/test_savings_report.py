@@ -104,8 +104,8 @@ def test_the_request_carries_the_hosts_turn_count_and_frontier_and_a_turn_report
     post = _Post(body=_report())
     reports = sr.SavingsReports(post, lambda session: (4, (("f" * 32, 9),)))
 
-    reports.markdown("s", sr.SavingsCommand())
-    reports.markdown("s", sr.SavingsCommand(turn_id="s:2"))
+    reports.answer("s", sr.SavingsCommand())
+    reports.answer("s", sr.SavingsCommand(turn_id="s:2"))
 
     assert post.sent[0]["expected_turns"] == 4 and post.sent[0]["frontier"] == [{"stream_id": "f" * 32, "sequence": 9}]
     assert (post.sent[1]["turn_id"], post.sent[1]["expected_turns"]) == ("s:2", 1)
@@ -123,7 +123,7 @@ def test_the_request_carries_the_hosts_turn_count_and_frontier_and_a_turn_report
     (_Post(error=sr.ReportTransportError("timeout")), "took too long"),
 ])
 def test_every_failure_is_stated_and_nothing_from_a_bad_reply_is_shown(post, text):
-    assert text in sr.SavingsReports(post, lambda s: (0, ())).markdown("s", sr.SavingsCommand())
+    assert text in sr.SavingsReports(post, lambda s: (0, ())).answer("s", sr.SavingsCommand()).text
 
 
 @pytest.fixture
@@ -348,8 +348,8 @@ def test_malformed_numeric_fields_stay_inside_the_transport_error_boundary(gatew
 
     with pytest.raises(sr.ReportTransportError, match="malformed"):
         sr.gateway_post(settings)(b"{}")
-    assert "too large or not in the expected form" in sr.SavingsReports(sr.gateway_post(settings), lambda s: (0, ())).markdown(
-        "s", sr.SavingsCommand())
+    assert "too large or not in the expected form" in sr.SavingsReports(sr.gateway_post(settings), lambda s: (0, ())).answer(
+        "s", sr.SavingsCommand()).text
 
 
 # --- Checkpoint B round 94 pass 4 -----------------------------------------------------------------------------------
@@ -380,8 +380,8 @@ def test_a_socket_that_cannot_be_created_is_an_unreachable_gateway(monkeypatch, 
     with pytest.raises(sr.ReportTransportError, match="unreachable"):
         sr.gateway_post(settings, timeout=1)(b"{}")
     assert len(closed) == len(creatable), "only sockets that were created are closed"
-    assert "could not be reached" in sr.SavingsReports(sr.gateway_post(settings, timeout=1), lambda s: (0, ())).markdown(
-        "s", sr.SavingsCommand())
+    assert "could not be reached" in sr.SavingsReports(sr.gateway_post(settings, timeout=1), lambda s: (0, ())).answer(
+        "s", sr.SavingsCommand()).text
 
 
 # --- Plan 12.9 Task 5, the first real run ---------------------------------------------------------------------------

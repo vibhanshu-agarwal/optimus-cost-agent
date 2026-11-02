@@ -131,7 +131,7 @@ from optimus.usage.cost_alerts import AlertPolicy, AlertTracker, CostScopeSummar
 from optimus.usage.savings_report import COMMAND as SAVINGS_COMMAND
 from optimus.usage.savings_report import COMMAND_DESCRIPTION as SAVINGS_DESCRIPTION
 from optimus.usage.savings_report import COMMAND_HINT as SAVINGS_HINT
-from optimus.usage.savings_report import SavingsCommand, SavingsReports
+from optimus.usage.savings_report import SavingsAnswer, SavingsCommand, SavingsReports
 from optimus.usage.savings_report import parse_command as parse_savings_command
 from optimus.usage.turn_settlement import TurnCostSummary, TurnSettlement, receipt_from_maintenance
 from optimus_security.failure_facts import host_route_id, host_session_id
@@ -1352,13 +1352,13 @@ class AcpDuplexAdapter:
 
         try:
             if isinstance(command, str):
-                text = command
+                answer = SavingsAnswer(command)
             else:
                 # The transport ends by its own deadline (`savings_report.READ_SECONDS`), so its thread exits by then.
-                fetch = asyncio.create_task(asyncio.to_thread(reports.markdown, session_id, command))
+                fetch = asyncio.create_task(asyncio.to_thread(reports.answer, session_id, command))
                 if not await self._until_cancelled(fetch, cancel, SAVINGS_WAIT_SECONDS):
                     return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
-                text = fetch.result() if fetch.done() else SAVINGS_TIMEOUT_TEXT
+                answer = fetch.result() if fetch.done() else SavingsAnswer(SAVINGS_TIMEOUT_TEXT)
             # One send of its own, decided where the writer claims it: a cancel, a retiring session, a closing server
             # or a torn-down request before its write begins suppresses it (`_SavingsSendOwner`); a write already begun
             # is authoritative. Success needs a confirmed flush (a suppressed or ambiguous send raises).
@@ -1368,7 +1368,7 @@ class AcpDuplexAdapter:
             token = progress_submission.set(submission)
             try:
                 send = asyncio.create_task(self._outbound.notify(
-                    "session/update", build_agent_message_chunk_notification(session_id=session_id, text=text), require_flushed=True))
+                    "session/update", build_agent_message_chunk_notification(session_id=session_id, text=answer.text), require_flushed=True))
             finally:
                 progress_submission.reset(token)
             try:
@@ -1388,6 +1388,7 @@ class AcpDuplexAdapter:
                     code=INTERNAL_ERROR, message="the usage report could not be delivered")), ownership_slot)
             if not owner.started:  # a channel that dropped the suppressed send without raising
                 return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
+            reports.delivered(session_id, answer)
             return self._non_turn(success_response(request.get("id"), {"stopReason": "end_turn"}), ownership_slot)
         finally:
             if self._report_cancels.get(session_id) is cancel:

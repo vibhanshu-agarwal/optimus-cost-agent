@@ -18,6 +18,7 @@ from optimus.usage import savings_report as sr
 from optimus.usage.durable_capture import DurableCapture, host_outbox_root
 from optimus_gateway import usage_price_snapshots
 from optimus_gateway import usage_report as gateway_report
+from optimus_gateway.usage_store import StoreError
 from optimus_security import durable_outbox as ob
 from optimus_security import usage_capture_contract as uc
 from optimus_security import usage_report_contract as urc
@@ -152,8 +153,6 @@ async def test_an_unknown_command_or_an_unconfigured_host_keeps_existing_behavio
 async def test_an_unavailable_ledger_is_stated(tmp_path):
     class Down:
         def report_facts(self, *args, **kwargs):
-            from optimus_gateway.usage_store import StoreError
-
             raise StoreError("unavailable")
 
     case = _adapter(tmp_path, store=Down())
@@ -193,6 +192,99 @@ async def test_a_plain_next_continues_this_sessions_last_report_and_only_while_i
 
     await prompt(case.adapter, case.outbound, first, "/savings next", "s5")
     assert texts(case.outbound)[-1] == sr.NOTHING_TO_CONTINUE, "the last page offered nothing more"
+
+
+async def _cancelled_report(case, store, session_id, text, request_id):
+    """Start ``text`` on a held read, cancel it, and return the read's gate: the read is still running, abandoned."""
+    store.gate, calls = threading.Event(), store.calls
+    task = asyncio.create_task(asyncio.wait_for(rpc(case.adapter, prompt_request(session_id, text, request_id)), 15))
+    for _ in range(300):
+        await asyncio.sleep(0.01)
+        if store.calls > calls:
+            break
+    assert store.calls > calls
+    gate, store.gate = store.gate, None
+    await case.adapter.handle_client_notification({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": session_id}})
+    assert (await asyncio.wait_for(task, 5))["result"]["stopReason"] == "cancelled"
+    return gate
+
+
+async def test_a_cancelled_page_stays_next(tmp_path):
+    store = _Store()
+    case = _adapter(tmp_path, store=store)
+    session_id = await new_session(case.adapter, tmp_path, mode="chat")
+    await prompt(case.adapter, case.outbound, session_id, "/savings", "s1")
+
+    gate = await _cancelled_report(case, store, session_id, "/savings next", "s2")
+    gate.set()
+    await asyncio.sleep(0.3)  # the abandoned read finishes in its thread, with the page nobody saw
+    assert len(texts(case.outbound)) == 1
+
+    await prompt(case.adapter, case.outbound, session_id, "/savings next", "s3")
+    assert "References 4–5 of 5" in texts(case.outbound)[-1]
+    await prompt(case.adapter, case.outbound, session_id, "/savings next", "s4")
+    assert texts(case.outbound)[-1] == sr.NOTHING_TO_CONTINUE
+
+
+async def test_an_abandoned_read_finishing_late_never_replaces_what_the_session_received(tmp_path):
+    store = _Store()
+    case = _adapter(tmp_path, store=store)
+    session_id = await new_session(case.adapter, tmp_path, mode="chat")
+
+    gate = await _cancelled_report(case, store, session_id, "/savings", "s1")
+    await prompt(case.adapter, case.outbound, session_id, "/savings", "s2")
+    await prompt(case.adapter, case.outbound, session_id, "/savings next", "s3")
+    assert "References 4–5 of 5" in texts(case.outbound)[-1]
+    gate.set()
+    await asyncio.sleep(0.3)  # its first page, offering the second, arrives after the second was delivered
+
+    await prompt(case.adapter, case.outbound, session_id, "/savings next", "s4")
+    assert texts(case.outbound)[-1] == sr.NOTHING_TO_CONTINUE
+
+
+async def test_an_undelivered_page_stays_next(tmp_path):
+    class Failing(RecordingOutboundChannel):
+        fail = False
+
+        async def notify(self, method, params, *, require_flushed=False):
+            if self.fail and params.get("update", {}).get("sessionUpdate") == "agent_message_chunk":
+                self.fail = False
+                raise ConnectionResetError("client gone")
+            await super().notify(method, params, require_flushed=require_flushed)
+
+    case = _adapter(tmp_path, outbound=Failing())
+    session_id = await new_session(case.adapter, tmp_path, mode="chat")
+    await prompt(case.adapter, case.outbound, session_id, "/savings", "s1")
+
+    case.outbound.fail = True
+    failed = await asyncio.wait_for(rpc(case.adapter, prompt_request(session_id, "/savings next", "s2")), 5)
+    assert failed["error"]["message"] == "the usage report could not be delivered"
+
+    await prompt(case.adapter, case.outbound, session_id, "/savings next", "s3")
+    assert "References 4–5 of 5" in texts(case.outbound)[-1]
+
+
+async def test_a_stated_failure_keeps_the_page_that_was_next(tmp_path):
+    class Flaky(_Store):
+        down = False
+
+        def report_facts(self, *args, **kwargs):
+            if self.down:
+                raise StoreError("unavailable")
+            return super().report_facts(*args, **kwargs)
+
+    store = Flaky()
+    case = _adapter(tmp_path, store=store)
+    session_id = await new_session(case.adapter, tmp_path, mode="chat")
+    await prompt(case.adapter, case.outbound, session_id, "/savings", "s1")
+
+    store.down = True
+    await prompt(case.adapter, case.outbound, session_id, "/savings next", "s2")
+    assert texts(case.outbound)[-1] == sr._FAILURES["LEDGER_UNAVAILABLE"]  # noqa: SLF001
+
+    store.down = False
+    await prompt(case.adapter, case.outbound, session_id, "/savings next", "s3")
+    assert "References 4–5 of 5" in texts(case.outbound)[-1]
 
 
 # --- Lifecycle -------------------------------------------------------------------------------------------------------

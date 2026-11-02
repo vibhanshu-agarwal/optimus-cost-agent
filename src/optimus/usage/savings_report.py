@@ -81,6 +81,15 @@ class SavingsCommand:
     latest: bool = False  # `/savings next` alone: the continuation this session's last report offered
 
 
+@dataclass(frozen=True)
+class SavingsAnswer:
+    """What one `/savings` command answers. Only a rendered report (``report``) can move the session's plain `/savings next`."""
+
+    text: str
+    report: bool = False
+    next_cursor: str | None = None
+
+
 def parse_command(text: str, *, attachments: bool) -> SavingsCommand | str | None:
     """None: not this command (ordinary prompt). A `SavingsCommand`, or the usage text for a malformed one."""
     words = text.split()
@@ -256,17 +265,18 @@ class SavingsReports:
         self._post, self._scope = post, scope
         self._lock = threading.Lock()
         self._continued: OrderedDict[tuple[str, str], str | None] = OrderedDict()  # (session, cursor) -> its turn scope
-        self._latest: OrderedDict[str, str | None] = OrderedDict()  # session -> what its last report offered
+        self._latest: OrderedDict[str, str | None] = OrderedDict()  # session -> what its last delivered report offered
 
-    def markdown(self, session_id: str, command: SavingsCommand) -> str:
+    def answer(self, session_id: str, command: SavingsCommand) -> SavingsAnswer:
         """The rendered report or its stated failure; never raises for a Gateway or ledger state. A continuation repeats
-        the scope of the report that offered it (the cursor binds it, so a different scope answers REPORT_CHANGED)."""
+        the scope of the report that offered it (the cursor binds it, so a different scope answers REPORT_CHANGED).
+        The session's plain `/savings next` moves only in `delivered`, so a page nobody saw stays next."""
         turn_id, cursor = command.turn_id, command.cursor
         if command.latest:
             with self._lock:
                 cursor = self._latest.get(session_id)
             if cursor is None:
-                return NOTHING_TO_CONTINUE
+                return SavingsAnswer(NOTHING_TO_CONTINUE)
         if cursor is not None:
             with self._lock:
                 turn_id = self._continued.get((session_id, cursor))
@@ -277,25 +287,30 @@ class SavingsReports:
             status, body = self._post(urc.build_request(request))
         except ReportTransportError as exc:
             if str(exc) == "unreachable":
-                return "The Gateway could not be reached for a usage report. Model work is unaffected; try again later."
-            return _FAILURES["REPORT_TIMEOUT"] if str(exc) == "timeout" else _MALFORMED
+                return SavingsAnswer("The Gateway could not be reached for a usage report. Model work is unaffected; try again later.")
+            return SavingsAnswer(_FAILURES["REPORT_TIMEOUT"] if str(exc) == "timeout" else _MALFORMED)
         if status != 200:
             code = body.get("code") if isinstance(body, Mapping) else None
-            return _FAILURES.get(code, _NOT_PREPARED) if isinstance(code, str) else _NOT_PREPARED
+            return SavingsAnswer(_FAILURES.get(code, _NOT_PREPARED) if isinstance(code, str) else _NOT_PREPARED)
         try:
             report = urc.validate_report(body)
         except urc.ContractError:
-            return _MALFORMED
-        with self._lock:
-            self._latest[session_id] = report["next_cursor"]
-            self._latest.move_to_end(session_id)
-            while len(self._latest) > self._CONTINUATIONS:
-                self._latest.popitem(last=False)
-            if report["next_cursor"] is not None:
+            return SavingsAnswer(_MALFORMED)
+        if report["next_cursor"] is not None:
+            with self._lock:
                 self._continued[(session_id, report["next_cursor"])] = turn_id
                 while len(self._continued) > self._CONTINUATIONS:
                     self._continued.popitem(last=False)
-        return render_savings_report(report)
+        return SavingsAnswer(render_savings_report(report), True, report["next_cursor"])
+
+    def delivered(self, session_id: str, answer: SavingsAnswer) -> None:
+        """The client has this answer: a report's continuation is now what the session's plain `/savings next` continues."""
+        if answer.report:
+            with self._lock:
+                self._latest[session_id] = answer.next_cursor
+                self._latest.move_to_end(session_id)
+                while len(self._latest) > self._CONTINUATIONS:
+                    self._latest.popitem(last=False)
 
 
 def _text(value: object, limit: int = _IDENTIFIER_CHARS) -> str:
