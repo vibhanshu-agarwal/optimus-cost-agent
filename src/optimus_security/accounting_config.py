@@ -6,6 +6,10 @@ The file `<config_root>/accounting/gateway-accounting.json` holds only non-secre
 database, role, connect timeout and the name of the password's entry in the Gateway-owned keyring namespace. No
 password, DSN with a password, or other credential is ever accepted in it. Its absence means accounting is off: capture
 still accumulates locally and nothing changes for an existing launch approval.
+
+Plan 12.9 (ADR-034): an operator override of the savings-report reference prices, `savings-references.yaml` beside it,
+is bound by the same literal, so the launch approves its exact bytes and a changed file refuses to start. Without the
+override the literal is unchanged; without the configuration the override has nothing to configure and is ignored.
 """
 
 from __future__ import annotations
@@ -17,9 +21,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 CONFIG_NAME = "gateway-accounting.json"
+REFERENCES_NAME = "savings-references.yaml"
 SECURITY_LITERAL_NAME = "_accounting_config"  # not an environment variable, like binding's "_model_registry"
 KEYRING_SERVICE = "optimus-gateway-accounting"  # the Gateway's own namespace, apart from approvals and credentials
 _MAX_BYTES = 16 * 1024
+_MAX_REFERENCES_BYTES = 64 * 1024
 _KEYS = frozenset({"schema_version", "host", "port", "database", "user", "credential_name", "connect_timeout_seconds"})
 _NAME = re.compile(r"[A-Za-z0-9_.@:/-]{1,128}")
 _HOST = re.compile(r"[A-Za-z0-9.:-]{1,253}")
@@ -45,39 +51,49 @@ def accounting_root(config_root: Path) -> Path:
     return config_root / "accounting"
 
 
-def _config_bytes(root: Path) -> bytes | None:
-    path = root / CONFIG_NAME
-    if path.is_symlink():
+def _file_bytes(path: Path, limit: int) -> bytes | None:
+    if path.is_symlink() or (path.exists() and not path.is_file()):
         raise AccountingConfigError("not_a_regular_file")
     try:
         data = path.read_bytes()
     except FileNotFoundError:
         return None
-    if len(data) > _MAX_BYTES:
+    if len(data) > limit:
         raise AccountingConfigError("too_large")
     return data
 
 
+def _config_bytes(root: Path) -> bytes | None:
+    return _file_bytes(root / CONFIG_NAME, _MAX_BYTES)
+
+
 def config_literal(root: Path) -> str | None:
-    """The approval literal of the configuration's exact bytes, or None when there is none."""
-    data = _config_bytes(root)
-    return None if data is None else _literal(data)
+    """The approval literal of the configuration's exact bytes (and its reference override's, when there is one), or
+    None when there is no configuration."""
+    return read_with_references(root)[0]
 
 
-def _literal(data: bytes) -> str:
-    return "accounting-config:sha256:" + hashlib.sha256(data).hexdigest()
+def _literal(data: bytes, references: bytes | None) -> str:
+    literal = "accounting-config:sha256:" + hashlib.sha256(data).hexdigest()
+    return literal if references is None else literal + "+savings-references:sha256:" + hashlib.sha256(references).hexdigest()
 
 
 def read(root: Path) -> tuple[str | None, AccountingConfig | None, str | None]:
     """One captured read: the literal and the parsed configuration of the same bytes, so what is verified is what is
     used (Checkpoint B finding 2). Returns (literal, config, refusal code); all None when there is no file."""
+    return read_with_references(root)[:3]  # type: ignore[return-value]
+
+
+def read_with_references(root: Path) -> tuple[str | None, AccountingConfig | None, str | None, bytes | None]:
+    """`read`, plus the reference override's bytes that the same literal binds (None when absent or unused)."""
     data = _config_bytes(root)
     if data is None:
-        return None, None, None
+        return None, None, None, None
+    references = _file_bytes(root / REFERENCES_NAME, _MAX_REFERENCES_BYTES)
     try:
-        return _literal(data), _parse(data), None
+        return _literal(data, references), _parse(data), None, references
     except AccountingConfigError as exc:
-        return _literal(data), None, exc.code
+        return _literal(data, references), None, exc.code, references
 
 
 def accounting_literal(root: Path, config: str | None) -> str:

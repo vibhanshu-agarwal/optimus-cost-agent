@@ -21,6 +21,8 @@ from optimus_gateway.responses import handle_responses_request, model_request_lo
 from optimus_gateway.tool_handlers import TOOL_ROUTE_PATHS, GatewayToolDependencies, handle_tool_request
 from optimus_gateway.upstream_client import UpstreamClient, begin_request_budget, end_request_budget
 from optimus_gateway.usage_capture import handle_usage_capture_request
+from optimus_gateway.usage_report import handle_usage_report_request
+from optimus_security import usage_report_contract
 from optimus_security.usage_capture_contract import CAPTURE_REQUEST_HEADER
 from optimus_security.usage_capture_contract import MAX_BODY_BYTES as MAX_CAPTURE_BODY_BYTES
 from optimus_security.usage_capture_contract import PATH as CAPTURE_PATH
@@ -40,8 +42,12 @@ _MAX_LENGTH_DIGITS = len(str(_REJECTED_POST_MAX_BYTES))
 # Plan 12.8: the capture route's own bounds (agent-selected): strict framing, one total body deadline and a write deadline.
 _CAPTURE_BODY_SECONDS = 10.0
 _CAPTURE_WRITE_SECONDS = 10.0
+# Plan 12.9: the report route's body and write deadlines; with the worker's database deadline, fifteen seconds in all.
+_REPORT_BODY_SECONDS = 5.0
+_REPORT_WRITE_SECONDS = 5.0
+_REPORT_PATH = usage_report_contract.PATH
 _monotonic = time.monotonic
-_CORE_ROUTES = frozenset({"/v1/responses", "/v1/chat/completions", DECISIONS_PATH, "/v1/observability/traces", CAPTURE_PATH})
+_CORE_ROUTES = frozenset({"/v1/responses", "/v1/chat/completions", DECISIONS_PATH, "/v1/observability/traces", CAPTURE_PATH, _REPORT_PATH})
 
 
 class _RejectedPostError(Exception):
@@ -140,6 +146,9 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
         if path == CAPTURE_PATH:
             self._handle_capture()
             return
+        if path == _REPORT_PATH:
+            self._handle_report()
+            return
         declared = self.headers.get("Content-Length", "0").strip()
         if not (declared.isascii() and declared.isdigit()):
             # C7: a negative or non-integer length is a logged 400, never `read(-1)` or an unhandled error.
@@ -227,6 +236,30 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
             self._send_json(status, body, write_deadline=_monotonic() + _CAPTURE_WRITE_SECONDS)
         except TimeoutError:
             request_diagnostics.write_log_line(json.dumps({"event": "reply_undeliverable", "path": CAPTURE_PATH, "status": status}))
+
+    def _handle_report(self) -> None:
+        """Plan 12.9 `POST /v1/observability/usage-report`: authenticated before any body byte is read or the ledger is
+        opened, then framed as the capture route is, under its own deadlines. Every refusal is a stable code."""
+        self.close_connection = True
+        deadline = _monotonic() + _REPORT_BODY_SECONDS
+        try:
+            if not authorize_bearer(authorization_header=self.headers.get("Authorization"), shared_secret=self.config.shared_secret):
+                raise _RejectedPostError(HTTPStatus.UNAUTHORIZED, "UNAUTHORIZED")
+            length = _rejected_post_length(self.headers, usage_report_contract.MAX_REQUEST_BYTES)
+            if not length:
+                raise _RejectedPostError(HTTPStatus.BAD_REQUEST, "empty report request")
+            kept: list[bytes] = []
+            _discard_rejected_post_body(self.rfile, self.connection, length, deadline, kept)
+        except _RejectedPostError as rejection:
+            code = {HTTPStatus.UNAUTHORIZED: "UNAUTHORIZED", HTTPStatus.REQUEST_ENTITY_TOO_LARGE: "REQUEST_TOO_LARGE",
+                    HTTPStatus.REQUEST_TIMEOUT: "REPORT_TIMEOUT"}.get(rejection.status, "REQUEST_INVALID")
+            status, body = usage_report_contract.error_body(code)
+        else:
+            status, body = handle_usage_report_request(raw_body=b"".join(kept), config=self.config)
+        try:
+            self._send_json(status, body, write_deadline=_monotonic() + _REPORT_WRITE_SECONDS)
+        except TimeoutError:
+            request_diagnostics.write_log_line(json.dumps({"event": "reply_undeliverable", "path": _REPORT_PATH, "status": status}))
 
     def _reject_unhandled_post(self) -> None:
         """Terminal handling for the early-404 branch: consume a bounded, well-framed body first."""

@@ -1,0 +1,555 @@
+{
+  "schema": "plan12-cost-savings-qualification/1",
+  "recorded": "2026-11-02",
+  "issue": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/248",
+  "claim": "Regression, coverage and delivery gates",
+  "status": "QUALIFIED under the operator's disposition: its two conditions are met, Linux PR CI's full suite and coverage validation passed and the formal safety comparison against main reports no regression. The one Windows full suite failed and its coverage validation refused it; that remains so, and full_run_disposition.stays_true states what was not run.",
+  "checkout": {
+    "branch": "agent/claude/plan12-9-cost-savings-report",
+    "windows_full_suite_head": "f1cb559",
+    "code_head": "6124a90",
+    "delta_after_windows_full_suite": [
+      "9a0c5a1 changes one line in tests/unit/tools/test_plan12_memory_harness.py: the config double gains model_policy=None. No source changed.",
+      "70c809e is a product change, Codex Checkpoint C pass 1 finding 1. SavingsReports.answer no longer moves the session's plain /savings next when a report is read; AcpDuplexAdapter._handle_savings calls SavingsReports.delivered after a confirmed flush. Before it, a cancelled or undelivered page was skipped, and an abandoned read could overwrite what the session had since received. Focused and revert checks ran; it was not run in Zed or a Windows full suite.",
+      "6124a90 renames that method's logging-surface manifest key, which the rename in 70c809e left stale; focused-c1 caught it (kept, exit 1).",
+      "Apart from these two source files, src, migrations, tools, pyproject.toml and uv.lock are unchanged since 7cce51c."
+    ]
+  },
+  "windows_full_run": {
+    "label": "full-suite-final",
+    "run_id": "hex:58e50f04afe74bedaf691f5514476242",
+    "head": "f1cb559",
+    "exit_status": 1,
+    "result": "14 failed, 11508 passed, 54 skipped, 165 deselected, 2 warnings in 4163.24s (1:09:23)",
+    "log_sha256": "hex:f8b6c3bd8b84dd91a229a7d14c654fc9141762f6f96c1af99ff0e75e75f68902",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "run_context": [
+      "test-run-context: mode=active reason=default_selection run=20261102T065835-41640-6482b3 native=valid job=optimus-test-run-20261102T065835-41640-6482b3 processes=17726 parent=not_found guard=pytest_process_guard protection=full records=COMPLETE phases=34695 exit=1"
+    ],
+    "worktree": "clean before and after",
+    "failed": [
+      "tests/unit/tools/test_plan12_memory_harness.py::test_billed_refusal_keeps_its_receipt",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[bad-cost]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[bool-tokens]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[float-cost]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[nan-cost]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[negative-tokens]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[no-attempt-id]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[no-attempts]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[no-choices]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[null-content]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[text-tokens]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[unknown-outcome]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_success_settles_the_completed_attempt_and_skips_the_unbilled_one",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_uncertain_or_unmatched_attempts_stay_unknown"
+    ],
+    "root_cause": "Task 2 (1c6d6ba) made optimus_gateway.responses._gateway_usage read config.model_policy. This Plan 12.5 test builds its replies through that function with a config double that had only a provider, so every test using usage_for raised AttributeError. The real config (GatewayServiceConfig) always has the field, defaulting to None, so production is not affected. tools/plan12_memory/harness.py reads usage fields by name and is not affected by the added price_snapshot_id.",
+    "why_focused_runs_missed_it": "focused-final selected the test files the branch changed, and this file was not one. A search for callers of _gateway_usage in tests when Task 2 changed it would have found it.",
+    "skips_and_deselections": "54 skipped and 165 deselected: test-exclusions.json lists every one and how its reason is known."
+  },
+  "coverage": {
+    "source": "the gate's report for the full run at f1cb559",
+    "coverage_json_sha256": "hex:74d3c8315fbb7d6d13e06fa60e2f4962926af3196808ace9adfc812d3f7c1b82",
+    "floors": [
+      {
+        "name": "optimus",
+        "percent": 90.2567,
+        "floor": 80.0,
+        "enforced": true,
+        "passed": true
+      },
+      {
+        "name": "context_engine",
+        "percent": 95.9243,
+        "floor": 80.0,
+        "enforced": true,
+        "passed": true
+      },
+      {
+        "name": "evidence_handoff",
+        "percent": 68.5347,
+        "floor": 80.0,
+        "enforced": false,
+        "passed": false
+      },
+      {
+        "name": "optimus_model_policy",
+        "percent": 95.3638,
+        "floor": 80.0,
+        "enforced": true,
+        "passed": true
+      },
+      {
+        "name": "aggregate",
+        "percent": 87.0713,
+        "floor": 80.0,
+        "enforced": false,
+        "passed": true
+      }
+    ],
+    "gate_verdict": {
+      "failures": [
+        "full suite exit 1"
+      ],
+      "passed": false
+    },
+    "validation": {
+      "label": "coverage-validate-final",
+      "run_id": "hex:6d32e09a00514f398227dc315e75a4f1",
+      "head": "f1cb559",
+      "exit_status": 3,
+      "result": "full-run validity NOT established: the run's own record cannot support a result (exit_status_differs), because the suite exited 1.",
+      "log_sha256": "hex:e40f0719f40f1382f2ac60462b1d8f8cdb1b22978d2ca6f3c633ce9e7c41c497"
+    },
+    "reading": "Every required floor and the 80% aggregate are met as measured, but the gate and its validator refuse a run that failed. The measured numbers are not a validated coverage result. The 14 failed tests stopped inside the test double. evidence_handoff is below 80% and informational; this plan changed no file in it.",
+    "safety_critical": {
+      "scope": "the seven SAFETY_MODULES in tools/testing/coverage_products.py, the list AGENTS.md's rule is checked against",
+      "source": "no change to any of them between the merge base 9e87d67 and 6124a90",
+      "baseline": "Plan 12.8's Windows full run at 3c55e2d, coverage.json in its worktree. Its head is an ancestor of this branch's merge base; it too exited 1 and is unproven.",
+      "base_coverage_json_sha256": "hex:b070c14e76d83a5a570ab8cdeb26f1756df539eb2e7287a35c615fc61b23d37d",
+      "rows": {
+        "src/optimus/tools/registry.py": {
+          "covered_lines": 45,
+          "num_statements": 46,
+          "missing_lines": 1,
+          "covered_branches": 5,
+          "num_branches": 6,
+          "missing_branches": 1
+        },
+        "src/optimus/runtime/mutation.py": {
+          "covered_lines": 24,
+          "num_statements": 25,
+          "missing_lines": 1,
+          "covered_branches": 7,
+          "num_branches": 8,
+          "missing_branches": 1
+        },
+        "src/optimus/gateway/models.py": {
+          "covered_lines": 163,
+          "num_statements": 168,
+          "missing_lines": 5,
+          "covered_branches": 47,
+          "num_branches": 54,
+          "missing_branches": 7
+        },
+        "src/optimus/evidence/ledger.py": {
+          "covered_lines": 63,
+          "num_statements": 63,
+          "missing_lines": 0,
+          "covered_branches": 10,
+          "num_branches": 10,
+          "missing_branches": 0
+        },
+        "src/optimus/acp/framing.py": {
+          "covered_lines": 52,
+          "num_statements": 54,
+          "missing_lines": 2,
+          "covered_branches": 20,
+          "num_branches": 22,
+          "missing_branches": 2
+        },
+        "src/optimus/retry/policy.py": {
+          "covered_lines": 123,
+          "num_statements": 125,
+          "missing_lines": 2,
+          "covered_branches": 25,
+          "num_branches": 26,
+          "missing_branches": 1
+        },
+        "src/optimus/tools/policy.py": {
+          "covered_lines": 86,
+          "num_statements": 89,
+          "missing_lines": 3,
+          "covered_branches": 22,
+          "num_branches": 24,
+          "missing_branches": 2
+        }
+      },
+      "reading": "Every row's statements, branches and misses equal the baseline's, by compare_safety_rows and by exact row comparison.",
+      "not_established": "This Windows comparison stays unproven: `coverage_products compare` refuses a side that exited 1, so neither run here qualifies. linux_ci.safety_comparison is the formal result."
+    }
+  },
+  "ruff": {
+    "label": "ruff-final",
+    "run_id": "hex:ee0371913950401ebc60e8195b87b909",
+    "head": "f1cb559",
+    "exit_status": 0,
+    "result": "All checks passed!",
+    "log_sha256": "hex:82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  },
+  "focused_checks": [
+    {
+      "label": "db-tier-final",
+      "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf",
+      "head": "7cce51c",
+      "exit_status": 0,
+      "result": "55 passed, 2 skipped in 52.49s",
+      "log_sha256": "hex:0f657440c7d28adc85df8a0471dc17c6fa6056fc10a1bd5ca7216ff9a24ffb5b"
+    },
+    {
+      "label": "boundary-report-final",
+      "run_id": "hex:611ddfc1975c4f24858585f341adecf2",
+      "head": "7cce51c",
+      "exit_status": 0,
+      "result": "============================== 1 passed in 2.77s ==============================",
+      "log_sha256": "hex:117a7bc3e8e76dc50329400f24ae06dcbcc9e77e854df1daefb9c84bf55cd225"
+    },
+    {
+      "label": "boundary-capture-final",
+      "run_id": "hex:188f3a14bccd4a5eb47a4d9a675ab71b",
+      "head": "7cce51c",
+      "exit_status": 0,
+      "result": "============================== 1 passed in 3.25s ==============================",
+      "log_sha256": "hex:6fdf459fbf558ec171da1af47fc6374bf3613f4013701c214cdc675cc008af0e"
+    },
+    {
+      "label": "focused-final",
+      "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7",
+      "head": "7cce51c",
+      "exit_status": 0,
+      "result": "621 passed in 278.60s (0:04:38)",
+      "log_sha256": "hex:50d7fa28d5d4c01601bad78d2635517ff040f70db432b58d68135130932be52d"
+    },
+    {
+      "label": "focused-stage-final",
+      "run_id": "hex:fe305f20f71c4144a6759351a49f158e",
+      "head": "5d22846",
+      "exit_status": 0,
+      "result": "67 passed in 6.97s",
+      "log_sha256": "hex:65503b374e0b1b6f562566864036e5608b5c621f0789a4ec66ac4c075377b2ec"
+    },
+    {
+      "label": "inventories-final",
+      "run_id": "hex:0cd2e05159414eddafa8cfbd4d2fdb1a",
+      "head": "f1cb559",
+      "exit_status": 0,
+      "result": "499 passed in 312.32s (0:05:12)",
+      "log_sha256": "hex:04e6ab5db093786e7a9de934a72496ed912608df39fb8564552a01c06c25c6ad"
+    },
+    {
+      "label": "docs-final",
+      "run_id": "hex:c4aabe738ad04d4fb99ccb7a5bcf7271",
+      "head": "f1cb559",
+      "exit_status": 0,
+      "result": "122 passed, 1 skipped in 19.19s",
+      "log_sha256": "hex:41ed75b5e063ee93c241d3f4c8b67d0f36859b561899d3a92ce837d77d5a8ea5"
+    },
+    {
+      "label": "harness-double-final",
+      "run_id": "hex:9e64e383486c4998bb8e6fcf3759b81b",
+      "head": "9a0c5a1",
+      "exit_status": 0,
+      "result": "113 passed in 2.13s",
+      "log_sha256": "hex:5eb2ce7a3aaeba9ccf23f53b9b741092c861b66420aef4a5d8476db50d1d0c36"
+    },
+    {
+      "label": "focused-c1b",
+      "run_id": "hex:e363b702d3b649e590cec7cf0da018ec",
+      "head": "6124a90",
+      "exit_status": 0,
+      "result": "668 passed in 297.71s (0:04:57)",
+      "log_sha256": "hex:0c81eb03bcbffef9557ab5ea9a75ee059cdf9bf236f02143584ab246bb92c084"
+    },
+    {
+      "label": "inventories-c1",
+      "run_id": "hex:8a5f40f5780642269f509181461afb00",
+      "head": "6124a90",
+      "exit_status": 0,
+      "result": "499 passed in 283.66s (0:04:43)",
+      "log_sha256": "hex:a33190510fc3966d72327ae0c0c1fd1ede53d22046f543d4340e53ac18a5257d"
+    },
+    {
+      "label": "collect-all-markers",
+      "run_id": "hex:507e6e957f434d129da33fb0b770b3c9",
+      "head": "70c809e",
+      "exit_status": 0,
+      "result": "tests/unit/tools/test_coverage_products.py::test_a_passed_flag_never_substitutes_for_a_proven_full_session[record5-candidate: the run had 1 collection errors]",
+      "log_sha256": "hex:b155275bb8738942a65782c9560ada9aa8ff86be5fba336b4f3818550c5ad76d"
+    }
+  ],
+  "revert_checks": [
+    {
+      "label": "revert-unit-final",
+      "run_id": "hex:fbd29385860948139a099a0510b9b365",
+      "head": "7cce51c",
+      "exit_status": 0,
+      "result": "auto-registry-hash-dropped: KILLED ['5 failed, 294 passed in 52.31s']",
+      "log_sha256": "hex:dbb3b206524e67d918784b5a6557f29aadc9f8adb96ce18ff1276b3087caedfe",
+      "killed": 61,
+      "survived": 0
+    },
+    {
+      "label": "revert-postgres-final",
+      "run_id": "hex:795f76cc653a4e31a2268f0f4bfa4fa3",
+      "head": "7cce51c",
+      "exit_status": 0,
+      "result": "unallocated-only-on-fact-streams: KILLED ['1 failed, 23 passed, 1 skipped in 20.23s']",
+      "log_sha256": "hex:8f05dd2d84c48c2f1ff6e7b3a70c081188f1ed96ba453ae98aaf153738e9c4d0",
+      "killed": 12,
+      "survived": 0
+    },
+    {
+      "label": "revert-stage-final",
+      "run_id": "hex:4ad37493f0e541f8b0895a98261c753e",
+      "head": "5d22846",
+      "exit_status": 0,
+      "result": "a-stage-left-out: KILLED ['1 failed, 299 passed in 51.00s']",
+      "log_sha256": "hex:f48ddc6c63b177d4d9a7f7439d720210e875b203a425a44b99af95f1d66314c3",
+      "killed": 1,
+      "survived": 0
+    },
+    {
+      "label": "revert-c1c",
+      "run_id": "hex:c5ed1031f8314607a08c415999f187ab",
+      "head": "6124a90",
+      "exit_status": 0,
+      "result": "a-stated-failure-clears-latest: KILLED ['1 failed, 303 passed in 53.13s']",
+      "log_sha256": "hex:4860f843a7fd4031fd4c2301507a52dd24fb3ec1a12822b7d73f81d0ab3461df",
+      "killed": 7,
+      "survived": 0
+    }
+  ],
+  "class_check": "test-exclusions.json holds the sweep's scope and method. The search and reading found no other stale double; the deselected tests outside the Postgres tier were not executed.",
+  "known_gaps_in_the_named_evidence_found_late": [
+    "The four files accounting.json, gateway-read.json, snapshots-auto.json and comparisons.json were generated in Task 5 (f1cb559); earlier checkpoints did not ask for them.",
+    "Task 1's all-stage fixture was added in Task 5 (5d22846), at the reducer level; real-Postgres cases use planning only."
+  ],
+  "checkpoints": [
+    {
+      "checkpoint": "A",
+      "round": 93,
+      "verdict": "ACCEPT at b4d2621, pass 3"
+    },
+    {
+      "checkpoint": "B",
+      "round": 94,
+      "verdict": "ACCEPT at 66c69e6, pass 5",
+      "reviews": [
+        "#248 comment 6562522411",
+        "#248 comment 6563545554",
+        "#248 comment 6565099505",
+        "#248 comment 6565767804",
+        "#248 comment 6565843408"
+      ]
+    },
+    {
+      "checkpoint": "C",
+      "round": 95,
+      "verdict": "ACCEPT at a9deaa1, pass 3",
+      "reviews": [
+        "#248 comment 6572486010",
+        "#248 comment 6573209767",
+        "#248 comment 6573234937"
+      ]
+    }
+  ],
+  "full_run_disposition": {
+    "decision": "Accept, no rerun",
+    "by": "Operator, in Claude's chat on 2026-11-02, as Plan 12.9 v2 Checkpoint C requires; the option was \"Accept, no rerun (Recommended)\"",
+    "covers": [
+      "9a0c5a1 (test only)",
+      "70c809e (product)",
+      "6124a90 (manifest key)",
+      "the safety-critical comparison's unproven state"
+    ],
+    "conditions": [
+      "Linux PR CI passes the full suite and coverage validation at its actual SHA",
+      "the formal coverage_products compare against main's artifact then passes"
+    ],
+    "rejected": [
+      "a second Windows full suite first",
+      "a second Windows full suite and a Zed re-run of plain /savings next"
+    ],
+    "stays_true": "No Windows full run passes on the final code, and the product fix has not run in Zed."
+  },
+  "open_items": [
+    {
+      "item": "A launch whose approval binds one upstream can silently attach to a Gateway another launch started with a different upstream; this caused the paid-call incident.",
+      "custody": "#248, until an approved follow-up owns it",
+      "record": "zed-ui.json zero_paid.breach"
+    }
+  ],
+  "linux_ci": {
+    "status": "PASSED",
+    "pull_request": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/462",
+    "branch_head": "baca950",
+    "reading": "GitHub tested 5613c98, its merge of baca950 into main at 99e6ce7. Against main's own run, 241 more tests were selected and 241 more passed, and the skip count is unchanged. The log and artifact give no per-test skip identities, so test-exclusions.json covers the Windows run only.",
+    "pr_run": {
+      "run": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/41432997490",
+      "tested_sha": "5613c98",
+      "artifact": "product-coverage-5613c98c3cf7a699b1be631f57b307f2705977a3-1",
+      "result": "11272 passed, 318 skipped, 165 deselected",
+      "selected": 11590,
+      "validation": [
+        "coverage-products: bound full session 20261102T105934-3016-0f6968 (69 records considered)",
+        "coverage-products: full-run validity established"
+      ],
+      "platform": "linux",
+      "python_version": "3.14.10",
+      "coverage_version": "7.14.3",
+      "floors": [
+        {
+          "name": "optimus",
+          "percent": 89.8008,
+          "floor": 80.0,
+          "enforced": true,
+          "passed": true
+        },
+        {
+          "name": "context_engine",
+          "percent": 95.9243,
+          "floor": 80.0,
+          "enforced": true,
+          "passed": true
+        },
+        {
+          "name": "evidence_handoff",
+          "percent": 66.8335,
+          "floor": 80.0,
+          "enforced": false,
+          "passed": false
+        },
+        {
+          "name": "optimus_model_policy",
+          "percent": 95.1062,
+          "floor": 80.0,
+          "enforced": true,
+          "passed": true
+        },
+        {
+          "name": "aggregate",
+          "percent": 86.4355,
+          "floor": 80.0,
+          "enforced": false,
+          "passed": true
+        }
+      ],
+      "coverage_json_sha256": "hex:df61447a09d2c5c2c5fde27c33e0548af5a8fd926d2dfb851ac00bf85d12ef53",
+      "gate_report_sha256": "hex:64d1015fab96c9447288d7d0f74482d7b153205e691a57059b7397174ac62ded",
+      "run_record_sha256": "hex:0ac6e99da8702ec80fe64f26e91b5d88c4f7838b6c1770e9316f3bbf9997d9f5"
+    },
+    "main_run": {
+      "run": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/41343980617",
+      "tested_sha": "99e6ce7",
+      "artifact": "product-coverage-99e6ce7fda20e2a468ef4ce3b17b613e6998f2ad-1",
+      "result": "11031 passed, 318 skipped, 140 deselected",
+      "selected": 11349,
+      "validation": [
+        "coverage-products: bound full session 20261101T195414-3017-3e9487 (69 records considered)",
+        "coverage-products: full-run validity established"
+      ],
+      "platform": "linux",
+      "python_version": "3.14.10",
+      "coverage_version": "7.14.3",
+      "floors": [
+        {
+          "name": "optimus",
+          "percent": 89.7458,
+          "floor": 80.0,
+          "enforced": true,
+          "passed": true
+        },
+        {
+          "name": "context_engine",
+          "percent": 95.9243,
+          "floor": 80.0,
+          "enforced": true,
+          "passed": true
+        },
+        {
+          "name": "evidence_handoff",
+          "percent": 66.8335,
+          "floor": 80.0,
+          "enforced": false,
+          "passed": false
+        },
+        {
+          "name": "optimus_model_policy",
+          "percent": 94.4017,
+          "floor": 80.0,
+          "enforced": true,
+          "passed": true
+        },
+        {
+          "name": "aggregate",
+          "percent": 86.2765,
+          "floor": 80.0,
+          "enforced": false,
+          "passed": true
+        }
+      ],
+      "coverage_json_sha256": "hex:d2a4c441eb5e46a276b5ed8e15cf0a0ab40a78a6dd4afdc40b7e563e4466d95d",
+      "gate_report_sha256": "hex:e95556d92e5a4d3a5b8637825d457f3fa4bd13b8b11edeef8e299b53f19b630a",
+      "run_record_sha256": "hex:01d4f3b243c907513e9cdb973b7cf1522e35e6336033c4d6ba716d7bddff66d7"
+    },
+    "safety_comparison": {
+      "command": "python -m tools.testing.coverage_products compare, each side's coverage.json, gate report and bound run.json from the artifact named above, producer offset +00:00, no --base-audit-depth-proven-absent (both records state audit_depth full)",
+      "exit_status": 0,
+      "output": [
+        "coverage-products: compared base sha256 d2a4c441eb5e46a276b5ed8e15cf0a0ab40a78a6dd4afdc40b7e563e4466d95d",
+        "coverage-products: compared candidate sha256 df61447a09d2c5c2c5fde27c33e0548af5a8fd926d2dfb851ac00bf85d12ef53",
+        "coverage-products: safety rows comparable, no regression"
+      ],
+      "receipts": "compare infers neither artifact origin nor the collected universe. Each artifact was downloaded by the run ID above, and its validity.txt is the validate step of its own CI job, which compares the session's selection with the universe collected there.",
+      "rows": {
+        "src/optimus/tools/registry.py": {
+          "covered_lines": 45,
+          "num_statements": 46,
+          "missing_lines": 1,
+          "covered_branches": 5,
+          "num_branches": 6,
+          "missing_branches": 1
+        },
+        "src/optimus/runtime/mutation.py": {
+          "covered_lines": 24,
+          "num_statements": 25,
+          "missing_lines": 1,
+          "covered_branches": 7,
+          "num_branches": 8,
+          "missing_branches": 1
+        },
+        "src/optimus/gateway/models.py": {
+          "covered_lines": 163,
+          "num_statements": 168,
+          "missing_lines": 5,
+          "covered_branches": 47,
+          "num_branches": 54,
+          "missing_branches": 7
+        },
+        "src/optimus/evidence/ledger.py": {
+          "covered_lines": 63,
+          "num_statements": 63,
+          "missing_lines": 0,
+          "covered_branches": 10,
+          "num_branches": 10,
+          "missing_branches": 0
+        },
+        "src/optimus/acp/framing.py": {
+          "covered_lines": 52,
+          "num_statements": 54,
+          "missing_lines": 2,
+          "covered_branches": 20,
+          "num_branches": 22,
+          "missing_branches": 2
+        },
+        "src/optimus/retry/policy.py": {
+          "covered_lines": 123,
+          "num_statements": 125,
+          "missing_lines": 2,
+          "covered_branches": 25,
+          "num_branches": 26,
+          "missing_branches": 1
+        },
+        "src/optimus/tools/policy.py": {
+          "covered_lines": 86,
+          "num_statements": 89,
+          "missing_lines": 3,
+          "covered_branches": 22,
+          "num_branches": 24,
+          "missing_branches": 2
+        }
+      },
+      "reading": "Every safety-critical row equals main's exactly, in statements, branches and misses."
+    }
+  }
+}

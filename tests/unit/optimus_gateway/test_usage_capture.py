@@ -12,7 +12,7 @@ from urllib.error import HTTPError
 
 import pytest
 
-from optimus_gateway import usage_capture
+from optimus_gateway import usage_capture, usage_price_snapshots
 from optimus_gateway.upstream_client import UrllibOpenAICompatibleClient
 from optimus_security import accounting_config as ac
 from optimus_security import durable_outbox as ob
@@ -95,7 +95,8 @@ def test_without_a_ledger_the_gateway_drain_still_measures_and_warns(tmp_path, c
         accounting.stop()
 
     assert all(r.failures == [f"accounting_off:{reason}"] and r.committed == 0 for r in reports)
-    assert reports[-1].backlog.pending_events == 1 and reports[-1].backlog.warnings == ("pending_age",)
+    adopted = len(usage_price_snapshots.configured_references().references)  # each reference's snapshot (Plan 12.9)
+    assert reports[-1].backlog.pending_events == 1 + adopted and reports[-1].backlog.warnings == ("pending_age",)
     assert ob.read_ack(accounting.writer.directory) is None
     assert sum("above its pending_age threshold" in line for line in logs) == 1
 

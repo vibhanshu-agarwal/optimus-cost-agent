@@ -47,7 +47,7 @@ def _double_reply(*outcomes: str, status: int = 200, usage_for: int | None = Non
     )
     usage = None
     if usage_for is not None:
-        usage = _gateway_usage(config=SimpleNamespace(provider="openrouter"), model=ROUTE.model_id,  # type: ignore[arg-type]
+        usage = _gateway_usage(config=SimpleNamespace(provider="openrouter", model_policy=None), model=ROUTE.model_id,  # type: ignore[arg-type]
                                provider_result=result, gateway_request_id=ids[usage_for])
         usage.update(route_request_id="case-L01:1", attempt=usage_for + 1, cost_usd=format_cost_usd(result.cost_usd))
     if status == 200:

@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError
 
-from optimus_gateway import request_diagnostics
+from optimus_gateway import request_diagnostics, usage_price_snapshots
 from optimus_gateway.diagnostic_segments import DiagnosticSegments
 from optimus_security import accounting_config
 from optimus_security import usage_capture_contract as uc
@@ -33,6 +33,7 @@ from optimus_security.outbox_drain import DrainStop, OutboxDrain
 if TYPE_CHECKING:
     from optimus_gateway.models import GatewayServiceConfig
     from optimus_gateway.usage_store import UsageStore
+    from optimus_model_policy.savings_references import ReferenceSet
 
 _STATE = threading.local()
 _writer: OutboxWriter | None = None
@@ -176,6 +177,7 @@ class GatewayAccounting:
         if self.drain is not None:
             self.drain.stop()
         configure(None)
+        usage_price_snapshots.configure(None)
         self.writer.close()
         if self.diagnostics is not None:
             request_diagnostics.configure_copy(None)
@@ -188,7 +190,8 @@ class GatewayAccounting:
 
 
 def start_accounting(root: Path, config: accounting_config.AccountingConfig | None, *, refusal: str | None = None,
-                     keyring_backend: Any, log: Callable[[str], None]) -> GatewayAccounting:
+                     keyring_backend: Any, log: Callable[[str], None],
+                     references: ReferenceSet | None = None) -> GatewayAccounting:
     """Open the Gateway's accounting under its verified root with the configuration verified against the manifest (never
     re-read here). The ledger's password is read only from the Gateway-owned keyring namespace; without an approved
     configuration or that credential, capture still accumulates locally."""
@@ -196,6 +199,8 @@ def start_accounting(root: Path, config: accounting_config.AccountingConfig | No
 
     writer = OutboxWriter(root / "outbox" / "gateway")
     configure(writer)
+    usage_price_snapshots.configure(writer, references=references)  # None: the packaged reference prices
+    usage_price_snapshots.record_references(usage_price_snapshots.configured_references())
     diagnostics = DiagnosticSegments(root / "gateway-diagnostics", report=log)  # nothing is created before the first line
     request_diagnostics.configure_copy(diagnostics)
     accounting = GatewayAccounting(writer, diagnostics)

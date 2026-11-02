@@ -902,7 +902,7 @@ def main(argv: list[str] | None = None) -> int:
         durable_capture = DurableCapture.at(candidate.operator_paths.config_root)
         delivery = None if args.check_config else _capture_delivery(durable_capture)
         try:
-            return _run_authorized(durable_capture)
+            return _run_authorized(durable_capture, delivery)
         finally:
             if delivery is not None:
                 delivery.stop()
@@ -914,17 +914,20 @@ def main(argv: list[str] | None = None) -> int:
         from optimus.config.gateway import OptimusGatewaySettings
         from optimus.gateway.client import GatewayClient
         from optimus.usage.capture_delivery import CaptureDelivery
+        from optimus.usage.savings_report import CAPABILITIES_SECONDS, gateway_post
 
         try:
-            delivery = CaptureDelivery(
-                durable_capture, GatewayClient(settings=OptimusGatewaySettings.from_env(agent_environ)), warn=_print_log
-            )
+            settings = OptimusGatewaySettings.from_env(agent_environ)
+            # Plan 12.9: the turn-context feature is negotiated through the report route's own bounded POST, so a
+            # stalled answer costs a pass at most `CAPABILITIES_SECONDS` and never blocks ordinary delivery.
+            delivery = CaptureDelivery(durable_capture, GatewayClient(settings=settings), warn=_print_log,
+                                       capabilities=gateway_post(settings, timeout=CAPABILITIES_SECONDS))
         except Exception:  # noqa: BLE001 - without delivery, capture stays in the outbox for a later launch
             return None
         delivery.start()
         return delivery
 
-    def _run_authorized(durable_capture: DurableCapture) -> int:
+    def _run_authorized(durable_capture: DurableCapture, delivery: Any) -> int:
         nonlocal configured_server, startup_control
         startup_failure: BaseException | None = None
         if args.check_config:
@@ -987,6 +990,10 @@ def main(argv: list[str] | None = None) -> int:
                         file=sys.stderr,
                     )
                     return 2
+                if gateway_process is not None and delivery is not None:
+                    # Plan 12.9: delivery's first pass ran before this Gateway was up and its next is a pass away; the
+                    # first prompt must not beat the answer. A loopback request, bounded by CAPABILITIES_SECONDS.
+                    delivery.negotiate()
             try:
                 # Seam 3: MCP construction reads PATH/PATHEXT/SystemRoot and the
                 # ephemeral-HMAC request from the ORIGINAL launch snapshot, projected to

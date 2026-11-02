@@ -97,7 +97,8 @@ def test_migrations_are_pinned_and_the_ledger_instance_is_stable(released, store
     again = UsageStore(released["conninfo"]).migrate()
 
     assert again == store.ledger_instance
-    assert _rows(released, "SELECT filename FROM optimus_usage_schema_migrations") == [("001_durable_capture.sql",)]
+    assert _rows(released, "SELECT filename FROM optimus_usage_schema_migrations ORDER BY filename") == [
+        ("001_durable_capture.sql",), ("002_savings_report.sql",)]
 
 
 def test_a_batch_commits_atomically_and_reads_back_from_a_new_connection(released, store, tmp_path):

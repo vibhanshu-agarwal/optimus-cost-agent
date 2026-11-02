@@ -1,0 +1,648 @@
+{
+  "schema_version": 1,
+  "plan": "Plan 12.9 v2, Task 5",
+  "client": {
+    "zed_version": "1.26.2+stable.384.c4273271092b0287f7d181f616bd5171e0a2f70c",
+    "operator_entered_commands": true
+  },
+  "source": {
+    "proof_head": "51cef73",
+    "proof_session": "session-4ef1fe8b917e42bfab528371381b9f52",
+    "delta_after_proof": [
+      "2eb4888: one Status text in the host renderer ('1 request: tokens not reported')",
+      "7cce51c: a plain `/savings next` continues the session's last report, and the report's continuation line names it; approved by the operator 2026-11-02 as a deviation from the plan's three command forms",
+      "5d22846: a test only, no source",
+      "70c809e: the session's plain `/savings next` moves only after a report's delivery is confirmed (Codex Checkpoint C pass 1)"
+    ],
+    "delta_coverage": "unit tests and revert checks (final-run-evidence.json), not re-run in Zed"
+  },
+  "boundary": {
+    "ledger": "real Postgres, disposable container optimus-p129-zed (removed)",
+    "gateway": "the launch's own, 127.0.0.1:8766",
+    "upstream": "local synthetic stub, 127.0.0.1:8791; every cost in the proof session is synthetic and each stub reply says so"
+  },
+  "cases": {
+    "command_menu_after_setup": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0046-032755.png",
+      "sha256": "hex:4c9516b6006960d37afc8758380a894e1beb0d29899d469c0a35fe538df5e57b",
+      "shows": "run zed-2 at 78e70b9; the advertisement is unchanged after it"
+    },
+    "session_overview_and_auto_columns": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0085-034840.png",
+      "sha256": "hex:6e6ea88dbdae1dfaf738d774a37f585cc3106a4fc57a0dba4884fd32abd963c1",
+      "shows": "4 turns, 26 requests, USD 0.04142; models as columns"
+    },
+    "negative_and_positive_savings": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0085-034840.png",
+      "sha256": "hex:6e6ea88dbdae1dfaf738d774a37f585cc3106a4fc57a0dba4884fd32abd963c1",
+      "shows": "Sonnet and Sol -70.1%; Opus 14.9%"
+    },
+    "continuation_beyond_one_group": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0087-034859.png",
+      "sha256": "hex:ee0e9eea11dfff4684c9574dfa1483647ce427a962751da48428fce48f7cf2e7",
+      "shows": "Reference 4 of 4 with one column; its model name scrolled above this frame, and acpx-check/35.txt shows the same page's text"
+    },
+    "detail_pagination_page_two": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0086-034853.png",
+      "sha256": "hex:51780b3ca5de18d7896f7855262bb407a330a981d10faefa3929905586e81e86",
+      "shows": "rows to 25 and the next continuation"
+    },
+    "detail_pagination_last_page": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0092-035058.png",
+      "sha256": "hex:7e22ca365445205ed9d1cf6283606b41230c63fd2b3efef318aed59d626ad2fd",
+      "shows": "the last page holds row 26"
+    },
+    "one_turn_report": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0094-035111.png",
+      "sha256": "hex:61d7d92b528d32dc1fae8b636ccdf21496b591ab9efeae640d183f1169df4596",
+      "shows": "T1 alone: USD 0.00282 at Sonnet prices, savings USD 0.00264"
+    },
+    "unknown_cost_withholds_savings": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0101-035514.png",
+      "sha256": "hex:2ec28e46a1e1dd9066fc7955aab80880361755f4ad6169d11fd0e479f8a3d54e",
+      "shows": "qualified history; status names the unpriced request"
+    },
+    "non_registry_references": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0085-034840.png",
+      "sha256": "hex:6e6ea88dbdae1dfaf738d774a37f585cc3106a4fc57a0dba4884fd32abd963c1",
+      "shows": "Claude Opus 5.5 and GPT 6.1 Sol: neither is in the packaged registry"
+    },
+    "b2_b3_absence": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0085-034840.png",
+      "sha256": "hex:6e6ea88dbdae1dfaf738d774a37f585cc3106a4fc57a0dba4884fd32abd963c1",
+      "shows": "both sections state unavailable, with no amount"
+    },
+    "unavailable_categories": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0085-034840.png",
+      "sha256": "hex:6e6ea88dbdae1dfaf738d774a37f585cc3106a4fc57a0dba4884fd32abd963c1",
+      "shows": "cache-write charges stated as not included"
+    },
+    "ledger_down": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0107-035909.png",
+      "sha256": "hex:7f1f357aa2ebce0827df0c2d3f7dc4777ce9187c85447b70453df4f41452bfcf",
+      "shows": "\"The usage ledger is unavailable right now\""
+    },
+    "ordinary_work_during_outage": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0107-035909.png",
+      "sha256": "hex:7f1f357aa2ebce0827df0c2d3f7dc4777ce9187c85447b70453df4f41452bfcf",
+      "shows": "T6 answered by the stub while the ledger was stopped"
+    }
+  },
+  "readback": {
+    "session": "session-4ef1fe8b917e42bfab528371381b9f52",
+    "migrations": [
+      "001_durable_capture.sql",
+      "002_savings_report.sql"
+    ],
+    "kinds": [
+      "attempt.receipt|28",
+      "epoch.begin|6",
+      "turn.report_context|6"
+    ],
+    "selections": [
+      "auto|6"
+    ],
+    "reference_snapshots": [
+      "5"
+    ],
+    "ledger_instance": [
+      "hex:85df4faa4e7a4887828f3461a252c60c"
+    ]
+  },
+  "stub_log": {
+    "file": "optimus-handoff/p129-zed/stub-run-zed-3/stub-requests.ndjson",
+    "sha256": "hex:3e6b84ba71af20268c829ad175d68cfc979eb6bd1738d18e1e0928b4b78d68a1",
+    "served": 28
+  },
+  "log_manifest": {
+    "custody": "Raw logs stay outside the repository, by digest. The Optimus log folder is shared by every run of this workspace on 2026-11-02, so these files also hold the paid-call session, the earlier Zed runs and the acpx sessions; each is named with its line count.",
+    "optimus_logs": [
+      {
+        "file": "optimus-handoff/p129-zed/zed-run-optimus-logs/debug-acp.ndjson",
+        "sha256": "hex:ac31b2a49a2fb3693169ee364ad5e9940907dbcece64f18b6fcb25a5e23e6b5e",
+        "bytes": 866355,
+        "source": "the host's ACP debug trace, copied from the launch's log folder after the proof",
+        "lines_naming_each_session": {
+          "session-06f74ebbe3a64ab7865a237fc6c648c9": 12,
+          "session-1521fed73a1c49968e2f1cee86aeb8cb": 190,
+          "session-2e031fdee0a64c558d713e34ca5e7b88": 20,
+          "session-2e2ea10df97e445abbfb420b6c09bbc0": 245,
+          "session-405e655bf4734a48bb0f775787ea176b": 40,
+          "session-4ef1fe8b917e42bfab528371381b9f52": 286,
+          "session-621aa6765aa6403ba4b0a8be23befc1f": 20,
+          "session-6e39105945a6416caa8f5268f5b9ad8a": 12,
+          "session-7116616fad8b430f9dd44efb932d9be1": 20,
+          "session-7c271d3b658745018a98791e86a09e5a": 122,
+          "session-bfcb55b7d8074df7abd6d9919e676891": 40,
+          "session-c0e707b34ded4df48376c67425122054": 20,
+          "session-c43c8a7fbb194073b5166e0836ee860a": 232,
+          "session-ccaf2e1ab9894642a5b5acc5c22a8310": 144,
+          "session-d026f70def6b44218b5c976ba3f029ce": 12,
+          "session-ebcf232d79394f6db1b7f47995b3857e": 12,
+          "session-fe7ad5d8a2044053bc7369f393de9881": 28
+        },
+        "proof_session_lines": 286,
+        "proof_session_stamped_range": [
+          "2026-11-02T03:44:42.504000+00:00",
+          "2026-11-02T03:59:02.177000+00:00"
+        ]
+      },
+      {
+        "file": "optimus-handoff/p129-zed/zed-run-optimus-logs/local-gateway.log",
+        "sha256": "hex:0d3b92177a6adc2d188018c005f6f3c84a7affde1f6a31b539f847ec808a9bac",
+        "bytes": 63880,
+        "source": "the launch's Gateway log: one model_request per request, upstream the local stub for the proof session. Its lines carry no time; stub_log above times the same requests, 2026-11-02T03:45:09Z to 03:59:01Z",
+        "lines_naming_each_session": {
+          "session-1521fed73a1c49968e2f1cee86aeb8cb": 27,
+          "session-405e655bf4734a48bb0f775787ea176b": 1,
+          "session-4ef1fe8b917e42bfab528371381b9f52": 28,
+          "session-7c271d3b658745018a98791e86a09e5a": 5,
+          "session-bfcb55b7d8074df7abd6d9919e676891": 1,
+          "session-c43c8a7fbb194073b5166e0836ee860a": 26,
+          "session-ccaf2e1ab9894642a5b5acc5c22a8310": 5
+        },
+        "proof_session_lines": 28,
+        "proof_session_stamped_range": null
+      },
+      {
+        "file": "optimus-handoff/p129-zed/zed-run-optimus-logs/telemetry.jsonl",
+        "sha256": "hex:ae2980cc801790ca78244f92b2e240d84b57b28c36875742c586f69fe9813beb",
+        "bytes": 69559,
+        "source": "the host's telemetry, including acp_turn_settlement for each turn",
+        "lines_naming_each_session": {
+          "session-1521fed73a1c49968e2f1cee86aeb8cb": 10,
+          "session-2e2ea10df97e445abbfb420b6c09bbc0": 12,
+          "session-405e655bf4734a48bb0f775787ea176b": 3,
+          "session-4ef1fe8b917e42bfab528371381b9f52": 19,
+          "session-7c271d3b658745018a98791e86a09e5a": 16,
+          "session-bfcb55b7d8074df7abd6d9919e676891": 4,
+          "session-c43c8a7fbb194073b5166e0836ee860a": 12,
+          "session-ccaf2e1ab9894642a5b5acc5c22a8310": 16
+        },
+        "proof_session_lines": 19,
+        "proof_session_stamped_range": [
+          "2026-11-02T03:45:09.323038+00:00",
+          "2026-11-02T03:59:02.171560+00:00"
+        ]
+      },
+      {
+        "file": "optimus-handoff/p129-zed/zed-run-optimus-logs/launch-audit.ndjson",
+        "sha256": "hex:4d0d6743bbe61d2830e342c4662d1f6dee37c064fd52e82033de17c0bfd2bf3f",
+        "bytes": 40627,
+        "source": "the launch gate's audit records, which carry approval IDs and no session ID",
+        "lines_naming_each_session": {},
+        "proof_session_lines": 0,
+        "proof_session_stamped_range": null
+      }
+    ],
+    "acpx": {
+      "folder": "optimus-handoff/p129-zed/acpx-check",
+      "client": "acpx 0.12.0",
+      "groups": "01-25 the first attempt; 30-43 the rerun after 78e70b9",
+      "modified_range": [
+        "2026-11-02T02:45:01.950304+00:00",
+        "2026-11-02T03:26:36.862576+00:00"
+      ],
+      "files": [
+        {
+          "name": "01-new.stderr.txt",
+          "sha256": "hex:f55f8941b1a8e7db34c1bc7ae25cac4246703ab390ae69ad0dde20410e35e8a1",
+          "bytes": 182
+        },
+        {
+          "name": "01-new.stdout.ndjson",
+          "sha256": "hex:cab83f1a1ae31c54a7ef9edc3b0d7fc5e54fa222508c0f6e75b38af15b06c227",
+          "bytes": 177
+        },
+        {
+          "name": "02-setmode.stderr.txt",
+          "sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "name": "02-setmode.stdout.ndjson",
+          "sha256": "hex:0ec9ee6c6b7faa8b347875672a212e72c76688808f0d4e613b8e37d94a7a676f",
+          "bytes": 171
+        },
+        {
+          "name": "03-t5.stderr.txt",
+          "sha256": "hex:c82640ddc7260ee28f8d8c14251f4ae5d11c88a09acf22ae0a47a6378db84635",
+          "bytes": 170
+        },
+        {
+          "name": "03-t5.stdout.ndjson",
+          "sha256": "hex:034d2a0377b60f21f71b194ba1fc6eaaa3de315d10047e0f58d87cbd5ca1ee58",
+          "bytes": 5209
+        },
+        {
+          "name": "04-close.stderr.txt",
+          "sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "name": "04-close.stdout.ndjson",
+          "sha256": "hex:00b3f5b8a7ad3f63958d56646fd65584bcfc88f1f3af4358c47f1e3fe6c1a72d",
+          "bytes": 145
+        },
+        {
+          "name": "10-new.stderr.txt",
+          "sha256": "hex:d45a8cbd40cef44ff80d61080d5be35f3bddaf03f658b81b305c6533c910a27d",
+          "bytes": 182
+        },
+        {
+          "name": "10-new.stdout.ndjson",
+          "sha256": "hex:a279b9f3f5b26731cf434c48a144593cb274e2d872779b6b3cd3ff37203f3b3c",
+          "bytes": 177
+        },
+        {
+          "name": "11-setmode.stderr.txt",
+          "sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "name": "11-setmode.stdout.ndjson",
+          "sha256": "hex:b3bcde6c54c5bf20148069e9e96db5dfb016602bb73a6303ddee6496b6fb206c",
+          "bytes": 171
+        },
+        {
+          "name": "13-01-T1.stderr.txt",
+          "sha256": "hex:e9145edf4f372a4014df31bebf65d2e479e3eba694ff97d5c90babee551b6ebb",
+          "bytes": 170
+        },
+        {
+          "name": "13-01-T1.stdout.ndjson",
+          "sha256": "hex:4c46902902a32c6322b389fa35e16924eea7364e3b3180456fb7d5de3453a774",
+          "bytes": 5136
+        },
+        {
+          "name": "14-01-T2.stderr.txt",
+          "sha256": "hex:b6834b216b2b7cc511d0348fe6424507abe86c95dd6b25c366c908b948ef0c5d",
+          "bytes": 164
+        },
+        {
+          "name": "14-01-T2.stdout.ndjson",
+          "sha256": "hex:50c9916089f85e0a1059a47bd873ddcab7ca28838b9e55d5861ce08d26cfd843",
+          "bytes": 1194
+        },
+        {
+          "name": "14-02-T3.stderr.txt",
+          "sha256": "hex:b6834b216b2b7cc511d0348fe6424507abe86c95dd6b25c366c908b948ef0c5d",
+          "bytes": 164
+        },
+        {
+          "name": "14-02-T3.stdout.ndjson",
+          "sha256": "hex:16229bedae93ba855c5ff7d6e58dd79234dd0dfec949405abec4befb8f45efc9",
+          "bytes": 1070
+        },
+        {
+          "name": "14-03-CProgramFile.stderr.txt",
+          "sha256": "hex:b6834b216b2b7cc511d0348fe6424507abe86c95dd6b25c366c908b948ef0c5d",
+          "bytes": 164
+        },
+        {
+          "name": "14-03-CProgramFile.stdout.ndjson",
+          "sha256": "hex:f8ac9d588433470702c509ad338d6d2c5f03d0193b647f386f245894fe43378d",
+          "bytes": 615
+        },
+        {
+          "name": "15-01-savings.stderr.txt",
+          "sha256": "hex:b6834b216b2b7cc511d0348fe6424507abe86c95dd6b25c366c908b948ef0c5d",
+          "bytes": 164
+        },
+        {
+          "name": "15-01-savings.stdout.ndjson",
+          "sha256": "hex:f2619fd49b715a0bc33a1f27a8fc8a04c8daf5eade163fd9d8e424a4fa9b1a4e",
+          "bytes": 3258
+        },
+        {
+          "name": "16-01-T5.stderr.txt",
+          "sha256": "hex:b6834b216b2b7cc511d0348fe6424507abe86c95dd6b25c366c908b948ef0c5d",
+          "bytes": 164
+        },
+        {
+          "name": "16-01-T5.stdout.ndjson",
+          "sha256": "hex:2bf94676dbb5bc37bc6e291bfd73ef11bd96a2b6d2e0089fa1a10802bbefa765",
+          "bytes": 1045
+        },
+        {
+          "name": "17-01-savingsnexte.stderr.txt",
+          "sha256": "hex:b6834b216b2b7cc511d0348fe6424507abe86c95dd6b25c366c908b948ef0c5d",
+          "bytes": 164
+        },
+        {
+          "name": "17-01-savingsnexte.stdout.ndjson",
+          "sha256": "hex:f7859d9a00ec641f2249f2170af1179325e1783a7d8d74be657f813ca437adb8",
+          "bytes": 915
+        },
+        {
+          "name": "18-mode.stderr.txt",
+          "sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "name": "18-mode.stdout.ndjson",
+          "sha256": "hex:8edc82c00a96b222fad3c2eb2cb321f0af26672ece52bb0d7204fe8f63929287",
+          "bytes": 172
+        },
+        {
+          "name": "19-01-T4.stderr.txt",
+          "sha256": "hex:b6834b216b2b7cc511d0348fe6424507abe86c95dd6b25c366c908b948ef0c5d",
+          "bytes": 164
+        },
+        {
+          "name": "19-01-T4.stdout.ndjson",
+          "sha256": "hex:256f17c8857a4f9d14241c3657aec80d1f80e9fe6b3306759cc65d31535d32f7",
+          "bytes": 8699
+        },
+        {
+          "name": "20-01-savings.stderr.txt",
+          "sha256": "hex:b6834b216b2b7cc511d0348fe6424507abe86c95dd6b25c366c908b948ef0c5d",
+          "bytes": 164
+        },
+        {
+          "name": "20-01-savings.stdout.ndjson",
+          "sha256": "hex:660e517f16d666a88fbe800738e75aa6041be23a3e770399a1cac40a12f1a0dc",
+          "bytes": 2949
+        },
+        {
+          "name": "20.txt",
+          "sha256": "hex:03b240ae3e62b9c8c8c3d5b3a2ced7d82eb712e7f6c40b83706c499042b752b9",
+          "bytes": 2643
+        },
+        {
+          "name": "21-01-savingsnexte.stderr.txt",
+          "sha256": "hex:b6834b216b2b7cc511d0348fe6424507abe86c95dd6b25c366c908b948ef0c5d",
+          "bytes": 164
+        },
+        {
+          "name": "21-01-savingsnexte.stdout.ndjson",
+          "sha256": "hex:a802a70c478174c99e2c13d601940804932ab170b9380c5673c4f5368084ede4",
+          "bytes": 5855
+        },
+        {
+          "name": "21.txt",
+          "sha256": "hex:8defde77e4818f2ed7245a3a554a434382fdc82beca7731a5f045869e24af4e1",
+          "bytes": 5169
+        },
+        {
+          "name": "22-01-savings.stderr.txt",
+          "sha256": "hex:b6834b216b2b7cc511d0348fe6424507abe86c95dd6b25c366c908b948ef0c5d",
+          "bytes": 164
+        },
+        {
+          "name": "22-01-savings.stdout.ndjson",
+          "sha256": "hex:71bfb82b481e8cbe8879f7233d53f2380a7c04e015378fce72e8fc7cc50e6458",
+          "bytes": 532
+        },
+        {
+          "name": "23-01-T6.stderr.txt",
+          "sha256": "hex:b6834b216b2b7cc511d0348fe6424507abe86c95dd6b25c366c908b948ef0c5d",
+          "bytes": 164
+        },
+        {
+          "name": "23-01-T6.stdout.ndjson",
+          "sha256": "hex:62a4e961b474b26c57845cd174dc7985ed73f3b25b35cc959d474f74605ec753",
+          "bytes": 3106
+        },
+        {
+          "name": "24-01-savings.stderr.txt",
+          "sha256": "hex:b6834b216b2b7cc511d0348fe6424507abe86c95dd6b25c366c908b948ef0c5d",
+          "bytes": 164
+        },
+        {
+          "name": "24-01-savings.stdout.ndjson",
+          "sha256": "hex:18602e0bf16697b30e3cbbe677c133a0fd9658848636a2b1dfee724948697d24",
+          "bytes": 3254
+        },
+        {
+          "name": "24.txt",
+          "sha256": "hex:0d6f9df6194e42cf1a8c8b23b5553d233b010443c3d84cb7159a1faf11e296f0",
+          "bytes": 2948
+        },
+        {
+          "name": "25-close.stderr.txt",
+          "sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "name": "25-close.stdout.ndjson",
+          "sha256": "hex:4ae72938fd96dd2b97ae8b2e552e35d5cb919a33f2c642042d73b920eb2b8b6a",
+          "bytes": 145
+        },
+        {
+          "name": "30-new.stderr.txt",
+          "sha256": "hex:fcf9082c20bc966173804a917e5109cb9f4a736ea3c139d44ce0254d187ae899",
+          "bytes": 182
+        },
+        {
+          "name": "30-new.stdout.ndjson",
+          "sha256": "hex:b9cff1453ef4495cddfe1c8eff76e2455e6727af30447a4e2ad336175f41c709",
+          "bytes": 177
+        },
+        {
+          "name": "31-setmode.stderr.txt",
+          "sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "name": "31-setmode.stdout.ndjson",
+          "sha256": "hex:1786a386c8c2f0f79d3c428b5265dd80aa8739cb988cfe937656a76b5ed4c277",
+          "bytes": 171
+        },
+        {
+          "name": "32-01-T1.stderr.txt",
+          "sha256": "hex:5553ce5d5b52bcbf8b86a6b4185e74665a051d9c6eafe01469b380ed11b2ddd3",
+          "bytes": 170
+        },
+        {
+          "name": "32-01-T1.stdout.ndjson",
+          "sha256": "hex:7d32b5407beaf10c409b5461ba96dea64d191e09de56682ad094fd81d45c5ae6",
+          "bytes": 5136
+        },
+        {
+          "name": "33-01-T2.stderr.txt",
+          "sha256": "hex:e7482e44d0edfa09abb72fc0f17d07d21328b9c1ed65647562b4a8a44b87bc59",
+          "bytes": 164
+        },
+        {
+          "name": "33-01-T2.stdout.ndjson",
+          "sha256": "hex:1054670c85f687d36b7b59c8e255cd0ff2ee23dbc5562c722ee56c79004a7c28",
+          "bytes": 1194
+        },
+        {
+          "name": "33-02-T3.stderr.txt",
+          "sha256": "hex:e7482e44d0edfa09abb72fc0f17d07d21328b9c1ed65647562b4a8a44b87bc59",
+          "bytes": 164
+        },
+        {
+          "name": "33-02-T3.stdout.ndjson",
+          "sha256": "hex:2e84c5884a92b91528326cd0e7ae024e56cd82e95998adff83b2b7af5a2846f3",
+          "bytes": 1070
+        },
+        {
+          "name": "33-03-T5.stderr.txt",
+          "sha256": "hex:e7482e44d0edfa09abb72fc0f17d07d21328b9c1ed65647562b4a8a44b87bc59",
+          "bytes": 164
+        },
+        {
+          "name": "33-03-T5.stdout.ndjson",
+          "sha256": "hex:6635b1e63d2099210c983d8477b9d3eead5eaa852b5c22dfeda7ae80cf4e59c6",
+          "bytes": 1045
+        },
+        {
+          "name": "34-01-savings.stderr.txt",
+          "sha256": "hex:e7482e44d0edfa09abb72fc0f17d07d21328b9c1ed65647562b4a8a44b87bc59",
+          "bytes": 164
+        },
+        {
+          "name": "34-01-savings.stdout.ndjson",
+          "sha256": "hex:ef2fb6801483d9defdd0ecfd236b7b72c19978b81b3a99eb7a7849344daed49f",
+          "bytes": 3445
+        },
+        {
+          "name": "34.txt",
+          "sha256": "hex:080daa7f599330cd312a3fc36e914decf47eac18adf1073498965fb1d4f4371f",
+          "bytes": 3135
+        },
+        {
+          "name": "35-01-savingsnexte.stderr.txt",
+          "sha256": "hex:e7482e44d0edfa09abb72fc0f17d07d21328b9c1ed65647562b4a8a44b87bc59",
+          "bytes": 164
+        },
+        {
+          "name": "35-01-savingsnexte.stdout.ndjson",
+          "sha256": "hex:01cc0b215e471bbcf9d103262d6b7b9b96dd76dd47e70f482b79a08b5de414eb",
+          "bytes": 3632
+        },
+        {
+          "name": "35.txt",
+          "sha256": "hex:213849a5519a3455e5632b03fd2d1fc274a8d561de7c237e7236e93ade649297",
+          "bytes": 2946
+        },
+        {
+          "name": "36-01-savings.stderr.txt",
+          "sha256": "hex:e7482e44d0edfa09abb72fc0f17d07d21328b9c1ed65647562b4a8a44b87bc59",
+          "bytes": 164
+        },
+        {
+          "name": "36-01-savings.stdout.ndjson",
+          "sha256": "hex:4fe3119bb4e8bc9ae1dc831a827c4bb5163c8a81a218ddbae12e5250d21db0a1",
+          "bytes": 506
+        },
+        {
+          "name": "36-02-T6.stderr.txt",
+          "sha256": "hex:e7482e44d0edfa09abb72fc0f17d07d21328b9c1ed65647562b4a8a44b87bc59",
+          "bytes": 164
+        },
+        {
+          "name": "36-02-T6.stdout.ndjson",
+          "sha256": "hex:1f8b2bc3a63eb3f335319f9e1417994cc4fe3c6eb97e6cdb974a263c88a6977d",
+          "bytes": 1072
+        },
+        {
+          "name": "37-01-savings.stderr.txt",
+          "sha256": "hex:e7482e44d0edfa09abb72fc0f17d07d21328b9c1ed65647562b4a8a44b87bc59",
+          "bytes": 164
+        },
+        {
+          "name": "37-01-savings.stdout.ndjson",
+          "sha256": "hex:5c0de587e3fde9d2e7d6ca6c95e77859852f5fdccce0a036647a94ca81e69393",
+          "bytes": 3447
+        },
+        {
+          "name": "37.txt",
+          "sha256": "hex:6f3d4baa7f0d97fed8c70ada9822068dce39f03554221d52fffe190600b5936c",
+          "bytes": 3135
+        },
+        {
+          "name": "38-close.stderr.txt",
+          "sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "name": "38-close.stdout.ndjson",
+          "sha256": "hex:08f530d22cd3af5a4653e231848b9cf872f16433a161f3c837ea37578f7d7ed2",
+          "bytes": 145
+        },
+        {
+          "name": "40-new.stderr.txt",
+          "sha256": "hex:b40f7d68aff866665bc93a1eca314c38ced79e77f36f5e6a9360dfe88a38492f",
+          "bytes": 182
+        },
+        {
+          "name": "40-new.stdout.ndjson",
+          "sha256": "hex:16a4301a1c23fb8a0ba86d6a1b3b056d21cffac3964f250af757ebd87c5a0510",
+          "bytes": 177
+        },
+        {
+          "name": "41-setmode.stderr.txt",
+          "sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "name": "41-setmode.stdout.ndjson",
+          "sha256": "hex:28362047959f1e80cd3bfc19a4bc4766437d266bbbcac72916f7f6566cac6aaf",
+          "bytes": 171
+        },
+        {
+          "name": "42-01-T5.stderr.txt",
+          "sha256": "hex:1f86a481c30d8ef17959d145c41c19f7ca82617455f3d5f5aff25153280461c2",
+          "bytes": 170
+        },
+        {
+          "name": "42-01-T5.stdout.ndjson",
+          "sha256": "hex:3b2e1c2cd2fc81758a3890782d803f58ba3bc17e455628f13714c31d6ee910d2",
+          "bytes": 5140
+        },
+        {
+          "name": "43-close.stderr.txt",
+          "sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "name": "43-close.stdout.ndjson",
+          "sha256": "hex:7596416eceaea355441acc6933e89c06c9ef291a5bfb38e166ee43e33d9040dc",
+          "bytes": 145
+        }
+      ]
+    }
+  },
+  "acpx_protocol_check": {
+    "client": "acpx 0.12.0, an independent ACP client",
+    "head": "78e70b9, working tree before that commit",
+    "shows": [
+      "available_commands_update after the session/new response",
+      "first prompt attributed Auto",
+      "continuation",
+      "stale cursor answers REPORT_CHANGED",
+      "ledger down answers LEDGER_UNAVAILABLE",
+      "work during the outage",
+      "delayed records delivered after restart"
+    ],
+    "folder": "optimus-handoff/p129-zed/acpx-check",
+    "first_attempt_kept": "attempts 01-25 found the two defects fixed in 78e70b9"
+  },
+  "zero_paid": {
+    "proof_session": "zero paid calls: stub log 28 served, p397-live Gateway log unchanged at 96 lines throughout",
+    "breach": {
+      "decision": "D4 zero paid calls",
+      "requests": 26,
+      "known_cost_usd": "0.01436675",
+      "unknown_cost_requests": 0,
+      "model_route": "the configured easy route",
+      "session": "session-2e2ea10df97e445abbfb420b6c09bbc0",
+      "cause": "another configured Zed entry's Gateway held 127.0.0.1:8765 with a real upstream, and this agent attached to it",
+      "record": "optimus-handoff/p129-zed/INCIDENT-paid-calls-2026-11-02.md",
+      "sha256": "hex:781c4b83172aec005d0532372c571a1a57787cadac478d7e776e3d11d36fcc75",
+      "gateway_log_sha256": "hex:840d898a4bd410c1b6ec42f1593aad00ea32ee870aad10a3c0ba162ffac51d45",
+      "disposition": "disclosed to the operator; the rerun used its own Gateway port; none of it is proof evidence",
+      "open_product_question": "A launch whose approval binds one upstream can silently attach to a Gateway another launch started with a different upstream (local_infra.ensure_local_gateway). This plan's rerun avoided it by configuration and did not change that code.",
+      "custody": "Held under #248 until an approved follow-up owns it; qualification.json lists it as open. A follow-up has been proposed to the operator and not yet approved."
+    }
+  },
+  "limits": [
+    "Screenshots stay outside the repository as provenance, by digest.",
+    "Agent-mode walk ends in a synthetic refusal: it exercises report paging, not edit behaviour.",
+    "The operator's Zed entry and launch approval for this workspace: the entry is removed; the approval remains in the operator's keyring."
+  ]
+}

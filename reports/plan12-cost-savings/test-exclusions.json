@@ -1,0 +1,1326 @@
+{
+  "schema": "plan12-cost-savings-test-exclusions/1",
+  "run": {
+    "session": "20261102T065835-41640-6482b3",
+    "head": "f1cb559",
+    "source": "the run's own nodes.jsonl and phases.jsonl; local paths in reasons are replaced"
+  },
+  "skipped": {
+    "count": 54,
+    "kind": "recorded: each reason is the run's own",
+    "tests": [
+      {
+        "test": "tests/integration/acp/test_process_signals.py::test_posix_sigterm_uses_same_owned_cleanup[term-clean]",
+        "recorded_reason": "Skipped: POSIX SIGTERM is a distinct native contract"
+      },
+      {
+        "test": "tests/integration/acp/test_process_signals.py::test_posix_sigterm_uses_same_owned_cleanup[term]",
+        "recorded_reason": "Skipped: POSIX SIGTERM is a distinct native contract"
+      },
+      {
+        "test": "tests/integration/evidence/test_private_files_platform.py::test_posix_private_modes_are_restrictive",
+        "recorded_reason": "Skipped: POSIX mode bits are host-specific"
+      },
+      {
+        "test": "tests/unit/acp/test_acp_subprocess_env.py::test_default_policy_on_posix_does_not_fold_supplied_casing_in_the_agent_child_projection",
+        "recorded_reason": "Skipped: default policy follows os.name: POSIX is case-sensitive"
+      },
+      {
+        "test": "tests/unit/acp/test_launch_approval_cli.py::TestConfigFilePermissionsWiredIntoResolution::test_group_readable_env_gateway_fails_closed",
+        "recorded_reason": "Skipped: POSIX-only: permission bit checks"
+      },
+      {
+        "test": "tests/unit/acp/test_launch_approval_cli.py::TestConfigFilePermissionsWiredIntoResolution::test_owner_only_env_gateway_passes",
+        "recorded_reason": "Skipped: POSIX-only: permission bit checks"
+      },
+      {
+        "test": "tests/unit/acp/test_launch_approval_cli.py::TestRunGatewayCommand::test_run_gateway_rejects_insecure_env_gateway_permissions",
+        "recorded_reason": "Skipped: POSIX-only: permission bit checks"
+      },
+      {
+        "test": "tests/unit/acp/test_launch_approval_cli.py::TestWorkspaceRuntimeRootBootstrap::test_bootstrap_creates_runtime_root_at_resolved_workspace_target",
+        "recorded_reason": "Skipped: symlink creation unavailable"
+      },
+      {
+        "test": "tests/unit/acp/test_launch_approval_cli.py::TestWorkspaceRuntimeRootBootstrap::test_bootstrap_rejects_final_symlink_without_writing_target",
+        "recorded_reason": "Skipped: symlink creation unavailable"
+      },
+      {
+        "test": "tests/unit/acp/test_launch_approval_cli.py::TestWorkspaceRuntimeRootBootstrap::test_bootstrap_rejects_regular_file_runtime_root",
+        "recorded_reason": "Skipped: symlink creation unavailable"
+      },
+      {
+        "test": "tests/unit/acp/test_launch_audit.py::TestAuditAppend::test_created_file_has_restrictive_permissions",
+        "recorded_reason": "Skipped: POSIX-only: file mode check"
+      },
+      {
+        "test": "tests/unit/acp/test_launch_audit.py::TestAuditAppend::test_symlink_runtime_root_fails_without_writing_target",
+        "recorded_reason": "Skipped: symlink creation unavailable"
+      },
+      {
+        "test": "tests/unit/acp/test_launch_gate.py::TestConfigFilePermissions::test_posix_accepts_owner_only",
+        "recorded_reason": "Skipped: POSIX-only: permission bit checks"
+      },
+      {
+        "test": "tests/unit/acp/test_launch_gate.py::TestConfigFilePermissions::test_posix_rejects_group_readable",
+        "recorded_reason": "Skipped: POSIX-only: permission bit checks"
+      },
+      {
+        "test": "tests/unit/acp/test_launch_gate.py::TestResolveLaunchCandidateValidatesEnvGatewayPermissions::test_group_readable_env_gateway_fails_closed_before_credential_parsing",
+        "recorded_reason": "Skipped: POSIX-only: permission bit checks"
+      },
+      {
+        "test": "tests/unit/acp/test_launch_gate.py::TestResolveLaunchCandidateValidatesEnvGatewayPermissions::test_owner_only_env_gateway_passes_and_credentials_resolve",
+        "recorded_reason": "Skipped: POSIX-only: permission bit checks"
+      },
+      {
+        "test": "tests/unit/acp/test_operator_paths.py::test_symlink_resolved_before_containment_check",
+        "recorded_reason": "Skipped: symlink creation requires elevated privileges on this host"
+      },
+      {
+        "test": "tests/unit/acp/test_operator_registry_override.py::test_a_symlinked_override_is_refused_not_followed",
+        "recorded_reason": "Skipped: this host cannot create symlinks"
+      },
+      {
+        "test": "tests/unit/acp/test_stage_c_launch.py::test_a_symlink_at_the_ledger_path_is_refused",
+        "recorded_reason": "Skipped: symlink unavailable: [WinError 1314] A required privilege is not held by the client: 'C:\\\\Users\\\\pc\\\\AppData\\\\Local\\\\Temp\\\\pytest-of-pc\\\\pytest-23020\\\\test_a_symlink_at_the_ledger_p0\\\\elsewhe"
+      },
+      {
+        "test": "tests/unit/acp/test_stdio_ndjson.py::test_main5_runner_base_interpreter_probe",
+        "recorded_reason": "Skipped: runner-only process plant"
+      },
+      {
+        "test": "tests/unit/acp/test_stdio_ndjson.py::test_main5_runner_bash_guarded_probe",
+        "recorded_reason": "Skipped: runner-only process plant"
+      },
+      {
+        "test": "tests/unit/acp/test_stdio_ndjson.py::test_main5_runner_combined_no_site_probe",
+        "recorded_reason": "Skipped: runner-only process plant"
+      },
+      {
+        "test": "tests/unit/acp/test_stdio_ndjson.py::test_main5_runner_guard_exit_86_probe",
+        "recorded_reason": "Skipped: runner-only process plant"
+      },
+      {
+        "test": "tests/unit/acp/test_stdio_ndjson.py::test_main5_runner_guarded_pair_probe",
+        "recorded_reason": "Skipped: runner-only process plant"
+      },
+      {
+        "test": "tests/unit/acp/test_stdio_ndjson.py::test_main5_runner_no_site_probe",
+        "recorded_reason": "Skipped: runner-only process plant"
+      },
+      {
+        "test": "tests/unit/acp/test_stdio_ndjson.py::test_main5_runner_real_root_write_probe",
+        "recorded_reason": "Skipped: runner-only process plant"
+      },
+      {
+        "test": "tests/unit/acp/test_stdio_ndjson.py::test_main5_runner_version_probe",
+        "recorded_reason": "Skipped: runner-only process plant"
+      },
+      {
+        "test": "tests/unit/acp/test_trusted_paths.py::TestExclusionPolicyV1::test_exclusion_policy_posix_byte_sensitive",
+        "recorded_reason": "Skipped: POSIX-only: byte-sensitive exclusion matching"
+      },
+      {
+        "test": "tests/unit/acp/test_trusted_paths.py::TestRealPosixAdapter::test_real_posix_home_resolves",
+        "recorded_reason": "Skipped: POSIX-only: real pwd.getpwuid"
+      },
+      {
+        "test": "tests/unit/acp/test_trusted_paths.py::TestRealPosixAdapter::test_real_posix_trusted_roots_end_to_end",
+        "recorded_reason": "Skipped: POSIX-only: real end-to-end root resolution"
+      },
+      {
+        "test": "tests/unit/acp/test_trusted_paths.py::TestWorkspaceIdentity::test_identity_binds_lexical_path_and_target_change_time",
+        "recorded_reason": "Skipped: symlink creation requires elevated privileges"
+      },
+      {
+        "test": "tests/unit/acp/test_trusted_paths.py::TestWorkspaceIdentityRevalidation::test_revalidation_fails_after_workspace_directory_metadata_change",
+        "recorded_reason": "Skipped: POSIX-only: directory ctime changes on entry creation"
+      },
+      {
+        "test": "tests/unit/acp/test_trusted_paths.py::TestWorkspaceIdentityRevalidation::test_revalidation_fails_for_symlink_target_change",
+        "recorded_reason": "Skipped: symlink creation requires elevated privileges"
+      },
+      {
+        "test": "tests/unit/agent/test_runner.py::test_an_ordinary_file_symlink_into_the_runtime_tree_is_denied_by_its_resolved_target",
+        "recorded_reason": "Skipped: file symlink unavailable: [WinError 1314] A required privilege is not held by the client: 'C:\\\\Users\\\\pc\\\\AppData\\\\Local\\\\Temp\\\\pytest-of-pc\\\\pytest-23020\\\\test_an_ordinary_file_symlink_0\\\\.o"
+      },
+      {
+        "test": "tests/unit/agent/test_workspace_context.py::test_a_file_symlink_into_the_runtime_tree_is_excluded_and_an_ordinary_one_is_kept",
+        "recorded_reason": "Skipped: symlink creation is unavailable on this platform account: [WinError 1314] A required privilege is not held by the client: 'C:\\\\Users\\\\pc\\\\AppData\\\\Local\\\\Temp\\\\pytest-of-pc\\\\pytest-23020\\\\tes"
+      },
+      {
+        "test": "tests/unit/agent/test_workspace_context.py::test_a_file_symlink_to_a_runtime_tree_outside_the_workspace_is_excluded",
+        "recorded_reason": "Skipped: symlink creation is unavailable on this platform account: [WinError 1314] A required privilege is not held by the client: 'C:\\\\Users\\\\pc\\\\AppData\\\\Local\\\\Temp\\\\pytest-of-pc\\\\pytest-23020\\\\tes"
+      },
+      {
+        "test": "tests/unit/agent/test_workspace_context.py::test_a_file_symlink_to_a_secret_file_is_never_packed",
+        "recorded_reason": "Skipped: symlink creation is unavailable on this platform account: [WinError 1314] A required privilege is not held by the client: 'C:\\\\Users\\\\pc\\\\AppData\\\\Local\\\\Temp\\\\pytest-of-pc\\\\pytest-23020\\\\tes"
+      },
+      {
+        "test": "tests/unit/agent/test_workspace_context.py::test_a_symlink_loop_and_a_directory_symlink_into_the_runtime_tree_are_never_read",
+        "recorded_reason": "Skipped: symlink creation is unavailable on this platform account: [WinError 1314] A required privilege is not held by the client: 'C:\\\\Users\\\\pc\\\\AppData\\\\Local\\\\Temp\\\\pytest-of-pc\\\\pytest-23020\\\\tes"
+      },
+      {
+        "test": "tests/unit/docs/test_open_work_pool_hygiene.py::test_promoted_plan_file_rejects_an_archive_link_that_resolves_outside",
+        "recorded_reason": "Skipped: cannot create a symlink here: [WinError 1314] A required privilege is not held by the client: 'C:\\\\Users\\\\pc\\\\AppData\\\\Local\\\\Temp\\\\pytest-of-pc\\\\pytest-23020\\\\test_promoted_plan_file_reject0"
+      },
+      {
+        "test": "tests/unit/evidence/test_private_files.py::test_posix_modes_after_create",
+        "recorded_reason": "Skipped: POSIX mode bits checked on POSIX hosts"
+      },
+      {
+        "test": "tests/unit/evidence/test_private_files.py::test_rejects_symlink_parent_escape",
+        "recorded_reason": "Skipped: symlink unavailable: [WinError 1314] A required privilege is not held by the client: '<local path>' -"
+      },
+      {
+        "test": "tests/unit/guardrails/test_file_policy.py::test_a_symlinked_ignore_file_is_never_followed",
+        "recorded_reason": "Skipped: symlink creation is unavailable on this platform account: [WinError 1314] A required privilege is not held by the client: 'C:\\\\Users\\\\pc\\\\AppData\\\\Local\\\\Temp\\\\pytest-of-pc\\\\pytest-23020\\\\tes"
+      },
+      {
+        "test": "tests/unit/guardrails/test_runtime_tree.py::test_the_component_compare_is_exact_on_posix",
+        "recorded_reason": "Skipped: the exact compare is the POSIX rule"
+      },
+      {
+        "test": "tests/unit/loops/test_tools.py::test_read_file_range_blocks_an_ordinary_file_symlink_into_the_runtime_tree",
+        "recorded_reason": "Skipped: file symlink unavailable: [WinError 1314] A required privilege is not held by the client: 'C:\\\\Users\\\\pc\\\\AppData\\\\Local\\\\Temp\\\\pytest-of-pc\\\\pytest-23020\\\\test_read_file_range_blocks_an1\\\\.o"
+      },
+      {
+        "test": "tests/unit/loops/test_tools.py::test_read_file_range_blocks_symlink_escape",
+        "recorded_reason": "Skipped: symlink creation unsupported on this platform"
+      },
+      {
+        "test": "tests/unit/mcp/test_client_config.py::test_mcp_posix_ignores_injected_pathext_and_systemroot_and_resolves_the_exact_filename",
+        "recorded_reason": "Skipped: POSIX resolves the exact filename only"
+      },
+      {
+        "test": "tests/unit/mcp/test_client_config.py::test_posix_case_distinct_env_names_are_not_duplicates",
+        "recorded_reason": "Skipped: POSIX env names are case-sensitive"
+      },
+      {
+        "test": "tests/unit/tools/test_plan117_custody_contract.py::test_sha256_file_streams_and_rejects_symlink",
+        "recorded_reason": "Skipped: symlinks unavailable on this host"
+      },
+      {
+        "test": "tests/unit/tools/test_plan117_custody_relay.py::test_default_unix_control_socket_stays_under_sun_path_with_long_custody_root",
+        "recorded_reason": "Skipped: AF_UNIX sun_path bound is POSIX-only"
+      },
+      {
+        "test": "tests/unit/tools/test_plan117_custody_relay.py::test_post_exit_broken_pipe_preserves_child_exit_and_summary",
+        "recorded_reason": "Skipped: pytest FD capture makes post-exit stdout reads raise OSError on win32"
+      },
+      {
+        "test": "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py::test_the_real_rehearsal_passes_through_the_pinned_acpx",
+        "recorded_reason": "Skipped: explicit only: a skip is never rehearsal evidence; the receipt is"
+      },
+      {
+        "test": "tests/unit/tools/test_process_tree.py::test_popen_refuses_to_share_the_callers_session",
+        "recorded_reason": "Skipped: process groups are the POSIX path"
+      },
+      {
+        "test": "tests/unit/tools/test_registry_maintenance.py::test_posix_presence_is_never_identity_proof",
+        "recorded_reason": "Skipped: the weaker POSIX capability"
+      },
+      {
+        "test": "tests/unit/tools/test_run_plan117_custody_feasibility.py::test_path_containment_and_symlink_rejection",
+        "recorded_reason": "Skipped: symlink creation unavailable"
+      }
+    ]
+  },
+  "deselected": {
+    "count": 165,
+    "kind": "source-derived: the run records no reason, so each test's markers (collection at 70c809e, run collect-all-markers) are intersected with pyproject's default selection. UNKNOWN means no marker explains it.",
+    "unknown": [],
+    "tests": [
+      {
+        "test": "tests/e2e/acp/test_plan996_authorized_launch.py::test_unapproved_capture_leaves_fixture_unmutated",
+        "excluded_by": [
+          "e2e"
+        ]
+      },
+      {
+        "test": "tests/e2e/acp/test_plan996_authorized_launch.py::test_ordinary_session_evidence",
+        "excluded_by": [
+          "e2e"
+        ]
+      },
+      {
+        "test": "tests/e2e/acp/test_plan996_authorized_launch.py::test_elevated_session_evidence_verification",
+        "excluded_by": [
+          "e2e"
+        ]
+      },
+      {
+        "test": "tests/e2e/acp/test_plan996_authorized_launch.py::test_plan996_ordinary_session_evidence_verification",
+        "excluded_by": [
+          "e2e"
+        ]
+      },
+      {
+        "test": "tests/e2e/acp/test_plan996_authorized_launch.py::test_plan996_elevated_session_evidence_verification",
+        "excluded_by": [
+          "e2e"
+        ]
+      },
+      {
+        "test": "tests/e2e/acp/test_spawned_agent_live.py::test_spawned_acp_agent_live_docstring_turn",
+        "excluded_by": [
+          "e2e"
+        ]
+      },
+      {
+        "test": "tests/e2e/evidence/test_collector_staged_live.py::test_staged_collector_missing_render_stays_indeterminate",
+        "excluded_by": [
+          "requires_acpx",
+          "requires_os_keyring",
+          "requires_windows_desktop",
+          "requires_zed"
+        ]
+      },
+      {
+        "test": "tests/e2e/evidence/test_collector_staged_live.py::test_staged_collector_client_crashed_without_render",
+        "excluded_by": [
+          "requires_acpx",
+          "requires_os_keyring",
+          "requires_windows_desktop",
+          "requires_zed"
+        ]
+      },
+      {
+        "test": "tests/e2e/evidence/test_collector_staged_live.py::test_staged_determinate_paths_require_operator_exercises",
+        "excluded_by": [
+          "requires_acpx",
+          "requires_os_keyring",
+          "requires_windows_desktop",
+          "requires_zed"
+        ]
+      },
+      {
+        "test": "tests/e2e/evidence_handoff/test_three_agent_live.py::test_three_agent_live_evidence_against_real_native_clients",
+        "excluded_by": [
+          "requires_real_agents"
+        ]
+      },
+      {
+        "test": "tests/e2e/test_client_mcp_acpx.py::test_scratch_ignore_rules_are_in_force_before_acpx_capture",
+        "excluded_by": [
+          "e2e",
+          "requires_acpx"
+        ]
+      },
+      {
+        "test": "tests/e2e/test_client_mcp_acpx.py::test_empty_mcp_servers_array_is_exact_noop_via_acpx",
+        "excluded_by": [
+          "e2e",
+          "requires_acpx"
+        ]
+      },
+      {
+        "test": "tests/e2e/test_client_mcp_acpx.py::test_extract_safe_evidence_from_fixture_transcript_does_not_require_live_acpx",
+        "excluded_by": [
+          "e2e",
+          "requires_acpx"
+        ]
+      },
+      {
+        "test": "tests/integration/acp/test_bootstrap_live_redis.py::test_live_bootstrap_builds_server_with_real_redis_ping",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/acp/test_bootstrap_live_redis.py::test_live_bootstrap_fails_fast_when_redis_unreachable",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/acp/test_bootstrap_live_redis.py::test_live_bootstrap_rejects_password_redis_url_before_connect",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/acp/test_launch_approvals_windows_keyring.py::test_the_real_backend_refuses_one_character_over_the_blob_limit",
+        "excluded_by": [
+          "requires_os_keyring_write"
+        ]
+      },
+      {
+        "test": "tests/integration/acp/test_launch_approvals_windows_keyring.py::test_a_durable_record_round_trips_replaces_and_revokes[1280]",
+        "excluded_by": [
+          "requires_os_keyring_write"
+        ]
+      },
+      {
+        "test": "tests/integration/acp/test_launch_approvals_windows_keyring.py::test_a_durable_record_round_trips_replaces_and_revokes[1281]",
+        "excluded_by": [
+          "requires_os_keyring_write"
+        ]
+      },
+      {
+        "test": "tests/integration/acp/test_launch_approvals_windows_keyring.py::test_a_durable_record_round_trips_replaces_and_revokes[1800]",
+        "excluded_by": [
+          "requires_os_keyring_write"
+        ]
+      },
+      {
+        "test": "tests/integration/acp/test_launch_approvals_windows_keyring.py::test_a_policy_sized_one_shot_is_consumed_once",
+        "excluded_by": [
+          "requires_os_keyring_write"
+        ]
+      },
+      {
+        "test": "tests/integration/acp/test_server_stream_live_redis.py::test_live_ndjson_session_prompt_permission_flow_persists_plan_to_redis",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/acp/test_server_stream_live_redis.py::test_live_ndjson_server_restart_replays_approval_on_second_server",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/agent/test_redis_live_agent.py::test_live_redis_store_roundtrips_plan_record_with_full_fidelity",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/agent/test_redis_live_agent.py::test_live_redis_plan_expires_after_real_ttl",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/agent/test_redis_live_agent.py::test_live_agent_runner_replays_plan_from_redis_with_fresh_runner",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/agent/test_redis_live_agent.py::test_live_redis_keys_are_namespaced_and_teardown_clears_them",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/agent/test_redis_live_agent.py::test_live_agent_runner_rejects_approval_when_redis_plan_missing",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/agent/test_redis_live_agent.py::test_live_two_run_ids_do_not_collide_in_redis",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/agent/test_redis_live_agent.py::test_live_multi_turn_planning_persists_final_plan_and_replays_without_gateway",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence/test_acpx_capture_live.py::test_acpx_capture_streams_into_redaction_gate_without_raw_transcript",
+        "excluded_by": [
+          "e2e",
+          "requires_gateway",
+          "requires_os_keyring"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence/test_collector_acpx_live.py::test_collector_acpx_live_completion_without_render_claim",
+        "excluded_by": [
+          "requires_acpx"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence/test_collector_dwm_live.py::test_live_dwm_physical_bounds_capture_of_zed_window",
+        "excluded_by": [
+          "requires_windows_desktop"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence/test_collector_redaction_live.py::test_collector_redaction_live_os_keyring_and_public_gate",
+        "excluded_by": [
+          "requires_os_keyring"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence/test_collector_zed_logs_live.py::test_live_zed_crash_log_pre_run_exclusion_and_bounded_watch",
+        "excluded_by": [
+          "requires_zed"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence/test_runtime_inputs_live.py::test_runtime_inputs_from_real_resolver_and_os_keyring",
+        "excluded_by": [
+          "requires_os_keyring"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_authenticated_service.py::test_reviewer_append_success_and_implementer_rejection_live",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_authenticated_service.py::test_cross_principal_session_id_is_rejected_live",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_authenticated_service.py::test_invalid_origin_rejected_before_authenticated_append",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_capability_activation.py::test_activation_blocked_until_all_active_readers_report_support_live",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_capability_activation.py::test_non_admin_cannot_retire_or_activate_writer_live",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_capability_activation.py::test_retire_principal_feeds_retired_recipient_rejection_live",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_capability_activation.py::test_delivery_status_facts_only_and_warning_delivery_live",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_capability_activation.py::test_unsupported_schema_whole_query_no_token_live",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_delivery_service.py::test_delivery_read_confirm_unread_and_redelivery_live",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_delivery_service.py::test_retired_wildcard_and_unknown_recipients_rejected_live",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_delivery_service.py::test_hidden_commitment_not_disclosed_live",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_docker_lifecycle.py::test_docker_postgres_adapter_and_factory_are_registered",
+        "excluded_by": [
+          "requires_evidence_handoff_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_docker_lifecycle.py::test_docker_postgres_lifecycle_loopback_restart_persistence",
+        "excluded_by": [
+          "requires_evidence_handoff_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_integrity_recovery.py::test_chain_break_latches_survives_restart_and_blocks_append",
+        "excluded_by": [
+          "requires_evidence_handoff_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_integrity_recovery.py::test_induced_failure_classes_latch[sequence_duplicate-sequence_duplicate-1]",
+        "excluded_by": [
+          "requires_evidence_handoff_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_integrity_recovery.py::test_induced_failure_classes_latch[sequence_gap-sequence_gap-1]",
+        "excluded_by": [
+          "requires_evidence_handoff_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_integrity_recovery.py::test_induced_failure_classes_latch[counter_head_mismatch-counter_head_mismatch-2]",
+        "excluded_by": [
+          "requires_evidence_handoff_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_integrity_recovery.py::test_induced_failure_classes_latch[ledger_instance_mismatch-ledger_instance_mismatch-0]",
+        "excluded_by": [
+          "requires_evidence_handoff_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_integrity_recovery.py::test_induced_failure_classes_latch[rollback_divergence-rollback_divergence-2]",
+        "excluded_by": [
+          "requires_evidence_handoff_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_integrity_recovery.py::test_latch_precedes_feature_disable_and_postgres_unavailable",
+        "excluded_by": [
+          "requires_evidence_handoff_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_integrity_recovery.py::test_linked_replacement_recovery_lineage",
+        "excluded_by": [
+          "requires_evidence_handoff_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_postgres_store.py::test_first_entry_null_predecessor_and_counter_head",
+        "excluded_by": [
+          "requires_evidence_handoff_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_postgres_store.py::test_same_key_idempotency_and_conflicting_retry",
+        "excluded_by": [
+          "requires_evidence_handoff_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_postgres_store.py::test_recipient_constraints_enforced_by_database",
+        "excluded_by": [
+          "requires_evidence_handoff_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_postgres_store.py::test_concurrent_appends_are_gapless",
+        "excluded_by": [
+          "requires_evidence_handoff_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_postgres_store.py::test_rollback_leaves_counter_unchanged",
+        "excluded_by": [
+          "requires_evidence_handoff_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_redaction_service.py::test_reviewer_success_sanitizes_canaries_and_supports_read",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_redaction_service.py::test_final_scan_failure_leaves_no_row_or_sequence",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_redaction_service.py::test_implementer_client_authority_unknown_recipient_attestation_rejected",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_service_process.py::test_official_mcp_client_initializes_and_lists_only_allowed_tools",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_service_process.py::test_official_client_sees_origin_rejection_before_session",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_service_process.py::test_running_service_binds_loopback_only",
+        "excluded_by": [
+          "requires_evidence_handoff_service"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_signing_key_custody_restart.py::test_r1_pre_crash_token_validates_after_taskkill_restart",
+        "excluded_by": [
+          "requires_evidence_handoff_service",
+          "requires_os_keyring_write"
+        ]
+      },
+      {
+        "test": "tests/integration/evidence_handoff/test_signing_key_custody_restart.py::test_r3_deleted_keyring_entry_with_instance_refuses_start_no_remint",
+        "excluded_by": [
+          "requires_evidence_handoff_service",
+          "requires_os_keyring_write"
+        ]
+      },
+      {
+        "test": "tests/integration/mcp/test_client_mcp_live.py::test_terraform_stdio_catalog_distributions_and_negotiation",
+        "excluded_by": [
+          "requires_mcp_stdio"
+        ]
+      },
+      {
+        "test": "tests/integration/mcp/test_client_mcp_live.py::test_context7_http_catalog_distributions_accept_and_negotiation",
+        "excluded_by": [
+          "requires_mcp_http"
+        ]
+      },
+      {
+        "test": "tests/integration/mcp/test_client_sdk_real.py::test_real_sdk_injected_httpx2_flags_and_context7_initialize",
+        "excluded_by": [
+          "requires_mcp_http"
+        ]
+      },
+      {
+        "test": "tests/integration/mcp/test_client_sdk_real.py::test_real_httpx2_streamed_byte_budget_via_adapter",
+        "excluded_by": [
+          "requires_mcp_http"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tool_state_live.py::test_live_redis_records_and_returns_search_provenance_for_same_run",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tool_state_live.py::test_live_redis_cross_run_provenance_lookup_is_isolated",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tool_state_live.py::test_live_redis_search_provenance_key_has_bounded_ttl",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tool_state_live.py::test_live_redis_call_cap_increment_is_atomic_across_concurrent_clients",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tool_state_live.py::test_live_redis_call_cap_counters_are_isolated_per_run_and_tool_class",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tool_state_live.py::test_live_redis_call_cap_key_has_bounded_ttl",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tool_state_live.py::test_live_redis_state_store_fails_closed_when_backend_unreachable",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tool_state_live.py::test_live_redis_store_uses_direct_redis_client_not_agent_wrapper",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tools_live.py::test_web_search_route_served_over_real_http_with_bearer_auth",
+        "excluded_by": [
+          "requires_live_gateway"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tools_live.py::test_search_then_extract_provenance_sequence_over_real_http",
+        "excluded_by": [
+          "requires_live_gateway"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tools_live.py::test_web_extract_rejects_url_without_prior_search_over_real_http",
+        "excluded_by": [
+          "requires_live_gateway"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tools_live.py::test_package_lookup_route_served_over_real_http",
+        "excluded_by": [
+          "requires_live_gateway"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tools_live.py::test_security_advisory_route_served_over_real_http",
+        "excluded_by": [
+          "requires_live_gateway"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tools_live.py::test_core_routes_remain_unaffected_alongside_tool_dependencies",
+        "excluded_by": [
+          "requires_live_gateway"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tools_live.py::test_unknown_route_still_returns_not_found",
+        "excluded_by": [
+          "requires_live_gateway"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tools_live.py::test_staging_blocked_domain_search_is_denied",
+        "excluded_by": [
+          "requires_gateway"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tools_live.py::test_staging_extract_without_prior_search_is_denied",
+        "excluded_by": [
+          "requires_gateway"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tools_live.py::test_staging_web_search_rejects_package_or_advisory_reason[PACKAGE_VERSION-package]",
+        "excluded_by": [
+          "requires_gateway"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tools_live.py::test_staging_web_search_rejects_package_or_advisory_reason[SECURITY_ADVISORY-advisory]",
+        "excluded_by": [
+          "requires_gateway"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tools_live.py::test_staging_call_cap_overage_is_denied",
+        "excluded_by": [
+          "requires_gateway"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tools_live.py::test_staging_package_lookup_success_path",
+        "excluded_by": [
+          "requires_gateway"
+        ]
+      },
+      {
+        "test": "tests/integration/optimus_gateway/test_gateway_tools_live.py::test_staging_security_advisory_success_path",
+        "excluded_by": [
+          "requires_gateway"
+        ]
+      },
+      {
+        "test": "tests/integration/telemetry/test_phoenix_live.py::test_live_phoenix_receives_real_otlp_batch_with_required_fields",
+        "excluded_by": [
+          "requires_phoenix"
+        ]
+      },
+      {
+        "test": "tests/integration/telemetry/test_phoenix_live.py::test_live_otlp_returned_failure_against_loopback_non_listening_port",
+        "excluded_by": [
+          "requires_phoenix"
+        ]
+      },
+      {
+        "test": "tests/integration/telemetry/test_redis_telemetry_live.py::test_live_ensure_series_sets_retention_on_new_and_existing_keys",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/telemetry/test_redis_telemetry_live.py::test_live_record_metric_writes_samples_readable_via_ts_range",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/telemetry/test_redis_telemetry_live.py::test_live_write_run_metadata_sets_hash_fields_and_ttl",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/telemetry/test_redis_telemetry_live.py::test_live_telemetry_keys_are_namespaced_and_teardown_clears_them",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/telemetry/test_usage_redis_live.py::test_live_redis_provider_usage_persistence_matches_response_and_ledger",
+        "excluded_by": [
+          "requires_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/tools/test_plan12_memory_redis_probe.py::test_the_shared_server_is_refused_on_every_database",
+        "excluded_by": [
+          "requires_plan12_probe_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/tools/test_plan12_memory_redis_probe.py::test_synthetic_k2_on_the_released_instance",
+        "excluded_by": [
+          "requires_plan12_probe_redis"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_migrations_are_pinned_and_the_ledger_instance_is_stable",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_a_batch_commits_atomically_and_reads_back_from_a_new_connection",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_a_lost_acknowledgement_replays_idempotently",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_a_contradictory_duplicate_is_evidence_and_an_identical_alias_is_linked",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_facts_are_immutable_in_the_database[UPDATE_optimus_usage.capture_event_SET_kind____x__WHERE_stream_id____s]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_facts_are_immutable_in_the_database[DELETE_FROM_optimus_usage.capture_event_WHERE_stream_id____s]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_facts_are_immutable_in_the_database[TRUNCATE_optimus_usage.capture_event_CASCADE]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_a_sender_ahead_of_the_ledger_starts_with_an_unavailable_span_and_a_different_overlap_is_refused",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_concurrent_drains_of_one_batch_commit_it_once",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_an_outage_is_retryable_and_committed_rows_survive_a_restart",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_host_delivery_through_the_real_route_commits_acknowledges_and_compacts",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_the_host_delivers_over_http_to_a_gateway_process_that_alone_holds_the_ledger_credential",
+        "excluded_by": [
+          "requires_os_keyring",
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes0-False-reasons0]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes1-False-reasons1]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes2-True-reasons2]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes3-False-reasons3]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes4-False-reasons4]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_physical_evidence_decides_certification[outcomes5-False-reasons5]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_each_host_request_is_answered_by_its_own_gateway_request[False]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_each_host_request_is_answered_by_its_own_gateway_request[True]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_a_late_integrity_failure_from_production_settlement_downgrades_a_certified_epoch",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_a_stale_certification_waits_for_the_epoch_and_never_erases_a_downgrade",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_a_late_receipt_or_a_ledger_conflict_downgrades_a_certified_epoch",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_an_alias_reserves_its_attempt_identity_sequentially_and_concurrently",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_a_held_stream_lock_makes_ingest_retryable_within_its_bound",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_a_receipt_with_no_recorded_intent_is_never_certified",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_an_outage_before_dispatch_grows_a_warned_backlog_that_catches_up_beside_a_later_complete_epoch",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[torn]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[flushed]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[before_commit]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[before_ack]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_durable_capture_postgres.py::test_a_killed_writer_recovers_through_production_delivery_with_exact_rows[before_compaction]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_migration_002_upgrades_a_001_ledger_in_place_and_a_reader_never_migrates",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_snapshots_read_back_independently_keep_their_first_capture_and_are_immutable[UPDATE_optimus_usage.price_snapshot_SET_body________WHERE_sna",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_snapshots_read_back_independently_keep_their_first_capture_and_are_immutable[DELETE_FROM_optimus_usage.price_snapshot_WHERE_snapshot_id___",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_snapshots_read_back_independently_keep_their_first_capture_and_are_immutable[TRUNCATE_optimus_usage.price_snapshot]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_the_report_charges_each_canonical_receipt_once_and_shows_aliases_and_conflicts",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_complete_auto_turn_is_definitive_and_a_late_receipt_downgrades_it",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_ingest_between_pages_answers_report_changed",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_turn_committed_in_the_middle_of_a_read_never_tears_the_page",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_held_lock_expires_within_the_report_budget",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_an_outage_is_unavailable_and_the_report_returns_after_a_restart",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_replaced_ledger_answers_report_changed",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_the_host_reads_a_report_over_real_http_through_the_production_transport",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_the_host_reads_a_report_from_a_gateway_process_that_alone_holds_the_ledger_credential",
+        "excluded_by": [
+          "requires_os_keyring",
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_turn_count_alone_never_proves_a_receipt_was_delivered",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_gap_in_a_scope_stream_withholds_the_definitive_total",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_the_whole_read_ends_within_the_report_budget[0.9-False]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_the_whole_read_ends_within_the_report_budget[30-True]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_frontier_that_does_not_cover_the_scope_is_never_definitive[_lambda_0]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_frontier_that_does_not_cover_the_scope_is_never_definitive[_lambda_1]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_frontier_that_does_not_cover_the_scope_is_never_definitive[_lambda_2]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_an_empty_frontier_never_certifies_an_empty_scope",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_the_hosts_own_context_and_report_scope_make_a_delivered_turn_definitive[fixed]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_the_hosts_own_context_and_report_scope_make_a_delivered_turn_definitive[auto]",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_session_less_overhead_on_the_hosts_stream_is_unallocated_not_charged_to_the_session",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/integration/usage/test_savings_report_postgres.py::test_overhead_before_a_sessions_first_turn_is_still_shown_unallocated",
+        "excluded_by": [
+          "requires_plan12_capture_postgres"
+        ]
+      },
+      {
+        "test": "tests/investigation/evidence/test_zed_scheme_live.py::test_zed_scheme_live_investigation",
+        "excluded_by": [
+          "evidence_investigation",
+          "requires_zed"
+        ]
+      },
+      {
+        "test": "tests/investigation/evidence/test_zed_uia_sendinput_live.py::test_zed_uia_sendinput_investigation",
+        "excluded_by": [
+          "evidence_investigation",
+          "requires_windows_desktop",
+          "requires_zed"
+        ]
+      },
+      {
+        "test": "tests/investigation/evidence/test_zed_user_data_live.py::test_zed_user_data_live_investigation",
+        "excluded_by": [
+          "evidence_investigation",
+          "requires_zed"
+        ]
+      }
+    ]
+  },
+  "class_sweep": {
+    "question": "Does a test this run did not exercise build a stale double for code this branch changed?",
+    "method": "a text search of each deselected test file for the changed modules and for double constructors; the hits were then read. Not executed.",
+    "deselected_files_naming_changed_modules": {
+      "tests/e2e/evidence/test_collector_staged_live.py": {
+        "changed_modules": [
+          "optimus.acp.launch_gate"
+        ],
+        "doubles": 0
+      },
+      "tests/integration/acp/test_bootstrap_live_redis.py": {
+        "changed_modules": [
+          "optimus.acp.bootstrap"
+        ],
+        "doubles": 0
+      },
+      "tests/integration/acp/test_server_stream_live_redis.py": {
+        "changed_modules": [
+          "optimus.acp.server"
+        ],
+        "doubles": 0
+      },
+      "tests/integration/evidence/test_collector_redaction_live.py": {
+        "changed_modules": [
+          "optimus.acp.launch_gate"
+        ],
+        "doubles": 0
+      },
+      "tests/integration/evidence/test_runtime_inputs_live.py": {
+        "changed_modules": [
+          "optimus.acp.launch_gate"
+        ],
+        "doubles": 0
+      },
+      "tests/integration/optimus_gateway/test_gateway_tools_live.py": {
+        "changed_modules": [
+          "optimus_gateway.server"
+        ],
+        "doubles": 0
+      },
+      "tests/integration/usage/test_durable_capture_postgres.py": {
+        "changed_modules": [
+          "optimus.usage.capture_delivery",
+          "optimus.usage.durable_capture",
+          "optimus.usage.turn_settlement",
+          "optimus_gateway.server",
+          "optimus_gateway.usage_capture",
+          "optimus_gateway.usage_store",
+          "optimus_security.usage_capture_contract"
+        ],
+        "doubles": 0
+      },
+      "tests/integration/usage/test_savings_report_postgres.py": {
+        "changed_modules": [
+          "optimus.usage.durable_capture",
+          "optimus.usage.turn_settlement",
+          "optimus_gateway.server",
+          "optimus_gateway.usage_price_snapshots",
+          "optimus_gateway.usage_report",
+          "optimus_gateway.usage_store",
+          "optimus_model_policy.savings_references",
+          "optimus_security.usage_capture_contract",
+          "optimus_security.usage_report_contract"
+        ],
+        "doubles": 2
+      }
+    },
+    "callers_of_gateway_usage_in_src_tests_tools": [
+      "src/optimus_gateway/responses.py (2, real config)",
+      "tests/unit/optimus_gateway/test_usage_price_snapshots.py (sets model_policy)",
+      "tests/unit/tools/test_plan12_memory_harness.py (fixed in 9a0c5a1)"
+    ],
+    "callers_of_the_renamed_report_method": "SavingsReports.markdown became answer in 70c809e: spec.py and test_savings_report.py are its only callers; both updated, and the logging-surface manifest key in 6124a90.",
+    "collected_without_error": "All 11,745 tests collect at 70c809e, the deselected ones included, so none fails on import. 6124a90 differs from it only in the logging-surface manifest's key, which no test collection reads as source.",
+    "run_elsewhere": "57 of the deselected tests are the Postgres tier, run as db-tier-final and boundary-*-final at 7cce51c.",
+    "not_exercised": "The other 108 deselected tests need Redis, a live Gateway, MCP, acpx, Zed, a keyring, Evidence Handoff services or real agents. No run on this branch exercised them."
+  }
+}

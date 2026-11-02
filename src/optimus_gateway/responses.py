@@ -6,7 +6,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from optimus_gateway import request_diagnostics, usage_capture
+from optimus_gateway import request_diagnostics, usage_capture, usage_price_snapshots
 from optimus_gateway.model_mapping import resolve_model_id
 from optimus_gateway.model_policy import (
     AdmittedRequest,
@@ -380,7 +380,7 @@ def _logged_usage(usage: dict[str, Any], policy: GatewayModelPolicy | None) -> d
 def _gateway_usage(
     *, config: GatewayServiceConfig, model: str, provider_result: ProviderMessageResult, gateway_request_id: str
 ) -> dict[str, Any]:
-    return {
+    return usage_price_snapshots.stamp({
         "gateway_request_id": gateway_request_id,
         "provider": config.provider,
         "provider_request_id": provider_result.message_id,
@@ -397,7 +397,7 @@ def _gateway_usage(
         "reasoning_tokens": provider_result.reasoning_tokens,
         "cached_tokens": provider_result.cached_tokens,
         "cache_age_seconds": provider_result.cache_age_seconds,
-    }
+    }, config.model_policy)
 
 
 def policy_refusal(exc: ModelPolicyRefusal) -> tuple[int, dict[str, Any]]:

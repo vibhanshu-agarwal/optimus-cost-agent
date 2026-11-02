@@ -50,6 +50,11 @@ ATTEMPT_RECEIPT = "attempt.receipt"
 INTEGRITY_FAILURE = "integrity.failure"
 GATEWAY_ATTEMPT_INTENT = "gateway.attempt.intent"
 GATEWAY_ATTEMPT_OUTCOME = "gateway.attempt.outcome"
+# Plan 12.9 (ADR-034). A host writes TURN_REPORT_CONTEXT only to a Gateway whose usage-report capabilities list
+# `usage_report_contract.FEATURE_REPORT_CONTEXT`: an older Gateway refuses the kind, which stops the stream's delivery.
+TURN_REPORT_CONTEXT = "turn.report_context"
+REGISTRY_SNAPSHOT = "gateway.registry.snapshot"
+REFERENCE_SNAPSHOT = "gateway.reference.snapshot"
 
 STAGES = frozenset({"planning", "answer", "summarization", "classification", "operation"})
 OUTCOMES = frozenset({"completed", "failed", "not_sent", "rejected", "uncertain", "unattributed"})
@@ -59,6 +64,7 @@ _HEX64 = re.compile(r"[0-9a-f]{64}")
 _DECIMAL = re.compile(r"(0|[1-9][0-9]{0,30})(\.[0-9]{1,30})?")
 _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(\+00:00|Z)")
 _DIGEST = re.compile(r"hex:[0-9a-f]{64}")
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 PURPOSE = re.compile(r"[a-z][a-z0-9_]*(\.[a-z0-9_]+)+")
 
 Check = Callable[[object], bool]
@@ -120,6 +126,34 @@ def _usage(value: object) -> bool:
     return value is None or _conforms(value, _USAGE_SCHEMA, _USAGE_OPTIONAL)
 
 
+def _object(schema: Mapping[str, Check]) -> Check:
+    return lambda value: _conforms(value, schema)
+
+
+def _objects(schema: Mapping[str, Check]) -> Check:
+    return lambda value: isinstance(value, list) and len(value) <= MAX_LIST and all(_conforms(item, schema) for item in value)
+
+
+_SNAPSHOT_ID = _matches(_DIGEST)
+_DATE_ = _optional(_matches(_DATE))
+# A registry snapshot: the actual side's tiers, roles and list prices, for provenance and tier attribution only.
+_REGISTRY_ENTRY: dict[str, Check] = {
+    "model": _S, "tier": _S_, "roles": _strings, "input_usd_per_million": _USD_, "output_usd_per_million": _USD_,
+    # The approved route: its endpoints' providers and quantizations, in order, and its routing switches.
+    "route": _object({"providers": _strings, "quantizations": _optional_strings, "allow_fallbacks": _B,
+                      "require_parameters": _B}),
+}
+# A reference snapshot: `optimus_model_policy.savings_references.Reference` as canonical JSON. The ledger recomputes its ID.
+_CATEGORY_PRICES: dict[str, Check] = {"input": _USD_, "output": _USD_, "cached_input": _USD_}
+_REFERENCE: dict[str, Check] = {
+    "id": _S, "display": _S, "provider": _S_, "unit": _one_of(frozenset({"usd_per_million_tokens"})),
+    "prices": _object(_CATEGORY_PRICES),
+    "tiers": _objects({"min_input_tokens": _N, "prices": _object(_CATEGORY_PRICES)}),
+    "reasoning_billed_as_output": _optional(_B),
+    "reasoning_source": _optional(_object({"url": _S, "quote": _S, "fetched_on": _matches(_DATE)})),
+    "source": _object({"url": _S_, "evidence": _S_, "revision": _S_, "price_as_of": _DATE_}),
+}
+
 SCHEMAS: dict[str, dict[str, Check]] = {
     STREAM_START: {"kind": _S, "at": _AT},
     STREAM_END: {"kind": _S, "at": _AT, "open_epochs": _epoch_ids},
@@ -160,13 +194,22 @@ SCHEMAS: dict[str, dict[str, Check]] = {
         "kind": _S, "at": _AT, "gateway_request_id": _S, "attempt": _N, "outcome": _one_of(OUTCOMES), "http_status": _N_,
         "cost_usd": _USD_, "billing_units": _N_, "intent_confirmed": _B,
     },
+    TURN_REPORT_CONTEXT: {
+        "kind": _S, "at": _AT, "epoch_id": _ID, "session_id": _S_, "turn_id": _S,
+        "selection": _one_of(frozenset({"auto", "fixed"})), "registry_hash": _S_, "strategy": _S_,
+    },
+    REGISTRY_SNAPSHOT: {
+        "kind": _S, "at": _AT, "snapshot_id": _SNAPSHOT_ID, "registry_hash": _S, "price_as_of": _DATE_,
+        "entries": _objects(_REGISTRY_ENTRY),
+    },
+    REFERENCE_SNAPSHOT: {"kind": _S, "at": _AT, "snapshot_id": _SNAPSHOT_ID, "reference": _object(_REFERENCE)},
 }
 _SHARED_KINDS = frozenset({STREAM_START, STREAM_END, GAP_KIND})
 KINDS_BY_WRITER: Mapping[str, frozenset[str]] = {
     "host": _SHARED_KINDS
     | {EPOCH_BEGIN, EPOCH_TERMINAL, EPOCH_IDENTITIES, EPOCH_CLOSE, INVOCATION_OPEN, INVOCATION_END, ATTEMPT_INTENT,
-       ATTEMPT_RECEIPT, INTEGRITY_FAILURE},
-    "gateway": _SHARED_KINDS | {GATEWAY_ATTEMPT_INTENT, GATEWAY_ATTEMPT_OUTCOME},
+       ATTEMPT_RECEIPT, INTEGRITY_FAILURE, TURN_REPORT_CONTEXT},
+    "gateway": _SHARED_KINDS | {GATEWAY_ATTEMPT_INTENT, GATEWAY_ATTEMPT_OUTCOME, REGISTRY_SNAPSHOT, REFERENCE_SNAPSHOT},
 }
 _REQUEST_KEYS = frozenset({"schema_version", "writer", "stream_id", "ledger_instance", "after", "records"})
 _ACK_KEYS = frozenset({"status", "ledger_instance", "stream_id", "sequence", "digest", "conflicts"})
@@ -199,7 +242,22 @@ def validate_payload(payload: object, *, writer: str) -> str:
         raise ContractError("payload")
     if kind == ATTEMPT_RECEIPT:
         validate_receipt(payload)  # type: ignore[arg-type]
+    if kind in SNAPSHOT_VERSIONS and payload["snapshot_id"] != snapshot_id(kind, payload):  # type: ignore[index, arg-type]
+        raise ContractError("payload")
     return kind
+
+
+# Snapshot IDs are derived from content alone (not `at`), so the same configuration captured again is the same snapshot.
+# The reference version and body match `optimus_model_policy.savings_references.Reference.snapshot_id`.
+SNAPSHOT_VERSIONS: Mapping[str, str] = {REGISTRY_SNAPSHOT: "registry-snapshot-v1", REFERENCE_SNAPSHOT: "savings-reference-v1"}
+_REGISTRY_BODY = ("registry_hash", "price_as_of", "entries")
+
+
+def snapshot_id(kind: str, payload: Mapping[str, Any]) -> str:
+    """The content-derived ID of a registry or reference snapshot payload."""
+    body = payload["reference"] if kind == REFERENCE_SNAPSHOT else {key: payload[key] for key in _REGISTRY_BODY}
+    text = json.dumps([SNAPSHOT_VERSIONS[kind], body], sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return "hex:" + hashlib.sha256(text.encode("ascii")).hexdigest()
 
 
 @dataclass(frozen=True)

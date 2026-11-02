@@ -63,6 +63,15 @@ def resolve_ephemeral_hmac_flag(environ: Mapping[str, str]) -> bool:
     return bool(environ.get(_EPHEMERAL_HMAC_FLAG, ""))
 
 
+def _usage_reports(settings: OptimusGatewaySettings, durable_capture: DurableCapture | None) -> Any:
+    """Plan 12.9 (ADR-034, D1): `/savings`, offered only with durable capture, whose scope makes a report complete."""
+    if durable_capture is None:
+        return None
+    from optimus.usage.savings_report import SavingsReports, gateway_post
+
+    return SavingsReports(gateway_post(settings), durable_capture.report_scope)
+
+
 def _build_gateway_client(*, settings, timeout_seconds, durable_capture=None):
     kwargs = {} if durable_capture is None else {"capture": durable_capture.hook}  # Plan 12.8: pre-dispatch intents
     if timeout_seconds is None:
@@ -340,6 +349,7 @@ def build_configured_server(
             failure_telemetry=harness.telemetry_writer,
             auto_router=auto,
             durable_capture=durable_capture,
+            usage_reports=_usage_reports(settings, durable_capture),
         )
     except BaseException as exc:
         # Composition failed after the harness (and possibly the client-MCP runtime)

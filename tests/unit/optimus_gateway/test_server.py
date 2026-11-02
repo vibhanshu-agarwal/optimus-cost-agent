@@ -833,3 +833,52 @@ def test_a_lost_reply_names_only_a_known_route(capsys: pytest.CaptureFixture[str
     assert "s3cret" not in err
     assert [json.loads(line) for line in err.splitlines()] == [{"event": "reply_undeliverable", "path": named, "status": 404}]
     assert handler.close_connection is True
+
+
+# --- Plan 12.9 Task 2: the usage-report route ----------------------------------------------------------------------
+
+
+def _report_headers(length: int, *, token: str = "http-test-secret") -> dict[str, str]:  # pragma: allowlist secret
+    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Content-Length": str(length)}
+
+
+def _declared_only(host: str, port: int, headers: dict[str, str]) -> tuple[int, Any, float]:
+    """Send only the request head (a body is declared but never sent) and time the reply."""
+    from optimus_security import usage_report_contract
+
+    connection = HTTPConnection(host, port, timeout=10)
+    started = time.monotonic()
+    connection.putrequest("POST", usage_report_contract.PATH)
+    for name, value in headers.items():
+        connection.putheader(name, value)
+    connection.endheaders()
+    response = connection.getresponse()
+    return response.status, json.loads(response.read()), time.monotonic() - started
+
+
+def test_the_report_route_refuses_a_bad_key_before_reading_any_body_byte():
+    from optimus_security import usage_report_contract
+
+    server, thread, host, port = _start_server()
+    try:
+        status, body, elapsed = _declared_only(host, port, _report_headers(100, token="wrong"))  # pragma: allowlist secret
+        assert (status, body) == usage_report_contract.error_body("UNAUTHORIZED") and elapsed < 2
+        status, body, elapsed = _declared_only(host, port, _report_headers(usage_report_contract.MAX_REQUEST_BYTES + 1))
+        assert (status, body) == usage_report_contract.error_body("REQUEST_TOO_LARGE") and elapsed < 2
+    finally:
+        _stop_server(server, thread)
+
+
+def test_the_report_route_answers_capabilities_and_an_unconfigured_ledger_over_http():
+    from optimus_security import usage_report_contract
+
+    server, thread, host, port = _start_server()
+    try:
+        capabilities = usage_report_contract.build_request(None)
+        status, body = _post_json(host, port, usage_report_contract.PATH, body=capabilities, headers=_report_headers(len(capabilities)))
+        assert status == 200 and usage_report_contract.FEATURE_REPORT_CONTEXT in usage_report_contract.validate_capabilities(body)
+        report = usage_report_contract.build_request(usage_report_contract.ReportRequest("s", None, None, 10, None, None))
+        status, body = _post_json(host, port, usage_report_contract.PATH, body=report, headers=_report_headers(len(report)))
+        assert (status, body) == usage_report_contract.error_body("ACCOUNTING_NOT_CONFIGURED")
+    finally:
+        _stop_server(server, thread)

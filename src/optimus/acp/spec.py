@@ -38,6 +38,7 @@ from optimus.acp.debug_trace import (
     log_prompt_refusal,
 )
 from optimus.acp.errors import (
+    INTERNAL_ERROR,
     INVALID_REQUEST,
     MCP_REOPEN_REFUSED,
     METHOD_NOT_FOUND,
@@ -127,6 +128,11 @@ from optimus.mcp.client_disposition import (
 from optimus.runtime.modes import ExecutionMode
 from optimus.tools.line_endings import WRITE_LINE_ENDINGS_MIXED
 from optimus.usage.cost_alerts import AlertPolicy, AlertTracker, CostScopeSummary
+from optimus.usage.savings_report import COMMAND as SAVINGS_COMMAND
+from optimus.usage.savings_report import COMMAND_DESCRIPTION as SAVINGS_DESCRIPTION
+from optimus.usage.savings_report import COMMAND_HINT as SAVINGS_HINT
+from optimus.usage.savings_report import SavingsAnswer, SavingsCommand, SavingsReports
+from optimus.usage.savings_report import parse_command as parse_savings_command
 from optimus.usage.turn_settlement import TurnCostSummary, TurnSettlement, receipt_from_maintenance
 from optimus_security.failure_facts import host_route_id, host_session_id
 
@@ -252,6 +258,45 @@ CONTEXT_PLAN_TOO_LARGE_TEXT = (
 )
 _CONTEXT_CANCELLED_TEXT = "Cancelled before the model was asked."
 # Plan 12.4 Task 4: an Auto turn refused before any answer call; the thread stays open.
+SAVINGS_WAIT_SECONDS = 17.0  # Plan 12.9: a `/savings` report's wait; the host transport's own deadline is 15 s
+SAVINGS_TIMEOUT_TEXT = "The usage report took too long and was stopped. Try again, or ask for one turn with `/savings turn <run-id>`."
+
+
+class _SavingsSendOwner:
+    """The send owner (`outbound_writer.SendOwner`) of one `/savings` report's single chunk: queued until its write
+    begins, suppressible until then, and it remembers whether the write began. The writer claims it immediately before
+    the physical write; the claim asks ``wanted`` then, so a report whose request was cancelled, whose server is closing
+    or whose session began retiring is never written, however long it waited in the queue."""
+
+    def __init__(self, wanted: Callable[[], bool]) -> None:
+        self.key = ("savings", uuid.uuid4().hex)
+        self.started = False
+        self._wanted = wanted
+        self._state = SendState.QUEUED
+        self._lock = threading.Lock()
+
+    def suppress(self, send_key: Any) -> None:
+        with self._lock:
+            if self._state is SendState.QUEUED:
+                self._state = SendState.SUPPRESSED
+
+    def claim_write_started(self, send_key: Any) -> SendState:
+        with self._lock:
+            if self._state is SendState.QUEUED:
+                if self._wanted():
+                    self._state, self.started = SendState.WRITE_STARTED, True
+                else:
+                    self._state = SendState.SUPPRESSED
+            return self._state
+
+    def publish_authoritative(self, send_key: Any, outcome: Any) -> None:
+        with self._lock:
+            if self._state is SendState.WRITE_STARTED:
+                self._state = SendState(outcome.value)
+
+    def publish_diagnostic(self, send_key: Any, outcome: Any) -> None:
+        return
+
 _AUTO_REFUSAL_TEXT = {
     "AUTO_NO_ROUTABLE_MODEL": (
         "Auto has no model left to route this turn to: every eligible model has stopped for this launch. Nothing was "
@@ -761,7 +806,12 @@ class AcpDuplexAdapter:
         mcp_idle_seconds: int | None = None,
         monotonic_clock: Callable[[], float] = monotonic,
         session_retention_policy: SessionRetentionPolicy = DEFAULT_SESSION_RETENTION_POLICY,
+        usage_reports: SavingsReports | None = None,
     ) -> None:
+        # Plan 12.9 (ADR-034, D1): the `/savings` source; None leaves the command unadvertised and `/savings` an ordinary prompt.
+        self._usage_reports = usage_reports
+        self._report_cancels: dict[str, asyncio.Event] = {}  # a report in progress, by session: it holds the prompt slot
+        self._report_sends: set[asyncio.Task[Any]] = set()  # torn-down reports' sends, held until they complete
         if mcp_idle_seconds is not None and (type(mcp_idle_seconds) is not int or not 1 <= mcp_idle_seconds <= 2592000):
             raise ValueError("invalid MCP idle seconds")
         self._mcp_idle_seconds = mcp_idle_seconds
@@ -1283,6 +1333,98 @@ class AcpDuplexAdapter:
             ownership_slot,
         )
 
+    async def _handle_savings(self, request: dict[str, Any], session_id: str, command: SavingsCommand | str,
+                              ownership_slot: ResponseOwnershipSlot | None) -> ResponseEnvelope:
+        """Plan 12.9 `/savings`: answered locally, before admission or classification. It enters no conversation,
+        creates no accounting epoch, calls no model or tool and changes no mode or strategy. It holds the session's
+        prompt slot while it runs; a cancel, a retired session or the server's close ends the wait and nothing late is
+        sent. The request's own session lease (`handle_client_request`) keeps the session while it runs."""
+        reports = self._usage_reports
+        assert reports is not None
+        cancel = self._report_cancels[session_id] = asyncio.Event()
+
+        abandoned = False  # the request task itself was cancelled (server teardown)
+
+        def gone() -> bool:
+            # Retirement begins while this request's own lease still holds the entry, so presence is not enough.
+            return (abandoned or cancel.is_set() or self._closed or self._sessions.get(session_id) is None
+                    or not self.retention.is_active(session_id))
+
+        try:
+            if isinstance(command, str):
+                answer = SavingsAnswer(command)
+            else:
+                # The transport ends by its own deadline (`savings_report.READ_SECONDS`), so its thread exits by then.
+                fetch = asyncio.create_task(asyncio.to_thread(reports.answer, session_id, command))
+                if not await self._until_cancelled(fetch, cancel, SAVINGS_WAIT_SECONDS):
+                    return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
+                answer = fetch.result() if fetch.done() else SavingsAnswer(SAVINGS_TIMEOUT_TEXT)
+            # One send of its own, decided where the writer claims it: a cancel, a retiring session, a closing server
+            # or a torn-down request before its write begins suppresses it (`_SavingsSendOwner`); a write already begun
+            # is authoritative. Success needs a confirmed flush (a suppressed or ambiguous send raises).
+            owner = _SavingsSendOwner(lambda: not gone())
+            submission = ProgressSubmission(control=owner, send_key=owner.key, admission=ProgressAdmission(),  # type: ignore[arg-type]
+                                            admission_class=AdmissionClass.REQUIRED)
+            token = progress_submission.set(submission)
+            try:
+                send = asyncio.create_task(self._outbound.notify(
+                    "session/update", build_agent_message_chunk_notification(session_id=session_id, text=answer.text), require_flushed=True))
+            finally:
+                progress_submission.reset(token)
+            try:
+                await asyncio.shield(send)
+            except asyncio.CancelledError:
+                # The request itself is torn down: an unwritten report never starts, and the send stays in custody
+                # until it physically completes, so its outcome is still observed.
+                abandoned = True
+                owner.suppress(owner.key)
+                self._report_sends.add(send)
+                send.add_done_callback(self._report_send_done)
+                raise
+            except Exception:  # noqa: BLE001 - an undelivered report is this request's outcome only
+                if not owner.started and gone():
+                    return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
+                return self._non_turn(error_response(request.get("id"), JsonRpcError(
+                    code=INTERNAL_ERROR, message="the usage report could not be delivered")), ownership_slot)
+            if not owner.started:  # a channel that dropped the suppressed send without raising
+                return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
+            reports.delivered(session_id, answer)
+            return self._non_turn(success_response(request.get("id"), {"stopReason": "end_turn"}), ownership_slot)
+        finally:
+            if self._report_cancels.get(session_id) is cancel:
+                del self._report_cancels[session_id]
+
+    def _report_send_done(self, send: asyncio.Task[Any]) -> None:
+        self._report_sends.discard(send)
+        if not send.cancelled():
+            send.exception()  # observed: a torn-down report's send outcome is never an unretrieved task error
+
+    @staticmethod
+    async def _until_cancelled(work: asyncio.Task[Any], cancel: asyncio.Event, limit: float | None) -> bool:
+        """Wait for ``work`` until ``cancel`` or ``limit`` seconds; False if cancelled first. ``work`` keeps running."""
+        stopped = asyncio.create_task(cancel.wait())
+        try:
+            await asyncio.wait({work, stopped}, timeout=limit, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            stopped.cancel()
+        return not (cancel.is_set() and not work.done())
+
+    async def after_response(self, method: str, response: dict[str, Any]) -> None:
+        """Called by the transport once a response is written. After a successful `session/new`, advertise `/savings`:
+        Zed drops commands sent before the session's own response (zed-industries/zed#60199)."""
+        if method != "session/new" or self._usage_reports is None:
+            return
+        result = response.get("result")
+        session_id = result.get("sessionId") if isinstance(result, dict) else None
+        if not isinstance(session_id, str) or self._sessions.get(session_id) is None:
+            return
+        with contextlib.suppress(Exception):  # an unadvertised command still works when typed
+            await self._outbound.notify("session/update", {"sessionId": session_id, "update": {
+                "sessionUpdate": "available_commands_update",
+                "availableCommands": [{"name": SAVINGS_COMMAND, "description": SAVINGS_DESCRIPTION,
+                                       "input": {"hint": SAVINGS_HINT}}],
+            }})
+
     def close_all(self) -> None:
         """Cancel outstanding ACP permission work, then close session states exactly once."""
         if self._sessions._retention is not None:
@@ -1313,6 +1455,9 @@ class AcpDuplexAdapter:
         if reservation is not None:
             self._reopen_cancelled.add(session_id)
             reservation.cancel()
+        report = self._report_cancels.get(session_id)
+        if report is not None:
+            report.set()
         turn = self._active_turns.get(session_id)
         if turn is None:
             return
@@ -1565,7 +1710,7 @@ class AcpDuplexAdapter:
                 ownership_slot,
             )
 
-        if session_id in self._active_turns:
+        if session_id in self._active_turns or session_id in self._report_cancels:
             self._pre_run_refused(request, session_id, "turn_in_progress")
             return self._non_turn(
                 error_response(
@@ -1574,6 +1719,12 @@ class AcpDuplexAdapter:
                 ),
                 ownership_slot,
             )
+
+        if self._usage_reports is not None:
+            command = parse_savings_command(task, attachments=any(
+                not (isinstance(block, dict) and block.get("type") == "text") for block in prompt))
+            if command is not None:
+                return await self._handle_savings(request, session_id, command, ownership_slot)
 
         idle = self._idle_mcp.get(session_id)
         if self._closed or (idle is not None and idle.phase == "MCP_CLOSING"):
@@ -1714,6 +1865,15 @@ class AcpDuplexAdapter:
             turn.route_binder = self._route_policy.capture(
                 session_id=session_id, turn_seq=turn_seq, deliver_notice=self._blocking_notice(session_id, asyncio.get_running_loop())
             )
+        # Plan 12.9 (ADR-034): the admitted turn's explicit Auto/fixed selection, before classification, so the usage
+        # report attributes its every receipt (classification, retries, escalation, maintenance) by turn, never by model.
+        session.cost_settlement.report_context(
+            run_id,
+            selection="auto" if self._auto_router is not None else "fixed",
+            registry_hash=(self._auto_router.snapshot.effective_hash if self._auto_router is not None
+                           else None if self._route_policy is None else self._route_policy.registry_hash),
+            strategy=attached_turn.strategy if attached_turn is not None else None,
+        )
         try:
             if self._auto_router is not None:
                 try:

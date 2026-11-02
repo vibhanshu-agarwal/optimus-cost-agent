@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "plan": "Plan 12.9 v2, Task 2 (Gateway snapshots and bounded real-ledger reader)",
+  "recorded": "2026-11-01",
+  "release": {
+    "granted": "2026-11-01, operator answer 'Release it (Recommended)' in Claude's Plan 12.9 chat",
+    "scope": "container optimus-p129-k3 from postgres:16-alpine on one loopback port with its own volume; run, inspect, psql via exec, run-specific databases p129_* created and dropped, one stop/start for the outage case, then container and volume removed; the Plan 12.8 provisioner's run-scoped login role and keyring entry, deleted at cleanup; zero paid calls"
+  },
+  "resource": {
+    "container": "optimus-p129-k3",
+    "image_id": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+    "host": "127.0.0.1",
+    "host_port": 51113,
+    "volume": "optimus-p129-k3-data",
+    "admission": "tools.plan12_memory.probes.admit_postgres_resource before every connection (name, image, running, only 5432/tcp on 127.0.0.1:51113, only the released volume)",
+    "note": "The first container was created with a random host port; admission refuses an unpinned binding, so it was removed and recreated with the explicit port on the same fresh volume before any test ran."
+  },
+  "runs": [
+    {
+      "label": "db-tier-1",
+      "command": "pytest -m requires_plan12_capture_postgres tests/integration/usage/test_savings_report_postgres.py tests/integration/usage/test_durable_capture_postgres.py",
+      "result": "3 failed, 40 passed, 2 skipped",
+      "failures": "test defects only: the conflict case read a page carrying only reference columns, and the test's turn contexts named a random epoch, so coverage correctly reported those turns' epochs missing. Fixed in the tests; no product change."
+    },
+    {
+      "label": "db-tier-2",
+      "command": "same",
+      "result": "43 passed, 2 skipped (the two credential-boundary cases skip by design while the ledger password is in the pytest environment)"
+    },
+    {
+      "label": "boundary-1",
+      "command": "provisioner provision; pytest the two credential-boundary cases without the password; provisioner cleanup",
+      "result": "test_the_host_reads_a_report_from_a_gateway_process_that_alone_holds_the_ledger_credential PASSED; the Plan 12.8 boundary case errored at setup (accounting_root_not_temporary) because the first case's Gateway child had written its outbox into the shared root",
+      "cleanup": "role and keyring entry deleted; root removed"
+    },
+    {
+      "label": "boundary-2",
+      "command": "a fresh provisioned run for the Plan 12.8 boundary case alone",
+      "result": "PASSED",
+      "cleanup": "role and keyring entry deleted; root removed"
+    }
+  ],
+  "revert_checks": {
+    "script": "scratchpad revert_check_task2.py (each protection removed in turn; every file restored)",
+    "unit": {
+      "killed": 11,
+      "survived": 0,
+      "mutants": [
+        "stamped-while-unavailable",
+        "stamped-before-durable",
+        "failed-write-never-retried",
+        "snapshot-id-unchecked",
+        "revision-unchecked",
+        "principal-unbound",
+        "uncaptured-not-auto-risk",
+        "unknown-expected-turns-definitive",
+        "database-order-trusted",
+        "worker-slot-leaked",
+        "body-read-before-auth"
+      ]
+    },
+    "postgres": {
+      "killed": 5,
+      "survived": 0,
+      "mutants": [
+        "reader-migrates-or-ignores-pins",
+        "conflicts-hidden",
+        "aliases-charged",
+        "no-lock-budget",
+        "not-one-snapshot"
+      ]
+    }
+  },
+  "not_covered_here": [
+    "The operator override of the reference file is not bound into the signed launch yet; the Gateway uses the packaged file only.",
+    "Registry snapshots carry hash, models, tiers, roles and list prices, not routes (the Task 1 contract omits them).",
+    "Startup or probe receipts without a session are not shown as unallocated overhead yet (Task 3 attribution).",
+    "Delivery backlog is the host's to report (Task 4); the Gateway reports no delivery_pending of its own.",
+    "The host's bounded response read is Task 4; Task 2's real-HTTP cases use the existing production urllib transport."
+  ],
+  "teardown": "container optimus-p129-k3 stopped and removed, volume optimus-p129-k3-data removed, the scratchpad password file deleted; both provisioned roles and keyring entries deleted by the provisioner's cleanup"
+}

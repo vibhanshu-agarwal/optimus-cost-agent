@@ -750,6 +750,7 @@ def resolve_launch_candidate(
     # 2f. Plan 12.8 (ADR-032): bind the Gateway's accounting configuration (endpoint, database, role and keyring
     # reference; never a credential) by its exact bytes, so the operator approves it and any change requires
     # re-approval. Without the file there is no literal and existing approvals stay valid.
+    # Plan 12.9 (ADR-034): the literal also binds a savings-references override beside it, when there is one.
     try:
         accounting_literal = config_literal(accounting_root(operator_paths.config_root))
     except AccountingConfigError as exc:
