@@ -315,6 +315,26 @@ def _totals_line(name: str, totals: Mapping[str, Any]) -> str:
             f"{unknown}. {_coverage(totals)}.")
 
 
+def _comparison_table(columns: Sequence[Mapping[str, Any]]) -> list[str]:
+    """One column per reference model, one row per fact (operator, 2026-11-02, seeing the report in Zed)."""
+
+    def status(column: Mapping[str, Any]) -> str:
+        text = "complete" if column["complete"] else _reasons(column["reasons"], _COLUMN_REASONS)
+        if column["unpriced"]:
+            text += " (" + ", ".join(f"{u['attempts']} {_UNPRICED.get(u['reason'], u['reason'])}" for u in column["unpriced"]) + ")"
+        return _text(text, 200)
+
+    rows: tuple[tuple[str, Callable[[Mapping[str, Any]], str]], ...] = (
+        ("Prices as of", lambda c: c["price_as_of"] or "unknown"),
+        ("At reference prices", lambda c: _usd(c["baseline_known_usd"])),
+        ("Savings", lambda c: _usd(c["savings_usd"]) if c["savings_usd"] is not None else urc.LABELS["not_definitive"]),
+        ("Savings %", lambda c: f"{c['savings_percent']}%" if c["savings_percent"] is not None else "—"),
+        ("Status", status),
+    )
+    return ["| Reference | " + " | ".join(_text(c["display"]) for c in columns) + " |", "|---|" + "---|" * len(columns),
+            *("| " + name + " | " + " | ".join(cell(c) for c in columns) + " |" for name, cell in rows)]
+
+
 def render_savings_report(report: Mapping[str, Any]) -> str:
     """Markdown for one validated report page."""
     scope = report["scope"]
@@ -335,15 +355,7 @@ def render_savings_report(report: Mapping[str, Any]) -> str:
     comparisons = report["comparisons"]
     if comparisons["columns"]:
         lines += ["", f"### {urc.LABELS['auto']}", urc.LABELS["b1"], "", urc.LABELS["auto_question"], ""]
-        lines += ["| Reference | Prices as of | At reference prices | Savings | Savings % | Status |", "|---|---|---|---|---|---|"]
-        for column in comparisons["columns"]:
-            status = "complete" if column["complete"] else _reasons(column["reasons"], _COLUMN_REASONS)
-            if column["unpriced"]:
-                status += " (" + ", ".join(f"{u['attempts']} {_UNPRICED.get(u['reason'], u['reason'])}" for u in column["unpriced"]) + ")"
-            savings = _usd(column["savings_usd"]) if column["savings_usd"] is not None else urc.LABELS["not_definitive"]
-            percent = f"{column['savings_percent']}%" if column["savings_percent"] is not None else "—"
-            lines.append(f"| {_text(column['display'])} | {column['price_as_of'] or 'unknown'} | "
-                         f"{_usd(column['baseline_known_usd'])} | {savings} | {percent} | {_text(status, 200)} |")
+        lines += _comparison_table(comparisons["columns"])
         shown = comparisons["offset"] + len(comparisons["columns"])
         first = comparisons["offset"] + 1
         lines += ["", (f"Reference {first} of {comparisons['total']}. " if first == shown else f"References {first}–{shown} of {comparisons['total']}. ")

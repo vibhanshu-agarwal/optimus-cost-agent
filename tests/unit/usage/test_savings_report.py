@@ -395,3 +395,20 @@ def test_counts_of_one_and_a_lone_reference_read_naturally():
 
     assert " across 1 request in 1 turn. " in markdown or " across 1 request in 1 turn, " in markdown
     assert "Reference 1 of 1. " in markdown
+
+
+def test_the_comparison_has_a_column_per_model_and_a_row_per_fact():
+    report = _page(_facts(), _request(), _references())
+    columns = report["comparisons"]["columns"]
+    assert len(columns) >= 2
+
+    lines = sr.render_savings_report(report).splitlines()
+    table = lines[next(i for i, line in enumerate(lines) if line.startswith("| Reference |")):]
+    table = table[:next(i for i, line in enumerate(table) if not line.startswith("|"))]
+    cells = {row.strip("|").split("|")[0].strip(): [c.strip() for c in row.strip("|").split("|")[1:]] for row in table}
+
+    assert cells["Reference"] == [sr._text(c["display"]) for c in columns]
+    assert list(cells)[2:] == ["Prices as of", "At reference prices", "Savings", "Savings %", "Status"]
+    assert cells["Savings"] == [sr._usd(c["savings_usd"]) if c["savings_usd"] is not None else sr.urc.LABELS["not_definitive"] for c in columns]
+    assert cells["At reference prices"] == [sr._usd(c["baseline_known_usd"]) for c in columns]
+    assert all(len(row) == len(columns) for row in cells.values() if row and set(row) != {"---"})
