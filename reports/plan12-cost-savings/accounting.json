@@ -1,0 +1,222 @@
+{
+  "schema_version": 1,
+  "plan": "Plan 12.9 v2, Definition of Done",
+  "claim": "Measured costs use the existing authority exactly once",
+  "requirements": [
+    {
+      "requirement": "Canonical, alias and conflict joins: each canonical receipt charged once, aliases and conflicts shown and never charged again",
+      "tests": [
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_the_report_charges_each_canonical_receipt_once_and_shows_aliases_and_conflicts",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_a_page_counts_each_canonical_receipt_once_and_compares_the_auto_scope_only",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_a_repeated_attempt_is_refused_so_nothing_is_charged_twice",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "conflicts-hidden",
+          "run": "revert-postgres-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "aliases-charged",
+          "run": "revert-postgres-final",
+          "result": "KILLED"
+        }
+      ]
+    },
+    {
+      "requirement": "All-stage matrix: every capture-contract stage counts once in the subtotal, the Auto subtotal, the detail rows and the comparison",
+      "tests": [
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_every_stage_counts_once_in_the_exact_subtotal_and_the_comparison",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "a-stage-left-out",
+          "run": "revert-stage-final",
+          "result": "KILLED"
+        }
+      ],
+      "limit": "Pure-reducer level. The real-Postgres cases use the planning stage. The reader has no per-stage branch and the SQL does not filter by stage, so a container rerun was not added for this one fixture."
+    },
+    {
+      "requirement": "Exact subtotals and one subtraction, overhead included once",
+      "tests": [
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_one_subtraction_includes_overhead_once",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_a_page_counts_each_canonical_receipt_once_and_compares_the_auto_scope_only",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        }
+      ],
+      "revert_checks": []
+    },
+    {
+      "requirement": "Unknown cost keeps the known subtotal and withholds savings",
+      "tests": [
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_unknown_cost_keeps_the_known_subtotal_and_withholds_savings",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/usage/test_savings_report.py::test_unknown_unallocated_charges_are_stated_not_hidden",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "unknown-unallocated-hidden",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ]
+    },
+    {
+      "requirement": "Late and conflicting receipts keep their known charge and block a definitive total",
+      "tests": [
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_late_and_conflicting_receipts_keep_their_known_charge_and_block_a_definitive_total",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_complete_auto_turn_is_definitive_and_a_late_receipt_downgrades_it",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        }
+      ],
+      "revert_checks": []
+    },
+    {
+      "requirement": "Negative savings stay signed; a zero baseline has savings and no percentage",
+      "tests": [
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_negative_savings_stay_signed_and_visible",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_a_zero_baseline_has_savings_but_no_percentage",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        }
+      ],
+      "revert_checks": []
+    },
+    {
+      "requirement": "History before durable capture and every other coverage reason withhold the definitive total",
+      "tests": [
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_coverage_is_not_definitive_for_each_stated_reason",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        }
+      ],
+      "revert_checks": []
+    },
+    {
+      "requirement": "Session-less overhead is shown apart and never charged to a session",
+      "tests": [
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_session_less_overhead_on_the_hosts_stream_is_unallocated_not_charged_to_the_session",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        },
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_overhead_before_a_sessions_first_turn_is_still_shown_unallocated",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_session_less_overhead_is_shown_apart_and_never_added_to_the_session",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "unallocated-unread",
+          "run": "revert-postgres-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "unallocated-only-on-fact-streams",
+          "run": "revert-postgres-final",
+          "result": "KILLED"
+        }
+      ]
+    }
+  ],
+  "real_postgres_readback": {
+    "integration_run": "db-tier-final",
+    "live_proof": "zed-ui.json readback: 28 attempt.receipt, 6 epoch.begin, 6 turn.report_context"
+  },
+  "limits": [
+    "Costs in fixtures are synthetic. Nothing here establishes provider billing correctness or realized production savings."
+  ],
+  "runs": {
+    "db-tier-final": {
+      "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/5ae1b45a007346a993c243bc4424b9cf.log",
+      "log_sha256": "hex:0f657440c7d28adc85df8a0471dc17c6fa6056fc10a1bd5ca7216ff9a24ffb5b"
+    },
+    "focused-final": {
+      "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/e35a17149e714728b87b9a6ed5a060e7.log",
+      "log_sha256": "hex:50d7fa28d5d4c01601bad78d2635517ff040f70db432b58d68135130932be52d"
+    },
+    "focused-stage-final": {
+      "run_id": "hex:fe305f20f71c4144a6759351a49f158e",
+      "head": "hex:5d22846e4ae90ac0a22a6b188d853bb538627b35",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/fe305f20f71c4144a6759351a49f158e.log",
+      "log_sha256": "hex:65503b374e0b1b6f562566864036e5608b5c621f0789a4ec66ac4c075377b2ec"
+    },
+    "revert-postgres-final": {
+      "run_id": "hex:795f76cc653a4e31a2268f0f4bfa4fa3",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/795f76cc653a4e31a2268f0f4bfa4fa3.log",
+      "log_sha256": "hex:8f05dd2d84c48c2f1ff6e7b3a70c081188f1ed96ba453ae98aaf153738e9c4d0"
+    },
+    "revert-stage-final": {
+      "run_id": "hex:4ad37493f0e541f8b0895a98261c753e",
+      "head": "hex:5d22846e4ae90ac0a22a6b188d853bb538627b35",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/4ad37493f0e541f8b0895a98261c753e.log",
+      "log_sha256": "hex:f48ddc6c63b177d4d9a7f7439d720210e875b203a425a44b99af95f1d66314c3"
+    },
+    "revert-unit-final": {
+      "run_id": "hex:fbd29385860948139a099a0510b9b365",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/fbd29385860948139a099a0510b9b365.log",
+      "log_sha256": "hex:dbb3b206524e67d918784b5a6557f29aadc9f8adb96ce18ff1276b3087caedfe"
+    }
+  },
+  "per_run_records": "final-run-evidence.json"
+}

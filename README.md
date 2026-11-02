@@ -210,6 +210,15 @@ pending; nothing unacknowledged is deleted. The Gateway also keeps a bounded per
 under `accounting/gateway-diagnostics/`: 64 MiB or UTC-day segments, kept 30 days within 256 MiB. The workspace's
 `.optimus/local-gateway.log` is unchanged.
 
+The cost-savings report (Plan 12.9, [ADR-034](docs/decisions/ADR-034-cost-savings-report-read-and-presentation.md))
+reads that ledger through `POST /v1/observability/usage-report`, so the host still needs only the Gateway URL and key.
+With durable capture on, Zed's Agent Panel offers `/savings` for the current session and `/savings turn <run-id>` for
+one turn; `/savings next` continues a long report. It shows measured known cost with its coverage, and what the same
+reported tokens would cost at each configured reference model's dated list prices. That comparison is an estimate: it
+is not a realized saving or the result of turning Auto off. The report makes no model call and enters no conversation
+context. References come from the packaged `optimus_model_policy/savings_references.yaml`, or from a launch-approved
+`accounting/savings-references.yaml` that replaces it whole.
+
 ### Phase 1 Retry, Fitness Gates, Golden Tasks, and Release Gate
 
 Plan 8 adds the Sprint 1 validation and release skeleton. `RetryController`

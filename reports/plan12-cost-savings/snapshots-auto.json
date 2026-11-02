@@ -1,0 +1,410 @@
+{
+  "schema_version": 1,
+  "plan": "Plan 12.9 v2, Definition of Done",
+  "claim": "Prices and Auto attribution are reproducible",
+  "requirements": [
+    {
+      "requirement": "Immutable actual and reference snapshots, and migration upgrade from 001",
+      "tests": [
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_migration_002_upgrades_a_001_ledger_in_place_and_a_reader_never_migrates",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        },
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_snapshots_read_back_independently_keep_their_first_capture_and_are_immutable",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_price_snapshots.py::test_a_registry_snapshot_is_a_valid_content_derived_record_of_tiers_roles_and_prices",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_price_snapshots.py::test_a_reference_snapshot_keeps_the_reference_id_and_the_contract_recomputes_it",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "reader-migrates-or-ignores-pins",
+          "run": "revert-postgres-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "snapshot-id-unchecked",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ]
+    },
+    {
+      "requirement": "Wire IDs: the durable snapshot ID on every usage envelope, stamped only once durable",
+      "tests": [
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_price_snapshots.py::test_completion_and_decision_envelopes_carry_the_durable_snapshot_id",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_price_snapshots.py::test_the_snapshot_id_is_stamped_once_durable_and_its_snapshot_written_once",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_price_snapshots.py::test_a_failed_snapshot_write_leaves_the_id_absent_and_is_retried",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_price_snapshots.py::test_a_failed_write_on_the_same_writer_is_submitted_again",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "stamped-while-unavailable",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "stamped-before-durable",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "failed-write-never-retried",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ]
+    },
+    {
+      "requirement": "Independent source, date and category provenance",
+      "tests": [
+        {
+          "test": "tests/unit/model_policy/test_savings_references.py::test_a_billing_rule_needs_its_own_dated_source_or_stays_unknown",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/model_policy/test_savings_references.py::test_a_reference_without_any_source_loads_beside_a_sourced_one",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/model_policy/test_savings_references.py::test_a_missing_date_or_price_loads_and_is_left_for_the_report_to_call_unavailable",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_a_reference_without_a_source_is_unavailable_and_its_neighbour_is_not",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "unsourced-billing-rule",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "source-missing-ignored",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ]
+    },
+    {
+      "requirement": "Non-registry references",
+      "tests": [
+        {
+          "test": "tests/unit/model_policy/test_savings_references.py::test_the_packaged_references_load_and_are_independent_of_the_registry",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/model_policy/test_savings_references.py::test_a_reference_outside_the_registry_loads_from_its_own_price_evidence",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        }
+      ],
+      "revert_checks": [],
+      "live_proof": "zed-ui.json cases.non_registry_references"
+    },
+    {
+      "requirement": "An approved override replaces the packaged references, and only as approved",
+      "tests": [
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_price_snapshots.py::test_an_approved_override_replaces_the_packaged_references_until_reconfigured",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/security/test_accounting_launch.py::test_an_override_changed_after_approval_refuses_to_start",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/security/test_accounting_launch.py::test_the_gateway_reports_against_the_approved_override_or_the_packaged_file",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "override-unbound",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "override-ignored",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ]
+    },
+    {
+      "requirement": "Explicit Auto markers, recorded before classification and joined across escalation",
+      "tests": [
+        {
+          "test": "tests/unit/usage/test_turn_report_context.py::test_every_admitted_turn_records_its_selection_once_before_classification_and_closes",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/acp/test_savings_escalation_capture.py::test_an_escalated_turn_is_one_auto_context_and_every_model_s_receipt_counts_once",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_the_auto_scope_is_only_turns_explicitly_attributed_auto",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_the_hosts_own_context_and_report_scope_make_a_delivered_turn_definitive",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "auto-marker-dropped",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "context-never-emitted",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "uncaptured-not-auto-risk",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "auto-registry-hash-dropped",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ]
+    },
+    {
+      "requirement": "Old-peer behaviour: new kinds only for a Gateway that lists the feature, and the turn still counts without it",
+      "tests": [
+        {
+          "test": "tests/unit/usage/test_turn_report_context.py::test_without_the_negotiated_feature_no_context_is_written_and_the_turn_still_counts",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/usage/test_turn_report_context.py::test_delivery_enables_contexts_only_for_a_gateway_that_lists_the_feature",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/usage/test_turn_report_context.py::test_a_launch_can_settle_the_feature_before_any_delivery_pass_and_it_is_asked_once",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/acp/test_main_wiring.py::test_a_launch_settles_the_report_feature_after_its_gateway_is_up_and_before_serving",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "context-without-negotiation",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "negotiation-never-enables",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "unreachable-gateway-read-as-old",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "negotiation-left-to-the-next-pass",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "negotiation-uncontained",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ]
+    },
+    {
+      "requirement": "Missing attribution and unproven delivery keep the comparison incomplete",
+      "tests": [
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_unattributed_or_uncaptured_turns_keep_the_auto_comparison_incomplete",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_without_the_hosts_turn_count_no_scope_is_definitive",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_delivery_that_is_not_proven_withholds_every_definitive_total",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_turn_count_alone_never_proves_a_receipt_was_delivered",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        },
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_gap_in_a_scope_stream_withholds_the_definitive_total",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        },
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_frontier_that_does_not_cover_the_scope_is_never_definitive",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        },
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_an_empty_frontier_never_certifies_an_empty_scope",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        },
+        {
+          "test": "tests/unit/usage/test_turn_report_context.py::test_records_still_being_written_put_the_frontier_beyond_anything_the_ledger_can_have_committed",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "unknown-expected-turns-definitive",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "frontier-ignored",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "uncovered-streams-ignored",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "gap-ignored",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "frontier-unread",
+          "run": "revert-postgres-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "unknown-stream-at-zero-committed",
+          "run": "revert-postgres-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "empty-frontier-trusted",
+          "run": "revert-postgres-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "uncovered-unread",
+          "run": "revert-postgres-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "gaps-unread",
+          "run": "revert-postgres-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "frontier-ignores-pending",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "Reference prices are dated evidence, not current prices.",
+    "Costs in fixtures are synthetic. Nothing here establishes provider billing correctness or realized production savings."
+  ],
+  "runs": {
+    "db-tier-final": {
+      "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/5ae1b45a007346a993c243bc4424b9cf.log",
+      "log_sha256": "hex:0f657440c7d28adc85df8a0471dc17c6fa6056fc10a1bd5ca7216ff9a24ffb5b"
+    },
+    "focused-final": {
+      "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/e35a17149e714728b87b9a6ed5a060e7.log",
+      "log_sha256": "hex:50d7fa28d5d4c01601bad78d2635517ff040f70db432b58d68135130932be52d"
+    },
+    "focused-stage-final": {
+      "run_id": "hex:fe305f20f71c4144a6759351a49f158e",
+      "head": "hex:5d22846e4ae90ac0a22a6b188d853bb538627b35",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/fe305f20f71c4144a6759351a49f158e.log",
+      "log_sha256": "hex:65503b374e0b1b6f562566864036e5608b5c621f0789a4ec66ac4c075377b2ec"
+    },
+    "revert-postgres-final": {
+      "run_id": "hex:795f76cc653a4e31a2268f0f4bfa4fa3",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/795f76cc653a4e31a2268f0f4bfa4fa3.log",
+      "log_sha256": "hex:8f05dd2d84c48c2f1ff6e7b3a70c081188f1ed96ba453ae98aaf153738e9c4d0"
+    },
+    "revert-unit-final": {
+      "run_id": "hex:fbd29385860948139a099a0510b9b365",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/fbd29385860948139a099a0510b9b365.log",
+      "log_sha256": "hex:dbb3b206524e67d918784b5a6557f29aadc9f8adb96ce18ff1276b3087caedfe"
+    }
+  },
+  "per_run_records": "final-run-evidence.json"
+}

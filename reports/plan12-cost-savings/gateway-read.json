@@ -1,0 +1,344 @@
+{
+  "schema_version": 1,
+  "plan": "Plan 12.9 v2, Definition of Done",
+  "claim": "Credential boundary and bounded reader work",
+  "requirements": [
+    {
+      "requirement": "Real HTTP through the production host transport to the Gateway to disposable Postgres",
+      "tests": [
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_the_host_reads_a_report_over_real_http_through_the_production_transport",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        }
+      ],
+      "revert_checks": []
+    },
+    {
+      "requirement": "Native Gateway keyring; the host holds only Gateway credentials; test administrator credentials never enter the child",
+      "tests": [
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_the_host_reads_a_report_from_a_gateway_process_that_alone_holds_the_ledger_credential",
+          "run": "boundary-report-final",
+          "run_id": "hex:611ddfc1975c4f24858585f341adecf2"
+        },
+        {
+          "test": "tests/integration/usage/test_durable_capture_postgres.py::test_the_host_delivers_over_http_to_a_gateway_process_that_alone_holds_the_ledger_credential",
+          "run": "boundary-capture-final",
+          "run_id": "hex:188f3a14bccd4a5eb47a4d9a675ab71b"
+        },
+        {
+          "test": "tests/unit/security/test_accounting_launch.py::test_the_ledger_opens_only_with_the_credential_from_the_gateway_keyring_namespace",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        }
+      ],
+      "revert_checks": []
+    },
+    {
+      "requirement": "Authentication before any read; principal bound to the cursor; requests outside the contract never reach the ledger",
+      "tests": [
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_another_principal_cannot_continue_a_cursor",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_requests_outside_the_contract_never_reach_the_ledger",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "body-read-before-auth",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "principal-unbound",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ]
+    },
+    {
+      "requirement": "Reference and detail pagination consistency",
+      "tests": [
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_ingest_between_pages_answers_report_changed",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        },
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_turn_committed_in_the_middle_of_a_read_never_tears_the_page",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_pages_walk_the_reference_groups_then_the_detail_rows_with_whole_scope_totals",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_a_cursor_answers_changed_for_different_facts_ledger_or_request",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_an_altered_cursor_answers_changed",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "revision-unchecked",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "not-one-snapshot",
+          "run": "revert-postgres-final",
+          "result": "KILLED"
+        }
+      ]
+    },
+    {
+      "requirement": "Deadlines and caps, Gateway side",
+      "tests": [
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_the_whole_read_ends_within_the_report_budget",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        },
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_held_lock_expires_within_the_report_budget",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_the_deadline_bounds_the_arithmetic_too",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_detail_pages_by_serialized_bytes_and_every_page_fits_the_response_bound",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_an_expired_worker_keeps_its_slot_until_it_exits_and_further_requests_are_busy",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_a_scope_over_the_bounds_reports_unavailable_totals_and_nothing_truncated",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "no-cancel-at-deadline",
+          "run": "revert-postgres-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "worker-slot-leaked",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "byte-bound-ignored",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "arithmetic-outside-the-deadline",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ]
+    },
+    {
+      "requirement": "Deadlines and caps, host transport",
+      "tests": [
+        {
+          "test": "tests/unit/usage/test_savings_report.py::test_a_reply_over_the_response_bound_is_refused",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/usage/test_savings_report.py::test_a_reply_that_drips_in_stops_at_the_total_deadline",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/usage/test_savings_report.py::test_headers_that_drip_in_stop_at_the_total_deadline",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/usage/test_savings_report.py::test_every_connection_attempt_shares_the_one_remaining_budget",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/usage/test_savings_report.py::test_an_oversized_head_is_refused_even_when_its_end_arrives_in_a_later_receive",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "per-receive-deadline-ignored",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "connect-budget-reset",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "head-cap-only-before-delimiter",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ]
+    },
+    {
+      "requirement": "Unavailable states: outage, refused connection, replaced ledger",
+      "tests": [
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_an_outage_is_unavailable_and_the_report_returns_after_a_restart",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        },
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_a_replaced_ledger_answers_report_changed",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_ledger_states_answer_stable_codes",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_a_ledger_that_refuses_connections_is_unavailable_and_not_a_timeout",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "never-connected-reads-as-timeout",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "connect-spends-the-whole-deadline",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ]
+    },
+    {
+      "requirement": "A report read performs no writes: a read-only repeatable-read transaction, and a reader never migrates",
+      "tests": [
+        {
+          "test": "tests/integration/usage/test_savings_report_postgres.py::test_migration_002_upgrades_a_001_ledger_in_place_and_a_reader_never_migrates",
+          "run": "db-tier-final",
+          "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "reader-migrates-or-ignores-pins",
+          "run": "revert-postgres-final",
+          "result": "KILLED"
+        }
+      ]
+    },
+    {
+      "requirement": "Ordinary work is unchanged by the report path and by an outage",
+      "tests": [
+        {
+          "test": "tests/unit/usage/test_turn_report_context.py::test_a_stalled_capabilities_endpoint_never_holds_up_ordinary_receipt_delivery",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/acp/test_savings_command.py::test_an_unknown_command_or_an_unconfigured_host_keeps_existing_behavior",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/acp/test_savings_command.py::test_savings_answers_locally_and_is_never_a_turn",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        }
+      ],
+      "revert_checks": [],
+      "live_proof": "zed-ui.json cases.ordinary_work_during_outage"
+    }
+  ],
+  "limits": [
+    "The boundary cases each ran on their own provisioned run, because they need the ledger password out of the pytest environment; db-tier-final therefore records them as two named skips.",
+    "Costs in fixtures are synthetic. Nothing here establishes provider billing correctness or realized production savings."
+  ],
+  "runs": {
+    "boundary-capture-final": {
+      "run_id": "hex:188f3a14bccd4a5eb47a4d9a675ab71b",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/188f3a14bccd4a5eb47a4d9a675ab71b.log",
+      "log_sha256": "hex:6fdf459fbf558ec171da1af47fc6374bf3613f4013701c214cdc675cc008af0e"
+    },
+    "boundary-report-final": {
+      "run_id": "hex:611ddfc1975c4f24858585f341adecf2",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/611ddfc1975c4f24858585f341adecf2.log",
+      "log_sha256": "hex:117a7bc3e8e76dc50329400f24ae06dcbcc9e77e854df1daefb9c84bf55cd225"
+    },
+    "db-tier-final": {
+      "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/5ae1b45a007346a993c243bc4424b9cf.log",
+      "log_sha256": "hex:0f657440c7d28adc85df8a0471dc17c6fa6056fc10a1bd5ca7216ff9a24ffb5b"
+    },
+    "focused-final": {
+      "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/e35a17149e714728b87b9a6ed5a060e7.log",
+      "log_sha256": "hex:50d7fa28d5d4c01601bad78d2635517ff040f70db432b58d68135130932be52d"
+    },
+    "focused-stage-final": {
+      "run_id": "hex:fe305f20f71c4144a6759351a49f158e",
+      "head": "hex:5d22846e4ae90ac0a22a6b188d853bb538627b35",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/fe305f20f71c4144a6759351a49f158e.log",
+      "log_sha256": "hex:65503b374e0b1b6f562566864036e5608b5c621f0789a4ec66ac4c075377b2ec"
+    },
+    "revert-postgres-final": {
+      "run_id": "hex:795f76cc653a4e31a2268f0f4bfa4fa3",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/795f76cc653a4e31a2268f0f4bfa4fa3.log",
+      "log_sha256": "hex:8f05dd2d84c48c2f1ff6e7b3a70c081188f1ed96ba453ae98aaf153738e9c4d0"
+    },
+    "revert-unit-final": {
+      "run_id": "hex:fbd29385860948139a099a0510b9b365",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/fbd29385860948139a099a0510b9b365.log",
+      "log_sha256": "hex:dbb3b206524e67d918784b5a6557f29aadc9f8adb96ce18ff1276b3087caedfe"
+    }
+  },
+  "per_run_records": "final-run-evidence.json"
+}

@@ -60,7 +60,8 @@ What was shipped at `9e87d67` (Plan 12.9 Task 0 manifest, `reports/plan12-cost-s
 - **Errors:** error bodies carry a stable code only.
 - **Capabilities:** a capabilities request lists the features a Gateway supports. A host writes a capture kind added
   after Plan 12.8 only to a Gateway that lists it. An older Gateway refuses an unknown kind, and that would stop the
-  host stream's delivery.
+  host stream's delivery. A launch that starts its own Gateway asks before it serves a prompt, so its first turns are
+  attributed; otherwise the first delivery pass asks.
 
 **Measured cost and coverage.**
 - **Totals:** the session total sums the canonical receipts' provider-reported costs once. An unknown cost is counted
@@ -96,7 +97,9 @@ durably accepted locally.
 
 **Surface (D1).** `/savings` is advertised through `available_commands_update`, sent after the successful
 `session/new` response, because Zed drops commands sent earlier (zed-industries/zed#60199). A report makes no model
-call and enters no conversation context.
+call and enters no conversation context. `/savings turn <run-id>` scopes it to one turn. `/savings next` continues the
+report that session last received, and `/savings next <continuation>` returns to a particular page. The operator added
+the plain form on 2026-11-02 after trying the token form in Zed, as a deviation from Plan 12.9 v2's three forms.
 
 **Exact labels.** `usage_report_contract.LABELS` holds the user-facing wording, among them "Estimated B1 — same reported
 tokens at reference prices; not realized savings" and "Auto comparison — configured reference models; not measured

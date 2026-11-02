@@ -1,0 +1,214 @@
+{
+  "schema_version": 1,
+  "plan": "Plan 12.9 v2, Definition of Done",
+  "claim": "B1-B4 presentation is honest",
+  "requirements": [
+    {
+      "requirement": "Independent comparison columns: one reference never invalidates another; models are columns and facts are rows",
+      "tests": [
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_each_reference_is_assessed_on_its_own",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_a_reference_without_a_source_is_unavailable_and_its_neighbour_is_not",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/usage/test_savings_report.py::test_the_comparison_has_a_column_per_model_and_a_row_per_fact",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "comparison-savings-row-shows-baseline",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ]
+    },
+    {
+      "requirement": "Arbitrary configured reference count with bounded continuation",
+      "tests": [
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_any_number_of_maximum_length_references_continues_by_cursor",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/usage/test_usage_report_contract.py::test_zero_one_and_many_reference_groups_fit_the_page_bound",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/usage/test_savings_report.py::test_a_continuation_is_offered_and_unallocated_overhead_is_shown_apart",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/acp/test_savings_command.py::test_a_cursor_continues_only_its_own_session",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/acp/test_savings_command.py::test_a_turn_report_continues_as_a_turn_report",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/acp/test_savings_command.py::test_a_plain_next_continues_this_sessions_last_report_and_only_while_it_has_more",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "continuation-forgets-scope",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "plain-next-crosses-sessions",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "plain-next-keeps-a-finished-cursor",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ],
+      "live_proof": "zed-ui.json cases.continuation_beyond_one_group"
+    },
+    {
+      "requirement": "Per-category availability",
+      "tests": [
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_a_null_category_is_never_priced_as_zero_or_at_another_price",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_a_split_that_cannot_change_the_price_is_not_needed",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_a_long_context_tier_prices_the_whole_request_from_its_threshold",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_only_a_request_never_executed_reprices_to_zero_without_tokens",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/usage/test_savings_report.py::test_an_unpriced_count_names_requests_and_not_tokens",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "free-completed-call-priced-at-zero",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        },
+        {
+          "mutant": "counts-always-plural",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ],
+      "live_proof": "zed-ui.json cases.unavailable_categories"
+    },
+    {
+      "requirement": "One subtraction per reference; negative savings visible",
+      "tests": [
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_one_subtraction_includes_overhead_once",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_negative_savings_stay_signed_and_visible",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        }
+      ],
+      "revert_checks": [],
+      "live_proof": "zed-ui.json cases.negative_and_positive_savings"
+    },
+    {
+      "requirement": "Separate B2 and B3 unavailable states, no amounts, no combined claim",
+      "tests": [
+        {
+          "test": "tests/unit/usage/test_savings_report.py::test_a_definitive_report_shows_measured_cost_the_auto_columns_and_the_separate_b2_b3_b4_sections",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/usage/test_savings_report.py::test_an_incomplete_report_names_its_reasons_and_shows_no_savings",
+          "run": "focused-final",
+          "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7"
+        },
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_a_page_counts_each_canonical_receipt_once_and_compares_the_auto_scope_only",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        }
+      ],
+      "revert_checks": [],
+      "live_proof": "zed-ui.json cases.b2_b3_absence"
+    },
+    {
+      "requirement": "B4 source, date and quality limits",
+      "tests": [
+        {
+          "test": "tests/unit/optimus_gateway/test_usage_report.py::test_a_benchmark_without_provenance_is_omitted_and_the_report_stays_valid",
+          "run": "focused-stage-final",
+          "run_id": "hex:fe305f20f71c4144a6759351a49f158e"
+        }
+      ],
+      "revert_checks": [
+        {
+          "mutant": "unsourced-benchmark-shown",
+          "run": "revert-unit-final",
+          "result": "KILLED"
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "Fixtures and the live proof's costs are synthetic and labelled so; no campaign or realized-savings claim follows.",
+    "Costs in fixtures are synthetic. Nothing here establishes provider billing correctness or realized production savings."
+  ],
+  "runs": {
+    "focused-final": {
+      "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/e35a17149e714728b87b9a6ed5a060e7.log",
+      "log_sha256": "hex:50d7fa28d5d4c01601bad78d2635517ff040f70db432b58d68135130932be52d"
+    },
+    "focused-stage-final": {
+      "run_id": "hex:fe305f20f71c4144a6759351a49f158e",
+      "head": "hex:5d22846e4ae90ac0a22a6b188d853bb538627b35",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/fe305f20f71c4144a6759351a49f158e.log",
+      "log_sha256": "hex:65503b374e0b1b6f562566864036e5608b5c621f0789a4ec66ac4c075377b2ec"
+    },
+    "revert-unit-final": {
+      "run_id": "hex:fbd29385860948139a099a0510b9b365",
+      "head": "hex:7cce51ca737ec7e6b7f7155018ad1e15cbc9d772",
+      "exit_status": 0,
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/fbd29385860948139a099a0510b9b365.log",
+      "log_sha256": "hex:dbb3b206524e67d918784b5a6557f29aadc9f8adb96ce18ff1276b3087caedfe"
+    }
+  },
+  "per_run_records": "final-run-evidence.json"
+}

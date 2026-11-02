@@ -8,7 +8,12 @@
   "source": {
     "proof_head": "51cef73",
     "proof_session": "session-4ef1fe8b917e42bfab528371381b9f52",
-    "delta_after_proof": "one Status text in the host renderer ('1 request: tokens not reported'); covered by unit tests, not re-run in Zed"
+    "delta_after_proof": [
+      "2eb4888: one Status text in the host renderer ('1 request: tokens not reported')",
+      "7cce51c: a plain `/savings next` continues the session's last report, and the report's continuation line names it; approved by the operator 2026-11-02 as a deviation from the plan's three command forms",
+      "5d22846: a test only, no source"
+    ],
+    "delta_coverage": "unit tests and revert checks (final-run-evidence.json), not re-run in Zed"
   },
   "boundary": {
     "ledger": "real Postgres, disposable container optimus-p129-zed (removed)",
