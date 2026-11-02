@@ -3,7 +3,7 @@
   "recorded": "2026-11-02",
   "issue": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/248",
   "claim": "Regression, coverage and delivery gates",
-  "status": "NOT YET QUALIFIED: the one Windows full suite failed, its coverage validation refused it, and the operator's disposition of the changed bytes after it is pending.",
+  "status": "NOT YET QUALIFIED: accepted by the operator without a rerun, pending Linux PR CI's full suite and coverage validation and the formal safety comparison against main (Task 6). The one Windows full suite failed and its coverage validation refused it; that remains so.",
   "checkout": {
     "branch": "agent/claude/plan12-9-cost-savings-report",
     "windows_full_suite_head": "f1cb559",
@@ -335,17 +335,32 @@
     {
       "checkpoint": "C",
       "round": 95,
-      "verdict": "PENDING"
+      "verdict": "ACCEPT at a9deaa1, pass 3",
+      "reviews": [
+        "#248 comment 6572486010",
+        "#248 comment 6573209767",
+        "#248 comment 6573234937"
+      ]
     }
   ],
   "full_run_disposition": {
-    "decision": "PENDING",
-    "by": "Operator, as Plan 12.9 v2 Checkpoint C requires before another full run or acceptance of changed bytes",
+    "decision": "Accept, no rerun",
+    "by": "Operator, in Claude's chat on 2026-11-02, as Plan 12.9 v2 Checkpoint C requires; the option was \"Accept, no rerun (Recommended)\"",
     "covers": [
       "9a0c5a1 (test only)",
       "70c809e (product)",
+      "6124a90 (manifest key)",
       "the safety-critical comparison's unproven state"
-    ]
+    ],
+    "conditions": [
+      "Linux PR CI passes the full suite and coverage validation at its actual SHA",
+      "the formal coverage_products compare against main's artifact then passes"
+    ],
+    "rejected": [
+      "a second Windows full suite first",
+      "a second Windows full suite and a Zed re-run of plain /savings next"
+    ],
+    "stays_true": "No Windows full run passes on the final code, and the product fix has not run in Zed."
   },
   "open_items": [
     {
