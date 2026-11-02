@@ -637,7 +637,7 @@
       "gateway_log_sha256": "hex:840d898a4bd410c1b6ec42f1593aad00ea32ee870aad10a3c0ba162ffac51d45",
       "disposition": "disclosed to the operator; the rerun used its own Gateway port; none of it is proof evidence",
       "open_product_question": "A launch whose approval binds one upstream can silently attach to a Gateway another launch started with a different upstream (local_infra.ensure_local_gateway). This plan's rerun avoided it by configuration and did not change that code.",
-      "custody": "Held under #248 until an approved follow-up owns it; qualification.json lists it as open. A follow-up has been proposed to the operator and not yet approved."
+      "custody": "#465, filed at Plan 12.9's closure with the operator's approval of 2026-11-02; qualification.json lists it as open."
     }
   },
   "limits": [
