@@ -173,8 +173,14 @@ class UsageStore:
         ``StoreError``: ``timeout`` (the deadline, or a lock or statement wait, expired) or ``unavailable``."""
         deadline = min(deadline, time.monotonic() + self.report_budget_ms / 1000)
         try:
-            # libpq's connect_timeout has a two-second floor; an expired connection attempt's result is discarded.
-            with psycopg.connect(self._conninfo, connect_timeout=max(2, min(self._connect_timeout, math.ceil(_left(deadline))))) as conn:
+            # libpq's connect_timeout has a two-second floor; an expired connection attempt's result is discarded. It leaves
+            # a second of the deadline: on Windows a refused connection surfaces only when this timeout expires, and a
+            # report that never connected is an unavailable ledger, however long that took to learn.
+            try:
+                conn = psycopg.connect(self._conninfo, connect_timeout=max(2, min(self._connect_timeout, math.ceil(_left(deadline)) - 1)))
+            except psycopg.Error:
+                raise StoreError("unavailable") from None
+            with conn:
                 conn.isolation_level = psycopg.IsolationLevel.REPEATABLE_READ
                 conn.read_only = True
                 canceller = threading.Timer(_left(deadline), lambda: _quietly(conn.cancel_safe))

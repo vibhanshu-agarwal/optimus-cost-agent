@@ -3,6 +3,7 @@ response pages and bounded route handler (Task 2)."""
 
 from __future__ import annotations
 
+import socket
 import threading
 import time
 from datetime import UTC, date, datetime
@@ -14,7 +15,7 @@ import pytest
 from optimus_gateway import usage_price_snapshots
 from optimus_gateway import usage_report as report
 from optimus_gateway.usage_report import AttemptFact, TurnFact, auto_scope, compare, price_attempt, totals
-from optimus_gateway.usage_store import ReportFacts, StoreError
+from optimus_gateway.usage_store import ReportFacts, StoreError, UsageStore
 from optimus_model_policy.savings_references import CategoryPrices, Reference, ReferenceSet, RuleSource, Source, Tier
 from optimus_security import usage_report_contract as urc
 
@@ -495,3 +496,14 @@ def test_session_less_overhead_is_shown_apart_and_never_added_to_the_session():
     assert plain["unallocated"] == {"known_usd": "0", "attempts": 0, "unknown_attempts": 0}
     assert with_overhead["session"] == plain["session"] and with_overhead["auto"] == plain["auto"]
     assert with_overhead["revision"] != plain["revision"]
+
+
+def test_a_ledger_that_refuses_connections_is_unavailable_and_not_a_timeout(synthetic_references):
+    """Plan 12.9 Task 5, measured against a stopped ledger: on Windows psycopg surfaces a refused connection only when its
+    connect timeout expires, so a timeout of the whole budget read as REPORT_TIMEOUT. Real psycopg, a port nothing holds."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    store = UsageStore(f"host=127.0.0.1 port={port} dbname=d user=u password=p", connect_timeout=5)  # pragma: allowlist secret
+
+    assert _handle(store) == urc.error_body("LEDGER_UNAVAILABLE")

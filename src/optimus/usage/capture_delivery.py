@@ -38,10 +38,15 @@ class CaptureDelivery(OutboxDrain):
         super().__init__(capture.writer, self._post, name="capture-delivery", **kwargs)
 
     def drain_once(self) -> DeliveryReport:
+        self.negotiate()
+        return super().drain_once()
+
+    def negotiate(self) -> None:
+        """Ask for the capabilities until the Gateway has answered. Each pass does; so does a launch once its own Gateway
+        is up, because a turn entered before the answer stays unattributed for good."""
         if self.report_context is None and self._capabilities is not None:
             with contextlib.suppress(Exception):  # negotiation never stops this pass's ordinary delivery
                 self._negotiate(self._capabilities)
-        return super().drain_once()
 
     def _negotiate(self, capabilities: Callable[[bytes], tuple[int, Any]]) -> None:
         from optimus.usage.savings_report import ReportTransportError

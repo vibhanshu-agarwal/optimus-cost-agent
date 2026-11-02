@@ -138,6 +138,20 @@ def test_delivery_enables_contexts_only_for_a_gateway_that_lists_the_feature(tmp
     capture.stop()
 
 
+def test_a_launch_can_settle_the_feature_before_any_delivery_pass_and_it_is_asked_once(tmp_path):
+    capture = _capture(tmp_path, enabled=False)
+    capabilities = _Capabilities((200, urc.capabilities_body()))
+    delivery = CaptureDelivery(capture, object(), capabilities=capabilities)  # type: ignore[arg-type]
+
+    delivery.negotiate()
+
+    assert capture.report_context("s:1", "s", selection="auto", registry_hash=None, strategy=None) is True
+    delivery.negotiate()
+    delivery.drain_once()
+    assert capabilities.asked == 1
+    capture.stop()
+
+
 # --- Real spec turns ---------------------------------------------------------------------------------------------------
 
 

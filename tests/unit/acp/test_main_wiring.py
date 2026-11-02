@@ -289,6 +289,54 @@ def test_main_startup_interrupt_maps_exit_and_restores_signal_handler(monkeypatc
         assert "private failure detail" not in stderr
 
 
+def test_a_launch_settles_the_report_feature_after_its_gateway_is_up_and_before_serving(monkeypatch, tmp_path):
+    """Plan 12.9 Task 5, found in the first real run: delivery's first pass precedes the Gateway and its next is 15 s
+    away, so every turn of a quick session stayed unattributed for good."""
+    _authorize(monkeypatch, tmp_path, _base_env())
+    order: list[str] = []
+
+    class Delivery:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def start(self):
+            order.append("delivery")
+
+        def negotiate(self):
+            order.append("negotiate")
+
+        def stop(self):
+            pass
+
+    class Gateway:
+        def stop(self):
+            pass
+
+    def gateway(**_k):
+        order.append("gateway")
+        return Gateway()
+
+    class FakeServer:
+        def serve_ndjson(self, *_a, **_k):
+            async def _noop():
+                return None
+
+            return _noop()
+
+    def server(**_k):
+        order.append("server")
+        return FakeServer()
+
+    monkeypatch.setattr("optimus.usage.capture_delivery.CaptureDelivery", Delivery)
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", gateway)
+    _patch_common(monkeypatch, server_factory=server)
+
+    acp_main.main(["--workspace-root", str(tmp_path)])
+
+    assert order[:4] == ["delivery", "gateway", "negotiate", "server"]
+
+
 def test_shutdown_report_contains_only_bounded_fields(capsys):
     from optimus.acp.process_lifecycle import ShutdownObservation
 

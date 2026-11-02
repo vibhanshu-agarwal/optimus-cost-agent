@@ -902,7 +902,7 @@ def main(argv: list[str] | None = None) -> int:
         durable_capture = DurableCapture.at(candidate.operator_paths.config_root)
         delivery = None if args.check_config else _capture_delivery(durable_capture)
         try:
-            return _run_authorized(durable_capture)
+            return _run_authorized(durable_capture, delivery)
         finally:
             if delivery is not None:
                 delivery.stop()
@@ -927,7 +927,7 @@ def main(argv: list[str] | None = None) -> int:
         delivery.start()
         return delivery
 
-    def _run_authorized(durable_capture: DurableCapture) -> int:
+    def _run_authorized(durable_capture: DurableCapture, delivery: Any) -> int:
         nonlocal configured_server, startup_control
         startup_failure: BaseException | None = None
         if args.check_config:
@@ -990,6 +990,10 @@ def main(argv: list[str] | None = None) -> int:
                         file=sys.stderr,
                     )
                     return 2
+                if gateway_process is not None and delivery is not None:
+                    # Plan 12.9: delivery's first pass ran before this Gateway was up and its next is a pass away; the
+                    # first prompt must not beat the answer. A loopback request, bounded by CAPABILITIES_SECONDS.
+                    delivery.negotiate()
             try:
                 # Seam 3: MCP construction reads PATH/PATHEXT/SystemRoot and the
                 # ephemeral-HMAC request from the ORIGINAL launch snapshot, projected to

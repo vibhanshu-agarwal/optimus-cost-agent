@@ -305,9 +305,13 @@ def _coverage(totals: Mapping[str, Any]) -> str:
     return urc.LABELS["coverage_incomplete"].format(reasons=_reasons(totals["reasons"], _REASONS))
 
 
+def _count(number: int, noun: str) -> str:
+    return f"{number} {noun}" if number == 1 else f"{number} {noun}s"
+
+
 def _totals_line(name: str, totals: Mapping[str, Any]) -> str:
     unknown = f", {totals['unknown_attempts']} with unknown cost" if totals["unknown_attempts"] else ""
-    return (f"- **{name}:** {_usd(totals['known_usd'])} across {totals['attempts']} requests in {totals['turns']} turns"
+    return (f"- **{name}:** {_usd(totals['known_usd'])} across {_count(totals['attempts'], 'request')} in {_count(totals['turns'], 'turn')}"
             f"{unknown}. {_coverage(totals)}.")
 
 
@@ -324,7 +328,7 @@ def render_savings_report(report: Mapping[str, Any]) -> str:
     if unallocated["attempts"]:
         unknown = unallocated["unknown_attempts"]
         lines.append(f"- **Not part of any session** (startup checks and probes in this process): known "
-                     f"{_usd(unallocated['known_usd'])} across {unallocated['attempts']} requests"
+                     f"{_usd(unallocated['known_usd'])} across {_count(unallocated['attempts'], 'request')}"
                      + (f", {unknown} of them with unknown cost." if unknown else "."))
     lines += ["", urc.LABELS["history"]]
 
@@ -341,7 +345,8 @@ def render_savings_report(report: Mapping[str, Any]) -> str:
             lines.append(f"| {_text(column['display'])} | {column['price_as_of'] or 'unknown'} | "
                          f"{_usd(column['baseline_known_usd'])} | {savings} | {percent} | {_text(status, 200)} |")
         shown = comparisons["offset"] + len(comparisons["columns"])
-        lines += ["", f"References {comparisons['offset'] + 1}–{shown} of {comparisons['total']}. "
+        first = comparisons["offset"] + 1
+        lines += ["", (f"Reference {first} of {comparisons['total']}. " if first == shown else f"References {first}–{shown} of {comparisons['total']}. ")
                   + urc.LABELS["cache_writes"]]
 
     lines += ["", f"### {urc.LABELS['b2']}", urc.LABELS["b2_unavailable"], "", f"### {urc.LABELS['b3']}",

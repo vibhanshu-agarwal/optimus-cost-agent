@@ -351,7 +351,7 @@ def test_an_outage_is_unavailable_and_the_report_returns_after_a_restart(release
 
     subprocess.run(["docker", "stop", "--time", "10", container], check=True, capture_output=True, timeout=120)
     try:
-        down = _report(UsageStore(released["conninfo"], connect_timeout=2), session)
+        down = _report(UsageStore(released["conninfo"], connect_timeout=5), session)  # the provisioned value: a real outage
     finally:
         subprocess.run(["docker", "start", container], check=True, capture_output=True, timeout=120)
     deadline = time.monotonic() + 60

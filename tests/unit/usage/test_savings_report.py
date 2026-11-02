@@ -81,7 +81,7 @@ def test_a_continuation_is_offered_and_unallocated_overhead_is_shown_apart():
     markdown = sr.render_savings_report(_page(_facts(unallocated=("0.01",)), _request(), _references(5)))
 
     assert "More of this report: `/savings next " in markdown and "References 1–3 of 5" in markdown
-    assert "Not part of any session" in markdown and "USD 0.01 across 1 requests" in markdown
+    assert "Not part of any session" in markdown and "USD 0.01 across 1 request." in markdown
 
 
 # --- The Gateway request ---------------------------------------------------------------------------------------------
@@ -242,7 +242,7 @@ def test_the_transport_budget_is_the_plans_fifteen_seconds():
 def test_unknown_unallocated_charges_are_stated_not_hidden():
     markdown = sr.render_savings_report(_page(_facts(unallocated=(None,)), _request(), _references()))
 
-    assert "known USD 0 across 1 requests, 1 of them with unknown cost." in markdown
+    assert "known USD 0 across 1 request, 1 of them with unknown cost." in markdown
 
 
 
@@ -380,3 +380,18 @@ def test_a_socket_that_cannot_be_created_is_an_unreachable_gateway(monkeypatch, 
     assert len(closed) == len(creatable), "only sockets that were created are closed"
     assert "could not be reached" in sr.SavingsReports(sr.gateway_post(settings, timeout=1), lambda s: (0, ())).markdown(
         "s", sr.SavingsCommand())
+
+
+# --- Plan 12.9 Task 5, the first real run ---------------------------------------------------------------------------
+
+
+def test_counts_of_one_and_a_lone_reference_read_naturally():
+    report = _page(_facts(), _request(), _references())
+    report["session"].update(attempts=1, turns=1)
+    report["comparisons"]["total"] = report["comparisons"]["offset"] + 1
+    report["comparisons"]["columns"] = report["comparisons"]["columns"][:1]
+
+    markdown = sr.render_savings_report(report)
+
+    assert " across 1 request in 1 turn. " in markdown or " across 1 request in 1 turn, " in markdown
+    assert "Reference 1 of 1. " in markdown
