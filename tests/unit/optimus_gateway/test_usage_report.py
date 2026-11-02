@@ -18,6 +18,7 @@ from optimus_gateway.usage_report import AttemptFact, TurnFact, auto_scope, comp
 from optimus_gateway.usage_store import ReportFacts, StoreError, UsageStore
 from optimus_model_policy.savings_references import CategoryPrices, Reference, ReferenceSet, RuleSource, Source, Tier
 from optimus_security import usage_report_contract as urc
+from optimus_security.usage_capture_contract import STAGES
 
 D = Decimal
 
@@ -229,6 +230,20 @@ def test_a_page_counts_each_canonical_receipt_once_and_compares_the_auto_scope_o
     assert [c["savings_usd"] for c in body["comparisons"]["columns"]] == ["-0.0002", "-0.0002"]
     assert [r["attempt_id"] for r in body["detail"]] == ["a1", "c1", "f1"] and body["next_cursor"] is None
     assert body["b2"] == body["b3"] == {"state": "unavailable"}
+
+
+def test_every_stage_counts_once_in_the_exact_subtotal_and_the_comparison():
+    receipts = [(_payload(f"a{index}", "t1", cost=f"0.00{index + 1}", stage=stage), False, False)
+                for index, stage in enumerate(sorted(STAGES))]
+    facts = _facts(receipts, epochs={"t1": ("complete",)}, selections={"t1": ("auto",)})
+
+    body = _page(facts, _request(expected_turns=1), _references(1))
+
+    assert body["session"]["known_usd"] == body["auto"]["known_usd"] == "0.015"
+    assert body["session"]["attempts"] == body["auto"]["attempts"] == len(STAGES) == 5
+    assert sorted(row["stage"] for row in body["detail"]) == sorted(STAGES)
+    # five of 1000 x 1/M + 200 x 4/M = 0.009, against 0.015 measured
+    assert body["comparisons"]["columns"][0]["savings_usd"] == "-0.006"
 
 
 def test_pages_walk_the_reference_groups_then_the_detail_rows_with_whole_scope_totals():
