@@ -1074,9 +1074,9 @@ optimus-cost-agent/
 | Document | Purpose |
 |----------|---------|
 | [docs/README.md](docs/README.md) | Index of every current document; older versions are in each folder's `archive/` |
-| [docs/Optimus-Cost-Agent-Architecture-v2.23.pdf](docs/Optimus-Cost-Agent-Architecture-v2.23.pdf) | High-level design; scoped Auto-escalation and host/Gateway timing successor at `5977155` |
-| [docs/Optimus-Cost-Agent-LLD-v2.46.pdf](docs/Optimus-Cost-Agent-LLD-v2.46.pdf) | Low-level design; one Auto recovery move and host/Gateway timing contracts at `5977155` |
-| [docs/Optimus-Cost-Agent-Test-Strategy-v1.9.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.9.pdf) | Testing approach |
+| [docs/Optimus-Cost-Agent-Architecture-v2.24.pdf](docs/Optimus-Cost-Agent-Architecture-v2.24.pdf) | High-level design; cost-savings report and its durable accounting source at `a88fde8`; earlier scoped pins retained |
+| [docs/Optimus-Cost-Agent-LLD-v2.47.pdf](docs/Optimus-Cost-Agent-LLD-v2.47.pdf) | Low-level design; usage-report route, ACP commands, accounting ownership and reference/snapshot contracts at `a88fde8` |
+| [docs/Optimus-Cost-Agent-Test-Strategy-v1.10.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.10.pdf) | Testing approach; real Postgres report tier and Plan 12.9's qualified evidence, preserving failed Windows and separately successful Linux PR/main gates |
 | [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf) | Execution guardrails |
 | [AGENTS.md](AGENTS.md) | Agent behavior, logging, safety, and testing gates |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Human and agent contribution workflow |
