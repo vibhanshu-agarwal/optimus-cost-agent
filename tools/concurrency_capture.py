@@ -20,6 +20,7 @@ import threading
 import traceback
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from types import FrameType
 from typing import Any
 
@@ -149,15 +150,26 @@ _WAIT_TIMEOUT = 0x102
 _ERROR_INVALID_PARAMETER = 87
 
 
+def _stat_is_single_thread_zombie(pid: int, stat: bytes) -> bool:
+    # comm may contain arbitrary bytes and parentheses; the fields after its final ')' cannot.
+    name, separator, tail = stat.rpartition(b")")
+    fields = tail.split()
+    return name.startswith(f"{pid} (".encode()) and bool(separator) and len(fields) > 17 and fields[0] == b"Z" and fields[17] == b"1"
+
+
 class ProcessWatch:
     """A process observed from outside by pid -- a descendant, not our own child.
 
     It is pinned while it runs, so a recycled pid is never mistaken for it: Windows holds a
     SYNCHRONIZE | QUERY_LIMITED_INFORMATION handle, Linux a pidfd. Elsewhere it falls back to an
-    unpinned signal-0 probe. (On Windows `os.kill(pid, 0)` is not a probe at all.) Watch a
+    unpinned signal-0 probe, supplemented on Linux by positive single-thread zombie evidence
+    from procfs. A zombie leader with surviving threads is not an exit. PID reuse can still
+    cause a false running result in this unpinned fallback.
+    (On Windows `os.kill(pid, 0)` is not a probe at all.) Watch a
     process while it is known to be running. `ProcessLookupError` means the platform positively
-    reported that no process has this pid; any other failure (access denied above all) is raised
-    with its native error, because it says nothing about whether the process exists.
+    reported that no process has this pid. Windows access errors are raised; signal-0 access
+    denied conservatively means running. Other signal-probe errors propagate, while unreadable
+    or malformed procfs data supplies no evidence of exit.
     The exit code is reported where the platform exposes it for a non-child (Windows), else None.
     """
 
@@ -204,7 +216,15 @@ class ProcessWatch:
         except ProcessLookupError:
             return ProcessSnapshot(pid=self.pid, running=False, returncode=None)
         except PermissionError:
-            pass
+            return ProcessSnapshot(pid=self.pid, running=True, returncode=None)
+        if sys.platform == "linux":
+            try:
+                stat = Path(f"/proc/{self.pid}/stat").read_bytes()
+            except OSError:
+                pass
+            else:
+                if _stat_is_single_thread_zombie(self.pid, stat):
+                    return ProcessSnapshot(pid=self.pid, running=False, returncode=None)
         return ProcessSnapshot(pid=self.pid, running=True, returncode=None)
 
     def close(self) -> None:

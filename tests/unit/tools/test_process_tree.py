@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -14,7 +15,13 @@ from tools import process_tree
 
 
 @pytest.mark.parametrize("shape", TREE_SHAPES)
-def test_kill_tree_kills_every_descendant_including_ones_no_parent_walk_reaches(tmp_path, shape):
+@pytest.mark.parametrize(
+    "force_fallback",
+    [False, pytest.param(True, marks=pytest.mark.skipif(sys.platform != "linux", reason="Linux non-pidfd fallback"))],
+)
+def test_kill_tree_kills_every_descendant_including_ones_no_parent_walk_reaches(tmp_path, shape, monkeypatch, force_fallback):
+    if force_fallback:
+        monkeypatch.delattr(os, "pidfd_open", raising=False)
     code, roles = descendant_tree(tmp_path, shape)
     with DescendantRecorder(tmp_path, roles) as recorder:
         process = process_tree.popen([sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
