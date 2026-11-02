@@ -32,6 +32,8 @@ def _report(**facts):
     ("/savings turn s:3", False, sr.SavingsCommand(turn_id="s:3")),
     ("/savings next " + urc.seal_cursor(b"k" * 32, {"a": 1}), False, sr.SavingsCommand(cursor=urc.seal_cursor(b"k" * 32, {"a": 1}))),
     ("/savings", True, sr.USAGE),  # the command takes no attachments
+    ("/savings next", False, sr.SavingsCommand(latest=True)),
+    ("/savings next", True, sr.USAGE),
     ("/savings please", False, sr.USAGE),
     ("/savings turn", False, sr.USAGE),
     ("/savings next not-a-cursor", False, sr.USAGE),
@@ -80,7 +82,7 @@ def test_untrusted_identifiers_are_escaped_bounded_and_cannot_break_the_table():
 def test_a_continuation_is_offered_and_unallocated_overhead_is_shown_apart():
     markdown = sr.render_savings_report(_page(_facts(unallocated=("0.01",)), _request(), _references(5)))
 
-    assert "More of this report: `/savings next " in markdown and "References 1–3 of 5" in markdown
+    assert "More of this report: send `/savings next`." in markdown and "`/savings next ey" in markdown and "References 1–3 of 5" in markdown
     assert "Not part of any session" in markdown and "USD 0.01 across 1 request." in markdown
 
 

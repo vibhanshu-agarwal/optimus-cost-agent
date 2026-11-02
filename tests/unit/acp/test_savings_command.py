@@ -177,6 +177,24 @@ async def test_a_cursor_continues_only_its_own_session(tmp_path):
     assert texts(case.outbound)[-1] == sr._FAILURES["REPORT_CHANGED"]  # noqa: SLF001
 
 
+async def test_a_plain_next_continues_this_sessions_last_report_and_only_while_it_has_more(tmp_path):
+    case = _adapter(tmp_path)
+    first, second = await new_session(case.adapter, tmp_path), await new_session(case.adapter, tmp_path)
+
+    await prompt(case.adapter, case.outbound, first, "/savings next", "s1")
+    assert texts(case.outbound)[-1] == sr.NOTHING_TO_CONTINUE
+
+    await prompt(case.adapter, case.outbound, first, "/savings", "s2")
+    await prompt(case.adapter, case.outbound, second, "/savings next", "s3")
+    assert texts(case.outbound)[-1] == sr.NOTHING_TO_CONTINUE, "another session's report never continues here"
+
+    await prompt(case.adapter, case.outbound, first, "/savings next", "s4")
+    assert "References 4–5 of 5" in texts(case.outbound)[-1]
+
+    await prompt(case.adapter, case.outbound, first, "/savings next", "s5")
+    assert texts(case.outbound)[-1] == sr.NOTHING_TO_CONTINUE, "the last page offered nothing more"
+
+
 # --- Lifecycle -------------------------------------------------------------------------------------------------------
 
 

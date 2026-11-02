@@ -34,9 +34,10 @@ _IDENTIFIER_CHARS = 64
 
 COMMAND = "savings"
 COMMAND_DESCRIPTION = "Show this session's measured cost and the Auto comparison with configured reference models"
-COMMAND_HINT = "[turn <run-id> | next <continuation>]"
-USAGE = ("Usage: `/savings` for this session, `/savings turn <run-id>` for one turn, or `/savings next <continuation>` "
-         "to continue a report. The command takes no attachments.")
+COMMAND_HINT = "[turn <run-id> | next]"
+USAGE = ("Usage: `/savings` for this session, `/savings turn <run-id>` for one turn, or `/savings next` to continue the "
+         "last report (`/savings next <continuation>` continues a particular one). The command takes no attachments.")
+NOTHING_TO_CONTINUE = "This session has no report with more to show. Run `/savings` first."
 
 _REASONS = {
     "epoch_missing": "a turn's coverage record is missing", "epoch_open": "a turn is still open",
@@ -77,6 +78,7 @@ _MALFORMED = "The Gateway's usage report was too large or not in the expected fo
 class SavingsCommand:
     turn_id: str | None = None
     cursor: str | None = None
+    latest: bool = False  # `/savings next` alone: the continuation this session's last report offered
 
 
 def parse_command(text: str, *, attachments: bool) -> SavingsCommand | str | None:
@@ -90,6 +92,8 @@ def parse_command(text: str, *, attachments: bool) -> SavingsCommand | str | Non
         return SavingsCommand()
     if len(words) == 3 and words[1] == "turn" and 0 < len(words[2]) <= urc.MAX_STRING:
         return SavingsCommand(turn_id=words[2])
+    if words[1:] == ["next"]:
+        return SavingsCommand(latest=True)
     if len(words) == 3 and words[1] == "next" and urc.is_cursor(words[2]):
         return SavingsCommand(cursor=words[2])
     return USAGE
@@ -252,16 +256,22 @@ class SavingsReports:
         self._post, self._scope = post, scope
         self._lock = threading.Lock()
         self._continued: OrderedDict[tuple[str, str], str | None] = OrderedDict()  # (session, cursor) -> its turn scope
+        self._latest: OrderedDict[str, str | None] = OrderedDict()  # session -> what its last report offered
 
     def markdown(self, session_id: str, command: SavingsCommand) -> str:
         """The rendered report or its stated failure; never raises for a Gateway or ledger state. A continuation repeats
         the scope of the report that offered it (the cursor binds it, so a different scope answers REPORT_CHANGED)."""
-        turn_id = command.turn_id
-        if command.cursor is not None:
+        turn_id, cursor = command.turn_id, command.cursor
+        if command.latest:
             with self._lock:
-                turn_id = self._continued.get((session_id, command.cursor))
+                cursor = self._latest.get(session_id)
+            if cursor is None:
+                return NOTHING_TO_CONTINUE
+        if cursor is not None:
+            with self._lock:
+                turn_id = self._continued.get((session_id, cursor))
         expected_turns, frontier = self._scope(session_id)
-        request = urc.ReportRequest(session_id, turn_id, None, PAGE_SIZE, command.cursor,
+        request = urc.ReportRequest(session_id, turn_id, None, PAGE_SIZE, cursor,
                                     1 if turn_id is not None else expected_turns, frontier or None)
         try:
             status, body = self._post(urc.build_request(request))
@@ -276,8 +286,12 @@ class SavingsReports:
             report = urc.validate_report(body)
         except urc.ContractError:
             return _MALFORMED
-        if report["next_cursor"] is not None:
-            with self._lock:
+        with self._lock:
+            self._latest[session_id] = report["next_cursor"]
+            self._latest.move_to_end(session_id)
+            while len(self._latest) > self._CONTINUATIONS:
+                self._latest.popitem(last=False)
+            if report["next_cursor"] is not None:
                 self._continued[(session_id, report["next_cursor"])] = turn_id
                 while len(self._continued) > self._CONTINUATIONS:
                     self._continued.popitem(last=False)
@@ -380,6 +394,6 @@ def render_savings_report(report: Mapping[str, Any]) -> str:
                          f"{row['selection'] or 'unknown'} | {_text(row['resolved_model'] or row['requested_model'] or 'unknown')} | "
                          f"{_usd(row['cost_usd'])} | {tokens} |")
     if report["next_cursor"] is not None:
-        lines += ["", f"More of this report: `/savings next {report['next_cursor']}`"]
+        lines += ["", f"More of this report: send `/savings next`. To return to this point later: `/savings next {report['next_cursor']}`"]
     lines += ["", f"_Ledger {report['ledger_instance'][:8]}, as of {report['as_of']}._"]
     return "\n".join(lines)
