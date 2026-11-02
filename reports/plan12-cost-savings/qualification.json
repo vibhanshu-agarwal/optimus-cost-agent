@@ -3,7 +3,7 @@
   "recorded": "2026-11-02",
   "issue": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/248",
   "claim": "Regression, coverage and delivery gates",
-  "status": "NOT YET QUALIFIED: accepted by the operator without a rerun, pending Linux PR CI's full suite and coverage validation and the formal safety comparison against main (Task 6). The one Windows full suite failed and its coverage validation refused it; that remains so.",
+  "status": "QUALIFIED under the operator's disposition: its two conditions are met, Linux PR CI's full suite and coverage validation passed and the formal safety comparison against main reports no regression. The one Windows full suite failed and its coverage validation refused it; that remains so, and full_run_disposition.stays_true states what was not run.",
   "checkout": {
     "branch": "agent/claude/plan12-9-cost-savings-report",
     "windows_full_suite_head": "f1cb559",
@@ -166,7 +166,7 @@
         }
       },
       "reading": "Every row's statements, branches and misses equal the baseline's, by compare_safety_rows and by exact row comparison.",
-      "not_established": "The formal `coverage_products compare` proves both sides from uploaded records and refuses a side that exited 1, so neither run here qualifies. It remains a Task 6 gate: PR CI's artifact against main's, once PR CI passes."
+      "not_established": "This Windows comparison stays unproven: `coverage_products compare` refuses a side that exited 1, so neither run here qualifies. linux_ci.safety_comparison is the formal result."
     }
   },
   "ruff": {
@@ -370,7 +370,186 @@
     }
   ],
   "linux_ci": {
-    "status": "UNRUN",
-    "reason": "Task 6 opens the PR. guardrails.yml runs the full suite and the same coverage validation on Linux."
+    "status": "PASSED",
+    "pull_request": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/462",
+    "branch_head": "baca950",
+    "reading": "GitHub tested 5613c98, its merge of baca950 into main at 99e6ce7. Against main's own run, 241 more tests were selected and 241 more passed, and the skip count is unchanged. The log and artifact give no per-test skip identities, so test-exclusions.json covers the Windows run only.",
+    "pr_run": {
+      "run": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/41432997490",
+      "tested_sha": "5613c98",
+      "artifact": "product-coverage-5613c98c3cf7a699b1be631f57b307f2705977a3-1",
+      "result": "11272 passed, 318 skipped, 165 deselected",
+      "selected": 11590,
+      "validation": [
+        "coverage-products: bound full session 20261102T105934-3016-0f6968 (69 records considered)",
+        "coverage-products: full-run validity established"
+      ],
+      "platform": "linux",
+      "python_version": "3.14.10",
+      "coverage_version": "7.14.3",
+      "floors": [
+        {
+          "name": "optimus",
+          "percent": 89.8008,
+          "floor": 80.0,
+          "enforced": true,
+          "passed": true
+        },
+        {
+          "name": "context_engine",
+          "percent": 95.9243,
+          "floor": 80.0,
+          "enforced": true,
+          "passed": true
+        },
+        {
+          "name": "evidence_handoff",
+          "percent": 66.8335,
+          "floor": 80.0,
+          "enforced": false,
+          "passed": false
+        },
+        {
+          "name": "optimus_model_policy",
+          "percent": 95.1062,
+          "floor": 80.0,
+          "enforced": true,
+          "passed": true
+        },
+        {
+          "name": "aggregate",
+          "percent": 86.4355,
+          "floor": 80.0,
+          "enforced": false,
+          "passed": true
+        }
+      ],
+      "coverage_json_sha256": "hex:df61447a09d2c5c2c5fde27c33e0548af5a8fd926d2dfb851ac00bf85d12ef53",
+      "gate_report_sha256": "hex:64d1015fab96c9447288d7d0f74482d7b153205e691a57059b7397174ac62ded",
+      "run_record_sha256": "hex:0ac6e99da8702ec80fe64f26e91b5d88c4f7838b6c1770e9316f3bbf9997d9f5"
+    },
+    "main_run": {
+      "run": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/41343980617",
+      "tested_sha": "99e6ce7",
+      "artifact": "product-coverage-99e6ce7fda20e2a468ef4ce3b17b613e6998f2ad-1",
+      "result": "11031 passed, 318 skipped, 140 deselected",
+      "selected": 11349,
+      "validation": [
+        "coverage-products: bound full session 20261101T195414-3017-3e9487 (69 records considered)",
+        "coverage-products: full-run validity established"
+      ],
+      "platform": "linux",
+      "python_version": "3.14.10",
+      "coverage_version": "7.14.3",
+      "floors": [
+        {
+          "name": "optimus",
+          "percent": 89.7458,
+          "floor": 80.0,
+          "enforced": true,
+          "passed": true
+        },
+        {
+          "name": "context_engine",
+          "percent": 95.9243,
+          "floor": 80.0,
+          "enforced": true,
+          "passed": true
+        },
+        {
+          "name": "evidence_handoff",
+          "percent": 66.8335,
+          "floor": 80.0,
+          "enforced": false,
+          "passed": false
+        },
+        {
+          "name": "optimus_model_policy",
+          "percent": 94.4017,
+          "floor": 80.0,
+          "enforced": true,
+          "passed": true
+        },
+        {
+          "name": "aggregate",
+          "percent": 86.2765,
+          "floor": 80.0,
+          "enforced": false,
+          "passed": true
+        }
+      ],
+      "coverage_json_sha256": "hex:d2a4c441eb5e46a276b5ed8e15cf0a0ab40a78a6dd4afdc40b7e563e4466d95d",
+      "gate_report_sha256": "hex:e95556d92e5a4d3a5b8637825d457f3fa4bd13b8b11edeef8e299b53f19b630a",
+      "run_record_sha256": "hex:01d4f3b243c907513e9cdb973b7cf1522e35e6336033c4d6ba716d7bddff66d7"
+    },
+    "safety_comparison": {
+      "command": "python -m tools.testing.coverage_products compare, each side's coverage.json, gate report and bound run.json from the artifact named above, producer offset +00:00, no --base-audit-depth-proven-absent (both records state audit_depth full)",
+      "exit_status": 0,
+      "output": [
+        "coverage-products: compared base sha256 d2a4c441eb5e46a276b5ed8e15cf0a0ab40a78a6dd4afdc40b7e563e4466d95d",
+        "coverage-products: compared candidate sha256 df61447a09d2c5c2c5fde27c33e0548af5a8fd926d2dfb851ac00bf85d12ef53",
+        "coverage-products: safety rows comparable, no regression"
+      ],
+      "receipts": "compare infers neither artifact origin nor the collected universe. Each artifact was downloaded by the run ID above, and its validity.txt is the validate step of its own CI job, which compares the session's selection with the universe collected there.",
+      "rows": {
+        "src/optimus/tools/registry.py": {
+          "covered_lines": 45,
+          "num_statements": 46,
+          "missing_lines": 1,
+          "covered_branches": 5,
+          "num_branches": 6,
+          "missing_branches": 1
+        },
+        "src/optimus/runtime/mutation.py": {
+          "covered_lines": 24,
+          "num_statements": 25,
+          "missing_lines": 1,
+          "covered_branches": 7,
+          "num_branches": 8,
+          "missing_branches": 1
+        },
+        "src/optimus/gateway/models.py": {
+          "covered_lines": 163,
+          "num_statements": 168,
+          "missing_lines": 5,
+          "covered_branches": 47,
+          "num_branches": 54,
+          "missing_branches": 7
+        },
+        "src/optimus/evidence/ledger.py": {
+          "covered_lines": 63,
+          "num_statements": 63,
+          "missing_lines": 0,
+          "covered_branches": 10,
+          "num_branches": 10,
+          "missing_branches": 0
+        },
+        "src/optimus/acp/framing.py": {
+          "covered_lines": 52,
+          "num_statements": 54,
+          "missing_lines": 2,
+          "covered_branches": 20,
+          "num_branches": 22,
+          "missing_branches": 2
+        },
+        "src/optimus/retry/policy.py": {
+          "covered_lines": 123,
+          "num_statements": 125,
+          "missing_lines": 2,
+          "covered_branches": 25,
+          "num_branches": 26,
+          "missing_branches": 1
+        },
+        "src/optimus/tools/policy.py": {
+          "covered_lines": 86,
+          "num_statements": 89,
+          "missing_lines": 3,
+          "covered_branches": 22,
+          "num_branches": 24,
+          "missing_branches": 2
+        }
+      },
+      "reading": "Every safety-critical row equals main's exactly, in statements, branches and misses."
+    }
   }
 }

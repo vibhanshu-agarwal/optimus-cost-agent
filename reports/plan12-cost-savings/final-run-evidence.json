@@ -3485,6 +3485,55 @@
       "run_context": [],
       "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/c5ed1031f8314607a08c415999f187ab.log",
       "log_sha256": "hex:4860f843a7fd4031fd4c2301507a52dd24fb3ec1a12822b7d73f81d0ab3461df"
+    },
+    {
+      "run_id": "hex:3d0ab5c5f114435890280c2c996b5e62",
+      "label": "merge-main-targeted",
+      "command": [
+        "uv",
+        "run",
+        "--no-sync",
+        "pytest",
+        "--no-cov",
+        "tests/unit/acp/test_lifecycle.py",
+        "tests/unit/mcp/test_client_config.py",
+        "tests/unit/tools/test_validate_publication.py",
+        "tests/unit/acp/test_savings_command.py",
+        "tests/unit/usage/test_savings_report.py",
+        "tests/unit/docs/test_docs_index.py",
+        "tests/unit/docs/test_plan_directory_hygiene.py",
+        "-q"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-02T10:57:04.588444+00:00",
+      "ended": "2026-11-02T10:57:32.042841+00:00",
+      "source_before": {
+        "head": "hex:baca95006e97e46af718ba3a53d7e67e681d126f",
+        "tested_diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:baca95006e97e46af718ba3a53d7e67e681d126f",
+        "tested_diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "170 passed, 4 skipped in 24.56s"
+      ],
+      "run_context": [
+        "test-run-context: mode=active reason=default_selection run=20261102T105706-51044-8de02c native=valid job=optimus-test-run-20261102T105706-51044-8de02c processes=7 parent=not_found guard=pytest_process_guard protection=full records=COMPLETE phases=518 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/3d0ab5c5f114435890280c2c996b5e62.log",
+      "log_sha256": "hex:9235a2964a45ad8b31195a430ff52fb74a489526ddbde6ec311f2a29f2ccd05d"
     }
   ],
   "notes": [
