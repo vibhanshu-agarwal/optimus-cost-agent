@@ -229,7 +229,7 @@
   },
   "deselected": {
     "count": 165,
-    "kind": "source-derived: the run records no reason, so each test's markers (collection at 6124a90, run collect-all-markers) are intersected with pyproject's default selection. UNKNOWN means no marker explains it.",
+    "kind": "source-derived: the run records no reason, so each test's markers (collection at 70c809e, run collect-all-markers) are intersected with pyproject's default selection. UNKNOWN means no marker explains it.",
     "unknown": [],
     "tests": [
       {
@@ -1319,7 +1319,7 @@
       "tests/unit/tools/test_plan12_memory_harness.py (fixed in 9a0c5a1)"
     ],
     "callers_of_the_renamed_report_method": "SavingsReports.markdown became answer in 70c809e: spec.py and test_savings_report.py are its only callers; both updated, and the logging-surface manifest key in 6124a90.",
-    "collected_without_error": "All 11,745 tests collect at 6124a90, the deselected ones included, so none fails on import.",
+    "collected_without_error": "All 11,745 tests collect at 70c809e, the deselected ones included, so none fails on import. 6124a90 differs from it only in the logging-surface manifest's key, which no test collection reads as source.",
     "run_elsewhere": "57 of the deselected tests are the Postgres tier, run as db-tier-final and boundary-*-final at 7cce51c.",
     "not_exercised": "The other 108 deselected tests need Redis, a live Gateway, MCP, acpx, Zed, a keyring, Evidence Handoff services or real agents. No run on this branch exercised them."
   }
