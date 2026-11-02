@@ -1,0 +1,245 @@
+{
+  "schema": "plan12-cost-savings-qualification/1",
+  "recorded": "2026-11-02",
+  "issue": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/248",
+  "claim": "Regression, coverage and delivery gates",
+  "status": "NOT YET QUALIFIED: the one Windows full suite failed, its coverage validation refused it, and the operator's disposition of the fix is pending.",
+  "checkout": {
+    "branch": "agent/claude/plan12-9-cost-savings-report",
+    "windows_full_suite_head": "f1cb559",
+    "code_head": "9a0c5a1",
+    "delta_after_windows_full_suite": "9a0c5a1 changes one line in tests/unit/tools/test_plan12_memory_harness.py: the config double gains model_policy=None. No source changed; src, migrations, tools, pyproject.toml and uv.lock are unchanged since 7cce51c."
+  },
+  "windows_full_run": {
+    "label": "full-suite-final",
+    "run_id": "hex:58e50f04afe74bedaf691f5514476242",
+    "head": "f1cb559",
+    "exit_status": 1,
+    "result": "14 failed, 11508 passed, 54 skipped, 165 deselected, 2 warnings in 4163.24s (1:09:23)",
+    "log_sha256": "hex:f8b6c3bd8b84dd91a229a7d14c654fc9141762f6f96c1af99ff0e75e75f68902",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "run_context": [
+      "test-run-context: mode=active reason=default_selection run=20261102T065835-41640-6482b3 native=valid job=optimus-test-run-20261102T065835-41640-6482b3 processes=17726 parent=not_found guard=pytest_process_guard protection=full records=COMPLETE phases=34695 exit=1"
+    ],
+    "worktree": "clean before and after",
+    "failed": [
+      "tests/unit/tools/test_plan12_memory_harness.py::test_billed_refusal_keeps_its_receipt",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[bad-cost]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[bool-tokens]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[float-cost]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[nan-cost]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[negative-tokens]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[no-attempt-id]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[no-attempts]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[no-choices]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[null-content]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[text-tokens]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_malformed_replies_raise[unknown-outcome]",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_success_settles_the_completed_attempt_and_skips_the_unbilled_one",
+      "tests/unit/tools/test_plan12_memory_harness.py::test_uncertain_or_unmatched_attempts_stay_unknown"
+    ],
+    "root_cause": "Task 2 (1c6d6ba) made optimus_gateway.responses._gateway_usage read config.model_policy. This Plan 12.5 test builds its replies through that function with a config double that had only a provider, so every test using usage_for raised AttributeError. The real config (GatewayServiceConfig) always has the field, defaulting to None, so production is not affected. tools/plan12_memory/harness.py reads usage fields by name and is not affected by the added price_snapshot_id.",
+    "why_focused_runs_missed_it": "focused-final selected the test files the branch changed, and this file was not one. A search for callers of _gateway_usage in tests when Task 2 changed it would have found it. The search has now been run: its only other test caller already sets model_policy.",
+    "skips_and_deselections": "54 skipped and 165 deselected, by the run's default selection. The log does not list skip reasons. The real-Postgres tier runs only with its released container and is recorded separately as db-tier-final."
+  },
+  "coverage": {
+    "source": "the gate's report for the full run at f1cb559",
+    "coverage_json_sha256": "hex:74d3c8315fbb7d6d13e06fa60e2f4962926af3196808ace9adfc812d3f7c1b82",
+    "floors": [
+      {
+        "name": "optimus",
+        "percent": 90.2567,
+        "floor": 80.0,
+        "enforced": true,
+        "passed": true
+      },
+      {
+        "name": "context_engine",
+        "percent": 95.9243,
+        "floor": 80.0,
+        "enforced": true,
+        "passed": true
+      },
+      {
+        "name": "evidence_handoff",
+        "percent": 68.5347,
+        "floor": 80.0,
+        "enforced": false,
+        "passed": false
+      },
+      {
+        "name": "optimus_model_policy",
+        "percent": 95.3638,
+        "floor": 80.0,
+        "enforced": true,
+        "passed": true
+      },
+      {
+        "name": "aggregate",
+        "percent": 87.0713,
+        "floor": 80.0,
+        "enforced": false,
+        "passed": true
+      }
+    ],
+    "gate_verdict": {
+      "failures": [
+        "full suite exit 1"
+      ],
+      "passed": false
+    },
+    "validation": {
+      "label": "coverage-validate-final",
+      "run_id": "hex:6d32e09a00514f398227dc315e75a4f1",
+      "head": "f1cb559",
+      "exit_status": 3,
+      "result": "full-run validity NOT established: the run's own record cannot support a result (exit_status_differs), because the suite exited 1.",
+      "log_sha256": "hex:e40f0719f40f1382f2ac60462b1d8f8cdb1b22978d2ca6f3c633ce9e7c41c497"
+    },
+    "reading": "Every required floor and the 80% aggregate are met as measured, but the gate and its validator refuse a run that failed. The measured numbers are not a validated coverage result. The 14 failed tests stopped inside the test double. evidence_handoff is below 80% and informational; this plan changed no file in it.",
+    "safety_critical": "No failed test is in a safety path. The coverage groups name no safety-critical list, so this is a reading of the failures, not a per-file baseline comparison."
+  },
+  "ruff": {
+    "label": "ruff-final",
+    "run_id": "hex:ee0371913950401ebc60e8195b87b909",
+    "head": "f1cb559",
+    "exit_status": 0,
+    "result": "All checks passed!",
+    "log_sha256": "hex:82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  },
+  "focused_checks": [
+    {
+      "label": "db-tier-final",
+      "run_id": "hex:5ae1b45a007346a993c243bc4424b9cf",
+      "head": "7cce51c",
+      "exit_status": 0,
+      "result": "55 passed, 2 skipped in 52.49s",
+      "log_sha256": "hex:0f657440c7d28adc85df8a0471dc17c6fa6056fc10a1bd5ca7216ff9a24ffb5b"
+    },
+    {
+      "label": "boundary-report-final",
+      "run_id": "hex:611ddfc1975c4f24858585f341adecf2",
+      "head": "7cce51c",
+      "exit_status": 0,
+      "result": "============================== 1 passed in 2.77s ==============================",
+      "log_sha256": "hex:117a7bc3e8e76dc50329400f24ae06dcbcc9e77e854df1daefb9c84bf55cd225"
+    },
+    {
+      "label": "boundary-capture-final",
+      "run_id": "hex:188f3a14bccd4a5eb47a4d9a675ab71b",
+      "head": "7cce51c",
+      "exit_status": 0,
+      "result": "============================== 1 passed in 3.25s ==============================",
+      "log_sha256": "hex:6fdf459fbf558ec171da1af47fc6374bf3613f4013701c214cdc675cc008af0e"
+    },
+    {
+      "label": "focused-final",
+      "run_id": "hex:e35a17149e714728b87b9a6ed5a060e7",
+      "head": "7cce51c",
+      "exit_status": 0,
+      "result": "621 passed in 278.60s (0:04:38)",
+      "log_sha256": "hex:50d7fa28d5d4c01601bad78d2635517ff040f70db432b58d68135130932be52d"
+    },
+    {
+      "label": "focused-stage-final",
+      "run_id": "hex:fe305f20f71c4144a6759351a49f158e",
+      "head": "5d22846",
+      "exit_status": 0,
+      "result": "67 passed in 6.97s",
+      "log_sha256": "hex:65503b374e0b1b6f562566864036e5608b5c621f0789a4ec66ac4c075377b2ec"
+    },
+    {
+      "label": "inventories-final",
+      "run_id": "hex:0cd2e05159414eddafa8cfbd4d2fdb1a",
+      "head": "f1cb559",
+      "exit_status": 0,
+      "result": "499 passed in 312.32s (0:05:12)",
+      "log_sha256": "hex:04e6ab5db093786e7a9de934a72496ed912608df39fb8564552a01c06c25c6ad"
+    },
+    {
+      "label": "docs-final",
+      "run_id": "hex:c4aabe738ad04d4fb99ccb7a5bcf7271",
+      "head": "f1cb559",
+      "exit_status": 0,
+      "result": "122 passed, 1 skipped in 19.19s",
+      "log_sha256": "hex:41ed75b5e063ee93c241d3f4c8b67d0f36859b561899d3a92ce837d77d5a8ea5"
+    },
+    {
+      "label": "harness-double-final",
+      "run_id": "hex:9e64e383486c4998bb8e6fcf3759b81b",
+      "head": "9a0c5a1",
+      "exit_status": 0,
+      "result": "113 passed in 2.13s",
+      "log_sha256": "hex:5eb2ce7a3aaeba9ccf23f53b9b741092c861b66420aef4a5d8476db50d1d0c36"
+    }
+  ],
+  "revert_checks": [
+    {
+      "label": "revert-unit-final",
+      "run_id": "hex:fbd29385860948139a099a0510b9b365",
+      "head": "7cce51c",
+      "exit_status": 0,
+      "result": "auto-registry-hash-dropped: KILLED ['5 failed, 294 passed in 52.31s']",
+      "log_sha256": "hex:dbb3b206524e67d918784b5a6557f29aadc9f8adb96ce18ff1276b3087caedfe",
+      "killed": 61,
+      "survived": 0
+    },
+    {
+      "label": "revert-postgres-final",
+      "run_id": "hex:795f76cc653a4e31a2268f0f4bfa4fa3",
+      "head": "7cce51c",
+      "exit_status": 0,
+      "result": "unallocated-only-on-fact-streams: KILLED ['1 failed, 23 passed, 1 skipped in 20.23s']",
+      "log_sha256": "hex:8f05dd2d84c48c2f1ff6e7b3a70c081188f1ed96ba453ae98aaf153738e9c4d0",
+      "killed": 12,
+      "survived": 0
+    },
+    {
+      "label": "revert-stage-final",
+      "run_id": "hex:4ad37493f0e541f8b0895a98261c753e",
+      "head": "5d22846",
+      "exit_status": 0,
+      "result": "a-stage-left-out: KILLED ['1 failed, 299 passed in 51.00s']",
+      "log_sha256": "hex:f48ddc6c63b177d4d9a7f7439d720210e875b203a425a44b99af95f1d66314c3",
+      "killed": 1,
+      "survived": 0
+    }
+  ],
+  "class_check": "All test and tool callers of _gateway_usage: two, the fixed double and test_usage_price_snapshots.py, which already sets model_policy. All other new attribute reads ran in the full suite without failure.",
+  "known_gaps_in_the_named_evidence_found_late": [
+    "The four files accounting.json, gateway-read.json, snapshots-auto.json and comparisons.json were generated in Task 5 (f1cb559); earlier checkpoints did not ask for them.",
+    "Task 1's all-stage fixture was added in Task 5 (5d22846), at the reducer level; real-Postgres cases use planning only."
+  ],
+  "checkpoints": [
+    {
+      "checkpoint": "A",
+      "round": 93,
+      "verdict": "ACCEPT at b4d2621, pass 3"
+    },
+    {
+      "checkpoint": "B",
+      "round": 94,
+      "verdict": "ACCEPT at 66c69e6, pass 5",
+      "reviews": [
+        "#248 comment 6562522411",
+        "#248 comment 6563545554",
+        "#248 comment 6565099505",
+        "#248 comment 6565767804",
+        "#248 comment 6565843408"
+      ]
+    },
+    {
+      "checkpoint": "C",
+      "round": 95,
+      "verdict": "PENDING"
+    }
+  ],
+  "full_run_disposition": {
+    "decision": "PENDING",
+    "by": "Operator, as Plan 12.9 v2 Checkpoint C requires before another full run or acceptance of changed bytes"
+  },
+  "linux_ci": {
+    "status": "UNRUN",
+    "reason": "Task 6 opens the PR. guardrails.yml runs the full suite and the same coverage validation on Linux."
+  }
+}

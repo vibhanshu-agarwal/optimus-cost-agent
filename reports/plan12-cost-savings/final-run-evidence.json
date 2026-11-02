@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "plan": "Plan 12.9 v2, Task 5 (cumulative runs from Task 3 on the recorder)",
+  "plan": "Plan 12.9 v2, Task 5 and Checkpoint C",
   "recorder": {
     "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/run_and_record.py",
     "revert_checks": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/revert_check.py",
@@ -8,7 +8,7 @@
     "sha256": {
       "run_and_record.py": "hex:434dd374f96de7f5f767b47c9034feb7da70750a97d146ddbc194e4797a022d1",
       "revert_check.py": "hex:9e7f3f529b9b1dc785209fcad91194fc68d806a804f6047ad4bb76c8c2991749",
-      "publish_evidence.py": "hex:00ce6588d0a9945e76a47b523894b187d643f7ceb3380ce12362f5a71c1ef013"
+      "publish_evidence.py": "hex:6c306b69ff4c34a16389005bc74484a2bfe6d584cb2364a2c853aa95bfb23fc0"
     }
   },
   "validity": {
@@ -2806,6 +2806,323 @@
       ],
       "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/fe305f20f71c4144a6759351a49f158e.log",
       "log_sha256": "hex:65503b374e0b1b6f562566864036e5608b5c621f0789a4ec66ac4c075377b2ec"
+    },
+    {
+      "run_id": "hex:0cd2e05159414eddafa8cfbd4d2fdb1a",
+      "label": "inventories-final",
+      "command": [
+        "uv",
+        "run",
+        "--no-sync",
+        "pytest",
+        "--no-cov",
+        "tests/unit/tools/test_verify_plan996_logging_surfaces.py",
+        "tests/unit/guardrails/test_tracked_file_scanners.py",
+        "tests/unit/tools/test_tracked_repository_files.py",
+        "tests/unit/tools/test_run_context_child_sites.py",
+        "tests/unit/tools/test_test_profiles.py",
+        "tests/unit/tools/test_probe_p11_zed_session_load.py",
+        "-q"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-02T06:52:51.568236+00:00",
+      "ended": "2026-11-02T06:58:07.102413+00:00",
+      "source_before": {
+        "head": "hex:f1cb55941a7a3950ac6b383ff9b3a35c2b8dd596",
+        "tested_diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:f1cb55941a7a3950ac6b383ff9b3a35c2b8dd596",
+        "tested_diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "499 passed in 312.32s (0:05:12)"
+      ],
+      "run_context": [
+        "test-run-context: mode=active reason=default_selection run=20261102T065254-17688-288cc9 native=valid job=optimus-test-run-20261102T065254-17688-288cc9 processes=3683 parent=not_found guard=pytest_process_guard protection=full records=COMPLETE phases=1497 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/0cd2e05159414eddafa8cfbd4d2fdb1a.log",
+      "log_sha256": "hex:04e6ab5db093786e7a9de934a72496ed912608df39fb8564552a01c06c25c6ad"
+    },
+    {
+      "run_id": "hex:c4aabe738ad04d4fb99ccb7a5bcf7271",
+      "label": "docs-final",
+      "command": [
+        "uv",
+        "run",
+        "--no-sync",
+        "pytest",
+        "--no-cov",
+        "tests/unit/docs/test_docs_index.py",
+        "tests/unit/docs/test_plan_directory_hygiene.py",
+        "tests/unit/docs/test_open_work_pool_hygiene.py",
+        "-q"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-02T06:58:08.611540+00:00",
+      "ended": "2026-11-02T06:58:30.401028+00:00",
+      "source_before": {
+        "head": "hex:f1cb55941a7a3950ac6b383ff9b3a35c2b8dd596",
+        "tested_diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:f1cb55941a7a3950ac6b383ff9b3a35c2b8dd596",
+        "tested_diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "122 passed, 1 skipped in 19.19s"
+      ],
+      "run_context": [
+        "test-run-context: mode=active reason=default_selection run=20261102T065810-49508-c3f9b3 native=valid job=optimus-test-run-20261102T065810-49508-c3f9b3 processes=359 parent=not_found guard=pytest_process_guard protection=full records=COMPLETE phases=369 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/c4aabe738ad04d4fb99ccb7a5bcf7271.log",
+      "log_sha256": "hex:41ed75b5e063ee93c241d3f4c8b67d0f36859b561899d3a92ce837d77d5a8ea5"
+    },
+    {
+      "run_id": "hex:58e50f04afe74bedaf691f5514476242",
+      "label": "full-suite-final",
+      "command": [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "tools/check_product_coverage.py",
+        "--run-full-suite",
+        "--groups",
+        "tools/product-coverage-groups.json",
+        "--report-json",
+        "tmp/coverage/product-coverage-report.json",
+        "--coverage-json",
+        "tmp/coverage/coverage.json"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-02T06:58:31.897856+00:00",
+      "ended": "2026-11-02T08:08:17.955143+00:00",
+      "source_before": {
+        "head": "hex:f1cb55941a7a3950ac6b383ff9b3a35c2b8dd596",
+        "tested_diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:f1cb55941a7a3950ac6b383ff9b3a35c2b8dd596",
+        "tested_diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untracked": []
+      },
+      "exit_status": 1,
+      "summary": [
+        "        failed = parse_reply(502, _double_reply(\"uncertain\", status=502, code=\"UPSTREAM_ATTEMPT_UNCERTAIN\"), route=ROUTE)",
+        "14 failed, 11508 passed, 54 skipped, 165 deselected, 2 warnings in 4163.24s (1:09:23)"
+      ],
+      "run_context": [
+        "test-run-context: mode=active reason=default_selection run=20261102T065835-41640-6482b3 native=valid job=optimus-test-run-20261102T065835-41640-6482b3 processes=17726 parent=not_found guard=pytest_process_guard protection=full records=COMPLETE phases=34695 exit=1"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/58e50f04afe74bedaf691f5514476242.log",
+      "log_sha256": "hex:f8b6c3bd8b84dd91a229a7d14c654fc9141762f6f96c1af99ff0e75e75f68902"
+    },
+    {
+      "run_id": "hex:6d32e09a00514f398227dc315e75a4f1",
+      "label": "coverage-validate-final",
+      "command": [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "tools.testing.coverage_products",
+        "validate",
+        "--coverage-json",
+        "tmp/coverage/coverage.json",
+        "--gate-report",
+        "tmp/coverage/product-coverage-report.json"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-02T08:08:19.379733+00:00",
+      "ended": "2026-11-02T08:08:49.978610+00:00",
+      "source_before": {
+        "head": "hex:f1cb55941a7a3950ac6b383ff9b3a35c2b8dd596",
+        "tested_diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:f1cb55941a7a3950ac6b383ff9b3a35c2b8dd596",
+        "tested_diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untracked": []
+      },
+      "exit_status": 3,
+      "summary": [],
+      "run_context": [],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/6d32e09a00514f398227dc315e75a4f1.log",
+      "log_sha256": "hex:e40f0719f40f1382f2ac60462b1d8f8cdb1b22978d2ca6f3c633ce9e7c41c497"
+    },
+    {
+      "run_id": "hex:ee0371913950401ebc60e8195b87b909",
+      "label": "ruff-final",
+      "command": [
+        "uv",
+        "run",
+        "--no-sync",
+        "ruff",
+        "check",
+        "."
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-02T08:08:51.391601+00:00",
+      "ended": "2026-11-02T08:08:51.529778+00:00",
+      "source_before": {
+        "head": "hex:f1cb55941a7a3950ac6b383ff9b3a35c2b8dd596",
+        "tested_diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:f1cb55941a7a3950ac6b383ff9b3a35c2b8dd596",
+        "tested_diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "All checks passed!"
+      ],
+      "run_context": [],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/ee0371913950401ebc60e8195b87b909.log",
+      "log_sha256": "hex:82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "run_id": "hex:e42c4d31de77484f93e98c9182a0ac82",
+      "label": "harness-double-final-uncommitted",
+      "command": [
+        "uv",
+        "run",
+        "--no-sync",
+        "pytest",
+        "--no-cov",
+        "tests/unit/tools/test_plan12_memory_harness.py",
+        "tests/unit/optimus_gateway/test_usage_price_snapshots.py",
+        "tests/unit/optimus_gateway/test_responses.py",
+        "tests/unit/optimus_gateway/test_model_policy.py",
+        "-q"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-02T08:10:31.868429+00:00",
+      "ended": "2026-11-02T08:11:00.556068+00:00",
+      "source_before": {
+        "head": "hex:f1cb55941a7a3950ac6b383ff9b3a35c2b8dd596",
+        "tested_diff_sha256": "hex:228c0eddb6f9e1c0370e91eaa395aac7870bfd426adfea350df93a2b6e47d06f",
+        "status_sha256": "hex:c04397ab318dc225133738da6398a60ce4b9069d7138158bb8729fc18766e6fa",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:f1cb55941a7a3950ac6b383ff9b3a35c2b8dd596",
+        "tested_diff_sha256": "hex:228c0eddb6f9e1c0370e91eaa395aac7870bfd426adfea350df93a2b6e47d06f",
+        "status_sha256": "hex:c04397ab318dc225133738da6398a60ce4b9069d7138158bb8729fc18766e6fa",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "113 passed in 26.06s"
+      ],
+      "run_context": [
+        "test-run-context: mode=active reason=default_selection run=20261102T081033-54728-ade01d native=valid job=optimus-test-run-20261102T081033-54728-ade01d processes=3 parent=not_found guard=pytest_process_guard protection=full records=COMPLETE phases=339 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/e42c4d31de77484f93e98c9182a0ac82.log",
+      "log_sha256": "hex:b583fa9ae971dd80a3af918fd8fdc1e15c262ddca288b8c864fa12687eca3778"
+    },
+    {
+      "run_id": "hex:9e64e383486c4998bb8e6fcf3759b81b",
+      "label": "harness-double-final",
+      "command": [
+        "uv",
+        "run",
+        "--no-sync",
+        "pytest",
+        "--no-cov",
+        "tests/unit/tools/test_plan12_memory_harness.py",
+        "tests/unit/optimus_gateway/test_usage_price_snapshots.py",
+        "tests/unit/optimus_gateway/test_responses.py",
+        "tests/unit/optimus_gateway/test_model_policy.py",
+        "-q"
+      ],
+      "environment": {
+        "platform": "Windows-11-10.0.26300-SP0",
+        "python": "3.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "uv_lock_sha256": "hex:5f664bfb26fbe63ff6d99112fb8b3f180e3572379313b22b19362ef907add3c2"
+      },
+      "started": "2026-11-02T08:11:33.976183+00:00",
+      "ended": "2026-11-02T08:11:38.831322+00:00",
+      "source_before": {
+        "head": "hex:9a0c5a180cdc1bd4831b4492cf8265fde1b7d7e9",
+        "tested_diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untracked": []
+      },
+      "source_after": {
+        "head": "hex:9a0c5a180cdc1bd4831b4492cf8265fde1b7d7e9",
+        "tested_diff_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untracked": []
+      },
+      "exit_status": 0,
+      "summary": [
+        "113 passed in 2.13s"
+      ],
+      "run_context": [
+        "test-run-context: mode=active reason=default_selection run=20261102T081136-49596-5bc76d native=valid job=optimus-test-run-20261102T081136-49596-5bc76d processes=3 parent=not_found guard=pytest_process_guard protection=full records=COMPLETE phases=339 exit=0"
+      ],
+      "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-93-p129-checkpoint-a/runs/9e64e383486c4998bb8e6fcf3759b81b.log",
+      "log_sha256": "hex:5eb2ce7a3aaeba9ccf23f53b9b741092c861b66420aef4a5d8476db50d1d0c36"
     }
   ],
   "notes": [
@@ -2823,7 +3140,9 @@
     "Round 94 pass 5: socket construction joined _connect's error boundary (savings_report.py only). revert-unit-cpb5 ran the one new mutant, socket-creation-unbounded; the other mutants' anchors are unchanged and their source lines untouched. targeted-cpb5 covers the final bytes; no container was used.",
     "Task 5: the db-tier, revert-postgres, boundary-* and revert-unit -final runs are at 7cce51c. One test-only commit followed, 5d22846, the all-stage fixture that Task 1 named and the earlier checkpoints had not asked for; focused-stage-final ran that test file and revert-stage-final ran its one new mutant, a-stage-left-out. src/ is unchanged since 7cce51c.",
     "summary holds a run's last 30 matching lines only, so revert-unit-final shows 30 of its mutants; its log records 61 KILLED and none SURVIVED.",
-    "Task 5 used two more released containers: optimus-p129-zed for the Zed and acpx proof, and optimus-p129-k3 for these -final runs. Both are removed, with their volumes, roles and keyring entries."
+    "Task 5 used two more released containers: optimus-p129-zed for the Zed and acpx proof, and optimus-p129-k3 for these -final runs. Both are removed, with their volumes, roles and keyring entries.",
+    "full-suite-final (exit 1) and coverage-validate-final (exit 3) at f1cb559 are the plan's one Windows full run, kept as recorded: 14 tests in test_plan12_memory_harness.py failed on a config double without model_policy. 9a0c5a1 fixes that one line; harness-double-final ran that file and its Gateway neighbours. qualification.json holds the assessment and the pending disposition.",
+    "harness-double-final-uncommitted ran the same selection on the uncommitted fix, before 9a0c5a1."
   ],
   "task2_logs_before_the_recorder": {
     "folder": "task2-runs, beside recorder.script",
