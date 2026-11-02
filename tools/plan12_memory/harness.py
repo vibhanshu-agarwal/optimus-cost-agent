@@ -3,7 +3,7 @@
 It turns the harness's message list into one Optimus Gateway chat request, and the Gateway's
 reply into per-attempt receipts. It holds no credential and never re-sends: the Gateway makes
 every safe resend itself and marks each failure non-retryable. It imports neither the harness
-nor the Gateway; the mini-SWE-agent model class that calls it is a #248 setup item recorded in
+nor the Gateway; the mini-SWE-agent model class that calls it is a #463 setup item recorded in
 reports/plan12-memory-evaluation/harness-choice.json.
 """
 

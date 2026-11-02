@@ -365,7 +365,7 @@
   "open_items": [
     {
       "item": "A launch whose approval binds one upstream can silently attach to a Gateway another launch started with a different upstream; this caused the paid-call incident.",
-      "custody": "#248, until an approved follow-up owns it",
+      "custody": "#465, filed at Plan 12.9's closure with the operator's approval of 2026-11-02",
       "record": "zed-ui.json zero_paid.breach"
     }
   ],
