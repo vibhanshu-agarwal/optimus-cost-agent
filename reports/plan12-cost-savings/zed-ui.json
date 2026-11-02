@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "plan": "Plan 12.9 v2, Task 5",
+  "client": {
+    "zed_version": "1.26.2+stable.384.c4273271092b0287f7d181f616bd5171e0a2f70c",
+    "operator_entered_commands": true
+  },
+  "source": {
+    "proof_head": "51cef73",
+    "proof_session": "session-4ef1fe8b917e42bfab528371381b9f52",
+    "delta_after_proof": "one Status text in the host renderer ('1 request: tokens not reported'); covered by unit tests, not re-run in Zed"
+  },
+  "boundary": {
+    "ledger": "real Postgres, disposable container optimus-p129-zed (removed)",
+    "gateway": "the launch's own, 127.0.0.1:8766",
+    "upstream": "local synthetic stub, 127.0.0.1:8791; every cost in the proof session is synthetic and each stub reply says so"
+  },
+  "cases": {
+    "command_menu_after_setup": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0046-032755.png",
+      "sha256": "hex:4c9516b6006960d37afc8758380a894e1beb0d29899d469c0a35fe538df5e57b",
+      "shows": "run zed-2 at 78e70b9; the advertisement is unchanged after it"
+    },
+    "session_overview_and_auto_columns": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0085-034840.png",
+      "sha256": "hex:6e6ea88dbdae1dfaf738d774a37f585cc3106a4fc57a0dba4884fd32abd963c1",
+      "shows": "4 turns, 26 requests, USD 0.04142; models as columns"
+    },
+    "negative_and_positive_savings": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0085-034840.png",
+      "sha256": "hex:6e6ea88dbdae1dfaf738d774a37f585cc3106a4fc57a0dba4884fd32abd963c1",
+      "shows": "Sonnet and Sol -70.1%; Opus 14.9%"
+    },
+    "continuation_beyond_one_group": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0087-034859.png",
+      "sha256": "hex:ee0e9eea11dfff4684c9574dfa1483647ce427a962751da48428fce48f7cf2e7",
+      "shows": "Reference 4 of 4 with one column; its model name scrolled above this frame, and acpx-check/35.txt shows the same page's text"
+    },
+    "detail_pagination_page_two": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0086-034853.png",
+      "sha256": "hex:51780b3ca5de18d7896f7855262bb407a330a981d10faefa3929905586e81e86",
+      "shows": "rows to 25 and the next continuation"
+    },
+    "detail_pagination_last_page": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0092-035058.png",
+      "sha256": "hex:7e22ca365445205ed9d1cf6283606b41230c63fd2b3efef318aed59d626ad2fd",
+      "shows": "the last page holds row 26"
+    },
+    "one_turn_report": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0094-035111.png",
+      "sha256": "hex:61d7d92b528d32dc1fae8b636ccdf21496b591ab9efeae640d183f1169df4596",
+      "shows": "T1 alone: USD 0.00282 at Sonnet prices, savings USD 0.00264"
+    },
+    "unknown_cost_withholds_savings": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0101-035514.png",
+      "sha256": "hex:2ec28e46a1e1dd9066fc7955aab80880361755f4ad6169d11fd0e479f8a3d54e",
+      "shows": "qualified history; status names the unpriced request"
+    },
+    "non_registry_references": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0085-034840.png",
+      "sha256": "hex:6e6ea88dbdae1dfaf738d774a37f585cc3106a4fc57a0dba4884fd32abd963c1",
+      "shows": "Claude Opus 5.5 and GPT 6.1 Sol: neither is in the packaged registry"
+    },
+    "b2_b3_absence": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0085-034840.png",
+      "sha256": "hex:6e6ea88dbdae1dfaf738d774a37f585cc3106a4fc57a0dba4884fd32abd963c1",
+      "shows": "both sections state unavailable, with no amount"
+    },
+    "unavailable_categories": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0085-034840.png",
+      "sha256": "hex:6e6ea88dbdae1dfaf738d774a37f585cc3106a4fc57a0dba4884fd32abd963c1",
+      "shows": "cache-write charges stated as not included"
+    },
+    "ledger_down": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0107-035909.png",
+      "sha256": "hex:7f1f357aa2ebce0827df0c2d3f7dc4777ce9187c85447b70453df4f41452bfcf",
+      "shows": "\"The usage ledger is unavailable right now\""
+    },
+    "ordinary_work_during_outage": {
+      "file": "optimus-handoff/p129-zed/zed-shots/timeline/0107-035909.png",
+      "sha256": "hex:7f1f357aa2ebce0827df0c2d3f7dc4777ce9187c85447b70453df4f41452bfcf",
+      "shows": "T6 answered by the stub while the ledger was stopped"
+    }
+  },
+  "readback": {
+    "session": "session-4ef1fe8b917e42bfab528371381b9f52",
+    "migrations": [
+      "001_durable_capture.sql",
+      "002_savings_report.sql"
+    ],
+    "kinds": [
+      "attempt.receipt|28",
+      "epoch.begin|6",
+      "turn.report_context|6"
+    ],
+    "selections": [
+      "auto|6"
+    ],
+    "reference_snapshots": [
+      "5"
+    ],
+    "ledger_instance": [
+      "hex:85df4faa4e7a4887828f3461a252c60c"
+    ]
+  },
+  "stub_log": {
+    "file": "optimus-handoff/p129-zed/stub-run-zed-3/stub-requests.ndjson",
+    "sha256": "hex:3e6b84ba71af20268c829ad175d68cfc979eb6bd1738d18e1e0928b4b78d68a1",
+    "served": 28
+  },
+  "acpx_protocol_check": {
+    "client": "acpx 0.12.0, an independent ACP client",
+    "head": "78e70b9, working tree before that commit",
+    "shows": [
+      "available_commands_update after the session/new response",
+      "first prompt attributed Auto",
+      "continuation",
+      "stale cursor answers REPORT_CHANGED",
+      "ledger down answers LEDGER_UNAVAILABLE",
+      "work during the outage",
+      "delayed records delivered after restart"
+    ],
+    "folder": "optimus-handoff/p129-zed/acpx-check",
+    "first_attempt_kept": "attempts 01-25 found the two defects fixed in 78e70b9"
+  },
+  "zero_paid": {
+    "proof_session": "zero paid calls: stub log 28 served, p397-live Gateway log unchanged at 96 lines throughout",
+    "breach": {
+      "decision": "D4 zero paid calls",
+      "requests": 26,
+      "known_cost_usd": "0.01436675",
+      "unknown_cost_requests": 0,
+      "model_route": "the configured easy route",
+      "session": "session-2e2ea10df97e445abbfb420b6c09bbc0",
+      "cause": "another configured Zed entry's Gateway held 127.0.0.1:8765 with a real upstream, and this agent attached to it",
+      "record": "optimus-handoff/p129-zed/INCIDENT-paid-calls-2026-11-02.md",
+      "sha256": "hex:781c4b83172aec005d0532372c571a1a57787cadac478d7e776e3d11d36fcc75",
+      "gateway_log_sha256": "hex:840d898a4bd410c1b6ec42f1593aad00ea32ee870aad10a3c0ba162ffac51d45",
+      "disposition": "disclosed to the operator; the rerun used its own Gateway port; none of it is proof evidence"
+    }
+  },
+  "limits": [
+    "Screenshots stay outside the repository as provenance, by digest.",
+    "Agent-mode walk ends in a synthetic refusal: it exercises report paging, not edit behaviour.",
+    "The operator's Zed entry and launch approval for this workspace: the entry is removed; the approval remains in the operator's keyring."
+  ]
+}

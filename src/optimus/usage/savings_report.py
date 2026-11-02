@@ -321,7 +321,7 @@ def _comparison_table(columns: Sequence[Mapping[str, Any]]) -> list[str]:
     def status(column: Mapping[str, Any]) -> str:
         text = "complete" if column["complete"] else _reasons(column["reasons"], _COLUMN_REASONS)
         if column["unpriced"]:
-            text += " (" + ", ".join(f"{u['attempts']} {_UNPRICED.get(u['reason'], u['reason'])}" for u in column["unpriced"]) + ")"
+            text += " (" + ", ".join(f"{_count(u['attempts'], 'request')}: {_UNPRICED.get(u['reason'], u['reason'])}" for u in column["unpriced"]) + ")"
         return _text(text, 200)
 
     rows: tuple[tuple[str, Callable[[Mapping[str, Any]], str]], ...] = (

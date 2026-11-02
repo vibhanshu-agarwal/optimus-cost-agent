@@ -412,3 +412,10 @@ def test_the_comparison_has_a_column_per_model_and_a_row_per_fact():
     assert cells["Savings"] == [sr._usd(c["savings_usd"]) if c["savings_usd"] is not None else sr.urc.LABELS["not_definitive"] for c in columns]
     assert cells["At reference prices"] == [sr._usd(c["baseline_known_usd"]) for c in columns]
     assert all(len(row) == len(columns) for row in cells.values() if row and set(row) != {"---"})
+
+
+def test_an_unpriced_count_names_requests_and_not_tokens():
+    report = _page(_facts(), _request(), _references())
+    report["comparisons"]["columns"][0].update(complete=False, reasons=["unpriced_attempts"], unpriced=[{"reason": "tokens_unreported", "attempts": 1}])
+
+    assert "1 request: tokens not reported" in sr.render_savings_report(report)
