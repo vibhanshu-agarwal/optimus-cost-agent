@@ -169,7 +169,7 @@ test("test_every_kind_belongs_to_exactly_one_table", () => {
   assert.equal(new Set(listed).size, listed.length, "no kind is in two tables");
   assert.equal(new Set(VOCAB.tables.map((table) => table.key)).size, VOCAB.tables.length, "table keys are unique");
   assert.ok(VOCAB.tables.every((table) => table.key && table.title));
-  assert.deepEqual(VOCAB.tables.map((table) => table.key), ["features", "plans", "follow-ups", "hardening", "obligations"]);
+  assert.deepEqual(VOCAB.tables.map((table) => table.key), ["features", "plans", "bugs", "follow-ups", "hardening", "obligations"]);
 });
 
 test("test_issues_group_into_one_flat_table_per_kind_in_number_order", () => {
@@ -289,7 +289,7 @@ test("test_summary_counts_the_view", () => {
     issue(6, ["status:open"]),
   ];
   const {summary} = WS.buildModel(issues, VOCAB, {});
-  assert.deepEqual(plain(summary), {total: 6, blocked: 1, high: 2, partial: 1, followUps: 5, attention: 2});
+  assert.deepEqual(plain(summary), {total: 6, blocked: 1, high: 2, partial: 1, bugs: 0, followUps: 5, attention: 2});
 });
 
 // ---- filters ----
@@ -968,10 +968,10 @@ test("test_loading_state_is_a_live_region_and_filter_results_are_announced", asy
 test("test_tables_and_headers_have_unique_accessible_names", () => {
   const model = WS.buildModel([issue(1, FULL), issue(2, withKind("feature")), issue(3, ["status:open"])], VOCAB, {});
   const html = WS.renderPage(model, ui());
-  assert.match(html, /<table aria-label="Follow-ups and defects">/);
+  assert.match(html, /<table aria-label="Follow-ups">/);
   assert.match(html, /<table aria-label="Features">/);
   assert.match(html, /<table aria-label="Untriaged issues">/);
-  assert.match(html, /<th scope="col" class="c-priority" aria-label="Priority"><span class="hl">Priority<\/span><select data-filter="priority" data-table="follow-ups" id="flt-follow-ups-priority" aria-label="Filter Priority in Follow-ups and defects">/);
+  assert.match(html, /<th scope="col" class="c-priority" aria-label="Priority"><span class="hl">Priority<\/span><select data-filter="priority" data-table="follow-ups" id="flt-follow-ups-priority" aria-label="Filter Priority in Follow-ups">/);
   assert.match(html, /aria-label="Search Issue \/ Title in Features"/);
   const labels = html.match(/aria-label="(?:Filter|Search) [^"]*"/g);
   assert.equal(new Set(labels).size, labels.length, "no two controls on the page share a name");
@@ -1061,7 +1061,7 @@ test("test_a_vocabulary_without_a_high_priority_has_no_high_priority_tile", () =
   const noHigh = JSON.parse(JSON.stringify(VOCAB));
   delete noHigh.dimensions.priority.values.high;
   const model = WS.buildModel([issue(1, FULL)], noHigh, {});
-  assert.deepEqual(plain(model.tiles.map((tile) => tile.id)), ["total", "blocked", "partial", "followUps", "attention"]);
+  assert.deepEqual(plain(model.tiles.map((tile) => tile.id)), ["total", "blocked", "partial", "bugs", "followUps", "attention"]);
   assert.doesNotMatch(WS.renderPage(model, WS.initialUi(noHigh, "open")), /data-tile-column="priority"/);
   const noPriority = JSON.parse(JSON.stringify(VOCAB));
   delete noPriority.dimensions.priority;
@@ -1270,7 +1270,7 @@ test("test_open_on_github_mirrors_the_read", async () => {
 test("test_the_chevron_shows_collapsed_or_expanded_and_empty_kind_groups_are_not_drawn", () => {
   const html = WS.renderPage(WS.buildModel([issue(1, FULL), issue(2, withKind("track"))], VOCAB, {}), ui());
   assert.match(html, /<span class="chev" aria-hidden="true">▸<\/span>Hardening work/);
-  assert.match(html, /<span class="chev" aria-hidden="true">▾<\/span>Follow-ups and defects/);
+  assert.match(html, /<span class="chev" aria-hidden="true">▾<\/span>Follow-ups/);
   const lone = WS.renderPage(WS.buildModel([issue(1, FULL)], VOCAB, {}), ui());
   assert.equal((lone.match(/<section class="sec"/g) || []).length, 1);
   for (const key of ["features", "plans", "hardening", "obligations"]) assert.doesNotMatch(lone, new RegExp(`data-toggle="${key}"`));
@@ -1353,4 +1353,97 @@ test("test_only_get_requests_and_no_tokens", async () => {
   for (const forbidden of [/authorization/i, /\beval\s*\(/, /new Function/, /localStorage|sessionStorage|indexedDB/, /setInterval|setTimeout/, /method:\s*"(POST|PATCH|PUT|DELETE)"/]) {
     assert.doesNotMatch(block("work-status-logic"), forbidden);
   }
+});
+
+test("test_bug_table_partition_and_metadata_conservation", () => {
+  for (const extra of [{}, {state: "closed", state_reason: "completed"}, {state: "closed", state_reason: "not_planned"}]) {
+    const labels = (kind) => withKind(kind).filter((label) => !extra.state || !label.startsWith("status:"));
+    const before = WS.buildModel([issue(10, withKind("feature")), issue(2, labels("follow-up"), {...extra, parent_issue_url: parentUrl(10)})], VOCAB);
+    const after = WS.buildModel([issue(10, withKind("feature")), issue(2, labels("bug"), {...extra, parent_issue_url: parentUrl(10)})], VOCAB);
+    const oldRow = plain(rowsByNumber(before).get(2));
+    const newRow = plain(rowsByNumber(after).get(2));
+    assert.deepEqual(numbersOf(tableOf(after, "bugs").rows), [2]);
+    assert.deepEqual(numbersOf(tableOf(after, "follow-ups").rows), []);
+    assert.deepEqual(newRow, {...oldRow, kind: "Bug", kindKey: "bug"});
+    assert.equal(allRows(after).length, 2);
+    assert.deepEqual(plain(after.summary), {...plain(before.summary), bugs: before.summary.bugs + 1, followUps: before.summary.followUps - 1});
+    if (extra.state) assert.equal(newRow.cells.status.text, extra.state_reason === "completed" ? "Done" : "Not planned");
+    const html = WS.renderPage(after, WS.initialUi(VOCAB, "all"));
+    assert.match(html, /aria-label="Bugs"/);
+    assert.match(html, /issues\/10/);
+  }
+  for (const parent of [parentUrl(2), "malformed", parentUrl(99)]) {
+    const model = WS.buildModel([issue(2, withKind("bug"), {parent_issue_url: parent})], VOCAB);
+    assert.deepEqual(numbersOf(allRows(model)), [2]);
+    assert.match(WS.renderPage(model, ui()), /issues\/2/);
+  }
+});
+
+test("test_bug_summary_counts_do_not_inflate_followups", () => {
+  const model = WS.buildModel([issue(1, withKind("bug")), issue(2, FULL)], VOCAB);
+  assert.equal(model.summary.total, 2);
+  assert.equal(model.summary.bugs, 1);
+  assert.equal(model.summary.followUps, 1);
+  const ids = plain(model.tiles.map((t) => t.id));
+  assert.equal(ids.indexOf("bugs") + 1, ids.indexOf("followUps"));
+  assert.equal(model.tiles.find((t) => t.id === "bugs").column, undefined);
+  const empty = WS.renderPage(WS.buildModel([issue(2, FULL)], VOCAB), ui());
+  assert.doesNotMatch(empty, /id="sec-bugs"/);
+});
+
+test("test_bug_conflicts_stay_untriaged_once", () => {
+  const model = WS.buildModel([
+    issue(1, [...FULL, "kind:bug"]),
+    issue(2, withKind("bug").filter((label) => !label.startsWith("product:"))),
+    issue(3, withKind("bug").map((label) => label === "product:optimus" ? "product:mars" : label)),
+  ], VOCAB);
+  assert.deepEqual(numbersOf(model.untriaged), [1, 2, 3]);
+  assert.equal(model.summary.bugs, 2);
+  assert.equal(model.summary.followUps, 0);
+  assert.equal(model.summary.attention, 3);
+  assert.equal(allRows(model).length, 3);
+  assert.match(WS.renderPage(model, ui()), /kind conflict/);
+});
+
+test("test_bug_pagination_deduplicates_through_load_view", async () => {
+  let calls = 0;
+  const bug = issue(1, withKind("bug"));
+  const view = await WS.loadView(async () => ++calls === 1
+    ? response([bug], {link: '<https://api.github.com/next>; rel="next"'})
+    : response([bug, issue(2, FULL)]), VOCAB, "all", null);
+  const model = WS.buildModel(view.issues, VOCAB);
+  assert.deepEqual(numbersOf(allRows(model)).sort(), [1, 2]);
+  assert.equal(model.summary.bugs, 1);
+});
+
+test("test_bug_filters_are_independent_and_preserve_focus", async () => {
+  const {doc, elements, fire, focused} = fakeDom();
+  await load().boot(doc, fakeWindow(async () => response([
+    issue(1, withKind("bug"), {title: "first bug"}),
+    issue(2, withKind("bug").map((label) => label === "status:open" ? "status:blocked" : label), {title: "blocked bug"}),
+    issue(3, FULL, {title: "general follow-up"}),
+    issue(4, withKind("bug").map((label) => label === "product:optimus" ? "product:evidence-a2a" : label)),
+  ])));
+  fire("out", "change", filterEvent("status", "Blocked", "bugs"));
+  assert.equal(countOf(elements.out.innerHTML, "bugs"), "1 of 3 open");
+  assert.match(section(elements.out.innerHTML, "follow-ups"), /general follow-up/);
+  assert.deepEqual(focused.slice(-1), ["flt-bugs-status"]);
+  fire("out", "input", filterEvent("text", "absent", "bugs"));
+  assert.match(section(elements.out.innerHTML, "bugs"), /No matching issues/);
+  fire("clear", "click");
+  assert.equal(countOf(elements.out.innerHTML, "bugs"), "3 open");
+  fire("out", "click", {target: {dataset: {toggle: "bugs"}}});
+  assert.doesNotMatch(section(elements.out.innerHTML, "bugs"), /<table/);
+  fire("out", "click", {target: {dataset: {toggle: "bugs"}}});
+  assert.match(section(elements.out.innerHTML, "bugs"), /first bug/);
+  elements.product.value = "evidence-a2a";
+  fire("product", "change");
+  assert.doesNotMatch(section(elements.out.innerHTML, "bugs"), /first bug/);
+  assert.match(section(elements.out.innerHTML, "bugs"), /Issue 4/);
+  assert.doesNotMatch(section(elements.out.innerHTML, "follow-ups"), /general follow-up/);
+  fire("clear", "click");
+  fire("out", "click", {target: {dataset: {tileColumn: "status", tileValue: "Blocked"}}});
+  assert.match(section(elements.out.innerHTML, "bugs"), /blocked bug/);
+  assert.doesNotMatch(section(elements.out.innerHTML, "bugs"), /first bug/);
+  assert.doesNotMatch(section(elements.out.innerHTML, "follow-ups"), /general follow-up/);
 });

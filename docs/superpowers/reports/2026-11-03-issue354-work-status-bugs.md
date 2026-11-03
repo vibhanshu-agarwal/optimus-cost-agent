@@ -1,0 +1,121 @@
+# Issue #354: work-status Bugs table
+
+## Authority and review
+
+The operator replied "Approved" to approval-scope-v3 in the owning Codex chat on 3 November 2026. This approves local implementation/verification, the narrow ADR-022 disposition and the exact #354 updates; commit, push/PR, merge, deployment, kind:bug creation, other-issue reclassification and cleanup remain held.
+
+Approved plan SHA-256: `f987003c1361937c960192c78750c43dcaa8b3596efa4bcab09bfc3e39fbfdd2`. Source base: `026b3fd18dbed0793b93a0072a430fac62ff56e4`.
+
+Independent reviewer: Claude CLI, claude-opus-5-5, high effort, plan/read-only, session `aa7fda82-11d5-493e-ba1a-aefa9c35373b`. V1 NO-GO is preserved; v2 and final v3 received technical GO/no blockers. Reviewer read files and ran no tests. Medium difficulty and estimate:2d agreed. Verbatim reviews are in [#354](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/354); the issue remains the live work register.
+
+## Validation
+
+All results below are Windows-native, provisional dirty-tree development evidence at base `026b3fd18dbed0793b93a0072a430fac62ff56e4`; no commit was made. The page and Python production patch are six page insertions and two deletions (four new lines and two replacements) plus one label-spec entry. Final evidence prose was added after the measured tests; production and test bytes did not change afterward.
+
+| Check | Result / qualification |
+|---|---|
+| Unchanged baseline, Node v26.5.0 | 98 passed, no failures/skips |
+| Node RED, original and strengthened tests | 94 passed, 9 failed of 103; production unchanged; both retained |
+| Python RED, vocabulary parity | 1 failed, KeyError kind:bug; run 20261103T145319-43360-8b1bb6, active/full/native valid/COMPLETE, parent UNKNOWN |
+| Node GREEN, node --test tools/testing/work_status_page.test.cjs | 103 passed, 0 failed/skipped/cancelled |
+| Focused Python/docs | 454 passed, 1 skipped; run 20261103T145814-40860-948c05, active/full/native valid/COMPLETE, parent UNKNOWN |
+| uv run --no-sync python -m ruff check . | Passed |
+| git diff --check | Passed |
+| New untracked plan prerequisite table | Passed direct invocation of existing _assert_prerequisites_table validator; separate from pytest |
+| Browser smoke, intercepted synthetic API | Separate Bugs/Follow-ups; local Bugs filter preserved Follow-ups; Closed showed Done; All showed all six fixture identities exactly once, including one Untriaged conflict; keyboard collapse/reopen; 640px viewport scrolling measured 575px client/1009px content, overflow auto; viewport restored |
+
+Focused command: `uv run --no-sync pytest --no-cov tests/unit/tools/test_github_work_tracking.py tests/unit/docs/test_work_status_pages.py tests/unit/docs/test_open_work_pool_hygiene.py tests/unit/docs/test_docs_index.py`. The skipped node was `test_promoted_plan_file_rejects_an_archive_link_that_resolves_outside`: Windows WinError 1314 prevented creating its symlink. This is not a tested symlink-denial claim. Native/parent qualifiers are not inferred as platform parity. Final targeted docs check: `uv run --no-sync pytest --no-cov tests/unit/docs/test_plan_directory_hygiene.py tests/unit/docs/test_docs_index.py`, 15 passed, exit 0, run `20261103T150642-2380-d9204b`, active/full/native valid/COMPLETE, parent UNKNOWN. This separately closes the missed root/registry hygiene check; tracked-link scans still do not establish publication of untracked files. No WSL run, full suite, hooks, CI or hosted-page acceptance is claimed.
+
+CP1 Claude review gave technical GO and requested stronger closed-status, duplicate-count and summary-invariance assertions. These were added before production edits; the strengthened RED remained 94 passed/9 failed and final GREEN passed all 103. CP2 independent Claude review gave technical GO/no code blockers; its required receipt corrections are applied here. Reviewer read files and inspected the retained Node/Python logs but ran no tests or hashes. The source/test bytes are unchanged after that review. No new review comment beyond the four explicitly approved comments was posted. A minor index-placement suggestion was retained: the two index rows are valid and present, but are in an extra table before the Planning introduction. It changes no user behavior; no extra cleanup is included.
+
+### Source and execution binding
+
+Python interpreter: checkout-specific CPython 3.14.4, prepared by `uv sync --frozen --extra dev`. All successful GREEN, Ruff and diff checks exited 0; Node RED and Python RED each exited 1. Before source edits: clean checkout, HEAD/base `026b3fd18dbed0793b93a0072a430fac62ff56e4`, branch `agent/codex/issue354-bugs-table`. After tests and review: same HEAD/branch, six modified tracked paths (page, tool, two test files, docs index, live-plan registry) and two new untracked documents (this report and the approved plan). No staging, commits or source integration was performed. Only evidence prose changed after measured source/test results.
+
+| Tested file | SHA-256 |
+|---|---|
+| docs/work-status.html | 6249fbe26820b064af84eeae2f79f6a5b702774019d4947a1982aa777626cbc7 |
+| tools/github_work_tracking.py | b9871c4e8b23b87f666664ca412e1c6bbabae3f498b8c05fb27a734d44958f75 |
+| tools/testing/work_status_page.test.cjs | 5939759254c12a225f232bf7d6f8bb06c0041fbe271a3f5e531859b8a6e75f52 |
+| tests/unit/tools/test_github_work_tracking.py | 4ae7039e47220241bd0134d2f7e4480dca6684bed99eadf3b7c6864ca2915ce7 |
+
+Frozen-records check: `git diff --name-only` shows no historical reports, migration manifests, pointer mappings, archive documents or frozen pilot fixtures changed. The approved plan copied byte-for-byte retains SHA-256 `f987003c1361937c960192c78750c43dcaa8b3596efa4bcab09bfc3e39fbfdd2`. The sole existing registry modification is the allowed issue-only pointer. The classification appendix below matches the approved classification-v3 text; it is not a released reclassification batch.
+
+Browser counts were observed: Open had five fixture rows, two Bugs, one Follow-up and one Untriaged conflict; Closed had one Done bug; All had six total fixture rows with three Bugs and one Untriaged row. The bug's #9001 parent link and parent title were visibly present. No external issue link was followed or changed. Narrow-width overflow was observed, not inferred from a stylesheet alone.
+
+The connector's first title write failed HTTP403 before mutation. Independently reviewed recovery used the existing CLI connection, actor vibhanshu-agarwal. A third review-comment POST returned HTTP504; exact paginated reconciliation found it once, and separately reviewed recovery posted only the unattempted owner note. Title, labels, unchanged body and all four exact comments were verified. No failed/unknown write was blindly retried. Local preview's default Python launcher failed and reported a Python manager update; the preview then used the prepared checkout interpreter explicitly. No credentials or product services were changed.
+
+Before final publication, retain source identities, command logs and the two run records with hashes in sanctioned evidence storage; the sanitized tracked summary is the contributor-accessible claim. Raw local artifacts are provenance, never permanent build or review dependencies.
+
+## Classification proposal
+
+# Issue #354 exact reclassification proposal v3
+
+Dated 3 November 2026 (IST). Complete successor to v2; earlier versions are retained unchanged. Proposal only; no GitHub writes authorized. Reviewed universe: all 58 open kind:follow-up issues in the paginated snapshot. Closed issues and other kinds are not reclassified. This records a dated decision proposal, not a live status register.
+
+Use kind:bug for an observed or source-supported malfunction of an existing product, tool, test or integration. Root cause need not be known. Retain follow-up for new capabilities, accepted behavior awaiting a new contract, evidence/disposition-only residuals and ambiguous mixed scopes. #293 stays untouched under separate Evidence Handoff ownership, not because its body is part of the A2A deferral.
+
+Exact proposed 13-issue change: #252, #253, #260, #269, #272, #273, #287, #361, #369, #379, #423, #433, #436. Add kind:bug and read back the dual-kind labels, then remove only kind:follow-up and read back. Fixtures prove the intermediate diagnostic; check the hosted page once for the first pair rather than repeatedly consuming its unauthenticated quota. No other field/label/relationship may be changed. A failed or unknown write stops the batch. Reclassification is no scheduling, implementation or closure authority.
+
+Changes from v1: retain #249 (mixed delivery debt), #262 (remaining evidence task) and #400 (original policy/message defect delivered). Clarify #369 and #293. Claude recommended these corrections; the plan recheck remains separate from operator approval.
+
+| Issue | Proposed kind | Reason |
+|---|---|---|
+| [#223](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/223) P11-FU-20: Attach per-server catalog/authorizer to session tool service for real one-call issuance | follow-up | Keep: implementation is wired; remaining live one-call evidence and prerequisite custody are not a new defect claim. |
+| [#224](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/224) P11-FU-40: Real Zed process containment and live-only tree-kill path | follow-up | Keep: real Zed containment compatibility and live evidence remain unproved. |
+| [#242](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/242) P9.8-FU-2: Intelligent ambiguous-reference ranking | follow-up | Keep: future intelligent reference ranking; current deterministic refusal is intentional. |
+| [#243](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/243) P9.8-FU-3: Dynamic context budgets and required-file summarization | follow-up | Keep: future dynamic budgets and summarization. |
+| [#244](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/244) P9.85-FU-1: Intelligent observation compression | follow-up | Keep: future observation compression; current overflow stop is intentional. |
+| [#245](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/245) P9.85-FU-2: Dynamic planning-evidence partition | follow-up | Keep: calibration-led change to fixed evidence partitions. |
+| [#249](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/249) P11-FU-31: MAIN-5 synthetic-fixture and complete-scan delivery debt | follow-up | Keep: mixed scanner/fixture delivery debt; remaining acceptance is inventory, synthetic-provenance handling and frozen-report disposition, not a commissioned scanner repair. |
+| [#250](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/250) P11-FU-32: MAIN-5 Windows harness environment dependence | follow-up | Keep: mixed environment-dependence inventory; characterize individual failures before a blanket defect label. |
+| [#251](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/251) P11-FU-36: MAIN-5 remaining guarded-runner mechanics | follow-up | Keep: startup profiling and provenance/harness design follow-up. |
+| [#252](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/252) Plan 11.26 H4 verifier follow-ups from Seam 2 checkpoint A | bug | Bug: generated finding ruling is omitted from rebuild comparison; schema hazards alone are not the justification. |
+| [#253](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/253) P9.8-FU-5: Zed Refusal-Rendering Stability | bug | Bug: observed Zed client panic; label does not assign fault to Optimus or reopen frozen conformance work. |
+| [#254](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/254) P11-FU-1: ACP Session Resume Capability | follow-up | Keep: explicitly unsupported session-resume capability and its planned implementation. |
+| [#256](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/256) P11-FU-11: Plan 11.7 Retry Preflight and Live Session Proof | follow-up | Keep: partially implemented retry-preflight work with outstanding proof; do not infer the original uncalled gate remains unfixed. |
+| [#257](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/257) P9.85-FU-3: Cross-Run/Session Spend Policy | follow-up | Keep: new cross-session spend policy; current per-run policy remains valid. |
+| [#258](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/258) P9.87-FU-1: Mechanical Current-Raw-Evidence Grounding Guard | follow-up | Keep: future mechanical provenance guard and policy design. |
+| [#259](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/259) P11-FU-4: Re-pin FU-4A/FU-5 Live Evidence | follow-up | Keep: fresh live evidence and repinning obligation. |
+| [#260](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/260) P11-FU-5: Windows Subprocess Handle-Duplication Flake (WinError 6/50) | bug | Bug: reproduced Windows DuplicateHandle flake with unresolved causal edge; not the separate approval-identity concern. |
+| [#261](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/261) P11-FU-6: Gateway `test_server` Full-Suite Port/Teardown Flake | follow-up | Keep: scoped repair delivered; remaining broader closure criteria need independent disposition. |
+| [#262](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/262) P11-FU-7: Windows Coverage/`sys.settrace` Timing Flake in ACP NDJSON Sanitization Test | follow-up | Keep: test-only deadline repair landed in 72f3cc8; current 31 October assessment retains a bounded Windows evidence/closure task, not a newly demonstrated defect. |
+| [#263](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/263) P11-FU-8: Align `OPTIMUS_LOCAL_GATEWAY_BASE_URL` with `OPTIMUS_GATEWAY_<THING>_BASE_URL` naming | follow-up | Keep: naming consistency change; the current name works. |
+| [#264](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/264) P11-FU-16: Reverse Research-to-Documentation Freshness Gate | follow-up | Keep: new research-to-documentation gate. |
+| [#265](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/265) P11-FU-23: Durable client-MCP descriptor-surface pinning and named tool allowlists | follow-up | Keep: optional stronger descriptor pinning and tool allowlists. |
+| [#266](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/266) P11-FU-24: Client-MCP durable HTTP/SSE trust relaxation | follow-up | Keep: optional transport trust-policy relaxation. |
+| [#267](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/267) P11-FU-25: Authenticated client-owned MCP upstream evidence | follow-up | Keep: real authenticated MCP evidence. |
+| [#268](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/268) P11.25-FU-2: Structured ACP stop-reason metadata (contract term: MT-FU-2) | follow-up | Keep: structured stop metadata was explicitly excluded, not a Slice 1 defect. |
+| [#269](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/269) P12.1-FU-1: Local Gateway missed the agent's startup readiness deadline | bug | Bug: observed Gateway readiness failure and misleading subsequent cost result; root cause remains unknown. |
+| [#271](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/271) P11-FU-34: MAIN-5 settlement telemetry truth | follow-up | Keep: telemetry authority/timing needs confirmation; do not label an unestablished placeholder hazard a proven defect. |
+| [#272](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/272) P11-FU-38: Bounded join and wait outcome classification | bug | Bug: documented silent bounded waits/joins can present incomplete diagnostics as complete; whole inventory remains owed. |
+| [#273](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/273) P11-FU-39: Process-tree timeout and captured-pipe cleanup class | bug | Bug: named child-only termination/inherited-pipe hazards; candidate scan sites are not all confirmed bugs. No scheduling or repair. |
+| [#274](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/274) P11-FU-41: Windows job-object binding owner consolidation | follow-up | Keep: consolidation of duplicate native bindings. |
+| [#275](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/275) P11-FU-30: No log-level categorization; stdlib `logging` is absent project-wide | follow-up | Keep: new levelled diagnostic boundary requiring a design; lack of stdlib logging alone is not a defect. |
+| [#287](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/287) P11-FU-42: H5 shutdown audit `probe_error` under load | bug | Bug: original H5 probe_error cause remains unestablished; diagnostic delivery did not resolve the observed failure. |
+| [#288](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/288) P11-FU-43: Planning-progress notice ordering race | follow-up | Keep: current comment says ordering portion delivered; remaining custody must not be presented as that unfixed defect. |
+| [#289](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/289) P9.96-FU-8: Launch approval record capacity | follow-up | Keep: governed expansion/disposition of the 1,800-byte approval policy; separate from #433's backend and R1 defects. |
+| [#290](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/290) P11.29-FU-1: Work tracking impact declaration replacing the masterplan-impact gate | follow-up | Keep: future work-tracking impact gate migration. |
+| [#291](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/291) P11.29-FU-2: Plan-header tracking-issue convention and offline check | follow-up | Keep: future plan-header convention and offline check. |
+| [#293](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/293) P11-FU-37: MAIN-5 Windows evidence-bundle promotion residual | follow-up | Keep without reclassification: separate Evidence Handoff ownership boundary for this batch, although the body explicitly distinguishes this work from deferred A2A and records observed promotion failures. |
+| [#354](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/354) Deferred: separate Bugs table on the work-status page | follow-up | Keep: page organization enhancement and this task's owning issue. |
+| [#361](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/361) F1: package and OSV tool routes depend on the Tavily search configuration (LLD §9C.4 separation) | bug | Bug: package/OSV routes depend on search configuration contrary to the stated independence contract. |
+| [#362](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/362) F2: Gateway search-path decision and the Test Strategy §7A gate (plugin path not implemented; Tavily is the provider) | follow-up | Keep: search backend selection and acceptance-gate disposition require a design decision. |
+| [#363](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/363) F3: integrate or retire PyTestArch, maintainability index, DeepEval, Ragas and PyRIT; evaluate CommandSafetyValidator against its contract (Tirith optional, not adopted) | follow-up | Keep: integrate-or-retire decisions and validator evaluation; absence of optional Tirith is not a defect. |
+| [#369](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/369) ProcessWatch signal-0 fallback reports unreaped zombies as running (no os.pidfd_open) | bug | Bug: source-supported, unobserved false running result for non-Linux POSIX zombies remains unaccepted after the bounded Linux fix; no broader POSIX implementation or closure. |
+| [#379](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/379) MCP permission requests during ACP session setup: Zed errors and restored-thread delay (finding #6) | bug | Bug: observed setup permission errors/delay, with two observations and no presumed common cause. |
+| [#396](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/396) Loop control Phase 2: cross-turn detection, alerts, retry taxonomy, 429 check-in, episode accounting | follow-up | Keep: intentionally deferred loop-control Phase 2 capabilities. |
+| [#398](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/398) Auto mode follow-ups: Zed live test, Zed model picker, selection filters, more models, Auto as default | follow-up | Keep: remaining medium-tier Zed evidence, model picker, filters and default selection. |
+| [#400](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/400) R-15: OpenRouter's `guardrail` router stage makes the empirical Haiku 5.5 route refuse billed replies (`EMPIRICAL_ROUTER_PIPELINE`) | follow-up | Keep: approved b1 policy and corrected single-failure wording are on current main; do not classify from the stale original title/body or close another handler's issue. |
+| [#408](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/408) Agent mode: one mutation per plan blocks multi-file changes | follow-up | Keep: one-mutation limit is a deliberate scope boundary; multi-file grammar and approval require new design. |
+| [#409](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/409) Agent planning cannot locate target lines in a large file | follow-up | Keep: search/outline capability for large files; no existing search/outline contract is shown broken. |
+| [#423](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/423) Gateway: settle a length-truncated reply with no content as a known-cost failure when its accounting is complete | bug | Bug: complete billed accounting is discarded when content is absent, yielding an incorrect uncertain outcome. |
+| [#425](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/425) Plan 12.4 follow-up: evaluate the Auto judge's previous-tier signal on real turn sequences | follow-up | Keep: real-sequence evaluation of the previous-tier signal. |
+| [#433](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/433) Durable launch approval crashes on Windows (CredWrite 1783) when the record exceeds the UTF-16 credential limit | bug | Bug: R1 can expose surviving legacy approval after unauthenticated entry, reapproval and revocation; original size crash is delivered, #436 owns suite observations. |
+| [#436](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/436) Full suite: bound test execution and persist failure details; relay control deadlines; investigate two Windows observations | bug | Bug: observed hang/failure plus demonstrable unbounded relay receive and missing durable failure text; causes remain separate and unresolved. |
+| [#440](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/440) Auto escalation: prove a real model stuck enough to escalate (ADR-029, #397 S3) | follow-up | Keep: real-model escalation evidence, not a demonstrated escalation defect. |
+| [#441](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/441) Stop/cancel waits for an in-flight Gateway call (up to the 135 s host wait) | follow-up | Keep: prompt cancellation is a follow-up to an explicitly accepted cooperative wait trade-off. |
+| [#442](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/442) Gateway: no end-to-end deadline on its own processing (body read, Stage C ledger, logging, reply) | follow-up | Keep: stronger end-to-end Gateway deadline is an acknowledged contract extension; no new production repair is commissioned. |
+| [#443](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/443) Gateway: abandoned attempts in uninterruptible phases (DNS, connect loop, TLS) are bounded only by the 32-slot cap | follow-up | Keep: accepted worker-cap bound and future phase deadlines need a design disposition. |
+| [#447](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/447) H4 delivery-contract audit fails on main after a2c1330 (lifecycle.py pins drifted) | follow-up | Keep: four test failures repaired; retained historical helper now awaits an explicit execution/disposition decision. |
+| [#463](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/463) Cost-savings report: B2 and B3 commissioning, producer-owned contracts and paid authority (OC-4) | follow-up | Keep: B2/B3 commissioning, producer contracts and paid campaigns. |

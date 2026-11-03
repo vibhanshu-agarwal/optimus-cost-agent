@@ -96,6 +96,11 @@ relevant records before proposing a change in their area.
 
 ## Planning
 
+| Document | What it is |
+|---|---|
+| [Plan 11.32: work-status Bugs table](superpowers/plans/2026-11-03-plan-11-32-work-status-bugs.md) | Approved scope for #354 |
+| [Issue #354 classification and validation](superpowers/reports/2026-11-03-issue354-work-status-bugs.md) | Dated classification proposal, authority and evidence |
+
 Status, priority and ownership live in the record's GitHub issue; the transitional backlog holds them only for records not yet marked `Moved` and takes no new work entries (a new plan's issue-only registry pointer row excepted). Plans do not declare their own status.
 
 | Document | What it is |
